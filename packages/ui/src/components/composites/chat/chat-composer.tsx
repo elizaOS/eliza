@@ -15,6 +15,7 @@ import {
   type PointerEvent,
   type RefObject,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -23,6 +24,68 @@ import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 import type { ChatVariant } from "./chat-types";
 import { CreateTaskPopover } from "./create-task-popover";
+
+const INLINE_TEXTAREA_MIN_HEIGHT_PX = 32;
+const INLINE_TEXTAREA_MAX_HEIGHT_PX = 128;
+const INLINE_STACKED_INLINE_PADDING_PX = 12;
+
+const inlineTextareaClass =
+  "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:!border-0 focus:!outline-none focus:!ring-0 focus-visible:!border-0 focus-visible:!outline-none focus-visible:!ring-0 focus-visible:!ring-offset-0 focus-visible:!shadow-none";
+
+const inlineMeasureTextareaClass = `${inlineTextareaClass} pointer-events-none fixed left-0 top-0 z-[-1] opacity-0`;
+
+const chatComposerFocusResetClass =
+  "[&_button:focus]:!outline-none [&_button:focus-visible]:!outline-none [&_button:focus-visible]:!ring-0 [&_button:focus-visible]:!ring-offset-0 [&_button:focus-visible]:!shadow-none [&_textarea:focus]:!outline-none [&_textarea:focus-visible]:!outline-none [&_textarea:focus-visible]:!ring-0 [&_textarea:focus-visible]:!ring-offset-0 [&_textarea:focus-visible]:!shadow-none";
+
+type InlineTextareaMeasurement = {
+  scrollHeight: number;
+  wraps: boolean;
+};
+
+function getTextareaVerticalPadding(textarea: HTMLTextAreaElement): number {
+  const styles = window.getComputedStyle(textarea);
+  const paddingTop = Number.parseFloat(styles.paddingTop);
+  const paddingBottom = Number.parseFloat(styles.paddingBottom);
+  const verticalPadding = paddingTop + paddingBottom;
+  if (
+    Number.isFinite(paddingTop) &&
+    Number.isFinite(paddingBottom) &&
+    verticalPadding > 0
+  ) {
+    return verticalPadding;
+  }
+  return 12;
+}
+
+function getTextareaLineHeight(textarea: HTMLTextAreaElement): number {
+  const lineHeight = Number.parseFloat(
+    window.getComputedStyle(textarea).lineHeight,
+  );
+  return Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 20;
+}
+
+function measureInlineTextarea(
+  textarea: HTMLTextAreaElement,
+  value: string,
+  width: number,
+): InlineTextareaMeasurement {
+  textarea.value = value.endsWith("\n") ? `${value} ` : value || " ";
+  textarea.style.width = `${Math.max(1, width)}px`;
+  textarea.style.height = "auto";
+  textarea.style.overflowY = "hidden";
+
+  const scrollHeight = textarea.scrollHeight;
+  const contentHeight = Math.max(
+    0,
+    scrollHeight - getTextareaVerticalPadding(textarea),
+  );
+  const lineHeight = getTextareaLineHeight(textarea);
+
+  return {
+    scrollHeight,
+    wraps: contentHeight > lineHeight * 1.25,
+  };
+}
 
 export interface ChatComposerVoiceState {
   assistantTtsQuality?: "enhanced" | "standard";
@@ -95,6 +158,10 @@ export function ChatComposer({
     () => typeof window !== "undefined" && window.innerWidth < 310,
   );
   const [isInlineMultiline, setIsInlineMultiline] = useState(false);
+  const [inlineMeasureVersion, setInlineMeasureVersion] = useState(0);
+  const inlineRootRef = useRef<HTMLDivElement | null>(null);
+  const inlineMeasureRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastInlineSingleLineWidthRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -142,9 +209,6 @@ export function ChatComposer({
           ? t("chat.listening")
           : inputPlaceholder
       : inputPlaceholder;
-  const inlineTextareaClass = isInlineMultiline
-    ? "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-2 py-[6px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none"
-    : "block h-8 max-h-[128px] min-h-0 w-full min-w-0 resize-none overflow-y-hidden appearance-none rounded-none border-0 bg-transparent px-1 py-[5px] text-sm leading-5 text-txt shadow-none outline-none ring-0 placeholder:text-muted/60 focus:border-0 focus:outline-none focus:ring-0 focus-visible:border-0 focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:shadow-none";
 
   useEffect(() => {
     return () => {
@@ -155,28 +219,86 @@ export function ChatComposer({
     };
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: chatInput changes must rerun inline textarea autosizing.
   useEffect(() => {
+    if (!isInline) return;
+    const root = inlineRootRef.current;
+    if (!root || typeof ResizeObserver === "undefined") return;
+
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        setInlineMeasureVersion((version) => version + 1);
+      });
+    });
+    observer.observe(root);
+
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [isInline]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: inlineMeasureVersion is a ResizeObserver tick that reruns measurement after width changes.
+  useLayoutEffect(() => {
     if (!isInline) {
       setIsInlineMultiline(false);
+      lastInlineSingleLineWidthRef.current = null;
       return;
     }
     const textarea = textareaRef.current;
-    if (!textarea) return;
+    const measureTextarea = inlineMeasureRef.current;
+    const root = inlineRootRef.current;
+    if (!textarea || !measureTextarea || !root) return;
 
-    const minHeight = 32;
-    const maxHeight = 128;
+    const measuredSingleLineWidth =
+      textarea.clientWidth > 0 ? textarea.clientWidth : null;
+    const currentSingleLineWidth = isInlineMultiline
+      ? lastInlineSingleLineWidthRef.current
+      : measuredSingleLineWidth;
+    if (!isInlineMultiline && measuredSingleLineWidth) {
+      lastInlineSingleLineWidthRef.current = measuredSingleLineWidth;
+    }
 
-    textarea.style.height = "auto";
-    const nextHeight = Math.min(
-      Math.max(textarea.scrollHeight, minHeight),
-      maxHeight,
+    const decisionWidth =
+      currentSingleLineWidth ??
+      Math.max(1, root.clientWidth - INLINE_STACKED_INLINE_PADDING_PX);
+    const stackedWidth = Math.max(
+      1,
+      root.clientWidth - INLINE_STACKED_INLINE_PADDING_PX,
     );
+    const decision = measureInlineTextarea(
+      measureTextarea,
+      chatInput,
+      decisionWidth,
+    );
+    const nextIsInlineMultiline = chatInput.includes("\n") || decision.wraps;
+    const heightMeasurement = nextIsInlineMultiline
+      ? measureInlineTextarea(measureTextarea, chatInput, stackedWidth)
+      : decision;
+    const nextHeight = nextIsInlineMultiline
+      ? Math.min(
+          Math.max(
+            heightMeasurement.scrollHeight,
+            INLINE_TEXTAREA_MIN_HEIGHT_PX,
+          ),
+          INLINE_TEXTAREA_MAX_HEIGHT_PX,
+        )
+      : INLINE_TEXTAREA_MIN_HEIGHT_PX;
+
     textarea.style.height = `${nextHeight}px`;
     textarea.style.overflowY =
-      textarea.scrollHeight > maxHeight ? "auto" : "hidden";
-    setIsInlineMultiline(nextHeight > minHeight);
-  }, [chatInput, isInline, textareaRef]);
+      heightMeasurement.scrollHeight > INLINE_TEXTAREA_MAX_HEIGHT_PX
+        ? "auto"
+        : "hidden";
+    setIsInlineMultiline(nextIsInlineMultiline);
+  }, [
+    chatInput,
+    inlineMeasureVersion,
+    isInline,
+    isInlineMultiline,
+    textareaRef,
+  ]);
 
   const startPushToTalk = () => {
     if (isComposerLocked || voice.isListening) return;
@@ -394,13 +516,25 @@ export function ChatComposer({
 
     return (
       <div
+        ref={inlineRootRef}
+        data-chat-composer="true"
         data-inline-layout={isInlineMultiline ? "stacked" : "single-line"}
         className={
           isInlineMultiline
-            ? "flex min-h-[64px] flex-col gap-1 rounded-[22px] border border-border/35 bg-card/45 px-1.5 py-1.5"
-            : "flex min-h-[40px] items-center gap-1 rounded-full border border-border/35 bg-card/45 px-1 py-1"
+            ? `flex min-h-[64px] flex-col gap-1 rounded-[22px] border border-border/35 bg-card/45 px-1.5 py-1.5 ${chatComposerFocusResetClass}`
+            : `flex min-h-[40px] items-center gap-1 rounded-full border border-border/35 bg-card/45 px-1 py-1 ${chatComposerFocusResetClass}`
         }
       >
+        <textarea
+          ref={inlineMeasureRef}
+          aria-hidden="true"
+          className={inlineMeasureTextareaClass}
+          data-chat-composer-measure="true"
+          readOnly
+          rows={1}
+          tabIndex={-1}
+          value={chatInput}
+        />
         {isInlineMultiline ? (
           <>
             {inlineTextarea}
@@ -425,10 +559,11 @@ export function ChatComposer({
 
   return (
     <div
+      data-chat-composer="true"
       className={
         isGameModal
-          ? "relative flex w-full items-end gap-2 transition-all max-[380px]:gap-1.5"
-          : "flex items-center gap-1.5 sm:gap-2"
+          ? `relative flex w-full items-end gap-2 transition-all max-[380px]:gap-1.5 ${chatComposerFocusResetClass}`
+          : `flex items-center gap-1.5 sm:gap-2 ${chatComposerFocusResetClass}`
       }
     >
       {!isGameModal && !hideAttachButton ? (

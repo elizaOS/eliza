@@ -374,6 +374,7 @@ export function ChatView({
 
   // Auto-resize textarea
   useEffect(() => {
+    if (!isGameModal) return;
     const ta = textareaRef.current;
     if (!ta) return;
 
@@ -390,7 +391,7 @@ export function ChatView({
     ta.style.height = `${h}px`;
     ta.style.overflowY =
       ta.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
-  }, [chatInput]);
+  }, [chatInput, isGameModal]);
 
   // Track composer height so the message layer bottom adjusts dynamically
   useEffect(() => {
