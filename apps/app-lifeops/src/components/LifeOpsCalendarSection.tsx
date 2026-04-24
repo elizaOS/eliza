@@ -872,6 +872,11 @@ export function LifeOpsCalendarSection(
     [onSelect],
   );
 
+  const handleCloseEditor = useCallback(() => {
+    setDrawerEvent(null);
+    onSelect({ eventId: null });
+  }, [onSelect]);
+
   // When an external caller (widget row, deep link) selects an event, the
   // grid's local `drawerEvent` state is still null. Look up the id first in
   // the currently-loaded calendar feed, then fall back to the widget prime
@@ -1011,7 +1016,7 @@ export function LifeOpsCalendarSection(
         open={drawerEvent !== null}
         event={drawerEvent}
         onChat={chatAboutEvent}
-        onClose={() => setDrawerEvent(null)}
+        onClose={handleCloseEditor}
         onSaved={(updatedEvent) => {
           void calendar.refresh();
           setDrawerEvent(updatedEvent);

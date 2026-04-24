@@ -254,7 +254,7 @@ function LifeOpsInboxWidget(_props: ChatSidebarWidgetProps) {
     writeHash(
       buildLifeOpsHash(
         typeof window === "undefined" ? "" : window.location.hash,
-        { section: "messages", eventId: null, messageId: null },
+        { section: "mail", eventId: null, messageId: null },
       ),
     );
     setTab("lifeops");
@@ -265,7 +265,7 @@ function LifeOpsInboxWidget(_props: ChatSidebarWidgetProps) {
     writeHash(
       buildLifeOpsHash(
         typeof window === "undefined" ? "" : window.location.hash,
-        { section: "messages", eventId: null, messageId: message.id },
+        { section: "mail", eventId: null, messageId: message.id },
       ),
     );
     setTab("lifeops");

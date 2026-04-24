@@ -1029,10 +1029,16 @@ export async function handleLifeOpsRoutes(
       return runRoute(ctx, async (service) => {
         const event = await service.updateCalendarEvent(url, {
           eventId,
+          side:
+            body.side ?? parseConnectorSideQuery(url.searchParams.get("side")),
+          grantId: body.grantId ?? url.searchParams.get("grantId") ?? undefined,
+          calendarId:
+            body.calendarId ?? url.searchParams.get("calendarId") ?? undefined,
           title: body.title,
           description: body.notes,
           startAt: body.startAt,
           endAt: body.endAt,
+          timeZone: body.timeZone,
         });
         json(res, { event });
       });
@@ -1040,7 +1046,12 @@ export async function handleLifeOpsRoutes(
     if (method === "DELETE") {
       if (rateLimitRequest(ctx, "calendar_delete")) return true;
       return runRoute(ctx, async (service) => {
-        await service.deleteCalendarEvent(url, { eventId });
+        await service.deleteCalendarEvent(url, {
+          eventId,
+          side: parseConnectorSideQuery(url.searchParams.get("side")),
+          grantId: url.searchParams.get("grantId") ?? undefined,
+          calendarId: url.searchParams.get("calendarId") ?? undefined,
+        });
         json(res, { deleted: true });
       });
     }
