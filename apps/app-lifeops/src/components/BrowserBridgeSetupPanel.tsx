@@ -8,7 +8,9 @@ import {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
   Label,
+  navigatePreOpenedWindow,
   openExternalUrl,
+  preOpenWindow,
   SegmentedControl,
   Switch,
   Textarea,
@@ -69,6 +71,27 @@ function isIosRuntime(): boolean {
     globalThis as { Capacitor?: { getPlatform?: () => string } }
   ).Capacitor;
   return capacitor?.getPlatform?.() === "ios";
+}
+
+function detectRuntimeBrowserKind(): BrowserBridgeKind | null {
+  if (typeof navigator === "undefined") {
+    return null;
+  }
+  const userAgent = navigator.userAgent.toLowerCase();
+  const vendor = navigator.vendor?.toLowerCase() ?? "";
+  const chromeFamily =
+    userAgent.includes("chrome") ||
+    userAgent.includes("chromium") ||
+    userAgent.includes("crios") ||
+    userAgent.includes("edg/") ||
+    userAgent.includes("brave");
+  if (chromeFamily) {
+    return "chrome";
+  }
+  if (vendor.includes("apple") && userAgent.includes("safari")) {
+    return "safari";
+  }
+  return null;
 }
 
 function settingsToDraft(settings: BrowserBridgeSettings): SettingsDraft {
@@ -256,9 +279,16 @@ function releaseTargetForBrowser(
 function installButtonLabel(
   browser: BrowserBridgeKind,
   releaseManifest: BrowserBridgeCompanionReleaseManifest | null | undefined,
-  hasLocalArtifact: boolean,
+  options: {
+    hasLocalArtifact: boolean;
+    localWorkspaceAvailable: boolean;
+  },
 ): string {
-  if (hasLocalArtifact) {
+  const { hasLocalArtifact, localWorkspaceAvailable } = options;
+  if (localWorkspaceAvailable) {
+    if (!hasLocalArtifact) {
+      return `Build & Install in ${browser === "chrome" ? "Chrome" : "Safari"}`;
+    }
     return browser === "chrome" ? "Install in Chrome" : "Install in Safari";
   }
   const target = releaseTargetForBrowser(browser, releaseManifest);
@@ -324,7 +354,11 @@ function BrowserSettingRow({
 function releaseBadgeLabel(
   browser: BrowserBridgeKind,
   releaseManifest: BrowserBridgeCompanionReleaseManifest | null | undefined,
+  localWorkspaceAvailable: boolean,
 ): string | null {
+  if (localWorkspaceAvailable) {
+    return "Local build";
+  }
   const target = releaseTargetForBrowser(browser, releaseManifest);
   if (!target) {
     return null;
@@ -341,11 +375,51 @@ function releaseBadgeLabel(
   return "Download";
 }
 
+function buildStateBadgeLabel(
+  hasLocalArtifact: boolean,
+  localWorkspaceAvailable: boolean,
+): string {
+  if (hasLocalArtifact) {
+    return "Built";
+  }
+  if (localWorkspaceAvailable) {
+    return "Build on install";
+  }
+  return "Download";
+}
+
+function installHint(
+  browser: BrowserBridgeKind,
+  currentBrowser: BrowserBridgeKind | null,
+  localWorkspaceAvailable: boolean,
+  releaseManifest: BrowserBridgeCompanionReleaseManifest | null | undefined,
+): string {
+  if (localWorkspaceAvailable) {
+    if (browser === "chrome") {
+      return currentBrowser === "chrome"
+        ? "Install builds the extension, opens chrome://extensions in this browser profile when possible, and reveals the folder for Load unpacked."
+        : "Install builds the extension, opens Chrome extensions, and reveals the folder you need for Load unpacked.";
+    }
+    return "Install builds the Safari helper app and opens it so you can enable the extension once.";
+  }
+
+  const target = releaseTargetForBrowser(browser, releaseManifest);
+  if (target?.installKind === "chrome_web_store") {
+    return "Use the published Chrome Web Store build, then open the popup once in the profile you want LifeOps to use.";
+  }
+  if (target?.installKind === "apple_app_store") {
+    return "Use the published Safari App Store build, then enable the extension and open its popup once.";
+  }
+  return "Download the published browser companion, install it, then open the popup once to auto-connect.";
+}
+
 function BrowserCompanionRow({
+  currentBrowser,
   browser,
   buildPath,
   packagePath,
   appPath,
+  localWorkspaceAvailable,
   releaseManifest,
   busy,
   pairing,
@@ -357,10 +431,12 @@ function BrowserCompanionRow({
   onOpenTarget,
   onOpenManager,
 }: {
+  currentBrowser: BrowserBridgeKind | null;
   browser: BrowserBridgeKind;
   buildPath: string | null | undefined;
   packagePath: string | null | undefined;
   appPath?: string | null | undefined;
+  localWorkspaceAvailable: boolean;
   releaseManifest?: BrowserBridgeCompanionReleaseManifest | null;
   busy: boolean;
   pairing: BrowserBridgeCompanionPairingResponse | null;
@@ -380,33 +456,56 @@ function BrowserCompanionRow({
   ) => Promise<boolean>;
 }) {
   const browserLabel = browser === "chrome" ? "Chrome" : "Safari";
-  const distributionLabel = releaseBadgeLabel(browser, releaseManifest);
+  const distributionLabel = releaseBadgeLabel(
+    browser,
+    releaseManifest,
+    localWorkspaceAvailable,
+  );
   const hasLocalArtifact = Boolean(buildPath || packagePath || appPath);
   const installLabel = installButtonLabel(
     browser,
     releaseManifest,
+    {
+      hasLocalArtifact,
+      localWorkspaceAvailable,
+    },
+  );
+  const buildBadgeLabel = buildStateBadgeLabel(
     hasLocalArtifact,
+    localWorkspaceAvailable,
+  );
+  const rowHint = installHint(
+    browser,
+    currentBrowser,
+    localWorkspaceAvailable,
+    releaseManifest,
   );
 
   return (
     <div className="space-y-2 rounded-2xl bg-card/16 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="outline">{browserLabel}</Badge>
+        {currentBrowser === browser ? (
+          <Badge variant="secondary" className="text-2xs">
+            This Browser
+          </Badge>
+        ) : null}
         {distributionLabel ? (
           <Badge variant="secondary" className="text-2xs">
             {distributionLabel}
           </Badge>
         ) : null}
-        {hasLocalArtifact ? (
+        {hasLocalArtifact || localWorkspaceAvailable ? (
           <Badge variant="secondary" className="text-2xs">
-            Built
+            {buildBadgeLabel}
           </Badge>
         ) : (
           <Badge variant="outline" className="text-2xs">
-            Not built
+            Download
           </Badge>
         )}
       </div>
+      <div className="text-xs leading-relaxed text-muted">{rowHint}</div>
       <div className="flex flex-wrap gap-1.5">
         <Button
           size="sm"
@@ -431,7 +530,7 @@ function BrowserCompanionRow({
           disabled={busy}
           onClick={() => void onCreatePairing(browser)}
         >
-          Manual Fallback
+          Manual Pairing
         </Button>
         {browser === "chrome" && buildPath ? (
           <>
@@ -547,6 +646,7 @@ function BrowserCompanionRow({
 
 export function BrowserBridgeSetupPanel() {
   const { setActionNotice, setTab } = useApp();
+  const currentBrowser = useMemo(() => detectRuntimeBrowserKind(), []);
   const [draft, setDraft] = useState<SettingsDraft | null>(null);
   const [draftDirty, setDraftDirty] = useState(false);
   const draftRef = useRef<SettingsDraft | null>(null);
@@ -840,6 +940,11 @@ export function BrowserBridgeSetupPanel() {
   ): Promise<ExtensionStatus> => {
     setBuildingBrowser(browser);
     setError(null);
+    if (!options?.silent) {
+      setStatusMessage(
+        `Building ${browser === "chrome" ? "Chrome" : "Safari"} companion…`,
+      );
+    }
     try {
       const response = await client.buildBrowserBridgeCompanionPackage(browser);
       const nextStatus = mergePackageStatus(packageStatus, response.status);
@@ -1015,6 +1120,18 @@ export function BrowserBridgeSetupPanel() {
     options?: { silent?: boolean },
   ): Promise<boolean> => {
     try {
+      if (
+        browser === "chrome" &&
+        currentBrowser === "chrome" &&
+        !isElectrobunRuntime()
+      ) {
+        navigatePreOpenedWindow(preOpenWindow(), CHROME_EXTENSIONS_URL);
+        if (!options?.silent) {
+          setStatusMessage("Opened chrome://extensions/ in this browser profile.");
+        }
+        setError(null);
+        return true;
+      }
       await client.openBrowserBridgeCompanionManager(browser);
       if (!options?.silent) {
         setStatusMessage(
@@ -1042,11 +1159,20 @@ export function BrowserBridgeSetupPanel() {
   const installCompanion = async (browser: BrowserBridgeKind) => {
     setInstallingBrowser(browser);
     setError(null);
+    setStatusMessage(
+      `Preparing ${browser === "chrome" ? "Chrome" : "Safari"} install…`,
+    );
     try {
       const releaseTarget = releaseTargetForBrowser(
         browser,
         packageStatus?.releaseManifest,
       );
+      const preOpenedChromeManager =
+        browser === "chrome" &&
+        currentBrowser === "chrome" &&
+        !isElectrobunRuntime()
+          ? preOpenWindow()
+          : null;
 
       const needsBuild =
         browser === "chrome"
@@ -1069,14 +1195,24 @@ export function BrowserBridgeSetupPanel() {
           const folderResult = await openPackageTarget("chrome_build", true, {
             silent: true,
           });
-          const managerOpened = await openBrowserManager("chrome", {
-            silent: true,
-          });
+          const managerOpened = preOpenedChromeManager
+            ? (navigatePreOpenedWindow(
+                preOpenedChromeManager,
+                CHROME_EXTENSIONS_URL,
+              ),
+              true)
+            : await openBrowserManager("chrome", {
+                silent: true,
+              });
           setStatusMessage(
             managerOpened
               ? folderResult.opened
-                ? "Chrome install is prepared. We revealed the built LifeOps extension folder and asked Chrome to open its extensions page. Click Load unpacked and choose that folder, then open the popup once to auto-pair."
-                : "Chrome install is prepared. We asked Chrome to open its extensions page and copied the build folder path. Click Load unpacked, choose that folder, then open the popup once to auto-pair."
+                ? currentBrowser === "chrome"
+                  ? "Chrome install is prepared in this browser profile. We revealed the built LifeOps extension folder and opened chrome://extensions here. Click Load unpacked, choose that folder, then open the popup once to auto-pair."
+                  : "Chrome install is prepared. We revealed the built LifeOps extension folder and asked Chrome to open its extensions page. Click Load unpacked and choose that folder, then open the popup once to auto-pair."
+                : currentBrowser === "chrome"
+                  ? "Chrome install is prepared in this browser profile. We opened chrome://extensions here and copied the build folder path. Click Load unpacked, choose that folder, then open the popup once to auto-pair."
+                  : "Chrome install is prepared. We asked Chrome to open its extensions page and copied the build folder path. Click Load unpacked, choose that folder, then open the popup once to auto-pair."
               : folderResult.opened
                 ? "Chrome build folder is ready. In Chrome, open chrome://extensions, click Load unpacked, and choose the revealed LifeOps extension folder."
                 : "Chrome install still needs one manual step. We copied both the build folder path and chrome://extensions/, so you can load the unpacked LifeOps extension manually.",
@@ -1274,9 +1410,11 @@ export function BrowserBridgeSetupPanel() {
             Connect a Browser
           </div>
           <BrowserCompanionRow
+            currentBrowser={currentBrowser}
             browser="chrome"
             buildPath={packageStatus?.chromeBuildPath}
             packagePath={packageStatus?.chromePackagePath}
+            localWorkspaceAvailable={Boolean(packageStatus?.extensionPath)}
             releaseManifest={packageStatus?.releaseManifest ?? null}
             busy={
               buildingBrowser === "chrome" ||
@@ -1293,10 +1431,12 @@ export function BrowserBridgeSetupPanel() {
             onOpenManager={openBrowserManager}
           />
           <BrowserCompanionRow
+            currentBrowser={currentBrowser}
             browser="safari"
             buildPath={packageStatus?.safariWebExtensionPath}
             packagePath={packageStatus?.safariPackagePath}
             appPath={packageStatus?.safariAppPath}
+            localWorkspaceAvailable={Boolean(packageStatus?.extensionPath)}
             releaseManifest={packageStatus?.releaseManifest ?? null}
             busy={
               buildingBrowser === "safari" ||

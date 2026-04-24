@@ -194,6 +194,16 @@ function inferBrowserWorkspaceTitle(url: string, t: TranslateFn): string {
   }
 }
 
+function getBrowserWorkspaceTabKind(
+  tab: BrowserWorkspaceTab,
+): "internal" | "standard" {
+  return tab.kind === "internal" ? "internal" : "standard";
+}
+
+function isInternalBrowserWorkspaceTab(tab: BrowserWorkspaceTab): boolean {
+  return getBrowserWorkspaceTabKind(tab) === "internal";
+}
+
 function getBrowserWorkspaceTabLabel(
   tab: BrowserWorkspaceTab,
   t: TranslateFn,
@@ -213,6 +223,10 @@ function getBrowserWorkspaceTabDescription(
   mode: BrowserWorkspaceSnapshot["mode"],
 ): string {
   const details: string[] = [];
+
+  if (isInternalBrowserWorkspaceTab(tab)) {
+    details.push("Internal");
+  }
 
   if (mode !== "web") {
     if (tab.provider?.trim()) {
@@ -311,6 +325,12 @@ export function BrowserWorkspaceView(): JSX.Element {
     : null;
   const selectedTabLiveViewUrl =
     selectedTab?.interactiveLiveViewUrl ?? selectedTab?.liveViewUrl ?? null;
+  const selectedTabIsInternal = selectedTab
+    ? isInternalBrowserWorkspaceTab(selectedTab)
+    : false;
+  const newBrowserWorkspaceTabSeedUrl = selectedTabIsInternal
+    ? "about:blank"
+    : locationInput || "about:blank";
   const groupedTabs = useMemo(
     () =>
       workspace.tabs.reduce<
@@ -571,6 +591,13 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   const navigateSelectedBrowserWorkspaceTab = useCallback(
     async (rawUrl: string) => {
+      if (selectedTab && isInternalBrowserWorkspaceTab(selectedTab)) {
+        throw new Error(
+          t("browserworkspace.InternalTabUrlManaged", {
+            defaultValue: "This internal tab manages its own URL.",
+          }),
+        );
+      }
       const url = normalizeBrowserWorkspaceInputUrl(rawUrl, t);
       if (!url) {
         throw new Error(
@@ -603,6 +630,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     [
       loadWorkspace,
       openNewBrowserWorkspaceTab,
+      selectedTab,
       selectedTabId,
       t,
       workspace.mode,
@@ -1052,6 +1080,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     const tabHasSessionFocus = workspace.mode === "web" ? tab.visible : active;
     const label = getBrowserWorkspaceTabLabel(tab, t);
     const description = getBrowserWorkspaceTabDescription(tab, workspace.mode);
+    const tabIsInternal = isInternalBrowserWorkspaceTab(tab);
 
     return (
       <div key={tab.id} className="group relative">
@@ -1066,9 +1095,9 @@ export function BrowserWorkspaceView(): JSX.Element {
               await activateBrowserWorkspaceTab(tab.id);
             })
           }
-          className={`flex w-full min-w-0 items-start gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-1 pr-7 text-left transition-colors ${
-            active ? "bg-bg-muted/50 text-txt" : "text-txt hover:bg-bg-muted/50"
-          }`}
+          className={`flex w-full min-w-0 items-start gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-1 text-left transition-colors ${
+            tabIsInternal ? "pr-1.5" : "pr-7"
+          } ${active ? "bg-bg-muted/50 text-txt" : "text-txt hover:bg-bg-muted/50"}`}
         >
           <span className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-muted/70">
             {tabHasSessionFocus ? (
@@ -1098,21 +1127,23 @@ export function BrowserWorkspaceView(): JSX.Element {
             </span>
           </span>
         </button>
-        <button
-          type="button"
-          aria-label={closeTabLabel}
-          title={closeTabLabel}
-          className="absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[var(--radius-sm)] text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-bg-muted/50 hover:text-danger"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void runBrowserWorkspaceAction(`close:${tab.id}`, async () => {
-              await closeBrowserWorkspaceTabById(tab.id);
-            });
-          }}
-        >
-          <X className="h-3 w-3" />
-        </button>
+        {tabIsInternal ? null : (
+          <button
+            type="button"
+            aria-label={closeTabLabel}
+            title={closeTabLabel}
+            className="absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[var(--radius-sm)] text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-bg-muted/50 hover:text-danger"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void runBrowserWorkspaceAction(`close:${tab.id}`, async () => {
+                await closeBrowserWorkspaceTabById(tab.id);
+              });
+            }}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
       </div>
     );
   }
@@ -1139,7 +1170,7 @@ export function BrowserWorkspaceView(): JSX.Element {
           onClick={() =>
             void runBrowserWorkspaceAction("open:new", async () => {
               await openNewBrowserWorkspaceTab(
-                locationInput || "about:blank",
+                newBrowserWorkspaceTabSeedUrl,
                 "user",
               );
             })
@@ -1183,7 +1214,7 @@ export function BrowserWorkspaceView(): JSX.Element {
               onAdd={() =>
                 void runBrowserWorkspaceAction("open:new", async () => {
                   await openNewBrowserWorkspaceTab(
-                    locationInput || "about:blank",
+                    newBrowserWorkspaceTabSeedUrl,
                     "user",
                   );
                 })
@@ -1298,8 +1329,11 @@ export function BrowserWorkspaceView(): JSX.Element {
           }
         }}
         placeholder={t("browserworkspace.AddressPlaceholder", {
-          defaultValue: "Enter a URL",
+          defaultValue: selectedTabIsInternal
+            ? "Internal tab URL is managed by the app"
+            : "Enter a URL",
         })}
+        disabled={busyAction !== null || selectedTabIsInternal}
         className="h-8 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
       />
       <Button
@@ -1574,10 +1608,15 @@ export function BrowserWorkspaceView(): JSX.Element {
               </div>
               <div className="truncate">{selectedTab.url}</div>
               <div className="mt-1">
-                {t("browserworkspace.RealSessionDescription", {
-                  defaultValue:
-                    "This is a real browser session, not a raw iframe embed. Use chat or browser actions to navigate and interact with sites like Google and Discord.",
-                })}
+                {selectedTabIsInternal
+                  ? t("browserworkspace.InternalSessionDescription", {
+                      defaultValue:
+                        "This is an internal app-managed browser session. Use LifeOps actions to steer it; the URL is locked in the Browser view.",
+                    })
+                  : t("browserworkspace.RealSessionDescription", {
+                      defaultValue:
+                        "This is a real browser session, not a raw iframe embed. Use chat or browser actions to navigate and interact with sites like Google and Discord.",
+                    })}
               </div>
             </div>
           ) : null}

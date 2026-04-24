@@ -11,6 +11,7 @@ type BrowserWorkspaceCreateBody = {
   title?: string;
   show?: boolean;
   partition?: string;
+  kind?: "internal" | "standard";
   width?: number;
   height?: number;
 };
@@ -131,6 +132,7 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
             title: body.title,
             show: body.show,
             partition: body.partition,
+            kind: body.kind,
             width: body.width,
             height: body.height,
           }),

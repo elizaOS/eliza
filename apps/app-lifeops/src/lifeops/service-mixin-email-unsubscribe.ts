@@ -1,19 +1,20 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
+
+import crypto from "node:crypto";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
 } from "@elizaos/shared/contracts/lifeops";
-import crypto from "node:crypto";
 import {
   createGmailFilterForSender,
   extractListUnsubscribeOptions,
   fetchGmailSubscriptionHeaders,
+  type GmailSubscriptionMessageHeaders,
   parseMailtoUnsubscribe,
   performGmailHttpUnsubscribe,
   sendMailtoUnsubscribeEmail,
   trashGmailThread,
-  type GmailSubscriptionMessageHeaders,
 } from "./email-unsubscribe-gmail.js";
 import type {
   EmailSubscriptionScanResult,
@@ -25,19 +26,16 @@ import type {
   EmailUnsubscribeScanRequest,
   EmailUnsubscribeStatus,
 } from "./email-unsubscribe-types.js";
+import { resolveGoogleExecutionTarget } from "./google-connector-gateway.js";
 import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
-import { hasGoogleGmailManageCapability } from "./service-normalize-calendar.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
-import {
-  normalizeOptionalConnectorMode,
-  normalizeOptionalConnectorSide,
-} from "./service-normalize-connector.js";
 import {
   fail,
   normalizeOptionalBoolean,
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
+import { hasGoogleGmailManageCapability } from "./service-normalize-calendar.js";
 
 const DEFAULT_SCAN_MAX_MESSAGES = 200;
 const MAX_SENDERS_RETURNED = 200;
@@ -65,7 +63,10 @@ function deriveSenderDomain(email: string): string | null {
   if (at < 0) {
     return null;
   }
-  const domain = email.slice(at + 1).trim().toLowerCase();
+  const domain = email
+    .slice(at + 1)
+    .trim()
+    .toLowerCase();
   return domain.length > 0 ? domain : null;
 }
 
@@ -113,10 +114,7 @@ function aggregateSenders(
       existing.latestMessageId = header.messageId;
       existing.latestThreadId = header.threadId;
     }
-    if (
-      !existing.unsubscribeHttpUrl &&
-      options.httpUrl
-    ) {
+    if (!existing.unsubscribeHttpUrl && options.httpUrl) {
       existing.unsubscribeHttpUrl = options.httpUrl;
     }
     if (!existing.unsubscribeMailto && options.mailto) {
@@ -175,9 +173,13 @@ export function withEmailUnsubscribe<
       return grant;
     }
 
-    async accessTokenForGrant(
-      grant: LifeOpsConnectorGrant,
-    ): Promise<string> {
+    async accessTokenForGrant(grant: LifeOpsConnectorGrant): Promise<string> {
+      if (resolveGoogleExecutionTarget(grant) === "cloud") {
+        fail(
+          409,
+          "Gmail unsubscribe management is not available for cloud-managed Google connections yet. Reconnect Google in local mode to manage filters and unsubscribe mail.",
+        );
+      }
       const tokenRef =
         grant.tokenRef ?? fail(409, "Google Gmail token reference is missing.");
       const token = await ensureFreshGoogleAccessToken(tokenRef);
@@ -194,7 +196,6 @@ export function withEmailUnsubscribe<
         undefined,
         undefined,
       );
-      const accessToken = await this.accessTokenForGrant(grant);
       const query =
         normalizeOptionalString(request.query) ??
         "(category:promotions OR category:updates OR list:* OR unsubscribe) newer_than:180d";
@@ -207,11 +208,20 @@ export function withEmailUnsubscribe<
             : DEFAULT_SCAN_MAX_MESSAGES,
         ),
       );
-      const headers = await fetchGmailSubscriptionHeaders({
-        accessToken,
-        query,
-        maxMessages,
-      });
+      const headers =
+        resolveGoogleExecutionTarget(grant) === "cloud"
+          ? (
+              await this.googleManagedClient.getGmailSubscriptionHeaders({
+                side: grant.side,
+                query,
+                maxResults: maxMessages,
+              })
+            ).headers
+          : await fetchGmailSubscriptionHeaders({
+              accessToken: await this.accessTokenForGrant(grant),
+              query,
+              maxMessages,
+            });
       const senders = aggregateSenders(headers);
       const syncedAt = new Date().toISOString();
       return {
@@ -277,10 +287,7 @@ export function withEmailUnsubscribe<
         (candidate) => candidate.senderEmail === senderEmail,
       );
       if (!sender) {
-        fail(
-          404,
-          `Unable to resolve subscription details for ${senderEmail}.`,
-        );
+        fail(404, `Unable to resolve subscription details for ${senderEmail}.`);
       }
 
       let status: EmailUnsubscribeStatus = "blocked_no_mechanism";
@@ -303,8 +310,7 @@ export function withEmailUnsubscribe<
           }
         } catch (error) {
           status = "failed";
-          errorMessage =
-            error instanceof Error ? error.message : String(error);
+          errorMessage = error instanceof Error ? error.message : String(error);
         }
       } else if (sender.unsubscribeMailto) {
         const parsed = parseMailtoUnsubscribe(sender.unsubscribeMailto);
@@ -334,7 +340,10 @@ export function withEmailUnsubscribe<
 
       let filterCreated = false;
       let filterId: string | null = null;
-      if (blockAfter && (status === "succeeded" || status === "manual_required")) {
+      if (
+        blockAfter &&
+        (status === "succeeded" || status === "manual_required")
+      ) {
         try {
           const filterResult = await createGmailFilterForSender({
             accessToken,
@@ -377,7 +386,8 @@ export function withEmailUnsubscribe<
         senderEmail,
         senderDisplay: sender.senderDisplay,
         senderDomain: sender.senderDomain,
-        listId: sender.listId ?? normalizeOptionalString(request.listId) ?? null,
+        listId:
+          sender.listId ?? normalizeOptionalString(request.listId) ?? null,
         method,
         status,
         httpStatusCode,
@@ -438,7 +448,6 @@ export function withEmailUnsubscribe<
           return `${record.senderDisplay} has no unsubscribe header. Manual unsubscribe is required via the sender's website.${blocked}${trashed}`;
         case "blocked_no_mechanism":
           return `Unsubscribe blocked for ${record.senderDisplay}: no unsubscribe mechanism available.`;
-        case "failed":
         default:
           return `Unsubscribe from ${record.senderDisplay} failed${record.errorMessage ? `: ${record.errorMessage}` : "."}`;
       }

@@ -87,6 +87,7 @@ import type {
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
   LifeOpsTelegramConnectorStatus,
+  LifeOpsWhatsAppConnectorStatus,
   LifeOpsInbox,
   LifeOpsXConnectorStatus,
   ManageLifeOpsGmailMessagesRequest,
@@ -570,6 +571,9 @@ declare module "@elizaos/app-core/api/client-base" {
     disconnectDiscordConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsDiscordConnectorStatus>;
+
+    // --- WhatsApp connector ---
+    getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus>;
 
     // --- Telegram connector ---
     getTelegramConnectorStatus(
@@ -1773,6 +1777,16 @@ ElizaClient.prototype.disconnectDiscordConnector = async function (
     method: "POST",
     body: JSON.stringify(data),
   });
+};
+
+// ---------------------------------------------------------------------------
+// WhatsApp connector
+// ---------------------------------------------------------------------------
+
+ElizaClient.prototype.getWhatsAppConnectorStatus = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/connectors/whatsapp/status");
 };
 
 // ---------------------------------------------------------------------------

@@ -58,12 +58,15 @@ const packageJsonCandidates = workspaceRootCandidates.flatMap((root) => [
   path.join(root, "package.json"),
   path.join(root, "eliza", "package.json"),
 ]);
+const extensionPackageJsonCandidates = uniquePaths(
+  extensionRootCandidates.map((candidate) => path.join(candidate, "package.json")),
+);
 const buildInfoCandidates = workspaceRootCandidates.flatMap((root) => [
   path.join(root, "dist", "build-info.json"),
   path.join(root, "eliza", "dist", "build-info.json"),
 ]);
 const NIGHTLY_EPOCH_UTC_MS = Date.UTC(2020, 0, 1);
-const DEFAULT_REPOSITORY = "eliza-ai/eliza";
+const DEFAULT_REPOSITORY = "elizaos/eliza";
 
 function existingPath(candidate: string): string | null {
   return fs.existsSync(candidate) ? candidate : null;
@@ -91,7 +94,50 @@ function readVersionField(filePath: string): string | null {
     : null;
 }
 
-function resolveElizaReleaseVersion(): string {
+function normalizeRepositoryIdentifier(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim().replace(/^git\+/, "");
+    if (!trimmed) {
+      return null;
+    }
+    const shorthandMatch = trimmed.match(/^([^/\s]+)\/([^/\s]+)$/);
+    if (shorthandMatch) {
+      return `${shorthandMatch[1]}/${shorthandMatch[2]}`;
+    }
+    const githubMatch = trimmed.match(
+      /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/i,
+    );
+    if (githubMatch) {
+      return `${githubMatch[1]}/${githubMatch[2]}`;
+    }
+    return null;
+  }
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const repositoryRecord = value as { url?: unknown };
+    return normalizeRepositoryIdentifier(repositoryRecord.url);
+  }
+
+  return null;
+}
+
+function readRepositoryField(filePath: string): string | null {
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+    repository?: unknown;
+  };
+  return normalizeRepositoryIdentifier(parsed.repository);
+}
+
+function resolveBrowserBridgeReleaseVersion(): string {
+  for (const candidate of extensionPackageJsonCandidates) {
+    const value = readVersionField(candidate);
+    if (value) {
+      return value;
+    }
+  }
   for (const candidate of packageJsonCandidates) {
     const value = readVersionField(candidate);
     if (value) {
@@ -105,6 +151,34 @@ function resolveElizaReleaseVersion(): string {
     }
   }
   return VERSION;
+}
+
+function resolveBrowserBridgeReleaseRepository(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const configuredRepository =
+    typeof env.GITHUB_REPOSITORY === "string" && env.GITHUB_REPOSITORY.trim()
+      ? env.GITHUB_REPOSITORY.trim()
+      : null;
+  if (configuredRepository) {
+    return configuredRepository;
+  }
+
+  for (const candidate of extensionPackageJsonCandidates) {
+    const repository = readRepositoryField(candidate);
+    if (repository) {
+      return repository;
+    }
+  }
+
+  for (const candidate of packageJsonCandidates) {
+    const repository = readRepositoryField(candidate);
+    if (repository) {
+      return repository;
+    }
+  }
+
+  return DEFAULT_REPOSITORY;
 }
 
 type ReleaseVersion = {
@@ -305,10 +379,7 @@ export function buildBrowserBridgeReleaseManifestForVersion(
   if (!release) {
     return null;
   }
-  const repository =
-    typeof env.GITHUB_REPOSITORY === "string" && env.GITHUB_REPOSITORY.trim()
-      ? env.GITHUB_REPOSITORY.trim()
-      : DEFAULT_REPOSITORY;
+  const repository = resolveBrowserBridgeReleaseRepository(env);
   const storeUrls = resolveBrowserBridgeStoreUrls(env);
   const chromeAssetName = versionedArtifactName(
     "browser-bridge-chrome",
@@ -414,7 +485,7 @@ export function resolveBrowserBridgeReleaseManifest(
     return null;
   }
   return buildBrowserBridgeReleaseManifestForVersion(
-    options.version ?? resolveElizaReleaseVersion(),
+    options.version ?? resolveBrowserBridgeReleaseVersion(),
     options.env,
   );
 }

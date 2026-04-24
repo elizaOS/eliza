@@ -84,7 +84,7 @@ describe("GoogleManagedClient URL prefixes", () => {
     );
   });
 
-  it("calendar, gmail read, and send endpoints all use /milady/google prefix", async () => {
+  it("calendar, gmail read, subscription scan, and send endpoints all use /milady/google prefix", async () => {
     const client = new GoogleManagedClient(CONFIG);
 
     nextBody = { calendarId: "primary", events: [], syncedAt: "" };
@@ -102,6 +102,12 @@ describe("GoogleManagedClient URL prefixes", () => {
       side: "owner",
       query: "foo",
       maxResults: 10,
+    });
+    nextBody = { headers: [], syncedAt: "" };
+    await client.getGmailSubscriptionHeaders({
+      side: "owner",
+      query: "category:promotions newer_than:30d",
+      maxResults: 25,
     });
 
     nextBody = {
@@ -154,10 +160,46 @@ describe("GoogleManagedClient URL prefixes", () => {
       "https://cloud.example.test/api/v1/milady/google/calendar/feed?side=owner&calendarId=primary&timeMin=2026-04-17T00%3A00%3A00Z&timeMax=2026-04-18T00%3A00%3A00Z&timeZone=UTC",
       "https://cloud.example.test/api/v1/milady/google/gmail/triage?side=owner&maxResults=10",
       "https://cloud.example.test/api/v1/milady/google/gmail/search?side=owner&query=foo&maxResults=10",
+      "https://cloud.example.test/api/v1/milady/google/gmail/subscription-headers?side=owner&query=category%3Apromotions+newer_than%3A30d&maxResults=25",
       "https://cloud.example.test/api/v1/milady/google/gmail/read?side=owner&messageId=m1",
       "https://cloud.example.test/api/v1/milady/google/gmail/reply-send",
       "https://cloud.example.test/api/v1/milady/google/gmail/message-send",
     ]);
+  });
+
+  it("requests Gmail manage scopes when the connector asks for manage capability", async () => {
+    nextBody = {
+      provider: "google",
+      side: "owner",
+      mode: "cloud_managed",
+      requestedCapabilities: ["google.basic_identity", "google.gmail.manage"],
+      redirectUri: "https://app.example.test/success",
+      authUrl: "https://cloud.example.test/oauth/start",
+    };
+    const client = new GoogleManagedClient(CONFIG);
+    await client.startConnector({
+      side: "owner",
+      capabilities: ["google.basic_identity", "google.gmail.manage"],
+    });
+
+    expect(capturedUrls[0]).toBe(
+      "https://cloud.example.test/api/v1/oauth/google/initiate",
+    );
+    const [, requestInit] = fetchSpy.mock.calls[0] ?? [];
+    const body =
+      requestInit &&
+      typeof requestInit === "object" &&
+      "body" in requestInit &&
+      typeof requestInit.body === "string"
+        ? JSON.parse(requestInit.body)
+        : null;
+    expect(body).toMatchObject({
+      connectionRole: "owner",
+      scopes: expect.arrayContaining([
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/gmail.settings.basic",
+      ]),
+    });
   });
 
   it("passes side=owner unchanged for null-role cloud connections", async () => {

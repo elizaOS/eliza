@@ -38,6 +38,7 @@ export {
   type UseTelegramConnectorOptions,
   useTelegramConnector,
 } from "./useTelegramConnector.js";
+export { useWhatsAppConnector } from "./useWhatsAppConnector.js";
 export {
   type InboxChannel,
   type UseInboxOptions,
