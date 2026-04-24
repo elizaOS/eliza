@@ -77,6 +77,12 @@ export function LifeOpsScreenTimeSection() {
         label: item.displayName,
         totalSeconds: item.totalSeconds,
       })) ?? [];
+  const hasUsage =
+    totalSeconds > 0 ||
+    categories.length > 0 ||
+    devices.length > 0 ||
+    browsers.length > 0 ||
+    topTargets.length > 0;
   const metricTiles = [
     {
       key: "today",
@@ -144,74 +150,81 @@ export function LifeOpsScreenTimeSection() {
         </div>
       ) : null}
 
-      {metricTiles.length > 0 ? (
-        <div
-          className={
-            metricTiles.length === 1
-              ? "grid gap-3"
-              : "grid grid-cols-2 gap-3 xl:grid-cols-4"
-          }
-        >
-          {metricTiles.map((tile) => (
-            <MetricTile
-              key={tile.key}
-              icon={tile.icon}
-              value={tile.value}
-              label={tile.label}
-            />
-          ))}
-        </div>
-      ) : null}
-
-      <HabitPanel
-        title="Categories"
-        icon={<Monitor />}
-        className="xl:col-span-2"
-      >
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-          <DonutChart
-            items={categories}
-            totalSeconds={totalSeconds}
-            label="Today"
-          />
-          <div className="min-w-0 flex-1">
-            <StackedBar
-              items={categories}
-              totalSeconds={totalSeconds}
-            />
-            <div className="mt-4">
-              <BucketBars
-                items={categories}
-                totalSeconds={totalSeconds}
-              />
-            </div>
+      {!loading && !error && breakdown && !hasUsage ? (
+        <HabitPanel title="Screen Time" icon={<Monitor />}>
+          <div className="py-3 text-sm text-muted">
+            No screen activity today.
           </div>
-        </div>
-      </HabitPanel>
+        </HabitPanel>
+      ) : (
+        <>
+          {metricTiles.length > 0 ? (
+            <div
+              className={
+                metricTiles.length === 1
+                  ? "grid gap-3"
+                  : "grid grid-cols-2 gap-3 xl:grid-cols-4"
+              }
+            >
+              {metricTiles.map((tile) => (
+                <MetricTile
+                  key={tile.key}
+                  icon={tile.icon}
+                  value={tile.value}
+                  label={tile.label}
+                />
+              ))}
+            </div>
+          ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        <HabitPanel title="Devices" icon={<Smartphone />}>
-          <BucketBars
-            items={devices}
-            totalSeconds={totalSeconds}
-          />
-        </HabitPanel>
-        <HabitPanel title="Browsers" icon={<Globe2 />}>
-          <BucketBars
-            items={browsers}
-            totalSeconds={webSeconds}
-            emptyLabel="No browser data"
-          />
-        </HabitPanel>
-        <HabitPanel title="Apps and Sites" icon={<AppWindow />}>
-          <BucketBars
-            items={topTargets}
-            totalSeconds={totalSeconds}
-            emptyLabel="No activity"
-            limit={8}
-          />
-        </HabitPanel>
-      </div>
+          {categories.length > 0 ? (
+            <HabitPanel
+              title="Categories"
+              icon={<Monitor />}
+              className="xl:col-span-2"
+            >
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+                <DonutChart
+                  items={categories}
+                  totalSeconds={totalSeconds}
+                  label="Today"
+                />
+                <div className="min-w-0 flex-1">
+                  <StackedBar items={categories} totalSeconds={totalSeconds} />
+                  <div className="mt-4">
+                    <BucketBars
+                      items={categories}
+                      totalSeconds={totalSeconds}
+                    />
+                  </div>
+                </div>
+              </div>
+            </HabitPanel>
+          ) : null}
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            {devices.length > 0 ? (
+              <HabitPanel title="Devices" icon={<Smartphone />}>
+                <BucketBars items={devices} totalSeconds={totalSeconds} />
+              </HabitPanel>
+            ) : null}
+            {browsers.length > 0 ? (
+              <HabitPanel title="Browsers" icon={<Globe2 />}>
+                <BucketBars items={browsers} totalSeconds={webSeconds} />
+              </HabitPanel>
+            ) : null}
+            {topTargets.length > 0 ? (
+              <HabitPanel title="Apps and Sites" icon={<AppWindow />}>
+                <BucketBars
+                  items={topTargets}
+                  totalSeconds={totalSeconds}
+                  limit={8}
+                />
+              </HabitPanel>
+            ) : null}
+          </div>
+        </>
+      )}
     </div>
   );
 }

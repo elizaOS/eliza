@@ -505,10 +505,7 @@ export function DiscordConnectorCard() {
       ) : null}
 
       {!available ? (
-        <div className="text-xs text-muted">
-          Discord needs either Your Browser connected through the LifeOps
-          extension or Milady Desktop Browser.
-        </div>
+        <div className="text-xs text-muted">Connect browser.</div>
       ) : null}
 
       {!dmInboxVisible && browserAccess.length > 0 ? (
@@ -875,7 +872,7 @@ export function IMessageConnectorCard() {
               : "LifeOps is using the Mac-side imsg bridge for iMessage access."
             : iosRuntime
               ? "iMessage access must run through a paired Mac or BlueBubbles bridge. Connect this iPhone to a remote Mac or cloud backend that has iMessage configured."
-              : "LifeOps could not detect an iMessage bridge. Configure BlueBubbles or the imsg CLI in Milady settings."}
+              : "No iMessage bridge detected."}
         </div>
         {status?.accountHandle ? (
           <div className="flex items-center gap-1.5 text-xs text-muted">

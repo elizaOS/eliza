@@ -1,7 +1,4 @@
-import {
-  useAppWorkspaceChatChrome,
-  useChatComposer,
-} from "@elizaos/app-core";
+import { useAppWorkspaceChatChrome, useChatComposer } from "@elizaos/app-core";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCalendarEvent,
@@ -53,10 +50,7 @@ function formatChatDateTime(iso: string | null | undefined): string | null {
   }).format(new Date(parsed));
 }
 
-export function postToChat(
-  text: string,
-  options?: { select?: boolean },
-): void {
+export function postToChat(text: string, options?: { select?: boolean }): void {
   window.dispatchEvent(
     new CustomEvent<PrefillChatDetail>("milady:chat:prefill", {
       detail: { text, select: options?.select ?? false },
@@ -72,7 +66,9 @@ export function buildMessageChatPrefill(message: LifeOpsInboxMessage): string {
     `Help me handle this ${channelLabel(message.channel)} from ${message.sender.displayName}.`,
     `Subject: ${subject}.`,
     receivedAt ? `Received: ${receivedAt}.` : null,
-    message.snippet?.trim().length ? `Context: ${message.snippet.trim()}` : null,
+    message.snippet?.trim().length
+      ? `Context: ${message.snippet.trim()}`
+      : null,
     link || null,
   ]
     .filter(Boolean)
@@ -203,6 +199,17 @@ export function useLifeOpsChatAdapter(selection: LifeOpsSelection): {
       window.removeEventListener("milady:chat:prefill", handler);
     };
   }, [setChatInput]);
+
+  useEffect(() => {
+    if (!selection.reminderId && !selection.eventId && !selection.messageId) {
+      setChatInput("");
+    }
+  }, [
+    selection.eventId,
+    selection.messageId,
+    selection.reminderId,
+    setChatInput,
+  ]);
 
   let placeholder: string | null = null;
   if (selection.reminderId) {

@@ -79,8 +79,7 @@ function macosPermissions(): PermissionEntry[] {
     {
       id: "full-disk-access",
       name: "Full Disk Access",
-      description:
-        "iMessage outbound timestamps for wake detection (chat.db). Optional — when revoked the iMessage probe is skipped.",
+      description: "iMessage wake detection",
       icon: <FolderLock className={ICON_CLASS} />,
       status: "unknown",
     },

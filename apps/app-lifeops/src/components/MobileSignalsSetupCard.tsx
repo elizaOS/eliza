@@ -197,17 +197,6 @@ export function MobileSignalsSetupCard() {
                   : nonMobileBadgeLabel(t)}
               </Badge>
             </div>
-            <p className="max-w-2xl text-xs-tight leading-5 text-muted">
-              {nativeMobile
-                ? t("lifeopssettings.deviceSetupDescription", {
-                    defaultValue:
-                      "This phone sends lock, wake, Health, and usage signals to LifeOps.",
-                  })
-                : t("lifeopssettings.deviceSetupDesktopDescription", {
-                    defaultValue:
-                      "Desktop app signals are tracked here. Phone setup lives in the connected iOS or Android app.",
-                  })}
-            </p>
             {message ? <p className="text-xs text-muted">{message}</p> : null}
           </div>
         </div>
