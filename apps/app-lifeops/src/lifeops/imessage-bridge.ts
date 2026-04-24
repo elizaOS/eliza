@@ -119,7 +119,7 @@ export async function detectIMessageBackend(
 ): Promise<IMessageBackend> {
   const key = cacheKey(config);
   const cached = detectionCache.get(key);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined && cached !== "none") return cached;
 
   const preferred = config?.preferredBackend;
   if (preferred === "none") {
@@ -212,9 +212,7 @@ export async function getIMessageBackendStatus(
     accountHandle: info.detected_imessage ?? info.detected_icloud ?? null,
     sendMode,
     helperConnected:
-      typeof info.helper_connected === "boolean"
-        ? info.helper_connected
-        : null,
+      typeof info.helper_connected === "boolean" ? info.helper_connected : null,
     privateApiEnabled:
       typeof info.private_api === "boolean" ? info.private_api : null,
     diagnostics,
@@ -251,10 +249,7 @@ interface ImsgMessageJson {
   attachments?: Array<{ name?: string; mimeType?: string; path?: string }>;
 }
 
-async function runImsg(
-  binary: string,
-  args: string[],
-): Promise<string> {
+async function runImsg(binary: string, args: string[]): Promise<string> {
   try {
     const { stdout } = await execFileAsync(binary, args, {
       timeout: 15_000,
@@ -275,10 +270,7 @@ async function runImsg(
 function parseImsgJson<T>(stdout: string, op: string): T {
   const trimmed = stdout.trim();
   if (!trimmed) {
-    throw new IMessageBridgeError(
-      `imsg ${op} produced empty output`,
-      "imsg",
-    );
+    throw new IMessageBridgeError(`imsg ${op} produced empty output`, "imsg");
   }
   try {
     return JSON.parse(trimmed) as T;
@@ -294,10 +286,7 @@ function parseImsgJson<T>(stdout: string, op: string): T {
 function normalizeImsgChat(raw: ImsgChatJson): IMessageChat {
   const id = raw.id ?? raw.guid ?? "";
   if (!id) {
-    throw new IMessageBridgeError(
-      "imsg chat missing id/guid",
-      "imsg",
-    );
+    throw new IMessageBridgeError("imsg chat missing id/guid", "imsg");
   }
   return {
     id,
@@ -310,10 +299,7 @@ function normalizeImsgChat(raw: ImsgChatJson): IMessageChat {
 function normalizeImsgMessage(raw: ImsgMessageJson): IMessageRecord {
   const id = raw.id ?? raw.guid ?? "";
   if (!id) {
-    throw new IMessageBridgeError(
-      "imsg message missing id/guid",
-      "imsg",
-    );
+    throw new IMessageBridgeError("imsg message missing id/guid", "imsg");
   }
   const sentAt = raw.sentAt ?? raw.date ?? new Date().toISOString();
   return {
@@ -368,10 +354,7 @@ async function readViaImsg(
   const stdout = await runImsg(binary, args);
   const parsed = parseImsgJson<ImsgMessageJson[]>(stdout, "read");
   if (!Array.isArray(parsed)) {
-    throw new IMessageBridgeError(
-      "imsg read expected JSON array",
-      "imsg",
-    );
+    throw new IMessageBridgeError("imsg read expected JSON array", "imsg");
   }
   return parsed.map(normalizeImsgMessage);
 }
@@ -383,10 +366,7 @@ async function listChatsViaImsg(
   const stdout = await runImsg(binary, ["chats", "--json"]);
   const parsed = parseImsgJson<ImsgChatJson[]>(stdout, "chats");
   if (!Array.isArray(parsed)) {
-    throw new IMessageBridgeError(
-      "imsg chats expected JSON array",
-      "imsg",
-    );
+    throw new IMessageBridgeError("imsg chats expected JSON array", "imsg");
   }
   return parsed.map(normalizeImsgChat);
 }
@@ -613,9 +593,7 @@ async function readViaBlueBubbles(
         {
           method: "GET",
           search: {
-            ...(opts.limit !== undefined
-              ? { limit: String(opts.limit) }
-              : {}),
+            ...(opts.limit !== undefined ? { limit: String(opts.limit) } : {}),
             offset: "0",
           },
         },

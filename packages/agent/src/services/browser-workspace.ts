@@ -49,6 +49,7 @@ export type {
   BrowserWorkspaceSubaction,
   BrowserWorkspaceTab,
   BrowserWorkspaceTabAction,
+  BrowserWorkspaceTabKind,
   BrowserWorkspaceTraceAction,
   BrowserWorkspaceWaitState,
   BrowserWorkspaceWindowAction,
@@ -63,6 +64,7 @@ import type {
   BrowserWorkspaceMode,
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
+  BrowserWorkspaceTabKind,
   EvaluateBrowserWorkspaceTabRequest,
   NavigateBrowserWorkspaceTabRequest,
   OpenBrowserWorkspaceTabRequest,
@@ -171,6 +173,7 @@ export async function listBrowserWorkspaceTabs(
       title: tab.title,
       url: tab.url,
       partition: tab.partition,
+      kind: tab.kind,
       visible: tab.visible,
       createdAt: tab.createdAt,
       updatedAt: tab.updatedAt,
@@ -190,6 +193,8 @@ export async function openBrowserWorkspaceTab(
 ): Promise<BrowserWorkspaceTab> {
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
     return withWebStateLock(() => {
+      const kind: BrowserWorkspaceTabKind =
+        request.kind === "internal" ? "internal" : "standard";
       const now = getBrowserWorkspaceTimestamp();
       const url = assertBrowserWorkspaceUrl(
         request.url?.trim() || "about:blank",
@@ -203,6 +208,7 @@ export async function openBrowserWorkspaceTab(
         title: request.title?.trim() || inferBrowserWorkspaceTitle(url),
         url,
         partition: request.partition?.trim() || DEFAULT_WEB_PARTITION,
+        kind,
         visible,
         createdAt: now,
         updatedAt: now,

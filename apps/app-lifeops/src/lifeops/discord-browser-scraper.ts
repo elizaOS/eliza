@@ -450,6 +450,7 @@ export async function ensureDiscordTab(args: {
     {
       url: DISCORD_APP_URL,
       partition,
+      kind: "internal",
       title: DISCORD_APP_TITLE,
       show: args.show ?? true,
     },

@@ -4,16 +4,16 @@ import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared/contracts/l
 import {
   getIMessageBackendStatus,
   getIMessageDeliveryStatus,
-  listIMessageChats as listIMessageChatsBridge,
-  readIMessages as readIMessagesBridge,
-  searchIMessages as searchIMessagesBridge,
-  sendIMessage as sendIMessageBridge,
   type IMessageBackend,
   type IMessageBridgeConfig,
   type IMessageChat,
   type IMessageDeliveryResult,
   type IMessageRecord,
   type IMessageSendRequest,
+  listIMessageChats as listIMessageChatsBridge,
+  readIMessages as readIMessagesBridge,
+  searchIMessages as searchIMessagesBridge,
+  sendIMessage as sendIMessageBridge,
 } from "./imessage-bridge.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
@@ -111,6 +111,12 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
         available: status.backend !== "none",
         connected: status.backend !== "none",
         bridgeType: status.backend,
+        hostPlatform:
+          process.platform === "darwin" ||
+          process.platform === "linux" ||
+          process.platform === "win32"
+            ? process.platform
+            : "unknown",
         accountHandle: status.accountHandle,
         sendMode: status.sendMode,
         helperConnected: status.helperConnected,

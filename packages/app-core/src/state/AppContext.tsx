@@ -24,7 +24,6 @@ import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import type { UiLanguage } from "../i18n";
 import {
-  COMPANION_ENABLED,
   canonicalPathForPath,
   isRouteRootPath,
   resolveInitialTabForPath,
@@ -154,7 +153,8 @@ export {
 } from "./internal";
 export { AGENT_READY_TIMEOUT_MS } from "./types";
 
-const DEFAULT_LANDING_TAB: Tab = COMPANION_ENABLED ? "companion" : "chat";
+/** RuntimeGate and bare `completeOnboarding()` land on chat; the wizard opens the companion overlay separately. */
+const DEFAULT_LANDING_TAB: Tab = "chat";
 
 function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
   try {
@@ -1301,6 +1301,7 @@ function AppProviderInner({
   // ── Onboarding callbacks (extracted to useOnboardingCallbacks) ──────
   const onboardingCallbacks = useOnboardingCallbacks({
     onboarding,
+    setActiveOverlayApp,
     setOnboardingStep,
     setOnboardingMode,
     setOnboardingActiveGuide,

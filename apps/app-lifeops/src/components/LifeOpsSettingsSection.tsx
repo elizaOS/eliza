@@ -601,6 +601,8 @@ export function LifeOpsSettingsSection({
           github={resolvedAgentGithub}
         />
       </div>
+
+      <BrowserBridgeSetupPanel />
     </section>
   );
 }

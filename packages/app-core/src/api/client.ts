@@ -7,7 +7,7 @@
  * The ElizaClient class is defined in client-base.ts and re-exported here.
  * Domain methods are defined via declaration merging + prototype augmentation
  * in the companion files: client-agent, client-chat, client-wallet,
- * client-cloud, client-skills, client-computeruse.
+ * client-cloud, client-skills, client-computeruse, client-imessage.
  */
 
 import type {
@@ -116,6 +116,14 @@ export type {
   ComputerUsePendingApproval,
 } from "./client-computeruse";
 export type {
+  GetIMessageMessagesOptions,
+  IMessageApiChat,
+  IMessageApiMessage,
+  IMessageApiStatus,
+  SendIMessageRequest,
+  SendIMessageResponse,
+} from "./client-imessage";
+export type {
   ActiveModelState,
   CatalogModel,
   DownloadJob,
@@ -223,6 +231,7 @@ import "./client-chat";
 import "./client-cloud";
 import "./client-computeruse";
 import "./client-lifeops";
+import "./client-imessage";
 import "./client-local-inference";
 import "./client-n8n";
 import "./client-skills";
