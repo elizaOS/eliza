@@ -4,6 +4,7 @@ import type {
   AppLaunchResult,
   AppLaunchSessionContext,
   AppRunSessionContext,
+  AppSessionActivityItem,
   AppSessionActionResult,
   AppSessionState,
 } from "@elizaos/shared/contracts/apps";
@@ -27,6 +28,7 @@ const APP_NAME = "@clawville/app-clawville";
 const APP_DISPLAY_NAME = "ClawVille";
 const VIEWER_ROUTE_PATH = "/api/apps/clawville/viewer";
 const VIEWER_FETCH_TIMEOUT_MS = 8_000;
+const SESSION_ACTIVITY_LIMIT = 12;
 
 /**
  * CSP frame-ancestors directive we send on the viewer HTML response so that
@@ -95,6 +97,8 @@ const BUILDINGS = [
 
 type ClawvilleSubroute = "move" | "visit-building" | "chat" | "buy";
 type ClawvilleBuildingId = (typeof BUILDINGS)[number]["id"];
+
+const sessionActivities = new Map<string, AppSessionActivityItem[]>();
 
 interface RouteContext {
   method: string;
@@ -238,6 +242,7 @@ function buildSessionState(
       "Ask the nearest NPC what to learn next",
       "Move to skill forge",
     ],
+    activity: readSessionActivity(config, connectResult.sessionId),
     telemetry: {
       walletAddress: connectResult.walletAddress,
       botUuid: connectResult.uuid,
@@ -544,6 +549,62 @@ function readStringField(
   return null;
 }
 
+function sessionActivityKey(
+  config: ClawvilleConfig,
+  sessionId: string,
+): string {
+  return `${config.miladyAgentId ?? "clawville"}:${sessionId}`;
+}
+
+function readSessionActivity(
+  config: ClawvilleConfig,
+  sessionId: string,
+): AppSessionActivityItem[] {
+  return sessionActivities.get(sessionActivityKey(config, sessionId)) ?? [];
+}
+
+function appendSessionActivity(
+  config: ClawvilleConfig,
+  sessionId: string,
+  items: AppSessionActivityItem[],
+): void {
+  sessionActivities.set(
+    sessionActivityKey(config, sessionId),
+    [...readSessionActivity(config, sessionId), ...items].slice(
+      -SESSION_ACTIVITY_LIMIT,
+    ),
+  );
+}
+
+function formatBuildingId(value: string): string {
+  return value
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function describeCommand(
+  subroute: ClawvilleSubroute,
+  body: Record<string, unknown>,
+): string {
+  if (subroute === "chat") {
+    return (
+      readStringField(body, ["message", "content", "command"]) ??
+      "Ask the nearest NPC."
+    );
+  }
+
+  if (subroute === "move" || subroute === "visit-building") {
+    const buildingId = readStringField(body, ["buildingId", "building"]);
+    const target = buildingId
+      ? formatBuildingId(buildingId)
+      : "nearest building";
+    return subroute === "move" ? `Move to ${target}.` : `Visit ${target}.`;
+  }
+
+  return "Command sent.";
+}
+
 function readNumberField(
   body: Record<string, unknown>,
   keys: string[],
@@ -629,18 +690,10 @@ async function buildMessageCommand(
     };
   }
 
-  if (/\b(visit|enter|learn|skill)\b/.test(normalized)) {
-    const buildingId =
-      explicitBuildingId ?? (await resolveNearestBuildingId(config, sessionId));
-    if (!buildingId) {
-      return {
-        subroute: "chat",
-        body: { message: content },
-      };
-    }
+  if (/\b(ask|talk|chat|npc|say|message)\b/.test(normalized)) {
     return {
-      subroute: "visit-building",
-      body: { buildingId },
+      subroute: "chat",
+      body: { message: content },
     };
   }
 
@@ -655,6 +708,21 @@ async function buildMessageCommand(
     }
     return {
       subroute: "move",
+      body: { buildingId },
+    };
+  }
+
+  if (/\b(visit|enter|learn)\b/.test(normalized)) {
+    const buildingId =
+      explicitBuildingId ?? (await resolveNearestBuildingId(config, sessionId));
+    if (!buildingId) {
+      return {
+        subroute: "chat",
+        body: { message: content },
+      };
+    }
+    return {
+      subroute: "visit-building",
       body: { buildingId },
     };
   }
@@ -725,12 +793,32 @@ async function buildCommandResult(
   body: Record<string, unknown>,
 ): Promise<AppSessionActionResult> {
   const response = await proxyCommand(config, sessionId, subroute, body);
+  const message = resultMessage(subroute, response.data);
+  if (response.ok) {
+    const timestamp = Date.now();
+    appendSessionActivity(config, sessionId, [
+      {
+        id: `clawville-user-${timestamp}`,
+        type: "You",
+        message: describeCommand(subroute, body),
+        timestamp,
+        severity: "info",
+      },
+      {
+        id: `clawville-game-${timestamp}`,
+        type: subroute,
+        message,
+        timestamp: timestamp + 1,
+        severity: "info",
+      },
+    ]);
+  }
   const perception = response.ok
     ? await clawvillePerception(config, sessionId)
     : null;
   return {
     success: response.ok,
-    message: resultMessage(subroute, response.data),
+    message,
     session: response.ok
       ? buildSessionState(
           config,

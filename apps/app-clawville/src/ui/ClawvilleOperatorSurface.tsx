@@ -76,16 +76,36 @@ function localEventId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function formatBuildingId(value: string): string {
+  return value
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function cleanClawvilleMessage(message: string): string {
+  const tooFar = message.match(/^Too far from ([a-z0-9-]+)/i);
+  if (tooFar?.[1]) {
+    return `Too far from ${formatBuildingId(tooFar[1])}. Move closer before visiting.`;
+  }
+  return message;
+}
+
 function collectRunEvents(
   run: AppRunSummary,
   localEvents: GameOperatorEvent[],
 ): GameOperatorEvent[] {
   const serverEvents = (run.recentEvents ?? [])
-    .filter((event) => event.kind !== "refresh")
+    .filter(
+      (event) =>
+        event.kind !== "refresh" &&
+        event.kind !== "attach" &&
+        event.kind !== "detach",
+    )
     .map((event) => ({
       id: event.eventId,
       label: event.kind,
-      message: event.message,
+      message: cleanClawvilleMessage(event.message),
       tone:
         event.severity === "error"
           ? "error"
@@ -99,7 +119,7 @@ function collectRunEvents(
     run.session?.activity?.map((entry) => ({
       id: entry.id,
       label: entry.type,
-      message: entry.message,
+      message: cleanClawvilleMessage(entry.message),
       tone:
         entry.severity === "error"
           ? "error"
@@ -160,11 +180,17 @@ export function ClawvilleOperatorSurface({
 
       try {
         const response = await client.sendAppRunMessage(run.runId, trimmed);
+        const persistedSession =
+          response.run?.session ?? response.session ?? null;
         if (response.run) {
           setState("appRuns", replaceRun(appRuns, response.run));
         }
         if (clearDraftOnSuccess) {
           setDraft((current) => (current.trim() === trimmed ? "" : current));
+        }
+        if (persistedSession) {
+          setLocalEvents([]);
+          return;
         }
         setLocalEvents((current) => [
           ...current,

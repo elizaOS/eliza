@@ -144,6 +144,59 @@ describe("ClawVille app routes", () => {
     expect(moveRequest?.body).toEqual({ buildingId: "tool-workshop" });
   });
 
+  it("keeps explicit movement ahead of skill-building visit commands", async () => {
+    const requests: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        requests.push({
+          url,
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        if (url.endsWith("/move")) {
+          return jsonResponse({ message: "moving to code" });
+        }
+        return jsonResponse({});
+      }),
+    );
+    const { ctx, captured } = makeCtx({
+      method: "POST",
+      pathname: "/api/apps/clawville/session/session-1/message",
+      body: { content: "Go to skill forge" },
+    });
+
+    await handleAppRoutes(ctx);
+
+    const moveRequest = requests.find((request) =>
+      request.url.endsWith("/move"),
+    );
+    const visitRequest = requests.find((request) =>
+      request.url.endsWith("/visit-building"),
+    );
+    expect(captured.status).toBe(200);
+    expect(captured.body).toMatchObject({
+      success: true,
+      message: "moving to code",
+    });
+    expect(captured.body).toMatchObject({
+      session: {
+        activity: expect.arrayContaining([
+          expect.objectContaining({
+            type: "You",
+            message: "Move to Skill Forge.",
+          }),
+          expect.objectContaining({
+            type: "move",
+            message: "moving to code",
+          }),
+        ]),
+      },
+    });
+    expect(moveRequest?.body).toEqual({ buildingId: "skill-forge" });
+    expect(visitRequest).toBeUndefined();
+  });
+
   it("uses perception for nearest-building visit commands", async () => {
     const requests: Array<{ url: string; body: unknown }> = [];
     vi.stubGlobal(
@@ -216,5 +269,52 @@ describe("ClawVille app routes", () => {
     expect(chatRequest?.body).toEqual({
       message: "Ask the nearest NPC what to learn next",
     });
+  });
+
+  it("keeps NPC chat ahead of learn-or-visit phrasing", async () => {
+    const requests: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        requests.push({
+          url,
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        if (url.endsWith("/chat")) {
+          return jsonResponse({ message: "npc replied" });
+        }
+        return jsonResponse({});
+      }),
+    );
+    const { ctx, captured } = makeCtx({
+      method: "POST",
+      pathname: "/api/apps/clawville/session/session-1/message",
+      body: { content: "Talk to the nearby NPC about what to learn next" },
+    });
+
+    await handleAppRoutes(ctx);
+
+    const chatRequest = requests.find((request) =>
+      request.url.endsWith("/chat"),
+    );
+    const visitRequest = requests.find((request) =>
+      request.url.endsWith("/visit-building"),
+    );
+    expect(captured.status).toBe(200);
+    expect(chatRequest?.body).toEqual({
+      message: "Talk to the nearby NPC about what to learn next",
+    });
+    expect(captured.body).toMatchObject({
+      session: {
+        activity: expect.arrayContaining([
+          expect.objectContaining({
+            type: "chat",
+            message: "npc replied",
+          }),
+        ]),
+      },
+    });
+    expect(visitRequest).toBeUndefined();
   });
 });

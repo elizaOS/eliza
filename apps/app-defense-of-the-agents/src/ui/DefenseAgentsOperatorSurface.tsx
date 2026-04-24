@@ -87,6 +87,9 @@ function cleanDefenseMessage(message: string): string {
   if (message.includes("Too many requests") || message.includes("(429)")) {
     return "Defense controls are rate-limited right now. Try again shortly.";
   }
+  if (message.includes("Failed to fetch game state")) {
+    return "Defense state is temporarily unavailable. Retrying automatically.";
+  }
   if (message.startsWith("Defense control API unavailable")) {
     return "Defense controls are temporarily unavailable.";
   }
@@ -99,7 +102,12 @@ function collectRunEvents(
   localEvents: GameOperatorEvent[],
 ): GameOperatorEvent[] {
   const serverEvents = (run.recentEvents ?? [])
-    .filter((event) => event.kind !== "refresh")
+    .filter(
+      (event) =>
+        event.kind !== "refresh" &&
+        event.kind !== "attach" &&
+        event.kind !== "detach",
+    )
     .map((event) => ({
       id: event.eventId,
       label: event.kind,
@@ -207,11 +215,17 @@ export function DefenseAgentsOperatorSurface({
 
       try {
         const response = await client.sendAppRunMessage(run.runId, trimmed);
+        const persistedSession =
+          response.run?.session ?? response.session ?? null;
         if (response.run) {
           setState("appRuns", replaceRun(appRuns, response.run));
         }
         if (clearDraftOnSuccess) {
           setDraft((current) => (current.trim() === trimmed ? "" : current));
+        }
+        if (persistedSession) {
+          setLocalEvents([]);
+          return;
         }
         setLocalEvents((current) => [
           ...current,
