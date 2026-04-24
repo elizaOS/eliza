@@ -26,10 +26,14 @@ import {
   type BrowserBridgeSiteAccessMode,
   type BrowserBridgeTrackingMode,
   type CreateBrowserBridgeCompanionPairingRequest,
+  type UpdateBrowserBridgeSettingsRequest,
 } from "@elizaos/app-lifeops/contracts";
 import {
+  CheckCircle2,
+  Circle,
   Copy,
   Download,
+  ExternalLink,
   FolderOpen,
   Monitor,
   Package,
@@ -59,6 +63,7 @@ const DEFAULT_PAIRING_PROFILE = {
 } as const;
 const CHROME_EXTENSIONS_URL = "chrome://extensions/";
 const CONNECTION_REFRESH_INTERVAL_MS = 4_000;
+const BROWSER_SETUP_HASH = "lifeops.section=setup";
 
 function isIosRuntime(): boolean {
   if (
@@ -144,6 +149,27 @@ function parseDateTimeLocalValue(value: string): string | null {
     throw new Error("Pause until must be a valid local date and time");
   }
   return parsed.toISOString();
+}
+
+function settingsRequestFromDraft(
+  draft: SettingsDraft,
+): UpdateBrowserBridgeSettingsRequest {
+  return {
+    enabled: draft.enabled,
+    trackingMode: draft.trackingMode,
+    allowBrowserControl: draft.allowBrowserControl,
+    requireConfirmationForAccountAffecting:
+      draft.requireConfirmationForAccountAffecting,
+    incognitoEnabled: draft.incognitoEnabled,
+    siteAccessMode: draft.siteAccessMode,
+    grantedOrigins: parseOriginLines(draft.grantedOriginsText),
+    blockedOrigins: parseOriginLines(draft.blockedOriginsText),
+    maxRememberedTabs: Math.max(
+      1,
+      Number.parseInt(draft.maxRememberedTabs, 10) || 10,
+    ),
+    pauseUntil: parseDateTimeLocalValue(draft.pauseUntilLocal),
+  };
 }
 
 function isFutureLocalDateTimeValue(value: string): boolean {
@@ -413,6 +439,95 @@ function installHint(
   return "Download the published browser companion, install it, then open the popup once to auto-connect.";
 }
 
+type GuidedSetupStepStatus = "done" | "current" | "pending" | "attention";
+
+interface GuidedSetupStep {
+  id: string;
+  title: string;
+  detail: string;
+  status: GuidedSetupStepStatus;
+}
+
+function statusLabel(status: GuidedSetupStepStatus): string {
+  switch (status) {
+    case "done":
+      return "Done";
+    case "current":
+      return "Next";
+    case "attention":
+      return "Check";
+    default:
+      return "Pending";
+  }
+}
+
+function recommendedBrowserKind(
+  currentBrowser: BrowserBridgeKind | null,
+): BrowserBridgeKind {
+  return currentBrowser ?? "chrome";
+}
+
+function browserLabel(browser: BrowserBridgeKind): string {
+  return browser === "safari" ? "Safari" : "Chrome";
+}
+
+function browserSettingsReady(draft: SettingsDraft | null): boolean {
+  return Boolean(
+    draft &&
+      draft.enabled &&
+      draft.trackingMode !== "off" &&
+      draft.allowBrowserControl &&
+      !isFutureLocalDateTimeValue(draft.pauseUntilLocal),
+  );
+}
+
+function buildSetupUrl(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const url = new URL(window.location.href);
+    url.hash = BROWSER_SETUP_HASH;
+    return url.toString();
+  } catch {
+    return window.location.href || null;
+  }
+}
+
+function hasBrowserArtifact(
+  browser: BrowserBridgeKind,
+  status: ExtensionStatus | null,
+): boolean {
+  if (!status) {
+    return false;
+  }
+  return browser === "chrome"
+    ? Boolean(status.chromeBuildPath || status.chromePackagePath)
+    : Boolean(
+        status.safariAppPath ||
+          status.safariPackagePath ||
+          status.safariWebExtensionPath,
+      );
+}
+
+function companionPermissionReady(
+  companion:
+    | Awaited<
+        ReturnType<typeof client.listBrowserBridgeCompanions>
+      >["companions"][number]
+    | null,
+): boolean {
+  if (!companion?.permissions) {
+    return false;
+  }
+  return (
+    companion.permissions.tabs &&
+    companion.permissions.scripting &&
+    companion.permissions.activeTab &&
+    companion.permissions.allOrigins
+  );
+}
+
 function BrowserCompanionRow({
   currentBrowser,
   browser,
@@ -462,14 +577,10 @@ function BrowserCompanionRow({
     localWorkspaceAvailable,
   );
   const hasLocalArtifact = Boolean(buildPath || packagePath || appPath);
-  const installLabel = installButtonLabel(
-    browser,
-    releaseManifest,
-    {
-      hasLocalArtifact,
-      localWorkspaceAvailable,
-    },
-  );
+  const installLabel = installButtonLabel(browser, releaseManifest, {
+    hasLocalArtifact,
+    localWorkspaceAvailable,
+  });
   const buildBadgeLabel = buildStateBadgeLabel(
     hasLocalArtifact,
     localWorkspaceAvailable,
@@ -907,28 +1018,47 @@ export function BrowserBridgeSetupPanel() {
     setSavingSettings(true);
     setError(null);
     try {
-      const maxRememberedTabs = Math.max(
-        1,
-        Number.parseInt(draft.maxRememberedTabs, 10) || 10,
+      const response = await client.updateBrowserBridgeSettings(
+        settingsRequestFromDraft(draft),
       );
-      const response = await client.updateBrowserBridgeSettings({
-        enabled: draft.enabled,
-        trackingMode: draft.trackingMode,
-        allowBrowserControl: draft.allowBrowserControl,
-        requireConfirmationForAccountAffecting:
-          draft.requireConfirmationForAccountAffecting,
-        incognitoEnabled: draft.incognitoEnabled,
-        siteAccessMode: draft.siteAccessMode,
-        grantedOrigins: parseOriginLines(draft.grantedOriginsText),
-        blockedOrigins: parseOriginLines(draft.blockedOriginsText),
-        maxRememberedTabs,
-        pauseUntil: parseDateTimeLocalValue(draft.pauseUntilLocal),
-      });
       setDraft(settingsToDraft(response.settings));
       setDraftDirty(false);
       setStatusMessage("Saved Agent Browser Bridge settings.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const enableRecommendedBrowserSettings = async () => {
+    if (!draft) {
+      return;
+    }
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const nextDraft: SettingsDraft = {
+        ...draft,
+        enabled: true,
+        trackingMode:
+          draft.trackingMode === "off" ? "current_tab" : draft.trackingMode,
+        allowBrowserControl: true,
+        requireConfirmationForAccountAffecting: true,
+        pauseUntilLocal: "",
+      };
+      const response = await client.updateBrowserBridgeSettings(
+        settingsRequestFromDraft(nextDraft),
+      );
+      setDraft(settingsToDraft(response.settings));
+      setDraftDirty(false);
+      setStatusMessage(
+        "Browser access is enabled. Next, install the extension in the profile that has your real accounts.",
+      );
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      throw cause;
     } finally {
       setSavingSettings(false);
     }
@@ -1119,6 +1249,15 @@ export function BrowserBridgeSetupPanel() {
     browser: BrowserBridgeKind,
     options?: { silent?: boolean },
   ): Promise<boolean> => {
+    if (browser === "safari") {
+      if (!options?.silent) {
+        setStatusMessage(
+          "Safari extension permissions live in Safari > Settings > Extensions. Open the Agent Browser Bridge app once, enable the extension there, then open its popup.",
+        );
+      }
+      setError(null);
+      return false;
+    }
     try {
       if (
         browser === "chrome" &&
@@ -1127,7 +1266,9 @@ export function BrowserBridgeSetupPanel() {
       ) {
         navigatePreOpenedWindow(preOpenWindow(), CHROME_EXTENSIONS_URL);
         if (!options?.silent) {
-          setStatusMessage("Opened chrome://extensions/ in this browser profile.");
+          setStatusMessage(
+            "Opened chrome://extensions/ in this browser profile.",
+          );
         }
         setError(null);
         return true;
@@ -1275,6 +1416,163 @@ export function BrowserBridgeSetupPanel() {
     }
   };
 
+  const recommendedBrowser = recommendedBrowserKind(currentBrowser);
+  const recommendedBrowserName = browserLabel(recommendedBrowser);
+  const recommendedCompanion =
+    companionByBrowser.get(recommendedBrowser) ?? primaryCompanion;
+  const recommendedConnected =
+    recommendedCompanion?.connectionState === "connected";
+  const recommendedArtifactReady = hasBrowserArtifact(
+    recommendedBrowser,
+    packageStatus,
+  );
+  const settingsReady = browserSettingsReady(draft);
+  const browserPermissionReady = companionPermissionReady(
+    recommendedConnected ? recommendedCompanion : primaryCompanion,
+  );
+  const setupBusy =
+    loading ||
+    savingSettings ||
+    buildingBrowser !== null ||
+    pairingBrowser !== null ||
+    installingBrowser !== null;
+  const setupSteps = useMemo<GuidedSetupStep[]>(() => {
+    const hasAnyCompanion = companions.length > 0;
+    return [
+      {
+        id: "settings",
+        title: "Enable safe browser access",
+        detail:
+          "LifeOps turns on visibility, keeps account-changing confirmations on, and clears any pause.",
+        status: settingsReady ? "done" : "current",
+      },
+      {
+        id: "install",
+        title: `Install ${recommendedBrowserName} companion`,
+        detail: currentBrowser
+          ? `Best path: install into this ${recommendedBrowserName} profile so pairing can happen automatically.`
+          : `Best path: install Chrome first, then open this setup page there before loading the extension.`,
+        status: !settingsReady
+          ? "pending"
+          : hasAnyCompanion
+            ? "done"
+            : recommendedArtifactReady
+              ? "current"
+              : "current",
+      },
+      {
+        id: "pair",
+        title: "Auto-connect the profile",
+        detail:
+          "After install, keep this LifeOps setup page open and open the extension popup once.",
+        status: !hasAnyCompanion
+          ? "pending"
+          : recommendedConnected
+            ? "done"
+            : "current",
+      },
+      {
+        id: "permissions",
+        title: "Verify extension permissions",
+        detail:
+          "Tabs, activeTab, DOM scripting, and all-sites access should be available for reliable connector automation.",
+        status: recommendedConnected
+          ? browserPermissionReady
+            ? "done"
+            : "attention"
+          : "pending",
+      },
+    ];
+  }, [
+    browserPermissionReady,
+    companions.length,
+    currentBrowser,
+    recommendedArtifactReady,
+    recommendedBrowserName,
+    recommendedConnected,
+    settingsReady,
+  ]);
+  const nextSetupStep =
+    setupSteps.find((step) => step.status === "current") ??
+    setupSteps.find((step) => step.status === "attention") ??
+    null;
+  const setupComplete = setupSteps.every((step) => step.status === "done");
+  const primarySetupLabel = !draft
+    ? "Checking Setup"
+    : !settingsReady
+      ? "Enable Browser Access"
+      : connectedCompanions.length === 0
+        ? recommendedArtifactReady
+          ? `Continue: Open ${recommendedBrowserName} Install`
+          : `Continue: Build & Install in ${recommendedBrowserName}`
+        : recommendedConnected
+          ? browserPermissionReady
+            ? "Refresh Browser Status"
+            : `Review ${recommendedBrowserName} Permissions`
+          : `Reconnect ${recommendedBrowserName}`;
+
+  const continueBrowserSetup = async () => {
+    if (!draft || setupBusy) {
+      return;
+    }
+    try {
+      if (!settingsReady) {
+        await enableRecommendedBrowserSettings();
+        return;
+      }
+      if (connectedCompanions.length === 0) {
+        await installCompanion(recommendedBrowser);
+        return;
+      }
+      if (!recommendedConnected) {
+        const openedManager = await openBrowserManager(recommendedBrowser, {
+          silent: true,
+        });
+        setStatusMessage(
+          openedManager
+            ? `Opened ${recommendedBrowserName} extension settings. Enable Agent Browser Bridge if needed, then open its popup once to reconnect.`
+            : `${recommendedBrowserName} needs a quick manual check. Enable Agent Browser Bridge in the browser's extension settings, then open its popup once to reconnect.`,
+        );
+        return;
+      }
+      if (!browserPermissionReady) {
+        const openedManager = await openBrowserManager(recommendedBrowser, {
+          silent: true,
+        });
+        setStatusMessage(
+          openedManager
+            ? `${recommendedBrowserName} is connected, but extension permissions need a check. In the extension details, allow site access for all sites and enable incognito only if you want LifeOps to see private windows.`
+            : `${recommendedBrowserName} is connected, but extension permissions need a check. In Safari, use Safari > Settings > Extensions, enable Agent Browser Bridge, and review website access there.`,
+        );
+        return;
+      }
+      await refresh({ preserveDraft: true });
+      setStatusMessage("Browser setup looks healthy.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+
+  const openSetupPage = async () => {
+    const setupUrl = buildSetupUrl();
+    if (!setupUrl) {
+      return;
+    }
+    try {
+      await openExternalUrl(setupUrl);
+      setStatusMessage(
+        `Opened this LifeOps setup page in your default browser. Use the ${recommendedBrowserName} profile that contains your real accounts.`,
+      );
+      setError(null);
+    } catch {
+      await copyTextToClipboard(setupUrl);
+      setStatusMessage(
+        "Copied this LifeOps setup page URL. Open it in the browser profile that contains your real accounts.",
+      );
+      setError(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1309,6 +1607,100 @@ export function BrowserBridgeSetupPanel() {
           {error}
         </div>
       ) : null}
+
+      <div className="rounded-3xl border border-border/18 bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--card)_82%,transparent),transparent_34%),linear-gradient(135deg,color-mix(in_srgb,var(--bg)_96%,transparent),color-mix(in_srgb,var(--card)_86%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="text-sm font-semibold text-txt">
+              Guided Browser Setup
+            </div>
+            <div className="max-w-2xl text-xs leading-relaxed text-muted">
+              Use this when you want the easy path. LifeOps will enable the
+              recommended browser settings, build or open the companion
+              installer, and take you to the right browser page for the current
+              profile.
+            </div>
+          </div>
+          <Badge variant={setupComplete ? "default" : "secondary"}>
+            {setupComplete
+              ? "Ready"
+              : nextSetupStep
+                ? nextSetupStep.title
+                : "Checking"}
+          </Badge>
+        </div>
+
+        <div className="mt-4 grid gap-2 md:grid-cols-2">
+          {setupSteps.map((step) => {
+            const done = step.status === "done";
+            const active =
+              step.status === "current" || step.status === "attention";
+            return (
+              <div
+                key={step.id}
+                className={`rounded-2xl border px-3 py-3 text-xs ${
+                  done
+                    ? "border-emerald-500/18 bg-emerald-500/10"
+                    : active
+                      ? "border-amber-500/24 bg-amber-500/10"
+                      : "border-border/14 bg-card/12"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {done ? (
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  ) : (
+                    <Circle
+                      className={`h-3.5 w-3.5 ${
+                        active ? "text-amber-300" : "text-muted"
+                      }`}
+                    />
+                  )}
+                  <span className="font-semibold text-txt">{step.title}</span>
+                  <span className="ml-auto rounded-full border border-border/18 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+                    {statusLabel(step.status)}
+                  </span>
+                </div>
+                <div className="mt-1.5 leading-relaxed text-muted">
+                  {step.detail}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            disabled={setupBusy || !draft}
+            onClick={() => void continueBrowserSetup()}
+          >
+            <Sparkles className="mr-1.5 h-3 w-3" />
+            {setupBusy ? "Working..." : primarySetupLabel}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl px-3 text-xs font-semibold"
+            onClick={() => void openSetupPage()}
+          >
+            <ExternalLink className="mr-1.5 h-3 w-3" />
+            Open This Setup Page
+          </Button>
+          {currentBrowser === "chrome" ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={setupBusy}
+              onClick={() => void openBrowserManager("chrome")}
+            >
+              Open Chrome Extensions
+            </Button>
+          ) : null}
+        </div>
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         <div className="space-y-4">

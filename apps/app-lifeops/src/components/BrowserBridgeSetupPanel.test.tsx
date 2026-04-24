@@ -43,11 +43,7 @@ vi.mock("@elizaos/app-core", () => {
     onClick?: () => void;
     type?: "button" | "submit" | "reset";
   }) {
-    return React.createElement(
-      "button",
-      { disabled, onClick, type },
-      children,
-    );
+    return React.createElement("button", { disabled, onClick, type }, children);
   }
 
   function Badge({ children }: { children?: ReactNode }) {
@@ -220,6 +216,13 @@ describe("BrowserBridgeSetupPanel", () => {
     render(<BrowserBridgeSetupPanel />);
 
     expect(await screen.findByText("Build & Install in Chrome")).toBeTruthy();
+    expect(screen.getByText("Guided Browser Setup")).toBeTruthy();
+    expect(
+      screen.getByText("Continue: Build & Install in Chrome"),
+    ).toBeTruthy();
+    expect(
+      screen.getAllByText("Install Chrome companion").length,
+    ).toBeGreaterThan(0);
     expect(screen.queryByText("Install Chrome Extension")).toBeNull();
     expect(screen.getByText("This Browser")).toBeTruthy();
     expect(screen.getAllByText("Local build")).toHaveLength(2);
