@@ -1,5 +1,15 @@
-import { Button, MetaPill, PageLayout, PagePanel } from "@elizaos/ui";
+import { Button, PageLayout, PagePanel } from "@elizaos/ui";
 import {
+  Filter,
+  Fingerprint,
+  Link2,
+  RefreshCw,
+  Search,
+  UserRound,
+  X,
+} from "lucide-react";
+import {
+  type ComponentType,
   type ReactNode,
   useCallback,
   useDeferredValue,
@@ -12,7 +22,7 @@ import type {
   RelationshipsGraphSnapshot,
   RelationshipsPersonDetail,
 } from "../../../api/client-types-relationships";
-import { useApp } from "../../../state";
+import { useApp } from "../../../state/useApp";
 import { RelationshipsGraphPanel } from "../RelationshipsGraphPanel";
 import { RelationshipsActivityFeed } from "./RelationshipsActivityFeed";
 import { RelationshipsCandidateMergesPanel } from "./RelationshipsCandidateMergesPanel";
@@ -30,6 +40,24 @@ import {
   platformOptions,
   sortPeople,
 } from "./relationships-utils";
+
+function ToolbarMetric({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: number | string;
+}) {
+  return (
+    <div className="inline-flex h-9 items-center gap-2 rounded-full border border-border/28 bg-card/42 px-3 text-sm text-muted-strong">
+      <Icon className="h-4 w-4 text-accent" />
+      <span className="font-semibold tabular-nums text-txt">{value}</span>
+      <span>{label}</span>
+    </div>
+  );
+}
 
 export function RelationshipsWorkspaceView({
   contentHeader,
@@ -50,21 +78,29 @@ export function RelationshipsWorkspaceView({
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [detail, setDetail] = useState<RelationshipsPersonDetail | null>(null);
-  const previousDetail = useRef<RelationshipsPersonDetail | null>(null);
+  const graphRequestId = useRef(0);
   const deferredSearch = useDeferredValue(search);
 
   const loadGraph = useCallback(
     async (query = buildRelationshipsGraphQuery("", "all")) => {
+      const requestId = graphRequestId.current + 1;
+      graphRequestId.current = requestId;
       setGraphLoading(true);
       setGraphError(null);
 
       try {
         const snapshot = await client.getRelationshipsGraph(query);
+        if (requestId !== graphRequestId.current) {
+          return;
+        }
         setGraph({
           ...snapshot,
           people: sortPeople(snapshot.people),
         });
       } catch (error) {
+        if (requestId !== graphRequestId.current) {
+          return;
+        }
         setGraphError(
           error instanceof Error
             ? error.message
@@ -72,7 +108,9 @@ export function RelationshipsWorkspaceView({
         );
         setGraph(null);
       } finally {
-        setGraphLoading(false);
+        if (requestId === graphRequestId.current) {
+          setGraphLoading(false);
+        }
       }
     },
     [],
@@ -93,24 +131,18 @@ export function RelationshipsWorkspaceView({
       (person) => person.primaryEntityId === selectedPersonId,
     );
     if (!stillSelected) {
-      setSelectedPersonId(graph.people[0]?.primaryEntityId ?? null);
+      setSelectedPersonId(graph.people[0].primaryEntityId);
     }
   }, [graph, selectedPersonId]);
 
-  const detailRef = useRef(detail);
-  detailRef.current = detail;
-
   useEffect(() => {
     if (!selectedPersonId) {
-      previousDetail.current = null;
       setDetail(null);
       return;
     }
 
     let cancelled = false;
-    if (detailRef.current) {
-      previousDetail.current = detailRef.current;
-    }
+    setDetail(null);
     setDetailLoading(true);
     setDetailError(null);
 
@@ -119,13 +151,11 @@ export function RelationshipsWorkspaceView({
       .then((person) => {
         if (!cancelled) {
           setDetail(person);
-          previousDetail.current = null;
         }
       })
       .catch((err) => {
         if (!cancelled) {
           setDetail(null);
-          previousDetail.current = null;
           setDetailError(
             err instanceof Error
               ? err.message
@@ -150,10 +180,6 @@ export function RelationshipsWorkspaceView({
       (person) => person.primaryEntityId === selectedPersonId,
     ) ?? null;
   const selectedGroupId = selectedSummary?.groupId ?? null;
-  const displayDetail =
-    detail ?? (detailLoading ? previousDetail.current : null);
-  const isStaleDetail =
-    detailLoading && !detail && previousDetail.current !== null;
   const handleViewMemories =
     onViewMemories ??
     (() => {
@@ -166,72 +192,110 @@ export function RelationshipsWorkspaceView({
 
   const toolbar = (
     <PagePanel variant="surface" className="px-3 py-3">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
-          <MetaPill compact>{graph?.stats.totalPeople ?? 0} people</MetaPill>
-          <MetaPill compact>
-            {graph?.stats.totalRelationships ?? 0} links
-          </MetaPill>
-          <MetaPill compact>
-            {graph?.stats.totalIdentities ?? 0} identities
-          </MetaPill>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-2">
+          <ToolbarMetric
+            icon={UserRound}
+            label="people"
+            value={
+              graph
+                ? graph.stats.totalPeople
+                : graphLoading || graphError
+                  ? "..."
+                  : 0
+            }
+          />
+          <ToolbarMetric
+            icon={Link2}
+            label="links"
+            value={
+              graph
+                ? graph.stats.totalRelationships
+                : graphLoading || graphError
+                  ? "..."
+                  : 0
+            }
+          />
+          <ToolbarMetric
+            icon={Fingerprint}
+            label="identities"
+            value={
+              graph
+                ? graph.stats.totalIdentities
+                : graphLoading || graphError
+                  ? "..."
+                  : 0
+            }
+          />
         </div>
 
-        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row lg:max-w-3xl">
+        <div
+          className={
+            embedded
+              ? "grid min-w-0 gap-2 md:grid-cols-[minmax(16rem,1fr)_minmax(12rem,14rem)_auto]"
+              : "flex min-w-0 flex-col gap-2 sm:flex-row sm:justify-end"
+          }
+        >
           {embedded ? (
             <>
               <label className="sr-only" htmlFor="relationships-search">
                 Search people, aliases, handles
               </label>
               <div className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
                 <input
                   id="relationships-search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search people, aliases, handles"
                   aria-label="Search people, aliases, handles"
-                  className="h-9 w-full rounded-lg border border-border/35 bg-card/45 px-3 pr-16 text-sm text-txt outline-none transition focus:border-accent/55"
+                  className="h-9 w-full rounded-lg border border-border/35 bg-card/45 pl-9 pr-10 text-sm text-txt outline-none transition focus:border-accent/55"
                 />
                 {search ? (
-                  <Button
+                  <button
                     type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="absolute right-1 top-1 h-7 rounded-md px-2 text-2xs"
+                    className="absolute right-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md text-muted transition hover:bg-bg-hover hover:text-txt"
                     onClick={() => setSearch("")}
+                    aria-label="Clear relationship search"
                   >
-                    Clear
-                  </Button>
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 ) : null}
               </div>
             </>
           ) : null}
 
-          <label className="sr-only" htmlFor="relationships-platform">
-            Platform filter
-          </label>
-          <select
-            id="relationships-platform"
-            value={platform}
-            onChange={(event) => setPlatform(event.target.value)}
-            aria-label="Platform filter"
-            className="h-9 rounded-lg border border-border/35 bg-card/45 px-3 text-sm text-txt outline-none transition focus:border-accent/55"
-          >
-            <option value="all">All platforms</option>
-            {platforms.map((entry) => (
-              <option key={entry} value={entry}>
-                {entry}
-              </option>
-            ))}
-          </select>
+          <div className="relative min-w-0">
+            <label className="sr-only" htmlFor="relationships-platform">
+              Platform filter
+            </label>
+            <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <select
+              id="relationships-platform"
+              value={platform}
+              onChange={(event) => setPlatform(event.target.value)}
+              aria-label="Platform filter"
+              className="h-9 w-full rounded-lg border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition focus:border-accent/55"
+            >
+              <option value="all">All platforms</option>
+              {platforms.map((entry) => (
+                <option key={entry} value={entry}>
+                  {entry}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <Button
             type="button"
             size="sm"
             variant="outline"
-            className="h-9 shrink-0 rounded-lg px-3"
+            className="h-9 shrink-0 gap-2 rounded-lg px-3"
             onClick={refreshGraph}
           >
+            <RefreshCw
+              className={`h-4 w-4 ${graphLoading ? "animate-spin" : ""}`}
+            />
             {graphLoading ? "Refreshing..." : "Refresh"}
           </Button>
         </div>
@@ -245,18 +309,20 @@ export function RelationshipsWorkspaceView({
       data-testid={embedded ? "relationships-embedded-view" : undefined}
     >
       {toolbar}
-      {graphError ? (
-        <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-          {graphError}
-        </div>
-      ) : null}
       {detailError ? (
         <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
           {detailError}
         </div>
       ) : null}
 
-      {!graph && graphLoading ? (
+      {graphError && !graph ? (
+        <PagePanel.Empty
+          variant="panel"
+          className={embedded ? "min-h-[18rem]" : "min-h-[24rem]"}
+          title="Relationships failed to load"
+          description={graphError}
+        />
+      ) : !graph && graphLoading ? (
         <PagePanel.Loading
           heading={t("common.loading", { defaultValue: "Loading..." })}
         />
@@ -277,10 +343,15 @@ export function RelationshipsWorkspaceView({
         />
       ) : (
         <>
+          {graphError ? (
+            <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+              {graphError}
+            </div>
+          ) : null}
           <div
             className={
               embedded
-                ? "grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]"
+                ? "grid min-h-0 gap-3"
                 : "grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]"
             }
           >
@@ -289,27 +360,14 @@ export function RelationshipsWorkspaceView({
                 snapshot={graph}
                 selectedGroupId={selectedGroupId}
                 compact={embedded}
-                onSelectGroupId={(groupId) => {
-                  const person = graph.people.find(
-                    (entry) => entry.groupId === groupId,
-                  );
-                  if (person) {
-                    setSelectedPersonId(person.primaryEntityId);
-                  }
-                }}
+                onSelectPersonId={setSelectedPersonId}
               />
             </PagePanel>
 
-            {displayDetail ? (
-              <div
-                className={
-                  isStaleDetail
-                    ? "pointer-events-none opacity-50 transition-opacity duration-200"
-                    : "transition-opacity duration-200"
-                }
-              >
+            {detail ? (
+              <div className="transition-opacity duration-200">
                 <RelationshipsPersonSummaryPanel
-                  person={displayDetail}
+                  person={detail}
                   compact={embedded}
                   onViewMemories={handleViewMemories}
                 />
@@ -325,17 +383,15 @@ export function RelationshipsWorkspaceView({
             )}
           </div>
 
-          {displayDetail ? (
-            <div
-              className={`grid gap-3 xl:grid-cols-2 ${isStaleDetail ? "pointer-events-none opacity-50 transition-opacity duration-200" : "transition-opacity duration-200"}`}
-            >
-              <RelationshipsFactsPanel person={displayDetail} />
-              <RelationshipsConnectionsPanel person={displayDetail} />
+          {detail ? (
+            <div className="grid gap-3 transition-opacity duration-200 xl:grid-cols-2">
+              <RelationshipsFactsPanel person={detail} />
+              <RelationshipsConnectionsPanel person={detail} />
               <div className="xl:col-span-2">
-                <RelationshipsConversationsPanel person={displayDetail} />
+                <RelationshipsConversationsPanel person={detail} />
               </div>
-              <RelationshipsRelevantMemoriesPanel person={displayDetail} />
-              <RelationshipsUserPreferencesPanel person={displayDetail} />
+              <RelationshipsRelevantMemoriesPanel person={detail} />
+              <RelationshipsUserPreferencesPanel person={detail} />
             </div>
           ) : null}
 

@@ -6,18 +6,6 @@ import type {
   RelationshipsPersonSummary,
 } from "../../../api/client-types-relationships";
 
-export const RELATIONSHIPS_TOOLBAR_BUTTON_CLASS =
-  "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong";
-
-export type RelationshipsPersonSupplementalDetail = {
-  headline?: string | null;
-  bio?: string | null;
-  notes?: string | null;
-  occupations?: string[];
-  locations?: string[];
-  organizations?: string[];
-};
-
 type PersonContactRow = {
   label: string;
   value: string;
@@ -91,25 +79,6 @@ export function topContacts(
   return rows;
 }
 
-export function buildAdditionalHighlights(
-  person: RelationshipsPersonDetail & RelationshipsPersonSupplementalDetail,
-): PersonContactRow[] {
-  const rows: PersonContactRow[] = [];
-  if (person.organizations?.length) {
-    rows.push({
-      label: "Organizations",
-      value: person.organizations.join(", "),
-    });
-  }
-  if (person.occupations?.length) {
-    rows.push({ label: "Roles", value: person.occupations.join(", ") });
-  }
-  if (person.locations?.length) {
-    rows.push({ label: "Locations", value: person.locations.join(", ") });
-  }
-  return rows;
-}
-
 export function profileSourceLabel(source: string): string {
   switch (source) {
     case "client_chat":
@@ -158,27 +127,15 @@ export function evidenceSummary(
   candidate: RelationshipsMergeCandidate,
 ): string {
   const parts: string[] = [];
-  const platform =
-    typeof candidate.evidence.platform === "string"
-      ? candidate.evidence.platform
-      : null;
-  const handle =
-    typeof candidate.evidence.handle === "string"
-      ? candidate.evidence.handle
-      : null;
+  const { platform, handle, notes, identityIds } = candidate.evidence;
   if (platform && handle) {
     parts.push(`${platform}:${handle}`);
   } else if (platform) {
     parts.push(platform);
   }
-  const notes =
-    typeof candidate.evidence.notes === "string"
-      ? candidate.evidence.notes
-      : null;
   if (notes) parts.push(notes);
-  const ids = candidate.evidence.identityIds;
-  if (Array.isArray(ids) && ids.length > 0) {
-    parts.push(`${ids.length} identity refs`);
+  if (identityIds && identityIds.length > 0) {
+    parts.push(`${identityIds.length} identities`);
   }
-  return parts.join(" · ") || "no evidence summary";
+  return parts.join(" · ") || "No evidence";
 }

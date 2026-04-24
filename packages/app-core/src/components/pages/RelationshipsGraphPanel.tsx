@@ -1,13 +1,39 @@
-import { useMemo, useState } from "react";
+import {
+  Button,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@elizaos/ui";
+import {
+  Crown,
+  Focus,
+  Link2,
+  Maximize2,
+  Minus,
+  Network,
+  Plus,
+  UserRound,
+} from "lucide-react";
+import {
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+  useMemo,
+  useState,
+} from "react";
 import type {
   RelationshipsGraphEdge,
   RelationshipsGraphSnapshot,
   RelationshipsPersonSummary,
 } from "../../api/client-types-relationships";
 
-const GRAPH_WIDTH = 960;
-const GRAPH_HEIGHT = 540;
-const GRAPH_PADDING = 56;
+const GRAPH_WIDTH = 1320;
+const GRAPH_HEIGHT = 760;
+const GRAPH_PADDING = 92;
+const MIN_ZOOM = 0.58;
+const MAX_ZOOM = 1.35;
+const ZOOM_STEP = 0.12;
 const MAX_GLOBAL_NODES = 28;
 const MAX_FOCUSED_NODES = 24;
 const MAX_DIRECT_NEIGHBORS = 12;
@@ -25,6 +51,14 @@ type VisibleGraph = {
   truncated: boolean;
 };
 
+const EDGE_COLORS = {
+  positive: "rgba(34, 197, 94, 0.64)",
+  neutral: "rgba(240, 185, 11, 0.48)",
+  negative: "rgba(239, 68, 68, 0.62)",
+} as const;
+
+type EdgeTone = keyof typeof EDGE_COLORS;
+
 function toTimestamp(value?: string): number {
   if (!value) return 0;
   const timestamp = Date.parse(value);
@@ -33,8 +67,8 @@ function toTimestamp(value?: string): number {
 
 function nodeRadius(person: RelationshipsPersonSummary): number {
   return Math.min(
-    42,
-    16 +
+    46,
+    18 +
       Math.sqrt(
         Math.max(
           1,
@@ -49,10 +83,28 @@ function shortLabel(value: string, maxLength = 18): string {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
 }
 
+function edgeTone(sentiment: string): EdgeTone {
+  if (sentiment === "positive" || sentiment === "negative") return sentiment;
+  return "neutral";
+}
+
 function edgeColor(edge: RelationshipsGraphEdge): string {
-  if (edge.sentiment === "positive") return "rgba(73, 197, 122, 0.55)";
-  if (edge.sentiment === "negative") return "rgba(239, 68, 68, 0.5)";
-  return "rgba(240, 185, 11, 0.38)";
+  return EDGE_COLORS[edgeTone(edge.sentiment)];
+}
+
+function sentimentLabel(value: string): string {
+  if (value === "positive") return "Positive";
+  if (value === "negative") return "Negative";
+  return "Neutral";
+}
+
+function nodeInitials(value: string): string {
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  const source =
+    words.length >= 2
+      ? `${words[0]?.charAt(0) ?? ""}${words[1]?.charAt(0) ?? ""}`
+      : value.trim().slice(0, 2);
+  return source.toUpperCase();
 }
 
 function rankPerson(person: RelationshipsPersonSummary): number {
@@ -99,19 +151,29 @@ function buildEdgeIndex(
   return index;
 }
 
+function buildVisibleGraph(
+  snapshot: RelationshipsGraphSnapshot,
+  included: Set<string>,
+  modeLabel: string,
+): VisibleGraph {
+  const people = snapshot.people.filter((person) =>
+    included.has(person.groupId),
+  );
+  return {
+    people,
+    relationships: snapshot.relationships.filter(
+      (edge) =>
+        included.has(edge.sourcePersonId) && included.has(edge.targetPersonId),
+    ),
+    modeLabel,
+    truncated: people.length < snapshot.people.length,
+  };
+}
+
 function selectVisibleGraph(
   snapshot: RelationshipsGraphSnapshot,
   selectedGroupId: string | null,
 ): VisibleGraph {
-  if (snapshot.people.length <= MAX_GLOBAL_NODES) {
-    return {
-      people: snapshot.people,
-      relationships: snapshot.relationships,
-      modeLabel: "Loaded relationship graph",
-      truncated: false,
-    };
-  }
-
   const edgeIndex = buildEdgeIndex(snapshot.relationships);
   const peopleById = new Map(
     snapshot.people.map((person) => [person.groupId, person]),
@@ -158,18 +220,19 @@ function selectVisibleGraph(
       included.add(person.groupId);
     }
 
-    const people = snapshot.people.filter((person) =>
-      included.has(person.groupId),
+    return buildVisibleGraph(
+      snapshot,
+      included,
+      `Focused on ${peopleById.get(selectedGroupId)?.displayName ?? "selected person"}`,
     );
+  }
+
+  if (snapshot.people.length <= MAX_GLOBAL_NODES) {
     return {
-      people,
-      relationships: snapshot.relationships.filter(
-        (edge) =>
-          included.has(edge.sourcePersonId) &&
-          included.has(edge.targetPersonId),
-      ),
-      modeLabel: "Selected neighborhood",
-      truncated: people.length < snapshot.people.length,
+      people: snapshot.people,
+      relationships: snapshot.relationships,
+      modeLabel: "All visible people",
+      truncated: false,
     };
   }
 
@@ -183,18 +246,7 @@ function selectVisibleGraph(
     included.add(edge.targetPersonId);
   }
 
-  const people = snapshot.people.filter((person) =>
-    included.has(person.groupId),
-  );
-  return {
-    people,
-    relationships: snapshot.relationships.filter(
-      (edge) =>
-        included.has(edge.sourcePersonId) && included.has(edge.targetPersonId),
-    ),
-    modeLabel: "Most connected subgraph",
-    truncated: people.length < snapshot.people.length,
-  };
+  return buildVisibleGraph(snapshot, included, "Most connected subgraph");
 }
 
 function buildConnectedComponents(
@@ -272,14 +324,14 @@ function layoutComponent(
 
   for (const person of componentPeople) {
     positions.set(person.groupId, {
-      x: center.x + (seededUnit(person.groupId, 1) - 0.5) * cellWidth * 0.5,
-      y: center.y + (seededUnit(person.groupId, 2) - 0.5) * cellHeight * 0.5,
+      x: center.x + (seededUnit(person.groupId, 1) - 0.5) * cellWidth * 0.68,
+      y: center.y + (seededUnit(person.groupId, 2) - 0.5) * cellHeight * 0.68,
       vx: 0,
       vy: 0,
     });
   }
 
-  for (let iteration = 0; iteration < 170; iteration += 1) {
+  for (let iteration = 0; iteration < 240; iteration += 1) {
     const forces = new Map<string, { x: number; y: number }>();
     for (const person of componentPeople) {
       forces.set(person.groupId, { x: 0, y: 0 });
@@ -308,8 +360,8 @@ function layoutComponent(
         const dx = rightPosition.x - leftPosition.x;
         const dy = rightPosition.y - leftPosition.y;
         const distance = Math.max(1, Math.hypot(dx, dy));
-        const minimumDistance = nodeRadius(left) + nodeRadius(right) + 24;
-        const repulsion = minimumDistance * minimumDistance * 0.42;
+        const minimumDistance = nodeRadius(left) + nodeRadius(right) + 52;
+        const repulsion = minimumDistance * minimumDistance * 0.8;
         const forceMagnitude = repulsion / (distance * distance);
         const fx = (dx / distance) * forceMagnitude;
         const fy = (dy / distance) * forceMagnitude;
@@ -339,8 +391,8 @@ function layoutComponent(
       const dy = targetPosition.y - sourcePosition.y;
       const distance = Math.max(1, Math.hypot(dx, dy));
       const idealDistance =
-        84 + Math.max(0, componentPeople.length - 6) * 4 - edge.strength * 16;
-      const springStrength = 0.012 + edge.strength * 0.028;
+        142 + Math.max(0, componentPeople.length - 6) * 7 - edge.strength * 18;
+      const springStrength = 0.006 + edge.strength * 0.018;
       const forceMagnitude = (distance - idealDistance) * springStrength;
       const fx = (dx / distance) * forceMagnitude;
       const fy = (dy / distance) * forceMagnitude;
@@ -357,8 +409,8 @@ function layoutComponent(
       if (!position || !force) {
         continue;
       }
-      force.x += (center.x - position.x) * 0.018;
-      force.y += (center.y - position.y) * 0.018;
+      force.x += (center.x - position.x) * 0.01;
+      force.y += (center.y - position.y) * 0.01;
 
       position.vx = (position.vx + force.x) * 0.86;
       position.vy = (position.vy + force.y) * 0.86;
@@ -380,10 +432,96 @@ function layoutComponent(
   );
 }
 
+function placeOnRing(
+  positions: Map<string, GraphPosition>,
+  people: RelationshipsPersonSummary[],
+  center: GraphPosition,
+  radius: number,
+  startAngle: number,
+) {
+  people.forEach((person, index) => {
+    const angle =
+      startAngle + (index / Math.max(people.length, 1)) * Math.PI * 2;
+    positions.set(person.groupId, {
+      x: center.x + Math.cos(angle) * radius,
+      y: center.y + Math.sin(angle) * radius,
+    });
+  });
+}
+
+function buildFocusedNodePositions(
+  people: RelationshipsPersonSummary[],
+  edges: RelationshipsGraphEdge[],
+  selectedGroupId: string,
+): Map<string, GraphPosition> | null {
+  const selected = people.find((person) => person.groupId === selectedGroupId);
+  if (!selected) {
+    return null;
+  }
+
+  const directEdges = sortEdges(
+    edges.filter(
+      (edge) =>
+        edge.sourcePersonId === selectedGroupId ||
+        edge.targetPersonId === selectedGroupId,
+    ),
+  );
+  const directIds = new Set(
+    directEdges.map((edge) => otherEndpoint(edge, selectedGroupId)),
+  );
+  const directPeople = directEdges
+    .map((edge) =>
+      people.find(
+        (person) => person.groupId === otherEndpoint(edge, selectedGroupId),
+      ),
+    )
+    .filter(
+      (person): person is RelationshipsPersonSummary => person !== undefined,
+    );
+  const remainingPeople = people
+    .filter(
+      (person) =>
+        person.groupId !== selectedGroupId && !directIds.has(person.groupId),
+    )
+    .sort((left, right) => rankPerson(right) - rankPerson(left));
+  const positions = new Map<string, GraphPosition>();
+  const center = { x: GRAPH_WIDTH / 2, y: GRAPH_HEIGHT / 2 };
+
+  positions.set(selectedGroupId, center);
+  placeOnRing(
+    positions,
+    directPeople,
+    center,
+    clamp(190 + directPeople.length * 5, 210, 292),
+    -Math.PI / 2,
+  );
+  placeOnRing(
+    positions,
+    remainingPeople,
+    center,
+    clamp(330 + remainingPeople.length * 2, 330, 360),
+    -Math.PI / 2 + Math.PI / Math.max(remainingPeople.length, 3),
+  );
+
+  return positions;
+}
+
 function buildNodePositions(
   people: RelationshipsPersonSummary[],
   edges: RelationshipsGraphEdge[],
+  selectedGroupId: string | null,
 ): Map<string, GraphPosition> {
+  if (selectedGroupId) {
+    const focusedPositions = buildFocusedNodePositions(
+      people,
+      edges,
+      selectedGroupId,
+    );
+    if (focusedPositions) {
+      return focusedPositions;
+    }
+  }
+
   const components = buildConnectedComponents(people, edges);
   const peopleById = new Map(people.map((person) => [person.groupId, person]));
   const componentCount = Math.max(components.length, 1);
@@ -428,27 +566,67 @@ function buildNodePositions(
   return positions;
 }
 
+function GraphIconButton({
+  label,
+  disabled = false,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8 w-8 rounded-full p-0"
+          aria-label={label}
+          disabled={disabled}
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function GraphLegend() {
   return (
-    <div className="flex flex-wrap items-center gap-3 text-xs-tight text-muted">
+    <div className="flex flex-wrap items-center gap-2 text-xs-tight text-muted">
       <div className="flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-[rgba(240,185,11,0.9)]" />
+        <UserRound className="h-3.5 w-3.5 text-[rgba(240,185,11,0.9)]" />
         People
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full border-2 border-[rgba(99,102,241,0.7)] bg-[rgba(99,102,241,0.15)]" />
+        <Crown className="h-3.5 w-3.5 text-[rgba(99,102,241,0.86)]" />
         Owner
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="h-[2px] w-6 bg-[rgba(73,197,122,0.48)]" />
+        <span
+          className="h-[2px] w-6 rounded-full"
+          style={{ backgroundColor: EDGE_COLORS.positive }}
+        />
         Positive
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="h-[2px] w-6 bg-[rgba(240,185,11,0.34)]" />
+        <span
+          className="h-[2px] w-6 rounded-full"
+          style={{ backgroundColor: EDGE_COLORS.neutral }}
+        />
         Neutral
       </div>
       <div className="flex items-center gap-1.5">
-        <span className="h-[2px] w-6 bg-[rgba(239,68,68,0.44)]" />
+        <span
+          className="h-[2px] w-6 rounded-full"
+          style={{ backgroundColor: EDGE_COLORS.negative }}
+        />
         Negative
       </div>
     </div>
@@ -463,7 +641,7 @@ type TooltipState =
 function GraphTooltip({ state }: { state: TooltipState }) {
   if (!state) return null;
 
-  const style: React.CSSProperties = {
+  const style: CSSProperties = {
     position: "absolute",
     left: state.x,
     top: state.y,
@@ -485,8 +663,8 @@ function GraphTooltip({ state }: { state: TooltipState }) {
         <div className="mt-1 space-y-0.5 text-xs-tight text-muted">
           <div>
             {person.memberEntityIds.length} identit
-            {person.memberEntityIds.length === 1 ? "y" : "ies"} ·{" "}
-            {person.relationshipCount} links · {person.factCount} facts
+            {person.memberEntityIds.length === 1 ? "y" : "ies"} /{" "}
+            {person.relationshipCount} links / {person.factCount} facts
           </div>
           {person.platforms.length > 0 ? (
             <div>{person.platforms.join(", ")}</div>
@@ -506,12 +684,12 @@ function GraphTooltip({ state }: { state: TooltipState }) {
       className="rounded-xl border border-border/40 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur-md"
     >
       <div className="text-sm font-semibold text-txt">
-        {edge.sourcePersonName} ↔ {edge.targetPersonName}
+        {edge.sourcePersonName} / {edge.targetPersonName}
       </div>
       <div className="mt-1 space-y-0.5 text-xs-tight text-muted">
         <div>
-          Strength {edge.strength.toFixed(2)} · {edge.sentiment} ·{" "}
-          {edge.interactionCount} interactions
+          Strength {edge.strength.toFixed(2)} / {sentimentLabel(edge.sentiment)}{" "}
+          / {edge.interactionCount} interactions
         </div>
         {edge.relationshipTypes.length > 0 ? (
           <div>{edge.relationshipTypes.join(", ")}</div>
@@ -525,53 +703,63 @@ export function RelationshipsGraphPanel({
   snapshot,
   selectedGroupId,
   compact = false,
-  onSelectGroupId,
+  onSelectPersonId,
 }: {
-  snapshot: RelationshipsGraphSnapshot | null;
+  snapshot: RelationshipsGraphSnapshot;
   selectedGroupId: string | null;
   compact?: boolean;
-  onSelectGroupId: (groupId: string) => void;
+  onSelectPersonId: (primaryEntityId: string) => void;
 }) {
   const [tooltip, setTooltip] = useState<TooltipState>(null);
+  const fittedZoom = compact ? 0.68 : 0.9;
+  const [zoom, setZoom] = useState(fittedZoom);
 
   const visibleGraph = useMemo(
-    () =>
-      snapshot && snapshot.people.length > 0
-        ? selectVisibleGraph(snapshot, selectedGroupId)
-        : null,
+    () => selectVisibleGraph(snapshot, selectedGroupId),
     [snapshot, selectedGroupId],
   );
 
   const positions = useMemo(
     () =>
-      visibleGraph
-        ? buildNodePositions(visibleGraph.people, visibleGraph.relationships)
-        : new Map<string, GraphPosition>(),
-    [visibleGraph],
+      buildNodePositions(
+        visibleGraph.people,
+        visibleGraph.relationships,
+        selectedGroupId,
+      ),
+    [selectedGroupId, visibleGraph],
   );
 
-  if (!snapshot || !visibleGraph || snapshot.people.length === 0) {
-    return (
-      <div className="flex min-h-[20rem] flex-col items-center justify-center rounded-2xl border border-border/28 bg-card/35 px-6 py-10 text-center">
-        <div className="text-sm font-semibold text-txt">
-          No identities match the current filters.
-        </div>
-        <p className="mt-2 max-w-lg text-sm leading-6 text-muted">
-          The graph will render once the relationships has people, identity
-          links, and relationships to visualize.
-        </p>
-      </div>
-    );
-  }
+  const directNeighborIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!visibleGraph || !selectedGroupId) {
+      return ids;
+    }
+    for (const edge of visibleGraph.relationships) {
+      if (
+        edge.sourcePersonId === selectedGroupId ||
+        edge.targetPersonId === selectedGroupId
+      ) {
+        ids.add(otherEndpoint(edge, selectedGroupId));
+      }
+    }
+    return ids;
+  }, [selectedGroupId, visibleGraph]);
+
+  const selectedPerson = useMemo(
+    () =>
+      visibleGraph.people.find(
+        (person) => person.groupId === selectedGroupId,
+      ) ?? null,
+    [selectedGroupId, visibleGraph],
+  );
 
   const showTooltipForNode = (
     person: RelationshipsPersonSummary,
-    event: React.MouseEvent,
+    event: MouseEvent,
   ) => {
-    const rect = (
-      event.currentTarget.closest("[data-graph-container]") as HTMLElement
-    )?.getBoundingClientRect();
-    if (!rect) return;
+    const container = event.currentTarget.closest("[data-graph-container]");
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
     setTooltip({
       kind: "node",
       person,
@@ -582,12 +770,11 @@ export function RelationshipsGraphPanel({
 
   const showTooltipForEdge = (
     edge: RelationshipsGraphEdge,
-    event: React.MouseEvent,
+    event: MouseEvent,
   ) => {
-    const rect = (
-      event.currentTarget.closest("[data-graph-container]") as HTMLElement
-    )?.getBoundingClientRect();
-    if (!rect) return;
+    const container = event.currentTarget.closest("[data-graph-container]");
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
     setTooltip({
       kind: "edge",
       edge,
@@ -597,203 +784,278 @@ export function RelationshipsGraphPanel({
   };
 
   const hideTooltip = () => setTooltip(null);
+  const zoomOut = () =>
+    setZoom((currentZoom) =>
+      clamp(Number((currentZoom - ZOOM_STEP).toFixed(2)), MIN_ZOOM, MAX_ZOOM),
+    );
+  const zoomIn = () =>
+    setZoom((currentZoom) =>
+      clamp(Number((currentZoom + ZOOM_STEP).toFixed(2)), MIN_ZOOM, MAX_ZOOM),
+    );
+  const fitGraph = () => setZoom(fittedZoom);
+  const actualSize = () => setZoom(1);
+  const zoomPercent = `${Math.round(zoom * 100)}%`;
+  const graphWidth = GRAPH_WIDTH * zoom;
+  const graphHeight = GRAPH_HEIGHT * zoom;
 
   return (
-    <div className={compact ? "space-y-3" : "space-y-4"}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            Identity Graph
+    <TooltipProvider delayDuration={160} skipDelayDuration={80}>
+      <div className={compact ? "space-y-3" : "space-y-4"}>
+        <div
+          className={
+            compact
+              ? "flex flex-col gap-3"
+              : "flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
+          }
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-accent/24 bg-accent/10 text-accent">
+              <Network className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+                Relationship map
+              </div>
+              <div
+                className={`${compact ? "mt-1 text-lg" : "mt-2 text-xl"} font-semibold text-txt`}
+              >
+                {selectedPerson
+                  ? selectedPerson.displayName
+                  : "People and links"}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                <span>{visibleGraph.modeLabel}</span>
+                {visibleGraph.truncated ? (
+                  <span>
+                    showing {visibleGraph.people.length} of{" "}
+                    {snapshot.stats.totalPeople}
+                  </span>
+                ) : null}
+                <span className="inline-flex items-center gap-1">
+                  <UserRound className="h-3.5 w-3.5" />
+                  {visibleGraph.people.length}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <Link2 className="h-3.5 w-3.5" />
+                  {visibleGraph.relationships.length}
+                </span>
+              </div>
+            </div>
           </div>
+
           <div
-            className={`${compact ? "mt-1 text-lg" : "mt-2 text-xl"} font-semibold text-txt`}
+            className={
+              compact
+                ? "flex flex-col gap-2"
+                : "flex flex-col gap-2 lg:items-end"
+            }
           >
-            Canonical people and cross-person relationships
-          </div>
-          <div className="mt-2 text-xs text-muted">
-            {visibleGraph.modeLabel}
-            {visibleGraph.truncated
-              ? ` · showing ${visibleGraph.people.length} of ${snapshot.stats.totalPeople}`
-              : null}
+            <GraphLegend />
+            <div className="flex flex-wrap items-center gap-2">
+              <GraphIconButton
+                label="Zoom out"
+                disabled={zoom <= MIN_ZOOM}
+                onClick={zoomOut}
+              >
+                <Minus className="h-4 w-4" />
+              </GraphIconButton>
+              <GraphIconButton label="Fit graph" onClick={fitGraph}>
+                <Focus className="h-4 w-4" />
+              </GraphIconButton>
+              <GraphIconButton label="Actual size" onClick={actualSize}>
+                <Maximize2 className="h-4 w-4" />
+              </GraphIconButton>
+              <GraphIconButton
+                label="Zoom in"
+                disabled={zoom >= MAX_ZOOM}
+                onClick={zoomIn}
+              >
+                <Plus className="h-4 w-4" />
+              </GraphIconButton>
+              <span className="min-w-12 text-right text-xs-tight font-semibold tabular-nums text-muted">
+                {zoomPercent}
+              </span>
+            </div>
           </div>
         </div>
-        <GraphLegend />
-      </div>
 
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: graph container handles tooltip dismiss on mouse leave */}
-      <div
-        className="relative overflow-hidden rounded-3xl border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))]"
-        data-graph-container
-        onMouseLeave={hideTooltip}
-      >
-        <GraphTooltip state={tooltip} />
-        <svg
-          viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
-          className={`${compact ? "h-[20rem]" : "h-[30rem]"} w-full`}
-          role="img"
-          aria-label="Relationships graph"
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: graph container handles tooltip dismiss on mouse leave */}
+        <div
+          className={`${compact ? "max-h-[34rem]" : "max-h-[42rem]"} relative overflow-auto rounded-2xl border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))]`}
+          data-graph-container
+          onMouseLeave={hideTooltip}
         >
-          <defs>
-            <radialGradient
-              id="relationships-node-fill"
-              cx="50%"
-              cy="35%"
-              r="70%"
-            >
-              <stop offset="0%" stopColor="rgba(255,240,199,0.92)" />
-              <stop offset="100%" stopColor="rgba(240,185,11,0.86)" />
-            </radialGradient>
-            <radialGradient
-              id="relationships-owner-fill"
-              cx="50%"
-              cy="35%"
-              r="70%"
-            >
-              <stop offset="0%" stopColor="rgba(199,210,255,0.94)" />
-              <stop offset="100%" stopColor="rgba(99,102,241,0.82)" />
-            </radialGradient>
-          </defs>
+          <GraphTooltip state={tooltip} />
+          <svg
+            viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
+            className="block max-w-none"
+            style={{ width: graphWidth, height: graphHeight }}
+            role="img"
+            aria-label="Relationships graph"
+          >
+            <defs>
+              <radialGradient
+                id="relationships-node-fill"
+                cx="50%"
+                cy="35%"
+                r="70%"
+              >
+                <stop offset="0%" stopColor="rgba(255,240,199,0.96)" />
+                <stop offset="100%" stopColor="rgba(240,185,11,0.9)" />
+              </radialGradient>
+              <radialGradient
+                id="relationships-owner-fill"
+                cx="50%"
+                cy="35%"
+                r="70%"
+              >
+                <stop offset="0%" stopColor="rgba(199,210,255,0.98)" />
+                <stop offset="100%" stopColor="rgba(99,102,241,0.86)" />
+              </radialGradient>
+            </defs>
 
-          {visibleGraph.relationships.map((edge) => {
-            const source = positions.get(edge.sourcePersonId);
-            const target = positions.get(edge.targetPersonId);
-            if (!source || !target) {
-              return null;
-            }
-            const midX = (source.x + target.x) / 2;
-            const midY = (source.y + target.y) / 2;
-            return (
-              <g key={edge.id}>
-                <line
-                  x1={source.x}
-                  y1={source.y}
-                  x2={target.x}
-                  y2={target.y}
-                  stroke={edgeColor(edge)}
-                  strokeWidth={Math.max(1.5, edge.strength * 7)}
-                  strokeLinecap="round"
-                  opacity={0.9}
-                />
-                {/* biome-ignore lint/a11y/noStaticElementInteractions: SVG edge hover for tooltip display only */}
-                <line
-                  x1={source.x}
-                  y1={source.y}
-                  x2={target.x}
-                  y2={target.y}
-                  stroke="transparent"
-                  strokeWidth={16}
-                  className="cursor-pointer"
-                  onMouseEnter={(e) => {
-                    const rect = (
-                      e.currentTarget.closest(
-                        "[data-graph-container]",
-                      ) as HTMLElement
-                    )?.getBoundingClientRect();
-                    if (rect) {
-                      setTooltip({
-                        kind: "edge",
-                        edge,
-                        x: (midX / GRAPH_WIDTH) * rect.width,
-                        y: (midY / GRAPH_HEIGHT) * rect.height,
-                      });
-                    }
-                  }}
-                  onMouseMove={(e) => showTooltipForEdge(edge, e)}
-                  onMouseLeave={hideTooltip}
-                />
-              </g>
-            );
-          })}
-
-          {visibleGraph.people.map((person) => {
-            const position = positions.get(person.groupId);
-            if (!position) {
-              return null;
-            }
-            const radius = nodeRadius(person);
-            const selected = selectedGroupId === person.groupId;
-            const isOwner = person.isOwner;
-            return (
-              <g key={person.groupId}>
-                <g
-                  transform={`translate(${position.x}, ${position.y})`}
-                  className="pointer-events-none"
-                >
-                  {/* Selection halo */}
-                  <circle
-                    r={radius + (selected ? 10 : 0)}
-                    fill={selected ? "rgba(240,185,11,0.12)" : "transparent"}
-                    stroke={selected ? "rgba(240,185,11,0.34)" : "transparent"}
-                    strokeWidth={selected ? 2 : 0}
-                  />
-                  {/* Owner outer ring */}
-                  {isOwner && !selected ? (
-                    <circle
-                      r={radius + 5}
-                      fill="transparent"
-                      stroke="rgba(99,102,241,0.4)"
-                      strokeWidth={2}
-                      strokeDasharray="4 3"
-                    />
-                  ) : null}
-                  {/* Main node */}
-                  <circle
-                    r={radius}
-                    fill={
-                      isOwner
-                        ? "url(#relationships-owner-fill)"
-                        : "url(#relationships-node-fill)"
-                    }
-                    stroke={
-                      selected
-                        ? "rgba(255,255,255,0.92)"
-                        : isOwner
-                          ? "rgba(99,102,241,0.7)"
-                          : "rgba(28,34,43,0.55)"
-                    }
-                    strokeWidth={selected ? 3 : isOwner ? 2.5 : 1.5}
-                  />
-                  <text
-                    textAnchor="middle"
-                    y={-3}
-                    className={`text-xs font-semibold ${isOwner ? "fill-white" : "fill-black"}`}
-                  >
-                    {shortLabel(person.displayName, 15)}
-                  </text>
-                  <text
-                    textAnchor="middle"
-                    y={12}
-                    className={`text-3xs font-medium ${isOwner ? "fill-white/70" : "fill-black/70"}`}
-                  >
-                    {shortLabel(
-                      person.relationshipCount > 0
-                        ? `${person.relationshipCount} links`
-                        : `${person.memberEntityIds.length} identities`,
-                      18,
+            {visibleGraph.relationships.map((edge) => {
+              const source = positions.get(edge.sourcePersonId);
+              const target = positions.get(edge.targetPersonId);
+              if (!source || !target) {
+                return null;
+              }
+              const touchesSelected =
+                selectedGroupId !== null &&
+                (edge.sourcePersonId === selectedGroupId ||
+                  edge.targetPersonId === selectedGroupId);
+              return (
+                <g key={edge.id}>
+                  <line
+                    x1={source.x}
+                    y1={source.y}
+                    x2={target.x}
+                    y2={target.y}
+                    stroke={edgeColor(edge)}
+                    strokeWidth={Math.max(
+                      touchesSelected ? 3 : 1.5,
+                      edge.strength * (touchesSelected ? 8 : 5.5),
                     )}
-                  </text>
-                </g>
-                <foreignObject
-                  x={position.x - radius - 12}
-                  y={position.y - radius - 12}
-                  width={(radius + 12) * 2}
-                  height={(radius + 12) * 2}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onSelectGroupId(person.groupId)}
-                    onMouseEnter={(e) => showTooltipForNode(person, e)}
-                    onMouseMove={(e) => showTooltipForNode(person, e)}
-                    onMouseLeave={hideTooltip}
-                    className="h-full w-full rounded-full bg-transparent"
-                    aria-label={`Select ${person.displayName}`}
+                    strokeLinecap="round"
+                    opacity={
+                      selectedGroupId ? (touchesSelected ? 0.95 : 0.24) : 0.78
+                    }
                   />
-                </foreignObject>
-              </g>
-            );
-          })}
-        </svg>
+                  {/* biome-ignore lint/a11y/noStaticElementInteractions: SVG edge hover for tooltip display only */}
+                  <line
+                    x1={source.x}
+                    y1={source.y}
+                    x2={target.x}
+                    y2={target.y}
+                    stroke="transparent"
+                    strokeWidth={18}
+                    className="cursor-pointer"
+                    onMouseEnter={(event) => showTooltipForEdge(edge, event)}
+                    onMouseMove={(event) => showTooltipForEdge(edge, event)}
+                    onMouseLeave={hideTooltip}
+                  />
+                </g>
+              );
+            })}
+
+            {visibleGraph.people.map((person) => {
+              const position = positions.get(person.groupId);
+              if (!position) {
+                return null;
+              }
+              const selected = selectedGroupId === person.groupId;
+              const directlyConnected = directNeighborIds.has(person.groupId);
+              const muted =
+                selectedGroupId !== null && !selected && !directlyConnected;
+              const radius = nodeRadius(person) + (selected ? 6 : 0);
+              const isOwner = person.isOwner;
+              return (
+                <g key={person.groupId}>
+                  <g
+                    transform={`translate(${position.x}, ${position.y})`}
+                    className="pointer-events-none"
+                    opacity={muted ? 0.52 : 1}
+                  >
+                    <circle
+                      r={radius + (selected ? 18 : directlyConnected ? 8 : 0)}
+                      fill="transparent"
+                      stroke={
+                        selected
+                          ? "rgba(240,185,11,0.52)"
+                          : directlyConnected
+                            ? "rgba(34,197,94,0.38)"
+                            : "transparent"
+                      }
+                      strokeWidth={selected ? 3 : directlyConnected ? 2 : 0}
+                    />
+                    {isOwner ? (
+                      <circle
+                        r={radius + 11}
+                        fill="transparent"
+                        stroke="rgba(99,102,241,0.56)"
+                        strokeWidth={2}
+                        strokeDasharray="5 4"
+                      />
+                    ) : null}
+                    <circle
+                      r={radius}
+                      fill={
+                        isOwner
+                          ? "url(#relationships-owner-fill)"
+                          : "url(#relationships-node-fill)"
+                      }
+                      stroke={
+                        selected
+                          ? "rgba(255,255,255,0.96)"
+                          : isOwner
+                            ? "rgba(99,102,241,0.78)"
+                            : "rgba(28,34,43,0.56)"
+                      }
+                      strokeWidth={selected ? 3.5 : isOwner ? 2.5 : 1.5}
+                    />
+                    <text
+                      textAnchor="middle"
+                      y={5}
+                      className={`text-sm font-semibold ${isOwner ? "fill-white" : "fill-black"}`}
+                    >
+                      {nodeInitials(person.displayName)}
+                    </text>
+                    <text
+                      textAnchor="middle"
+                      y={radius + 24}
+                      className="text-xs font-semibold"
+                      fill="var(--txt)"
+                      stroke="rgba(255,255,255,0.82)"
+                      strokeWidth={4}
+                      paintOrder="stroke"
+                    >
+                      {shortLabel(person.displayName, 19)}
+                    </text>
+                  </g>
+                  <foreignObject
+                    x={position.x - 90}
+                    y={position.y - radius - 18}
+                    width={180}
+                    height={radius + 72}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onSelectPersonId(person.primaryEntityId)}
+                      onMouseEnter={(event) =>
+                        showTooltipForNode(person, event)
+                      }
+                      onMouseMove={(event) => showTooltipForNode(person, event)}
+                      onMouseLeave={hideTooltip}
+                      className="h-full w-full rounded-2xl bg-transparent"
+                      aria-label={`Select ${person.displayName}`}
+                    />
+                  </foreignObject>
+                </g>
+              );
+            })}
+          </svg>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
