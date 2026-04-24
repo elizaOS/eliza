@@ -114,6 +114,22 @@ describe("AppWorkspaceChrome", () => {
     expect(expandButton.className).not.toContain("border-border/40");
   });
 
+  it("omits the right chat rail when the main surface owns chat", () => {
+    render(
+      <AppWorkspaceChrome
+        testId="game-shell"
+        chatScope="page-apps"
+        chatDisabled
+        main={<div data-testid="game-main">Game content</div>}
+      />,
+    );
+
+    expect(screen.getByTestId("game-main")).toBeTruthy();
+    expect(screen.queryByTestId("page-scoped-chat")).toBeNull();
+    expect(screen.queryByTestId("game-shell-chat-sidebar")).toBeNull();
+    expect(screen.queryByTestId("game-shell-chat-collapse")).toBeNull();
+  });
+
   it("does not reserve right-chat width on mobile until the user opens it", () => {
     useMediaQueryMock.mockImplementation(
       (query: string) => query === "(max-width: 639px)",

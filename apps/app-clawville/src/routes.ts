@@ -178,7 +178,21 @@ function formatNearestBuildingGoal(
   perception?: Record<string, unknown> | null,
 ): string | null {
   const label = readNearestBuildingLabel(perception);
-  return label ? `Nearest: ${label}` : "Exploring the reef";
+  return label
+    ? `Near ${label}. Visit or ask the local NPC.`
+    : "Exploring the reef";
+}
+
+function formatSessionSummary(
+  connectResult: ClawvilleConnectResponse,
+  perception?: Record<string, unknown> | null,
+): string {
+  const location = readNearestBuildingLabel(perception);
+  const learned = connectResult.knowledge.length;
+  const skillLabel = learned === 1 ? "skill" : "skills";
+  return location
+    ? `Near ${location}. ${learned} ${skillLabel} learned.`
+    : `Exploring ClawVille. ${learned} ${skillLabel} learned.`;
 }
 
 function buildSessionState(
@@ -186,8 +200,6 @@ function buildSessionState(
   connectResult: ClawvilleConnectResponse | null,
   perception?: Record<string, unknown> | null,
 ): AppSessionState {
-  const agentName = config.miladyCharacterName ?? "Milady Agent";
-
   if (!connectResult) {
     return {
       sessionId: config.miladyAgentId ?? "clawville",
@@ -201,24 +213,13 @@ function buildSessionState(
       summary: "Connecting to ClawVille...",
       goalLabel: null,
       suggestedPrompts: [
-        "Move to Krusty Krab",
+        "Move to tool workshop",
         "Visit the nearest building",
         "Ask the nearest NPC what to learn next",
       ],
       telemetry: null,
     };
   }
-
-  const returningMarker = connectResult.isReturning ? "returning" : "new";
-  const walletShort = connectResult.walletAddress
-    ? `${connectResult.walletAddress.slice(0, 6)}...${connectResult.walletAddress.slice(-4)}`
-    : "no wallet";
-  const summaryParts = [
-    `${agentName} (${returningMarker})`,
-    `session #${connectResult.totalSessions}`,
-    walletShort,
-    `${connectResult.knowledge.length} skills learned`,
-  ];
 
   return {
     sessionId: connectResult.sessionId,
@@ -229,13 +230,13 @@ function buildSessionState(
     agentId: connectResult.agentId,
     canSendCommands: true,
     controls: [],
-    summary: summaryParts.join(" | "),
+    summary: formatSessionSummary(connectResult, perception),
     goalLabel: formatNearestBuildingGoal(perception),
     suggestedPrompts: [
-      "Move to Krusty Krab",
+      "Move to tool workshop",
       "Visit the nearest building",
       "Ask the nearest NPC what to learn next",
-      "Move to Chum Bucket",
+      "Move to skill forge",
     ],
     telemetry: {
       walletAddress: connectResult.walletAddress,
