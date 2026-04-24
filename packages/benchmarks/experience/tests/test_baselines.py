@@ -15,7 +15,7 @@ from elizaos_experience_bench.evaluators.retrieval import RetrievalEvaluator
 from elizaos_experience_bench.evaluators.reranking import RerankingEvaluator
 from elizaos_experience_bench.evaluators.learning import LearningCycleEvaluator
 from elizaos_experience_bench.generator import ExperienceGenerator
-from elizaos_plugin_experience.service import ExperienceService
+from elizaos_experience_bench.service import ExperienceService
 
 
 # ---------------------------------------------------------------------------

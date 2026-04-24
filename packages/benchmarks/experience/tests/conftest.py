@@ -5,11 +5,9 @@ from pathlib import Path
 
 import pytest
 
-# Add benchmark and plugin paths
+# Add benchmark package path.
 benchmark_root = Path(__file__).resolve().parents[1]
-plugin_root = Path(__file__).resolve().parents[3] / "plugins" / "plugin-experience" / "python"
 sys.path.insert(0, str(benchmark_root))
-sys.path.insert(0, str(plugin_root))
 
 from elizaos_experience_bench.generator import ExperienceGenerator
 

@@ -29,26 +29,9 @@ export const BUNDLED_WORKSPACE_BUILDS = [
     ),
     args: ["../../../scripts/build-bundled-agent-skills-artifact.mjs"],
   },
-  // NOTE: earlier revisions of this file (cherry-picked from the
-  // unmerged commit eb4846c50) tried to build 12 more workspace
-  // plugins — plugin-anthropic, plugin-cron, plugin-edge-tts,
-  // plugin-experience, plugin-local-embedding, plugin-ollama,
-  // plugin-openai, plugin-personality, plugin-plugin-manager,
-  // plugin-shell, plugin-sql, plugin-trust — so that their `dist/`
-  // declarations would be available for TypeScript resolution when
-  // `ELIZA_SKIP_LOCAL_UPSTREAMS=1`. In practice at least one of
-  // those plugins (plugin-anthropic) has a pre-existing
-  // `ModelType.TEXT_MEDIUM` compat bug against the current
-  // `@elizaos/core`, which makes the postinstall fail as soon as
-  // the anthropic build is attempted:
-  //
-  //   Error: index.ts(170,43): error TS2339: Property 'TEXT_MEDIUM'
-  //   does not exist on type '{...}'.
-  //
-  // Nothing we ship here consumes those plugins at build-time from
-  // source, so building them is a footgun. Keep only the two
-  // historically-bundled builds (plugin-agent-skills) that actually need to be on disk for
-  // downstream packaging to work.
+  // Only build workspaces that downstream packaging consumes directly. Building
+  // every locally-linked plugin during postinstall makes unrelated plugin
+  // compatibility bugs fail app setup.
 ];
 
 function runCommand(command, args, { cwd, env = process.env, label } = {}) {
