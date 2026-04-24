@@ -49,7 +49,7 @@ For complete guides and API references, visit our official **[documentation](htt
 - 🛠️ **Highly Extensible**: Build your own functionality with a powerful plugin system.
 - 📦 **It Just Works**: A seamless setup and development experience from day one.
 
-> **Looking for plugins?** Browse the community plugin registry at **[elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry)** for a full list of available ElizaOS plugins.
+> **Looking for plugins?** Browse the community plugin registry at **[elizaOS-plugins/registry](https://github.com/elizaOS-plugins/registry)** for a full list of available elizaOS plugins.
 
 ## 🏁 Getting Started (5-Minute Quick Start)
 
