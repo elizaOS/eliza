@@ -27,6 +27,7 @@ import type {
   GetLifeOpsInboxRequest,
   IngestLifeOpsGmailEventRequest,
   LifeOpsCalendarEventUpdate,
+  ListLifeOpsCalendarsRequest,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsInboxChannel,
@@ -39,6 +40,7 @@ import type {
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
+  SetLifeOpsCalendarIncludedRequest,
   SetLifeOpsReminderPreferenceRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
@@ -796,6 +798,10 @@ export async function handleLifeOpsRoutes(
         mode: parseConnectorModeQuery(url.searchParams.get("mode")),
         side: parseConnectorSideQuery(url.searchParams.get("side")),
         calendarId: url.searchParams.get("calendarId") ?? undefined,
+        includeHiddenCalendars: parseBooleanQuery(
+          url.searchParams.get("includeHiddenCalendars"),
+          "includeHiddenCalendars",
+        ),
         timeMin: url.searchParams.get("timeMin") ?? undefined,
         timeMax: url.searchParams.get("timeMax") ?? undefined,
         timeZone: url.searchParams.get("timeZone") ?? undefined,
@@ -806,6 +812,53 @@ export async function handleLifeOpsRoutes(
         grantId: url.searchParams.get("grantId") ?? undefined,
       };
       json(res, await service.getCalendarFeed(url, request));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/calendar/calendars") {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
+    return runRoute(ctx, async (service) => {
+      const request: ListLifeOpsCalendarsRequest = {
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        grantId: url.searchParams.get("grantId") ?? undefined,
+      };
+      const calendars = await service.listCalendars(url, request);
+      json(res, { calendars });
+    });
+  }
+
+  const setCalendarIncludedMatch =
+    method === "PUT"
+      ? pathname.match(/^\/api\/lifeops\/calendar\/calendars\/([^/]+)\/include$/)
+      : null;
+  if (setCalendarIncludedMatch) {
+    if (rateLimitRequest(ctx, "google_api_write")) return true;
+    const calendarId = decodeMatchedPathComponent(
+      ctx,
+      setCalendarIncludedMatch,
+      1,
+      res,
+      "calendarId",
+    );
+    if (!calendarId) return true;
+    const body = await readJsonBody<SetLifeOpsCalendarIncludedRequest>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      if (body.calendarId && body.calendarId !== calendarId) {
+        throw new LifeOpsServiceError(
+          400,
+          "calendarId must match between path and request body",
+        );
+      }
+      const calendar = await service.setCalendarIncluded(url, {
+        calendarId,
+        includeInFeed: body.includeInFeed,
+        mode: body.mode,
+        side: body.side,
+        grantId: body.grantId,
+      });
+      json(res, { calendar });
     });
   }
 
