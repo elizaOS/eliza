@@ -1,6 +1,7 @@
 /** Character action helpers — CRUD and draft management. */
 
 import type { CharacterData, ElizaClient } from "../api/client";
+import { tokenizeNameOccurrences } from "../utils/name-tokens";
 
 type MessageExampleGroup = {
   examples: Array<{ name: string; content: { text: string } }>;
@@ -207,6 +208,7 @@ export function normalizeGeneratedMessageExamples(
 
 export function prepareDraftForSave(
   draft: CharacterData,
+  previousName?: string,
 ): Record<string, unknown> {
   // Only pick fields the API schema accepts (.strict() rejects unknown keys)
   const result: Record<string, unknown> = {};
@@ -220,16 +222,37 @@ export function prepareDraftForSave(
   } else if (typeof result.name === "string") {
     result.username = result.name;
   }
-  if (draft.system) result.system = draft.system;
+
+  // Build a tokenizer that replaces whole-word occurrences of the
+  // current *and* previous agent name with `{{name}}`. Load-side expansion
+  // (useCharacterState.loadCharacter → replaceNameTokens) renders them back
+  // against whatever the current name is, so renames now propagate through
+  // every free-text field without manual edits.
+  //
+  // Both names are tokenized so a rename within the same save pass also
+  // catches old-name literals that the user didn't hand-edit.
+  const currentName = typeof result.name === "string" ? result.name : "";
+  const previousNameTrimmed = previousName?.trim() ?? "";
+  const tokenize = (value: string): string => {
+    let out = value;
+    if (currentName) out = tokenizeNameOccurrences(out, currentName);
+    if (previousNameTrimmed && previousNameTrimmed !== currentName) {
+      out = tokenizeNameOccurrences(out, previousNameTrimmed);
+    }
+    return out;
+  };
+
+  if (draft.system) result.system = tokenize(draft.system);
 
   if (typeof draft.bio === "string") {
     const lines = draft.bio
       .split("\n")
       .map((l: string) => l.trim())
-      .filter((l: string) => l.length > 0);
+      .filter((l: string) => l.length > 0)
+      .map(tokenize);
     if (lines.length > 0) result.bio = lines;
   } else if (Array.isArray(draft.bio) && draft.bio.length > 0) {
-    result.bio = draft.bio;
+    result.bio = draft.bio.map(tokenize);
   }
 
   const adjectives = (draft.adjectives ?? []).filter(
@@ -237,12 +260,14 @@ export function prepareDraftForSave(
   );
   if (adjectives.length > 0) result.adjectives = adjectives;
 
-  const topics = (draft.topics ?? []).filter((s) => s.trim().length > 0);
+  const topics = (draft.topics ?? [])
+    .filter((s) => s.trim().length > 0)
+    .map(tokenize);
   if (topics.length > 0) result.topics = topics;
 
-  const postExamples = (draft.postExamples ?? []).filter(
-    (s) => s.trim().length > 0,
-  );
+  const postExamples = (draft.postExamples ?? [])
+    .filter((s) => s.trim().length > 0)
+    .map(tokenize);
   if (postExamples.length > 0) result.postExamples = postExamples;
 
   if (draft.messageExamples != null) {
@@ -273,7 +298,7 @@ export function prepareDraftForSave(
           return {
             name: msg.name.trim(),
             content: {
-              text: msg.content.text.trim(),
+              text: tokenize(msg.content.text.trim()),
               ...(originalMessage?.content?.actions
                 ? { actions: originalMessage.content.actions }
                 : {}),
@@ -287,9 +312,9 @@ export function prepareDraftForSave(
 
   if (draft.style) {
     const style: Record<string, string[]> = {};
-    if (draft.style.all?.length) style.all = draft.style.all;
-    if (draft.style.chat?.length) style.chat = draft.style.chat;
-    if (draft.style.post?.length) style.post = draft.style.post;
+    if (draft.style.all?.length) style.all = draft.style.all.map(tokenize);
+    if (draft.style.chat?.length) style.chat = draft.style.chat.map(tokenize);
+    if (draft.style.post?.length) style.post = draft.style.post.map(tokenize);
     if (Object.keys(style).length > 0) result.style = style;
   }
 
