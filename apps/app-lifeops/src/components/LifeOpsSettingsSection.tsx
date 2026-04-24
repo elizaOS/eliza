@@ -5,15 +5,14 @@ import {
   useApp,
   useMediaQuery,
 } from "@elizaos/app-core";
-import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
 } from "@elizaos/app-lifeops/contracts";
-import { Copy, ExternalLink, GitBranch, Plug2, X } from "lucide-react";
+import { Copy, ExternalLink, GitBranch, X } from "lucide-react";
 import { useCallback, useState } from "react";
-import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
+import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
 import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard";
 
 const MAX_GOOGLE_ACCOUNTS_PER_SIDE = 6;
@@ -126,18 +125,6 @@ function modeLabel(mode: LifeOpsConnectorMode, t: TranslateFn): string {
       })
     : t("lifeopssettings.cloud", {
         defaultValue: "Cloud",
-      });
-}
-
-function modeDescription(mode: VisibleConnectorMode, t: TranslateFn): string {
-  return mode === "local"
-    ? t("lifeopssettings.localModeDescription", {
-        defaultValue:
-          "Only while this app is open.",
-      })
-    : t("lifeopssettings.cloudModeDescription", {
-        defaultValue:
-          "Works even when the app is closed.",
       });
 }
 
@@ -397,64 +384,64 @@ function GoogleConnectorSideCard({
           <span>Google</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-        <SegmentedControl<VisibleConnectorMode>
-          aria-label={t("lifeopssettings.googleModeAria", {
-            defaultValue: "{{side}} Google mode",
-            side: sideTitle(side, t),
-          })}
-          value={visibleMode}
-          onValueChange={(mode) => void selectMode(mode)}
-          items={VISIBLE_CONNECTOR_MODES.map((mode) => ({
-            value: mode,
-            label: modeLabel(mode, t),
-            disabled: controlDisabled,
-          }))}
-          className="w-full bg-bg/40 p-0.5 sm:w-auto"
-          buttonClassName="min-h-8 flex-1 px-3 py-1.5 text-xs"
-        />
-        {!status?.connected ? (
-          <Button
-            size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={controlDisabled}
-            onClick={() => void connect()}
-          >
-            {status?.reason === "needs_reauth"
-              ? t("common.reconnect", {
-                  defaultValue: "Reconnect",
-                })
-              : t("common.connect", {
-                  defaultValue: "Connect",
-                })}
-          </Button>
-        ) : null}
-        {status?.connected &&
-        connectedAccounts.length < MAX_GOOGLE_ACCOUNTS_PER_SIDE ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={controlDisabled}
-            onClick={() => void connectAdditional()}
-          >
-            {t("common.add", {
-              defaultValue: "Add",
+          <SegmentedControl<VisibleConnectorMode>
+            aria-label={t("lifeopssettings.googleModeAria", {
+              defaultValue: "{{side}} Google mode",
+              side: sideTitle(side, t),
             })}
-          </Button>
-        ) : null}
-        {status?.connected && connectedAccounts.length <= 1 ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold"
-            disabled={controlDisabled}
-            onClick={() => void disconnect()}
-          >
-            {t("common.disconnect", {
-              defaultValue: "Disconnect",
-            })}
-          </Button>
-        ) : null}
+            value={visibleMode}
+            onValueChange={(mode) => void selectMode(mode)}
+            items={VISIBLE_CONNECTOR_MODES.map((mode) => ({
+              value: mode,
+              label: modeLabel(mode, t),
+              disabled: controlDisabled,
+            }))}
+            className="w-full bg-bg/40 p-0.5 sm:w-auto"
+            buttonClassName="min-h-8 flex-1 px-3 py-1.5 text-xs"
+          />
+          {!status?.connected ? (
+            <Button
+              size="sm"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={controlDisabled}
+              onClick={() => void connect()}
+            >
+              {status?.reason === "needs_reauth"
+                ? t("common.reconnect", {
+                    defaultValue: "Reconnect",
+                  })
+                : t("common.connect", {
+                    defaultValue: "Connect",
+                  })}
+            </Button>
+          ) : null}
+          {status?.connected &&
+          connectedAccounts.length < MAX_GOOGLE_ACCOUNTS_PER_SIDE ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={controlDisabled}
+              onClick={() => void connectAdditional()}
+            >
+              {t("common.add", {
+                defaultValue: "Add",
+              })}
+            </Button>
+          ) : null}
+          {status?.connected && connectedAccounts.length <= 1 ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
+              disabled={controlDisabled}
+              onClick={() => void disconnect()}
+            >
+              {t("common.disconnect", {
+                defaultValue: "Disconnect",
+              })}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -462,10 +449,6 @@ function GoogleConnectorSideCard({
         className={status?.connected ? "text-xs text-ok" : "text-xs text-muted"}
       >
         {currentStatusLabel}
-      </div>
-
-      <div className="text-xs leading-5 text-muted">
-        {modeDescription(visibleMode, t)}
       </div>
 
       {connectedAccounts.length > 0 ? (
@@ -601,9 +584,7 @@ export function LifeOpsSettingsSection({
       </div>
 
       {githubError ? (
-        <div className="py-1 text-xs text-muted">
-          {githubError}
-        </div>
+        <div className="py-1 text-xs text-muted">{githubError}</div>
       ) : null}
 
       <MobileSignalsSetupCard />

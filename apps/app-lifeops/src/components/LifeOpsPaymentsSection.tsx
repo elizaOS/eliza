@@ -1,17 +1,4 @@
-/**
- * LifeOpsPaymentsSection — Rocket Money-style dashboard showing:
- *   - Connected payment sources (CSV / Plaid / PayPal / manual)
- *   - Monthly spending summary with category breakdown
- *   - Detected recurring charges (subscriptions) with annualized cost
- *   - Gmail-detected subscriptions (merged view)
- *   - Add-source UX + CSV paste import
- */
 import { client } from "@elizaos/app-core";
-import type {
-  LifeOpsPaymentSource,
-  LifeOpsPaymentsDashboard,
-  LifeOpsRecurringCharge,
-} from "../lifeops/payment-types.js";
 import {
   CreditCard,
   DollarSign,
@@ -23,6 +10,11 @@ import {
   Upload,
 } from "lucide-react";
 import { type JSX, useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  LifeOpsPaymentSource,
+  LifeOpsPaymentsDashboard,
+  LifeOpsRecurringCharge,
+} from "../lifeops/payment-types.js";
 import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 
 function formatUsd(value: number): string {
@@ -231,18 +223,16 @@ export function LifeOpsPaymentsSection(): JSX.Element {
   }
 
   const dash = dashboard;
-  if (!dash) return <></>;
+  if (!dash) return null;
 
   return (
     <div className="flex h-full w-full flex-col gap-4 p-4">
       <header className="flex items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-base font-semibold">
-            <CreditCard className="h-4 w-4" aria-hidden /> Payments &amp; Subscriptions
+            <CreditCard className="h-4 w-4" aria-hidden /> Payments &amp;
+            Subscriptions
           </h1>
-          <p className="text-xs text-muted">
-            Track spending, detect recurring charges, and cancel subscriptions.
-          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -270,7 +260,6 @@ export function LifeOpsPaymentsSection(): JSX.Element {
         </div>
       ) : null}
 
-      {/* Top-line KPIs */}
       <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <Kpi
           label={`Last ${dash.spending.windowDays}d spend`}
@@ -290,7 +279,6 @@ export function LifeOpsPaymentsSection(): JSX.Element {
       </section>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Sources */}
         <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
           <header className="mb-2 flex items-center justify-between">
             <h2 className="text-sm font-semibold">Sources</h2>
@@ -303,10 +291,7 @@ export function LifeOpsPaymentsSection(): JSX.Element {
             </button>
           </header>
           {dash.sources.length === 0 ? (
-            <p className="text-xs text-muted">
-              No sources connected yet. Click “Add” to register a bank, CSV
-              import, PayPal, or Plaid source.
-            </p>
+            <p className="text-xs text-muted">No sources.</p>
           ) : (
             <ul className="space-y-2">
               {dash.sources.map((source) => (
@@ -354,13 +339,10 @@ export function LifeOpsPaymentsSection(): JSX.Element {
           )}
         </section>
 
-        {/* Top categories */}
         <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
           <h2 className="mb-2 text-sm font-semibold">Top categories</h2>
           {dash.spending.topCategories.length === 0 ? (
-            <p className="text-xs text-muted">
-              Import transactions to see a category breakdown.
-            </p>
+            <p className="text-xs text-muted">No categories.</p>
           ) : (
             <ul className="space-y-1.5">
               {dash.spending.topCategories.map((category) => (
@@ -381,19 +363,12 @@ export function LifeOpsPaymentsSection(): JSX.Element {
         </section>
       </div>
 
-      {/* Recurring charges */}
       <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
         <header className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold">Recurring charges</h2>
-          <span className="text-[11px] text-muted">
-            Detected from transaction stream
-          </span>
         </header>
         {dash.recurring.length === 0 ? (
-          <p className="text-xs text-muted">
-            No recurring charges detected yet. Import at least two months of
-            transactions for the detector to find patterns.
-          </p>
+          <p className="text-xs text-muted">No recurring charges.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-xs">
@@ -450,7 +425,6 @@ export function LifeOpsPaymentsSection(): JSX.Element {
         )}
       </section>
 
-      {/* Top merchants */}
       {dash.spending.topMerchants.length > 0 ? (
         <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
           <h2 className="mb-2 text-sm font-semibold">Top merchants</h2>

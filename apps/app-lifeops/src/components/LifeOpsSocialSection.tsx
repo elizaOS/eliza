@@ -99,16 +99,17 @@ export function LifeOpsSocialSection() {
         totalSeconds: item.totalSeconds,
       })) ?? [];
   const channels = (summary?.messages.channels ?? []).filter(
-    (channel) => channel.opened > 0 || channel.outbound > 0 || channel.inbound > 0,
+    (channel) =>
+      channel.opened > 0 || channel.outbound > 0 || channel.inbound > 0,
   );
   const messageOpened = summary?.messages.opened ?? 0;
   const messageOutbound = summary?.messages.outbound ?? 0;
   const messageInbound = summary?.messages.inbound ?? 0;
+  const hasMessageActivity =
+    messageOpened > 0 || messageOutbound > 0 || messageInbound > 0;
   const hasUsage =
     totalSeconds > 0 ||
-    messageOpened > 0 ||
-    messageOutbound > 0 ||
-    messageInbound > 0 ||
+    hasMessageActivity ||
     services.length > 0 ||
     devices.length > 0 ||
     browsers.length > 0 ||
@@ -184,7 +185,9 @@ export function LifeOpsSocialSection() {
 
       {!loading && !error && summary && !hasUsage ? (
         <HabitPanel title="Social" icon={<Share2 />}>
-          <div className="py-3 text-sm text-muted">No social activity today.</div>
+          <div className="py-3 text-sm text-muted">
+            No social activity today.
+          </div>
         </HabitPanel>
       ) : (
         <>
@@ -244,74 +247,75 @@ export function LifeOpsSocialSection() {
               />
             </HabitPanel>
 
-            <HabitPanel
-              title="Messages"
-              icon={<MessageSquareText />}
-              className="xl:col-span-4"
-            >
-              <div className="grid grid-cols-3 gap-2">
-                <MetricTile
-                  icon={<Eye />}
-                  value={String(messageOpened)}
-                  label="Opened"
-                />
-                <MetricTile
-                  icon={<Send />}
-                  value={String(messageOutbound)}
-                  label="Sent"
-                />
-                <MetricTile
-                  icon={<MessageSquareText />}
-                  value={String(messageInbound)}
-                  label="Received"
-                />
-              </div>
-              <div className="mt-3">
-                {channels.map((channel) => (
-                  <div
-                    key={channel.channel}
-                    className="flex items-center justify-between gap-3 border-t border-border/10 py-2 text-xs"
-                  >
-                    <span className="font-medium text-txt/90">{channel.label}</span>
-                    <span className="inline-flex items-center gap-2 tabular-nums text-muted">
-                      <span className="inline-flex items-center gap-1">
-                        <Eye className="h-3 w-3" aria-hidden />
-                        {channel.opened}
+            {hasMessageActivity || channels.length > 0 ? (
+              <HabitPanel
+                title="Messages"
+                icon={<MessageSquareText />}
+                className="xl:col-span-4"
+              >
+                <div className="grid grid-cols-3 gap-2">
+                  <MetricTile
+                    icon={<Eye />}
+                    value={String(messageOpened)}
+                    label="Opened"
+                  />
+                  <MetricTile
+                    icon={<Send />}
+                    value={String(messageOutbound)}
+                    label="Sent"
+                  />
+                  <MetricTile
+                    icon={<MessageSquareText />}
+                    value={String(messageInbound)}
+                    label="Received"
+                  />
+                </div>
+                <div className="mt-3">
+                  {channels.map((channel) => (
+                    <div
+                      key={channel.channel}
+                      className="flex items-center justify-between gap-3 border-t border-border/10 py-2 text-xs"
+                    >
+                      <span className="font-medium text-txt/90">
+                        {channel.label}
                       </span>
-                      <span className="inline-flex items-center gap-1">
-                        <Send className="h-3 w-3" aria-hidden />
-                        {channel.outbound}
+                      <span className="inline-flex items-center gap-2 tabular-nums text-muted">
+                        <span className="inline-flex items-center gap-1">
+                          <Eye className="h-3 w-3" aria-hidden />
+                          {channel.opened}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <Send className="h-3 w-3" aria-hidden />
+                          {channel.outbound}
+                        </span>
                       </span>
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </HabitPanel>
+                    </div>
+                  ))}
+                </div>
+              </HabitPanel>
+            ) : null}
           </div>
 
           <div className="grid gap-4 xl:grid-cols-3">
-            <HabitPanel title="Browser" icon={<Globe2 />}>
-              <BucketBars
-                items={browsers}
-                totalSeconds={totalSeconds}
-                emptyLabel="No browser data"
-              />
-            </HabitPanel>
-            <HabitPanel title="Surfaces" icon={<Monitor />}>
-              <BucketBars
-                items={surfaces}
-                totalSeconds={totalSeconds}
-                emptyLabel="No surface data"
-              />
-            </HabitPanel>
-            <HabitPanel title="Sessions" icon={<Share2 />}>
-              <BucketBars
-                items={sessionBuckets}
-                totalSeconds={totalSeconds}
-                emptyLabel="No sessions"
-                limit={8}
-              />
-            </HabitPanel>
+            {browsers.length > 0 ? (
+              <HabitPanel title="Browser" icon={<Globe2 />}>
+                <BucketBars items={browsers} totalSeconds={totalSeconds} />
+              </HabitPanel>
+            ) : null}
+            {surfaces.length > 0 ? (
+              <HabitPanel title="Surfaces" icon={<Monitor />}>
+                <BucketBars items={surfaces} totalSeconds={totalSeconds} />
+              </HabitPanel>
+            ) : null}
+            {sessionBuckets.length > 0 ? (
+              <HabitPanel title="Sessions" icon={<Share2 />}>
+                <BucketBars
+                  items={sessionBuckets}
+                  totalSeconds={totalSeconds}
+                  limit={8}
+                />
+              </HabitPanel>
+            ) : null}
           </div>
         </>
       )}

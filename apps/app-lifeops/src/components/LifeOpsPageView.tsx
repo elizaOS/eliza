@@ -5,27 +5,18 @@ import {
   isWebPlatform,
   openExternalUrl,
   PagePanel,
-  useMediaQuery,
   useApp,
+  useMediaQuery,
 } from "@elizaos/app-core";
 import { PageScopedChatPane } from "@elizaos/app-core/components/pages/PageScopedChatPane";
 import { AppWorkspaceChrome } from "@elizaos/app-core/components/workspace/AppWorkspaceChrome";
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   LIFEOPS_GITHUB_CALLBACK_EVENT,
   type LifeOpsGithubCallbackDetail,
 } from "../events/index.js";
 import { useLifeOpsAppState } from "../hooks/useLifeOpsAppState.js";
-import {
-  type LifeOpsSection,
-  useLifeOpsSection,
-} from "../hooks/useLifeOpsSection.js";
+import { useLifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import {
   consumeQueuedLifeOpsGithubCallback,
   dispatchLifeOpsGithubCallbackFromWindowMessage,
@@ -45,8 +36,8 @@ import {
 } from "./LifeOpsOperationalPanels";
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
-import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
 import { LifeOpsPaymentsSection } from "./LifeOpsPaymentsSection.js";
+import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
 import { LifeOpsScreenTimeSection } from "./LifeOpsScreenTimeSection.js";
 import {
   type LifeOpsSelection,
@@ -344,7 +335,7 @@ function buildAgentGithubSetup(params: {
           ? "0 / 1"
           : githubLoading
             ? t("common.loading", { defaultValue: "Loading" })
-            : t("lifeopspage.noCloudAgent", { defaultValue: "No cloud agent" })
+            : ""
       : t("lifeopspage.cloudRequired", { defaultValue: "Cloud required" }),
     connectLabel: primaryAgentGithubEntry?.github?.connected
       ? t("common.reconnect", { defaultValue: "Reconnect" })
@@ -382,7 +373,7 @@ function LifeOpsSettingsSectionView({
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-base font-semibold tracking-tight text-txt">
-          {t("lifeopspage.setupTitle", { defaultValue: "Settings" })}
+          {t("lifeopspage.accessTitle", { defaultValue: "Access" })}
         </h2>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Button
@@ -555,12 +546,11 @@ function LifeOpsWorkspaceInner() {
         connectionsResult.status === "rejected" ||
         agentsResult.status === "rejected"
       ) {
-          setGithubError(
-            t("lifeopspage.githubDetailsPartial", {
-              defaultValue:
-                "GitHub cloud details unavailable.",
-            }),
-          );
+        setGithubError(
+          t("lifeopspage.githubDetailsPartial", {
+            defaultValue: "GitHub cloud details unavailable.",
+          }),
+        );
       }
     } catch (cause) {
       setGithubError(

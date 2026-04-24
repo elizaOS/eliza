@@ -147,41 +147,47 @@ export function LifeOpsCapabilitiesPanel() {
         </Button>
       }
     >
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.capabilityHealth", {
-              defaultValue: "Health",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {status
-              ? `${status.summary.workingCount}/${status.summary.totalCount} working`
-              : t("common.loading", { defaultValue: "Loading" })}
-          </div>
-          {status ? (
+      {status ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.capabilityHealth", {
+                defaultValue: "Health",
+              })}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {`${status.summary.workingCount}/${status.summary.totalCount} working`}
+            </div>
             <div className="mt-1 text-xs text-muted">
               {status.summary.degradedCount} degraded ·{" "}
               {status.summary.blockedCount} blocked
             </div>
-          ) : null}
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.primaryCapability", {
-              defaultValue: "Awake clock",
-            })}
           </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {primary?.summary ?? "—"}
-          </div>
-          {status?.relativeTime ? (
-            <div className="mt-1 text-xs text-muted">
-              Computed {formatDateTime(status.relativeTime.computedAt)}
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.primaryCapability", {
+                defaultValue: "Awake clock",
+              })}
             </div>
-          ) : null}
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {primary?.summary ?? "—"}
+            </div>
+            {status.relativeTime ? (
+              <div className="mt-1 text-xs text-muted">
+                Computed {formatDateTime(status.relativeTime.computedAt)}
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 text-sm font-semibold text-txt">
+          {capabilities.error ? (
+            <span className="text-danger">{capabilities.error}</span>
+          ) : (
+            t("common.loading", { defaultValue: "Loading" })
+          )}
+        </div>
+      )}
 
       {status ? (
         <div className="flex flex-wrap gap-2">
@@ -198,7 +204,7 @@ export function LifeOpsCapabilitiesPanel() {
         </div>
       ) : null}
 
-      {capabilities.error ? (
+      {capabilities.error && status ? (
         <div className="text-xs text-danger">{capabilities.error}</div>
       ) : null}
     </PanelShell>
@@ -303,185 +309,173 @@ export function LifeOpsSchedulePanel() {
         </Button>
       }
     >
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.sleepStatus", {
-              defaultValue: "Sleep status",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {sleepLabel}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {merged
-              ? `${merged.circadianState} · ${formatPercent(merged.sleepConfidence)} confidence${
-                  merged.uncertaintyReason
-                    ? ` · ${merged.uncertaintyReason}`
-                    : ""
-                }`
-              : t("lifeopspanels.scheduleUnavailable", {
-                  defaultValue: "No schedule state available.",
-                })}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.awakeProbability", {
-              defaultValue: "Awake probability",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {merged
-              ? `${formatPercent(merged.awakeProbability.pAwake)} awake · ${formatPercent(merged.awakeProbability.pAsleep)} asleep`
-              : "—"}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {merged
-              ? `${formatPercent(merged.awakeProbability.pUnknown)} unknown · state ${merged.circadianState} (${formatPercent(merged.stateConfidence)})`
-              : t("lifeopspanels.scheduleUnavailable", {
-                  defaultValue: "No schedule state available.",
-                })}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.relativeTime", {
-              defaultValue: "Relative time",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {relativeWakeLabel}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {merged?.relativeTime.bedtimeTargetAt
-              ? t("lifeopspanels.bedtimeTarget", {
-                  defaultValue: "Bedtime target {{time}} · {{duration}}",
-                  time: formatDateTime(merged.relativeTime.bedtimeTargetAt),
-                  duration: bedtimeRelativeLabel,
-                })
-              : t("lifeopspanels.bedtimeCalibrating", {
-                  defaultValue: "Bedtime target calibrating",
-                })}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.sleepWindow", {
-              defaultValue: "Sleep window",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {merged?.currentSleepStartedAt
-              ? `Started ${formatDateTime(merged.currentSleepStartedAt)}`
-              : merged?.lastSleepStartedAt
-                ? `Last started ${formatDateTime(merged.lastSleepStartedAt)}`
-                : "—"}
-          </div>
-          {merged?.wakeAt || merged?.lastSleepDurationMinutes ? (
-            <div className="mt-1 text-xs text-muted">
-              {merged?.wakeAt
-                ? `Wake target ${formatDateTime(merged.wakeAt)}`
-                : null}
-              {merged?.lastSleepDurationMinutes
-                ? ` ${Math.round(merged.lastSleepDurationMinutes)} min last sleep`
-                : null}
-            </div>
-          ) : null}
-        </div>
-        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            {t("lifeopspanels.regularity", {
-              defaultValue: "Regularity",
-            })}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {merged
-              ? `${merged.regularity.regularityClass.replace(/_/g, " ")} · SRI ${Math.round(merged.regularity.sri)}`
-              : "—"}
-          </div>
-          <div className="mt-1 text-xs text-muted">
-            {merged
-              ? `${Math.round(merged.regularity.bedtimeStddevMin)}m bedtime stddev · ${Math.round(merged.regularity.wakeStddevMin)}m wake stddev`
-              : t("lifeopspanels.scheduleUnavailable", {
-                  defaultValue: "No schedule state available.",
-                })}
-          </div>
-        </div>
-        {merged?.baseline ? (
+      {merged ? (
+        <div className="grid gap-2 sm:grid-cols-2">
           <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
             <div className="text-[11px] uppercase tracking-wide text-muted">
-              {t("lifeopspanels.baseline", {
-                defaultValue: "Personal baseline",
+              {t("lifeopspanels.sleepStatus", {
+                defaultValue: "Sleep status",
               })}
             </div>
             <div className="mt-1 text-sm font-semibold text-txt">
-              {`Wake ~${merged.baseline.medianWakeLocalHour.toFixed(1)}h · Bed ~${(merged.baseline.medianBedtimeLocalHour % 24).toFixed(1)}h`}
+              {sleepLabel}
             </div>
             <div className="mt-1 text-xs text-muted">
-              {`${merged.baseline.sampleCount} episodes · ${Math.round(merged.baseline.medianSleepDurationMin)}m median sleep · ${merged.baseline.windowDays}d window`}
+              {`${merged.circadianState} · ${formatPercent(merged.sleepConfidence)} confidence${
+                merged.uncertaintyReason ? ` · ${merged.uncertaintyReason}` : ""
+              }`}
             </div>
           </div>
-        ) : null}
-        {merged && merged.awakeProbability.contributingSources.length > 0 ? (
-          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 sm:col-span-2">
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
             <div className="text-[11px] uppercase tracking-wide text-muted">
-              {t("lifeopspanels.contributingSources", {
-                defaultValue: "Contributing evidence",
+              {t("lifeopspanels.awakeProbability", {
+                defaultValue: "Awake probability",
               })}
             </div>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {merged.awakeProbability.contributingSources
-                .slice(0, 8)
-                .map((contributor) => {
-                  const llr = contributor.logLikelihoodRatio;
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {`${formatPercent(merged.awakeProbability.pAwake)} awake · ${formatPercent(merged.awakeProbability.pAsleep)} asleep`}
+            </div>
+            <div className="mt-1 text-xs text-muted">
+              {`${formatPercent(merged.awakeProbability.pUnknown)} unknown · state ${merged.circadianState} (${formatPercent(merged.stateConfidence)})`}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.relativeTime", {
+                defaultValue: "Relative time",
+              })}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {relativeWakeLabel}
+            </div>
+            <div className="mt-1 text-xs text-muted">
+              {merged.relativeTime.bedtimeTargetAt
+                ? t("lifeopspanels.bedtimeTarget", {
+                    defaultValue: "Bedtime target {{time}} · {{duration}}",
+                    time: formatDateTime(merged.relativeTime.bedtimeTargetAt),
+                    duration: bedtimeRelativeLabel,
+                  })
+                : t("lifeopspanels.bedtimeCalibrating", {
+                    defaultValue: "Bedtime target calibrating",
+                  })}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.sleepWindow", {
+                defaultValue: "Sleep window",
+              })}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {merged.currentSleepStartedAt
+                ? `Started ${formatDateTime(merged.currentSleepStartedAt)}`
+                : merged.lastSleepStartedAt
+                  ? `Last started ${formatDateTime(merged.lastSleepStartedAt)}`
+                  : "—"}
+            </div>
+            {merged.wakeAt || merged.lastSleepDurationMinutes ? (
+              <div className="mt-1 text-xs text-muted">
+                {merged.wakeAt
+                  ? `Wake target ${formatDateTime(merged.wakeAt)}`
+                  : null}
+                {merged.lastSleepDurationMinutes
+                  ? ` ${Math.round(merged.lastSleepDurationMinutes)} min last sleep`
+                  : null}
+              </div>
+            ) : null}
+          </div>
+          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+            <div className="text-[11px] uppercase tracking-wide text-muted">
+              {t("lifeopspanels.regularity", {
+                defaultValue: "Regularity",
+              })}
+            </div>
+            <div className="mt-1 text-sm font-semibold text-txt">
+              {`${merged.regularity.regularityClass.replace(/_/g, " ")} · SRI ${Math.round(merged.regularity.sri)}`}
+            </div>
+            <div className="mt-1 text-xs text-muted">
+              {`${Math.round(merged.regularity.bedtimeStddevMin)}m bedtime stddev · ${Math.round(merged.regularity.wakeStddevMin)}m wake stddev`}
+            </div>
+          </div>
+          {merged.baseline ? (
+            <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
+              <div className="text-[11px] uppercase tracking-wide text-muted">
+                {t("lifeopspanels.baseline", {
+                  defaultValue: "Personal baseline",
+                })}
+              </div>
+              <div className="mt-1 text-sm font-semibold text-txt">
+                {`Wake ~${merged.baseline.medianWakeLocalHour.toFixed(1)}h · Bed ~${(merged.baseline.medianBedtimeLocalHour % 24).toFixed(1)}h`}
+              </div>
+              <div className="mt-1 text-xs text-muted">
+                {`${merged.baseline.sampleCount} episodes · ${Math.round(merged.baseline.medianSleepDurationMin)}m median sleep · ${merged.baseline.windowDays}d window`}
+              </div>
+            </div>
+          ) : null}
+          {merged.awakeProbability.contributingSources.length > 0 ? (
+            <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 sm:col-span-2">
+              <div className="text-[11px] uppercase tracking-wide text-muted">
+                {t("lifeopspanels.contributingSources", {
+                  defaultValue: "Contributing evidence",
+                })}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {merged.awakeProbability.contributingSources
+                  .slice(0, 8)
+                  .map((contributor) => {
+                    const llr = contributor.logLikelihoodRatio;
+                    const tone =
+                      llr > 0
+                        ? "bg-emerald-500/14 text-emerald-300"
+                        : "bg-amber-500/14 text-amber-300";
+                    return (
+                      <span
+                        key={`${contributor.source}:${llr.toFixed(4)}`}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${tone}`}
+                      >
+                        {`${contributor.source}: ${llr >= 0 ? "+" : ""}${llr.toFixed(2)}`}
+                      </span>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
+          {merged.circadianRuleFirings.length > 0 ? (
+            <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 sm:col-span-2">
+              <div className="text-[11px] uppercase tracking-wide text-muted">
+                {t("lifeopspanels.circadianRules", {
+                  defaultValue: "Rules that fired",
+                })}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {merged.circadianRuleFirings.slice(0, 8).map((firing) => {
                   const tone =
-                    llr > 0
-                      ? "bg-emerald-500/14 text-emerald-300"
-                      : "bg-amber-500/14 text-amber-300";
+                    firing.contributes === "awake" ||
+                    firing.contributes === "waking"
+                      ? "bg-sky-500/14 text-sky-300"
+                      : firing.contributes === "sleeping" ||
+                          firing.contributes === "napping"
+                        ? "bg-violet-500/14 text-violet-300"
+                        : "bg-amber-500/14 text-amber-300";
                   return (
                     <span
-                      key={`${contributor.source}:${llr.toFixed(4)}`}
+                      key={`${firing.name}:${firing.observedAt}`}
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${tone}`}
+                      title={firing.reason}
                     >
-                      {`${contributor.source}: ${llr >= 0 ? "+" : ""}${llr.toFixed(2)}`}
+                      {`${firing.name} -> ${firing.contributes} (${firing.weight.toFixed(2)})`}
                     </span>
                   );
                 })}
+              </div>
             </div>
-          </div>
-        ) : null}
-        {merged && merged.circadianRuleFirings.length > 0 ? (
-          <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 sm:col-span-2">
-            <div className="text-[11px] uppercase tracking-wide text-muted">
-              {t("lifeopspanels.circadianRules", {
-                defaultValue: "Rules that fired",
-              })}
-            </div>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {merged.circadianRuleFirings.slice(0, 8).map((firing) => {
-                const tone =
-                  firing.contributes === "awake" ||
-                  firing.contributes === "waking"
-                    ? "bg-sky-500/14 text-sky-300"
-                    : firing.contributes === "sleeping" ||
-                        firing.contributes === "napping"
-                      ? "bg-violet-500/14 text-violet-300"
-                      : "bg-amber-500/14 text-amber-300";
-                return (
-                  <span
-                    key={`${firing.name}:${firing.observedAt}`}
-                    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] ${tone}`}
-                    title={firing.reason}
-                  >
-                    {`${firing.name} -> ${firing.contributes} (${firing.weight.toFixed(2)})`}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-      </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2 text-sm font-semibold text-txt">
+          {t("common.loading", { defaultValue: "Loading" })}
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -517,7 +511,7 @@ export function LifeOpsSchedulePanel() {
           </span>
         ) : null}
       </div>
-      <SleepInspectionPanel />
+      {merged ? <SleepInspectionPanel /> : null}
       <div className="flex flex-wrap gap-2 text-xs">
         {merged ? (
           <>
@@ -616,8 +610,7 @@ export function LifeOpsXPanel() {
                   defaultValue: "Credentials ready.",
                 })
               : t("lifeopspanels.credentialsMissing", {
-                  defaultValue:
-                    "Connect through Eliza Cloud or configure local env.",
+                  defaultValue: "Not configured.",
                 })}
           </div>
         </div>
@@ -630,7 +623,7 @@ export function LifeOpsXPanel() {
             {status?.grantedCapabilities?.length
               ? status.grantedCapabilities.join(" · ")
               : t("lifeopspanels.noCapabilities", {
-                  defaultValue: "No capabilities granted.",
+                  defaultValue: "No access.",
                 })}
           </div>
         </div>
@@ -766,7 +759,7 @@ export function LifeOpsStretchPanel() {
   const seedLabel = stretch.stretchTemplate
     ? stretch.stretchTemplate.title
     : t("lifeopspanels.stretchTemplateMissing", {
-        defaultValue: "Stretch template unavailable",
+        defaultValue: "Unavailable",
       });
 
   return (
@@ -795,12 +788,11 @@ export function LifeOpsStretchPanel() {
             {t("lifeopspanels.template", { defaultValue: "Template" })}
           </div>
           <div className="mt-1 text-sm font-semibold text-txt">{seedLabel}</div>
-          <div className="mt-1 text-xs text-muted">
-            {stretch.stretchTemplate?.description ??
-              t("lifeopspanels.templateUnavailable", {
-                defaultValue: "No stretch template loaded.",
-              })}
-          </div>
+          {stretch.stretchTemplate?.description ? (
+            <div className="mt-1 text-xs text-muted">
+              {stretch.stretchTemplate.description}
+            </div>
+          ) : null}
         </div>
         <div className="rounded-2xl border border-border/20 bg-bg/36 px-3 py-2">
           <div className="text-[11px] uppercase tracking-wide text-muted">
@@ -810,13 +802,11 @@ export function LifeOpsStretchPanel() {
             {reminder?.title ??
               t("lifeopspanels.none", { defaultValue: "None" })}
           </div>
-          <div className="mt-1 text-xs text-muted">
-            {reminder
-              ? `${reminder.stepLabel} · ${reminder.state} · ${formatDateTime(reminder.scheduledFor)}`
-              : t("lifeopspanels.noStretchReminder", {
-                  defaultValue: "No stretch reminder is active yet.",
-                })}
-          </div>
+          {reminder ? (
+            <div className="mt-1 text-xs text-muted">
+              {`${reminder.stepLabel} · ${reminder.state} · ${formatDateTime(reminder.scheduledFor)}`}
+            </div>
+          ) : null}
         </div>
       </div>
 
