@@ -34,7 +34,6 @@ import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
 import { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
-import { MusicPlayerGlobal } from "./components/music/MusicPlayerGlobal";
 import { ChatView } from "./components/pages/ChatView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { BugReportModal } from "./components/shell/BugReportModal";
@@ -487,7 +486,7 @@ function ViewRouter({
       case "voice":
         return (
           <TabContentView>
-            <SettingsView key="settings-media" initialSection="media" />
+            <SettingsView key="settings-identity" initialSection="identity" />
           </TabContentView>
         );
       case "settings":
@@ -983,14 +982,14 @@ export function App() {
                   <SettingsView
                     key={
                       tab === "voice"
-                        ? "settings-media"
+                        ? "settings-identity"
                         : tab === "connectors"
                           ? "settings-connectors"
                           : "settings-root"
                     }
                     initialSection={
                       tab === "voice"
-                        ? "media"
+                        ? "identity"
                         : tab === "connectors"
                           ? "connectors"
                           : (settingsInitialSection ?? undefined)
@@ -1148,7 +1147,6 @@ export function App() {
           t={t}
         />
       )}
-      <MusicPlayerGlobal />
 
       {/* Persistent game overlay — stays visible across all tabs */}
       {activeGameViewerUrl && gameOverlayEnabled && tab !== "apps" && (

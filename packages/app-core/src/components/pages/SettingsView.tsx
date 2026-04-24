@@ -21,13 +21,10 @@ import {
   AlertTriangle,
   Archive,
   Brain,
-  Cloud,
   Cpu,
   Download,
-  Image,
   type LucideIcon,
   Palette,
-  Puzzle,
   RefreshCw,
   Shield,
   SlidersHorizontal,
@@ -50,13 +47,10 @@ import { useApp } from "../../state";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
-import { FeatureTogglesSection } from "../settings/FeatureTogglesSection";
-import { MediaSettingsSection } from "../settings/MediaSettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
-import { CloudDashboard } from "./ElizaCloudDashboard";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 import { IdentitySettingsSection } from "./settings/IdentitySettingsSection";
 
@@ -134,25 +128,19 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     keywordKeys: ["settings.keyword.voice"],
   },
   {
-    id: "cloud",
-    label: "providerswitcher.elizaCloud",
-    defaultLabel: "Cloud",
-    icon: Cloud,
-    description: "settings.sections.cloud.desc",
-    defaultDescription: "Account, credits, and cloud services.",
-    keywords: ["cloud", "billing", "credits", "auth", "subscription"],
-    keywordKeys: ["settings.keyword.cloud", "settings.keyword.billing"],
-  },
-  {
     id: "ai-model",
     label: "settings.sections.aimodel.label",
-    defaultLabel: "AI Models",
+    defaultLabel: "Providers",
     icon: Brain,
     description: "settings.sections.aimodel.desc",
-    defaultDescription: "Cloud, local, and direct-provider routing.",
+    defaultDescription: "Cloud, local, subscriptions, and direct providers.",
     keywords: [
       "model",
       "provider",
+      "billing",
+      "credits",
+      "cloud",
+      "subscription",
       "openai",
       "anthropic",
       "grok",
@@ -215,30 +203,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "provider routing",
       "task coordinator",
       "task agents",
-    ],
-  },
-  {
-    id: "media",
-    label: "settings.sections.media.label",
-    defaultLabel: "Media",
-    icon: Image,
-    description: "settings.sections.media.desc",
-    defaultDescription: "Image, video, audio, vision, and voice.",
-    keywords: [
-      "audio",
-      "voice",
-      "video",
-      "camera",
-      "microphone",
-      "speech",
-      "tts",
-      "avatar",
-    ],
-    keywordKeys: [
-      "settings.keyword.voice",
-      "settings.keyword.audio",
-      "settings.keyword.camera",
-      "settings.keyword.microphone",
     ],
   },
   {
@@ -310,28 +274,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "birdeye",
     ],
     keywordKeys: ["settings.keyword.wallet", "settings.keyword.apiKey"],
-  },
-  {
-    id: "feature-toggles",
-    label: "settings.sections.features.label",
-    defaultLabel: "Features",
-    icon: Puzzle,
-    description: "settings.sections.features.desc",
-    defaultDescription: "LifeOps opt-ins.",
-    keywords: [
-      "feature",
-      "toggle",
-      "flight",
-      "booking",
-      "travel provider",
-      "push",
-      "notification",
-      "browser",
-      "automation",
-      "opt in",
-      "opt out",
-    ],
-    keywordKeys: ["settings.keyword.features"],
   },
   {
     id: "permissions",
@@ -423,7 +365,15 @@ function readSettingsHashSection(): string | null {
   if (typeof window === "undefined") return null;
   const hash = window.location.hash.replace(/^#/, "");
   if (!hash) return null;
+  if (hash === "cloud") return "ai-model";
   return SETTINGS_SECTIONS.some((section) => section.id === hash) ? hash : null;
+}
+
+function replaceSettingsHash(sectionId: string): void {
+  if (typeof window === "undefined") return;
+  const nextHash = `#${sectionId}`;
+  if (window.location.hash === nextHash) return;
+  window.history.replaceState(null, "", nextHash);
 }
 
 interface SettingsSectionProps extends ComponentPropsWithoutRef<"section"> {
@@ -827,6 +777,8 @@ export function SettingsView({
     readStoredSettingsSidebarWidth,
   );
   const shellRef = useRef<HTMLDivElement>(null);
+  const initialAlignmentPendingRef = useRef(true);
+  const scrollSelectionSuppressionTimerRef = useRef<number | null>(null);
 
   const handleSidebarCollapsedChange = useCallback((next: boolean) => {
     setSidebarCollapsed(next);
@@ -845,6 +797,29 @@ export function SettingsView({
     } catch {
       /* ignore sandboxed storage */
     }
+  }, []);
+
+  const suppressScrollSelection = useCallback((durationMs = 700) => {
+    if (typeof window === "undefined") return;
+    initialAlignmentPendingRef.current = true;
+    if (scrollSelectionSuppressionTimerRef.current != null) {
+      window.clearTimeout(scrollSelectionSuppressionTimerRef.current);
+    }
+    scrollSelectionSuppressionTimerRef.current = window.setTimeout(() => {
+      initialAlignmentPendingRef.current = false;
+      scrollSelectionSuppressionTimerRef.current = null;
+    }, durationMs);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (
+        typeof window !== "undefined" &&
+        scrollSelectionSuppressionTimerRef.current != null
+      ) {
+        window.clearTimeout(scrollSelectionSuppressionTimerRef.current);
+      }
+    };
   }, []);
 
   const visibleSections = useMemo(() => {
@@ -870,6 +845,40 @@ export function SettingsView({
     topAlignedId: visibleSections[0]?.id ?? null,
   });
 
+  const alignContentToSection = useCallback(
+    (sectionId: string): boolean => {
+      const root = contentContainerRef.current;
+      const shell = shellRef.current;
+      const target = shell?.querySelector(`#${sectionId}`);
+      if (!(root instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+        return false;
+      }
+
+      const rootRect = root.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      root.scrollTo({
+        top: root.scrollTop + targetRect.top - rootRect.top - 24,
+        behavior: "auto",
+      });
+      return true;
+    },
+    [contentContainerRef],
+  );
+
+  const queueSectionAlignment = useCallback(
+    (sectionId: string) => {
+      suppressScrollSelection();
+      queueContentAlignment(sectionId);
+      if (typeof window === "undefined") return;
+      window.requestAnimationFrame(() => {
+        if (!alignContentToSection(sectionId)) {
+          window.setTimeout(() => alignContentToSection(sectionId), 50);
+        }
+      });
+    },
+    [alignContentToSection, queueContentAlignment, suppressScrollSelection],
+  );
+
   useEffect(() => {
     void loadPlugins();
   }, [loadPlugins]);
@@ -877,9 +886,10 @@ export function SettingsView({
   const handleSectionChange = useCallback(
     (sectionId: string) => {
       setActiveSection(sectionId);
-      queueContentAlignment(sectionId);
+      replaceSettingsHash(sectionId);
+      queueSectionAlignment(sectionId);
     },
-    [queueContentAlignment],
+    [queueSectionAlignment],
   );
 
   useEffect(() => {
@@ -890,9 +900,26 @@ export function SettingsView({
   }, [activeSection, visibleSectionIds, visibleSections]);
 
   useEffect(() => {
+    if (!initialAlignmentPendingRef.current) return;
+    if (!visibleSectionIds.has(activeSection)) return;
+    queueSectionAlignment(activeSection);
+  }, [activeSection, queueSectionAlignment, visibleSectionIds]);
+
+  useEffect(() => {
     if (!initialSection) return;
     handleSectionChange(initialSection);
   }, [handleSectionChange, initialSection]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleHashChange = () => {
+      const nextSection = readSettingsHashSection();
+      if (!nextSection || !visibleSectionIds.has(nextSection)) return;
+      handleSectionChange(nextSection);
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [handleSectionChange, visibleSectionIds]);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -900,6 +927,8 @@ export function SettingsView({
     if (!shell || !root) return;
 
     const handleScroll = () => {
+      if (initialAlignmentPendingRef.current) return;
+
       const sections = visibleSections
         .map((section) => {
           const el = shell.querySelector(`#${section.id}`);
@@ -912,27 +941,25 @@ export function SettingsView({
 
       if (sections.length === 0) return;
 
-      if (
-        root.scrollHeight - Math.ceil(root.scrollTop) <=
-        root.clientHeight + 10
-      ) {
-        setActiveSection(sections[sections.length - 1].id);
-        return;
-      }
-
       const rootRect = root.getBoundingClientRect();
+      const activeAnchorOffset = Math.min(
+        320,
+        Math.max(180, root.clientHeight * 0.35),
+      );
       let currentSection = sections[0].id;
 
       for (const { id, el } of sections) {
         const elRect = el.getBoundingClientRect();
-        if (elRect.top - rootRect.top <= 150) {
+        if (elRect.top - rootRect.top <= activeAnchorOffset) {
           currentSection = id;
         }
       }
 
-      setActiveSection((prev) =>
-        prev !== currentSection ? currentSection : prev,
-      );
+      setActiveSection((prev) => {
+        if (prev === currentSection) return prev;
+        replaceSettingsHash(currentSection);
+        return currentSection;
+      });
     };
 
     root.addEventListener("scroll", handleScroll, { passive: true });
@@ -1053,25 +1080,14 @@ export function SettingsView({
         </SettingsSection>
       )}
 
-      {visibleSectionIds.has("cloud") && (
-        <SettingsSection
-          id="cloud"
-          className="relative overflow-hidden"
-          bodyClassName="p-0"
-          ref={registerContentItem("cloud")}
-        >
-          <CloudDashboard />
-        </SettingsSection>
-      )}
-
       {visibleSectionIds.has("ai-model") && (
         <SettingsSection
           id="ai-model"
           title={t("settings.sections.aimodel.label", {
-            defaultValue: "AI Models",
+            defaultValue: "Providers",
           })}
           description={t("settings.sections.aimodel.desc", {
-            defaultValue: "Cloud, local, and direct-provider routing.",
+            defaultValue: "Cloud, local, subscriptions, and direct providers.",
           })}
           ref={registerContentItem("ai-model")}
         >
@@ -1109,21 +1125,6 @@ export function SettingsView({
         </SettingsSection>
       )}
 
-      {visibleSectionIds.has("media") && (
-        <SettingsSection
-          id="media"
-          title={t("settings.sections.media.label", {
-            defaultValue: "Media",
-          })}
-          description={t("settings.sections.media.desc", {
-            defaultValue: "Image, video, audio, vision, and voice.",
-          })}
-          ref={registerContentItem("media")}
-        >
-          <MediaSettingsSection />
-        </SettingsSection>
-      )}
-
       {visibleSectionIds.has("appearance") && (
         <SettingsSection
           id="appearance"
@@ -1154,6 +1155,22 @@ export function SettingsView({
         </SettingsSection>
       )}
 
+      {visibleSectionIds.has("wallet-rpc") && (
+        <SettingsSection
+          id="wallet-rpc"
+          title={t("settings.sections.walletrpc.label", {
+            defaultValue: "Wallet & RPC",
+          })}
+          description={t("settings.sections.walletrpc.desc", {
+            defaultValue: "Wallet network and RPC providers.",
+          })}
+          bodyClassName="p-4 sm:p-5"
+          ref={registerContentItem("wallet-rpc")}
+        >
+          <ConfigPageView embedded />
+        </SettingsSection>
+      )}
+
       {visibleSectionIds.has("permissions") && (
         <SettingsSection
           id="permissions"
@@ -1169,39 +1186,15 @@ export function SettingsView({
         </SettingsSection>
       )}
 
-      {visibleSectionIds.has("wallet-rpc") && (
-        <SettingsSection
-          id="wallet-rpc"
-          title={t("settings.sections.walletrpc.label")}
-          description={t("settings.sections.walletrpc.desc")}
-          bodyClassName="p-4 sm:p-5"
-          ref={registerContentItem("wallet-rpc")}
-        >
-          <ConfigPageView embedded />
-        </SettingsSection>
-      )}
-
-      {visibleSectionIds.has("feature-toggles") && (
-        <SettingsSection
-          id="feature-toggles"
-          title={t("settings.sections.features.label", {
-            defaultValue: "Features",
-          })}
-          description={t("settings.sections.features.desc", {
-            defaultValue:
-              "Opt in to LifeOps capabilities like flight booking, push, and browser automation.",
-          })}
-          ref={registerContentItem("feature-toggles")}
-        >
-          <FeatureTogglesSection />
-        </SettingsSection>
-      )}
-
       {visibleSectionIds.has("updates") && (
         <SettingsSection
           id="updates"
-          title={t("settings.sections.updates.label")}
-          description={t("settings.sections.updates.desc")}
+          title={t("settings.sections.updates.label", {
+            defaultValue: "Updates",
+          })}
+          description={t("settings.sections.updates.desc", {
+            defaultValue: "Software updates.",
+          })}
           ref={registerContentItem("updates")}
         >
           <UpdatesSection />
@@ -1211,8 +1204,12 @@ export function SettingsView({
       {visibleSectionIds.has("advanced") && (
         <SettingsSection
           id="advanced"
-          title={t("settings.sections.backupReset.label")}
-          description={t("settings.sections.backupReset.desc")}
+          title={t("settings.sections.backupReset.label", {
+            defaultValue: "Backup & Reset",
+          })}
+          description={t("settings.sections.backupReset.desc", {
+            defaultValue: "Export, import, and reset.",
+          })}
           ref={registerContentItem("advanced")}
         >
           <AdvancedSection />

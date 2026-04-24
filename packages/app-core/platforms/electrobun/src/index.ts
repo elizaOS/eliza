@@ -1962,11 +1962,6 @@ async function main(): Promise<void> {
           label: "Open Voice Controls",
           type: "normal",
         },
-        {
-          id: "tray-open-media-controls",
-          label: "Open Media Controls",
-          type: "normal",
-        },
         { id: "sep1", type: "separator" },
         {
           id: "tray-toggle-lifecycle",

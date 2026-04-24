@@ -12,7 +12,6 @@ import { ConfigPageView } from "../components/pages/ConfigPageView";
 import { CloudDashboard } from "../components/pages/ElizaCloudDashboard";
 import { HeartbeatsView } from "../components/pages/HeartbeatsView";
 import { ReleaseCenterView } from "../components/pages/ReleaseCenterView";
-import { MediaSettingsSection } from "../components/settings/MediaSettingsSection";
 import { PermissionsSection } from "../components/settings/PermissionsSection";
 import { ProviderSwitcher } from "../components/settings/ProviderSwitcher";
 import { VoiceConfigView } from "../components/settings/VoiceConfigView";
@@ -95,8 +94,6 @@ function DetachedSettingsSectionView({
       return <CodingAgentSettingsSection />;
     case "wallet-rpc":
       return <ConfigPageView embedded />;
-    case "media":
-      return <MediaSettingsSection />;
     case "voice":
       return <VoiceConfigView />;
     case "permissions":

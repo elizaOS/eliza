@@ -32,6 +32,7 @@ import type {
   RelationshipsActivityItem,
 } from "../../api/client-types";
 import { useApp } from "../../state/useApp";
+import { WidgetHost } from "../../widgets";
 import { KnowledgeView } from "../pages/KnowledgeView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
@@ -861,6 +862,7 @@ export function CharacterHubView({
         ref={contentScrollRef}
         className="custom-scrollbar flex min-h-0 flex-1 min-w-0 flex-col overflow-y-auto overflow-x-hidden"
       >
+        <WidgetHost slot="character" className="mb-4" />
         {renderSection()}
       </div>
     </PageLayout>

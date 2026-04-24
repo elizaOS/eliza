@@ -115,7 +115,7 @@ describe("ConfigPageView", () => {
     expect(onWalletSaveSuccess).not.toHaveBeenCalled();
   });
 
-  it("saves cloud rpc selections when cloud mode is active over a custom wallet config", async () => {
+  it("preserves custom rpc selections from a custom wallet config", async () => {
     const handleWalletApiKeySave = vi.fn().mockResolvedValue(true);
     useAppMock.mockReturnValue(
       buildAppState(handleWalletApiKeySave, {
@@ -138,9 +138,9 @@ describe("ConfigPageView", () => {
       expect(handleWalletApiKeySave).toHaveBeenCalledWith(
         expect.objectContaining({
           selections: {
-            evm: "eliza-cloud",
-            bsc: "eliza-cloud",
-            solana: "eliza-cloud",
+            evm: "alchemy",
+            bsc: "alchemy",
+            solana: "helius-birdeye",
           },
           walletNetwork: "mainnet",
         }),

@@ -175,7 +175,6 @@ function buildDesktopMenu(): ApplicationMenuItem {
     submenu: [
       { label: "Desktop Workspace", action: "open-settings-desktop" },
       { label: "Voice Controls", action: "open-settings-voice" },
-      { label: "Media Controls", action: "open-settings-media" },
       { label: "Permissions", action: "open-settings-permissions" },
       { label: "Cloud Settings", action: "open-settings-cloud" },
       { label: "Settings Window", action: "open-settings" },

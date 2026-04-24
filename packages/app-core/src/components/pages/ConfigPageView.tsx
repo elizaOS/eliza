@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@elizaos/ui";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../../state";
 import {
   buildWalletRpcUpdateRequest,
@@ -39,6 +39,14 @@ const CLOUD_RPC_SELECTIONS = {
   solana: "eliza-cloud",
 } as const satisfies WalletRpcSelections;
 
+function areCloudRpcSelections(selections: WalletRpcSelections) {
+  return (
+    selections.evm === "eliza-cloud" &&
+    selections.bsc === "eliza-cloud" &&
+    selections.solana === "eliza-cloud"
+  );
+}
+
 export function ConfigPageView({
   embedded = false,
   onWalletSaveSuccess,
@@ -49,11 +57,6 @@ export function ConfigPageView({
   const {
     t,
     elizaCloudConnected,
-    elizaCloudCredits,
-    elizaCloudCreditsLow,
-    elizaCloudCreditsCritical,
-    elizaCloudAuthRejected,
-    elizaCloudTopUpUrl,
     elizaCloudLoginBusy,
     walletConfig,
     walletApiKeySaving,
@@ -62,11 +65,16 @@ export function ConfigPageView({
   } = useApp();
 
   const [secretsOpen, setSecretsOpen] = useState(false);
+  const manualRpcModeSelection = useRef(false);
+
+  const initialRpc = resolveInitialWalletRpcSelections(walletConfig);
+  const initialEvmRpc = initialRpc.evm;
+  const initialBscRpc = initialRpc.bsc;
+  const initialSolanaRpc = initialRpc.solana;
 
   /* ── Mode: "cloud" or "custom" ─────────────────────────────────────── */
   const allCloud =
-    elizaCloudConnected ||
-    resolveInitialWalletRpcSelections(walletConfig).evm === "eliza-cloud";
+    areCloudRpcSelections(initialRpc) || (!walletConfig && elizaCloudConnected);
   const [rpcMode, setRpcMode] = useState<"cloud" | "custom">(
     allCloud ? "cloud" : "custom",
   );
@@ -81,7 +89,6 @@ export function ConfigPageView({
   }, []);
 
   /* ── RPC provider selection state ──────────────────────────────────── */
-  const initialRpc = resolveInitialWalletRpcSelections(walletConfig);
   const initialSelectedRpc = allCloud ? CLOUD_RPC_SELECTIONS : initialRpc;
   const [selectedEvmRpc, setSelectedEvmRpc] = useState<
     WalletRpcSelections["evm"]
@@ -92,16 +99,17 @@ export function ConfigPageView({
   const [selectedSolanaRpc, setSelectedSolanaRpc] = useState<
     WalletRpcSelections["solana"]
   >(initialSelectedRpc.solana);
-  const [selectedWalletNetwork, setSelectedWalletNetwork] = useState<
-    "mainnet" | "testnet"
-  >(walletConfig?.walletNetwork === "testnet" ? "testnet" : "mainnet");
 
   useEffect(() => {
-    const selections = resolveInitialWalletRpcSelections(walletConfig);
-    const nextMode =
-      elizaCloudConnected || selections.evm === "eliza-cloud"
-        ? "cloud"
-        : "custom";
+    if (manualRpcModeSelection.current) {
+      return;
+    }
+    const selections: WalletRpcSelections = {
+      evm: initialEvmRpc,
+      bsc: initialBscRpc,
+      solana: initialSolanaRpc,
+    };
+    const nextMode = areCloudRpcSelections(selections) ? "cloud" : "custom";
     setRpcMode(nextMode);
     if (nextMode === "cloud") {
       setSelectedEvmRpc(CLOUD_RPC_SELECTIONS.evm);
@@ -112,13 +120,11 @@ export function ConfigPageView({
       setSelectedBscRpc(selections.bsc);
       setSelectedSolanaRpc(selections.solana);
     }
-    setSelectedWalletNetwork(
-      walletConfig?.walletNetwork === "testnet" ? "testnet" : "mainnet",
-    );
-  }, [elizaCloudConnected, walletConfig]);
+  }, [initialBscRpc, initialEvmRpc, initialSolanaRpc]);
 
   /* When switching to cloud mode, set all providers to eliza-cloud */
   const handleModeChange = useCallback((mode: "cloud" | "custom") => {
+    manualRpcModeSelection.current = true;
     setRpcMode(mode);
     if (mode === "cloud") {
       setSelectedEvmRpc(CLOUD_RPC_SELECTIONS.evm);
@@ -136,7 +142,6 @@ export function ConfigPageView({
         bsc: selectedBscRpc,
         solana: selectedSolanaRpc,
       },
-      selectedNetwork: selectedWalletNetwork,
     });
     const saved = await handleWalletApiKeySave(config);
     if (saved) {
@@ -148,7 +153,6 @@ export function ConfigPageView({
     rpcFieldValues,
     selectedBscRpc,
     selectedEvmRpc,
-    selectedWalletNetwork,
     selectedSolanaRpc,
     walletConfig,
   ]);
@@ -243,10 +247,6 @@ export function ConfigPageView({
 
   const cloudStatusProps = {
     connected: elizaCloudConnected,
-    credits: elizaCloudCredits,
-    creditsLow: elizaCloudCreditsLow,
-    creditsCritical: elizaCloudCreditsCritical,
-    topUpUrl: elizaCloudTopUpUrl,
     loginBusy: elizaCloudLoginBusy,
     onLogin: () => void handleCloudLogin(),
   };
@@ -377,92 +377,10 @@ export function ConfigPageView({
         </Button>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════
-          CLOUD MODE
-          ═══════════════════════════════════════════════════════════════ */}
-      <div className="mb-5 rounded-lg border border-border p-3">
-        <div className="text-xs font-bold mb-1">
-          {t("configpageview.WalletNetwork", {
-            defaultValue: "Wallet Network",
-          })}
-        </div>
-        <div className="text-xs-tight text-muted mb-2">
-          {t("configpageview.WalletNetworkDesc", {
-            defaultValue: "Mainnet for live funds, Testnet for practice",
-          })}
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          <Button
-            variant={
-              selectedWalletNetwork === "mainnet" ? "default" : "outline"
-            }
-            className="min-h-[40px] px-3 text-xs font-semibold"
-            onClick={() => setSelectedWalletNetwork("mainnet")}
-          >
-            {t("configpageview.Mainnet", { defaultValue: "Mainnet" })}
-          </Button>
-          <Button
-            variant={
-              selectedWalletNetwork === "testnet" ? "default" : "outline"
-            }
-            className="min-h-[40px] px-3 text-xs font-semibold"
-            onClick={() => setSelectedWalletNetwork("testnet")}
-          >
-            {t("configpageview.Testnet", { defaultValue: "Testnet" })}
-          </Button>
-        </div>
-      </div>
-
       {rpcMode === "cloud" && (
         <div>
           {elizaCloudConnected ? (
             <>
-              <div className="flex items-center gap-2.5 mb-4 p-3 rounded-lg bg-accent/5 border border-accent/15">
-                <span
-                  className={`w-2 h-2 rounded-full shrink-0 ${elizaCloudAuthRejected ? "bg-danger" : "bg-ok"}`}
-                />
-                <span className="text-sm font-semibold text-txt">
-                  {elizaCloudAuthRejected
-                    ? t("configpageview.ElizaCloudKeyInvalid", {
-                        defaultValue: "Eliza Cloud key invalid",
-                      })
-                    : t("configpageview.ConnectedToElizaCloud", {
-                        defaultValue: "Connected to Eliza Cloud",
-                      })}
-                </span>
-                {(elizaCloudCredits !== null || elizaCloudAuthRejected) && (
-                  <span className="text-xs text-muted ml-auto flex items-center gap-1.5">
-                    <span
-                      className={
-                        elizaCloudAuthRejected || elizaCloudCreditsCritical
-                          ? "text-danger font-bold"
-                          : elizaCloudCreditsLow
-                            ? "text-warn font-bold"
-                            : "text-txt font-semibold"
-                      }
-                    >
-                      {elizaCloudAuthRejected
-                        ? t("configpageview.FixInCloudSettings", {
-                            defaultValue: "Fix in Cloud settings",
-                          })
-                        : elizaCloudCredits !== null
-                          ? `$${elizaCloudCredits.toFixed(2)}`
-                          : ""}
-                    </span>
-                    {elizaCloudTopUpUrl && !elizaCloudAuthRejected && (
-                      <a
-                        href={elizaCloudTopUpUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs-tight text-accent underline underline-offset-2"
-                      >
-                        {t("configpageview.TopUp")}
-                      </a>
-                    )}
-                  </span>
-                )}
-              </div>
-
               <div className="space-y-2">
                 {[
                   {
@@ -528,12 +446,8 @@ export function ConfigPageView({
               </svg>
               <div>
                 <p className="text-sm font-semibold text-txt mb-1">
-                  {t("elizaclouddashboard.ConnectElizaCloud")}
-                </p>
-                <p className="text-xs text-muted max-w-sm">
-                  {t("configpageview.ManagedRpcDesc", {
-                    defaultValue:
-                      "Managed RPC for all chains, no API keys needed",
+                  {t("elizaclouddashboard.ConnectElizaCloud", {
+                    defaultValue: "Connect to Eliza Cloud",
                   })}
                 </p>
               </div>
@@ -548,7 +462,9 @@ export function ConfigPageView({
                   ? t("configpageview.Connecting", {
                       defaultValue: "Connecting...",
                     })
-                  : t("providerswitcher.logInToElizaCloud")}
+                  : t("elizaclouddashboard.ConnectElizaCloud", {
+                      defaultValue: "Connect to Eliza Cloud",
+                    })}
               </Button>
             </div>
           )}

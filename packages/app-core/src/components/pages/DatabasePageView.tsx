@@ -18,7 +18,7 @@ export function DatabasePageView({
     },
     {
       id: "media" as const,
-      label: t("settings.sections.media.label"),
+      label: t("mediagalleryview.Media"),
     },
     {
       id: "vectors" as const,

@@ -2121,8 +2121,6 @@
   "settings.sections.connectors.desc": "Thiết lập kết nối, xác thực và tích hợp dịch vụ",
   "settings.sections.lifeops.desc": "Kết nối Google Calendar và Gmail cho agent đang hoạt động.",
   "settings.sections.lifeops.label": "Life Ops",
-  "settings.sections.media.desc": "Nhà cung cấp ảnh, video, vision",
-  "settings.sections.media.label": "Media",
   "settings.sections.permissions.desc": "Khả năng và kiểm soát truy cập",
   "settings.sections.permissions.label": "Quyền",
   "settings.sections.updates.desc": "Cài đặt cập nhật phần mềm",

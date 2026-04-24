@@ -1,5 +1,12 @@
 import { Button, Input } from "@elizaos/ui";
-import { useCallback, useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
+  RefreshCw,
+  RotateCcw,
+} from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   invokeDesktopBridgeRequest,
   isElectrobunRuntime,
@@ -171,22 +178,33 @@ export function ReleaseCenterView() {
           defaultValue: "Update available",
         })
       : t("releasecenterview.Idle", { defaultValue: "Idle" });
+  const updaterNeedsAttention = Boolean(
+    nativeUpdater?.updateReady || nativeUpdater?.updateAvailable,
+  );
   const autoUpdateDisabled =
     nativeUpdater != null && !nativeUpdater.canAutoUpdate;
 
-  const versionRows: Array<{ label: string; value: string }> = [
+  const versionRows: Array<{ label: string; value: ReactNode }> = [
     {
       label: t("releasecenterview.App", { defaultValue: "App" }),
       value: appVersion,
     },
-    {
-      label: t("releasecenterview.Desktop", { defaultValue: "Desktop" }),
-      value: desktopVersion,
-    },
-    {
-      label: t("releasecenterview.Channel", { defaultValue: "Channel" }),
-      value: channel,
-    },
+    ...(desktopRuntime
+      ? [
+          {
+            label: t("releasecenterview.Desktop", {
+              defaultValue: "Desktop",
+            }),
+            value: desktopVersion,
+          },
+          {
+            label: t("releasecenterview.Channel", {
+              defaultValue: "Channel",
+            }),
+            value: channel,
+          },
+        ]
+      : []),
     {
       label: t("releasecenterview.Latest", { defaultValue: "Latest" }),
       value: latestVersion,
@@ -199,7 +217,16 @@ export function ReleaseCenterView() {
     },
     {
       label: t("releasecenterview.Status", { defaultValue: "Status" }),
-      value: updaterStatus,
+      value: (
+        <span className="inline-flex items-center gap-1.5">
+          {updaterNeedsAttention ? (
+            <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden />
+          ) : (
+            <CheckCircle2 className="h-3.5 w-3.5 text-ok" aria-hidden />
+          )}
+          {updaterStatus}
+        </span>
+      ),
     },
   ];
 
@@ -290,10 +317,12 @@ export function ReleaseCenterView() {
           </Button>
         )}
         <Button
-          size="sm"
+          size="icon"
           variant="outline"
-          className="h-9 rounded-lg px-3 text-xs font-medium"
+          className="h-9 w-9 rounded-lg"
           disabled={busyAction === "refresh" || updateLoading}
+          aria-label={t("common.refresh")}
+          title={t("common.refresh")}
           onClick={() =>
             void runAction(
               "refresh",
@@ -304,7 +333,10 @@ export function ReleaseCenterView() {
             )
           }
         >
-          {t("common.refresh")}
+          <RefreshCw
+            className={`h-4 w-4 ${busyAction === "refresh" || updateLoading ? "animate-spin" : ""}`}
+            aria-hidden
+          />
         </Button>
         {desktopRuntime ? (
           <Button
@@ -365,18 +397,19 @@ export function ReleaseCenterView() {
                 )
               }
             >
-              {desktopRuntime
-                ? t("releasecenterview.OpenBrowserViewWindow", {
-                    defaultValue: "Open BrowserView Window",
-                  })
-                : t("releasecenterview.OpenReleaseNotes", {
-                    defaultValue: "Open Release Notes",
-                  })}
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              {t("common.open", { defaultValue: "Open" })}
             </Button>
             <Button
-              size="sm"
+              size="icon"
               variant="ghost"
-              className="h-9 rounded-lg px-3 text-xs text-muted-strong"
+              className="h-9 w-9 rounded-lg text-muted-strong"
+              aria-label={t("releasecenterview.ResetUrl", {
+                defaultValue: "Reset URL",
+              })}
+              title={t("releasecenterview.ResetUrl", {
+                defaultValue: "Reset URL",
+              })}
               onClick={() =>
                 void runAction(
                   "reset-release-url",
@@ -394,7 +427,7 @@ export function ReleaseCenterView() {
                 )
               }
             >
-              {t("releasecenterview.ResetUrl", { defaultValue: "Reset URL" })}
+              <RotateCcw className="h-4 w-4" aria-hidden />
             </Button>
           </div>
         </div>

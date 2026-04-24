@@ -2121,8 +2121,6 @@
   "settings.sections.connectors.desc": "커넥터 설정, 인증 및 서비스 통합",
   "settings.sections.lifeops.desc": "활성 에이전트를 위한 Google Calendar 및 Gmail 연결",
   "settings.sections.lifeops.label": "Life Ops",
-  "settings.sections.media.desc": "이미지, 비디오 및 비전 제공자",
-  "settings.sections.media.label": "미디어",
   "settings.sections.permissions.desc": "기능 및 액세스 제어",
   "settings.sections.permissions.label": "권한",
   "settings.sections.updates.desc": "소프트웨어 업데이트 설정",

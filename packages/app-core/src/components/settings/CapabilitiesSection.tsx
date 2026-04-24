@@ -1,4 +1,5 @@
 import { Switch } from "@elizaos/ui";
+import { AlertTriangle, Loader2 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
 import { useApp } from "../../state";
@@ -80,13 +81,12 @@ export function CapabilitiesSection() {
     autoTrainingSaving ||
     !autoTrainingConfig ||
     autoTrainingAvailable === false;
-  const autoTrainingStatus = autoTrainingLoading
-    ? t("common.loading", { defaultValue: "Loading" })
-    : autoTrainingAvailable === false
-      ? t("settings.sections.capabilities.unavailable", {
-          defaultValue: "Unavailable",
-        })
-      : null;
+  const autoTrainingStatus =
+    autoTrainingLoading || autoTrainingSaving
+      ? "loading"
+      : autoTrainingAvailable === false
+        ? "unavailable"
+        : null;
 
   return (
     <div className="space-y-4">
@@ -161,19 +161,49 @@ function CapabilityRow({
 }: {
   children: ReactNode;
   label: string;
-  status?: string | null;
+  status?: "loading" | "unavailable" | null;
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-2">
         <div className="truncate font-medium text-sm">{label}</div>
-        {status ? (
-          <div className="mt-0.5 text-2xs font-medium uppercase tracking-wide text-muted">
-            {status}
-          </div>
-        ) : null}
+        <CapabilityStatusIcon status={status} />
       </div>
       {children}
     </div>
   );
+}
+
+function CapabilityStatusIcon({
+  status,
+}: {
+  status?: "loading" | "unavailable" | null;
+}) {
+  if (status === "loading") {
+    return (
+      <span
+        className="inline-flex text-muted"
+        title="Loading"
+        role="status"
+        aria-label="Loading"
+      >
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+      </span>
+    );
+  }
+
+  if (status === "unavailable") {
+    return (
+      <span
+        className="inline-flex text-warn"
+        title="Unavailable"
+        role="img"
+        aria-label="Unavailable"
+      >
+        <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+      </span>
+    );
+  }
+
+  return null;
 }

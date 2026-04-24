@@ -2121,8 +2121,6 @@
   "settings.sections.connectors.desc": "Configuración de conectores, autenticación e integraciones de servicios",
   "settings.sections.lifeops.desc": "Conexión de Google Calendar y Gmail para el agente activo.",
   "settings.sections.lifeops.label": "Life Ops",
-  "settings.sections.media.desc": "Proveedores de imagen, video y visión",
-  "settings.sections.media.label": "Medios",
   "settings.sections.permissions.desc": "Capacidades y control de acceso",
   "settings.sections.permissions.label": "Permisos",
   "settings.sections.updates.desc": "Configuración de actualizaciones de software",

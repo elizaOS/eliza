@@ -75,7 +75,6 @@ export * from "./pages/VectorBrowserView";
 export * from "./phone-companion/index";
 export * from "./settings/ApiKeyConfig";
 export * from "./settings/DesktopWorkspaceSection";
-export * from "./settings/MediaSettingsSection";
 export * from "./settings/PermissionsSection";
 export * from "./settings/PolicyControlsView";
 export * from "./settings/ProviderSwitcher";

@@ -1,7 +1,7 @@
 import type { ResolvedContentPack } from "@elizaos/shared/contracts/content-pack";
 import { BUILTIN_THEMES } from "@elizaos/shared/themes/presets";
 import { Button, Input } from "@elizaos/ui";
-import { Check, Moon, Sun } from "lucide-react";
+import { Check, FolderOpen, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyColorScheme,
@@ -387,10 +387,17 @@ export function AppearanceSettingsSection() {
                     )}
                   </div>
                   {isActive && (
-                    <span className="shrink-0 rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-2xs font-medium text-accent">
-                      {t("settings.appearance.active", {
+                    <span
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-accent/30 bg-accent/10 text-accent"
+                      title={t("settings.appearance.active", {
                         defaultValue: "Active",
                       })}
+                      role="img"
+                      aria-label={t("settings.appearance.active", {
+                        defaultValue: "Active",
+                      })}
+                    >
+                      <Check className="h-3.5 w-3.5" aria-hidden />
                     </span>
                   )}
                 </button>
@@ -434,7 +441,11 @@ export function AppearanceSettingsSection() {
                 size="sm"
                 className="h-9 rounded-lg text-xs text-muted hover:text-txt"
                 onClick={() => fileInputRef.current?.click()}
+                title={t("settings.appearance.loadFromFolder", {
+                  defaultValue: "From folder",
+                })}
               >
+                <FolderOpen className="h-3.5 w-3.5" aria-hidden />
                 {t("settings.appearance.loadFromFolder", {
                   defaultValue: "From folder",
                 })}
