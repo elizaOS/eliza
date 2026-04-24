@@ -227,17 +227,19 @@ export function DesktopGameWindowControls({
           `${bounds.width}x${bounds.height} @ ${bounds.x},${bounds.y}`,
         );
       }
-      const windows = await invokeDesktopBridgeRequest<{
-        windows: Array<{ id: string; alwaysOnTop: boolean }>;
-      }>({
-        rpcMethod: "canvasListWindows",
-        ipcChannel: "canvas:listWindows",
-      });
-      const currentWindow = windows?.windows.find(
-        (item) => item.id === gameWindowId,
-      );
-      if (currentWindow) {
-        setAlwaysOnTop(currentWindow.alwaysOnTop);
+      try {
+        const windows = await invokeDesktopBridgeRequest<{
+          windows: Array<{ id: string; alwaysOnTop: boolean }>;
+        }>({
+          rpcMethod: "canvasListWindows",
+          ipcChannel: "canvas:listWindows",
+        });
+        const currentWindow = windows?.windows.find(
+          (item) => item.id === gameWindowId,
+        );
+        setAlwaysOnTop(currentWindow?.alwaysOnTop ?? false);
+      } catch (err) {
+        console.warn("[GameView] Failed to refresh game window pin state", err);
       }
     }
 
@@ -420,11 +422,20 @@ export function DesktopGameWindowControls({
                 );
               }
               const next = !alwaysOnTop;
-              await invokeDesktopBridgeRequest<void>({
+              const result = await invokeDesktopBridgeRequest<{
+                success: boolean;
+              }>({
                 rpcMethod: "canvasSetAlwaysOnTop",
                 ipcChannel: "canvas:setAlwaysOnTop",
                 params: { id: gameWindowId, flag: next },
               });
+              if (!result?.success) {
+                throw new Error(
+                  t("gameview.GameWindowNoLongerOpen", {
+                    defaultValue: "Game window is no longer open.",
+                  }),
+                );
+              }
               setAlwaysOnTop(next);
             },
             alwaysOnTop

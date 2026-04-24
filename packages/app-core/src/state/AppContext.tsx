@@ -25,8 +25,10 @@ import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import type { UiLanguage } from "../i18n";
 import {
   canonicalPathForPath,
+  getWindowNavigationPath,
   isRouteRootPath,
   resolveInitialTabForPath,
+  shouldUseHashNavigation,
   type Tab,
   tabFromPath,
 } from "../navigation";
@@ -169,16 +171,6 @@ function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
   }
 }
 
-function getNavigationPathFromWindow(): string {
-  if (typeof window === "undefined") return "/";
-  const usesHashRoute =
-    window.location.protocol === "file:" ||
-    new URLSearchParams(window.location.search).get("appWindow") === "1";
-  return usesHashRoute
-    ? window.location.hash.replace(/^#/, "") || "/"
-    : window.location.pathname;
-}
-
 // ── Provider ───────────────────────────────────────────────────────────
 
 export function AppProvider({
@@ -211,10 +203,7 @@ function AppProviderInner({
 }) {
   // --- Core state ---
   const [tab, _setTabRawInner] = useState<Tab>(() =>
-    resolveInitialTabForPath(
-      getNavigationPathFromWindow(),
-      DEFAULT_LANDING_TAB,
-    ),
+    resolveInitialTabForPath(getWindowNavigationPath(), DEFAULT_LANDING_TAB),
   );
   const initialTabSetRef = useRef(false);
   const setTabRaw = useCallback((t: Tab) => {
@@ -1065,14 +1054,14 @@ function AppProviderInner({
   } = navHook;
 
   useEffect(() => {
-    const navPath = getNavigationPathFromWindow();
+    const navPath = getWindowNavigationPath();
     if (isRouteRootPath(navPath)) {
       return;
     }
     const routeTab = tabFromPath(navPath);
     const canonicalPath = canonicalPathForPath(navPath);
     if (canonicalPath && typeof window !== "undefined") {
-      if (window.location.protocol === "file:") {
+      if (shouldUseHashNavigation()) {
         window.location.hash = canonicalPath;
       } else {
         window.history.replaceState(

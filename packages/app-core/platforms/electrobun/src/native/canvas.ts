@@ -357,8 +357,14 @@ $bmp.Dispose()`;
     win.setSize(options.width, options.height);
   }
 
-  async setAlwaysOnTop(options: { id: string; flag: boolean }): Promise<void> {
-    this.windows.get(options.id)?.window.setAlwaysOnTop(options.flag);
+  async setAlwaysOnTop(options: {
+    id: string;
+    flag: boolean;
+  }): Promise<{ success: boolean }> {
+    const canvas = this.windows.get(options.id);
+    if (!canvas) return { success: false };
+    canvas.window.setAlwaysOnTop(options.flag);
+    return { success: true };
   }
 
   /**

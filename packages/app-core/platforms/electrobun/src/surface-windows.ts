@@ -165,6 +165,10 @@ export class SurfaceWindowManager {
   private readonly onWindowFocused?: SurfaceWindowManagerOptions["onWindowFocused"];
   private readonly onRegistryChanged?: SurfaceWindowManagerOptions["onRegistryChanged"];
   private readonly windows = new Map<string, ManagedWindowRecord>();
+  private readonly pendingSurfaceWindows = new Map<
+    string,
+    Promise<ManagedWindowSnapshot>
+  >();
   private counter = 0;
 
   constructor(options: SurfaceWindowManagerOptions) {
@@ -212,6 +216,39 @@ export class SurfaceWindowManager {
     browse?: string,
     alwaysOnTop = false,
   ): Promise<ManagedWindowSnapshot> {
+    const key = `${surface}:${surface === "browser" ? (browse?.trim() ?? "") : ""}`;
+    const pending = this.pendingSurfaceWindows.get(key);
+    if (pending) return pending;
+
+    const task = this.openSurfaceWindowOnce(surface, browse, alwaysOnTop);
+    this.pendingSurfaceWindows.set(key, task);
+    try {
+      return await task;
+    } finally {
+      if (this.pendingSurfaceWindows.get(key) === task) {
+        this.pendingSurfaceWindows.delete(key);
+      }
+    }
+  }
+
+  private async openSurfaceWindowOnce(
+    surface: DetachedSurface,
+    browse?: string,
+    alwaysOnTop = false,
+  ): Promise<ManagedWindowSnapshot> {
+    const existing = Array.from(this.windows.values()).find(
+      (entry) => entry.surface === surface,
+    );
+    if (existing) {
+      if (alwaysOnTop && !existing.alwaysOnTop) {
+        existing.window.setAlwaysOnTop(true);
+        existing.alwaysOnTop = true;
+      }
+      existing.window.focus();
+      this.notifyRegistryChanged();
+      return this.toSnapshot(existing);
+    }
+
     const seed = surface === "browser" ? browse : undefined;
     return this.createManagedWindow(
       surface,

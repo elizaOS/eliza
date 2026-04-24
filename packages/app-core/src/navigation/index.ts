@@ -128,6 +128,50 @@ export function isAndroidPhoneSurfaceEnabled(
   return isNative && platform === "android";
 }
 
+interface WindowNavigationLocation {
+  protocol: string;
+  search: string;
+  hash: string;
+  pathname: string;
+}
+
+function getWindowNavigationLocation(): WindowNavigationLocation | undefined {
+  return typeof window === "undefined" ? undefined : window.location;
+}
+
+export function isAppWindowRoute(
+  location:
+    | Pick<WindowNavigationLocation, "search">
+    | undefined = getWindowNavigationLocation(),
+): boolean {
+  if (!location) return false;
+  try {
+    return new URLSearchParams(location.search).get("appWindow") === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function shouldUseHashNavigation(
+  location:
+    | Pick<WindowNavigationLocation, "protocol" | "search">
+    | undefined = getWindowNavigationLocation(),
+): boolean {
+  if (!location) return false;
+  return location.protocol === "file:" || isAppWindowRoute(location);
+}
+
+export function getWindowNavigationPath(
+  location:
+    | WindowNavigationLocation
+    | undefined = getWindowNavigationLocation(),
+): string {
+  if (!location) return "/";
+  return shouldUseHashNavigation(location)
+    ? location.hash.replace(/^#/, "") || "/"
+    : location.pathname;
+}
+
 export const ALL_TAB_GROUPS: TabGroup[] = [
   {
     label: "Chat",

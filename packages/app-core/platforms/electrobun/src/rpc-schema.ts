@@ -925,7 +925,7 @@ export type ElizaDesktopRPCSchema = {
       };
       canvasSetAlwaysOnTop: {
         params: { id: string; flag: boolean };
-        response: undefined;
+        response: { success: boolean };
       };
       canvasListWindows: {
         params: undefined;

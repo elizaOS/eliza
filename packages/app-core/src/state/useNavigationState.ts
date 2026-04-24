@@ -14,7 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { pathForTab, type Tab } from "../navigation";
+import { pathForTab, shouldUseHashNavigation, type Tab } from "../navigation";
 import {
   loadLastNativeTab,
   normalizeUiShellMode,
@@ -35,14 +35,6 @@ export interface NavigationStateDeps {
   uiShellMode: UiShellMode;
   hasActiveGameRun: boolean;
   setAppsSubTab: (value: "browse" | "running" | "games") => void;
-}
-
-function shouldUseHashNavigation(): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    window.location.protocol === "file:" ||
-    new URLSearchParams(window.location.search).get("appWindow") === "1"
-  );
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────
