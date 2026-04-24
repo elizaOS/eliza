@@ -1679,6 +1679,46 @@ function buildUnavailableSession(
   };
 }
 
+function readCachedSessionState(ctx: SessionContext): AppSessionState | null {
+  return sessionStateCache.get(sessionCacheKey(ctx))?.session ?? null;
+}
+
+function clearCachedSessionState(ctx: SessionContext): void {
+  sessionStateCache.delete(sessionCacheKey(ctx));
+}
+
+function buildCommandOnlySessionState(ctx: SessionContext): AppSessionState {
+  const agentId = asRuntimeLike(ctx.runtime)?.agentId;
+  return {
+    sessionId: ctx.agentName,
+    appName: APP_NAME,
+    mode: "spectate-and-steer",
+    status: "ready",
+    displayName: APP_DISPLAY_NAME,
+    agentId,
+    canSendCommands: Boolean(
+      ctx.apiKey ?? process.env.DEFENSE_OF_THE_AGENTS_API_KEY,
+    ),
+    controls: [],
+    summary:
+      "Strategy note recorded. Open the live viewer for current battlefield state.",
+    goalLabel:
+      "Use autoplay, lane, recall, or ability commands for direct play.",
+    suggestedPrompts: ["Autoplay on", "Recall", "Go mid", "Use Fireball"],
+    telemetry: {
+      apiBaseUrl: ctx.apiBaseUrl,
+      viewerUrl: resolveViewerUrl(ctx.runtime),
+      preferredGameId: ctx.preferredGameId ?? null,
+      autoPlay: isAutoPlayActive(ctx.runtime),
+      recentActivity: getRecentActivity(agentId).map((entry) => ({
+        ts: entry.ts,
+        action: entry.action,
+        detail: entry.detail,
+      })),
+    },
+  };
+}
+
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/[_-]+/g, " ");
 }
@@ -1748,6 +1788,26 @@ function parseStructuredDeployment(
   } catch {
     return null;
   }
+}
+
+function isDeploymentControlCommand(
+  content: string,
+  hero: DefenseHero | null,
+): boolean {
+  const trimmed = content.trim();
+  if (parseStructuredDeployment(trimmed)) return true;
+  if (parseExplicitMessage(trimmed)) return true;
+
+  const normalized = normalizeText(trimmed);
+  if (
+    /\b(melee|ranged|mage|top|mid|middle|bot|bottom|recall|heal|base|retreat)\b/.test(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+
+  return Boolean(parseAbilityChoice(trimmed, hero));
 }
 
 function parseDeploymentCommand(
@@ -2088,6 +2148,7 @@ export async function handleAppRoutes(ctx: {
       if (normalizedCmd === "autoplay on" || normalizedCmd === "auto play on") {
         const sessionCtx = resolveSessionContext(runtime, sessionId);
         startGameLoop(runtime, sessionCtx);
+        clearCachedSessionState(sessionCtx);
         if (cmdAgentId)
           pushActivity(cmdAgentId, "auto-play-on", "Auto-play enabled");
         const refreshed = await readSessionState(runtime, sessionId);
@@ -2105,7 +2166,9 @@ export async function handleAppRoutes(ctx: {
         normalizedCmd === "autoplay off" ||
         normalizedCmd === "auto play off"
       ) {
+        const sessionCtx = resolveSessionContext(runtime, sessionId);
         stopGameLoop(runtime);
+        clearCachedSessionState(sessionCtx);
         if (cmdAgentId)
           pushActivity(cmdAgentId, "auto-play-off", "Auto-play disabled");
         const refreshed = await readSessionState(runtime, sessionId);
@@ -2166,6 +2229,28 @@ export async function handleAppRoutes(ctx: {
       }
 
       const sessionCtx = resolveSessionContext(runtime, sessionId);
+
+      if (!isDeploymentControlCommand(content, null)) {
+        if (cmdAgentId) {
+          pushActivity(
+            cmdAgentId,
+            "strategy-note",
+            `Strategy note: ${content.slice(0, 120)}`,
+          );
+        }
+        const refreshed =
+          readCachedSessionState(sessionCtx) ??
+          buildCommandOnlySessionState(sessionCtx);
+        ctx.json(
+          ctx.res,
+          okResponse(
+            true,
+            "Strategy note recorded. Use lane, recall, ability, or autoplay commands for direct control.",
+            refreshed,
+          ),
+        );
+        return true;
+      }
 
       // If we have a preferred game, do a single fast fetch to get hero state.
       // If not (first deploy), skip the scan to avoid rate limits — deploy

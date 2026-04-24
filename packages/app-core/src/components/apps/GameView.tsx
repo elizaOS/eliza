@@ -28,7 +28,11 @@ import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useBranding } from "../../config/branding";
 import { useMediaQuery } from "../../hooks";
 import { useApp } from "../../state";
-import { openExternalUrl } from "../../utils";
+import {
+  navigatePreOpenedWindow,
+  openExternalUrl,
+  preOpenWindow,
+} from "../../utils";
 import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
 import { formatTime } from "../../utils/format";
 import { getAppOperatorSurface } from "./surfaces/registry";
@@ -1217,8 +1221,13 @@ export function GameView() {
       );
       return;
     }
+    const popup = preOpenWindow();
     try {
-      await openExternalUrl(openableUrl);
+      if (popup) {
+        navigatePreOpenedWindow(popup, openableUrl);
+      } else {
+        await openExternalUrl(openableUrl);
+      }
     } catch {
       setActionNotice(
         t("gameview.PopupBlocked", {
@@ -1768,6 +1777,35 @@ export function GameView() {
       : isCompactLayout && mobileSurface === "chat"
         ? "chat"
         : "all";
+  const openInNewTabLabel = hasViewer
+    ? t("game.openInNewTab")
+    : "Open launch URL";
+  const renderOpenInNewTabButton = (
+    variant: "default" | "outline",
+    className?: string,
+  ) => {
+    if (!openableUrl || isElectrobun) {
+      return (
+        <Button
+          variant={variant}
+          size="sm"
+          className={className}
+          onClick={handleOpenInNewTab}
+          disabled={!openableUrl}
+        >
+          {openInNewTabLabel}
+        </Button>
+      );
+    }
+
+    return (
+      <Button asChild variant={variant} size="sm" className={className}>
+        <a href={openableUrl} target="_blank" rel="noreferrer">
+          {openInNewTabLabel}
+        </a>
+      </Button>
+    );
+  };
 
   const renderViewerPane = () => {
     if (!hasViewer) {
@@ -1793,14 +1831,7 @@ export function GameView() {
             watching without restarting the session.
           </div>
           <div className="flex flex-wrap justify-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handleOpenInNewTab()}
-              disabled={!openableUrl}
-            >
-              {t("game.openInNewTab")}
-            </Button>
+            {renderOpenInNewTabButton("outline")}
           </div>
         </div>
       );
@@ -1938,15 +1969,7 @@ export function GameView() {
             {gameOverlayEnabled ? t("game.unpinOverlay") : t("game.keepOnTop")}
           </Button>
         ) : null}
-        <Button
-          variant="default"
-          size="sm"
-          className="h-7 text-xs shadow-sm"
-          onClick={handleOpenInNewTab}
-          disabled={!openableUrl}
-        >
-          {hasViewer ? t("game.openInNewTab") : "Open launch URL"}
-        </Button>
+        {renderOpenInNewTabButton("default", "h-7 text-xs shadow-sm")}
         <Button
           variant="default"
           size="sm"
