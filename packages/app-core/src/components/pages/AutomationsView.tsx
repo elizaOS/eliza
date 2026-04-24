@@ -22,6 +22,7 @@ import {
   Textarea,
 } from "@elizaos/ui";
 import {
+  ArrowRight,
   Calendar,
   CheckCircle2,
   ChevronDown,
@@ -34,7 +35,6 @@ import {
   GitBranch,
   Grid3x3,
   LayoutDashboard,
-  ArrowRight,
   type LucideIcon,
   Mail,
   Pause,
@@ -98,8 +98,8 @@ import {
   buildUpdateRequest,
   emptyForm,
   formFromTrigger,
-  humanizeEventKind,
   type HeartbeatTemplate,
+  humanizeEventKind,
   loadUserTemplates,
   localizedExecutionStatus,
   railMonogram,
@@ -155,8 +155,11 @@ const NODE_CLASS_ORDER = [
 
 const PAGE_CHAT_PREFILL_EVENT = "milady:chat:prefill";
 const DESCRIBE_WORKFLOW_PROMPT = "Describe your workflow";
+const DESCRIBE_AUTOMATION_PROMPT = "What should happen?";
 const WORKFLOW_PROMPT_PLACEHOLDER =
   "Describe the trigger and steps, e.g. when a GitHub issue opens, summarize it and post to Discord";
+const AUTOMATION_PROMPT_PLACEHOLDER =
+  "e.g. Every morning summarize my inbox, or when a GitHub issue opens, triage it";
 const AUTOMATIONS_OVERVIEW_VISIBILITY_EVENT =
   "milady:automations:overview-visibility";
 
@@ -205,6 +208,33 @@ function buildWorkflowCopyRequest(
     connections: workflow.connections ?? {},
     settings: {},
   };
+}
+
+function inferAutomationPromptKind(prompt: string): "task" | "workflow" {
+  const normalized = prompt.toLowerCase();
+  const looksScheduledTask =
+    /\b(every|daily|hourly|weekly|monthly|weekday|morning|evening|at \d{1,2})\b/.test(
+      normalized,
+    );
+  const looksWorkflow =
+    /\b(when|if|after|then|workflow|pipeline|webhook|event|triage|route|label|enrich|crm)\b/.test(
+      normalized,
+    ) ||
+    (normalized.includes(" and ") &&
+      /\b(send|post|create|update|reply|notify|summarize)\b/.test(normalized));
+
+  if (looksScheduledTask && !normalized.includes("when ")) return "task";
+  return looksWorkflow ? "workflow" : "task";
+}
+
+function titleFromAutomationPrompt(prompt: string): string {
+  const cleaned = prompt
+    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "New task";
+  const title = cleaned.split(" ").slice(0, 7).join(" ");
+  return title.charAt(0).toUpperCase() + title.slice(1);
 }
 
 // Reads `#automations.trigger=<id>` from the URL hash. The LifeOps chat-sidebar
@@ -1385,11 +1415,13 @@ function CreateAutomationDialog({
   onOpenChange,
   onCreateTask,
   onCreateWorkflow,
+  onDescribeAutomation,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreateTask: () => void;
   onCreateWorkflow: () => void;
+  onDescribeAutomation: (prompt: string) => Promise<void> | void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1397,6 +1429,14 @@ function CreateAutomationDialog({
         <DialogHeader>
           <DialogTitle>Create automation</DialogTitle>
         </DialogHeader>
+
+        <AutomationCommandBar
+          autoFocus
+          onSubmit={async (prompt) => {
+            await onDescribeAutomation(prompt);
+            onOpenChange(false);
+          }}
+        />
 
         <div className="grid gap-3 sm:grid-cols-2">
           <button
@@ -2125,6 +2165,84 @@ function OverviewIdeaGrid({
   );
 }
 
+function AutomationCommandBar({
+  onSubmit,
+  autoFocus = false,
+}: {
+  onSubmit: (prompt: string) => Promise<void> | void;
+  autoFocus?: boolean;
+}) {
+  const [prompt, setPrompt] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = useCallback(async () => {
+    const trimmed = prompt.trim();
+    if (!trimmed || submitting) return;
+    setSubmitting(true);
+    try {
+      await onSubmit(trimmed);
+      setPrompt("");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [onSubmit, prompt, submitting]);
+
+  return (
+    <div className="rounded-2xl border border-border/30 bg-bg/55 p-1.5 shadow-sm">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <Input
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              void submit();
+            }
+          }}
+          placeholder={AUTOMATION_PROMPT_PLACEHOLDER}
+          aria-label={DESCRIBE_AUTOMATION_PROMPT}
+          className="min-h-11 flex-1 border-0 bg-transparent px-4 text-sm shadow-none focus-visible:ring-0"
+          autoFocus={autoFocus}
+        />
+        <Button
+          variant="default"
+          size="sm"
+          className="h-10 shrink-0 rounded-xl px-4 text-sm"
+          disabled={submitting || prompt.trim().length === 0}
+          onClick={() => void submit()}
+        >
+          {submitting ? "Creating..." : "Create"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function AutomationStatusStrip({
+  entries,
+}: {
+  entries: Array<{
+    label: string;
+    value: number;
+    tone: "success" | "warning" | "muted" | "danger";
+  }>;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {entries.map((entry) => (
+        <div
+          key={entry.label}
+          className="inline-flex items-center gap-2 rounded-full border border-border/25 bg-bg/40 px-2.5 py-1 text-xs"
+        >
+          <StatusDot tone={entry.tone} />
+          <span className="font-medium text-txt">{entry.label}</span>
+          <span className="tabular-nums text-muted">{entry.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function formatRelativeFuture(
   targetMs: number,
   t?: (
@@ -2255,12 +2373,14 @@ function AutomationsDashboard({
   onSelectItem,
   onCreateTask,
   onCreateWorkflow,
+  onDescribeAutomation,
   onUseIdea,
 }: {
   items: AutomationItem[];
   onSelectItem: (item: AutomationItem) => void;
   onCreateTask: () => void;
   onCreateWorkflow: () => void;
+  onDescribeAutomation: (prompt: string) => Promise<void> | void;
   onUseIdea: (idea: AutomationExample) => void;
 }) {
   const { t, uiLanguage } = useAutomationsViewContext();
@@ -2296,6 +2416,17 @@ function AutomationsDashboard({
       ).slice(0, 6),
     [visibleItems],
   );
+  const liveItems = useMemo(
+    () =>
+      sortAutomationsByUpdatedAtDesc(
+        visibleItems.filter((item) => item.enabled && !item.isDraft),
+      ).slice(0, 5),
+    [visibleItems],
+  );
+  const recentItems = useMemo(
+    () => sortAutomationsByUpdatedAtDesc(visibleItems).slice(0, 6),
+    [visibleItems],
+  );
 
   const taskCount = visibleItems.filter(
     (item) => item.type !== "n8n_workflow",
@@ -2329,23 +2460,6 @@ function AutomationsDashboard({
         )
         .slice(0, 6),
     [scheduledEntries, now],
-  );
-
-  const recent = useMemo(
-    () =>
-      scheduledEntries
-        .filter(({ schedule }) => schedule.lastRunAtIso)
-        .sort((a, b) => {
-          const aTs = a.schedule.lastRunAtIso
-            ? Date.parse(a.schedule.lastRunAtIso)
-            : 0;
-          const bTs = b.schedule.lastRunAtIso
-            ? Date.parse(b.schedule.lastRunAtIso)
-            : 0;
-          return bTs - aTs;
-        })
-        .slice(0, 6),
-    [scheduledEntries],
   );
 
   const failures = useMemo(
@@ -2391,6 +2505,28 @@ function AutomationsDashboard({
 
     return next.slice(0, 6);
   }, [failures, t, uiLanguage]);
+  const statusEntries = [
+    {
+      label: "Live",
+      value: activeCount,
+      tone: activeCount > 0 ? "success" : "muted",
+    },
+    {
+      label: "Timed",
+      value: activeScheduleCount,
+      tone: activeScheduleCount > 0 ? "success" : "muted",
+    },
+    {
+      label: "Events",
+      value: activeEventCount,
+      tone: activeEventCount > 0 ? "success" : "muted",
+    },
+    {
+      label: "Attention",
+      value: attentionEntries.length,
+      tone: attentionEntries.length > 0 ? "danger" : "success",
+    },
+  ] satisfies Parameters<typeof AutomationStatusStrip>[0]["entries"];
 
   if (taskCount === 0 && workflowCount === 0) {
     return (
@@ -2410,6 +2546,7 @@ function AutomationsDashboard({
                 that run on a schedule or from an event.
               </p>
             </div>
+            <AutomationCommandBar onSubmit={onDescribeAutomation} autoFocus />
             <div className="flex flex-wrap gap-2">
               <Button variant="default" size="sm" onClick={onCreateTask}>
                 New task
@@ -2469,60 +2606,23 @@ function AutomationsDashboard({
     <div className="space-y-4 px-1 pt-4">
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
         <div className="rounded-xl border border-border/25 bg-[radial-gradient(circle_at_top_left,rgba(34,197,94,0.1),transparent_34%),radial-gradient(circle_at_top_right,rgba(56,189,248,0.12),transparent_30%),rgba(255,255,255,0.02)] px-4 py-4 sm:px-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="inline-flex items-center gap-2 rounded-full border border-border/25 bg-bg/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted/70">
                 <LayoutDashboard className="h-3 w-3" aria-hidden />
                 Overview
               </div>
-              <h2 className="text-lg font-semibold text-txt">Automations</h2>
+              <AutomationStatusStrip entries={statusEntries} />
             </div>
-
+            <AutomationCommandBar onSubmit={onDescribeAutomation} />
             <div className="flex flex-wrap gap-2">
-              <Button variant="default" size="sm" onClick={onCreateTask}>
+              <Button variant="ghost" size="sm" onClick={onCreateTask}>
                 New task
               </Button>
-              <Button variant="outline" size="sm" onClick={onCreateWorkflow}>
+              <Button variant="ghost" size="sm" onClick={onCreateWorkflow}>
                 New workflow
               </Button>
             </div>
-          </div>
-
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-            <OverviewMetricCard
-              label="Live"
-              value={<span className="tabular-nums">{activeCount}</span>}
-              detail={activeCount > 0 ? "Ready to run" : "Nothing enabled"}
-              tone={activeCount > 0 ? "ok" : "default"}
-            />
-            <OverviewMetricCard
-              label="Timed"
-              value={
-                <span className="tabular-nums">{activeScheduleCount}</span>
-              }
-              detail={
-                activeScheduleCount > 0
-                  ? "Schedules live"
-                  : "No timed runs"
-              }
-              tone={activeScheduleCount > 0 ? "ok" : "default"}
-            />
-            <OverviewMetricCard
-              label="Events"
-              value={<span className="tabular-nums">{activeEventCount}</span>}
-              detail={activeEventCount > 0 ? "Hooks live" : "No event hooks"}
-              tone={activeEventCount > 0 ? "ok" : "default"}
-            />
-            <OverviewMetricCard
-              label="Attention"
-              value={
-                <span className="tabular-nums">{attentionEntries.length}</span>
-              }
-              detail={
-                attentionEntries.length > 0 ? "Failed runs" : "Nothing urgent"
-              }
-              tone={attentionEntries.length > 0 ? "danger" : "ok"}
-            />
           </div>
         </div>
 
@@ -2597,65 +2697,82 @@ function AutomationsDashboard({
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <DetailSection title="Upcoming runs" className="h-full">
-          {upcoming.length > 0 ? (
+        <DetailSection title="Running" className="h-full">
+          {liveItems.length > 0 ? (
             <div className="divide-y divide-border/20">
-              {upcoming.map(({ key, item, schedule }) => (
+              {liveItems.map((item) => (
                 <OverviewListItem
-                  key={key}
+                  key={item.id}
                   onClick={() => onSelectItem(item)}
                   title={getOverviewDisplayTitle(item)}
                   badge={getAutomationGroupLabel(item)}
-                  meta={scheduleLabel(schedule, t, uiLanguage)}
-                  detail={formatDateTime(schedule.nextRunAtMs ?? null, {
-                    fallback: "—",
-                    locale: uiLanguage,
-                  })}
-                  trailing={
-                    schedule.nextRunAtMs
-                      ? formatRelativeFuture(schedule.nextRunAtMs, t)
-                      : "—"
+                  meta={
+                    item.schedules[0]
+                      ? scheduleLabel(item.schedules[0], t, uiLanguage)
+                      : "Manual or event"
                   }
+                  trailing={formatRelativePast(item.updatedAt, t)}
                   tone="success"
                 />
               ))}
             </div>
           ) : (
             <div className="px-3 py-4 text-xs-tight text-muted/70">
-              {scheduledEntries.length > 0 ? "None queued." : "No schedules."}
+              Nothing live.
             </div>
           )}
         </DetailSection>
 
-        <DetailSection title="Recent runs" className="h-full">
-          {recent.length > 0 ? (
+        <DetailSection title="Drafts" className="h-full">
+          {draftItems.length > 0 ? (
             <div className="divide-y divide-border/20">
-              {recent.map(({ key, item, schedule }) => {
-                const tone = toneForLastStatus(schedule.lastStatus);
-                return (
-                  <OverviewListItem
-                    key={key}
-                    onClick={() => onSelectItem(item)}
-                    title={getOverviewDisplayTitle(item)}
-                    badge={getAutomationGroupLabel(item)}
-                    meta={scheduleLabel(schedule, t, uiLanguage)}
-                    detail={formatDateTime(schedule.lastRunAtIso, {
-                      fallback: "—",
-                      locale: uiLanguage,
-                    })}
-                    trailing={formatRelativePast(schedule.lastRunAtIso, t)}
-                    tone={tone}
-                  />
-                );
-              })}
+              {draftItems.map((item) => (
+                <OverviewListItem
+                  key={item.id}
+                  onClick={() => onSelectItem(item)}
+                  title={getOverviewDisplayTitle(item)}
+                  badge={getAutomationGroupLabel(item)}
+                  meta="Continue"
+                  trailing={formatRelativePast(item.updatedAt, t)}
+                  tone="warning"
+                />
+              ))}
             </div>
           ) : (
             <div className="px-3 py-4 text-xs-tight text-muted/70">
-              No runs yet.
+              No drafts.
             </div>
           )}
         </DetailSection>
       </div>
+
+      <DetailSection title="Recently changed">
+        {recentItems.length > 0 ? (
+          <div className="grid divide-y divide-border/20 md:grid-cols-2 md:divide-x md:divide-y-0">
+            {recentItems.map((item) => (
+              <OverviewListItem
+                key={item.id}
+                onClick={() => onSelectItem(item)}
+                title={getOverviewDisplayTitle(item)}
+                badge={getAutomationGroupLabel(item)}
+                meta={
+                  item.schedules[0]
+                    ? scheduleLabel(item.schedules[0], t, uiLanguage)
+                    : item.isDraft
+                      ? "Draft"
+                      : "Manual or event"
+                }
+                trailing={formatRelativePast(item.updatedAt, t)}
+                tone={getAutomationStatusTone(item)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="px-3 py-4 text-xs-tight text-muted/70">
+            No recent changes.
+          </div>
+        )}
+      </DetailSection>
 
       <div className="grid gap-4 xl:grid-cols-2">
         <DetailSection
@@ -3003,11 +3120,7 @@ function getWorkflowFlowNodes(workflow: N8nWorkflow | null): Array<{
     }));
 }
 
-function WorkflowDataFlowStrip({
-  workflow,
-}: {
-  workflow: N8nWorkflow | null;
-}) {
+function WorkflowDataFlowStrip({ workflow }: { workflow: N8nWorkflow | null }) {
   const flowNodes = getWorkflowFlowNodes(workflow);
   if (flowNodes.length === 0) {
     return (
@@ -4540,6 +4653,30 @@ function AutomationsLayout() {
     [openCreateTrigger, setForm, showAutomationsList],
   );
 
+  const handleDescribeAutomation = useCallback(
+    async (prompt: string) => {
+      const trimmed = prompt.trim();
+      if (!trimmed) return;
+
+      if (inferAutomationPromptKind(trimmed) === "workflow") {
+        await createWorkflowDraft({
+          title: titleFromAutomationPrompt(trimmed),
+          initialPrompt: trimmed,
+        });
+        return;
+      }
+
+      showAutomationsList();
+      openCreateTrigger();
+      setForm({
+        ...emptyForm,
+        displayName: titleFromAutomationPrompt(trimmed),
+        instructions: trimmed,
+      });
+    },
+    [createWorkflowDraft, openCreateTrigger, setForm, showAutomationsList],
+  );
+
   const handleRefreshWorkflows = useCallback(async () => {
     setPageNotice(null);
     const data = await refreshAutomationsWithDraftBinding(
@@ -5067,6 +5204,7 @@ function AutomationsLayout() {
             onSelectItem={selectItem}
             onCreateTask={handleZeroStateNewTask}
             onCreateWorkflow={() => void createWorkflowDraft()}
+            onDescribeAutomation={handleDescribeAutomation}
             onUseIdea={(idea) => {
               if (idea.kind === "workflow") {
                 void createWorkflowDraft({
@@ -5142,6 +5280,7 @@ function AutomationsLayout() {
           setCreateDialogMode(null);
           void createWorkflowDraft();
         }}
+        onDescribeAutomation={handleDescribeAutomation}
       />
       <WorkflowTemplatesModal
         open={templatesModalOpen}
