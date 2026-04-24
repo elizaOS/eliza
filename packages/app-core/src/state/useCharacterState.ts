@@ -112,7 +112,12 @@ export function useCharacterState({
     setCharacterSaveError(null);
     setCharacterSaveSuccess(null);
     try {
-      const draft = prepareDraftForSave(characterDraft);
+      // Pass the previously-saved name so save-side tokenization catches
+      // stale literals when the user renames in this same save pass.
+      const draft = prepareDraftForSave(
+        characterDraft,
+        characterData?.name ?? undefined,
+      );
       if (!(draft.name as string | undefined)?.trim()) {
         throw new Error("Character name is required before saving.");
       }
@@ -142,6 +147,7 @@ export function useCharacterState({
     }
     setCharacterSaving(false);
   }, [
+    characterData,
     characterDraft,
     agentStatus,
     loadCharacter,
