@@ -7,7 +7,13 @@ import {
   isElectrobunRuntime,
   subscribeDesktopBridgeEvent,
 } from "../../bridge";
-import { getAppSlugFromPath, type Tab } from "../../navigation";
+import {
+  getAppSlugFromPath,
+  getWindowNavigationPath,
+  isAppWindowRoute,
+  shouldUseHashNavigation,
+  type Tab,
+} from "../../navigation";
 
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
@@ -126,25 +132,8 @@ function loadInitialAppWindowAlwaysOnTop(): boolean {
   }
 }
 
-function isAppRouteWindow(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return new URLSearchParams(window.location.search).get("appWindow") === "1";
-  } catch {
-    return false;
-  }
-}
-
-function shouldUseHashNavigation(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.location.protocol === "file:" || isAppRouteWindow();
-}
-
 function getCurrentAppsPath(): string {
-  if (typeof window === "undefined") return "/";
-  return shouldUseHashNavigation()
-    ? window.location.hash.replace(/^#/, "") || "/"
-    : window.location.pathname;
+  return getWindowNavigationPath();
 }
 
 function resolveDesktopViewerUrl(viewerUrl: string): string | null {
@@ -222,7 +211,7 @@ export function AppsView() {
   const [appWindowAlwaysOnTop, setAppWindowAlwaysOnTop] = useState<boolean>(
     loadInitialAppWindowAlwaysOnTop,
   );
-  const [isAppWindow] = useState<boolean>(isAppRouteWindow);
+  const [isAppWindow] = useState<boolean>(isAppWindowRoute);
   const [appWindows, setAppWindows] = useState<AppWindowRecord[]>([]);
   const [busyAppWindowId, setBusyAppWindowId] = useState<string | null>(null);
   const slugAutoLaunchDone = useRef(false);
@@ -279,22 +268,28 @@ export function AppsView() {
       ipcChannel: "desktop:managedWindowsChanged",
       listener: (payload) => {
         if (!isManagedWindowsChangedEvent(payload)) return;
-        const managedWindows = payload.windows
-          .filter((windowRecord) => windowRecord.surface !== "settings")
-          .map(
-            (windowRecord): AppWindowRecord => ({
-              id: windowRecord.id,
-              kind: "managed",
-              runId: "",
-              appName: windowRecord.title,
-              displayName: windowRecord.title,
-              alwaysOnTop: windowRecord.alwaysOnTop,
-            }),
+        setAppWindows((current) => {
+          const currentById = new Map(
+            current.map((record) => [record.id, record] as const),
           );
-        setAppWindows((current) => [
-          ...managedWindows,
-          ...current.filter((record) => record.kind === "game"),
-        ]);
+          const managedWindows = payload.windows
+            .filter((windowRecord) => windowRecord.surface !== "settings")
+            .map((windowRecord): AppWindowRecord => {
+              const existing = currentById.get(windowRecord.id);
+              return {
+                id: windowRecord.id,
+                kind: "managed",
+                runId: "",
+                appName: existing?.appName ?? "",
+                displayName: existing?.displayName ?? windowRecord.title,
+                alwaysOnTop: windowRecord.alwaysOnTop,
+              };
+            });
+          return [
+            ...managedWindows,
+            ...current.filter((record) => record.kind === "game"),
+          ];
+        });
       },
     });
   }, []);
@@ -988,11 +983,16 @@ export function AppsView() {
             throw new Error("Window is no longer open.");
           }
         } else {
-          await invokeDesktopBridgeRequest<void>({
+          const result = await invokeDesktopBridgeRequest<{
+            success: boolean;
+          }>({
             rpcMethod: "canvasSetAlwaysOnTop",
             ipcChannel: "canvas:setAlwaysOnTop",
             params: { id: windowRecord.id, flag: next },
           });
+          if (!result?.success) {
+            throw new Error("Window is no longer open.");
+          }
         }
         setAppWindows((current) =>
           current.map((item) =>

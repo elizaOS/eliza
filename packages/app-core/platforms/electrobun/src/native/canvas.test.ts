@@ -129,11 +129,21 @@ describe("CanvasManager app windows", () => {
       alwaysOnTop: true,
     });
 
-    await manager.setAlwaysOnTop({ id: created.id, flag: false });
+    await expect(
+      manager.setAlwaysOnTop({ id: created.id, flag: false }),
+    ).resolves.toEqual({ success: true });
 
     expect(browserWindowInstances[0].isAlwaysOnTop()).toBe(false);
     await expect(manager.listWindows()).resolves.toMatchObject({
       windows: [{ id: created.id, alwaysOnTop: false }],
     });
+  });
+
+  it("reports failure when toggling a missing game window", async () => {
+    const manager = new CanvasManager();
+
+    await expect(
+      manager.setAlwaysOnTop({ id: "missing", flag: true }),
+    ).resolves.toEqual({ success: false });
   });
 });
