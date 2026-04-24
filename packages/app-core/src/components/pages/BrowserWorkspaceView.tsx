@@ -699,6 +699,7 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void loadWorkspace({ preferTabId: selectedTabId, silent: true });
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
@@ -717,6 +718,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       return;
     }
     const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void loadSelectedBrowserWorkspaceSnapshot(selectedTabId, workspace.mode);
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
@@ -724,6 +726,7 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void loadBrowserWalletState();
     }, 5_000);
     return () => window.clearInterval(timer);
@@ -734,6 +737,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       return;
     }
     const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void loadBrowserBridgeState({ silent: true });
     }, BROWSER_BRIDGE_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);

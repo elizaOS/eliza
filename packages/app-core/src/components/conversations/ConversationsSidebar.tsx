@@ -234,7 +234,10 @@ export function ConversationsSidebar({
       }
     };
     void load();
-    const timer = window.setInterval(load, INBOX_CHATS_REFRESH_MS);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      load();
+    }, INBOX_CHATS_REFRESH_MS);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
