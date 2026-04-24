@@ -2630,21 +2630,42 @@ function shouldWaitForUserAfterIncompleteReflection(
 	});
 }
 
+// Cap how many recent action results we render into the planner prompt.
+// Prior turns' results accumulate without bound otherwise; in long-running
+// channels the planner template grows past the per-account long-context
+// gate (~200K input tokens on subscription tiers) and every turn fails
+// until history rolls off. Eight is enough for the planner to recognize
+// patterns ("we just spawned an agent, don't spawn another") without
+// dragging in entire session histories.
+const MAX_PROMPTED_ACTION_RESULTS = 8;
+
 function formatActionResultsForPrompt(actionResults: ActionResult[]): string {
 	if (actionResults.length === 0) {
 		return "No action results available.";
 	}
 
+	const rendered =
+		actionResults.length > MAX_PROMPTED_ACTION_RESULTS
+			? actionResults.slice(-MAX_PROMPTED_ACTION_RESULTS)
+			: actionResults;
+	const truncatedCount = actionResults.length - rendered.length;
+	const omittedNote =
+		truncatedCount > 0
+			? [`(${truncatedCount} earlier action result(s) omitted.)`]
+			: [];
+
 	return [
 		"# Action Results",
-		...actionResults.map((result, index) => {
+		...omittedNote,
+		...rendered.map((result, index) => {
 			const actionNameValue = result.data?.actionName;
 			const actionName =
 				typeof actionNameValue === "string"
 					? actionNameValue
 					: "Unknown Action";
+			const displayIndex = truncatedCount + index + 1;
 			const lines = [
-				`${index + 1}. ${actionName} - ${result.success === false ? "failed" : "succeeded"}`,
+				`${displayIndex}. ${actionName} - ${result.success === false ? "failed" : "succeeded"}`,
 			];
 			if (typeof result.text === "string" && result.text.trim()) {
 				lines.push(`Output: ${result.text.trim().slice(0, 2000)}`);
