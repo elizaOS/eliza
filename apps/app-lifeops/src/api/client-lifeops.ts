@@ -420,7 +420,13 @@ declare module "@elizaos/app-core/api/client-base" {
       eventId: string,
       patch: LifeOpsCalendarEventUpdate,
     ): Promise<LifeOpsCalendarEventMutationResult>;
-    deleteLifeOpsCalendarEvent(eventId: string): Promise<{ deleted: true }>;
+    deleteLifeOpsCalendarEvent(
+      eventId: string,
+      options?: Pick<
+        LifeOpsCalendarEventUpdate,
+        "calendarId" | "grantId" | "side"
+      >,
+    ): Promise<{ deleted: true }>;
     getLifeOpsInbox(
       options?: GetLifeOpsInboxRequest,
     ): Promise<LifeOpsInbox>;
@@ -1299,9 +1305,15 @@ ElizaClient.prototype.updateLifeOpsCalendarEvent = async function (
 ElizaClient.prototype.deleteLifeOpsCalendarEvent = async function (
   this: ElizaClient,
   eventId,
+  options = {},
 ) {
+  const params = new URLSearchParams();
+  if (options.calendarId) params.set("calendarId", options.calendarId);
+  if (options.grantId) params.set("grantId", options.grantId);
+  if (options.side) params.set("side", options.side);
+  const query = params.toString();
   return this.fetch(
-    `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}`,
+    `/api/lifeops/calendar/events/${encodeURIComponent(eventId)}${query ? `?${query}` : ""}`,
     {
       method: "DELETE",
     },

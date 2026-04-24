@@ -2117,9 +2117,13 @@ export interface LifeOpsCalendarEventReminderOverride {
 }
 
 export interface LifeOpsCalendarEventUpdate {
+  side?: LifeOpsConnectorSide;
+  grantId?: string;
+  calendarId?: string;
   title?: string;
   startAt?: string;
   endAt?: string;
+  timeZone?: string;
   notes?: string;
   reminders?: LifeOpsCalendarEventReminderOverride[];
 }

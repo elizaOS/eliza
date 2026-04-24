@@ -29,7 +29,9 @@ function toLocalInputValue(isoString: string | null): string {
     return "";
   }
   // datetime-local input expects "YYYY-MM-DDTHH:mm"
-  return new Date(parsed).toISOString().slice(0, 16);
+  const date = new Date(parsed);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function fromLocalInputValue(localValue: string): string | null {
@@ -110,10 +112,14 @@ export function EventEditorDrawer({
     setSaving(true);
     setError(null);
     try {
-      const result = await client.updateLifeOpsCalendarEvent(event.id, {
+      const result = await client.updateLifeOpsCalendarEvent(event.externalId, {
+        side: event.side,
+        grantId: event.grantId,
+        calendarId: event.calendarId,
         title: patch.title,
         startAt: patch.startAt,
         endAt: patch.endAt,
+        timeZone: event.timezone ?? undefined,
         notes: patch.description,
         reminders: patch.minutesBefore?.map((minutesBefore) => ({
           minutesBefore,
@@ -159,7 +165,11 @@ export function EventEditorDrawer({
     setDeleting(true);
     setError(null);
     try {
-      await client.deleteLifeOpsCalendarEvent(event.id);
+      await client.deleteLifeOpsCalendarEvent(event.externalId, {
+        side: event.side,
+        grantId: event.grantId,
+        calendarId: event.calendarId,
+      });
       setActionNotice(
         t("eventEditor.deleted", {
           defaultValue: "Event deleted.",
