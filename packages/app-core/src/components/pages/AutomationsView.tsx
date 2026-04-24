@@ -1833,6 +1833,7 @@ function TaskAutomationDetailPane({
   const statusTone: "success" | "warning" | "muted" | "danger" =
     automation.system ? "muted" : task.isCompleted ? "muted" : "success";
   const nextScheduledRun = automation.schedules
+    .filter(isTimeBasedTrigger)
     .map((schedule) => schedule.nextRunAtMs ?? 0)
     .filter((value) => value > 0)
     .sort((left, right) => left - right)[0];
@@ -2311,8 +2312,6 @@ function AutomationsDashboard({
   const activeEventCount = scheduledEntries.filter(
     ({ schedule }) => schedule.enabled && schedule.triggerType === "event",
   ).length;
-  const draftCount = visibleItems.filter((item) => item.isDraft).length;
-
   const upcoming = useMemo(
     () =>
       scheduledEntries
@@ -2496,16 +2495,22 @@ function AutomationsDashboard({
               tone={activeCount > 0 ? "ok" : "default"}
             />
             <OverviewMetricCard
-              label="Scheduled"
+              label="Timed"
               value={
                 <span className="tabular-nums">{activeScheduleCount}</span>
               }
               detail={
                 activeScheduleCount > 0
-                  ? "Time-based runs live"
-                  : "No live schedule"
+                  ? "Schedules live"
+                  : "No timed runs"
               }
               tone={activeScheduleCount > 0 ? "ok" : "default"}
+            />
+            <OverviewMetricCard
+              label="Events"
+              value={<span className="tabular-nums">{activeEventCount}</span>}
+              detail={activeEventCount > 0 ? "Hooks live" : "No event hooks"}
+              tone={activeEventCount > 0 ? "ok" : "default"}
             />
             <OverviewMetricCard
               label="Attention"
@@ -2516,14 +2521,6 @@ function AutomationsDashboard({
                 attentionEntries.length > 0 ? "Failed runs" : "Nothing urgent"
               }
               tone={attentionEntries.length > 0 ? "danger" : "ok"}
-            />
-            <OverviewMetricCard
-              label="Drafts"
-              value={<span className="tabular-nums">{draftCount}</span>}
-              detail={
-                draftCount > 0 ? "Still being shaped" : "Nothing in progress"
-              }
-              tone={draftCount > 0 ? "warning" : "default"}
             />
           </div>
         </div>
@@ -3124,14 +3121,19 @@ function TriggerAutomationDetailPane({
         <OverviewMetricCard
           label="Next run"
           value={nextRunLabel}
-          detail={formatDateTime(trigger.nextRunAtMs, {
-            fallback:
-              trigger.triggerType === "event"
-                ? "Waiting for event input"
-                : "No time-based run queued",
-            locale: uiLanguage,
-          })}
-          tone={trigger.nextRunAtMs || trigger.triggerType === "event" ? "ok" : "default"}
+          detail={
+            trigger.triggerType === "event"
+              ? "Waiting for event input"
+              : formatDateTime(trigger.nextRunAtMs, {
+                  fallback: "No time-based run queued",
+                  locale: uiLanguage,
+                })
+          }
+          tone={
+            trigger.nextRunAtMs || trigger.triggerType === "event"
+              ? "ok"
+              : "default"
+          }
         />
         <OverviewMetricCard
           label="Last run"
@@ -3295,6 +3297,7 @@ function WorkflowAutomationDetailPane({
     getWorkflowNodeCount(automation);
   const workflowIsActive = graphWorkflow?.active ?? automation.enabled;
   const nextWorkflowRun = automation.schedules
+    .filter(isTimeBasedTrigger)
     .map((schedule) => schedule.nextRunAtMs ?? 0)
     .filter((value) => value > 0)
     .sort((left, right) => left - right)[0];
