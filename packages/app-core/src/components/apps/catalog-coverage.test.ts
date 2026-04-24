@@ -1,8 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { RegistryAppInfo } from "../../api";
+import {
+  DEFAULT_BOOT_CONFIG,
+  setBootConfig,
+} from "../../config/boot-config-store";
 import {
   APPS_VIEW_HIDDEN_APP_NAMES,
   filterAppsForCatalog,
@@ -56,6 +60,10 @@ function readUpstreamAppPackageNames(): string[] {
 }
 
 describe("apps catalog coverage", () => {
+  afterEach(() => {
+    setBootConfig(DEFAULT_BOOT_CONFIG);
+  });
+
   it("surfaces every upstream app package under eliza/apps", () => {
     const upstreamPackageNames = readUpstreamAppPackageNames();
     const injectedCatalogNames = new Set(
@@ -179,6 +187,24 @@ describe("apps catalog coverage", () => {
     expect(sections[1]).toMatchObject({
       key: "featured",
       apps: [{ name: "@clawville/app-clawville" }],
+    });
+  });
+
+  it("surfaces configured default apps in the featured section", () => {
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      defaultApps: ["@example/app-default"],
+    });
+
+    const sections = groupAppsForCatalog(
+      filterAppsForCatalog([makeCatalogCandidate("@example/app-default")], {
+        showAllApps: true,
+      }),
+    );
+
+    expect(sections[0]).toMatchObject({
+      key: "featured",
+      apps: [{ name: "@example/app-default" }],
     });
   });
 });

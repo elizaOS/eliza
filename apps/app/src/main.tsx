@@ -7,64 +7,6 @@ import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
-import { App } from "@elizaos/app-core";
-import { client } from "@elizaos/app-core";
-import {
-  initializeCapacitorBridge,
-  subscribeDesktopBridgeEvent,
-  initializeStorageBridge,
-  isElectrobunRuntime,
-} from "@elizaos/app-core";
-import { CharacterEditor } from "@elizaos/app-core";
-import { PhoneCompanionApp } from "@elizaos/app-core";
-import type { BrandingConfig } from "@elizaos/app-core";
-import {
-  type AppBootConfig,
-  getBootConfig,
-  MOBILE_RUNTIME_MODE_STORAGE_KEY,
-  normalizeMobileRuntimeMode,
-  setBootConfig,
-} from "@elizaos/app-core";
-import {
-  AGENT_READY_EVENT,
-  APP_PAUSE_EVENT,
-  APP_RESUME_EVENT,
-  COMMAND_PALETTE_EVENT,
-  CONNECT_EVENT,
-  dispatchAppEvent,
-  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
-  SHARE_TARGET_EVENT,
-  TRAY_ACTION_EVENT,
-} from "@elizaos/app-core";
-import {
-  applyForceFreshOnboardingReset,
-  applyLaunchConnectionFromUrl,
-  applyLaunchConnection,
-  installDesktopPermissionsClientPatch,
-  installForceFreshOnboardingClientPatch,
-  installLocalProviderCloudPreferencePatch,
-  isDetachedWindowShell,
-  resolveWindowShellRoute,
-  shouldInstallMainWindowOnboardingPatches,
-  syncDetachedShellLocation,
-} from "@elizaos/app-core";
-import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops/platform";
-import type { ShareTargetPayload } from "@elizaos/app-core/platform";
-import {
-  DESKTOP_TRAY_MENU_ITEMS,
-  DesktopOnboardingRuntime,
-  DesktopSurfaceNavigationRuntime,
-  DesktopTrayRuntime,
-  DetachedShellRoot,
-} from "@elizaos/app-core";
-import { AppProvider } from "@elizaos/app-core";
-import { applyUiTheme, loadUiTheme } from "@elizaos/app-core";
-import { Agent } from "@elizaos/capacitor-agent";
-import { Desktop } from "@elizaos/capacitor-desktop";
-import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { CompanionShell } from "@elizaos/app-companion/ui";
 import {
   createVectorBrowserRenderer,
   GlobalEmoteOverlay,
@@ -74,6 +16,57 @@ import {
   THREE,
   useCompanionSceneStatus,
 } from "@elizaos/app-companion";
+import { CompanionShell } from "@elizaos/app-companion/ui";
+import type { BrandingConfig } from "@elizaos/app-core";
+import {
+  AGENT_READY_EVENT,
+  APP_PAUSE_EVENT,
+  APP_RESUME_EVENT,
+  App,
+  type AppBootConfig,
+  AppProvider,
+  applyForceFreshOnboardingReset,
+  applyLaunchConnection,
+  applyLaunchConnectionFromUrl,
+  applyUiTheme,
+  CharacterEditor,
+  COMMAND_PALETTE_EVENT,
+  CONNECT_EVENT,
+  client,
+  DESKTOP_TRAY_MENU_ITEMS,
+  DesktopOnboardingRuntime,
+  DesktopSurfaceNavigationRuntime,
+  DesktopTrayRuntime,
+  DetachedShellRoot,
+  dispatchAppEvent,
+  getBootConfig,
+  initializeCapacitorBridge,
+  initializeStorageBridge,
+  installDesktopPermissionsClientPatch,
+  installForceFreshOnboardingClientPatch,
+  installLocalProviderCloudPreferencePatch,
+  isDetachedWindowShell,
+  isElectrobunRuntime,
+  loadUiTheme,
+  MOBILE_RUNTIME_MODE_CHANGED_EVENT,
+  MOBILE_RUNTIME_MODE_STORAGE_KEY,
+  normalizeMobileRuntimeMode,
+  PhoneCompanionApp,
+  resolveWindowShellRoute,
+  SHARE_TARGET_EVENT,
+  setBootConfig,
+  shouldInstallMainWindowOnboardingPatches,
+  subscribeDesktopBridgeEvent,
+  syncDetachedShellLocation,
+  TRAY_ACTION_EVENT,
+} from "@elizaos/app-core";
+import type { ShareTargetPayload } from "@elizaos/app-core/platform";
+import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops/platform";
+import { Agent } from "@elizaos/capacitor-agent";
+import { Desktop } from "@elizaos/capacitor-desktop";
+import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
 import "@elizaos/app-companion/register";
 // Side-effect: register LifeOps sidebar widgets + client methods on ElizaClient.
 import "@elizaos/app-lifeops/widgets";
@@ -87,13 +80,13 @@ import "@elizaos/app-scape/ui";
 import "@elizaos/app-hyperscape/ui";
 import "@elizaos/app-2004scape/ui";
 import "@elizaos/app-defense-of-the-agents/ui";
+import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops/components/LifeOpsActivitySignalsEffect";
 import {
   AppBlockerSettingsCard,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
 } from "@elizaos/app-lifeops/ui";
-import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops/components/LifeOpsActivitySignalsEffect";
 import {
   ApprovalQueue,
   StewardLogo,
@@ -113,6 +106,7 @@ import "@elizaos/app-vincent/register";
 import { shouldUseCloudOnlyBranding } from "@elizaos/app-core";
 import {
   APP_BRANDING_BASE,
+  APP_CONFIG,
   APP_LOG_PREFIX,
   APP_NAMESPACE,
   APP_URL_SCHEME,
@@ -232,6 +226,7 @@ const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
 
 const appBootConfig: AppBootConfig = {
   branding: APP_BRANDING,
+  defaultApps: APP_CONFIG.defaultApps,
   assetBaseUrl:
     (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
     undefined,

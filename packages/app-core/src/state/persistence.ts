@@ -1,4 +1,5 @@
 import type { ConversationMode } from "../api/client";
+import { getBootConfig } from "../config/boot-config-store";
 import {
   DEFAULT_UI_LANGUAGE,
   normalizeLanguage,
@@ -520,24 +521,44 @@ export function clearAvatarIndex(): void {
 /* ── Favorite apps persistence ────────────────────────────────────────── */
 const FAVORITE_APPS_KEY = "eliza:favorite-apps";
 
+function sanitizeFavoriteApps(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const apps: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string" || item.length === 0 || seen.has(item)) {
+      continue;
+    }
+    seen.add(item);
+    apps.push(item);
+  }
+  return apps;
+}
+
+function getDefaultFavoriteApps(): string[] {
+  return sanitizeFavoriteApps(getBootConfig().defaultApps);
+}
+
 export function loadFavoriteApps(): string[] {
+  const defaultApps = getDefaultFavoriteApps();
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(FAVORITE_APPS_KEY);
-    if (!stored) return [];
+    if (stored === null) return defaultApps;
     try {
       const parsed = JSON.parse(stored);
-      return Array.isArray(parsed)
-        ? parsed.filter((item): item is string => typeof item === "string")
-        : [];
+      return sanitizeFavoriteApps(parsed);
     } catch {
-      return [];
+      return defaultApps;
     }
-  }, []);
+  }, defaultApps);
 }
 
 export function saveFavoriteApps(apps: string[]): void {
   tryLocalStorage(() => {
-    localStorage.setItem(FAVORITE_APPS_KEY, JSON.stringify(apps));
+    localStorage.setItem(
+      FAVORITE_APPS_KEY,
+      JSON.stringify(sanitizeFavoriteApps(apps)),
+    );
   }, undefined);
 }
 
