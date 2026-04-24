@@ -1,11 +1,5 @@
-import { Music, RefreshCw, Volume2, VolumeX } from "lucide-react";
-import {
-  type ChangeEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { Music, Pause, Play, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { resolveApiUrl } from "../../../utils/asset-url";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
@@ -44,8 +38,8 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
   const lastAttachedTrack = useRef<string | null>(null);
   const [player, setPlayer] = useState<PlayerState>({ kind: "idle" });
   const [audioError, setAudioError] = useState<string | null>(null);
-  const [muted, setMuted] = useState(false);
-  const [volume, setVolume] = useState(0.8);
+  const [audioPaused, setAudioPaused] = useState(true);
+  const isPlaying = player.kind === "playing";
 
   const pollOnce = useCallback(async () => {
     setPlayer((prev) => (prev.kind === "idle" ? { kind: "loading" } : prev));
@@ -73,11 +67,13 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
         return;
       }
       setPlayer({ kind: "idle" });
+      setAudioPaused(true);
     } catch {
       setPlayer({
         kind: "error",
         message: "Could not reach the music player.",
       });
+      setAudioPaused(true);
     }
   }, []);
 
@@ -89,16 +85,25 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
 
   useEffect(() => {
     const el = audioRef.current;
-    if (!el || player.kind !== "playing") return;
+    if (!el) return;
+    if (player.kind !== "playing") {
+      el.pause();
+      el.removeAttribute("src");
+      el.load();
+      lastAttachedTrack.current = null;
+      return;
+    }
     const key = `${player.guildId}::${player.title}`;
     if (lastAttachedTrack.current !== key) {
       lastAttachedTrack.current = key;
       setAudioError(null);
+      setAudioPaused(true);
       el.src = player.streamUrl;
       el.load();
     }
     if (player.isPaused) {
       el.pause();
+      setAudioPaused(true);
       return;
     }
     el.play().catch(() => {
@@ -109,32 +114,33 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
-    el.muted = muted;
-    el.volume = volume;
-  }, [muted, volume]);
-
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
+    const handlePlay = () => setAudioPaused(false);
+    const handlePause = () => setAudioPaused(true);
     const handler = () => {
       const err = el.error;
       const code = err?.code ?? 0;
       const name = MEDIA_ERROR_NAMES[code] ?? `UNKNOWN(${code})`;
       setAudioError(`${name}: ${err?.message || "no details"}`);
     };
+    el.addEventListener("play", handlePlay);
+    el.addEventListener("pause", handlePause);
     el.addEventListener("error", handler);
-    return () => el.removeEventListener("error", handler);
+    return () => {
+      el.removeEventListener("play", handlePlay);
+      el.removeEventListener("pause", handlePause);
+      el.removeEventListener("error", handler);
+    };
   }, []);
 
-  function handleVolumeChange(event: ChangeEvent<HTMLInputElement>) {
-    const nextVolume = Number.parseFloat(event.target.value);
-    setVolume(nextVolume);
-    if (nextVolume > 0 && muted) {
-      setMuted(false);
+  function togglePlayback() {
+    const el = audioRef.current;
+    if (!el || player.kind !== "playing" || !player.streamUrl) return;
+    if (el.paused) {
+      void el.play();
+      return;
     }
+    el.pause();
   }
-
-  const isPlaying = player.kind === "playing";
 
   return (
     <WidgetSection
@@ -154,47 +160,33 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
     >
       <div className="flex flex-col gap-2 pt-0.5">
         {isPlaying ? (
-          <>
-            <div className="flex items-center gap-2">
-              <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                  player.isPaused ? "bg-warn" : "bg-ok"
-                }`}
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1 truncate text-3xs font-semibold text-txt">
-                {player.title}
-              </span>
-              <span className="shrink-0 text-3xs uppercase tracking-wider text-muted/70">
-                {statusLabel(player)}
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setMuted((value) => !value)}
-                aria-label={muted ? "Unmute" : "Mute"}
-                title={muted ? "Unmute" : "Mute"}
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
-              >
-                {muted || volume === 0 ? (
-                  <VolumeX className="h-3.5 w-3.5" aria-hidden />
-                ) : (
-                  <Volume2 className="h-3.5 w-3.5" aria-hidden />
-                )}
-              </button>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                value={muted ? 0 : volume}
-                onChange={handleVolumeChange}
-                className="h-1 min-w-0 flex-1 accent-ok"
-                aria-label="Music volume"
-              />
-            </div>
-          </>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={togglePlayback}
+              aria-label={audioPaused ? "Play music" : "Pause music"}
+              title={audioPaused ? "Play" : "Pause"}
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-transparent text-muted transition-colors hover:text-txt"
+            >
+              {audioPaused ? (
+                <Play className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <Pause className="h-3.5 w-3.5" aria-hidden />
+              )}
+            </button>
+            <span
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                player.isPaused ? "bg-warn" : "bg-ok"
+              }`}
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1 truncate text-3xs font-semibold text-txt">
+              {player.title}
+            </span>
+            <span className="shrink-0 text-3xs uppercase tracking-wider text-muted/70">
+              {statusLabel(player)}
+            </span>
+          </div>
         ) : (
           <EmptyWidgetState
             icon={<Music className="h-5 w-5" />}
@@ -209,8 +201,7 @@ export function MusicPlayerSidebarWidget(_props: ChatSidebarWidgetProps) {
         {/* biome-ignore lint/a11y/useMediaCaption: agent music stream has no caption track */}
         <audio
           ref={audioRef}
-          controls
-          className="w-full rounded-[var(--radius-sm)] border border-border bg-bg"
+          className="hidden"
           aria-label="Agent music stream"
         />
         {audioError ? (
