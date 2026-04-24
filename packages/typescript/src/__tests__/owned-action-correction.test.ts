@@ -33,4 +33,33 @@ describe("findOwnedActionCorrectionFromMetadata", () => {
 		);
 		expect(result).toBeNull();
 	});
+
+	it("returns a suggestion when the planner chose a low-scoring owned action", () => {
+		// Positive-path guard: a future refactor that always returned null from
+		// the explicit-intent early-return would still pass the three cases
+		// above. This keeps the corrector's real job under test — upgrading a
+		// weak planner pick to a clearly better owned action by keyword overlap.
+		const runtime = {
+			actions: [
+				{
+					name: "OWNER_SEND_MESSAGE",
+					description:
+						"Send a discord message to a contact or channel when the user asks to send, text, ping, or dm someone. Use this for owner send workflows.",
+					tags: ["workflow"],
+					similes: ["send discord message"],
+				},
+				{
+					name: "READ_CALENDAR",
+					description: "Read the user's calendar.",
+				},
+			],
+		};
+		const result = findOwnedActionCorrectionFromMetadata(
+			runtime,
+			{ content: { text: "send a discord message to the team channel" } },
+			{ actions: ["READ_CALENDAR"] },
+		);
+		expect(result).not.toBeNull();
+		expect(result?.actionName).toBe("OWNER_SEND_MESSAGE");
+	});
 });
