@@ -75,9 +75,9 @@ import type {
   TrainingStatus,
   TrainingTrajectoryDetail,
   TrainingTrajectoryList,
+  TriggerEventDispatchResponse,
   TriggerHealthSnapshot,
   TriggerLastStatus,
-  TriggerEventDispatchResponse,
   TriggerRunRecord,
   TriggerSummary,
   UpdateStatus,
@@ -398,6 +398,7 @@ declare module "./client-base" {
     getRelationshipsPerson(id: string): Promise<RelationshipsPersonDetail>;
     getRelationshipsActivity(
       limit?: number,
+      offset?: number,
     ): Promise<RelationshipsActivityResponse>;
     getRelationshipsCandidates(): Promise<RelationshipsMergeCandidate[]>;
     acceptRelationshipsCandidate(
@@ -1185,13 +1186,10 @@ ElizaClient.prototype.emitTriggerEvent = async function (
   eventKind,
   payload = {},
 ) {
-  return this.fetch(
-    `/api/triggers/events/${encodeURIComponent(eventKind)}`,
-    {
-      method: "POST",
-      body: JSON.stringify({ payload }),
-    },
-  );
+  return this.fetch(`/api/triggers/events/${encodeURIComponent(eventKind)}`, {
+    method: "POST",
+    body: JSON.stringify({ payload }),
+  });
 };
 
 ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
@@ -1560,6 +1558,7 @@ ElizaClient.prototype.getRelationshipsGraph = async function (
   const params = new URLSearchParams();
   if (query?.search) params.set("search", query.search);
   if (query?.platform) params.set("platform", query.platform);
+  if (query?.scope) params.set("scope", query.scope);
   if (typeof query?.limit === "number")
     params.set("limit", String(query.limit));
   if (typeof query?.offset === "number")
@@ -1578,6 +1577,7 @@ ElizaClient.prototype.getRelationshipsPeople = async function (
   const params = new URLSearchParams();
   if (query?.search) params.set("search", query.search);
   if (query?.platform) params.set("platform", query.platform);
+  if (query?.scope) params.set("scope", query.scope);
   if (typeof query?.limit === "number")
     params.set("limit", String(query.limit));
   if (typeof query?.offset === "number")
@@ -1606,11 +1606,15 @@ ElizaClient.prototype.getRelationshipsPerson = async function (
 ElizaClient.prototype.getRelationshipsActivity = async function (
   this: ElizaClient,
   limit?,
+  offset?,
 ) {
   const params = new URLSearchParams();
   if (typeof limit === "number") params.set("limit", String(limit));
+  if (typeof offset === "number") params.set("offset", String(offset));
   const qs = params.toString();
-  return this.fetch(`/api/relationships/activity${qs ? `?${qs}` : ""}`);
+  return this.fetch<RelationshipsActivityResponse>(
+    `/api/relationships/activity${qs ? `?${qs}` : ""}`,
+  );
 };
 
 ElizaClient.prototype.getRelationshipsCandidates = async function (

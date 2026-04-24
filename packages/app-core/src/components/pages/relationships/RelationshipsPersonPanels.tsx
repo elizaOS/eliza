@@ -1,5 +1,17 @@
 import { Button, MetaPill, PagePanel } from "@elizaos/ui";
-import type { ReactNode } from "react";
+import {
+  CalendarClock,
+  Crown,
+  Fingerprint,
+  Globe2,
+  Link2,
+  Mail,
+  MessageCircle,
+  Phone,
+  Tags,
+  UserRound,
+} from "lucide-react";
+import type { ComponentType, ReactNode } from "react";
 import type {
   RelationshipsGraphEdge,
   RelationshipsPersonDetail,
@@ -8,15 +20,12 @@ import type {
 import { formatDateTime } from "../../../utils/format";
 import { RelationshipsIdentityCluster } from "../RelationshipsIdentityCluster";
 import {
-  buildAdditionalHighlights,
   profilePrimaryValue,
   profileSourceLabel,
-  type RelationshipsPersonSupplementalDetail,
   topContacts,
 } from "./relationships-utils";
 
-type RelationshipsDisplayPerson = RelationshipsPersonDetail &
-  RelationshipsPersonSupplementalDetail;
+type RelationshipsDisplayPerson = RelationshipsPersonDetail;
 
 const PANEL_PREVIEW_LIMIT = 4;
 const CONVERSATION_PREVIEW_LIMIT = 2;
@@ -73,22 +82,13 @@ function listValue(values: string[], fallback: string): string {
 }
 
 function personSummary(person: RelationshipsDisplayPerson): string {
-  if (person.headline?.trim()) {
-    return person.headline.trim();
-  }
-  if (person.bio?.trim()) {
-    return person.bio.trim();
-  }
-  if (person.notes?.trim()) {
-    return person.notes.trim();
-  }
   if (person.isOwner) {
-    return "Canonical owner profile for app chat and linked connectors.";
+    return "Primary owner profile for app chat and linked connectors.";
   }
   if (person.aliases.length > 0) {
     return `Known as ${person.aliases.join(", ")}.`;
   }
-  return "No alternate aliases have been confirmed yet.";
+  return "No alternate aliases recorded.";
 }
 
 function relationshipCounterpartName(
@@ -98,6 +98,31 @@ function relationshipCounterpartName(
   return relationship.sourcePersonId === groupId
     ? relationship.targetPersonName
     : relationship.sourcePersonName;
+}
+
+function sentimentClasses(sentiment: string): string {
+  if (sentiment === "positive") {
+    return "border-success/28 bg-success/10 text-success";
+  }
+  if (sentiment === "negative") {
+    return "border-danger/28 bg-danger/10 text-danger";
+  }
+  return "border-warning/28 bg-warning/10 text-warning";
+}
+
+function DetailLabel({
+  icon: Icon,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-xs-tight uppercase tracking-[0.14em] text-muted/70">
+      <Icon className="h-3.5 w-3.5 text-accent" />
+      {children}
+    </div>
+  );
 }
 
 function ProfileCard({
@@ -130,7 +155,7 @@ function ProfileCard({
             <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
               {profileSourceLabel(profile.source)}
             </div>
-            {profile.canonical ? <MetaPill compact>Canonical</MetaPill> : null}
+            {profile.canonical ? <MetaPill compact>Primary</MetaPill> : null}
           </div>
           <div className="mt-1 text-sm font-semibold text-txt">
             {primaryValue}
@@ -158,7 +183,8 @@ export function RelationshipsPersonSummaryPanel({
   const avatarUrl = resolvePrimaryAvatar(person);
   const contacts = topContacts(person);
   const hasProfiles = person.profiles.length > 0;
-  const additionalHighlights = buildAdditionalHighlights(person);
+  const hasCategories = person.categories.length > 0;
+  const hasTags = person.tags.length > 0;
 
   return (
     <PagePanel variant="padded" className={compact ? "space-y-3" : "space-y-4"}>
@@ -173,7 +199,7 @@ export function RelationshipsPersonSummaryPanel({
           ) : null}
           <div className="min-w-0">
             <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-              Canonical person
+              Person
             </div>
             <div
               className={`${compact ? "mt-1 text-xl" : "mt-2 text-[1.75rem]"} break-words font-semibold leading-tight text-txt`}
@@ -186,12 +212,24 @@ export function RelationshipsPersonSummaryPanel({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {person.isOwner ? <MetaPill compact>Owner</MetaPill> : null}
+          {person.isOwner ? (
+            <MetaPill compact>
+              <Crown className="mr-1 h-3.5 w-3.5" />
+              Owner
+            </MetaPill>
+          ) : null}
           <MetaPill compact>
+            <Fingerprint className="mr-1 h-3.5 w-3.5" />
             {person.memberEntityIds.length} identities
           </MetaPill>
-          <MetaPill compact>{person.factCount} facts</MetaPill>
-          <MetaPill compact>{person.relationshipCount} links</MetaPill>
+          <MetaPill compact>
+            <Tags className="mr-1 h-3.5 w-3.5" />
+            {person.factCount} facts
+          </MetaPill>
+          <MetaPill compact>
+            <Link2 className="mr-1 h-3.5 w-3.5" />
+            {person.relationshipCount} links
+          </MetaPill>
           {onViewMemories ? (
             <Button
               type="button"
@@ -215,73 +253,55 @@ export function RelationshipsPersonSummaryPanel({
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <PagePanel variant="inset" className="px-4 py-4">
-            <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-              Platforms
-            </div>
+            <DetailLabel icon={UserRound}>Platforms</DetailLabel>
             <div className="mt-2 text-sm font-semibold text-txt">
               {listValue(person.platforms, "No linked platforms")}
             </div>
           </PagePanel>
           <PagePanel variant="inset" className="px-4 py-4">
-            <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-              Last interaction
-            </div>
+            <DetailLabel icon={CalendarClock}>Last interaction</DetailLabel>
             <div className="mt-2 text-sm font-semibold text-txt">
-              {formatDateTime(person.lastInteractionAt, { fallback: "n/a" })}
-            </div>
-          </PagePanel>
-          <PagePanel variant="inset" className="px-4 py-4">
-            <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-              Categories
-            </div>
-            <div className="mt-2 text-sm font-semibold text-txt">
-              {listValue(person.categories, "No categories")}
-            </div>
-          </PagePanel>
-          <PagePanel variant="inset" className="px-4 py-4">
-            <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-              Tags
-            </div>
-            <div className="mt-2 text-sm font-semibold text-txt">
-              {listValue(person.tags, "No tags")}
+              {formatDateTime(person.lastInteractionAt, {
+                fallback: "No date",
+              })}
             </div>
           </PagePanel>
 
-          {additionalHighlights.length > 0 ? (
+          {hasCategories || hasTags ? (
             <PagePanel variant="surface" className="sm:col-span-2 px-4 py-4">
-              <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-                Additional context
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {additionalHighlights.map((row) => (
-                  <div
-                    key={`${row.label}:${row.value}`}
-                    className="rounded-xl border border-border/24 bg-card/35 px-3 py-3"
-                  >
-                    <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                      {row.label}
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-txt">
-                      {row.value}
-                    </div>
-                  </div>
+              <DetailLabel icon={Tags}>Labels</DetailLabel>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {person.categories.map((category) => (
+                  <MetaPill key={`category:${category}`} compact>
+                    {category}
+                  </MetaPill>
+                ))}
+                {person.tags.map((tag) => (
+                  <MetaPill key={`tag:${tag}`} compact>
+                    {tag}
+                  </MetaPill>
                 ))}
               </div>
             </PagePanel>
           ) : null}
 
-          <PagePanel variant="surface" className="sm:col-span-2 px-4 py-4">
-            <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-              Reachability
-            </div>
-            {contacts.length > 0 ? (
+          {contacts.length > 0 ? (
+            <PagePanel variant="surface" className="sm:col-span-2 px-4 py-4">
+              <DetailLabel icon={Mail}>Reachability</DetailLabel>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {contacts.map((contact) => (
                   <div
                     key={`${contact.label}:${contact.value}`}
                     className="rounded-xl border border-border/24 bg-card/35 px-3 py-3"
                   >
-                    <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
+                    <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
+                      {contact.label === "Phone" ? (
+                        <Phone className="h-3 w-3 text-accent" />
+                      ) : contact.label === "Website" ? (
+                        <Globe2 className="h-3 w-3 text-accent" />
+                      ) : (
+                        <Mail className="h-3 w-3 text-accent" />
+                      )}
                       {contact.label}
                     </div>
                     <div className="mt-1 text-sm font-semibold text-txt">
@@ -290,12 +310,8 @@ export function RelationshipsPersonSummaryPanel({
                   </div>
                 ))}
               </div>
-            ) : (
-              <p className="mt-3 text-sm leading-6 text-muted">
-                No direct contact channels are stored for this person yet.
-              </p>
-            )}
-          </PagePanel>
+            </PagePanel>
+          ) : null}
 
           {hasProfiles && !compact ? <ProfilesPanel person={person} /> : null}
         </div>
@@ -376,9 +392,9 @@ export function RelationshipsFactsPanel({
         </div>
         <div className="mt-2 text-xs text-muted">
           {fact.lastReinforced
-            ? `Reinforced ${formatDateTime(fact.lastReinforced, { fallback: "n/a" })}`
+            ? `Reinforced ${formatDateTime(fact.lastReinforced, { fallback: "No date" })}`
             : formatDateTime(fact.updatedAt, {
-                fallback: "No timestamp",
+                fallback: "No date",
               })}
         </div>
         {fact.provenance?.source ? (
@@ -397,17 +413,12 @@ export function RelationshipsFactsPanel({
           <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
             Facts
           </div>
-          <div className="mt-2 text-lg font-semibold text-txt">
-            Stored claims and memory-backed notes
-          </div>
         </div>
         <MetaPill compact>{person.facts.length}</MetaPill>
       </div>
 
       {person.facts.length === 0 ? (
-        <p className="mt-4 text-sm leading-6 text-muted">
-          No facts have been extracted for this person yet.
-        </p>
+        <p className="mt-4 text-sm leading-6 text-muted">No facts extracted.</p>
       ) : (
         <div className="mt-4 space-y-3">
           {shownFacts.map(renderFact)}
@@ -435,20 +446,31 @@ export function RelationshipsConnectionsPanel({
       className="rounded-xl border border-border/24 bg-card/32 px-3.5 py-3"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <MetaPill compact>{relationship.strength.toFixed(2)}</MetaPill>
-        <MetaPill compact>{relationship.sentiment}</MetaPill>
-        <MetaPill compact>{relationship.interactionCount} msgs</MetaPill>
+        <span
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.12em] ${sentimentClasses(relationship.sentiment)}`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+          {relationship.sentiment || "neutral"}
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/36 px-2 py-0.5 text-2xs font-semibold text-muted">
+          <Link2 className="h-3 w-3" />
+          {Math.round(relationship.strength * 100)}%
+        </span>
+        <span className="inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/36 px-2 py-0.5 text-2xs font-semibold text-muted">
+          <MessageCircle className="h-3 w-3" />
+          {relationship.interactionCount}
+        </span>
       </div>
       <div className="mt-2 text-sm font-semibold text-txt">
         {relationshipCounterpartName(relationship, person.groupId)}
       </div>
       <div className="mt-1 text-xs uppercase tracking-[0.12em] text-muted/70">
-        {relationship.relationshipTypes.join(" • ") || "unknown"}
+        {relationship.relationshipTypes.join(" • ") || "Unlabeled"}
       </div>
       <div className="mt-2 text-xs text-muted">
         Last interaction{" "}
         {formatDateTime(relationship.lastInteractionAt, {
-          fallback: "n/a",
+          fallback: "No date",
         })}
       </div>
     </div>
@@ -461,17 +483,13 @@ export function RelationshipsConnectionsPanel({
           <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
             Relationships
           </div>
-          <div className="mt-2 text-lg font-semibold text-txt">
-            Strongest adjacent people in the graph
-          </div>
         </div>
         <MetaPill compact>{person.relationships.length}</MetaPill>
       </div>
 
       {person.relationships.length === 0 ? (
         <p className="mt-4 text-sm leading-6 text-muted">
-          No cross-person relationship edges have been aggregated for this
-          identity group yet.
+          No relationships recorded.
         </p>
       ) : (
         <div className="mt-4 space-y-3">
@@ -510,7 +528,7 @@ export function RelationshipsConversationsPanel({
         </div>
         <div className="shrink-0 text-xs-tight text-muted">
           {formatDateTime(conversation.lastActivityAt, {
-            fallback: "n/a",
+            fallback: "No date",
           })}
         </div>
       </div>
@@ -545,16 +563,13 @@ export function RelationshipsConversationsPanel({
           <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
             Recent conversations
           </div>
-          <div className="mt-2 text-lg font-semibold text-txt">
-            Latest room snippets linked to this person
-          </div>
         </div>
         <MetaPill compact>{person.recentConversations.length}</MetaPill>
       </div>
 
       {person.recentConversations.length === 0 ? (
         <p className="mt-4 text-sm leading-6 text-muted">
-          No recent room snippets are available for this person yet.
+          No conversations linked.
         </p>
       ) : (
         <div className="mt-4 grid gap-4 xl:grid-cols-2">
@@ -603,7 +618,7 @@ export function RelationshipsRelevantMemoriesPanel({
         {boundedText(memory.text)}
       </div>
       <div className="mt-2 text-xs text-muted">
-        {formatDateTime(memory.createdAt, { fallback: "No timestamp" })}
+        {formatDateTime(memory.createdAt, { fallback: "No date" })}
       </div>
     </div>
   );
@@ -615,16 +630,13 @@ export function RelationshipsRelevantMemoriesPanel({
           <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
             Relevant memories
           </div>
-          <div className="mt-2 text-lg font-semibold text-txt">
-            Message memories tied to this person
-          </div>
         </div>
         <MetaPill compact>{person.relevantMemories.length}</MetaPill>
       </div>
 
       {person.relevantMemories.length === 0 ? (
         <p className="mt-4 text-sm leading-6 text-muted">
-          No relevant memories are attached to this person yet.
+          No relevant memories.
         </p>
       ) : (
         <div className="mt-4 space-y-3">
@@ -674,7 +686,7 @@ export function RelationshipsUserPreferencesPanel({
       ) : null}
       <div className="mt-2 text-xs text-muted">
         {formatDateTime(preference.createdAt, {
-          fallback: "No timestamp",
+          fallback: "No date",
         })}
       </div>
     </div>
@@ -685,10 +697,7 @@ export function RelationshipsUserPreferencesPanel({
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            User personality preferences
-          </div>
-          <div className="mt-2 text-lg font-semibold text-txt">
-            User-scoped guidance learned from interactions
+            Preferences
           </div>
         </div>
         <MetaPill compact>{person.userPersonalityPreferences.length}</MetaPill>
@@ -696,8 +705,7 @@ export function RelationshipsUserPreferencesPanel({
 
       {person.userPersonalityPreferences.length === 0 ? (
         <p className="mt-4 text-sm leading-6 text-muted">
-          No user-scoped personality preferences have been learned for this
-          person yet.
+          No preferences learned.
         </p>
       ) : (
         <div className="mt-4 space-y-3">
