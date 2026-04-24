@@ -3,7 +3,9 @@ import {
 	extractPlannerActionNames,
 	extractPlannerProviderNames,
 	resolvePlannerActionName,
+	withActionResultsForPrompt,
 } from "../services/message.ts";
+import type { ActionResult, State } from "../types";
 
 describe("extractPlannerActionNames", () => {
 	it("parses bare XML action entries without nested <name> tags", () => {
@@ -134,5 +136,35 @@ describe("resolvePlannerActionName", () => {
 		expect(
 			resolvePlannerActionName(runtime, actionLookup, "BOOK_TRAVEL"),
 		).toEqual(["BOOK_TRAVEL"]);
+	});
+});
+
+describe("withActionResultsForPrompt", () => {
+	it("overrides stale provider-rendered actionResults values for planner prompts", () => {
+		const actionResults: ActionResult[] = Array.from(
+			{ length: 10 },
+			(_, index) => ({
+				success: true,
+				text: `output-${index + 1}`,
+				data: { actionName: `ACTION_${index + 1}` },
+			}),
+		);
+		const state = {
+			values: {
+				actionResults: "# Recent Action History\nOLD_ACTION",
+			},
+			data: {},
+			text: "",
+		} as State;
+
+		const updated = withActionResultsForPrompt(state, actionResults);
+
+		expect(updated.values.actionResults).toContain(
+			"(2 earlier action result(s) omitted.)",
+		);
+		expect(updated.values.actionResults).toContain("3. ACTION_3 - succeeded");
+		expect(updated.values.actionResults).toContain("10. ACTION_10 - succeeded");
+		expect(updated.values.actionResults).not.toContain("OLD_ACTION");
+		expect(updated.data.actionResults).toBe(actionResults);
 	});
 });

@@ -2,11 +2,11 @@ import type { Action, AgentContext, Provider } from "../types/components";
 import type { Memory } from "../types/memory";
 import type { Content } from "../types/primitives";
 import type { State } from "../types/state";
-import { normalizeUserMessageText } from "./message-text";
 import {
 	resolveActionContexts,
 	resolveProviderContexts,
 } from "./context-catalog";
+import { normalizeUserMessageText } from "./message-text";
 
 export const AVAILABLE_CONTEXTS_STATE_KEY = "availableContexts";
 export const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
