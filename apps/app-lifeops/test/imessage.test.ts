@@ -93,7 +93,6 @@ import {
   sendIMessage,
 } from "../src/lifeops/imessage-bridge.js";
 import { withIMessage } from "../src/lifeops/service-mixin-imessage.js";
-import { LifeOpsServiceError } from "../src/lifeops/service-types.js";
 
 const ORIGINAL_FETCH = global.fetch;
 
@@ -265,14 +264,24 @@ describe("sendIMessage", () => {
 
 describe("withIMessage mixin", () => {
   class StubBase {
-    runtime = { agentId: "test", logger: console };
+    runtime = {
+      agentId: "test",
+      logger: console,
+      getService: vi.fn(() => null),
+    };
     ownerEntityId = null;
   }
   const Composed = withIMessage(StubBase as never);
-  // biome-ignore lint/suspicious/noExplicitAny: mixin stub
-  const svc = new (Composed as any)();
+
+  function createService(nativeService: unknown = null) {
+    // biome-ignore lint/suspicious/noExplicitAny: mixin stub
+    const svc = new (Composed as any)();
+    svc.runtime.getService.mockReturnValue(nativeService);
+    return svc;
+  }
 
   test("getIMessageConnectorStatus returns the right shape with no backend", async () => {
+    const svc = createService();
     const status = await svc.getIMessageConnectorStatus();
     expect(status.available).toBe(false);
     expect(status.connected).toBe(false);
@@ -282,18 +291,79 @@ describe("withIMessage mixin", () => {
     expect(Array.isArray(status.diagnostics)).toBe(true);
   });
 
-  test("sendIMessage translates IMessageBridgeError to LifeOpsServiceError", async () => {
-    // Force a bridge error: no backend available → IMessageBridgeError thrown
-    // by resolveActiveBackend. The mixin currently lets the bridge error
-    // bubble; ensure the underlying error is the bridge error type.
+  test("prefers the native Messages service when it is registered", async () => {
+    const nativeService = {
+      isConnected: vi.fn(() => true),
+      getStatus: vi.fn(() => ({
+        available: true,
+        connected: true,
+        chatDbAvailable: true,
+        sendOnly: false,
+        chatDbPath: "/Users/test/Library/Messages/chat.db",
+        reason: null,
+        permissionAction: null,
+      })),
+      sendMessage: vi.fn(async () => ({
+        success: true,
+        messageId: "native-message-1",
+      })),
+      getMessages: vi.fn(async () => [
+        {
+          id: "row-1",
+          text: "hello native",
+          handle: "+15551112222",
+          chatId: "chat-1",
+          timestamp: Date.parse("2026-04-17T18:00:00.000Z"),
+          isFromMe: false,
+          hasAttachments: false,
+        },
+      ]),
+      getChats: vi.fn(async () => [
+        {
+          chatId: "chat-1",
+          chatType: "direct",
+          participants: [{ handle: "+15551112222", isPhoneNumber: true }],
+        },
+      ]),
+    };
+    const svc = createService(nativeService);
+
+    await expect(svc.getIMessageConnectorStatus()).resolves.toMatchObject({
+      available: true,
+      connected: true,
+      bridgeType: "native",
+      sendMode: "apple-script",
+    });
+    await expect(svc.readIMessages({ limit: 1 })).resolves.toEqual([
+      expect.objectContaining({
+        id: "row-1",
+        fromHandle: "+15551112222",
+        text: "hello native",
+        chatId: "chat-1",
+      }),
+    ]);
+    await expect(svc.listIMessageChats()).resolves.toEqual([
+      {
+        id: "chat-1",
+        name: "+15551112222",
+        participants: ["+15551112222"],
+      },
+    ]);
+    await expect(
+      svc.sendIMessage({ to: "+15551112222", text: "hi" }),
+    ).resolves.toEqual({ ok: true, messageId: "native-message-1" });
+    expect(nativeService.sendMessage).toHaveBeenCalledWith(
+      "+15551112222",
+      "hi",
+      {},
+    );
+  });
+
+  test("sendIMessage surfaces the bridge error when no backend exists", async () => {
+    const svc = createService();
     await expect(
       svc.sendIMessage({ to: "+15551112222", text: "hi" }),
     ).rejects.toBeInstanceOf(IMessageBridgeError);
-
-    // Note: the mixin does not currently wrap IMessageBridgeError into
-    // LifeOpsServiceError, so we additionally assert the negative — this
-    // test documents current behavior.
-    expect(LifeOpsServiceError).toBeDefined();
   });
 });
 

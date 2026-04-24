@@ -209,7 +209,7 @@ export type LifeOpsIMessageHostPlatform =
 export interface LifeOpsIMessageConnectorStatus {
   available: boolean;
   connected: boolean;
-  bridgeType: "imsg" | "bluebubbles" | "none";
+  bridgeType: "native" | "imsg" | "bluebubbles" | "none";
   hostPlatform: LifeOpsIMessageHostPlatform;
   accountHandle: string | null;
   sendMode: "cli" | "private-api" | "apple-script" | "none";
