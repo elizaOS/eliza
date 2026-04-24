@@ -42,6 +42,17 @@ type PageScopedMessage = ConversationMessage & {
   images?: ImageAttachment[];
 };
 
+async function getPageScopedConversationMessages(
+  conversationId: string,
+): Promise<PageScopedMessage[]> {
+  try {
+    const { messages } = await client.getConversationMessages(conversationId);
+    return messages;
+  } catch {
+    return [];
+  }
+}
+
 function readChatPrefillDetail(event: Event): ChatPrefillDetail | null {
   const detail = (event as CustomEvent<ChatPrefillDetail>).detail;
   if (!detail || typeof detail.text !== "string" || detail.text.length === 0) {
@@ -211,9 +222,7 @@ export function PageScopedChatPane({
         if (cancelled) return;
         setConversation(next);
         adapter?.onConversationResolved?.(next);
-        const { messages: history } = await client.getConversationMessages(
-          next.id,
-        );
+        const history = await getPageScopedConversationMessages(next.id);
         if (cancelled) return;
         setMessages(history);
       } catch (cause) {
