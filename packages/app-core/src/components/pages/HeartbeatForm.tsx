@@ -18,6 +18,7 @@ import {
   durationToMs,
   durationUnitLabel,
   formFromTrigger,
+  humanizeEventKind,
   localizedExecutionStatus,
   nextRunsForCron,
   nextRunsForInterval,
@@ -25,6 +26,29 @@ import {
   type TriggerFormState,
   validateCronExpression,
 } from "./heartbeat-utils";
+
+const EVENT_KIND_OPTIONS = [
+  {
+    value: "message.received",
+    label: "Message received",
+  },
+  {
+    value: "discord.message.received",
+    label: "Discord message",
+  },
+  {
+    value: "telegram.message.received",
+    label: "Telegram message",
+  },
+  {
+    value: "gmail.message.received",
+    label: "Gmail message",
+  },
+  {
+    value: "calendar.event.ended",
+    label: "Calendar event ended",
+  },
+] as const;
 
 // ── Props ──────────────────────────────────────────────────────────
 
@@ -243,6 +267,7 @@ export function HeartbeatForm({
                   </FormSelectItem>
                   <FormSelectItem value="once">One time</FormSelectItem>
                   <FormSelectItem value="cron">Cron schedule</FormSelectItem>
+                  <FormSelectItem value="event">Event</FormSelectItem>
                 </FormSelect>
               </div>
 
@@ -315,6 +340,10 @@ export function HeartbeatForm({
 
             {form.triggerType === "cron" && (
               <CronInputSection form={form} setField={setField} t={t} />
+            )}
+
+            {form.triggerType === "event" && (
+              <EventInputSection form={form} setField={setField} />
             )}
 
             <SchedulePreview form={form} t={t} />
@@ -629,6 +658,65 @@ function CronInputSection({
   );
 }
 
+function EventInputSection({
+  form,
+  setField,
+}: {
+  form: TriggerFormState;
+  setField: <K extends keyof TriggerFormState>(
+    key: K,
+    value: TriggerFormState[K],
+  ) => void;
+}) {
+  const isCustomEvent = !EVENT_KIND_OPTIONS.some(
+    (option) => option.value === form.eventKind,
+  );
+  return (
+    <div className="grid gap-3">
+      <div>
+        <FieldLabel variant="form">Event</FieldLabel>
+        <FormSelect
+          value={isCustomEvent ? "__custom" : form.eventKind}
+          onValueChange={(value: string) => {
+            if (value === "__custom") {
+              setField("eventKind", "");
+              return;
+            }
+            setField("eventKind", value);
+          }}
+          placeholder="Message received"
+        >
+          {EVENT_KIND_OPTIONS.map((option) => (
+            <FormSelectItem key={option.value} value={option.value}>
+              {option.label}
+            </FormSelectItem>
+          ))}
+          <FormSelectItem value="__custom">Custom event</FormSelectItem>
+        </FormSelect>
+      </div>
+
+      {isCustomEvent && (
+        <div>
+          <FieldLabel variant="form">Event name</FieldLabel>
+          <Input
+            variant="form"
+            className="font-mono"
+            value={form.eventKind}
+            onChange={(event) => setField("eventKind", event.target.value)}
+            placeholder="namespace.subject.verb"
+          />
+        </div>
+      )}
+
+      {form.eventKind.trim() && (
+        <div className="rounded-lg border border-border/30 bg-bg/30 px-4 py-3 text-xs text-muted">
+          Runs when <span className="font-medium text-txt">{humanizeEventKind(form.eventKind)}</span> arrives.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Schedule preview ("Next runs: …") ────────────────────────────
 
 function SchedulePreview({
@@ -670,6 +758,13 @@ function SchedulePreview({
       return { kind: "dates" as const, dates };
     }
 
+    if (form.triggerType === "event") {
+      return {
+        kind: "event" as const,
+        label: humanizeEventKind(form.eventKind || "event"),
+      };
+    }
+
     return null;
   }, [
     form.triggerType,
@@ -677,6 +772,7 @@ function SchedulePreview({
     form.durationUnit,
     form.scheduledAtIso,
     form.cronExpression,
+    form.eventKind,
     t,
   ]);
 
@@ -703,6 +799,10 @@ function SchedulePreview({
             })}
           </p>
         </div>
+      ) : preview.kind === "event" ? (
+        <p className="text-xs text-muted">
+          Waiting for <span className="font-medium text-txt">{preview.label}</span>.
+        </p>
       ) : (
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">

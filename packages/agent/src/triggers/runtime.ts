@@ -28,8 +28,12 @@ interface TriggerMetricsState {
 }
 
 export interface TriggerExecutionOptions {
-  source: "scheduler" | "manual";
+  source: "scheduler" | "manual" | "event";
   force?: boolean;
+  event?: {
+    kind: string;
+    payload?: Record<string, unknown>;
+  };
 }
 
 export interface TriggerExecutionResult {
@@ -159,6 +163,7 @@ async function dispatchInstruction(
   runtime: IAgentRuntime,
   taskId: UUID,
   trigger: TriggerConfig,
+  event?: TriggerExecutionOptions["event"],
 ): Promise<void> {
   // Resolve the autonomy service to find the target room.
   // Retry up to 5 times (500ms, 1s, 1.5s, 2s backoff) because the
@@ -204,7 +209,10 @@ async function dispatchInstruction(
 
   // Create a memory in the autonomy room with the trigger instruction.
   // The AutonomyService loop picks this up as an autonomous action.
-  const instructionText = `[Heartbeat: ${trigger.displayName}]\n${trigger.instructions}`;
+  const eventText = event
+    ? `\n\nEvent: ${event.kind}\nPayload: ${JSON.stringify(event.payload ?? {})}`
+    : "";
+  const instructionText = `[Heartbeat: ${trigger.displayName}]\n${trigger.instructions}${eventText}`;
 
   await runtime.createMemory(
     {
@@ -233,12 +241,14 @@ async function dispatchInstruction(
 interface N8nDispatchServiceLike {
   execute(
     workflowId: string,
+    payload?: Record<string, unknown>,
   ): Promise<{ ok: boolean; error?: string; executionId?: string }>;
 }
 
 async function dispatchWorkflow(
   runtime: IAgentRuntime,
   trigger: TriggerConfig,
+  event?: TriggerExecutionOptions["event"],
 ): Promise<{ ok: true; executionId?: string } | { ok: false; error: string }> {
   if (!trigger.workflowId) {
     return { ok: false, error: "workflow trigger missing workflowId" };
@@ -257,7 +267,10 @@ async function dispatchWorkflow(
     );
     return { ok: false, error: "N8N_DISPATCH service not registered" };
   }
-  const result = await svc.execute(trigger.workflowId);
+  const result = await svc.execute(
+    trigger.workflowId,
+    event ? { eventKind: event.kind, eventPayload: event.payload ?? {} } : {},
+  );
   return result.ok
     ? { ok: true, executionId: result.executionId }
     : { ok: false, error: result.error ?? "workflow execution failed" };
@@ -279,6 +292,25 @@ export async function executeTriggerTask(
   }
 
   if (!trigger.enabled && !options.force) {
+    recordExecutionMetric(runtime.agentId, "skipped", Date.now());
+    return { status: "skipped", taskDeleted: false };
+  }
+
+  if (
+    options.source === "event" &&
+    trigger.triggerType !== "event" &&
+    !options.force
+  ) {
+    recordExecutionMetric(runtime.agentId, "skipped", Date.now());
+    return { status: "skipped", taskDeleted: false };
+  }
+
+  if (
+    options.source === "event" &&
+    trigger.triggerType === "event" &&
+    trigger.eventKind !== options.event?.kind &&
+    !options.force
+  ) {
     recordExecutionMetric(runtime.agentId, "skipped", Date.now());
     return { status: "skipped", taskDeleted: false };
   }
@@ -324,7 +356,7 @@ export async function executeTriggerTask(
   let workflowExecutionId: string | undefined;
 
   if (isWorkflowKind) {
-    const result = await dispatchWorkflow(runtime, trigger);
+    const result = await dispatchWorkflow(runtime, trigger, options.event);
     if (result.ok === true) {
       workflowExecutionId = result.executionId;
     } else {
@@ -344,7 +376,7 @@ export async function executeTriggerTask(
     }
   } else {
     try {
-      await dispatchInstruction(runtime, task.id, trigger);
+      await dispatchInstruction(runtime, task.id, trigger, options.event);
     } catch (error) {
       status = "error";
       errorMessage = String(error);
@@ -386,6 +418,7 @@ export async function executeTriggerTask(
     error: errorMessage || undefined,
     latencyMs: finishedAt - startedAt,
     source: options.source,
+    eventKind: options.event?.kind,
   };
 
   const updatedTrigger: TriggerConfig = {
@@ -595,6 +628,7 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
       intervalMs: trigger.intervalMs,
       scheduledAtIso: trigger.scheduledAtIso,
       cronExpression: trigger.cronExpression,
+      eventKind: trigger.eventKind,
       maxRuns: trigger.maxRuns,
       runCount: trigger.runCount,
       nextRunAtMs: trigger.nextRunAtMs,

@@ -35,6 +35,7 @@ interface TriggerDraftInput {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
   kind?: TriggerKind;
   workflowId?: string;
@@ -109,6 +110,12 @@ function parseNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseEventPayload(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function normalizeTriggerPath(pathname: string): {
@@ -277,6 +284,8 @@ export async function handleTriggerRoutes(
         typeof body.cronExpression === "string"
           ? body.cronExpression
           : undefined,
+      eventKind:
+        typeof body.eventKind === "string" ? body.eventKind : undefined,
       maxRuns: typeof body.maxRuns === "number" ? body.maxRuns : undefined,
       kind,
       workflowId,
@@ -422,6 +431,52 @@ export async function handleTriggerRoutes(
     return true;
   }
 
+  const eventMatch = /^\/api\/triggers\/events\/([^/]+)$/.exec(
+    normalizedPathname,
+  );
+  if (method === "POST" && eventMatch) {
+    const eventKind = decodeURIComponent(eventMatch[1] ?? "").trim();
+    if (!eventKind) {
+      error(res, "event kind is required", 400);
+      return true;
+    }
+
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    const payload = parseEventPayload(body.payload ?? body);
+    const tasks = await listTriggerTasks(runtime);
+    const matchingTasks = tasks.filter((task) => {
+      const trigger = readTriggerConfig(task);
+      return (
+        trigger?.enabled === true &&
+        trigger.triggerType === "event" &&
+        trigger.eventKind === eventKind
+      );
+    });
+    const results = [];
+    for (const task of matchingTasks) {
+      const result = await executeTriggerTask(runtime, task, {
+        source: "event",
+        event: { kind: eventKind, payload },
+      });
+      const refreshed = task.id ? await runtime.getTask(task.id) : null;
+      results.push({
+        taskId: task.id,
+        result,
+        trigger: refreshed
+          ? taskToTriggerSummary(refreshed)
+          : (result.trigger ?? null),
+      });
+    }
+    json(res, {
+      ok: true,
+      eventKind,
+      matched: matchingTasks.length,
+      results,
+    });
+    return true;
+  }
+
   const itemMatch = /^\/api\/triggers\/([^/]+)$/.exec(normalizedPathname);
   if (!itemMatch) return false;
   const triggerId = decodeURIComponent(itemMatch[1]);
@@ -530,6 +585,8 @@ export async function handleTriggerRoutes(
         typeof body.cronExpression === "string"
           ? body.cronExpression
           : current.cronExpression,
+      eventKind:
+        typeof body.eventKind === "string" ? body.eventKind : current.eventKind,
       maxRuns:
         typeof body.maxRuns === "number" ? body.maxRuns : current.maxRuns,
       kind: nextKind,

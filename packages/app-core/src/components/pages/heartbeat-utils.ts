@@ -79,6 +79,7 @@ export interface TriggerFormState {
   workflowId: string;
   workflowName: string;
   triggerType: TriggerType;
+  eventKind: string;
   wakeMode: TriggerWakeMode;
   scheduledAtIso: string;
   cronExpression: string;
@@ -95,6 +96,7 @@ export const emptyForm: TriggerFormState = {
   workflowId: "",
   workflowName: "",
   triggerType: "interval",
+  eventKind: "message.received",
   wakeMode: "inject_now",
   scheduledAtIso: "",
   cronExpression: "0 * * * *",
@@ -237,7 +239,20 @@ export function scheduleLabel(
   if (trigger.triggerType === "cron") {
     return `${t("heartbeatsview.cronPrefix")} ${trigger.cronExpression ?? "\u2014"}`;
   }
+  if (trigger.triggerType === "event") {
+    return `On ${humanizeEventKind(trigger.eventKind ?? "event")}`;
+  }
   return trigger.triggerType;
+}
+
+export function humanizeEventKind(value: string): string {
+  return value
+    .trim()
+    .replace(/[_-]+/g, ".")
+    .split(".")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
@@ -250,6 +265,7 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
     workflowId: trigger.workflowId ?? "",
     workflowName: trigger.workflowName ?? "",
     triggerType: trigger.triggerType,
+    eventKind: trigger.eventKind ?? "message.received",
     wakeMode: trigger.wakeMode,
     scheduledAtIso: trigger.scheduledAtIso ?? "",
     cronExpression: trigger.cronExpression ?? "0 * * * *",
@@ -282,6 +298,7 @@ export function buildCreateRequest(
       form.triggerType === "once" ? form.scheduledAtIso.trim() : undefined,
     cronExpression:
       form.triggerType === "cron" ? form.cronExpression.trim() : undefined,
+    eventKind: form.triggerType === "event" ? form.eventKind.trim() : undefined,
     maxRuns,
   };
 }
@@ -409,6 +426,9 @@ export function validateForm(
     if (!cronResult.ok) {
       return `${t("triggers.cronError")} ${cronResult.message}`;
     }
+  }
+  if (form.triggerType === "event" && !form.eventKind.trim()) {
+    return "Event is required.";
   }
   if (form.maxRuns.trim() && !parsePositiveInteger(form.maxRuns)) {
     return t("heartbeatsview.validationMaxRunsPositive");
