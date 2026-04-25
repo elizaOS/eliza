@@ -53,6 +53,7 @@ import type {
   LogsResponse,
   PluginInfo,
   PluginMutationResult,
+  ProviderModelRecord,
   RawPtySession,
   RelationshipsActivityResponse,
   RelationshipsGraphQuery,
@@ -351,7 +352,7 @@ declare module "./client-base" {
     fetchModels(
       provider: string,
       refresh?: boolean,
-    ): Promise<{ provider: string; models: unknown[] }>;
+    ): Promise<{ provider: string; models: ProviderModelRecord[] }>;
     getCorePlugins(): Promise<CorePluginsResponse>;
     toggleCorePlugin(
       npmName: string,
