@@ -884,7 +884,10 @@ function overlayAndroid() {
     }
   }
 
-  // Copy ProGuard rules
+  // Copy ProGuard rules, rewriting the elizaOS default package to match the
+  // app's actual namespace. Without this rewrite, R8 may strip Milady-only
+  // manifest-referenced classes (Dial/Assist/InCall/Boot) when the app is
+  // namespaced as e.g. com.miladyai.milady.
   const srcPro = path.join(
     platformsDir,
     "android",
@@ -892,7 +895,18 @@ function overlayAndroid() {
     "proguard-rules.pro",
   );
   if (fs.existsSync(srcPro)) {
-    fs.copyFileSync(srcPro, path.join(androidDir, "app", "proguard-rules.pro"));
+    let proguardRules = fs.readFileSync(srcPro, "utf8");
+    if (androidPackage && androidPackage !== "ai.elizaos.app") {
+      proguardRules = proguardRules.replaceAll(
+        "ai.elizaos.app.**",
+        `${androidPackage}.**`,
+      );
+    }
+    fs.writeFileSync(
+      path.join(androidDir, "app", "proguard-rules.pro"),
+      proguardRules,
+      "utf8",
+    );
     console.log("[mobile-build] Copied ProGuard rules.");
   }
 
@@ -1338,6 +1352,10 @@ async function buildAndroid() {
 }
 
 function findAndroidSystemApk() {
+  // Release-only. Staging a debug APK ships without R8 shrinking and
+  // bypasses the release signing config — both invariants the AOSP
+  // prebuilt path assumes hold. Soong re-signs with the platform key
+  // either way, so a debug fallback is never an acceptable substitute.
   const candidates = [
     path.join(
       androidDir,
@@ -1357,15 +1375,6 @@ function findAndroidSystemApk() {
       "release",
       "app-release.apk",
     ),
-    path.join(
-      androidDir,
-      "app",
-      "build",
-      "outputs",
-      "apk",
-      "debug",
-      "app-debug.apk",
-    ),
   ];
   return firstExisting(candidates);
 }
@@ -1373,7 +1382,9 @@ function findAndroidSystemApk() {
 function stageAndroidSystemApk() {
   const apk = findAndroidSystemApk();
   if (!apk) {
-    throw new Error("No Android APK found to stage for MiladyOS.");
+    throw new Error(
+      "No release APK found at app/build/outputs/apk/release/. Run :app:assembleRelease before staging the MiladyOS prebuilt — debug APKs are not accepted.",
+    );
   }
   fs.mkdirSync(miladyOsApkDir, { recursive: true });
   const target = path.join(miladyOsApkDir, "Milady.apk");
