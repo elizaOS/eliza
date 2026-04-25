@@ -7,19 +7,24 @@ import {
 } from "@elizaos/ui";
 import {
   Crown,
+  Fingerprint,
   Focus,
+  Frown,
   Link2,
   Maximize2,
+  Meh,
+  MessageCircle,
   Minus,
-  Network,
   Plus,
-  UserRound,
+  Smile,
 } from "lucide-react";
 import {
   type CSSProperties,
   type MouseEvent,
   type ReactNode,
+  type PointerEvent as ReactPointerEvent,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type {
@@ -34,10 +39,10 @@ const GRAPH_PADDING = 92;
 const MIN_ZOOM = 0.58;
 const MAX_ZOOM = 1.35;
 const ZOOM_STEP = 0.12;
-const MAX_GLOBAL_NODES = 28;
-const MAX_FOCUSED_NODES = 24;
-const MAX_DIRECT_NEIGHBORS = 12;
-const MAX_SECOND_WAVE_NEIGHBORS = 8;
+const MAX_GLOBAL_NODES = 60;
+const MAX_FOCUSED_NODES = 60;
+const MAX_DIRECT_NEIGHBORS = 36;
+const MAX_SECOND_WAVE_NEIGHBORS = 18;
 
 type GraphPosition = {
   x: number;
@@ -90,12 +95,6 @@ function edgeTone(sentiment: string): EdgeTone {
 
 function edgeColor(edge: RelationshipsGraphEdge): string {
   return EDGE_COLORS[edgeTone(edge.sentiment)];
-}
-
-function sentimentLabel(value: string): string {
-  if (value === "positive") return "Positive";
-  if (value === "negative") return "Negative";
-  return "Neutral";
 }
 
 function nodeInitials(value: string): string {
@@ -300,72 +299,115 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function layoutComponent(
+type SimulationNode = GraphPosition & {
+  vx: number;
+  vy: number;
+  pinned: boolean;
+};
+
+function runForceLayout(
   componentPeople: RelationshipsPersonSummary[],
   componentEdges: RelationshipsGraphEdge[],
   center: GraphPosition,
-  cellWidth: number,
-  cellHeight: number,
+  options: {
+    width: number;
+    height: number;
+    pinnedGroupId?: string | null;
+    iterations?: number;
+  },
 ): Map<string, GraphPosition> {
-  const positions = new Map<
-    string,
-    GraphPosition & {
-      vx: number;
-      vy: number;
-    }
-  >();
+  const { width, height, pinnedGroupId, iterations = 320 } = options;
+  const positions = new Map<string, SimulationNode>();
   if (componentPeople.length === 1) {
-    const person = componentPeople[0];
-    positions.set(person.groupId, { x: center.x, y: center.y, vx: 0, vy: 0 });
+    const only = componentPeople[0];
+    positions.set(only.groupId, {
+      x: center.x,
+      y: center.y,
+      vx: 0,
+      vy: 0,
+      pinned: true,
+    });
     return new Map(
-      Array.from(positions, ([groupId, position]) => [groupId, position]),
+      Array.from(positions, ([groupId, position]) => [
+        groupId,
+        { x: position.x, y: position.y },
+      ]),
     );
   }
 
+  // Strength-weighted seed: stronger neighbors of the pinned node start closer.
   for (const person of componentPeople) {
+    if (person.groupId === pinnedGroupId) {
+      positions.set(person.groupId, {
+        x: center.x,
+        y: center.y,
+        vx: 0,
+        vy: 0,
+        pinned: true,
+      });
+      continue;
+    }
+    const seedAngle = seededUnit(person.groupId, 3) * Math.PI * 2;
+    const seedRadius =
+      (0.18 + seededUnit(person.groupId, 4) * 0.36) *
+      Math.min(width, height) *
+      0.5;
     positions.set(person.groupId, {
-      x: center.x + (seededUnit(person.groupId, 1) - 0.5) * cellWidth * 0.68,
-      y: center.y + (seededUnit(person.groupId, 2) - 0.5) * cellHeight * 0.68,
+      x: center.x + Math.cos(seedAngle) * seedRadius,
+      y: center.y + Math.sin(seedAngle) * seedRadius,
       vx: 0,
       vy: 0,
+      pinned: false,
     });
   }
 
-  for (let iteration = 0; iteration < 240; iteration += 1) {
+  const edgeStrengthByPair = new Map<string, number>();
+  for (const edge of componentEdges) {
+    const key =
+      edge.sourcePersonId < edge.targetPersonId
+        ? `${edge.sourcePersonId}|${edge.targetPersonId}`
+        : `${edge.targetPersonId}|${edge.sourcePersonId}`;
+    edgeStrengthByPair.set(
+      key,
+      Math.max(edgeStrengthByPair.get(key) ?? 0, edge.strength),
+    );
+  }
+
+  const peopleCount = componentPeople.length;
+  const halfWidth = width * 0.46;
+  const halfHeight = height * 0.46;
+
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    const cooling = 1 - iteration / (iterations * 1.4);
     const forces = new Map<string, { x: number; y: number }>();
     for (const person of componentPeople) {
       forces.set(person.groupId, { x: 0, y: 0 });
     }
 
-    for (
-      let leftIndex = 0;
-      leftIndex < componentPeople.length;
-      leftIndex += 1
-    ) {
+    // Repulsion: every pair pushes apart, scaled to keep readable spacing.
+    for (let leftIndex = 0; leftIndex < peopleCount; leftIndex += 1) {
       const left = componentPeople[leftIndex];
+      const leftPosition = positions.get(left.groupId);
+      const leftForces = forces.get(left.groupId);
+      if (!leftPosition || !leftForces) continue;
       for (
         let rightIndex = leftIndex + 1;
-        rightIndex < componentPeople.length;
+        rightIndex < peopleCount;
         rightIndex += 1
       ) {
         const right = componentPeople[rightIndex];
-        const leftPosition = positions.get(left.groupId);
         const rightPosition = positions.get(right.groupId);
-        const leftForces = forces.get(left.groupId);
         const rightForces = forces.get(right.groupId);
-        if (!leftPosition || !rightPosition || !leftForces || !rightForces) {
-          continue;
-        }
+        if (!rightPosition || !rightForces) continue;
 
         const dx = rightPosition.x - leftPosition.x;
         const dy = rightPosition.y - leftPosition.y;
-        const distance = Math.max(1, Math.hypot(dx, dy));
-        const minimumDistance = nodeRadius(left) + nodeRadius(right) + 52;
-        const repulsion = minimumDistance * minimumDistance * 0.8;
+        const distance = Math.max(8, Math.hypot(dx, dy));
+        const minimumDistance = nodeRadius(left) + nodeRadius(right) + 64;
+        const repulsion = minimumDistance * minimumDistance * 1.4;
         const forceMagnitude = repulsion / (distance * distance);
         const fx = (dx / distance) * forceMagnitude;
         const fy = (dy / distance) * forceMagnitude;
-
         leftForces.x -= fx;
         leftForces.y -= fy;
         rightForces.x += fx;
@@ -373,6 +415,7 @@ function layoutComponent(
       }
     }
 
+    // Spring attraction: stronger edges pull harder + sit closer.
     for (const edge of componentEdges) {
       const sourcePosition = positions.get(edge.sourcePersonId);
       const targetPosition = positions.get(edge.targetPersonId);
@@ -386,67 +429,65 @@ function layoutComponent(
       ) {
         continue;
       }
-
       const dx = targetPosition.x - sourcePosition.x;
       const dy = targetPosition.y - sourcePosition.y;
       const distance = Math.max(1, Math.hypot(dx, dy));
-      const idealDistance =
-        142 + Math.max(0, componentPeople.length - 6) * 7 - edge.strength * 18;
-      const springStrength = 0.006 + edge.strength * 0.018;
+      const strength = clamp(edge.strength, 0.05, 1);
+      // Strong edges pull to ~110px, weak edges drift to ~260px.
+      const idealDistance = 280 - strength * 170;
+      const springStrength = 0.012 + strength * 0.06;
       const forceMagnitude = (distance - idealDistance) * springStrength;
       const fx = (dx / distance) * forceMagnitude;
       const fy = (dy / distance) * forceMagnitude;
-
       sourceForces.x += fx;
       sourceForces.y += fy;
       targetForces.x -= fx;
       targetForces.y -= fy;
     }
 
+    // Mild centering — keeps disconnected stragglers from drifting forever.
     for (const person of componentPeople) {
       const position = positions.get(person.groupId);
       const force = forces.get(person.groupId);
-      if (!position || !force) {
+      if (!position || !force) continue;
+      force.x += (center.x - position.x) * 0.012;
+      force.y += (center.y - position.y) * 0.012;
+    }
+
+    // Integrate.
+    for (const person of componentPeople) {
+      const position = positions.get(person.groupId);
+      const force = forces.get(person.groupId);
+      if (!position || !force) continue;
+      if (position.pinned) {
+        position.x = center.x;
+        position.y = center.y;
+        position.vx = 0;
+        position.vy = 0;
         continue;
       }
-      force.x += (center.x - position.x) * 0.01;
-      force.y += (center.y - position.y) * 0.01;
-
-      position.vx = (position.vx + force.x) * 0.86;
-      position.vy = (position.vy + force.y) * 0.86;
+      const damping = 0.78 + 0.16 * cooling;
+      position.vx = (position.vx + force.x * 0.04) * damping;
+      position.vy = (position.vy + force.y * 0.04) * damping;
       position.x = clamp(
         position.x + position.vx,
-        center.x - cellWidth * 0.42,
-        center.x + cellWidth * 0.42,
+        center.x - halfWidth,
+        center.x + halfWidth,
       );
       position.y = clamp(
         position.y + position.vy,
-        center.y - cellHeight * 0.4,
-        center.y + cellHeight * 0.4,
+        center.y - halfHeight,
+        center.y + halfHeight,
       );
     }
   }
 
   return new Map(
-    Array.from(positions, ([groupId, position]) => [groupId, position]),
+    Array.from(positions, ([groupId, position]) => [
+      groupId,
+      { x: position.x, y: position.y },
+    ]),
   );
-}
-
-function placeOnRing(
-  positions: Map<string, GraphPosition>,
-  people: RelationshipsPersonSummary[],
-  center: GraphPosition,
-  radius: number,
-  startAngle: number,
-) {
-  people.forEach((person, index) => {
-    const angle =
-      startAngle + (index / Math.max(people.length, 1)) * Math.PI * 2;
-    positions.set(person.groupId, {
-      x: center.x + Math.cos(angle) * radius,
-      y: center.y + Math.sin(angle) * radius,
-    });
-  });
 }
 
 function buildFocusedNodePositions(
@@ -454,56 +495,16 @@ function buildFocusedNodePositions(
   edges: RelationshipsGraphEdge[],
   selectedGroupId: string,
 ): Map<string, GraphPosition> | null {
-  const selected = people.find((person) => person.groupId === selectedGroupId);
-  if (!selected) {
+  if (!people.some((person) => person.groupId === selectedGroupId)) {
     return null;
   }
-
-  const directEdges = sortEdges(
-    edges.filter(
-      (edge) =>
-        edge.sourcePersonId === selectedGroupId ||
-        edge.targetPersonId === selectedGroupId,
-    ),
-  );
-  const directIds = new Set(
-    directEdges.map((edge) => otherEndpoint(edge, selectedGroupId)),
-  );
-  const directPeople = directEdges
-    .map((edge) =>
-      people.find(
-        (person) => person.groupId === otherEndpoint(edge, selectedGroupId),
-      ),
-    )
-    .filter(
-      (person): person is RelationshipsPersonSummary => person !== undefined,
-    );
-  const remainingPeople = people
-    .filter(
-      (person) =>
-        person.groupId !== selectedGroupId && !directIds.has(person.groupId),
-    )
-    .sort((left, right) => rankPerson(right) - rankPerson(left));
-  const positions = new Map<string, GraphPosition>();
   const center = { x: GRAPH_WIDTH / 2, y: GRAPH_HEIGHT / 2 };
-
-  positions.set(selectedGroupId, center);
-  placeOnRing(
-    positions,
-    directPeople,
-    center,
-    clamp(190 + directPeople.length * 5, 210, 292),
-    -Math.PI / 2,
-  );
-  placeOnRing(
-    positions,
-    remainingPeople,
-    center,
-    clamp(330 + remainingPeople.length * 2, 330, 360),
-    -Math.PI / 2 + Math.PI / Math.max(remainingPeople.length, 3),
-  );
-
-  return positions;
+  return runForceLayout(people, edges, center, {
+    width: GRAPH_WIDTH - GRAPH_PADDING,
+    height: GRAPH_HEIGHT - GRAPH_PADDING,
+    pinnedGroupId: selectedGroupId,
+    iterations: 360,
+  });
 }
 
 function buildNodePositions(
@@ -551,12 +552,16 @@ function buildNodePositions(
         componentSet.has(edge.sourcePersonId) &&
         componentSet.has(edge.targetPersonId),
     );
-    const componentPositions = layoutComponent(
+    const componentPositions = runForceLayout(
       componentPeople,
       componentEdges,
       center,
-      cellWidth,
-      cellHeight,
+      {
+        width: cellWidth,
+        height: cellHeight,
+        pinnedGroupId: null,
+        iterations: 280,
+      },
     );
     for (const [groupId, position] of componentPositions) {
       positions.set(groupId, position);
@@ -598,37 +603,40 @@ function GraphIconButton({
 }
 
 function GraphLegend() {
+  const items: Array<{ icon: ReactNode; label: string }> = [
+    {
+      icon: <Crown className="h-3.5 w-3.5 text-[rgba(99,102,241,0.86)]" />,
+      label: "Owner",
+    },
+    {
+      icon: <Smile className="h-3.5 w-3.5 text-[rgba(34,197,94,0.9)]" />,
+      label: "Positive",
+    },
+    {
+      icon: <Meh className="h-3.5 w-3.5 text-[rgba(240,185,11,0.9)]" />,
+      label: "Neutral",
+    },
+    {
+      icon: <Frown className="h-3.5 w-3.5 text-[rgba(239,68,68,0.9)]" />,
+      label: "Negative",
+    },
+  ];
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs-tight text-muted">
-      <div className="flex items-center gap-1.5">
-        <UserRound className="h-3.5 w-3.5 text-[rgba(240,185,11,0.9)]" />
-        People
-      </div>
-      <div className="flex items-center gap-1.5">
-        <Crown className="h-3.5 w-3.5 text-[rgba(99,102,241,0.86)]" />
-        Owner
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span
-          className="h-[2px] w-6 rounded-full"
-          style={{ backgroundColor: EDGE_COLORS.positive }}
-        />
-        Positive
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span
-          className="h-[2px] w-6 rounded-full"
-          style={{ backgroundColor: EDGE_COLORS.neutral }}
-        />
-        Neutral
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span
-          className="h-[2px] w-6 rounded-full"
-          style={{ backgroundColor: EDGE_COLORS.negative }}
-        />
-        Negative
-      </div>
+    <div className="flex items-center gap-1">
+      {items.map((item) => (
+        <Tooltip key={item.label}>
+          <TooltipTrigger asChild>
+            <span
+              role="img"
+              aria-label={item.label}
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/24 bg-card/40"
+            >
+              {item.icon}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{item.label}</TooltipContent>
+        </Tooltip>
+      ))}
     </div>
   );
 }
@@ -657,27 +665,37 @@ function GraphTooltip({ state }: { state: TooltipState }) {
         style={style}
         className="rounded-xl border border-border/40 bg-card/95 px-3 py-2.5 shadow-lg backdrop-blur-md"
       >
-        <div className="text-sm font-semibold text-txt">
+        <div className="flex items-center gap-1.5 text-sm font-semibold text-txt">
+          {person.isOwner ? (
+            <Crown className="h-3.5 w-3.5 text-[rgba(99,102,241,0.86)]" />
+          ) : null}
           {person.displayName}
         </div>
-        <div className="mt-1 space-y-0.5 text-xs-tight text-muted">
-          <div>
-            {person.memberEntityIds.length} identit
-            {person.memberEntityIds.length === 1 ? "y" : "ies"} /{" "}
-            {person.relationshipCount} links / {person.factCount} facts
-          </div>
-          {person.platforms.length > 0 ? (
-            <div>{person.platforms.join(", ")}</div>
-          ) : null}
-          {person.isOwner ? (
-            <div className="font-semibold text-accent">Owner</div>
-          ) : null}
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted">
+          <span className="inline-flex items-center gap-1">
+            <Fingerprint className="h-3 w-3" />
+            {person.memberEntityIds.length}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Link2 className="h-3 w-3" />
+            {person.relationshipCount}
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <MessageCircle className="h-3 w-3" />
+            {person.factCount}
+          </span>
         </div>
       </div>
     );
   }
 
   const { edge } = state;
+  const SentimentIcon =
+    edge.sentiment === "positive"
+      ? Smile
+      : edge.sentiment === "negative"
+        ? Frown
+        : Meh;
   return (
     <div
       style={style}
@@ -686,14 +704,18 @@ function GraphTooltip({ state }: { state: TooltipState }) {
       <div className="text-sm font-semibold text-txt">
         {edge.sourcePersonName} / {edge.targetPersonName}
       </div>
-      <div className="mt-1 space-y-0.5 text-xs-tight text-muted">
-        <div>
-          Strength {edge.strength.toFixed(2)} / {sentimentLabel(edge.sentiment)}{" "}
-          / {edge.interactionCount} interactions
-        </div>
-        {edge.relationshipTypes.length > 0 ? (
-          <div>{edge.relationshipTypes.join(", ")}</div>
-        ) : null}
+      <div className="mt-1.5 flex items-center gap-1.5 text-2xs text-muted">
+        <span
+          className="inline-flex items-center gap-1"
+          style={{ color: EDGE_COLORS[edgeTone(edge.sentiment)] }}
+        >
+          <SentimentIcon className="h-3 w-3" />
+          {Math.round(edge.strength * 100)}%
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <MessageCircle className="h-3 w-3" />
+          {edge.interactionCount}
+        </span>
       </div>
     </div>
   );
@@ -745,14 +767,6 @@ export function RelationshipsGraphPanel({
     return ids;
   }, [selectedGroupId, visibleGraph]);
 
-  const selectedPerson = useMemo(
-    () =>
-      visibleGraph.people.find(
-        (person) => person.groupId === selectedGroupId,
-      ) ?? null,
-    [selectedGroupId, visibleGraph],
-  );
-
   const showTooltipForNode = (
     person: RelationshipsPersonSummary,
     event: MouseEvent,
@@ -784,6 +798,70 @@ export function RelationshipsGraphPanel({
   };
 
   const hideTooltip = () => setTooltip(null);
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const panStateRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    scrollLeft: number;
+    scrollTop: number;
+    moved: boolean;
+  } | null>(null);
+
+  const isInteractiveTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest("button, a, input, textarea, select"));
+  };
+
+  const beginPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    if (isInteractiveTarget(event.target)) return;
+    const container = containerRef.current;
+    if (!container) return;
+    panStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: container.scrollLeft,
+      scrollTop: container.scrollTop,
+      moved: false,
+    };
+  };
+
+  const updatePan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = panStateRef.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    const container = containerRef.current;
+    if (!container) return;
+    const dx = event.clientX - state.startX;
+    const dy = event.clientY - state.startY;
+    if (!state.moved && Math.hypot(dx, dy) > 4) {
+      state.moved = true;
+      hideTooltip();
+      // Capture only after a real drag begins so node clicks remain unaffected.
+      try {
+        container.setPointerCapture(event.pointerId);
+      } catch {}
+    }
+    if (state.moved) {
+      container.scrollLeft = state.scrollLeft - dx;
+      container.scrollTop = state.scrollTop - dy;
+    }
+  };
+
+  const endPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = panStateRef.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    const container = containerRef.current;
+    if (container?.hasPointerCapture(event.pointerId)) {
+      try {
+        container.releasePointerCapture(event.pointerId);
+      } catch {}
+    }
+    panStateRef.current = null;
+  };
+
   const zoomOut = () =>
     setZoom((currentZoom) =>
       clamp(Number((currentZoom - ZOOM_STEP).toFixed(2)), MIN_ZOOM, MAX_ZOOM),
@@ -801,89 +879,45 @@ export function RelationshipsGraphPanel({
   return (
     <TooltipProvider delayDuration={160} skipDelayDuration={80}>
       <div className={compact ? "space-y-3" : "space-y-4"}>
-        <div
-          className={
-            compact
-              ? "flex flex-col gap-3"
-              : "flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
-          }
-        >
-          <div className="flex min-w-0 items-start gap-3">
-            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-accent/24 bg-accent/10 text-accent">
-              <Network className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-                Relationship map
-              </div>
-              <div
-                className={`${compact ? "mt-1 text-lg" : "mt-2 text-xl"} font-semibold text-txt`}
-              >
-                {selectedPerson
-                  ? selectedPerson.displayName
-                  : "People and links"}
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
-                <span>{visibleGraph.modeLabel}</span>
-                {visibleGraph.truncated ? (
-                  <span>
-                    showing {visibleGraph.people.length} of{" "}
-                    {snapshot.stats.totalPeople}
-                  </span>
-                ) : null}
-                <span className="inline-flex items-center gap-1">
-                  <UserRound className="h-3.5 w-3.5" />
-                  {visibleGraph.people.length}
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <Link2 className="h-3.5 w-3.5" />
-                  {visibleGraph.relationships.length}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className={
-              compact
-                ? "flex flex-col gap-2"
-                : "flex flex-col gap-2 lg:items-end"
-            }
-          >
-            <GraphLegend />
-            <div className="flex flex-wrap items-center gap-2">
-              <GraphIconButton
-                label="Zoom out"
-                disabled={zoom <= MIN_ZOOM}
-                onClick={zoomOut}
-              >
-                <Minus className="h-4 w-4" />
-              </GraphIconButton>
-              <GraphIconButton label="Fit graph" onClick={fitGraph}>
-                <Focus className="h-4 w-4" />
-              </GraphIconButton>
-              <GraphIconButton label="Actual size" onClick={actualSize}>
-                <Maximize2 className="h-4 w-4" />
-              </GraphIconButton>
-              <GraphIconButton
-                label="Zoom in"
-                disabled={zoom >= MAX_ZOOM}
-                onClick={zoomIn}
-              >
-                <Plus className="h-4 w-4" />
-              </GraphIconButton>
-              <span className="min-w-12 text-right text-xs-tight font-semibold tabular-nums text-muted">
-                {zoomPercent}
-              </span>
-            </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <GraphLegend />
+          <div className="flex items-center gap-1">
+            <GraphIconButton
+              label="Zoom out"
+              disabled={zoom <= MIN_ZOOM}
+              onClick={zoomOut}
+            >
+              <Minus className="h-4 w-4" />
+            </GraphIconButton>
+            <GraphIconButton label="Fit graph" onClick={fitGraph}>
+              <Focus className="h-4 w-4" />
+            </GraphIconButton>
+            <GraphIconButton label="Actual size" onClick={actualSize}>
+              <Maximize2 className="h-4 w-4" />
+            </GraphIconButton>
+            <GraphIconButton
+              label="Zoom in"
+              disabled={zoom >= MAX_ZOOM}
+              onClick={zoomIn}
+            >
+              <Plus className="h-4 w-4" />
+            </GraphIconButton>
+            <span className="min-w-10 text-right text-2xs font-semibold tabular-nums text-muted">
+              {zoomPercent}
+            </span>
           </div>
         </div>
 
         {/* biome-ignore lint/a11y/noStaticElementInteractions: graph container handles tooltip dismiss on mouse leave */}
         <div
-          className={`${compact ? "max-h-[34rem]" : "max-h-[42rem]"} relative overflow-auto rounded-2xl border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))]`}
+          ref={containerRef}
+          className={`${compact ? "max-h-[34rem]" : "max-h-[42rem]"} relative cursor-grab overflow-auto overscroll-contain rounded-2xl border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] active:cursor-grabbing`}
           data-graph-container
           onMouseLeave={hideTooltip}
+          onPointerDown={beginPan}
+          onPointerMove={updatePan}
+          onPointerUp={endPan}
+          onPointerCancel={endPan}
         >
           <GraphTooltip state={tooltip} />
           <svg

@@ -11,7 +11,6 @@ export const LIFEOPS_SECTIONS: LifeOpsSection[] = [
   "overview",
   "sleep",
   "screen-time",
-  "social",
   "setup",
   "reminders",
   "calendar",

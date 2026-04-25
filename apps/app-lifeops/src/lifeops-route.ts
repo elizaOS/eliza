@@ -23,7 +23,6 @@ export type LifeOpsRouteSection =
   | "overview"
   | "sleep"
   | "screen-time"
-  | "social"
   | "setup"
   | "reminders"
   | "calendar"
@@ -35,7 +34,6 @@ const LIFEOPS_SECTIONS: readonly LifeOpsRouteSection[] = [
   "overview",
   "sleep",
   "screen-time",
-  "social",
   "setup",
   "reminders",
   "calendar",

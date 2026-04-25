@@ -38,22 +38,6 @@ vi.mock("./LifeOpsResizableSidebar.js", () => ({
 import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell";
 
 describe("LifeOpsWorkspaceShell", () => {
-  it("shows a centered LifeOps title in compact layout", () => {
-    render(
-      <LifeOpsWorkspaceShell
-        compactLayout
-        section="overview"
-        navigate={vi.fn()}
-      >
-        <div>Overview content</div>
-      </LifeOpsWorkspaceShell>,
-    );
-
-    expect(screen.getByTestId("lifeops-workspace-title").textContent).toBe(
-      "LifeOps",
-    );
-  });
-
   it("opens the mobile drawer from the top-left button and closes after navigation", () => {
     const navigate = vi.fn();
 

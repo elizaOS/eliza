@@ -43,7 +43,6 @@ import {
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
 import { LifeOpsSleepSection } from "./LifeOpsSleepSection.js";
-import { LifeOpsSocialSection } from "./LifeOpsSocialSection.js";
 import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
 
@@ -963,8 +962,6 @@ function LifeOpsWorkspaceInner() {
         return <LifeOpsSleepSection />;
       case "screen-time":
         return <LifeOpsScreenTimeSection />;
-      case "social":
-        return <LifeOpsSocialSection />;
       case "calendar":
         return <LifeOpsCalendarSection />;
       case "messages":

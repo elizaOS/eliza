@@ -62,40 +62,6 @@ const GripIconSvg = ({ className }: { className?: string }) => (
   </svg>
 );
 
-const ArrowUpIconSvg = ({ className }: { className?: string }) => (
-  <svg
-    width="12"
-    height="12"
-    viewBox="0 0 12 12"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    className={className}
-  >
-    <path d="M6 10V2M2.75 5.25 6 2l3.25 3.25" />
-  </svg>
-);
-
-const ArrowDownIconSvg = ({ className }: { className?: string }) => (
-  <svg
-    width="12"
-    height="12"
-    viewBox="0 0 12 12"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.5"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-    className={className}
-  >
-    <path d="M6 2v8M2.75 6.75 6 10l3.25-3.25" />
-  </svg>
-);
-
 const compactIconBtn =
   "inline-flex h-7 w-7 items-center justify-center rounded-sm border border-border/35 text-muted transition-colors hover:border-border/70 hover:bg-bg-muted/70 hover:text-txt focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent";
 
@@ -120,36 +86,6 @@ const STYLE_SECTION_EMPTY_STATES: Record<
   },
 };
 
-const STYLE_INTENT_GROUPS = [
-  {
-    id: "voice",
-    label: "Voice",
-    hint: "Tone, phrasing, vocabulary, and point of view.",
-    match:
-      /\b(tone|voice|speak|writes?|sounds?|word|phrase|slang|grammar|sentence|style|humor|funny|serious|casual|formal|emoji)\b/i,
-  },
-  {
-    id: "behavior",
-    label: "Behavior",
-    hint: "How the character acts, answers, and makes choices.",
-    match:
-      /\b(should|always|never|avoid|prefer|respond|answer|ask|explain|focus|do not|don't|must|will|acts?|behavior)\b/i,
-  },
-  {
-    id: "boundaries",
-    label: "Boundaries",
-    hint: "Safety, limits, privacy, and things to refuse or avoid.",
-    match:
-      /\b(refuse|limit|boundary|private|privacy|secret|safe|unsafe|harm|illegal|policy|disclose|medical|legal|financial)\b/i,
-  },
-  {
-    id: "general",
-    label: "General",
-    hint: "Rules that do not fit a specific intent yet.",
-    match: null,
-  },
-] as const;
-
 function normalizeComparable(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -164,15 +100,6 @@ function getDuplicateIndices(items: string[]): Set<number> {
   return new Set(
     [...buckets.values()].filter((indices) => indices.length > 1).flat(),
   );
-}
-
-function getStyleIntentGroupId(
-  item: string,
-): (typeof STYLE_INTENT_GROUPS)[number]["id"] {
-  return (
-    STYLE_INTENT_GROUPS.find((group) => group.match?.test(item)) ??
-    STYLE_INTENT_GROUPS[STYLE_INTENT_GROUPS.length - 1]
-  ).id;
 }
 
 /* ── Types ────────────────────────────────────────────────────────── */
@@ -229,7 +156,7 @@ export function CharacterIdentityPanel({
           onChange={(e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
             handleFieldEdit("bio", e.target.value)
           }
-          className="w-full resize-y min-h-[8rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+          className="w-full resize-none min-h-[8rem] overflow-x-hidden rounded-none border-0 border-b border-border/40 bg-transparent px-0 py-2 font-mono text-xs leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
         />
       </div>
     </div>
@@ -284,164 +211,123 @@ export function CharacterStylePanel({
         {STYLE_SECTION_KEYS.map((key) => {
           const items = style?.[key] ?? [];
           const duplicateIndices = getDuplicateIndices(items);
-          const groupedItems = STYLE_INTENT_GROUPS.map((group) => ({
-            ...group,
-            entries: items
-              .map((item, index) => ({ item, index }))
-              .filter(({ item }) => getStyleIntentGroupId(item) === group.id),
-          })).filter((group) => group.entries.length > 0);
           return (
             <div
               key={key}
-              className="flex flex-col gap-3"
+              className="flex flex-col gap-2"
               data-testid={`style-section-${key}`}
             >
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                <span className="rounded-sm border border-border/40 px-2 py-1">
-                  {items.length}{" "}
-                  {t("charactereditor.StyleRuleCount", {
-                    defaultValue: "rules",
-                  })}
-                </span>
-                {duplicateIndices.size > 0 ? (
+              {duplicateIndices.size > 0 ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
                   <span className="rounded-sm border border-warning/50 bg-warning/10 px-2 py-1 text-warning">
                     {duplicateIndices.size}{" "}
                     {t("charactereditor.PossibleDuplicates", {
                       defaultValue: "possible duplicates",
                     })}
                   </span>
-                ) : null}
-              </div>
-              <div className="flex flex-col gap-3">
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-1">
                 {items.length > 0 ? (
-                  groupedItems.map((group) => (
-                    <section
-                      key={group.id}
-                      className="flex min-w-0 flex-col gap-2"
-                    >
-                      <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                        <h4 className="text-xs font-semibold text-txt">
-                          {group.label}
-                        </h4>
-                        <span className="text-[0.68rem] text-muted">
-                          {group.hint}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        {group.entries.map(({ item, index }) => {
-                          const isDragging =
-                            dragStyleIndex?.key === key &&
-                            dragStyleIndex.index === index;
-                          const isDuplicate = duplicateIndices.has(index);
-                          return (
-                            <fieldset
-                              key={`${key}:${index}`}
-                              draggable
-                              onDragStart={(
-                                e: DragEvent<HTMLFieldSetElement>,
-                              ) => {
-                                setDragStyleIndex({ key, index });
-                                e.dataTransfer.effectAllowed = "move";
-                              }}
-                              onDragOver={(
-                                e: DragEvent<HTMLFieldSetElement>,
-                              ) => {
-                                if (
-                                  dragStyleIndex === null ||
-                                  dragStyleIndex.key !== key ||
-                                  dragStyleIndex.index === index
-                                )
-                                  return;
-                                e.preventDefault();
-                                e.dataTransfer.dropEffect = "move";
-                              }}
-                              onDrop={(e: DragEvent<HTMLFieldSetElement>) => {
-                                e.preventDefault();
-                                if (
-                                  dragStyleIndex === null ||
-                                  dragStyleIndex.key !== key ||
-                                  dragStyleIndex.index === index
-                                )
-                                  return;
-                                handleReorderStyleEntries(
-                                  key,
-                                  reorderStyle(
-                                    items,
-                                    dragStyleIndex.index,
-                                    index,
-                                  ),
-                                );
-                                setDragStyleIndex(null);
-                              }}
-                              onDragEnd={() => setDragStyleIndex(null)}
-                              className={`group flex min-w-0 items-center gap-2 rounded-md border p-2.5 transition-opacity ${
-                                isDuplicate
-                                  ? "border-warning/50 bg-warning/5"
-                                  : "border-border/35 bg-bg-muted/20"
-                              } ${isDragging ? "opacity-40" : ""}`}
-                            >
-                              <span
-                                className="shrink-0 text-muted opacity-60 cursor-grab active:cursor-grabbing select-none"
-                                aria-hidden="true"
-                                title={t("charactereditor.DragToReorder", {
-                                  defaultValue: "Drag to reorder",
-                                })}
-                              >
-                                <GripIconSvg />
-                              </span>
-                              <Input
-                                value={styleEntryDrafts[key]?.[index] ?? item}
-                                onChange={(e: ChangeEvent<HTMLInputElement>) =>
-                                  handleStyleEntryDraftChange(
-                                    key,
-                                    index,
-                                    e.target.value,
-                                  )
-                                }
-                                onBlur={() =>
-                                  handleCommitStyleEntry(key, index)
-                                }
-                                aria-label={`${t(
-                                  `charactereditor.StyleRules.${key}`,
-                                  {
-                                    defaultValue: "Style rule",
-                                  },
-                                )} ${index + 1}`}
-                                className="h-9 min-w-0 flex-1 rounded-sm border border-border/25 bg-bg/60 px-2 text-sm text-txt focus-visible:border-accent/60 focus-visible:ring-0"
-                              />
-                              {isDuplicate ? (
-                                <span className="shrink-0 rounded-sm bg-warning/15 px-1.5 py-0.5 text-[0.68rem] font-medium text-warning">
-                                  {t("charactereditor.DuplicateRule", {
-                                    defaultValue: "duplicate",
-                                  })}
-                                </span>
-                              ) : null}
-                              <div className="flex shrink-0 items-center">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 shrink-0 rounded-sm border border-border/35 p-0 text-muted transition-colors hover:border-danger/45 hover:bg-danger/10 hover:text-danger"
-                                  onClick={() =>
-                                    handleRemoveStyleEntry(key, index)
-                                  }
-                                  title={t("common.remove")}
-                                  aria-label={`${t("common.remove")} ${t(
-                                    `charactereditor.StyleRules.${key}`,
-                                    {
-                                      defaultValue: "style rule",
-                                    },
-                                  )} ${index + 1}`}
-                                >
-                                  <TrashIconSvg />
-                                </Button>
-                              </div>
-                            </fieldset>
+                  items.map((item, index) => {
+                    const isDragging =
+                      dragStyleIndex?.key === key &&
+                      dragStyleIndex.index === index;
+                    const isDuplicate = duplicateIndices.has(index);
+                    return (
+                      <fieldset
+                        key={`${key}:${index}`}
+                        draggable
+                        onDragStart={(e: DragEvent<HTMLFieldSetElement>) => {
+                          setDragStyleIndex({ key, index });
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragOver={(e: DragEvent<HTMLFieldSetElement>) => {
+                          if (
+                            dragStyleIndex === null ||
+                            dragStyleIndex.key !== key ||
+                            dragStyleIndex.index === index
+                          )
+                            return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(e: DragEvent<HTMLFieldSetElement>) => {
+                          e.preventDefault();
+                          if (
+                            dragStyleIndex === null ||
+                            dragStyleIndex.key !== key ||
+                            dragStyleIndex.index === index
+                          )
+                            return;
+                          handleReorderStyleEntries(
+                            key,
+                            reorderStyle(items, dragStyleIndex.index, index),
                           );
-                        })}
-                      </div>
-                    </section>
-                  ))
+                          setDragStyleIndex(null);
+                        }}
+                        onDragEnd={() => setDragStyleIndex(null)}
+                        className={`group flex min-w-0 items-center gap-2 px-0 py-1 transition-opacity ${
+                          isDuplicate ? "" : ""
+                        } ${isDragging ? "opacity-40" : ""}`}
+                      >
+                        <span
+                          className="shrink-0 text-muted opacity-60 cursor-grab active:cursor-grabbing select-none"
+                          aria-hidden="true"
+                          title={t("charactereditor.DragToReorder", {
+                            defaultValue: "Drag to reorder",
+                          })}
+                        >
+                          <GripIconSvg />
+                        </span>
+                        <Input
+                          value={styleEntryDrafts[key]?.[index] ?? item}
+                          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                            handleStyleEntryDraftChange(
+                              key,
+                              index,
+                              e.target.value,
+                            )
+                          }
+                          onBlur={() => handleCommitStyleEntry(key, index)}
+                          aria-label={`${t(
+                            `charactereditor.StyleRules.${key}`,
+                            {
+                              defaultValue: "Style rule",
+                            },
+                          )} ${index + 1}`}
+                          className={`h-8 min-w-0 flex-1 rounded-none border-0 border-b bg-transparent px-0 text-sm text-txt focus-visible:ring-0 ${
+                            isDuplicate
+                              ? "border-warning/60 focus-visible:border-warning"
+                              : "border-border/30 focus-visible:border-accent/60"
+                          }`}
+                        />
+                        {isDuplicate ? (
+                          <span className="shrink-0 rounded-sm bg-warning/15 px-1.5 py-0.5 text-[0.68rem] font-medium text-warning">
+                            {t("charactereditor.DuplicateRule", {
+                              defaultValue: "duplicate",
+                            })}
+                          </span>
+                        ) : null}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0 rounded-sm p-0 text-muted opacity-0 transition-colors hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
+                          onClick={() => handleRemoveStyleEntry(key, index)}
+                          title={t("common.remove")}
+                          aria-label={`${t("common.remove")} ${t(
+                            `charactereditor.StyleRules.${key}`,
+                            {
+                              defaultValue: "style rule",
+                            },
+                          )} ${index + 1}`}
+                        >
+                          <TrashIconSvg />
+                        </Button>
+                      </fieldset>
+                    );
+                  })
                 ) : (
                   <div className="rounded-md border border-dashed border-border/40 bg-bg-muted/20 px-3 py-4 text-sm text-muted">
                     {t(STYLE_SECTION_EMPTY_STATES[key].key, {
@@ -514,11 +400,6 @@ export function CharacterExamplesPanel({
     return next;
   };
 
-  const movePostExample = (from: number, to: number) => {
-    if (to < 0 || to >= postExamples.length) return;
-    handleFieldEdit("postExamples", reorder(postExamples, from, to));
-  };
-
   return (
     <div className="flex flex-col gap-6">
       {/* Chat Examples */}
@@ -549,39 +430,8 @@ export function CharacterExamplesPanel({
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
               key={`convo-${ci}`}
-              className="flex flex-col gap-2 rounded-md border border-border/35 bg-bg-muted/15 p-3"
+              className="group/convo flex flex-col gap-2 rounded-md border border-border/35 bg-bg-muted/15 p-3"
             >
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h4 className="text-xs font-semibold text-txt">
-                    {t("charactereditor.ChatConversation", {
-                      defaultValue: "Conversation",
-                    })}{" "}
-                    {ci + 1}
-                  </h4>
-                  <span className="text-[0.68rem] text-muted">
-                    {convo.examples.length}{" "}
-                    {t("charactereditor.TurnCount", {
-                      defaultValue: "turns",
-                    })}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className={compactIconBtn}
-                  onClick={() => {
-                    const updated = [...normalizedMessageExamples];
-                    updated.splice(ci, 1);
-                    handleFieldEdit("messageExamples", updated);
-                  }}
-                  title={t("charactereditor.RemoveExample", {
-                    defaultValue: "Remove conversation",
-                  })}
-                  aria-label={`${t("common.remove")} conversation ${ci + 1}`}
-                >
-                  <TrashIconSvg />
-                </button>
-              </div>
               {convo.examples.map((msg, mi) => (
                 <div
                   // biome-ignore lint/suspicious/noArrayIndexKey: items lack stable keys
@@ -589,10 +439,8 @@ export function CharacterExamplesPanel({
                   className="grid min-w-0 grid-cols-[4.5rem_1fr] items-start gap-2"
                 >
                   <span
-                    className={`mt-2 rounded-sm border px-2 py-1 text-center text-[0.68rem] font-semibold uppercase tracking-[0.06em] ${
-                      msg.name === "{{user1}}"
-                        ? "border-border/40 text-muted"
-                        : "border-accent/35 bg-accent/10 text-accent"
+                    className={`mt-2 px-2 py-1 text-center text-[0.68rem] font-semibold uppercase tracking-[0.06em] ${
+                      msg.name === "{{user1}}" ? "text-muted" : "text-accent"
                     }`}
                   >
                     {msg.name === "{{user1}}" ? "user" : "agent"}
@@ -613,11 +461,11 @@ export function CharacterExamplesPanel({
                       updated[ci] = convoClone;
                       handleFieldEdit("messageExamples", updated);
                     }}
-                    className="min-h-[3rem] w-full resize-y rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+                    className="min-h-[3rem] w-full resize-none rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
                   />
                 </div>
               ))}
-              <div className="mt-1 flex items-center justify-between gap-2">
+              <div className="mt-1 flex items-center justify-end gap-2">
                 <button
                   type="button"
                   className="inline-flex h-8 items-center gap-2 rounded-md border border-border/40 px-2.5 text-xs font-medium text-txt transition-colors hover:bg-bg-muted/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60"
@@ -648,6 +496,21 @@ export function CharacterExamplesPanel({
                   {t("charactereditor.AddTurn", {
                     defaultValue: "Add turn",
                   })}
+                </button>
+                <button
+                  type="button"
+                  className={compactIconBtn}
+                  onClick={() => {
+                    const updated = [...normalizedMessageExamples];
+                    updated.splice(ci, 1);
+                    handleFieldEdit("messageExamples", updated);
+                  }}
+                  title={t("charactereditor.RemoveExample", {
+                    defaultValue: "Remove conversation",
+                  })}
+                  aria-label={`${t("common.remove")} conversation ${ci + 1}`}
+                >
+                  <TrashIconSvg />
                 </button>
               </div>
             </div>
@@ -793,38 +656,10 @@ export function CharacterExamplesPanel({
                       updated[pi] = e.target.value;
                       handleFieldEdit("postExamples", updated);
                     }}
-                    className="min-h-[4.25rem] w-full resize-y rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
+                    className="min-h-[4.25rem] w-full resize-none rounded-sm border border-border/30 bg-bg/70 px-2 py-1.5 text-sm leading-relaxed text-txt focus-visible:border-accent/60 focus-visible:ring-0"
                   />
                 </div>
                 <div className="flex shrink-0 flex-col gap-1">
-                  <button
-                    type="button"
-                    className={compactIconBtn}
-                    onClick={() => movePostExample(pi, pi - 1)}
-                    disabled={pi === 0}
-                    title={t("charactereditor.MovePostUp", {
-                      defaultValue: "Move post up",
-                    })}
-                    aria-label={`${t("charactereditor.MovePostUp", {
-                      defaultValue: "Move post up",
-                    })} ${pi + 1}`}
-                  >
-                    <ArrowUpIconSvg />
-                  </button>
-                  <button
-                    type="button"
-                    className={compactIconBtn}
-                    onClick={() => movePostExample(pi, pi + 1)}
-                    disabled={pi === postExamples.length - 1}
-                    title={t("charactereditor.MovePostDown", {
-                      defaultValue: "Move post down",
-                    })}
-                    aria-label={`${t("charactereditor.MovePostDown", {
-                      defaultValue: "Move post down",
-                    })} ${pi + 1}`}
-                  >
-                    <ArrowDownIconSvg />
-                  </button>
                   <Button
                     type="button"
                     variant="ghost"
