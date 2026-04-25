@@ -11,7 +11,7 @@ import { PROACTIVE_TASK_TAGS } from "../activity-profile/proactive-worker.js";
 import { readProfileFromMetadata } from "../activity-profile/service.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
-import { hasAdminAccess } from "@elizaos/agent";
+import { hasAdminAccess } from "@elizaos/agent/security";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);

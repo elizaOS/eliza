@@ -10,7 +10,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import {
   RemoteSessionError,
   getRemoteSessionService,

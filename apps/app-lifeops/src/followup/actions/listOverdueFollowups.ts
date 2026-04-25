@@ -3,7 +3,7 @@ import type {
   ActionExample,
   IAgentRuntime,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import {
   FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
   computeOverdueFollowups,

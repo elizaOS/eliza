@@ -13,7 +13,7 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import { gmailAction } from "./gmail.js";
 import { inboxAction } from "./inbox.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";

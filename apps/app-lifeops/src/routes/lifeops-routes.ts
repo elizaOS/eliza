@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
 import type {

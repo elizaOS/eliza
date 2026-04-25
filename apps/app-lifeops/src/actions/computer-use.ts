@@ -16,7 +16,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 
 const ACTION_NAME = "LIFEOPS_COMPUTER_USE";
 const ACTION_NAMES = {

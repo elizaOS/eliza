@@ -4,7 +4,7 @@ import {
   persistConfiguredOwnerName,
   updateLifeOpsOwnerProfile,
 } from "../lifeops/owner-profile.js";
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 
 type OwnerProfileParameters = {
   name?: string;
