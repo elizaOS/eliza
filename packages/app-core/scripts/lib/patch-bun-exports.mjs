@@ -1394,6 +1394,87 @@ export function patchPtyManagerCursorPositionCompat(root, log = console.log) {
 }
 
 /**
+ * Windows: resolve adapter commands like "codex" / "claude" / "gemini" through
+ * PATHEXT before handing them to node-pty.
+ *
+ * coding-agent-adapters returns bare command names (e.g. "codex") from each
+ * adapter's getCommand(). On macOS/Linux that resolves fine via the shell. On
+ * Windows, npm-installed CLIs ship as `<name>.cmd` (cmd shim), `<name>.ps1`
+ * (PowerShell shim), and `<name>` (extensionless bash shim). node-pty calls
+ * Win32 CreateProcess directly, which does NOT consult PATHEXT, so passing
+ * bare "codex" fails with ERROR_FILE_NOT_FOUND (error code 2). Walk PATHEXT
+ * and PATH to find the real executable (typically `codex.cmd`) before spawn.
+ *
+ * Affects every adapter that returns a bare name: claude, codex, gemini,
+ * aider, hermes. No-op on non-Windows platforms.
+ */
+const PTY_MANAGER_WINDOWS_CMD_NEEDLE =
+  "    const command = this.adapter.getCommand();";
+const PTY_MANAGER_WINDOWS_CMD_MARKER = "__miladyResolveWinPathExt";
+
+function buildWindowsCommandResolverReplacement(isEsm) {
+  const fsExists = isEsm ? "existsSync" : 'require("fs").existsSync';
+  const pathDelim = isEsm ? "path.delimiter" : 'require("path").delimiter';
+  const pathJoin = isEsm ? "path.join" : 'require("path").join';
+  return [
+    "    const command = (function __miladyResolveWinPathExt(c) {",
+    '      if (process.platform !== "win32" || !c) return c;',
+    '      if (c.indexOf("\\\\") !== -1 || c.indexOf("/") !== -1) return c;',
+    "      if (/\\.[A-Za-z0-9]+$/.test(c)) return c;",
+    "      try {",
+    `        const __exts = (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD").split(";").filter(Boolean);`,
+    `        const __dirs = (process.env.PATH || "").split(${pathDelim}).filter(Boolean);`,
+    "        for (const __d of __dirs) {",
+    "          for (const __e of __exts) {",
+    `            const __cand = ${pathJoin}(__d, c + __e);`,
+    `            if (${fsExists}(__cand)) return __cand;`,
+    "          }",
+    "        }",
+    "      } catch (_e) {}",
+    "      return c;",
+    "    })(this.adapter.getCommand());",
+  ].join("\n");
+}
+
+export function applyPtyManagerWindowsCommandResolution(filePath) {
+  if (!existsSync(filePath)) return false;
+  const source = readFileSync(filePath, "utf8");
+  if (source.includes(PTY_MANAGER_WINDOWS_CMD_MARKER)) return false;
+  if (!source.includes(PTY_MANAGER_WINDOWS_CMD_NEEDLE)) return false;
+  const isEsm = filePath.endsWith(".mjs");
+  const next = source.replace(
+    PTY_MANAGER_WINDOWS_CMD_NEEDLE,
+    buildWindowsCommandResolverReplacement(isEsm),
+  );
+  if (next === source) return false;
+  writeFileSync(filePath, next, "utf8");
+  return true;
+}
+
+export function patchPtyManagerWindowsCommandResolution(root, log = console.log) {
+  const searchRoots = dedupeRealPaths(
+    [root, resolve(root, "eliza")].filter((candidate) => existsSync(candidate)),
+  );
+  const candidates = dedupeRealPaths(
+    searchRoots.flatMap((searchRoot) => [
+      ...findPackageFilePaths(searchRoot, "pty-manager", "dist/index.js"),
+      ...findPackageFilePaths(searchRoot, "pty-manager", "dist/index.mjs"),
+      ...findPackageFilePaths(searchRoot, "pty-manager", "dist/pty-worker.js"),
+    ]),
+  );
+  let patched = false;
+  for (const filePath of candidates) {
+    if (applyPtyManagerWindowsCommandResolution(filePath)) {
+      patched = true;
+      log(
+        `[patch-deps] Patched pty-manager Windows PATHEXT command resolution: ${filePath}`,
+      );
+    }
+  }
+  return patched;
+}
+
+/**
  * Codex added a repo trust prompt that offers "allow Codex to work in this
  * folder without asking for approval". Older adapter builds only recognize the
  * legacy trust-directory copy, so sessions block before the initial task runs.
