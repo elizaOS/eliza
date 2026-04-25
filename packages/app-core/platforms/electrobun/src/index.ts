@@ -683,6 +683,12 @@ function sendToActiveRenderer(message: string, payload?: unknown): void {
   }
 }
 
+function sendManagedWindowsChanged(): void {
+  sendToActiveRenderer("desktopManagedWindowsChanged", {
+    windows: surfaceWindowManager?.listWindows() ?? [],
+  });
+}
+
 function shouldRestoreWindowBeforeMenuAction(
   action: string | undefined,
 ): boolean {
@@ -1897,7 +1903,10 @@ async function main(): Promise<void> {
     onWindowFocused: (window) => {
       lastFocusedWindow = window;
     },
-    onRegistryChanged: () => setupApplicationMenu(),
+    onRegistryChanged: () => {
+      sendManagedWindowsChanged();
+      setupApplicationMenu();
+    },
   });
   // Set up app menu after the window (and its message loop) exists.
   setupApplicationMenu();
@@ -1921,11 +1930,26 @@ async function main(): Promise<void> {
   getDesktopManager().setRequestQuitCallback(() => {
     requestAppQuit();
   });
-  getDesktopManager().setOpenSurfaceWindowCallback((surface, browse) => {
+  getDesktopManager().setOpenSurfaceWindowCallback(
+    (surface, browse, alwaysOnTop) => {
+      if (!surfaceWindowManager) {
+        throw new Error("Surface window manager is not ready.");
+      }
+      return surfaceWindowManager.openSurfaceWindow(
+        surface,
+        browse,
+        alwaysOnTop === true,
+      );
+    },
+  );
+  getDesktopManager().setOpenAppWindowCallback((options) => {
     if (!surfaceWindowManager) {
-      return;
+      throw new Error("Surface window manager is not ready.");
     }
-    void surfaceWindowManager.openSurfaceWindow(surface, browse);
+    return surfaceWindowManager.openAppWindow(options);
+  });
+  getDesktopManager().setManagedWindowAlwaysOnTopCallback((id, flag) => {
+    return surfaceWindowManager?.setWindowAlwaysOnTop(id, flag) ?? false;
   });
 
   // If launched with --hidden (e.g. auto-launch with openAsHidden), minimize immediately.
