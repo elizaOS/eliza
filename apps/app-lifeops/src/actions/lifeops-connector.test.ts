@@ -15,37 +15,43 @@ vi.mock("../lifeops/service.js", () => {
       super(message);
     }
   }
+  class FakeLifeOpsService {
+    getGoogleConnectorStatus = vi.fn(async () => ({
+      provider: "google",
+      connected: false,
+    }));
+    getXConnectorStatus = vi.fn(async () => ({
+      provider: "x",
+      connected: false,
+    }));
+    getTelegramConnectorStatus = vi.fn(async () => ({
+      provider: "telegram",
+      connected: false,
+    }));
+    getSignalConnectorStatus = vi.fn(async () => ({
+      provider: "signal",
+      connected: false,
+    }));
+    getDiscordConnectorStatus = vi.fn(async () => ({
+      provider: "discord",
+      connected: false,
+    }));
+    getIMessageConnectorStatus = vi.fn(async () => ({
+      provider: "imessage",
+      connected: false,
+    }));
+    getWhatsAppConnectorStatus = vi.fn(async () => ({
+      provider: "whatsapp",
+      connected: false,
+    }));
+    getBrowserSettings = vi.fn(async () => ({}));
+    listBrowserCompanions = vi.fn(async () => []);
+  }
   return {
     LifeOpsServiceError: FakeError,
-    LifeOpsService: vi.fn().mockImplementation(() => ({
-      getGoogleConnectorStatus: vi.fn(async () => ({
-        provider: "google",
-        connected: false,
-      })),
-      getXConnectorStatus: vi.fn(async () => ({ provider: "x", connected: false })),
-      getTelegramConnectorStatus: vi.fn(async () => ({
-        provider: "telegram",
-        connected: false,
-      })),
-      getSignalConnectorStatus: vi.fn(async () => ({
-        provider: "signal",
-        connected: false,
-      })),
-      getDiscordConnectorStatus: vi.fn(async () => ({
-        provider: "discord",
-        connected: false,
-      })),
-      getIMessageConnectorStatus: vi.fn(async () => ({
-        provider: "imessage",
-        connected: false,
-      })),
-      getWhatsAppConnectorStatus: vi.fn(async () => ({
-        provider: "whatsapp",
-        connected: false,
-      })),
-      getBrowserSettings: vi.fn(async () => ({})),
-      listBrowserCompanions: vi.fn(async () => []),
-    })),
+    LifeOpsService: vi.fn(function () {
+      return new FakeLifeOpsService();
+    }),
   };
 });
 
