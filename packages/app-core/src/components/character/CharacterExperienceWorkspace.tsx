@@ -338,11 +338,12 @@ export function CharacterExperienceWorkspace({
     return (
       <section className="rounded-2xl border border-dashed border-border/40 bg-bg-muted/20 px-5 py-8 text-sm text-muted">
         <div className="text-base font-semibold text-txt">
-          No experiences recorded yet.
+          I haven&rsquo;t learned anything yet.
         </div>
         <p className="mt-1 max-w-xl">
-          Learned outcomes will appear here with confidence, importance, source
-          context, and review controls once the agent captures experience.
+          As we work together I&rsquo;ll keep notes here — what worked, what
+          didn&rsquo;t, things I want to remember next time. Each lesson lands
+          with the context that produced it so you can review or correct me.
         </p>
       </section>
     );

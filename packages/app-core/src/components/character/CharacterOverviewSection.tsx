@@ -1,34 +1,30 @@
-import { Button } from "@elizaos/ui";
 import {
   ArrowRight,
   BookOpen,
   Brain,
+  type LucideIcon,
+  MessageCircle,
   Network,
   PencilLine,
   Sparkles,
+  Zap,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import type { CharacterHubSection } from "./character-hub-helpers";
 
 type OverviewSection = Exclude<CharacterHubSection, "overview">;
 
-export interface CharacterOverviewBar {
-  label: string;
-  value: number;
-}
-
-export interface CharacterOverviewSlice {
-  label: string;
-  value: number;
-}
-
 export interface CharacterOverviewWidget {
-  bars?: CharacterOverviewBar[];
-  caption: string;
-  nodes?: string[];
-  pie?: CharacterOverviewSlice[];
-  score?: number;
+  /** Section the widget links to. */
   section: OverviewSection;
+  /** Header title. */
   title: string;
+  /** Optional small text on the right side of the header (count or "Updated 2h ago"). */
+  meta?: string | null;
+  /** Real preview content rendered in the widget body. */
+  body?: ReactNode | null;
+  /** True when no real content exists. Empty widgets are hidden. */
+  isEmpty: boolean;
 }
 
 const WIDGET_ICONS = {
@@ -37,156 +33,137 @@ const WIDGET_ICONS = {
   skills: Sparkles,
   experience: Brain,
   relationships: Network,
-} satisfies Record<OverviewSection, typeof BookOpen>;
+} satisfies Record<OverviewSection, LucideIcon>;
 
-const WIDGET_ACCENTS = {
-  personality: "bg-[rgba(var(--accent-rgb,240,185,11),0.16)] text-accent",
-  knowledge: "bg-status-info-bg text-status-info",
-  skills: "bg-[rgba(var(--accent-rgb,240,185,11),0.16)] text-accent",
-  experience: "bg-status-success-bg text-status-success",
-  relationships: "bg-status-warning-bg text-status-warning",
+const WIDGET_TONE = {
+  personality: "text-accent",
+  knowledge: "text-status-info",
+  skills: "text-accent",
+  experience: "text-status-success",
+  relationships: "text-status-warning",
 } satisfies Record<OverviewSection, string>;
 
-const PIE_COLORS = [
-  "var(--accent)",
-  "rgb(47, 192, 144)",
-  "rgb(104, 153, 255)",
-  "rgb(251, 146, 60)",
+interface GettingStartedSuggestion {
+  section: OverviewSection;
+  icon: LucideIcon;
+  label: string;
+  hint: string;
+}
+
+const GETTING_STARTED_SUGGESTIONS: GettingStartedSuggestion[] = [
+  {
+    section: "personality",
+    icon: PencilLine,
+    label: "Tell me who I am",
+    hint: "Write a short bio so I know how to show up.",
+  },
+  {
+    section: "knowledge",
+    icon: BookOpen,
+    label: "Give me something to read",
+    hint: "Upload notes, docs, or links I can study.",
+  },
+  {
+    section: "experience",
+    icon: MessageCircle,
+    label: "Talk with me for a bit",
+    hint: "I learn from our conversations as we go.",
+  },
+  {
+    section: "skills",
+    icon: Zap,
+    label: "Turn on some abilities",
+    hint: "Pick the skills I should be good at.",
+  },
 ];
 
-function clampRatio(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(1, value));
-}
-
-function MiniPie({ slices }: { slices: CharacterOverviewSlice[] }) {
-  const total = slices.reduce(
-    (sum, slice) => sum + Math.max(slice.value, 0),
-    0,
-  );
-  const radius = 22;
-  const circumference = 2 * Math.PI * radius;
-  let offset = 0;
-
-  if (total <= 0) {
-    return (
-      <div className="h-16 w-16 rounded-full border border-dashed border-border/50" />
-    );
-  }
+function GettingStarted({
+  characterName,
+  onOpenSection,
+}: {
+  characterName?: string | null;
+  onOpenSection: (section: OverviewSection) => void;
+}) {
+  const name = characterName?.trim() ? characterName.trim() : "your character";
 
   return (
-    <svg className="h-16 w-16 -rotate-90" viewBox="0 0 64 64" aria-hidden>
-      <title>Overview distribution</title>
-      <circle
-        cx="32"
-        cy="32"
-        r={radius}
-        fill="none"
-        stroke="rgba(255,255,255,0.08)"
-        strokeWidth="10"
-      />
-      {slices.map((slice, index) => {
-        const length = (Math.max(slice.value, 0) / total) * circumference;
-        const element = (
-          <circle
-            key={`${slice.label}-${slice.value}`}
-            cx="32"
-            cy="32"
-            r={radius}
-            fill="none"
-            stroke={PIE_COLORS[index % PIE_COLORS.length]}
-            strokeDasharray={`${length} ${circumference - length}`}
-            strokeDashoffset={-offset}
-            strokeLinecap="butt"
-            strokeWidth="10"
-          />
-        );
-        offset += length;
-        return element;
-      })}
-    </svg>
-  );
-}
-
-function ScoreRing({ score }: { score: number }) {
-  const radius = 22;
-  const circumference = 2 * Math.PI * radius;
-  const progress = clampRatio(score) * circumference;
-
-  return (
-    <svg className="h-16 w-16 -rotate-90" viewBox="0 0 64 64" aria-hidden>
-      <title>Overview score</title>
-      <circle
-        cx="32"
-        cy="32"
-        r={radius}
-        fill="none"
-        stroke="rgba(255,255,255,0.08)"
-        strokeWidth="10"
-      />
-      <circle
-        cx="32"
-        cy="32"
-        r={radius}
-        fill="none"
-        stroke="var(--accent)"
-        strokeDasharray={`${progress} ${circumference - progress}`}
-        strokeLinecap="round"
-        strokeWidth="10"
-      />
-    </svg>
-  );
-}
-
-function MiniBars({ bars }: { bars: CharacterOverviewBar[] }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-2">
-      {bars.slice(0, 4).map((bar) => (
-        <div key={bar.label} className="grid grid-cols-[4.25rem_1fr] gap-2">
-          <span className="truncate text-2xs font-medium uppercase tracking-[0.08em] text-muted">
-            {bar.label}
-          </span>
-          <div className="h-2 overflow-hidden bg-bg-muted/35">
-            <div
-              className="h-full bg-accent"
-              style={{ width: `${clampRatio(bar.value) * 100}%` }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function NodeGraph({ nodes }: { nodes: string[] }) {
-  const visible = Array.from(new Set(nodes.filter(Boolean))).slice(0, 5);
-
-  return (
-    <div className="relative h-24 overflow-hidden border border-border/30 bg-bg-muted/15">
-      <div className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 bg-accent/20 text-accent">
-        <Network className="m-2 h-4 w-4" aria-hidden />
+    <section
+      className="flex flex-col gap-5 rounded-2xl border border-border/30 bg-card/40 p-6"
+      aria-label="Get started with your character"
+    >
+      <div className="flex flex-col gap-1">
+        <h2 className="text-lg font-semibold text-txt">
+          Let&rsquo;s shape {name}
+        </h2>
+        <p className="max-w-xl text-sm text-muted">
+          {name} is a blank slate right now. Pick anything below to start —
+          there&rsquo;s no wrong order, and you can always change your mind.
+        </p>
       </div>
-      {visible.map((node, index) => {
-        const angle =
-          -Math.PI / 2 + (index / Math.max(visible.length, 1)) * 6.28;
-        const x = 50 + Math.cos(angle) * 34;
-        const y = 50 + Math.sin(angle) * 30;
-        return (
-          <div
-            key={node}
-            className="absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 border border-status-warning/45 bg-status-warning-bg text-center text-[0.68rem] font-semibold leading-7 text-status-warning"
-            style={{ left: `${x}%`, top: `${y}%` }}
-            title={node}
-          >
-            {node
-              .split(/\s+/)
-              .slice(0, 2)
-              .map((part) => part[0]?.toUpperCase() ?? "")
-              .join("") || "?"}
-          </div>
-        );
-      })}
-    </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        {GETTING_STARTED_SUGGESTIONS.map((suggestion) => {
+          const Icon = suggestion.icon;
+          return (
+            <button
+              key={suggestion.section}
+              type="button"
+              onClick={() => onOpenSection(suggestion.section)}
+              className="group flex items-start gap-3 rounded-xl border border-border/30 bg-bg/40 p-3 text-left transition-colors hover:border-border/60 hover:bg-bg/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+            >
+              <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">
+                <Icon className="h-4 w-4" aria-hidden />
+              </span>
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="truncate text-sm font-semibold text-txt">
+                  {suggestion.label}
+                </span>
+                <span className="text-xs text-muted">{suggestion.hint}</span>
+              </span>
+              <ArrowRight
+                className="mt-1 h-4 w-4 shrink-0 text-muted transition-colors group-hover:text-txt"
+                aria-hidden
+              />
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function NextUpHint({
+  suggestion,
+  onOpenSection,
+}: {
+  suggestion: GettingStartedSuggestion;
+  onOpenSection: (section: OverviewSection) => void;
+}) {
+  const Icon = suggestion.icon;
+  return (
+    <button
+      type="button"
+      onClick={() => onOpenSection(suggestion.section)}
+      className="group flex w-full items-center gap-3 rounded-xl border border-border/30 bg-card/30 px-4 py-3 text-left transition-colors hover:border-border/60 hover:bg-card/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+    >
+      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent/12 text-accent">
+        <Icon className="h-3.5 w-3.5" aria-hidden />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted">
+          Next up
+        </span>
+        <span className="truncate text-sm font-medium text-txt">
+          {suggestion.label}
+        </span>
+      </span>
+      <span className="text-xs text-muted group-hover:text-txt">
+        {suggestion.hint}
+      </span>
+      <ArrowRight
+        className="h-4 w-4 shrink-0 text-muted transition-colors group-hover:text-txt"
+        aria-hidden
+      />
+    </button>
   );
 }
 
@@ -198,71 +175,89 @@ function OverviewWidget({
   widget: CharacterOverviewWidget;
 }) {
   const Icon = WIDGET_ICONS[widget.section];
-  const bars = widget.bars?.filter((bar) => bar.label.trim()) ?? [];
-  const pie = widget.pie?.filter((slice) => slice.value > 0) ?? [];
-  const nodes = widget.nodes?.filter(Boolean) ?? [];
+  const accent = WIDGET_TONE[widget.section];
 
   return (
-    <section className="flex min-h-[15rem] min-w-0 flex-col border border-border/35 bg-bg/70 p-4">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className={`inline-flex h-9 w-9 shrink-0 items-center justify-center ${WIDGET_ACCENTS[widget.section]}`}
-          >
-            <Icon className="h-5 w-5" aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold text-txt">
-              {widget.title}
-            </h3>
-            <p className="truncate text-xs text-muted">{widget.caption}</p>
-          </div>
-        </div>
-        {pie.length > 0 ? (
-          <MiniPie slices={pie} />
-        ) : (
-          <ScoreRing score={widget.score ?? 0} />
-        )}
-      </div>
-
-      <div className="mt-4 flex min-h-0 flex-1 flex-col justify-center gap-4">
-        {nodes.length > 0 ? <NodeGraph nodes={nodes} /> : null}
-        {bars.length > 0 ? <MiniBars bars={bars} /> : null}
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 px-2"
-          onClick={() => onOpenSection(widget.section)}
-          aria-label={`Open ${widget.title}`}
+    <button
+      type="button"
+      onClick={() => onOpenSection(widget.section)}
+      className="group flex h-44 min-w-0 flex-col gap-3 rounded-2xl border border-border/30 bg-card/40 p-4 text-left transition-colors hover:border-border/55 hover:bg-card/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+      aria-label={`Open ${widget.title}`}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <span
+          className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-bg-muted/40 ${accent}`}
         >
-          <ArrowRight className="h-4 w-4" aria-hidden />
-        </Button>
+          <Icon className="h-4 w-4" aria-hidden />
+        </span>
+        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-txt">
+          {widget.title}
+        </h3>
+        {widget.meta ? (
+          <span className="shrink-0 text-2xs font-medium text-muted">
+            {widget.meta}
+          </span>
+        ) : null}
       </div>
-    </section>
+      <div className="flex min-h-0 flex-1 flex-col">{widget.body ?? null}</div>
+      <div className="flex justify-end">
+        <ArrowRight
+          className="h-4 w-4 text-muted transition-colors group-hover:text-txt"
+          aria-hidden
+        />
+      </div>
+    </button>
   );
 }
 
 export function CharacterOverviewSection({
+  characterName,
   onOpenSection,
-  starterWidgets,
   widgets,
 }: {
+  characterName?: string | null;
   onOpenSection: (section: OverviewSection) => void;
-  starterWidgets: CharacterOverviewWidget[];
   widgets: CharacterOverviewWidget[];
 }) {
-  const visibleWidgets = widgets.length > 0 ? widgets : starterWidgets;
+  const visibleWidgets = widgets.filter((widget) => !widget.isEmpty);
+  const allEmpty = visibleWidgets.length === 0;
+
+  // Pick a "next up" hint when some content exists but most sections are empty.
+  // Cycles through missing sections in canonical order.
+  const missingSuggestion = !allEmpty
+    ? GETTING_STARTED_SUGGESTIONS.find((suggestion) =>
+        widgets.some(
+          (widget) => widget.section === suggestion.section && widget.isEmpty,
+        ),
+      )
+    : null;
+
+  if (allEmpty) {
+    return (
+      <section
+        className="flex min-w-0 flex-col gap-4"
+        aria-label="Character overview"
+      >
+        <GettingStarted
+          characterName={characterName}
+          onOpenSection={onOpenSection}
+        />
+      </section>
+    );
+  }
 
   return (
     <section
-      className="flex min-w-0 flex-col gap-4"
+      className="flex min-w-0 flex-col gap-3"
       aria-label="Character overview"
     >
-      <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {missingSuggestion ? (
+        <NextUpHint
+          suggestion={missingSuggestion}
+          onOpenSection={onOpenSection}
+        />
+      ) : null}
+      <div className="grid items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3">
         {visibleWidgets.map((widget) => (
           <OverviewWidget
             key={widget.section}
