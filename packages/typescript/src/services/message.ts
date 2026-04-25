@@ -1175,21 +1175,36 @@ function unwrapPlannerIdentifier(value: string): string {
 	}
 
 	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
-	if (!actionMatch) {
-		return trimmed;
+	if (actionMatch) {
+		const inner = actionMatch[1].trim();
+		if (!inner) {
+			return "";
+		}
+
+		const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+		if (nestedNameMatch) {
+			return nestedNameMatch[1].trim();
+		}
+
+		return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
 	}
 
-	const inner = actionMatch[1].trim();
-	if (!inner) {
-		return "";
+	// Tolerate malformed planner output where the closing </action> is missing
+	// or extra content trails the action body. Symptom in prod logs:
+	//   "Dropping unknown planner action (actionName=<action><name>REPLY</name>)"
+	// The planner LLM occasionally emits an unclosed <action> wrapper around a
+	// well-formed <name>X</name>. Falling through to "return trimmed" treats
+	// the whole XML chunk as the action identifier, which then fails to match
+	// any registered action and the bot goes silent. If the input begins with
+	// <action> and contains a <name>X</name>, prefer that name.
+	if (/^<action\b[^>]*>/i.test(trimmed)) {
+		const looseNameMatch = trimmed.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+		if (looseNameMatch) {
+			return looseNameMatch[1].trim();
+		}
 	}
 
-	const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-	if (nestedNameMatch) {
-		return nestedNameMatch[1].trim();
-	}
-
-	return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
+	return trimmed;
 }
 
 const PLANNER_ACTION_ALIASES = new Map(
