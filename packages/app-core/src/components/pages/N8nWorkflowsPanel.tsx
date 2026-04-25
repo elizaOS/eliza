@@ -301,11 +301,7 @@ function WorkflowSidebarRow({
         )}
       </div>
       <StatusBadge
-        label={
-          workflow.active
-            ? t("common.active")
-            : t("common.paused")
-        }
+        label={workflow.active ? t("common.active") : t("common.paused")}
         variant={workflow.active ? "success" : "muted"}
         withDot
       />
@@ -397,9 +393,7 @@ function WorkflowDetailPane({
               </FieldLabel>
               <StatusBadge
                 label={
-                  workflow.active
-                    ? t("common.active")
-                    : t("common.paused")
+                  workflow.active ? t("common.active") : t("common.paused")
                 }
                 variant={workflow.active ? "success" : "muted"}
                 withDot

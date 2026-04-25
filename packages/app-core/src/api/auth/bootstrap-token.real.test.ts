@@ -11,25 +11,22 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  exportJWK,
-  generateKeyPair,
-  type JWK,
-  SignJWT,
-  type KeyObject,
-} from "jose";
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,
   plugin as sqlPlugin,
 } from "@elizaos/plugin-sql";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
-import { AuthStore } from "../../services/auth-store";
 import {
-  BOOTSTRAP_TOKEN_SCOPE,
-  verifyBootstrapToken,
-} from "./bootstrap-token";
+  exportJWK,
+  generateKeyPair,
+  type JWK,
+  type KeyObject,
+  SignJWT,
+} from "jose";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { AuthStore } from "../../services/auth-store";
+import { BOOTSTRAP_TOKEN_SCOPE, verifyBootstrapToken } from "./bootstrap-token";
 
 interface AdapterWithDb {
   db?: unknown;
@@ -57,8 +54,12 @@ function jwksJson(keys: JWK[]): string {
 }
 
 async function open(): Promise<Harness> {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-bootstrap-token-"));
-  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-bootstrap-state-"));
+  const dataDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "milady-bootstrap-token-"),
+  );
+  const stateDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "milady-bootstrap-state-"),
+  );
   const adapter = createDatabaseAdapter(
     { dataDir },
     "00000000-0000-0000-0000-000000000007" as `${string}-${string}-${string}-${string}-${string}`,

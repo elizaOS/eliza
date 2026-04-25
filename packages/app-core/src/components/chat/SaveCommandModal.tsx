@@ -130,9 +130,7 @@ export function SaveCommandModal({
             </p>
           )}
 
-          <span className="text-xs mt-1 text-muted">
-            {t("common.preview")}
-          </span>
+          <span className="text-xs mt-1 text-muted">{t("common.preview")}</span>
           <pre
             className="text-xs px-3 py-2 whitespace-pre-wrap break-words max-h-24 overflow-y-auto rounded-lg"
             style={{

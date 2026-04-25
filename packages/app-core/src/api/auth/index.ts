@@ -7,16 +7,16 @@
  */
 
 export {
-  appendAuditEvent,
   AUDIT_LOG_FILENAME,
   AUDIT_LOG_MAX_BYTES,
   AUDIT_LOG_ROTATE_FILENAME,
   AUDIT_REDACTION_RE,
+  type AuditEmitterOptions,
+  type AuditEventInput,
+  appendAuditEvent,
   redactMetadata,
   resolveAuditLogPath,
   resolveAuditLogRotatedPath,
-  type AuditEmitterOptions,
-  type AuditEventInput,
 } from "./audit";
 export {
   BOOTSTRAP_TOKEN_ALG,

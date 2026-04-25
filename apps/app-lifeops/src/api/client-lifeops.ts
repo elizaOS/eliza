@@ -327,6 +327,22 @@ declare module "@elizaos/app-core/api/client-base" {
         | null;
       confirmed?: boolean;
     }): Promise<unknown>;
+    createLifeOpsPlaidLinkToken(): Promise<{
+      linkToken: string;
+      expiration: string;
+      environment: string;
+    }>;
+    completeLifeOpsPlaidLink(data: {
+      publicToken: string;
+      label?: string | null;
+    }): Promise<{
+      source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
+    }>;
+    syncLifeOpsPlaidTransactions(data: { sourceId: string }): Promise<{
+      inserted: number;
+      skipped: number;
+      nextCursor: string;
+    }>;
     unsubscribeLifeOpsEmailSender(data: {
       senderEmail: string;
       blockAfter?: boolean;
@@ -781,6 +797,32 @@ ElizaClient.prototype.cancelLifeOpsSubscription = async function (
   data,
 ) {
   return this.fetch("/api/lifeops/subscriptions/cancel", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.createLifeOpsPlaidLinkToken = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/money/plaid/link-token", { method: "POST" });
+};
+
+ElizaClient.prototype.completeLifeOpsPlaidLink = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/money/plaid/complete", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.syncLifeOpsPlaidTransactions = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/money/plaid/sync", {
     method: "POST",
     body: JSON.stringify(data),
   });

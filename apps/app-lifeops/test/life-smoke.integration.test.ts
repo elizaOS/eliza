@@ -145,14 +145,33 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
   // then get the overview to materialize occurrences, then snooze one.
 
   it("AC-2: snoozes via action param with 30m preset (end-to-end)", async () => {
-    // First create a definition so we have an occurrence to snooze
+    // First create a definition so we have an occurrence to snooze.
+    // Uses times_per_day with explicit slots spread across the day so an
+    // occurrence is always materializable regardless of when the test runs
+    // (a single-window daily cadence would expire after the window passes).
     const createResult = await send({
       action: "create",
-      intent: "brush teeth daily",
+      intent: "brush teeth twice a day",
       title: "Brush teeth (snooze test)",
       details: {
         kind: "habit",
-        cadence: { kind: "daily", windows: ["morning"] },
+        cadence: {
+          kind: "times_per_day",
+          slots: [
+            {
+              key: "morning",
+              label: "Morning",
+              minuteOfDay: 420,
+              durationMinutes: 5,
+            },
+            {
+              key: "night",
+              label: "Night",
+              minuteOfDay: 1320,
+              durationMinutes: 5,
+            },
+          ],
+        },
         confirmed: true,
       },
     });
@@ -173,6 +192,12 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
       details: { preset: "30m" },
     });
 
+    // Diagnostic: surface the result text so unexpected failures are debuggable.
+    if (!result || result.success !== true) {
+      throw new Error(
+        `snooze did not succeed: ${JSON.stringify({ result, overview: overviewResult }, null, 2)}`,
+      );
+    }
     expect(result).toMatchObject({ success: true });
   }, 60_000);
 

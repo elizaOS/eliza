@@ -1189,7 +1189,9 @@ export function BabylonTerminal({ appName: _appName }: BabylonTerminalProps) {
                 void handleSendChat();
               }
             }}
-            placeholder={t("babylon.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain")}
+            placeholder={t(
+              "babylon.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain",
+            )}
             className="h-9 flex-1 text-xs"
           />
           <Button

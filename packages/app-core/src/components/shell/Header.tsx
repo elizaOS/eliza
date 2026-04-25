@@ -5,12 +5,12 @@ import { useCallback, useEffect, useMemo } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useMediaQuery } from "../../hooks";
 import { getTabGroups, type TabGroup } from "../../navigation";
-import { getOverlayApp } from "../apps/overlay-app-registry";
 import {
   isDetachedWindowShell,
   resolveWindowShellRoute,
 } from "../../platform/window-shell";
 import { useApp } from "../../state";
+import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import {
   CompanionInferenceAlertButton as InferenceCloudAlertButton,

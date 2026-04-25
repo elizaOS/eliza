@@ -12,14 +12,14 @@
  * `{ ok: false, reason }` and the caller MUST refuse the request.
  */
 
-import { createLocalJWKSet, jwtVerify } from "jose";
 import type { RuntimeEnvRecord } from "@elizaos/shared/runtime-env";
+import { createLocalJWKSet, jwtVerify } from "jose";
+import type { AuthStore } from "../../services/auth-store";
 import {
   type JwksDocument,
   readCachedJwks,
   writeCachedJwks,
 } from "../../services/cloud-jwks-store";
-import type { AuthStore } from "../../services/auth-store";
 
 export const BOOTSTRAP_TOKEN_ALG = "RS256";
 export const BOOTSTRAP_TOKEN_SCOPE = "bootstrap";
@@ -81,7 +81,9 @@ function isNonEmptyString(value: unknown): value is string {
 
 function shapeClaims(
   payload: RawClaims,
-): { ok: true; claims: BootstrapTokenClaims } | { ok: false; reason: VerifyBootstrapFailureReason } {
+):
+  | { ok: true; claims: BootstrapTokenClaims }
+  | { ok: false; reason: VerifyBootstrapFailureReason } {
   if (
     !isNonEmptyString(payload.iss) ||
     !isNonEmptyString(payload.sub) ||
@@ -127,7 +129,9 @@ async function loadJwks(
   if (!body || typeof body !== "object") return null;
   const candidate = body as { keys?: unknown };
   if (!Array.isArray(candidate.keys)) return null;
-  const document: JwksDocument = { keys: candidate.keys as JwksDocument["keys"] };
+  const document: JwksDocument = {
+    keys: candidate.keys as JwksDocument["keys"],
+  };
   await writeCachedJwks(issuer, document, { env, now });
   return document;
 }
@@ -147,7 +151,8 @@ export async function verifyBootstrapToken(
   const issuer = env.ELIZA_CLOUD_ISSUER?.trim();
   const expectedContainerId = env.ELIZA_CLOUD_CONTAINER_ID?.trim();
   if (!issuer) return { ok: false, reason: "missing_issuer_env" };
-  if (!expectedContainerId) return { ok: false, reason: "missing_container_env" };
+  if (!expectedContainerId)
+    return { ok: false, reason: "missing_container_env" };
   if (!token || typeof token !== "string" || token.length < 8) {
     return { ok: false, reason: "missing_token" };
   }

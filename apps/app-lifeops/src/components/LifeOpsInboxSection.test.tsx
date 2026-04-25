@@ -191,7 +191,7 @@ describe("LifeOpsInboxSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
 
     expect(confirmSpy).toHaveBeenCalledWith(
-      "Unsubscribe from michael@example.test and create a filter to auto-trash future mail?",
+      "Unsubscribe from michael@example.test and create a Gmail filter that auto-trashes future mail?",
     );
     expect(unsubscribeLifeOpsEmailSenderMock).toHaveBeenCalledWith({
       senderEmail: "michael@example.test",

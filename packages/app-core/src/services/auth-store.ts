@@ -9,7 +9,6 @@
  * path must NEVER swallow a DB error and pretend a request was authenticated.
  */
 
-import { and, eq, lte } from "drizzle-orm";
 import {
   authAuditEventTable,
   authBootstrapJtiSeenTable,
@@ -18,6 +17,7 @@ import {
   authSessionTable,
 } from "@elizaos/plugin-sql/schema";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
+import { and, eq, lte } from "drizzle-orm";
 
 export interface AuthIdentityRow {
   id: string;
@@ -96,7 +96,9 @@ function nullableString(value: string | null | undefined): string | null {
   return value === undefined ? null : value;
 }
 
-function rowToIdentity(row: typeof authIdentityTable.$inferSelect): AuthIdentityRow {
+function rowToIdentity(
+  row: typeof authIdentityTable.$inferSelect,
+): AuthIdentityRow {
   return {
     id: row.id,
     kind: row.kind === "machine" ? "machine" : "owner",
@@ -107,7 +109,9 @@ function rowToIdentity(row: typeof authIdentityTable.$inferSelect): AuthIdentity
   };
 }
 
-function rowToSession(row: typeof authSessionTable.$inferSelect): AuthSessionRow {
+function rowToSession(
+  row: typeof authSessionTable.$inferSelect,
+): AuthSessionRow {
   return {
     id: row.id,
     identityId: row.identityId,
@@ -120,7 +124,10 @@ function rowToSession(row: typeof authSessionTable.$inferSelect): AuthSessionRow
     ip: row.ip ?? null,
     userAgent: row.userAgent ?? null,
     scopes: Array.isArray(row.scopes) ? row.scopes : [],
-    revokedAt: row.revokedAt === null || row.revokedAt === undefined ? null : Number(row.revokedAt),
+    revokedAt:
+      row.revokedAt === null || row.revokedAt === undefined
+        ? null
+        : Number(row.revokedAt),
   };
 }
 
@@ -156,7 +163,9 @@ export class AuthStore {
     return row ? rowToIdentity(row) : null;
   }
 
-  async findIdentityByCloudUserId(cloudUserId: string): Promise<AuthIdentityRow | null> {
+  async findIdentityByCloudUserId(
+    cloudUserId: string,
+  ): Promise<AuthIdentityRow | null> {
     const rows = await this.db
       .select()
       .from(authIdentityTable)
@@ -195,7 +204,10 @@ export class AuthStore {
    * or revoked session — the caller MUST treat `null` as "not authenticated"
    * and never as "transient error".
    */
-  async findSession(id: string, now: number = Date.now()): Promise<AuthSessionRow | null> {
+  async findSession(
+    id: string,
+    now: number = Date.now(),
+  ): Promise<AuthSessionRow | null> {
     const rows = await this.db
       .select()
       .from(authSessionTable)
@@ -214,7 +226,10 @@ export class AuthStore {
       .update(authSessionTable)
       .set({ revokedAt: now })
       .where(
-        and(eq(authSessionTable.id, id), /* not already revoked */ eq(authSessionTable.id, id)),
+        and(
+          eq(authSessionTable.id, id),
+          /* not already revoked */ eq(authSessionTable.id, id),
+        ),
       )) as unknown as DrizzleRunResult;
     return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
   }
@@ -243,7 +258,9 @@ export class AuthStore {
       .where(lte(authBootstrapJtiSeenTable.seenAt, thresholdTs));
   }
 
-  async appendAuditEvent(input: AppendAuditEventInput): Promise<AuthAuditEventRow> {
+  async appendAuditEvent(
+    input: AppendAuditEventInput,
+  ): Promise<AuthAuditEventRow> {
     const inserted = await this.db
       .insert(authAuditEventTable)
       .values({
@@ -269,7 +286,10 @@ export class AuthStore {
       userAgent: row.userAgent ?? null,
       action: row.action,
       outcome: row.outcome === "failure" ? "failure" : "success",
-      metadata: (row.metadata ?? {}) as Record<string, string | number | boolean>,
+      metadata: (row.metadata ?? {}) as Record<
+        string,
+        string | number | boolean
+      >,
     };
   }
 

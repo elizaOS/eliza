@@ -15,12 +15,13 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
+import { AuthStore } from "../services/auth-store";
+import { extractHeaderValue } from "./auth";
 import {
   appendAuditEvent,
   bootstrapExchangeLimiter,
   verifyBootstrapToken,
 } from "./auth/index";
-import { extractHeaderValue } from "./auth";
 import {
   type CompatRuntimeState,
   isLoopbackRemoteAddress,
@@ -30,7 +31,6 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import { AuthStore } from "../services/auth-store";
 
 /** 12h sliding TTL for browser sessions per plan §1.3. */
 export const BROWSER_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -53,7 +53,10 @@ function deriveIdentityIdFromCloudUser(cloudUserId: string): string {
   // deterministic. We slice to 32 hex chars and shape as a uuid-ish string
   // because the column is plain `text` and downstream consumers expect that
   // shape.
-  const hash = crypto.createHash("sha256").update(cloudUserId, "utf8").digest("hex");
+  const hash = crypto
+    .createHash("sha256")
+    .update(cloudUserId, "utf8")
+    .digest("hex");
   return [
     hash.slice(0, 8),
     hash.slice(8, 12),

@@ -758,9 +758,7 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
           </Button>
         )}
 
-        {saved && (
-          <span className="text-xs text-ok">{t("common.saved")}</span>
-        )}
+        {saved && <span className="text-xs text-ok">{t("common.saved")}</span>}
         {error && <span className="text-xs text-danger">{error}</span>}
       </div>
     </div>
