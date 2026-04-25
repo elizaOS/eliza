@@ -66,14 +66,20 @@ export function redactMetadata(
   return out;
 }
 
-export function resolveAuditLogPath(env: RuntimeEnvRecord = process.env): string {
+export function resolveAuditLogPath(
+  env: RuntimeEnvRecord = process.env,
+): string {
   return path.join(resolveMiladyStateDir(env), "auth", AUDIT_LOG_FILENAME);
 }
 
 export function resolveAuditLogRotatedPath(
   env: RuntimeEnvRecord = process.env,
 ): string {
-  return path.join(resolveMiladyStateDir(env), "auth", AUDIT_LOG_ROTATE_FILENAME);
+  return path.join(
+    resolveMiladyStateDir(env),
+    "auth",
+    AUDIT_LOG_ROTATE_FILENAME,
+  );
 }
 
 async function rotateIfNeeded(filePath: string): Promise<void> {

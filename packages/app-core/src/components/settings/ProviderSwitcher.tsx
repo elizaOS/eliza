@@ -151,12 +151,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       configured: boolean;
       valid: boolean;
       expiresAt: number | null;
-      source?:
-        | "app"
-        | "claude-code-cli"
-        | "setup-token"
-        | "codex-cli"
-        | null;
+      source?: "app" | "claude-code-cli" | "setup-token" | "codex-cli" | null;
     }>
   >([]);
   const [anthropicConnected, setAnthropicConnected] = useState(false);

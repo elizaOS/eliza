@@ -5,16 +5,16 @@
 import type http from "node:http";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.js";
-import {
-  ONBOARDING_CLOUD_PROVIDER_OPTIONS,
-  ONBOARDING_PROVIDER_CATALOG,
-} from "../contracts/onboarding.js";
 import {
   getDefaultStylePreset,
   getStylePresets,
   normalizeCharacterLanguage,
 } from "@elizaos/shared/onboarding-presets";
+import type { ElizaConfig } from "../config/config.js";
+import {
+  ONBOARDING_CLOUD_PROVIDER_OPTIONS,
+  ONBOARDING_PROVIDER_CATALOG,
+} from "../contracts/onboarding.js";
 import { sendJsonError } from "./http-helpers.js";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
 

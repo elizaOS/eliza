@@ -479,9 +479,7 @@ export function ConfigPageView({
               }}
               disabled={walletApiKeySaving}
             >
-              {walletApiKeySaving
-                ? t("common.saving")
-                : t("common.save")}
+              {walletApiKeySaving ? t("common.saving") : t("common.save")}
             </Button>
           </div>
         </div>
@@ -604,9 +602,7 @@ export function ConfigPageView({
               }}
               disabled={walletApiKeySaving}
             >
-              {walletApiKeySaving
-                ? t("common.saving")
-                : t("common.save")}
+              {walletApiKeySaving ? t("common.saving") : t("common.save")}
             </Button>
           </div>
         </div>

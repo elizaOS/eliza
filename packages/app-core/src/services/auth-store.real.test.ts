@@ -9,13 +9,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,
   plugin as sqlPlugin,
 } from "@elizaos/plugin-sql";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStore } from "./auth-store";
 
 interface Harness {

@@ -619,9 +619,7 @@ export function BugReportModal() {
             <Field>
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <FieldLabel className="mb-0">
-                    {t("common.logs")}
-                  </FieldLabel>
+                  <FieldLabel className="mb-0">{t("common.logs")}</FieldLabel>
                   <FieldDescription className={subtleMonoDescriptionClassName}>
                     {t("bugreportmodal.LogsHint", {
                       defaultValue:

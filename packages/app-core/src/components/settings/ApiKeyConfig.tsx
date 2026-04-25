@@ -85,8 +85,7 @@ export function ApiKeyConfig({
         setModelsFetchResult({
           tone: "error",
           message: t("apikeyconfig.error", {
-            message:
-              err instanceof Error ? err.message : t("common.failed"),
+            message: err instanceof Error ? err.message : t("common.failed"),
           }),
         });
         setTimeout(() => setModelsFetchResult(null), 5000);

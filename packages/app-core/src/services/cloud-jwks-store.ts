@@ -47,7 +47,9 @@ interface JwksCacheEnvelope {
  *
  * Order: `MILADY_STATE_DIR` → `ELIZA_STATE_DIR` → `~/.milady`.
  */
-export function resolveMiladyStateDir(env: RuntimeEnvRecord = process.env): string {
+export function resolveMiladyStateDir(
+  env: RuntimeEnvRecord = process.env,
+): string {
   const explicit = env.MILADY_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
   return path.join(os.homedir(), ".milady");
@@ -58,7 +60,9 @@ export function resolveMiladyStateDir(env: RuntimeEnvRecord = process.env): stri
  *
  * Layout: `<state>/auth/cloud-jwks.json`.
  */
-export function resolveJwksCachePath(env: RuntimeEnvRecord = process.env): string {
+export function resolveJwksCachePath(
+  env: RuntimeEnvRecord = process.env,
+): string {
   return path.join(resolveMiladyStateDir(env), "auth", JWKS_CACHE_FILENAME);
 }
 
