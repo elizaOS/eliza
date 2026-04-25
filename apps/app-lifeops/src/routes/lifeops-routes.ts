@@ -2079,7 +2079,7 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "GET" && pathname === "/api/lifeops/payments/dashboard") {
+  if (method === "GET" && pathname === "/api/lifeops/money/dashboard") {
     return runRoute(ctx, async (service) => {
       const windowDaysRaw = url.searchParams.get("windowDays");
       const windowDays = windowDaysRaw ? Number(windowDaysRaw) : null;
@@ -2092,13 +2092,13 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "GET" && pathname === "/api/lifeops/payments/sources") {
+  if (method === "GET" && pathname === "/api/lifeops/money/sources") {
     return runRoute(ctx, async (service) => {
       json(res, { sources: await service.listPaymentSources() });
     });
   }
 
-  if (method === "POST" && pathname === "/api/lifeops/payments/sources") {
+  if (method === "POST" && pathname === "/api/lifeops/money/sources") {
     const body = await readJsonBody<{
       kind: string;
       label: string;
@@ -2119,9 +2119,9 @@ export async function handleLifeOpsRoutes(
 
   if (
     method === "DELETE" &&
-    pathname.startsWith("/api/lifeops/payments/sources/")
+    pathname.startsWith("/api/lifeops/money/sources/")
   ) {
-    const sourceId = pathname.slice("/api/lifeops/payments/sources/".length);
+    const sourceId = pathname.slice("/api/lifeops/money/sources/".length);
     if (!sourceId) {
       ctx.error(res, "sourceId required", 400);
       return true;
@@ -2132,7 +2132,7 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "POST" && pathname === "/api/lifeops/payments/import-csv") {
+  if (method === "POST" && pathname === "/api/lifeops/money/import-csv") {
     const body = await readJsonBody<{
       sourceId: string;
       csvText: string;
@@ -2149,7 +2149,7 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "GET" && pathname === "/api/lifeops/payments/transactions") {
+  if (method === "GET" && pathname === "/api/lifeops/money/transactions") {
     return runRoute(ctx, async (service) => {
       const sourceId = url.searchParams.get("sourceId");
       const limitRaw = url.searchParams.get("limit");
@@ -2166,7 +2166,7 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (method === "GET" && pathname === "/api/lifeops/payments/recurring") {
+  if (method === "GET" && pathname === "/api/lifeops/money/recurring") {
     return runRoute(ctx, async (service) => {
       const sourceId = url.searchParams.get("sourceId");
       const sinceDaysRaw = url.searchParams.get("sinceDays");

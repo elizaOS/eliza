@@ -11,10 +11,10 @@ import {
   Gamepad2,
   MessageSquare,
   Monitor,
-  PencilLine,
   Phone,
   Radio,
   Settings,
+  UserRound,
   Wallet,
 } from "lucide-react";
 
@@ -195,7 +195,7 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
   {
     label: "Character",
     tabs: ["character", "character-select", "knowledge"],
-    icon: PencilLine,
+    icon: UserRound,
     description: "Avatar identity, style, examples, and knowledge",
   },
   {

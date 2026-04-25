@@ -16,7 +16,7 @@ export const LIFEOPS_SECTIONS: LifeOpsSection[] = [
   "calendar",
   "messages",
   "mail",
-  "payments",
+  "money",
 ];
 
 function isLifeOpsSection(value: unknown): value is LifeOpsSection {

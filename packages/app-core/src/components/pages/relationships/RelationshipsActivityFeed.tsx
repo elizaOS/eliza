@@ -115,11 +115,13 @@ export function RelationshipsActivityFeed() {
           >
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.12em]"
+                role="img"
+                aria-label={`${item.type} event`}
+                title={item.type}
+                className="inline-flex h-5 w-5 items-center justify-center rounded-full"
                 style={{ backgroundColor: style.bg, color: style.fg }}
               >
                 <ActivityIcon className="h-3 w-3" />
-                {item.type}
               </span>
               {item.timestamp ? (
                 <span className="ml-auto text-xs-tight text-muted">

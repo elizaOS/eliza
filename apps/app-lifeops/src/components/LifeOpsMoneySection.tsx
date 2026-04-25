@@ -53,7 +53,7 @@ function cadenceLabel(cadence: LifeOpsRecurringCharge["cadence"]): string {
   }
 }
 
-export function LifeOpsPaymentsSection(): JSX.Element | null {
+export function LifeOpsMoneySection(): JSX.Element | null {
   const [dashboard, setDashboard] = useState<LifeOpsPaymentsDashboard | null>(
     null,
   );
@@ -200,7 +200,7 @@ export function LifeOpsPaymentsSection(): JSX.Element | null {
     return (
       <div className="flex items-center justify-center gap-2 p-6 text-sm text-muted">
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-        Loading payments dashboard…
+        Loading money dashboard…
       </div>
     );
   }
@@ -226,12 +226,14 @@ export function LifeOpsPaymentsSection(): JSX.Element | null {
   if (!dash) return null;
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 p-4">
+    <div
+      className="flex h-full w-full flex-col gap-4 p-4"
+      data-testid="lifeops-money-section"
+    >
       <header className="flex items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-base font-semibold">
-            <CreditCard className="h-4 w-4" aria-hidden /> Payments &amp;
-            Subscriptions
+            <CreditCard className="h-4 w-4" aria-hidden /> Money
           </h1>
         </div>
         <div className="flex items-center gap-2">

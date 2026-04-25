@@ -84,9 +84,12 @@ import type {
   LifeOpsOccurrenceActionResult,
   LifeOpsOccurrenceExplanation,
   LifeOpsOverview,
+  LifeOpsPersonalBaselineResponse,
   LifeOpsReminderInspection,
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
+  LifeOpsSleepHistoryResponse,
+  LifeOpsSleepRegularityResponse,
   LifeOpsTelegramConnectorStatus,
   LifeOpsWhatsAppConnectorStatus,
   LifeOpsInbox,
@@ -311,6 +314,17 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsSocialHabitSummary(
       data: Omit<LifeOpsScreenTimeSummaryRequest, "source">,
     ): Promise<LifeOpsSocialHabitSummary>;
+    getLifeOpsSleepHistory(opts?: {
+      windowDays?: number;
+      includeNaps?: boolean;
+    }): Promise<LifeOpsSleepHistoryResponse>;
+    getLifeOpsSleepRegularity(opts?: {
+      windowDays?: number;
+      includeNaps?: boolean;
+    }): Promise<LifeOpsSleepRegularityResponse>;
+    getLifeOpsPersonalBaseline(opts?: {
+      windowDays?: number;
+    }): Promise<LifeOpsPersonalBaselineResponse>;
     getLifeOpsSeedTemplates(): Promise<LifeOpsSeedTemplatesResponse>;
     seedLifeOpsRoutines(data: {
       keys: string[];
@@ -634,21 +648,21 @@ ElizaClient.prototype.getLifeOpsPaymentsDashboard = async function (
   }
   const query = params.toString();
   return this.fetch(
-    `/api/lifeops/payments/dashboard${query ? `?${query}` : ""}`,
+    `/api/lifeops/money/dashboard${query ? `?${query}` : ""}`,
   );
 };
 
 ElizaClient.prototype.listLifeOpsPaymentSources = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/lifeops/payments/sources");
+  return this.fetch("/api/lifeops/money/sources");
 };
 
 ElizaClient.prototype.addLifeOpsPaymentSource = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/lifeops/payments/sources", {
+  return this.fetch("/api/lifeops/money/sources", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -659,7 +673,7 @@ ElizaClient.prototype.deleteLifeOpsPaymentSource = async function (
   sourceId: string,
 ) {
   return this.fetch(
-    `/api/lifeops/payments/sources/${encodeURIComponent(sourceId)}`,
+    `/api/lifeops/money/sources/${encodeURIComponent(sourceId)}`,
     { method: "DELETE" },
   );
 };
@@ -668,7 +682,7 @@ ElizaClient.prototype.importLifeOpsPaymentCsv = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/lifeops/payments/import-csv", {
+  return this.fetch("/api/lifeops/money/import-csv", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -687,7 +701,7 @@ ElizaClient.prototype.listLifeOpsPaymentTransactions = async function (
   if (data.onlyDebits) params.set("onlyDebits", "true");
   const query = params.toString();
   return this.fetch(
-    `/api/lifeops/payments/transactions${query ? `?${query}` : ""}`,
+    `/api/lifeops/money/transactions${query ? `?${query}` : ""}`,
   );
 };
 
@@ -702,7 +716,7 @@ ElizaClient.prototype.listLifeOpsRecurringCharges = async function (
   }
   const query = params.toString();
   return this.fetch(
-    `/api/lifeops/payments/recurring${query ? `?${query}` : ""}`,
+    `/api/lifeops/money/recurring${query ? `?${query}` : ""}`,
   );
 };
 
@@ -796,6 +810,54 @@ ElizaClient.prototype.getLifeOpsSocialHabitSummary = async function (
   }
   return this.fetch<LifeOpsSocialHabitSummary>(
     `/api/lifeops/social/summary?${params.toString()}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsSleepHistory = async function (
+  this: ElizaClient,
+  opts,
+) {
+  const params = new URLSearchParams();
+  if (opts?.windowDays !== undefined) {
+    params.set("windowDays", String(opts.windowDays));
+  }
+  if (opts?.includeNaps !== undefined) {
+    params.set("includeNaps", String(opts.includeNaps));
+  }
+  const query = params.toString();
+  return this.fetch<LifeOpsSleepHistoryResponse>(
+    `/api/lifeops/sleep/history${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsSleepRegularity = async function (
+  this: ElizaClient,
+  opts,
+) {
+  const params = new URLSearchParams();
+  if (opts?.windowDays !== undefined) {
+    params.set("windowDays", String(opts.windowDays));
+  }
+  if (opts?.includeNaps !== undefined) {
+    params.set("includeNaps", String(opts.includeNaps));
+  }
+  const query = params.toString();
+  return this.fetch<LifeOpsSleepRegularityResponse>(
+    `/api/lifeops/sleep/regularity${query ? `?${query}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsPersonalBaseline = async function (
+  this: ElizaClient,
+  opts,
+) {
+  const params = new URLSearchParams();
+  if (opts?.windowDays !== undefined) {
+    params.set("windowDays", String(opts.windowDays));
+  }
+  const query = params.toString();
+  return this.fetch<LifeOpsPersonalBaselineResponse>(
+    `/api/lifeops/sleep/baseline${query ? `?${query}` : ""}`,
   );
 };
 

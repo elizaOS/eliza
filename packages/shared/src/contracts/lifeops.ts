@@ -2222,6 +2222,22 @@ export interface LifeOpsInboxMessage {
   unread: boolean;
   deepLink: string | null;
   sourceRef: LifeOpsInboxMessageSourceRef;
+  /** Stable per-conversation key. For chat: roomId. For Gmail: thread id from sourceRef. */
+  threadId?: string;
+  /** Present on Gmail messages when multiple accounts exist; identifies which Google grant the message came from. */
+  gmailAccountId?: string;
+  /** Display label for the Gmail account (e.g., `work@example.com`). */
+  gmailAccountEmail?: string;
+  /** ISO timestamp of when the user last viewed this thread (UI updates on open). */
+  lastSeenAt?: string;
+  /** ISO timestamp if the user has replied since this message arrived. */
+  repliedAt?: string;
+  /** 0–100 score; higher = more important. */
+  priorityScore?: number;
+  /** DM, small/medium group chat, or public channel/broadcast. */
+  chatType?: "dm" | "group" | "channel";
+  /** For groups, number of participants. UI uses this to hide groups with >15 participants. */
+  participantCount?: number;
 }
 
 export interface LifeOpsInboxChannelCount {
@@ -2229,10 +2245,31 @@ export interface LifeOpsInboxChannelCount {
   unread: number;
 }
 
+export interface LifeOpsInboxThreadGroup {
+  /** Stable per-conversation key (matches LifeOpsInboxMessage.threadId on member messages) */
+  threadId: string;
+  /** Channel this thread belongs to */
+  channel: LifeOpsInboxChannel;
+  /** dm | group | channel */
+  chatType: "dm" | "group" | "channel";
+  /** Most recent message in the thread */
+  latestMessage: LifeOpsInboxMessage;
+  /** Total messages in the visible window */
+  totalCount: number;
+  /** Unread messages in the visible window */
+  unreadCount: number;
+  /** Group/DM participant count if known */
+  participantCount?: number;
+  /** Highest priority score across messages in the thread */
+  maxPriorityScore?: number;
+}
+
 export interface LifeOpsInbox {
   messages: LifeOpsInboxMessage[];
   channelCounts: Record<LifeOpsInboxChannel, LifeOpsInboxChannelCount>;
   fetchedAt: string;
+  /** Populated when the caller requests grouped output via `groupByThread`. */
+  threadGroups?: LifeOpsInboxThreadGroup[];
 }
 
 export interface GetLifeOpsInboxRequest {
@@ -2240,6 +2277,14 @@ export interface GetLifeOpsInboxRequest {
   limit?: number;
   /** If omitted, all connected channels are included. */
   channels?: LifeOpsInboxChannel[];
+  /** When true, response includes `threadGroups`. */
+  groupByThread?: boolean;
+  /** Filter messages by chat type. */
+  chatTypeFilter?: Array<"dm" | "group" | "channel">;
+  /** Exclude groups with more than this many participants. */
+  maxParticipants?: number;
+  /** Filter to a specific Google grant. */
+  gmailAccountId?: string;
 }
 
 export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [
@@ -3138,6 +3183,62 @@ export interface WebsiteBlockerSettingsCardProps {
 
 export interface LifeOpsOccurrenceActionResult {
   occurrence: LifeOpsOccurrenceView;
+}
+
+// ── Sleep history / regularity / baseline responses ──────────────────────────
+
+/**
+ * Single sleep episode entry returned by the sleep history endpoint.
+ *
+ * Mirrors `LifeOpsSleepEpisodeRecord` plus a derived `durationMin` so clients
+ * never need to recompute it. `endedAt` and `durationMin` are `null` for
+ * still-open (current) sleep episodes.
+ */
+export interface LifeOpsSleepHistoryEpisode {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMin: number | null;
+  cycleType: LifeOpsSleepCycleType;
+  source: LifeOpsSleepCycleEvidenceSource | "manual";
+  confidence: number;
+}
+
+export interface LifeOpsSleepHistoryResponse {
+  episodes: LifeOpsSleepHistoryEpisode[];
+  windowDays: number;
+  includeNaps: boolean;
+}
+
+/**
+ * Wire-format response for the sleep regularity endpoint. Mirrors
+ * `LifeOpsScheduleRegularity` (`sampleCount` is renamed to `sampleSize` here
+ * for client-readable consistency with the baseline response).
+ */
+export interface LifeOpsSleepRegularityResponse {
+  sri: number;
+  classification: LifeOpsRegularityClass;
+  bedtimeStddevMin: number;
+  wakeStddevMin: number;
+  midSleepStddevMin: number;
+  sampleSize: number;
+  windowDays: number;
+}
+
+/**
+ * Wire-format response for the personal baseline endpoint. Mirrors
+ * `LifeOpsPersonalBaseline` plus `sampleSize` (alias of `sampleCount`).
+ *
+ * Returns nullable medians when the underlying baseline has insufficient data.
+ */
+export interface LifeOpsPersonalBaselineResponse {
+  medianBedtimeLocalHour: number | null;
+  medianWakeLocalHour: number | null;
+  medianSleepDurationMin: number | null;
+  bedtimeStddevMin: number | null;
+  wakeStddevMin: number | null;
+  sampleSize: number;
+  windowDays: number;
 }
 
 // ── Wave 1+ extensions (relationships, X read, cross-channel, screen time,

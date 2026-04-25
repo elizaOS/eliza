@@ -30,6 +30,8 @@ import { paymentsAction } from "./actions/payments.js";
 import { healthAction } from "./actions/health.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
 import { lifeAction } from "./actions/life.js";
+import { lifeOpsConnectorAction } from "./actions/lifeops-connector.js";
+import { lifeOpsMutateAction } from "./actions/lifeops-mutate.js";
 import { ownerAppBlockAction } from "./actions/owner-app-block.js";
 import { ownerCalendarAction } from "./actions/owner-calendar.js";
 import { ownerInboxAction } from "./actions/owner-inbox.js";
@@ -248,6 +250,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     emailUnsubscribeAction,
     paymentsAction,
     chatThreadControlAction,
+    lifeOpsConnectorAction,
+    lifeOpsMutateAction,
   ],
   providers: [
     browserBridgeProvider,

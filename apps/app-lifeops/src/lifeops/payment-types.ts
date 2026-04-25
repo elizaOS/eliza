@@ -140,3 +140,12 @@ export interface SpendingSummaryRequest {
   windowDays?: number | null;
   sourceId?: string | null;
 }
+
+// Money is the user-facing name; Payment* types remain for backwards compat.
+export type LifeOpsMoneyDashboard = LifeOpsPaymentsDashboard;
+export type LifeOpsMoneySource = LifeOpsPaymentSource;
+export type LifeOpsMoneySourceKind = LifeOpsPaymentSourceKind;
+export type LifeOpsMoneySourceStatus = LifeOpsPaymentSourceStatus;
+export type LifeOpsMoneyTransaction = LifeOpsPaymentTransaction;
+export type LifeOpsMoneyDirection = LifeOpsPaymentDirection;
+export type AddMoneySourceRequest = AddPaymentSourceRequest;

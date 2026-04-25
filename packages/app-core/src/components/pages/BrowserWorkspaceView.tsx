@@ -269,6 +269,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     setActionNotice,
     t,
     plugins,
+    uiTheme,
     walletAddresses,
     walletConfig,
   } = useApp();
@@ -1549,7 +1550,13 @@ export function BrowserWorkspaceView(): JSX.Element {
               sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
               allow="clipboard-read; clipboard-write"
               referrerPolicy="strict-origin-when-cross-origin"
-              className={`absolute inset-0 h-full w-full border-0 bg-white transition-opacity ${visibilityClass}`}
+              // Use bg-bg + colorScheme so the iframe's UA scrollbars and any
+              // pre-paint background match the outer app theme instead of
+              // flashing white in dark mode. Embedded sites still pick their
+              // own theme based on the OS prefers-color-scheme; we can't force
+              // that cross-origin without an extension content script.
+              className={`absolute inset-0 h-full w-full border-0 bg-bg transition-opacity ${visibilityClass}`}
+              style={{ colorScheme: uiTheme }}
               onLoad={() =>
                 highlighted
                   ? postBrowserWalletReady(tab, browserWalletState)
