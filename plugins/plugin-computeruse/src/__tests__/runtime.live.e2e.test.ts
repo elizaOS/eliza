@@ -32,7 +32,13 @@ type RuntimeDebugSnapshot = {
   };
 };
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
+const REPO_ROOT = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+);
 
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -74,7 +80,7 @@ async function startRuntime(): Promise<RuntimeHarness> {
     "utf8",
   );
 
-  const child = spawn("bun", ["run", "start:eliza"], {
+  const child = spawn("bun", ["run", "start"], {
     cwd: REPO_ROOT,
     env: createLiveRuntimeChildEnv({
       ELIZA_CONFIG_PATH: configPath,
@@ -148,15 +154,21 @@ async function startRuntime(): Promise<RuntimeHarness> {
   };
 }
 
-describe("computer-use runtime registration (live e2e)", () => {
-  let runtime: RuntimeHarness;
+const runE2E =
+  process.env.COMPUTER_USE_E2E_RUNTIME === "1" ||
+  process.env.COMPUTER_USE_LIVE_E2E === "1";
+
+describe.runIf(runE2E)("computer-use runtime registration (live e2e)", () => {
+  let runtime: RuntimeHarness | undefined;
 
   beforeAll(async () => {
     runtime = await startRuntime();
   }, 180_000);
 
   afterAll(async () => {
-    await runtime.close();
+    if (runtime) {
+      await runtime.close();
+    }
   });
 
   it("registers the plugin actions, provider, and service in a booted runtime", async () => {

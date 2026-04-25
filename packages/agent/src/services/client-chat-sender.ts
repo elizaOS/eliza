@@ -10,7 +10,6 @@
 
 import crypto from "node:crypto";
 import {
-  type Content,
   createMessageMemory,
   type IAgentRuntime,
   type UUID,

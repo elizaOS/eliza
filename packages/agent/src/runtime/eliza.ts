@@ -93,6 +93,14 @@ import {
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared/contracts/onboarding";
 import {
+  getDefaultStylePreset,
+  normalizeCharacterLanguage,
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetById,
+  resolveStylePresetByName,
+} from "@elizaos/shared/onboarding-presets";
+import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
+import {
   debugLogResolvedContext,
   validateRuntimeContext,
 } from "../api/plugin-validation.js";
@@ -108,20 +116,12 @@ import {
   collectConnectorEnvVars,
 } from "../config/env-vars.js";
 import { resolveStateDir, resolveUserPath } from "../config/paths.js";
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import {
   createHookEvent,
   type LoadHooksOptions,
   loadHooks,
   triggerHook,
 } from "../hooks/index.js";
-import {
-  getDefaultStylePreset,
-  normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
-  resolveStylePresetById,
-  resolveStylePresetByName,
-} from "@elizaos/shared/onboarding-presets";
 import {
   ensureAgentWorkspace,
   resolveDefaultAgentWorkspaceDir,

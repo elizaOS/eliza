@@ -15,8 +15,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
+import { describeIf } from "../helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../helpers/live-provider";
 
 const DEFAULT_UI_URL = stripTrailingSlash(
   process.env.ELIZA_LIVE_UI_URL ??

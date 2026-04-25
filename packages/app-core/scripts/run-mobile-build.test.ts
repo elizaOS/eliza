@@ -220,7 +220,7 @@ describe("run-mobile-build", () => {
   });
 
   it("keeps shipped platform templates on app-local capacitor packages", () => {
-    const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+    const repoRoot = path.resolve(import.meta.dirname, "..", "..", "..");
     const iosTemplateRoot = resolvePlatformTemplateRoot("ios", {
       repoRootValue: repoRoot,
     });

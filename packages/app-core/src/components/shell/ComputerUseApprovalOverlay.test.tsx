@@ -1,6 +1,12 @@
 /* @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ComputerUseApprovalOverlay } from "./ComputerUseApprovalOverlay";
 
@@ -14,12 +20,31 @@ vi.mock("../../state", () => ({
 
 vi.mock("../../api/client", () => ({
   client: {
+    getBaseUrl: () => "http://127.0.0.1:3000",
+    getRestAuthToken: () => null,
     getComputerUseApprovals: (...args: unknown[]) =>
       getComputerUseApprovalsMock(...args),
     respondToComputerUseApproval: (...args: unknown[]) =>
       respondToComputerUseApprovalMock(...args),
   },
 }));
+
+/**
+ * The overlay prefers SSE, then falls back to polling. A silent stub never
+ * triggers `onerror`, so the component would never call `getComputerUseApprovals`
+ * (see useEffect) — fire `onerror` after handlers are attached, like a failed stream.
+ */
+class NoopEventSource {
+  onmessage: ((ev: MessageEvent) => void) | null = null;
+  onerror: ((ev: Event) => void) | null = null;
+  close = vi.fn();
+  constructor() {
+    setTimeout(() => {
+      this.onerror?.(new Event("error"));
+    }, 0);
+  }
+}
+vi.stubGlobal("EventSource", NoopEventSource);
 
 describe("ComputerUseApprovalOverlay", () => {
   beforeEach(() => {
@@ -50,7 +75,7 @@ describe("ComputerUseApprovalOverlay", () => {
       expect(getComputerUseApprovalsMock).toHaveBeenCalled();
     });
 
-    expect(screen.queryByText("Allow this computer action?")).toBeNull();
+    expect(screen.queryByText("Review queued computer actions")).toBeNull();
   });
 
   it("renders the pending command and resolves approval from the overlay", async () => {
@@ -92,7 +117,9 @@ describe("ComputerUseApprovalOverlay", () => {
 
     render(<ComputerUseApprovalOverlay />);
 
-    expect(await screen.findByText("Allow this computer action?")).toBeTruthy();
+    expect(
+      await screen.findByText("Review queued computer actions"),
+    ).toBeTruthy();
     expect(screen.getByText("browser_navigate")).toBeTruthy();
     expect(screen.getByText(/example\.com/i)).toBeTruthy();
 
@@ -102,6 +129,7 @@ describe("ComputerUseApprovalOverlay", () => {
       expect(respondToComputerUseApprovalMock).toHaveBeenCalledWith(
         "approval_1",
         true,
+        undefined,
       );
     });
 

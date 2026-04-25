@@ -24,7 +24,6 @@ import type {
 
 import {
   asRecord,
-  type BufferedExchange,
   type CompleteStepOptions,
   computeBySource,
   createBaseTrajectory,
@@ -59,7 +58,6 @@ import {
   shouldSuppressNoInputEmbeddingCall,
   sqlQuote,
   stepWriteQueues,
-  type TrajectoryLoggerLike,
   toArchiveSafeTimestamp,
   toNumber,
   toOptionalNumber,

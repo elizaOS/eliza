@@ -18,6 +18,8 @@
  *
  * @module first-time-setup
  */
+
+import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import { persistConfigEnv } from "../api/config-env.js";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,
@@ -34,7 +36,6 @@ import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
 } from "../contracts/service-routing.js";
-import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import { pickRandomNames } from "./onboarding-names.js";
 
 // ---------------------------------------------------------------------------

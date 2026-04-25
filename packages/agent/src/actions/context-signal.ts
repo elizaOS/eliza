@@ -12,6 +12,10 @@
  * @module actions/context-signal
  */
 
+import {
+  recentConversationTexts as collectRecentConversationTexts,
+  recentConversationTextsFromState,
+} from "@elizaos/app-lifeops/actions/life-recent-context.js";
 import type { Memory, State } from "@elizaos/core";
 import {
   collectKeywordTermMatches,
@@ -22,10 +26,6 @@ import {
   getContextSignalTerms,
   resolveContextSignalSpec,
 } from "./context-signal-lexicon.js";
-import {
-  recentConversationTexts as collectRecentConversationTexts,
-  recentConversationTextsFromState,
-} from "@elizaos/app-lifeops/actions/life-recent-context.js";
 
 export { collectKeywordTermMatches, textIncludesKeywordTerm };
 

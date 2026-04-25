@@ -232,9 +232,7 @@ export interface ServerState {
   /** Broadcast an arbitrary JSON message to all WebSocket clients. Set by startApiServer. */
   broadcastWs: ((data: object) => void) | null;
   /** Broadcast a JSON payload to WebSocket clients bound to a specific client id. */
-  broadcastWsToClientId:
-    | ((clientId: string, data: object) => number)
-    | null;
+  broadcastWsToClientId: ((clientId: string, data: object) => number) | null;
   /** Currently active conversation ID from the frontend (sent via WS). */
   activeConversationId: string | null;
   /** Transient OAuth flow state for subscription auth. */

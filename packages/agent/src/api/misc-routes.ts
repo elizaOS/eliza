@@ -4,7 +4,7 @@ import {
   EMOTE_BY_ID,
   EMOTE_CATALOG,
 } from "@elizaos/app-companion/emotes/catalog";
-import { type AgentRuntime, logger, ModelType, type UUID } from "@elizaos/core";
+import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import type {
@@ -101,10 +101,7 @@ export interface MiscRouteContext {
     agentName: string;
     shellEnabled: boolean | undefined;
     broadcastWs?: ((data: object) => void) | null;
-    broadcastWsToClientId?: (
-      clientId: string,
-      data: object,
-    ) => void;
+    broadcastWsToClientId?: (clientId: string, data: object) => void;
     nextEventId: number;
     eventBuffer: StreamEventEnvelope[];
     shareIngestQueue: Array<{
@@ -723,7 +720,7 @@ export async function handleMiscRoutes(
     if (body.handler != null) {
       const h = asRecord(body.handler);
       const hValidTypes = new Set(["http", "shell", "code"]);
-      if (!h || !h.type || !hValidTypes.has(String(h.type))) {
+      if (!h?.type || !hValidTypes.has(String(h.type))) {
         error(res, "handler.type must be http, shell, or code", 400);
         return true;
       }

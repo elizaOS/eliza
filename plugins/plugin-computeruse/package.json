@@ -23,7 +23,7 @@
   "scripts": {
     "postinstall": "node scripts/ensure-platform-deps.mjs",
     "build": "bun run build.ts",
-    "test": "vitest run",
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {

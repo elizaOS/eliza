@@ -4,8 +4,8 @@ import fs from "node:fs";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
+import { describeIf } from "../helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../helpers/live-provider";
 import {
   AgentRuntime,
   createCharacter,

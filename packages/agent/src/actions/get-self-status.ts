@@ -54,13 +54,12 @@ export const getSelfStatusAction: Action = {
   validate: async () => true,
 
   handler: async (runtime, _message, _state, options) => {
-    const registry =
-      (() => {
-        const service = runtime.getService("AWARENESS_REGISTRY");
-        return isAwarenessRegistry(service)
-          ? service
-          : getGlobalAwarenessRegistry();
-      })();
+    const registry = (() => {
+      const service = runtime.getService("AWARENESS_REGISTRY");
+      return isAwarenessRegistry(service)
+        ? service
+        : getGlobalAwarenessRegistry();
+    })();
     if (!registry) {
       return {
         text: "Self-awareness registry is not available.",

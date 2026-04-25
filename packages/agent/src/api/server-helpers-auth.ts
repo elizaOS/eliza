@@ -4,7 +4,6 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import {
   isNullOriginAllowed,
   resolveAllowedHosts,
@@ -15,6 +14,7 @@ import {
   setApiToken,
   stripOptionalHostPort,
 } from "@elizaos/shared/runtime-env";
+import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { sweepExpiredEntries } from "./memory-bounds.js";
 
 // ---------------------------------------------------------------------------

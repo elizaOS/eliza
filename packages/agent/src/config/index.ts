@@ -1,3 +1,4 @@
+export * from "@elizaos/shared/runtime-env";
 export * from "./character-schema.js";
 export * from "./config.js";
 export * from "./env-vars.js";
@@ -5,7 +6,6 @@ export * from "./includes.js";
 export * from "./object-utils.js";
 export * from "./paths.js";
 export * from "./plugin-auto-enable.js";
-export * from "@elizaos/shared/runtime-env";
 export * from "./schema.js";
 export * from "./telegram-custom-commands.js";
 export * from "./types.agent-defaults.js";

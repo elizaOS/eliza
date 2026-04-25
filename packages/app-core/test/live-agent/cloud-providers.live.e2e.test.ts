@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
+import { describeIf } from "../helpers/conditional-tests.ts";
 import {
   selectLiveProvider,
   type LiveProviderConfig,
-} from "../../../../../test/helpers/live-provider";
-import { createRealTestRuntime } from "../../../../../test/helpers/real-runtime";
+} from "../helpers/live-provider";
+import { createRealTestRuntime } from "../helpers/real-runtime";
 
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" ||

@@ -1,3 +1,5 @@
+export * from "@elizaos/app-lifeops/routes/lifeops-browser-packaging";
+export * from "@elizaos/app-lifeops/routes/website-blocker-routes";
 export * from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 export * from "./agent-admin-routes.js";
 export * from "./agent-lifecycle-routes.js";
@@ -28,7 +30,6 @@ export * from "./early-logs.js";
 export * from "./http-helpers.js";
 export * from "./knowledge-routes.js";
 export * from "./knowledge-service-loader.js";
-export * from "@elizaos/app-lifeops/routes/lifeops-browser-packaging";
 export * from "./memory-bounds.js";
 export * from "./memory-routes.js";
 export * from "./merkle-tree.js";
@@ -70,7 +71,6 @@ export * from "./wallet-evm-balance.js";
 export * from "./wallet-routes.js";
 export * from "./wallet-rpc.js";
 export * from "./wallet-trading-profile.js";
-export * from "@elizaos/app-lifeops/routes/website-blocker-routes";
 export {
   applyWhatsAppQrOverride,
   handleWhatsAppRoute,
