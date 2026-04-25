@@ -3,6 +3,9 @@
  */
 
 import crypto from "node:crypto";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type {
   SwarmEvent,
   TaskCompletionSummary,
@@ -209,8 +212,8 @@ export function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
   if (!st.runtime) return false;
   const coordinator = getCoordinatorFromRuntime(st.runtime);
   if (!coordinator?.setSwarmCompleteCallback) return false;
-  coordinator.setSwarmCompleteCallback(async () => {
-    // Deliberately no-op -- synthesis happens via the streamer instead.
+  coordinator.setSwarmCompleteCallback(async (payload) => {
+    await handleSwarmSynthesis(st, payload);
   });
   return true;
 }
@@ -228,6 +231,8 @@ export async function handleSwarmSynthesis(
       originalTask: string;
       status: string;
       completionSummary: string;
+      roomId?: string | null;
+      workdir?: string;
     }>;
     total: number;
     completed: number;
@@ -252,7 +257,27 @@ export async function handleSwarmSynthesis(
   const resultText = await buildSynthesisResultText(payload);
   logger.info("[swarm-synthesis] Synthesis generated, routing to user");
   await routeMessage(resultText, "swarm_synthesis");
-  await routeSynthesisToConnector(runtime, resultText);
+  // coordinator.sourceRoomId is declared on the interface but never assigned
+  // by the orchestrator, so without a fallback the connector route is dead.
+  // Pick the most recently terminal task's roomId: that's the task whose
+  // completion fired this swarm_complete, and whose room is waiting for an
+  // answer. Naively taking "first task with a roomId" leaks results into
+  // stale rooms when the coordinator carries tasks across rooms.
+  const terminalStatuses = new Set(["completed", "stopped", "errored"]);
+  let fallbackRoomId: string | null = null;
+  for (let i = payload.tasks.length - 1; i >= 0; i--) {
+    const candidate = payload.tasks[i];
+    if (typeof candidate.roomId !== "string" || !candidate.roomId) continue;
+    if (terminalStatuses.has(candidate.status)) {
+      fallbackRoomId = candidate.roomId;
+      break;
+    }
+    // Track last-seen room as a fallback if no terminal task carries one.
+    if (!fallbackRoomId) {
+      fallbackRoomId = candidate.roomId;
+    }
+  }
+  await routeSynthesisToConnector(runtime, resultText, fallbackRoomId);
 }
 
 async function buildSynthesisResultText(payload: {
@@ -260,19 +285,30 @@ async function buildSynthesisResultText(payload: {
     originalTask: string;
     completionSummary: string;
     status: string;
+    workdir?: string;
   }>;
   total: number;
 }): Promise<string> {
   const parts = await Promise.all(payload.tasks.map(buildTaskResultLine));
   return parts.length === 1
-    ? `done -- ${parts[0]}`
-    : `done -- ${payload.total} tasks:\n${parts.map((p) => `- ${p}`).join("\n")}`;
+    ? parts[0]
+    : `${payload.total} tasks:\n${parts.map((p) => `- ${p}`).join("\n")}`;
 }
 
 async function buildTaskResultLine(task: {
   originalTask: string;
   completionSummary: string;
+  workdir?: string;
 }): Promise<string> {
+  // Prefer the agent's actual final assistant message: that's the real
+  // deliverable (news brief, code summary, URL, etc.). The coordinator's
+  // completionSummary is a meta-judgment about whether the task finished,
+  // not the content the agent produced. Only fall through if the jsonl
+  // can't be read.
+  if (task.workdir) {
+    const finalText = await readAgentFinalAssistantMessage(task.workdir);
+    if (finalText) return finalText;
+  }
   if (task.completionSummary) return task.completionSummary;
   const portMatch = task.originalTask.match(/port\s+(\d+)/i);
   const port = portMatch?.[1];
@@ -282,6 +318,70 @@ async function buildTaskResultLine(task: {
     return `built and serving at http://${host}:${port}`;
   }
   return `built the files but server isn't running on port ${port} yet`;
+}
+
+async function readAgentFinalAssistantMessage(
+  workdir: string,
+): Promise<string | null> {
+  try {
+    // claude-code persists each session under a project directory whose name
+    // is the workdir with both "/" and "." replaced by "-" (so a hidden
+    // path like /home/u/.milady/workspaces/<id> becomes
+    // -home-u--milady-workspaces-<id>).
+    const sanitized = workdir.replace(/[/.]/g, "-");
+    const projectDir = path.join(
+      os.homedir(),
+      ".claude",
+      "projects",
+      sanitized,
+    );
+    const entries = await fs.readdir(projectDir, { withFileTypes: true });
+    const jsonls = entries.filter(
+      (e) => e.isFile() && e.name.endsWith(".jsonl"),
+    );
+    if (jsonls.length === 0) return null;
+    const stats = await Promise.all(
+      jsonls.map(async (e) => ({
+        name: e.name,
+        mtime: (await fs.stat(path.join(projectDir, e.name))).mtimeMs,
+      })),
+    );
+    stats.sort((a, b) => b.mtime - a.mtime);
+    const newest = path.join(projectDir, stats[0].name);
+    const raw = await fs.readFile(newest, "utf8");
+    let lastText = "";
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const obj = JSON.parse(trimmed) as Record<string, unknown>;
+        if (obj.type !== "assistant") continue;
+        const message = obj.message as Record<string, unknown> | undefined;
+        if (!message || message.role !== "assistant") continue;
+        const content = message.content;
+        if (typeof content === "string") {
+          lastText = content;
+        } else if (Array.isArray(content)) {
+          for (const part of content) {
+            if (
+              part &&
+              typeof part === "object" &&
+              (part as Record<string, unknown>).type === "text" &&
+              typeof (part as Record<string, unknown>).text === "string"
+            ) {
+              lastText = (part as Record<string, string>).text;
+            }
+          }
+        }
+      } catch {
+        // skip malformed lines
+      }
+    }
+    const collapsed = lastText.trim();
+    return collapsed.length > 0 ? collapsed : null;
+  } catch {
+    return null;
+  }
 }
 
 async function isPortServing(port: string): Promise<boolean> {
@@ -298,9 +398,10 @@ async function isPortServing(port: string): Promise<boolean> {
 async function routeSynthesisToConnector(
   runtime: AgentRuntime,
   resultText: string,
+  fallbackRoomId: string | null = null,
 ): Promise<void> {
   const coordinator = getCoordinatorFromRuntime(runtime);
-  const sourceRoomId = coordinator?.sourceRoomId;
+  const sourceRoomId = coordinator?.sourceRoomId ?? fallbackRoomId;
   if (!sourceRoomId) return;
   try {
     const room = await runtime.getRoom(sourceRoomId as UUID);
