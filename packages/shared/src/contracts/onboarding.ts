@@ -518,11 +518,19 @@ export interface OnboardingLlmPersistenceSelection
   remoteApiBase?: string;
   remoteAccessToken?: string;
 }
+export type SubscriptionCredentialSource =
+  | "app"
+  | "claude-code-cli"
+  | "setup-token"
+  | "codex-cli"
+  | null;
+
 export interface SubscriptionProviderStatus {
   provider: string;
   configured: boolean;
   valid: boolean;
   expiresAt: number | null;
+  source: SubscriptionCredentialSource;
 }
 
 export interface SubscriptionStatusResponse {
