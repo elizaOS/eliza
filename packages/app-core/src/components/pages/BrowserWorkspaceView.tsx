@@ -204,6 +204,15 @@ function isInternalBrowserWorkspaceTab(tab: BrowserWorkspaceTab): boolean {
   return getBrowserWorkspaceTabKind(tab) === "internal";
 }
 
+function isBrowserWorkspaceFrameBlockedUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return /(^|\.)discord\.com$/i.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function getBrowserWorkspaceTabLabel(
   tab: BrowserWorkspaceTab,
   t: TranslateFn,
@@ -1491,6 +1500,51 @@ export function BrowserWorkspaceView(): JSX.Element {
         workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;
           const highlighted = tab.visible;
+          const frameBlocked = isBrowserWorkspaceFrameBlockedUrl(tab.url);
+          const visibilityClass = active
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0";
+          if (frameBlocked) {
+            return (
+              <div
+                key={tab.id}
+                className={`absolute inset-0 flex h-full w-full items-center justify-center bg-bg px-6 text-center transition-opacity ${visibilityClass}`}
+              >
+                <div className="flex max-w-md flex-col items-center gap-3">
+                  <div className="text-sm font-semibold text-txt">
+                    {t("browserworkspace.FrameBlockedTitle", {
+                      defaultValue: "Open this site outside the iframe",
+                    })}
+                  </div>
+                  <div className="text-xs leading-5 text-muted">
+                    {t("browserworkspace.FrameBlockedDescription", {
+                      defaultValue:
+                        "Discord blocks embedded browser frames. Use Milady Desktop Browser or a connected browser profile so LifeOps can inspect the page after login.",
+                    })}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busyAction !== null}
+                    onClick={() =>
+                      void runBrowserWorkspaceAction(
+                        `open:external:${tab.id}`,
+                        async () => {
+                          await openExternalUrl(tab.url);
+                        },
+                      )
+                    }
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    {t("browserworkspace.OpenExternal", {
+                      defaultValue: "Open external",
+                    })}
+                  </Button>
+                </div>
+              </div>
+            );
+          }
           return (
             <iframe
               key={tab.id}
@@ -1501,11 +1555,7 @@ export function BrowserWorkspaceView(): JSX.Element {
               sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
               allow="clipboard-read; clipboard-write"
               referrerPolicy="strict-origin-when-cross-origin"
-              className={`absolute inset-0 h-full w-full border-0 bg-white transition-opacity ${
-                active
-                  ? "pointer-events-auto opacity-100"
-                  : "pointer-events-none opacity-0"
-              }`}
+              className={`absolute inset-0 h-full w-full border-0 bg-white transition-opacity ${visibilityClass}`}
               onLoad={() =>
                 highlighted
                   ? postBrowserWalletReady(tab, browserWalletState)

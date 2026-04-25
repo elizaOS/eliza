@@ -8,6 +8,25 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const PAIRING_POLL_INTERVAL_MS = 2_000;
 
+function isActivePairingState(
+  state: LifeOpsSignalPairingStatus["state"],
+): boolean {
+  return (
+    state === "generating_qr" ||
+    state === "waiting_for_scan" ||
+    state === "linking"
+  );
+}
+
+function pairingStatusError(
+  pairing: LifeOpsSignalPairingStatus | null,
+): string | null {
+  if (pairing?.state !== "failed") {
+    return null;
+  }
+  return pairing.error ?? "Signal pairing failed.";
+}
+
 function formatError(cause: unknown, fallback: string): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {
     return cause.message.trim();
@@ -31,12 +50,14 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
   const [error, setError] = useState<string | null>(null);
   const pairingSessionIdRef = useRef<string | null>(null);
   const pairingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pairingPollSessionIdRef = useRef<string | null>(null);
 
   const clearPairingPoll = useCallback(() => {
     if (pairingPollRef.current !== null) {
       clearInterval(pairingPollRef.current);
       pairingPollRef.current = null;
     }
+    pairingPollSessionIdRef.current = null;
   }, []);
 
   const syncPairingState = useCallback(
@@ -53,7 +74,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
       const nextStatus = await client.getSignalConnectorStatus(side);
       setStatus(nextStatus);
       syncPairingState(nextStatus.pairing);
-      setError(null);
+      setError(pairingStatusError(nextStatus.pairing));
     } catch (cause) {
       setError(formatError(cause, "Signal connector status failed to load."));
     } finally {
@@ -70,7 +91,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
         if (cancelled) return;
         setStatus(nextStatus);
         syncPairingState(nextStatus.pairing);
-        setError(null);
+        setError(pairingStatusError(nextStatus.pairing));
       } catch (cause) {
         if (cancelled) return;
         setError(formatError(cause, "Signal connector status failed to load."));
@@ -89,26 +110,50 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
     };
   }, [clearPairingPoll]);
 
-  const pollPairingStatus = useCallback(
-    (sessionId: string) => {
+  const activePairingSessionId =
+    pairingStatus !== null && isActivePairingState(pairingStatus.state)
+      ? pairingStatus.sessionId
+      : null;
+
+  useEffect(() => {
+    if (!activePairingSessionId) {
       clearPairingPoll();
-      pairingPollRef.current = setInterval(async () => {
-        try {
-          const ps = await client.getLifeOpsSignalPairingStatus(sessionId);
-          setPairingStatus(ps);
-          setError(null);
-          if (ps.state === "connected" || ps.state === "failed") {
-            clearPairingPoll();
-            pairingSessionIdRef.current = null;
+      return;
+    }
+
+    if (pairingPollSessionIdRef.current === activePairingSessionId) {
+      return;
+    }
+
+    clearPairingPoll();
+    pairingPollSessionIdRef.current = activePairingSessionId;
+    pairingPollRef.current = setInterval(async () => {
+      try {
+        const nextPairing =
+          await client.getLifeOpsSignalPairingStatus(activePairingSessionId);
+        setPairingStatus(nextPairing);
+        setError(pairingStatusError(nextPairing));
+        if (!isActivePairingState(nextPairing.state)) {
+          pairingSessionIdRef.current = null;
+          clearPairingPoll();
+          if (
+            nextPairing.state === "connected" ||
+            nextPairing.state === "failed"
+          ) {
             void refresh();
           }
-        } catch (cause) {
-          setError(formatError(cause, "Signal pairing status poll failed."));
         }
-      }, PAIRING_POLL_INTERVAL_MS);
-    },
-    [clearPairingPoll, refresh],
-  );
+      } catch (cause) {
+        setError(formatError(cause, "Signal pairing status poll failed."));
+      }
+    }, PAIRING_POLL_INTERVAL_MS);
+
+    return () => {
+      if (pairingPollSessionIdRef.current === activePairingSessionId) {
+        clearPairingPoll();
+      }
+    };
+  }, [activePairingSessionId, clearPairingPoll, refresh]);
 
   const startPairing = useCallback(async () => {
     try {
@@ -122,7 +167,6 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
         qrDataUrl: null,
         error: null,
       });
-      pollPairingStatus(result.sessionId);
       return result.sessionId;
     } catch (cause) {
       setError(formatError(cause, "Signal pairing failed to start."));
@@ -130,7 +174,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
     } finally {
       setActionPending(false);
     }
-  }, [side, pollPairingStatus]);
+  }, [side]);
 
   const stopPairing = useCallback(async () => {
     const sessionId = pairingSessionIdRef.current;
@@ -138,7 +182,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
     try {
       setActionPending(true);
       clearPairingPoll();
-      await client.stopLifeOpsSignalPairing(sessionId);
+      await client.stopLifeOpsSignalPairing({ side, provider: "signal" });
       pairingSessionIdRef.current = null;
       setPairingStatus(null);
       setError(null);
@@ -147,7 +191,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
     } finally {
       setActionPending(false);
     }
-  }, [clearPairingPoll]);
+  }, [side, clearPairingPoll]);
 
   const disconnect = useCallback(async () => {
     try {
@@ -161,7 +205,7 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
       });
       setStatus(nextStatus);
       syncPairingState(nextStatus.pairing);
-      setError(null);
+      setError(pairingStatusError(nextStatus.pairing));
     } catch (cause) {
       setError(formatError(cause, "Signal connector disconnect failed."));
     } finally {

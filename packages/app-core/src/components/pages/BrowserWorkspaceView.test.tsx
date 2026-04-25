@@ -244,6 +244,29 @@ describe("BrowserWorkspaceView", () => {
     ).not.toBeNull();
   });
 
+  it("does not render Discord inside the web iframe fallback", async () => {
+    clientMock!.getBrowserWorkspace.mockResolvedValue({
+      mode: "web",
+      tabs: [
+        {
+          id: "discord-web",
+          title: "Discord",
+          url: "https://discord.com/channels/@me",
+          partition: "persist:eliza-browser",
+          visible: true,
+          createdAt: "2026-04-23T00:00:00.000Z",
+          updatedAt: "2026-04-23T00:00:00.000Z",
+          lastFocusedAt: "2026-04-23T00:00:00.000Z",
+        },
+      ],
+    });
+
+    const { container } = render(<BrowserWorkspaceView />);
+
+    await screen.findByText(/Discord blocks embedded browser frames/i);
+    expect(container.querySelector('iframe[title="Discord"]')).toBeNull();
+  });
+
   it("renders user, agent, and app tab sections", async () => {
     const mockClient = getClientMock();
     mockClient.getBrowserWorkspace.mockResolvedValue({
