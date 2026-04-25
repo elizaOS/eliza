@@ -31,7 +31,9 @@ describe("CapabilitiesSection", () => {
 
     render(<CapabilitiesSection />);
 
-    expect(screen.getByText("Enable Computer Use")).toBeTruthy();
+    expect(
+      screen.getByRole("switch", { name: "Enable Computer Use" }),
+    ).toBeTruthy();
     expect(
       screen.getByText(/Accessibility and Screen Recording permissions/i),
     ).toBeTruthy();
@@ -49,7 +51,9 @@ describe("CapabilitiesSection", () => {
 
     render(<CapabilitiesSection />);
 
-    expect(screen.getAllByText("Enable Computer Use")).toHaveLength(1);
+    expect(
+      screen.getByRole("switch", { name: "Enable Computer Use" }),
+    ).toBeTruthy();
     expect(
       screen.queryByText(/Accessibility and Screen Recording permissions/i),
     ).toBeNull();

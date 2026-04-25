@@ -1,20 +1,16 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import type { fetchWithTimeoutGuard } from "@elizaos/agent/api/server";
 import type { WalletMarketOverviewResponse } from "@elizaos/shared/contracts/wallet";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { fetchWithTimeoutGuardMock } = vi.hoisted(() => ({
-  fetchWithTimeoutGuardMock: vi.fn(),
-}));
-
-vi.mock("@elizaos/agent/api/server", () => ({
-  fetchWithTimeoutGuard: fetchWithTimeoutGuardMock,
-}));
-
 import {
   __resetWalletMarketOverviewCacheForTests,
+  __setWalletMarketOverviewFetchForTests,
   handleWalletMarketOverviewRoute,
 } from "./wallet-market-overview-route";
+
+type FetchWithTimeoutGuard = typeof fetchWithTimeoutGuard;
 
 interface Harness {
   baseUrl: string;
@@ -195,10 +191,12 @@ const cloudPreviewPayload: WalletMarketOverviewResponse = {
 
 describe("wallet-market-overview-route", () => {
   let harness: Harness;
+  const fetchWithTimeoutGuardMock = vi.fn<FetchWithTimeoutGuard>();
 
   beforeEach(async () => {
     fetchWithTimeoutGuardMock.mockReset();
     __resetWalletMarketOverviewCacheForTests();
+    __setWalletMarketOverviewFetchForTests(fetchWithTimeoutGuardMock);
     harness = await startHarness();
   });
 

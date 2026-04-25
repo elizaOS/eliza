@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, State } from "../types";
 import { stringToUuid } from "../utils";
-import { DefaultMessageService } from "./message.ts";
+import { DefaultMessageService, extractPlannerActionNames } from "./message.ts";
 
 // Tests for DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS logic
 describe("MessageService memory persistence logic", () => {
@@ -72,6 +72,70 @@ describe("MessageService memory persistence logic", () => {
 			const correctResult = !disableMemoryCreation || memorySourceAllowed;
 			expect(correctResult).toBe(true); // Correctly allows whitelisted source
 		});
+	});
+});
+
+describe("extractPlannerActionNames — tolerant of malformed action XML", () => {
+	// Production observation (2026-04-25): the planner LLM occasionally emits
+	// an unclosed <action> wrapper around a well-formed <name>X</name>, e.g.:
+	//   <actions><action><name>REPLY</name></actions>
+	// The closing </action> is missing, so the strict regex used to fall
+	// through to "return trimmed" and the entire XML chunk became the action
+	// identifier. That never matches a registered action and the bot logs
+	// "Dropping unknown planner action" then stays silent. The fix tolerates
+	// these malformed shapes by extracting the inner <name>X</name>.
+
+	it("extracts name from canonical <action><name>X</name></action>", () => {
+		expect(
+			extractPlannerActionNames({
+				actions: "<action><name>REPLY</name></action>",
+			}),
+		).toEqual(["REPLY"]);
+	});
+
+	it("extracts name from flat <action>X</action>", () => {
+		expect(
+			extractPlannerActionNames({
+				actions: "<action>REPLY</action>",
+			}),
+		).toEqual(["REPLY"]);
+	});
+
+	it("recovers REPLY when the closing </action> is missing", () => {
+		expect(
+			extractPlannerActionNames({
+				actions: "<action><name>REPLY</name>",
+			}),
+		).toEqual(["REPLY"]);
+	});
+
+	it("recovers when extra trailing content follows the name", () => {
+		expect(
+			extractPlannerActionNames({
+				actions: "<action><name>REPLY</name>garbage trail",
+			}),
+		).toEqual(["REPLY"]);
+	});
+
+	it("returns empty when the actions field is empty", () => {
+		expect(extractPlannerActionNames({ actions: "" })).toEqual([]);
+	});
+
+	it("treats unmatched non-action text as a literal identifier", () => {
+		// Plain comma-separated list still works
+		expect(extractPlannerActionNames({ actions: "REPLY,STOP" })).toEqual([
+			"REPLY",
+			"STOP",
+		]);
+	});
+
+	it("handles multiple well-formed action blocks", () => {
+		expect(
+			extractPlannerActionNames({
+				actions:
+					"<action><name>SPAWN_AGENT</name></action><action><name>REPLY</name></action>",
+			}),
+		).toEqual(["SPAWN_AGENT", "REPLY"]);
 	});
 });
 

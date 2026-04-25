@@ -124,6 +124,14 @@ export function CapabilitiesSection() {
         label={t("settings.sections.capabilities.computerUseName", {
           defaultValue: "Computer Use",
         })}
+        hint={
+          computerUseEnabled
+            ? t("settings.sections.capabilities.computerUseHint", {
+                defaultValue:
+                  "Accessibility and Screen Recording permissions are required for computer use.",
+              })
+            : null
+        }
       >
         <Switch
           checked={computerUseEnabled}
@@ -156,18 +164,23 @@ export function CapabilitiesSection() {
 
 function CapabilityRow({
   children,
+  hint,
   label,
   status,
 }: {
   children: ReactNode;
+  hint?: string | null;
   label: string;
   status?: "loading" | "unavailable" | null;
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
-      <div className="flex min-w-0 items-center gap-2">
-        <div className="truncate font-medium text-sm">{label}</div>
-        <CapabilityStatusIcon status={status} />
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="truncate font-medium text-sm">{label}</div>
+          <CapabilityStatusIcon status={status} />
+        </div>
+        {hint ? <div className="mt-1 text-2xs text-muted">{hint}</div> : null}
       </div>
       {children}
     </div>

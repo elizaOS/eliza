@@ -7,9 +7,7 @@ function formatWhen(iso: string): string {
   return new Date(ms).toLocaleString();
 }
 
-function scopeLabel(
-  scope: CharacterPersonalityHistoryItem["scope"],
-): string {
+function scopeLabel(scope: CharacterPersonalityHistoryItem["scope"]): string {
   switch (scope) {
     case "auto":
       return "Auto";
@@ -67,10 +65,7 @@ function TimelineEntry({ entry }: { entry: CharacterPersonalityHistoryItem }) {
               </span>
             ) : null}
           </span>
-          <time
-            className="text-2xs text-muted"
-            dateTime={entry.timestamp}
-          >
+          <time className="text-2xs text-muted" dateTime={entry.timestamp}>
             {formatWhen(entry.timestamp)}
           </time>
         </div>

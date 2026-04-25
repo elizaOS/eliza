@@ -90,10 +90,14 @@ interface RateLimitBucket {
   resetAt: number;
 }
 
+type WalletMarketOverviewFetch = typeof fetchWithTimeoutGuard;
+
 let cachedWalletMarketOverview: CachedWalletMarketOverview | null = null;
 let walletMarketOverviewInFlight: Promise<WalletMarketOverviewResponse> | null =
   null;
 const walletMarketRefreshBuckets = new Map<string, RateLimitBucket>();
+let walletMarketOverviewFetch: WalletMarketOverviewFetch =
+  fetchWithTimeoutGuard;
 
 function marketOverviewErrorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim().length > 0
@@ -289,7 +293,7 @@ async function fetchCoinGeckoMarkets(): Promise<CoinGeckoMarketRecord[]> {
   url.searchParams.set("page", "1");
   url.searchParams.set("price_change_percentage", "24h");
 
-  const response = await fetchWithTimeoutGuard(
+  const response = await walletMarketOverviewFetch(
     url,
     {
       method: "GET",
@@ -323,7 +327,7 @@ async function fetchPolymarketMarkets(): Promise<PolymarketMarketRecord[]> {
   url.searchParams.set("ascending", "false");
   url.searchParams.set("limit", String(POLYMARKET_MARKET_LIMIT));
 
-  const response = await fetchWithTimeoutGuard(
+  const response = await walletMarketOverviewFetch(
     url,
     {
       method: "GET",
@@ -461,7 +465,7 @@ function resolveWalletMarketOverviewCloudPreviewUrl(): string {
 async function fetchCloudWalletMarketOverview(
   clientAddress: string,
 ): Promise<WalletMarketOverviewResponse> {
-  const response = await fetchWithTimeoutGuard(
+  const response = await walletMarketOverviewFetch(
     resolveWalletMarketOverviewCloudPreviewUrl(),
     {
       method: "GET",
@@ -758,4 +762,11 @@ export function __resetWalletMarketOverviewCacheForTests(): void {
   cachedWalletMarketOverview = null;
   walletMarketOverviewInFlight = null;
   walletMarketRefreshBuckets.clear();
+  walletMarketOverviewFetch = fetchWithTimeoutGuard;
+}
+
+export function __setWalletMarketOverviewFetchForTests(
+  fetcher: WalletMarketOverviewFetch,
+): void {
+  walletMarketOverviewFetch = fetcher;
 }
