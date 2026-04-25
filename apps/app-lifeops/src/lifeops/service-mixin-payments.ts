@@ -450,6 +450,226 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       return lines.join("\n");
     }
+
+    // -----------------------------------------------------------------------
+    // Plaid bridge — uses Eliza Cloud as the secret holder for the Plaid
+    // access_token. Cloud routes live at /api/v1/milady/plaid/*.
+    // -----------------------------------------------------------------------
+
+    private getPlaidManagedClient(): PlaidManagedClient {
+      if (!this.plaidManagedClientCache) {
+        this.plaidManagedClientCache = new PlaidManagedClient();
+      }
+      return this.plaidManagedClientCache;
+    }
+
+    /** Returns a Plaid Link token for the frontend to drive the Plaid Link UI. */
+    async createPlaidLinkToken(): Promise<{
+      linkToken: string;
+      expiration: string;
+      environment: string;
+    }> {
+      try {
+        return await this.getPlaidManagedClient().createLinkToken();
+      } catch (error) {
+        if (error instanceof PlaidManagedClientError) {
+          fail(error.status, error.message);
+        }
+        throw error;
+      }
+    }
+
+    /**
+     * Completes a Plaid Link flow by exchanging the public_token for an
+     * access_token and creating (or updating) a payment_source row whose
+     * metadata holds the access_token + cursor for sync.
+     */
+    async completePlaidLink(args: {
+      publicToken: string;
+      label?: string | null;
+    }): Promise<LifeOpsPaymentSource> {
+      const publicToken = requireNonEmptyString(args.publicToken, "publicToken");
+      let result;
+      try {
+        result = await this.getPlaidManagedClient().exchangePublicToken({
+          publicToken,
+        });
+      } catch (error) {
+        if (error instanceof PlaidManagedClientError) {
+          fail(error.status, error.message);
+        }
+        throw error;
+      }
+      const label =
+        normalizeOptionalString(args.label) ??
+        `${result.institution.institutionName}${
+          result.institution.primaryAccountMask
+            ? ` ··${result.institution.primaryAccountMask}`
+            : ""
+        }`;
+      const now = new Date().toISOString();
+      const source: LifeOpsPaymentSource = {
+        id: crypto.randomUUID(),
+        agentId: this.agentId(),
+        kind: "plaid",
+        label: label.slice(0, 120),
+        institution: result.institution.institutionName.slice(0, 120),
+        accountMask: result.institution.primaryAccountMask?.slice(0, 16) ?? null,
+        status: "active",
+        lastSyncedAt: null,
+        transactionCount: 0,
+        metadata: {
+          plaid: {
+            // Storing the access_token in source metadata is required for
+            // sync. The cloud already authorized this Item to the user;
+            // local storage is encrypted at rest by the underlying database
+            // adapter.
+            accessToken: result.accessToken,
+            itemId: result.itemId,
+            institutionId: result.institution.institutionId,
+            cursor: "",
+            accounts: result.institution.accounts,
+          },
+        },
+        createdAt: now,
+        updatedAt: now,
+      };
+      await this.repository.upsertPaymentSource(source);
+      return source;
+    }
+
+    /**
+     * Pulls the latest transaction delta for a Plaid-backed source and
+     * inserts the new rows into life_payment_transactions.
+     */
+    async syncPlaidTransactions(args: {
+      sourceId: string;
+    }): Promise<{ inserted: number; skipped: number; nextCursor: string }> {
+      const sourceId = requireNonEmptyString(args.sourceId, "sourceId");
+      const source = await this.repository.getPaymentSource(
+        this.agentId(),
+        sourceId,
+      );
+      if (!source) {
+        fail(404, `Payment source ${sourceId} not found.`);
+      }
+      if (source.kind !== "plaid") {
+        fail(409, `Source ${sourceId} is not a Plaid source.`);
+      }
+      const plaidMetadata =
+        (source.metadata?.plaid as
+          | { accessToken?: string; cursor?: string }
+          | undefined) ?? null;
+      const accessToken = plaidMetadata?.accessToken;
+      if (typeof accessToken !== "string" || accessToken.length === 0) {
+        fail(409, "Plaid source is missing an access token. Re-link the account.");
+      }
+      const cursor = plaidMetadata?.cursor ?? "";
+
+      let cumulativeInserted = 0;
+      let cumulativeSkipped = 0;
+      let pageCursor = cursor;
+      let hasMore = true;
+      let pageGuard = 0;
+      while (hasMore && pageGuard < 20) {
+        let delta;
+        try {
+          delta = await this.getPlaidManagedClient().syncTransactions({
+            accessToken,
+            cursor: pageCursor,
+          });
+        } catch (error) {
+          if (error instanceof PlaidManagedClientError) {
+            fail(error.status, error.message);
+          }
+          throw error;
+        }
+        for (const transaction of delta.added) {
+          const inserted = await this.upsertPlaidTransaction({
+            sourceId,
+            transaction,
+          });
+          if (inserted) {
+            cumulativeInserted += 1;
+          } else {
+            cumulativeSkipped += 1;
+          }
+        }
+        for (const transaction of delta.modified) {
+          await this.upsertPlaidTransaction({
+            sourceId,
+            transaction,
+          });
+        }
+        pageCursor = delta.nextCursor;
+        hasMore = delta.hasMore;
+        pageGuard += 1;
+      }
+      const newCount = await this.repository.countPaymentTransactionsForSource(
+        this.agentId(),
+        sourceId,
+      );
+      await this.repository.upsertPaymentSource({
+        ...source,
+        status: "active",
+        lastSyncedAt: new Date().toISOString(),
+        transactionCount: newCount,
+        metadata: {
+          ...source.metadata,
+          plaid: {
+            ...plaidMetadata,
+            cursor: pageCursor,
+          },
+        },
+        updatedAt: new Date().toISOString(),
+      });
+      return {
+        inserted: cumulativeInserted,
+        skipped: cumulativeSkipped,
+        nextCursor: pageCursor,
+      };
+    }
+
+    private async upsertPlaidTransaction(args: {
+      sourceId: string;
+      transaction: PlaidTransactionDto;
+    }): Promise<boolean> {
+      const txn = args.transaction;
+      // Plaid `amount` convention: positive = money OUT (debit), negative =
+      // money IN (credit/refund). Our schema stores the absolute USD amount
+      // and a `direction` enum.
+      const direction = txn.amount >= 0 ? "debit" : "credit";
+      const merchantRaw = (txn.merchant_name ?? txn.name ?? "").trim();
+      const merchantNormalized = normalizeMerchant(merchantRaw);
+      const category =
+        txn.personal_finance_category?.detailed ??
+        txn.personal_finance_category?.primary ??
+        txn.category?.[0] ??
+        null;
+      const record: LifeOpsPaymentTransaction = {
+        id: crypto.randomUUID(),
+        agentId: this.agentId(),
+        sourceId: args.sourceId,
+        externalId: txn.transaction_id,
+        postedAt: txn.authorized_date
+          ? `${txn.authorized_date}T00:00:00.000Z`
+          : `${txn.date}T00:00:00.000Z`,
+        amountUsd: Number(Math.abs(txn.amount).toFixed(2)),
+        direction,
+        merchantRaw,
+        merchantNormalized,
+        description: txn.name ?? null,
+        category,
+        currency: txn.iso_currency_code ?? "USD",
+        metadata: {
+          accountId: txn.account_id,
+          pending: txn.pending,
+          plaidTransactionId: txn.transaction_id,
+        },
+        createdAt: new Date().toISOString(),
+      };
+      return this.repository.insertPaymentTransaction(record);
+    }
   }
 
   return LifeOpsPaymentsMixin;
