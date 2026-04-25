@@ -6555,7 +6555,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
 
 		const responseContent: Content = {
-			thought: `Explain the structured-output failure during ${stage}.`,
+			thought: `Handle a temporary reply failure during ${stage}.`,
 			actions: ["REPLY"],
 			providers: [],
 			text: replyText,
