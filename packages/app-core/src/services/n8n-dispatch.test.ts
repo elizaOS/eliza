@@ -86,6 +86,10 @@ const disabledConfig: N8nDispatchConfigLike = {
   n8n: { localEnabled: false },
 };
 
+async function localOwnerCookie(): Promise<string> {
+  return "n8n-auth=test-cookie";
+}
+
 describe("n8n-dispatch", () => {
   it("cloud mode + 200 → { ok: true } with executionId when returned", async () => {
     const fetchImpl = vi.fn(async () =>
@@ -155,9 +159,18 @@ describe("n8n-dispatch", () => {
   });
 
   it("local mode + 200 → { ok: true }", async () => {
-    const fetchImpl = vi.fn(async () =>
-      fakeResponse({ status: 200, body: {} }),
-    ) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/workflows/")) {
+        return fakeResponse({
+          status: 200,
+          body: { id: "wf-2", name: "Local", nodes: [], connections: {} },
+        });
+      }
+      return fakeResponse({
+        status: 200,
+        body: { data: { executionId: "1" } },
+      });
+    }) as unknown as typeof fetch;
     const runtime = makeRuntime({ isAuthenticated: () => false });
 
     const svc = createN8nDispatchService({
@@ -166,26 +179,40 @@ describe("n8n-dispatch", () => {
       fetchImpl,
       isNativePlatform: () => false,
       peekSidecar: () => makeSidecarStub("http://127.0.0.1:5678", "sidecar-k"),
+      getLocalOwnerCookie: localOwnerCookie,
     });
 
-    const res = await svc.execute("wf-2");
-    expect(res).toEqual({ ok: true });
+    const res = await svc.execute("wf-2", { input: "value" });
+    expect(res).toEqual({ ok: true, executionId: "1" });
 
-    const call = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock
-      .calls[0];
-    expect(call[0]).toBe("http://127.0.0.1:5678/rest/workflows/wf-2/run");
-    const init = call[1] as RequestInit;
-    expect(init.method).toBe("POST");
-    expect(init.body).toBe("{}");
-    const headers = init.headers as Record<string, string>;
-    expect(headers["X-N8N-API-KEY"]).toBe("sidecar-k");
-    expect(headers["Content-Type"]).toBe("application/json");
+    const call = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    expect(call[0]?.[0]).toBe("http://127.0.0.1:5678/api/v1/workflows/wf-2");
+    expect(call[1]?.[0]).toBe(
+      "http://127.0.0.1:5678/rest/workflows/wf-2/run?partialExecutionVersion=1",
+    );
+    const fetchInit = call[0]?.[1] as RequestInit;
+    const fetchHeaders = fetchInit.headers as Record<string, string>;
+    expect(fetchHeaders["X-N8N-API-KEY"]).toBe("sidecar-k");
+    const runInit = call[1]?.[1] as RequestInit;
+    expect(runInit.method).toBe("POST");
+    const runBody = JSON.parse(String(runInit.body));
+    expect(runBody.input).toBe("value");
+    expect(runBody.workflowData).toMatchObject({ id: "wf-2" });
+    const runHeaders = runInit.headers as Record<string, string>;
+    expect(runHeaders.cookie).toBe("n8n-auth=test-cookie");
+    expect(runHeaders["Content-Type"]).toBe("application/json");
   });
 
   it("local mode falls back to config host + api key when sidecar absent", async () => {
-    const fetchImpl = vi.fn(async () =>
-      fakeResponse({ status: 200, body: {} }),
-    ) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/workflows/")) {
+        return fakeResponse({
+          status: 200,
+          body: { id: "wf-3", name: "Local", nodes: [], connections: {} },
+        });
+      }
+      return fakeResponse({ status: 200, body: {} });
+    }) as unknown as typeof fetch;
     const runtime = makeRuntime({ isAuthenticated: () => false });
 
     const svc = createN8nDispatchService({
@@ -194,6 +221,7 @@ describe("n8n-dispatch", () => {
       fetchImpl,
       isNativePlatform: () => false,
       peekSidecar: () => null,
+      getLocalOwnerCookie: localOwnerCookie,
     });
 
     const res = await svc.execute("wf-3");

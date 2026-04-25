@@ -181,15 +181,6 @@ export const DESKTOP_COMMAND_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     coverage: "automated",
   },
   {
-    id: "desktop-open-media-controls",
-    entryPoint: "command-palette",
-    label: "Open Media Controls",
-    expectedAction:
-      "Open a detached settings window focused on the media section.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
     id: "desktop-focus-main-window",
     entryPoint: "command-palette",
     label: "Focus Main Window",
@@ -290,12 +281,6 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
         label: "Open Voice Controls",
         category: "desktop",
         action: () => openDesktopSettingsWindow("voice"),
-      },
-      {
-        id: "desktop-open-media-controls",
-        label: "Open Media Controls",
-        category: "desktop",
-        action: () => openDesktopSettingsWindow("media"),
       },
       {
         id: "desktop-focus-main-window",

@@ -1,9 +1,17 @@
-import { useApp, type AgentPreflightResult } from "@elizaos/app-core";
+import { type AgentPreflightResult, useApp } from "@elizaos/app-core";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
 import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleHelp,
+  ExternalLink,
+  KeyRound,
+  Loader2,
+  RotateCw,
+} from "lucide-react";
+import {
   AGENT_LABELS,
-  AGENT_TABS,
   type AgentTab,
   type AuthResult,
   type LlmProvider,
@@ -11,10 +19,8 @@ import {
 
 interface AgentTabsSectionProps {
   activeTab: AgentTab | null;
-  setActiveTab: (agent: AgentTab) => void;
   availableAgents: AgentTab[];
   llmProvider: LlmProvider;
-  preflightLoaded: boolean;
   preflightByAgent: Partial<Record<AgentTab, AgentPreflightResult>>;
   authInProgress: AgentTab | null;
   authResult: AuthResult | null;
@@ -27,7 +33,6 @@ export function AgentTabsSection({
   activeTab,
   availableAgents,
   llmProvider,
-  preflightLoaded,
   preflightByAgent,
   authInProgress,
   authResult,
@@ -36,6 +41,15 @@ export function AgentTabsSection({
   onAuth,
 }: AgentTabsSectionProps) {
   const { t } = useApp();
+  const activeNeedsAuth = Boolean(
+    activeTab &&
+      llmProvider === "subscription" &&
+      getInstallState(activeTab) === "installed" &&
+      preflightByAgent[activeTab]?.auth?.status === "unauthenticated",
+  );
+  const activeAuthenticating =
+    activeTab != null && authInProgress === activeTab;
+
   return (
     <>
       <SettingsControls.SegmentedGroup>
@@ -47,67 +61,71 @@ export function AgentTabsSection({
             installState === "installed" &&
             preflightByAgent[agent]?.auth?.status === "unauthenticated";
           const isAuthenticating = authInProgress === agent;
-
-          if (needsAuth) {
-            return (
-              <Button
-                key={agent}
-                variant="ghost"
-                size="sm"
-                disabled={isAuthenticating}
-                className="flex-1 h-9 rounded-lg border border-warn/30 px-3 py-2 text-xs font-semibold text-warn hover:bg-warn/10 hover:text-warn"
-                onClick={() => onAuth(agent)}
-              >
-                {isAuthenticating
-                  ? t("codingagentsettingssection.AuthenticatingAgent", {
-                      defaultValue: "Authenticating {{agent}}...",
-                      agent: AGENT_LABELS[agent],
-                    })
-                  : t("codingagentsettingssection.AuthenticateAgent", {
-                      defaultValue: "Authenticate {{agent}}",
-                      agent: AGENT_LABELS[agent],
-                    })}
-              </Button>
-            );
-          }
+          const statusLabel =
+            installState === "installed"
+              ? t("codingagentsettingssection.Installed")
+              : installState === "missing"
+                ? t("codingagentsettingssection.NotInstalled")
+                : t("codingagentsettingssection.Unknown");
 
           return (
             <Button
               key={agent}
               variant={active ? "default" : "ghost"}
               size="sm"
-              className={`flex-1 h-9 rounded-lg border border-transparent px-3 py-2 text-xs font-semibold ${
+              className={`flex-1 h-9 rounded-lg border px-3 py-2 text-xs font-semibold ${
                 active
                   ? "bg-accent text-accent-fg dark:text-accent-fg shadow-sm"
-                  : "text-muted hover:bg-bg-hover hover:text-txt"
+                  : needsAuth
+                    ? "border-warn/30 text-warn hover:bg-warn/10 hover:text-warn"
+                    : "border-transparent text-muted hover:bg-bg-hover hover:text-txt"
               }`}
               onClick={() => onSelectAgent(agent)}
+              aria-label={`${AGENT_LABELS[agent]} ${statusLabel}`}
             >
               <span className="inline-flex items-center gap-1.5">
                 <span>{AGENT_LABELS[agent]}</span>
-                {installState === "installed" &&
-                  llmProvider === "subscription" &&
-                  preflightByAgent[agent]?.auth?.status === "authenticated" && (
-                    <span className="text-2xs font-medium text-ok opacity-90">
-                      ✓
-                    </span>
-                  )}
-                {installState === "installed" &&
-                  llmProvider !== "subscription" && (
-                    <span className="text-2xs font-medium opacity-80">
-                      {t("codingagentsettingssection.Installed")}
-                    </span>
-                  )}
-                {installState === "unknown" && (
-                  <span className="text-2xs font-medium opacity-70">
-                    {t("codingagentsettingssection.Unknown")}
-                  </span>
+                {isAuthenticating ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : needsAuth ? (
+                  <KeyRound className="h-3.5 w-3.5" aria-hidden />
+                ) : (
+                  <InstallStateIcon state={installState} label={statusLabel} />
                 )}
               </span>
             </Button>
           );
         })}
       </SettingsControls.SegmentedGroup>
+
+      {activeTab && activeNeedsAuth && (
+        <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg border border-warn/25 bg-warn/5 px-2.5 py-2 text-xs text-warn">
+          <div className="inline-flex min-w-0 items-center gap-1.5">
+            <KeyRound className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span className="truncate">
+              {t("codingagentsettingssection.AuthenticationRequired", {
+                defaultValue: "Authentication required",
+              })}
+            </span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={activeAuthenticating}
+            className="h-7 shrink-0 rounded-md px-2 text-xs font-semibold text-warn hover:bg-warn/10 hover:text-warn"
+            onClick={() => onAuth(activeTab)}
+          >
+            {activeAuthenticating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            ) : (
+              <KeyRound className="h-3.5 w-3.5" aria-hidden />
+            )}
+            {t("codingagentsettingssection.SignIn", {
+              defaultValue: "Sign in",
+            })}
+          </Button>
+        </div>
+      )}
 
       {authResult && (
         <div className="mt-1.5 flex flex-col gap-1.5">
@@ -119,8 +137,9 @@ export function AgentTabsSection({
               className="text-xs font-medium text-accent hover:underline w-fit"
             >
               {t("codingagentsettingssection.OpenSignInPage", {
-                defaultValue: "Open sign-in page →",
+                defaultValue: "Open sign-in page",
               })}
+              <ExternalLink className="inline h-3 w-3" aria-hidden />
             </a>
           )}
           {authResult.deviceCode && (
@@ -143,14 +162,18 @@ export function AgentTabsSection({
               </SettingsControls.MutedText>
               <Button
                 variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-2xs"
+                size="icon"
+                className="h-7 w-7 rounded-md"
+                aria-label={t("codingagentsettingssection.Retry", {
+                  defaultValue: "Retry",
+                })}
+                title={t("codingagentsettingssection.Retry", {
+                  defaultValue: "Retry",
+                })}
                 disabled={authInProgress !== null}
                 onClick={() => onAuth(authResult.agent)}
               >
-                {t("codingagentsettingssection.Retry", {
-                  defaultValue: "Retry",
-                })}
+                <RotateCw className="h-3.5 w-3.5" aria-hidden />
               </Button>
             </div>
           )}
@@ -164,22 +187,40 @@ export function AgentTabsSection({
             )}
         </div>
       )}
-
-      {preflightLoaded && (
-        <SettingsControls.MutedText className="mt-1.5">
-          {t("codingagentsettingssection.Availability")}{" "}
-          {AGENT_TABS.map((agent) => {
-            const installState = getInstallState(agent);
-            const label =
-              installState === "installed"
-                ? t("codingagentsettingssection.Installed")
-                : installState === "missing"
-                  ? t("codingagentsettingssection.NotInstalled")
-                  : t("codingagentsettingssection.Unknown");
-            return `${AGENT_LABELS[agent]}: ${label}`;
-          }).join(" · ")}
-        </SettingsControls.MutedText>
-      )}
     </>
+  );
+}
+
+function InstallStateIcon({
+  state,
+  label,
+}: {
+  state: "installed" | "missing" | "unknown";
+  label: string;
+}) {
+  if (state === "installed") {
+    return (
+      <CheckCircle2
+        className="h-3.5 w-3.5 text-ok"
+        aria-label={label}
+        role="img"
+      />
+    );
+  }
+  if (state === "missing") {
+    return (
+      <AlertTriangle
+        className="h-3.5 w-3.5 text-muted"
+        aria-label={label}
+        role="img"
+      />
+    );
+  }
+  return (
+    <CircleHelp
+      className="h-3.5 w-3.5 text-warn"
+      aria-label={label}
+      role="img"
+    />
   );
 }

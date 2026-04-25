@@ -200,6 +200,7 @@ vi.mock("@elizaos/ui", () => {
     SidebarPanel: passthrough,
     SidebarScrollRegion: passthrough,
     TooltipProvider: passthrough,
+    useIntervalWhenDocumentVisible: vi.fn(),
   };
 });
 

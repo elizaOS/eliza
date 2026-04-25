@@ -3103,6 +3103,7 @@ export const lifeAction: Action & {
               ? "this week"
               : "today";
         const feed = await service.getCalendarFeed(INTERNAL_URL, {
+          includeHiddenCalendars: true,
           timeMin: range.timeMin,
           timeMax: range.timeMax,
         });

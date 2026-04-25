@@ -17,7 +17,7 @@ export function RelationshipsCandidateMergesPanel({
 }) {
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [errors, setErrors] = useState<Map<string, string>>(new Map());
-  const candidates = graph.candidateMerges ?? [];
+  const candidates = graph.candidateMerges;
 
   if (candidates.length === 0) {
     return null;
@@ -94,9 +94,8 @@ export function RelationshipsCandidateMergesPanel({
         {candidates.map((candidate) => {
           const isPending = pending.has(candidate.id);
           const errorMessage = errors.get(candidate.id) ?? null;
-          const evidenceCount = Array.isArray(candidate.evidence.identityIds)
-            ? candidate.evidence.identityIds.length
-            : 0;
+          const evidenceCount = candidate.evidence.identityIds?.length ?? 0;
+          const evidenceText = evidenceSummary(candidate);
           return (
             <div
               key={candidate.id}
@@ -108,7 +107,9 @@ export function RelationshipsCandidateMergesPanel({
                 </MetaPill>
                 <MetaPill compact>{evidenceCount} evidence</MetaPill>
                 <MetaPill compact>
-                  {formatDateTime(candidate.proposedAt, { fallback: "n/a" })}
+                  {formatDateTime(candidate.proposedAt, {
+                    fallback: "No date",
+                  })}
                 </MetaPill>
               </div>
               <div className="mt-2 text-sm font-semibold text-txt">
@@ -116,9 +117,11 @@ export function RelationshipsCandidateMergesPanel({
                 <span className="text-muted">↔</span>{" "}
                 {personLabel(graph, candidate.entityB)}
               </div>
-              <div className="mt-1 text-xs leading-5 text-muted">
-                {evidenceSummary(candidate)}
-              </div>
+              {evidenceText !== "No evidence" ? (
+                <div className="mt-1 text-xs leading-5 text-muted">
+                  {evidenceText}
+                </div>
+              ) : null}
               {errorMessage ? (
                 <div className="mt-2 text-xs text-danger">{errorMessage}</div>
               ) : null}

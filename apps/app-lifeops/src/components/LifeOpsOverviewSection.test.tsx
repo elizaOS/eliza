@@ -210,6 +210,7 @@ function buildInboxMessage(
     sender: {
       avatarUrl: null,
       displayName: "Taylor",
+      email: null,
       id: "sender-1",
     },
     snippet: "Need your call back.",

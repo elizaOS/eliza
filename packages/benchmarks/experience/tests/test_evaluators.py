@@ -6,7 +6,7 @@ from elizaos_experience_bench.evaluators.reranking import RerankingEvaluator
 from elizaos_experience_bench.evaluators.retrieval import RetrievalEvaluator
 from elizaos_experience_bench.evaluators.learning import LearningCycleEvaluator
 from elizaos_experience_bench.generator import ExperienceGenerator
-from elizaos_plugin_experience.service import ExperienceService
+from elizaos_experience_bench.service import ExperienceQuery, ExperienceService
 
 
 def test_reranking_evaluator():
@@ -86,7 +86,6 @@ def test_retrieval_at_scale():
     assert svc.experience_count == 5000
 
     # Measure query latency
-    from elizaos_plugin_experience.types import ExperienceQuery
     latencies: list[float] = []
     for q in queries:
         t0 = time.time()

@@ -1,10 +1,3 @@
-/**
- * LifeOpsRemindersSection — grouped reminder list with urgency colours.
- *
- * Reminders are classified into Overdue / Soon / Today / Later buckets and
- * rendered with coloured dots + pill chips so status is legible at a glance.
- * Clicking a row sets the SelectionContext.
- */
 import { client, useApp } from "@elizaos/app-core";
 import type { LifeOpsActiveReminderView } from "@elizaos/shared/contracts/lifeops";
 import { Bell, Loader2, MessageSquare, RefreshCw } from "lucide-react";

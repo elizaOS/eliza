@@ -37,6 +37,26 @@ interface AutomationRoomChatPaneProps {
 const WORKFLOW_ACTION_KEYWORDS =
   /workflow|automation|cron|task|calendar|gmail|signal|telegram|discord|github|deploy|activate|deactivate|delete|create/i;
 
+async function getAutomationConversationMessages(
+  conversationId: string,
+): Promise<ConversationMessage[]> {
+  try {
+    const { messages } = await client.getConversationMessages(conversationId);
+    return messages;
+  } catch (error) {
+    const status = (error as { status?: number }).status;
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      status === 404 ||
+      message.toLowerCase().includes("not found") ||
+      message.includes("404")
+    ) {
+      throw error;
+    }
+    return [];
+  }
+}
+
 // ── Custom event shapes ──────────────────────────────────────────────────────
 
 interface WorkflowGeneratingDetail {
@@ -129,8 +149,9 @@ export function AutomationRoomChatPane({
         setConversationId(conversation.id);
         onConversationResolved?.(conversation);
 
-        const { messages: loadedMessages } =
-          await client.getConversationMessages(conversation.id);
+        const loadedMessages = await getAutomationConversationMessages(
+          conversation.id,
+        );
         if (cancelled) {
           return;
         }
@@ -152,8 +173,9 @@ export function AutomationRoomChatPane({
           }
           setConversationId(recreatedConversation.id);
           onConversationResolved?.(recreatedConversation);
-          const { messages: recreatedMessages } =
-            await client.getConversationMessages(recreatedConversation.id);
+          const recreatedMessages = await getAutomationConversationMessages(
+            recreatedConversation.id,
+          );
           if (!cancelled) {
             setMessages(recreatedMessages);
           }

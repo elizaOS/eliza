@@ -115,6 +115,7 @@ describe("page-scoped-conversations helper", () => {
         "Overview",
         "Personality",
         "Knowledge",
+        "Skills",
         "Experience",
         "Relationships",
       ]) {

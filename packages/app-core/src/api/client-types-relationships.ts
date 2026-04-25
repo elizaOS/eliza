@@ -10,6 +10,8 @@ export interface RelationshipsIdentityHandle {
   entityId: string;
   platform: string;
   handle: string;
+  status?: string | null;
+  verified?: boolean | null;
 }
 
 export interface RelationshipsIdentitySummary {
@@ -154,12 +156,19 @@ export interface RelationshipsGraphStats {
   totalIdentities: number;
 }
 
+export interface RelationshipsMergeCandidateEvidence {
+  platform?: string;
+  handle?: string;
+  notes?: string;
+  identityIds?: string[];
+}
+
 export interface RelationshipsMergeCandidate {
   id: string;
   entityA: string;
   entityB: string;
   confidence: number;
-  evidence: Record<string, unknown>;
+  evidence: RelationshipsMergeCandidateEvidence;
   status: "pending" | "accepted" | "rejected";
   proposedAt: string;
   resolvedAt?: string;
@@ -183,5 +192,9 @@ export interface RelationshipsActivityItem {
 
 export interface RelationshipsActivityResponse {
   activity: RelationshipsActivityItem[];
+  total: number;
   count: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
 }

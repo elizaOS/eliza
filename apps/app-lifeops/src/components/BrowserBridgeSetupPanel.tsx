@@ -414,6 +414,53 @@ function buildStateBadgeLabel(
   return "Download";
 }
 
+function BridgeDot({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "ok" | "warning" | "muted";
+}) {
+  const className =
+    tone === "ok"
+      ? "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]"
+      : tone === "warning"
+        ? "bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]"
+        : "bg-muted/45";
+  return (
+    <span
+      aria-label={label}
+      className={`inline-block h-2.5 w-2.5 shrink-0 rounded-full ${className}`}
+      role="img"
+      title={label}
+    />
+  );
+}
+
+function BridgeMeter({
+  connected,
+  total,
+}: {
+  connected: number;
+  total: number;
+}) {
+  const safeTotal = Math.max(total, 0);
+  const width =
+    safeTotal > 0
+      ? `${(Math.min(Math.max(connected, 0), safeTotal) / safeTotal) * 100}%`
+      : "0%";
+  return (
+    <span
+      aria-label={`${connected}/${total} browser profiles connected`}
+      className="inline-flex h-1.5 w-16 overflow-hidden rounded-full bg-bg/70"
+      role="img"
+      title={`${connected}/${total} browser profiles connected`}
+    >
+      <span className="h-full rounded-full bg-emerald-500" style={{ width }} />
+    </span>
+  );
+}
+
 function installHint(
   browser: BrowserBridgeKind,
   currentBrowser: BrowserBridgeKind | null,
@@ -473,8 +520,7 @@ function browserLabel(browser: BrowserBridgeKind): string {
 
 function browserSettingsReady(draft: SettingsDraft | null): boolean {
   return Boolean(
-    draft &&
-      draft.enabled &&
+    draft?.enabled &&
       draft.trackingMode !== "off" &&
       draft.allowBrowserControl &&
       !isFutureLocalDateTimeValue(draft.pauseUntilLocal),
@@ -1002,6 +1048,12 @@ export function BrowserBridgeSetupPanel() {
       ],
     };
   }, [companions.length, connectedCompanions.length, draft]);
+  const connectionTone =
+    connectionSummary.badgeVariant === "default"
+      ? "ok"
+      : connectionSummary.badgeVariant === "secondary"
+        ? "warning"
+        : "muted";
 
   const updateDraft = <K extends keyof SettingsDraft>(
     key: K,
@@ -1336,15 +1388,18 @@ export function BrowserBridgeSetupPanel() {
           const folderResult = await openPackageTarget("chrome_build", true, {
             silent: true,
           });
-          const managerOpened = preOpenedChromeManager
-            ? (navigatePreOpenedWindow(
-                preOpenedChromeManager,
-                CHROME_EXTENSIONS_URL,
-              ),
-              true)
-            : await openBrowserManager("chrome", {
-                silent: true,
-              });
+          let managerOpened: boolean;
+          if (preOpenedChromeManager) {
+            navigatePreOpenedWindow(
+              preOpenedChromeManager,
+              CHROME_EXTENSIONS_URL,
+            );
+            managerOpened = true;
+          } else {
+            managerOpened = await openBrowserManager("chrome", {
+              silent: true,
+            });
+          }
           setStatusMessage(
             managerOpened
               ? folderResult.opened
@@ -1576,26 +1631,24 @@ export function BrowserBridgeSetupPanel() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-start gap-2 text-muted">
-          <ShieldCheck className="mt-0.5 h-4 w-4" />
-          <div>
-            <div className="text-sm font-semibold text-txt">Your Browser</div>
-            <div className="text-xs text-muted">
-              Connect a real Chrome or Safari profile, or use Milady Desktop
-              Browser when you want built-in browser access.
-            </div>
-          </div>
+        <div className="flex items-center gap-2 text-muted">
+          <ShieldCheck className="h-4 w-4" aria-hidden />
+          <div className="text-sm font-semibold text-txt">Your Browser</div>
+          <BridgeDot label={connectionSummary.badge} tone={connectionTone} />
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 rounded-xl px-3 text-xs font-semibold"
-          disabled={loading}
-          onClick={() => void refresh({ preserveDraft: true })}
-        >
-          <RefreshCw className="mr-1.5 h-3 w-3" />
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 w-8 rounded-xl p-0"
+            disabled={loading}
+            onClick={() => void refresh({ preserveDraft: true })}
+            title="Refresh"
+            aria-label="Refresh"
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          </Button>
+        </div>
       </div>
       {statusMessage ? (
         <div className="rounded-2xl bg-card/22 px-3 py-2 text-xs text-txt">
@@ -1702,416 +1755,435 @@ export function BrowserBridgeSetupPanel() {
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <div className="space-y-4">
-          <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_94%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div className="text-sm font-semibold text-txt">
-                  {connectionSummary.title}
-                </div>
-                <div className="max-w-xl text-xs leading-relaxed text-muted">
-                  {connectionSummary.detail}
-                </div>
-              </div>
-              <Badge variant={connectionSummary.badgeVariant}>
-                {connectionSummary.badge}
-              </Badge>
-            </div>
-
-            {connectionSummary.steps.length > 0 ? (
-              <div className="mt-4 grid gap-2">
-                {connectionSummary.steps.map((step) => (
-                  <div
-                    key={step}
-                    className="rounded-2xl bg-card/20 px-3 py-2 text-xs text-muted"
-                  >
-                    {step}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            {primaryCompanion ? (
-              <div className="mt-4 rounded-2xl bg-card/20 px-3 py-2 text-xs text-muted">
-                Primary browser:{" "}
-                <span className="font-semibold text-txt">
-                  {primaryCompanion.browser === "safari" ? "Safari" : "Chrome"}{" "}
-                  / {primaryCompanion.profileLabel}
-                </span>
-                {" • "}
-                {permissionSummary(primaryCompanion.permissions)}
-              </div>
-            ) : null}
-
-            {isElectrobunRuntime() ? (
-              <div className="mt-4">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 rounded-xl px-3 text-xs font-semibold"
-                  onClick={() => void openDesktopBrowser()}
-                >
-                  <Monitor className="mr-1.5 h-3 w-3" />
-                  Open Milady Desktop Browser
-                </Button>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-sm font-semibold text-txt">
-              Connected Browsers
-            </div>
-            {companions.length > 0 ? (
-              <div className="grid gap-2">
-                {companions.map((companion) => (
-                  <div
-                    key={companion.id}
-                    className="rounded-2xl bg-card/16 px-3 py-3 text-xs"
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline" className="text-2xs">
-                        {companion.browser}/{companion.profileLabel}
-                      </Badge>
-                      <Badge variant="secondary" className="text-2xs">
-                        {companion.connectionState}
-                      </Badge>
-                      <span className="text-muted">
-                        {formatTimestamp(companion.lastSeenAt) ?? "Never seen"}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-muted">
-                      {permissionSummary(companion.permissions)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-2xl bg-card/14 px-3 py-3 text-xs text-muted">
-                No browser profiles have connected yet. After installing the
-                extension, open its popup once in the browser profile you want
-                LifeOps to use.
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div className="text-sm font-semibold text-txt">
-            Connect a Browser
-          </div>
-          <BrowserCompanionRow
-            currentBrowser={currentBrowser}
-            browser="chrome"
-            buildPath={packageStatus?.chromeBuildPath}
-            packagePath={packageStatus?.chromePackagePath}
-            localWorkspaceAvailable={Boolean(packageStatus?.extensionPath)}
-            releaseManifest={packageStatus?.releaseManifest ?? null}
-            busy={
-              buildingBrowser === "chrome" ||
-              pairingBrowser === "chrome" ||
-              installingBrowser === "chrome"
-            }
-            pairing={pairings.chrome ?? null}
-            onInstall={installCompanion}
-            onBuild={buildPackage}
-            onCreatePairing={createPairing}
-            onCopyPairing={copyPairing}
-            onDownload={downloadPackage}
-            onOpenTarget={openPackageTarget}
-            onOpenManager={openBrowserManager}
+      <details className="rounded-2xl border border-border/18 bg-card/12 px-4 py-3">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-txt">
+          <span>Browser profiles</span>
+          <BridgeMeter
+            connected={connectedCompanions.length}
+            total={companions.length}
           />
-          <BrowserCompanionRow
-            currentBrowser={currentBrowser}
-            browser="safari"
-            buildPath={packageStatus?.safariWebExtensionPath}
-            packagePath={packageStatus?.safariPackagePath}
-            appPath={packageStatus?.safariAppPath}
-            localWorkspaceAvailable={Boolean(packageStatus?.extensionPath)}
-            releaseManifest={packageStatus?.releaseManifest ?? null}
-            busy={
-              buildingBrowser === "safari" ||
-              pairingBrowser === "safari" ||
-              installingBrowser === "safari"
-            }
-            pairing={pairings.safari ?? null}
-            onInstall={installCompanion}
-            onBuild={buildPackage}
-            onCreatePairing={createPairing}
-            onCopyPairing={copyPairing}
-            onDownload={downloadPackage}
-            onOpenTarget={openPackageTarget}
-            onOpenManager={openBrowserManager}
-          />
+        </summary>
 
-          {(["chrome", "safari"] as const).map((browser) => {
-            const payload = pairingPayloads[browser];
-            if (!payload) {
-              return null;
-            }
-            return (
-              <div key={browser} className="space-y-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-txt">
-                    {browser === "chrome" ? "Chrome" : "Safari"} pairing
+        <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-border/18 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_94%,transparent),color-mix(in_srgb,var(--bg)_98%,transparent))] px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="text-sm font-semibold text-txt">
+                    {connectionSummary.title}
+                  </div>
+                  <div className="max-w-xl text-xs leading-relaxed text-muted">
+                    {connectionSummary.detail}
+                  </div>
+                </div>
+                <Badge variant={connectionSummary.badgeVariant}>
+                  {connectionSummary.badge}
+                </Badge>
+              </div>
+
+              {connectionSummary.steps.length > 0 ? (
+                <div className="mt-4 grid gap-2">
+                  {connectionSummary.steps.map((step) => (
+                    <div
+                      key={step}
+                      className="rounded-2xl bg-card/20 px-3 py-2 text-xs text-muted"
+                    >
+                      {step}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {primaryCompanion ? (
+                <div className="mt-4 rounded-2xl bg-card/20 px-3 py-2 text-xs text-muted">
+                  Primary browser:{" "}
+                  <span className="font-semibold text-txt">
+                    {primaryCompanion.browser === "safari"
+                      ? "Safari"
+                      : "Chrome"}{" "}
+                    / {primaryCompanion.profileLabel}
                   </span>
+                  {" • "}
+                  {permissionSummary(primaryCompanion.permissions)}
+                </div>
+              ) : null}
+
+              {isElectrobunRuntime() ? (
+                <div className="mt-4">
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => void copyPairing(browser)}
+                    className="h-8 rounded-xl px-3 text-xs font-semibold"
+                    onClick={() => void openDesktopBrowser()}
                   >
-                    <Copy className="mr-1.5 h-3 w-3" />
-                    Copy
+                    <Monitor className="mr-1.5 h-3 w-3" />
+                    Open Milady Desktop Browser
                   </Button>
                 </div>
-                <Textarea
-                  readOnly
-                  rows={5}
-                  value={payload}
-                  className="font-mono text-xs"
-                />
-                <div className="text-[11px] text-muted">
-                  Manual fallback only. Automatic pairing should work as soon as
-                  the extension popup can see this app in the same browser
-                  profile.
-                </div>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm font-semibold text-txt">
+                Connected Browsers
               </div>
-            );
-          })}
+              {companions.length > 0 ? (
+                <div className="grid gap-2">
+                  {companions.map((companion) => (
+                    <div
+                      key={companion.id}
+                      className="rounded-2xl bg-card/16 px-3 py-3 text-xs"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="text-2xs">
+                          {companion.browser}/{companion.profileLabel}
+                        </Badge>
+                        <Badge variant="secondary" className="text-2xs">
+                          {companion.connectionState}
+                        </Badge>
+                        <span className="text-muted">
+                          {formatTimestamp(companion.lastSeenAt) ??
+                            "Never seen"}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-muted">
+                        {permissionSummary(companion.permissions)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl bg-card/14 px-3 py-3 text-xs text-muted">
+                  No browser profiles have connected yet. After installing the
+                  extension, open its popup once in the browser profile you want
+                  LifeOps to use.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="text-sm font-semibold text-txt">
+              Connect a Browser
+            </div>
+            <BrowserCompanionRow
+              currentBrowser={currentBrowser}
+              browser="chrome"
+              buildPath={packageStatus?.chromeBuildPath}
+              packagePath={packageStatus?.chromePackagePath}
+              localWorkspaceAvailable={Boolean(packageStatus?.extensionPath)}
+              releaseManifest={packageStatus?.releaseManifest ?? null}
+              busy={
+                buildingBrowser === "chrome" ||
+                pairingBrowser === "chrome" ||
+                installingBrowser === "chrome"
+              }
+              pairing={pairings.chrome ?? null}
+              onInstall={installCompanion}
+              onBuild={buildPackage}
+              onCreatePairing={createPairing}
+              onCopyPairing={copyPairing}
+              onDownload={downloadPackage}
+              onOpenTarget={openPackageTarget}
+              onOpenManager={openBrowserManager}
+            />
+            <BrowserCompanionRow
+              currentBrowser={currentBrowser}
+              browser="safari"
+              buildPath={packageStatus?.safariWebExtensionPath}
+              packagePath={packageStatus?.safariPackagePath}
+              appPath={packageStatus?.safariAppPath}
+              localWorkspaceAvailable={Boolean(packageStatus?.extensionPath)}
+              releaseManifest={packageStatus?.releaseManifest ?? null}
+              busy={
+                buildingBrowser === "safari" ||
+                pairingBrowser === "safari" ||
+                installingBrowser === "safari"
+              }
+              pairing={pairings.safari ?? null}
+              onInstall={installCompanion}
+              onBuild={buildPackage}
+              onCreatePairing={createPairing}
+              onCopyPairing={copyPairing}
+              onDownload={downloadPackage}
+              onOpenTarget={openPackageTarget}
+              onOpenManager={openBrowserManager}
+            />
+
+            {(["chrome", "safari"] as const).map((browser) => {
+              const payload = pairingPayloads[browser];
+              if (!payload) {
+                return null;
+              }
+              return (
+                <div key={browser} className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-txt">
+                      {browser === "chrome" ? "Chrome" : "Safari"} pairing
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void copyPairing(browser)}
+                    >
+                      <Copy className="mr-1.5 h-3 w-3" />
+                      Copy
+                    </Button>
+                  </div>
+                  <Textarea
+                    readOnly
+                    rows={5}
+                    value={payload}
+                    className="font-mono text-xs"
+                  />
+                  <div className="text-[11px] text-muted">
+                    Manual fallback only. Automatic pairing should work as soon
+                    as the extension popup can see this app in the same browser
+                    profile.
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
 
-      <details className="rounded-3xl border border-border/18 bg-card/12 px-5 py-4">
-        <summary className="cursor-pointer list-none text-sm font-semibold text-txt">
-          Advanced Browser Rules
-        </summary>
-        <div className="mt-4 space-y-4">
-          {draft ? (
-            <>
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs text-muted">
-                  These settings control what LifeOps is allowed to see or
-                  automate in Your Browser.
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 rounded-xl px-3 text-xs font-semibold"
-                  disabled={savingSettings || loading}
-                  onClick={() => void saveSettings()}
-                >
-                  {savingSettings ? "Saving..." : "Save"}
-                </Button>
-              </div>
-
-              <div className="divide-y divide-border/18">
-                <BrowserSettingRow
-                  checked={draft.enabled}
-                  hint="Master switch for owner-side browser visibility."
-                  label="Enabled"
-                  onCheckedChange={(checked) => updateDraft("enabled", checked)}
-                />
-                <BrowserSettingRow
-                  checked={draft.allowBrowserControl}
-                  hint="Required if LifeOps should open Discord, switch tabs, or navigate for you."
-                  label="Browser control"
-                  onCheckedChange={(checked) =>
-                    updateDraft("allowBrowserControl", checked)
-                  }
-                />
-                <BrowserSettingRow
-                  checked={draft.requireConfirmationForAccountAffecting}
-                  hint="Ask before actions that could change accounts or submit data."
-                  label="Require confirmation"
-                  onCheckedChange={(checked) =>
-                    updateDraft(
-                      "requireConfirmationForAccountAffecting",
-                      checked,
-                    )
-                  }
-                />
-                <BrowserSettingRow
-                  checked={draft.incognitoEnabled}
-                  hint="Include incognito windows when the browser has granted that permission."
-                  label="Incognito"
-                  onCheckedChange={(checked) =>
-                    updateDraft("incognitoEnabled", checked)
-                  }
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted">Tracking</Label>
-                  <div className="text-[11px] text-muted">
-                    Choose whether LifeOps sees only the current tab or multiple
-                    active tabs.
+        <details className="mt-4 rounded-2xl border border-border/18 bg-card/12 px-4 py-3">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-txt">
+            Advanced Browser Rules
+          </summary>
+          <div className="mt-4 space-y-4">
+            {draft ? (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs text-muted">
+                    These settings control what LifeOps is allowed to see or
+                    automate in Your Browser.
                   </div>
-                  <SegmentedControl<BrowserBridgeTrackingMode>
-                    value={draft.trackingMode}
-                    onValueChange={(mode) => updateDraft("trackingMode", mode)}
-                    items={(["off", "current_tab", "active_tabs"] as const).map(
-                      (mode) => ({
-                        value: mode,
-                        label: trackingModeLabel(mode),
-                      }),
-                    )}
-                    className="w-full max-w-full border-border/28 bg-transparent p-0.5"
-                    buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted">Site access</Label>
-                  <div className="text-[11px] text-muted">
-                    Restrict LifeOps to the current site, an allow-list, or all
-                    sites.
-                  </div>
-                  <SegmentedControl<BrowserBridgeSiteAccessMode>
-                    value={draft.siteAccessMode}
-                    onValueChange={(mode) =>
-                      updateDraft("siteAccessMode", mode)
-                    }
-                    items={BROWSER_BRIDGE_SITE_ACCESS_MODES.map((mode) => ({
-                      value: mode,
-                      label: siteAccessModeLabel(mode),
-                    }))}
-                    className="w-full max-w-full border-border/28 bg-transparent p-0.5"
-                    buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="browser-bridge-max-tabs"
-                    className="text-xs text-muted"
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 rounded-xl px-3 text-xs font-semibold"
+                    disabled={savingSettings || loading}
+                    onClick={() => void saveSettings()}
                   >
-                    Max remembered tabs
-                  </Label>
-                  <div className="text-[11px] text-muted">
-                    Controls how much recent browser context LifeOps keeps
-                    around.
-                  </div>
-                  <Input
-                    id="browser-bridge-max-tabs"
-                    value={draft.maxRememberedTabs}
-                    onChange={(event) =>
+                    {savingSettings ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+
+                <div className="divide-y divide-border/18">
+                  <BrowserSettingRow
+                    checked={draft.enabled}
+                    hint="Master switch for owner-side browser visibility."
+                    label="Enabled"
+                    onCheckedChange={(checked) =>
+                      updateDraft("enabled", checked)
+                    }
+                  />
+                  <BrowserSettingRow
+                    checked={draft.allowBrowserControl}
+                    hint="Required if LifeOps should open Discord, switch tabs, or navigate for you."
+                    label="Browser control"
+                    onCheckedChange={(checked) =>
+                      updateDraft("allowBrowserControl", checked)
+                    }
+                  />
+                  <BrowserSettingRow
+                    checked={draft.requireConfirmationForAccountAffecting}
+                    hint="Ask before actions that could change accounts or submit data."
+                    label="Require confirmation"
+                    onCheckedChange={(checked) =>
                       updateDraft(
-                        "maxRememberedTabs",
-                        event.currentTarget.value,
+                        "requireConfirmationForAccountAffecting",
+                        checked,
                       )
                     }
-                    inputMode="numeric"
+                  />
+                  <BrowserSettingRow
+                    checked={draft.incognitoEnabled}
+                    hint="Include incognito windows when the browser has granted that permission."
+                    label="Incognito"
+                    onCheckedChange={(checked) =>
+                      updateDraft("incognitoEnabled", checked)
+                    }
                   />
                 </div>
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="browser-bridge-pause-until"
-                    className="text-xs text-muted"
-                  >
-                    Pause until
-                  </Label>
-                  <div className="text-[11px] text-muted">
-                    Temporarily stop browser visibility without disconnecting
-                    your paired browser.
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted">Tracking</Label>
+                    <div className="text-[11px] text-muted">
+                      Choose whether LifeOps sees only the current tab or
+                      multiple active tabs.
+                    </div>
+                    <SegmentedControl<BrowserBridgeTrackingMode>
+                      value={draft.trackingMode}
+                      onValueChange={(mode) =>
+                        updateDraft("trackingMode", mode)
+                      }
+                      items={(
+                        ["off", "current_tab", "active_tabs"] as const
+                      ).map((mode) => ({
+                        value: mode,
+                        label: trackingModeLabel(mode),
+                      }))}
+                      className="w-full max-w-full border-border/28 bg-transparent p-0.5"
+                      buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
+                    />
                   </div>
-                  <div className="flex flex-wrap gap-1.5 sm:flex-nowrap">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted">Site access</Label>
+                    <div className="text-[11px] text-muted">
+                      Restrict LifeOps to the current site, an allow-list, or
+                      all sites.
+                    </div>
+                    <SegmentedControl<BrowserBridgeSiteAccessMode>
+                      value={draft.siteAccessMode}
+                      onValueChange={(mode) =>
+                        updateDraft("siteAccessMode", mode)
+                      }
+                      items={BROWSER_BRIDGE_SITE_ACCESS_MODES.map((mode) => ({
+                        value: mode,
+                        label: siteAccessModeLabel(mode),
+                      }))}
+                      className="w-full max-w-full border-border/28 bg-transparent p-0.5"
+                      buttonClassName="min-h-8 flex-1 justify-center px-2.5 py-1.5 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="browser-bridge-max-tabs"
+                      className="text-xs text-muted"
+                    >
+                      Max remembered tabs
+                    </Label>
+                    <div className="text-[11px] text-muted">
+                      Controls how much recent browser context LifeOps keeps
+                      around.
+                    </div>
                     <Input
-                      id="browser-bridge-pause-until"
-                      type="datetime-local"
-                      value={draft.pauseUntilLocal}
+                      id="browser-bridge-max-tabs"
+                      value={draft.maxRememberedTabs}
                       onChange={(event) =>
                         updateDraft(
-                          "pauseUntilLocal",
+                          "maxRememberedTabs",
                           event.currentTarget.value,
                         )
                       }
-                      className="min-w-0 flex-1"
+                      inputMode="numeric"
                     />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-9 rounded-xl px-3 text-xs font-semibold"
-                      onClick={() =>
+                  </div>
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="browser-bridge-pause-until"
+                      className="text-xs text-muted"
+                    >
+                      Pause until
+                    </Label>
+                    <div className="text-[11px] text-muted">
+                      Temporarily stop browser visibility without disconnecting
+                      your paired browser.
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 sm:flex-nowrap">
+                      <Input
+                        id="browser-bridge-pause-until"
+                        type="datetime-local"
+                        value={draft.pauseUntilLocal}
+                        onChange={(event) =>
+                          updateDraft(
+                            "pauseUntilLocal",
+                            event.currentTarget.value,
+                          )
+                        }
+                        className="min-w-0 flex-1"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 rounded-xl px-3 text-xs font-semibold"
+                        onClick={() =>
+                          updateDraft(
+                            "pauseUntilLocal",
+                            formatDateTimeLocalValue(
+                              new Date(
+                                Date.now() + 60 * 60 * 1000,
+                              ).toISOString(),
+                            ),
+                          )
+                        }
+                      >
+                        1h
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 rounded-xl px-3 text-xs font-semibold"
+                        onClick={() => updateDraft("pauseUntilLocal", "")}
+                      >
+                        Now
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="browser-bridge-granted-origins"
+                      className="text-xs text-muted"
+                    >
+                      Granted origins
+                    </Label>
+                    <div className="text-[11px] text-muted">
+                      When Site access is set to Granted sites, only these
+                      origins are readable.
+                    </div>
+                    <Textarea
+                      id="browser-bridge-granted-origins"
+                      rows={3}
+                      placeholder="https://mail.google.com"
+                      value={draft.grantedOriginsText}
+                      onChange={(event) =>
                         updateDraft(
-                          "pauseUntilLocal",
-                          formatDateTimeLocalValue(
-                            new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-                          ),
+                          "grantedOriginsText",
+                          event.currentTarget.value,
                         )
                       }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label
+                      htmlFor="browser-bridge-blocked-origins"
+                      className="text-xs text-muted"
                     >
-                      1h
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-9 rounded-xl px-3 text-xs font-semibold"
-                      onClick={() => updateDraft("pauseUntilLocal", "")}
-                    >
-                      Now
-                    </Button>
+                      Blocked origins
+                    </Label>
+                    <div className="text-[11px] text-muted">
+                      These origins are never readable, even if broader site
+                      access is enabled.
+                    </div>
+                    <Textarea
+                      id="browser-bridge-blocked-origins"
+                      rows={3}
+                      placeholder="https://bank.example.com"
+                      value={draft.blockedOriginsText}
+                      onChange={(event) =>
+                        updateDraft(
+                          "blockedOriginsText",
+                          event.currentTarget.value,
+                        )
+                      }
+                    />
                   </div>
                 </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="browser-bridge-granted-origins"
-                    className="text-xs text-muted"
-                  >
-                    Granted origins
-                  </Label>
-                  <div className="text-[11px] text-muted">
-                    When Site access is set to Granted sites, only these origins
-                    are readable.
-                  </div>
-                  <Textarea
-                    id="browser-bridge-granted-origins"
-                    rows={3}
-                    placeholder="https://mail.google.com"
-                    value={draft.grantedOriginsText}
-                    onChange={(event) =>
-                      updateDraft(
-                        "grantedOriginsText",
-                        event.currentTarget.value,
-                      )
-                    }
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label
-                    htmlFor="browser-bridge-blocked-origins"
-                    className="text-xs text-muted"
-                  >
-                    Blocked origins
-                  </Label>
-                  <div className="text-[11px] text-muted">
-                    These origins are never readable, even if broader site
-                    access is enabled.
-                  </div>
-                  <Textarea
-                    id="browser-bridge-blocked-origins"
-                    rows={3}
-                    placeholder="https://bank.example.com"
-                    value={draft.blockedOriginsText}
-                    onChange={(event) =>
-                      updateDraft(
-                        "blockedOriginsText",
-                        event.currentTarget.value,
-                      )
-                    }
-                  />
-                </div>
-              </div>
-            </>
-          ) : loading ? (
-            <div className="text-xs text-muted">Loading</div>
-          ) : null}
-        </div>
+              </>
+            ) : loading ? (
+              <div className="text-xs text-muted">Loading</div>
+            ) : null}
+          </div>
+        </details>
       </details>
     </div>
   );

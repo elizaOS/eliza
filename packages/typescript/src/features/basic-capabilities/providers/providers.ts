@@ -7,9 +7,7 @@ import type {
 } from "../../../types/index.ts";
 import { resolveProviderContexts } from "../../../utils/context-catalog";
 import {
-	CONTEXT_ROUTING_STATE_KEY,
-	getActiveRoutingContexts,
-	parseContextRoutingMetadata,
+	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "../../../utils/context-routing.ts";
 import { looksLikeNonActionableChatter } from "./non-actionable-chatter.ts";
@@ -41,9 +39,7 @@ export const providersProvider: Provider = {
 				(left.position ?? 0) - (right.position ?? 0) ||
 				left.name.localeCompare(right.name),
 		);
-		const activeContexts = getActiveRoutingContexts(
-			parseContextRoutingMetadata(state?.values?.[CONTEXT_ROUTING_STATE_KEY]),
-		);
+		const activeContexts = getActiveRoutingContextsForTurn(state, message);
 		const isInContext = (provider: Provider) =>
 			shouldIncludeByContext(resolveProviderContexts(provider), activeContexts);
 		const contextFilteredProviders = allProviders.filter(isInContext);

@@ -190,6 +190,8 @@ export interface AppBootConfig {
   branding: Partial<BrandingConfig>;
   /** Static asset base URL for CDN-backed runtime assets. */
   assetBaseUrl?: string;
+  /** Apps starred and pinned by default when no user preference is saved. */
+  defaultApps?: readonly string[];
   /** API base URL — replaces window.__ELIZAOS_API_BASE__. */
   apiBase?: string;
   /** API auth token — replaces window.__ELIZAOS_API_TOKEN__. */

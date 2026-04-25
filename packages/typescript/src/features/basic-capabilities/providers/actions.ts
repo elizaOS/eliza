@@ -9,9 +9,7 @@ import type {
 } from "../../../types/index.ts";
 import { resolveActionContexts } from "../../../utils/context-catalog";
 import {
-	CONTEXT_ROUTING_STATE_KEY,
-	getActiveRoutingContexts,
-	parseContextRoutingMetadata,
+	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "../../../utils/context-routing.ts";
 import { buildDeterministicSeed } from "../../../utils/deterministic";
@@ -68,9 +66,7 @@ export const actionsProvider: Provider = {
 	description: spec.description,
 	position: spec.position ?? -1,
 	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
-		const activeContexts = getActiveRoutingContexts(
-			parseContextRoutingMetadata(state?.values?.[CONTEXT_ROUTING_STATE_KEY]),
-		);
+		const activeContexts = getActiveRoutingContextsForTurn(state, message);
 
 		// Get actions that validate for this message
 		const actionPromises = runtime.actions.map(async (action: Action) => {

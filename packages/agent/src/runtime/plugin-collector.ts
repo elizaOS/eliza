@@ -19,6 +19,8 @@ import {
 import {
   hasExplicitCanonicalRuntimeConfig,
   migrateLegacyRuntimeConfig,
+  resolveDeploymentTargetInConfig,
+  resolveServiceRoutingInConfig,
 } from "@elizaos/shared/contracts/onboarding";
 import type { ElizaConfig } from "../config/config.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
@@ -111,6 +113,19 @@ export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
   ELIZAOS_CLOUD_ENABLED: "@elizaos/plugin-elizacloud",
 };
 
+const LOCAL_MODEL_PROVIDER_PLUGINS = new Set<string>([
+  "@elizaos/plugin-ollama",
+  "@elizaos/plugin-local-ai",
+]);
+
+const REMOTE_MODEL_PROVIDER_PLUGINS = new Set(
+  Object.values(PROVIDER_PLUGIN_MAP).filter(
+    (pluginName) =>
+      pluginName !== "@elizaos/plugin-elizacloud" &&
+      !LOCAL_MODEL_PROVIDER_PLUGINS.has(pluginName),
+  ),
+);
+
 /**
  * Optional feature plugins keyed by feature name.
  *
@@ -191,7 +206,16 @@ export function collectPluginNames(
   config: ElizaConfig,
   reasons?: PluginLoadReasons,
 ): Set<string> {
+  const legacyLocalOnlyInference =
+    config.cloud?.inferenceMode === "local" ||
+    config.cloud?.services?.inference === false;
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
+  const deploymentTarget = resolveDeploymentTargetInConfig(
+    config as Record<string, unknown>,
+  );
+  const serviceRouting = resolveServiceRoutingInConfig(
+    config as Record<string, unknown>,
+  );
   const shellPluginDisabled = config.features?.shellEnabled === false;
   const localEmbeddingsExplicitlyDisabled = (() => {
     const raw = process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
@@ -207,6 +231,11 @@ export function collectPluginNames(
   );
   const isCloudContainer = process.env.ELIZA_CLOUD_PROVISIONED === "1";
   const cloudExplicitlyDisabled = config.cloud?.enabled === false;
+  const localOnlyInference =
+    legacyLocalOnlyInference ||
+    (cloudExplicitlyDisabled &&
+      deploymentTarget.runtime === "local" &&
+      !serviceRouting?.llmText);
   const cloudPluginRequestedByEnv =
     !hasCanonicalRuntimeConfig &&
     !cloudExplicitlyDisabled &&
@@ -344,18 +373,18 @@ export function collectPluginNames(
   }
 
   const applyProviderPrecedence = (): void => {
-    // Provider precedence:
-    // 1) ElizaCloud for inference (when enabled AND inferenceMode is "cloud")
-    // 2) direct provider plugins (api-key/env based)
-    //
-    // When inferenceMode is "byok" or "local", cloud stays loaded for
-    // RPC/services but direct AI provider plugins are preserved so the
-    // user's own API keys (e.g. Anthropic) handle model inference.
+    if (localOnlyInference) {
+      pluginsToLoad.delete("@elizaos/plugin-elizacloud");
+      for (const pluginName of REMOTE_MODEL_PROVIDER_PLUGINS) {
+        pluginsToLoad.delete(pluginName);
+      }
+      return;
+    }
+
     if (cloudEffectivelyEnabled) {
       pluginsToLoad.add("@elizaos/plugin-elizacloud");
 
       if (cloudHandlesInference) {
-        // Cloud handles ALL model calls — remove direct AI provider plugins.
         const directProviders = new Set(Object.values(PROVIDER_PLUGIN_MAP));
         directProviders.delete("@elizaos/plugin-elizacloud");
         for (const p of directProviders) {
@@ -363,8 +392,6 @@ export function collectPluginNames(
         }
         return;
       }
-      // inferenceMode is "byok" or "local" — keep direct provider plugins.
-      // Cloud plugin stays loaded for non-inference cloud services (RPC, media, etc.)
       return;
     }
 

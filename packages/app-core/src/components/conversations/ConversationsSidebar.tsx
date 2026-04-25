@@ -12,6 +12,7 @@ import {
   SidebarScrollRegion,
   Switch,
   TooltipProvider,
+  useIntervalWhenDocumentVisible,
 } from "@elizaos/ui";
 import {
   MessagesSquare,
@@ -209,37 +210,35 @@ export function ConversationsSidebar({
     });
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const response = await client.getInboxChats();
-        if (cancelled) return;
-        setInboxChats(
-          response.chats.map((chat) => ({
-            avatarUrl: chat.avatarUrl,
-            canSend: chat.canSend,
-            id: chat.id,
-            lastMessageAt: chat.lastMessageAt,
-            roomType: chat.roomType,
-            source: chat.source,
-            transportSource: chat.transportSource,
-            title: chat.title,
-            worldId: chat.worldId,
-            worldLabel: chat.worldLabel,
-          })),
-        );
-      } catch {
-        // Keep the last successful snapshot on transient failures.
-      }
-    };
-    void load();
-    const timer = window.setInterval(load, INBOX_CHATS_REFRESH_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
+  const loadInboxChats = useCallback(async () => {
+    try {
+      const response = await client.getInboxChats();
+      setInboxChats(
+        response.chats.map((chat) => ({
+          avatarUrl: chat.avatarUrl,
+          canSend: chat.canSend,
+          id: chat.id,
+          lastMessageAt: chat.lastMessageAt,
+          roomType: chat.roomType,
+          source: chat.source,
+          transportSource: chat.transportSource,
+          title: chat.title,
+          worldId: chat.worldId,
+          worldLabel: chat.worldLabel,
+        })),
+      );
+    } catch {
+      // Keep the last successful snapshot on transient failures.
+    }
   }, []);
+
+  useEffect(() => {
+    void loadInboxChats();
+  }, [loadInboxChats]);
+
+  useIntervalWhenDocumentVisible(() => {
+    void loadInboxChats();
+  }, INBOX_CHATS_REFRESH_MS);
 
   useEffect(() => {
     const candidates = conversations.filter(
@@ -729,6 +728,7 @@ export function ConversationsSidebar({
       <AppPageSidebar
         testId="conversations-sidebar"
         variant={mobile ? "mobile" : isGameModal ? "game-modal" : "default"}
+        className={mobile || isGameModal ? "!mt-0" : undefined}
         collapsible={!mobile && !isGameModal}
         collapsed={!mobile && !isGameModal ? sidebarCollapsed : undefined}
         onCollapsedChange={

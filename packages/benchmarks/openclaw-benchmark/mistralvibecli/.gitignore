@@ -5,15 +5,7 @@
 # Nix/direnv
 .direnv/
 result
-.isolated_home/*
-!.isolated_home/.vibe/
-.isolated_home/.vibe/.env
-.isolated_home/.vibe/.env.*
-.isolated_home/.vibe/sessions/
-.isolated_home/.vibe/cache/
-.isolated_home/.vibe/logs/
-.isolated_home/.vibe/vibehistory
-.isolated_home/.vibe/update_cache.json
+.isolated_home/
 
 
 

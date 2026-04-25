@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
+import { useWorkspaceMobileSidebarControls } from "@elizaos/ui";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AppWorkspaceChrome,
@@ -114,6 +115,22 @@ describe("AppWorkspaceChrome", () => {
     expect(expandButton.className).not.toContain("border-border/40");
   });
 
+  it("omits the right chat rail when the main surface owns chat", () => {
+    render(
+      <AppWorkspaceChrome
+        testId="game-shell"
+        chatScope="page-apps"
+        chatDisabled
+        main={<div data-testid="game-main">Game content</div>}
+      />,
+    );
+
+    expect(screen.getByTestId("game-main")).toBeTruthy();
+    expect(screen.queryByTestId("page-scoped-chat")).toBeNull();
+    expect(screen.queryByTestId("game-shell-chat-sidebar")).toBeNull();
+    expect(screen.queryByTestId("game-shell-chat-collapse")).toBeNull();
+  });
+
   it("does not reserve right-chat width on mobile until the user opens it", () => {
     useMediaQueryMock.mockImplementation(
       (query: string) => query === "(max-width: 639px)",
@@ -133,13 +150,136 @@ describe("AppWorkspaceChrome", () => {
     expect(screen.queryByTestId("mobile-chat")).toBeNull();
     expect(screen.queryByTestId("mobile-shell-chat-resize-handle")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("mobile-shell-chat-expand"));
+    expect(
+      screen.getByTestId("app-workspace-mobile-pane-switcher"),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("app-workspace-mobile-pane-chat"));
 
     const openSidebar = screen.getByTestId("mobile-shell-chat-sidebar");
-    expect(openSidebar.className).toContain("fixed");
+    expect(openSidebar.className).toContain("w-full");
+    expect(openSidebar.className).toContain("flex-1");
     expect(openSidebar.getAttribute("style") ?? "").not.toContain("width");
-    expect(screen.getByTestId("mobile-shell-chat-backdrop")).toBeTruthy();
+    expect(screen.queryByTestId("mobile-shell-chat-backdrop")).toBeNull();
     expect(screen.getByTestId("mobile-chat")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("app-workspace-mobile-pane-main"));
+
+    const closedSidebar = screen.getByTestId("mobile-shell-chat-sidebar");
+    expect(closedSidebar.getAttribute("data-collapsed")).not.toBeNull();
+    expect(screen.queryByTestId("mobile-chat")).toBeNull();
+    expect(screen.getByTestId("app-workspace-mobile-pane-chat")).toBeTruthy();
+  });
+
+  it("splits mobile controls into left sidebar, content, and right chat", async () => {
+    useMediaQueryMock.mockImplementation(
+      (query: string) => query === "(max-width: 639px)",
+    );
+
+    function RegisteredSidebar() {
+      const controls = useWorkspaceMobileSidebarControls();
+      const [open, setOpen] = useState(false);
+
+      useEffect(() => {
+        return controls?.register({
+          id: "test-sidebar",
+          label: "Test sidebar",
+          open,
+          setOpen,
+        });
+      }, [controls, open]);
+
+      return (
+        <div data-testid={open ? "registered-sidebar-open" : "main-content"}>
+          {open ? "Sidebar" : "Main"}
+        </div>
+      );
+    }
+
+    render(
+      <AppWorkspaceChrome
+        testId="three-pane-shell"
+        main={<RegisteredSidebar />}
+        chat={<div data-testid="three-pane-chat">Chat content</div>}
+      />,
+    );
+
+    const leftButton = await screen.findByTestId(
+      "app-workspace-mobile-pane-left",
+    );
+    expect(screen.getByTestId("app-workspace-mobile-pane-main")).toBeTruthy();
+    expect(screen.getByTestId("app-workspace-mobile-pane-chat")).toBeTruthy();
+
+    fireEvent.click(leftButton);
+
+    expect(screen.getByTestId("registered-sidebar-open")).toBeTruthy();
+    expect(leftButton.getAttribute("aria-current")).toBe("page");
+
+    fireEvent.click(screen.getByTestId("app-workspace-mobile-pane-main"));
+
+    expect(screen.getByTestId("main-content")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("app-workspace-mobile-pane-main")
+        .getAttribute("aria-current"),
+    ).toBe("page");
+
+    fireEvent.click(screen.getByTestId("app-workspace-mobile-pane-chat"));
+
+    expect(screen.getByTestId("three-pane-chat")).toBeTruthy();
+    expect(screen.queryByTestId("registered-sidebar-open")).toBeNull();
+    expect(
+      screen
+        .getByTestId("app-workspace-mobile-pane-chat")
+        .getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
+  it("omits the mobile right pane button when chat is disabled", async () => {
+    useMediaQueryMock.mockImplementation(
+      (query: string) => query === "(max-width: 639px)",
+    );
+
+    function RegisteredSidebar() {
+      const controls = useWorkspaceMobileSidebarControls();
+      const [open, setOpen] = useState(false);
+
+      useEffect(() => {
+        return controls?.register({
+          id: "disabled-chat-sidebar",
+          open,
+          setOpen,
+        });
+      }, [controls, open]);
+
+      return (
+        <div data-testid={open ? "disabled-chat-sidebar-open" : "main-only"}>
+          {open ? "Sidebar" : "Main"}
+        </div>
+      );
+    }
+
+    render(
+      <AppWorkspaceChrome
+        chatDisabled
+        testId="disabled-chat-shell"
+        main={<RegisteredSidebar />}
+      />,
+    );
+
+    const leftButton = await screen.findByTestId(
+      "app-workspace-mobile-pane-left",
+    );
+
+    expect(screen.getByTestId("app-workspace-mobile-pane-main")).toBeTruthy();
+    expect(screen.queryByTestId("app-workspace-mobile-pane-chat")).toBeNull();
+
+    fireEvent.click(leftButton);
+    expect(screen.getByTestId("disabled-chat-sidebar-open")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("app-workspace-mobile-pane-main"));
+    expect(screen.getByTestId("main-only")).toBeTruthy();
+    expect(screen.queryByTestId("disabled-chat-shell-chat-sidebar")).toBeNull();
   });
 
   it("lets main-pane content open chat through the workspace chrome context", () => {
@@ -174,7 +314,12 @@ describe("AppWorkspaceChrome", () => {
     fireEvent.click(screen.getByTestId("main-open-chat"));
 
     expect(screen.getByTestId("main-chat")).toBeTruthy();
-    expect(screen.getByTestId("main-chat-shell-chat-backdrop")).toBeTruthy();
+    expect(screen.queryByTestId("main-chat-shell-chat-backdrop")).toBeNull();
+    expect(
+      screen
+        .getByTestId("app-workspace-mobile-pane-chat")
+        .getAttribute("aria-current"),
+    ).toBe("page");
   });
 
   it("lets chat content own the collapse control row", () => {

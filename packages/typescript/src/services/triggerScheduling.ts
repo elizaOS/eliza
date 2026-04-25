@@ -263,6 +263,14 @@ function resolveCronTiming(
 	};
 }
 
+function resolveEventTiming(nowMs: number): TriggerTiming {
+	return {
+		updatedAt: nowMs,
+		updateIntervalMs: DISABLED_TRIGGER_INTERVAL_MS,
+		nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS,
+	};
+}
+
 export function resolveTriggerTiming(
 	trigger: TriggerConfig,
 	nowMs: number,
@@ -275,6 +283,8 @@ export function resolveTriggerTiming(
 			return resolveOnceTiming(trigger, nowMs);
 		case "cron":
 			return resolveCronTiming(trigger, nowMs);
+		case "event":
+			return resolveEventTiming(nowMs);
 		default: {
 			const exhaustiveCheck: TriggerType = trigger.triggerType;
 			throw new Error(`Unsupported trigger type: ${exhaustiveCheck}`);

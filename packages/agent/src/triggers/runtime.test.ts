@@ -237,3 +237,94 @@ describe("executeTriggerTask — text-kind regression", () => {
     expect(createMemory).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("executeTriggerTask — event triggers", () => {
+  it("passes event payload to workflow dispatch", async () => {
+    const execute = vi.fn().mockResolvedValue({
+      ok: true,
+      executionId: "event-exec",
+    });
+    const trigger = makeTrigger({
+      triggerType: "event",
+      eventKind: "message.received",
+      kind: "workflow",
+      workflowId: "wf-event",
+    });
+    const task = makeTask(trigger);
+    const runtime = makeRuntime({
+      services: { N8N_DISPATCH: { execute } },
+    });
+
+    const result = await executeTriggerTask(runtime, task, {
+      source: "event",
+      event: {
+        kind: "message.received",
+        payload: { text: "hello", channel: "discord" },
+      },
+    });
+
+    expect(execute).toHaveBeenCalledWith("wf-event", {
+      eventKind: "message.received",
+      eventPayload: { text: "hello", channel: "discord" },
+    });
+    expect(result.status).toBe("success");
+    expect(result.executionId).toBe("event-exec");
+    expect(result.runRecord?.source).toBe("event");
+    expect(result.runRecord?.eventKind).toBe("message.received");
+  });
+
+  it("injects event payload into text trigger instructions", async () => {
+    const roomId = "00000000-0000-0000-0000-0000000000cc" as UUID;
+    const createMemory = vi.fn().mockResolvedValue(undefined);
+    const trigger = makeTrigger({
+      triggerType: "event",
+      eventKind: "message.received",
+      instructions: "Summarize the event.",
+    });
+    const task = makeTask(trigger);
+    const runtime = makeRuntime({
+      services: {
+        AUTONOMY: {
+          getAutonomousRoomId: () => roomId,
+        },
+      },
+      createMemory: createMemory as unknown as IAgentRuntime["createMemory"],
+    });
+
+    const result = await executeTriggerTask(runtime, task, {
+      source: "event",
+      event: {
+        kind: "message.received",
+        payload: { text: "hello" },
+      },
+    });
+
+    expect(result.status).toBe("success");
+    const [memory] = createMemory.mock.calls[0] ?? [];
+    const text = (memory as { content?: { text?: string } }).content?.text;
+    expect(text).toContain("Event: message.received");
+    expect(text).toContain('"text":"hello"');
+  });
+
+  it("skips nonmatching event kinds", async () => {
+    const execute = vi.fn();
+    const trigger = makeTrigger({
+      triggerType: "event",
+      eventKind: "gmail.message.received",
+      kind: "workflow",
+      workflowId: "wf-event",
+    });
+    const task = makeTask(trigger);
+    const runtime = makeRuntime({
+      services: { N8N_DISPATCH: { execute } },
+    });
+
+    const result = await executeTriggerTask(runtime, task, {
+      source: "event",
+      event: { kind: "message.received", payload: {} },
+    });
+
+    expect(result.status).toBe("skipped");
+    expect(execute).not.toHaveBeenCalled();
+  });
+});

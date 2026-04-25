@@ -2,13 +2,8 @@ import { PanelLeftOpen } from "lucide-react";
 import * as React from "react";
 
 import { Button } from "../../components/ui/button";
-import {
-  DrawerSheet,
-  DrawerSheetContent,
-  DrawerSheetHeader,
-  DrawerSheetTitle,
-} from "../../components/ui/drawer-sheet";
 import { cn } from "../../lib/utils";
+import { useWorkspaceMobileSidebarControls } from "../workspace-layout/workspace-mobile-sidebar-controls";
 import type { PageLayoutMobileDrawerProps } from "./page-layout-types";
 
 export function PageLayoutMobileDrawer({
@@ -19,7 +14,8 @@ export function PageLayoutMobileDrawer({
   onMobileSidebarOpenChange,
   sidebar,
 }: PageLayoutMobileDrawerProps) {
-  if (isDesktop) return null;
+  const controls = useWorkspaceMobileSidebarControls();
+  const sidebarId = React.useId();
 
   const mobileSidebarElement = React.cloneElement(sidebar, {
     className: cn("!mt-0 !h-full !w-full !min-w-0", sidebar.props.className),
@@ -31,12 +27,32 @@ export function PageLayoutMobileDrawer({
   const drawerLabel =
     sidebar.props.mobileTitle ?? mobileSidebarLabel ?? "Browse";
 
+  React.useEffect(() => {
+    if (!controls || isDesktop) return undefined;
+
+    return controls.register({
+      id: sidebarId,
+      label: drawerLabel,
+      open: mobileSidebarOpen,
+      setOpen: onMobileSidebarOpenChange,
+    });
+  }, [
+    controls,
+    drawerLabel,
+    isDesktop,
+    mobileSidebarOpen,
+    onMobileSidebarOpenChange,
+    sidebarId,
+  ]);
+
+  if (isDesktop) return null;
+
   return (
     <>
-      {!mobileSidebarOpen ? (
+      {!mobileSidebarOpen && !controls ? (
         <div
           className="pointer-events-none fixed left-2 z-40 md:hidden"
-          style={{ top: "var(--safe-area-top, 0px)" }}
+          style={{ top: "calc(var(--safe-area-top, 0px) + 2.75rem)" }}
         >
           <div className="pointer-events-auto">
             <Button
@@ -47,6 +63,7 @@ export function PageLayoutMobileDrawer({
                 "h-[2.375rem] max-w-[min(11rem,calc(100vw-5.5rem))] rounded-full border-border/40 bg-card/92 px-3 text-sm font-semibold text-txt shadow-sm backdrop-blur-md",
                 mobileSidebarTriggerClassName,
               )}
+              data-testid="page-layout-mobile-sidebar-trigger"
               onClick={() => onMobileSidebarOpenChange(true)}
             >
               <PanelLeftOpen className="h-4 w-4 shrink-0" />
@@ -55,21 +72,15 @@ export function PageLayoutMobileDrawer({
           </div>
         </div>
       ) : null}
-      <DrawerSheet
-        open={mobileSidebarOpen}
-        onOpenChange={onMobileSidebarOpenChange}
-      >
-        <DrawerSheetContent
-          aria-describedby={undefined}
-          className="h-[min(calc(100dvh-1rem-var(--safe-area-top,0px)-var(--safe-area-bottom,0px)),46rem)] p-0"
-          showCloseButton={false}
+      {mobileSidebarOpen ? (
+        <section
+          className="flex min-h-0 w-full flex-1 overflow-hidden"
+          data-testid="page-layout-mobile-sidebar-drawer"
+          aria-label={typeof drawerLabel === "string" ? drawerLabel : undefined}
         >
-          <DrawerSheetHeader className="sr-only">
-            <DrawerSheetTitle>{drawerLabel}</DrawerSheetTitle>
-          </DrawerSheetHeader>
           {mobileSidebarElement}
-        </DrawerSheetContent>
-      </DrawerSheet>
+        </section>
+      ) : null}
     </>
   );
 }

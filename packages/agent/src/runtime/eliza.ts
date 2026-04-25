@@ -869,6 +869,14 @@ function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
   return null;
 }
 
+async function startAndRegisterAutonomyService(
+  runtime: AgentRuntime,
+): Promise<AutonomyServiceLike> {
+  const service = await AutonomyService.start(runtime);
+  runtime.services.set("AUTONOMY" as never, [service as never]);
+  return service as AutonomyServiceLike;
+}
+
 type TrajectoryLoggerRuntimeLike = {
   getServicesByType?: (serviceType: string) => unknown;
   getService?: (serviceType: string) => unknown;
@@ -3759,7 +3767,7 @@ export async function startEliza(
 
     if (autonomyEnabled && !runtime.getService("AUTONOMY")) {
       try {
-        await AutonomyService.start(runtime);
+        await startAndRegisterAutonomyService(runtime);
         logger.info("[eliza] AutonomyService started for trigger dispatch");
       } catch (err) {
         logger.warn(
@@ -4115,7 +4123,7 @@ export async function startEliza(
 
           if (hotReloadAutonomyEnabled && !newRuntime.getService("AUTONOMY")) {
             try {
-              await AutonomyService.start(newRuntime);
+              await startAndRegisterAutonomyService(newRuntime);
             } catch (err) {
               logger.warn(
                 `[eliza] AutonomyService failed to start after hot-reload: ${formatError(err)}`,

@@ -1,13 +1,3 @@
-/**
- * WorkflowGraphViewer — React Flow graph for n8n workflow visualisation.
- *
- * Renders nodes and edges from an N8nWorkflow object. Supports a live
- * "generating" mode that pulses the border and shows a spinner overlay while
- * the agent is constructing the workflow via CREATE_N8N_WORKFLOW.
- *
- * Layer: feature (packages/app-core/src/components/pages/)
- */
-
 import {
   Button,
   Dialog,
@@ -25,13 +15,7 @@ import {
   type Node,
   ReactFlow,
 } from "@xyflow/react";
-import {
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  Maximize2,
-  X,
-} from "lucide-react";
+import { ExternalLink, Maximize2, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -213,6 +197,36 @@ function generatingEdges(edges: Edge[]): Edge[] {
   }));
 }
 
+function graphChrome(uiTheme: "light" | "dark") {
+  if (uiTheme === "light") {
+    return {
+      canvasBg: "#f8fafc",
+      dots: "#cbd5e1",
+      minimapMask: "rgba(226, 232, 240, 0.72)",
+      minimapBg: "#ffffff",
+      minimapBorder: "#cbd5e1",
+      emptyTitleClass: "text-slate-700",
+      emptyHelpClass: "text-slate-500",
+      overlayBg: "rgba(248, 250, 252, 0.72)",
+      overlayChipBg: "rgba(255, 255, 255, 0.94)",
+      overlayChipText: "#1d4ed8",
+    };
+  }
+
+  return {
+    canvasBg: "#020817",
+    dots: "#334155",
+    minimapMask: "rgba(2, 8, 23, 0.7)",
+    minimapBg: "#0f172a",
+    minimapBorder: "#334155",
+    emptyTitleClass: "text-slate-300",
+    emptyHelpClass: "text-slate-500",
+    overlayBg: "rgba(2, 8, 23, 0.6)",
+    overlayChipBg: "rgba(2, 8, 23, 0.82)",
+    overlayChipText: "#60a5fa",
+  };
+}
+
 // ── Node detail drawer ────────────────────────────────────────────────────────
 
 const PARAM_TRUNCATE_LENGTH = 200;
@@ -349,16 +363,9 @@ function NodeDetailDrawer({
   labelId,
 }: NodeDetailDrawerProps) {
   const { t, activeAgentProfile, uiTheme } = useApp();
-  const [rawJsonOpen, setRawJsonOpen] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const isOpen = node !== null;
-
-  // Reset raw JSON section when node changes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset on node identity change
-  useEffect(() => {
-    setRawJsonOpen(false);
-  }, [node?.id, node?.name]);
 
   // Focus the close button when drawer opens
   useEffect(() => {
@@ -439,15 +446,18 @@ function NodeDetailDrawer({
       <div className="flex-1 overflow-y-auto space-y-4 px-4 py-3">
         {node && (
           <>
-            {/* Internal name */}
-            <div className="space-y-1">
-              <div className="text-xs font-semibold uppercase tracking-wider text-muted">
-                Name
+            {node.notes?.trim() ? (
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wider text-muted">
+                  Step
+                </div>
+                <div className="rounded bg-bg/40 border border-border/20 px-2 py-2">
+                  <p className="text-xs leading-relaxed text-txt/80">
+                    {node.notes.trim()}
+                  </p>
+                </div>
               </div>
-              <pre className="font-mono text-xs text-txt/80 break-all whitespace-pre-wrap">
-                {node.name}
-              </pre>
-            </div>
+            ) : null}
 
             {/* Parameters */}
             <div className="space-y-2">
@@ -471,30 +481,6 @@ function NodeDetailDrawer({
                 <p className="text-xs text-muted/60 italic">
                   {t("workflowGraph.nodeDrawer.noParameters")}
                 </p>
-              )}
-            </div>
-
-            {/* Raw JSON — collapsible */}
-            <div className="space-y-1">
-              <button
-                type="button"
-                className="flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-muted hover:text-txt transition-colors"
-                onClick={() => setRawJsonOpen((v) => !v)}
-                aria-expanded={rawJsonOpen}
-              >
-                <span>{t("workflowGraph.nodeDrawer.rawJsonLabel")}</span>
-                {rawJsonOpen ? (
-                  <ChevronUp className="h-3.5 w-3.5" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                )}
-              </button>
-              {rawJsonOpen && (
-                <div className="rounded border border-border/20 bg-bg/40 p-2 overflow-auto max-h-64">
-                  <pre className="font-mono text-xs text-txt/70 whitespace-pre-wrap break-all">
-                    {JSON.stringify(node, null, 2)}
-                  </pre>
-                </div>
               )}
             </div>
           </>
@@ -541,13 +527,17 @@ function GraphPanel({
   isGenerating,
   ariaLabel,
   onNodeClick,
+  uiTheme,
 }: {
   nodes: Node[];
   edges: Edge[];
   isGenerating: boolean;
   ariaLabel: string;
   onNodeClick?: (e: React.MouseEvent, node: Node) => void;
+  uiTheme: "light" | "dark";
 }) {
+  const chrome = graphChrome(uiTheme);
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -561,15 +551,18 @@ function GraphPanel({
       proOptions={{ hideAttribution: true }}
       aria-label={ariaLabel}
     >
-      <Background color="#334155" gap={20} size={1} />
+      <Background color={chrome.dots} gap={20} size={1} />
       <Controls showInteractive={false} />
       <MiniMap
         nodeColor={(n) => {
           const colors = (n.data as { colors?: { border: string } })?.colors;
           return colors?.border ?? "#475569";
         }}
-        maskColor="rgba(2, 8, 23, 0.7)"
-        style={{ background: "#0f172a", border: "1px solid #334155" }}
+        maskColor={chrome.minimapMask}
+        style={{
+          background: chrome.minimapBg,
+          border: `1px solid ${chrome.minimapBorder}`,
+        }}
       />
     </ReactFlow>
   );
@@ -594,11 +587,12 @@ export function WorkflowGraphViewer({
   loading = false,
   isGenerating = false,
   emptyStateActionLabel = "Describe your workflow",
-  emptyStateHelpText = "Use the sidebar agent to build this workflow.",
+  emptyStateHelpText = "Describe the trigger and steps in the sidebar.",
   onNodeClick,
   onEmptyStateAction,
   status,
 }: WorkflowGraphViewerProps) {
+  const { activeAgentProfile, uiTheme } = useApp();
   const [fullScreen, setFullScreen] = useState(false);
   const [selectedNode, setSelectedNode] = useState<N8nWorkflowNode | null>(
     null,
@@ -662,10 +656,22 @@ export function WorkflowGraphViewer({
   }, [fullScreen, selectedNode]);
 
   const hasNodes = nodes.length > 0;
+  const editorDisabled =
+    !status || status.mode === "disabled" || status.status === "error";
+  const editorUrl =
+    !editorDisabled && workflow && status
+      ? buildEditorUrl(
+          workflow,
+          status,
+          activeAgentProfile?.cloudAgentId,
+          uiTheme,
+        )
+      : null;
 
   const borderClass = isGenerating
     ? "animate-pulse ring-2 ring-blue-500/50"
     : "ring-1 ring-border/30";
+  const chrome = graphChrome(uiTheme);
 
   return (
     <>
@@ -674,8 +680,8 @@ export function WorkflowGraphViewer({
         ref={containerRef}
         role="img"
         aria-label={ariaLabel}
-        className={`relative overflow-hidden rounded-lg bg-[#020817] ${borderClass}`}
-        style={{ height: 420 }}
+        className={`relative overflow-hidden rounded-lg ${borderClass}`}
+        style={{ height: 420, background: chrome.canvasBg }}
       >
         {/* Loading skeleton */}
         {loading && !hasNodes && (
@@ -687,8 +693,12 @@ export function WorkflowGraphViewer({
         {/* Empty state */}
         {!loading && !hasNodes && !isGenerating && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-            <p className="text-sm font-medium text-muted">No nodes yet</p>
-            <p className="text-xs text-muted/60">{emptyStateHelpText}</p>
+            <p className={`text-sm font-medium ${chrome.emptyTitleClass}`}>
+              Blank workflow
+            </p>
+            <p className={`max-w-sm text-xs ${chrome.emptyHelpClass}`}>
+              {emptyStateHelpText}
+            </p>
             {onEmptyStateAction && (
               <button
                 type="button"
@@ -703,8 +713,17 @@ export function WorkflowGraphViewer({
 
         {/* Generating overlay on top of graph */}
         {isGenerating && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px]">
-            <div className="flex items-center gap-2 rounded-full border border-blue-500/30 bg-[#020817]/80 px-4 py-2 text-sm text-blue-400">
+          <div
+            className="absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px]"
+            style={{ background: chrome.overlayBg }}
+          >
+            <div
+              className="flex items-center gap-2 rounded-full border border-blue-500/30 px-4 py-2 text-sm"
+              style={{
+                background: chrome.overlayChipBg,
+                color: chrome.overlayChipText,
+              }}
+            >
               <Spinner className="h-4 w-4" />
               Building workflow...
             </div>
@@ -732,7 +751,7 @@ export function WorkflowGraphViewer({
               proOptions={{ hideAttribution: true }}
               aria-label={ariaLabel}
             >
-              <Background color="#334155" gap={20} size={1} />
+              <Background color={chrome.dots} gap={20} size={1} />
               <Controls showInteractive={false} />
               {hasNodes && (
                 <MiniMap
@@ -741,10 +760,10 @@ export function WorkflowGraphViewer({
                       ?.colors;
                     return colors?.border ?? "#475569";
                   }}
-                  maskColor="rgba(2, 8, 23, 0.7)"
+                  maskColor={chrome.minimapMask}
                   style={{
-                    background: "#0f172a",
-                    border: "1px solid #334155",
+                    background: chrome.minimapBg,
+                    border: `1px solid ${chrome.minimapBorder}`,
                   }}
                 />
               )}
@@ -765,6 +784,17 @@ export function WorkflowGraphViewer({
             onClick={() => setFullScreen(true)}
           >
             <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+
+        {editorUrl && !isGenerating && (
+          <button
+            type="button"
+            aria-label="Open in n8n editor"
+            className="absolute right-12 top-3 z-20 rounded border border-border/40 bg-bg/80 px-2.5 py-1 text-xs text-muted transition-colors hover:text-txt"
+            onClick={() => window.open(editorUrl, "_blank", "noopener")}
+          >
+            Open in n8n
           </button>
         )}
 
@@ -800,13 +830,17 @@ export function WorkflowGraphViewer({
             </button>
           </DialogHeader>
           {/* Graph + drawer share a relative container so the drawer overlays the graph */}
-          <div className="relative flex-1 min-h-0 overflow-hidden bg-[#020817]">
+          <div
+            className="relative flex-1 min-h-0 overflow-hidden"
+            style={{ background: chrome.canvasBg }}
+          >
             <GraphPanel
               nodes={nodes}
               edges={edges}
               isGenerating={isGenerating}
               ariaLabel={ariaLabel}
               onNodeClick={handleNodeClick}
+              uiTheme={uiTheme}
             />
             {/* Node detail drawer — full-screen mode (mounts inside the Dialog portal) */}
             <NodeDetailDrawer

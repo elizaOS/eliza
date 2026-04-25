@@ -5,27 +5,19 @@ import {
   isWebPlatform,
   openExternalUrl,
   PagePanel,
-  useMediaQuery,
   useApp,
+  useMediaQuery,
 } from "@elizaos/app-core";
 import { PageScopedChatPane } from "@elizaos/app-core/components/pages/PageScopedChatPane";
 import { AppWorkspaceChrome } from "@elizaos/app-core/components/workspace/AppWorkspaceChrome";
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { Power, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   LIFEOPS_GITHUB_CALLBACK_EVENT,
   type LifeOpsGithubCallbackDetail,
 } from "../events/index.js";
 import { useLifeOpsAppState } from "../hooks/useLifeOpsAppState.js";
-import {
-  type LifeOpsSection,
-  useLifeOpsSection,
-} from "../hooks/useLifeOpsSection.js";
+import { useLifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import {
   consumeQueuedLifeOpsGithubCallback,
   dispatchLifeOpsGithubCallbackFromWindowMessage,
@@ -37,16 +29,11 @@ import {
   LIFEOPS_MESSAGE_CHANNELS,
   LifeOpsInboxSection,
 } from "./LifeOpsInboxSection.js";
-import {
-  LifeOpsCapabilitiesPanel,
-  LifeOpsSchedulePanel,
-  LifeOpsStretchPanel,
-  LifeOpsXPanel,
-} from "./LifeOpsOperationalPanels";
+import { LifeOpsXPanel } from "./LifeOpsOperationalPanels";
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
-import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
 import { LifeOpsPaymentsSection } from "./LifeOpsPaymentsSection.js";
+import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
 import { LifeOpsScreenTimeSection } from "./LifeOpsScreenTimeSection.js";
 import {
   type LifeOpsSelection,
@@ -59,7 +46,6 @@ import { LifeOpsSleepSection } from "./LifeOpsSleepSection.js";
 import { LifeOpsSocialSection } from "./LifeOpsSocialSection.js";
 import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
-import { PermissionsPanel } from "./PermissionsPanel";
 
 type EnablePromptProps = {
   loading: boolean;
@@ -344,7 +330,7 @@ function buildAgentGithubSetup(params: {
           ? "0 / 1"
           : githubLoading
             ? t("common.loading", { defaultValue: "Loading" })
-            : t("lifeopspage.noCloudAgent", { defaultValue: "No cloud agent" })
+            : ""
       : t("lifeopspage.cloudRequired", { defaultValue: "Cloud required" }),
     connectLabel: primaryAgentGithubEntry?.github?.connected
       ? t("common.reconnect", { defaultValue: "Reconnect" })
@@ -380,29 +366,39 @@ function LifeOpsSettingsSectionView({
 }: LifeOpsSettingsSectionViewProps) {
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold tracking-tight text-txt">
-          {t("lifeopspage.setupTitle", { defaultValue: "Settings" })}
+          {t("lifeopspage.accessTitle", { defaultValue: "Access" })}
         </h2>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex items-center gap-2">
           <Button
             size="sm"
             variant="outline"
-            className="h-8 rounded-xl px-3 text-xs font-semibold sm:w-auto"
+            className="h-8 w-8 rounded-xl p-0"
             onClick={onRunSetupAgain}
-          >
-            {t("lifeopspage.runSetupAgain", {
+            title={t("lifeopspage.runSetupAgain", {
               defaultValue: "Run setup again",
             })}
+            aria-label={t("lifeopspage.runSetupAgain", {
+              defaultValue: "Run setup again",
+            })}
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           </Button>
           <Button
             variant="surfaceDestructive"
             size="sm"
-            className="h-8 rounded-xl px-3 text-xs font-semibold sm:w-auto"
+            className="h-8 w-8 rounded-xl p-0"
             onClick={onDisableLifeOps}
             disabled={disableLifeOpsDisabled}
+            title={t("lifeopspage.disable", {
+              defaultValue: "Disable LifeOps",
+            })}
+            aria-label={t("lifeopspage.disable", {
+              defaultValue: "Disable LifeOps",
+            })}
           >
-            {t("lifeopspage.disable", { defaultValue: "Disable LifeOps" })}
+            <Power className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
       </div>
@@ -412,15 +408,9 @@ function LifeOpsSettingsSectionView({
         agentGithub={agentGithub}
         githubError={githubError}
       />
-      <PermissionsPanel />
       <MessagingConnectorGrid />
 
-      <div className="grid gap-4 xl:grid-cols-2">
-        <LifeOpsSchedulePanel />
-        <LifeOpsCapabilitiesPanel />
-        <LifeOpsXPanel />
-        <LifeOpsStretchPanel />
-      </div>
+      <LifeOpsXPanel />
     </div>
   );
 }

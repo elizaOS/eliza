@@ -80,6 +80,11 @@ import {
 	truncateToCompleteSentence,
 } from "../utils";
 import {
+	collectActionResultSizeWarnings,
+	formatActionResultsForPrompt,
+	trimActionResultForPromptState,
+} from "../utils/action-results";
+import {
 	AVAILABLE_CONTEXTS_STATE_KEY,
 	attachAvailableContexts,
 	CONTEXT_ROUTING_STATE_KEY,
@@ -89,6 +94,7 @@ import {
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
+import { getUserMessageText } from "../utils/message-text";
 import {
 	createStreamingContext,
 	MarkableExtractor,
@@ -1266,6 +1272,15 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 	["REPLY", "RESPOND", "NONE", "IGNORE"].map(normalizeActionIdentifier),
 );
 
+// Actions the planner selects as explicit delegation / orchestration intent.
+// These cannot be evaluated by keyword-overlap against the user's message
+// (e.g. "build me an app" does not contain "spawn" or "agent"), so the
+// metadata-based corrector must not override them with a keyword-matched
+// alternative like a cross-channel send action.
+const EXPLICIT_INTENT_ACTIONS = new Set(
+	["SPAWN_AGENT"].map(normalizeActionIdentifier),
+);
+
 function shouldAttemptCanonicalActionRepair(
 	rawPlannerActions: string[],
 	normalizedActions: string[],
@@ -1743,10 +1758,7 @@ export function suggestOwnedActionFromMetadata(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Pick<Memory, "content">,
 ): ActionOwnershipSuggestion | null {
-	const messageText =
-		typeof message.content?.text === "string"
-			? message.content.text.trim()
-			: "";
+	const messageText = getUserMessageText(message);
 	if (
 		messageText.length === 0 ||
 		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
@@ -1799,11 +1811,20 @@ export function suggestOwnedActionFromMetadata(
 	};
 }
 
-function findOwnedActionCorrectionFromMetadata(
+export function findOwnedActionCorrectionFromMetadata(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Pick<Memory, "content">,
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): ActionOwnershipSuggestion | null {
+	const hasExplicitIntent = (responseContent?.actions ?? []).some(
+		(actionName) =>
+			typeof actionName === "string" &&
+			EXPLICIT_INTENT_ACTIONS.has(normalizeActionIdentifier(actionName)),
+	);
+	if (hasExplicitIntent) {
+		return null;
+	}
+
 	const currentAction = responseContent?.actions?.find(
 		(actionName) =>
 			typeof actionName === "string" &&
@@ -1903,7 +1924,7 @@ function shouldAttemptActionRescue(
 }
 
 function getMessageText(message: Memory): string {
-	return typeof message.content?.text === "string" ? message.content.text : "";
+	return getUserMessageText(message);
 }
 
 function looksLikeOwnershipSensitiveRequest(message: Memory): boolean {
@@ -2612,38 +2633,10 @@ function shouldWaitForUserAfterIncompleteReflection(
 	});
 }
 
-function formatActionResultsForPrompt(actionResults: ActionResult[]): string {
-	if (actionResults.length === 0) {
-		return "No action results available.";
-	}
-
-	return [
-		"# Action Results",
-		...actionResults.map((result, index) => {
-			const actionNameValue = result.data?.actionName;
-			const actionName =
-				typeof actionNameValue === "string"
-					? actionNameValue
-					: "Unknown Action";
-			const lines = [
-				`${index + 1}. ${actionName} - ${result.success === false ? "failed" : "succeeded"}`,
-			];
-			if (typeof result.text === "string" && result.text.trim()) {
-				lines.push(`Output: ${result.text.trim().slice(0, 2000)}`);
-			}
-			if (result.error) {
-				const errorText =
-					result.error instanceof Error
-						? result.error.message
-						: String(result.error);
-				lines.push(`Error: ${errorText.slice(0, 1000)}`);
-			}
-			return lines.join("\n");
-		}),
-	].join("\n\n");
-}
-
-function withActionResults(state: State, actionResults: ActionResult[]): State {
+export function withActionResultsForPrompt(
+	state: State,
+	actionResults: ActionResult[],
+): State {
 	return {
 		...state,
 		values: {
@@ -2655,6 +2648,33 @@ function withActionResults(state: State, actionResults: ActionResult[]): State {
 			actionResults,
 		},
 	};
+}
+
+const withActionResults = withActionResultsForPrompt;
+
+function preparePromptActionResult<T extends ActionResult>(
+	runtime: IAgentRuntime,
+	message: Memory,
+	result: T,
+): T {
+	for (const warning of collectActionResultSizeWarnings(result)) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				agentId: runtime.agentId,
+				messageId: message.id,
+				roomId: message.roomId,
+				action: warning.actionName,
+				field: warning.field,
+				rawCharLength: warning.rawCharLength,
+				estimatedTokens: warning.estimatedTokens,
+				thresholdTokens: warning.thresholdTokens,
+			},
+			"Action result exceeds prompt-size warning threshold",
+		);
+	}
+
+	return trimActionResultForPromptState(result);
 }
 
 function withTaskCompletion(
@@ -3498,6 +3518,9 @@ export class DefaultMessageService implements IMessageService {
 					// Ensure latestResponseIds is cleaned up even if processMessage
 					// threw before reaching its own cleanup at the end of the method.
 					clearLatestResponseId(runtime.agentId, message.roomId, responseId);
+					if (message.id) {
+						runtime.stateCache.delete(`${message.id}_action_results`);
+					}
 				}
 			},
 		);
@@ -6594,7 +6617,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 				)) as MultiStepState,
 				contextRoutingStateValues,
 			) as MultiStepState;
-			accumulatedState.data.actionResults = traceActionResult;
+			accumulatedState = withActionResults(
+				accumulatedState,
+				traceActionResult,
+			) as MultiStepState;
 
 			// Use dynamicPromptExecFromState for structured decision output
 			const optimizedPlannerService =
@@ -6876,12 +6902,14 @@ Output ONLY the continuation, starting immediately after the last character abov
 			for (const result of providerResults) {
 				if (result.status === "fulfilled") {
 					const { providerName, success, text, error } = result.value;
-					traceActionResult.push({
-						data: { actionName: providerName },
-						success,
-						text,
-						error,
-					});
+					traceActionResult.push(
+						preparePromptActionResult(runtime, message, {
+							data: { actionName: providerName },
+							success,
+							text,
+							error,
+						}),
+					);
 
 					if (callback) {
 						await callback({
@@ -6980,6 +7008,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 				false,
 			)) as MultiStepState,
 			contextRoutingStateValues,
+		) as MultiStepState;
+		accumulatedState = withActionResults(
+			accumulatedState,
+			traceActionResult,
 		) as MultiStepState;
 
 		// Use dynamicPromptExecFromState for final summary generation

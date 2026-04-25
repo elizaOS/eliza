@@ -18,6 +18,7 @@ import {
   durationToMs,
   durationUnitLabel,
   formFromTrigger,
+  humanizeEventKind,
   localizedExecutionStatus,
   nextRunsForCron,
   nextRunsForInterval,
@@ -25,6 +26,29 @@ import {
   type TriggerFormState,
   validateCronExpression,
 } from "./heartbeat-utils";
+
+const EVENT_KIND_OPTIONS = [
+  {
+    value: "message.received",
+    label: "Message received",
+  },
+  {
+    value: "discord.message.received",
+    label: "Discord message",
+  },
+  {
+    value: "telegram.message.received",
+    label: "Telegram message",
+  },
+  {
+    value: "gmail.message.received",
+    label: "Gmail message",
+  },
+  {
+    value: "calendar.event.ended",
+    label: "Calendar event ended",
+  },
+] as const;
 
 // ── Props ──────────────────────────────────────────────────────────
 
@@ -191,7 +215,9 @@ export function HeartbeatForm({
           data-testid="heartbeats-editor-panel"
         >
           <div>
-            <FieldLabel variant="form">{t("wallet.name")}</FieldLabel>
+            <FieldLabel variant="form">
+              {form.kind === "workflow" ? "Schedule name" : "Task name"}
+            </FieldLabel>
             <Input
               variant="form"
               value={form.displayName}
@@ -200,148 +226,154 @@ export function HeartbeatForm({
             />
           </div>
 
-          <TriggerKindSection
-            form={form}
-            setField={setField}
-            t={t}
-            onGoToWorkflows={() => {
-              // Switch the Automations view to the Workflows filter tab.
-              // AutomationsLayout listens for this event via a useEffect to call setFilter("workflows").
-              window.dispatchEvent(
-                new CustomEvent("milady:automations:setFilter", {
-                  detail: { filter: "workflows" },
-                }),
-              );
-            }}
-          />
-
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <div>
-              <FieldLabel variant="form">
-                {t("triggersview.ScheduleType")}
-              </FieldLabel>
-              <FormSelect
-                value={form.triggerType}
-                onValueChange={(value: string) =>
-                  setField(
-                    "triggerType",
-                    value as TriggerFormState["triggerType"],
-                  )
-                }
-                placeholder={t("triggersview.RepeatingInterval")}
-              >
-                <FormSelectItem value="interval">
-                  {t("triggersview.RepeatingInterval")}
-                </FormSelectItem>
-                <FormSelectItem value="once">
-                  {t("triggersview.OneTime")}
-                </FormSelectItem>
-                <FormSelectItem value="cron">
-                  {t("triggersview.CronSchedule")}
-                </FormSelectItem>
-              </FormSelect>
+          <div className="grid gap-4 rounded-xl border border-border/30 bg-bg/20 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              What it does
             </div>
-
-            <div>
-              <FieldLabel variant="form">
-                {t("triggersview.WakeMode")}
-              </FieldLabel>
-              <FormSelect
-                value={form.wakeMode}
-                onValueChange={(value: string) =>
-                  setField("wakeMode", value as TriggerFormState["wakeMode"])
-                }
-                placeholder={t("triggersview.InjectAmpWakeIm")}
-              >
-                <FormSelectItem value="inject_now">
-                  {t("triggersview.InjectAmpWakeIm")}
-                </FormSelectItem>
-                <FormSelectItem value="next_autonomy_cycle">
-                  {t("triggersview.QueueForNextCycle")}
-                </FormSelectItem>
-              </FormSelect>
-            </div>
+            <TriggerKindSection
+              form={form}
+              setField={setField}
+              t={t}
+              onGoToWorkflows={() => {
+                window.dispatchEvent(
+                  new CustomEvent("milady:automations:setFilter", {
+                    detail: { filter: "workflows" },
+                  }),
+                );
+              }}
+            />
           </div>
 
-          {form.triggerType === "interval" && (
-            <div>
-              <FieldLabel variant="form">
-                {t("heartbeatsview.interval")}
-              </FieldLabel>
-              <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-3">
-                <Input
-                  type="number"
-                  min="1"
-                  variant="form"
-                  value={form.durationValue}
-                  onChange={(event) =>
-                    setField("durationValue", event.target.value)
-                  }
-                  placeholder="1"
-                />
+          <div className="grid gap-4 rounded-xl border border-border/30 bg-bg/20 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              When it starts
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <div>
+                <FieldLabel variant="form">Trigger type</FieldLabel>
                 <FormSelect
-                  value={form.durationUnit}
+                  value={form.triggerType}
                   onValueChange={(value: string) =>
                     setField(
-                      "durationUnit",
-                      value as TriggerFormState["durationUnit"],
+                      "triggerType",
+                      value as TriggerFormState["triggerType"],
                     )
                   }
-                  placeholder={durationUnitLabel(form.durationUnit, t)}
+                  placeholder="Repeating interval"
                 >
-                  {DURATION_UNITS.map((unit) => (
-                    <FormSelectItem key={unit.unit} value={unit.unit}>
-                      {durationUnitLabel(unit.unit, t)}
-                    </FormSelectItem>
-                  ))}
+                  <FormSelectItem value="interval">
+                    Repeating interval
+                  </FormSelectItem>
+                  <FormSelectItem value="once">One time</FormSelectItem>
+                  <FormSelectItem value="cron">Cron schedule</FormSelectItem>
+                  <FormSelectItem value="event">Event</FormSelectItem>
+                </FormSelect>
+              </div>
+
+              <div>
+                <FieldLabel variant="form">When it fires</FieldLabel>
+                <FormSelect
+                  value={form.wakeMode}
+                  onValueChange={(value: string) =>
+                    setField("wakeMode", value as TriggerFormState["wakeMode"])
+                  }
+                  placeholder="Interrupt and run now"
+                >
+                  <FormSelectItem value="inject_now">
+                    Interrupt and run now
+                  </FormSelectItem>
+                  <FormSelectItem value="next_autonomy_cycle">
+                    Queue for next cycle
+                  </FormSelectItem>
                 </FormSelect>
               </div>
             </div>
-          )}
 
-          {form.triggerType === "once" && (
-            <div>
-              <FieldLabel variant="form">
-                {t("triggersview.ScheduledTimeISO")}
-              </FieldLabel>
-              <Input
-                type="datetime-local"
-                variant="form"
-                value={form.scheduledAtIso}
-                onChange={(event) =>
-                  setField("scheduledAtIso", event.target.value)
-                }
-              />
+            {form.triggerType === "interval" && (
+              <div>
+                <FieldLabel variant="form">Repeat every</FieldLabel>
+                <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-3">
+                  <Input
+                    type="number"
+                    min="1"
+                    variant="form"
+                    value={form.durationValue}
+                    onChange={(event) =>
+                      setField("durationValue", event.target.value)
+                    }
+                    placeholder="1"
+                  />
+                  <FormSelect
+                    value={form.durationUnit}
+                    onValueChange={(value: string) =>
+                      setField(
+                        "durationUnit",
+                        value as TriggerFormState["durationUnit"],
+                      )
+                    }
+                    placeholder={durationUnitLabel(form.durationUnit, t)}
+                  >
+                    {DURATION_UNITS.map((unit) => (
+                      <FormSelectItem key={unit.unit} value={unit.unit}>
+                        {durationUnitLabel(unit.unit, t)}
+                      </FormSelectItem>
+                    ))}
+                  </FormSelect>
+                </div>
+              </div>
+            )}
+
+            {form.triggerType === "once" && (
+              <div>
+                <FieldLabel variant="form">Run at</FieldLabel>
+                <Input
+                  type="datetime-local"
+                  variant="form"
+                  value={form.scheduledAtIso}
+                  onChange={(event) =>
+                    setField("scheduledAtIso", event.target.value)
+                  }
+                />
+              </div>
+            )}
+
+            {form.triggerType === "cron" && (
+              <CronInputSection form={form} setField={setField} t={t} />
+            )}
+
+            {form.triggerType === "event" && (
+              <EventInputSection form={form} setField={setField} />
+            )}
+
+            <SchedulePreview form={form} t={t} />
+          </div>
+
+          <div className="grid gap-4 rounded-xl border border-border/30 bg-bg/20 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+              Run behavior
             </div>
-          )}
 
-          {form.triggerType === "cron" && (
-            <CronInputSection form={form} setField={setField} t={t} />
-          )}
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <div>
+                <FieldLabel variant="form">Stop after</FieldLabel>
+                <Input
+                  variant="form"
+                  value={form.maxRuns}
+                  onChange={(event) => setField("maxRuns", event.target.value)}
+                  placeholder="Unlimited"
+                />
+              </div>
 
-          <SchedulePreview form={form} t={t} />
-
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <div>
-              <FieldLabel variant="form">
-                {t("triggersview.MaxRunsOptional")}
-              </FieldLabel>
-              <Input
-                variant="form"
-                value={form.maxRuns}
-                onChange={(event) => setField("maxRuns", event.target.value)}
-                placeholder="\u221E"
-              />
-            </div>
-
-            <div className="flex items-end">
-              <FieldSwitch
-                checked={form.enabled}
-                aria-label={t("triggersview.StartEnabled")}
-                className="flex-1"
-                label={t("triggersview.StartEnabled")}
-                onCheckedChange={(checked) => setField("enabled", checked)}
-              />
+              <div className="flex items-end">
+                <FieldSwitch
+                  checked={form.enabled}
+                  aria-label="Enabled"
+                  className="flex-1"
+                  label="Enabled"
+                  onCheckedChange={(checked) => setField("enabled", checked)}
+                />
+              </div>
             </div>
           </div>
         </PagePanel>
@@ -465,9 +497,8 @@ function TriggerKindSection({
 
   return (
     <div>
-      {/* Kind toggle */}
       <FieldLabel variant="form" id={toggleLabelId}>
-        {t("triggers.whatToRun")}
+        Runs
       </FieldLabel>
       <div className="mt-1.5 flex gap-2">
         <button
@@ -480,7 +511,7 @@ function TriggerKindSection({
               : "border-border/40 text-muted hover:border-border hover:text-txt"
           }`}
         >
-          {t("triggers.kindText")}
+          Prompt
         </button>
         <button
           type="button"
@@ -492,16 +523,13 @@ function TriggerKindSection({
               : "border-border/40 text-muted hover:border-border hover:text-txt"
           }`}
         >
-          {t("triggers.kindWorkflow")}
+          Workflow
         </button>
       </div>
 
-      {/* Text prompt */}
       {form.kind === "text" && (
         <div className="mt-4">
-          <FieldLabel variant="form">
-            {t("triggersview.Instructions")}
-          </FieldLabel>
+          <FieldLabel variant="form">Prompt</FieldLabel>
           <Textarea
             variant="form"
             value={form.instructions}
@@ -532,7 +560,7 @@ function TriggerKindSection({
           ) : (
             <>
               <FieldLabel variant="form" htmlFor="trigger-workflow-select">
-                {t("triggers.workflowLabel")}
+                Workflow
               </FieldLabel>
               <FormSelect
                 value={form.workflowId}
@@ -587,9 +615,7 @@ function CronInputSection({
 
   return (
     <div>
-      <FieldLabel variant="form">
-        {t("triggersview.CronExpression5F")}
-      </FieldLabel>
+      <FieldLabel variant="form">Cron schedule</FieldLabel>
       <Input
         variant="form"
         className="font-mono"
@@ -609,7 +635,7 @@ function CronInputSection({
         </p>
       ) : (
         <div className="mt-2 text-xs-tight text-muted">
-          {t("triggersview.minuteHourDayMont")}
+          minute hour day month weekday
         </div>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -628,6 +654,65 @@ function CronInputSection({
           </Button>
         ))}
       </div>
+    </div>
+  );
+}
+
+function EventInputSection({
+  form,
+  setField,
+}: {
+  form: TriggerFormState;
+  setField: <K extends keyof TriggerFormState>(
+    key: K,
+    value: TriggerFormState[K],
+  ) => void;
+}) {
+  const isCustomEvent = !EVENT_KIND_OPTIONS.some(
+    (option) => option.value === form.eventKind,
+  );
+  return (
+    <div className="grid gap-3">
+      <div>
+        <FieldLabel variant="form">Event</FieldLabel>
+        <FormSelect
+          value={isCustomEvent ? "__custom" : form.eventKind}
+          onValueChange={(value: string) => {
+            if (value === "__custom") {
+              setField("eventKind", "");
+              return;
+            }
+            setField("eventKind", value);
+          }}
+          placeholder="Message received"
+        >
+          {EVENT_KIND_OPTIONS.map((option) => (
+            <FormSelectItem key={option.value} value={option.value}>
+              {option.label}
+            </FormSelectItem>
+          ))}
+          <FormSelectItem value="__custom">Custom event</FormSelectItem>
+        </FormSelect>
+      </div>
+
+      {isCustomEvent && (
+        <div>
+          <FieldLabel variant="form">Event name</FieldLabel>
+          <Input
+            variant="form"
+            className="font-mono"
+            value={form.eventKind}
+            onChange={(event) => setField("eventKind", event.target.value)}
+            placeholder="namespace.subject.verb"
+          />
+        </div>
+      )}
+
+      {form.eventKind.trim() && (
+        <div className="rounded-lg border border-border/30 bg-bg/30 px-4 py-3 text-xs text-muted">
+          Runs when <span className="font-medium text-txt">{humanizeEventKind(form.eventKind)}</span> arrives.
+        </div>
+      )}
     </div>
   );
 }
@@ -673,6 +758,13 @@ function SchedulePreview({
       return { kind: "dates" as const, dates };
     }
 
+    if (form.triggerType === "event") {
+      return {
+        kind: "event" as const,
+        label: humanizeEventKind(form.eventKind || "event"),
+      };
+    }
+
     return null;
   }, [
     form.triggerType,
@@ -680,6 +772,7 @@ function SchedulePreview({
     form.durationUnit,
     form.scheduledAtIso,
     form.cronExpression,
+    form.eventKind,
     t,
   ]);
 
@@ -706,10 +799,14 @@ function SchedulePreview({
             })}
           </p>
         </div>
+      ) : preview.kind === "event" ? (
+        <p className="text-xs text-muted">
+          Waiting for <span className="font-medium text-txt">{preview.label}</span>.
+        </p>
       ) : (
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-            {t("triggers.schedulePreviewTitle")}
+            Next runs
           </p>
           <ul className="space-y-0.5">
             {preview.dates.map((date) => (

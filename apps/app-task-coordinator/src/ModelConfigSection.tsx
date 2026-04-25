@@ -6,6 +6,7 @@ import {
   SelectValue,
 } from "@elizaos/ui/components/ui/select";
 import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import type {
   AgentTab,
   AiderProvider,
@@ -48,7 +49,9 @@ export function ModelConfigSection({
           </SettingsControls.FieldLabel>
           <Select
             value={aiderProvider}
-            onValueChange={(value: string) => setPref("PARALLAX_AIDER_PROVIDER", value)}
+            onValueChange={(value: string) =>
+              setPref("PARALLAX_AIDER_PROVIDER", value)
+            }
           >
             <SettingsControls.SelectTrigger variant="compact">
               <SelectValue />
@@ -104,7 +107,9 @@ export function ModelConfigSection({
           </SettingsControls.FieldLabel>
           <Select
             value={fastValue}
-            onValueChange={(value: string) => setPref(`${prefix}_MODEL_FAST`, value)}
+            onValueChange={(value: string) =>
+              setPref(`${prefix}_MODEL_FAST`, value)
+            }
           >
             <SettingsControls.SelectTrigger variant="compact">
               <SelectValue
@@ -125,15 +130,25 @@ export function ModelConfigSection({
         </SettingsControls.Field>
       </div>
 
-      {/* Only show the "configure API key" hint when the user is actually
-          using direct provider keys. In cloud or subscription mode the
-          fallback list is the expected source of truth, and Aider uses its
-          own short aliases regardless. */}
       {llmProvider === "api_keys" && activeTab !== "aider" && (
-        <SettingsControls.MutedText className="mt-1.5">
-          {isDynamic
-            ? t("codingagentsettingssection.ModelsFetched")
-            : t("codingagentsettingssection.UsingFallback")}
+        <SettingsControls.MutedText
+          className="mt-1.5 inline-flex items-center gap-1.5"
+          title={
+            isDynamic
+              ? t("codingagentsettingssection.ModelsFetched")
+              : t("codingagentsettingssection.UsingFallback")
+          }
+        >
+          {isDynamic ? (
+            <CheckCircle2 className="h-3.5 w-3.5 text-ok" aria-hidden />
+          ) : (
+            <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden />
+          )}
+          <span className="sr-only">
+            {isDynamic
+              ? t("codingagentsettingssection.ModelsFetched")
+              : t("codingagentsettingssection.UsingFallback")}
+          </span>
         </SettingsControls.MutedText>
       )}
     </>

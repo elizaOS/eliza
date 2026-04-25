@@ -205,8 +205,9 @@ const CURATED_APPS: CuratedDef[] = [
   {
     id: "clawville",
     npmName: "@clawville/app-clawville",
-    displayName: "Clawville",
-    description: "Claw-machine-themed multiplayer arcade.",
+    displayName: "ClawVille",
+    description:
+      "Sea-themed agent world with skill-learning buildings, NPC chat, and Solana wallet identity.",
     subtype: "game",
     launchType: "server-launch",
     icon: "Gamepad2",

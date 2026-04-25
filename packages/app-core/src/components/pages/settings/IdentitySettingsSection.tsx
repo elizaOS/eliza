@@ -28,7 +28,6 @@ import {
 } from "../../character/character-voice-config";
 import {
   SettingsField,
-  SettingsFieldDescription,
   SettingsFieldLabel,
 } from "../../settings/settings-control-primitives";
 
@@ -388,11 +387,6 @@ export function IdentitySettingsSection() {
           <SettingsFieldLabel htmlFor="settings-identity-name">
             {t("charactereditor.Name", { defaultValue: "Name" })}
           </SettingsFieldLabel>
-          <SettingsFieldDescription>
-            {t("settings.identity.nameDescription", {
-              defaultValue: "This is the agent name shown throughout the app.",
-            })}
-          </SettingsFieldDescription>
           <Input
             id="settings-identity-name"
             type="text"
@@ -411,17 +405,6 @@ export function IdentitySettingsSection() {
           <SettingsFieldLabel id="settings-identity-voice-label">
             {t("charactereditor.Voice", { defaultValue: "Voice" })}
           </SettingsFieldLabel>
-          <SettingsFieldDescription>
-            {useElevenLabs
-              ? t("settings.identity.voiceDescription.cloud", {
-                  defaultValue:
-                    "Choose the speaking voice used when cloud voice is available.",
-                })
-              : t("settings.identity.voiceDescription.edge", {
-                  defaultValue:
-                    "Choose the local backup voice used for speech output.",
-                })}
-          </SettingsFieldDescription>
           <div className="flex items-center gap-2">
             <ThemedSelect
               value={visibleVoicePresetId}
@@ -465,16 +448,10 @@ export function IdentitySettingsSection() {
 
       <SettingsField>
         <SettingsFieldLabel htmlFor="settings-identity-system-prompt">
-          {t("charactereditor.SystemPrompt", {
-            defaultValue: "Things I Should Always Remember",
+          {t("settings.identity.systemPromptLabel", {
+            defaultValue: "System prompt",
           })}
         </SettingsFieldLabel>
-        <SettingsFieldDescription>
-          {t("settings.identity.systemDescription", {
-            defaultValue:
-              "Set the standing instructions that define the agent’s behavior.",
-          })}
-        </SettingsFieldDescription>
         <Textarea
           id="settings-identity-system-prompt"
           value={draftSystem}
