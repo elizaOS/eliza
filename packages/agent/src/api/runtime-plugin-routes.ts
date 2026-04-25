@@ -5,7 +5,11 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { AgentRuntime, Route } from "@elizaos/core";
+import type { AgentRuntime, PaymentEnabledRoute, Route } from "@elizaos/core";
+import {
+  createPaymentAwareHandler,
+  isRoutePaymentWrapped,
+} from "../middleware/x402/payment-wrapper.ts";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
@@ -94,12 +98,14 @@ function augmentRequest(
     params?: Record<string, string>;
     protocol?: string;
     path?: string;
+    method?: string;
     get?: (name: string) => string | undefined;
   };
   base.query = query;
   base.params = params;
   base.protocol = proto;
   base.path = url.pathname;
+  base.method = req.method ?? "GET";
   base.get = (name: string) => {
     const v = req.headers[name.toLowerCase()];
     return Array.isArray(v) ? v[0] : v;
@@ -142,8 +148,22 @@ export async function tryHandleRuntimePluginRoute(options: {
     attachExpressResponseHelpers(res);
     augmentRequest(req, url, params);
 
+    const effectiveHandler =
+      route.x402 != null && !isRoutePaymentWrapped(route)
+        ? createPaymentAwareHandler(route as PaymentEnabledRoute)
+        : route.handler;
+
+    if (!effectiveHandler) {
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ error: "Route has no handler" }));
+      }
+      return true;
+    }
+
     try {
-      await route.handler(req as never, res as never, runtime);
+      await effectiveHandler(req as never, res as never, runtime);
     } catch (err) {
       if (!res.headersSent) {
         res.statusCode = 500;

@@ -1,138 +1,136 @@
-import * as fsp from "node:fs/promises";
-import * as path from "node:path";
-import type {
-	BrowserWorkspaceBridgeConfig,
-	BrowserWorkspaceCommand,
-	BrowserWorkspaceCommandResult,
-	BrowserWorkspaceDomElementSummary,
-	BrowserWorkspaceSnapshotRecord,
-	BrowserWorkspaceTab,
-} from "./browser-workspace-types.js";
 import {
-	appendBrowserWorkspaceProfilerEntry,
-	appendBrowserWorkspaceTraceEntry,
-	getBrowserWorkspaceRuntimeState,
-	registerBrowserWorkspaceElementRefs,
-} from "./browser-workspace-state.js";
-import {
-	DEFAULT_TIMEOUT_MS,
-	normalizeEnvValue,
-	resolveBrowserWorkspaceCommandElementRefs,
+  DEFAULT_TIMEOUT_MS,
+  normalizeEnvValue,
+  resolveBrowserWorkspaceCommandElementRefs,
 } from "./browser-workspace-helpers.js";
+import {
+  appendBrowserWorkspaceProfilerEntry,
+  appendBrowserWorkspaceTraceEntry,
+  getBrowserWorkspaceRuntimeState,
+  registerBrowserWorkspaceElementRefs,
+} from "./browser-workspace-state.js";
+import type {
+  BrowserWorkspaceBridgeConfig,
+  BrowserWorkspaceCommand,
+  BrowserWorkspaceCommandResult,
+  BrowserWorkspaceDomElementSummary,
+  BrowserWorkspaceSnapshotRecord,
+  BrowserWorkspaceTab,
+} from "./browser-workspace-types.js";
 
 async function readErrorBody(response: Response): Promise<string> {
-	try {
-		return (await response.text()).trim().slice(0, 240);
-	} catch {
-		return "";
-	}
+  try {
+    return (await response.text()).trim().slice(0, 240);
+  } catch {
+    return "";
+  }
 }
 
 export function resolveBrowserWorkspaceBridgeConfig(
-	env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env,
 ): BrowserWorkspaceBridgeConfig | null {
-	const baseUrl =
-		normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_URL) ??
-		normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_URL);
-	if (!baseUrl) {
-		return null;
-	}
+  const baseUrl =
+    normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_URL) ??
+    normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_URL);
+  if (!baseUrl) {
+    return null;
+  }
 
-	return {
-		baseUrl: baseUrl.replace(/\/+$/, ""),
-		token:
-			normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_TOKEN) ??
-			normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_TOKEN),
-	};
+  return {
+    baseUrl: baseUrl.replace(/\/+$/, ""),
+    token:
+      normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_TOKEN) ??
+      normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_TOKEN),
+  };
 }
 
 export function isBrowserWorkspaceBridgeConfigured(
-	env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-	return resolveBrowserWorkspaceBridgeConfig(env) !== null;
+  return resolveBrowserWorkspaceBridgeConfig(env) !== null;
 }
 
 export function getBrowserWorkspaceUnavailableMessage(): string {
-	return "Eliza browser workspace desktop bridge is unavailable.";
+  return "Eliza browser workspace desktop bridge is unavailable.";
 }
 
 export async function requestBrowserWorkspace<T>(
-	path: string,
-	init?: RequestInit,
-	env: NodeJS.ProcessEnv = process.env,
+  path: string,
+  init?: RequestInit,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<T> {
-	const config = resolveBrowserWorkspaceBridgeConfig(env);
-	if (!config) {
-		throw new Error(getBrowserWorkspaceUnavailableMessage());
-	}
+  const config = resolveBrowserWorkspaceBridgeConfig(env);
+  if (!config) {
+    throw new Error(getBrowserWorkspaceUnavailableMessage());
+  }
 
-	const headers = new Headers(init?.headers ?? {});
-	headers.set("Accept", "application/json");
-	if (!headers.has("Content-Type") && init?.body) {
-		headers.set("Content-Type", "application/json");
-	}
-	if (config.token) {
-		headers.set("Authorization", `Bearer ${config.token}`);
-	}
+  const headers = new Headers(init?.headers ?? {});
+  headers.set("Accept", "application/json");
+  if (!headers.has("Content-Type") && init?.body) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (config.token) {
+    headers.set("Authorization", `Bearer ${config.token}`);
+  }
 
-	const response = await fetch(`${config.baseUrl}${path}`, {
-		...init,
-		headers,
-		signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
-	});
+  const response = await fetch(`${config.baseUrl}${path}`, {
+    ...init,
+    headers,
+    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+  });
 
-	if (!response.ok) {
-		const details = await readErrorBody(response);
-		throw new Error(
-			`Browser workspace request failed (${response.status})${details ? `: ${details}` : ""}`,
-		);
-	}
+  if (!response.ok) {
+    const details = await readErrorBody(response);
+    throw new Error(
+      `Browser workspace request failed (${response.status})${details ? `: ${details}` : ""}`,
+    );
+  }
 
-	return (await response.json()) as T;
+  return (await response.json()) as T;
 }
 
 export async function evaluateBrowserWorkspaceTab(
-	request: { id: string; script: string },
-	env: NodeJS.ProcessEnv = process.env,
+  request: { id: string; script: string },
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<unknown> {
-	if (!isBrowserWorkspaceBridgeConfigured(env)) {
-		throw new Error(
-			"Eliza browser workspace eval is only available in the desktop app.",
-		);
-	}
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    throw new Error(
+      "Eliza browser workspace eval is only available in the desktop app.",
+    );
+  }
 
-	const payload = await requestBrowserWorkspace<{ result: unknown }>(
-		`/tabs/${encodeURIComponent(request.id)}/eval`,
-		{
-			method: "POST",
-			body: JSON.stringify({ script: request.script }),
-		},
-		env,
-	);
-	return payload.result;
+  const payload = await requestBrowserWorkspace<{ result: unknown }>(
+    `/tabs/${encodeURIComponent(request.id)}/eval`,
+    {
+      method: "POST",
+      body: JSON.stringify({ script: request.script }),
+    },
+    env,
+  );
+  return payload.result;
 }
 
 export async function snapshotBrowserWorkspaceTab(
-	id: string,
-	env: NodeJS.ProcessEnv = process.env,
+  id: string,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ data: string }> {
-	if (!isBrowserWorkspaceBridgeConfigured(env)) {
-		throw new Error(
-			"Eliza browser workspace snapshot is only available in the desktop app.",
-		);
-	}
+  if (!isBrowserWorkspaceBridgeConfigured(env)) {
+    throw new Error(
+      "Eliza browser workspace snapshot is only available in the desktop app.",
+    );
+  }
 
-	return await requestBrowserWorkspace<{ data: string }>(
-		`/tabs/${encodeURIComponent(id)}/snapshot`,
-		undefined,
-		env,
-	);
+  return await requestBrowserWorkspace<{ data: string }>(
+    `/tabs/${encodeURIComponent(id)}/snapshot`,
+    undefined,
+    env,
+  );
 }
 
 export function createDesktopBrowserWorkspaceCommandScript(
-	command: BrowserWorkspaceCommand,
+  command: BrowserWorkspaceCommand,
 ): string {
-	return `
+  return `
 (() => {
   const command = ${JSON.stringify(command)};
   const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
@@ -811,9 +809,9 @@ export function createDesktopBrowserWorkspaceCommandScript(
 }
 
 export function createDesktopBrowserWorkspaceUtilityScript(
-	command: BrowserWorkspaceCommand,
+  command: BrowserWorkspaceCommand,
 ): string {
-	return `
+  return `
 (() => {
   const command = ${JSON.stringify(command)};
   const normalize = (value) => String(value ?? "").replace(/\\s+/g, " ").trim();
@@ -1248,47 +1246,47 @@ export function createDesktopBrowserWorkspaceUtilityScript(
 }
 
 export async function executeDesktopBrowserWorkspaceUtilityCommand(
-	command: BrowserWorkspaceCommand,
-	env: NodeJS.ProcessEnv,
+  command: BrowserWorkspaceCommand,
+  env: NodeJS.ProcessEnv,
 ): Promise<BrowserWorkspaceCommandResult> {
-	const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
-	const startedAt = Date.now();
-	const result = await evaluateBrowserWorkspaceTab(
-		{
-			id,
-			script: createDesktopBrowserWorkspaceUtilityScript({
-				...command,
-				id,
-			}),
-		},
-		env,
-	);
-	const runtime = getBrowserWorkspaceRuntimeState("desktop", id);
-	appendBrowserWorkspaceTraceEntry(runtime, {
-		subaction: command.subaction,
-		type: "utility",
-	});
-	appendBrowserWorkspaceProfilerEntry(runtime, {
-		durationMs: Date.now() - startedAt,
-		subaction: command.subaction,
-		type: "utility",
-	});
-	return {
-		mode: "desktop",
-		subaction: command.subaction,
-		value: result,
-	};
+  const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
+  const startedAt = Date.now();
+  const result = await evaluateBrowserWorkspaceTab(
+    {
+      id,
+      script: createDesktopBrowserWorkspaceUtilityScript({
+        ...command,
+        id,
+      }),
+    },
+    env,
+  );
+  const runtime = getBrowserWorkspaceRuntimeState("desktop", id);
+  appendBrowserWorkspaceTraceEntry(runtime, {
+    subaction: command.subaction,
+    type: "utility",
+  });
+  appendBrowserWorkspaceProfilerEntry(runtime, {
+    durationMs: Date.now() - startedAt,
+    subaction: command.subaction,
+    type: "utility",
+  });
+  return {
+    mode: "desktop",
+    subaction: command.subaction,
+    value: result,
+  };
 }
 
 export async function getDesktopBrowserWorkspaceSnapshotRecord(
-	command: BrowserWorkspaceCommand,
-	env: NodeJS.ProcessEnv,
+  command: BrowserWorkspaceCommand,
+  env: NodeJS.ProcessEnv,
 ): Promise<BrowserWorkspaceSnapshotRecord> {
-	const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
-	const result = await evaluateBrowserWorkspaceTab(
-		{
-			id,
-			script: `
+  const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
+  const result = await evaluateBrowserWorkspaceTab(
+    {
+      id,
+      script: `
 (() => {
   const activeDocument = (() => {
     const state = window.__elizaBrowserWorkspaceState || {};
@@ -1321,21 +1319,21 @@ export async function getDesktopBrowserWorkspaceSnapshotRecord(
   };
 })()
       `.trim(),
-		},
-		env,
-	);
-	return result as BrowserWorkspaceSnapshotRecord;
+    },
+    env,
+  );
+  return result as BrowserWorkspaceSnapshotRecord;
 }
 
 export async function getDesktopBrowserWorkspaceSessionState(
-	command: BrowserWorkspaceCommand,
-	env: NodeJS.ProcessEnv,
+  command: BrowserWorkspaceCommand,
+  env: NodeJS.ProcessEnv,
 ): Promise<Record<string, unknown>> {
-	const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
-	const result = await evaluateBrowserWorkspaceTab(
-		{
-			id,
-			script: `
+  const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
+  const result = await evaluateBrowserWorkspaceTab(
+    {
+      id,
+      script: `
 (() => {
   const state = window.__elizaBrowserWorkspaceState || {};
   const readStorage = (storage) => {
@@ -1365,22 +1363,22 @@ export async function getDesktopBrowserWorkspaceSessionState(
   };
 })()
       `.trim(),
-		},
-		env,
-	);
-	return result as Record<string, unknown>;
+    },
+    env,
+  );
+  return result as Record<string, unknown>;
 }
 
 export async function loadDesktopBrowserWorkspaceSessionState(
-	command: BrowserWorkspaceCommand,
-	payload: Record<string, unknown>,
-	env: NodeJS.ProcessEnv,
+  command: BrowserWorkspaceCommand,
+  payload: Record<string, unknown>,
+  env: NodeJS.ProcessEnv,
 ): Promise<void> {
-	const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
-	await evaluateBrowserWorkspaceTab(
-		{
-			id,
-			script: `
+  const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
+  await evaluateBrowserWorkspaceTab(
+    {
+      id,
+      script: `
 (() => {
   const payload = ${JSON.stringify(payload)};
   const state =
@@ -1402,111 +1400,108 @@ export async function loadDesktopBrowserWorkspaceSessionState(
   return { loaded: true };
 })()
       `.trim(),
-		},
-		env,
-	);
+    },
+    env,
+  );
 }
 
 export async function executeDesktopBrowserWorkspaceDomCommand(
-	command: BrowserWorkspaceCommand,
-	env: NodeJS.ProcessEnv,
+  command: BrowserWorkspaceCommand,
+  env: NodeJS.ProcessEnv,
 ): Promise<BrowserWorkspaceCommandResult> {
-	const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
-	const startedAt = Date.now();
-	command = resolveBrowserWorkspaceCommandElementRefs(command, "desktop", id);
-	const result = await evaluateBrowserWorkspaceTab(
-		{
-			id,
-			script: createDesktopBrowserWorkspaceCommandScript({
-				...command,
-				id,
-			}),
-		},
-		env,
-	);
+  const id = await resolveDesktopBrowserWorkspaceTargetTabId(command, env);
+  const startedAt = Date.now();
+  command = resolveBrowserWorkspaceCommandElementRefs(command, "desktop", id);
+  const result = await evaluateBrowserWorkspaceTab(
+    {
+      id,
+      script: createDesktopBrowserWorkspaceCommandScript({
+        ...command,
+        id,
+      }),
+    },
+    env,
+  );
 
-	if (command.subaction === "inspect" || command.subaction === "snapshot") {
-		const value =
-			result && typeof result === "object" && !Array.isArray(result)
-				? (result as {
-						bodyText?: string;
-						elements?: BrowserWorkspaceDomElementSummary[];
-					})
-				: null;
-		const elements = registerBrowserWorkspaceElementRefs(
-			"desktop",
-			id,
-			Array.isArray(value?.elements) ? value.elements : [],
-		);
-		return {
-			mode: "desktop",
-			subaction: command.subaction,
-			elements,
-			value: result,
-		};
-	}
+  if (command.subaction === "inspect" || command.subaction === "snapshot") {
+    const value =
+      result && typeof result === "object" && !Array.isArray(result)
+        ? (result as {
+            bodyText?: string;
+            elements?: BrowserWorkspaceDomElementSummary[];
+          })
+        : null;
+    const elements = registerBrowserWorkspaceElementRefs(
+      "desktop",
+      id,
+      Array.isArray(value?.elements) ? value.elements : [],
+    );
+    return {
+      mode: "desktop",
+      subaction: command.subaction,
+      elements,
+      value: result,
+    };
+  }
 
-	const runtime = getBrowserWorkspaceRuntimeState("desktop", id);
-	appendBrowserWorkspaceTraceEntry(runtime, {
-		subaction: command.subaction,
-		type: "dom",
-	});
-	appendBrowserWorkspaceProfilerEntry(runtime, {
-		durationMs: Date.now() - startedAt,
-		subaction: command.subaction,
-		type: "dom",
-	});
-	return {
-		mode: "desktop",
-		subaction: command.subaction,
-		value:
-			result && typeof result === "object" && !Array.isArray(result)
-				? ((result as { value?: unknown }).value ?? result)
-				: result,
-	};
+  const runtime = getBrowserWorkspaceRuntimeState("desktop", id);
+  appendBrowserWorkspaceTraceEntry(runtime, {
+    subaction: command.subaction,
+    type: "dom",
+  });
+  appendBrowserWorkspaceProfilerEntry(runtime, {
+    durationMs: Date.now() - startedAt,
+    subaction: command.subaction,
+    type: "dom",
+  });
+  return {
+    mode: "desktop",
+    subaction: command.subaction,
+    value:
+      result && typeof result === "object" && !Array.isArray(result)
+        ? ((result as { value?: unknown }).value ?? result)
+        : result,
+  };
 }
 
 // --- Desktop tab resolution ---
 
-import {
-	createBrowserWorkspaceCommandTargetError,
-} from "./browser-workspace-helpers.js";
-import type { BrowserWorkspaceMode } from "./browser-workspace-types.js";
+import { createBrowserWorkspaceCommandTargetError } from "./browser-workspace-helpers.js";
 
 export function resolveBrowserWorkspaceCurrentTab(
-	tabs: BrowserWorkspaceTab[],
+  tabs: BrowserWorkspaceTab[],
 ): BrowserWorkspaceTab | null {
-	if (tabs.length === 0) {
-		return null;
-	}
+  if (tabs.length === 0) {
+    return null;
+  }
 
-	return (
-		tabs.find((tab) => tab.visible) ??
-		[...tabs].sort((left, right) => {
-			const leftTime = left.lastFocusedAt ?? left.updatedAt;
-			const rightTime = right.lastFocusedAt ?? right.updatedAt;
-			return (
-				rightTime.localeCompare(leftTime) || left.id.localeCompare(right.id)
-			);
-		})[0] ??
-		null
-	);
+  return (
+    tabs.find((tab) => tab.visible) ??
+    [...tabs].sort((left, right) => {
+      const leftTime = left.lastFocusedAt ?? left.updatedAt;
+      const rightTime = right.lastFocusedAt ?? right.updatedAt;
+      return (
+        rightTime.localeCompare(leftTime) || left.id.localeCompare(right.id)
+      );
+    })[0] ??
+    null
+  );
 }
 
 export async function resolveDesktopBrowserWorkspaceTargetTabId(
-	command: BrowserWorkspaceCommand,
-	env: NodeJS.ProcessEnv,
+  command: BrowserWorkspaceCommand,
+  env: NodeJS.ProcessEnv,
 ): Promise<string> {
-	if (command.id?.trim()) {
-		return command.id.trim();
-	}
+  if (command.id?.trim()) {
+    return command.id.trim();
+  }
 
-	// Use dynamic import to avoid circular dependency
-	const { listBrowserWorkspaceTabs } = await import("./browser-workspace.js");
-	const tabs = await listBrowserWorkspaceTabs(env);
-	const current = resolveBrowserWorkspaceCurrentTab(tabs);
-	if (!current) {
-		throw createBrowserWorkspaceCommandTargetError(command.subaction);
-	}
-	return current.id;
+  // Use dynamic import to avoid circular dependency
+  const { listBrowserWorkspaceTabs } = await import("./browser-workspace.js");
+  const tabs = await listBrowserWorkspaceTabs(env);
+  const current = resolveBrowserWorkspaceCurrentTab(tabs);
+  if (!current) {
+    throw createBrowserWorkspaceCommandTargetError(command.subaction);
+  }
+  return current.id;
 }

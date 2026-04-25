@@ -7,7 +7,6 @@
  */
 
 import crypto from "node:crypto";
-import { lookup as dnsLookup } from "node:dns/promises";
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
@@ -28,16 +27,17 @@ function tokenMatches(expected: string, provided: string): boolean {
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
-import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
+import { handleWebsiteBlockerRoutes } from "@elizaos/app-lifeops/routes/website-blocker-routes";
 import type {
   SwarmEvent,
   TaskCompletionSummary,
   TaskContext,
 } from "@elizaos/app-task-coordinator/api/coordinator-types";
 import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
+import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {
@@ -54,9 +54,14 @@ import {
   createMessageMemory,
   type IAgentRuntime,
   logger,
+  type Route,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import {
+  resolveApiBindHost,
+  resolveServerOnlyPort,
+} from "@elizaos/shared/runtime-env";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
 import { CharacterSchema } from "../config/character-schema.js";
@@ -67,22 +72,8 @@ import {
 } from "../config/config.js";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
 import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
-import {
-  isNullOriginAllowed,
-  resolveAllowedHosts,
-  resolveAllowedOrigins,
-  resolveApiBindHost,
-  resolveApiSecurityConfig,
-  resolveApiToken,
-  resolveServerOnlyPort,
-  setApiToken,
-  stripOptionalHostPort,
-} from "@elizaos/shared/runtime-env";
-import {
-  ONBOARDING_CLOUD_PROVIDER_OPTIONS,
-  ONBOARDING_PROVIDER_CATALOG,
-} from "../contracts/onboarding.js";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+import { validateX402Startup } from "../middleware/x402/startup-validator.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import {
   type AgentEventPayloadLike,
@@ -97,11 +88,7 @@ import {
   queryAuditFeed,
   subscribeAuditFeed,
 } from "../security/audit-log.js";
-import {
-  isBlockedPrivateOrLinkLocalIp,
-  isLoopbackHost,
-  normalizeHostLike,
-} from "../security/network-policy.js";
+import { isLoopbackHost } from "../security/network-policy.js";
 import {
   AgentExportError,
   estimateExportSize,
@@ -203,7 +190,7 @@ import {
 // import { handleIMessageRoute } from "./imessage-routes.js";
 import { handleInboxRoute } from "./inbox-routes.js";
 import { handleMcpRoutes } from "./mcp-routes.js";
-import { pushWithBatchEvict, sweepExpiredEntries } from "./memory-bounds.js";
+import { pushWithBatchEvict } from "./memory-bounds.js";
 import { handleMemoryRoutes } from "./memory-routes.js";
 import { handleMiscRoutes } from "./misc-routes.js";
 import { handleModelsRoutes } from "./models-routes.js";
@@ -226,7 +213,6 @@ import {
   cloneWithoutBlockedObjectKeys,
   decodePathComponent,
   getErrorMessage,
-  hasBlockedObjectKeyDeep,
   hasPersistedOnboardingState,
   isUuidLike,
   patchTouchesProviderSelection,
@@ -237,21 +223,12 @@ import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
-import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
 import { TxService } from "./tx-service.js";
 import { handleUpdateRoutes } from "./update-routes.js";
-import {
-  // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.
-  // fetchEvmBalances, fetchSolanaBalances, fetchSolanaNativeBalanceViaRpc,
-  // generateWalletForChain, importWallet, validatePrivateKey,
-  generateWalletKeys,
-  getWalletAddresses,
-  initStewardWalletCache,
-  setSolanaWalletEnv,
-} from "./wallet.js";
+import { getWalletAddresses, initStewardWalletCache } from "./wallet.js";
 // Wallet dispatch moved to @elizaos/app-steward plugin routes.
 // import { handleWalletBscRoutes } from "./wallet-bsc-routes.js";
 import {
@@ -261,7 +238,6 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-import { handleWebsiteBlockerRoutes } from "@elizaos/app-lifeops/routes/website-blocker-routes";
 // handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
@@ -328,7 +304,6 @@ export {
 // statements placed where each function was originally defined (see below).
 // The `export { ... } from` above re-exports them for external consumers.
 
-import type { FallbackParsedAction } from "./binance-skill-helpers.js";
 import {
   getInventoryProviderOptions,
   getModelOptions,
@@ -350,7 +325,7 @@ import {
   type PluginEntry,
 } from "./plugin-discovery-helpers.js";
 
-const nodeRequire = createRequire(import.meta.url);
+const _nodeRequire = createRequire(import.meta.url);
 // Dynamic import (not require) because the plugin is ESM-only and bun's
 // createRequire cannot load ESM packages. Top-level await is settled before
 // any consumer reads the binding.
@@ -871,17 +846,13 @@ function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
 const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
 
 // MCP validation helpers extracted to server-helpers-mcp.ts
-import {
-  resolveMcpServersRejection as _resolveMcpServersRejection,
-  validateMcpServerConfig as _validateMcpServerConfig,
-} from "./server-helpers-mcp.js";
+import { resolveMcpServersRejection as _resolveMcpServersRejection } from "./server-helpers-mcp.js";
 
 export {
   resolveMcpServersRejection,
   validateMcpServerConfig,
 } from "./server-helpers-mcp.js";
 
-const validateMcpServerConfig = _validateMcpServerConfig;
 const resolveMcpServersRejection = _resolveMcpServersRejection;
 
 // ---------------------------------------------------------------------------
@@ -1067,11 +1038,7 @@ function buildPluginEvmDiagnosticEntry(
 }
 
 // Wallet intent/export helpers extracted to server-helpers-wallet.ts
-import {
-  hasUsableWalletFallbackParams as _hasUsableWalletFallbackParams,
-  inferWalletExecutionFallback as _inferWalletExecutionFallback,
-  resolveWalletExportRejection as _resolveWalletExportRejection,
-} from "./server-helpers-wallet.js";
+import { resolveWalletExportRejection as _resolveWalletExportRejection } from "./server-helpers-wallet.js";
 
 export {
   hasUsableWalletFallbackParams,
@@ -1080,16 +1047,10 @@ export {
   type WalletExportRejection,
 } from "./server-helpers-wallet.js";
 
-const inferWalletExecutionFallback = _inferWalletExecutionFallback;
-const hasUsableWalletFallbackParams = _hasUsableWalletFallbackParams;
 const resolveWalletExportRejection = _resolveWalletExportRejection;
 
 // Plugin config helpers extracted to server-helpers-plugin.ts
-import {
-  type PluginConfigMutationRejection as _PluginConfigMutationRejection,
-  resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections,
-  resolvePluginConfigReply as _resolvePluginConfigReply,
-} from "./server-helpers-plugin.js";
+import { resolvePluginConfigMutationRejections as _resolvePluginConfigMutationRejections } from "./server-helpers-plugin.js";
 
 export {
   type PluginConfigMutationRejection,
@@ -1097,7 +1058,6 @@ export {
   resolvePluginConfigReply,
 } from "./server-helpers-plugin.js";
 
-const resolvePluginConfigReply = _resolvePluginConfigReply;
 const resolvePluginConfigMutationRejections =
   _resolvePluginConfigMutationRejections;
 
@@ -1172,7 +1132,6 @@ import {
   clearPairing as _clearPairing,
   ensureApiTokenForBindHost as _ensureApiTokenForBindHost,
   ensurePairingCode as _ensurePairingCode,
-  extractAuthToken as _extractAuthToken,
   getConfiguredApiToken as _getConfiguredApiToken,
   getPairingExpiresAt as _getPairingExpiresAt,
   isAllowedHost as _isAllowedHost,
@@ -1184,11 +1143,9 @@ import {
   pairingEnabled as _pairingEnabled,
   rateLimitPairing as _rateLimitPairing,
   rejectWebSocketUpgrade as _rejectWebSocketUpgrade,
-  resolveCorsOrigin as _resolveCorsOrigin,
   resolveTerminalRunClientId as _resolveTerminalRunClientId,
   resolveTerminalRunRejection as _resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
-  type WebSocketUpgradeRejection as _WebSocketUpgradeRejection,
   type TerminalRunRejection,
 } from "./server-helpers-auth.js";
 
@@ -1207,9 +1164,7 @@ export {
 } from "./server-helpers-auth.js";
 
 const isAllowedHost = _isAllowedHost;
-const resolveCorsOrigin = _resolveCorsOrigin;
 const applyCors = _applyCors;
-const extractAuthToken = _extractAuthToken;
 const isAuthorized = _isAuthorized;
 const ensureApiTokenForBindHost = _ensureApiTokenForBindHost;
 const normalizeWsClientId = _normalizeWsClientId;
@@ -1259,13 +1214,9 @@ const _WORKBENCH_TODO_TAG = WORKBENCH_TODO_TAG;
 
 // ── Autonomy / swarm / coding-agent helpers — extracted to server-helpers-swarm.ts ──
 
-import {
-  routeAutonomyTextToUser as _routeAutonomyTextToUser,
-} from "./server-helpers-swarm.js";
+import { routeAutonomyTextToUser as _routeAutonomyTextToUser } from "./server-helpers-swarm.js";
 
-export {
-  routeAutonomyTextToUser,
-} from "./server-helpers-swarm.js";
+export { routeAutonomyTextToUser } from "./server-helpers-swarm.js";
 
 const routeAutonomyTextToUser = _routeAutonomyTextToUser;
 
@@ -1604,9 +1555,9 @@ function resolveSessionWorkdir(
   runtime: AgentRuntime,
   sessionId: string,
 ): string | null {
-  const ptyService = runtime.getService("PTY_SERVICE") as
-    | { getSession?: (id: string) => { workdir?: string } | undefined }
-    | null;
+  const ptyService = runtime.getService("PTY_SERVICE") as {
+    getSession?: (id: string) => { workdir?: string } | undefined;
+  } | null;
   return ptyService?.getSession?.(sessionId)?.workdir ?? null;
 }
 
@@ -1662,16 +1613,16 @@ async function routeSynthesisToConnector(
   }
 }
 
-// ── Parse Action Block from Eliza's Response ─────────────────────────
-import {
-  parseActionBlock,
-  stripActionBlockFromDisplay,
-} from "./parse-action-block.js";
 import {
   chunkForDiscord,
   readLastAssistantTextFromJsonl,
 } from "../runtime/subagent-output.js";
 import { installTaskHeartbeat } from "../runtime/task-heartbeat.js";
+// ── Parse Action Block from Eliza's Response ─────────────────────────
+import {
+  parseActionBlock,
+  stripActionBlockFromDisplay,
+} from "./parse-action-block.js";
 
 // ── Coordinator Event Routing ───────────────────────────────────────────
 
@@ -5293,10 +5244,7 @@ export async function startApiServer(opts?: {
     }
   };
 
-  state.broadcastWsToClientId = (
-    clientId: string,
-    data: object,
-  ) => {
+  state.broadcastWsToClientId = (clientId: string, data: object) => {
     const message = JSON.stringify(data);
     let delivered = 0;
     for (const client of wsClients) {
@@ -5474,8 +5422,28 @@ export async function startApiServer(opts?: {
     registerClientChatSendHandler(opts.runtime, state);
   }
 
+  const assertX402RoutesValid = (rt: AgentRuntime | null | undefined): void => {
+    if (!rt?.routes?.length) return;
+    const agentId =
+      rt.agentId != null && String(rt.agentId).length > 0
+        ? String(rt.agentId)
+        : undefined;
+    const result = validateX402Startup(rt.routes as Route[], rt.character, {
+      agentId,
+    });
+    if (!result.valid) {
+      throw new Error(
+        `x402 configuration invalid:\n${result.errors.map((e) => `  • ${e}`).join("\n")}`,
+      );
+    }
+    for (const w of result.warnings) {
+      logger.warn(`[x402] ${w}`);
+    }
+  };
+
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
+    assertX402RoutesValid(rt);
     state.runtime = rt;
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
@@ -5551,6 +5519,11 @@ export async function startApiServer(opts?: {
   console.log(
     `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
   );
+  try {
+    assertX402RoutesValid(state.runtime);
+  } catch (err) {
+    return Promise.reject(err);
+  }
   return new Promise((resolve, reject) => {
     let currentPort = port;
 

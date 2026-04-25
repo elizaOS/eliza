@@ -33,7 +33,6 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
   "..",
-  "..",
 );
 const FILTER_TOKENS = (process.env.ELIZA_PLUGIN_LIFECYCLE_FILTER ?? "")
   .split(",")

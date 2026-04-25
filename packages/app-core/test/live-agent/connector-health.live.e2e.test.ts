@@ -14,9 +14,9 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { req } from "../../../../../test/helpers/http.ts";
-import { createLiveRuntimeChildEnv } from "../../../../../test/helpers/live-child-env.ts";
+import { describeIf } from "../helpers/conditional-tests.ts";
+import { req } from "../helpers/http.ts";
+import { createLiveRuntimeChildEnv } from "../helpers/live-child-env.ts";
 
 const LIVE =
   process.env.MILADY_LIVE_TEST === "1" ||

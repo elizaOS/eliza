@@ -31,7 +31,7 @@ import {
 } from "@elizaos/app-core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
+import { describeIf } from "../helpers/conditional-tests.ts";
 
 // ---------------------------------------------------------------------------
 // Environment Setup

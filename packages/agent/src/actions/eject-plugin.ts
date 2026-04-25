@@ -1,6 +1,9 @@
 import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { requestRestart } from "@elizaos/shared/restart";
-import { isPluginManagerLike, type PluginManagerLike } from "../services/plugin-manager-types.js";
+import {
+  isPluginManagerLike,
+  type PluginManagerLike,
+} from "../services/plugin-manager-types.js";
 
 function getPluginManager(runtime: IAgentRuntime): PluginManagerLike | null {
   const svc = runtime.getService("plugin_manager");

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-function looksLikeRepoRoot(dir) {
+function looksLikeElizaSubrepoRoot(dir) {
   return (
     existsSync(path.join(dir, "package.json")) &&
     existsSync(path.join(dir, "apps", "app", "package.json")) &&
@@ -10,6 +10,18 @@ function looksLikeRepoRoot(dir) {
       path.join(dir, "eliza", "packages", "app-core", "package.json"),
     )
   );
+}
+
+function looksLikeFlatMonorepoRoot(dir) {
+  return (
+    existsSync(path.join(dir, "package.json")) &&
+    existsSync(path.join(dir, "packages", "app-core", "package.json")) &&
+    existsSync(path.join(dir, "packages", "agent", "package.json"))
+  );
+}
+
+function looksLikeRepoRoot(dir) {
+  return looksLikeFlatMonorepoRoot(dir) || looksLikeElizaSubrepoRoot(dir);
 }
 
 export function resolveRepoRoot(startDir = process.cwd()) {

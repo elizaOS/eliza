@@ -5,7 +5,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import path from "node:path";
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   resolveApiSecurityConfig,
