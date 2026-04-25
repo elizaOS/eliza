@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type {
   LifeOpsCapabilitiesStatus,
   LifeOpsGoogleConnectorStatus,
@@ -8,12 +7,13 @@ import type {
   LifeOpsOverview,
   LifeOpsXConnectorStatus,
 } from "@elizaos/shared/contracts/lifeops";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   LifeOpsScreenTimeSummary,
   LifeOpsSocialHabitSummary,
 } from "../api/client-lifeops.js";
-import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   calendarState,
@@ -58,6 +58,10 @@ const {
         vi.fn<() => Promise<LifeOpsScreenTimeSummary>>(),
       getLifeOpsSocialHabitSummary:
         vi.fn<() => Promise<LifeOpsSocialHabitSummary>>(),
+      getLifeOpsScreenTimeBreakdown:
+        vi.fn<() => Promise<{ totalSeconds: number }>>(),
+      listBrowserBridgeCompanions:
+        vi.fn<() => Promise<{ companions: unknown[] }>>(),
     },
     googleConnectorState: {
       actionPending: false,
@@ -383,6 +387,10 @@ beforeEach(() => {
   clientMock.getLifeOpsSocialHabitSummary.mockRejectedValue(
     new Error("Social unavailable."),
   );
+  clientMock.getLifeOpsScreenTimeBreakdown.mockResolvedValue({
+    totalSeconds: 0,
+  });
+  clientMock.listBrowserBridgeCompanions.mockResolvedValue({ companions: [] });
 });
 
 afterEach(() => {
