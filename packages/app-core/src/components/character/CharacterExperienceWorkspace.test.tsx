@@ -96,9 +96,11 @@ describe("CharacterExperienceWorkspace", () => {
       />,
     );
 
-    expect(screen.getByText("No experiences recorded yet.")).toBeTruthy();
     expect(
-      screen.getByText(/confidence, importance, source context/i),
+      screen.getByText(/I\s+haven.+t\s+learned\s+anything\s+yet\./),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Each lesson lands with the context that produced it/i),
     ).toBeTruthy();
   });
 

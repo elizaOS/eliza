@@ -633,6 +633,7 @@ export function PageScopedChatPane({
           return "Agent starting";
         case "chat.inputPlaceholder":
         case "chat.inputPlaceholderNarrow":
+        case "common.message":
           return placeholder;
         case "chat.listening":
           return "Listening…";
@@ -642,6 +643,7 @@ export function PageScopedChatPane({
         case "chat.releaseToSend":
           return "Release to send";
         case "chat.send":
+        case "common.send":
           return "Send";
         case "chat.stopGeneration":
           return "Stop";
