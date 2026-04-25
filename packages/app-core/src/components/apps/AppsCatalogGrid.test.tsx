@@ -87,7 +87,7 @@ describe("AppsCatalogGrid", () => {
       />,
     );
 
-    const firstRow = screen.getByTestId("apps-section-row-0");
+    const firstRow = screen.getByTestId("apps-section-row-favorites-featured");
     const firstRowSectionIds = Array.from(
       firstRow.querySelectorAll("section[data-testid]"),
     ).map((element) => element.getAttribute("data-testid"));
@@ -123,7 +123,7 @@ describe("AppsCatalogGrid", () => {
       />,
     );
 
-    const firstRow = screen.getByTestId("apps-section-row-0");
+    const firstRow = screen.getByTestId("apps-section-row-favorites-featured");
 
     expect(
       firstRow.querySelector('[data-testid="apps-section-favorites"]'),

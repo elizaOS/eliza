@@ -133,13 +133,7 @@ export function CodingAgentSettingsSection() {
             Array.isArray(response.models) &&
             response.models.length > 0
           ) {
-            const chatModels = (
-              response.models as Array<{
-                id: string;
-                name: string;
-                category: string;
-              }>
-            )
+            const chatModels = response.models
               .filter((model) => model.category === "chat")
               .map((model) => ({
                 value: model.id,
@@ -154,7 +148,7 @@ export function CodingAgentSettingsSection() {
 
         if (Array.isArray(preflightRes)) {
           const mapped: Partial<Record<AgentTab, AgentPreflightResult>> = {};
-          for (const item of preflightRes as AgentPreflightResult[]) {
+          for (const item of preflightRes) {
             const raw = item.adapter?.toLowerCase();
             const key = raw ? ADAPTER_NAME_TO_TAB[raw] : undefined;
             if (key) {

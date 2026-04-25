@@ -388,9 +388,7 @@ export function buildTriggerConfig(params: {
         ? params.draft.cronExpression
         : undefined,
     eventKind:
-      params.draft.triggerType === "event"
-        ? params.draft.eventKind
-        : undefined,
+      params.draft.triggerType === "event" ? params.draft.eventKind : undefined,
     maxRuns: params.draft.maxRuns,
     runCount: previous?.runCount ?? 0,
     dedupeKey: buildTriggerDedupeKey({

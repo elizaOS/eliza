@@ -20,6 +20,7 @@ import type { CharacterData, ExperienceRecord } from "../../api/client-types";
 const { clientMock, useAppMock } = vi.hoisted(() => ({
   clientMock: {
     deleteExperience: vi.fn(),
+    fetch: vi.fn(),
     getRelationshipsActivity: vi.fn(),
     listCharacterHistory: vi.fn(),
     listExperiences: vi.fn(),
@@ -213,6 +214,7 @@ describe("CharacterHubView experience tab", () => {
       experiences: [experience],
       total: 1,
     });
+    clientMock.fetch.mockResolvedValue({ skills: [] });
     clientMock.updateCharacter.mockResolvedValue({
       agentName: "Milady",
       character,

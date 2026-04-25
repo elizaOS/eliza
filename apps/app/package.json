@@ -7,7 +7,7 @@
     "dev": "vite",
     "preview": "vite preview",
     "design-review": "node --import tsx test/design-review/run-design-review.ts",
-    "lint": "bunx @biomejs/biome check src test scripts vite.config.ts vitest.config.ts vitest.e2e.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.web-views.config.ts package.json capacitor.config.ts",
+    "lint": "bunx @biomejs/biome check src scripts vite.config.ts vitest.e2e.config.ts playwright.ui-smoke.config.ts playwright.ui-packaged.config.ts playwright.electrobun.packaged.config.ts playwright.web-views.config.ts package.json capacitor.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
     "test:ui": "vitest run --config vitest.config.ts test/app/command-palette.test.tsx test/app/chat-view.test.tsx test/app/conversations-sidebar.test.tsx test/app/events.test.ts test/app/command-registry.test.ts test/app/shell-overlays.test.tsx test/app/shortcuts-overlay.test.tsx test/app/confirm-modal.test.tsx",

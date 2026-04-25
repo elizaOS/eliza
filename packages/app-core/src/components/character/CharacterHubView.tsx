@@ -43,11 +43,13 @@ import {
 } from "./CharacterEditorPanels";
 import { CharacterExperienceWorkspace } from "./CharacterExperienceWorkspace";
 import { CharacterLearnedSkillsSection } from "./CharacterLearnedSkillsSection";
-import { CharacterOverviewSection } from "./CharacterOverviewSection";
+import {
+  CharacterOverviewSection,
+  type CharacterOverviewWidget,
+} from "./CharacterOverviewSection";
 import { CharacterPersonalityTimeline } from "./CharacterPersonalityTimeline";
 import { CharacterRelationshipsSection } from "./CharacterRelationshipsSection";
 import {
-  buildCharacterOverviewItems,
   CHARACTER_HUB_SECTIONS,
   type CharacterHubSection,
   getCharacterHubSectionLabel,
@@ -56,6 +58,17 @@ import {
 } from "./character-hub-helpers";
 
 type CharacterStyleSection = "all" | "chat" | "post";
+
+type LearnedSkillSummary = {
+  description?: string | null;
+  name: string;
+  source?: string | null;
+  status?: "active" | "proposed" | "disabled" | string;
+};
+
+type LearnedSkillsResponse = {
+  skills?: LearnedSkillSummary[];
+};
 
 const CHARACTER_SECTION_PATHS: Record<CharacterHubSection, string> = {
   overview: "/character",
@@ -146,6 +159,17 @@ function mergeCharacterPatch(
   };
 }
 
+function latestTimestamp(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function ratio(value: number, max: number): number {
+  if (max <= 0) return 0;
+  return Math.max(0, Math.min(1, value / max));
+}
+
 export function CharacterHubView({
   d,
   bioText,
@@ -203,6 +227,7 @@ export function CharacterHubView({
   const [relationshipActivityError, setRelationshipActivityError] = useState<
     string | null
   >(null);
+  const [learnedSkills, setLearnedSkills] = useState<LearnedSkillSummary[]>([]);
   const [experienceRecords, setExperienceRecords] = useState<
     ExperienceRecord[]
   >([]);
@@ -378,6 +403,28 @@ export function CharacterHubView({
     let cancelled = false;
 
     void client
+      .fetch<LearnedSkillsResponse>("/api/skills/curated")
+      .then((data) => {
+        if (cancelled) return;
+        setLearnedSkills(
+          (data.skills ?? []).filter((skill) => skill.source !== "human"),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLearnedSkills([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void client
       .listKnowledgeDocuments({ limit: 100 })
       .then((response) => {
         if (!cancelled) {
@@ -404,42 +451,135 @@ export function CharacterHubView({
     [knowledgeDocuments],
   );
 
-  const overviewItems = useMemo(
-    () =>
-      buildCharacterOverviewItems({
-        history: historyEntries,
-        documents: customKnowledgeDocuments,
-        experiences: experienceRecords,
-        relationshipActivity,
-      }),
-    [
-      customKnowledgeDocuments,
-      experienceRecords,
-      historyEntries,
-      relationshipActivity,
+  const starterOverviewWidgets = useMemo<CharacterOverviewWidget[]>(
+    () => [
+      {
+        section: "personality",
+        title: "Personality",
+        caption: "Add bio, style, and examples",
+        score: 0,
+      },
+      {
+        section: "knowledge",
+        title: "Knowledge",
+        caption: "Upload or teach source material",
+        score: 0,
+      },
+      {
+        section: "skills",
+        title: "Skills",
+        caption: "Let the agent learn useful abilities",
+        score: 0,
+      },
+      {
+        section: "experience",
+        title: "Experience",
+        caption: "Record outcomes and lessons",
+        score: 0,
+      },
+      {
+        section: "relationships",
+        title: "Relationships",
+        caption: "Build identity and preference memory",
+        score: 0,
+      },
     ],
+    [],
   );
-  const balancedOverviewItems = useMemo(() => {
-    const byKind = new Map<string, typeof overviewItems>();
-    for (const item of overviewItems) {
-      const bucket = byKind.get(item.kind) ?? [];
-      if (bucket.length < 4) {
-        bucket.push(item);
-        byKind.set(item.kind, bucket);
-      }
-    }
-    return Array.from(byKind.values())
-      .flat()
-      .sort((left, right) => {
-        const leftTime = left.timestamp
-          ? new Date(left.timestamp).getTime()
-          : 0;
-        const rightTime = right.timestamp
-          ? new Date(right.timestamp).getTime()
-          : 0;
-        return rightTime - leftTime;
-      });
-  }, [overviewItems]);
+  const overviewWidgets = useMemo<CharacterOverviewWidget[]>(() => {
+    const styleItems = Object.values(d.style ?? {}).reduce(
+      (count, values) => count + (Array.isArray(values) ? values.length : 0),
+      0,
+    );
+    const latestPersonalityUpdate = historyEntries.reduce(
+      (latest, entry) => Math.max(latest, latestTimestamp(entry.timestamp)),
+      0,
+    );
+    const activeSkills = learnedSkills.filter(
+      (skill) => skill.status !== "disabled",
+    );
+    const averageExperienceConfidence =
+      experienceRecords.length > 0
+        ? experienceRecords.reduce(
+            (total, experience) => total + experience.confidence,
+            0,
+          ) / experienceRecords.length
+        : 0;
+    const averageExperienceImportance =
+      experienceRecords.length > 0
+        ? experienceRecords.reduce(
+            (total, experience) => total + experience.importance,
+            0,
+          ) / experienceRecords.length
+        : 0;
+    const relationshipNames = relationshipActivity
+      .map((item) => item.personName)
+      .filter(Boolean);
+
+    return [
+      {
+        section: "personality",
+        title: "Personality",
+        caption:
+          latestPersonalityUpdate > 0
+            ? `Updated ${new Date(latestPersonalityUpdate).toLocaleDateString()}`
+            : "No personality edits yet",
+        score: ratio(
+          (bioText.trim() ? 1 : 0) + styleItems + historyEntries.length,
+          12,
+        ),
+        bars: [
+          { label: "Bio", value: bioText.trim() ? 1 : 0 },
+          { label: "Style", value: ratio(styleItems, 8) },
+          { label: "History", value: ratio(historyEntries.length, 8) },
+        ],
+      },
+      {
+        section: "knowledge",
+        title: "Knowledge",
+        caption: `${customKnowledgeDocuments.length} custom document${customKnowledgeDocuments.length === 1 ? "" : "s"}`,
+        score: ratio(customKnowledgeDocuments.length, 8),
+        bars: [
+          { label: "Custom", value: ratio(customKnowledgeDocuments.length, 8) },
+          { label: "Total", value: ratio(knowledgeDocuments.length, 12) },
+        ],
+      },
+      {
+        section: "skills",
+        title: "Skills",
+        caption: `${activeSkills.length} learned skill${activeSkills.length === 1 ? "" : "s"}`,
+        score: ratio(activeSkills.length, 8),
+        nodes: activeSkills.map((skill) => skill.name),
+      },
+      {
+        section: "experience",
+        title: "Experience",
+        caption: `${experienceRecords.length} recorded experience${experienceRecords.length === 1 ? "" : "s"}`,
+        score: ratio(experienceRecords.length, 10),
+        bars: [
+          { label: "Confidence", value: averageExperienceConfidence },
+          { label: "Importance", value: averageExperienceImportance },
+          { label: "Records", value: ratio(experienceRecords.length, 10) },
+        ],
+      },
+      {
+        section: "relationships",
+        title: "Relationships",
+        caption: `${relationshipActivity.length} recent signal${relationshipActivity.length === 1 ? "" : "s"}`,
+        score: ratio(relationshipActivity.length, 10),
+        nodes: relationshipNames,
+      },
+    ];
+  }, [
+    bioText,
+    customKnowledgeDocuments.length,
+    d.style,
+    experienceRecords,
+    historyEntries,
+    knowledgeDocuments.length,
+    learnedSkills,
+    relationshipActivity,
+  ]);
 
   const timelineItems = useMemo(
     () => historyEntries.map(mapHistoryEntryToTimelineItem),
@@ -468,24 +608,10 @@ export function CharacterHubView({
     [setTab, tab],
   );
 
-  const handleOverviewOpen = (
-    item: ReturnType<typeof buildCharacterOverviewItems>[number],
+  const handleOverviewOpenSection = (
+    section: CharacterOverviewWidget["section"],
   ) => {
-    if (item.kind === "knowledge") {
-      setSelectedKnowledgeDocumentId(item.id.replace("knowledge:", ""));
-      navigateToSection("knowledge");
-      return;
-    }
-    if (item.kind === "experience") {
-      setSelectedExperienceId(item.id.replace("experience:", ""));
-      navigateToSection("experience");
-      return;
-    }
-    if (item.kind === "relationship") {
-      navigateToSection("relationships");
-      return;
-    }
-    navigateToSection("personality");
+    navigateToSection(section);
   };
 
   const handleSaveExperience = async (
@@ -672,8 +798,9 @@ export function CharacterHubView({
     if (activeSection === "overview") {
       return (
         <CharacterOverviewSection
-          items={balancedOverviewItems}
-          onOpenItem={handleOverviewOpen}
+          starterWidgets={starterOverviewWidgets}
+          widgets={overviewWidgets}
+          onOpenSection={handleOverviewOpenSection}
         />
       );
     }

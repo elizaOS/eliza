@@ -1,5 +1,9 @@
 import { resolveServiceRoutingInConfig } from "@elizaos/shared/contracts/onboarding";
-import { buildElizaCloudServiceRoute } from "@elizaos/shared/contracts/service-routing";
+import {
+  buildElizaCloudServiceRoute,
+  normalizeServiceRoutingConfig,
+} from "@elizaos/shared/contracts/service-routing";
+import { asRecord } from "@elizaos/shared/type-guards";
 import {
   Button,
   Select,
@@ -78,6 +82,26 @@ function getSubscriptionProviderLabel(
   return SUBSCRIPTION_PROVIDER_LABEL_FALLBACKS[provider.id] ?? provider.id;
 }
 
+function readSubscriptionProvider(
+  cfg: Record<string, unknown>,
+): SubscriptionProviderSelectionId | null {
+  const agents = asRecord(cfg.agents);
+  const defaults = asRecord(agents?.defaults);
+  const subscriptionProvider = defaults?.subscriptionProvider;
+  return typeof subscriptionProvider === "string" &&
+    isSubscriptionProviderSelectionId(subscriptionProvider)
+    ? subscriptionProvider
+    : null;
+}
+
+function readConfigString(
+  source: Record<string, unknown> | null | undefined,
+  key: string,
+): string {
+  const value = source?.[key];
+  return typeof value === "string" ? value : "";
+}
+
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const { setTimeout } = useTimeout();
   const app = useApp();
@@ -139,16 +163,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
   const readCloudCallsDisabled = useCallback(
     (cfg: Record<string, unknown>): boolean => {
-      const cloud =
-        cfg.cloud && typeof cfg.cloud === "object" && !Array.isArray(cfg.cloud)
-          ? (cfg.cloud as Record<string, unknown>)
-          : null;
-      const services =
-        cloud?.services &&
-        typeof cloud.services === "object" &&
-        !Array.isArray(cloud.services)
-          ? (cloud.services as Record<string, unknown>)
-          : null;
+      const cloud = asRecord(cfg.cloud);
+      const services = asRecord(cloud?.services);
       return Boolean(
         cloud?.enabled === false ||
           cloud?.inferenceMode === "local" ||
@@ -162,16 +178,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     (cfg: Record<string, unknown>) => {
       const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
       const providerId = getOnboardingProviderOption(llmText?.backend)?.id;
-      const savedSubscriptionProvider =
-        typeof (cfg.agents as { defaults?: { subscriptionProvider?: unknown } })
-          ?.defaults?.subscriptionProvider === "string" &&
-        isSubscriptionProviderSelectionId(
-          (cfg.agents as { defaults?: { subscriptionProvider?: string } })
-            .defaults?.subscriptionProvider ?? "",
-        )
-          ? ((cfg.agents as { defaults?: { subscriptionProvider?: string } })
-              .defaults?.subscriptionProvider ?? null)
-          : null;
+      const savedSubscriptionProvider = readSubscriptionProvider(cfg);
       const nextSelectedId =
         llmText?.transport === "cloud-proxy" && providerId === "elizacloud"
           ? "__cloud__"
@@ -215,10 +222,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       }
       try {
         const cfg = await client.getConfig();
-        const models = cfg.models as Record<string, string> | undefined;
-        const llmText = resolveServiceRoutingInConfig(
-          cfg as Record<string, unknown>,
-        )?.llmText;
+        const models = asRecord(cfg.models);
+        const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
         const providerId = getOnboardingProviderOption(llmText?.backend)?.id;
         const elizaCloudEnabledCfg =
           llmText?.transport === "cloud-proxy" && providerId === "elizacloud";
@@ -230,39 +235,35 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           mega: "anthropic/claude-sonnet-4.6",
         };
 
-        const vars =
-          ((cfg.env as Record<string, unknown> | undefined)?.vars as
-            | Record<string, unknown>
-            | undefined) ?? {};
-        const envFor = (key: string) =>
-          typeof vars[key] === "string" ? (vars[key] as string) : "";
+        const vars = asRecord(asRecord(cfg.env)?.vars);
+        const envFor = (key: string) => readConfigString(vars, key);
 
         setCurrentNanoModel(
-          models?.nano ||
+          readConfigString(models, "nano") ||
             llmText?.nanoModel ||
             envFor("NANO_MODEL") ||
             (elizaCloudEnabledCfg ? defaults.nano : ""),
         );
         setCurrentSmallModel(
-          models?.small ||
+          readConfigString(models, "small") ||
             llmText?.smallModel ||
             envFor("SMALL_MODEL") ||
             (elizaCloudEnabledCfg ? defaults.small : ""),
         );
         setCurrentMediumModel(
-          models?.medium ||
+          readConfigString(models, "medium") ||
             llmText?.mediumModel ||
             envFor("MEDIUM_MODEL") ||
             (elizaCloudEnabledCfg ? defaults.medium : ""),
         );
         setCurrentLargeModel(
-          models?.large ||
+          readConfigString(models, "large") ||
             llmText?.largeModel ||
             envFor("LARGE_MODEL") ||
             (elizaCloudEnabledCfg ? defaults.large : ""),
         );
         setCurrentMegaModel(
-          models?.mega ||
+          readConfigString(models, "mega") ||
             llmText?.megaModel ||
             envFor("MEGA_MODEL") ||
             (elizaCloudEnabledCfg ? defaults.mega : ""),
@@ -273,7 +274,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         setCurrentActionPlannerModel(
           llmText?.actionPlannerModel || DEFAULT_ACTION_PLANNER_MODEL,
         );
-        syncSelectionFromConfig(cfg as Record<string, unknown>);
+        syncSelectionFromConfig(cfg);
       } catch (err) {
         console.warn("[eliza] Failed to load config", err);
       }
@@ -468,11 +469,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     setCloudCallsDisabled(true);
     setRoutingModeSaving(true);
     try {
-      const cfg = (await client.getConfig()) as Record<string, unknown>;
-      const cloud =
-        cfg.cloud && typeof cfg.cloud === "object" && !Array.isArray(cfg.cloud)
-          ? (cfg.cloud as Record<string, unknown>)
-          : {};
+      const cfg = await client.getConfig();
+      const cloud = asRecord(cfg.cloud) ?? {};
       await client.updateConfig({
         deploymentTarget: { runtime: "local" },
         cloud: {
@@ -603,7 +601,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       void (async () => {
         setModelSaving(true);
         try {
-          const cfg = (await client.getConfig()) as Record<string, unknown>;
+          const cfg = await client.getConfig();
           const existingRouting = resolveServiceRoutingInConfig(cfg)?.llmText;
           const llmText = buildElizaCloudServiceRoute({
             nanoModel: next.nano,
@@ -641,8 +639,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               mega: next.mega,
             },
             serviceRouting: {
-              ...(((cfg.serviceRouting as Record<string, unknown> | null) ??
-                {}) as Record<string, unknown>),
+              ...(normalizeServiceRoutingConfig(cfg.serviceRouting) ?? {}),
               llmText,
             },
           });

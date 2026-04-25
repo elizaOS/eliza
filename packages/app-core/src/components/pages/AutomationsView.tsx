@@ -1895,7 +1895,7 @@ function TaskAutomationDetailPane({
         title={getAutomationDisplayTitle(automation)}
         description={
           automation.description ||
-          (automation.system ? "Agent-owned manual task." : "Simple text task.")
+          (automation.system ? "Internal manual task." : "Simple text task.")
         }
         status={
           <DetailStatusIndicator
@@ -2043,7 +2043,7 @@ function TaskAutomationDetailPane({
                 {
                   label: "Source",
                   value: automation.system
-                    ? "Agent-owned checklist item"
+                    ? "Internal checklist item"
                     : "Simple prompt task",
                 },
                 {

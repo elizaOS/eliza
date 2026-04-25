@@ -1,6 +1,7 @@
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../../../state";
+import { type ChainKey, resolveChainKey } from "../../inventory/chainConfig";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
   ChatSidebarWidgetDefinition,
@@ -9,6 +10,26 @@ import type {
 
 const DUST_THRESHOLD_USD = 0.01;
 const COPY_FEEDBACK_MS = 1200;
+const EVM_CHAIN_ORDER: ChainKey[] = [
+  "ethereum",
+  "base",
+  "arbitrum",
+  "optimism",
+  "polygon",
+  "bsc",
+  "avax",
+];
+const EVM_CHAIN_KEYS = new Set<ChainKey>(EVM_CHAIN_ORDER);
+const CHAIN_BADGE_LABELS: Record<ChainKey, string> = {
+  ethereum: "ETH",
+  base: "BASE",
+  arbitrum: "ARB",
+  optimism: "OP",
+  polygon: "POL",
+  bsc: "BSC",
+  avax: "AVAX",
+  solana: "SOL",
+};
 
 function shortenAddress(value: string | null | undefined): string | null {
   if (!value) return null;
@@ -36,6 +57,38 @@ function hasPositiveBalance(value: string | null | undefined): boolean {
   if (!value) return false;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) && parsed > 0;
+}
+
+function normalizeEvmChainKeys(chainNames: readonly string[]): ChainKey[] {
+  const seen = new Set<ChainKey>();
+  for (const chainName of chainNames) {
+    const chainKey = resolveChainKey(chainName);
+    if (chainKey && EVM_CHAIN_KEYS.has(chainKey)) {
+      seen.add(chainKey);
+    }
+  }
+  return EVM_CHAIN_ORDER.filter((chainKey) => seen.has(chainKey));
+}
+
+function ChainBadge({ chain }: { chain: ChainKey }) {
+  return (
+    <span
+      className="inline-flex h-4 shrink-0 items-center rounded-full border border-border/35 bg-bg/40 px-1.5 font-mono text-[0.52rem] font-semibold leading-none text-muted"
+      title={chain}
+    >
+      {CHAIN_BADGE_LABELS[chain]}
+    </span>
+  );
+}
+
+function ChainBadges({ chains }: { chains: readonly ChainKey[] }) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1">
+      {chains.map((chain) => (
+        <ChainBadge key={chain} chain={chain} />
+      ))}
+    </span>
+  );
 }
 
 interface CopyButtonProps {
@@ -87,21 +140,36 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
   const {
     walletEnabled,
     walletAddresses,
+    walletConfig,
     walletBalances,
+    loadWalletConfig,
     loadBalances,
     setTab,
   } = useApp();
 
   useEffect(() => {
     if (walletEnabled === false) return;
+    if (walletConfig === null) {
+      void loadWalletConfig();
+    }
     if (walletBalances !== null) return;
     void loadBalances();
-  }, [walletEnabled, walletBalances, loadBalances]);
+  }, [
+    walletEnabled,
+    walletConfig,
+    walletBalances,
+    loadWalletConfig,
+    loadBalances,
+  ]);
 
   const evmAddress = walletAddresses?.evmAddress ?? null;
   const solanaAddress = walletAddresses?.solanaAddress ?? null;
   const evmShort = shortenAddress(evmAddress);
   const solanaShort = shortenAddress(solanaAddress);
+  const evmChains = normalizeEvmChainKeys([
+    ...(walletConfig?.evmChains ?? []),
+    ...(walletBalances?.evm?.chains.map((chain) => chain.chain) ?? []),
+  ]);
 
   const walletSummary = useMemo(() => {
     let assetCount = 0;
@@ -172,7 +240,7 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
               className="flex items-center justify-between gap-2 text-3xs"
               data-testid="chat-widget-wallet-row-evm-address"
             >
-              <span className="text-muted">EVM</span>
+              <ChainBadges chains={evmChains} />
               <div className="flex items-center gap-1 min-w-0">
                 <span
                   className="truncate font-mono text-txt"
@@ -189,7 +257,7 @@ export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
               className="flex items-center justify-between gap-2 text-3xs"
               data-testid="chat-widget-wallet-row-solana-address"
             >
-              <span className="text-muted">Solana</span>
+              <ChainBadge chain="solana" />
               <div className="flex items-center gap-1 min-w-0">
                 <span
                   className="truncate font-mono text-txt"

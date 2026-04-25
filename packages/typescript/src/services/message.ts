@@ -65,12 +65,7 @@ import {
 import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
-import type {
-	ProviderCacheEntry,
-	State,
-	StateValue,
-	StructuredOutputFailure,
-} from "../types/state";
+import type { ProviderCacheEntry, State, StateValue } from "../types/state";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
@@ -1175,21 +1170,36 @@ function unwrapPlannerIdentifier(value: string): string {
 	}
 
 	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
-	if (!actionMatch) {
-		return trimmed;
+	if (actionMatch) {
+		const inner = actionMatch[1].trim();
+		if (!inner) {
+			return "";
+		}
+
+		const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+		if (nestedNameMatch) {
+			return nestedNameMatch[1].trim();
+		}
+
+		return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
 	}
 
-	const inner = actionMatch[1].trim();
-	if (!inner) {
-		return "";
+	// Tolerate malformed planner output where the closing </action> is missing
+	// or extra content trails the action body. Symptom in prod logs:
+	//   "Dropping unknown planner action (actionName=<action><name>REPLY</name>)"
+	// The planner LLM occasionally emits an unclosed <action> wrapper around a
+	// well-formed <name>X</name>. Falling through to "return trimmed" treats
+	// the whole XML chunk as the action identifier, which then fails to match
+	// any registered action and the bot goes silent. If the input begins with
+	// <action> and contains a <name>X</name>, prefer that name.
+	if (/^<action\b[^>]*>/i.test(trimmed)) {
+		const looseNameMatch = trimmed.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+		if (looseNameMatch) {
+			return looseNameMatch[1].trim();
+		}
 	}
 
-	const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
-	if (nestedNameMatch) {
-		return nestedNameMatch[1].trim();
-	}
-
-	return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
+	return trimmed;
 }
 
 const PLANNER_ACTION_ALIASES = new Map(
@@ -2350,6 +2360,15 @@ export function shouldEmitPlannerPreamble(
 	);
 }
 
+// Actions that are passive bookkeeping / chitchat. Safe to drop when a
+// turn-owning action (one that sets suppressPostActionContinuation = true,
+// e.g. SPAWN_AGENT) is also picked for the same turn. Keeping them around
+// alongside explicit delegation produces duplicate user-visible noise:
+// "Created task X" message followed by the actual delegated result.
+const PASSIVE_TURN_ACTIONS = new Set(
+	["REPLY", "MANAGE_TASKS"].map(normalizeActionIdentifier),
+);
+
 export function stripReplyWhenActionOwnsTurn(
 	runtime: Pick<IAgentRuntime, "actions" | "logger">,
 	actions: readonly string[] | null | undefined,
@@ -2358,18 +2377,17 @@ export function stripReplyWhenActionOwnsTurn(
 		return Array.isArray(actions) ? [...actions] : [];
 	}
 
-	const normalizedReply = normalizeActionIdentifier("REPLY");
-	const hasReply = actions.some(
-		(action) => normalizeActionIdentifier(action) === normalizedReply,
+	const hasPassive = actions.some((action) =>
+		PASSIVE_TURN_ACTIONS.has(normalizeActionIdentifier(action)),
 	);
-	if (!hasReply) {
+	if (!hasPassive) {
 		return [...actions];
 	}
 
 	const actionLookup = buildRuntimeActionLookup(runtime);
 	const ownedActions = actions.filter((action) => {
 		const normalized = normalizeActionIdentifier(action);
-		if (!normalized || normalized === normalizedReply) {
+		if (!normalized || PASSIVE_TURN_ACTIONS.has(normalized)) {
 			return false;
 		}
 		return (
@@ -2382,16 +2400,16 @@ export function stripReplyWhenActionOwnsTurn(
 	}
 
 	const filtered = actions.filter(
-		(action) => normalizeActionIdentifier(action) !== normalizedReply,
+		(action) => !PASSIVE_TURN_ACTIONS.has(normalizeActionIdentifier(action)),
 	);
 	runtime.logger.info(
 		{
 			src: "service:message",
 			originalActions: actions,
 			filteredActions: filtered,
-			replySuppressedBy: ownedActions,
+			suppressedBy: ownedActions,
 		},
-		"Dropped REPLY because another selected action already owns the turn",
+		"Dropped passive actions because another selected action already owns the turn",
 	);
 	return filtered.length > 0 ? filtered : ["REPLY"];
 }
@@ -2699,66 +2717,6 @@ function withTaskCompletion(
 			taskCompletion,
 		},
 	};
-}
-
-function getStructuredOutputFailure(
-	state: State,
-): StructuredOutputFailure | null {
-	const candidate = state.data?.structuredOutputFailure;
-	if (!candidate || typeof candidate !== "object") {
-		return null;
-	}
-
-	return candidate as StructuredOutputFailure;
-}
-
-function summarizeStructuredOutputFailure(
-	failure: StructuredOutputFailure | null,
-): string {
-	if (!failure) {
-		return "Structured output parsing failed, but no additional diagnostics were recorded.";
-	}
-
-	const parts = [
-		`Kind: ${failure.kind}`,
-		`Model: ${failure.model}`,
-		`Format: ${failure.format}`,
-		`Attempts: ${failure.attempts}/${failure.maxRetries + 1}`,
-	];
-
-	if (failure.key) {
-		parts.push(`Key: ${failure.key}`);
-	}
-	if (failure.parseError) {
-		parts.push(`Error: ${failure.parseError}`);
-	}
-	if (failure.issues && failure.issues.length > 0) {
-		parts.push(`Issues: ${failure.issues.join(" | ")}`);
-	}
-	if (failure.responsePreview) {
-		parts.push(`Response Preview:\n${failure.responsePreview}`);
-	}
-
-	return parts.join("\n");
-}
-
-function summarizeActionResultsForUser(actionResults: ActionResult[]): string {
-	if (actionResults.length === 0) {
-		return "";
-	}
-
-	const summary = actionResults
-		.slice(-3)
-		.map((result) => {
-			const actionName =
-				typeof result.data?.actionName === "string"
-					? result.data.actionName
-					: "unknown action";
-			return `${actionName} (${result.success === false ? "failed" : "succeeded"})`;
-		})
-		.join(", ");
-
-	return `Completed action state before the error: ${summary}.`;
 }
 
 type ContextRoutingStateValues = {
@@ -6439,7 +6397,6 @@ Output ONLY the continuation, starting immediately after the last character abov
 		responseId: UUID,
 		stage: string,
 	): Promise<StrategyResult> {
-		const failure = getStructuredOutputFailure(state);
 		const recentMessages =
 			typeof state.values?.recentMessages === "string" &&
 			state.values.recentMessages.trim().length > 0
@@ -6449,34 +6406,28 @@ Output ONLY the continuation, starting immediately after the last character abov
 					: typeof message.content.text === "string"
 						? message.content.text
 						: "(unavailable)";
-		const actionResults = Array.isArray(state.data?.actionResults)
-			? state.data.actionResults
-			: [];
 		const failurePrompt = [
-			"You are recovering from an internal structured-output failure while responding to a user.",
-			"Write the next user-facing reply in plain language.",
+			"You hit a transient model error and have to send a short user-facing reply.",
+			"Write a one or two sentence reply in plain language.",
 			"",
-			"Rules:",
-			"- Explain what failed and why using only the diagnostics below.",
-			"- Mention any completed or failed actions if action results are available.",
-			"- Be transparent, concise, and avoid inventing causes.",
-			"- If the model returned malformed XML, TOON, or JSON, say that clearly.",
-			"- Suggest the most useful next step for the user.",
-			"- Return only the reply text. No XML, JSON, TOON, bullet labels, or <think>.",
-			"",
-			`Failure Stage: ${stage}`,
-			"",
-			"Structured Failure Diagnostics:",
-			summarizeStructuredOutputFailure(failure),
+			"Hard rules:",
+			"- Stay in character. Keep your usual voice and tone.",
+			"- NEVER mention internal mechanism words such as: planner, action_planner,",
+			"  XML, TOON, JSON, schema, structured output, model, retries, sonnet,",
+			"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
+			"  loop, runtime, dispatch, or hand off. The user does not know or care",
+			"  what those are.",
+			"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
+			"- Just acknowledge that something went wrong and suggest a retry.",
+			'  Examples: "something flaked, try again in a sec",',
+			'  "weird hiccup, give me another shot in a moment",',
+			'  "got stuck on my end, retry that?"',
+			"- If the user already gave a clear command and you can plausibly act,",
+			"  acknowledge it and offer to take the action directly. Keep it short.",
+			"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
 			"",
 			"Recent Conversation:",
 			recentMessages,
-			"",
-			"Action Results So Far:",
-			typeof state.values?.actionResults === "string" &&
-			state.values.actionResults.trim().length > 0
-				? state.values.actionResults
-				: "No action results available.",
 			"",
 			"Reply:",
 		].join("\n");
@@ -6527,24 +6478,19 @@ Output ONLY the continuation, starting immediately after the last character abov
 		}
 
 		if (!replyText) {
-			const failureReason =
-				failure?.parseError ??
-				failure?.issues?.[0] ??
-				"the model returned output that did not match the required format";
-			replyText = [
-				`I hit an internal parsing error while ${stage}.`,
-				`Reason: ${failureReason}.`,
-				summarizeActionResultsForUser(actionResults),
-				"Please try again or ask me to retry the last step.",
-			]
-				.filter(Boolean)
-				.join(" ");
+			// Last-ditch fallback when every model call above also failed.
+			// Voice-neutral so any character can ship this default; characters
+			// can override with their own phrasing via
+			// character.templates.transientFailureReply.
+			replyText =
+				runtime.character.templates?.transientFailureReply ||
+				"Something went wrong on my end. Please try again.";
 		}
 
 		replyText = truncateToCompleteSentence(replyText.trim(), 2000);
 
 		const responseContent: Content = {
-			thought: `Explain the structured-output failure during ${stage}.`,
+			thought: `Handle a temporary reply failure during ${stage}.`,
 			actions: ["REPLY"],
 			providers: [],
 			text: replyText,
