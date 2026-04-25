@@ -1,6 +1,8 @@
 import type { JSDOM } from "jsdom";
 
-export type BrowserWorkspaceMode = "desktop" | "web";
+export type BrowserWorkspaceMode = "cloud" | "desktop" | "web";
+
+export type BrowserWorkspaceTabKind = "internal" | "standard";
 
 export type BrowserWorkspaceOperation =
   | "list"
@@ -156,10 +158,19 @@ export interface BrowserWorkspaceTab {
   title: string;
   url: string;
   partition: string;
+  kind?: BrowserWorkspaceTabKind;
   visible: boolean;
   createdAt: string;
   updatedAt: string;
   lastFocusedAt: string | null;
+  /** Remote/cloud-managed providers expose a cached live-view image URL. */
+  liveViewUrl?: string | null;
+  /** Interactive live view (rfb/WebSocket stream) when the provider supports it. */
+  interactiveLiveViewUrl?: string | null;
+  /** Provider identifier when the tab is backed by a remote browser (e.g. "browserbase"). */
+  provider?: string | null;
+  /** Provider-specific status string for remote tabs ("starting", "ready", "ended"). */
+  status?: string | null;
 }
 
 export interface BrowserWorkspaceSnapshot {
@@ -177,6 +188,7 @@ export interface OpenBrowserWorkspaceTabRequest {
   title?: string;
   show?: boolean;
   partition?: string;
+  kind?: BrowserWorkspaceTabKind;
   width?: number;
   height?: number;
 }

@@ -39,6 +39,17 @@ type TrajectoryStepState = {
 	openPositions: number;
 };
 
+type TrajectoryStepKindLike = "llm" | "action" | "executeCode";
+
+export type TrajectoryAnnotateParams = {
+	stepId: string;
+	kind?: TrajectoryStepKindLike;
+	script?: string;
+	childSteps?: string[];
+	appendChildSteps?: string[];
+	usedSkills?: string[];
+};
+
 type TrajectoryLoggerLike = {
 	isEnabled?: () => boolean;
 	startTrajectory?: (
@@ -53,6 +64,14 @@ type TrajectoryLoggerLike = {
 	) => Promise<void> | void;
 	flushWriteQueue?: (trajectoryId: string) => Promise<void> | void;
 	logLlmCall?: (params: { stepId: string } & TrajectoryLlmCallDetails) => void;
+	/**
+	 * Optional. When implemented (DatabaseTrajectoryLogger does), lets a caller
+	 * extend an existing step row with the new schema fields (kind, script,
+	 * childSteps, usedSkills). The plugin-executecode action uses this to
+	 * record its parent step + collected child step IDs without depending
+	 * directly on @elizaos/agent.
+	 */
+	annotateStep?: (params: TrajectoryAnnotateParams) => Promise<void> | void;
 };
 
 type StandaloneTrajectoryOptions = {
@@ -170,6 +189,30 @@ export async function withStandaloneTrajectory<T>(
 				: (options.errorStatus ?? "error"),
 		);
 	}
+}
+
+/**
+ * Annotate a trajectory step via whichever trajectory logger service is
+ * registered on the runtime. Returns true when an annotate-capable service
+ * was found and called; false when no compatible service exists or it is
+ * disabled. Errors from the underlying service are propagated.
+ */
+export async function annotateActiveTrajectoryStep(
+	runtime: IAgentRuntime | null | undefined,
+	params: TrajectoryAnnotateParams,
+): Promise<boolean> {
+	if (!runtime) return false;
+	const trajectoryLogger = resolveTrajectoryLogger(runtime);
+	if (
+		!trajectoryLogger ||
+		typeof trajectoryLogger.annotateStep !== "function" ||
+		(typeof trajectoryLogger.isEnabled === "function" &&
+			!trajectoryLogger.isEnabled())
+	) {
+		return false;
+	}
+	await trajectoryLogger.annotateStep(params);
+	return true;
 }
 
 export function logActiveTrajectoryLlmCall(

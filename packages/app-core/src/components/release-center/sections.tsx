@@ -1,9 +1,8 @@
-
-
+import { Button, Input } from "@elizaos/ui";
 import { createElement } from "react";
+import { useBranding } from "../../config/branding";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
-import { useBranding } from "../../config/branding";
 import { DefinitionRow, partitionDescription, StatusPill } from "./shared";
 import type {
   AppReleaseStatus,
@@ -15,7 +14,7 @@ import type {
   WgpuTagElement,
 } from "./types";
 import { SESSION_PARTITIONS } from "./types";
-import { Button, Input } from "@elizaos/ui";
+
 function tr(
   t: (key: string, options?: Record<string, unknown>) => string,
   key: string,

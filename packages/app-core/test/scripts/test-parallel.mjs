@@ -175,7 +175,6 @@ const runOnce = (entry, extraArgs = []) =>
         ...buildChildEnv(process.env, entry.cwd),
         VITEST_GROUP: entry.name,
         ELIZA_LIVE_TEST: "0",
-        ELIZA_LIVE_TEST: "0",
         NODE_OPTIONS: sanitiseNodeOptions(nextNodeOptions),
         NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS ?? "1",
       },

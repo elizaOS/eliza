@@ -3,7 +3,7 @@ import type {
   LifeOpsCadence,
   LifeOpsGoalDefinition,
   LifeOpsOccurrenceView,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { Badge, Button } from "@elizaos/app-core";
 import { ExternalLink } from "lucide-react";
 import type { ReactNode } from "react";
@@ -12,6 +12,7 @@ import type {
   CloudCompatManagedGithubStatus,
   CloudOAuthConnection,
 } from "@elizaos/app-core";
+import { humanizeLifeOpsLabel } from "./lifeops-labels.js";
 
 export type ManagedAgentGithubEntry = {
   agent: CloudCompatAgent;
@@ -36,12 +37,6 @@ function formatDateTime(value: string | null | undefined): string {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(parsed));
-}
-
-function humanize(value: string): string {
-  return value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
 function cadenceLabel(cadence: LifeOpsCadence): string {
@@ -165,9 +160,13 @@ export function SectionSurface({
     <div>
       <div className="flex items-center gap-2 text-muted">
         {icon}
-        <div className="text-xs font-semibold uppercase tracking-wide text-muted">{title}</div>
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted">
+          {title}
+        </div>
       </div>
-      {subtitle ? <div className="mt-1 text-xs leading-5 text-muted">{subtitle}</div> : null}
+      {subtitle ? (
+        <div className="mt-1 text-xs leading-5 text-muted">{subtitle}</div>
+      ) : null}
       <div className="mt-2 space-y-2">{children}</div>
     </div>
   );
@@ -188,7 +187,9 @@ export function SummaryMetric({
         {label}
       </div>
       <div className="mt-2 text-lg font-semibold text-txt">{value}</div>
-      {detail ? <div className="mt-1 text-xs-tight text-muted">{detail}</div> : null}
+      {detail ? (
+        <div className="mt-1 text-xs-tight text-muted">{detail}</div>
+      ) : null}
     </div>
   );
 }
@@ -199,9 +200,7 @@ export function OccurrenceList({
   occurrences: LifeOpsOccurrenceView[];
 }) {
   if (occurrences.length === 0) {
-    return (
-      <div className="py-3 text-xs text-muted/60">No active items.</div>
-    );
+    return <div className="py-3 text-xs text-muted/60">No active items.</div>;
   }
 
   return (
@@ -221,13 +220,13 @@ export function OccurrenceList({
               </div>
             </div>
             <Badge variant="secondary" className="text-2xs">
-              {humanize(occurrence.state)}
+              {humanizeLifeOpsLabel(occurrence.state)}
             </Badge>
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-xs-tight text-muted">
             <span>{cadenceLabel(occurrence.cadence)}</span>
             <span>Priority {occurrence.priority}</span>
-            <span>{humanize(occurrence.domain)}</span>
+            <span>{humanizeLifeOpsLabel(occurrence.domain)}</span>
           </div>
           {occurrence.description.trim().length > 0 ? (
             <div className="mt-2 text-xs leading-5 text-muted">
@@ -242,9 +241,7 @@ export function OccurrenceList({
 
 export function GoalList({ goals }: { goals: LifeOpsGoalDefinition[] }) {
   if (goals.length === 0) {
-    return (
-      <div className="py-3 text-xs text-muted/60">No active goals.</div>
-    );
+    return <div className="py-3 text-xs text-muted/60">No active goals.</div>;
   }
 
   return (
@@ -275,12 +272,12 @@ export function GoalList({ goals }: { goals: LifeOpsGoalDefinition[] }) {
                 </div>
               </div>
               <Badge variant="secondary" className="text-2xs">
-                {humanize(goal.reviewState)}
+                {humanizeLifeOpsLabel(goal.reviewState)}
               </Badge>
             </div>
             <div className="mt-2 flex flex-wrap gap-2 text-xs-tight text-muted">
-              <span>{humanize(goal.status)}</span>
-              <span>{humanize(goal.domain)}</span>
+              <span>{humanizeLifeOpsLabel(goal.status)}</span>
+              <span>{humanizeLifeOpsLabel(goal.domain)}</span>
               <span>Updated {formatDateTime(goal.updatedAt)}</span>
             </div>
           </div>
@@ -296,9 +293,7 @@ export function ReminderList({
   reminders: LifeOpsActiveReminderView[];
 }) {
   if (reminders.length === 0) {
-    return (
-      <div className="py-3 text-xs text-muted/60">No live reminders.</div>
-    );
+    return <div className="py-3 text-xs text-muted/60">No live reminders.</div>;
   }
 
   return (
@@ -314,11 +309,12 @@ export function ReminderList({
                 {reminder.title}
               </div>
               <div className="mt-1 text-xs leading-5 text-muted">
-                {reminder.stepLabel} via {humanize(reminder.channel)}
+                {reminder.stepLabel} via{" "}
+                {humanizeLifeOpsLabel(reminder.channel)}
               </div>
             </div>
             <Badge variant="outline" className="text-2xs">
-              {humanize(reminder.state)}
+              {humanizeLifeOpsLabel(reminder.state)}
             </Badge>
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-xs-tight text-muted">
@@ -359,14 +355,14 @@ export function OwnerGithubConnectionCard({
           variant={connection.status === "active" ? "secondary" : "outline"}
           className="text-2xs"
         >
-          {humanize(connection.status)}
+          {humanizeLifeOpsLabel(connection.status)}
         </Badge>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs-tight text-muted">
         <span>Linked {formatDateTime(connection.linkedAt)}</span>
         <span>{connection.scopes.length} scopes</span>
         {connection.connectionRole ? (
-          <span>{humanize(connection.connectionRole)}</span>
+          <span>{humanizeLifeOpsLabel(connection.connectionRole)}</span>
         ) : null}
       </div>
       {connection.scopes.length > 0 ? (
@@ -444,7 +440,7 @@ export function AgentGithubCard({
         </Badge>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs-tight text-muted">
-        <span>Agent {humanize(agent.status)}</span>
+        <span>Agent {humanizeLifeOpsLabel(agent.status)}</span>
         {github?.connectedAt ? (
           <span>Linked {formatDateTime(github.connectedAt)}</span>
         ) : null}

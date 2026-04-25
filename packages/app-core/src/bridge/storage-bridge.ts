@@ -12,6 +12,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
+import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../onboarding/mobile-runtime-mode";
 
 const isNative = Capacitor.isNativePlatform();
 
@@ -25,6 +26,7 @@ const SYNCED_KEYS = new Set([
   "elizaos:active-server",
   "eliza:onboarding-complete",
   "eliza:onboarding:step",
+  MOBILE_RUNTIME_MODE_STORAGE_KEY,
 ]);
 
 // In-memory cache of values from Preferences (for native)

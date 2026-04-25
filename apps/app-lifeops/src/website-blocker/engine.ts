@@ -1,18 +1,18 @@
 import { execFile } from "node:child_process";
+import { lookup as dnsLookup } from "node:dns/promises";
 import fs from "node:fs";
 import { isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { domainToASCII } from "node:url";
 import { promisify } from "node:util";
-import type { HandlerOptions, Memory } from "@elizaos/core";
+import type { HandlerOptions } from "@elizaos/core";
 import type { PermissionState, PermissionStatus } from "./permissions.ts";
 
 const BLOCK_START_MARKER = "# >>> eliza-selfcontrol >>>";
 const BLOCK_END_MARKER = "# <<< eliza-selfcontrol <<<";
 const BLOCK_METADATA_PREFIX = "# eliza-selfcontrol ";
 const DEFAULT_STATUS_CACHE_TTL_MS = 5_000;
-const DEFAULT_DURATION_MINUTES = 60;
 
 // ---------------------------------------------------------------------------
 // Native backend adapter
@@ -28,7 +28,9 @@ const DEFAULT_DURATION_MINUTES = 60;
 
 export interface NativeWebsiteBlockerBackend {
   getStatus(): Promise<SelfControlStatus>;
-  startBlock(request: SelfControlBlockRequest): Promise<
+  startBlock(
+    request: SelfControlBlockRequest,
+  ): Promise<
     | { success: true; endsAt: string | null }
     | { success: false; error: string; status?: SelfControlStatus }
   >;
@@ -65,6 +67,8 @@ export type SelfControlElevationMethod =
 export interface SelfControlPluginConfig {
   hostsFilePath?: string;
   statusCacheTtlMs?: number;
+  validateSystemResolution?: boolean;
+  resolvedAddressLookup?: (website: string) => Promise<string[]>;
 }
 
 export interface SelfControlStatus {
@@ -74,6 +78,10 @@ export interface SelfControlStatus {
   startedAt: string | null;
   endsAt: string | null;
   websites: string[];
+  blockedWebsites: string[];
+  allowedWebsites: string[];
+  requestedWebsites: string[];
+  matchMode: SelfControlBlockMatchMode;
   managedBy: string | null;
   metadata: Record<string, unknown> | null;
   scheduledByAgentId: string | null;
@@ -102,11 +110,24 @@ export interface SelfControlBlockRequest {
   scheduledByAgentId?: string | null;
 }
 
+export type SelfControlBlockMatchMode = "exact" | "subdomain";
+
+export interface SelfControlBlockPolicy {
+  requestedWebsites: string[];
+  blockedWebsites: string[];
+  allowedWebsites: string[];
+  matchMode: SelfControlBlockMatchMode;
+}
+
 export interface SelfControlBlockMetadata {
   version: 1;
   startedAt: string;
   endsAt: string | null;
   websites: string[];
+  requestedWebsites?: string[];
+  blockedWebsites?: string[];
+  allowedWebsites?: string[];
+  matchMode?: SelfControlBlockMatchMode;
   managedBy: string | null;
   metadata: Record<string, unknown> | null;
   scheduledByAgentId?: string | null;
@@ -121,6 +142,61 @@ type PrivilegedHostsWriteInvocation = {
   command: string;
   args: string[];
   workerScriptContent?: string;
+};
+
+const X_TWITTER_REQUESTED_HOSTS = ["x.com", "twitter.com"] as const;
+const X_TWITTER_BLOCKED_HOSTS = [
+  "x.com",
+  "www.x.com",
+  "mobile.x.com",
+  "twitter.com",
+  "www.twitter.com",
+  "mobile.twitter.com",
+  "t.co",
+  "abs.twimg.com",
+  "pbs.twimg.com",
+  "video.twimg.com",
+  "ton.twimg.com",
+  "platform.twitter.com",
+  "tweetdeck.twitter.com",
+] as const;
+const X_TWITTER_ALLOWED_HOSTS = ["api.x.com", "api.twitter.com"] as const;
+const GOOGLE_NEWS_REQUESTED_HOSTS = ["news.google.com"] as const;
+const GOOGLE_NEWS_BLOCKED_HOSTS = ["news.google.com"] as const;
+const GOOGLE_NEWS_ALLOWED_HOSTS = [
+  "accounts.google.com",
+  "oauth2.googleapis.com",
+  "openidconnect.googleapis.com",
+  "www.googleapis.com",
+] as const;
+
+const WEBSITE_BLOCK_POLICY_GROUPS = [
+  {
+    requestedHosts: X_TWITTER_REQUESTED_HOSTS,
+    blockedHosts: X_TWITTER_BLOCKED_HOSTS,
+    allowedHosts: X_TWITTER_ALLOWED_HOSTS,
+  },
+  {
+    requestedHosts: GOOGLE_NEWS_REQUESTED_HOSTS,
+    blockedHosts: GOOGLE_NEWS_BLOCKED_HOSTS,
+    allowedHosts: GOOGLE_NEWS_ALLOWED_HOSTS,
+  },
+] as const;
+
+const WEBSITE_BLOCK_POLICY_LOOKUP = new Map<
+  string,
+  (typeof WEBSITE_BLOCK_POLICY_GROUPS)[number]
+>(
+  WEBSITE_BLOCK_POLICY_GROUPS.flatMap((group) =>
+    group.requestedHosts.map((hostname) => [hostname, group] as const),
+  ),
+);
+
+const EMPTY_SELF_CONTROL_BLOCK_POLICY: SelfControlBlockPolicy = {
+  requestedWebsites: [],
+  blockedWebsites: [],
+  allowedWebsites: [],
+  matchMode: "exact",
 };
 
 let currentConfig: SelfControlPluginConfig = {};
@@ -139,6 +215,69 @@ export function getSelfControlPluginConfig(): SelfControlPluginConfig {
 
 export function resetSelfControlStatusCache(): void {
   statusCache = undefined;
+}
+
+export function buildSelfControlBlockPolicy(
+  requestedWebsites: readonly string[],
+): SelfControlBlockPolicy {
+  const normalizedRequestedWebsites =
+    normalizeWebsiteTargets(requestedWebsites);
+  const blockedWebsites = new Set<string>();
+  const allowedWebsites = new Set<string>();
+
+  for (const website of normalizedRequestedWebsites) {
+    blockedWebsites.add(website);
+
+    if (shouldAddWwwVariant(website)) {
+      blockedWebsites.add(`www.${website}`);
+    }
+
+    const policyGroup = WEBSITE_BLOCK_POLICY_LOOKUP.get(website);
+    if (policyGroup) {
+      for (const blockedHost of policyGroup.blockedHosts) {
+        blockedWebsites.add(blockedHost);
+      }
+      for (const allowedHost of policyGroup.allowedHosts) {
+        allowedWebsites.add(allowedHost);
+      }
+    }
+  }
+
+  return {
+    requestedWebsites: normalizedRequestedWebsites,
+    blockedWebsites: normalizeWebsiteTargets([...blockedWebsites]),
+    allowedWebsites: normalizeWebsiteTargets([...allowedWebsites]),
+    matchMode: "exact",
+  };
+}
+
+export function isWebsiteBlockedByPolicy(
+  policy: Pick<
+    SelfControlBlockPolicy,
+    "blockedWebsites" | "allowedWebsites" | "matchMode"
+  >,
+  queryWebsite: string,
+): boolean {
+  const normalizedQueryWebsite = normalizeWebsiteTarget(queryWebsite);
+  if (!normalizedQueryWebsite) {
+    return false;
+  }
+
+  if (
+    policy.allowedWebsites.some(
+      (allowedWebsite) => normalizedQueryWebsite === allowedWebsite,
+    )
+  ) {
+    return false;
+  }
+
+  return policy.blockedWebsites.some((blockedWebsite) =>
+    matchesWebsiteBlockTarget(
+      normalizedQueryWebsite,
+      blockedWebsite,
+      policy.matchMode,
+    ),
+  );
 }
 
 export function cancelSelfControlExpiryTimer(): void {
@@ -173,6 +312,7 @@ export async function reconcileSelfControlBlockState(
       startedAt: null,
       endsAt: null,
       websites: [],
+      ...EMPTY_SELF_CONTROL_BLOCK_POLICY,
       managedBy: null,
       metadata: null,
       scheduledByAgentId: null,
@@ -197,6 +337,7 @@ export async function reconcileSelfControlBlockState(
       startedAt: null,
       endsAt: null,
       websites: [],
+      ...EMPTY_SELF_CONTROL_BLOCK_POLICY,
       managedBy: null,
       metadata: null,
       scheduledByAgentId: null,
@@ -228,6 +369,7 @@ export async function reconcileSelfControlBlockState(
       startedAt: null,
       endsAt: null,
       websites: [],
+      ...EMPTY_SELF_CONTROL_BLOCK_POLICY,
       managedBy: null,
       metadata: null,
       scheduledByAgentId: null,
@@ -239,6 +381,63 @@ export async function reconcileSelfControlBlockState(
       elevationPromptMethod,
       reason: permissionWarning,
     };
+  }
+
+  if (shouldValidateSelfControlSystemResolution(hostsFilePath, config)) {
+    const ineffectiveTargets = await findIneffectiveSelfControlTargets(
+      block.websites,
+      config,
+    );
+    if (ineffectiveTargets.length > 0) {
+      if (writable) {
+        await clearManagedSelfControlBlock(hostsFilePath, hostsContent, {
+          allowElevationPrompt: false,
+        });
+        return {
+          available: true,
+          active: false,
+          hostsFilePath,
+          startedAt: null,
+          endsAt: null,
+          websites: [],
+          ...EMPTY_SELF_CONTROL_BLOCK_POLICY,
+          managedBy: null,
+          metadata: null,
+          scheduledByAgentId: null,
+          canUnblockEarly: true,
+          requiresElevation: false,
+          engine: "hosts-file",
+          platform: process.platform,
+          supportsElevationPrompt,
+          elevationPromptMethod,
+          reason:
+            "Eliza removed a stale website block because these websites were " +
+            `still resolving outside loopback on this machine: ${ineffectiveTargets.join(", ")}.`,
+        };
+      }
+
+      return {
+        available: true,
+        active: false,
+        hostsFilePath,
+        startedAt: null,
+        endsAt: null,
+        websites: [],
+        ...EMPTY_SELF_CONTROL_BLOCK_POLICY,
+        managedBy: null,
+        metadata: null,
+        scheduledByAgentId: null,
+        canUnblockEarly: false,
+        requiresElevation: true,
+        engine: "hosts-file",
+        platform: process.platform,
+        supportsElevationPrompt,
+        elevationPromptMethod,
+        reason: supportsElevationPrompt
+          ? "Eliza found stale website-block entries that are not actually blocking traffic on this machine, and it still needs administrator/root approval to remove them."
+          : "Eliza found stale website-block entries that are not actually blocking traffic on this machine, but it cannot remove them without administrator/root access.",
+      };
+    }
   }
 
   if (block.endsAt) {
@@ -255,6 +454,7 @@ export async function reconcileSelfControlBlockState(
           startedAt: null,
           endsAt: null,
           websites: [],
+          ...EMPTY_SELF_CONTROL_BLOCK_POLICY,
           managedBy: null,
           metadata: null,
           scheduledByAgentId: null,
@@ -273,7 +473,11 @@ export async function reconcileSelfControlBlockState(
         hostsFilePath,
         startedAt: block.startedAt,
         endsAt: block.endsAt,
-        websites: block.websites,
+        websites: block.requestedWebsites ?? block.websites,
+        blockedWebsites: block.websites,
+        allowedWebsites: block.allowedWebsites ?? [],
+        requestedWebsites: block.requestedWebsites ?? block.websites,
+        matchMode: block.matchMode ?? "exact",
         managedBy: block.managedBy,
         metadata: block.metadata,
         scheduledByAgentId: block.scheduledByAgentId,
@@ -296,7 +500,11 @@ export async function reconcileSelfControlBlockState(
     hostsFilePath,
     startedAt: block.startedAt,
     endsAt: block.endsAt,
-    websites: block.websites,
+    websites: block.requestedWebsites ?? block.websites,
+    blockedWebsites: block.websites,
+    allowedWebsites: block.allowedWebsites ?? [],
+    requestedWebsites: block.requestedWebsites ?? block.websites,
+    matchMode: block.matchMode ?? "exact",
     managedBy: block.managedBy,
     metadata: block.metadata,
     scheduledByAgentId: block.scheduledByAgentId,
@@ -493,6 +701,10 @@ export async function startSelfControlBlock(
     };
   }
 
+  const policy = buildSelfControlBlockPolicy(
+    normalizedRequest.request.websites,
+  );
+
   const metadata: SelfControlBlockMetadata = {
     version: 1,
     startedAt: new Date().toISOString(),
@@ -502,7 +714,11 @@ export async function startSelfControlBlock(
         : new Date(
             Date.now() + normalizedRequest.request.durationMinutes * 60_000,
           ).toISOString(),
-    websites: normalizedRequest.request.websites,
+    websites: policy.blockedWebsites,
+    requestedWebsites: normalizedRequest.request.websites,
+    blockedWebsites: policy.blockedWebsites,
+    allowedWebsites: policy.allowedWebsites,
+    matchMode: policy.matchMode,
     managedBy:
       typeof normalizedRequest.request.metadata?.managedBy === "string" &&
       normalizedRequest.request.metadata.managedBy.trim().length > 0
@@ -546,6 +762,39 @@ export async function startSelfControlBlock(
       ),
       status,
     };
+  }
+
+  if (shouldValidateSelfControlSystemResolution(status.hostsFilePath, config)) {
+    const ineffectiveTargets = await findIneffectiveSelfControlTargets(
+      metadata.websites,
+      config,
+    );
+    if (ineffectiveTargets.length > 0) {
+      try {
+        const currentHostsContent = fs.readFileSync(
+          status.hostsFilePath,
+          "utf8",
+        );
+        await clearManagedSelfControlBlock(
+          status.hostsFilePath,
+          currentHostsContent,
+          {
+            allowElevationPrompt: true,
+          },
+        );
+      } catch {
+        // If rollback fails we still surface the validation failure instead of
+        // falsely reporting success.
+      }
+
+      return {
+        success: false,
+        error:
+          "Eliza updated the system hosts file, but these websites still " +
+          `resolved outside loopback on this machine: ${ineffectiveTargets.join(", ")}. ` +
+          "The website block was rolled back because it would not be effective.",
+      };
+    }
   }
 
   resetSelfControlStatusCache();
@@ -639,7 +888,11 @@ export function buildSelfControlManagedHostsBlock(
   metadata: SelfControlBlockMetadata,
   lineEnding = "\n",
 ): string {
-  const entries = metadata.websites.flatMap((website) => [
+  const blockedWebsites =
+    metadata.blockedWebsites && metadata.blockedWebsites.length > 0
+      ? metadata.blockedWebsites
+      : metadata.websites;
+  const entries = blockedWebsites.flatMap((website) => [
     `0.0.0.0 ${website}`,
     `::1 ${website}`,
   ]);
@@ -653,10 +906,10 @@ export function buildSelfControlManagedHostsBlock(
   ].join(lineEnding);
 }
 
-export function parseSelfControlBlockRequest(
-  options?: HandlerOptions,
-  message?: Memory,
-): { request: SelfControlBlockRequest | null; error?: string } {
+export function parseSelfControlBlockRequest(options?: HandlerOptions): {
+  request: SelfControlBlockRequest | null;
+  error?: string;
+} {
   const params = options?.parameters as
     | {
         websites?: string[] | string;
@@ -665,25 +918,30 @@ export function parseSelfControlBlockRequest(
     | undefined;
 
   const websites = normalizeWebsiteTargets(
-    normalizeStringList(params?.websites) ??
-      extractWebsiteTargetsFromText(getMessageText(message)),
+    normalizeStringList(params?.websites) ?? [],
   );
 
   if (websites.length === 0) {
     return {
       request: null,
-      error: message
-        ? "Could not determine which public website hostnames to block from the recent conversation. Name the sites explicitly, or pass them to the action as parameters."
-        : "Provide at least one public website hostname, such as `x.com` or `twitter.com`.",
+      error:
+        "Provide at least one public website hostname, such as `x.com` or `twitter.com`.",
+    };
+  }
+
+  const hasDurationMinutes =
+    params !== undefined && Object.hasOwn(params, "durationMinutes");
+  const parsedDurationMinutes = parseDurationMinutes(params?.durationMinutes);
+  if (hasDurationMinutes && parsedDurationMinutes === undefined) {
+    return {
+      request: null,
+      error:
+        "Duration must be a positive number of minutes, or null for a manual block.",
     };
   }
 
   const durationMinutes =
-    parseDurationMinutes(params?.durationMinutes) ??
-    extractDurationMinutesFromText(getMessageText(message)) ??
-    (hasIndefiniteBlockIntent(getMessageText(message))
-      ? null
-      : DEFAULT_DURATION_MINUTES);
+    parsedDurationMinutes === undefined ? null : parsedDurationMinutes;
 
   if (
     durationMinutes !== null &&
@@ -716,6 +974,11 @@ export function normalizeWebsiteTargets(
   }
 
   return [...deduped];
+}
+
+function shouldAddWwwVariant(target: string): boolean {
+  const labels = target.split(".");
+  return labels.length === 2 && labels[0] !== "www";
 }
 
 export function formatWebsiteList(websites: readonly string[]): string {
@@ -835,6 +1098,10 @@ function extractManagedSelfControlBlock(content: string): {
   startedAt: string | null;
   endsAt: string | null;
   websites: string[];
+  requestedWebsites: string[] | null;
+  blockedWebsites: string[];
+  allowedWebsites: string[];
+  matchMode: SelfControlBlockMatchMode;
   managedBy: string | null;
   metadata: Record<string, unknown> | null;
   scheduledByAgentId: string | null;
@@ -847,16 +1114,31 @@ function extractManagedSelfControlBlock(content: string): {
 
   const block = match[0];
   const metadata = parseManagedBlockMetadata(block);
-  const websites =
-    metadata?.websites.length &&
-    normalizeWebsiteTargets(metadata.websites).length
-      ? normalizeWebsiteTargets(metadata.websites)
-      : extractManagedBlockWebsiteTargets(block);
+  const blockedWebsites =
+    metadata?.blockedWebsites?.length &&
+    normalizeWebsiteTargets(metadata.blockedWebsites).length
+      ? normalizeWebsiteTargets(metadata.blockedWebsites)
+      : metadata?.websites.length &&
+          normalizeWebsiteTargets(metadata.websites).length
+        ? normalizeWebsiteTargets(metadata.websites)
+        : extractManagedBlockWebsiteTargets(block);
 
   return {
     startedAt: metadata?.startedAt ?? null,
     endsAt: metadata?.endsAt ?? null,
-    websites,
+    websites: blockedWebsites,
+    requestedWebsites:
+      metadata?.requestedWebsites &&
+      normalizeWebsiteTargets(metadata.requestedWebsites).length > 0
+        ? normalizeWebsiteTargets(metadata.requestedWebsites)
+        : null,
+    blockedWebsites,
+    allowedWebsites:
+      metadata?.allowedWebsites &&
+      normalizeWebsiteTargets(metadata.allowedWebsites).length > 0
+        ? normalizeWebsiteTargets(metadata.allowedWebsites)
+        : [],
+    matchMode: metadata?.matchMode ?? "exact",
     managedBy:
       metadata?.managedBy && typeof metadata.managedBy === "string"
         ? metadata.managedBy
@@ -892,6 +1174,29 @@ function parseManagedBlockMetadata(
           ),
         )
       : [];
+    const requestedWebsites = Array.isArray(parsed.requestedWebsites)
+      ? normalizeWebsiteTargets(
+          parsed.requestedWebsites.filter(
+            (website): website is string => typeof website === "string",
+          ),
+        )
+      : [];
+    const blockedWebsites = Array.isArray(parsed.blockedWebsites)
+      ? normalizeWebsiteTargets(
+          parsed.blockedWebsites.filter(
+            (website): website is string => typeof website === "string",
+          ),
+        )
+      : websites;
+    const allowedWebsites = Array.isArray(parsed.allowedWebsites)
+      ? normalizeWebsiteTargets(
+          parsed.allowedWebsites.filter(
+            (website): website is string => typeof website === "string",
+          ),
+        )
+      : [];
+    const matchMode: SelfControlBlockMatchMode =
+      parsed.matchMode === "subdomain" ? "subdomain" : "exact";
 
     return {
       version: 1,
@@ -904,6 +1209,10 @@ function parseManagedBlockMetadata(
           ? normalizeIsoDate(parsed.endsAt)
           : null,
       websites,
+      requestedWebsites,
+      blockedWebsites,
+      allowedWebsites,
+      matchMode,
       managedBy:
         typeof parsed.managedBy === "string" &&
         parsed.managedBy.trim().length > 0
@@ -929,9 +1238,24 @@ function parseManagedBlockMetadata(
 function extractManagedBlockWebsiteTargets(block: string): string[] {
   const websites = Array.from(
     block.matchAll(/^(?:0\.0\.0\.0|::1)\s+([^\s#]+)$/gm),
-    (match) => match[1],
-  );
+  )
+    .map((match) => match[1])
+    .filter((website): website is string => typeof website === "string");
   return normalizeWebsiteTargets(websites);
+}
+
+function matchesWebsiteBlockTarget(
+  queryWebsite: string,
+  blockedWebsite: string,
+  matchMode: SelfControlBlockMatchMode,
+): boolean {
+  if (queryWebsite === blockedWebsite) {
+    return true;
+  }
+
+  return (
+    matchMode === "subdomain" && queryWebsite.endsWith(`.${blockedWebsite}`)
+  );
 }
 
 function stripManagedSelfControlBlock(content: string): string {
@@ -1081,6 +1405,103 @@ function resolveUserPath(input: string): string {
 
 function detectLineEnding(content: string): string {
   return content.includes("\r\n") ? "\r\n" : "\n";
+}
+
+function shouldValidateSelfControlSystemResolution(
+  hostsFilePath: string,
+  config: SelfControlPluginConfig,
+): boolean {
+  if (config.validateSystemResolution === true) {
+    return true;
+  }
+  if (config.validateSystemResolution === false) {
+    return false;
+  }
+  return path.resolve(hostsFilePath) === path.resolve(defaultHostsFilePath());
+}
+
+async function findIneffectiveSelfControlTargets(
+  websites: readonly string[],
+  config: SelfControlPluginConfig,
+): Promise<string[]> {
+  const ineffective: string[] = [];
+
+  for (const website of normalizeWebsiteTargets(websites)) {
+    const addresses = await lookupResolvedAddressesForWebsiteBlock(
+      website,
+      config,
+    );
+    if (
+      addresses.length === 0 ||
+      addresses.some((address) => !isWebsiteBlockSinkholeAddress(address))
+    ) {
+      ineffective.push(website);
+    }
+  }
+
+  return ineffective;
+}
+
+async function lookupResolvedAddressesForWebsiteBlock(
+  website: string,
+  config: SelfControlPluginConfig,
+): Promise<string[]> {
+  if (typeof config.resolvedAddressLookup === "function") {
+    return await config.resolvedAddressLookup(website);
+  }
+
+  if (process.platform === "darwin") {
+    try {
+      const result = await execFileAsync("/usr/bin/dscacheutil", [
+        "-q",
+        "host",
+        "-a",
+        "name",
+        website,
+      ]);
+      return parseResolvedAddressesFromDscacheutilOutput(result.stdout);
+    } catch {
+      // Fall back to dns.lookup below.
+    }
+  }
+
+  try {
+    const results = await dnsLookup(website, {
+      all: true,
+      verbatim: true,
+    });
+    return [...new Set(results.map((entry) => entry.address))];
+  } catch {
+    return [];
+  }
+}
+
+export function parseResolvedAddressesFromDscacheutilOutput(
+  output: string,
+): string[] {
+  return [
+    ...new Set(
+      output
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .flatMap((line) => {
+          const match = line.match(/^(?:ip|ipv6)_address:\s+(\S+)$/i);
+          return match?.[1] ? [match[1]] : [];
+        }),
+    ),
+  ];
+}
+
+export function isWebsiteBlockSinkholeAddress(address: string): boolean {
+  const normalized = address.trim().toLowerCase();
+  return (
+    normalized === "0.0.0.0" ||
+    normalized === "127.0.0.1" ||
+    normalized.startsWith("127.") ||
+    normalized === "::" ||
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1"
+  );
 }
 
 function buildElevationReason(supportsElevationPrompt: boolean): string {
@@ -1242,9 +1663,22 @@ function normalizeStringList(
   }
 
   if (typeof value === "string") {
-    return value
+    const trimmed = value.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed.replace(/'/g, '"'));
+        if (Array.isArray(parsed)) {
+          return parsed.filter((item): item is string => typeof item === "string");
+        }
+      } catch {
+        // Fall through to the delimiter-based parser below for malformed
+        // planner output such as "['twitter.com', 'reddit.com']".
+      }
+    }
+    return trimmed
       .split(/[,\n]/)
       .map((item) => item.trim())
+      .map((item) => item.replace(/^[\[\]'"]+|[\[\]'"]+$/g, ""))
       .filter((item) => item.length > 0);
   }
 
@@ -1278,62 +1712,6 @@ function parseDurationMinutes(
   }
 
   return undefined;
-}
-
-export function extractDurationMinutesFromText(text: string): number | null {
-  const match = text.match(
-    /\bfor\s+(\d+(?:\.\d+)?)\s*(minutes?|mins?|hours?|hrs?|days?)\b/i,
-  );
-  if (!match) return null;
-
-  const amount = Number.parseFloat(match[1]);
-  if (!Number.isFinite(amount) || amount <= 0) return null;
-
-  const unit = match[2].toLowerCase();
-  if (unit.startsWith("day")) {
-    return Math.round(amount * 24 * 60);
-  }
-  if (unit.startsWith("hour") || unit.startsWith("hr")) {
-    return Math.round(amount * 60);
-  }
-  return Math.round(amount);
-}
-
-export function hasIndefiniteBlockIntent(text: string): boolean {
-  return (
-    /\b(indefinitely|until i unblock|until i remove|until i say so|until further notice)\b/i.test(
-      text,
-    ) || /\bblock\b.*\bforever\b/i.test(text)
-  );
-}
-
-export function hasWebsiteBlockDeferralIntent(text: string): boolean {
-  return (
-    /\bdo not block\b/i.test(text) ||
-    /\bdon'?t block\b/i.test(text) ||
-    /\bnot yet\b/i.test(text) ||
-    /\bhold off\b/i.test(text) ||
-    /\bwait(?: for me)?(?: to)?\s+(?:confirm|say|tell|be ready)\b/i.test(
-      text,
-    ) ||
-    /\bblock\b.*\blater\b/i.test(text) ||
-    /\bself ?control\b.*\blater\b/i.test(text)
-  );
-}
-
-export function hasWebsiteBlockIntent(text: string): boolean {
-  return /\b(block|unblock|self control|selfcontrol|focus)\b/i.test(text);
-}
-
-export function extractWebsiteTargetsFromText(text: string): string[] {
-  return Array.from(
-    text.matchAll(/https?:\/\/[^\s]+|(?<![@/])(?:[a-z0-9-]+\.)+[a-z]{2,}\b/gi),
-    (match) => match[0],
-  );
-}
-
-function getMessageText(message?: Memory): string {
-  return typeof message?.content?.text === "string" ? message.content.text : "";
 }
 
 function normalizeIsoDate(rawDate: string): string | null {

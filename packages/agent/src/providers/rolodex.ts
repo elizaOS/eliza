@@ -12,6 +12,7 @@ import type {
   RelationshipsGraphService,
   RelationshipsPersonSummary,
 } from "../services/relationships-graph.js";
+import { resolveRelationshipsGraphService } from "../services/relationships-graph.js";
 
 const MAX_CONTACTS = 10;
 
@@ -58,9 +59,9 @@ export const rolodexProvider: Provider = {
     }
 
     try {
-      const graphService = runtime.getService(
-        "RELATIONSHIPS_GRAPH",
-      ) as unknown as RelationshipsGraphService | null;
+      const graphService = (await resolveRelationshipsGraphService(
+        runtime,
+      )) as RelationshipsGraphService | null;
 
       if (!graphService) {
         return { text: "", values: {}, data: {} };

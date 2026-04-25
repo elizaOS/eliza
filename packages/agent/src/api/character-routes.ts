@@ -1,5 +1,11 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import {
+  buildCharacterHistorySnapshot,
+  listCharacterHistory,
+  type RuntimeCharacterLike,
+  recordCharacterHistory,
+} from "../services/character-history.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 
 interface CharacterGenerateContext {
@@ -348,6 +354,22 @@ export async function handleCharacterRoutes(
     validateCharacter,
   } = ctx;
 
+  if (method === "GET" && pathname === "/api/character/history") {
+    if (!state.runtime) {
+      json(res, { history: [], agentName: state.agentName });
+      return true;
+    }
+
+    const url = new URL(req.url ?? pathname, "http://localhost");
+    const rawLimit = url.searchParams.get("limit");
+    const parsedLimit = rawLimit ? Number.parseInt(rawLimit, 10) : 20;
+    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 20;
+    const history = await listCharacterHistory(state.runtime, limit);
+
+    json(res, { history, agentName: state.agentName });
+    return true;
+  }
+
   if (method === "GET" && pathname === "/api/character") {
     const runtime = state.runtime;
     const merged: Record<string, unknown> = {};
@@ -390,6 +412,9 @@ export async function handleCharacterRoutes(
 
     if (state.runtime) {
       const character = state.runtime.character;
+      const previousCharacter = buildCharacterHistorySnapshot(
+        character as RuntimeCharacterLike,
+      );
       const previousCharacterName =
         typeof character.name === "string" ? character.name : undefined;
       const nextCharacterName =
@@ -439,17 +464,9 @@ export async function handleCharacterRoutes(
       }
 
       // Persist character fields to DB so edits survive restarts
-      const charData = {
-        name: character.name,
-        username: character.username,
-        bio: character.bio,
-        system: character.system,
-        adjectives: character.adjectives,
-        topics: (character as { topics?: string[] }).topics,
-        style: character.style,
-        messageExamples: character.messageExamples,
-        postExamples: character.postExamples,
-      };
+      const charData = buildCharacterHistorySnapshot(
+        character as RuntimeCharacterLike,
+      );
       await state.runtime.updateAgent(state.runtime.agentId, {
         name: character.name,
         metadata: {
@@ -457,6 +474,11 @@ export async function handleCharacterRoutes(
             .metadata,
           character: charData,
         },
+      });
+      await recordCharacterHistory(state.runtime, {
+        previousCharacter,
+        nextCharacter: character as RuntimeCharacterLike,
+        source: "manual",
       });
     }
 

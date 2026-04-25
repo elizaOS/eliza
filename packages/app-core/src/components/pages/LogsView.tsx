@@ -1,10 +1,17 @@
-
-
+import {
+  Button,
+  Input,
+  PagePanel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@elizaos/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { LogEntry } from "../../api";
 import { useApp } from "../../state";
 import { formatTime } from "../../utils/format";
-import { PagePanel, Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
 
 export function LogsView() {
   const [searchQuery, setSearchQuery] = useState("");

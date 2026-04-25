@@ -1,5 +1,11 @@
 import z from "zod";
-import type { Content, UUID } from "../../types";
+import type {
+	Content,
+	DocumentMetadata,
+	FragmentMetadata,
+	MemoryType,
+	UUID,
+} from "../../types";
 import type { ServiceTypeRegistry } from "../../types/service.ts";
 
 /**
@@ -139,12 +145,6 @@ declare module "../../types/service.ts" {
 	}
 }
 
-declare module "@elizaos/core" {
-	interface ServiceTypeRegistry {
-		KNOWLEDGE: "knowledge";
-	}
-}
-
 export const KnowledgeServiceType = {
 	KNOWLEDGE: "knowledge" as const,
 } satisfies Partial<ServiceTypeRegistry>;
@@ -157,6 +157,35 @@ export interface KnowledgeDocumentMetadata extends Record<string, unknown> {
 	fileExt?: string;
 	fileType?: string; // MIME type
 	fileSize?: number;
+}
+
+export interface KnowledgeDocumentMemoryMetadata
+	extends DocumentMetadata,
+		Record<string, unknown> {
+	type: typeof MemoryType.DOCUMENT;
+	documentId: UUID;
+	source: string;
+	title?: string;
+	filename?: string;
+	originalFilename?: string;
+	fileExt?: string;
+	fileType?: string;
+	contentType?: string;
+	fileSize?: number;
+	textBacked?: boolean;
+	timestamp?: number;
+	editedAt?: number;
+}
+
+export interface KnowledgeFragmentMemoryMetadata
+	extends FragmentMetadata,
+		Record<string, unknown> {
+	type: typeof MemoryType.FRAGMENT;
+	documentId: UUID;
+	position: number;
+	source?: string;
+	documentTitle?: string;
+	timestamp?: number;
 }
 
 export interface KnowledgeConfig {

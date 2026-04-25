@@ -1,6 +1,22 @@
-
-
-import { ExternalLink, Plus, RefreshCw, X } from "lucide-react";
+import {
+  type BrowserWorkspaceWalletState,
+  buildBrowserWorkspaceWalletState,
+} from "@elizaos/app-steward/browser-workspace-wallet";
+import type {
+  BrowserBridgeCompanionPackageStatus,
+  BrowserBridgeCompanionStatus,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import {
+  Button,
+  Input,
+  SidebarCollapsedActionButton,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+  useIntervalWhenDocumentVisible,
+  WorkspaceLayout,
+} from "@elizaos/ui";
+import { ExternalLink, FolderOpen, Plus, RefreshCw, X } from "lucide-react";
 import {
   type JSX,
   useCallback,
@@ -14,29 +30,115 @@ import {
   type BrowserWorkspaceTab,
   client,
 } from "../../api";
-import {
-  BROWSER_WALLET_READY_TYPE,
-  BROWSER_WALLET_RESPONSE_TYPE,
-  type BrowserWorkspaceWalletResponse,
-  type BrowserWorkspaceWalletState,
-  buildBrowserWorkspaceWalletState,
-  isBrowserWorkspaceWalletRequest,
-} from "../../browser-workspace-wallet";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
-import { WidgetHost } from "../../widgets";
-import { PagePanel, MetaPill, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
+import {
+  AppWorkspaceChrome,
+  type AppWorkspaceChromeProps,
+} from "../workspace/AppWorkspaceChrome.js";
+import { getBrowserPageScopeCopy } from "./page-scoped-conversations";
+import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 
 const POLL_INTERVAL_MS = 2_500;
-const DEFAULT_BROWSER_WALLET_CHAIN_ID = 1;
-function normalizeBrowserWorkspaceInputUrl(rawUrl: string): string | null {
+const BROWSER_BRIDGE_POLL_INTERVAL_MS = 4_000;
+const BROWSER_WORKSPACE_AGENT_PARTITION = "persist:eliza-browser-agent";
+const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
+const BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY =
+  "milady:browser-workspace:collapsed-sections";
+type TranslateFn = (key: string, vars?: Record<string, unknown>) => string;
+type BrowserWorkspaceTabSectionKey = "agent" | "app" | "user";
+
+function readStoredBrowserWorkspaceCollapsedSections(): Set<BrowserWorkspaceTabSectionKey> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = window.localStorage.getItem(
+      BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY,
+    );
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(
+      parsed.filter(
+        (value): value is BrowserWorkspaceTabSectionKey =>
+          value === "agent" || value === "app" || value === "user",
+      ),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+function persistBrowserWorkspaceCollapsedSections(
+  sections: Set<BrowserWorkspaceTabSectionKey>,
+): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY,
+      JSON.stringify([...sections]),
+    );
+  } catch {
+    /* ignore sandboxed storage */
+  }
+}
+
+function resolveBrowserWorkspaceTabSectionKey(
+  tab: BrowserWorkspaceTab,
+): BrowserWorkspaceTabSectionKey {
+  const partition = tab.partition.trim().toLowerCase();
+  if (partition === BROWSER_WORKSPACE_AGENT_PARTITION) {
+    return "agent";
+  }
+  if (partition === BROWSER_WORKSPACE_APP_PARTITION) {
+    return "app";
+  }
+  return "user";
+}
+
+function resolveBrowserWorkspaceTabPartition(
+  sectionKey: BrowserWorkspaceTabSectionKey,
+): string | undefined {
+  switch (sectionKey) {
+    case "agent":
+      return BROWSER_WORKSPACE_AGENT_PARTITION;
+    case "app":
+      return BROWSER_WORKSPACE_APP_PARTITION;
+    case "user":
+      return undefined;
+  }
+}
+
+function isBrowserBridgePlugin(plugin: {
+  id?: string;
+  name?: string;
+  npmName?: string;
+}): boolean {
+  const identifiers = [plugin.id, plugin.name, plugin.npmName]
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim().toLowerCase());
+  return identifiers.some(
+    (value) =>
+      value === "browser-bridge" ||
+      value === "plugin-browser-bridge" ||
+      value === "@elizaos/plugin-browser-bridge",
+  );
+}
+
+function isBrowserWorkspaceSessionMode(
+  mode: BrowserWorkspaceSnapshot["mode"],
+): boolean {
+  return mode === "cloud" || mode === "desktop";
+}
+
+function normalizeBrowserWorkspaceInputUrl(
+  rawUrl: string,
+  t: TranslateFn,
+): string | null {
   const trimmed = rawUrl.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (trimmed === "about:blank") {
-    return trimmed;
-  }
+  if (!trimmed) return null;
+  if (trimmed === "about:blank") return trimmed;
 
   const candidate = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)
     ? trimmed
@@ -46,20 +148,24 @@ function normalizeBrowserWorkspaceInputUrl(rawUrl: string): string | null {
   try {
     parsed = new URL(candidate);
   } catch {
-    throw new Error("Enter a valid http or https URL.");
+    throw new Error(
+      t("browserworkspace.InvalidUrl", {
+        defaultValue: "Enter a valid http or https URL.",
+      }),
+    );
   }
-
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Only http and https pages can be embedded.");
+    throw new Error(
+      t("browserworkspace.UnsupportedProtocol", {
+        defaultValue: "Only http and https URLs are supported.",
+      }),
+    );
   }
-
   return parsed.toString();
 }
 
 function readBrowserWorkspaceQueryParam(name: string): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
+  if (typeof window === "undefined") return null;
   const rawSearch =
     window.location.search || window.location.hash.split("?")[1] || "";
   const params = new URLSearchParams(
@@ -69,96 +175,71 @@ function readBrowserWorkspaceQueryParam(name: string): string | null {
   return value ? value : null;
 }
 
-function inferBrowserWorkspaceTitle(url: string): string {
+function inferBrowserWorkspaceTitle(url: string, t: TranslateFn): string {
   if (url === "about:blank") {
-    return "New Tab";
+    return t("browserworkspace.NewTab", {
+      defaultValue: "New tab",
+    });
   }
   try {
-    return new URL(url).hostname.replace(/^www\./, "") || "Browser";
+    return (
+      new URL(url).hostname.replace(/^www\./, "") ||
+      t("browserworkspace.Browser", {
+        defaultValue: "Browser",
+      })
+    );
   } catch {
-    return "Browser";
+    return t("browserworkspace.Browser", {
+      defaultValue: "Browser",
+    });
   }
 }
 
-function getBrowserWorkspaceTabLabel(tab: BrowserWorkspaceTab): string {
+function getBrowserWorkspaceTabKind(
+  tab: BrowserWorkspaceTab,
+): "internal" | "standard" {
+  return tab.kind === "internal" ? "internal" : "standard";
+}
+
+function isInternalBrowserWorkspaceTab(tab: BrowserWorkspaceTab): boolean {
+  return getBrowserWorkspaceTabKind(tab) === "internal";
+}
+
+function getBrowserWorkspaceTabLabel(
+  tab: BrowserWorkspaceTab,
+  t: TranslateFn,
+): string {
   const trimmedTitle = tab.title.trim();
-  if (trimmedTitle && trimmedTitle !== "Browser") {
-    return trimmedTitle;
-  }
-  return inferBrowserWorkspaceTitle(tab.url);
+  if (trimmedTitle && trimmedTitle !== "Browser") return trimmedTitle;
+  return inferBrowserWorkspaceTitle(tab.url, t);
 }
 
-function getBrowserWorkspaceRailMonogram(label: string): string {
+function getBrowserWorkspaceTabMonogram(label: string): string {
   const alphanumeric = label.trim().replace(/[^a-z0-9]/gi, "");
   return (alphanumeric[0] ?? "B").toUpperCase();
 }
 
-function formatBrowserWorkspaceTimestamp(value: string | null): string {
-  if (!value) {
-    return "Idle";
-  }
-  try {
-    return new Date(value).toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return "Idle";
-  }
-}
+function getBrowserWorkspaceTabDescription(
+  tab: BrowserWorkspaceTab,
+  mode: BrowserWorkspaceSnapshot["mode"],
+): string {
+  const details: string[] = [];
 
-function formatBrowserWorkspaceWalletAddress(address: string): string {
-  return `${address.slice(0, 6)}…${address.slice(-4)}`;
-}
-
-function resolveBrowserWorkspaceTargetOrigin(url: string): string | null {
-  try {
-    const origin = new URL(url).origin;
-    return origin && origin !== "null" ? origin : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Verify the postMessage origin against the tab's known URL and return a safe
- * targetOrigin for the response. Returns null if the origin cannot be verified.
- *
- * With `allow-same-origin` in the iframe sandbox, a malicious page could
- * present the parent's origin. We mitigate this by checking that the message
- * origin matches the origin derived from the tab's URL — the URL the user or
- * agent explicitly navigated to.
- *
- * @internal Exported for testing only.
- */
-export function resolveBrowserWorkspaceMessageOrigin(
-  origin: string,
-  tabUrl?: string,
-): string | null {
-  if (!origin || origin === "null") {
-    return null;
+  if (isInternalBrowserWorkspaceTab(tab)) {
+    details.push("Internal");
   }
 
-  // If we know the tab's URL, verify the message origin matches.
-  // This prevents a page loaded via allow-same-origin from spoofing
-  // the parent origin to access wallet signing.
-  if (tabUrl) {
-    try {
-      const expectedOrigin = new URL(tabUrl).origin;
-      if (
-        expectedOrigin &&
-        expectedOrigin !== "null" &&
-        origin !== expectedOrigin
-      ) {
-        return null;
-      }
-    } catch {
-      // Malformed tab URL — reject.
-      return null;
+  if (mode !== "web") {
+    if (tab.provider?.trim()) {
+      details.push(tab.provider.trim());
+    }
+    if (tab.status?.trim()) {
+      details.push(tab.status.trim());
     }
   }
 
-  return origin;
+  details.push(tab.url);
+  return details.join(" · ");
 }
 
 function resolveBrowserWorkspaceSelection(
@@ -172,106 +253,13 @@ function resolveBrowserWorkspaceSelection(
   return visibleTab?.id ?? tabs[0]?.id ?? null;
 }
 
-function formatBrowserWorkspaceChainId(chainId: number): string {
-  return `0x${chainId.toString(16)}`;
-}
-
-function parseBrowserWorkspaceChainId(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  const parsed = trimmed.startsWith("0x")
-    ? Number.parseInt(trimmed.slice(2), 16)
-    : Number(trimmed);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function resolveBrowserWorkspaceWalletAccounts(
-  state: BrowserWorkspaceWalletState,
-): string[] {
-  return state.evmAddress ? [state.evmAddress] : [];
-}
-
-/** @internal Exported for testing only. */
-export function normalizeBrowserWorkspaceTxRequest(
-  params: unknown,
-  fallbackChainId: number,
-): {
-  broadcast: boolean;
-  chainId: number;
-  data?: string;
-  description?: string;
-  to: string;
-  value: string;
-} | null {
-  const raw = Array.isArray(params) && params.length > 0 ? params[0] : params;
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-  const value = raw as Record<string, unknown>;
-  const chainId =
-    parseBrowserWorkspaceChainId(value.chainId) ?? fallbackChainId;
-  const to = typeof value.to === "string" ? value.to.trim() : "";
-  // value is optional — ERC-20 and other contract calls legitimately omit it.
-  // Default to "0x0" when absent so these calls aren't silently rejected.
-  const amount =
-    typeof value.value === "string"
-      ? value.value.trim()
-      : typeof value.value === "number"
-        ? String(value.value)
-        : "0x0";
-  if (!to || !chainId || !Number.isFinite(chainId)) {
-    return null;
-  }
-  return {
-    broadcast: value.broadcast !== false,
-    chainId,
-    data: typeof value.data === "string" ? value.data : undefined,
-    description:
-      typeof value.description === "string" ? value.description : undefined,
-    to,
-    value: amount,
-  };
-}
-
-function resolveBrowserWorkspaceMessageToSign(
-  params: unknown,
-  address: string | null,
-): string | null {
-  if (typeof params === "string") {
-    return params;
-  }
-  if (!Array.isArray(params) || params.length === 0) {
-    return null;
-  }
-
-  const first = params[0];
-  const second = params[1];
-  if (typeof first === "string" && typeof second === "string" && address) {
-    if (first.toLowerCase() === address.toLowerCase()) {
-      return second;
-    }
-    if (second.toLowerCase() === address.toLowerCase()) {
-      return first;
-    }
-  }
-
-  return typeof first === "string" ? first : null;
-}
-
 export function BrowserWorkspaceView(): JSX.Element {
   const {
     getStewardPending,
     getStewardStatus,
     setActionNotice,
     t,
+    plugins,
     walletAddresses,
     walletConfig,
   } = useApp();
@@ -293,9 +281,22 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [locationDirty, setLocationDirty] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [tabSnapshots, setTabSnapshots] = useState<Record<string, string>>({});
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<
+    Set<BrowserWorkspaceTabSectionKey>
+  >(() => readStoredBrowserWorkspaceCollapsedSections());
+  const [browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
+  const [browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
+  const [browserBridgeCompanions, setBrowserBridgeCompanions] = useState<
+    BrowserBridgeCompanionStatus[]
+  >([]);
+  const [browserBridgePackageStatus, setBrowserBridgePackageStatus] =
+    useState<BrowserBridgeCompanionPackageStatus | null>(null);
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
+  const initialBlankTabHandledRef = useRef(false);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
   const getStewardPendingRef = useRef(getStewardPending);
   const getStewardStatusRef = useRef(getStewardStatus);
@@ -303,17 +304,13 @@ export function BrowserWorkspaceView(): JSX.Element {
   const tRef = useRef(t);
   const walletAddressesRef = useRef(walletAddresses);
   const walletConfigRef = useRef(walletConfig);
-  const browserWalletStateRef = useRef(browserWalletState);
-  const browserWalletChainIdByTabRef = useRef(new Map<string, number>());
-  const workspaceTabsRef = useRef(workspace.tabs);
-  workspaceTabsRef.current = workspace.tabs;
   const previousSelectedTabIdRef = useRef<string | null>(null);
 
   if (typeof initialBrowseUrlRef.current === "undefined") {
     const browseParam = readBrowserWorkspaceQueryParam("browse");
     try {
       initialBrowseUrlRef.current = browseParam
-        ? normalizeBrowserWorkspaceInputUrl(browseParam)
+        ? normalizeBrowserWorkspaceInputUrl(browseParam, t)
         : null;
     } catch {
       initialBrowseUrlRef.current = null;
@@ -324,23 +321,64 @@ export function BrowserWorkspaceView(): JSX.Element {
     () => workspace.tabs.find((tab) => tab.id === selectedTabId) ?? null,
     [selectedTabId, workspace.tabs],
   );
-  const walletStateRefreshKey = useMemo(
+  const selectedTabSnapshot = selectedTabId
+    ? (tabSnapshots[selectedTabId] ?? null)
+    : null;
+  const selectedTabLiveViewUrl =
+    selectedTab?.interactiveLiveViewUrl ?? selectedTab?.liveViewUrl ?? null;
+  const selectedTabIsInternal = selectedTab
+    ? isInternalBrowserWorkspaceTab(selectedTab)
+    : false;
+  const newBrowserWorkspaceTabSeedUrl = selectedTabIsInternal
+    ? "about:blank"
+    : locationInput || "about:blank";
+  const groupedTabs = useMemo(
     () =>
-      [
-        walletAddresses?.evmAddress ?? "",
-        walletAddresses?.solanaAddress ?? "",
-        walletConfig?.evmAddress ?? "",
-        walletConfig?.executionReady ? "1" : "0",
-        walletConfig?.executionBlockedReason ?? "",
-        walletConfig?.solanaAddress ?? "",
-        walletConfig?.solanaSigningAvailable ? "1" : "0",
-      ].join("|"),
-    [walletAddresses, walletConfig],
+      workspace.tabs.reduce<
+        Record<BrowserWorkspaceTabSectionKey, BrowserWorkspaceTab[]>
+      >(
+        (groups, tab) => {
+          groups[resolveBrowserWorkspaceTabSectionKey(tab)].push(tab);
+          return groups;
+        },
+        { user: [], agent: [], app: [] },
+      ),
+    [workspace.tabs],
   );
+  const collapsedRailTabs = useMemo(
+    () => [...groupedTabs.user, ...groupedTabs.agent, ...groupedTabs.app],
+    [groupedTabs],
+  );
+  const primaryBrowserBridgeCompanion = useMemo(
+    () =>
+      browserBridgeCompanions.find(
+        (companion) => companion.connectionState === "connected",
+      ) ??
+      browserBridgeCompanions[0] ??
+      null,
+    [browserBridgeCompanions],
+  );
+  const browserBridgeConnected =
+    primaryBrowserBridgeCompanion?.connectionState === "connected";
 
-  useEffect(() => {
-    browserWalletStateRef.current = browserWalletState;
-  }, [browserWalletState]);
+  const toggleSidebarSectionCollapsed = useCallback((key: string) => {
+    setCollapsedSections((current) => {
+      if (key !== "agent" && key !== "app" && key !== "user") {
+        return current;
+      }
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }, []);
+  const browserBridgeSupported = useMemo(
+    () => plugins.some((plugin) => isBrowserBridgePlugin(plugin)),
+    [plugins],
+  );
 
   useEffect(() => {
     getStewardPendingRef.current = getStewardPending;
@@ -395,6 +433,40 @@ export function BrowserWorkspaceView(): JSX.Element {
       return nextState;
     }
   }, []);
+
+  const loadBrowserBridgeState = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setBrowserBridgeLoading(true);
+      }
+      const [companionsResult, packageResult] = await Promise.allSettled([
+        client.fetch<{ companions: BrowserBridgeCompanionStatus[] }>(
+          "/api/browser-bridge/companions",
+        ),
+        client.fetch<{ status: BrowserBridgeCompanionPackageStatus }>(
+          "/api/browser-bridge/packages",
+        ),
+      ]);
+      if (companionsResult.status === "fulfilled") {
+        setBrowserBridgeCompanions(companionsResult.value.companions);
+      } else {
+        setBrowserBridgeCompanions([]);
+      }
+      if (packageResult.status === "fulfilled") {
+        setBrowserBridgePackageStatus(packageResult.value.status);
+      } else {
+        setBrowserBridgePackageStatus(null);
+      }
+      setBrowserBridgeAvailable(
+        companionsResult.status === "fulfilled" ||
+          packageResult.status === "fulfilled",
+      );
+      if (!options?.silent) {
+        setBrowserBridgeLoading(false);
+      }
+    },
+    [],
+  );
 
   const loadWorkspace = useCallback(
     async (options?: { preferTabId?: string | null; silent?: boolean }) => {
@@ -453,15 +525,51 @@ export function BrowserWorkspaceView(): JSX.Element {
     [],
   );
 
+  const loadSelectedBrowserWorkspaceSnapshot = useCallback(
+    async (tabId: string, mode: BrowserWorkspaceSnapshot["mode"]) => {
+      if (!isBrowserWorkspaceSessionMode(mode)) {
+        setSnapshotError(null);
+        return;
+      }
+      try {
+        const snapshot = await client.snapshotBrowserWorkspaceTab(tabId);
+        setTabSnapshots((current) => {
+          if (current[tabId] === snapshot.data) {
+            return current;
+          }
+          return { ...current, [tabId]: snapshot.data };
+        });
+        setSnapshotError(null);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : tRef.current("browserworkspace.SnapshotFailed", {
+                defaultValue: "Failed to load browser session preview.",
+              });
+        setSnapshotError(message);
+      }
+    },
+    [],
+  );
+
   const openNewBrowserWorkspaceTab = useCallback(
-    async (rawUrl: string) => {
-      const url = normalizeBrowserWorkspaceInputUrl(rawUrl);
+    async (
+      rawUrl: string,
+      sectionKey: BrowserWorkspaceTabSectionKey = "user",
+    ) => {
+      const url = normalizeBrowserWorkspaceInputUrl(rawUrl, t);
       if (!url) {
-        throw new Error("Enter a URL to open.");
+        throw new Error(
+          t("browserworkspace.EnterUrlToOpen", {
+            defaultValue: "Enter a URL to open.",
+          }),
+        );
       }
       const request = {
         url,
-        title: inferBrowserWorkspaceTitle(url),
+        title: inferBrowserWorkspaceTitle(url, t),
+        partition: resolveBrowserWorkspaceTabPartition(sectionKey),
         show: true,
       };
       const { tab } = await client.openBrowserWorkspaceTab(request);
@@ -470,7 +578,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       setLocationInput(tab.url);
       setLocationDirty(false);
     },
-    [loadWorkspace],
+    [loadWorkspace, t],
   );
 
   const activateBrowserWorkspaceTab = useCallback(
@@ -484,9 +592,20 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   const navigateSelectedBrowserWorkspaceTab = useCallback(
     async (rawUrl: string) => {
-      const url = normalizeBrowserWorkspaceInputUrl(rawUrl);
+      if (selectedTab && isInternalBrowserWorkspaceTab(selectedTab)) {
+        throw new Error(
+          t("browserworkspace.InternalTabUrlManaged", {
+            defaultValue: "This internal tab manages its own URL.",
+          }),
+        );
+      }
+      const url = normalizeBrowserWorkspaceInputUrl(rawUrl, t);
       if (!url) {
-        throw new Error("Enter a URL to navigate.");
+        throw new Error(
+          t("browserworkspace.EnterUrlToNavigate", {
+            defaultValue: "Enter a URL to navigate.",
+          }),
+        );
       }
       if (!selectedTabId) {
         await openNewBrowserWorkspaceTab(url);
@@ -496,33 +615,28 @@ export function BrowserWorkspaceView(): JSX.Element {
         selectedTabId,
         url,
       );
-      // React won't re-navigate an existing iframe when only the src attribute
-      // changes (same key = same DOM element). Set the src directly via the ref.
-      const iframe = iframeRefs.current.get(selectedTabId);
-      if (iframe && iframe.src !== tab.url) {
-        iframe.src = tab.url;
+      if (workspace.mode === "web") {
+        // React won't re-navigate an existing iframe when only the src
+        // attribute changes (same key = same DOM element). Set the src
+        // directly via the ref in embedded web mode only.
+        const iframe = iframeRefs.current.get(selectedTabId);
+        if (iframe && iframe.src !== tab.url) {
+          iframe.src = tab.url;
+        }
       }
       await loadWorkspace({ preferTabId: tab.id, silent: true });
       setLocationInput(tab.url);
       setLocationDirty(false);
     },
-    [loadWorkspace, openNewBrowserWorkspaceTab, selectedTabId],
+    [
+      loadWorkspace,
+      openNewBrowserWorkspaceTab,
+      selectedTab,
+      selectedTabId,
+      t,
+      workspace.mode,
+    ],
   );
-
-  const closeSelectedBrowserWorkspaceTab = useCallback(async () => {
-    if (!selectedTabId) {
-      return;
-    }
-    await client.closeBrowserWorkspaceTab(selectedTabId);
-    // Fetch fresh tab list after closing — avoids stale closure refs that
-    // could pick a tab the server no longer knows about.
-    const snapshot = await client.getBrowserWorkspace();
-    const nextTabId = snapshot.tabs[0]?.id ?? null;
-    if (nextTabId) {
-      await client.showBrowserWorkspaceTab(nextTabId);
-    }
-    await loadWorkspace({ preferTabId: nextTabId, silent: true });
-  }, [loadWorkspace, selectedTabId]);
 
   const registerBrowserWorkspaceIframe = useCallback(
     (tabId: string, iframe: HTMLIFrameElement | null) => {
@@ -535,22 +649,30 @@ export function BrowserWorkspaceView(): JSX.Element {
     [],
   );
 
-  const postBrowserWalletReady = useCallback(
-    (tab: BrowserWorkspaceTab, state: BrowserWorkspaceWalletState) => {
-      const iframeWindow = iframeRefs.current.get(tab.id)?.contentWindow;
-      const targetOrigin = resolveBrowserWorkspaceTargetOrigin(tab.url);
-      if (!iframeWindow || !targetOrigin) {
-        return;
+  const { postBrowserWalletReady } = useBrowserWorkspaceWalletBridge({
+    iframeRefs,
+    workspaceTabs: workspace.mode === "web" ? workspace.tabs : [],
+    walletState: browserWalletState,
+    loadWalletState: loadBrowserWalletState,
+  });
+
+  const closeBrowserWorkspaceTabById = useCallback(
+    async (tabId: string) => {
+      await client.closeBrowserWorkspaceTab(tabId);
+      const snapshot = await client.getBrowserWorkspace();
+      const nextId =
+        snapshot.tabs.find((tab) => tab.id === selectedTabId)?.id ??
+        snapshot.tabs[0]?.id ??
+        null;
+      if (nextId && nextId !== selectedTabId) {
+        await client.showBrowserWorkspaceTab(nextId);
       }
-      iframeWindow.postMessage(
-        {
-          type: BROWSER_WALLET_READY_TYPE,
-          state,
-        },
-        targetOrigin,
-      );
+      await loadWorkspace({
+        preferTabId: nextId,
+        silent: true,
+      });
     },
-    [],
+    [loadWorkspace, selectedTabId],
   );
 
   useEffect(() => {
@@ -558,22 +680,58 @@ export function BrowserWorkspaceView(): JSX.Element {
   }, [loadWorkspace]);
 
   useEffect(() => {
+    persistBrowserWorkspaceCollapsedSections(collapsedSections);
+  }, [collapsedSections]);
+
+  useEffect(() => {
     void loadBrowserWalletState();
-  }, [loadBrowserWalletState, walletStateRefreshKey]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      void loadWorkspace({ preferTabId: selectedTabId, silent: true });
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [loadWorkspace, selectedTabId]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      void loadBrowserWalletState();
-    }, 5_000);
-    return () => window.clearInterval(timer);
   }, [loadBrowserWalletState]);
+
+  useEffect(() => {
+    if (workspace.mode !== "web" || !browserBridgeSupported) {
+      setBrowserBridgeAvailable(false);
+      setBrowserBridgeCompanions([]);
+      setBrowserBridgePackageStatus(null);
+      setBrowserBridgeLoading(false);
+      return;
+    }
+    void loadBrowserBridgeState();
+  }, [browserBridgeSupported, loadBrowserBridgeState, workspace.mode]);
+
+  useIntervalWhenDocumentVisible(() => {
+    void loadWorkspace({ preferTabId: selectedTabId, silent: true });
+  }, POLL_INTERVAL_MS);
+
+  useEffect(() => {
+    if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
+      setSnapshotError(null);
+      return;
+    }
+    void loadSelectedBrowserWorkspaceSnapshot(selectedTabId, workspace.mode);
+  }, [loadSelectedBrowserWorkspaceSnapshot, selectedTabId, workspace.mode]);
+
+  useIntervalWhenDocumentVisible(
+    () => {
+      if (!selectedTabId || !isBrowserWorkspaceSessionMode(workspace.mode)) {
+        return;
+      }
+      void loadSelectedBrowserWorkspaceSnapshot(selectedTabId, workspace.mode);
+    },
+    POLL_INTERVAL_MS,
+    Boolean(selectedTabId) && isBrowserWorkspaceSessionMode(workspace.mode),
+  );
+
+  useIntervalWhenDocumentVisible(() => {
+    void loadBrowserWalletState();
+  }, 5_000);
+
+  useIntervalWhenDocumentVisible(
+    () => {
+      void loadBrowserBridgeState({ silent: true });
+    },
+    BROWSER_BRIDGE_POLL_INTERVAL_MS,
+    workspace.mode === "web" && browserBridgeSupported,
+  );
 
   useEffect(() => {
     const currentSelectedId = selectedTab?.id ?? null;
@@ -632,702 +790,857 @@ export function BrowserWorkspaceView(): JSX.Element {
     workspace.tabs,
   ]);
 
+  // When the workspace loads with no tabs (and the ?browse= path isn't going
+  // to open one), auto-open the Milady homepage so the user lands on a live
+  // page instead of a dead empty state. Runs exactly once per mount.
   useEffect(() => {
-    for (const tab of workspace.tabs) {
-      postBrowserWalletReady(tab, browserWalletState);
+    if (initialBlankTabHandledRef.current) return;
+    if (loading || loadError) return;
+    if (initialBrowseUrlRef.current) return;
+    if (workspace.tabs.length > 0) {
+      initialBlankTabHandledRef.current = true;
+      return;
     }
-  }, [browserWalletState, postBrowserWalletReady, workspace.tabs]);
+    initialBlankTabHandledRef.current = true;
+    void runBrowserWorkspaceAction(
+      "open:initial-home",
+      async () => {
+        await openNewBrowserWorkspaceTab("https://milady.ai/");
+      },
+      t("browserworkspace.OpenInitialHomeFailed", {
+        defaultValue: "Failed to open the Milady homepage.",
+      }),
+    );
+  }, [
+    loadError,
+    loading,
+    openNewBrowserWorkspaceTab,
+    runBrowserWorkspaceAction,
+    t,
+    workspace.tabs.length,
+  ]);
 
-  useEffect(() => {
-    const knownTabIds = new Set(workspace.tabs.map((tab) => tab.id));
-    for (const tabId of browserWalletChainIdByTabRef.current.keys()) {
-      if (!knownTabIds.has(tabId)) {
-        browserWalletChainIdByTabRef.current.delete(tabId);
+  const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
+    if (!selectedTab) return;
+    if (workspace.mode === "web") {
+      const iframe = iframeRefs.current.get(selectedTab.id);
+      if (iframe) {
+        iframe.src = selectedTab.url;
       }
+      return;
     }
-  }, [workspace.tabs]);
+    await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
+  }, [selectedTab, workspace.mode]);
 
-  useEffect(() => {
-    const onMessage = (event: MessageEvent<unknown>) => {
-      if (!isBrowserWorkspaceWalletRequest(event.data)) {
-        return;
-      }
-      const request = event.data;
+  const installBrowserBridgeExtension = useCallback(async () => {
+    await runBrowserWorkspaceAction(
+      "browser-bridge:install",
+      async () => {
+        let nextPackageStatus = browserBridgePackageStatus;
+        if (!nextPackageStatus?.chromeBuildPath) {
+          const buildResponse = await client.fetch<{
+            status: BrowserBridgeCompanionPackageStatus;
+          }>("/api/browser-bridge/packages/chrome/build", {
+            method: "POST",
+          });
+          nextPackageStatus = buildResponse.status;
+          setBrowserBridgePackageStatus(buildResponse.status);
+        }
 
-      const sourceTab = workspaceTabsRef.current.find(
-        (tab) => iframeRefs.current.get(tab.id)?.contentWindow === event.source,
-      );
-      const sourceWindow = sourceTab
-        ? iframeRefs.current.get(sourceTab.id)?.contentWindow
-        : null;
-      if (!sourceTab || !sourceWindow) {
-        return;
-      }
-
-      const targetOrigin = resolveBrowserWorkspaceMessageOrigin(
-        event.origin,
-        sourceTab.url,
-      );
-      if (targetOrigin === null) {
-        // Refuse to respond — origin cannot be verified or doesn't match tab URL.
-        return;
-      }
-      const respond = (response: BrowserWorkspaceWalletResponse) => {
-        sourceWindow.postMessage(response, targetOrigin);
-      };
-      const currentWalletState = browserWalletStateRef.current;
-      const currentTabChainId =
-        browserWalletChainIdByTabRef.current.get(sourceTab.id) ??
-        DEFAULT_BROWSER_WALLET_CHAIN_ID;
-
-      if (request.method === "getState") {
-        respond({
-          type: BROWSER_WALLET_RESPONSE_TYPE,
-          requestId: request.requestId,
-          ok: true,
-          result: browserWalletStateRef.current,
+        const revealResponse = await client.fetch<{
+          path: string;
+          target: string;
+          revealOnly: boolean;
+        }>("/api/browser-bridge/packages/open-path", {
+          method: "POST",
+          body: JSON.stringify({
+            target: "chrome_build",
+            revealOnly: true,
+          }),
         });
-        return;
-      }
 
-      if (request.method === "requestAccounts") {
-        respond({
-          type: BROWSER_WALLET_RESPONSE_TYPE,
-          requestId: request.requestId,
-          ok: true,
-          result: {
-            accounts: resolveBrowserWorkspaceWalletAccounts(currentWalletState),
-          },
-        });
-        return;
-      }
-
-      void (async () => {
-        if (
-          request.method === "eth_accounts" ||
-          request.method === "eth_requestAccounts"
-        ) {
-          respond({
-            type: BROWSER_WALLET_RESPONSE_TYPE,
-            requestId: request.requestId,
-            ok: true,
-            result: resolveBrowserWorkspaceWalletAccounts(currentWalletState),
-          });
-          return;
-        }
-
-        if (request.method === "solana_connect") {
-          if (
-            !currentWalletState.solanaConnected ||
-            !currentWalletState.solanaAddress
-          ) {
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: false,
-              error: "Solana wallet is unavailable.",
-            });
-            return;
-          }
-
-          respond({
-            type: BROWSER_WALLET_RESPONSE_TYPE,
-            requestId: request.requestId,
-            ok: true,
-            result: {
-              address: currentWalletState.solanaAddress,
-            },
-          });
-          return;
-        }
-
-        if (request.method === "eth_chainId") {
-          respond({
-            type: BROWSER_WALLET_RESPONSE_TYPE,
-            requestId: request.requestId,
-            ok: true,
-            result: formatBrowserWorkspaceChainId(currentTabChainId),
-          });
-          return;
-        }
-
-        if (request.method === "solana_signMessage") {
-          if (!currentWalletState.solanaMessageSigningAvailable) {
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: false,
-              error:
-                currentWalletState.reason ||
-                "Solana browser wallet signing is unavailable.",
-            });
-            return;
-          }
-
-          const params =
-            request.params && typeof request.params === "object"
-              ? (request.params as {
-                  message?: unknown;
-                  messageBase64?: unknown;
-                })
-              : null;
-          const message =
-            typeof params?.message === "string" ? params.message : undefined;
-          const messageBase64 =
-            typeof params?.messageBase64 === "string"
-              ? params.messageBase64
-              : undefined;
-
-          if (!message && !messageBase64) {
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: false,
-              error:
-                "Solana browser wallet signing requires message or messageBase64.",
-            });
-            return;
-          }
-
-          try {
-            const result = await client.signBrowserSolanaMessage({
-              ...(message ? { message } : {}),
-              ...(messageBase64 ? { messageBase64 } : {}),
-            });
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: true,
-              result,
-            });
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: false,
-              error: message,
-            });
-          }
-          return;
-        }
-
-        if (request.method === "wallet_switchEthereumChain") {
-          if (!currentWalletState.chainSwitchingAvailable) {
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: false,
-              error:
-                currentWalletState.reason ||
-                "Browser wallet chain switching is unavailable.",
-            });
-            return;
-          }
-
-          const nextChainId = parseBrowserWorkspaceChainId(
-            Array.isArray(request.params)
-              ? (request.params[0] as { chainId?: unknown } | undefined)
-                  ?.chainId
-              : (request.params as { chainId?: unknown } | undefined)?.chainId,
-          );
-
-          if (!nextChainId) {
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: false,
-              error: "wallet_switchEthereumChain requires a valid chainId.",
-            });
-            return;
-          }
-
-          browserWalletChainIdByTabRef.current.set(sourceTab.id, nextChainId);
-          // Use the ref (not the stale closure snapshot) so the dApp receives
-          // the most up-to-date wallet state after the chain switch.
-          postBrowserWalletReady(sourceTab, browserWalletStateRef.current);
-          respond({
-            type: BROWSER_WALLET_RESPONSE_TYPE,
-            requestId: request.requestId,
-            ok: true,
-            result: null,
-          });
-          return;
-        }
-
-        if (
-          request.method === "personal_sign" ||
-          request.method === "eth_sign"
-        ) {
-          if (!currentWalletState.messageSigningAvailable) {
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: false,
-              error:
-                currentWalletState.mode === "steward"
-                  ? "Browser message signing requires a local wallet key."
-                  : currentWalletState.reason ||
-                    "Browser wallet message signing is unavailable.",
-            });
-            return;
-          }
-
-          const message = resolveBrowserWorkspaceMessageToSign(
-            request.params,
-            currentWalletState.address,
-          );
-          if (!message) {
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: false,
-              error: "Browser wallet signing requires a message payload.",
-            });
-            return;
-          }
-
-          try {
-            const result = await client.signBrowserWalletMessage(message);
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: true,
-              result:
-                request.method === "eth_sign" ||
-                request.method === "personal_sign"
-                  ? result.signature
-                  : result,
-            });
-          } catch (error) {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            respond({
-              type: BROWSER_WALLET_RESPONSE_TYPE,
-              requestId: request.requestId,
-              ok: false,
-              error: message,
-            });
-          }
-          return;
-        }
-
-        if (
-          request.method !== "sendTransaction" &&
-          request.method !== "eth_sendTransaction"
-        ) {
-          respond({
-            type: BROWSER_WALLET_RESPONSE_TYPE,
-            requestId: request.requestId,
-            ok: false,
-            error: "Unsupported browser wallet request.",
-          });
-          return;
-        }
-
-        if (!currentWalletState.transactionSigningAvailable) {
-          respond({
-            type: BROWSER_WALLET_RESPONSE_TYPE,
-            requestId: request.requestId,
-            ok: false,
-            error:
-              currentWalletState.reason ||
-              "Browser wallet transaction signing is unavailable.",
-          });
-          return;
-        }
-
-        const transaction = normalizeBrowserWorkspaceTxRequest(
-          request.params,
-          currentTabChainId,
-        );
-        if (!transaction) {
-          respond({
-            type: BROWSER_WALLET_RESPONSE_TYPE,
-            requestId: request.requestId,
-            ok: false,
-            error:
-              "Browser wallet sendTransaction requires to, value, and chainId.",
-          });
-          return;
-        }
-
+        let openedManager = true;
         try {
-          const result = await client.sendBrowserWalletTransaction(transaction);
-          const nextState = await loadBrowserWalletState();
-          postBrowserWalletReady(sourceTab, nextState);
-          respond({
-            type: BROWSER_WALLET_RESPONSE_TYPE,
-            requestId: request.requestId,
-            ok: true,
-            result:
-              request.method === "eth_sendTransaction"
-                ? (result.txHash ?? result.txId ?? null)
-                : result,
-          });
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          respond({
-            type: BROWSER_WALLET_RESPONSE_TYPE,
-            requestId: request.requestId,
-            ok: false,
-            error: message,
-          });
+          await client.fetch(
+            "/api/browser-bridge/packages/chrome/open-manager",
+            {
+              method: "POST",
+            },
+          );
+        } catch {
+          openedManager = false;
         }
-      })();
-    };
 
-    window.addEventListener("message", onMessage);
-    return () => {
-      window.removeEventListener("message", onMessage);
-    };
-  }, [loadBrowserWalletState, postBrowserWalletReady]);
+        setActionNoticeRef.current(
+          openedManager
+            ? t("browserworkspace.BrowserBridgeChromeReady", {
+                defaultValue:
+                  "Chrome is ready. Click Load unpacked and choose {{path}}.",
+                path: revealResponse.path,
+              })
+            : t("browserworkspace.BrowserBridgeFolderReady", {
+                defaultValue:
+                  "The Agent Browser Bridge folder is ready at {{path}}. Open chrome://extensions, click Load unpacked, and choose that folder.",
+                path: revealResponse.path,
+              }),
+          "success",
+          6_000,
+        );
+        await loadBrowserBridgeState({ silent: true });
+      },
+      t("browserworkspace.InstallBrowserBridgeFailed", {
+        defaultValue: "Failed to prepare the Agent Browser Bridge extension.",
+      }),
+    );
+  }, [
+    browserBridgePackageStatus,
+    loadBrowserBridgeState,
+    runBrowserWorkspaceAction,
+    t,
+  ]);
 
-  const browserSidebar = (
-    <Sidebar
+  const revealBrowserBridgeFolder = useCallback(async () => {
+    await runBrowserWorkspaceAction(
+      "browser-bridge:reveal-folder",
+      async () => {
+        const response = await client.fetch<{
+          path: string;
+          target: string;
+          revealOnly: boolean;
+        }>("/api/browser-bridge/packages/open-path", {
+          method: "POST",
+          body: JSON.stringify({
+            target: "chrome_build",
+            revealOnly: true,
+          }),
+        });
+        setActionNoticeRef.current(
+          t("browserworkspace.BrowserBridgeFolderRevealed", {
+            defaultValue:
+              "Revealed the Agent Browser Bridge folder at {{path}}.",
+            path: response.path,
+          }),
+          "success",
+          4_000,
+        );
+      },
+      t("browserworkspace.OpenBrowserBridgeFolderFailed", {
+        defaultValue:
+          "Failed to reveal the Agent Browser Bridge extension folder.",
+      }),
+    );
+  }, [runBrowserWorkspaceAction, t]);
+
+  const openBrowserBridgeChromeExtensions = useCallback(async () => {
+    await runBrowserWorkspaceAction(
+      "browser-bridge:open-manager",
+      async () => {
+        await client.fetch("/api/browser-bridge/packages/chrome/open-manager", {
+          method: "POST",
+        });
+        setActionNoticeRef.current(
+          t("browserworkspace.BrowserBridgeOpenedChromeExtensions", {
+            defaultValue:
+              "Opened Chrome extensions. Click Load unpacked and choose the Agent Browser Bridge folder.",
+          }),
+          "success",
+          4_000,
+        );
+      },
+      t("browserworkspace.OpenBrowserBridgeManagerFailed", {
+        defaultValue: "Failed to open Chrome extensions.",
+      }),
+    );
+  }, [runBrowserWorkspaceAction, t]);
+
+  const refreshBrowserBridgeConnection = useCallback(async () => {
+    await runBrowserWorkspaceAction(
+      "browser-bridge:refresh",
+      async () => {
+        await loadBrowserBridgeState({ silent: true });
+        setActionNoticeRef.current(
+          t("browserworkspace.BrowserBridgeRefreshSuccess", {
+            defaultValue: "Refreshed Agent Browser Bridge connection status.",
+          }),
+          "success",
+          3_000,
+        );
+      },
+      t("browserworkspace.RefreshBrowserBridgeFailed", {
+        defaultValue: "Failed to refresh Agent Browser Bridge status.",
+      }),
+    );
+  }, [loadBrowserBridgeState, runBrowserWorkspaceAction, t]);
+
+  const browserPageScopeCopy = useMemo(
+    () =>
+      getBrowserPageScopeCopy({
+        browserBridgeConnected,
+        browserBridgeInstallAvailable: browserBridgeSupported,
+        browserLabel: primaryBrowserBridgeCompanion?.browser,
+        profileLabel: primaryBrowserBridgeCompanion?.profileLabel,
+      }),
+    [
+      browserBridgeConnected,
+      browserBridgeSupported,
+      primaryBrowserBridgeCompanion?.browser,
+      primaryBrowserBridgeCompanion?.profileLabel,
+    ],
+  );
+
+  const browserChatActions =
+    !browserBridgeSupported || browserBridgeConnected ? null : (
+      <>
+        <Button
+          size="sm"
+          disabled={busyAction !== null}
+          onClick={() => void installBrowserBridgeExtension()}
+        >
+          {t("browserworkspace.InstallBrowserBridge", {
+            defaultValue: "Install Agent Browser Bridge",
+          })}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={
+            busyAction !== null || !browserBridgePackageStatus?.chromeBuildPath
+          }
+          onClick={() => void revealBrowserBridgeFolder()}
+        >
+          <FolderOpen className="h-4 w-4" />
+          {t("browserworkspace.OpenBrowserBridgeFolder", {
+            defaultValue: "Open extension folder",
+          })}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busyAction !== null}
+          onClick={() => void openBrowserBridgeChromeExtensions()}
+        >
+          {t("browserworkspace.OpenChromeExtensions", {
+            defaultValue: "Open Chrome extensions",
+          })}
+        </Button>
+      </>
+    );
+
+  const browserPageScopedChatPaneProps = useMemo<
+    NonNullable<AppWorkspaceChromeProps["pageScopedChatPaneProps"]>
+  >(
+    () => ({
+      introOverride: {
+        title: browserPageScopeCopy.title,
+        body: browserPageScopeCopy.body,
+        actions: browserChatActions,
+      },
+      systemAddendumOverride: browserPageScopeCopy.systemAddendum,
+      placeholderOverride: browserBridgeConnected
+        ? t("browserworkspace.ChatPlaceholderConnected", {
+            defaultValue: "Message",
+          })
+        : t("browserworkspace.ChatPlaceholderInstallBridge", {
+            defaultValue: "Message",
+          }),
+    }),
+    [browserBridgeConnected, browserChatActions, browserPageScopeCopy, t],
+  );
+
+  const tabsLabel = t("browserworkspace.Tabs", {
+    defaultValue: "Tabs",
+  });
+  const userTabsLabel = t("browserworkspace.UserTabs", {
+    defaultValue: "User Tabs",
+  });
+  const agentTabsLabel = t("browserworkspace.AgentTabs", {
+    defaultValue: "Agent Tabs",
+  });
+  const appTabsLabel = t("browserworkspace.AppTabs", {
+    defaultValue: "App Tabs",
+  });
+  const newTabLabel = t("browserworkspace.NewTab", {
+    defaultValue: "New tab",
+  });
+  const closeTabLabel = t("browserworkspace.CloseTab", {
+    defaultValue: "Close tab",
+  });
+  const goLabel = t("browserworkspace.Go", {
+    defaultValue: "Go",
+  });
+
+  function renderBrowserWorkspaceTabRow(tab: BrowserWorkspaceTab): JSX.Element {
+    const active = tab.id === selectedTabId;
+    const tabHasSessionFocus = workspace.mode === "web" ? tab.visible : active;
+    const label = getBrowserWorkspaceTabLabel(tab, t);
+    const description = getBrowserWorkspaceTabDescription(tab, workspace.mode);
+    const tabIsInternal = isInternalBrowserWorkspaceTab(tab);
+
+    return (
+      <div key={tab.id} className="group relative">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={active}
+          aria-current={active ? "page" : undefined}
+          title={tab.url}
+          onClick={() =>
+            void runBrowserWorkspaceAction(`show:${tab.id}`, async () => {
+              await activateBrowserWorkspaceTab(tab.id);
+            })
+          }
+          className={`flex w-full min-w-0 items-start gap-1.5 rounded-[var(--radius-sm)] px-1.5 py-1 text-left transition-colors ${
+            tabIsInternal ? "pr-1.5" : "pr-7"
+          } ${active ? "bg-bg-muted/50 text-txt" : "text-txt hover:bg-bg-muted/50"}`}
+        >
+          <span className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center text-muted/70">
+            {tabHasSessionFocus ? (
+              <>
+                <span
+                  aria-hidden
+                  className="h-2 w-2 rounded-full bg-accent shadow-[0_0_4px_var(--accent)]"
+                />
+                <span className="sr-only">
+                  {t("browserworkspace.AgentActive", {
+                    defaultValue: "Agent is on this tab",
+                  })}
+                </span>
+              </>
+            ) : (
+              <span className="text-[10px] font-semibold leading-none">
+                {getBrowserWorkspaceTabMonogram(label)}
+              </span>
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs-tight font-medium leading-snug">
+              {label}
+            </span>
+            <span className="block truncate text-[11px] leading-snug text-muted/65">
+              {description}
+            </span>
+          </span>
+        </button>
+        {tabIsInternal ? null : (
+          <button
+            type="button"
+            aria-label={closeTabLabel}
+            title={closeTabLabel}
+            className="absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[var(--radius-sm)] text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-bg-muted/50 hover:text-danger"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void runBrowserWorkspaceAction(`close:${tab.id}`, async () => {
+                await closeBrowserWorkspaceTabById(tab.id);
+              });
+            }}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const browserTabsSidebar = (
+    <AppPageSidebar
       testId="browser-workspace-sidebar"
       collapsible
-      contentIdentity={`browser-workspace:${workspace.mode}`}
+      contentIdentity="browser-workspace-tabs"
       collapseButtonTestId="browser-workspace-sidebar-collapse-toggle"
       expandButtonTestId="browser-workspace-sidebar-expand-toggle"
-      collapseButtonAriaLabel="Collapse browser workspace"
-      expandButtonAriaLabel="Expand browser workspace"
-      header={
-        <SidebarHeader>
-          <div className="space-y-1">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-muted/70">
-              {t("browserworkspace.SidebarLabel", {
-                defaultValue: "Browser workspace",
-              })}
-            </div>
-            <div className="text-lg font-semibold text-txt">
-              {workspace.mode === "desktop"
-                ? t("browserworkspace.DesktopBridge", {
-                    defaultValue: "Desktop bridge",
-                  })
-                : t("browserworkspace.WebWorkspace", {
-                    defaultValue: "Web iframe workspace",
-                  })}
-            </div>
-          </div>
-        </SidebarHeader>
+      collapseButtonAriaLabel={t("browserworkspace.CollapseTabs", {
+        defaultValue: "Collapse browser tabs",
+      })}
+      expandButtonAriaLabel={t("browserworkspace.ExpandTabs", {
+        defaultValue: "Expand browser tabs",
+      })}
+      mobileTitle={
+        <SidebarContent.SectionLabel>{tabsLabel}</SidebarContent.SectionLabel>
       }
       collapsedRailAction={
         <SidebarCollapsedActionButton
-          aria-label={t("browserworkspace.NewTab", {
-            defaultValue: "New tab",
-          })}
+          aria-label={newTabLabel}
           onClick={() =>
-            void runBrowserWorkspaceAction("open:new-rail", async () => {
-              await openNewBrowserWorkspaceTab(locationInput || "about:blank");
+            void runBrowserWorkspaceAction("open:new", async () => {
+              await openNewBrowserWorkspaceTab(
+                newBrowserWorkspaceTabSeedUrl,
+                "user",
+              );
             })
           }
         >
           <Plus className="h-4 w-4" />
         </SidebarCollapsedActionButton>
       }
-      collapsedRailItems={workspace.tabs.map((tab) => {
-        const label = getBrowserWorkspaceTabLabel(tab);
+      collapsedRailItems={collapsedRailTabs.map((tab) => {
+        const label = getBrowserWorkspaceTabLabel(tab, t);
+        const active = tab.id === selectedTabId;
+        const tabHasSessionFocus =
+          workspace.mode === "web" ? tab.visible : active;
         return (
           <SidebarContent.RailItem
             key={tab.id}
             aria-label={label}
             title={label}
-            active={tab.id === selectedTabId}
-            indicatorTone={tab.visible ? "accent" : undefined}
+            active={active}
+            indicatorTone={tabHasSessionFocus ? "accent" : undefined}
             onClick={() =>
-              void runBrowserWorkspaceAction(
-                `show:${tab.id}:rail`,
-                async () => {
-                  await activateBrowserWorkspaceTab(tab.id);
-                },
-              )
+              void runBrowserWorkspaceAction(`show:${tab.id}`, async () => {
+                await activateBrowserWorkspaceTab(tab.id);
+              })
             }
           >
-            {getBrowserWorkspaceRailMonogram(label)}
+            {getBrowserWorkspaceTabMonogram(label)}
           </SidebarContent.RailItem>
         );
       })}
-      footer={
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-10 w-full justify-start rounded-xl px-4 text-xs font-semibold"
-          onClick={() =>
-            void runBrowserWorkspaceAction("refresh:list", async () => {
-              await loadWorkspace({
-                preferTabId: selectedTabId,
-                silent: true,
-              });
-            })
-          }
-          disabled={busyAction !== null}
-        >
-          <RefreshCw className="h-4 w-4" />
-          {t("common.refresh")}
-        </Button>
-      }
+      aria-label={tabsLabel}
     >
-      <SidebarScrollRegion>
-        <SidebarPanel>
-          {/* URL controls */}
-          <div className="space-y-2 mb-4">
-            <Input
-              value={locationInput}
-              onChange={(event) => {
-                setLocationInput(event.target.value);
-                setLocationDirty(true);
-              }}
-              placeholder={t("browserworkspace.AddressPlaceholder", {
-                defaultValue: "Enter a URL",
-              })}
-              className="w-full h-10 rounded-full border-border/35 bg-card/70 px-4 text-sm text-txt shadow-sm transition-colors focus-visible:border-accent/40"
-            />
-            <div className="flex gap-1.5">
-              <Button
-                variant="default"
-                size="sm"
-                className="h-9 flex-1 rounded-xl px-3 text-xs font-semibold"
-                onClick={() =>
-                  void runBrowserWorkspaceAction(
-                    "navigate:selected",
-                    async () => {
-                      await navigateSelectedBrowserWorkspaceTab(locationInput);
-                    },
-                  )
-                }
-                disabled={busyAction !== null}
-              >
-                {selectedTab
-                  ? t("browserworkspace.Go", { defaultValue: "Go" })
-                  : t("browserworkspace.Open", { defaultValue: "Open" })}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 flex-1 rounded-xl px-3 text-xs font-semibold"
-                onClick={() =>
-                  void runBrowserWorkspaceAction(
-                    "open:new-address",
-                    async () => {
-                      await openNewBrowserWorkspaceTab(
-                        locationInput || "about:blank",
-                      );
-                    },
-                  )
-                }
-                disabled={busyAction !== null}
-              >
-                <Plus className="mr-1 h-3.5 w-3.5" />
-                {t("browserworkspace.NewTab", { defaultValue: "New tab" })}
-              </Button>
-            </div>
-            <div className="flex gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 flex-1 rounded-xl px-3 text-xs font-semibold"
-                onClick={() =>
-                  void runBrowserWorkspaceAction("open:external", async () => {
-                    if (!selectedTab) return;
-                    await openExternalUrl(selectedTab.url);
-                  })
-                }
-                disabled={!selectedTab || busyAction !== null}
-              >
-                <ExternalLink className="mr-1 h-3.5 w-3.5" />
-                {t("browserworkspace.OpenExternal", {
-                  defaultValue: "Open external",
-                })}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 flex-1 rounded-xl px-3 text-xs font-semibold"
-                onClick={() =>
-                  void runBrowserWorkspaceAction("close:selected", async () => {
-                    await closeSelectedBrowserWorkspaceTab();
-                  })
-                }
-                disabled={!selectedTab || busyAction !== null}
-              >
-                <X className="mr-1 h-3.5 w-3.5" />
-                {t("browserworkspace.Close", { defaultValue: "Close" })}
-              </Button>
-            </div>
-          </div>
-
-          <PagePanel.SummaryCard compact className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs-tight uppercase tracking-[0.16em] text-muted/70">
-                {t("browserworkspace.OpenTabs", {
-                  defaultValue: "Open tabs",
-                })}
-              </span>
-              <MetaPill compact>{workspace.tabs.length}</MetaPill>
-            </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-xs-tight uppercase tracking-[0.16em] text-muted/70">
-                {t("browserworkspace.Active", {
-                  defaultValue: "Active",
-                })}
-              </span>
-              <MetaPill compact>
-                {workspace.tabs.filter((tab) => tab.visible).length}
-              </MetaPill>
-            </div>
-          </PagePanel.SummaryCard>
-
-          {workspace.tabs.length > 0 ? (
-            <>
-              <SidebarContent.SectionLabel className="mt-4">
-                {t("browserworkspace.Tabs", {
-                  defaultValue: "Tabs",
-                })}
-              </SidebarContent.SectionLabel>
-              <div className="mt-2 space-y-1">
-                {workspace.tabs.map((tab) => {
-                  const active = tab.id === selectedTabId;
-                  const label = getBrowserWorkspaceTabLabel(tab);
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-2 text-left transition-colors ${
-                        active
-                          ? "border-accent/30 bg-accent/12 text-txt"
-                          : "border-border/30 bg-card/50 text-muted hover:border-border/55 hover:text-txt"
-                      }`}
-                      onClick={() =>
-                        void runBrowserWorkspaceAction(
-                          `show:${tab.id}:sidebar`,
-                          async () => {
-                            await activateBrowserWorkspaceTab(tab.id);
-                          },
-                        )
-                      }
-                    >
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/30 bg-black/10 text-xs font-semibold">
-                        {getBrowserWorkspaceRailMonogram(label)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium text-current">
-                          {label}
-                        </div>
-                        <div className="truncate text-xs-tight text-muted">
-                          {tab.url}
-                        </div>
-                      </div>
-                    </button>
+      <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <SidebarPanel className="bg-transparent gap-0 p-0 shadow-none">
+          <div className="space-y-3">
+            <CollapsibleSidebarSection
+              sectionKey="user"
+              label={userTabsLabel}
+              collapsed={collapsedSections.has("user")}
+              onToggleCollapsed={toggleSidebarSectionCollapsed}
+              onAdd={() =>
+                void runBrowserWorkspaceAction("open:new", async () => {
+                  await openNewBrowserWorkspaceTab(
+                    newBrowserWorkspaceTabSeedUrl,
+                    "user",
                   );
-                })}
-              </div>
-            </>
-          ) : null}
+                })
+              }
+              addLabel={newTabLabel}
+              emptyLabel={t("browserworkspace.NoUserTabs", {
+                defaultValue: "No user tabs yet.",
+              })}
+              emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
+              bodyClassName="space-y-0.5 pl-3"
+              hoverActionsOnDesktop
+              testIdPrefix="browser-tab-section"
+            >
+              {groupedTabs.user.length > 0 ? (
+                <div
+                  role="tablist"
+                  aria-label={userTabsLabel}
+                  className="space-y-1"
+                >
+                  {groupedTabs.user.map((tab) =>
+                    renderBrowserWorkspaceTabRow(tab),
+                  )}
+                </div>
+              ) : null}
+            </CollapsibleSidebarSection>
+
+            <CollapsibleSidebarSection
+              sectionKey="agent"
+              label={agentTabsLabel}
+              collapsed={collapsedSections.has("agent")}
+              onToggleCollapsed={toggleSidebarSectionCollapsed}
+              emptyLabel={t("browserworkspace.NoAgentTabs", {
+                defaultValue: "No agent tabs yet.",
+              })}
+              emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
+              bodyClassName="space-y-0.5 pl-3"
+              hoverActionsOnDesktop
+              testIdPrefix="browser-tab-section"
+            >
+              {groupedTabs.agent.length > 0 ? (
+                <div
+                  role="tablist"
+                  aria-label={agentTabsLabel}
+                  className="space-y-1"
+                >
+                  {groupedTabs.agent.map((tab) =>
+                    renderBrowserWorkspaceTabRow(tab),
+                  )}
+                </div>
+              ) : null}
+            </CollapsibleSidebarSection>
+
+            <CollapsibleSidebarSection
+              sectionKey="app"
+              label={appTabsLabel}
+              collapsed={collapsedSections.has("app")}
+              onToggleCollapsed={toggleSidebarSectionCollapsed}
+              emptyLabel={t("browserworkspace.NoAppTabs", {
+                defaultValue: "No app tabs yet.",
+              })}
+              emptyClassName="pl-3 pr-2 py-1 text-2xs text-muted/70"
+              bodyClassName="space-y-0.5 pl-3"
+              hoverActionsOnDesktop
+              testIdPrefix="browser-tab-section"
+            >
+              {groupedTabs.app.length > 0 ? (
+                <div
+                  role="tablist"
+                  aria-label={appTabsLabel}
+                  className="space-y-1"
+                >
+                  {groupedTabs.app.map((tab) =>
+                    renderBrowserWorkspaceTabRow(tab),
+                  )}
+                </div>
+              ) : null}
+            </CollapsibleSidebarSection>
+          </div>
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
+  );
+
+  const navNode = (
+    <div className="flex items-center gap-2 border-b border-border/30 bg-card/20 px-3 py-2">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        aria-label={t("common.refresh", { defaultValue: "Refresh" })}
+        disabled={!selectedTab || busyAction !== null}
+        onClick={() =>
+          void runBrowserWorkspaceAction("reload:selected", async () => {
+            await reloadSelectedBrowserWorkspaceTab();
+          })
+        }
+      >
+        <RefreshCw className="h-4 w-4" />
+      </Button>
+      <Input
+        value={locationInput}
+        onChange={(event) => {
+          setLocationInput(event.target.value);
+          setLocationDirty(true);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            void runBrowserWorkspaceAction("navigate:enter", async () => {
+              await navigateSelectedBrowserWorkspaceTab(locationInput);
+            });
+          }
+        }}
+        placeholder={t("browserworkspace.AddressPlaceholder", {
+          defaultValue: selectedTabIsInternal
+            ? "Internal tab URL is managed by the app"
+            : "Enter a URL",
+        })}
+        disabled={busyAction !== null || selectedTabIsInternal}
+        className="h-8 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 shrink-0 px-3"
+        aria-label={goLabel}
+        disabled={busyAction !== null || locationInput.trim().length === 0}
+        onClick={() =>
+          void runBrowserWorkspaceAction("navigate:click", async () => {
+            await navigateSelectedBrowserWorkspaceTab(locationInput);
+          })
+        }
+      >
+        {goLabel}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        aria-label={t("browserworkspace.OpenExternal", {
+          defaultValue: "Open external",
+        })}
+        disabled={!selectedTab || busyAction !== null}
+        onClick={() =>
+          void runBrowserWorkspaceAction("open:external", async () => {
+            if (!selectedTab) return;
+            await openExternalUrl(selectedTab.url);
+          })
+        }
+      >
+        <ExternalLink className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+
+  const browserSurface = (
+    <div className="relative flex-1 min-h-0 overflow-hidden bg-bg">
+      {loadError ? (
+        <div
+          className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-md border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
+          role="alert"
+        >
+          {loadError}
+        </div>
+      ) : null}
+
+      {workspace.tabs.length === 0 ? (
+        <div className="flex h-full items-center justify-center">
+          <div className="flex max-w-sm flex-col items-center gap-2 text-center">
+            <div className="text-sm font-semibold text-txt">
+              {loading
+                ? t("browserworkspace.Loading", {
+                    defaultValue: "Loading browser workspace",
+                  })
+                : t("browserworkspace.EmptyTitle", {
+                    defaultValue: "No browser tabs yet",
+                  })}
+            </div>
+            <div className="text-xs text-muted">
+              {isBrowserWorkspaceSessionMode(workspace.mode)
+                ? t("browserworkspace.EmptySessionDescription", {
+                    defaultValue:
+                      "Open a page to start a real browser session. The preview here follows the session instead of embedding the target site directly.",
+                  })
+                : t("browserworkspace.EmptyDescription", {
+                    defaultValue: "Open a page here to get started.",
+                  })}
+            </div>
+            {!loading && workspace.mode === "web" && browserBridgeSupported ? (
+              <div className="mt-3 flex w-full flex-col gap-3 rounded-md border border-border/40 bg-card/35 p-3 text-left">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-txt">
+                      {t("browserworkspace.BrowserBridgeTitle", {
+                        defaultValue: "Agent Browser Bridge",
+                      })}
+                    </div>
+                    <div className="mt-1 text-xs leading-5 text-muted">
+                      {t("browserworkspace.BrowserBridgeDescription", {
+                        defaultValue:
+                          "The agent can drive your real Chrome tabs with the Agent Browser Bridge extension.",
+                      })}
+                    </div>
+                    <div className="mt-1 truncate text-[11px] text-muted">
+                      {browserBridgeConnected
+                        ? t("browserworkspace.BrowserBridgeConnected", {
+                            defaultValue: "Connected",
+                          })
+                        : browserBridgeAvailable
+                          ? t("browserworkspace.BrowserBridgeAvailable", {
+                              defaultValue: "Extension available",
+                            })
+                          : t("browserworkspace.BrowserBridgeNotConnected", {
+                              defaultValue: "Not connected",
+                            })}
+                      {browserBridgePackageStatus?.chromeBuildPath
+                        ? ` - ${browserBridgePackageStatus.chromeBuildPath}`
+                        : ""}
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    aria-label={t("browserworkspace.RefreshBrowserBridge", {
+                      defaultValue: "Refresh Agent Browser Bridge",
+                    })}
+                    disabled={browserBridgeLoading || busyAction !== null}
+                    onClick={() => void refreshBrowserBridgeConnection()}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    disabled={busyAction !== null}
+                    onClick={() => void installBrowserBridgeExtension()}
+                  >
+                    {t("browserworkspace.InstallBrowserBridge", {
+                      defaultValue: "Install Agent Browser Bridge",
+                    })}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      busyAction !== null ||
+                      !browserBridgePackageStatus?.chromeBuildPath
+                    }
+                    onClick={() => void revealBrowserBridgeFolder()}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                    {t("browserworkspace.OpenBrowserBridgeFolder", {
+                      defaultValue: "Open extension folder",
+                    })}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busyAction !== null}
+                    onClick={() => void openBrowserBridgeChromeExtensions()}
+                  >
+                    {t("browserworkspace.OpenChromeExtensions", {
+                      defaultValue: "Open Chrome extensions",
+                    })}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : workspace.mode === "web" ? (
+        workspace.tabs.map((tab) => {
+          const active = tab.id === selectedTabId;
+          const highlighted = tab.visible;
+          return (
+            <iframe
+              key={tab.id}
+              ref={(iframe) => registerBrowserWorkspaceIframe(tab.id, iframe)}
+              title={getBrowserWorkspaceTabLabel(tab, t)}
+              src={tab.url}
+              loading="eager"
+              sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+              allow="clipboard-read; clipboard-write"
+              referrerPolicy="strict-origin-when-cross-origin"
+              className={`absolute inset-0 h-full w-full border-0 bg-white transition-opacity ${
+                active
+                  ? "pointer-events-auto opacity-100"
+                  : "pointer-events-none opacity-0"
+              }`}
+              onLoad={() =>
+                highlighted
+                  ? postBrowserWalletReady(tab, browserWalletState)
+                  : undefined
+              }
+            />
+          );
+        })
+      ) : (
+        <div className="flex h-full flex-1 flex-col bg-bg">
+          <div className="flex flex-wrap items-center gap-2 border-b border-border/30 bg-card/20 px-3 py-2 text-xs text-muted">
+            <span className="rounded-full border border-border/40 bg-card/60 px-2 py-1 font-medium text-txt">
+              {workspace.mode === "cloud"
+                ? t("browserworkspace.CloudSession", {
+                    defaultValue: "Cloud browser session",
+                  })
+                : t("browserworkspace.DesktopSession", {
+                    defaultValue: "Desktop browser session",
+                  })}
+            </span>
+            {selectedTab?.provider ? (
+              <span>
+                {t("browserworkspace.Provider", {
+                  defaultValue: "Provider",
+                })}
+                {`: ${selectedTab.provider}`}
+              </span>
+            ) : null}
+            {selectedTab?.status ? (
+              <span>
+                {t("browserworkspace.Status", {
+                  defaultValue: "Status",
+                })}
+                {`: ${selectedTab.status}`}
+              </span>
+            ) : null}
+            {selectedTabLiveViewUrl ? (
+              <button
+                type="button"
+                className="rounded-md border border-border/40 px-2 py-1 text-txt hover:bg-card/60"
+                onClick={() =>
+                  void runBrowserWorkspaceAction(
+                    "open:live-session",
+                    async () => {
+                      await openExternalUrl(selectedTabLiveViewUrl);
+                    },
+                  )
+                }
+              >
+                {t("browserworkspace.OpenLiveSession", {
+                  defaultValue: "Open live session",
+                })}
+              </button>
+            ) : null}
+          </div>
+
+          <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-card/15">
+            {snapshotError ? (
+              <div
+                className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-md border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
+                role="alert"
+              >
+                {snapshotError}
+              </div>
+            ) : null}
+
+            {selectedTabSnapshot ? (
+              <img
+                alt={
+                  selectedTab
+                    ? getBrowserWorkspaceTabLabel(selectedTab, t)
+                    : t("browserworkspace.SessionPreview", {
+                        defaultValue: "Browser session preview",
+                      })
+                }
+                src={`data:image/png;base64,${selectedTabSnapshot}`}
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <div className="flex max-w-sm flex-col items-center gap-2 px-6 text-center">
+                <div className="text-sm font-semibold text-txt">
+                  {t("browserworkspace.SessionPreviewPending", {
+                    defaultValue: "Waiting for browser session preview",
+                  })}
+                </div>
+                <div className="text-xs text-muted">
+                  {t("browserworkspace.SessionPreviewPendingDescription", {
+                    defaultValue:
+                      "The page is running in a real browser session. A fresh preview will appear here as the session updates.",
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {selectedTab ? (
+            <div className="border-t border-border/30 bg-card/20 px-3 py-2 text-xs text-muted">
+              <div className="truncate font-medium text-txt">
+                {getBrowserWorkspaceTabLabel(selectedTab, t)}
+              </div>
+              <div className="truncate">{selectedTab.url}</div>
+              <div className="mt-1">
+                {selectedTabIsInternal
+                  ? t("browserworkspace.InternalSessionDescription", {
+                      defaultValue:
+                        "This is an internal app-managed browser session. Use LifeOps actions to steer it; the URL is locked in the Browser view.",
+                    })
+                  : t("browserworkspace.RealSessionDescription", {
+                      defaultValue:
+                        "This is a real browser session, not a raw iframe embed. Use chat or browser actions to navigate and interact with sites like Google and Discord.",
+                    })}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+
+  const mainNode = (
+    <WorkspaceLayout
+      sidebar={browserTabsSidebar}
+      contentHeader={navNode}
+      contentHeaderClassName="mb-0"
+      headerPlacement="inside"
+      contentPadding={false}
+      contentClassName="overflow-hidden"
+      contentInnerClassName="min-h-0 overflow-hidden"
+      mobileSidebarLabel={tabsLabel}
+      mobileSidebarTriggerClassName="ml-3 mt-3"
+    >
+      {browserSurface}
+    </WorkspaceLayout>
   );
 
   return (
-    <PageLayout
-      sidebar={browserSidebar}
-      contentInnerClassName="mx-auto flex h-full w-full max-w-[110rem] flex-1"
-      data-testid="browser-workspace-view"
-      footer={<WidgetHost slot="browser" className="py-3" />}
-    >
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        {loadError ? (
-          <PagePanel.Notice tone="danger">{loadError}</PagePanel.Notice>
-        ) : null}
-
-        {loading && workspace.tabs.length === 0 ? (
-          <PagePanel.Loading
-            variant="workspace"
-            heading={t("browserworkspace.Loading", {
-              defaultValue: "Loading browser workspace",
-            })}
-          />
-        ) : workspace.tabs.length === 0 ? (
-          <PagePanel.Empty
-            variant="panel"
-            title={t("browserworkspace.EmptyTitle", {
-              defaultValue: "No browser tabs yet",
-            })}
-            description={t("browserworkspace.EmptyDescription", {
-              defaultValue:
-                "Open a page here, or let the agent create tabs through the browser workspace plugin.",
-            })}
-            className="min-h-[28rem]"
-          />
-        ) : (
-          <PagePanel
-            variant="workspace"
-            className="flex min-h-[34rem] flex-1 overflow-hidden p-0"
-          >
-            <div className="relative flex-1 overflow-hidden rounded-[calc(var(--radius-xl,1.5rem)-0.25rem)] bg-black/5">
-              {workspace.tabs.map((tab) => {
-                const active = tab.id === selectedTabId;
-                return (
-                  <iframe
-                    key={tab.id}
-                    ref={(iframe) =>
-                      registerBrowserWorkspaceIframe(tab.id, iframe)
-                    }
-                    title={getBrowserWorkspaceTabLabel(tab)}
-                    src={tab.url}
-                    loading="eager"
-                    sandbox="allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
-                    allow="clipboard-read; clipboard-write"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                    className={`absolute inset-0 h-full w-full border-0 bg-white transition-opacity ${
-                      active
-                        ? "pointer-events-auto opacity-100"
-                        : "pointer-events-none opacity-0"
-                    }`}
-                    onLoad={() => {
-                      postBrowserWalletReady(
-                        tab,
-                        browserWalletStateRef.current,
-                      );
-                    }}
-                  />
-                );
-              })}
-            </div>
-          </PagePanel>
-        )}
-
-        {selectedTab ? (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-            <MetaPill compact>
-              {getBrowserWorkspaceTabLabel(selectedTab)}
-            </MetaPill>
-            <span>{selectedTab.url}</span>
-            <span>•</span>
-            <span>
-              {t("browserworkspace.LastSeen", {
-                defaultValue: "Last seen {{time}}",
-                time: formatBrowserWorkspaceTimestamp(
-                  selectedTab.lastFocusedAt ?? selectedTab.updatedAt,
-                ),
-              })}
-            </span>
-            <span>•</span>
-            <span>
-              {selectedTab.visible
-                ? t("browserworkspace.Visible", {
-                    defaultValue: "Visible",
-                  })
-                : t("browserworkspace.Background", {
-                    defaultValue: "Background",
-                  })}
-            </span>
-          </div>
-        ) : null}
-      </div>
-    </PageLayout>
+    <AppWorkspaceChrome
+      testId="browser-workspace-view"
+      main={mainNode}
+      chatScope="page-browser"
+      pageScopedChatPaneProps={browserPageScopedChatPaneProps}
+    />
   );
 }

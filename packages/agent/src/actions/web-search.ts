@@ -1,20 +1,19 @@
 /**
- * Web search action via Brave Search API (Path B).
+ * Hosted web search action.
  *
- * Provides explicit web search capability for:
- * - Non-Claude models (that lack built-in web search)
- * - Explicit "search the web for X" requests from users
- * - Fallback when Anthropic server-side search is insufficient
- *
- * Configuration:
- *   BRAVE_API_KEY env var  OR  tools.web.search.apiKey in agent config
- *
- * This action is registered as WEB_SEARCH in the ElizaOS action system.
+ * Prefers Eliza Cloud hosted Google-grounded Gemini search when cloud tooling
+ * is configured. Falls back to the Brave Search API when cloud search is not
+ * available locally.
  */
 
 import type { Action, HandlerOptions, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { hasRoleAccess } from "../security/access.js";
+import {
+  type HostedSearchResponse,
+  isHostedCloudToolingConfigured,
+  searchHostedCloudWeb,
+} from "../services/hosted-tools.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 
 // ---------------------------------------------------------------------------
@@ -41,7 +40,7 @@ interface BraveSearchResponse {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function resolveApiKey(runtime: unknown): string | undefined {
+function resolveBraveApiKey(runtime: unknown): string | undefined {
   // 1. Direct env var
   if (process.env.BRAVE_API_KEY) return process.env.BRAVE_API_KEY;
 
@@ -68,6 +67,21 @@ function resolveMaxResults(runtime: unknown): number {
     if (!Number.isNaN(n) && n > 0 && n <= 20) return n;
   }
   return 5;
+}
+
+function formatHostedResults(result: HostedSearchResponse): string {
+  const citations = result.results
+    .map((entry, index) => `${index + 1}. ${entry.title}\n   ${entry.url}`)
+    .join("\n");
+
+  return [
+    `Search answer for "${result.query}":`,
+    "",
+    result.answer,
+    citations ? `\nCitations:\n${citations}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function braveSearch(
@@ -135,21 +149,23 @@ export const webSearchAction: Action = {
     "SEARCH",
   ],
   description:
-    "Search the web for current information using the Brave Search API. " +
+    "Search the web for current information using Eliza Cloud hosted Google search when available, with Brave Search as a local fallback. " +
     "Use when you need real-time or recent information that may not be in your training data.",
 
   validate: async (runtime, message, state) => {
     if (!(await hasRoleAccess(runtime, message, "USER"))) return false;
-    const key = resolveApiKey(runtime);
-    if (!key) return false;
+    const hasHostedSearch = isHostedCloudToolingConfigured(process.env);
+    const braveKey = resolveBraveApiKey(runtime);
+    if (!hasHostedSearch && !braveKey) return false;
     return hasWebSearchContextSignal(message, state);
   },
 
   handler: async (runtime, message, _state, options) => {
-    const apiKey = resolveApiKey(runtime);
-    if (!apiKey) {
+    const braveApiKey = resolveBraveApiKey(runtime);
+    const hasHostedSearch = isHostedCloudToolingConfigured(process.env);
+    if (!hasHostedSearch && !braveApiKey) {
       return {
-        text: "Web search is not configured. Set BRAVE_API_KEY to enable it.",
+        text: "Web search is not configured. Connect Eliza Cloud hosted tools or set BRAVE_API_KEY to enable it.",
         success: false,
         values: { success: false, error: "NO_API_KEY" },
         data: { actionName: "WEB_SEARCH" },
@@ -189,8 +205,37 @@ export const webSearchAction: Action = {
     const maxResults = resolveMaxResults(runtime);
 
     try {
+      if (hasHostedSearch) {
+        logger.info(
+          `[web-search] Hosted search: "${query}" (max ${maxResults})`,
+        );
+        const hostedResult = await searchHostedCloudWeb({
+          maxResults,
+          query,
+        });
+        return {
+          text: formatHostedResults(hostedResult),
+          success: true,
+          values: {
+            success: true,
+            provider: hostedResult.provider,
+            resultCount: hostedResult.results.length,
+          },
+          data: {
+            actionName: "WEB_SEARCH",
+            ...hostedResult,
+          },
+        };
+      }
+
+      if (!braveApiKey) {
+        throw new Error(
+          "Hosted search is unavailable and BRAVE_API_KEY is not configured.",
+        );
+      }
+
       logger.info(`[web-search] Brave search: "${query}" (max ${maxResults})`);
-      const results = await braveSearch(query, apiKey, maxResults);
+      const results = await braveSearch(query, braveApiKey, maxResults);
       const formatted = formatResults(results, query);
 
       return {
@@ -212,7 +257,53 @@ export const webSearchAction: Action = {
       };
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      logger.warn(`[web-search] Brave search failed: ${errMsg}`);
+      if (hasHostedSearch && braveApiKey) {
+        try {
+          logger.warn(
+            `[web-search] Hosted search failed, falling back to Brave: ${errMsg}`,
+          );
+          const fallbackResults = await braveSearch(
+            query,
+            braveApiKey,
+            maxResults,
+          );
+          return {
+            text: formatResults(fallbackResults, query),
+            success: true,
+            values: {
+              success: true,
+              provider: "brave",
+              resultCount: fallbackResults.length,
+            },
+            data: {
+              actionName: "WEB_SEARCH",
+              provider: "brave",
+              query,
+              results: fallbackResults.map((result) => ({
+                title: result.title,
+                url: result.url,
+                description: result.description,
+              })),
+            },
+          };
+        } catch (fallbackError) {
+          const fallbackMessage =
+            fallbackError instanceof Error
+              ? fallbackError.message
+              : String(fallbackError);
+          logger.warn(
+            `[web-search] Hosted and Brave search failed: ${fallbackMessage}`,
+          );
+          return {
+            text: `Web search failed: ${fallbackMessage}`,
+            success: false,
+            values: { success: false, error: "SEARCH_FAILED" },
+            data: { actionName: "WEB_SEARCH", query },
+          };
+        }
+      }
+
+      logger.warn(`[web-search] Search failed: ${errMsg}`);
 
       return {
         text: `Web search failed: ${errMsg}`,
@@ -223,6 +314,15 @@ export const webSearchAction: Action = {
     }
   },
 
+  parameters: [
+    {
+      name: "query",
+      description:
+        "The search query to run against the web. Supply what the user wants to learn about.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+  ],
   examples: [
     [
       {

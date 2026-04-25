@@ -1,34 +1,41 @@
-import { describe, expect, it, test } from "vitest";
+import { describe, it, test } from "vitest";
 
-type DescribeFn = typeof describe;
-type ItFn = typeof it;
-type TestFn = typeof test;
+type SuiteCallback = () => void | Promise<void>;
+type TestCallback = () => void | Promise<void>;
 
-export function describeIf(condition: boolean): DescribeFn {
+type DescribeGate = (
+  name: string | Function,
+  fn: SuiteCallback,
+) => ReturnType<typeof describe>;
+
+type TestGate = (
+  name: string | Function,
+  fn: TestCallback,
+) => ReturnType<typeof it>;
+
+export function describeIf(condition: boolean): DescribeGate {
   if (condition) {
-    return describe;
+    return (name, fn) => describe(name, fn);
   }
 
-  return (((name: string) =>
-    describe(name, () => {
-      it("records unmet prerequisites instead of skipping", () => {
-        expect(condition).toBe(false);
-      });
-    })) as unknown) as DescribeFn;
+  return (name) =>
+    describe.skip(name, () => {
+      it("skipped because prerequisites are unmet", () => {});
+    });
 }
 
-export function itIf(condition: boolean): ItFn {
+export function itIf(condition: boolean): TestGate {
   if (condition) {
-    return it;
+    return (name, fn) => it(name, fn);
   }
 
-  return it.skip as ItFn;
+  return (name, fn) => it.skip(name, fn);
 }
 
-export function testIf(condition: boolean): TestFn {
+export function testIf(condition: boolean): TestGate {
   if (condition) {
-    return test;
+    return (name, fn) => test(name, fn);
   }
 
-  return test.skip as TestFn;
+  return (name, fn) => test.skip(name, fn);
 }

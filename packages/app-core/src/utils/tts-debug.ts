@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 /**
  * TTS pipeline tracing (opt-in). Prefix: `[eliza][tts]`.
  * Never pass secrets in `detail`. With debug on, `preview` fields may contain

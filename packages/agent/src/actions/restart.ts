@@ -16,7 +16,13 @@
  */
 
 import crypto from "node:crypto";
-import type { Action, HandlerOptions, Memory, UUID } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  HandlerOptions,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   getValidationKeywordTerms,
@@ -137,4 +143,34 @@ export const restartAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Please bounce yourself — I just changed a config file.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Restarting… (config reload)",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "/restart",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Restarting…",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

@@ -11,16 +11,13 @@
  *
  * This module exports a boot hook that should be called early in the runtime
  * initialization, before plugins are loaded.
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/services/steward-evm-bridge`.
- * New development should target the app-steward package.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   initStewardEvmAccount,
   isStewardCloudProvisioned,
+  isStewardSigningReady,
 } from "./steward-evm-account";
 
 // A dummy private key that satisfies validation but won't be used for actual signing.
@@ -39,11 +36,15 @@ let _initialized = false;
  * doesn't auto-generate and persist a random key.
  */
 export async function stewardEvmPreBoot(runtime: IAgentRuntime): Promise<void> {
-  if (!isStewardCloudProvisioned()) {
+  if (!isStewardSigningReady()) {
     return;
   }
 
-  console.log("[StewardEvmBridge] Cloud-provisioned mode detected");
+  console.log(
+    isStewardCloudProvisioned()
+      ? "[StewardEvmBridge] Cloud-provisioned Steward detected"
+      : "[StewardEvmBridge] Self-hosted Steward detected",
+  );
 
   try {
     _stewardAccount = await initStewardEvmAccount();

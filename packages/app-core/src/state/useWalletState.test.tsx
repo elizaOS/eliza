@@ -1,23 +1,110 @@
 // @vitest-environment jsdom
 
+import {
+  DEFAULT_WALLET_RPC_SELECTIONS,
+  type WalletBalancesResponse,
+  type WalletChainKind,
+  type WalletConfigStatus,
+  type WalletEntry,
+  type WalletPrimaryMap,
+} from "@elizaos/shared/contracts/wallet";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+type RefreshCloudWalletsResponse = {
+  ok: boolean;
+  warnings?: string[];
+};
+
+type GenerateWalletResponse = {
+  ok: boolean;
+  wallets: Array<{ chain: WalletChainKind; address: string }>;
+  source?: "local" | "steward";
+  warnings?: string[];
+};
+
+function createWalletEntry(entry: WalletEntry): WalletEntry {
+  return entry;
+}
+
+function createWalletPrimary(
+  overrides: Partial<WalletPrimaryMap> = {},
+): WalletPrimaryMap {
+  return {
+    evm: "local",
+    solana: "local",
+    ...overrides,
+  };
+}
+
+function createWalletConfig(
+  overrides: Partial<WalletConfigStatus> = {},
+): WalletConfigStatus {
+  return {
+    selectedRpcProviders: DEFAULT_WALLET_RPC_SELECTIONS,
+    legacyCustomChains: [],
+    alchemyKeySet: false,
+    infuraKeySet: false,
+    ankrKeySet: false,
+    heliusKeySet: false,
+    birdeyeKeySet: false,
+    evmChains: [],
+    evmAddress: null,
+    solanaAddress: null,
+    ...overrides,
+  };
+}
+
+function createWalletBalances(
+  overrides: Partial<WalletBalancesResponse> = {},
+): WalletBalancesResponse {
+  return {
+    evm: null,
+    solana: null,
+    ...overrides,
+  };
+}
+
+function createRefreshCloudWalletsResponse(
+  overrides: Partial<RefreshCloudWalletsResponse> = {},
+): RefreshCloudWalletsResponse {
+  return {
+    ok: true,
+    ...overrides,
+  };
+}
+
+function createGenerateWalletResponse(
+  overrides: Partial<GenerateWalletResponse> = {},
+): GenerateWalletResponse {
+  return {
+    ok: true,
+    wallets: [],
+    ...overrides,
+  };
+}
 
 const { clientMock, confirmDesktopActionMock, persistenceMock } = vi.hoisted(
   () => ({
     clientMock: {
-      updateWalletConfig: vi.fn(async () => ({ ok: true })),
-      refreshCloudWallets: vi.fn(async () => ({ ok: true })),
-      generateWallet: vi.fn(async () => ({ ok: true, wallets: [] })),
-      setWalletPrimary: vi.fn(async () => ({ ok: true })),
-      getWalletConfig: vi.fn(async () => ({
-        evmAddress: null,
-        solanaAddress: null,
+      updateWalletConfig: vi.fn<() => Promise<{ ok: boolean }>>(async () => ({
+        ok: true,
       })),
-      getWalletBalances: vi.fn(async () => ({
-        evm: null,
-        solana: null,
+      refreshCloudWallets: vi.fn<() => Promise<RefreshCloudWalletsResponse>>(
+        async () => createRefreshCloudWalletsResponse(),
+      ),
+      generateWallet: vi.fn<() => Promise<GenerateWalletResponse>>(async () =>
+        createGenerateWalletResponse(),
+      ),
+      setWalletPrimary: vi.fn<() => Promise<{ ok: boolean }>>(async () => ({
+        ok: true,
       })),
+      getWalletConfig: vi.fn<() => Promise<WalletConfigStatus>>(async () =>
+        createWalletConfig(),
+      ),
+      getWalletBalances: vi.fn<() => Promise<WalletBalancesResponse>>(
+        async () => createWalletBalances(),
+      ),
     },
     confirmDesktopActionMock: vi.fn(),
     persistenceMock: {
@@ -55,18 +142,17 @@ function createParams() {
 describe("useWalletState cloud wallet import", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    persistenceMock.loadBrowserEnabled.mockReturnValue(false);
+    persistenceMock.loadComputerUseEnabled.mockReturnValue(false);
+    persistenceMock.loadWalletEnabled.mockReturnValue(true);
     clientMock.updateWalletConfig.mockResolvedValue({ ok: true });
-    clientMock.refreshCloudWallets.mockResolvedValue({ ok: true });
-    clientMock.generateWallet.mockResolvedValue({ ok: true, wallets: [] });
+    clientMock.refreshCloudWallets.mockResolvedValue(
+      createRefreshCloudWalletsResponse(),
+    );
+    clientMock.generateWallet.mockResolvedValue(createGenerateWalletResponse());
     clientMock.setWalletPrimary.mockResolvedValue({ ok: true });
-    clientMock.getWalletConfig.mockResolvedValue({
-      evmAddress: null,
-      solanaAddress: null,
-    });
-    clientMock.getWalletBalances.mockResolvedValue({
-      evm: null,
-      solana: null,
-    });
+    clientMock.getWalletConfig.mockResolvedValue(createWalletConfig());
+    clientMock.getWalletBalances.mockResolvedValue(createWalletBalances());
   });
 
   afterEach(() => {
@@ -120,27 +206,28 @@ describe("useWalletState cloud wallet import", () => {
   });
 
   it("surfaces partial cloud import warnings without failing the save", async () => {
-    clientMock.refreshCloudWallets.mockResolvedValue({
-      ok: true,
-      warnings: ["Cloud solana wallet import failed: Validation error"],
-    });
-    clientMock.getWalletConfig.mockResolvedValue({
-      evmAddress: "0xCLOUD_EVM",
-      solanaAddress: null,
-      wallets: [
-        {
-          source: "cloud",
-          chain: "evm",
-          address: "0xCLOUD_EVM",
-          provider: "privy",
-          primary: true,
-        },
-      ],
-      primary: {
-        evm: "cloud",
-        solana: "local",
-      },
-    });
+    clientMock.refreshCloudWallets.mockResolvedValue(
+      createRefreshCloudWalletsResponse({
+        warnings: ["Cloud solana wallet import failed: Validation error"],
+      }),
+    );
+    clientMock.getWalletConfig.mockResolvedValue(
+      createWalletConfig({
+        evmAddress: "0xCLOUD_EVM",
+        wallets: [
+          createWalletEntry({
+            source: "cloud",
+            chain: "evm",
+            address: "0xCLOUD_EVM",
+            provider: "privy",
+            primary: true,
+          }),
+        ],
+        primary: createWalletPrimary({
+          evm: "cloud",
+        }),
+      }),
+    );
     const params = createParams();
     const { result } = renderHook(() => useWalletState(params));
 
@@ -165,29 +252,30 @@ describe("useWalletState cloud wallet import", () => {
   });
 
   it("translates the legacy Solana contract error into a clearer notice", async () => {
-    clientMock.refreshCloudWallets.mockResolvedValue({
-      ok: true,
-      warnings: [
-        "Cloud solana wallet import failed: Validation error: Invalid Solana address (base58, 32–44 chars)",
-      ],
-    });
-    clientMock.getWalletConfig.mockResolvedValue({
-      evmAddress: "0xCLOUD_EVM",
-      solanaAddress: null,
-      wallets: [
-        {
-          source: "cloud",
-          chain: "evm",
-          address: "0xCLOUD_EVM",
-          provider: "privy",
-          primary: true,
-        },
-      ],
-      primary: {
-        evm: "cloud",
-        solana: "local",
-      },
-    });
+    clientMock.refreshCloudWallets.mockResolvedValue(
+      createRefreshCloudWalletsResponse({
+        warnings: [
+          "Cloud solana wallet import failed: Validation error: Invalid Solana address (base58, 32–44 chars)",
+        ],
+      }),
+    );
+    clientMock.getWalletConfig.mockResolvedValue(
+      createWalletConfig({
+        evmAddress: "0xCLOUD_EVM",
+        wallets: [
+          createWalletEntry({
+            source: "cloud",
+            chain: "evm",
+            address: "0xCLOUD_EVM",
+            provider: "privy",
+            primary: true,
+          }),
+        ],
+        primary: createWalletPrimary({
+          evm: "cloud",
+        }),
+      }),
+    );
     const params = createParams();
     const { result } = renderHook(() => useWalletState(params));
 
@@ -212,36 +300,39 @@ describe("useWalletState cloud wallet import", () => {
   });
 
   it("treats cached-evm plus imported-solana as connected when both cloud wallets are present", async () => {
-    clientMock.refreshCloudWallets.mockResolvedValue({
-      ok: true,
-      warnings: [
-        "Reused cached evm cloud wallet after refresh failed: An unexpected error occurred",
-      ],
-    });
-    clientMock.getWalletConfig.mockResolvedValue({
-      evmAddress: "0xCLOUD_EVM",
-      solanaAddress: "So11111111111111111111111111111111111111112",
-      wallets: [
-        {
-          source: "cloud",
-          chain: "evm",
-          address: "0xCLOUD_EVM",
-          provider: "privy",
-          primary: true,
-        },
-        {
-          source: "cloud",
-          chain: "solana",
-          address: "So11111111111111111111111111111111111111112",
-          provider: "steward",
-          primary: true,
-        },
-      ],
-      primary: {
-        evm: "cloud",
-        solana: "cloud",
-      },
-    });
+    clientMock.refreshCloudWallets.mockResolvedValue(
+      createRefreshCloudWalletsResponse({
+        warnings: [
+          "Reused cached evm cloud wallet after refresh failed: An unexpected error occurred",
+        ],
+      }),
+    );
+    clientMock.getWalletConfig.mockResolvedValue(
+      createWalletConfig({
+        evmAddress: "0xCLOUD_EVM",
+        solanaAddress: "So11111111111111111111111111111111111111112",
+        wallets: [
+          createWalletEntry({
+            source: "cloud",
+            chain: "evm",
+            address: "0xCLOUD_EVM",
+            provider: "privy",
+            primary: true,
+          }),
+          createWalletEntry({
+            source: "cloud",
+            chain: "solana",
+            address: "So11111111111111111111111111111111111111112",
+            provider: "steward",
+            primary: true,
+          }),
+        ],
+        primary: createWalletPrimary({
+          evm: "cloud",
+          solana: "cloud",
+        }),
+      }),
+    );
     const params = createParams();
     const { result } = renderHook(() => useWalletState(params));
 
@@ -267,97 +358,99 @@ describe("useWalletState cloud wallet import", () => {
 
   it("provisions a missing local wallet before switching primary", async () => {
     clientMock.getWalletConfig
-      .mockResolvedValueOnce({
-        evmAddress: "0xCLOUD_EVM",
-        solanaAddress: "So11111111111111111111111111111111111111112",
-        wallets: [
-          {
-            source: "cloud",
-            chain: "evm",
-            address: "0xCLOUD_EVM",
-            provider: "privy",
-            primary: true,
-          },
-          {
-            source: "local",
-            chain: "solana",
-            address: "So11111111111111111111111111111111111111112",
-            provider: "local",
-            primary: true,
-          },
-        ],
-        primary: {
-          evm: "cloud",
-          solana: "local",
-        },
-      })
-      .mockResolvedValueOnce({
-        evmAddress: "0xLOCAL_EVM",
-        solanaAddress: "So11111111111111111111111111111111111111112",
-        wallets: [
-          {
-            source: "local",
-            chain: "evm",
-            address: "0xLOCAL_EVM",
-            provider: "local",
-            primary: false,
-          },
-          {
-            source: "cloud",
-            chain: "evm",
-            address: "0xCLOUD_EVM",
-            provider: "privy",
-            primary: true,
-          },
-          {
-            source: "local",
-            chain: "solana",
-            address: "So11111111111111111111111111111111111111112",
-            provider: "local",
-            primary: true,
-          },
-        ],
-        primary: {
-          evm: "cloud",
-          solana: "local",
-        },
-      })
-      .mockResolvedValue({
-        evmAddress: "0xLOCAL_EVM",
-        solanaAddress: "So11111111111111111111111111111111111111112",
-        wallets: [
-          {
-            source: "local",
-            chain: "evm",
-            address: "0xLOCAL_EVM",
-            provider: "local",
-            primary: true,
-          },
-          {
-            source: "cloud",
-            chain: "evm",
-            address: "0xCLOUD_EVM",
-            provider: "privy",
-            primary: false,
-          },
-          {
-            source: "local",
-            chain: "solana",
-            address: "So11111111111111111111111111111111111111112",
-            provider: "local",
-            primary: true,
-          },
-        ],
-        primary: {
-          evm: "local",
-          solana: "local",
-        },
-      });
-    clientMock.generateWallet.mockResolvedValue({
-      ok: true,
-      wallets: [{ chain: "evm", address: "0xLOCAL_EVM" }],
-      source: "local",
-    });
+      .mockResolvedValueOnce(
+        createWalletConfig({
+          evmAddress: "0xCLOUD_EVM",
+          solanaAddress: "So11111111111111111111111111111111111111112",
+          wallets: [
+            createWalletEntry({
+              source: "cloud",
+              chain: "evm",
+              address: "0xCLOUD_EVM",
+              provider: "privy",
+              primary: true,
+            }),
+            createWalletEntry({
+              source: "local",
+              chain: "solana",
+              address: "So11111111111111111111111111111111111111112",
+              provider: "local",
+              primary: true,
+            }),
+          ],
+          primary: createWalletPrimary({
+            evm: "cloud",
+          }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        createWalletConfig({
+          evmAddress: "0xLOCAL_EVM",
+          solanaAddress: "So11111111111111111111111111111111111111112",
+          wallets: [
+            createWalletEntry({
+              source: "local",
+              chain: "evm",
+              address: "0xLOCAL_EVM",
+              provider: "local",
+              primary: false,
+            }),
+            createWalletEntry({
+              source: "cloud",
+              chain: "evm",
+              address: "0xCLOUD_EVM",
+              provider: "privy",
+              primary: true,
+            }),
+            createWalletEntry({
+              source: "local",
+              chain: "solana",
+              address: "So11111111111111111111111111111111111111112",
+              provider: "local",
+              primary: true,
+            }),
+          ],
+          primary: createWalletPrimary({
+            evm: "cloud",
+          }),
+        }),
+      )
+      .mockResolvedValue(
+        createWalletConfig({
+          evmAddress: "0xLOCAL_EVM",
+          solanaAddress: "So11111111111111111111111111111111111111112",
+          wallets: [
+            createWalletEntry({
+              source: "local",
+              chain: "evm",
+              address: "0xLOCAL_EVM",
+              provider: "local",
+              primary: true,
+            }),
+            createWalletEntry({
+              source: "cloud",
+              chain: "evm",
+              address: "0xCLOUD_EVM",
+              provider: "privy",
+              primary: false,
+            }),
+            createWalletEntry({
+              source: "local",
+              chain: "solana",
+              address: "So11111111111111111111111111111111111111112",
+              provider: "local",
+              primary: true,
+            }),
+          ],
+          primary: createWalletPrimary(),
+        }),
+      );
+    clientMock.generateWallet.mockResolvedValue(
+      createGenerateWalletResponse({
+        wallets: [{ chain: "evm", address: "0xLOCAL_EVM" }],
+        source: "local",
+      }),
+    );
     const params = createParams();
     const { result } = renderHook(() => useWalletState(params));
 
@@ -377,96 +470,99 @@ describe("useWalletState cloud wallet import", () => {
 
   it("refreshes cloud wallets before switching to a missing cloud source", async () => {
     clientMock.getWalletConfig
-      .mockResolvedValueOnce({
-        evmAddress: "0xCLOUD_EVM",
-        solanaAddress: "So11111111111111111111111111111111111111112",
-        wallets: [
-          {
-            source: "cloud",
-            chain: "evm",
-            address: "0xCLOUD_EVM",
-            provider: "privy",
-            primary: true,
-          },
-          {
-            source: "local",
-            chain: "solana",
-            address: "So11111111111111111111111111111111111111112",
-            provider: "local",
-            primary: true,
-          },
-        ],
-        primary: {
-          evm: "cloud",
-          solana: "local",
-        },
-      })
-      .mockResolvedValueOnce({
-        evmAddress: "0xCLOUD_EVM",
-        solanaAddress: "SoCloud1111111111111111111111111111111111111",
-        wallets: [
-          {
-            source: "cloud",
-            chain: "evm",
-            address: "0xCLOUD_EVM",
-            provider: "privy",
-            primary: true,
-          },
-          {
-            source: "local",
-            chain: "solana",
-            address: "So11111111111111111111111111111111111111112",
-            provider: "local",
-            primary: true,
-          },
-          {
-            source: "cloud",
-            chain: "solana",
-            address: "SoCloud1111111111111111111111111111111111111",
-            provider: "steward",
-            primary: false,
-          },
-        ],
-        primary: {
-          evm: "cloud",
-          solana: "local",
-        },
-      })
-      .mockResolvedValue({
-        evmAddress: "0xCLOUD_EVM",
-        solanaAddress: "SoCloud1111111111111111111111111111111111111",
-        wallets: [
-          {
-            source: "cloud",
-            chain: "evm",
-            address: "0xCLOUD_EVM",
-            provider: "privy",
-            primary: true,
-          },
-          {
-            source: "local",
-            chain: "solana",
-            address: "So11111111111111111111111111111111111111112",
-            provider: "local",
-            primary: false,
-          },
-          {
-            source: "cloud",
-            chain: "solana",
-            address: "SoCloud1111111111111111111111111111111111111",
-            provider: "steward",
-            primary: true,
-          },
-        ],
-        primary: {
-          evm: "cloud",
-          solana: "cloud",
-        },
-      });
-    clientMock.refreshCloudWallets.mockResolvedValue({
-      ok: true,
-      warnings: [],
-    });
+      .mockResolvedValueOnce(
+        createWalletConfig({
+          evmAddress: "0xCLOUD_EVM",
+          solanaAddress: "So11111111111111111111111111111111111111112",
+          wallets: [
+            createWalletEntry({
+              source: "cloud",
+              chain: "evm",
+              address: "0xCLOUD_EVM",
+              provider: "privy",
+              primary: true,
+            }),
+            createWalletEntry({
+              source: "local",
+              chain: "solana",
+              address: "So11111111111111111111111111111111111111112",
+              provider: "local",
+              primary: true,
+            }),
+          ],
+          primary: createWalletPrimary({
+            evm: "cloud",
+          }),
+        }),
+      )
+      .mockResolvedValueOnce(
+        createWalletConfig({
+          evmAddress: "0xCLOUD_EVM",
+          solanaAddress: "SoCloud1111111111111111111111111111111111111",
+          wallets: [
+            createWalletEntry({
+              source: "cloud",
+              chain: "evm",
+              address: "0xCLOUD_EVM",
+              provider: "privy",
+              primary: true,
+            }),
+            createWalletEntry({
+              source: "local",
+              chain: "solana",
+              address: "So11111111111111111111111111111111111111112",
+              provider: "local",
+              primary: true,
+            }),
+            createWalletEntry({
+              source: "cloud",
+              chain: "solana",
+              address: "SoCloud1111111111111111111111111111111111111",
+              provider: "steward",
+              primary: false,
+            }),
+          ],
+          primary: createWalletPrimary({
+            evm: "cloud",
+          }),
+        }),
+      )
+      .mockResolvedValue(
+        createWalletConfig({
+          evmAddress: "0xCLOUD_EVM",
+          solanaAddress: "SoCloud1111111111111111111111111111111111111",
+          wallets: [
+            createWalletEntry({
+              source: "cloud",
+              chain: "evm",
+              address: "0xCLOUD_EVM",
+              provider: "privy",
+              primary: true,
+            }),
+            createWalletEntry({
+              source: "local",
+              chain: "solana",
+              address: "So11111111111111111111111111111111111111112",
+              provider: "local",
+              primary: false,
+            }),
+            createWalletEntry({
+              source: "cloud",
+              chain: "solana",
+              address: "SoCloud1111111111111111111111111111111111111",
+              provider: "steward",
+              primary: true,
+            }),
+          ],
+          primary: createWalletPrimary({
+            evm: "cloud",
+            solana: "cloud",
+          }),
+        }),
+      );
+    clientMock.refreshCloudWallets.mockResolvedValue(
+      createRefreshCloudWalletsResponse({ warnings: [] }),
+    );
     const params = createParams();
     const { result } = renderHook(() => useWalletState(params));
 

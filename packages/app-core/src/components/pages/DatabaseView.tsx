@@ -1,17 +1,28 @@
-
-
+import {
+  Button,
+  Input,
+  MetaPill,
+  PageLayout,
+  PagePanel,
+  SegmentedControl,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  client,
   type ColumnInfo,
+  client,
   type DatabaseStatus,
   type QueryResult,
   type TableInfo,
   type TableRowsResponse,
 } from "../../api";
 import { useApp } from "../../state";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import {
   CellPopover,
   type DbView,
@@ -20,7 +31,6 @@ import {
   type SortDir,
 } from "./database-utils";
 import { SqlEditorPanel } from "./SqlEditorPanel";
-import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, SegmentedControl, PageLayout } from "@elizaos/ui";
 
 export function DatabaseView({
   leftNav,
@@ -294,7 +304,22 @@ export function DatabaseView({
 
   if (showExternalSidebar) {
     const dbSidebar = (
-      <Sidebar testId="database-sidebar">
+      <AppPageSidebar
+        testId="database-sidebar"
+        collapsible
+        contentIdentity="database"
+        collapsedRailItems={filteredTables.map((table) => (
+          <SidebarContent.RailItem
+            key={table.name}
+            aria-label={table.name}
+            title={table.name}
+            active={selectedTable === table.name}
+            onClick={() => handleSelectTable(table.name)}
+          >
+            {table.name.slice(0, 1).toUpperCase()}
+          </SidebarContent.RailItem>
+        ))}
+      >
         <SidebarHeader
           search={{
             value: sidebarSearch,
@@ -393,7 +418,7 @@ export function DatabaseView({
             </>
           )}
         </SidebarPanel>
-      </Sidebar>
+      </AppPageSidebar>
     );
 
     return (

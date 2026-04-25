@@ -21,10 +21,13 @@
     "declarationMap": false,
     "sourceMap": false,
     "baseUrl": "../../",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
-      "@elizaos/app-task-coordinator": ["./apps/app-task-coordinator/src/index.ts"],
+      "@elizaos/app-task-coordinator": [
+        "./apps/app-task-coordinator/src/index.ts"
+      ],
       "@elizaos/app-task-coordinator/*": ["./apps/app-task-coordinator/src/*"],
       "@elizaos/app-steward": ["./apps/app-steward/src/index.ts"],
       "@elizaos/app-steward/*": ["./apps/app-steward/src/*"],

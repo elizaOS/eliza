@@ -6,9 +6,9 @@
  * **ElevenLabs** voice and model ids; the cloud runs ElevenLabs server-side.
  */
 import type http from "node:http";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
 import { sanitizeSpeechText } from "@elizaos/shared/spoken-text";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { ttsDebug, ttsDebugTextPreview } from "../utils/tts-debug";
 import { getCloudSecret } from "./cloud-secrets";
 
@@ -477,7 +477,10 @@ export async function handleCloudTtsPreviewRoute(
     let lastDetails = "unknown error";
     let cloudResponse: Response | null = null;
     for (let i = 0; i < cloudUrls.length; i++) {
-      const cloudUrl = cloudUrls[i]!;
+      const cloudUrl = cloudUrls[i];
+      if (cloudUrl === undefined) {
+        continue;
+      }
       const attempt = await fetch(cloudUrl, {
         method: "POST",
         headers: {

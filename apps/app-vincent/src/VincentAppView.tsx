@@ -1,28 +1,24 @@
 /**
- * VincentAppView — full-screen overlay app for Vincent DeFi management.
+ * VincentAppView — full-screen overlay app for Vincent trading access.
  *
  * Layout:
  *   - Header with back button and connection status badge
  *   - VincentConnectionCard (OAuth connect/disconnect)
- *   - VaultStatusCard (agent wallet addresses + balances) — when connected
- *   - TradingStrategyPanel (strategy config + start/stop) — when connected
+ *   - WalletStatusCard (agent wallet addresses + balances) — when connected
+ *   - TradingStrategyPanel (strategy config) — when connected
  *   - TradingProfileCard (P&L analytics) — when connected
- *
- * Uses the internal agent wallet for addresses/balances, NOT the steward
- * vault system (which is a separate optional custody layer).
  *
  * Implements the OverlayApp Component contract.
  */
 
-import { Button, PagePanel, Spinner } from "@elizaos/app-core";
-import { ArrowLeft, RefreshCw } from "lucide-react";
-import { useApp } from "@elizaos/app-core";
 import type { OverlayAppContext } from "@elizaos/app-core";
+import { Button, PagePanel, Spinner, useApp } from "@elizaos/app-core";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";
 import { useVincentDashboard } from "./useVincentDashboard";
-import { VaultStatusCard } from "./VaultStatusCard";
 import { VincentConnectionCard } from "./VincentConnectionCard";
+import { WalletStatusCard } from "./WalletStatusCard";
 
 export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
   const { setActionNotice } = useApp();
@@ -58,7 +54,7 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
           <div>
             <h1 className="text-base font-semibold text-txt">Vincent</h1>
             <p className="text-xs-tight text-muted leading-none">
-              DeFi vault management &amp; autotrading
+              Hyperliquid and Polymarket trading access
             </p>
           </div>
         </div>
@@ -115,11 +111,7 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
 
               {vincentConnected && (
                 <>
-                  <TradingStrategyPanel
-                    strategy={strategy}
-                    onStrategyChange={refresh}
-                    setActionNotice={setActionNotice}
-                  />
+                  <TradingStrategyPanel strategy={strategy} />
 
                   <TradingProfileCard tradingProfile={tradingProfile} />
                 </>
@@ -137,7 +129,7 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
                   <p className="mx-auto mt-2 max-w-sm text-xs text-muted leading-relaxed">
                     {t("vincent.connectPromptDetail", {
                       defaultValue:
-                        "Once connected, you'll see your wallet balances, trading strategy, and P&L analytics here.",
+                        "Once connected, you'll see wallet context, Vincent strategy status, and trading analytics when Vincent exposes them.",
                     })}
                   </p>
                 </div>
@@ -147,7 +139,7 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
             {/* Right column — wallet status (top-right, sticky on desktop) */}
             {vincentConnected && (
               <div className="lg:sticky lg:top-4">
-                <VaultStatusCard
+                <WalletStatusCard
                   walletAddresses={walletAddresses}
                   walletBalances={walletBalances}
                   setActionNotice={setActionNotice}

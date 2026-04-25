@@ -12,7 +12,14 @@
  * - webview.messages: Messages the webview receives (Bun sends these)
  */
 
+import type {
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
+  NavigateBrowserWorkspaceTabRequest,
+  OpenBrowserWorkspaceTabRequest,
+} from "@elizaos/agent/services/browser-workspace";
 import type { RPCSchema } from "electrobun/bun";
+import type { ExistingElizaInstallInfo } from "../../../src/types/index.js";
 
 // ============================================================================
 // Shared Types
@@ -426,16 +433,6 @@ export interface EmbeddedAgentStatus {
   error: string | null;
 }
 
-export interface ExistingElizaInstallInfo {
-  detected: boolean;
-  stateDir: string;
-  configPath: string;
-  configExists: boolean;
-  stateDirExists: boolean;
-  hasStateEntries: boolean;
-  source: "config-path-env" | "state-dir-env" | "default-state-dir";
-}
-
 export interface DesktopStartupDiagnostics {
   state: "not_started" | "starting" | "running" | "stopped" | "error";
   phase: string;
@@ -467,9 +464,6 @@ export interface DesktopBugReportBundleInfo {
 // ============================================================================
 // RPC Schema
 // ============================================================================
-
-/** @deprecated Use ElizaDesktopRPCSchema instead. */
-export type ElizaDesktopRPCSchema = ElizaDesktopRPCSchema;
 
 export type ElizaDesktopRPCSchema = {
   bun: RPCSchema<{
@@ -693,6 +687,36 @@ export type ElizaDesktopRPCSchema = {
           browse?: string;
         };
         response: undefined;
+      };
+
+      // ---- Browser Workspace ----
+      browserWorkspaceGetSnapshot: {
+        params: undefined;
+        response: BrowserWorkspaceSnapshot;
+      };
+      browserWorkspaceOpenTab: {
+        params: OpenBrowserWorkspaceTabRequest;
+        response: { tab: BrowserWorkspaceTab };
+      };
+      browserWorkspaceNavigateTab: {
+        params: NavigateBrowserWorkspaceTabRequest;
+        response: { tab: BrowserWorkspaceTab };
+      };
+      browserWorkspaceShowTab: {
+        params: { id: string };
+        response: { tab: BrowserWorkspaceTab };
+      };
+      browserWorkspaceHideTab: {
+        params: { id: string };
+        response: { tab: BrowserWorkspaceTab };
+      };
+      browserWorkspaceCloseTab: {
+        params: { id: string };
+        response: { closed: boolean };
+      };
+      browserWorkspaceSnapshotTab: {
+        params: { id: string };
+        response: { data: string };
       };
 
       // ---- Desktop: Clipboard ----
@@ -1445,6 +1469,15 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:openReleaseNotesWindow": "desktopOpenReleaseNotesWindow",
   "desktop:openSettingsWindow": "desktopOpenSettingsWindow",
   "desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
+
+  // Browser Workspace
+  "browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",
+  "browser-workspace:openTab": "browserWorkspaceOpenTab",
+  "browser-workspace:navigateTab": "browserWorkspaceNavigateTab",
+  "browser-workspace:showTab": "browserWorkspaceShowTab",
+  "browser-workspace:hideTab": "browserWorkspaceHideTab",
+  "browser-workspace:closeTab": "browserWorkspaceCloseTab",
+  "browser-workspace:snapshotTab": "browserWorkspaceSnapshotTab",
 
   // Desktop: Clipboard
   "desktop:writeToClipboard": "desktopWriteToClipboard",

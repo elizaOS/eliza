@@ -37,6 +37,22 @@ export * from "./runtime/core-plugins.js";
 export * from "./runtime/index.js";
 export * from "./security/index.js";
 export * from "./services/index.js";
+export {
+  type ClusterMemoriesQuery,
+  type ClusterSearchQuery,
+  createNativeRelationshipsGraphService,
+  getMemoriesForCluster,
+  type RelationshipsGraphEdge,
+  type RelationshipsGraphQuery,
+  type RelationshipsGraphService,
+  type RelationshipsGraphSnapshot,
+  type RelationshipsGraphStats,
+  type RelationshipsPersonDetail,
+  type RelationshipsPersonFact,
+  type RelationshipsPersonSummary,
+  resolveRelationshipsGraphService,
+  searchMemoriesForCluster,
+} from "./services/relationships-graph.js";
 export * from "./test-support/index.js";
 export * from "./triggers/action.js";
 export * from "./triggers/runtime.js";

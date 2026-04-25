@@ -1,5 +1,5 @@
-const format = require('../format-lines');
-const { TYPES } = require('./Slot.opts');
+const format = require("../format-lines");
+const { TYPES } = require("./Slot.opts");
 
 const header = `\
 pragma solidity ^0.8.20;
@@ -43,15 +43,21 @@ function get${name}Storage(uint256 key) public view returns (${type} memory) {
 // GENERATE
 module.exports = format(
   header,
-  'contract StorageSlotMock is Multicall {',
+  "contract StorageSlotMock is Multicall {",
   format(
     [].concat(
-      'using StorageSlot for *;',
-      '',
-      TYPES.filter(type => type.isValueType).map(type => storageSetValueType(type)),
-      TYPES.filter(type => type.isValueType).map(type => storageGetValueType(type)),
-      TYPES.filter(type => !type.isValueType).map(type => storageSetNonValueType(type)),
+      "using StorageSlot for *;",
+      "",
+      TYPES.filter((type) => type.isValueType).map((type) =>
+        storageSetValueType(type),
+      ),
+      TYPES.filter((type) => type.isValueType).map((type) =>
+        storageGetValueType(type),
+      ),
+      TYPES.filter((type) => !type.isValueType).map((type) =>
+        storageSetNonValueType(type),
+      ),
     ),
   ).trimEnd(),
-  '}',
+  "}",
 );

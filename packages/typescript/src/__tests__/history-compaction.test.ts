@@ -65,7 +65,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 		});
 
 		expect(result.length).toBe(3);
-		expect(result.map((m) => m.createdAt)).toEqual([3000, 4000, 5000]);
+		expect(result.map((m) => m.createdAt)).toEqual([5000, 4000, 3000]);
 	}, 30_000);
 
 	it("should filter messages by end timestamp", async () => {
@@ -102,7 +102,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 		});
 
 		expect(result.length).toBe(3);
-		expect(result.map((m) => m.createdAt)).toEqual([1000, 2000, 3000]);
+		expect(result.map((m) => m.createdAt)).toEqual([3000, 2000, 1000]);
 	});
 
 	it("should filter messages by both start and end timestamp", async () => {
@@ -140,7 +140,7 @@ describe("InMemoryAdapter getMemories with start/end parameters", () => {
 		});
 
 		expect(result.length).toBe(3);
-		expect(result.map((m) => m.createdAt)).toEqual([2000, 3000, 4000]);
+		expect(result.map((m) => m.createdAt)).toEqual([4000, 3000, 2000]);
 	});
 
 	it("should handle exact boundary timestamps (inclusive)", async () => {
@@ -336,8 +336,8 @@ describe("RECENT_MESSAGES provider compaction integration", () => {
 
 		expect(recentMessages.length).toBe(2);
 		expect(recentMessages.map((m) => m.content.text)).toEqual([
-			"After reset 1",
 			"After reset 2",
+			"After reset 1",
 		]);
 	});
 });
@@ -404,4 +404,130 @@ describe("Edge cases", () => {
 	});
 
 	// "should handle empty room metadata gracefully" test removed — depends on resetSession.ts which doesn't exist yet.
+});
+
+// ============================================
+// Ordering parity with plugin-sql
+// ============================================
+describe("InMemoryAdapter getMemories ordering (parity with plugin-sql)", () => {
+	it("should return newest-first when count is provided", async () => {
+		const { InMemoryDatabaseAdapter } = await import(
+			"../database/inMemoryAdapter.ts"
+		);
+
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init();
+
+		const roomId = "room-1" as UUID;
+
+		const messages = [
+			createMockMessage(1000, "Message 1", roomId),
+			createMockMessage(2000, "Message 2", roomId),
+			createMockMessage(3000, "Message 3", roomId),
+			createMockMessage(4000, "Message 4", roomId),
+			createMockMessage(5000, "Message 5", roomId),
+		];
+
+		await adapter.createMemories(
+			messages.map((msg) => ({
+				memory: msg,
+				tableName: "messages",
+				unique: false,
+			})),
+		);
+
+		const result = await adapter.getMemories({
+			tableName: "messages",
+			roomId,
+			count: 3,
+		});
+
+		expect(result.map((m) => m.createdAt)).toEqual([5000, 4000, 3000]);
+	});
+
+	it("should return the N newest when room has more than N memories", async () => {
+		const { InMemoryDatabaseAdapter } = await import(
+			"../database/inMemoryAdapter.ts"
+		);
+
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init();
+
+		const roomId = "room-1" as UUID;
+
+		for (let i = 1; i <= 15; i++) {
+			await adapter.createMemories([
+				{
+					memory: createMockMessage(i * 1000, `Message ${i}`, roomId),
+					tableName: "messages",
+					unique: false,
+				},
+			]);
+		}
+
+		const result = await adapter.getMemories({
+			tableName: "messages",
+			roomId,
+			count: 10,
+		});
+
+		expect(result).toHaveLength(10);
+		expect(result.map((m) => m.createdAt)).toEqual([
+			15000, 14000, 13000, 12000, 11000, 10000, 9000, 8000, 7000, 6000,
+		]);
+	});
+
+	it("should tiebreak on id desc when createdAt is equal", async () => {
+		const { InMemoryDatabaseAdapter } = await import(
+			"../database/inMemoryAdapter.ts"
+		);
+
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.init();
+
+		const roomId = "room-1" as UUID;
+		const createdAt = 1000;
+
+		const memories: Memory[] = [
+			{
+				id: "aaaa" as UUID,
+				entityId: "user-1" as UUID,
+				agentId: "agent-1" as UUID,
+				roomId,
+				content: { text: "a" },
+				createdAt,
+			},
+			{
+				id: "cccc" as UUID,
+				entityId: "user-1" as UUID,
+				agentId: "agent-1" as UUID,
+				roomId,
+				content: { text: "c" },
+				createdAt,
+			},
+			{
+				id: "bbbb" as UUID,
+				entityId: "user-1" as UUID,
+				agentId: "agent-1" as UUID,
+				roomId,
+				content: { text: "b" },
+				createdAt,
+			},
+		];
+
+		await adapter.createMemories(
+			memories.map((memory) => ({
+				memory,
+				tableName: "messages",
+				unique: false,
+			})),
+		);
+
+		const result = await adapter.getMemories({
+			tableName: "messages",
+			roomId,
+		});
+
+		expect(result.map((m) => m.id)).toEqual(["cccc", "bbbb", "aaaa"]);
+	});
 });

@@ -4,8 +4,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import {
-  keychainAccountForSecretKind,
   ELIZA_AGENT_VAULT_SERVICE,
+  keychainAccountForSecretKind,
 } from "./agent-vault-id";
 import type {
   PlatformSecureStore,

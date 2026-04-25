@@ -1,17 +1,5 @@
-import http from "node:http";
-import { logger } from "@elizaos/core";
+import type http from "node:http";
 import { getWalletAddresses } from "@elizaos/agent/api/wallet";
-import { ensureCompatApiAuthorized } from "./auth";
-import {
-  sendJsonError as sendJsonErrorResponse,
-  sendJson as sendJsonResponse,
-} from "./response";
-import {
-  getConfiguredCompatAgentName,
-  isLoopbackRemoteAddress,
-  readCompatJsonBody,
-  type CompatRuntimeState,
-} from "./compat-route-shared";
 import {
   approveStewardTransaction,
   createStewardClient,
@@ -30,6 +18,86 @@ import {
   type StewardWebhookEventType,
   signViaSteward,
 } from "@elizaos/app-steward/routes/steward-bridge";
+import { logger } from "@elizaos/core";
+import type { PolicyRule as StewardPolicyRule } from "@stwd/sdk";
+import { ensureCompatApiAuthorized } from "./auth";
+import {
+  type CompatRuntimeState,
+  getConfiguredCompatAgentName,
+  isLoopbackRemoteAddress,
+  readCompatJsonBody,
+} from "./compat-route-shared";
+import {
+  sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
+} from "./response";
+
+const STEWARD_POLICY_TYPES = new Set<StewardPolicyRule["type"]>([
+  "spending-limit",
+  "approved-addresses",
+  "auto-approve-threshold",
+  "time-window",
+  "rate-limit",
+]);
+
+type CompatPolicyRule = {
+  id: string;
+  type: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+};
+
+function isStewardPolicyType(
+  value: string,
+): value is StewardPolicyRule["type"] {
+  return STEWARD_POLICY_TYPES.has(value as StewardPolicyRule["type"]);
+}
+
+function normalizeApprovedAddressesConfig(
+  config: Record<string, unknown>,
+): StewardPolicyRule["config"] {
+  const addresses = Array.isArray(config.addresses)
+    ? config.addresses.flatMap((entry) => {
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          return trimmed ? [trimmed] : [];
+        }
+        if (
+          entry &&
+          typeof entry === "object" &&
+          "address" in entry &&
+          typeof entry.address === "string"
+        ) {
+          const trimmed = entry.address.trim();
+          return trimmed ? [trimmed] : [];
+        }
+        return [];
+      })
+    : [];
+
+  return {
+    addresses,
+    mode: config.mode === "blacklist" ? "blacklist" : "whitelist",
+  };
+}
+
+function normalizeStewardPolicyRule(
+  policy: CompatPolicyRule,
+): StewardPolicyRule | null {
+  if (!isStewardPolicyType(policy.type)) {
+    return null;
+  }
+
+  return {
+    id: policy.id,
+    type: policy.type,
+    enabled: policy.enabled,
+    config:
+      policy.type === "approved-addresses"
+        ? normalizeApprovedAddressesConfig(policy.config)
+        : policy.config,
+  };
+}
 
 /**
  * Steward wallet routes:
@@ -152,11 +220,20 @@ export async function handleStewardCompatRoutes(
       return true;
     }
 
+    const normalizedPolicies = policies.flatMap((policy) => {
+      const normalized = normalizeStewardPolicyRule(policy);
+      return normalized ? [normalized] : [];
+    });
+
+    if (normalizedPolicies.length !== policies.length) {
+      sendJsonResponse(res, 400, {
+        error: "policies contains an unsupported policy type",
+      });
+      return true;
+    }
+
     try {
-      await stewardClient.setPolicies(
-        agentId,
-        policies as unknown as import("@stwd/sdk").PolicyRule[],
-      );
+      await stewardClient.setPolicies(agentId, normalizedPolicies);
       sendJsonResponse(res, 200, { ok: true });
     } catch (err) {
       const message =

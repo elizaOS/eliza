@@ -44,6 +44,20 @@ import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
  */
 interface IMessageServiceLike {
   isConnected(): boolean;
+  getStatus?(): {
+    available: boolean;
+    connected: boolean;
+    chatDbAvailable: boolean;
+    sendOnly: boolean;
+    chatDbPath: string;
+    reason: string | null;
+    permissionAction: {
+      type: "full_disk_access";
+      label: string;
+      url: string;
+      instructions: string[];
+    } | null;
+  };
   getRecentMessages(limit?: number): Promise<
     Array<{
       id: string;
@@ -161,6 +175,7 @@ export async function handleIMessageRoute(
     helpers.json(res, {
       available: true,
       connected: service.isConnected(),
+      ...(service.getStatus?.() ?? {}),
     });
     return true;
   }

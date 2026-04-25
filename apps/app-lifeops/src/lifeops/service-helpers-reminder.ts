@@ -7,14 +7,15 @@ import type {
   LifeOpsReminderPlan,
   LifeOpsReminderPreferenceSetting,
   LifeOpsReminderUrgency,
-} from "@elizaos/shared/contracts/lifeops";
+  LifeOpsTaskDefinition,
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
   LIFEOPS_REMINDER_CHANNELS,
   LIFEOPS_REMINDER_INTENSITIES,
   type LIFEOPS_REMINDER_PREFERENCE_SOURCES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   requireNonEmptyString,
   normalizeOptionalString,
@@ -30,7 +31,10 @@ import {
   REMINDER_INTENSITY_NOTE_METADATA_KEY,
   REMINDER_PREFERENCE_SCOPE_METADATA_KEY,
 } from "./service-constants.js";
-import type { ReminderAttemptLifecycle } from "./service-types.js";
+import type {
+  ReminderActivityProfileSnapshot,
+  ReminderAttemptLifecycle,
+} from "./service-types.js";
 import { mergeMetadata } from "./service-helpers-misc.js";
 
 export function _isReminderIntensity(
@@ -189,6 +193,58 @@ export function shouldDeliverReminderForIntensity(
     return urgency === "high" || urgency === "critical";
   }
   return true;
+}
+
+function isComputerPlatform(value: string | null | undefined): boolean {
+  return value === "desktop_app" || value === "web_app";
+}
+
+function isActivityAwareStretchReminder(
+  definition: Pick<
+    LifeOpsTaskDefinition,
+    "title" | "originalIntent" | "cadence"
+  > | null,
+): boolean {
+  if (!definition || definition.cadence.kind !== "interval") {
+    return false;
+  }
+  const combined = `${definition.title} ${definition.originalIntent}`.toLowerCase();
+  return combined.includes("stretch");
+}
+
+function isActivelyUsingComputer(
+  activityProfile: ReminderActivityProfileSnapshot | null,
+): boolean {
+  if (!activityProfile?.isCurrentlyActive) {
+    return false;
+  }
+  if (isComputerPlatform(activityProfile.lastSeenPlatform)) {
+    return true;
+  }
+  if (activityProfile.lastSeenPlatform === "client_chat") {
+    return (
+      isComputerPlatform(activityProfile.primaryPlatform) ||
+      isComputerPlatform(activityProfile.secondaryPlatform)
+    );
+  }
+  return false;
+}
+
+export function shouldDeferReminderUntilComputerActive(args: {
+  channel: LifeOpsReminderChannel;
+  definition: Pick<
+    LifeOpsTaskDefinition,
+    "title" | "originalIntent" | "cadence"
+  > | null;
+  activityProfile: ReminderActivityProfileSnapshot | null;
+}): boolean {
+  if (args.channel !== "in_app") {
+    return false;
+  }
+  if (!isActivityAwareStretchReminder(args.definition)) {
+    return false;
+  }
+  return !isActivelyUsingComputer(args.activityProfile);
 }
 
 /**

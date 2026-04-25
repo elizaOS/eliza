@@ -76,15 +76,15 @@ const requiredWorkflowSnippets = [
   'ELIZA_VALIDATE_CDN: "1"',
   "run: bun run release:check",
   "build-browser-companions:",
-  "name: Build LifeOps Browser companions",
-  "if bun run lifeops:browser:package:release; then",
+  "name: Build Agent Browser Bridge companions",
+  "if bun run browser-bridge:package:release; then",
   'echo "packaged=true" >> "$GITHUB_OUTPUT"',
-  "LifeOps Browser packaging failed; desktop release will continue without browser companion bundles.",
-  "name: Upload LifeOps Browser release artifacts",
-  "name: lifeops-browser-store-bundles",
+  "Agent Browser Bridge packaging failed; desktop release will continue without browser companion bundles.",
+  "name: Upload Agent Browser Bridge release artifacts",
+  "name: browser-bridge-store-bundles",
   "publish-browser-companions:",
-  "name: Publish LifeOps Browser companions",
-  "name: Attach LifeOps Browser assets to GitHub release",
+  "name: Publish Agent Browser Bridge companions",
+  "name: Attach Agent Browser Bridge assets to GitHub release",
   "GH_REPO: ${{ github.repository }}",
   "gh release upload",
   '--repo "$GH_REPO"',
@@ -125,32 +125,32 @@ const requiredWorkflowSnippets = [
   "Start-Process -FilePath $installer",
   "Extract Windows app bundle for Inno Setup",
   '$extractDir = "C:\\m"',
-  "milady-dist/entry.js found",
+  "eliza-dist/entry.js found",
   "Build Inno Setup installer",
   "packaging/inno/build-inno.ps1",
   '-BuildDir "C:\\m"',
   "Verify Windows public installer looks complete",
-  'Get-ChildItem -Path "apps/app/electrobun/artifacts" -File -Filter "Milady-Setup-*.exe"',
+  'Get-ChildItem -Path "apps/app/electrobun/artifacts" -File -Filter "ElizaOSApp-Setup-*.exe"',
   "$minimumBytes = 50MB",
   "apps/app/electrobun/artifacts/*.exe",
   "name: Prepare public canary Windows installer artifact",
   "needs.prepare.outputs.env == 'canary'",
   '$publicCanaryDir = Join-Path $artifactsDir "public-canary-installer"',
-  '$canonicalInstallers = Get-ChildItem -Path $artifactsDir -File -Filter "Milady-Setup-*.exe"',
+  '$canonicalInstallers = Get-ChildItem -Path $artifactsDir -File -Filter "ElizaOSApp-Setup-*.exe"',
   "Copy-Item $canonicalInstaller.FullName -Destination $publicCanaryDir -Force",
-  '$canonicalInstallerZips = Get-ChildItem -Path $artifactsDir -File -Filter "Milady-Setup-*.exe.zip"',
+  '$canonicalInstallerZips = Get-ChildItem -Path $artifactsDir -File -Filter "ElizaOSApp-Setup-*.exe.zip"',
   "No canonical Windows installer (or zip fallback) found for canary artifact publishing.",
   "Expand-Archive -Path $canonicalInstallerZip.FullName -DestinationPath $publicCanaryDir -Force",
   "Prepared public canary installer artifact:",
   "name: Upload public canary installer artifact",
   "name: electrobun-$" + "{{ matrix.platform.artifact-name }}-public-installer",
-  "path: apps/app/electrobun/artifacts/public-canary-installer/Milady-Setup-*.exe",
+  "path: apps/app/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe",
   "name: Collect public release files",
-  '-name "Milady-Setup-*.exe" -o \\',
-  '-name "Milady-Setup-*.exe.zip" -o \\',
+  '-name "ElizaOSApp-Setup-*.exe" -o \\',
+  '-name "ElizaOSApp-Setup-*.exe.zip" -o \\',
   '-name "*Setup*.tar.gz" -o \\',
   "name: Collect update channel files",
-  "pattern: lifeops-browser-*",
+  "pattern: browser-bridge-*",
   '-name "*.tar.zst" -o \\',
   '-name "*-update.json" \\',
   "DMG attach attempt $attempt/5 failed",
@@ -441,6 +441,31 @@ function withSanitizedNpmOverrides<T>(fn: () => T): T {
   }
 }
 
+function runBunPackDry(): PackResult[] {
+  try {
+    const raw = execSync("bun pm pack --dry-run --ignore-scripts", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      maxBuffer: 1024 * 1024 * 100,
+    });
+    return parseBunPackDryRunOutput(raw);
+  } catch (bunError) {
+    const bunOutput = `${(bunError as { stdout?: string }).stdout ?? ""}\n${
+      (bunError as { stderr?: string }).stderr ?? ""
+    }`;
+    if (
+      bunOutput.includes("Duplicate package path") ||
+      bunOutput.includes("InvalidPackageKey")
+    ) {
+      console.warn(
+        "release-check: bun pm pack --dry-run failed with a known Bun 1.3.11 lockfile parser error; returning empty file list (CI contract suite will still validate workflow snippets).",
+      );
+      return [{ files: [] }];
+    }
+    throw bunError;
+  }
+}
+
 function runPackDry(): PackResult[] {
   return withSanitizedNpmOverrides(() => {
     try {
@@ -452,38 +477,15 @@ function runPackDry(): PackResult[] {
       return JSON.parse(raw) as PackResult[];
     } catch (error) {
       if (!isNpmOverrideConflictError(error)) {
-        throw error;
+        console.warn(
+          "release-check: npm pack --dry-run failed without an override conflict; retrying with bun pm pack --dry-run.",
+        );
       }
 
-      // Last-resort fallback if sanitizing didn't resolve the
-      // EOVERRIDE (e.g. npm found a different override conflict).
-      // `bun pm pack --dry-run` trips over the Bun 1.3.11 lockfile
-      // parser bug (Duplicate package path at bun.lock:2034:5) under
-      // SKIP_LOCAL_UPSTREAMS, so we try it last and tolerate the
-      // parser failure by treating it as a soft-skip — the
-      // snapshot's file/dependency assertions still run against the
-      // cached PackResult from a normal local/CI build.
-      try {
-        const raw = execSync("bun pm pack --dry-run --ignore-scripts", {
-          encoding: "utf8",
-          stdio: ["ignore", "pipe", "pipe"],
-          maxBuffer: 1024 * 1024 * 100,
-        });
-        return parseBunPackDryRunOutput(raw);
-      } catch (bunError) {
-        const bunOutput =
-          (bunError as { stderr?: string; stdout?: string }).stderr ?? "";
-        if (
-          bunOutput.includes("Duplicate package path") ||
-          bunOutput.includes("InvalidPackageKey")
-        ) {
-          console.warn(
-            "release-check: bun pm pack --dry-run failed with a known Bun 1.3.11 lockfile parser error; returning empty file list (CI contract suite will still validate workflow snippets).",
-          );
-          return [{ files: [] }];
-        }
-        throw bunError;
-      }
+      // Fallback when npm pack cannot materialize the publish snapshot.
+      // In CI rewrite mode npm can fail without surfacing a diagnostic,
+      // while `bun pm pack --dry-run` still returns the publish file list.
+      return runBunPackDry();
     }
   });
 }
@@ -566,6 +568,22 @@ export function findFloatingDependencySpecs(
   return dependencyNames.flatMap((name) => {
     const specifier = dependencies[name];
     if (!isExactVersionSpecifier(specifier)) {
+      return [{ name, specifier: specifier ?? "<missing>" }];
+    }
+
+    return [];
+  });
+}
+
+export function findNonWorkspaceDependencySpecs(
+  pkg: RootPackageJson,
+  dependencyNames: readonly string[],
+): Array<{ name: string; specifier: string }> {
+  const dependencies = pkg.dependencies ?? {};
+
+  return dependencyNames.flatMap((name) => {
+    const specifier = dependencies[name];
+    if (specifier !== "workspace:*") {
       return [{ name, specifier: specifier ?? "<missing>" }];
     }
 
@@ -748,23 +766,23 @@ function assertOrchestratorVersionPinned() {
   }
 }
 
-function assertCloudAgentTemplateDependenciesPinned() {
+function assertCloudAgentTemplateDependenciesUseWorkspace() {
   const cloudAgentPackage = JSON.parse(
     readFileSync(
       "eliza/packages/app-core/deploy/cloud-agent-template/package.json",
       "utf8",
     ),
   ) as RootPackageJson;
-  const floating = findFloatingDependencySpecs(
+  const nonWorkspace = findNonWorkspaceDependencySpecs(
     cloudAgentPackage,
     cloudAgentTemplateReleaseDependencies,
   );
 
-  if (floating.length > 0) {
+  if (nonWorkspace.length > 0) {
     console.error(
-      "release-check: eliza/packages/app-core/deploy/cloud-agent-template/package.json must pin release dependencies to exact versions.",
+      "release-check: eliza/packages/app-core/deploy/cloud-agent-template/package.json must use workspace:* for repo-local elizaOS dependencies. Materialize exact npm versions only at the deploy/publish boundary.",
     );
-    for (const dependency of floating) {
+    for (const dependency of nonWorkspace) {
       console.error(`  - ${dependency.name}: ${dependency.specifier}`);
     }
     process.exit(1);
@@ -900,9 +918,12 @@ function assertElectrobunConfigHasPostWrapSigner() {
 }
 
 function assertMacArtifactStagerLooksCorrect() {
-  const script = readElectrobunFile("scripts", "stage-macos-release-artifacts.sh");
+  const script = readElectrobunFile(
+    "scripts",
+    "stage-macos-release-artifacts.sh",
+  );
   const requiredSnippets = [
-    'find "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst"',
+    'find -L "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst"',
     "no macOS updater tarball found",
     'DIRECT_LAUNCHER_SOURCE="$SCRIPT_DIR/macos-direct-launcher.c"',
     'codesign -d --entitlements :- "$STAGED_APP_PATH"',
@@ -1304,7 +1325,7 @@ function main() {
   maybeValidateCdnAssets();
   assertBundledAgentOrchestratorInstallFix();
   assertOrchestratorVersionPinned();
-  assertCloudAgentTemplateDependenciesPinned();
+  assertCloudAgentTemplateDependenciesUseWorkspace();
   assertAgentDependenciesAlignedWithRootPins();
   const localHotspots = findLocalPackHotspots();
   if (shouldSkipExactPackDryRun(localHotspots)) {

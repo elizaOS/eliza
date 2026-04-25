@@ -60,9 +60,9 @@ async function resolveBuiltInFallbackAction(
       "@elizaos/app-lifeops/selfcontrol"
     )
       .then((mod) => ({
-        BLOCK_WEBSITES: mod.selfControlBlockWebsitesAction,
+        BLOCK_WEBSITES: mod.blockWebsitesAction,
         REQUEST_WEBSITE_BLOCKING_PERMISSION:
-          mod.selfControlRequestPermissionAction,
+          mod.requestWebsiteBlockingPermissionAction,
       }))
       .catch(() => null);
   }
@@ -960,8 +960,8 @@ export async function maybeHandleDirectBinanceSkillRequest(
         handler?: (...args: unknown[]) => unknown;
       }>)
     : [];
-  const runSkillAction = runtimeActions.find(
-    (action) => action.name === "RUN_SKILL_SCRIPT",
+  const useSkillAction = runtimeActions.find(
+    (action) => action.name === "USE_SKILL",
   );
   const command = resolveDirectBinanceScriptCommand(skillSlug, userText);
   if (!command) {
@@ -971,7 +971,7 @@ export async function maybeHandleDirectBinanceSkillRequest(
     appendIncomingText(command.text);
     return command.text;
   }
-  if (typeof runSkillAction?.handler === "function") {
+  if (typeof useSkillAction?.handler === "function") {
     // Stream a loading hint so the user sees immediate feedback
     const loadingHints: Record<string, string> = {
       "binance-meme-rush": "Fetching meme tokens from Binance...",
@@ -987,7 +987,7 @@ export async function maybeHandleDirectBinanceSkillRequest(
     runtime.logger?.info(
       {
         src: "eliza-api",
-        action: "RUN_SKILL_SCRIPT",
+        action: "USE_SKILL",
         skillSlug,
         script: command.script,
         args: command.args,
@@ -995,12 +995,13 @@ export async function maybeHandleDirectBinanceSkillRequest(
       `[eliza-api] Direct Binance script dispatch: ${skillSlug}/${command.script}`,
     );
     const runResult = await Promise.resolve(
-      runSkillAction.handler(
+      useSkillAction.handler(
         runtime,
         message,
         undefined,
         {
-          skillSlug,
+          slug: skillSlug,
+          mode: "script",
           script: command.script,
           args: command.args,
         },

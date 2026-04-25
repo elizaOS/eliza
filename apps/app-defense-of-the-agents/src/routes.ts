@@ -121,10 +121,26 @@ interface SessionContext {
   apiBaseUrl: string;
   apiKey?: string;
   agentName: string;
+  /**
+   * Stable per-runtime identifier — preferred over `agentName` for keying
+   * per-session state. Null when no runtime is attached (e.g. background
+   * health probes). Two runtimes that happen to share a character name
+   * must not share a cache entry.
+   */
+  agentId: string | null;
   preferredGameId?: number;
   defaultHeroClass: HeroClass;
   defaultLane: HeroLane;
   runtime: IAgentRuntime | null;
+}
+
+/**
+ * Cache key for per-session state. Prefers `agentId` so concurrent runtimes
+ * sharing a character name (test fixtures, multi-agent setups) get isolated
+ * cache entries; falls back to `agentName` when no runtime is attached.
+ */
+function sessionCacheKey(ctx: SessionContext): string {
+  return ctx.agentId ?? `name:${ctx.agentName}`;
 }
 
 interface LocatedHeroState {
@@ -400,6 +416,7 @@ function resolveSessionContext(
   runtime: IAgentRuntime | null,
   explicitSessionId?: string | null,
 ): SessionContext {
+  const agentId = asRuntimeLike(runtime)?.agentId;
   return {
     apiBaseUrl: (
       resolveSettingLike(runtime, "DEFENSE_OF_THE_AGENTS_API_URL") ??
@@ -407,6 +424,7 @@ function resolveSessionContext(
     ).replace(/\/+$/, ""),
     apiKey: resolveSettingLike(runtime, "DEFENSE_OF_THE_AGENTS_API_KEY"),
     agentName: resolveAgentName(runtime, explicitSessionId),
+    agentId: typeof agentId === "string" && agentId.length > 0 ? agentId : null,
     preferredGameId: normalizeGameId(
       resolveSettingLike(runtime, "DEFENSE_OF_THE_AGENTS_GAME_ID"),
     ),
@@ -445,10 +463,7 @@ function absolutizeViewerHtmlAssetUrls(
     );
 }
 
-function buildViewerShellInjection(
-  agentName: string,
-  viewerUrl: string,
-): string {
+function buildViewerShellInjection(viewerUrl: string): string {
   const viewerBaseUrl = new URL("./", viewerUrl).toString();
 
   return `<base id="eliza-defense-viewer-base" href="${viewerBaseUrl}">
@@ -480,49 +495,9 @@ html, body { background: #000 !important; }
 #bottom-hud {
   transform: translateX(-50%) !important;
 }
-#eliza-defense-spectator-banner {
-  position: fixed;
-  top: 14px;
-  left: 14px;
-  z-index: 2200;
-  max-width: min(420px, calc(100vw - 28px));
-  padding: 14px 16px;
-  border: 1px solid rgba(252, 211, 18, 0.35);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(14, 12, 8, 0.96), rgba(7, 6, 4, 0.92));
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
-  color: #f6ead2;
-  font: 12px "Friz Quadrata", "Palatino Linotype", serif;
-}
-#eliza-defense-spectator-banner .eliza-defense-title {
-  color: #fcd312;
-  font-size: 15px;
-  margin-bottom: 6px;
-}
-#eliza-defense-spectator-banner .eliza-defense-body {
-  color: rgba(246, 234, 210, 0.82);
-  line-height: 1.5;
-}
-#eliza-defense-spectator-banner .eliza-defense-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-top: 10px;
-  padding: 7px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(252, 211, 18, 0.4);
-  color: #fcd312;
-  text-decoration: none;
-  background: rgba(63, 48, 12, 0.48);
-}
-#eliza-defense-spectator-banner .eliza-defense-link:hover {
-  background: rgba(92, 70, 17, 0.62);
-}
 </style>
 <script id="eliza-defense-embedded-bootstrap">
 (() => {
-  const agentName = ${JSON.stringify(agentName)};
-  const fullSiteUrl = ${JSON.stringify(viewerUrl)};
   const hiddenIds = [
     "landing-overlay",
     "auth-modal",
@@ -568,40 +543,6 @@ html, body { background: #000 !important; }
       changed = true;
     }
     return changed;
-  };
-
-  const ensureBanner = () => {
-    if (
-      document.getElementById("eliza-defense-spectator-banner") ||
-      !document.body
-    ) {
-      return false;
-    }
-
-    const banner = document.createElement("div");
-    banner.id = "eliza-defense-spectator-banner";
-
-    const title = document.createElement("div");
-    title.className = "eliza-defense-title";
-    title.textContent = agentName
-      ? "Watching " + agentName
-      : "Watching Defense of the Agents";
-
-    const body = document.createElement("div");
-    body.className = "eliza-defense-body";
-    body.textContent =
-      "Eliza is steering this agent from the adjacent panel. Open the full site if you want to log in or join the battle yourself.";
-
-    const link = document.createElement("a");
-    link.className = "eliza-defense-link";
-    link.href = fullSiteUrl;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = "Open Full Game";
-
-    banner.append(title, body, link);
-    document.body.appendChild(banner);
-    return true;
   };
 
   const scheduleEmbeddedViewerMode = () => {
@@ -650,8 +591,6 @@ html, body { background: #000 !important; }
       if (document.documentElement.dataset.elizaDefenseViewer !== "embedded") {
         document.documentElement.dataset.elizaDefenseViewer = "embedded";
       }
-
-      ensureBanner();
     } finally {
       observerApplying = false;
       if (observerPending) {
@@ -707,10 +646,7 @@ async function buildEmbeddedViewerHtml(
   }
 
   const absolutizedHtml = absolutizeViewerHtmlAssetUrls(html, viewerUrl);
-  const injection = buildViewerShellInjection(
-    resolveAgentName(runtime, null),
-    viewerUrl,
-  );
+  const injection = buildViewerShellInjection(viewerUrl);
 
   if (absolutizedHtml.includes("</head>")) {
     return absolutizedHtml.replace("</head>", `${injection}</head>`);
@@ -1433,6 +1369,21 @@ function stopGameLoop(runtime: IAgentRuntime | null): void {
   persistSetting(runtime, AUTOPLAY_SETTING, "0");
 }
 
+/**
+ * Flush every per-agent in-memory cache for a stopped run. Called from
+ * `stopRun` so a relaunch starts from a clean slate instead of inheriting
+ * 15s of stale session state or a stale launch-failure marker. The
+ * shared `gameStateCache` (keyed by API + gameId) is left alone — it
+ * benefits other agents pointed at the same game.
+ */
+function clearAgentRunState(ctx: SessionContext): void {
+  if (ctx.agentId) {
+    recentActivity.delete(ctx.agentId);
+  }
+  sessionStateCache.delete(sessionCacheKey(ctx));
+  recentLaunchFailures.delete(ctx.agentName);
+}
+
 function isAutoPlayActive(runtime: IAgentRuntime | null): boolean {
   const agentId = asRuntimeLike(runtime)?.agentId;
   if (!agentId) return false;
@@ -1728,6 +1679,46 @@ function buildUnavailableSession(
   };
 }
 
+function readCachedSessionState(ctx: SessionContext): AppSessionState | null {
+  return sessionStateCache.get(sessionCacheKey(ctx))?.session ?? null;
+}
+
+function clearCachedSessionState(ctx: SessionContext): void {
+  sessionStateCache.delete(sessionCacheKey(ctx));
+}
+
+function buildCommandOnlySessionState(ctx: SessionContext): AppSessionState {
+  const agentId = asRuntimeLike(ctx.runtime)?.agentId;
+  return {
+    sessionId: ctx.agentName,
+    appName: APP_NAME,
+    mode: "spectate-and-steer",
+    status: "ready",
+    displayName: APP_DISPLAY_NAME,
+    agentId,
+    canSendCommands: Boolean(
+      ctx.apiKey ?? process.env.DEFENSE_OF_THE_AGENTS_API_KEY,
+    ),
+    controls: [],
+    summary:
+      "Strategy note recorded. Open the live viewer for current battlefield state.",
+    goalLabel:
+      "Use autoplay, lane, recall, or ability commands for direct play.",
+    suggestedPrompts: ["Autoplay on", "Recall", "Go mid", "Use Fireball"],
+    telemetry: {
+      apiBaseUrl: ctx.apiBaseUrl,
+      viewerUrl: resolveViewerUrl(ctx.runtime),
+      preferredGameId: ctx.preferredGameId ?? null,
+      autoPlay: isAutoPlayActive(ctx.runtime),
+      recentActivity: getRecentActivity(agentId).map((entry) => ({
+        ts: entry.ts,
+        action: entry.action,
+        detail: entry.detail,
+      })),
+    },
+  };
+}
+
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/[_-]+/g, " ");
 }
@@ -1797,6 +1788,26 @@ function parseStructuredDeployment(
   } catch {
     return null;
   }
+}
+
+function isDeploymentControlCommand(
+  content: string,
+  hero: DefenseHero | null,
+): boolean {
+  const trimmed = content.trim();
+  if (parseStructuredDeployment(trimmed)) return true;
+  if (parseExplicitMessage(trimmed)) return true;
+
+  const normalized = normalizeText(trimmed);
+  if (
+    /\b(melee|ranged|mage|top|mid|middle|bot|bottom|recall|heal|base|retreat)\b/.test(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+
+  return Boolean(parseAbilityChoice(trimmed, hero));
 }
 
 function parseDeploymentCommand(
@@ -1897,7 +1908,7 @@ async function readSessionState(
   autoJoin = false,
 ): Promise<AppSessionState> {
   const ctx = resolveSessionContext(runtime, sessionId);
-  const cacheKey = ctx.agentName;
+  const cacheKey = sessionCacheKey(ctx);
 
   // Return fresh cache if within TTL (prevents hammering remote API on UI polls)
   const cached = sessionStateCache.get(cacheKey);
@@ -2011,6 +2022,35 @@ export async function refreshRunSession(
   }
 }
 
+/**
+ * Called by the host app-manager when a Defense of the Agents run is
+ * stopped — explicitly via the Stop button, or implicitly by the
+ * stale-run sweeper when the UI heartbeat goes silent. Stops the
+ * auto-play game loop, the strategy-review timer, and flushes every
+ * per-agent cache so a relaunch starts clean.
+ *
+ * Idempotent: every step is a no-op if the resource is already gone.
+ */
+export async function stopRun(ctx: { runtime: unknown | null }): Promise<void> {
+  const runtime = ctx.runtime as IAgentRuntime | null;
+  try {
+    stopGameLoop(runtime);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[app-defense-of-the-agents] stopRun: stopGameLoop failed: ${msg}`,
+    );
+  }
+  try {
+    clearAgentRunState(resolveSessionContext(runtime, null));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(
+      `[app-defense-of-the-agents] stopRun: clearAgentRunState failed: ${msg}`,
+    );
+  }
+}
+
 export async function collectLaunchDiagnostics(ctx: {
   runtime: IAgentRuntime | null;
   session: AppSessionState | null;
@@ -2108,6 +2148,7 @@ export async function handleAppRoutes(ctx: {
       if (normalizedCmd === "autoplay on" || normalizedCmd === "auto play on") {
         const sessionCtx = resolveSessionContext(runtime, sessionId);
         startGameLoop(runtime, sessionCtx);
+        clearCachedSessionState(sessionCtx);
         if (cmdAgentId)
           pushActivity(cmdAgentId, "auto-play-on", "Auto-play enabled");
         const refreshed = await readSessionState(runtime, sessionId);
@@ -2125,7 +2166,9 @@ export async function handleAppRoutes(ctx: {
         normalizedCmd === "autoplay off" ||
         normalizedCmd === "auto play off"
       ) {
+        const sessionCtx = resolveSessionContext(runtime, sessionId);
         stopGameLoop(runtime);
+        clearCachedSessionState(sessionCtx);
         if (cmdAgentId)
           pushActivity(cmdAgentId, "auto-play-off", "Auto-play disabled");
         const refreshed = await readSessionState(runtime, sessionId);
@@ -2186,6 +2229,28 @@ export async function handleAppRoutes(ctx: {
       }
 
       const sessionCtx = resolveSessionContext(runtime, sessionId);
+
+      if (!isDeploymentControlCommand(content, null)) {
+        if (cmdAgentId) {
+          pushActivity(
+            cmdAgentId,
+            "strategy-note",
+            `Strategy note: ${content.slice(0, 120)}`,
+          );
+        }
+        const refreshed =
+          readCachedSessionState(sessionCtx) ??
+          buildCommandOnlySessionState(sessionCtx);
+        ctx.json(
+          ctx.res,
+          okResponse(
+            true,
+            "Strategy note recorded. Use lane, recall, ability, or autoplay commands for direct control.",
+            refreshed,
+          ),
+        );
+        return true;
+      }
 
       // If we have a preferred game, do a single fast fetch to get hero state.
       // If not (first deploy), skip the scan to avoid rate limits — deploy
@@ -2284,7 +2349,9 @@ export async function handleAppRoutes(ctx: {
 // ---------------------------------------------------------------------------
 
 export {
+  activeLoops,
   buildReviewSummary,
+  clearAgentRunState,
   DEFAULT_STRATEGY,
   executeStrategyTick,
   findWeakestAlliedLane,
@@ -2294,10 +2361,14 @@ export {
   persistBestStrategy,
   persistStrategy,
   pickAbility,
+  recentActivity,
   resetInMemoryStateForTests,
   resolveBestStrategy,
+  resolveSessionContext,
   resolveStrategy,
   runStrategyReview,
+  sessionCacheKey,
+  sessionStateCache,
   type StrategyMetrics,
   scoreStrategy,
   startGameLoop,

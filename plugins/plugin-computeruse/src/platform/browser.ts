@@ -11,15 +11,15 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { currentPlatform } from "./helpers.js";
+import { join } from "node:path";
 import type {
   BrowserInfo,
   BrowserState,
   BrowserTab,
   ClickableElement,
 } from "../types.js";
+import { currentPlatform } from "./helpers.js";
 
 // Lazy-load puppeteer-core so the plugin still loads if it's not installed
 let puppeteer: typeof import("puppeteer-core") | null = null;
@@ -45,6 +45,7 @@ let browser: Browser | null = null;
 let activePage: Page | null = null;
 let tempUserDataDir: string | null = null;
 let browserHeadless = false;
+const BROWSER_LAUNCH_ATTEMPTS = 3;
 
 export function setBrowserRuntimeOptions(options: {
   headless?: boolean;
@@ -52,6 +53,12 @@ export function setBrowserRuntimeOptions(options: {
   if (typeof options.headless === "boolean") {
     browserHeadless = options.headless;
   }
+}
+
+function envFlagEnabled(value: string | undefined): boolean {
+  if (!value) return false;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 // ── Browser Detection ───────────────────────────────────────────────────────
@@ -79,7 +86,8 @@ function detectBrowserPath(): string | null {
     );
   } else if (os === "win32") {
     const programFiles = process.env.PROGRAMFILES || "C:\\Program Files";
-    const programFilesX86 = process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
+    const programFilesX86 =
+      process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
     const localAppData = process.env.LOCALAPPDATA || "";
     candidates.push(
       join(programFiles, "Google\\Chrome\\Application\\chrome.exe"),
@@ -87,7 +95,10 @@ function detectBrowserPath(): string | null {
       join(localAppData, "Google\\Chrome\\Application\\chrome.exe"),
       join(programFiles, "Microsoft\\Edge\\Application\\msedge.exe"),
       join(programFilesX86, "Microsoft\\Edge\\Application\\msedge.exe"),
-      join(programFiles, "BraveSoftware\\Brave-Browser\\Application\\brave.exe"),
+      join(
+        programFiles,
+        "BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+      ),
     );
   }
 
@@ -165,42 +176,73 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
     await closeBrowser();
   }
 
-  // Create temp user data directory to prevent conflicts
-  tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
+  const isCi =
+    process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+  const launchArgs = [
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-infobars",
+    `--window-size=1280,900`,
+  ];
+  if (isCi) {
+    launchArgs.push(
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+    );
+  }
+  let lastError: unknown = null;
 
-  browser = await pup.default.launch({
-    executablePath,
-    headless: browserHeadless,
-    userDataDir: tempUserDataDir,
-    args: [
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-infobars",
-      `--window-size=1280,900`,
-    ],
-    defaultViewport: { width: 1280, height: 900 },
-  });
+  for (let attempt = 1; attempt <= BROWSER_LAUNCH_ATTEMPTS; attempt += 1) {
+    tempUserDataDir = await mkdtemp(join(tmpdir(), "computeruse-browser-"));
 
-  const pages = await browser.pages();
-  activePage = pages[0] ?? (await browser.newPage());
+    try {
+      browser = await pup.default.launch({
+        executablePath,
+        headless: browserHeadless,
+        userDataDir: tempUserDataDir,
+        args: launchArgs,
+        defaultViewport: { width: 1280, height: 900 },
+      });
 
-  if (url) {
-    await activePage.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+      const pages = await browser.pages();
+      activePage = pages[0] ?? (await browser.newPage());
+
+      if (url) {
+        await activePage.goto(url, {
+          waitUntil: "domcontentloaded",
+          timeout: 30000,
+        });
+      }
+
+      return {
+        url: activePage.url(),
+        title: await activePage.title(),
+        isOpen: true,
+        is_open: true,
+      };
+    } catch (error) {
+      lastError = error;
+      await closeBrowser();
+      if (attempt < BROWSER_LAUNCH_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+      }
+    }
   }
 
-  return {
-    url: activePage.url(),
-    title: await activePage.title(),
-    isOpen: true,
-    is_open: true,
-  };
+  const message =
+    lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Failed to launch browser after retries: ${message}`);
 }
 
 export async function closeBrowser(): Promise<void> {
   if (browser) {
     try {
       await browser.close();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     browser = null;
     activePage = null;
   }
@@ -208,7 +250,9 @@ export async function closeBrowser(): Promise<void> {
   if (tempUserDataDir) {
     try {
       await rm(tempUserDataDir, { recursive: true, force: true });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     tempUserDataDir = null;
   }
 }
@@ -253,7 +297,9 @@ export async function clickBrowser(
       }
       return null;
     }, text);
-    const element = el.asElement() as import("puppeteer-core").ElementHandle<Element> | null;
+    const element = el.asElement() as
+      | import("puppeteer-core").ElementHandle<Element>
+      | null;
     if (!element) {
       await el.dispose();
       throw new Error(`Element with text "${text}" not found`);
@@ -261,7 +307,9 @@ export async function clickBrowser(
     await element.click();
     await el.dispose();
   } else {
-    throw new Error("selector, coordinate, or text is required for browser click");
+    throw new Error(
+      "selector, coordinate, or text is required for browser click",
+    );
   }
 }
 
@@ -343,7 +391,8 @@ export async function getBrowserDom(): Promise<string> {
 export async function getBrowserClickables(): Promise<ClickableElement[]> {
   const page = await ensureBrowser();
   return page.evaluate(() => {
-    const selectors = "a, button, input, select, textarea, [role='button'], [role='link'], [onclick]";
+    const selectors =
+      "a, button, input, select, textarea, [role='button'], [role='link'], [onclick]";
     const elements = document.querySelectorAll(selectors);
     const result: Array<{
       tag: string;
@@ -359,9 +408,10 @@ export async function getBrowserClickables(): Promise<ClickableElement[]> {
       const tag = el.tagName.toLowerCase();
       const text = (el.textContent ?? "").trim().slice(0, 100);
       const id = el.id ? `#${el.id}` : "";
-      const cls = el.className && typeof el.className === "string"
-        ? `.${el.className.split(" ").filter(Boolean).join(".")}`
-        : "";
+      const cls =
+        el.className && typeof el.className === "string"
+          ? `.${el.className.split(" ").filter(Boolean).join(".")}`
+          : "";
       result.push({
         tag,
         text,
@@ -388,18 +438,15 @@ export async function screenshotBrowser(): Promise<string> {
 export async function executeBrowser(code: string): Promise<string> {
   const page = await ensureBrowser();
   try {
-    const result = await page.evaluate(
-      async (script) => {
-        const AsyncFunction = Object.getPrototypeOf(
-          async function placeholder() {
-            // noop
-          },
-        ).constructor as new (...args: string[]) => (...fnArgs: unknown[]) => Promise<unknown>;
-        const fn = new AsyncFunction(script);
-        return await fn();
-      },
-      code,
-    );
+    const result = await page.evaluate(async (script) => {
+      const AsyncFunction = Object.getPrototypeOf(async function placeholder() {
+        // noop
+      }).constructor as new (
+        ...args: string[]
+      ) => (...fnArgs: unknown[]) => Promise<unknown>;
+      const fn = new AsyncFunction(script);
+      return await fn();
+    }, code);
     return JSON.stringify(result, null, 2);
   } catch (err) {
     throw err instanceof Error ? err : new Error(String(err));
@@ -423,7 +470,31 @@ export async function waitBrowser(
       text,
     );
   } else {
-    await new Promise((resolve) => setTimeout(resolve, Math.min(timeout, 5000)));
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(timeout, 5000)),
+    );
+  }
+}
+
+export async function browserWait(
+  selector?: string,
+  text?: string,
+  timeout = 5000,
+): Promise<{ success: boolean; message?: string; error?: string }> {
+  try {
+    await waitBrowser(selector, text, timeout);
+    if (selector) {
+      return { success: true, message: `Element "${selector}" found` };
+    }
+    if (text) {
+      return { success: true, message: `Text "${text}" found on page` };
+    }
+    return { success: true, message: `Waited ${Math.min(timeout, 5000)}ms` };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -489,3 +560,24 @@ export async function switchBrowserTab(tabId: string): Promise<BrowserState> {
     is_open: true,
   };
 }
+
+export const browser_open = openBrowser;
+export const browser_connect = openBrowser;
+export const browser_navigate = navigateBrowser;
+export const browser_click = clickBrowser;
+export const browser_type = typeBrowser;
+export const browser_scroll = scrollBrowser;
+export const browser_close = closeBrowser;
+export const browser_execute = executeBrowser;
+export const browser_screenshot = screenshotBrowser;
+export const browser_dom = getBrowserDom;
+export const browser_get_dom = getBrowserDom;
+export const browser_get_clickables = getBrowserClickables;
+export const browser_state = getBrowserState;
+export const browser_get_context = getBrowserContext;
+export const browser_info = getBrowserInfo;
+export const browser_wait = browserWait;
+export const browser_list_tabs = listBrowserTabs;
+export const browser_open_tab = openBrowserTab;
+export const browser_close_tab = closeBrowserTab;
+export const browser_switch_tab = switchBrowserTab;

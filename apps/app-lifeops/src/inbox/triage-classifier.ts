@@ -3,79 +3,21 @@ import { logger, ModelType } from "@elizaos/core";
 import type {
   InboundMessage,
   InboxTriageConfig,
-  InboxTriageRules,
   TriageClassification,
   TriageExample,
   TriageResult,
 } from "./types.js";
 
 // ---------------------------------------------------------------------------
-// Rule-based pre-classification
-// ---------------------------------------------------------------------------
-
-/**
- * Check if a message matches any rule-based override before hitting the LLM.
- * Returns a classification if matched, null if the LLM should decide.
- */
-export function applyTriageRules(
-  message: InboundMessage,
-  rules: InboxTriageRules | undefined,
-  _config: InboxTriageConfig | undefined,
-): TriageClassification | null {
-  if (!rules) return null;
-
-  const text = message.text.toLowerCase();
-  const senderId = message.entityId ?? "";
-  const channelName = message.channelName.toLowerCase();
-  const source = message.source.toLowerCase();
-
-  for (const pattern of rules.alwaysUrgent ?? []) {
-    if (matchesRule(pattern, text, senderId, channelName, source)) {
-      return "urgent";
-    }
-  }
-  for (const pattern of rules.alwaysIgnore ?? []) {
-    if (matchesRule(pattern, text, senderId, channelName, source)) {
-      return "ignore";
-    }
-  }
-  for (const pattern of rules.alwaysNotify ?? []) {
-    if (matchesRule(pattern, text, senderId, channelName, source)) {
-      return "notify";
-    }
-  }
-
-  return null;
-}
-
-function matchesRule(
-  pattern: string,
-  text: string,
-  senderId: string,
-  channelName: string,
-  source: string,
-): boolean {
-  const [prefix, value] = pattern.split(":", 2);
-  if (!value) return false;
-  const lowerValue = value.toLowerCase();
-
-  switch (prefix.toLowerCase()) {
-    case "keyword":
-      return text.includes(lowerValue);
-    case "sender":
-      return senderId.toLowerCase() === lowerValue;
-    case "channel":
-      return channelName.includes(lowerValue);
-    case "source":
-      return source === lowerValue;
-    default:
-      return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // LLM-based classification
 // ---------------------------------------------------------------------------
+
+export class InboxTriageClassificationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InboxTriageClassificationError";
+  }
+}
 
 /**
  * Classify a batch of messages using the LLM. Returns one TriageResult per
@@ -121,14 +63,16 @@ async function classifyBatch(
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     rawResponse = typeof result === "string" ? result : "";
   } catch (error) {
-    logger.warn("[inbox-classifier] LLM classification failed:", String(error));
-    // Fall back: classify everything as "notify" with low confidence
-    return messages.map(() => ({
-      classification: "notify" as const,
-      urgency: "low" as const,
-      confidence: 0.3,
-      reasoning: "LLM classification unavailable; defaulting to notify",
-    }));
+    logger.warn(
+      {
+        src: "inbox-classifier",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[InboxTriageClassifier] LLM classification failed",
+    );
+    throw new InboxTriageClassificationError(
+      "Inbox classification model call failed.",
+    );
   }
 
   return parseTriageResults(rawResponse, messages.length);
@@ -195,8 +139,7 @@ function buildTriagePrompt(
 
   // Messages to classify
   sections.push("", "## Messages to classify:", "");
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
+  for (const [index, msg] of messages.entries()) {
     const gmailHints: string[] = [];
     if (msg.gmailIsImportant) gmailHints.push("Gmail-marked-important");
     if (msg.gmailLikelyReplyNeeded)
@@ -204,7 +147,7 @@ function buildTriagePrompt(
     const hintsStr = gmailHints.length > 0 ? ` [${gmailHints.join(", ")}]` : "";
 
     sections.push(
-      `### Message ${i + 1}`,
+      `### Message ${index + 1}`,
       `Source: ${msg.source} | Channel: ${msg.channelName} (${msg.channelType}) | From: ${msg.senderName}${hintsStr}`,
       `Text: ${msg.text.slice(0, 500)}`,
     );
@@ -218,54 +161,98 @@ function buildTriagePrompt(
     "Respond with a JSON array of objects, one per message, in order. Each object must have:",
     '{ "classification": "...", "urgency": "...", "confidence": 0.0-1.0, "reasoning": "...", "suggestedResponse": "..." }',
     "",
-    "Return ONLY the JSON array, no other text.",
+    "Return ONLY a bare JSON array — no prose, no markdown, no code fences, no <think>.",
+    "The response must start with [ and end with ].",
   );
 
   return sections.join("\n");
+}
+
+// Strip a surrounding markdown code fence from the model output, e.g.
+// ```json\n[...]\n``` or ```\n[...]\n```. This is purely about tolerating
+// common model formatting — it is NOT a semantic regex over user input.
+const TRIAGE_CODE_FENCE_PATTERN =
+  /^\s*```(?:json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+
+// Parse a JSON array returned by the classifier. We ask the model for a bare
+// array ("starts with [, ends with ]"). We tolerate code fences and leading
+// <think> blocks, but we do NOT regex-slice an array out of arbitrary prose —
+// that approach silently accepts malformed output and hides real failures.
+function parseTriageJsonArray(raw: string): unknown[] {
+  let candidate = raw.trim();
+  if (candidate.length === 0) {
+    throw new InboxTriageClassificationError(
+      "Inbox classification returned an empty response.",
+    );
+  }
+  // Strip a leading <think>...</think> block (some reasoning models emit one).
+  const thinkEnd = candidate.indexOf("</think>");
+  if (candidate.startsWith("<think>") && thinkEnd !== -1) {
+    candidate = candidate.slice(thinkEnd + "</think>".length).trim();
+  }
+  const fenced = candidate.match(TRIAGE_CODE_FENCE_PATTERN);
+  if (fenced) {
+    candidate = (fenced[1] ?? "").trim();
+  }
+  if (!candidate.startsWith("[")) {
+    throw new InboxTriageClassificationError(
+      "Inbox classification did not return a JSON array.",
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(candidate) as unknown;
+  } catch (error) {
+    logger.warn(
+      { src: "inbox-classifier", error: String(error) },
+      "[InboxTriageClassifier] failed to parse LLM classification JSON",
+    );
+    throw new InboxTriageClassificationError(
+      "Inbox classification JSON parsing failed.",
+    );
+  }
+  if (!Array.isArray(parsed)) {
+    throw new InboxTriageClassificationError(
+      "Inbox classification did not return a JSON array.",
+    );
+  }
+  return parsed;
 }
 
 function parseTriageResults(
   raw: string,
   expectedCount: number,
 ): TriageResult[] {
-  // Try to extract JSON array from the response
-  const jsonMatch = raw.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
-    logger.warn(
-      "[inbox-classifier] Could not extract JSON array from LLM response",
-    );
-    return fallbackResults(expectedCount);
-  }
+  const parsed = parseTriageJsonArray(raw);
 
-  try {
-    const parsed = JSON.parse(jsonMatch[0]) as unknown[];
-    if (!Array.isArray(parsed)) {
-      return fallbackResults(expectedCount);
+  const results: TriageResult[] = [];
+  for (let i = 0; i < expectedCount; i++) {
+    const item = parsed[i] as Record<string, unknown> | undefined;
+    if (!item || typeof item !== "object") {
+      throw new InboxTriageClassificationError(
+        "Inbox classification omitted one or more messages.",
+      );
     }
-
-    const results: TriageResult[] = [];
-    for (let i = 0; i < expectedCount; i++) {
-      const item = parsed[i] as Record<string, unknown> | undefined;
-      if (!item || typeof item !== "object") {
-        results.push(fallbackResult());
-        continue;
-      }
-      results.push({
-        classification: validClassification(item.classification) ?? "notify",
-        urgency: validUrgency(item.urgency) ?? "low",
-        confidence: validConfidence(item.confidence) ?? 0.5,
-        reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
-        suggestedResponse:
-          typeof item.suggestedResponse === "string"
-            ? item.suggestedResponse
-            : undefined,
-      });
+    const classification = validClassification(item.classification);
+    const urgency = validUrgency(item.urgency);
+    const confidence = validConfidence(item.confidence);
+    if (!classification || !urgency || confidence === null) {
+      throw new InboxTriageClassificationError(
+        "Inbox classification returned invalid structured fields.",
+      );
     }
-    return results;
-  } catch {
-    logger.warn("[inbox-classifier] Failed to parse LLM JSON response");
-    return fallbackResults(expectedCount);
+    results.push({
+      classification,
+      urgency,
+      confidence,
+      reasoning: typeof item.reasoning === "string" ? item.reasoning : "",
+      suggestedResponse:
+        typeof item.suggestedResponse === "string"
+          ? item.suggestedResponse
+          : undefined,
+    });
   }
+  return results;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,17 +289,4 @@ function validUrgency(v: unknown): "low" | "medium" | "high" | null {
 function validConfidence(v: unknown): number | null {
   if (typeof v === "number" && v >= 0 && v <= 1) return v;
   return null;
-}
-
-function fallbackResult(): TriageResult {
-  return {
-    classification: "notify",
-    urgency: "low",
-    confidence: 0.3,
-    reasoning: "Could not parse LLM classification",
-  };
-}
-
-function fallbackResults(count: number): TriageResult[] {
-  return Array.from({ length: count }, () => fallbackResult());
 }

@@ -18,7 +18,6 @@ export interface UseChatAvatarVoiceBridgeOptions {
 export function useChatAvatarVoiceBridge({
   mouthOpen,
   isSpeaking,
-  usingAudioAnalysis,
   onSpeakingChange,
 }: UseChatAvatarVoiceBridgeOptions): void {
   const prevSpeakingRef = useRef(isSpeaking);
@@ -37,5 +36,5 @@ export function useChatAvatarVoiceBridge({
         detail,
       }),
     );
-  }, [mouthOpen, isSpeaking, usingAudioAnalysis]);
+  }, [mouthOpen, isSpeaking]);
 }

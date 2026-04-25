@@ -71,6 +71,11 @@ interface ReflectionXmlResult {
 	taskCompletionReason?: string;
 }
 
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PLACEHOLDER_ENTITY_REFERENCE_PATTERN =
+	/^(entity_(initiating|being)_interaction|user(?:-\d+)?|scenarioagent(?:-agent)?|[a-z]+-agent|clinic|sms-message)$/i;
+
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -445,26 +450,38 @@ const reflectionTemplate = reflectionEvaluatorTemplate;
  * @returns {UUID} - The resolved UUID of the entity.
  * @throws {Error} - If the entity ID cannot be resolved to a valid UUID.
  */
+function normalizeEntityReference(entityId: string): string {
+	const trimmed = entityId.trim();
+	const idWrapper = trimmed.match(/^\(id:\s*([^)]+)\)$/i);
+	const unwrapped = idWrapper?.[1] ?? trimmed;
+	return unwrapped.replace(/^["'`]+|["'`]+$/g, "").trim();
+}
+
+function isPlaceholderEntityReference(entityId: string): boolean {
+	const normalized = normalizeEntityReference(entityId);
+	return (
+		normalized.length === 0 ||
+		PLACEHOLDER_ENTITY_REFERENCE_PATTERN.test(normalized)
+	);
+}
+
 function resolveEntity(entityId: string, entities: Entity[]): UUID {
+	const normalizedId = normalizeEntityReference(entityId);
 	// First try exact UUID match
-	if (
-		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-			entityId,
-		)
-	) {
-		return entityId as UUID;
+	if (UUID_PATTERN.test(normalizedId)) {
+		return normalizedId as UUID;
 	}
 
 	let entity: Entity | undefined;
 
 	// Try to match the entityId exactly
-	entity = entities.find((a) => a.id === entityId);
+	entity = entities.find((a) => a.id === normalizedId);
 	if (entity?.id) {
 		return entity.id;
 	}
 
 	// Try partial UUID match with entityId
-	entity = entities.find((a) => a.id?.includes(entityId));
+	entity = entities.find((a) => a.id?.includes(normalizedId));
 	if (entity?.id) {
 		return entity.id;
 	}
@@ -472,14 +489,22 @@ function resolveEntity(entityId: string, entities: Entity[]): UUID {
 	// Try name match as last resort
 	entity = entities.find((a) =>
 		a.names.some((n: string) =>
-			n.toLowerCase().includes(entityId.toLowerCase()),
+			n.toLowerCase().includes(normalizedId.toLowerCase()),
 		),
 	);
 	if (entity?.id) {
 		return entity.id;
 	}
 
-	throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
+	throw new Error(
+		`Could not resolve entityId "${normalizedId}" to a valid UUID`,
+	);
+}
+
+function isValidUuid(value: string): value is UUID {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+		value,
+	);
 }
 
 function formatActionResults(actionResults: ActionResult[]): string {
@@ -630,7 +655,7 @@ async function handler(
 	// Run all queries in parallel
 	const [existingRelationships, entities, knownFacts] = await Promise.all([
 		runtime.getRelationships({
-			entityIds: [message.entityId],
+			entityIds: [message.entityId, agentId],
 		}),
 		getEntityDetails({ runtime, roomId }),
 		runtime.getMemories({
@@ -641,6 +666,16 @@ async function handler(
 		}),
 	]);
 
+	// Strip bloated metadata (indicators arrays grow unbounded over time and
+	// blow the prompt past the long-context threshold). Keep only the fields
+	// the reflection LLM needs to dedupe relationships: ids, type, tags.
+	const slimRelationships = existingRelationships.map((r) => ({
+		sourceEntityId: r.sourceEntityId,
+		targetEntityId: r.targetEntityId,
+		tags: r.tags,
+		relationshipType: (r.metadata as { relationshipType?: string } | undefined)
+			?.relationshipType,
+	}));
 	const prompt = composePrompt({
 		state: {
 			...(state?.values || {}),
@@ -648,7 +683,7 @@ async function handler(
 			actionResults: formatActionResults(actionResults),
 			roomType: message.content.channelType as string,
 			entitiesInRoom: JSON.stringify(entities),
-			existingRelationships: JSON.stringify(existingRelationships),
+			existingRelationships: JSON.stringify(slimRelationships),
 			senderId: message.entityId,
 		},
 		template:
@@ -795,9 +830,27 @@ async function handler(
 	// Update or create relationships
 	for (const relationship of relationshipsArray) {
 		if (!relationship.sourceEntityId || !relationship.targetEntityId) {
-			console.warn(
-				"Skipping relationship with missing entity IDs:",
-				relationship,
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					relationship,
+				},
+				"Skipping reflection relationship with missing entity IDs",
+			);
+			continue;
+		}
+		if (
+			isPlaceholderEntityReference(relationship.sourceEntityId) ||
+			isPlaceholderEntityReference(relationship.targetEntityId)
+		) {
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					relationship,
+				},
+				"Skipping reflection relationship with placeholder entity references",
 			);
 			continue;
 		}
@@ -809,14 +862,57 @@ async function handler(
 			sourceId = resolveEntity(relationship.sourceEntityId, entities);
 			target = resolveEntity(relationship.targetEntityId, entities);
 		} catch (error) {
-			console.warn("Failed to resolve relationship entities:", error);
-			console.warn("relationship:\n", relationship);
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					error: error instanceof Error ? error.message : String(error),
+					relationship,
+				},
+				"Skipping reflection relationship with unresolved entity references",
+			);
 			continue; // Skip this relationship if we can't resolve the IDs
 		}
 
-		const existingRelationship = relationshipByPair.get(
-			`${sourceId}|${target}`,
-		);
+		if (!isValidUuid(sourceId) || !isValidUuid(target)) {
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					relationship,
+					sourceId,
+					target,
+				},
+				"Skipping reflection relationship with invalid resolved ids",
+			);
+			continue;
+		}
+
+		if (sourceId === target) {
+			runtime.logger.debug(
+				{
+					src: "plugin:advanced-capabilities:evaluator:reflection",
+					agentId: runtime.agentId,
+					relationship,
+					sourceId,
+				},
+				"Skipping self-referential reflection relationship",
+			);
+			continue;
+		}
+
+		let existingRelationship = relationshipByPair.get(`${sourceId}|${target}`);
+		if (!existingRelationship) {
+			const candidates = await runtime.getRelationships({
+				entityIds: [sourceId],
+			});
+			existingRelationship = candidates.find(
+				(r) => r.targetEntityId === target,
+			);
+			if (existingRelationship) {
+				relationshipByPair.set(`${sourceId}|${target}`, existingRelationship);
+			}
+		}
 
 		// Parse tags from comma-separated string
 		const tags = Array.isArray(relationship.tags)
@@ -842,6 +938,11 @@ async function handler(
 			);
 
 			await runtime.updateRelationship({
+				...existingRelationship,
+				tags: updatedTags,
+				metadata: updatedMetadata,
+			});
+			relationshipByPair.set(`${sourceId}|${target}`, {
 				...existingRelationship,
 				tags: updatedTags,
 				metadata: updatedMetadata,

@@ -1,56 +1,43 @@
-import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
-import { logger, stringToUuid } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { loadLifeOpsAppState } from "./app-state.js";
+import {
+  LIFEOPS_TASK_NAME,
+  resolveLifeOpsTaskIntervalMs,
+} from "./scheduler-task.js";
 import { LifeOpsService } from "./service.js";
-import { readTwilioCredentialsFromEnv } from "./twilio.js";
 
-export const LIFEOPS_TASK_NAME = "LIFEOPS_SCHEDULER" as const;
-export const LIFEOPS_TASK_TAGS = ["queue", "repeat", "lifeops"] as const;
-/** Base interval for the LifeOps scheduler polling loop. */
-export const LIFEOPS_TASK_INTERVAL_MS = 60_000;
-/** Maximum deterministic jitter added per agent to avoid synchronized polls. */
-export const LIFEOPS_TASK_JITTER_MS = 10_000;
-
-type AutonomyServiceLike = {
-  getAutonomousRoomId?: () => UUID;
-};
+export {
+  ensureLifeOpsSchedulerTask,
+  ensureRuntimeAgentRecord,
+  LIFEOPS_TASK_INTERVAL_MS,
+  LIFEOPS_TASK_JITTER_MS,
+  LIFEOPS_TASK_NAME,
+  LIFEOPS_TASK_TAGS,
+  resolveLifeOpsTaskIntervalMs,
+} from "./scheduler-task.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function isLifeOpsSchedulerTask(task: Task): boolean {
-  const metadata = isRecord(task.metadata) ? task.metadata : null;
-  const scheduler = metadata?.lifeopsScheduler;
-  return (
-    task.name === LIFEOPS_TASK_NAME &&
-    isRecord(scheduler) &&
-    scheduler.kind === "runtime_runner"
-  );
-}
-
-function buildSchedulerMetadata(
-  agentId: UUID,
-  current: Record<string, unknown> | null = null,
-): TaskMetadata {
-  const intervalMs = resolveLifeOpsTaskIntervalMs(agentId);
-  return {
-    ...(current ?? {}),
-    updateInterval: intervalMs,
-    baseInterval: intervalMs,
-    blocking: true,
-    lifeopsScheduler: {
-      kind: "runtime_runner",
-      version: 1,
-    },
-  };
-}
-
-export function resolveLifeOpsTaskIntervalMs(agentId: UUID): number {
-  let hash = 0;
-  for (let index = 0; index < agentId.length; index++) {
-    hash = (hash * 31 + agentId.charCodeAt(index)) >>> 0;
+function resolveSchedulerNowIso(
+  options: Record<string, unknown>,
+): string | undefined {
+  const raw = options.now;
+  if (raw instanceof Date) {
+    return raw.toISOString();
   }
-  return LIFEOPS_TASK_INTERVAL_MS + (hash % (LIFEOPS_TASK_JITTER_MS + 1));
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return new Date(raw).toISOString();
+  }
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    const parsed = new Date(raw);
+    if (Number.isFinite(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return undefined;
 }
 
 export async function executeLifeOpsSchedulerTask(
@@ -58,13 +45,23 @@ export async function executeLifeOpsSchedulerTask(
   options: Record<string, unknown> = {},
 ): Promise<{
   nextInterval: number;
+  now: string;
+  reminderAttempts: Awaited<
+    ReturnType<LifeOpsService["processScheduledWork"]>
+  >["reminderAttempts"];
+  workflowRuns: Awaited<
+    ReturnType<LifeOpsService["processScheduledWork"]>
+  >["workflowRuns"];
 }> {
+  const now = resolveSchedulerNowIso(options);
+
   const service = new LifeOpsService(runtime);
-  await service.processScheduledWork({
-    now: typeof options.now === "string" ? options.now : undefined,
-  });
+  const scheduledWork = await service.processScheduledWork({ now });
   return {
     nextInterval: resolveLifeOpsTaskIntervalMs(runtime.agentId),
+    now: scheduledWork.now,
+    reminderAttempts: scheduledWork.reminderAttempts,
+    workflowRuns: scheduledWork.workflowRuns,
   };
 }
 
@@ -74,86 +71,23 @@ export function registerLifeOpsTaskWorker(runtime: IAgentRuntime): void {
   }
   runtime.registerTaskWorker({
     name: LIFEOPS_TASK_NAME,
-    shouldRun: async () => true,
+    // Skip execution when the user has disabled LifeOps via the UI. The task
+    // record and worker stay registered so toggling back on requires no
+    // restart — cycles just become cheap no-ops while disabled.
+    shouldRun: async (rt) => {
+      try {
+        const state = await loadLifeOpsAppState(rt as IAgentRuntime);
+        return state.enabled;
+      } catch (error) {
+        logger.warn(
+          `[lifeops-scheduler] loadLifeOpsAppState failed; skipping scheduler tick because LifeOps toggle state is unknown: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        return false;
+      }
+    },
     execute: async (rt, options) =>
       executeLifeOpsSchedulerTask(rt, isRecord(options) ? options : {}),
-  });
-}
-
-/**
- * Wait for the database adapter to be ready before running task queries.
- * PGlite may still be initializing when plugin init fires; a short probe
- * avoids a noisy retry cycle in plugin-sql.
- */
-async function waitForDbReady(
-  runtime: IAgentRuntime,
-  maxAttempts = 3,
-  delayMs = 500,
-): Promise<void> {
-  for (let i = 0; i < maxAttempts; i++) {
-    try {
-      // Light-weight probe: fetch tasks with a filter that should match nothing.
-      await runtime.getTasks({
-        agentIds: [runtime.agentId],
-        tags: ["__db_ready_probe__"],
-      });
-      return;
-    } catch {
-      if (i < maxAttempts - 1) {
-        await new Promise((r) => setTimeout(r, delayMs));
-      }
-    }
-  }
-  // If still failing, let the caller proceed — the original retry logic in
-  // plugin-sql will handle it, we just reduced the likelihood of hitting it.
-}
-
-let credentialStatusLogged = false;
-function logCredentialStatus(): void {
-  if (credentialStatusLogged) return;
-  credentialStatusLogged = true;
-  const hasTwilio = Boolean(readTwilioCredentialsFromEnv());
-  if (!hasTwilio) {
-    logger.info(
-      "[lifeops] Twilio credentials not configured — SMS and voice reminders will be blocked. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER to enable.",
-    );
-  }
-}
-
-export async function ensureLifeOpsSchedulerTask(
-  runtime: IAgentRuntime,
-): Promise<UUID> {
-  await waitForDbReady(runtime);
-  logCredentialStatus();
-
-  const tasks = await runtime.getTasks({
-    agentIds: [runtime.agentId],
-    tags: [...LIFEOPS_TASK_TAGS],
-  });
-  const existing = tasks.find(isLifeOpsSchedulerTask);
-  const metadata = buildSchedulerMetadata(
-    runtime.agentId,
-    isRecord(existing?.metadata) ? existing.metadata : null,
-  );
-  if (existing?.id) {
-    await runtime.updateTask(existing.id, {
-      description: "Process life-ops reminders and scheduled workflows",
-      metadata,
-    });
-    return existing.id;
-  }
-
-  const autonomy = runtime.getService("AUTONOMY") as AutonomyServiceLike | null;
-  const roomId =
-    autonomy?.getAutonomousRoomId?.() ??
-    stringToUuid(`lifeops-scheduler-room-${runtime.agentId}`);
-
-  return runtime.createTask({
-    name: LIFEOPS_TASK_NAME,
-    description: "Process life-ops reminders and scheduled workflows",
-    roomId,
-    tags: [...LIFEOPS_TASK_TAGS],
-    metadata,
-    dueAt: Date.now(),
   });
 }

@@ -15,11 +15,14 @@ import {
 } from "@elizaos/shared";
 import type {
   OnboardingConnectorConfig as ConnectorConfig,
-  OnboardingData,
   OnboardingOptions,
   SubscriptionStatusResponse,
 } from "@elizaos/shared/contracts/onboarding";
 import {
+  type AppBlockerInstalledApp,
+  type AppBlockerPermissionResult,
+  type AppBlockerStatusResult,
+  getAppBlockerPlugin,
   getWebsiteBlockerPlugin,
   type WebsiteBlockerPermissionResult,
   type WebsiteBlockerStatusResult,
@@ -33,6 +36,7 @@ import type {
   AgentSelfStatusSnapshot,
   AgentStatus,
   CharacterData,
+  CharacterHistoryResponse,
   CodingAgentScratchWorkspace,
   CodingAgentStatus,
   CodingAgentTaskThread,
@@ -40,6 +44,10 @@ import type {
   ConfigSchemaResponse,
   CorePluginsResponse,
   CreateTriggerRequest,
+  ExperienceListQuery,
+  ExperienceListResponse,
+  ExperienceRecord,
+  ExperienceUpdateInput,
   ExtensionStatus,
   LogsFilter,
   LogsResponse,
@@ -50,6 +58,7 @@ import type {
   RelationshipsGraphQuery,
   RelationshipsGraphSnapshot,
   RelationshipsGraphStats,
+  RelationshipsMergeCandidate,
   RelationshipsPersonDetail,
   RelationshipsPersonSummary,
   RuntimeDebugSnapshot,
@@ -66,6 +75,7 @@ import type {
   TrainingStatus,
   TrainingTrajectoryDetail,
   TrainingTrajectoryList,
+  TriggerEventDispatchResponse,
   TriggerHealthSnapshot,
   TriggerLastStatus,
   TriggerRunRecord,
@@ -111,6 +121,19 @@ function getNativeWebsiteBlockerPluginIfAvailable() {
     typeof plugin.checkPermissions === "function" &&
     typeof plugin.requestPermissions === "function" &&
     typeof plugin.openSettings === "function"
+    ? plugin
+    : null;
+}
+
+function getNativeAppBlockerPluginIfAvailable() {
+  const plugin = getAppBlockerPlugin();
+  return typeof plugin.getStatus === "function" &&
+    typeof plugin.checkPermissions === "function" &&
+    typeof plugin.requestPermissions === "function" &&
+    typeof plugin.getInstalledApps === "function" &&
+    typeof plugin.selectApps === "function" &&
+    typeof plugin.blockApps === "function" &&
+    typeof plugin.unblockApps === "function"
     ? plugin
     : null;
 }
@@ -205,7 +228,7 @@ declare module "./client-base" {
     }>;
     pair(code: string): Promise<{ token: string }>;
     getOnboardingOptions(): Promise<OnboardingOptions>;
-    submitOnboarding(data: OnboardingData): Promise<void>;
+    submitOnboarding(data: Record<string, unknown>): Promise<void>;
     startAnthropicLogin(): Promise<{ authUrl: string }>;
     exchangeAnthropicCode(code: string): Promise<{
       success: boolean;
@@ -232,6 +255,7 @@ declare module "./client-base" {
       error?: string;
     }>;
     startAgent(): Promise<AgentStatus>;
+    startAndWait(maxWaitMs?: number): Promise<AgentStatus>;
     stopAgent(): Promise<AgentStatus>;
     pauseAgent(): Promise<AgentStatus>;
     resumeAgent(): Promise<AgentStatus>;
@@ -278,6 +302,10 @@ declare module "./client-base" {
       trigger?: TriggerSummary;
     }>;
     getTriggerRuns(id: string): Promise<{ runs: TriggerRunRecord[] }>;
+    emitTriggerEvent(
+      eventKind: string,
+      payload?: Record<string, unknown>,
+    ): Promise<TriggerEventDispatchResponse>;
     getTriggerHealth(): Promise<TriggerHealthSnapshot>;
     getTrainingStatus(): Promise<TrainingStatus>;
     listTrainingTrajectories(opts?: {
@@ -370,7 +398,20 @@ declare module "./client-base" {
     getRelationshipsPerson(id: string): Promise<RelationshipsPersonDetail>;
     getRelationshipsActivity(
       limit?: number,
+      offset?: number,
     ): Promise<RelationshipsActivityResponse>;
+    getRelationshipsCandidates(): Promise<RelationshipsMergeCandidate[]>;
+    acceptRelationshipsCandidate(
+      candidateId: string,
+    ): Promise<{ id: string; status: string }>;
+    rejectRelationshipsCandidate(
+      candidateId: string,
+    ): Promise<{ id: string; status: string }>;
+    proposeRelationshipsLink(
+      sourceEntityId: string,
+      targetEntityId: string,
+      evidence?: Record<string, unknown>,
+    ): Promise<{ id: string; status: string }>;
     getRolodexGraph(query?: RolodexGraphQuery): Promise<RolodexGraphSnapshot>;
     getRolodexPeople(query?: RolodexGraphQuery): Promise<{
       people: RolodexPersonSummary[];
@@ -397,6 +438,19 @@ declare module "./client-base" {
     updateCharacter(
       character: CharacterData,
     ): Promise<{ ok: boolean; character: CharacterData; agentName: string }>;
+    listCharacterHistory(options?: {
+      limit?: number;
+      offset?: number;
+    }): Promise<CharacterHistoryResponse>;
+    listExperiences(
+      options?: ExperienceListQuery,
+    ): Promise<ExperienceListResponse>;
+    getExperience(id: string): Promise<{ experience: ExperienceRecord }>;
+    updateExperience(
+      id: string,
+      data: ExperienceUpdateInput,
+    ): Promise<{ experience: ExperienceRecord }>;
+    deleteExperience(id: string): Promise<{ ok: boolean }>;
     getUpdateStatus(force?: boolean): Promise<UpdateStatus>;
     setUpdateChannel(
       channel: "stable" | "beta" | "nightly",
@@ -491,6 +545,28 @@ declare module "./client-base" {
           };
         }
     >;
+    getAppBlockerStatus(): Promise<AppBlockerStatusResult>;
+    checkAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
+    requestAppBlockerPermissions(): Promise<AppBlockerPermissionResult>;
+    getInstalledAppsToBlock(): Promise<{ apps: AppBlockerInstalledApp[] }>;
+    selectAppBlockerApps(): Promise<{
+      apps: AppBlockerInstalledApp[];
+      cancelled: boolean;
+    }>;
+    startAppBlock(options: {
+      appTokens?: string[];
+      packageNames?: string[];
+      durationMinutes?: number | null;
+    }): Promise<{
+      success: boolean;
+      endsAt: string | null;
+      blockedCount: number;
+      error?: string;
+    }>;
+    stopAppBlock(): Promise<{
+      success: boolean;
+      error?: string;
+    }>;
     getCodingAgentStatus(): Promise<CodingAgentStatus | null>;
     listCodingAgentTaskThreads(options?: {
       includeArchived?: boolean;
@@ -511,6 +587,7 @@ declare module "./client-base" {
       sessionId: string,
       name?: string,
     ): Promise<CodingAgentScratchWorkspace | null>;
+    spawnShellSession(workdir?: string): Promise<{ sessionId: string }>;
     subscribePtyOutput(sessionId: string): void;
     unsubscribePtyOutput(sessionId: string): void;
     sendPtyInput(sessionId: string, data: string): void;
@@ -819,50 +896,52 @@ ElizaClient.prototype.exchangeOpenAICode = async function (
 };
 
 ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>(
-    "/api/agent/start",
-    {
-      method: "POST",
-    },
-  );
+  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/start", {
+    method: "POST",
+  });
   return res.status;
 };
 
 ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>(
-    "/api/agent/stop",
-    {
-      method: "POST",
-    },
-  );
+  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/stop", {
+    method: "POST",
+  });
   return res.status;
 };
 
 ElizaClient.prototype.pauseAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>(
-    "/api/agent/pause",
-    {
-      method: "POST",
-    },
-  );
+  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/pause", {
+    method: "POST",
+  });
   return res.status;
 };
 
 ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>(
-    "/api/agent/resume",
-    {
-      method: "POST",
-    },
-  );
+  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/resume", {
+    method: "POST",
+  });
   return res.status;
 };
 
 ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
-  const res = await this.fetch<{ status: AgentStatus }>("/api/agent/restart", {
-    method: "POST",
-  });
-  return res.status;
+  try {
+    const res = await this.fetch<{ status: AgentStatus }>(
+      "/api/agent/restart",
+      {
+        method: "POST",
+      },
+    );
+    return res.status;
+  } catch {
+    // Back-compat for older runtimes that still expose the legacy restart path.
+    const legacy = await this.fetch<{ status: AgentStatus }>(
+      "/api@elizaos/agent/restart",
+      {
+        method: "POST",
+      },
+    );
+    return legacy.status;
+  }
 };
 
 ElizaClient.prototype.restartAndWait = async function (
@@ -876,10 +955,8 @@ ElizaClient.prototype.restartAndWait = async function (
   });
   try {
     await this.restartAgent();
-    console.info(
-      "[eliza][reset][client] restartAndWait: restart accepted",
-    );
-  } catch (e) {
+    console.info("[eliza][reset][client] restartAndWait: restart accepted");
+  } catch (e: unknown) {
     console.info(
       "[eliza][reset][client] restartAndWait: initial restart call failed (often 409 while restarting)",
       e,
@@ -1102,6 +1179,17 @@ ElizaClient.prototype.runTriggerNow = async function (this: ElizaClient, id) {
 
 ElizaClient.prototype.getTriggerRuns = async function (this: ElizaClient, id) {
   return this.fetch(`/api/triggers/${encodeURIComponent(id)}/runs`);
+};
+
+ElizaClient.prototype.emitTriggerEvent = async function (
+  this: ElizaClient,
+  eventKind,
+  payload = {},
+) {
+  return this.fetch(`/api/triggers/events/${encodeURIComponent(eventKind)}`, {
+    method: "POST",
+    body: JSON.stringify({ payload }),
+  });
 };
 
 ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
@@ -1470,6 +1558,7 @@ ElizaClient.prototype.getRelationshipsGraph = async function (
   const params = new URLSearchParams();
   if (query?.search) params.set("search", query.search);
   if (query?.platform) params.set("platform", query.platform);
+  if (query?.scope) params.set("scope", query.scope);
   if (typeof query?.limit === "number")
     params.set("limit", String(query.limit));
   if (typeof query?.offset === "number")
@@ -1488,6 +1577,7 @@ ElizaClient.prototype.getRelationshipsPeople = async function (
   const params = new URLSearchParams();
   if (query?.search) params.set("search", query.search);
   if (query?.platform) params.set("platform", query.platform);
+  if (query?.scope) params.set("scope", query.scope);
   if (typeof query?.limit === "number")
     params.set("limit", String(query.limit));
   if (typeof query?.offset === "number")
@@ -1516,11 +1606,66 @@ ElizaClient.prototype.getRelationshipsPerson = async function (
 ElizaClient.prototype.getRelationshipsActivity = async function (
   this: ElizaClient,
   limit?,
+  offset?,
 ) {
   const params = new URLSearchParams();
   if (typeof limit === "number") params.set("limit", String(limit));
+  if (typeof offset === "number") params.set("offset", String(offset));
   const qs = params.toString();
-  return this.fetch(`/api/relationships/activity${qs ? `?${qs}` : ""}`);
+  return this.fetch<RelationshipsActivityResponse>(
+    `/api/relationships/activity${qs ? `?${qs}` : ""}`,
+  );
+};
+
+ElizaClient.prototype.getRelationshipsCandidates = async function (
+  this: ElizaClient,
+) {
+  const response = await this.fetch<{ data: RelationshipsMergeCandidate[] }>(
+    "/api/relationships/candidates",
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.acceptRelationshipsCandidate = async function (
+  this: ElizaClient,
+  candidateId,
+) {
+  const response = await this.fetch<{ data: { id: string; status: string } }>(
+    `/api/relationships/candidates/${encodeURIComponent(candidateId)}/accept`,
+    { method: "POST" },
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.rejectRelationshipsCandidate = async function (
+  this: ElizaClient,
+  candidateId,
+) {
+  const response = await this.fetch<{ data: { id: string; status: string } }>(
+    `/api/relationships/candidates/${encodeURIComponent(candidateId)}/reject`,
+    { method: "POST" },
+  );
+  return response.data;
+};
+
+ElizaClient.prototype.proposeRelationshipsLink = async function (
+  this: ElizaClient,
+  sourceEntityId,
+  targetEntityId,
+  evidence,
+) {
+  const response = await this.fetch<{ data: { id: string; status: string } }>(
+    `/api/relationships/people/${encodeURIComponent(sourceEntityId)}/link`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        targetEntityId,
+        evidence: evidence ?? {},
+      }),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  return response.data;
 };
 
 ElizaClient.prototype.getRolodexGraph = async function (
@@ -1571,6 +1716,98 @@ ElizaClient.prototype.updateCharacter = async function (
   return this.fetch("/api/character", {
     method: "PUT",
     body: JSON.stringify(character),
+  });
+};
+
+ElizaClient.prototype.listCharacterHistory = async function (
+  this: ElizaClient,
+  options,
+) {
+  const params = new URLSearchParams();
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  if (typeof options?.offset === "number") {
+    params.set("offset", String(options.offset));
+  }
+  const qs = params.toString();
+  return this.fetch(`/api/character/history${qs ? `?${qs}` : ""}`);
+};
+
+ElizaClient.prototype.listExperiences = async function (
+  this: ElizaClient,
+  options,
+) {
+  const params = new URLSearchParams();
+  const appendMulti = (key: string, value?: string | string[]) => {
+    if (Array.isArray(value)) {
+      value
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((item) => {
+          params.append(key, item);
+        });
+      return;
+    }
+    if (typeof value === "string" && value.trim()) {
+      params.append(key, value.trim());
+    }
+  };
+
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  if (typeof options?.offset === "number") {
+    params.set("offset", String(options.offset));
+  }
+  appendMulti("type", options?.type);
+  appendMulti("outcome", options?.outcome);
+  appendMulti("domain", options?.domain);
+  options?.tags
+    ?.map((tag) => tag.trim())
+    .filter(Boolean)
+    .forEach((tag) => {
+      params.append("tag", tag);
+    });
+  const qs = params.toString();
+  const response = await this.fetch<{
+    data: ExperienceRecord[];
+    total: number;
+  }>(`/api/character/experiences${qs ? `?${qs}` : ""}`);
+  return {
+    experiences: response.data,
+    total: response.total,
+  };
+};
+
+ElizaClient.prototype.getExperience = async function (this: ElizaClient, id) {
+  const response = await this.fetch<{ data: ExperienceRecord }>(
+    `/api/character/experiences/${encodeURIComponent(id)}`,
+  );
+  return { experience: response.data };
+};
+
+ElizaClient.prototype.updateExperience = async function (
+  this: ElizaClient,
+  id,
+  data,
+) {
+  const response = await this.fetch<{ data: ExperienceRecord }>(
+    `/api/character/experiences/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    },
+  );
+  return { experience: response.data };
+};
+
+ElizaClient.prototype.deleteExperience = async function (
+  this: ElizaClient,
+  id,
+) {
+  return this.fetch(`/api/character/experiences/${encodeURIComponent(id)}`, {
+    method: "DELETE",
   });
 };
 
@@ -1752,6 +1989,102 @@ ElizaClient.prototype.stopWebsiteBlock = async function (this: ElizaClient) {
   });
 };
 
+ElizaClient.prototype.getAppBlockerStatus = async function (this: ElizaClient) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.getStatus();
+  }
+  return {
+    available: false,
+    active: false,
+    platform: "web",
+    engine: "none",
+    blockedCount: 0,
+    blockedPackageNames: [],
+    endsAt: null,
+    permissionStatus: "not-applicable",
+    reason: "App blocking is only available on iPhone and Android builds.",
+  } satisfies AppBlockerStatusResult;
+};
+
+ElizaClient.prototype.checkAppBlockerPermissions = async function (
+  this: ElizaClient,
+) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.checkPermissions();
+  }
+  return {
+    status: "not-applicable",
+    canRequest: false,
+    reason: "App blocking is only available on iPhone and Android builds.",
+  } satisfies AppBlockerPermissionResult;
+};
+
+ElizaClient.prototype.requestAppBlockerPermissions = async function (
+  this: ElizaClient,
+) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.requestPermissions();
+  }
+  return {
+    status: "not-applicable",
+    canRequest: false,
+    reason: "App blocking is only available on iPhone and Android builds.",
+  } satisfies AppBlockerPermissionResult;
+};
+
+ElizaClient.prototype.getInstalledAppsToBlock = async function (
+  this: ElizaClient,
+) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.getInstalledApps();
+  }
+  return { apps: [] as AppBlockerInstalledApp[] };
+};
+
+ElizaClient.prototype.selectAppBlockerApps = async function (
+  this: ElizaClient,
+) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.selectApps();
+  }
+  return {
+    apps: [] as AppBlockerInstalledApp[],
+    cancelled: true,
+  };
+};
+
+ElizaClient.prototype.startAppBlock = async function (
+  this: ElizaClient,
+  options,
+) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.blockApps(options);
+  }
+  return {
+    success: false,
+    endsAt: null,
+    blockedCount: 0,
+    error: "App blocking is only available on iPhone and Android builds.",
+  };
+};
+
+ElizaClient.prototype.stopAppBlock = async function (this: ElizaClient) {
+  const plugin = getNativeAppBlockerPluginIfAvailable();
+  if (plugin) {
+    return await plugin.unblockApps();
+  }
+  return {
+    success: false,
+    error: "App blocking is only available on iPhone and Android builds.",
+  };
+};
+
 ElizaClient.prototype.getCodingAgentStatus = async function (
   this: ElizaClient,
 ) {
@@ -1918,6 +2251,23 @@ ElizaClient.prototype.promoteCodingAgentScratchWorkspace = async function (
   } catch {
     return null;
   }
+};
+
+ElizaClient.prototype.spawnShellSession = async function (
+  this: ElizaClient,
+  workdir?: string,
+) {
+  const res = await this.fetch<{ sessionId: string }>(
+    "/api/coding-agents/spawn",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        agentType: "shell",
+        ...(workdir ? { workdir } : {}),
+      }),
+    },
+  );
+  return { sessionId: res.sessionId };
 };
 
 ElizaClient.prototype.subscribePtyOutput = function (

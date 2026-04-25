@@ -19,6 +19,18 @@ const DEFAULT_SIGNAL_CLI_NAME = "signal-cli";
 const DEFAULT_SIGNAL_DEVICE_NAME = "Eliza Mac";
 const DEFAULT_SIGNAL_CLI_WAIT_TIMEOUT_MS = 30_000;
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
+const COMMON_SIGNAL_CLI_PATHS = [
+  "/opt/homebrew/bin/signal-cli",
+  "/usr/local/bin/signal-cli",
+];
+
+type SignalNativeModule = {
+  linkDevice: (authDir: string, deviceName: string) => Promise<string>;
+  finishLink: (authDir: string) => Promise<void>;
+  getProfile: (
+    authDir: string,
+  ) => Promise<{ uuid: string; phoneNumber?: string | null }>;
+};
 
 /** Validate accountId to prevent path traversal. */
 export function sanitizeAccountId(raw: string): string {
@@ -130,6 +142,16 @@ async function resolveExecutablePath(binary: string): Promise<string | null> {
     const resolved = stdout.trim();
     return resolved.length > 0 ? resolved : null;
   } catch {
+    if (trimmed !== DEFAULT_SIGNAL_CLI_NAME) {
+      return null;
+    }
+
+    for (const candidate of COMMON_SIGNAL_CLI_PATHS) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
     return null;
   }
 }
@@ -264,11 +286,11 @@ export class SignalPairingSession {
     });
   }
 
-  private async loadSignalNativeModule(): Promise<
-    typeof import("@elizaos/signal-native") | null
-  > {
+  private async loadSignalNativeModule(): Promise<SignalNativeModule | null> {
     try {
-      return await import(/* @vite-ignore */ SIGNAL_NATIVE_MODULE_ID);
+      const moduleSpecifier: string = SIGNAL_NATIVE_MODULE_ID;
+      const imported = await import(/* @vite-ignore */ moduleSpecifier);
+      return imported as SignalNativeModule;
     } catch (error) {
       console.info(
         `${LOG_PREFIX} Signal native module unavailable, using signal-cli pairing: ${String(error)}`,
@@ -278,7 +300,7 @@ export class SignalPairingSession {
   }
 
   private async startWithSignalNative(
-    native: typeof import("@elizaos/signal-native"),
+    native: SignalNativeModule,
     qrCode: QrCodeModule,
   ): Promise<void> {
     console.info(`${LOG_PREFIX} Starting device linking with signal-native...`);

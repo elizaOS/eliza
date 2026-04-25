@@ -13,12 +13,6 @@ import {
   type ApprovalPreset,
 } from "./coding-agent-settings-shared";
 
-/**
- * Text input that uses local state while typing and only syncs on
- * blur/enter. `initial` is only read on mount — safe because the
- * parent guards rendering behind `if (loading) return …`, so `initial`
- * is always the loaded value.
- */
 function CodingDirInput({
   initial,
   onCommit,

@@ -74,6 +74,95 @@ export interface MobileSignalsSnapshot {
   metadata: Record<string, unknown>;
 }
 
+export type MobileSignalsSettingsTarget =
+  | "app"
+  | "health"
+  | "healthConnect"
+  | "screenTime"
+  | "usageAccess"
+  | "notification"
+  | "batteryOptimization"
+  | "localNetwork"
+  | "deviceSettings";
+
+export interface MobileSignalsSetupAction {
+  id:
+    | "health_permissions"
+    | "screen_time_authorization"
+    | "android_usage_access"
+    | "app_settings"
+    | "notification_settings"
+    | "battery_optimization"
+    | "local_network";
+  label: string;
+  status: "ready" | "needs-action" | "unavailable";
+  canRequest: boolean;
+  canOpenSettings: boolean;
+  settingsTarget: MobileSignalsSettingsTarget | null;
+  reason: string | null;
+}
+
+export interface MobileSignalsOpenSettingsResult {
+  opened: boolean;
+  target: MobileSignalsSettingsTarget;
+  actualTarget: MobileSignalsSettingsTarget;
+  reason: string | null;
+}
+
+export interface MobileSignalsPermissionStatus {
+  status: "granted" | "denied" | "not-determined" | "not-applicable";
+  canRequest: boolean;
+  reason?: string;
+  screenTime: MobileSignalsScreenTimeStatus;
+  setupActions: MobileSignalsSetupAction[];
+  permissions: {
+    sleep: boolean;
+    biometrics: boolean;
+  };
+}
+
+export interface MobileSignalsScreenTimeStatus {
+  supported: boolean;
+  requirements: {
+    entitlements: {
+      familyControls: string;
+      appAndWebsiteUsage?: string;
+    };
+    frameworks: string[];
+    deviceActivityReportExtension: boolean;
+    deviceActivityMonitorExtension: boolean;
+    android?: {
+      usageStatsPermission: string;
+      usageAccessSettingsAction: string;
+    };
+  };
+  entitlements: {
+    familyControls: boolean;
+    appAndWebsiteUsage?: boolean;
+  };
+  provisioning: {
+    satisfied: boolean;
+    inspected: "code-signature" | "not-inspectable";
+    reason: string | null;
+  };
+  authorization: {
+    status: "approved" | "denied" | "not-determined" | "unavailable";
+    canRequest: boolean;
+  };
+  reportAvailable: boolean;
+  coarseSummaryAvailable: boolean;
+  thresholdEventsAvailable: boolean;
+  rawUsageExportAvailable: false;
+  android?: {
+    usageAccessGranted: boolean;
+    packageUsageStatsPermissionDeclared: boolean;
+    canOpenUsageAccessSettings: boolean;
+    foregroundEventsAvailable: boolean;
+    totalTimeForegroundMs: number | null;
+  };
+  reason: string | null;
+}
+
 export interface MobileSignalsHealthSnapshot {
   source: "mobile_health";
   platform: "ios" | "android" | "web";
@@ -83,6 +172,7 @@ export interface MobileSignalsHealthSnapshot {
   idleTimeSeconds: number | null;
   onBattery: boolean | null;
   healthSource: "healthkit" | "health_connect";
+  screenTime: MobileSignalsScreenTimeStatus;
   permissions: {
     sleep: boolean;
     biometrics: boolean;
@@ -110,6 +200,18 @@ export interface MobileSignalsHealthSnapshot {
 export type MobileSignalsSignal =
   | MobileSignalsSnapshot
   | MobileSignalsHealthSnapshot;
+
+export interface MobileSignalsBackgroundRefreshResult {
+  scheduled: boolean;
+  identifier?: string;
+  earliestBeginInSeconds?: number;
+  reason?: string;
+}
+
+export interface MobileSignalsCancelBackgroundRefreshResult {
+  cancelled: boolean;
+  reason?: string;
+}
 
 export type AppBlockerPermissionStatus =
   | "granted"
@@ -174,25 +276,139 @@ export interface AppBlockerPluginLike extends NativePlugin {
   getStatus(): Promise<AppBlockerStatus>;
 }
 
+export interface PhonePluginLike extends NativePlugin {
+  getStatus(): Promise<{
+    hasTelecom: boolean;
+    canPlaceCalls: boolean;
+    isDefaultDialer: boolean;
+    defaultDialerPackage: string | null;
+  }>;
+  placeCall(options: { number: string }): Promise<void>;
+  openDialer(options?: { number?: string }): Promise<void>;
+  listRecentCalls(options?: {
+    limit?: number;
+    number?: string;
+  }): Promise<{ calls: CallLogEntry[] }>;
+  saveCallTranscript(options: {
+    callId: string;
+    transcript: string;
+    summary?: string;
+  }): Promise<{ updatedAt: number }>;
+}
+
+export type CallLogType =
+  | "incoming"
+  | "outgoing"
+  | "missed"
+  | "voicemail"
+  | "rejected"
+  | "blocked"
+  | "answered_externally"
+  | "unknown";
+
+export interface CallLogEntry {
+  id: string;
+  number: string;
+  cachedName: string | null;
+  date: number;
+  durationSeconds: number;
+  type: CallLogType;
+  rawType: number;
+  isNew: boolean;
+  phoneAccountId: string | null;
+  geocodedLocation: string | null;
+  transcription: string | null;
+  voicemailUri: string | null;
+  agentTranscript: string | null;
+  agentSummary: string | null;
+  agentTranscriptUpdatedAt: number | null;
+}
+
+export interface ContactSummary {
+  id: string;
+  lookupKey: string;
+  displayName: string;
+  phoneNumbers: string[];
+  emailAddresses: string[];
+  photoUri?: string;
+  starred: boolean;
+}
+
+export interface ImportedContactSummary extends ContactSummary {
+  sourceName: string;
+}
+
+export interface ContactsPluginLike extends NativePlugin {
+  listContacts(options?: {
+    query?: string;
+    limit?: number;
+  }): Promise<{ contacts: ContactSummary[] }>;
+  createContact(options: {
+    displayName: string;
+    phoneNumber?: string;
+    phoneNumbers?: string[];
+    emailAddress?: string;
+    emailAddresses?: string[];
+  }): Promise<{ id: string }>;
+  importVCard(options: { vcardText: string }): Promise<{
+    imported: ImportedContactSummary[];
+  }>;
+}
+
+export interface SmsMessageSummary {
+  id: string;
+  threadId: string;
+  address: string;
+  body: string;
+  date: number;
+  type: number;
+  read: boolean;
+}
+
+export interface SendSmsResult {
+  messageId: string;
+  messageUri: string;
+}
+
+export interface MessagesPluginLike extends NativePlugin {
+  sendSms(options: { address: string; body: string }): Promise<SendSmsResult>;
+  listMessages(options?: {
+    limit?: number;
+    threadId?: string;
+  }): Promise<{ messages: SmsMessageSummary[] }>;
+}
+
+export interface AndroidRoleStatus {
+  role: "home" | "dialer" | "sms" | "assistant";
+  androidRole: string;
+  available: boolean;
+  held: boolean;
+  holders: string[];
+}
+
+export interface AndroidRoleRequestResult {
+  role: AndroidRoleStatus["role"];
+  held: boolean;
+  resultCode: number;
+}
+
+export interface SystemPluginLike extends NativePlugin {
+  getStatus(): Promise<{
+    packageName: string;
+    roles: AndroidRoleStatus[];
+  }>;
+  requestRole(options: {
+    role: AndroidRoleStatus["role"];
+  }): Promise<AndroidRoleRequestResult>;
+  openSettings(): Promise<void>;
+}
+
 export interface MobileSignalsPluginLike extends NativePlugin {
-  checkPermissions(): Promise<{
-    status: "granted" | "denied" | "not-determined" | "not-applicable";
-    canRequest: boolean;
-    reason?: string;
-    permissions: {
-      sleep: boolean;
-      biometrics: boolean;
-    };
-  }>;
-  requestPermissions(): Promise<{
-    status: "granted" | "denied" | "not-determined" | "not-applicable";
-    canRequest: boolean;
-    reason?: string;
-    permissions: {
-      sleep: boolean;
-      biometrics: boolean;
-    };
-  }>;
+  checkPermissions(): Promise<MobileSignalsPermissionStatus>;
+  requestPermissions(): Promise<MobileSignalsPermissionStatus>;
+  openSettings(options?: {
+    target?: MobileSignalsSettingsTarget;
+  }): Promise<MobileSignalsOpenSettingsResult>;
   startMonitoring(options?: { emitInitial?: boolean }): Promise<{
     enabled: boolean;
     supported: boolean;
@@ -206,6 +422,8 @@ export interface MobileSignalsPluginLike extends NativePlugin {
     snapshot: MobileSignalsSnapshot | null;
     healthSnapshot: MobileSignalsHealthSnapshot | null;
   }>;
+  scheduleBackgroundRefresh?: () => Promise<MobileSignalsBackgroundRefreshResult>;
+  cancelBackgroundRefresh?: () => Promise<MobileSignalsCancelBackgroundRefreshResult>;
   addListener(
     eventName: "signal",
     listenerFunc: (event: MobileSignalsSignal) => void,
@@ -220,6 +438,24 @@ export interface TalkModePermissionStatus {
 export interface WebsiteBlockerPermissionResult {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
+  reason?: string;
+}
+
+export interface AppBlockerInstalledApp {
+  packageName: string;
+  displayName: string;
+  tokenData?: string;
+}
+
+export interface AppBlockerStatusResult {
+  available: boolean;
+  active: boolean;
+  platform: string;
+  engine: "family-controls" | "usage-stats-overlay" | "none";
+  blockedCount: number;
+  blockedPackageNames: string[];
+  endsAt: string | null;
+  permissionStatus: AppBlockerPermissionResult["status"];
   reason?: string;
 }
 
@@ -383,4 +619,20 @@ export function getWebsiteBlockerPlugin(): WebsiteBlockerPluginLike {
   return (plugins.ElizaWebsiteBlocker ??
     plugins.WebsiteBlocker ??
     {}) as WebsiteBlockerPluginLike;
+}
+
+export function getPhonePlugin(): PhonePluginLike {
+  return getNativePlugin<PhonePluginLike>("MiladyPhone");
+}
+
+export function getContactsPlugin(): ContactsPluginLike {
+  return getNativePlugin<ContactsPluginLike>("MiladyContacts");
+}
+
+export function getMessagesPlugin(): MessagesPluginLike {
+  return getNativePlugin<MessagesPluginLike>("MiladyMessages");
+}
+
+export function getSystemPlugin(): SystemPluginLike {
+  return getNativePlugin<SystemPluginLike>("MiladySystem");
 }

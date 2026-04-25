@@ -1,6 +1,38 @@
-
-
-import { AlertTriangle, Download, Upload } from "lucide-react";
+import {
+  Button,
+  Checkbox,
+  cn,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  PageLayout,
+  PagePanel,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  Spinner,
+  useLinkedSidebarSelection,
+} from "@elizaos/ui";
+import {
+  AlertTriangle,
+  Archive,
+  Brain,
+  Cpu,
+  Download,
+  type LucideIcon,
+  Palette,
+  RefreshCw,
+  Shield,
+  SlidersHorizontal,
+  Terminal,
+  Upload,
+  User,
+  Wallet,
+} from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
   forwardRef,
@@ -10,46 +42,105 @@ import {
   useRef,
   useState,
 } from "react";
-import { client, type ComputerUseApprovalMode } from "../../api/client";
+import { CodingAgentSettingsSection } from "../../app-shell/task-coordinator-slots.js";
 import { useApp } from "../../state";
-import { WidgetHost } from "../../widgets";
-import { CodingAgentSettingsSection } from "@elizaos/app-task-coordinator";
-import { MediaSettingsSection } from "../settings/MediaSettingsSection";
+import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
+import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
-import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
-import { CloudDashboard } from "./ElizaCloudDashboard";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { ConfigPageView } from "./ConfigPageView";
 import { ReleaseCenterView } from "./ReleaseCenterView";
-import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, Switch, useLinkedSidebarSelection, PageLayout, cn } from "@elizaos/ui";
+import { IdentitySettingsSection } from "./settings/IdentitySettingsSection";
+
+const SETTINGS_SIDEBAR_WIDTH_KEY = "milady:settings:sidebar:width";
+const SETTINGS_SIDEBAR_COLLAPSED_KEY = "milady:settings:sidebar:collapsed";
+const SETTINGS_SIDEBAR_DEFAULT_WIDTH = 240;
+const SETTINGS_SIDEBAR_MIN_WIDTH = 200;
+const SETTINGS_SIDEBAR_MAX_WIDTH = 520;
 
 interface SettingsSectionDef {
   id: string;
   label: string;
+  defaultLabel: string;
+  icon: LucideIcon;
   description?: string;
+  defaultDescription?: string;
   keywords?: string[];
   keywordKeys?: string[];
 }
 
+function clampSettingsSidebarWidth(value: number): number {
+  return Math.min(
+    Math.max(value, SETTINGS_SIDEBAR_MIN_WIDTH),
+    SETTINGS_SIDEBAR_MAX_WIDTH,
+  );
+}
+
+function readStoredSettingsSidebarWidth(): number {
+  if (typeof window === "undefined") return SETTINGS_SIDEBAR_DEFAULT_WIDTH;
+  try {
+    const raw = window.localStorage.getItem(SETTINGS_SIDEBAR_WIDTH_KEY);
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    if (Number.isFinite(parsed)) {
+      return clampSettingsSidebarWidth(parsed);
+    }
+  } catch {
+    /* ignore sandboxed storage */
+  }
+  return SETTINGS_SIDEBAR_DEFAULT_WIDTH;
+}
+
+function readStoredSettingsSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      window.localStorage.getItem(SETTINGS_SIDEBAR_COLLAPSED_KEY) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
 const SETTINGS_CONTENT_CLASS =
-  "[scroll-padding-top:7rem] [scrollbar-gutter:stable] scroll-smooth bg-bg/10 pb-6 pt-4 sm:pb-8 sm:pt-5 lg:pb-10 lg:pt-6";
+  "[scroll-padding-top:7rem] [scrollbar-gutter:stable] scroll-smooth bg-bg/10 pb-4 pt-2 sm:pb-6 sm:pt-3";
 const SETTINGS_CONTENT_WIDTH_CLASS = "w-full min-h-0";
-const SETTINGS_SECTION_STACK_CLASS = "space-y-6 pb-14 sm:space-y-8 sm:pb-16";
+const SETTINGS_SECTION_STACK_CLASS = "space-y-3 pb-10 sm:space-y-4";
 
 const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
-    id: "cloud",
-    label: "providerswitcher.elizaCloud",
-    description: "settings.sections.cloud.desc",
-    keywords: ["cloud", "billing", "credits", "auth", "subscription"],
-    keywordKeys: ["settings.keyword.cloud", "settings.keyword.billing"],
+    id: "identity",
+    label: "settings.sections.identity.label",
+    defaultLabel: "Basics",
+    icon: User,
+    description: "settings.sections.identity.desc",
+    defaultDescription: "Name, voice, and system prompt.",
+    keywords: [
+      "identity",
+      "name",
+      "voice",
+      "system prompt",
+      "persona",
+      "instructions",
+      "agent",
+    ],
+    keywordKeys: ["settings.keyword.voice"],
   },
   {
     id: "ai-model",
     label: "settings.sections.aimodel.label",
+    defaultLabel: "Providers",
+    icon: Brain,
     description: "settings.sections.aimodel.desc",
+    defaultDescription: "Cloud, local, subscriptions, and direct providers.",
     keywords: [
       "model",
       "provider",
+      "billing",
+      "credits",
+      "cloud",
+      "subscription",
       "openai",
       "anthropic",
       "grok",
@@ -57,6 +148,16 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "api key",
       "inference",
       "llm",
+      "local",
+      "llama",
+      "llama.cpp",
+      "gguf",
+      "download",
+      "offline",
+      "gpu",
+      "vram",
+      "device",
+      "phone",
     ],
     keywordKeys: [
       "settings.keyword.model",
@@ -66,9 +167,32 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     ],
   },
   {
+    id: "local-models",
+    label: "settings.sections.localModels.label",
+    defaultLabel: "Local Models",
+    icon: Cpu,
+    description: "settings.sections.localModels.desc",
+    defaultDescription: "Download and assign local models.",
+    keywords: [
+      "local",
+      "llama",
+      "llama.cpp",
+      "gguf",
+      "model",
+      "download",
+      "inference",
+      "offline",
+      "gpu",
+      "vram",
+    ],
+  },
+  {
     id: "coding-agents",
     label: "settings.sections.codingagents.label",
+    defaultLabel: "Task Agents",
+    icon: Terminal,
     description: "settings.codingAgentsDescription",
+    defaultDescription: "Claude Code, Codex, Gemini, and Aider.",
     keywords: [
       "codex",
       "agent",
@@ -82,30 +206,12 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     ],
   },
   {
-    id: "media",
-    label: "settings.sections.media.label",
-    description: "settings.sections.media.desc",
-    keywords: [
-      "audio",
-      "voice",
-      "video",
-      "camera",
-      "microphone",
-      "speech",
-      "tts",
-      "avatar",
-    ],
-    keywordKeys: [
-      "settings.keyword.voice",
-      "settings.keyword.audio",
-      "settings.keyword.camera",
-      "settings.keyword.microphone",
-    ],
-  },
-  {
     id: "appearance",
     label: "settings.sections.appearance.label",
+    defaultLabel: "Appearance",
+    icon: Palette,
     description: "settings.sections.appearance.desc",
+    defaultDescription: "Language, theme, and content packs.",
     keywords: [
       "appearance",
       "theme",
@@ -126,27 +232,56 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "capabilities",
     label: "settings.sections.capabilities.label",
+    defaultLabel: "Capabilities",
+    icon: SlidersHorizontal,
     description: "settings.sections.capabilities.desc",
+    defaultDescription: "Agent features and automation surfaces.",
     keywords: [
       "capabilities",
       "wallet",
       "browser",
       "computer use",
-      "computeruse",
-      "desktop control",
-      "screen recording",
-      "accessibility",
-      "approval mode",
+      "desktop automation",
+      "screenshots",
+      "training",
+      "auto-training",
       "enable",
       "disable",
       "feature",
     ],
-    keywordKeys: ["settings.keyword.wallet", "settings.keyword.browser"],
+    keywordKeys: [
+      "settings.keyword.wallet",
+      "settings.keyword.browser",
+      "settings.keyword.training",
+    ],
+  },
+  {
+    id: "wallet-rpc",
+    label: "settings.sections.walletrpc.label",
+    defaultLabel: "Wallet & RPC",
+    icon: Wallet,
+    description: "settings.sections.walletrpc.desc",
+    defaultDescription: "Wallet network and RPC providers.",
+    keywords: [
+      "wallet",
+      "rpc",
+      "evm",
+      "solana",
+      "api key",
+      "alchemy",
+      "quicknode",
+      "helius",
+      "birdeye",
+    ],
+    keywordKeys: ["settings.keyword.wallet", "settings.keyword.apiKey"],
   },
   {
     id: "permissions",
     label: "settings.sections.permissions.label",
+    defaultLabel: "Permissions",
+    icon: Shield,
     description: "settings.sections.permissions.desc",
+    defaultDescription: "Browser and device access.",
     keywords: [
       "permissions",
       "desktop",
@@ -161,14 +296,20 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "updates",
     label: "settings.sections.updates.label",
+    defaultLabel: "Updates",
+    icon: RefreshCw,
     description: "settings.sections.updates.desc",
+    defaultDescription: "Software updates.",
     keywords: ["updates", "release", "version", "download"],
     keywordKeys: ["settings.keyword.updates"],
   },
   {
     id: "advanced",
-    label: "nav.advanced",
-    description: "settings.sections.advanced.desc",
+    label: "settings.sections.backupReset.label",
+    defaultLabel: "Backup & Reset",
+    icon: Archive,
+    description: "settings.sections.backupReset.desc",
+    defaultDescription: "Export, import, and reset.",
     keywords: [
       "advanced",
       "export",
@@ -178,6 +319,8 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "backup",
       "restore",
       "danger zone",
+      "wipe",
+      "start over",
     ],
     keywordKeys: [
       "settings.keyword.advanced",
@@ -191,15 +334,17 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
 function matchesSettingsSection(
   section: SettingsSectionDef,
   query: string,
-  t: (key: string) => string,
+  t: (key: string, vars?: Record<string, unknown>) => string,
 ): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
+  const label = t(section.label, { defaultValue: section.defaultLabel });
+  const description = section.description
+    ? t(section.description, { defaultValue: section.defaultDescription })
+    : "";
   return (
-    t(section.label).toLowerCase().includes(normalized) ||
-    (section.description
-      ? t(section.description).toLowerCase().includes(normalized)
-      : false) ||
+    label.toLowerCase().includes(normalized) ||
+    description.toLowerCase().includes(normalized) ||
     (section.keywords ?? []).some((keyword) =>
       keyword.toLowerCase().includes(normalized),
     ) ||
@@ -209,17 +354,49 @@ function matchesSettingsSection(
   );
 }
 
+function settingsSectionLabel(
+  section: SettingsSectionDef,
+  t: (key: string, vars?: Record<string, unknown>) => string,
+): string {
+  return t(section.label, { defaultValue: section.defaultLabel });
+}
+
+function readSettingsHashSection(): string | null {
+  if (typeof window === "undefined") return null;
+  const hash = window.location.hash.replace(/^#/, "");
+  if (!hash) return null;
+  if (hash === "cloud") return "ai-model";
+  return SETTINGS_SECTIONS.some((section) => section.id === hash) ? hash : null;
+}
+
+function replaceSettingsHash(sectionId: string): void {
+  if (typeof window === "undefined") return;
+  const nextHash = `#${sectionId}`;
+  if (window.location.hash === nextHash) return;
+  window.history.replaceState(null, "", nextHash);
+}
+
 interface SettingsSectionProps extends ComponentPropsWithoutRef<"section"> {
   title?: string;
   description?: string;
+  showDescription?: boolean;
   bodyClassName?: string;
 }
 
 const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
   function SettingsSection(
-    { title, description, bodyClassName, className, children, ...props },
+    {
+      title,
+      description,
+      showDescription = false,
+      bodyClassName,
+      className,
+      children,
+      ...props
+    },
     ref,
   ) {
+    const panelDescription = showDescription ? description : undefined;
     if (title || description) {
       return (
         <PagePanel.CollapsibleSection
@@ -228,9 +405,11 @@ const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
           expanded
           variant="section"
           heading={title ?? ""}
-          description={description}
-          bodyClassName={bodyClassName}
-          className={className}
+          headingClassName="text-base sm:text-lg font-semibold tracking-tight text-txt-strong"
+          description={panelDescription}
+          descriptionClassName="mt-0.5 text-xs leading-snug text-muted"
+          bodyClassName={cn("px-4 pb-3 pt-0 sm:px-5 sm:pb-4", bodyClassName)}
+          className={cn("rounded-2xl", className)}
           {...props}
         >
           {children}
@@ -252,194 +431,6 @@ const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
     );
   },
 );
-
-/* ── Capabilities Section ────────────────────────────────────────────── */
-
-function CapabilitiesSection() {
-  const {
-    walletEnabled,
-    browserEnabled,
-    computerUseEnabled,
-    setActionNotice,
-    setState,
-    t,
-  } = useApp();
-  const [computerUseApprovalMode, setComputerUseApprovalMode] =
-    useState<ComputerUseApprovalMode>("full_control");
-  const [computerUseModeBusy, setComputerUseModeBusy] = useState(false);
-
-  useEffect(() => {
-    if (!computerUseEnabled) {
-      return;
-    }
-
-    let cancelled = false;
-    void client
-      .getComputerUseApprovals()
-      .then((snapshot) => {
-        if (!cancelled) {
-          setComputerUseApprovalMode(snapshot.mode);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setComputerUseApprovalMode("full_control");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [computerUseEnabled]);
-
-  const handleComputerUseApprovalModeChange = useCallback(
-    async (nextMode: string) => {
-      setComputerUseApprovalMode(nextMode as ComputerUseApprovalMode);
-      setComputerUseModeBusy(true);
-      try {
-        const result = await client.setComputerUseApprovalMode(
-          nextMode as ComputerUseApprovalMode,
-        );
-        setComputerUseApprovalMode(result.mode);
-        setActionNotice(
-          t("settings.sections.capabilities.computerUseModeSaved", {
-            defaultValue: `Computer use approval mode set to ${result.mode}.`,
-          }),
-          "success",
-          2600,
-        );
-      } catch (error) {
-        setActionNotice(
-          error instanceof Error
-            ? error.message
-            : t("settings.sections.capabilities.computerUseModeFailed", {
-                defaultValue: "Failed to update computer use approval mode.",
-              }),
-          "error",
-          3600,
-        );
-      } finally {
-        setComputerUseModeBusy(false);
-      }
-    },
-    [setActionNotice, t],
-  );
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="font-medium text-sm">
-            {t("settings.sections.capabilities.walletLabel", {
-              defaultValue: "Enable Wallet",
-            })}
-          </div>
-          <div className="text-xs text-muted">
-            {t("settings.sections.wallet.enableHint", {
-              defaultValue:
-                "Show the Wallet tab for managing crypto wallets and token balances",
-            })}
-          </div>
-        </div>
-        <Switch
-          checked={walletEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") => setState("walletEnabled", !!checked)}
-          aria-label={t("settings.sections.capabilities.walletLabel", {
-            defaultValue: "Enable Wallet",
-          })}
-        />
-      </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="font-medium text-sm">
-            {t("settings.sections.capabilities.browserLabel", {
-              defaultValue: "Enable Browser",
-            })}
-          </div>
-          <div className="text-xs text-muted">
-            {t("settings.sections.capabilities.browserHint", {
-              defaultValue:
-                "Show the Browser tab for agent-controlled web browsing",
-            })}
-          </div>
-        </div>
-        <Switch
-          checked={browserEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") => setState("browserEnabled", !!checked)}
-          aria-label={t("settings.sections.capabilities.browserLabel", {
-            defaultValue: "Enable Browser",
-          })}
-        />
-      </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="font-medium text-sm">
-            {t("settings.sections.capabilities.computerUseLabel", {
-              defaultValue: "Enable Computer Use",
-            })}
-          </div>
-          <div className="text-xs text-muted">
-            {t("settings.sections.capabilities.computerUseHint", {
-              defaultValue:
-                "Allow the agent to control your mouse, keyboard, take screenshots, and automate browsers",
-            })}
-          </div>
-        </div>
-        <Switch
-          checked={computerUseEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") => setState("computerUseEnabled", !!checked)}
-          aria-label={t("settings.sections.capabilities.computerUseLabel", {
-            defaultValue: "Enable Computer Use",
-          })}
-        />
-      </div>
-      {computerUseEnabled && (
-        <div className="ml-4 space-y-2 border-l-2 border-border/40 pl-4">
-          <div className="text-xs text-muted">
-            {t("settings.sections.capabilities.computerUseConfigHint", {
-              defaultValue:
-                "Computer Use requires Accessibility and Screen Recording permissions on macOS. On Linux, install xdotool. Configure fine-grained permissions in the Permissions section below.",
-            })}
-          </div>
-          <div className="space-y-2">
-            <div className="font-medium text-sm">
-              {t("settings.sections.capabilities.computerUseModeLabel", {
-                defaultValue: "Approval Mode",
-              })}
-            </div>
-            <div className="text-xs text-muted">
-              {t("settings.sections.capabilities.computerUseModeHint", {
-                defaultValue:
-                  "Choose whether computer actions run automatically, only safe reads auto-run, every action requires review, or all actions are paused.",
-              })}
-            </div>
-            <Select
-              value={computerUseApprovalMode}
-              onValueChange={(value) => {
-                void handleComputerUseApprovalModeChange(value);
-              }}
-              disabled={computerUseModeBusy}
-            >
-              <SelectTrigger className="max-w-xs">
-                <SelectValue
-                  placeholder={t("settings.sections.capabilities.computerUseModeLabel", {
-                    defaultValue: "Approval Mode",
-                  })}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="full_control">Full Control</SelectItem>
-                <SelectItem value="smart_approve">Smart Approve</SelectItem>
-                <SelectItem value="approve_all">Review Every Action</SelectItem>
-                <SelectItem value="off">Pause Computer Use</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 /* ── Updates Section ─────────────────────────────────────────────────── */
 
@@ -526,9 +517,6 @@ function AdvancedSection() {
               <div className="font-medium text-sm">
                 {t("settings.exportAgent")}
               </div>
-              <div className="text-xs text-muted">
-                {t("settings.exportAgentShort")}
-              </div>
             </div>
           </Button>
 
@@ -545,9 +533,6 @@ function AdvancedSection() {
             <div>
               <div className="font-medium text-sm">
                 {t("settings.importAgent")}
-              </div>
-              <div className="text-xs text-muted">
-                {t("settings.importAgentShort")}
               </div>
             </div>
           </Button>
@@ -780,18 +765,70 @@ export function SettingsView({
   onClose?: () => void;
   initialSection?: string;
 } = {}) {
-  const { t, loadPlugins } = useApp();
-  const [activeSection, setActiveSection] = useState(initialSection ?? "cloud");
-  const [searchQuery, setSearchQuery] = useState("");
-  const shellRef = useRef<HTMLDivElement>(null);
-
-  const visibleSections = useMemo(
-    () =>
-      SETTINGS_SECTIONS.filter((section) =>
-        matchesSettingsSection(section, searchQuery, t),
-      ),
-    [searchQuery, t],
+  const { t, loadPlugins, walletEnabled } = useApp();
+  const [activeSection, setActiveSection] = useState(
+    () => initialSection ?? readSettingsHashSection() ?? "identity",
   );
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    readStoredSettingsSidebarCollapsed,
+  );
+  const [sidebarWidth, setSidebarWidth] = useState<number>(
+    readStoredSettingsSidebarWidth,
+  );
+  const shellRef = useRef<HTMLDivElement>(null);
+  const initialAlignmentPendingRef = useRef(true);
+  const scrollSelectionSuppressionTimerRef = useRef<number | null>(null);
+
+  const handleSidebarCollapsedChange = useCallback((next: boolean) => {
+    setSidebarCollapsed(next);
+    try {
+      window.localStorage.setItem(SETTINGS_SIDEBAR_COLLAPSED_KEY, String(next));
+    } catch {
+      /* ignore sandboxed storage */
+    }
+  }, []);
+
+  const handleSidebarWidthChange = useCallback((next: number) => {
+    const clamped = clampSettingsSidebarWidth(next);
+    setSidebarWidth(clamped);
+    try {
+      window.localStorage.setItem(SETTINGS_SIDEBAR_WIDTH_KEY, String(clamped));
+    } catch {
+      /* ignore sandboxed storage */
+    }
+  }, []);
+
+  const suppressScrollSelection = useCallback((durationMs = 700) => {
+    if (typeof window === "undefined") return;
+    initialAlignmentPendingRef.current = true;
+    if (scrollSelectionSuppressionTimerRef.current != null) {
+      window.clearTimeout(scrollSelectionSuppressionTimerRef.current);
+    }
+    scrollSelectionSuppressionTimerRef.current = window.setTimeout(() => {
+      initialAlignmentPendingRef.current = false;
+      scrollSelectionSuppressionTimerRef.current = null;
+    }, durationMs);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (
+        typeof window !== "undefined" &&
+        scrollSelectionSuppressionTimerRef.current != null
+      ) {
+        window.clearTimeout(scrollSelectionSuppressionTimerRef.current);
+      }
+    };
+  }, []);
+
+  const visibleSections = useMemo(() => {
+    return SETTINGS_SECTIONS.filter((section) => {
+      if (section.id === "wallet-rpc" && walletEnabled === false) return false;
+      if (!matchesSettingsSection(section, searchQuery, t)) return false;
+      return true;
+    });
+  }, [searchQuery, t, walletEnabled]);
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],
@@ -808,6 +845,40 @@ export function SettingsView({
     topAlignedId: visibleSections[0]?.id ?? null,
   });
 
+  const alignContentToSection = useCallback(
+    (sectionId: string): boolean => {
+      const root = contentContainerRef.current;
+      const shell = shellRef.current;
+      const target = shell?.querySelector(`#${sectionId}`);
+      if (!(root instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+        return false;
+      }
+
+      const rootRect = root.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      root.scrollTo({
+        top: root.scrollTop + targetRect.top - rootRect.top - 24,
+        behavior: "auto",
+      });
+      return true;
+    },
+    [contentContainerRef],
+  );
+
+  const queueSectionAlignment = useCallback(
+    (sectionId: string) => {
+      suppressScrollSelection();
+      queueContentAlignment(sectionId);
+      if (typeof window === "undefined") return;
+      window.requestAnimationFrame(() => {
+        if (!alignContentToSection(sectionId)) {
+          window.setTimeout(() => alignContentToSection(sectionId), 50);
+        }
+      });
+    },
+    [alignContentToSection, queueContentAlignment, suppressScrollSelection],
+  );
+
   useEffect(() => {
     void loadPlugins();
   }, [loadPlugins]);
@@ -815,9 +886,10 @@ export function SettingsView({
   const handleSectionChange = useCallback(
     (sectionId: string) => {
       setActiveSection(sectionId);
-      queueContentAlignment(sectionId);
+      replaceSettingsHash(sectionId);
+      queueSectionAlignment(sectionId);
     },
-    [queueContentAlignment],
+    [queueSectionAlignment],
   );
 
   useEffect(() => {
@@ -828,9 +900,26 @@ export function SettingsView({
   }, [activeSection, visibleSectionIds, visibleSections]);
 
   useEffect(() => {
+    if (!initialAlignmentPendingRef.current) return;
+    if (!visibleSectionIds.has(activeSection)) return;
+    queueSectionAlignment(activeSection);
+  }, [activeSection, queueSectionAlignment, visibleSectionIds]);
+
+  useEffect(() => {
     if (!initialSection) return;
     handleSectionChange(initialSection);
   }, [handleSectionChange, initialSection]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleHashChange = () => {
+      const nextSection = readSettingsHashSection();
+      if (!nextSection || !visibleSectionIds.has(nextSection)) return;
+      handleSectionChange(nextSection);
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [handleSectionChange, visibleSectionIds]);
 
   useEffect(() => {
     const shell = shellRef.current;
@@ -838,6 +927,8 @@ export function SettingsView({
     if (!shell || !root) return;
 
     const handleScroll = () => {
+      if (initialAlignmentPendingRef.current) return;
+
       const sections = visibleSections
         .map((section) => {
           const el = shell.querySelector(`#${section.id}`);
@@ -850,27 +941,25 @@ export function SettingsView({
 
       if (sections.length === 0) return;
 
-      if (
-        root.scrollHeight - Math.ceil(root.scrollTop) <=
-        root.clientHeight + 10
-      ) {
-        setActiveSection(sections[sections.length - 1].id);
-        return;
-      }
-
       const rootRect = root.getBoundingClientRect();
+      const activeAnchorOffset = Math.min(
+        320,
+        Math.max(180, root.clientHeight * 0.35),
+      );
       let currentSection = sections[0].id;
 
       for (const { id, el } of sections) {
         const elRect = el.getBoundingClientRect();
-        if (elRect.top - rootRect.top <= 150) {
+        if (elRect.top - rootRect.top <= activeAnchorOffset) {
           currentSection = id;
         }
       }
 
-      setActiveSection((prev) =>
-        prev !== currentSection ? currentSection : prev,
-      );
+      setActiveSection((prev) => {
+        if (prev === currentSection) return prev;
+        replaceSettingsHash(currentSection);
+        return currentSection;
+      });
     };
 
     root.addEventListener("scroll", handleScroll, { passive: true });
@@ -879,26 +968,36 @@ export function SettingsView({
     return () => root.removeEventListener("scroll", handleScroll);
   }, [contentContainerRef, visibleSections]);
 
-  const searchLabel = t("settingsview.SearchSettings", {
-    defaultValue: "Search settings",
-  });
   const activeSectionDef =
     visibleSections.find((section) => section.id === activeSection) ??
     SETTINGS_SECTIONS.find((section) => section.id === activeSection) ??
     visibleSections[0] ??
     null;
+  const searchLabel = t("settingsview.SearchSettings", {
+    defaultValue: "Search settings",
+  });
 
   const settingsSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="settings-sidebar"
       collapsible
+      collapsed={sidebarCollapsed}
+      onCollapsedChange={handleSidebarCollapsedChange}
+      resizable
+      width={sidebarWidth}
+      onWidthChange={handleSidebarWidthChange}
+      minWidth={SETTINGS_SIDEBAR_MIN_WIDTH}
+      maxWidth={SETTINGS_SIDEBAR_MAX_WIDTH}
+      onCollapseRequest={() => handleSidebarCollapsedChange(true)}
       contentIdentity="settings"
       collapseButtonTestId="settings-sidebar-collapse-toggle"
       expandButtonTestId="settings-sidebar-expand-toggle"
       collapseButtonAriaLabel="Collapse settings"
       expandButtonAriaLabel="Expand settings"
       mobileTitle={t("nav.settings")}
-      mobileMeta={activeSectionDef ? t(activeSectionDef.label) : undefined}
+      mobileMeta={
+        activeSectionDef ? settingsSectionLabel(activeSectionDef, t) : undefined
+      }
       header={
         <SidebarHeader
           search={{
@@ -913,7 +1012,7 @@ export function SettingsView({
         />
       }
     >
-      <SidebarScrollRegion>
+      <SidebarScrollRegion className="pt-0">
         <SidebarPanel>
           {visibleSections.length === 0 ? (
             <SidebarContent.EmptyState className="px-4 py-6">
@@ -923,29 +1022,35 @@ export function SettingsView({
             <nav className="space-y-1.5" aria-label={t("nav.settings")}>
               {visibleSections.map((section) => {
                 const isActive = activeSection === section.id;
+                const Icon = section.icon;
                 return (
                   <SidebarContent.Item
                     key={section.id}
                     as="div"
                     active={isActive}
-                    className="gap-2"
+                    className="gap-2 py-2"
                     ref={registerSidebarItem(section.id)}
                   >
                     <SidebarContent.ItemButton
                       onClick={() => handleSectionChange(section.id)}
                       aria-current={isActive ? "page" : undefined}
+                      className="items-center gap-2.5"
                     >
+                      <SidebarContent.ItemIcon
+                        active={isActive}
+                        className="mt-0 h-8 w-8 rounded-lg p-1.5"
+                      >
+                        <Icon className="h-4 w-4" aria-hidden />
+                      </SidebarContent.ItemIcon>
                       <SidebarContent.ItemBody>
                         <SidebarContent.ItemTitle
-                          className={isActive ? "font-semibold" : "font-medium"}
+                          className={cn(
+                            "text-sm leading-5",
+                            isActive ? "font-semibold" : "font-medium",
+                          )}
                         >
-                          {t(section.label)}
+                          {settingsSectionLabel(section, t)}
                         </SidebarContent.ItemTitle>
-                        {section.description ? (
-                          <SidebarContent.ItemDescription>
-                            {t(section.description)}
-                          </SidebarContent.ItemDescription>
-                        ) : null}
                       </SidebarContent.ItemBody>
                     </SidebarContent.ItemButton>
                   </SidebarContent.Item>
@@ -955,52 +1060,68 @@ export function SettingsView({
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   const sectionsContent = (
     <>
-      {visibleSectionIds.has("cloud") && (
+      {visibleSectionIds.has("identity") && (
         <SettingsSection
-          id="cloud"
-          className="relative overflow-hidden"
-          bodyClassName="p-0"
-          ref={registerContentItem("cloud")}
+          id="identity"
+          title={t("settings.sections.identity.label", {
+            defaultValue: "Basics",
+          })}
+          description={t("settings.sections.identity.desc", {
+            defaultValue: "Name, voice, and system prompt.",
+          })}
+          ref={registerContentItem("identity")}
         >
-          <CloudDashboard />
+          <IdentitySettingsSection />
         </SettingsSection>
       )}
 
       {visibleSectionIds.has("ai-model") && (
         <SettingsSection
           id="ai-model"
-          title={t("settings.sections.aimodel.label")}
-          description={t("settings.sections.aimodel.desc")}
+          title={t("settings.sections.aimodel.label", {
+            defaultValue: "Providers",
+          })}
+          description={t("settings.sections.aimodel.desc", {
+            defaultValue: "Cloud, local, subscriptions, and direct providers.",
+          })}
           ref={registerContentItem("ai-model")}
         >
           <ProviderSwitcher />
         </SettingsSection>
       )}
 
-      {visibleSectionIds.has("coding-agents") && (
+      {visibleSectionIds.has("local-models") && (
         <SettingsSection
-          id="coding-agents"
-          title={t("settings.sections.codingagents.label")}
-          description={t("settings.codingAgentsDescription")}
-          ref={registerContentItem("coding-agents")}
+          id="local-models"
+          title={t("settings.sections.localModels.label", {
+            defaultValue: "Local Models",
+          })}
+          description={t("settings.sections.localModels.desc", {
+            defaultValue: "Download and assign local models.",
+          })}
+          ref={registerContentItem("local-models")}
         >
-          <CodingAgentSettingsSection />
+          <LocalInferencePanel />
         </SettingsSection>
       )}
 
-      {visibleSectionIds.has("media") && (
+      {visibleSectionIds.has("coding-agents") && (
         <SettingsSection
-          id="media"
-          title={t("settings.sections.media.label")}
-          description={t("settings.sections.media.desc")}
-          ref={registerContentItem("media")}
+          id="coding-agents"
+          title={t("settings.sections.codingagents.label", {
+            defaultValue: "Task Agents",
+          })}
+          description={t("settings.codingAgentsDescription", {
+            defaultValue: "Claude Code, Codex, Gemini, and Aider.",
+          })}
+          ref={registerContentItem("coding-agents")}
         >
-          <MediaSettingsSection />
+          <CodingAgentSettingsSection />
         </SettingsSection>
       )}
 
@@ -1011,7 +1132,7 @@ export function SettingsView({
             defaultValue: "Appearance",
           })}
           description={t("settings.sections.appearance.desc", {
-            defaultValue: "Content packs, VRM avatars, backgrounds, and themes",
+            defaultValue: "Language, theme, and content packs.",
           })}
           ref={registerContentItem("appearance")}
         >
@@ -1026,7 +1147,7 @@ export function SettingsView({
             defaultValue: "Capabilities",
           })}
           description={t("settings.sections.capabilities.desc", {
-            defaultValue: "Enable or disable agent capabilities",
+            defaultValue: "Agent features and automation surfaces.",
           })}
           ref={registerContentItem("capabilities")}
         >
@@ -1034,11 +1155,31 @@ export function SettingsView({
         </SettingsSection>
       )}
 
+      {visibleSectionIds.has("wallet-rpc") && (
+        <SettingsSection
+          id="wallet-rpc"
+          title={t("settings.sections.walletrpc.label", {
+            defaultValue: "Wallet & RPC",
+          })}
+          description={t("settings.sections.walletrpc.desc", {
+            defaultValue: "Wallet network and RPC providers.",
+          })}
+          bodyClassName="p-4 sm:p-5"
+          ref={registerContentItem("wallet-rpc")}
+        >
+          <ConfigPageView embedded />
+        </SettingsSection>
+      )}
+
       {visibleSectionIds.has("permissions") && (
         <SettingsSection
           id="permissions"
-          title={t("settings.sections.permissions.label")}
-          description={t("settings.sections.permissions.desc")}
+          title={t("settings.sections.permissions.label", {
+            defaultValue: "Permissions",
+          })}
+          description={t("settings.sections.permissions.desc", {
+            defaultValue: "Browser and device access.",
+          })}
           ref={registerContentItem("permissions")}
         >
           <PermissionsSection />
@@ -1048,8 +1189,12 @@ export function SettingsView({
       {visibleSectionIds.has("updates") && (
         <SettingsSection
           id="updates"
-          title={t("settings.sections.updates.label")}
-          description={t("settings.sections.updates.desc")}
+          title={t("settings.sections.updates.label", {
+            defaultValue: "Updates",
+          })}
+          description={t("settings.sections.updates.desc", {
+            defaultValue: "Software updates.",
+          })}
           ref={registerContentItem("updates")}
         >
           <UpdatesSection />
@@ -1059,8 +1204,12 @@ export function SettingsView({
       {visibleSectionIds.has("advanced") && (
         <SettingsSection
           id="advanced"
-          title={t("nav.advanced")}
-          description={t("settings.sections.advanced.desc")}
+          title={t("settings.sections.backupReset.label", {
+            defaultValue: "Backup & Reset",
+          })}
+          description={t("settings.sections.backupReset.desc", {
+            defaultValue: "Export, import, and reset.",
+          })}
           ref={registerContentItem("advanced")}
         >
           <AdvancedSection />
@@ -1072,6 +1221,7 @@ export function SettingsView({
           id="settings-empty"
           title={t("settingsview.NoMatchingSettings")}
           description={t("settings.noMatchingSettingsDescription")}
+          showDescription
         >
           <Button
             variant="outline"
@@ -1089,14 +1239,14 @@ export function SettingsView({
     <PageLayout
       className={cn("h-full", inModal && "min-h-0")}
       data-testid="settings-shell"
-      footer={<WidgetHost slot="settings" />}
-      footerClassName="pt-2"
       sidebar={settingsSidebar}
       contentRef={contentContainerRef}
       contentClassName={SETTINGS_CONTENT_CLASS}
       contentInnerClassName={SETTINGS_CONTENT_WIDTH_CLASS}
       mobileSidebarLabel={
-        activeSectionDef ? t(activeSectionDef.label) : t("nav.settings")
+        activeSectionDef
+          ? settingsSectionLabel(activeSectionDef, t)
+          : t("nav.settings")
       }
     >
       <div ref={shellRef} className={`w-full ${SETTINGS_SECTION_STACK_CLASS}`}>

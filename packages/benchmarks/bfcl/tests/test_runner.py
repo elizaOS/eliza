@@ -196,7 +196,7 @@ class TestMetricsCalculator:
         comparison = calculator.compare_to_baselines(metrics)
 
         assert "gpt-4-turbo" in comparison
-        assert "claude-3-opus" in comparison
+        assert "claude-opus-4-7" in comparison
         # Our score (0.85) vs GPT-4 Turbo (0.887)
         assert comparison["gpt-4-turbo"] < 0  # We're behind GPT-4 Turbo
 

@@ -4,15 +4,16 @@
  * Provides the missing transaction capability to Eliza's wallet system,
  * which currently only handles key generation and balance fetching.
  * Used by the registry and drop services for on-chain operations.
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/tx-service`.
- * New development should target the app-steward package.
  */
 
 import { logger } from "@elizaos/core";
 import { ethers } from "ethers";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+
+export interface JsonRpcEndpointProbeResult {
+  ok: boolean;
+  reason?: string;
+}
 
 /**
  * Validate that a private key is a valid 32-byte hex string.
@@ -25,15 +26,93 @@ function isValidPrivateKey(key: string): boolean {
   return /^[0-9a-fA-F]+$/.test(normalized);
 }
 
+export function normalizeJsonRpcUrl(rpcUrl: string): string {
+  const trimmed = rpcUrl.trim();
+  if (!trimmed) {
+    throw new Error("EVM JSON-RPC URL is required.");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error(
+      `Invalid EVM JSON-RPC URL "${trimmed}": expected an http(s) URL.`,
+    );
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(
+      `Invalid EVM JSON-RPC URL "${trimmed}": expected http: or https:.`,
+    );
+  }
+
+  return parsed.toString();
+}
+
+export async function probeJsonRpcEndpoint(
+  rpcUrl: string,
+  timeoutMs = 2_000,
+): Promise<JsonRpcEndpointProbeResult> {
+  const normalizedRpcUrl = normalizeJsonRpcUrl(rpcUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(normalizedRpcUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_chainId",
+        params: [],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: `HTTP ${response.status} ${response.statusText}`.trim(),
+      };
+    }
+
+    const body = (await response.json()) as {
+      result?: unknown;
+      error?: { message?: unknown };
+    };
+    if (
+      typeof body.result === "string" &&
+      /^0x[0-9a-fA-F]+$/.test(body.result)
+    ) {
+      return { ok: true };
+    }
+
+    const errorMessage =
+      typeof body.error?.message === "string"
+        ? body.error.message
+        : "missing eth_chainId result";
+    return { ok: false, reason: errorMessage };
+  } catch (err) {
+    const message =
+      err instanceof Error && err.name === "AbortError"
+        ? `timed out after ${timeoutMs}ms`
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    return { ok: false, reason: message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export class TxService {
   private readonly provider: ethers.JsonRpcProvider;
   private readonly wallet: ethers.Wallet;
   private readonly rpcUrl: string;
 
   constructor(rpcUrl: string, privateKey: string) {
-    this.rpcUrl = rpcUrl;
-    this.provider = new ethers.JsonRpcProvider(rpcUrl);
-
     // Validate private key before attempting to create wallet
     if (!isValidPrivateKey(privateKey)) {
       const preview =
@@ -45,6 +124,9 @@ export class TxService {
           `Please set a valid private key in your environment or .env file.`,
       );
     }
+
+    this.rpcUrl = normalizeJsonRpcUrl(rpcUrl);
+    this.provider = new ethers.JsonRpcProvider(this.rpcUrl);
 
     const normalizedKey = privateKey.startsWith("0x")
       ? privateKey

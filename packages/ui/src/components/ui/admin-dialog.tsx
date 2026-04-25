@@ -35,10 +35,7 @@ export function AdminDialogHeader({
 }: AdminDialogHeaderProps) {
   return (
     <DialogHeader
-      className={cn(
-        "shrink-0 bg-card/80 px-5 py-4",
-        className,
-      )}
+      className={cn("shrink-0 bg-card/80 px-5 py-4", className)}
       {...props}
     />
   );
@@ -53,10 +50,7 @@ export function AdminDialogFooterChrome({
 }: AdminDialogFooterProps) {
   return (
     <DialogFooter
-      className={cn(
-        "shrink-0 bg-card/80 px-5 py-4",
-        className,
-      )}
+      className={cn("shrink-0 bg-card/80 px-5 py-4", className)}
       {...props}
     />
   );
@@ -140,15 +134,7 @@ export function AdminSegmentedTabList({
   className,
   ...props
 }: AdminSegmentedTabListProps) {
-  return (
-    <div
-      className={cn(
-        "flex bg-bg-accent/35",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <div className={cn("flex bg-bg-accent/35", className)} {...props} />;
 }
 
 export interface AdminSegmentedTabProps

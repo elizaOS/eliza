@@ -1,16 +1,7 @@
 import type { IAgentRuntime, Memory, Room } from "@elizaos/core";
+import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function readString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
+const readString = asNonEmptyString;
 
 function normalizeName(value: string): string {
   return value.trim().toLowerCase();

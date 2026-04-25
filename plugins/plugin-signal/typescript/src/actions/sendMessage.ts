@@ -12,8 +12,14 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import type { SignalService } from "../service";
-import { isValidGroupId, normalizeE164, SIGNAL_SERVICE_NAME } from "../types";
+import { isValidGroupId, normalizeE164 } from "../types";
+import {
+  getMessageText,
+  getSignalService,
+  hasSignalService,
+  hasStructuredSignalInvocation,
+  isSignalConversation,
+} from "./action-utils";
 
 const sendMessageTemplate = `You are helping to extract send message parameters for Signal.
 
@@ -38,38 +44,22 @@ export const sendMessage: Action = {
   name: "SIGNAL_SEND_MESSAGE",
   similes: ["SEND_SIGNAL_MESSAGE", "TEXT_SIGNAL", "MESSAGE_SIGNAL", "SIGNAL_TEXT"],
   description: "Send a message to a Signal contact or group",
-    validate: async (runtime: any, message: any, state?: any, options?: any): Promise<boolean> => {
-  	const __avTextRaw = typeof message?.content?.text === 'string' ? message.content.text : '';
-  	const __avText = __avTextRaw.toLowerCase();
-  	const __avKeywords = ['signal', 'send', 'message'];
-  	const __avKeywordOk =
-  		__avKeywords.length > 0 &&
-  		__avKeywords.some((word) => word.length > 0 && __avText.includes(word));
-  	const __avRegex = new RegExp('\\b(?:signal|send|message)\\b', 'i');
-  	const __avRegexOk = __avRegex.test(__avText);
-  	const __avSource = String(message?.content?.source ?? message?.source ?? '');
-  	const __avExpectedSource = '';
-  	const __avSourceOk = __avExpectedSource
-  		? __avSource === __avExpectedSource
-  		: Boolean(__avSource || state || runtime?.agentId || runtime?.getService || runtime?.getSetting);
-  	const __avOptions = options && typeof options === 'object' ? options : {};
-  	const __avInputOk =
-  		__avText.trim().length > 0 ||
-  		Object.keys(__avOptions as Record<string, unknown>).length > 0 ||
-  		Boolean(message?.content && typeof message.content === 'object');
+  descriptionCompressed: "Send Signal message.",
+  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+    if (!hasSignalService(runtime)) {
+      return false;
+    }
 
-  	if (!(__avKeywordOk && __avRegexOk && __avSourceOk && __avInputOk)) {
-  		return false;
-  	}
+    if (isSignalConversation(message)) {
+      return true;
+    }
 
-  	const __avLegacyValidate = async (_runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
-    return message.content.source === "signal";
-  };
-  	try {
-  		return Boolean(await (__avLegacyValidate as any)(runtime, message, state, options));
-  	} catch {
-  		return false;
-  	}
+    if (hasStructuredSignalInvocation(message, "SIGNAL_SEND_MESSAGE", ["recipient", "text"])) {
+      return true;
+    }
+
+    const text = getMessageText(message);
+    return /\bsignal\b/i.test(text) && /\b(reply|send|message|text)\b/i.test(text);
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -78,7 +68,7 @@ export const sendMessage: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback
   ): Promise<ActionResult | undefined> => {
-    const signalService = runtime.getService(SIGNAL_SERVICE_NAME) as SignalService;
+    const signalService = getSignalService(runtime);
 
     if (!signalService || !signalService.isServiceConnected()) {
       await callback?.({
@@ -156,7 +146,7 @@ export const sendMessage: Action = {
 
     const response: Content = {
       text: "Message sent successfully.",
-      source: message.content.source,
+      source: message.content.source || "signal",
     };
 
     runtime.logger.debug(

@@ -25,41 +25,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 
-// Dynamic import: app-lifeops self-control helpers (optional in minimal builds)
-function fallbackHasWebsiteBlockDeferralIntent(text: string): boolean {
-  return (
-    /\bdo not block\b/i.test(text) ||
-    /\bdon'?t block\b/i.test(text) ||
-    /\bnot yet\b/i.test(text) ||
-    /\bhold off\b/i.test(text) ||
-    /\bwait(?: for me)?(?: to)?\s+(?:confirm|say|tell|be ready)\b/i.test(
-      text,
-    ) ||
-    /\bblock\b.*\blater\b/i.test(text) ||
-    /\bself ?control\b.*\blater\b/i.test(text)
-  );
-}
-
-function fallbackHasWebsiteBlockIntent(text: string): boolean {
-  return /\b(block|unblock|self control|selfcontrol|focus)\b/i.test(text);
-}
-
-let hasWebsiteBlockDeferralIntent: (text: string) => boolean =
-  fallbackHasWebsiteBlockDeferralIntent;
-let hasWebsiteBlockIntent: (text: string) => boolean =
-  fallbackHasWebsiteBlockIntent;
-try {
-  const mod = await import("@elizaos/app-lifeops/selfcontrol/selfcontrol");
-  hasWebsiteBlockDeferralIntent =
-    mod.hasWebsiteBlockDeferralIntent ?? fallbackHasWebsiteBlockDeferralIntent;
-  hasWebsiteBlockIntent =
-    mod.hasWebsiteBlockIntent ?? fallbackHasWebsiteBlockIntent;
-} catch {
-  // Keep regex-based fallback intent detection available even when the
-  // optional self-control module cannot be imported.
-}
-
 import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
+import { asRecord } from "@elizaos/shared/type-guards";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.js";
 import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js";
@@ -74,6 +41,7 @@ import {
   isClientVisibleNoResponse,
   isNoResponsePlaceholder,
 } from "./chat-text-helpers.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import {
   extractAnthropicSystemAndLastUser,
   extractCompatTextContent,
@@ -92,7 +60,6 @@ import {
   decodePathComponent,
   getErrorMessage,
   hasBlockedObjectKeyDeep,
-  isUuidLike,
   isWalletActionRequiredIntent,
   maybeAugmentChatMessageWithKnowledge,
   maybeAugmentChatMessageWithLanguage,
@@ -168,6 +135,171 @@ function normalizeActionCallbackText(text: string): string {
   return text.trim();
 }
 
+function getLatestVisibleResponseMessageText(
+  responseMessages:
+    | Array<{
+        id?: string;
+        content?: Content;
+      }>
+    | undefined,
+): string {
+  if (!Array.isArray(responseMessages) || responseMessages.length === 0) {
+    return "";
+  }
+
+  for (let index = responseMessages.length - 1; index >= 0; index -= 1) {
+    const content = responseMessages[index]?.content;
+    const text =
+      typeof extractCompatTextContent(content) === "string"
+        ? extractCompatTextContent(content).trim()
+        : "";
+    if (!text || isNoResponsePlaceholder(text)) {
+      continue;
+    }
+    return text;
+  }
+
+  return "";
+}
+
+const EXACT_GROUNDED_VALUE_REQUEST =
+  /\b(?:exact|verbatim|copy|quoted?|identifier|codeword|return only|only the)\b/i;
+const KNOWLEDGE_VALUE_CAPTURE =
+  /\b(?:codeword|identifier|token|value)\s*(?:is|=|:)\s*([A-Za-z0-9][A-Za-z0-9._-]{1,127})\b/gi;
+const UPPERCASE_IDENTIFIER_CAPTURE = /\b[A-Z0-9]+(?:[-_][A-Z0-9]+)+\b/g;
+const UUID_IDENTIFIER_CAPTURE =
+  /\b[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\b/gi;
+
+function uniqueMatches(matches: Iterable<string>): string[] {
+  return Array.from(
+    new Set(Array.from(matches).map((value) => value.trim())),
+  ).filter((value) => value.length > 0);
+}
+
+function collectRegexMatches(
+  text: string,
+  pattern: RegExp,
+  groupIndex?: number,
+): string[] {
+  const regex = new RegExp(pattern.source, pattern.flags);
+  return Array.from(text.matchAll(regex), (match) =>
+    String(groupIndex === undefined ? match[0] : (match[groupIndex] ?? "")),
+  );
+}
+
+function extractExactGroundedValueFromText(
+  messageText: string,
+  knowledgeText: string,
+): string | null {
+  if (!messageText || !EXACT_GROUNDED_VALUE_REQUEST.test(messageText)) {
+    return null;
+  }
+
+  if (!knowledgeText) {
+    return null;
+  }
+
+  const capturedKnowledgeValues = uniqueMatches(
+    collectRegexMatches(knowledgeText, KNOWLEDGE_VALUE_CAPTURE, 1),
+  );
+  if (capturedKnowledgeValues.length === 1) {
+    return capturedKnowledgeValues[0];
+  }
+
+  const uppercaseCandidates = uniqueMatches(
+    collectRegexMatches(knowledgeText, UPPERCASE_IDENTIFIER_CAPTURE),
+  );
+  if (uppercaseCandidates.length === 1) {
+    return uppercaseCandidates[0];
+  }
+
+  const uuidCandidates = uniqueMatches(
+    collectRegexMatches(knowledgeText, UUID_IDENTIFIER_CAPTURE),
+  );
+  if (uuidCandidates.length === 1) {
+    return uuidCandidates[0];
+  }
+
+  return null;
+}
+
+async function resolveExactKnowledgeValueForChat(
+  runtime: AgentRuntime,
+  message: ReturnType<typeof createMessageMemory>,
+): Promise<string | null> {
+  const messageText =
+    typeof extractCompatTextContent(message.content) === "string"
+      ? extractCompatTextContent(message.content).trim()
+      : "";
+  if (!messageText || !EXACT_GROUNDED_VALUE_REQUEST.test(messageText)) {
+    return null;
+  }
+
+  const knowledgeService = runtime.getService?.("knowledge") as
+    | {
+        getKnowledge?: (
+          message: ReturnType<typeof createMessageMemory>,
+        ) => Promise<
+          Array<{
+            content?: { text?: string };
+            metadata?: Record<string, unknown>;
+          }>
+        >;
+      }
+    | null
+    | undefined;
+  if (
+    !knowledgeService ||
+    typeof knowledgeService.getKnowledge !== "function"
+  ) {
+    return null;
+  }
+
+  try {
+    const matches = await knowledgeService.getKnowledge(message);
+    if (!Array.isArray(matches) || matches.length === 0) {
+      return null;
+    }
+
+    const uploadedMatches = matches.filter((match) => {
+      const metadata =
+        match?.metadata && typeof match.metadata === "object"
+          ? match.metadata
+          : null;
+      return metadata?.source === "upload";
+    });
+    const preferredMatches =
+      uploadedMatches.length > 0 ? uploadedMatches : matches;
+    const exactMatchCandidates = uniqueMatches(
+      preferredMatches
+        .map((match) =>
+          typeof match?.content?.text === "string"
+            ? extractExactGroundedValueFromText(
+                messageText,
+                match.content.text.trim(),
+              )
+            : null,
+        )
+        .filter((value): value is string => typeof value === "string"),
+    );
+    if (exactMatchCandidates.length === 1) {
+      return exactMatchCandidates[0];
+    }
+
+    const knowledgeText = preferredMatches
+      .map((match) =>
+        typeof match?.content?.text === "string"
+          ? match.content.text.trim()
+          : "",
+      )
+      .filter((text) => text.length > 0)
+      .join("\n\n");
+    return extractExactGroundedValueFromText(messageText, knowledgeText);
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Chat failure / no-response helpers
 // ---------------------------------------------------------------------------
@@ -177,14 +309,6 @@ const INSUFFICIENT_CREDITS_CHAT_REPLY =
   "Eliza Cloud credits are depleted. Top up the cloud balance and try again.";
 const GENERIC_NO_RESPONSE_CHAT_REPLY = PROVIDER_ISSUE_CHAT_REPLY;
 const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 90_000;
-const WEBSITE_BLOCK_SUBJECT_RE =
-  /\b(websites?|sites?|domains?|x\.com|twitter\.com)\b/i;
-const WEBSITE_BLOCK_FOLLOW_UP_RE =
-  /\b(do it|do that|block it|block them|go ahead|use self ?control|self ?control now|block the websites?|please do|now)\b/i;
-const WEBSITE_BLOCK_PERMISSION_RE =
-  /\b(permission|permissions|approval|approve|access|admin|administrator|root|sudo|allow|grant|enable)\b/i;
-const WEBSITE_BLOCK_PERMISSION_MODEL_RE =
-  /\b(permission|approval|approve|access|admin|administrator|root|sudo)\b/i;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
 
 function isExecutableFallbackAction(action: { name: string }): boolean {
@@ -201,13 +325,6 @@ function ensureMessageMemoryContent(
   return typeof content.text === "string"
     ? { ...content, text: content.text }
     : { ...content, text: "" };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
 }
 
 function buildRuntimeActionNameLookup(
@@ -285,13 +402,6 @@ function listExecutedRuntimeActions(
   } catch {
     return new Set();
   }
-}
-
-function hasWebsiteBlockingPermissionIntent(text: string): boolean {
-  return (
-    WEBSITE_BLOCK_PERMISSION_RE.test(text) &&
-    /\b(block(?:ing)?|self ?control|hosts? file|websites?)\b/i.test(text)
-  );
 }
 
 function pickInsufficientCreditsChatReply(): string {
@@ -443,67 +553,6 @@ function isIntentionalNoResponseResult(
   );
 }
 
-function inferWebsiteBlockFallback(
-  userText: string,
-  modelText: string,
-): {
-  name: "BLOCK_WEBSITES";
-} | null {
-  if (hasWebsiteBlockDeferralIntent?.(userText)) {
-    return null;
-  }
-
-  const userHasBlockIntent = hasWebsiteBlockIntent?.(userText) ?? false;
-  const modelLooksLikeBlockConfirmation =
-    /\b(blocking|block|self ?control)\b/i.test(modelText);
-  const userHasPermissionIntent = hasWebsiteBlockingPermissionIntent(userText);
-
-  if (userHasPermissionIntent) {
-    return null;
-  }
-
-  const userLooksLikeBlockIntent =
-    userHasBlockIntent &&
-    (WEBSITE_BLOCK_SUBJECT_RE.test(userText) ||
-      /\b(it|them)\b/i.test(userText));
-  if (userLooksLikeBlockIntent) {
-    return { name: "BLOCK_WEBSITES" };
-  }
-
-  if (
-    modelLooksLikeBlockConfirmation &&
-    WEBSITE_BLOCK_FOLLOW_UP_RE.test(userText)
-  ) {
-    return { name: "BLOCK_WEBSITES" };
-  }
-
-  return null;
-}
-
-function inferWebsiteBlockingPermissionFallback(
-  userText: string,
-  modelText: string,
-): {
-  name: "REQUEST_WEBSITE_BLOCKING_PERMISSION";
-} | null {
-  const userHasPermissionIntent = hasWebsiteBlockingPermissionIntent(userText);
-  if (userHasPermissionIntent) {
-    return { name: "REQUEST_WEBSITE_BLOCKING_PERMISSION" };
-  }
-
-  const modelLooksLikePermissionConfirmation =
-    WEBSITE_BLOCK_PERMISSION_MODEL_RE.test(modelText) &&
-    /\b(ask|request|grant|enable|allow|approve|get)\b/i.test(modelText);
-  if (
-    modelLooksLikePermissionConfirmation &&
-    WEBSITE_BLOCK_FOLLOW_UP_RE.test(userText)
-  ) {
-    return { name: "REQUEST_WEBSITE_BLOCKING_PERMISSION" };
-  }
-
-  return null;
-}
-
 function buildUnexecutedActionPayloadReply(actionNames: string[]): string {
   const uniqueNames = [
     ...new Set(
@@ -516,15 +565,6 @@ function buildUnexecutedActionPayloadReply(actionNames: string[]): string {
     "I could not complete that request because the model returned actions that were not executed.",
     `Unexecuted actions: ${actionsLabel}.`,
     "No side effects were applied.",
-  ].join("\n");
-}
-
-function buildWebsiteBlockingActionNotExecutedReply(
-  userPrompt: string,
-): string {
-  return [
-    `I could not complete "${userPrompt}" because no website-blocking action actually ran.`,
-    "No websites were blocked and no permissions were changed.",
   ].join("\n");
 }
 
@@ -1379,7 +1419,13 @@ export async function generateChatResponse(
       },
     );
 
-    const resultText = extractCompatTextContent(result?.responseContent);
+    const responseMessageText = getLatestVisibleResponseMessageText(
+      result?.responseMessages,
+    );
+    const resultText =
+      responseMessageText ||
+      extractCompatTextContent(result?.responseContent) ||
+      "";
 
     // Fallback: if callbacks weren't used for text, stream + return final text.
     if (!responseText && resultText) {
@@ -1423,47 +1469,13 @@ export async function generateChatResponse(
       }
     }
 
-    if (actionCallbacksSeen === 0 && !seenActionTags.has("BLOCK_WEBSITES")) {
-      const websiteBlockAttempt = inferWebsiteBlockFallback(
-        originalUserText,
-        responseText || resultText || "",
-      );
-      const websitePermissionAttempt = inferWebsiteBlockingPermissionFallback(
-        originalUserText,
-        responseText || resultText || "",
-      );
-      if (websiteBlockAttempt || websitePermissionAttempt) {
-        const callbacksBeforeFallback = actionCallbacksSeen;
-        await executeFallbackParsedActions(
-          runtime,
-          message,
-          [
-            ...(websiteBlockAttempt ? [websiteBlockAttempt] : []),
-            ...(websitePermissionAttempt ? [websitePermissionAttempt] : []),
-          ],
-          appendIncomingText,
-          recordActionCallback,
-          {
-            getCurrentText: () => responseText || resultText || "",
-          },
-        );
-
-        if (actionCallbacksSeen === callbacksBeforeFallback) {
-          const failureText = buildWebsiteBlockingActionNotExecutedReply(
-            originalUserText.trim(),
-          );
-          if (opts?.onSnapshot) {
-            emitSnapshot(failureText);
-          } else {
-            responseText = failureText;
-          }
-        }
-      }
-    }
-
     const noResponseFallback = opts?.resolveNoResponseText?.();
+    const exactKnowledgeValue = await resolveExactKnowledgeValueForChat(
+      runtime,
+      message,
+    );
     const normalizedResponseText = trimWalletProgressPrefix(
-      responseText || resultText || "",
+      exactKnowledgeValue || responseText || resultText || "",
     );
     const intentionalNoResponse = isIntentionalNoResponseResult(
       result,
@@ -1602,6 +1614,10 @@ export interface ChatRouteContext extends RouteRequestContext {
   state: ChatRouteState;
 }
 
+export function resolveChatAdminEntityId(state: ChatRouteState): UUID {
+  return resolveClientChatAdminEntityId(state);
+}
+
 async function ensureCompatChatConnection(
   state: ChatRouteState,
   runtime: AgentRuntime,
@@ -1662,22 +1678,7 @@ async function ensureCompatChatConnection(
 }
 
 function ensureAdminEntityIdForChat(state: ChatRouteState): UUID {
-  if (state.adminEntityId) {
-    return state.adminEntityId;
-  }
-  const configured = state.config.agents?.defaults?.adminEntityId?.trim();
-  const nextAdminEntityId =
-    configured && isUuidLike(configured)
-      ? configured
-      : (stringToUuid(`${state.agentName}-admin-entity`) as UUID);
-  if (configured && !isUuidLike(configured)) {
-    logger.warn(
-      `[eliza-api] Invalid agents.defaults.adminEntityId "${configured}", using deterministic fallback`,
-    );
-  }
-  state.adminEntityId = nextAdminEntityId;
-  state.chatUserId = state.adminEntityId;
-  return nextAdminEntityId;
+  return resolveChatAdminEntityId(state);
 }
 
 function syncRuntimeCharacterToChatStateConfig(state: ChatRouteState): void {

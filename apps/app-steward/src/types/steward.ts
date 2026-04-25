@@ -1,26 +1,33 @@
 /**
  * Steward-specific wallet types.
  *
- * Extracted from `@elizaos/shared/contracts/wallet` to decouple
- * steward concerns from the core wallet contract.
- *
- * For backward compatibility, these types are still re-exported
- * from `@elizaos/shared/contracts/wallet` with `@deprecated` notices.
+ * `StewardPolicyResult` and `StewardApprovalInfo` are still defined in
+ * `@elizaos/shared/contracts/wallet` because the BSC trade response types
+ * there reference them. Re-export them here so consumers only need a single
+ * import path for steward work.
  */
 
-/** Result from a Steward policy evaluation. */
-export interface StewardPolicyResult {
-  policyId?: string;
-  name?: string;
-  status: "approved" | "rejected" | "pending";
-  reason?: string;
-}
+import type {
+  StewardApprovalInfo,
+  StewardBalanceResponse,
+  StewardPolicyResult,
+  StewardTokenBalancesResponse,
+  StewardWalletAddressesResponse,
+  StewardWebhookEvent,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
+} from "@elizaos/shared/contracts";
 
-/** Steward pending-approval or rejection info attached to a tx step. */
-export interface StewardApprovalInfo {
-  status: "pending_approval" | "rejected";
-  policyResults?: StewardPolicyResult[];
-}
+export type {
+  StewardApprovalInfo,
+  StewardBalanceResponse,
+  StewardPolicyResult,
+  StewardTokenBalancesResponse,
+  StewardWalletAddressesResponse,
+  StewardWebhookEvent,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
+};
 
 /** Response from GET /api/wallet/steward-status. */
 export interface StewardStatusResponse {

@@ -16,7 +16,23 @@ const ROOT = process.cwd();
 const appArgMatch = process.argv.find((a) => a.startsWith("--app="));
 const appName = appArgMatch ? appArgMatch.split("=")[1] : "app";
 const APP_DIR = path.join(ROOT, "apps", appName);
-const ELECTROBUN_DIR = path.join(APP_DIR, "electrobun");
+const CANONICAL_ELECTROBUN_DIR = path.join(
+  ROOT,
+  "eliza",
+  "packages",
+  "app-core",
+  "platforms",
+  "electrobun",
+);
+const LEGACY_ELECTROBUN_DIR = path.join(APP_DIR, "electrobun");
+const ELECTROBUN_DIR = fs.existsSync(CANONICAL_ELECTROBUN_DIR)
+  ? CANONICAL_ELECTROBUN_DIR
+  : LEGACY_ELECTROBUN_DIR;
+const STAGE_MACOS_RELEASE_SCRIPT = path.join(
+  ELECTROBUN_DIR,
+  "scripts",
+  "stage-macos-release-artifacts.sh",
+);
 const PROFILE_EXCLUDED_OPTIONAL_PACKS = {
   full: [],
   "no-streaming": ["streaming"],
@@ -512,6 +528,69 @@ function stageDesktopBuild() {
   }
 }
 
+function mirrorTreePreservingSymlinks(src, dst) {
+  const srcStat = fs.lstatSync(src);
+  if (srcStat.isSymbolicLink()) {
+    const linkTarget = fs.readlinkSync(src);
+    const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
+    if (dstLstat) {
+      try {
+        if (dstLstat.isDirectory() && !dstLstat.isSymbolicLink()) {
+          fs.rmSync(dst, { force: true, recursive: true });
+        } else {
+          fs.unlinkSync(dst);
+        }
+      } catch {}
+    }
+    try {
+      fs.symlinkSync(linkTarget, dst);
+    } catch {
+      try {
+        fs.cpSync(src, dst, { recursive: true, force: true, dereference: true });
+      } catch {}
+    }
+    return;
+  }
+  if (srcStat.isDirectory()) {
+    const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
+    if (dstLstat?.isSymbolicLink()) {
+      fs.unlinkSync(dst);
+    }
+    fs.mkdirSync(dst, { recursive: true });
+    for (const entry of fs.readdirSync(src)) {
+      mirrorTreePreservingSymlinks(path.join(src, entry), path.join(dst, entry));
+    }
+    return;
+  }
+  const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
+  if (dstLstat) {
+    try {
+      fs.unlinkSync(dst);
+    } catch {}
+  }
+  try {
+    fs.linkSync(src, dst);
+  } catch {
+    fs.copyFileSync(src, dst);
+  }
+}
+
+function mirrorCanonicalToLegacy(name) {
+  if (LEGACY_ELECTROBUN_DIR === ELECTROBUN_DIR) return;
+  const src = path.join(ELECTROBUN_DIR, name);
+  const dst = path.join(LEGACY_ELECTROBUN_DIR, name);
+  if (!fs.existsSync(src)) return;
+  const dstLstat = fs.lstatSync(dst, { throwIfNoEntry: false });
+  if (dstLstat?.isSymbolicLink()) {
+    fs.unlinkSync(dst);
+  }
+  fs.mkdirSync(LEGACY_ELECTROBUN_DIR, { recursive: true });
+  console.log(
+    `[desktop-build] Mirroring electrobun ${name}/ from canonical to legacy compatibility path`,
+  );
+  mirrorTreePreservingSymlinks(src, dst);
+}
+
 function packageDesktopBuild() {
   ensureAppDirs();
   const packageArgs = ["run", "build"];
@@ -534,6 +613,9 @@ function packageDesktopBuild() {
       : "Packaging Electrobun app",
   });
 
+  mirrorCanonicalToLegacy("build");
+  mirrorCanonicalToLegacy("artifacts");
+
   if (
     process.platform === "darwin" &&
     packageEnv.ELECTROBUN_SKIP_CODESIGN === "1"
@@ -547,20 +629,16 @@ function packageDesktopBuild() {
   }
 
   if (stageMacosReleaseApp && process.platform === "darwin") {
-    run(
-      "bash",
-      ["apps/app/electrobun/scripts/stage-macos-release-artifacts.sh"],
-      {
-        cwd: ROOT,
-        env: {
-          ...packageEnv,
-          ELECTROBUN_SKIP_CODESIGN: process.env.ELECTROBUN_SKIP_CODESIGN ?? "1",
-          ELIZA_STAGE_MACOS_SKIP_DMG:
-            process.env.ELIZA_STAGE_MACOS_SKIP_DMG ?? "1",
-        },
-        label: "Staging direct macOS release app",
+    run("bash", [STAGE_MACOS_RELEASE_SCRIPT], {
+      cwd: ROOT,
+      env: {
+        ...packageEnv,
+        ELECTROBUN_SKIP_CODESIGN: process.env.ELECTROBUN_SKIP_CODESIGN ?? "1",
+        ELIZA_STAGE_MACOS_SKIP_DMG:
+          process.env.ELIZA_STAGE_MACOS_SKIP_DMG ?? "1",
       },
-    );
+      label: "Staging direct macOS release app",
+    });
   }
 }
 

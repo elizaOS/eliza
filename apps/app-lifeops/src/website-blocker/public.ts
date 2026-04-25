@@ -7,17 +7,10 @@ export {
   blockWebsitesAction,
   getWebsiteBlockStatusAction,
   requestWebsiteBlockingPermissionAction,
-  selfControlBlockWebsitesAction,
-  selfControlGetStatusAction,
-  selfControlRequestPermissionAction,
-  selfControlUnblockWebsitesAction,
   unblockWebsitesAction,
 } from "../actions/website-blocker.ts";
 
-export {
-  selfControlProvider,
-  websiteBlockerProvider,
-} from "../providers/website-blocker.ts";
+export { websiteBlockerProvider } from "../providers/website-blocker.ts";
 
 export {
   clearWebsiteBlockerExpiryTasks,
@@ -33,8 +26,6 @@ export {
 export {
   getSelfControlPermissionState,
   getSelfControlStatus,
-  hasWebsiteBlockDeferralIntent,
-  hasWebsiteBlockIntent,
   openSelfControlPermissionLocation,
   parseSelfControlBlockRequest,
   registerNativeWebsiteBlockerBackend,

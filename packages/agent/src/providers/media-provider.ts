@@ -1,7 +1,7 @@
 /**
  * Media Provider Abstraction Layer
  *
- * Provides a unified interface for media generation across multiple providers:
+ * Provides a single interface for media generation across multiple providers:
  * - Image Generation: FAL.ai, OpenAI (DALL-E), Google (Imagen), xAI, Eliza Cloud
  * - Video Generation: FAL.ai, OpenAI (Sora), Google (Veo), Eliza Cloud
  * - Audio Generation: Suno, ElevenLabs (SFX), Eliza Cloud
@@ -1236,7 +1236,7 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
       throw new Error(`${this.name} API key is required`);
     }
     this.apiKey = config.apiKey;
-    this.model = config.model ?? "claude-sonnet-4-20250514";
+    this.model = config.model ?? "claude-sonnet-4-6";
   }
 
   async analyze(

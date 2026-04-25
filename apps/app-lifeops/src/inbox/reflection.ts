@@ -1,5 +1,12 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+
+function parseReflectionObject(
+  raw: string,
+): Record<string, unknown> | null {
+  const parsed = parseJSONObjectFromText(raw);
+  return parsed && typeof parsed === "object" ? parsed : null;
+}
 
 // ---------------------------------------------------------------------------
 // Send confirmation reflection
@@ -26,22 +33,6 @@ export async function reflectOnSendConfirmation(
     recipientName: string;
   },
 ): Promise<{ confirmed: boolean; reasoning: string }> {
-  if (looksLikeInboxConfirmation(opts.userMessage)) {
-    return {
-      confirmed: true,
-      reasoning:
-        "Explicit confirmation phrase matched deterministic safety pre-check.",
-    };
-  }
-
-  if (REJECTION_PATTERN.test(opts.userMessage.trim().toLowerCase())) {
-    return {
-      confirmed: false,
-      reasoning:
-        "Explicit rejection phrase matched deterministic safety pre-check.",
-    };
-  }
-
   const prompt = [
     "You are a safety check for an inbox response system. Your job is to determine",
     "whether the user has clearly confirmed they want to send a drafted message.",
@@ -62,10 +53,8 @@ export async function reflectOnSendConfirmation(
   try {
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const raw = typeof result === "string" ? result : "";
-
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    const parsed = parseReflectionObject(raw);
+    if (parsed) {
       return {
         confirmed: parsed.confirmed === true,
         reasoning:
@@ -73,12 +62,6 @@ export async function reflectOnSendConfirmation(
             ? parsed.reasoning
             : "No reasoning provided",
       };
-    }
-
-    // Fallback: check for YES/NO in the raw text
-    const lower = raw.toLowerCase().trim();
-    if (lower.startsWith("yes") || lower.includes('"confirmed": true')) {
-      return { confirmed: true, reasoning: raw.slice(0, 200) };
     }
     return {
       confirmed: false,
@@ -119,28 +102,6 @@ export async function reflectOnAutoReply(
     senderName: string;
   },
 ): Promise<{ approved: boolean; reasoning: string }> {
-  const combinedText = `${opts.inboundText}\n${opts.replyText}`.toLowerCase();
-  const safeReply =
-    /^(?:thanks!?|thank you!?|you'?re welcome!?|got it!?|sounds good!?|hi!?|hello!?|hey!?|ok(?:ay)?!?|noted\.?)$/i.test(
-      opts.replyText.trim(),
-    );
-  const sensitiveReplyContext =
-    /\b(invest|wire|money|\$\d|legal|lawsuit|lawyer|diagnos|medical|bank|password|ssn|social security|seed phrase|private key|wallet)\b/i.test(
-      combinedText,
-    );
-  const heatedContext =
-    /\b(angry|upset|furious|frustrated|complaint|hate|wtf)\b/i.test(
-      combinedText,
-    );
-
-  if (safeReply && !sensitiveReplyContext && !heatedContext) {
-    return {
-      approved: true,
-      reasoning:
-        "Simple acknowledgement matched deterministic safe auto-reply pre-check.",
-    };
-  }
-
   const prompt = [
     "You are a safety check for an auto-reply system. The system wants to automatically",
     "send a reply WITHOUT explicit owner confirmation. Your job is to determine if this",
@@ -168,10 +129,8 @@ export async function reflectOnAutoReply(
   try {
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const raw = typeof result === "string" ? result : "";
-
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    const parsed = parseReflectionObject(raw);
+    if (parsed) {
       return {
         approved: parsed.approved === true,
         reasoning:
@@ -195,25 +154,4 @@ export async function reflectOnAutoReply(
       reasoning: "Reflection check failed; blocking auto-reply for safety",
     };
   }
-}
-
-// ---------------------------------------------------------------------------
-// Natural language confirmation detection
-// ---------------------------------------------------------------------------
-
-const REJECTION_PATTERN =
-  /\b(no|nope|nah|don't|do not|wait|hold on|change|edit|update|instead|actually|not yet|stop|cancel)\b/;
-
-const CONFIRMATION_PATTERN =
-  /^(?:yes|yeah|yep|yup|ok|okay|sure|confirm|confirmed|go ahead|do it|send it|send that|please send|please do|sounds good|looks good|lgtm)\b/;
-
-/**
- * Detect whether a user message looks like a confirmation to send a draft.
- * Used as a fast pre-check before the reflection LLM call.
- */
-export function looksLikeInboxConfirmation(text: string): boolean {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) return false;
-  if (REJECTION_PATTERN.test(normalized)) return false;
-  return CONFIRMATION_PATTERN.test(normalized);
 }

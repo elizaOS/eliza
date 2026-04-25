@@ -34,6 +34,7 @@ export { loadPersistedTrajectoryRows } from "./trajectory-query.js";
 // Storage — write operations
 // ---------------------------------------------------------------------------
 export {
+  annotateTrajectoryStep,
   clearPersistedTrajectoryRows,
   completeTrajectoryStepInDatabase,
   createDatabaseTrajectoryLogger,

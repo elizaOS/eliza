@@ -1,9 +1,9 @@
-import { getVrmPreviewUrl } from "../../state/vrm";
 import type { StylePreset } from "@elizaos/shared/contracts/onboarding";
+import { Button } from "@elizaos/ui";
 
 import { useEffect, useState } from "react";
 import { useApp } from "../../state";
-import { Button } from "@elizaos/ui";
+import { getVrmPreviewUrl } from "../../state/vrm";
 
 /* ── Shared constants ─────────────────────────────────────────────────── */
 

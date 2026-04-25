@@ -4,6 +4,7 @@ import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import {
   createConversation,
   postConversationMessage,
@@ -13,7 +14,7 @@ import {
   isLiveTestEnabled,
   selectLiveProvider,
 } from "../../../../test/helpers/live-provider";
-import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 import { saveEnv } from "../../../../test/helpers/test-utils";
 import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
@@ -220,14 +221,14 @@ async function startLiveServer(): Promise<StartedLiveServer> {
   process.env.ELIZA_STATE_DIR = stateDir;
   process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID = GOOGLE_CLIENT_ID;
 
-  const runtimeResult = await createRealTestRuntime({
+  const runtimeResult = await createLifeOpsTestRuntime({
     withLLM: true,
     preferredProvider: LIVE_PROVIDER?.name,
     plugins: [createElizaPlugin({ agentId: "main" })],
   });
   await seedLocalGmail(runtimeResult.runtime, stateDir);
 
-  const { startApiServer } = await import("../src/api/server");
+  const { startApiServer } = await import("@elizaos/agent/api/server");
   const server = await startApiServer({
     port: 0,
     runtime: runtimeResult.runtime,
@@ -275,6 +276,41 @@ async function sendChat(
   return responseText;
 }
 
+async function runReplyNeededFlow(
+  port: number,
+  title: string,
+): Promise<string> {
+  const { conversationId } = await createConversation(port, { title });
+  return await sendChat(
+    port,
+    conversationId,
+    "Which emails need a reply about venue details?",
+  );
+}
+
+async function runDraftFlow(
+  port: number,
+  title: string,
+  options?: {
+    allowProviderIssue?: boolean;
+  },
+): Promise<string> {
+  const { conversationId } = await createConversation(port, { title });
+  const searchResponse = await sendChat(
+    port,
+    conversationId,
+    "Search my email and tell me if anyone named Suran emailed me.",
+  );
+  expect(searchResponse).toMatch(/suran/i);
+
+  return await sendChat(
+    port,
+    conversationId,
+    "Draft a reply to Suran thanking him and saying next week works. Do not send it yet.",
+    options,
+  );
+}
+
 describeIf(LIVE_GMAIL_CHAT_ENABLED)("life-ops gmail live chat flows", () => {
   let server: StartedLiveServer | null = null;
 
@@ -286,65 +322,98 @@ describeIf(LIVE_GMAIL_CHAT_ENABLED)("life-ops gmail live chat flows", () => {
     await server?.close();
   });
 
-  it("searches Gmail narratively with the real agent runtime", async () => {
-    const { conversationId } = await createConversation(server?.port ?? 0, {
-      title: "gmail search",
-    });
-    const responseText = await sendChat(
-      server?.port ?? 0,
-      conversationId,
-      "Search my email and tell me if anyone named Suran emailed me.",
-    );
-
-    expect(responseText).toMatch(/suran/i);
-  }, 180_000);
-
-  it("finds reply-needed Gmail items with the real agent runtime", async () => {
-    const { conversationId } = await createConversation(server?.port ?? 0, {
-      title: "gmail venue",
-    });
-    const responseText = await sendChat(
-      server?.port ?? 0,
-      conversationId,
-      "Which emails need a reply about venue details?",
-    );
-
-    expect(responseText).toMatch(/venue|morgan/i);
-  }, 180_000);
-
-  it("drafts a Gmail reply from prior conversation context", async () => {
-    let lastResponse = "";
-
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
+  stochasticTest(
+    "searches Gmail narratively with the real agent runtime",
+    async () => {
       const { conversationId } = await createConversation(server?.port ?? 0, {
-        title: `gmail draft ${attempt}`,
+        title: "gmail search",
       });
-      const searchResponse = await sendChat(
+      const responseText = await sendChat(
         server?.port ?? 0,
         conversationId,
         "Search my email and tell me if anyone named Suran emailed me.",
       );
-      expect(searchResponse).toMatch(/suran/i);
 
-      lastResponse = await sendChat(
-        server?.port ?? 0,
-        conversationId,
-        "Draft a reply to Suran thanking him and saying next week works. Do not send it yet.",
-        { allowProviderIssue: true },
+      expect(responseText).toMatch(/suran/i);
+    },
+    { perRunTimeoutMs: 180_000, label: "gmail-chat/narrative-search" },
+  );
+
+  describe("strict single-attempt", () => {
+    stochasticTest(
+      "finds reply-needed Gmail items with the real agent runtime on the first attempt",
+      async () => {
+        const responseText = await runReplyNeededFlow(
+          server?.port ?? 0,
+          "gmail venue strict",
+        );
+
+        expect(responseText).toMatch(/venue|morgan/i);
+      },
+      { perRunTimeoutMs: 180_000, label: "gmail-chat/reply-needed-strict" },
+    );
+
+    stochasticTest(
+      "drafts a Gmail reply from prior conversation context on the first attempt",
+      async () => {
+        const responseText = await runDraftFlow(
+          server?.port ?? 0,
+          "gmail draft strict",
+        );
+
+        expect(responseText).toMatch(/next week|thank/i);
+      },
+      { perRunTimeoutMs: 180_000, label: "gmail-chat/draft-strict" },
+    );
+  });
+
+  describe("recovery coverage", () => {
+    it("recovers reply-needed Gmail lookup within three attempts when the first answer is weak", async () => {
+      let lastResponse = "";
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        lastResponse = await runReplyNeededFlow(
+          server?.port ?? 0,
+          `gmail venue recovery ${attempt}`,
+        );
+
+        if (/venue|morgan/i.test(lastResponse)) {
+          return;
+        }
+
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      }
+
+      throw new Error(
+        `Reply-needed Gmail flow did not stabilize: ${lastResponse}`,
       );
+    }, 180_000);
 
-      if (
-        !lastResponse.toLowerCase().includes("provider issue") &&
-        /next week|thank/i.test(lastResponse)
-      ) {
-        return;
+    it("recovers Gmail draft creation within three attempts when the first answer is weak", async () => {
+      let lastResponse = "";
+
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        lastResponse = await runDraftFlow(
+          server?.port ?? 0,
+          `gmail draft recovery ${attempt}`,
+          { allowProviderIssue: true },
+        );
+
+        if (
+          !lastResponse.toLowerCase().includes("provider issue") &&
+          /next week|thank/i.test(lastResponse)
+        ) {
+          return;
+        }
+
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
       }
 
-      if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      }
-    }
-
-    throw new Error(`Gmail draft flow did not stabilize: ${lastResponse}`);
-  }, 180_000);
+      throw new Error(`Gmail draft flow did not stabilize: ${lastResponse}`);
+    }, 180_000);
+  });
 });

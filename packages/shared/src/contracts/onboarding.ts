@@ -14,7 +14,6 @@ import {
   normalizeLinkedAccountsConfig,
   normalizeServiceRoutingConfig,
 } from "./service-routing.js";
-import type { WalletConfigUpdateRequest } from "./wallet.js";
 
 export const CHARACTER_LANGUAGES = [
   "en",
@@ -95,7 +94,11 @@ export type OnboardingProviderAuthMode =
   | "subscription"
   | (string & {});
 
-export type OnboardingProviderGroup = "cloud" | "local" | "subscription" | (string & {});
+export type OnboardingProviderGroup =
+  | "cloud"
+  | "local"
+  | "subscription"
+  | (string & {});
 
 export interface ProviderOption {
   id: OnboardingProviderId;
@@ -199,10 +202,6 @@ export const SUBSCRIPTION_PROVIDER_SELECTIONS = [
   labelKey: string;
 }>;
 
-// TODO: These hardcoded provider entries should eventually be populated by
-// plugins at runtime via a registry pattern. Each LLM plugin would call
-// registerProviderOption() during initialization to add itself to the catalog.
-// The hardcoded entries below serve as defaults until all plugins are migrated.
 export const ONBOARDING_PROVIDER_CATALOG = [
   {
     id: "elizacloud",
@@ -510,7 +509,8 @@ export interface OnboardingCredentialInputs {
   cloudApiKey?: string;
 }
 
-export interface OnboardingLlmPersistenceSelection {
+export interface OnboardingLlmPersistenceSelection
+  extends OnboardingCloudModelPreferences {
   backend: OnboardingProviderId;
   transport: "direct" | "remote" | "cloud-proxy";
   apiKey?: string;
@@ -518,57 +518,6 @@ export interface OnboardingLlmPersistenceSelection {
   remoteApiBase?: string;
   remoteAccessToken?: string;
 }
-export interface OnboardingLlmPersistenceSelection
-  extends OnboardingCloudModelPreferences {}
-
-export interface OnboardingData {
-  name: string;
-  avatarIndex?: number;
-  language?: CharacterLanguage;
-  presetId?: string;
-  sandboxMode?: "off" | "light" | "standard" | "max";
-  bio: string[];
-  systemPrompt: string;
-  style?: {
-    all: string[];
-    chat: string[];
-    post: string[];
-  };
-  adjectives?: string[];
-  postExamples?: string[];
-  messageExamples?: MessageExample[][];
-  deploymentTarget?: DeploymentTargetConfig;
-  linkedAccounts?: LinkedAccountsConfig;
-  serviceRouting?: ServiceRoutingConfig;
-  credentialInputs?: OnboardingCredentialInputs;
-  channels?: Record<string, unknown>;
-  features?: Record<
-    string,
-    boolean | { enabled?: boolean; [key: string]: unknown }
-  >;
-  walletConfig?: WalletConfigUpdateRequest;
-  inventoryProviders?: Array<{
-    chain: string;
-    rpcProvider: string;
-    rpcApiKey?: string;
-  }>;
-  connectors?: Record<string, OnboardingConnectorConfig>;
-  telegramToken?: string;
-  discordToken?: string;
-  whatsappSessionPath?: string;
-  twilioAccountSid?: string;
-  twilioAuthToken?: string;
-  twilioPhoneNumber?: string;
-  blooioApiKey?: string;
-  blooioPhoneNumber?: string;
-  githubToken?: string;
-  topics?: string[];
-  runMode?: string;
-  cloudProvider?: string;
-  smallModel?: string;
-  largeModel?: string;
-}
-
 export interface SubscriptionProviderStatus {
   provider: string;
   configured: boolean;
@@ -676,6 +625,9 @@ export function normalizeOnboardingProviderId(
     const preferredMatch =
       pluginMatches.find((provider) => provider.authMode === "api-key") ??
       pluginMatches[0];
+    if (!preferredMatch) {
+      continue;
+    }
     return preferredMatch.id;
   }
 
@@ -942,7 +894,10 @@ function resolveLegacyServiceRoutingInConfig(
   const models = asConfigRecord(config?.models);
 
   if (!next.llmText) {
-    if (deploymentTarget.runtime === "remote" && deploymentTarget.remoteApiBase) {
+    if (
+      deploymentTarget.runtime === "remote" &&
+      deploymentTarget.remoteApiBase
+    ) {
       const remotePrimaryModel = readPrimaryModelFromConfig(config);
       next.llmText = {
         backend: "remote",
@@ -1096,7 +1051,7 @@ export function resolveLinkedAccountsInConfig(
   const hasCloudKey = Boolean(normalizeSecretString(cloud?.apiKey));
   const existingCloudAccount = next.elizacloud;
 
-  if (hasCloudKey && (!existingCloudAccount || !existingCloudAccount.status)) {
+  if (hasCloudKey && !existingCloudAccount?.status) {
     next.elizacloud = {
       ...existingCloudAccount,
       status: "linked",
@@ -1128,7 +1083,10 @@ export function resolveServiceRoutingInConfig(
   const deploymentTarget = resolveDeploymentTargetInConfig(config);
 
   if (!next.llmText) {
-    if (deploymentTarget.runtime === "remote" && deploymentTarget.remoteApiBase) {
+    if (
+      deploymentTarget.runtime === "remote" &&
+      deploymentTarget.remoteApiBase
+    ) {
       const remotePrimaryModel = readPrimaryModelFromConfig(config);
       next.llmText = {
         backend: "remote",

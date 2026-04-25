@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
   Card,
@@ -7,7 +6,8 @@ import {
   CardHeader,
   StatusBadge,
 } from "@elizaos/ui";
-import { client, type ComputerUseApprovalSnapshot } from "../../api/client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
 import { useApp } from "../../state";
 
 const OVERLAY_SHELL_CLASS =
@@ -240,14 +240,20 @@ export function ComputerUseApprovalOverlay() {
                   <div className="w-full max-w-[18rem] space-y-3">
                     {isDenying ? (
                       <>
-                        <label className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+                        <label
+                          htmlFor="computer-use-deny-reason"
+                          className="block text-xs font-semibold uppercase tracking-[0.16em] text-muted"
+                        >
                           {t("computeruseapprovaloverlay.DenyReason", {
                             defaultValue: "Deny reason",
                           })}
                         </label>
                         <textarea
+                          id="computer-use-deny-reason"
                           value={denyReason}
-                          onChange={(event) => setDenyReason(event.target.value)}
+                          onChange={(event) =>
+                            setDenyReason(event.target.value)
+                          }
                           rows={4}
                           className="w-full rounded-xl border border-border/60 bg-bg/50 px-3 py-2 text-sm text-txt outline-none"
                           placeholder={t(

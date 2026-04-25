@@ -1,9 +1,9 @@
-import http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
+import type http from "node:http";
 import {
   type ElizaConfig,
   loadElizaConfig,
 } from "@elizaos/agent/config/config";
+import type { AgentRuntime } from "@elizaos/core";
 import {
   normalizeOnboardingProviderId,
   resolveDeploymentTargetInConfig,

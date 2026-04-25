@@ -2,6 +2,9 @@
  * Navigation — tabs + onboarding.
  */
 
+/// <reference types="vite/client" />
+
+import { Capacitor } from "@capacitor/core";
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
@@ -9,6 +12,7 @@ import {
   MessageSquare,
   Monitor,
   PencilLine,
+  Phone,
   Radio,
   Settings,
   Wallet,
@@ -28,6 +32,9 @@ export const COMPANION_ENABLED =
 /** Built-in tab identifiers. */
 export type BuiltinTab =
   | "chat"
+  | "phone"
+  | "messages"
+  | "contacts"
   | "lifeops"
   | "tasks"
   | "automations"
@@ -90,6 +97,37 @@ export interface TabGroup {
   description?: string;
 }
 
+export interface AndroidPhoneSurfaceDetection {
+  platform?: string;
+  isNative?: boolean;
+  search?: string;
+  hash?: string;
+}
+
+function hasAndroidTestFlag(search: string, hash: string): boolean {
+  const searchParams = new URLSearchParams(search);
+  if (searchParams.get("android") === "true") return true;
+  const hashQuery = hash.includes("?") ? hash.slice(hash.indexOf("?")) : "";
+  if (!hashQuery) return false;
+  return new URLSearchParams(hashQuery).get("android") === "true";
+}
+
+export function isAndroidPhoneSurfaceEnabled(
+  detection: AndroidPhoneSurfaceDetection = {},
+): boolean {
+  const search =
+    detection.search ??
+    (typeof window === "undefined" ? "" : window.location.search);
+  const hash =
+    detection.hash ??
+    (typeof window === "undefined" ? "" : window.location.hash);
+  if (hasAndroidTestFlag(search, hash)) return true;
+
+  const platform = detection.platform ?? Capacitor.getPlatform();
+  const isNative = detection.isNative ?? Capacitor.isNativePlatform();
+  return isNative && platform === "android";
+}
+
 export const ALL_TAB_GROUPS: TabGroup[] = [
   {
     label: "Chat",
@@ -97,6 +135,12 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     icon: MessageSquare,
     description:
       "Conversations with your agent, inbound messages from every connector, and connector management",
+  },
+  {
+    label: "Phone",
+    tabs: ["phone", "messages", "contacts"],
+    icon: Phone,
+    description: "MiladyOS dialer, SMS, and contact book",
   },
   {
     label: "Apps",
@@ -162,10 +206,12 @@ export function getTabGroups(
   walletEnabled = true,
   browserEnabled = true,
   dynamicTabs?: DynamicNavTab[],
+  phoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled(),
 ): TabGroup[] {
   const groups = ALL_TAB_GROUPS.filter(
     (g) =>
       (APPS_ENABLED || g.label !== "Apps") &&
+      (phoneSurfaceEnabled || g.label !== "Phone") &&
       (streamEnabled || g.label !== "Stream") &&
       (walletEnabled || g.label !== "Wallet") &&
       (browserEnabled || g.label !== "Browser"),
@@ -198,6 +244,9 @@ export function getTabGroups(
 
 const TAB_PATHS: Record<BuiltinTab, string> = {
   chat: "/chat",
+  phone: "/phone",
+  messages: "/messages",
+  contacts: "/contacts",
   lifeops: "/apps/lifeops",
   tasks: "/apps/tasks",
   browser: "/browser",
@@ -208,7 +257,7 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
   "character-select": "/character/select",
   automations: "/automations",
   triggers: "/automations",
-  inventory: "/inventory",
+  inventory: "/wallet",
   knowledge: "/character/knowledge",
   connectors: "/connectors",
   plugins: "/apps/plugins",
@@ -231,6 +280,7 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
 const LEGACY_PATHS: Record<string, Tab> = {
   "/game": "apps",
   "/agent": "character",
+  "/inventory": "inventory",
   "/wallets": "inventory",
   "/features": "plugins",
   "/admin": "fine-tuning",
@@ -268,6 +318,10 @@ const PATH_TO_TAB = new Map(
 function normalizePathForLookup(pathname: string, basePath = ""): string {
   const base = normalizeBasePath(basePath);
   let p = pathname || "/";
+  const queryIndex = p.indexOf("?");
+  if (queryIndex >= 0) p = p.slice(0, queryIndex);
+  const hashIndex = p.indexOf("#");
+  if (hashIndex >= 0) p = p.slice(0, hashIndex);
   if (base) {
     if (p === base) p = "/";
     else if (p.startsWith(`${base}/`)) p = p.slice(base.length);
@@ -281,6 +335,17 @@ export function pathForTab(tab: Tab, basePath = ""): string {
   const base = normalizeBasePath(basePath);
   const p = TAB_PATHS[tab as BuiltinTab] ?? `/${tab}`;
   return base ? `${base}${p}` : p;
+}
+
+export function canonicalPathForPath(
+  pathname: string,
+  basePath = "",
+): string | null {
+  const normalized = normalizePathForLookup(pathname, basePath);
+  const legacyTab = LEGACY_PATHS[normalized];
+  if (!legacyTab) return null;
+  const canonical = pathForTab(legacyTab, basePath);
+  return canonical === pathname ? null : canonical;
 }
 
 export function isRouteRootPath(pathname: string, basePath = ""): boolean {
@@ -318,6 +383,13 @@ const APPS_SUB_TABS: Record<string, Tab> = {
 export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   const normalized = normalizePathForLookup(pathname, basePath);
   if (normalized === "/") return "chat";
+
+  if (
+    normalized === "/node-catalog" ||
+    normalized === "/automations/node-catalog"
+  ) {
+    return "automations";
+  }
 
   // Companion disabled unless explicitly feature-flagged
   if (
@@ -402,6 +474,12 @@ export function titleForTab(tab: Tab): string {
   switch (tab) {
     case "chat":
       return "Chat";
+    case "phone":
+      return "Phone";
+    case "messages":
+      return "Messages";
+    case "contacts":
+      return "Contacts";
     case "lifeops":
       return "LifeOps";
     case "browser":

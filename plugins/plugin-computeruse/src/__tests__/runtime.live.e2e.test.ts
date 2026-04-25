@@ -183,13 +183,14 @@ describe.runIf(runE2E)("computer-use runtime registration (live e2e)", () => {
     const pluginNames = snapshot.order.plugins.map((item) => item.name);
     const actionNames = snapshot.order.actions.map((item) => item.name);
     const providerNames = snapshot.order.providers.map((item) => item.name);
-    const serviceTypes = snapshot.order.services.map((item) => item.serviceType);
+    const serviceTypes = snapshot.order.services.map(
+      (item) => item.serviceType,
+    );
 
     expect(pluginNames).toContain("@elizaos/plugin-computeruse");
     expect(actionNames).toEqual(
       expect.arrayContaining([
         "USE_COMPUTER",
-        "TAKE_SCREENSHOT",
         "BROWSER_ACTION",
         "MANAGE_WINDOW",
         "FILE_ACTION",

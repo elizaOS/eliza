@@ -72,7 +72,7 @@ export function readDevConsoleLogTail(
     } finally {
       fs.closeSync(fd);
     }
-  } catch (e) {
+  } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     return { ok: false, error: msg };
   }

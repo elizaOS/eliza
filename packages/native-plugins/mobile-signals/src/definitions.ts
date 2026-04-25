@@ -13,6 +13,90 @@ export type MobileSignalsState =
 
 export type MobileSignalsHealthSource = "healthkit" | "health_connect";
 
+export type MobileSignalsSettingsTarget =
+  | "app"
+  | "health"
+  | "healthConnect"
+  | "screenTime"
+  | "usageAccess"
+  | "notification"
+  | "batteryOptimization"
+  | "localNetwork"
+  | "deviceSettings";
+
+export type MobileSignalsSetupActionStatus =
+  | "ready"
+  | "needs-action"
+  | "unavailable";
+
+export interface MobileSignalsSetupAction {
+  id:
+    | "health_permissions"
+    | "screen_time_authorization"
+    | "android_usage_access"
+    | "app_settings"
+    | "notification_settings"
+    | "battery_optimization"
+    | "local_network";
+  label: string;
+  status: MobileSignalsSetupActionStatus;
+  canRequest: boolean;
+  canOpenSettings: boolean;
+  settingsTarget: MobileSignalsSettingsTarget | null;
+  reason: string | null;
+}
+
+export interface MobileSignalsOpenSettingsOptions {
+  target?: MobileSignalsSettingsTarget;
+}
+
+export interface MobileSignalsOpenSettingsResult {
+  opened: boolean;
+  target: MobileSignalsSettingsTarget;
+  actualTarget: MobileSignalsSettingsTarget;
+  reason: string | null;
+}
+
+export interface MobileSignalsScreenTimeStatus {
+  supported: boolean;
+  requirements: {
+    entitlements: {
+      familyControls: string;
+    };
+    frameworks: string[];
+    deviceActivityReportExtension: boolean;
+    deviceActivityMonitorExtension: boolean;
+    android?: {
+      usageStatsPermission: string;
+      usageAccessSettingsAction: string;
+    };
+  };
+  entitlements: {
+    familyControls: boolean;
+  };
+  provisioning: {
+    satisfied: boolean;
+    inspected: "code-signature" | "not-inspectable";
+    reason: string | null;
+  };
+  authorization: {
+    status: "approved" | "denied" | "not-determined" | "unavailable";
+    canRequest: boolean;
+  };
+  reportAvailable: boolean;
+  coarseSummaryAvailable: boolean;
+  thresholdEventsAvailable: boolean;
+  rawUsageExportAvailable: false;
+  android?: {
+    usageAccessGranted: boolean;
+    packageUsageStatsPermissionDeclared: boolean;
+    canOpenUsageAccessSettings: boolean;
+    foregroundEventsAvailable: boolean;
+    totalTimeForegroundMs: number | null;
+  };
+  reason: string | null;
+}
+
 export interface MobileSignalsHealthSleepSnapshot {
   available: boolean;
   isSleeping: boolean;
@@ -40,6 +124,7 @@ export interface MobileSignalsHealthSnapshot {
   idleTimeSeconds: number | null;
   onBattery: boolean | null;
   healthSource: MobileSignalsHealthSource;
+  screenTime: MobileSignalsScreenTimeStatus;
   permissions: {
     sleep: boolean;
     biometrics: boolean;
@@ -87,14 +172,31 @@ export interface MobileSignalsSnapshotResult {
   healthSnapshot: MobileSignalsHealthSnapshot | null;
 }
 
+export interface MobileSignalsBackgroundRefreshResult {
+  scheduled: boolean;
+  identifier?: string;
+  earliestBeginInSeconds?: number;
+  reason?: string;
+}
+
+export interface MobileSignalsCancelBackgroundRefreshResult {
+  cancelled: boolean;
+  reason?: string;
+}
+
 export interface MobileSignalsPlugin {
   checkPermissions(): Promise<MobileSignalsPermissionStatus>;
   requestPermissions(): Promise<MobileSignalsPermissionStatus>;
+  openSettings(
+    options?: MobileSignalsOpenSettingsOptions,
+  ): Promise<MobileSignalsOpenSettingsResult>;
   startMonitoring(
     options?: MobileSignalsStartOptions,
   ): Promise<MobileSignalsStartResult>;
   stopMonitoring(): Promise<MobileSignalsStopResult>;
   getSnapshot(): Promise<MobileSignalsSnapshotResult>;
+  scheduleBackgroundRefresh(): Promise<MobileSignalsBackgroundRefreshResult>;
+  cancelBackgroundRefresh(): Promise<MobileSignalsCancelBackgroundRefreshResult>;
   addListener(
     eventName: "signal",
     listenerFunc: (event: MobileSignalsSignal) => void,
@@ -106,6 +208,8 @@ export interface MobileSignalsPermissionStatus {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
   reason?: string;
+  screenTime: MobileSignalsScreenTimeStatus;
+  setupActions: MobileSignalsSetupAction[];
   permissions: {
     sleep: boolean;
     biometrics: boolean;

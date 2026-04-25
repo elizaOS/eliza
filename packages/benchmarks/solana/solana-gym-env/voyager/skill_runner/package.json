@@ -3,21 +3,21 @@
   "version": "1.0.0",
   "description": "Swap benchmark environment for Solana DEX interactions",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run --config ./vitest.config.ts"
   },
   "dependencies": {
     "@codama/nodes-from-anchor": "^1.2.3",
-    "@coral-xyz/anchor": "^0.30.1",
-    "@coral-xyz/borsh": "^0.31.1",
+    "@coral-xyz/anchor": "^0.32.0",
+    "@coral-xyz/borsh": "^0.32.0",
     "@ellipsis-labs/phoenix-sdk": "^2.0.3",
     "@jup-ag/api": "^6.0.0",
-    "@orca-so/whirlpools-sdk": "^0.15.0",
+    "@orca-so/whirlpools-sdk": "^0.20.0",
     "@raydium-io/raydium-sdk-v2": "^0.2.12-alpha",
-    "@solana/kit": "^2.3.0",
+    "@solana/kit": "^6.0.0",
     "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.98.4",
     "axios": "^1.11.0",
-    "bs58": "^5.0.0",
+    "bs58": "^6.0.0",
     "codama": "^1.3.1",
     "decimal.js": "^10.4.3"
   }

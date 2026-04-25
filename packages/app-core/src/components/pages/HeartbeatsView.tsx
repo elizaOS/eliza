@@ -1,5 +1,16 @@
-
-
+import {
+  Button,
+  FieldLabel,
+  NewActionButton,
+  PageLayout,
+  PagePanel,
+  SidebarCollapsedActionButton,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  StatusBadge,
+} from "@elizaos/ui";
 import { Plus } from "lucide-react";
 import {
   createContext,
@@ -13,11 +24,11 @@ import {
 } from "react";
 import type { TriggerSummary } from "../../api/client";
 import { useApp } from "../../state";
-import { WidgetHost } from "../../widgets";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
+import { WidgetHost } from "../../widgets";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { HeartbeatForm } from "./HeartbeatForm";
-import { PagePanel, SidebarCollapsedActionButton, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, FieldLabel, NewActionButton, StatusBadge, StatusDot, PageLayout } from "@elizaos/ui";
 import {
   BUILT_IN_TEMPLATES,
   buildCreateRequest,
@@ -32,9 +43,8 @@ import {
   railMonogram,
   saveUserTemplates,
   scheduleLabel,
-  toneForLastStatus,
-  type TranslateFn,
   type TriggerFormState,
+  toneForLastStatus,
   validateForm,
 } from "./heartbeat-utils";
 
@@ -455,7 +465,7 @@ function HeartbeatsLayout() {
   };
 
   const heartbeatsSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="heartbeats-sidebar"
       collapsible
       contentIdentity="heartbeats"
@@ -638,7 +648,7 @@ function HeartbeatsLayout() {
           </div>
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

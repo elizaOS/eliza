@@ -2,6 +2,7 @@ import {
   applySubscriptionCredentials,
   deleteCredentials,
 } from "@elizaos/agent/auth";
+import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
 import {
@@ -40,19 +41,7 @@ type MutableElizaConfig = Partial<ElizaConfig> & {
   serviceRouting?: ServiceRoutingConfig;
 };
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-function trimToUndefined(value: string | null | undefined): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
+const trimToUndefined = asNonEmptyString;
 
 function ensureEnv(config: MutableElizaConfig): Record<string, unknown> {
   config.env ??= {};
@@ -414,7 +403,7 @@ const PROVIDER_DEFAULT_MODELS: Record<
 > = {
   anthropic: {
     smallKey: "ANTHROPIC_SMALL_MODEL",
-    smallVal: "claude-haiku-4-5",
+    smallVal: "claude-haiku-4-5-20251001",
     largeKey: "ANTHROPIC_LARGE_MODEL",
     largeVal: "claude-sonnet-4-6",
   },
@@ -429,6 +418,12 @@ const PROVIDER_DEFAULT_MODELS: Record<
     smallVal: "gemini-2.0-flash-001",
     largeKey: "GOOGLE_LARGE_MODEL",
     largeVal: "gemini-2.5-pro-preview-03-25",
+  },
+  groq: {
+    smallKey: "GROQ_SMALL_MODEL",
+    smallVal: "llama-3.1-8b-instant",
+    largeKey: "GROQ_LARGE_MODEL",
+    largeVal: "llama-3.1-8b-instant",
   },
 };
 

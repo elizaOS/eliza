@@ -1,7 +1,6 @@
-
+import { Button } from "@elizaos/ui";
 import { AlertTriangle } from "lucide-react";
 import type { CSSProperties } from "react";
-import { Button } from "@elizaos/ui";
 
 type CloudHeaderStatusKind =
   | "error"
@@ -121,13 +120,17 @@ export function resolveCloudStatusBadgeState(
 
 function resolveCloudStatusToneStyle(
   kind: CloudHeaderStatusKind,
-  _appearance: CloudStatusBadgeProps["appearance"],
+  appearance: CloudStatusBadgeProps["appearance"],
 ): CSSProperties {
-  // The badge now only renders for warning/error/low-credits states.
   const toneVar = kind === "error" ? "var(--danger)" : "var(--warn)";
+  if (appearance === "shell") {
+    return {
+      borderColor: `color-mix(in srgb, ${toneVar} 34%, var(--border))`,
+      color: `color-mix(in srgb, var(--text-strong) 78%, ${toneVar} 22%)`,
+    };
+  }
   return {
-    borderColor: `color-mix(in srgb, ${toneVar} 34%, var(--border))`,
-    color: `color-mix(in srgb, var(--text-strong) 78%, ${toneVar} 22%)`,
+    color: `color-mix(in srgb, var(--text-strong) 70%, ${toneVar} 30%)`,
   };
 }
 
@@ -162,16 +165,17 @@ export function CloudStatusBadge(props: CloudStatusBadgeProps) {
 
   const toneStyle = resolveCloudStatusToneStyle(status.kind, appearance);
 
+  const buttonClassName =
+    appearance === "shell"
+      ? `inline-flex h-11 min-h-touch min-w-touch items-center justify-center rounded-xl px-3.5 py-0 border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt shrink-0 gap-1.5 leading-none no-underline text-sm font-medium`
+      : `inline-flex h-[2.375rem] min-h-[2.375rem] shrink-0 items-center gap-1.5 rounded-md border border-transparent !bg-transparent px-2.5 leading-none text-muted shadow-none ring-0 transition-colors duration-150 hover:!bg-transparent hover:text-txt active:!bg-transparent text-xs-tight font-mono sm:text-xs`;
+
   return (
     <Button
-      variant="outline"
+      variant={appearance === "shell" ? "outline" : "ghost"}
       data-testid={dataTestId}
       data-status={status.kind}
-      className={`inline-flex h-11 min-h-touch min-w-touch items-center justify-center rounded-xl px-3.5 py-0 border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt shrink-0 gap-1.5 px-3.5 leading-none no-underline ${
-        appearance === "shell"
-          ? "text-sm font-medium"
-          : "text-xs-tight font-mono sm:text-xs"
-      } ${compactOnMobile ? "max-[380px]:w-11 max-[380px]:justify-center max-[380px]:px-0" : ""}`}
+      className={`${buttonClassName} ${compactOnMobile ? "max-[380px]:w-[2.375rem] max-[380px]:min-w-[2.375rem] max-[380px]:justify-center max-[380px]:px-0" : ""}`}
       aria-label={status.title}
       title={status.title}
       onClick={onClick}
@@ -182,7 +186,10 @@ export function CloudStatusBadge(props: CloudStatusBadgeProps) {
         ...toneStyle,
       }}
     >
-      <AlertTriangle className="pointer-events-none h-3.5 w-3.5 shrink-0" />
+      <AlertTriangle
+        className="pointer-events-none h-3.5 w-3.5 shrink-0"
+        aria-hidden="true"
+      />
       <span
         className={`pointer-events-none leading-none ${compactOnMobile ? "max-[380px]:hidden" : ""}`}
       >

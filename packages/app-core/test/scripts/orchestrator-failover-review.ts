@@ -1,7 +1,6 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 type CommandResult = {
   exitCode: number;
@@ -80,7 +79,7 @@ function runCommand(
         exitCode: -1,
         signal: null,
         stdout,
-        stderr: `${stderr}${error instanceof Error ? error.stack ?? error.message : String(error)}`,
+        stderr: `${stderr}${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
         timedOut,
         durationMs: Date.now() - startedAt,
       });
@@ -91,10 +90,18 @@ function runCommand(
 const repoRoot = process.cwd();
 const qaRoot = path.join(repoRoot, ".tmp", "qa");
 fs.mkdirSync(qaRoot, { recursive: true });
-const reportDir = fs.mkdtempSync(path.join(qaRoot, "orchestrator-failover-review-"));
-const runCount = Math.max(1, Number.parseInt(process.env.FAILOVER_REVIEW_RUNS ?? "2", 10) || 2);
-const timeoutMs =
-  Math.max(60_000, Number.parseInt(process.env.FAILOVER_REVIEW_TIMEOUT_MS ?? "", 10) || 15 * 60_000);
+const reportDir = fs.mkdtempSync(
+  path.join(qaRoot, "orchestrator-failover-review-"),
+);
+const runCount = Math.max(
+  1,
+  Number.parseInt(process.env.FAILOVER_REVIEW_RUNS ?? "2", 10) || 2,
+);
+const timeoutMs = Math.max(
+  60_000,
+  Number.parseInt(process.env.FAILOVER_REVIEW_TIMEOUT_MS ?? "", 10) ||
+    15 * 60_000,
+);
 
 const runs: FailoverRunReport[] = [];
 
@@ -108,8 +115,10 @@ for (let index = 0; index < runCount; index += 1) {
       env: {
         ...process.env,
         MILADY_KEEP_LIVE_ARTIFACTS: "1",
-        ORCHESTRATOR_LIVE_PRIMARY: process.env.ORCHESTRATOR_LIVE_PRIMARY ?? "codex",
-        ORCHESTRATOR_LIVE_FALLBACK: process.env.ORCHESTRATOR_LIVE_FALLBACK ?? "claude",
+        ORCHESTRATOR_LIVE_PRIMARY:
+          process.env.ORCHESTRATOR_LIVE_PRIMARY ?? "codex",
+        ORCHESTRATOR_LIVE_FALLBACK:
+          process.env.ORCHESTRATOR_LIVE_FALLBACK ?? "claude",
       },
       timeoutMs,
     },
@@ -120,10 +129,16 @@ for (let index = 0; index < runCount; index += 1) {
   fs.writeFileSync(stdoutPath, result.stdout, "utf8");
   fs.writeFileSync(stderrPath, result.stderr, "utf8");
 
-  const passMatch = result.stdout.match(/\[orchestrator-live-failover\] PASS (\{.+\})/);
-  const blockedEvents = (result.stdout.match(/"event":"blocked"/g) ?? []).length;
-  const claudeDialogs = (result.stdout.match(/Claude dialog awaiting navigation/g) ?? []).length;
-  const stallClassifiedEvents = (result.stdout.match(/stall_classified/g) ?? []).length;
+  const passMatch = result.stdout.match(
+    /\[orchestrator-live-failover\] PASS (\{.+\})/,
+  );
+  const blockedEvents = (result.stdout.match(/"event":"blocked"/g) ?? [])
+    .length;
+  const claudeDialogs = (
+    result.stdout.match(/Claude dialog awaiting navigation/g) ?? []
+  ).length;
+  const stallClassifiedEvents = (result.stdout.match(/stall_classified/g) ?? [])
+    .length;
 
   let runReport: FailoverRunReport = {
     runNumber,
@@ -164,10 +179,9 @@ for (let index = 0; index < runCount; index += 1) {
       runReport.error = error instanceof Error ? error.message : String(error);
     }
   } else {
-    runReport.error =
-      result.timedOut
-        ? "failover review timed out"
-        : `run failed with exit ${result.exitCode}`;
+    runReport.error = result.timedOut
+      ? "failover review timed out"
+      : `run failed with exit ${result.exitCode}`;
   }
 
   runs.push(runReport);
@@ -219,7 +233,10 @@ const markdown = [
   ]),
 ].join("\n");
 
-fs.writeFileSync(path.join(reportDir, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
+fs.writeFileSync(
+  path.join(reportDir, "report.json"),
+  `${JSON.stringify(report, null, 2)}\n`,
+);
 fs.writeFileSync(path.join(reportDir, "report.md"), `${markdown}\n`);
 
 console.log(

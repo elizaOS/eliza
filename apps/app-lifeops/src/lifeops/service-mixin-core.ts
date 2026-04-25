@@ -1,33 +1,34 @@
 import crypto from "node:crypto";
-import { type IAgentRuntime, logger } from "@elizaos/core";
+import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
+import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
 import type {
   LifeOpsAuditEvent,
   LifeOpsAuditEventType,
-  LifeOpsBrowserAction,
-  LifeOpsBrowserCompanionStatus,
-  LifeOpsBrowserSettings,
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsOwnership,
   LifeOpsOwnershipInput,
   LifeOpsWorkflowDefinition,
-  UpsertLifeOpsBrowserCompanionRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import type {
+  BrowserBridgeAction,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeSettings,
+  UpsertBrowserBridgeCompanionRequest,
+} from "@elizaos/plugin-browser-bridge/contracts";
 import {
-  LIFEOPS_BROWSER_COMPANION_CONNECTION_STATES,
-  LIFEOPS_BROWSER_KINDS,
-} from "@elizaos/shared/contracts/lifeops";
-import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
-import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
-import { computeAdaptiveWindowPolicy } from "./defaults.js";
+  BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
+  BROWSER_BRIDGE_KINDS,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import type { computeAdaptiveWindowPolicy } from "./defaults.js";
+import { GoogleManagedClient } from "./google-managed-client.js";
 import {
-  GoogleManagedClient,
-} from "./google-managed-client.js";
-import {
+  createBrowserBridgeCompanionStatus,
   createLifeOpsAuditEvent,
-  createLifeOpsBrowserCompanionStatus,
   LifeOpsRepository,
 } from "./repository.js";
+import { LifeOpsScheduleSyncClient } from "./schedule-sync-client.js";
 import {
   DEFAULT_BROWSER_PERMISSION_STATE,
   DEFAULT_BROWSER_SETTINGS,
@@ -52,6 +53,7 @@ import {
   normalizeOptionalConnectorMode,
 } from "./service-normalize-connector.js";
 import type { LifeOpsServiceOptions } from "./service-types.js";
+import { XManagedClient } from "./x-managed-client.js";
 
 // ---------------------------------------------------------------------------
 // Mixin helper type
@@ -59,14 +61,21 @@ import type { LifeOpsServiceOptions } from "./service-types.js";
 
 /** Constructor type for the mixin pattern. */
 // biome-ignore lint/suspicious/noExplicitAny: mixin pattern requires open-ended constructor signature
-export type Constructor<T = {}> = new (...args: any[]) => T;
+export type Constructor<T = object> = new (...args: any[]) => T;
+
+export type MixinClass<
+  TBase extends Constructor,
+  TPublic extends object,
+> = new (
+  ...args: ConstructorParameters<TBase>
+) => InstanceType<TBase> & TPublic;
 
 // ---------------------------------------------------------------------------
 // Helpers used only inside the base class
 // ---------------------------------------------------------------------------
 
 function browserActionChangesState(
-  action: Pick<LifeOpsBrowserAction, "kind">,
+  action: Pick<BrowserBridgeAction, "kind">,
 ): boolean {
   return (
     action.kind === "open" ||
@@ -145,6 +154,8 @@ export class LifeOpsServiceBase {
   public readonly explicitOwnerEntityIdValue: string | null;
   public readonly ownerEntityIdValue: string;
   public readonly googleManagedClient: GoogleManagedClient;
+  public readonly xManagedClient: XManagedClient;
+  public readonly scheduleSyncClient: LifeOpsScheduleSyncClient;
   public ownerRoutingEntityIdPromise: Promise<string | null> | null = null;
 
   /** Cached adaptive window policy derived from the activity profile.
@@ -161,6 +172,8 @@ export class LifeOpsServiceBase {
   ) {
     this.repository = new LifeOpsRepository(runtime);
     this.googleManagedClient = new GoogleManagedClient();
+    this.xManagedClient = new XManagedClient();
+    this.scheduleSyncClient = new LifeOpsScheduleSyncClient();
     this.explicitOwnerEntityIdValue =
       normalizeOptionalString(options.ownerEntityId) ?? null;
     this.ownerEntityIdValue =
@@ -193,7 +206,7 @@ export class LifeOpsServiceBase {
   // Browser helpers
   // -----------------------------------------------------------------------
 
-  public async getBrowserSettingsInternal(): Promise<LifeOpsBrowserSettings> {
+  public async getBrowserSettingsInternal(): Promise<BrowserBridgeSettings> {
     const current = await this.repository.getBrowserSettings(this.agentId());
     return current
       ? {
@@ -209,7 +222,7 @@ export class LifeOpsServiceBase {
         };
   }
 
-  public isBrowserPaused(settings: LifeOpsBrowserSettings): boolean {
+  public isBrowserPaused(settings: BrowserBridgeSettings): boolean {
     if (!settings.pauseUntil) {
       return false;
     }
@@ -218,17 +231,17 @@ export class LifeOpsServiceBase {
   }
 
   public async requireBrowserAvailableForActions(
-    actions: readonly LifeOpsBrowserAction[],
-  ): Promise<LifeOpsBrowserSettings> {
+    actions: readonly BrowserBridgeAction[],
+  ): Promise<BrowserBridgeSettings> {
     const settings = await this.getBrowserSettingsInternal();
     if (!settings.enabled || settings.trackingMode === "off") {
       fail(
         409,
-        "LifeOps Browser is disabled. Enable it in settings before starting browser sessions.",
+        "Agent Browser Bridge is disabled. Enable it in settings before starting browser sessions.",
       );
     }
     if (this.isBrowserPaused(settings)) {
-      fail(409, "LifeOps Browser is paused.");
+      fail(409, "Agent Browser Bridge is paused.");
     }
     if (
       actions.some((action) => browserActionChangesState(action)) &&
@@ -236,20 +249,20 @@ export class LifeOpsServiceBase {
     ) {
       fail(
         409,
-        "LifeOps Browser control is disabled. Enable browser control in settings before running control actions.",
+        "Agent Browser Bridge control is disabled. Enable browser control in settings before running control actions.",
       );
     }
     return settings;
   }
 
   public buildBrowserCompanion(
-    request: UpsertLifeOpsBrowserCompanionRequest,
-    current: LifeOpsBrowserCompanionStatus | null,
-  ): LifeOpsBrowserCompanionStatus {
+    request: UpsertBrowserBridgeCompanionRequest,
+    current: BrowserBridgeCompanionStatus | null,
+  ): BrowserBridgeCompanionStatus {
     const browser = normalizeEnumValue(
       request.browser,
       "companion.browser",
-      LIFEOPS_BROWSER_KINDS,
+      BROWSER_BRIDGE_KINDS,
     );
     const profileId = requireNonEmptyString(
       request.profileId,
@@ -267,7 +280,7 @@ export class LifeOpsServiceBase {
         : normalizeEnumValue(
             request.connectionState,
             "companion.connectionState",
-            LIFEOPS_BROWSER_COMPANION_CONNECTION_STATES,
+            BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
           );
     const permissions = normalizeBrowserPermissionStateInput(
       request.permissions,
@@ -301,7 +314,7 @@ export class LifeOpsServiceBase {
       };
     }
 
-    return createLifeOpsBrowserCompanionStatus({
+    return createBrowserBridgeCompanionStatus({
       agentId: this.agentId(),
       browser,
       profileId,

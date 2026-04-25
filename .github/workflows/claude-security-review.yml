@@ -40,7 +40,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
@@ -58,4 +58,4 @@ jobs:
           exclude-directories: "node_modules,dist,coverage,.turbo,.next,docs"
 
           # Use Opus 4.5 for deeper security analysis
-          claude-model: claude-opus-4-5-20251101
+          claude-model: claude-opus-4-7

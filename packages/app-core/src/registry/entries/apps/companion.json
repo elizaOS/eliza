@@ -1,0 +1,28 @@
+{
+  "id": "companion",
+  "name": "Companion",
+  "description": "The companion overlay shell for ambient agent presence.",
+  "npmName": "@elizaos/app-companion",
+  "source": "bundled",
+  "tags": [],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Bot",
+    "group": "Curated",
+    "groupOrder": 0,
+    "actions": ["launch", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "shell",
+  "launch": {
+    "type": "overlay",
+    "target": "companion",
+    "capabilities": [],
+    "curatedSlug": "companion"
+  }
+}

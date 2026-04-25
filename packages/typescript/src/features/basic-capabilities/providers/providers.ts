@@ -7,11 +7,10 @@ import type {
 } from "../../../types/index.ts";
 import { resolveProviderContexts } from "../../../utils/context-catalog";
 import {
-	CONTEXT_ROUTING_STATE_KEY,
-	getActiveRoutingContexts,
-	parseContextRoutingMetadata,
+	getActiveRoutingContextsForTurn,
 	shouldIncludeByContext,
 } from "../../../utils/context-routing.ts";
+import { looksLikeNonActionableChatter } from "./non-actionable-chatter.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("PROVIDERS");
@@ -34,20 +33,22 @@ const spec = requireProviderSpec("PROVIDERS");
 export const providersProvider: Provider = {
 	name: spec.name,
 	description: spec.description,
-	get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+	get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
 		const allProviders = [...runtime.providers].sort(
 			(left, right) =>
 				(left.position ?? 0) - (right.position ?? 0) ||
 				left.name.localeCompare(right.name),
 		);
-		const activeContexts = getActiveRoutingContexts(
-			parseContextRoutingMetadata(_state?.values?.[CONTEXT_ROUTING_STATE_KEY]),
-		);
+		const activeContexts = getActiveRoutingContextsForTurn(state, message);
 		const isInContext = (provider: Provider) =>
 			shouldIncludeByContext(resolveProviderContexts(provider), activeContexts);
 		const contextFilteredProviders = allProviders.filter(isInContext);
+		const visibleProviders = looksLikeNonActionableChatter(message)
+			? []
+			: contextFilteredProviders;
 		const selectionHints = [
 			"images, attachments, or visual content -> ATTACHMENTS",
+			"uploaded files, documents, or knowledge-base content -> AVAILABLE_DOCUMENTS, KNOWLEDGE",
 			"specific people or agents -> ENTITIES",
 			"connections between people -> RELATIONSHIPS",
 			"factual lookup -> FACTS",
@@ -55,7 +56,7 @@ export const providersProvider: Provider = {
 		];
 
 		// Filter providers with dynamic: true
-		const dynamicProviders = contextFilteredProviders.filter(
+		const dynamicProviders = visibleProviders.filter(
 			(provider) => provider.dynamic === true,
 		);
 
@@ -76,7 +77,7 @@ export const providersProvider: Provider = {
 		const dynamicSection = formatProviders(dynamicProviders, "# Providers");
 
 		const providersWithDescriptions = formatProviders(
-			contextFilteredProviders,
+			visibleProviders,
 			"# Available Providers",
 		);
 
@@ -85,7 +86,7 @@ export const providersProvider: Provider = {
 				name: provider.name,
 				description: provider.description || "",
 			})),
-			allProviders: contextFilteredProviders.map((provider) => ({
+			allProviders: visibleProviders.map((provider) => ({
 				name: provider.name,
 				description: provider.description || "",
 				dynamic: provider.dynamic === true,

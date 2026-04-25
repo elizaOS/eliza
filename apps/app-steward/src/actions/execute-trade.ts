@@ -107,6 +107,7 @@ export const executeTradeAction: Action = {
     "Execute a BSC token trade (buy or sell). Use this when a user asks to " +
     "buy or sell a token on BSC/BNB Chain. The trade is routed through " +
     "PancakeSwap and respects the current trade permission mode.",
+  descriptionCompressed: "Execute BSC token trade (buy/sell) via PancakeSwap.",
 
   validate: async (runtime: IAgentRuntime) => {
     const hasWallet =

@@ -1,10 +1,10 @@
 /**
- * StewardView — unified transaction history + approval queue panel.
+ * StewardView — transaction history + approval queue panel.
  * Renders inside the Wallets tab as a sub-section or alongside inventory.
  */
 
 import { useApp } from "@elizaos/app-core";
-import type { StewardStatusResponse } from "@elizaos/shared/contracts/wallet";
+import type { StewardStatusResponse } from "./types/steward";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
 import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";

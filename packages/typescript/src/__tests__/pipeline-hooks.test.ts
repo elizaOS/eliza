@@ -82,7 +82,7 @@ describe("registerPipelineHook scheduling", () => {
 		runtime.unregisterPipelineHook("concurrent-reader");
 	});
 
-	it("replaces by id across unified registry (same id moves phase)", async () => {
+	it("replaces by id across registry (same id moves phase)", async () => {
 		const runtime = new AgentRuntime({
 			character: {
 				name: "Pipeline2",

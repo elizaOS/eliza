@@ -1,5 +1,135 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-agent-skills";
+declare module "@elizaos/plugin-computeruse";
+declare module "@elizaos/plugin-telegram/account-auth-service" {
+  export interface TelegramAccountAuthSessionLike {
+    getSnapshot(): TelegramAccountAuthSnapshot;
+    getResolvedConnectorConfig(): TelegramAccountConnectorConfig | null;
+    start(args: {
+      phone: string;
+      credentials: { apiId: number; apiHash: string } | null;
+    }): Promise<TelegramAccountAuthSnapshot>;
+    submit(
+      input:
+        | { provisioningCode: string }
+        | { telegramCode: string }
+        | { password: string },
+    ): Promise<TelegramAccountAuthSnapshot>;
+    getSessionString(): string;
+    stop(): Promise<void>;
+  }
+  export type TelegramAccountAuthSnapshot = {
+    status: string;
+    phone?: string | null;
+    error: string | null;
+    account?: {
+      id: string;
+      username?: string | null;
+      firstName?: string | null;
+    } | null;
+    [key: string]: unknown;
+  };
+  export type TelegramAccountConnectorConfig = {
+    appId?: string;
+    appHash?: string;
+    deviceModel?: string;
+    systemVersion?: string;
+    [key: string]: unknown;
+  };
+  export class TelegramAccountAuthSession
+    implements TelegramAccountAuthSessionLike
+  {
+    constructor();
+    getSnapshot(): TelegramAccountAuthSnapshot;
+    getResolvedConnectorConfig(): TelegramAccountConnectorConfig | null;
+    start(args: {
+      phone: string;
+      credentials: { apiId: number; apiHash: string } | null;
+    }): Promise<TelegramAccountAuthSnapshot>;
+    submit(
+      input:
+        | { provisioningCode: string }
+        | { telegramCode: string }
+        | { password: string },
+    ): Promise<TelegramAccountAuthSnapshot>;
+    getSessionString(): string;
+    stop(): Promise<void>;
+  }
+  export function defaultTelegramAccountDeviceModel(): string;
+  export function defaultTelegramAccountSystemVersion(): string;
+  export function loadTelegramAccountSessionString(): string;
+}
+declare module "telegram" {
+  export class TelegramClient {
+    constructor(
+      session: unknown,
+      apiId: number,
+      apiHash: string,
+      options: Record<string, unknown>,
+    );
+    session: { save(): string } & Record<string, unknown>;
+    connect(): Promise<void>;
+    disconnect(): Promise<void>;
+    checkAuthorization(): Promise<boolean>;
+    sendCode(
+      ...args: unknown[]
+    ): Promise<
+      { phoneCodeHash: string; isCodeViaApp: boolean } & Record<string, unknown>
+    >;
+    invoke(request: unknown): Promise<unknown>;
+    signInWithPassword(...args: unknown[]): Promise<Record<string, unknown>>;
+    getDialogs(args: { limit: number }): Promise<ReadonlyArray<unknown>>;
+    getEntity(target: unknown): Promise<unknown>;
+    sendMessage(
+      entity: unknown,
+      args: { message: string },
+    ): Promise<{ id?: unknown } | null | undefined>;
+    getMessages(
+      entity: unknown,
+      args: { search?: string; ids?: number | number[]; limit?: number },
+    ): Promise<ReadonlyArray<unknown>>;
+    [key: string]: unknown;
+  }
+  export namespace Api {
+    interface User {
+      id: { toString(): string } | string;
+      username?: string | null;
+      firstName?: string | null;
+      lastName?: string | null;
+      phone?: string | null;
+      [key: string]: unknown;
+    }
+    namespace auth {
+      class SignIn {
+        constructor(args: {
+          phoneNumber: string;
+          phoneCodeHash: string;
+          phoneCode: string;
+        });
+      }
+      class Authorization {
+        user: unknown;
+        [key: string]: unknown;
+      }
+    }
+    namespace account {}
+  }
+  export const Api: {
+    auth: {
+      SignIn: typeof Api.auth.SignIn;
+      Authorization: typeof Api.auth.Authorization;
+    };
+    account: Record<string, unknown>;
+    [key: string]: unknown;
+  };
+}
+declare module "telegram/sessions" {
+  export class StringSession {
+    constructor(sessionString?: string);
+    save(): string;
+    [key: string]: unknown;
+  }
+}
 declare module "@elizaos/plugin-elizacloud";
 declare module "@elizaos/plugin-commands";
 declare module "@elizaos/plugin-cron";
@@ -66,6 +196,13 @@ declare module "@elizaos/app-knowledge/service-loader" {
       roomId?: UUID;
       unique?: boolean;
     }): Promise<number>;
+    updateKnowledgeDocument?(options: {
+      documentId: UUID;
+      content: string;
+    }): Promise<{
+      documentId: UUID;
+      fragmentCount: number;
+    }>;
     deleteMemory(memoryId: UUID): Promise<void>;
   }
   export interface KnowledgeServiceResult {
@@ -82,59 +219,6 @@ declare module "@elizaos/app-training/routes/trajectory" {
   export const handleTrajectoryRoute: (
     ...args: unknown[]
   ) => Promise<boolean> | boolean;
-}
-
-declare module "@elizaos/app-training/services" {
-  export type BackendAvailability = Record<string, unknown>;
-  export interface TrainingServiceLike {
-    getStatus(): Record<string, unknown>;
-    listTrajectories(options: {
-      limit?: number;
-      offset?: number;
-    }): Promise<Record<string, unknown>>;
-    getTrajectoryById(
-      trajectoryId: string,
-    ): Promise<Record<string, unknown> | null>;
-    listDatasets(): Record<string, unknown>[];
-    buildDataset(options: {
-      limit?: number;
-      minLlmCallsPerTrajectory?: number;
-    }): Promise<Record<string, unknown>>;
-    listJobs(): Record<string, unknown>[];
-    startTrainingJob(options: {
-      datasetId?: string;
-      maxTrajectories?: number;
-      backend?: "mlx" | "cuda" | "cpu";
-      model?: string;
-      iterations?: number;
-      batchSize?: number;
-      learningRate?: number;
-    }): Promise<Record<string, unknown>>;
-    getJob(jobId: string): Record<string, unknown> | null;
-    cancelJob(jobId: string): Promise<Record<string, unknown>>;
-    listModels(): Record<string, unknown>[];
-    importModelToOllama(
-      modelId: string,
-      body: {
-        modelName?: string;
-        baseModel?: string;
-        ollamaUrl?: string;
-      },
-    ): Promise<Record<string, unknown>>;
-    activateModel(
-      modelId: string,
-      providerModel?: string,
-    ): Promise<Record<string, unknown>>;
-    benchmarkModel(modelId: string): Promise<Record<string, unknown>>;
-    subscribe(listener: (event: unknown) => void): () => void;
-  }
-  export interface TrainingServiceWithRuntime extends TrainingServiceLike {
-    initialize(): Promise<void>;
-  }
-  export const detectAvailableBackends: (
-    ...args: unknown[]
-  ) => Promise<BackendAvailability>;
-  export const clearBackendCache: (...args: unknown[]) => void;
 }
 
 declare module "@elizaos/app-training/routes/training" {
@@ -198,119 +282,6 @@ declare module "abitype" {
   export type TypedDataType = string;
 }
 
-declare module "@elizaos/core/roles" {
-  import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-
-  export type RoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
-  export type RoleGrantSource = "owner" | "manual" | "connector_admin";
-  export const ROLE_RANK: Record<RoleName, number>;
-  export type RolesWorldMetadata = Record<string, unknown> & {
-    ownership?: { ownerId?: string };
-    roles?: Record<string, RoleName>;
-    roleSources?: Record<string, RoleGrantSource>;
-  };
-  export type ConnectorAdminWhitelist = Record<string, string[]>;
-  export interface RolesConfig {
-    connectorAdmins?: ConnectorAdminWhitelist;
-    [key: string]: unknown;
-  }
-  export interface RoleCheckResult {
-    entityId: UUID;
-    role: RoleName;
-    isOwner?: boolean;
-    isAdmin?: boolean;
-    canManageRoles?: boolean;
-    source?: RoleGrantSource;
-    [key: string]: unknown;
-  }
-  export interface PrivateAccessCheckResult extends RoleCheckResult {
-    canAccessPrivateWorld?: boolean;
-    worldId?: UUID;
-  }
-  export type WorldRoleResolution = {
-    world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>;
-    metadata: RolesWorldMetadata;
-  };
-  export type ConnectorAdminMatch = {
-    connector: string;
-    matchedField: string;
-    matchedValue: string;
-  };
-  export type ServerOwnershipState = RolesWorldMetadata | null;
-
-  export function checkSenderRole(
-    runtime: IAgentRuntime,
-    message: Memory,
-  ): Promise<RoleCheckResult | null>;
-  export function checkSenderPrivateAccess(
-    runtime: IAgentRuntime,
-    message: Memory,
-  ): Promise<PrivateAccessCheckResult | null>;
-  export function canModifyRole(
-    actorRole: RoleName,
-    targetCurrentRole: RoleName,
-    newRole: RoleName,
-  ): boolean;
-  export function getConfiguredOwnerEntityIds(runtime: IAgentRuntime): string[];
-  export function getConnectorAdminWhitelist(
-    runtime: IAgentRuntime,
-  ): ConnectorAdminWhitelist;
-  export function getEntityRole(
-    metadata: RolesWorldMetadata | undefined,
-    entityId: string,
-  ): RoleName;
-  export function getLiveEntityMetadataFromMessage(
-    message: Memory,
-  ): Record<string, unknown> | undefined;
-  export function getUserServerRole(
-    runtime: IAgentRuntime,
-    entityId: string,
-    serverId: string,
-  ): Promise<RoleName | "NONE">;
-  export function findWorldsForOwner(
-    runtime: IAgentRuntime,
-    entityId: string,
-  ): Promise<Array<
-    Awaited<ReturnType<IAgentRuntime["getAllWorlds"]>>[number]
-  > | null>;
-  export function hasConfiguredCanonicalOwner(runtime: IAgentRuntime): boolean;
-  export function matchEntityToConnectorAdminWhitelist(
-    entityMetadata: Record<string, unknown> | null | undefined,
-    whitelist: ConnectorAdminWhitelist | Record<string, unknown> | undefined,
-  ): ConnectorAdminMatch | null;
-  export function normalizeRole(raw: unknown): RoleName;
-  export function setEntityRole(
-    runtime: IAgentRuntime,
-    message: Memory,
-    targetEntityId: string,
-    newRole: RoleName,
-    source?: RoleGrantSource,
-  ): Promise<Record<string, RoleName>>;
-  export function resolveCanonicalOwnerId(
-    runtime: IAgentRuntime,
-    metadata?: RolesWorldMetadata,
-  ): string | null;
-  export function resolveCanonicalOwnerIdForMessage(
-    runtime: IAgentRuntime,
-    message: Memory,
-  ): Promise<string | null>;
-  export function resolveEntityRole(
-    runtime: IAgentRuntime,
-    world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>,
-    metadata: RolesWorldMetadata | undefined,
-    entityId: string,
-    options?: { liveEntityMetadata?: Record<string, unknown> | null },
-  ): Promise<RoleName>;
-  export function resolveWorldForMessage(
-    runtime: IAgentRuntime,
-    message: Memory,
-  ): Promise<WorldRoleResolution | null>;
-  export function setConnectorAdminWhitelist(
-    runtime: IAgentRuntime,
-    whitelist: ConnectorAdminWhitelist | Record<string, unknown> | undefined,
-  ): void;
-}
-
 declare module "@elizaos/plugin-sql" {
   import type { Plugin } from "@elizaos/core";
 
@@ -332,9 +303,9 @@ declare module "@elizaos/plugin-sql" {
 }
 
 declare module "ws" {
-  import type { EventEmitter } from "events";
-  import type { Server as HttpServer, IncomingMessage } from "http";
-  import type { Duplex } from "stream";
+  import type { EventEmitter } from "node:events";
+  import type { Server as HttpServer, IncomingMessage } from "node:http";
+  import type { Duplex } from "node:stream";
 
   export class WebSocket extends EventEmitter {
     static readonly CONNECTING: 0;

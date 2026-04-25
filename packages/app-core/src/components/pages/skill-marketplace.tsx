@@ -4,40 +4,94 @@
  * Extracted from SkillsView.tsx to keep individual files under ~500 LOC.
  */
 
+import {
+  AdminDialog,
+  AdminDialogContent,
+  AdminDialogHeader,
+  AdminInput,
+  Button,
+  Dialog,
+  DialogDescription,
+  DialogTitle,
+} from "@elizaos/ui";
+import { useState } from "react";
 import type { SkillInfo, SkillMarketplaceResult } from "../../api";
 import { useApp } from "../../state";
-
-import { useState } from "react";
-import { AdminDialog, AdminDialogContent, AdminDialogHeader, AdminInput, Button, Dialog, DialogDescription, DialogTitle } from "@elizaos/ui";
 
 /* ── Marketplace Result Card ────────────────────────────────────────── */
 
 export function MarketplaceCard({
   item,
-  isInstalled,
+  installedSkill,
   skillsMarketplaceAction,
   onInstall,
   onUninstall,
+  onEnable,
+  onDisable,
+  onCopy,
+  onDetails,
 }: {
   item: SkillMarketplaceResult;
-  isInstalled: boolean;
+  installedSkill: SkillInfo | null;
   skillsMarketplaceAction: string;
   onInstall: (item: SkillMarketplaceResult) => void;
   onUninstall: (skillId: string, name: string) => void;
+  onEnable: (skillId: string, name: string) => void;
+  onDisable: (skillId: string, name: string) => void;
+  onCopy: (skillId: string, name: string) => void;
+  onDetails: (skillId: string) => void;
 }) {
   const { t } = useApp();
   const isInstalling = skillsMarketplaceAction === `install:${item.id}`;
   const isUninstalling = skillsMarketplaceAction === `uninstall:${item.id}`;
+  const isToggling =
+    skillsMarketplaceAction === `enable:${item.id}` ||
+    skillsMarketplaceAction === `disable:${item.id}`;
+  const isCopying = skillsMarketplaceAction === `copy:${item.id}`;
   const sourceLabel = item.repository || item.slug || item.id;
 
+  const installed = Boolean(installedSkill);
+  const enabled = installed && installedSkill?.enabled === true;
+  const stateBadge = !installed
+    ? {
+        label: t("skillsview.statusNotInstalled", {
+          defaultValue: "Not installed",
+        }),
+        tone: "muted" as const,
+      }
+    : enabled
+      ? {
+          label: t("skillsview.statusActive", { defaultValue: "Enabled" }),
+          tone: "success" as const,
+        }
+      : {
+          label: t("skillsview.statusInactive", { defaultValue: "Disabled" }),
+          tone: "warning" as const,
+        };
+
   return (
-    <div className="flex items-start gap-4 p-4 border border-border bg-card hover:border-accent/50 transition-colors">
-      {/* Icon placeholder */}
+    <div
+      className="flex items-start gap-4 p-4 border border-border bg-card hover:border-accent/50 transition-colors"
+      data-testid={`skill-result-card-${item.id}`}
+    >
       <div className="w-10 h-10 shrink-0 flex items-center justify-center bg-accent/10 text-accent text-sm font-bold rounded">
         {item.name.charAt(0).toUpperCase()}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-semibold text-sm text-txt">{item.name}</div>
+        <div className="flex items-center gap-2">
+          <div className="font-semibold text-sm text-txt">{item.name}</div>
+          <span
+            className={`px-1.5 py-px text-2xs font-bold uppercase tracking-wider rounded ${
+              stateBadge.tone === "success"
+                ? "bg-success/15 text-success"
+                : stateBadge.tone === "warning"
+                  ? "bg-warning/15 text-warning"
+                  : "bg-muted/15 text-muted"
+            }`}
+          >
+            {stateBadge.label}
+          </span>
+        </div>
         <div className="text-xs-tight text-muted mt-0.5 line-clamp-2">
           {item.description || t("skillsview.noDescription")}
         </div>
@@ -66,31 +120,121 @@ export function MarketplaceCard({
           )}
         </div>
       </div>
-      {isInstalled ? (
-        <Button
-          variant="destructive"
-          size="sm"
-          className="h-8 px-4 text-xs-tight font-bold tracking-wide shadow-sm shrink-0"
-          onClick={() => onUninstall(item.id, item.name)}
-          disabled={isUninstalling}
-        >
-          {isUninstalling
-            ? t("skillsview.removing", { defaultValue: "Removing..." })
-            : t("skillsview.Uninstall", { defaultValue: "Uninstall" })}
-        </Button>
-      ) : (
-        <Button
-          variant="default"
-          size="sm"
-          className="h-8 px-4 text-xs-tight font-bold tracking-wide shadow-sm shrink-0"
-          onClick={() => onInstall(item)}
-          disabled={isInstalling}
-        >
-          {isInstalling
-            ? t("skillsview.installing", { defaultValue: "Installing..." })
-            : t("skillsview.Install")}
-        </Button>
-      )}
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 max-w-[18rem]">
+        {!installed ? (
+          <>
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide shadow-sm"
+              onClick={() => onInstall(item)}
+              disabled={isInstalling}
+              data-testid={`skill-action-install-${item.id}`}
+            >
+              {isInstalling
+                ? t("skillsview.installing", { defaultValue: "Installing..." })
+                : t("skillsview.Install")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide"
+              onClick={() => onDetails(item.id)}
+              data-testid={`skill-action-details-${item.id}`}
+            >
+              {t("skillsview.details", { defaultValue: "Details" })}
+            </Button>
+          </>
+        ) : enabled ? (
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide"
+              onClick={() => onDisable(item.id, item.name)}
+              disabled={isToggling}
+              data-testid={`skill-action-disable-${item.id}`}
+            >
+              {isToggling
+                ? t("skillsview.updating", { defaultValue: "Updating..." })
+                : t("skillsview.Disable", { defaultValue: "Disable" })}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide"
+              onClick={() => onCopy(item.id, item.name)}
+              disabled={isCopying}
+              data-testid={`skill-action-copy-${item.id}`}
+            >
+              {isCopying
+                ? t("skillsview.copying", { defaultValue: "Copying..." })
+                : t("skillsview.copySkillMd", {
+                    defaultValue: "Copy SKILL.md",
+                  })}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide"
+              onClick={() => onDetails(item.id)}
+              data-testid={`skill-action-details-${item.id}`}
+            >
+              {t("skillsview.details", { defaultValue: "Details" })}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide shadow-sm"
+              onClick={() => onEnable(item.id, item.name)}
+              disabled={isToggling}
+              data-testid={`skill-action-enable-${item.id}`}
+            >
+              {isToggling
+                ? t("skillsview.updating", { defaultValue: "Updating..." })
+                : t("skillsview.Enable", { defaultValue: "Enable" })}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide"
+              onClick={() => onCopy(item.id, item.name)}
+              disabled={isCopying}
+              data-testid={`skill-action-copy-${item.id}`}
+            >
+              {isCopying
+                ? t("skillsview.copying", { defaultValue: "Copying..." })
+                : t("skillsview.copySkillMd", {
+                    defaultValue: "Copy SKILL.md",
+                  })}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide"
+              onClick={() => onDetails(item.id)}
+              data-testid={`skill-action-details-${item.id}`}
+            >
+              {t("skillsview.details", { defaultValue: "Details" })}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-8 px-3 text-xs-tight font-bold tracking-wide shadow-sm"
+              onClick={() => onUninstall(item.id, item.name)}
+              disabled={isUninstalling}
+              data-testid={`skill-action-uninstall-${item.id}`}
+            >
+              {isUninstalling
+                ? t("skillsview.removing", { defaultValue: "Removing..." })
+                : t("skillsview.Uninstall", { defaultValue: "Uninstall" })}
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -111,6 +255,10 @@ export function InstallModal({
   installSkillFromMarketplace,
   uninstallMarketplaceSkill,
   installSkillFromGithubUrl,
+  enableSkill,
+  disableSkill,
+  copySkillSource,
+  showSkillDetails,
   setState,
   onClose,
 }: {
@@ -125,6 +273,10 @@ export function InstallModal({
   installSkillFromMarketplace: (item: SkillMarketplaceResult) => Promise<void>;
   uninstallMarketplaceSkill: (skillId: string, name: string) => Promise<void>;
   installSkillFromGithubUrl: () => Promise<void>;
+  enableSkill: (skillId: string, name: string) => Promise<void>;
+  disableSkill: (skillId: string, name: string) => Promise<void>;
+  copySkillSource: (skillId: string, name: string) => Promise<void>;
+  showSkillDetails: (skillId: string) => void;
   setState: ReturnType<typeof useApp>["setState"];
   onClose: () => void;
 }) {
@@ -252,16 +404,24 @@ export function InstallModal({
                     {skillsMarketplaceResults.length} {t("skillsview.result")}
                     {skillsMarketplaceResults.length !== 1 ? "s" : ""}
                   </div>
-                  {skillsMarketplaceResults.map((item) => (
-                    <MarketplaceCard
-                      key={item.id}
-                      item={item}
-                      isInstalled={skills.some((s) => s.id === item.id)}
-                      skillsMarketplaceAction={skillsMarketplaceAction}
-                      onInstall={installSkillFromMarketplace}
-                      onUninstall={uninstallMarketplaceSkill}
-                    />
-                  ))}
+                  {skillsMarketplaceResults.map((item) => {
+                    const installedSkill =
+                      skills.find((s) => s.id === item.id) ?? null;
+                    return (
+                      <MarketplaceCard
+                        key={item.id}
+                        item={item}
+                        installedSkill={installedSkill}
+                        skillsMarketplaceAction={skillsMarketplaceAction}
+                        onInstall={installSkillFromMarketplace}
+                        onUninstall={uninstallMarketplaceSkill}
+                        onEnable={enableSkill}
+                        onDisable={disableSkill}
+                        onCopy={copySkillSource}
+                        onDetails={showSkillDetails}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>

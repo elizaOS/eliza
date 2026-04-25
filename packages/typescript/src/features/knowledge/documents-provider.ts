@@ -1,15 +1,16 @@
 import { logger } from "../../logger";
 import type { IAgentRuntime, Memory, Provider, State } from "../../types";
-import { MemoryType } from "../../types";
 import { addHeader } from "../../utils";
 import type { KnowledgeService } from "./service.ts";
 import type { KnowledgeDocumentMetadata } from "./types.ts";
+import { normalizeKnowledgeSourceValue } from "./utils.ts";
 
 export const documentsProvider: Provider = {
 	name: "AVAILABLE_DOCUMENTS",
 	description:
 		"List of documents available in the knowledge base. Shows which documents the agent can reference and retrieve information from.",
 	dynamic: true,
+	companionProviders: ["KNOWLEDGE"],
 	get: async (runtime: IAgentRuntime, _message: Memory, _state?: State) => {
 		try {
 			const knowledgeService = runtime.getService(
@@ -35,9 +36,16 @@ export const documentsProvider: Provider = {
 				count: 100,
 			});
 
-			const documents = allMemories.filter(
-				(memory) => memory.metadata?.type === MemoryType.DOCUMENT,
-			);
+			const documents = allMemories.filter((memory) => {
+				const metadata = memory.metadata as
+					| KnowledgeDocumentMetadata
+					| undefined;
+				return (
+					metadata?.documentId === memory.id ||
+					metadata?.type === "document" ||
+					metadata?.type === "custom"
+				);
+			});
 
 			if (!documents || documents.length === 0) {
 				return {
@@ -59,7 +67,7 @@ export const documentsProvider: Provider = {
 					const filename =
 						metadata?.filename || metadata?.title || `Document ${index + 1}`;
 					const fileType = metadata?.fileExt || metadata?.fileType || "";
-					const source = metadata?.source || "upload";
+					const source = normalizeKnowledgeSourceValue(metadata?.source);
 					const fileSize = metadata?.fileSize;
 
 					const parts = [filename];
@@ -77,7 +85,7 @@ export const documentsProvider: Provider = {
 						}
 					}
 
-					if (source && source !== "upload") {
+					if (source !== "upload" && source !== "unknown") {
 						parts.push(`from ${source}`);
 					}
 

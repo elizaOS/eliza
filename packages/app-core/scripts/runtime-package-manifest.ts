@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import { getBundledRuntimePackages } from "@elizaos/agent/runtime/release-plugin-policy";
+import {
+  BASELINE_BUNDLED_RUNTIME_PACKAGES,
+  getBundledRuntimePackages,
+} from "@elizaos/agent/runtime/release-plugin-policy";
 
 const JS_FILE_RE = /\.(?:[cm]?js)$/i;
 const IMPORT_SPECIFIER_RE =
@@ -89,3 +92,5 @@ export function discoverAlwaysBundledPackages(
   };
   return getBundledRuntimePackages(Object.keys(pkg.dependencies ?? {}));
 }
+
+export { BASELINE_BUNDLED_RUNTIME_PACKAGES };

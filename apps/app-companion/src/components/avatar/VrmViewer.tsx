@@ -7,11 +7,11 @@
 
 import {
   CHAT_AVATAR_VOICE_EVENT,
-  getVrmCount,
-  getVrmUrl,
   type ChatAvatarVoiceEventDetail,
   type CompanionHalfFramerateMode,
   type CompanionVrmPowerMode,
+  getVrmCount,
+  getVrmUrl,
 } from "@elizaos/app-core";
 import { useEffect, useEffectEvent, useRef } from "react";
 import {

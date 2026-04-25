@@ -1,12 +1,5 @@
 import { v4 } from "uuid";
-import {
-	AgentRuntime,
-	type IAgentRuntime,
-	type Memory,
-	ModelType,
-	State,
-} from "../src";
-import { DefaultMessageService } from "../src/services/message";
+import { type IAgentRuntime, type Memory, ModelType } from "../src";
 import { TrajectoriesService } from "../src/services/trajectories";
 
 // Mock runtime setup
@@ -21,10 +14,10 @@ async function runTest() {
 			return null;
 		},
 		composeState: async (
-			msg: Memory,
-			inc: any,
-			only: any,
-			skip: any,
+			_msg: Memory,
+			_inc: any,
+			_only: any,
+			_skip: any,
 			phase: any,
 		) => {
 			// Simulate logging call inside composeState
@@ -38,7 +31,7 @@ async function runTest() {
 			}
 			return { values: {}, data: {}, text: "" };
 		},
-		useModel: async (model: any, params: any) => {
+		useModel: async (model: any, _params: any) => {
 			// Simulate logging call inside useModel
 			if (trajectoriesService) {
 				trajectoriesService.logLlmCall({

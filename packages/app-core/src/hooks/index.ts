@@ -1,16 +1,15 @@
 export * from "./useActivityEvents";
 export * from "./useBugReport";
-export * from "./useChatAvatarVoiceBridge";
 export * from "./useCanvasWindow";
+export * from "./useChatAvatarVoiceBridge";
 export * from "./useContextMenu";
 export * from "./useGoogleLifeOpsConnector";
-export * from "./useLifeOpsActivitySignals";
+export { COMMON_SHORTCUTS, useShortcutsHelp } from "./useKeyboardShortcuts";
 export * from "./useLifeOpsAppState";
 export * from "./useMediaQuery";
 export * from "./useMusicPlayer";
 export * from "./useRenderGuard";
 export * from "./useSignalPairing";
 export * from "./useStreamPopoutNavigation";
-export { COMMON_SHORTCUTS, useShortcutsHelp } from "./useKeyboardShortcuts";
 export * from "./useVoiceChat";
 export * from "./useWhatsAppPairing";

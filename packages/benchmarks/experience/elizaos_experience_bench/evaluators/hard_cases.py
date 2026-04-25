@@ -7,14 +7,9 @@ Reports per-category pass rates split by tier (jaccard vs semantic).
 
 from __future__ import annotations
 
-import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[4] / "plugins" / "plugin-experience" / "python"))
-
-from elizaos_plugin_experience.service import ExperienceService
 
 from elizaos_experience_bench.hard_cases import (
     ALL_HARD_CASES,
@@ -23,6 +18,7 @@ from elizaos_experience_bench.hard_cases import (
     HardCase,
     get_all_cases,
 )
+from elizaos_experience_bench.service import ExperienceService
 
 ServiceFactory = Callable[[], ExperienceService]
 

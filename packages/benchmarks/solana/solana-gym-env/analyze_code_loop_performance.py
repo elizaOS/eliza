@@ -548,7 +548,7 @@ def analyze_reward_progression(output_dir, metrics_path="metrics", exclude_progr
     
     # Define model ordering (same as individual trajectories)
     model_order = [
-        'anthropic/claude-sonnet-4',
+        'anthropic/claude-sonnet-4.6',
         'openai/gpt-5',
         'google/gemini-2.5-flash',
         'openai/gpt-oss-120b',
@@ -637,7 +637,7 @@ def analyze_reward_progression_individual(output_dir, metrics_path="metrics", ex
     
     # Define model ordering
     model_order = [
-        'anthropic/claude-sonnet-4',
+        'anthropic/claude-sonnet-4.6',
         'openai/gpt-5',
         'google/gemini-2.5-flash',
         'openai/gpt-oss-120b',

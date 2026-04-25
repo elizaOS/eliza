@@ -36,6 +36,8 @@ export interface OverlayApp {
   readonly category: string;
   /** Optional icon URL. */
   readonly icon: string | null;
+  /** Optional hero image shown in app cards and chat widgets. */
+  readonly heroImage?: string | null;
   /**
    * React component rendered as the full-screen overlay.
    * Receives context with exit callback, theme, and i18n.

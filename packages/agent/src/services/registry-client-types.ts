@@ -1,30 +1,17 @@
-export interface RegistryAppViewerMeta {
-  url: string;
-  embedParams?: Record<string, string>;
-  postMessageAuth?: boolean;
-  sandbox?: string;
-}
+import type {
+  AppSessionConfig,
+  AppSessionFeature,
+  AppSessionMode,
+  AppUiExtensionConfig,
+  AppViewerConfig,
+  RegistryAppInfo,
+} from "@elizaos/shared/contracts/apps";
 
-export type RegistryAppSessionMode =
-  | "viewer"
-  | "spectate-and-steer"
-  | "external";
-
-export type RegistryAppSessionFeature =
-  | "commands"
-  | "telemetry"
-  | "pause"
-  | "resume"
-  | "suggestions";
-
-export interface RegistryAppSessionMeta {
-  mode: RegistryAppSessionMode;
-  features?: RegistryAppSessionFeature[];
-}
-
-export interface AppUiExtensionConfig {
-  detailPanelId: string;
-}
+export type RegistryAppViewerMeta = Omit<AppViewerConfig, "authMessage">;
+export type RegistryAppSessionMode = AppSessionMode;
+export type RegistryAppSessionFeature = AppSessionFeature;
+export type RegistryAppSessionMeta = AppSessionConfig;
+export type { AppUiExtensionConfig, RegistryAppInfo };
 
 export interface RegistryAppMeta {
   displayName: string;
@@ -32,6 +19,14 @@ export interface RegistryAppMeta {
   launchType: string;
   launchUrl: string | null;
   icon: string | null;
+  /**
+   * URL or package-relative path to a full-card hero image. Apps declare
+   * this in `package.json` → `elizaos.app.heroImage` as a relative path
+   * (e.g. `"assets/hero.png"`); the runtime resolves it to a served
+   * URL before surfacing the field on `RegistryAppInfo`, and falls back
+   * to generated `/api/apps/hero/<slug>` artwork when an app ships none.
+   */
+  heroImage: string | null;
   capabilities: string[];
   minPlayers: number | null;
   maxPlayers: number | null;
@@ -67,8 +62,6 @@ export interface RegistryPluginInfo {
   kind?: string;
   appMeta?: RegistryAppMeta;
 }
-
-export type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
 
 export interface RegistrySearchResult {
   name: string;

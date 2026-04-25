@@ -1,34 +1,40 @@
 /**
  * Tests for all action definitions — structure, validation, and parameters.
  */
-import { describe, expect, it } from "vitest";
-import { useComputerAction } from "../actions/use-computer.js";
-import { takeScreenshotAction } from "../actions/take-screenshot.js";
-import { browserAction } from "../actions/browser-action.js";
-import { manageWindowAction } from "../actions/manage-window.js";
-import { fileAction } from "../actions/file-action.js";
-import { terminalAction } from "../actions/terminal-action.js";
+
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
+import { browserAction } from "../actions/browser-action.js";
+import { fileAction } from "../actions/file-action.js";
+import { manageWindowAction } from "../actions/manage-window.js";
+import { terminalAction } from "../actions/terminal-action.js";
+import { useComputerAction } from "../actions/use-computer.js";
 
 function mockRuntime(hasService: boolean): IAgentRuntime {
   return {
     character: {},
     getService(name: string) {
       if (!hasService) return null;
-      return { getCapabilities: () => ({
-        screenshot: { available: true, tool: "test" },
-        computerUse: { available: true, tool: "test" },
-        windowList: { available: true, tool: "test" },
-        browser: { available: true, tool: "test" },
-        terminal: { available: true, tool: "test" },
-        fileSystem: { available: true, tool: "test" },
-      }) };
+      return {
+        getCapabilities: () => ({
+          screenshot: { available: true, tool: "test" },
+          computerUse: { available: true, tool: "test" },
+          windowList: { available: true, tool: "test" },
+          browser: { available: true, tool: "test" },
+          terminal: { available: true, tool: "test" },
+          fileSystem: { available: true, tool: "test" },
+        }),
+      };
     },
   } as unknown as IAgentRuntime;
 }
 
 function mockMessage(text = ""): Memory {
-  return { content: { text }, roomId: "r" as any, agentId: "a" as any } as Memory;
+  return {
+    content: { text },
+    roomId: "r" as any,
+    agentId: "a" as any,
+  } as Memory;
 }
 
 describe("USE_COMPUTER action", () => {
@@ -50,22 +56,23 @@ describe("USE_COMPUTER action", () => {
   });
 
   it("validates: false without service", async () => {
-    expect(await useComputerAction.validate(mockRuntime(false), mockMessage())).toBe(false);
+    expect(
+      await useComputerAction.validate(mockRuntime(false), mockMessage()),
+    ).toBe(false);
   });
 
   it("validates: true with service", async () => {
-    expect(await useComputerAction.validate(mockRuntime(true), mockMessage())).toBe(true);
+    expect(
+      await useComputerAction.validate(mockRuntime(true), mockMessage()),
+    ).toBe(true);
   });
 });
 
-describe("TAKE_SCREENSHOT action", () => {
-  it("has correct name", () => {
-    expect(takeScreenshotAction.name).toBe("TAKE_SCREENSHOT");
-    expect(takeScreenshotAction.similes).toContain("CAPTURE_SCREEN");
-  });
-
-  it("has no required parameters", () => {
-    expect(takeScreenshotAction.parameters).toEqual([]);
+describe("USE_COMPUTER screenshot similes (merged from removed TAKE_SCREENSHOT)", () => {
+  it("includes screenshot-related similes", () => {
+    expect(useComputerAction.similes).toContain("TAKE_SCREENSHOT");
+    expect(useComputerAction.similes).toContain("CAPTURE_SCREEN");
+    expect(useComputerAction.similes).toContain("SEE_SCREEN");
   });
 });
 
@@ -94,7 +101,9 @@ describe("MANAGE_WINDOW action", () => {
   });
 
   it("validates: true with service", async () => {
-    expect(await manageWindowAction.validate(mockRuntime(true), mockMessage())).toBe(true);
+    expect(
+      await manageWindowAction.validate(mockRuntime(true), mockMessage()),
+    ).toBe(true);
   });
 });
 
@@ -126,11 +135,15 @@ describe("FILE_ACTION action", () => {
   });
 
   it("validates: false without service", async () => {
-    expect(await fileAction.validate(mockRuntime(false), mockMessage())).toBe(false);
+    expect(await fileAction.validate(mockRuntime(false), mockMessage())).toBe(
+      false,
+    );
   });
 
   it("validates: true with service", async () => {
-    expect(await fileAction.validate(mockRuntime(true), mockMessage())).toBe(true);
+    expect(await fileAction.validate(mockRuntime(true), mockMessage())).toBe(
+      true,
+    );
   });
 });
 
@@ -157,10 +170,14 @@ describe("TERMINAL_ACTION action", () => {
   });
 
   it("validates: false without service", async () => {
-    expect(await terminalAction.validate(mockRuntime(false), mockMessage())).toBe(false);
+    expect(
+      await terminalAction.validate(mockRuntime(false), mockMessage()),
+    ).toBe(false);
   });
 
   it("validates: true with service", async () => {
-    expect(await terminalAction.validate(mockRuntime(true), mockMessage())).toBe(true);
+    expect(
+      await terminalAction.validate(mockRuntime(true), mockMessage()),
+    ).toBe(true);
   });
 });

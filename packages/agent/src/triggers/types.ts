@@ -1,5 +1,6 @@
 import type {
   TriggerConfig,
+  TriggerKind,
   TriggerLastStatus,
   TriggerRunRecord,
   TriggerType,
@@ -10,6 +11,7 @@ import type {
 export {
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
+  type TriggerKind,
   type TriggerLastStatus,
   type TriggerRunRecord,
   type TriggerType,
@@ -47,6 +49,7 @@ export interface TriggerSummary {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
   runCount: number;
   nextRunAtMs?: number;
@@ -55,6 +58,9 @@ export interface TriggerSummary {
   lastError?: string;
   updatedAt?: number;
   updateInterval?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
 }
 
 export interface TriggerHealthSnapshot {
@@ -78,7 +84,11 @@ export interface CreateTriggerRequest {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
 }
 
 export interface UpdateTriggerRequest {
@@ -91,7 +101,11 @@ export interface UpdateTriggerRequest {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
 }
 
 export interface NormalizedTriggerDraft {
@@ -105,5 +119,9 @@ export interface NormalizedTriggerDraft {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
 }

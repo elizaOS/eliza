@@ -6,13 +6,13 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Binary,
+  Bird,
   BookOpen,
   Bot,
   Brain,
   BrickWall,
   Briefcase,
   Calendar,
-  Chrome,
   Circle,
   CircleDashed,
   CircleDot,
@@ -31,7 +31,8 @@ import {
   Fingerprint,
   Gamepad,
   Gamepad2,
-  Github,
+  GitBranch,
+  Globe,
   Handshake,
   Hash,
   Layers,
@@ -69,7 +70,6 @@ import {
   Tornado,
   TrendingDown,
   Triangle,
-  Twitter,
   Video,
   Volume2,
   Wallet,
@@ -79,8 +79,7 @@ import {
 } from "lucide-react";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import type { JsonSchemaObject } from "../../config";
-import type { useApp } from "../../state";
-import type { ConfigUiHint } from "../../types";
+import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
 import { autoLabel } from "../../utils/labels";
 import { SHOWCASE_PLUGIN } from "../plugins/showcase-data";
@@ -134,37 +133,6 @@ export const ALWAYS_ON_PLUGIN_IDS = new Set([
   "vision",
   "computeruse",
 ]);
-
-/**
- * Connector plugin IDs shown in the Connectors / Manage view.
- * Connectors not in this set are hidden from the UI.
- */
-export const VISIBLE_CONNECTOR_IDS = new Set([
-  "discord",
-  "google-chat",
-  "imessage",
-  "msteams",
-  "instagram",
-  "line",
-  "signal",
-  "slack",
-  "telegram",
-  "whatsapp",
-  "wechat",
-  "twitter",
-]);
-
-/** Human-friendly display names for connector plugins whose raw IDs don't read well. */
-export const CONNECTOR_DISPLAY_NAMES: Record<string, string> = {
-  msteams: "MS Teams",
-  imessage: "iMessage",
-  "google-chat": "Google Chat",
-};
-
-/** Returns a display-ready name for a plugin, falling back to `plugin.name`. */
-export function connectorDisplayName(plugin: { id: string; name: string }): string {
-  return CONNECTOR_DISPLAY_NAMES[plugin.id] ?? plugin.name;
-}
 
 /** Keys to hide when Telegram "Allow all chats" mode is active. */
 export const TELEGRAM_ALLOW_ALL_HIDDEN = new Set(["TELEGRAM_ALLOWED_CHATS"]);
@@ -466,7 +434,7 @@ export function paramsToSchema(
         } else if (keyUpper.includes("IMAGE")) {
           hint.placeholder = "e.g., dall-e-3, gpt-4o";
         } else {
-          hint.placeholder = "e.g., gpt-4o, claude-sonnet-4-20250514";
+          hint.placeholder = "e.g., gpt-4o, claude-sonnet-4-6";
         }
       }
     }
@@ -523,119 +491,96 @@ export function paramsToSchema(
   };
 }
 
-/* ── Default Icons ─────────────────────────────────────────────────── */
+/* ── Icon Lookup ───────────────────────────────────────────────────── */
 
-export const DEFAULT_ICONS: Record<string, LucideIcon> = {
-  // AI Providers
-  anthropic: Brain,
-  "google-genai": Sparkles,
-  groq: Zap,
-  "local-ai": Monitor,
-  ollama: Bot,
-  openai: CircleDashed,
-  openrouter: Shuffle,
-  "vercel-ai-gateway": Triangle,
-  xai: Hash,
-  // Connectors — chat & social
-  discord: MessageCircle,
-  telegram: Send,
-  slack: Briefcase,
-  twitter: Twitter,
-  whatsapp: Smartphone,
-  signal: Lock,
-  imessage: MessageSquare,
-  bluesky: Leaf,
-  farcaster: Circle,
-  instagram: Video,
-  nostr: Fingerprint,
-  twitch: Gamepad2,
-  matrix: Link,
-  mattermost: Diamond,
-  msteams: Square,
-  "google-chat": MessagesSquare,
-  feishu: Feather,
-  line: Circle,
-  "nextcloud-talk": Cloud,
-  tlon: Tornado,
-  zalo: Circle,
-  zalouser: Circle,
-  wechat: Phone,
-  // Features — voice & audio
-  "edge-tts": Volume2,
-  elevenlabs: Mic,
-  tts: Volume2,
-  "simple-voice": Mic,
-  "robot-voice": Bot,
-  // Features — blockchain & finance
-  evm: Link,
-  solana: CircleDot,
-  "auto-trader": TrendingDown,
-  "lp-manager": Wallet,
-  "social-alpha": Layers,
-  polymarket: Gamepad2,
-  x402: CreditCard,
-  trust: Handshake,
-  iq: Puzzle,
-  // Features — dev tools & infra
-  cli: Hash,
-  code: Puzzle,
-  shell: Shell,
-  github: Github,
-  linear: Square,
-  mcp: Puzzle,
-  browser: Chrome,
-  computeruse: MousePointer2,
-  n8n: Settings,
-  webhooks: Webhook,
-  // Features — knowledge & memory
-  knowledge: BookOpen,
-  memory: Dna,
-  "local-embedding": Binary,
-  pdf: FileText,
-  "secrets-manager": FileKey,
-  clipboard: StickyNote,
-  rlm: RefreshCw,
-  // Features — agents & orchestration
-  "agent-orchestrator": Target,
-  "agent-skills": Wrench,
-  "plugin-manager": Package,
-  "copilot-proxy": Handshake,
-  directives: ClipboardList,
-  goals: Target,
-  "eliza-classic": Bot,
-  // Features — media & content
-  vision: Eye,
-  rss: Rss,
-  "gmail-watch": Mail,
-  prose: PenTool,
-  form: ClipboardList,
-  // Features — scheduling & automation
-  cron: Clock,
-  scheduling: Calendar,
-  todo: ClipboardList,
-  commands: Command,
-  // Features — storage & logging
-  "s3-storage": Server,
-  "trajectory-logger": TrendingDown,
-  experience: Star,
-  // Features — gaming & misc
-  minecraft: Pickaxe,
-  roblox: BrickWall,
-  babylon: Gamepad,
-  mysticism: Sparkle,
-  personality: Target,
-  moltbook: ScrollText,
-  tee: LockKeyhole,
-  blooio: Circle,
-  acp: Construction,
-  elizacloud: Cloud,
-  twilio: Phone,
+/**
+ * Lucide name → component map. Entries declare their icon by Lucide
+ * component name in `render.icon` (PluginInfo.iconName); this map resolves
+ * that name to the actual React component at render time.
+ */
+const ICON_BY_LUCIDE_NAME: Record<string, LucideIcon> = {
+  Binary,
+  Bird,
+  BookOpen,
+  Bot,
+  Brain,
+  BrickWall,
+  Briefcase,
+  Calendar,
+  Chrome: Globe,
+  Circle,
+  CircleDashed,
+  CircleDot,
+  ClipboardList,
+  Clock,
+  Cloud,
+  Command,
+  Construction,
+  CreditCard,
+  Diamond,
+  Dna,
+  Eye,
+  Feather,
+  FileKey,
+  FileText,
+  Fingerprint,
+  Gamepad,
+  Gamepad2,
+  GitBranch,
+  Github: GitBranch,
+  Globe,
+  Handshake,
+  Hash,
+  Layers,
+  Leaf,
+  Link,
+  Lock,
+  LockKeyhole,
+  Mail,
+  MessageCircle,
+  MessageSquare,
+  MessagesSquare,
+  Mic,
+  Monitor,
+  MousePointer2,
+  Package,
+  PenTool,
+  Phone,
+  Pickaxe,
+  Puzzle,
+  RefreshCw,
+  Rss,
+  ScrollText,
+  Send,
+  Server,
+  Settings,
+  Shell,
+  Shuffle,
+  Smartphone,
+  Sparkle,
+  Sparkles,
+  Square,
+  Star,
+  StickyNote,
+  Target,
+  Tornado,
+  TrendingDown,
+  Triangle,
+  Twitter: MessageCircle,
+  Video,
+  Volume2,
+  Wallet,
+  Webhook,
+  Wrench,
+  Zap,
 };
 
-/** Resolve display icon: explicit plugin.icon, fallback to default map, or null. */
+/** Resolve display icon. Order: explicit URL/emoji on PluginInfo.icon →
+ *  registry-provided Lucide name (PluginInfo.iconName) → null. */
 export function resolveIcon(p: PluginInfo): LucideIcon | string | null {
   if (p.icon) return p.icon;
-  return DEFAULT_ICONS[p.id] ?? null;
+  if (p.iconName) return ICON_BY_LUCIDE_NAME[p.iconName] ?? null;
+  return null;
 }
 
 export function iconImageSource(icon: string): string | null {
@@ -651,7 +596,7 @@ export function iconImageSource(icon: string): string | null {
   return null;
 }
 
-export type TranslateFn = ReturnType<typeof useApp>["t"];
+export type TranslateFn = AppTranslateFn;
 
 function resolvePluginParamValue(
   plugin: Pick<PluginInfo, "parameters">,
@@ -748,74 +693,10 @@ export function pluginResourceLinkLabel(t: TranslateFn, key: string): string {
 
 /* ── Sub-group Classification ──────────────────────────────────────── */
 
-/** Map plugin IDs to fine-grained sub-groups for the "Feature" category. */
-export const FEATURE_SUBGROUP: Record<string, string> = {
-  // Voice & Audio
-  "edge-tts": "voice",
-  elevenlabs: "voice",
-  tts: "voice",
-  "simple-voice": "voice",
-  "robot-voice": "voice",
-  // Blockchain & Finance
-  evm: "blockchain",
-  solana: "blockchain",
-  "auto-trader": "blockchain",
-  "lp-manager": "blockchain",
-  "social-alpha": "blockchain",
-  polymarket: "blockchain",
-  x402: "blockchain",
-  trust: "blockchain",
-  iq: "blockchain",
-  // Dev Tools & Infrastructure
-  cli: "devtools",
-  code: "devtools",
-  shell: "devtools",
-  github: "devtools",
-  linear: "devtools",
-  mcp: "devtools",
-  browser: "devtools",
-  computeruse: "devtools",
-  n8n: "devtools",
-  webhooks: "devtools",
-  // Knowledge & Memory
-  knowledge: "knowledge",
-  memory: "knowledge",
-  "local-embedding": "knowledge",
-  pdf: "knowledge",
-  "secrets-manager": "knowledge",
-  clipboard: "knowledge",
-  rlm: "knowledge",
-  // Agents & Orchestration
-  "agent-orchestrator": "agents",
-  "agent-skills": "agents",
-  "plugin-manager": "agents",
-  "copilot-proxy": "agents",
-  directives: "agents",
-  goals: "agents",
-  "eliza-classic": "agents",
-  // Media & Content
-  vision: "media",
-  rss: "media",
-  "gmail-watch": "media",
-  prose: "media",
-  form: "media",
-  // Scheduling & Automation
-  cron: "automation",
-  scheduling: "automation",
-  todo: "automation",
-  commands: "automation",
-  // Storage & Logging
-  "s3-storage": "storage",
-  "trajectory-logger": "storage",
-  experience: "storage",
-  // Gaming & Creative
-  minecraft: "gaming",
-  roblox: "gaming",
-  babylon: "gaming",
-  mysticism: "gaming",
-  personality: "gaming",
-  moltbook: "gaming",
-};
+// Per-plugin sub-group assignment lives in the registry as `render.group`.
+// This file used to mirror it as a hardcoded FEATURE_SUBGROUP map; that
+// duplication is gone. The order/labels/nav-icons below are GROUP-level
+// metadata that the per-entry registry does not (yet) model.
 
 export const SUBGROUP_DISPLAY_ORDER = [
   "ai-provider",
@@ -871,10 +752,12 @@ export const SUBGROUP_NAV_ICONS: Record<string, LucideIcon> = {
 
 export function subgroupForPlugin(plugin: PluginInfo): string {
   if (plugin.id === "__ui-showcase__") return "showcase";
+  if (plugin.group) return plugin.group;
+  // Defensive fallback for runtime-discovered plugins not in the registry.
   if (plugin.category === "ai-provider") return "ai-provider";
   if (plugin.category === "connector") return "connector";
   if (plugin.category === "streaming") return "streaming";
-  return FEATURE_SUBGROUP[plugin.id] ?? "feature-other";
+  return "feature-other";
 }
 
 export type StatusFilter = "all" | "enabled" | "disabled";
@@ -976,7 +859,8 @@ export function buildPluginListState(options: {
     (plugin) =>
       plugin.category !== "database" &&
       !ALWAYS_ON_PLUGIN_IDS.has(plugin.id) &&
-      (!isConnectorLikeMode || (plugin.category === "connector" && VISIBLE_CONNECTOR_IDS.has(plugin.id))) &&
+      (!isConnectorLikeMode ||
+        (plugin.category === "connector" && plugin.visible !== false)) &&
       (mode !== "streaming" || plugin.category === "streaming"),
   );
   const nonDbPlugins = [SHOWCASE_PLUGIN, ...categoryPlugins];

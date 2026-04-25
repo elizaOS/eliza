@@ -1,4 +1,5 @@
 import {
+  createBrowserWorkspaceCommandTargetError,
   DEFAULT_TIMEOUT_MS,
   normalizeEnvValue,
   resolveBrowserWorkspaceCommandElementRefs,
@@ -1466,8 +1467,6 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
 
 // --- Desktop tab resolution ---
 
-import { createBrowserWorkspaceCommandTargetError } from "./browser-workspace-helpers.js";
-
 export function resolveBrowserWorkspaceCurrentTab(
   tabs: BrowserWorkspaceTab[],
 ): BrowserWorkspaceTab | null {
@@ -1496,9 +1495,16 @@ export async function resolveDesktopBrowserWorkspaceTargetTabId(
     return command.id.trim();
   }
 
-  // Use dynamic import to avoid circular dependency
-  const { listBrowserWorkspaceTabs } = await import("./browser-workspace.js");
-  const tabs = await listBrowserWorkspaceTabs(env);
+  // This function is only called on desktop-bridge paths where the
+  // Electrobun HTTP bridge is configured. Calling `listBrowserWorkspaceTabs`
+  // from `browser-workspace.ts` here would create a compile-time circular
+  // dependency (browser-workspace → desktop → browser-workspace); the web
+  // fallback in that function is also not reachable from these call sites.
+  // So hit the bridge directly and skip the detour.
+  const payload = await requestBrowserWorkspace<{
+    tabs?: BrowserWorkspaceTab[];
+  }>("/tabs", undefined, env);
+  const tabs = Array.isArray(payload.tabs) ? payload.tabs : [];
   const current = resolveBrowserWorkspaceCurrentTab(tabs);
   if (!current) {
     throw createBrowserWorkspaceCommandTargetError(command.subaction);

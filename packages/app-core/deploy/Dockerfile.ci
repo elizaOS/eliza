@@ -1,9 +1,8 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.23
 # elizaOS Agent — CI Docker Image
 # Pre-built artifacts come from GHA (bun install + tsdown + vite build done before docker)
 ARG NODE_VERSION=22
 ARG BUN_VERSION=1.3.10
-ARG ESBUILD_VERSION=0.28.0
 ARG APP_ENTRYPOINT=app.mjs
 ARG APP_CMD_START=""
 ARG APP_PORT=2138
@@ -22,6 +21,10 @@ COPY . .
 
 RUN node eliza/packages/app-core/scripts/relink-workspace-packages-to-dist.mjs \
   @elizaos/agent
+
+RUN node eliza/packages/app-core/scripts/link-docker-local-app-packages.mjs
+
+RUN node eliza/packages/app-core/scripts/ensure-generated-core-proto-js.mjs
 
 # Patch plugin-agent-skills getCatalogStats crash (alpha.11 vs alpha.66 interface mismatch)
 RUN sed -i 's/const stats = service.getCatalogStats();/const stats = typeof service.getCatalogStats === "function" ? service.getCatalogStats() : { loaded: 0, total: 0, storageType: "unknown" };/g' node_modules/@elizaos/plugin-agent-skills/dist/index.js 2>/dev/null || true
@@ -69,7 +72,6 @@ RUN find node_modules -name '*.map' -delete 2>/dev/null; \
 
 FROM node:${NODE_VERSION}-slim
 ARG BUN_VERSION
-ARG ESBUILD_VERSION
 ARG APP_ENTRYPOINT
 ARG APP_CMD_START
 ARG APP_PORT
@@ -93,19 +95,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /app
 COPY --from=pruner /app /app
 
-# The build context copies a host-built node_modules tree. Install esbuild
-# inside the Linux image so npm resolves the correct platform package for the
-# target architecture instead of reusing a macOS-only optional dependency.
-RUN mkdir -p /tmp/esbuild-linux \
-  && cd /tmp/esbuild-linux \
-  && npm init -y >/dev/null 2>&1 \
-  && npm install --ignore-scripts "esbuild@${ESBUILD_VERSION}" >/dev/null 2>&1 \
-  && cp node_modules/esbuild/bin/esbuild /usr/local/bin/esbuild \
-  && chmod +x /usr/local/bin/esbuild \
-  && rm -rf /tmp/esbuild-linux /root/.npm
-
 ENV NODE_ENV=production
-ENV ESBUILD_BINARY_PATH=/usr/local/bin/esbuild
+ENV ELIZA_DISABLE_EDGE_TTS=1
 ENV APP_ENTRYPOINT=${APP_ENTRYPOINT}
 ENV APP_CMD_START=${APP_CMD_START}
 ENV APP_PORT=${APP_PORT}

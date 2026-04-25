@@ -1,6 +1,6 @@
-import { CodingAgentTasksPanel } from "@elizaos/app-task-coordinator";
-import { useApp } from "../../state";
 import { PagePanel } from "@elizaos/ui";
+import { CodingAgentTasksPanel } from "../../app-shell/task-coordinator-slots.js";
+import { useApp } from "../../state";
 
 export function TasksPageView() {
   const { t } = useApp();

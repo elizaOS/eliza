@@ -57,10 +57,7 @@ export function runCommandBuffer(
 /**
  * Run a shell command string (uses shell). Use sparingly — prefer runCommand.
  */
-export function runShellCommand(
-  cmd: string,
-  timeout: number,
-): string {
+export function runShellCommand(cmd: string, timeout: number): string {
   return execSync(cmd, {
     encoding: "utf-8",
     timeout,
@@ -75,11 +72,11 @@ export function runShellCommand(
  * Ported from open-computer-use desktop-automation.ts validateInt().
  */
 export function validateInt(val: unknown): number {
-  if (val == null) {
+  if (val === null || val === undefined) {
     throw new Error(`Invalid numeric value: ${String(val)}`);
   }
-  if (typeof val === "string" && val.trim() === "") {
-    throw new Error("Invalid numeric value: ");
+  if (typeof val === "string" && val.trim().length === 0) {
+    throw new Error(`Invalid numeric value: ${String(val)}`);
   }
   const n = Number(val);
   if (!Number.isFinite(n)) {
@@ -103,6 +100,25 @@ export function validateCoordinate(
 }
 
 /**
+ * Validate a window/process identifier before interpolating it into a
+ * platform shell command (AppleScript / PowerShell). Rejects anything that
+ * is not a decimal integer or `0x`-prefixed hex, preventing escape out of
+ * the surrounding script literal.
+ */
+export function validateWindowId(windowId: string): string {
+  if (typeof windowId !== "string") {
+    throw new Error(`Invalid windowId: must be string, got ${typeof windowId}`);
+  }
+  const trimmed = windowId.trim();
+  if (!/^[0-9]+$/.test(trimmed) && !/^0x[0-9a-f]+$/i.test(trimmed)) {
+    throw new Error(
+      `Invalid windowId: must be numeric or 0x-prefixed hex, got "${windowId}"`,
+    );
+  }
+  return trimmed;
+}
+
+/**
  * Validate text input length to prevent abuse.
  */
 export function validateText(text: string, maxLength = 4096): string {
@@ -110,9 +126,7 @@ export function validateText(text: string, maxLength = 4096): string {
     throw new Error("Text must be a string");
   }
   if (text.length > maxLength) {
-    throw new Error(
-      `Text too long: ${text.length} chars (max ${maxLength})`,
-    );
+    throw new Error(`Text too long: ${text.length} chars (max ${maxLength})`);
   }
   return text;
 }
@@ -133,18 +147,58 @@ export function escapeAppleScript(value: string): string {
  * Known-safe xdotool key names. Whitelist approach from open-computer-use.
  */
 const SAFE_XDOTOOL_KEYS = new Set([
-  "Return", "Tab", "Escape", "BackSpace", "Delete",
-  "space", "Home", "End", "Page_Up", "Page_Down",
-  "Left", "Right", "Up", "Down",
-  "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
-  "shift", "Shift_L", "Shift_R",
-  "ctrl", "Control_L", "Control_R",
-  "alt", "Alt_L", "Alt_R",
-  "super", "Super_L", "Super_R",
-  "Meta_L", "Meta_R",
-  "plus", "minus", "period", "comma", "slash", "backslash",
-  "bracketleft", "bracketright", "semicolon", "apostrophe",
-  "grave", "equal",
+  "Return",
+  "Tab",
+  "Escape",
+  "BackSpace",
+  "Delete",
+  "space",
+  "Home",
+  "End",
+  "Page_Up",
+  "Page_Down",
+  "Left",
+  "Right",
+  "Up",
+  "Down",
+  "F1",
+  "F2",
+  "F3",
+  "F4",
+  "F5",
+  "F6",
+  "F7",
+  "F8",
+  "F9",
+  "F10",
+  "F11",
+  "F12",
+  "shift",
+  "Shift_L",
+  "Shift_R",
+  "ctrl",
+  "Control_L",
+  "Control_R",
+  "alt",
+  "Alt_L",
+  "Alt_R",
+  "super",
+  "Super_L",
+  "Super_R",
+  "Meta_L",
+  "Meta_R",
+  "plus",
+  "minus",
+  "period",
+  "comma",
+  "slash",
+  "backslash",
+  "bracketleft",
+  "bracketright",
+  "semicolon",
+  "apostrophe",
+  "grave",
+  "equal",
 ]);
 
 /**
@@ -157,7 +211,11 @@ export function safeXdotoolKey(key: string): string {
     return trimmed;
   }
   // Single printable ASCII character
-  if (trimmed.length === 1 && trimmed.charCodeAt(0) >= 32 && trimmed.charCodeAt(0) <= 126) {
+  if (
+    trimmed.length === 1 &&
+    trimmed.charCodeAt(0) >= 32 &&
+    trimmed.charCodeAt(0) <= 126
+  ) {
     return trimmed;
   }
   throw new Error(
@@ -168,14 +226,16 @@ export function safeXdotoolKey(key: string): string {
 /**
  * Safe keypress pattern for general validation (matches sandbox-routes).
  */
-const SAFE_KEYPRESS_PATTERN = /^[A-Za-z0-9+_ .,:\-]+$/;
+const SAFE_KEYPRESS_PATTERN = /^[A-Za-z0-9+_ .,:-]+$/;
 
 export function validateKeypress(keys: string, maxLength = 128): string {
   if (typeof keys !== "string" || keys.length === 0) {
     throw new Error("Key input must be a non-empty string");
   }
   if (keys.length > maxLength) {
-    throw new Error(`Key input too long: ${keys.length} chars (max ${maxLength})`);
+    throw new Error(
+      `Key input too long: ${keys.length} chars (max ${maxLength})`,
+    );
   }
   if (!SAFE_KEYPRESS_PATTERN.test(keys)) {
     throw new Error(
@@ -183,6 +243,120 @@ export function validateKeypress(keys: string, maxLength = 128): string {
     );
   }
   return keys;
+}
+
+// ── Key Normalization ───────────────────────────────────────────────────────
+
+const CANONICAL_KEY_ALIASES: Record<string, string> = {
+  esc: "escape",
+  escape: "escape",
+  return: "enter",
+  enter: "enter",
+  spacebar: "space",
+  space: "space",
+  tab: "tab",
+  up: "up",
+  down: "down",
+  left: "left",
+  right: "right",
+  pageup: "pageup",
+  pagedown: "pagedown",
+  home: "home",
+  end: "end",
+  del: "delete",
+  delete: "delete",
+  backspace: "backspace",
+};
+
+function normalizeKeyAlias(key: string): string {
+  if (typeof key !== "string" || key.trim().length === 0) {
+    throw new Error("Key input must be a non-empty string");
+  }
+  return key
+    .trim()
+    .toLowerCase()
+    .replace(/^arrow/, "")
+    .replace(/[\s_-]+/g, "");
+}
+
+export function canonicalKeyName(key: string): string {
+  const normalized = normalizeKeyAlias(key);
+  if (/^f\d{1,2}$/.test(normalized)) {
+    return normalized;
+  }
+  return CANONICAL_KEY_ALIASES[normalized] ?? normalized;
+}
+
+const CLICLICK_KEY_NAMES: Record<string, string> = {
+  escape: "esc",
+  enter: "return",
+  up: "arrow-up",
+  down: "arrow-down",
+  left: "arrow-left",
+  right: "arrow-right",
+  pageup: "page-up",
+  pagedown: "page-down",
+  backspace: "delete",
+  delete: "fwd-delete",
+  home: "home",
+  end: "end",
+  space: "space",
+  tab: "tab",
+};
+
+export function toCliclickKeyName(key: string): string {
+  const canonical = canonicalKeyName(key);
+  return CLICLICK_KEY_NAMES[canonical] ?? canonical;
+}
+
+const XDOTOOL_KEY_NAMES: Record<string, string> = {
+  escape: "Escape",
+  enter: "Return",
+  tab: "Tab",
+  backspace: "BackSpace",
+  delete: "Delete",
+  space: "space",
+  home: "Home",
+  end: "End",
+  pageup: "Page_Up",
+  pagedown: "Page_Down",
+  left: "Left",
+  right: "Right",
+  up: "Up",
+  down: "Down",
+};
+
+export function toXdotoolKeyName(key: string): string {
+  const canonical = canonicalKeyName(key);
+  if (/^f\d{1,2}$/.test(canonical)) {
+    return canonical.toUpperCase();
+  }
+  return XDOTOOL_KEY_NAMES[canonical] ?? key.trim();
+}
+
+const WINDOWS_SEND_KEYS: Record<string, string> = {
+  escape: "{ESC}",
+  enter: "{ENTER}",
+  tab: "{TAB}",
+  backspace: "{BACKSPACE}",
+  delete: "{DELETE}",
+  home: "{HOME}",
+  end: "{END}",
+  pageup: "{PGUP}",
+  pagedown: "{PGDN}",
+  left: "{LEFT}",
+  right: "{RIGHT}",
+  up: "{UP}",
+  down: "{DOWN}",
+  space: " ",
+};
+
+export function toWindowsSendKey(key: string): string {
+  const canonical = canonicalKeyName(key);
+  if (/^f\d{1,2}$/.test(canonical)) {
+    return `{${canonical.toUpperCase()}}`;
+  }
+  return WINDOWS_SEND_KEYS[canonical] ?? key.trim();
 }
 
 // ── Platform Detection ──────────────────────────────────────────────────────

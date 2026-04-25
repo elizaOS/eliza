@@ -42,16 +42,10 @@ import type {
 	FormSubmission,
 	MissingFieldSummary,
 	PendingExternalFieldSummary,
-	TypeHandler,
 	UncertainFieldSummary,
 } from "./types.ts";
 import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types.ts";
-import {
-	formatValue,
-	getTypeHandler,
-	registerTypeHandler,
-	validateField,
-} from "./validation.ts";
+import { formatValue, validateField } from "./validation.ts";
 
 // ============================================================================
 // FORM SERVICE
@@ -113,21 +107,6 @@ export class FormService extends Service {
 
 	listForms(): FormDefinition[] {
 		return Array.from(this.forms.values());
-	}
-
-	// ============================================================================
-	// TYPE HANDLER REGISTRY (Legacy)
-	// ============================================================================
-
-	/** @deprecated Use registerControlType instead */
-	registerType(type: string, handler: TypeHandler): void {
-		registerTypeHandler(type, handler);
-		logger.debug(`[FormService] Registered type handler: ${type}`);
-	}
-
-	/** @deprecated Use getControlType instead */
-	getTypeHandler(type: string): TypeHandler | undefined {
-		return getTypeHandler(type);
 	}
 
 	// ============================================================================

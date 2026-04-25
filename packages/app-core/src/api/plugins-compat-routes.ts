@@ -1,10 +1,8 @@
 import fs from "node:fs";
-import http from "node:http";
+import type http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type AgentRuntime, logger } from "@elizaos/core";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import {
   applyPluginRuntimeMutation,
   type PluginRuntimeApplyResult,
@@ -13,24 +11,33 @@ import {
   findPrimaryEnvKey,
   readBundledPluginPackageMetadata,
 } from "@elizaos/agent/api/server";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import {
+  type AdvancedCapabilityPluginId,
+  isAdvancedCapabilityPluginId,
+  resolveAdvancedCapabilitiesEnabled,
+} from "@elizaos/agent/runtime/advanced-capabilities-config";
+import { type AgentRuntime, logger } from "@elizaos/core";
+import { asRecord } from "@elizaos/shared/type-guards";
+import { CONNECTOR_ENV_MAP } from "../config/env-vars";
+import {
+  CONNECTOR_PLUGINS,
+  STREAMING_PLUGINS,
+} from "../config/plugin-auto-enable";
+import { entriesToLegacyManifest, loadRegistry } from "../registry";
 import {
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
 } from "./auth";
 import {
-  CONNECTOR_PLUGINS,
-  STREAMING_PLUGINS,
-} from "../config/plugin-auto-enable";
-import { CONNECTOR_ENV_MAP } from "../config/env-vars";
+  type CompatRuntimeState,
+  readCompatJsonBody,
+  scheduleCompatRuntimeRestart,
+} from "./compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import {
-  scheduleCompatRuntimeRestart,
-  readCompatJsonBody,
-  type CompatRuntimeState,
-} from "./compat-route-shared";
 
 const require = createRequire(import.meta.url);
 
@@ -121,6 +128,14 @@ interface CompatPluginRecord {
   homepage?: string;
   repository?: string;
   setupGuideUrl?: string;
+  // Registry-sourced render hints. Replaces frontend lookups against
+  // VISIBLE_CONNECTOR_IDS / DEFAULT_ICONS / FEATURE_SUBGROUP /
+  // SUBGROUP_DISPLAY_ORDER. Optional during migration; required once the
+  // frontend constants are deleted.
+  iconName?: string;
+  group?: string;
+  groupOrder?: number;
+  visible?: boolean;
 }
 
 type PluginDriftFlag =
@@ -160,6 +175,14 @@ const CAPABILITY_FEATURE_IDS = new Set([
   "computeruse",
   "coding-agent",
 ]);
+
+const ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID: Partial<
+  Record<AdvancedCapabilityPluginId, string>
+> = {
+  experience: "EXPERIENCE",
+  form: "FORM",
+  personality: "CHARACTER_MANAGEMENT",
+};
 
 // Key prefixes that contain wallet private keys or other high-value secrets
 // require the hardened sensitive-route auth (loopback + elevated checks).
@@ -239,13 +262,6 @@ function normalizePluginId(rawName: string): string {
     .replace(/^@[^/]+\/app-/, "")
     .replace(/^@[^/]+\//, "")
     .replace(/^(plugin|app)-/, "");
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
 }
 
 function resolveCompatConfigKey(
@@ -426,7 +442,7 @@ export function analyzePluginStateDrift(
   pluginList: CompatPluginRecord[],
   configRecord: Record<string, unknown>,
   configEntries: Record<string, { enabled?: unknown }>,
-  allowList: Set<string>,
+  allowList: Set<string> | null,
 ): PluginDriftDiagnosticsReport {
   const diagnostics = pluginList.map((plugin): PluginDriftDiagnostic => {
     const pluginId = String(plugin.id ?? "");
@@ -441,7 +457,11 @@ export function analyzePluginStateDrift(
       category === "connector"
         ? readCompatSectionEnabled(
             configRecord.connectors,
-            resolveCompatConfigKey(pluginId, npmName ?? undefined, CONNECTOR_PLUGINS),
+            resolveCompatConfigKey(
+              pluginId,
+              npmName ?? undefined,
+              CONNECTOR_PLUGINS,
+            ),
           )
         : category === "streaming"
           ? readCompatSectionEnabled(
@@ -458,7 +478,7 @@ export function analyzePluginStateDrift(
         ? Boolean(configEntries[pluginId]?.enabled)
         : undefined;
     const enabledAllowList =
-      npmName == null
+      allowList === null || npmName == null
         ? null
         : allowList.has(npmName) || allowList.has(shortId);
     const isActive = Boolean(plugin.isActive);
@@ -471,15 +491,7 @@ export function analyzePluginStateDrift(
     ) {
       driftFlags.push("entries_vs_compat");
     }
-    // Connector and streaming plugins load from config.connectors / config.streaming,
-    // not from plugins.allow.  Only flag allowlist drift for plugins whose load path
-    // actually depends on the allow list (i.e. optional core plugins).
-    if (
-      enabledAllowList !== null &&
-      entryEnabled !== undefined &&
-      category !== "connector" &&
-      category !== "streaming"
-    ) {
+    if (enabledAllowList !== null && entryEnabled !== undefined) {
       if (enabledAllowList !== entryEnabled) {
         driftFlags.push("entries_vs_allowlist");
       }
@@ -502,7 +514,9 @@ export function analyzePluginStateDrift(
     };
   });
 
-  const withDrift = diagnostics.filter((plugin) => plugin.drift_flags.length > 0);
+  const withDrift = diagnostics.filter(
+    (plugin) => plugin.drift_flags.length > 0,
+  );
   const byFlag: Record<PluginDriftFlag, number> = {
     entries_vs_compat: 0,
     entries_vs_allowlist: 0,
@@ -529,11 +543,13 @@ function buildPluginDriftDiagnostics(
   runtime: AgentRuntime | null,
 ): PluginDriftDiagnosticsReport {
   const pluginList = buildPluginListResponse(runtime)
-    .plugins;
+    .plugins as unknown as CompatPluginRecord[];
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const configEntries = config.plugins?.entries ?? {};
-  const allowList = new Set(config.plugins?.allow ?? []);
+  const allowList = Array.isArray(config.plugins?.allow)
+    ? new Set(config.plugins.allow)
+    : null;
 
   return analyzePluginStateDrift(
     pluginList,
@@ -917,6 +933,29 @@ function isPluginLoaded(
   return false;
 }
 
+export function resolveAdvancedCapabilityCompatStatus(
+  pluginId: string,
+  config: ReturnType<typeof loadElizaConfig>,
+  runtime: Pick<AgentRuntime, "getService"> | null,
+): { enabled: boolean; isActive: boolean } | null {
+  if (!isAdvancedCapabilityPluginId(pluginId)) {
+    return null;
+  }
+
+  const enabled = resolveAdvancedCapabilitiesEnabled(config);
+  if (!enabled) {
+    return { enabled: false, isActive: false };
+  }
+
+  const serviceType = ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID[pluginId];
+  return {
+    enabled: true,
+    isActive: serviceType
+      ? Boolean(runtime?.getService(serviceType))
+      : Boolean(runtime),
+  };
+}
+
 export function buildPluginListResponse(runtime: AgentRuntime | null): {
   plugins: CompatPluginRecord[];
 } {
@@ -924,13 +963,15 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
   const config = loadElizaConfig();
   const configRecord = config as Record<string, unknown>;
   const loadedNames = resolveLoadedPluginNames(runtime);
-  const manifestPath = resolvePluginManifestPath();
-  const manifestRoot = manifestPath
-    ? path.dirname(manifestPath)
+  // Source of truth: registry under packages/app-core/src/registry/data/.
+  // The legacy adapter projects RegistryEntry[] back to the manifest shape
+  // this route's transformation pipeline still expects. Once that pipeline
+  // is rewritten to consume RegistryEntry directly, drop the adapter.
+  const registry = loadRegistry();
+  const manifestRoot = resolvePluginManifestPath()
+    ? path.dirname(resolvePluginManifestPath() ?? "")
     : process.cwd();
-  const manifest = manifestPath
-    ? (JSON.parse(fs.readFileSync(manifestPath, "utf8")) as PluginManifestFile)
-    : null;
+  const manifest: PluginManifestFile = entriesToLegacyManifest(registry.all);
 
   const configEntries = config.plugins?.entries ?? {};
   const installEntries = config.plugins?.installs ?? {};
@@ -955,18 +996,26 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
     const parameters = buildPluginParamDefs(
       entry.pluginParameters ?? bundledMeta?.pluginParameters,
     );
-    const active = isPluginLoaded(pluginId, entry.npmName, loadedNames);
+    const advancedCapabilityStatus = resolveAdvancedCapabilityCompatStatus(
+      pluginId,
+      config,
+      runtime,
+    );
+    const active =
+      advancedCapabilityStatus?.isActive ??
+      isPluginLoaded(pluginId, entry.npmName, loadedNames);
     const enabled =
-      active ||
-      Boolean(
-        resolvePersistedPluginEnabled(
-          pluginId,
-          category,
-          entry.npmName,
-          configEntries,
-          configRecord,
-        ),
-      );
+      advancedCapabilityStatus?.enabled ??
+      (active ||
+        Boolean(
+          resolvePersistedPluginEnabled(
+            pluginId,
+            category,
+            entry.npmName,
+            configEntries,
+            configRecord,
+          ),
+        ));
     const validationErrors = parameters
       .filter((parameter) => parameter.required && !parameter.isSet)
       .map((parameter) => ({
@@ -974,6 +1023,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
         message: "Required value is not configured.",
       }));
 
+    const registryEntry = registry.byId.get(pluginId);
     plugins.set(pluginId, {
       id: pluginId,
       name: entry.name ?? titleCasePluginId(pluginId),
@@ -996,10 +1046,14 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
       pluginDeps: entry.pluginDeps,
       isActive: active,
       configUiHints: entry.configUiHints ?? bundledMeta?.configUiHints,
-      icon: entry.logoUrl ?? entry.icon ?? bundledMeta?.icon ?? null,
+      icon: entry.logoUrl ?? bundledMeta?.icon ?? null,
       homepage: entry.homepage ?? bundledMeta?.homepage,
       repository: entry.repository ?? bundledMeta?.repository,
       setupGuideUrl: entry.setupGuideUrl,
+      iconName: registryEntry?.render.icon,
+      group: registryEntry?.render.group,
+      groupOrder: registryEntry?.render.groupOrder,
+      visible: registryEntry?.render.visible ?? true,
     });
   }
 
@@ -1250,9 +1304,9 @@ export function persistCompatPluginMutation(
     saveElizaConfig(config);
   }
 
-  const refreshed = (
-    buildPluginListResponse(null).plugins
-  ).find((candidate) => candidate.id === pluginId);
+  const refreshed = buildPluginListResponse(null).plugins.find(
+    (candidate) => candidate.id === pluginId,
+  );
 
   return {
     status: 200,
@@ -1299,9 +1353,8 @@ export async function handlePluginsCompatRoutes(
     }
 
     const pluginResponse = buildPluginListResponse(state.current);
-    const manifestPath = resolvePluginManifestPath();
     logger.debug(
-      `[api/plugins] manifest=${manifestPath ?? "NOT_FOUND"} total=${pluginResponse.plugins.length} runtime=${state.current ? "active" : "null"}`,
+      `[api/plugins] source=registry total=${pluginResponse.plugins.length} runtime=${state.current ? "active" : "null"}`,
     );
     maybeLogPluginStateDrift(buildPluginDriftDiagnostics(state.current));
     sendJsonResponse(res, 200, pluginResponse);
@@ -1331,10 +1384,9 @@ export async function handlePluginsCompatRoutes(
     const pluginId = normalizePluginId(
       decodeURIComponent(url.pathname.slice("/api/plugins/".length)),
     );
-    const plugin = (
-      buildPluginListResponse(state.current)
-        .plugins
-    ).find((candidate) => candidate.id === pluginId);
+    const plugin = buildPluginListResponse(state.current).plugins.find(
+      (candidate) => candidate.id === pluginId,
+    );
 
     if (!plugin) {
       sendJsonErrorResponse(res, 404, `Plugin "${pluginId}" not found`);
@@ -1358,10 +1410,9 @@ export async function handlePluginsCompatRoutes(
         scheduleCompatRuntimeRestart(state, runtimeApply.reason);
       }
 
-      const refreshed = (
-        buildPluginListResponse(state.current)
-          .plugins
-      ).find((candidate) => candidate.id === pluginId);
+      const refreshed = buildPluginListResponse(state.current).plugins.find(
+        (candidate) => candidate.id === pluginId,
+      );
 
       result.payload.plugin = refreshed ?? result.payload.plugin ?? plugin;
       result.payload.applied = runtimeApply.mode;

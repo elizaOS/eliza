@@ -43,6 +43,11 @@ import {
   writeSse,
   writeSseJson,
 } from "./chat-routes.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
+import {
+  buildConversationRoomMetadata,
+  sanitizeConversationMetadata,
+} from "./conversation-metadata.js";
 import {
   cacheDiscordAvatarForRuntime,
   isCanonicalDiscordSource,
@@ -54,14 +59,12 @@ import { evictOldestConversation } from "./memory-bounds.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 import {
   buildUserMessages,
-  type ConversationMeta,
   getErrorMessage,
-  isUuidLike,
-  persistConversationRoomTitle,
   resolveAppUserName,
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
-} from "./server.js";
+} from "./server-helpers.js";
+import type { ConversationMeta, ConversationMetadata } from "./server-types.js";
 
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence
@@ -147,29 +150,14 @@ export interface ConversationRouteContext extends RouteRequestContext {
 // Closure-lifted helpers
 // ---------------------------------------------------------------------------
 
+export function resolveConversationAdminEntityId(
+  state: ConversationRouteState,
+): UUID {
+  return resolveClientChatAdminEntityId(state);
+}
+
 function ensureAdminEntityId(state: ConversationRouteState): UUID {
-  if (state.adminEntityId) {
-    return state.adminEntityId;
-  }
-  const configuredValue = (
-    state.config as {
-      agents?: { defaults?: { adminEntityId?: string } };
-    }
-  ).agents?.defaults?.adminEntityId;
-  const configured =
-    typeof configuredValue === "string" ? configuredValue.trim() : undefined;
-  const nextAdminEntityId =
-    configured && isUuidLike(configured)
-      ? configured
-      : (stringToUuid(`${state.agentName}-admin-entity`) as UUID);
-  if (configured && !isUuidLike(configured)) {
-    logger.warn(
-      `[eliza-api] Invalid agents.defaults.adminEntityId "${configured}", using deterministic fallback`,
-    );
-  }
-  state.adminEntityId = nextAdminEntityId;
-  state.chatUserId = state.adminEntityId;
-  return nextAdminEntityId;
+  return resolveConversationAdminEntityId(state);
 }
 
 async function ensureWorldOwnershipAndRoles(
@@ -357,17 +345,41 @@ async function ensureConversationRoom(
   await ensureWorldOwnershipAndRoles(runtime, worldId as UUID, userId);
 }
 
-async function syncConversationRoomTitle(
+async function syncConversationRoomState(
   state: ConversationRouteState,
   conv: ConversationMeta,
 ): Promise<void> {
-  try {
-    await persistConversationRoomTitle(state.runtime, conv);
-  } catch (err) {
-    logger.debug(
-      `[conversations] Failed to persist room title for ${conv.id}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+  if (!state.runtime) return;
+  const runtime = state.runtime;
+  const room = await runtime.getRoom(conv.roomId);
+  if (!room) return;
+
+  const ownerId = ensureAdminEntityId(state);
+  const nextMetadata = buildConversationRoomMetadata(
+    conv,
+    ownerId,
+    room.metadata,
+  );
+  const nextName = conv.title;
+  const metadataChanged =
+    JSON.stringify(room.metadata ?? null) !== JSON.stringify(nextMetadata);
+
+  if (room.name === nextName && !metadataChanged) {
+    return;
   }
+
+  const adapter = runtime.adapter as {
+    updateRoom?: (nextRoom: typeof room) => Promise<void>;
+  };
+  if (typeof adapter.updateRoom !== "function") {
+    return;
+  }
+
+  await adapter.updateRoom({
+    ...room,
+    name: nextName,
+    metadata: nextMetadata,
+  });
 }
 
 async function waitForConversationRestore(
@@ -428,18 +440,11 @@ export function formatConversationMessageText(
   }
 
   const trimmedText = text.trim();
-  const visibleHistory =
-    trimmedText.length > 0 && history.at(-1) === trimmedText
-      ? history.slice(0, -1)
-      : history;
-
-  if (visibleHistory.length === 0) {
+  if (trimmedText.length > 0) {
     return text;
   }
 
-  return trimmedText.length > 0
-    ? `${visibleHistory.join("\n")}\n\n${text}`
-    : visibleHistory.join("\n");
+  return history.join("\n");
 }
 
 export function buildPersistedAssistantContent(
@@ -586,6 +591,8 @@ type ConversationRouteMessageRecord = {
   text: string;
   timestamp: number;
   source?: string;
+  actionName?: string;
+  actionCallbackHistory?: string[];
   from?: string;
   fromUserName?: string;
   avatarUrl?: string;
@@ -782,6 +789,7 @@ export async function handleConversationRoutes(
       title?: string;
       includeGreeting?: boolean;
       lang?: string;
+      metadata?: ConversationMetadata;
     }>(req, res);
     if (!body) return true;
     await waitForConversationRestore(state);
@@ -792,6 +800,9 @@ export async function handleConversationRoutes(
       id,
       title: body.title?.trim() || "New Chat",
       roomId,
+      ...(sanitizeConversationMetadata(body.metadata)
+        ? { metadata: sanitizeConversationMetadata(body.metadata) }
+        : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -811,7 +822,7 @@ export async function handleConversationRoutes(
     if (state.runtime) {
       try {
         await ensureConversationRoom(state, conv);
-        await syncConversationRoomTitle(state, conv);
+        await syncConversationRoomState(state, conv);
         if (body.includeGreeting === true) {
           const storedGreeting = await ensureConversationGreetingStored(
             state,
@@ -881,6 +892,10 @@ export async function handleConversationRoutes(
             contentSource !== "client_chat"
               ? contentSource
               : undefined;
+          const actionName =
+            typeof content.action === "string" && content.action.length > 0
+              ? content.action
+              : undefined;
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
@@ -893,6 +908,11 @@ export async function handleConversationRoutes(
             ),
             timestamp: m.createdAt ?? 0,
             source: normalizedSource,
+            actionName,
+            actionCallbackHistory:
+              actionCallbackHistory.length > 0
+                ? [...actionCallbackHistory]
+                : undefined,
             from:
               typeof entityName === "string" && entityName.length > 0
                 ? entityName
@@ -957,65 +977,71 @@ export async function handleConversationRoutes(
             return;
           }
 
-          const storedSenderProfile = await resolveStoredDiscordEntityProfile(
-            runtime,
-            message.senderEntityId,
-          );
-          if (!message.from && storedSenderProfile?.displayName) {
-            message.from = storedSenderProfile.displayName;
-          }
-          if (!message.fromUserName && storedSenderProfile?.username) {
-            message.fromUserName = storedSenderProfile.username;
-          }
-          if (!message.avatarUrl && storedSenderProfile?.avatarUrl) {
-            message.avatarUrl = storedSenderProfile.avatarUrl;
-          }
-
-          const messageAuthorProfile =
-            message.rawDiscordChannelId && message.rawDiscordMessageId
-              ? await resolveDiscordMessageAuthorProfile(
-                  runtime,
-                  message.rawDiscordChannelId,
-                  message.rawDiscordMessageId,
-                )
-              : null;
-          if (!message.from && messageAuthorProfile?.displayName) {
-            message.from = messageAuthorProfile.displayName;
-          }
-          if (!message.fromUserName && messageAuthorProfile?.username) {
-            message.fromUserName = messageAuthorProfile.username;
-          }
-          if (!message.avatarUrl && messageAuthorProfile?.avatarUrl) {
-            message.avatarUrl = messageAuthorProfile.avatarUrl;
-          }
-
-          const rawSenderId =
-            message.rawSenderId ??
-            storedSenderProfile?.rawUserId ??
-            messageAuthorProfile?.rawUserId;
-          if (rawSenderId) {
-            const profile = await resolveDiscordUserProfile(
+          try {
+            const storedSenderProfile = await resolveStoredDiscordEntityProfile(
               runtime,
-              rawSenderId,
+              message.senderEntityId,
             );
-            if (profile) {
-              if (profile.displayName) {
-                message.from = profile.displayName;
-              }
-              if (profile.username) {
-                message.fromUserName = profile.username;
-              }
-              if (profile.avatarUrl) {
-                message.avatarUrl = profile.avatarUrl;
+            if (!message.from && storedSenderProfile?.displayName) {
+              message.from = storedSenderProfile.displayName;
+            }
+            if (!message.fromUserName && storedSenderProfile?.username) {
+              message.fromUserName = storedSenderProfile.username;
+            }
+            if (!message.avatarUrl && storedSenderProfile?.avatarUrl) {
+              message.avatarUrl = storedSenderProfile.avatarUrl;
+            }
+
+            const messageAuthorProfile =
+              message.rawDiscordChannelId && message.rawDiscordMessageId
+                ? await resolveDiscordMessageAuthorProfile(
+                    runtime,
+                    message.rawDiscordChannelId,
+                    message.rawDiscordMessageId,
+                  )
+                : null;
+            if (!message.from && messageAuthorProfile?.displayName) {
+              message.from = messageAuthorProfile.displayName;
+            }
+            if (!message.fromUserName && messageAuthorProfile?.username) {
+              message.fromUserName = messageAuthorProfile.username;
+            }
+            if (!message.avatarUrl && messageAuthorProfile?.avatarUrl) {
+              message.avatarUrl = messageAuthorProfile.avatarUrl;
+            }
+
+            const rawSenderId =
+              message.rawSenderId ??
+              storedSenderProfile?.rawUserId ??
+              messageAuthorProfile?.rawUserId;
+            if (rawSenderId) {
+              const profile = await resolveDiscordUserProfile(
+                runtime,
+                rawSenderId,
+              );
+              if (profile) {
+                if (profile.displayName) {
+                  message.from = profile.displayName;
+                }
+                if (profile.username) {
+                  message.fromUserName = profile.username;
+                }
+                if (profile.avatarUrl) {
+                  message.avatarUrl = profile.avatarUrl;
+                }
               }
             }
-          }
 
-          message.avatarUrl = await cacheDiscordAvatarForRuntime(
-            runtime,
-            message.avatarUrl,
-            rawSenderId,
-          );
+            message.avatarUrl = await cacheDiscordAvatarForRuntime(
+              runtime,
+              message.avatarUrl,
+              rawSenderId,
+            );
+          } catch (err) {
+            logger.debug(
+              `[conversations] Failed to enrich Discord message metadata: ${getErrorMessage(err)}`,
+            );
+          }
         }),
       );
       json(res, {
@@ -1578,6 +1604,7 @@ export async function handleConversationRoutes(
     const body = await readJsonBody<{
       title?: string;
       generate?: boolean;
+      metadata?: ConversationMetadata | null;
     }>(req, res);
     if (!body) return true;
 
@@ -1624,14 +1651,67 @@ export async function handleConversationRoutes(
       if (resolvedTitle) {
         conv.title = resolvedTitle;
         conv.updatedAt = new Date().toISOString();
-        await syncConversationRoomTitle(state, conv);
+        await syncConversationRoomState(state, conv);
       }
     } else if (body.title?.trim()) {
       conv.title = body.title.trim();
       conv.updatedAt = new Date().toISOString();
-      await syncConversationRoomTitle(state, conv);
+      await syncConversationRoomState(state, conv);
+    }
+
+    if (body.metadata !== undefined) {
+      const nextMetadata = sanitizeConversationMetadata(body.metadata);
+      if (nextMetadata) {
+        conv.metadata = nextMetadata;
+      } else {
+        delete conv.metadata;
+      }
+      conv.updatedAt = new Date().toISOString();
+      await syncConversationRoomState(state, conv);
     }
     json(res, { conversation: conv });
+    return true;
+  }
+
+  // ── POST /api/conversations/cleanup-empty ───────────────────────────
+  if (method === "POST" && pathname === "/api/conversations/cleanup-empty") {
+    const body = await readJsonBody<{ keepId?: string }>(req, res);
+    if (!body) return true;
+    await waitForConversationRestore(state);
+    const runtime = state.runtime;
+    if (!runtime) {
+      json(res, { deleted: [] });
+      return true;
+    }
+    const keepId =
+      typeof body.keepId === "string" ? body.keepId.trim() : undefined;
+    const agentId = runtime.agentId;
+    const deleted: string[] = [];
+    for (const conv of Array.from(state.conversations.values())) {
+      if (keepId && conv.id === keepId) continue;
+      if (state.deletedConversationIds.has(conv.id)) continue;
+      const memories = await runtime.getMemories({
+        roomId: conv.roomId,
+        tableName: "messages",
+        limit: 10,
+      });
+      const hasUserMessage = memories.some((m) => m.entityId !== agentId);
+      if (hasUserMessage) continue;
+      const memoryIds = memories
+        .map((memory) => memory.id)
+        .filter(
+          (memoryId): memoryId is UUID =>
+            typeof memoryId === "string" && memoryId.trim().length > 0,
+        );
+      if (memoryIds.length > 0) {
+        await deleteConversationMemories(runtime, memoryIds);
+      }
+      await deleteConversationRoomData(runtime, conv.roomId);
+      state.conversations.delete(conv.id);
+      markConversationDeleted(state, conv.id);
+      deleted.push(conv.id);
+    }
+    json(res, { deleted });
     return true;
   }
 

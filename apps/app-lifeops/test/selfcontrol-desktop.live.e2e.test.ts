@@ -11,7 +11,10 @@ import { req } from "../../../packages/app-core/test/helpers/http";
 const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-const WATCH_DESKTOP_SUPPORTED = process.platform === "darwin";
+const CI_ENABLED = /^(1|true)$/i.test(process.env.CI ?? "");
+const WATCH_DESKTOP_SUPPORTED =
+  process.platform === "darwin" &&
+  (!CI_ENABLED || process.env.MILADY_LIVE_DESKTOP_WATCH_TEST === "1");
 const DESKTOP_STACK_TEST_TIMEOUT_MS =
   process.platform === "win32" ? 480_000 : 300_000;
 
@@ -172,6 +175,33 @@ async function waitForHostsBlock(
   );
 }
 
+async function removeTempRoot(tempRoot: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  let lastError: unknown = null;
+
+  while (Date.now() < deadline) {
+    try {
+      await rm(tempRoot, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      const code =
+        typeof error === "object" && error && "code" in error
+          ? String((error as NodeJS.ErrnoException).code ?? "")
+          : "";
+      if (!["EBUSY", "ENOTEMPTY", "EPERM"].includes(code)) {
+        throw error;
+      }
+    }
+
+    await sleep(250);
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Timed out removing temp directory: ${tempRoot}`);
+}
+
 async function startDesktopStack(
   mode: DesktopMode,
 ): Promise<StartedDesktopStack> {
@@ -207,7 +237,9 @@ async function startDesktopStack(
       CI: "1",
       ELIZA_CONFIG_PATH: configPath,
       ELIZA_DEV_ONCHAIN: "0",
+      ELIZA_DISABLE_LIFEOPS_SCHEDULER: "1",
       ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1",
+      ELIZA_DISABLE_PROACTIVE_AGENT: "1",
       ELIZA_API_PORT: String(apiPort),
       ELIZA_PORT: String(uiPort),
       ELIZA_UI_PORT: String(uiPort),
@@ -268,7 +300,7 @@ async function startDesktopStack(
       child.kill("SIGKILL");
       await waitForChildExit(child, 5_000);
     }
-    await rm(tempRoot, { recursive: true, force: true });
+    await removeTempRoot(tempRoot);
     throw new Error(
       `Desktop stack failed to start (${mode}): ${error instanceof Error ? error.message : String(error)}\n${logTail}`,
     );
@@ -289,7 +321,7 @@ async function startDesktopStack(
         }
       }
 
-      await rm(tempRoot, { recursive: true, force: true });
+      await removeTempRoot(tempRoot);
     },
   };
 }
@@ -325,96 +357,106 @@ describeIf(LIVE_TESTS_ENABLED)(
           status: "granted",
         });
 
+        const cleanupResponse = await req(
+          stack.apiPort,
+          "DELETE",
+          "/api/website-blocker",
+        );
+        expect(cleanupResponse.status).toBe(200);
+
+        try {
+          const startResponse = await req(
+            stack.apiPort,
+            "PUT",
+            "/api/website-blocker",
+            {
+              websites: ["x.com", "twitter.com"],
+              durationMinutes: 5,
+            },
+          );
+          expect(startResponse.status).toBe(200);
+          expect(startResponse.data).toMatchObject({
+            success: true,
+            request: {
+              websites: ["x.com", "twitter.com"],
+              durationMinutes: 5,
+            },
+          });
+
+          const hosts = await waitForHostsBlock(stack.hostsFilePath, [
+            "x.com",
+            "twitter.com",
+          ]);
+          expect(hosts).toContain("0.0.0.0 x.com");
+          expect(hosts).toContain("0.0.0.0 twitter.com");
+          expect(hosts).not.toContain("0.0.0.0 api.x.com");
+          expect(hosts).not.toContain("0.0.0.0 api.twitter.com");
+        } finally {
+          const stopResponse = await req(
+            stack.apiPort,
+            "DELETE",
+            "/api/website-blocker",
+          );
+          expect(stopResponse.status).toBe(200);
+          expect(stopResponse.data).toMatchObject({
+            success: true,
+            status: {
+              active: false,
+            },
+          });
+        }
+      },
+      DESKTOP_STACK_TEST_TIMEOUT_MS,
+    );
+
+    // The Vite-backed blocker flow is already covered by selfcontrol-dev on
+    // CI. Hosted macOS runners can SIGTRAP after watch mode falls back from
+    // CEF to WKWebView, so CI opts into this heavier smoke explicitly.
+    it.skipIf(!WATCH_DESKTOP_SUPPORTED)(
+      "boots bun run dev:desktop:watch with the Vite renderer and blocker API",
+      async () => {
+        const stack = await startDesktopStack("dev:desktop:watch");
+        startedStacks.push(stack);
+
+        const uiMarkup = await waitForTextPredicate(
+          `http://127.0.0.1:${stack.uiPort}`,
+          (text) =>
+            text.includes('<div id="root">') ||
+            text.includes("<!doctype html>"),
+        );
+        expect(uiMarkup.length).toBeGreaterThan(0);
+
+        const stackResponse = await req(stack.apiPort, "GET", "/api/dev/stack");
+        expect(stackResponse.status).toBe(200);
+        expect(stackResponse.data).toMatchObject({
+          api: {
+            listenPort: stack.apiPort,
+          },
+          desktop: {
+            rendererUrl: `http://127.0.0.1:${stack.uiPort}/`,
+            uiPort: stack.uiPort,
+            desktopApiBase: `http://127.0.0.1:${stack.apiPort}`,
+          },
+        });
+
         const startResponse = await req(
           stack.apiPort,
           "PUT",
           "/api/website-blocker",
           {
-            websites: ["x.com", "twitter.com"],
+            websites: ["news.ycombinator.com"],
             durationMinutes: 5,
           },
         );
         expect(startResponse.status).toBe(200);
         expect(startResponse.data).toMatchObject({
           success: true,
-          request: {
-            websites: ["x.com", "twitter.com"],
-            durationMinutes: 5,
-          },
         });
 
         const hosts = await waitForHostsBlock(stack.hostsFilePath, [
-          "x.com",
-          "twitter.com",
+          "news.ycombinator.com",
         ]);
-        expect(hosts).toContain("0.0.0.0 x.com");
-        expect(hosts).toContain("0.0.0.0 twitter.com");
-
-        const stopResponse = await req(
-          stack.apiPort,
-          "DELETE",
-          "/api/website-blocker",
-        );
-        expect(stopResponse.status).toBe(200);
-        expect(stopResponse.data).toMatchObject({
-          success: true,
-          removed: true,
-          status: {
-            active: false,
-          },
-        });
-      },
-      DESKTOP_STACK_TEST_TIMEOUT_MS,
-    );
-
-    // The Vite-backed blocker flow is already covered by selfcontrol-dev on
-    // CI. The Electrobun watch-mode window remains flaky outside macOS: Linux
-    // can fail under Xvfb/CEF, and Windows can leave the dev build directory
-    // locked while Electrobun tries to replace it.
-    it.skipIf(!WATCH_DESKTOP_SUPPORTED)(
-      "boots bun run dev:desktop:watch with the Vite renderer and blocker API",
-      async () => {
-      const stack = await startDesktopStack("dev:desktop:watch");
-      startedStacks.push(stack);
-
-      const uiMarkup = await waitForTextPredicate(
-        `http://127.0.0.1:${stack.uiPort}`,
-        (text) =>
-          text.includes('<div id="root">') || text.includes("<!doctype html>"),
-      );
-      expect(uiMarkup.length).toBeGreaterThan(0);
-
-      const stackResponse = await req(stack.apiPort, "GET", "/api/dev/stack");
-      expect(stackResponse.status).toBe(200);
-      expect(stackResponse.data).toMatchObject({
-        api: {
-          listenPort: stack.apiPort,
-        },
-        desktop: {
-          rendererUrl: `http://127.0.0.1:${stack.uiPort}/`,
-          uiPort: stack.uiPort,
-          desktopApiBase: `http://127.0.0.1:${stack.apiPort}`,
-        },
-      });
-
-      const startResponse = await req(
-        stack.apiPort,
-        "PUT",
-        "/api/website-blocker",
-        {
-          websites: ["news.ycombinator.com"],
-          durationMinutes: 5,
-        },
-      );
-      expect(startResponse.status).toBe(200);
-      expect(startResponse.data).toMatchObject({
-        success: true,
-      });
-
-      const hosts = await waitForHostsBlock(stack.hostsFilePath, [
-        "news.ycombinator.com",
-      ]);
-      expect(hosts).toContain("0.0.0.0 news.ycombinator.com");
+        expect(hosts).toContain("0.0.0.0 news.ycombinator.com");
       },
       300_000,
     );

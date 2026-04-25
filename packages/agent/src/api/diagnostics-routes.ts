@@ -27,7 +27,7 @@ interface AuditEntryLike {
 type DiagnosticsSseInit = (res: http.ServerResponse) => void;
 type DiagnosticsSseWriteJson = (
   res: http.ServerResponse,
-  payload: object,
+  payload: unknown,
   event?: string,
 ) => void;
 
@@ -116,7 +116,7 @@ function defaultWriteSseData(
 
 function defaultWriteSseJson(
   res: http.ServerResponse,
-  payload: object,
+  payload: unknown,
   event?: string,
 ): void {
   defaultWriteSseData(res, JSON.stringify(payload), event);

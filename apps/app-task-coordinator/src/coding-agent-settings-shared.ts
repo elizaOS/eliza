@@ -64,7 +64,7 @@ export const AIDER_PROVIDER_MAP: Record<AiderProvider, string> = {
 
 export const FALLBACK_MODELS: Record<string, ModelOption[]> = {
   anthropic: [
-    { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
+    { value: "claude-opus-4-7", label: "Claude Opus 4.7" },
     { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
     { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
   ],

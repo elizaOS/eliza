@@ -278,6 +278,109 @@ export function isBinaryContentType(
 	return binaryExtensions.includes(fileExt);
 }
 
+const KNOWLEDGE_TITLE_MAX_LENGTH = 80;
+
+function truncateKnowledgeLabel(value: string): string {
+	return value.length > KNOWLEDGE_TITLE_MAX_LENGTH
+		? `${value.slice(0, KNOWLEDGE_TITLE_MAX_LENGTH - 1).trimEnd()}…`
+		: value;
+}
+
+export function stripKnowledgeFilenameExtension(filename: string): string {
+	const trimmed = filename.trim();
+	if (!trimmed) return "";
+
+	const lastDot = trimmed.lastIndexOf(".");
+	if (lastDot <= 0) return trimmed;
+	return trimmed.slice(0, lastDot);
+}
+
+export function deriveKnowledgeTitle(
+	content: string,
+	fallback = "Knowledge note",
+): string {
+	const lines = content
+		.replace(/\r\n/g, "\n")
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0);
+
+	for (const line of lines) {
+		if (/^path:\s+/i.test(line)) continue;
+		const candidate = line
+			.replace(/^#+\s*/, "")
+			.replace(/^[-*]\s+/, "")
+			.replace(/^\d+[.)]\s+/, "")
+			.trim();
+		if (candidate.length > 0) {
+			return truncateKnowledgeLabel(candidate);
+		}
+	}
+
+	return fallback;
+}
+
+export function createKnowledgeNoteFilename(
+	title: string,
+	extension = "txt",
+): string {
+	const asciiTitle = Array.from(title.normalize("NFKD"))
+		.filter((character) => character.charCodeAt(0) <= 0x7f)
+		.join("");
+	const normalizedTitle = asciiTitle
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 64);
+
+	const basename =
+		normalizedTitle.length > 0 ? normalizedTitle : "knowledge-note";
+	const normalizedExtension = extension.replace(/^\./, "").trim();
+	return normalizedExtension.length > 0
+		? `${basename}.${normalizedExtension}`
+		: basename;
+}
+
+export function isTextBackedKnowledgeContent(
+	contentType: string,
+	filename: string,
+): boolean {
+	return !isBinaryContentType(contentType, filename);
+}
+
+export function normalizeKnowledgeSourceValue(
+	source: unknown,
+):
+	| "upload"
+	| "learned"
+	| "character"
+	| "url"
+	| "youtube"
+	| "bundled"
+	| "unknown" {
+	if (typeof source !== "string") {
+		return "unknown";
+	}
+
+	switch (source) {
+		case "upload":
+		case "rag-service-main-upload":
+			return "upload";
+		case "learned":
+			return "learned";
+		case "character":
+			return "character";
+		case "url":
+			return "url";
+		case "youtube":
+			return "youtube";
+		case "eliza-default-knowledge":
+			return "bundled";
+		default:
+			return "unknown";
+	}
+}
+
 export function normalizeS3Url(url: string): string {
 	try {
 		const urlObj = new URL(url);

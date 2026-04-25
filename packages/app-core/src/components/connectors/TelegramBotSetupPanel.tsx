@@ -1,9 +1,7 @@
-
-
+import { Button, PagePanel } from "@elizaos/ui";
 import { useCallback, useState } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
-import { PagePanel, Button } from "@elizaos/ui";
 
 type TelegramSetupStatus = "idle" | "validating" | "connected" | "error";
 

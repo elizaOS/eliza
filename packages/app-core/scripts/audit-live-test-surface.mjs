@@ -11,6 +11,8 @@ const outputJson = args.has("--json");
 const failOnViolations = args.has("--fail-on-violations");
 
 const IGNORE_DIRS = new Set([
+  ".claude",
+  ".cursor",
   ".git",
   ".hg",
   ".next",

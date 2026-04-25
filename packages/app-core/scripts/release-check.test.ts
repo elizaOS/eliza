@@ -4,6 +4,7 @@ import {
   findLocalPackHotspots,
   shouldSkipExactPackDryRun,
 } from "./lib/release-check-pack-dry-run";
+import { findNonWorkspaceDependencySpecs } from "./release-check";
 
 describe("release-check pack dry-run guard", () => {
   it("treats broad publish roots as pack hotspots", () => {
@@ -25,5 +26,39 @@ describe("release-check pack dry-run guard", () => {
     expect(
       shouldSkipExactPackDryRun(["dist"], { ELIZA_FORCE_PACK_DRY_RUN: "1" }),
     ).toBe(false);
+  });
+});
+
+describe("release-check cloud-agent template guard", () => {
+  it("accepts workspace-local elizaOS dependencies in source", () => {
+    expect(
+      findNonWorkspaceDependencySpecs(
+        {
+          dependencies: {
+            "@elizaos/core": "workspace:*",
+            "@elizaos/plugin-sql": "workspace:*",
+          },
+        },
+        ["@elizaos/core", "@elizaos/plugin-sql"],
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects committed alpha pins in the source template", () => {
+    expect(
+      findNonWorkspaceDependencySpecs(
+        {
+          dependencies: {
+            "@elizaos/core": "2.0.0-alpha.341",
+          },
+        },
+        ["@elizaos/core"],
+      ),
+    ).toEqual([
+      {
+        name: "@elizaos/core",
+        specifier: "2.0.0-alpha.341",
+      },
+    ]);
   });
 });

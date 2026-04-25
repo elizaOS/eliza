@@ -1,0 +1,77 @@
+{
+  "id": "polymarket",
+  "name": "Polymarket",
+  "description": "Multi-language Polymarket prediction markets plugin for elizaOS",
+  "npmName": "@elizaos/plugin-polymarket",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": ["polymarket", "prediction-markets", "web3", "polygon"],
+  "config": {
+    "CLOB_WS_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "wss://ws-subscriptions-clob.polymarket.com/ws/",
+      "label": "Ws Url",
+      "help": "Polymarket CLOB WebSocket URL for real-time updates.",
+      "advanced": false
+    },
+    "CLOB_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for authenticated CLOB operations.",
+      "advanced": false
+    },
+    "CLOB_API_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://clob.polymarket.com",
+      "label": "Api Url",
+      "help": "Polymarket CLOB API URL.",
+      "advanced": false
+    },
+    "CLOB_API_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Secret",
+      "help": "API secret for authenticated CLOB operations.",
+      "advanced": false
+    },
+    "CLOB_API_PASSPHRASE": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Passphrase",
+      "help": "API passphrase for authenticated CLOB operations.",
+      "advanced": false
+    },
+    "POLYMARKET_PRIVATE_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Private Key",
+      "help": "Hex-encoded private key for Polymarket trading on Polygon.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Gamepad2",
+    "group": "blockchain",
+    "groupOrder": 4,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-polymarket#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-polymarket"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "blockchain"
+}

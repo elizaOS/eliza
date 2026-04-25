@@ -1,10 +1,10 @@
 /**
- * Unified inbox routes.
+ * Inbox routes.
  *
  * Exposes a read-only, time-ordered view of messages from every channel
  * the agent participates in — dashboard web chat plus every connector
  * plugin (iMessage, Telegram, Discord, WhatsApp, WeChat, etc.) — merged
- * into a single feed so the UI can render a unified inbox without the
+ * into a single feed so the UI can render an inbox without the
  * client having to know which rooms each source uses.
  *
  * Why a separate endpoint instead of reusing /api/conversations/:id/messages:
@@ -18,7 +18,7 @@
  *   dashboard world with entities that don't belong to it and break
  *   the "one conversation = one room" invariant that bootstrap relies
  *   on). The read-side aggregator keeps each connector's world/room
- *   graph intact while still giving the UI a unified feed.
+ *   graph intact while still giving the UI a combined feed.
  *
  * Routes:
  *
@@ -45,7 +45,7 @@ import type { RouteHelpers } from "./route-helpers.js";
 
 /**
  * Source tags we consider "inbox-worthy". Messages whose content.source
- * is none of these are excluded from the unified feed — this keeps
+ * is none of these are excluded from the combined feed — this keeps
  * internal sources (e.g. system events, knowledge ingestion, trajectory
  * markers) out of the user-facing inbox.
  *
@@ -92,7 +92,7 @@ export interface InboxRouteState {
 }
 
 /**
- * A single message in the unified inbox response. Shape mirrors
+ * A single message in the inbox response. Shape mirrors
  * ConversationMessage on the client (see packages/app-core/src/api/
  * client-types-chat.ts) so ChatView can render the same component for
  * both feeds without a type dance.
@@ -1251,7 +1251,7 @@ async function augmentRoomsFromRecentMemories(
 /**
  * Fetch messages, optionally scoped to a single room. When `roomId`
  * is set the function skips world enumeration entirely and targets
- * that specific room — used by the unified-chat read path where the
+ * that specific room — used by the cross-channel chat read path where the
  * sidebar already knows which room the user clicked. When `roomId`
  * is null it walks every agent room and merges across them, which is
  * the cross-channel "everything" feed.
@@ -1604,7 +1604,7 @@ function dedupeInboxMessages(
 }
 
 /**
- * A single entry in the unified chats list. Mirrors the shape the
+ * A single entry in the chats list. Mirrors the shape the
  * ConversationsSidebar needs (id, title, updatedAt preview) so the
  * frontend can render dashboard conversations and connector chats in
  * the same list without a type dance.
@@ -1622,6 +1622,13 @@ interface InboxChat {
   worldId?: string;
   /** User-facing world/server label for filters and grouped headers. */
   worldLabel: string;
+  /**
+   * Normalized room kind. "DM" for 1:1 direct messages the connector
+   * exposes as private chats; other platform-specific strings (GROUP,
+   * CHANNEL, VOICE, …) for everything else. Optional because not every
+   * connector tags rooms.
+   */
+  roomType?: string;
   /** Display title — contact name for 1:1 chats, group name otherwise. */
   title: string;
   /** Best-effort avatar URL for direct chats when the connector exposes one. */
@@ -1646,7 +1653,7 @@ type DiscordRoomProfile = {
  * Walk every agent room, collect the subset that contain connector
  * messages, and reduce each to a single InboxChat row with the room's
  * latest activity as the ordering key. This is the sidebar feed for
- * the unified messages view — one row per external chat thread.
+ * the messages view — one row per external chat thread.
  *
  * We over-fetch memories across all rooms in one bulk call (same
  * pattern loadInboxMessages uses) then group client-side. For the
@@ -1889,6 +1896,7 @@ async function loadInboxChats(
       transportSource: entry.source,
       ...(worldId ? { worldId } : {}),
       worldLabel: resolveInboxWorldLabel(room, world),
+      ...(roomType ? { roomType } : {}),
       title,
       avatarUrl: isDiscordConnectorSource(entry.source)
         ? await cacheInboxDiscordAvatar(
@@ -1966,7 +1974,7 @@ export async function handleInboxRoute(
     const limit = parseLimit(url.searchParams.get("limit"));
     const explicitFilter = parseSourceFilter(url.searchParams.get("sources"));
     const sourceFilter = explicitFilter ?? DEFAULT_INBOX_SOURCES;
-    // Optional roomId scope. When the unified messages view has a
+    // Optional roomId scope. When the messages view has a
     // specific connector chat selected, it passes the roomId so the
     // aggregator can skip cross-room enumeration and return just that
     // room's messages. Validated as non-empty; the runtime accepts
@@ -2076,7 +2084,7 @@ export async function handleInboxRoute(
 
   // ── GET /api/inbox/chats ──────────────────────────────────────────
   // List of connector chat threads (one row per external chat room)
-  // used by the unified messages sidebar. Each row carries the source
+  // used by the messages sidebar. Each row carries the source
   // tag, a display title, last-message preview + timestamp, and a
   // message count. Dashboard conversations aren't included here — the
   // frontend merges this list with /api/conversations on its own.

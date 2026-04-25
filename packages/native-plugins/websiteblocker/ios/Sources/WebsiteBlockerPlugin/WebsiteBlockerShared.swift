@@ -4,13 +4,51 @@ import SafariServices
 struct WebsiteBlockerStoredState: Codable {
     let websites: [String]
     let endsAtEpochMs: Double?
+    let requestedWebsites: [String]?
+    let blockedWebsites: [String]?
+    let allowedWebsites: [String]?
+    let matchMode: String?
 }
 
 enum WebsiteBlockerShared {
-    static let appGroupIdentifier = "group.com.elizaos.eliza"
-    static let contentBlockerIdentifier = "com.elizaos.eliza.WebsiteBlockerContentExtension"
+    static var appGroupIdentifier: String {
+        "group.\(Bundle.main.bundleIdentifier ?? "ai.elizaos.app")"
+    }
+
+    static var contentBlockerIdentifier: String {
+        "\(Bundle.main.bundleIdentifier ?? "ai.elizaos.app").WebsiteBlockerContentExtension"
+    }
+
     static let stateKey = "website_blocker_state_v1"
     static let iso8601Formatter = ISO8601DateFormatter()
+    static let exactMatchMode = "exact"
+    static let subdomainMatchMode = "subdomain"
+    static let xTwitterBlockedWebsites = [
+        "x.com",
+        "www.x.com",
+        "mobile.x.com",
+        "twitter.com",
+        "www.twitter.com",
+        "mobile.twitter.com",
+        "t.co",
+        "abs.twimg.com",
+        "pbs.twimg.com",
+        "video.twimg.com",
+        "ton.twimg.com",
+        "platform.twitter.com",
+        "tweetdeck.twitter.com",
+    ]
+    static let xTwitterAllowedWebsites = [
+        "api.x.com",
+        "api.twitter.com",
+    ]
+    static let googleNewsBlockedWebsites = ["news.google.com"]
+    static let googleNewsAllowedWebsites = [
+        "accounts.google.com",
+        "oauth2.googleapis.com",
+        "openidconnect.googleapis.com",
+        "www.googleapis.com",
+    ]
 
     static func normalizeHostname(_ value: String) -> String? {
         let trimmed = value
@@ -68,6 +106,36 @@ enum WebsiteBlockerShared {
         }
     }
 
+    static func buildPolicy(for requestedWebsites: [String]) -> WebsiteBlockerStoredState {
+        let normalizedRequested = Array(Set(requestedWebsites.compactMap(normalizeHostname))).sorted()
+        var blockedWebsites = Set<String>()
+        var allowedWebsites = Set<String>()
+
+        for website in normalizedRequested {
+            blockedWebsites.insert(website)
+            if shouldAddWwwVariant(website) {
+                blockedWebsites.insert("www.\(website)")
+            }
+
+            if ["x.com", "twitter.com"].contains(website) {
+                blockedWebsites.formUnion(xTwitterBlockedWebsites)
+                allowedWebsites.formUnion(xTwitterAllowedWebsites)
+            } else if website == "news.google.com" {
+                blockedWebsites.formUnion(googleNewsBlockedWebsites)
+                allowedWebsites.formUnion(googleNewsAllowedWebsites)
+            }
+        }
+
+        return WebsiteBlockerStoredState(
+            websites: normalizedRequested,
+            endsAtEpochMs: nil,
+            requestedWebsites: normalizedRequested,
+            blockedWebsites: Array(blockedWebsites).sorted(),
+            allowedWebsites: Array(allowedWebsites).sorted(),
+            matchMode: exactMatchMode
+        )
+    }
+
     static func sharedDefaults() -> UserDefaults? {
         UserDefaults(suiteName: appGroupIdentifier)
     }
@@ -78,9 +146,20 @@ enum WebsiteBlockerShared {
             return nil
         }
 
-        guard let decoded = try? JSONDecoder().decode(WebsiteBlockerStoredState.self, from: data) else {
+        guard var decoded = try? JSONDecoder().decode(WebsiteBlockerStoredState.self, from: data) else {
             defaults.removeObject(forKey: stateKey)
             return nil
+        }
+
+        if decoded.requestedWebsites == nil || decoded.blockedWebsites == nil || decoded.allowedWebsites == nil || decoded.matchMode == nil {
+            decoded = WebsiteBlockerStoredState(
+                websites: decoded.websites,
+                endsAtEpochMs: decoded.endsAtEpochMs,
+                requestedWebsites: decoded.websites,
+                blockedWebsites: decoded.websites,
+                allowedWebsites: [],
+                matchMode: exactMatchMode
+            )
         }
 
         if let endsAtEpochMs = decoded.endsAtEpochMs,
@@ -98,11 +177,15 @@ enum WebsiteBlockerShared {
     }
 
     static func saveState(websites: [String], durationMinutes: Int?) throws -> WebsiteBlockerStoredState {
-        let normalized = Array(Set(websites.compactMap(normalizeHostname))).sorted()
+        let policy = buildPolicy(for: websites)
         let endsAtEpochMs = durationMinutes.map { Date().timeIntervalSince1970 * 1000 + Double($0 * 60_000) }
         let state = WebsiteBlockerStoredState(
-            websites: normalized,
-            endsAtEpochMs: endsAtEpochMs
+            websites: policy.websites,
+            endsAtEpochMs: endsAtEpochMs,
+            requestedWebsites: policy.requestedWebsites,
+            blockedWebsites: policy.blockedWebsites,
+            allowedWebsites: policy.allowedWebsites,
+            matchMode: policy.matchMode
         )
 
         guard let defaults = sharedDefaults() else {
@@ -122,6 +205,11 @@ enum WebsiteBlockerShared {
         sharedDefaults()?.removeObject(forKey: stateKey)
     }
 
+    static func shouldAddWwwVariant(_ hostname: String) -> Bool {
+        let labels = hostname.split(separator: ".")
+        return labels.count == 2 && labels.first != "www"
+    }
+
     static func endsAtString(for state: WebsiteBlockerStoredState?) -> String? {
         guard let endsAtEpochMs = state?.endsAtEpochMs else {
             return nil
@@ -130,20 +218,28 @@ enum WebsiteBlockerShared {
     }
 
     static func buildContentBlockerRules(for websites: [String]) -> [[String: Any]] {
-        websites.compactMap { website in
-            guard let normalized = normalizeHostname(website) else {
-                return nil
-            }
-
-            return [
+        let policy = buildPolicy(for: websites)
+        let blockedRules = policy.blockedWebsites?.map { website -> [String: Any] in
+            [
                 "trigger": [
-                    "url-filter": "^https?://([A-Za-z0-9-]+\\\\.)*\(NSRegularExpression.escapedPattern(for: normalized))([/:?#]|$)",
+                    "url-filter": "^https?://([A-Za-z0-9-]+\\\\.)*\(NSRegularExpression.escapedPattern(for: website))([/:?#]|$)",
                 ],
                 "action": [
                     "type": "block",
                 ],
             ]
-        }
+        } ?? []
+        let allowRules = policy.allowedWebsites?.map { website -> [String: Any] in
+            [
+                "trigger": [
+                    "url-filter": "^https?://([A-Za-z0-9-]+\\\\.)*\(NSRegularExpression.escapedPattern(for: website))([/:?#]|$)",
+                ],
+                "action": [
+                    "type": "ignore-previous-rules",
+                ],
+            ]
+        } ?? []
+        return blockedRules + allowRules
     }
 
     static func writeRulesFile() throws -> URL {

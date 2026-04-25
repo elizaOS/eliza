@@ -9,17 +9,23 @@
  * persisted to disk and immediately visible to `resolveAppUserName`.
  */
 
-import type { Action, HandlerOptions, State } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  HandlerOptions,
+  State,
+} from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import {
   getValidationKeywordTerms,
   textIncludesKeywordTerm,
 } from "@elizaos/shared/validation-keywords";
+import { hasOwnerAccess } from "../security/access.js";
 import {
   fetchConfiguredOwnerName,
   OWNER_NAME_MAX_LENGTH,
   persistConfiguredOwnerName,
-} from "../lifeops/owner-profile.js";
-import { hasOwnerAccess } from "../security/access.js";
+} from "../services/owner-name.js";
 
 const SET_USER_NAME_CONTEXT_TERMS = getValidationKeywordTerms(
   "action.setUserName.recentContext",
@@ -29,16 +35,10 @@ const SET_USER_NAME_CONTEXT_TERMS = getValidationKeywordTerms(
 );
 
 function recentMessagesMentionName(state: State): boolean {
-  const recent =
-    (state as Record<string, unknown>).recentMessages ??
-    (state as Record<string, unknown>).recentMessagesData ??
-    [];
-  if (!Array.isArray(recent)) return false;
-
-  const lastTwo = recent.slice(-2);
-  return lastTwo.some((m: Record<string, unknown>) => {
-    const content = m.content as Record<string, unknown> | undefined;
-    const text = (content?.text as string) ?? "";
+  const lastTwo = getRecentMessagesData(state).slice(-2);
+  return lastTwo.some((message) => {
+    const text =
+      typeof message.content?.text === "string" ? message.content.text : "";
     return SET_USER_NAME_CONTEXT_TERMS.some((term) =>
       textIncludesKeywordTerm(text, term),
     );
@@ -106,4 +106,34 @@ export const setUserNameAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "By the way, everyone calls me Sam.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Got it, Sam.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Please call me Jordan from now on.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Sure thing, Jordan.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

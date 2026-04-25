@@ -4,30 +4,19 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "../config/config.js";
+import {
+  type CharacterHistorySource,
+  type RuntimeCharacterLike,
+  recordCharacterHistory,
+} from "./character-history.js";
 
 export const CHARACTER_PERSISTENCE_SERVICE = "eliza_character_persistence";
 
-type RuntimeCharacterLike = {
-  name?: string;
-  username?: string;
-  bio?: string | string[];
-  system?: string;
-  adjectives?: string[];
-  topics?: string[];
-  style?: {
-    all?: string[];
-    chat?: string[];
-    post?: string[];
-  };
-  postExamples?: string[];
-  messageExamples?: unknown;
-  settings?: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-};
-
 type PersistCharacterParams = {
   character?: RuntimeCharacterLike;
+  previousCharacter?: RuntimeCharacterLike;
   previousName?: string;
+  source?: CharacterHistorySource;
 };
 
 type PersistCharacterResult = {
@@ -112,9 +101,7 @@ export function syncCharacterIntoConfig(
 
   config.agents.list = [nextAgent, ...existingList.slice(1)];
 
-  if (!config.ui) {
-    config.ui = {};
-  }
+  config.ui ??= {};
   const uiConfig = config.ui as {
     assistant?: { name?: string };
   };
@@ -183,12 +170,14 @@ export class ElizaCharacterPersistenceService extends Service {
   }
 
   capabilityDescription =
-    "Persists runtime character changes to Eliza config and agent storage";
+    "Persists runtime character changes to Eliza config, agent storage, and history";
 
   async persistCharacter(
     params: PersistCharacterParams = {},
   ): Promise<PersistCharacterResult> {
     const runtimeCharacter = (params.character ??
+      this.runtime.character) as RuntimeCharacterLike;
+    const previousCharacter = (params.previousCharacter ??
       this.runtime.character) as RuntimeCharacterLike;
 
     try {
@@ -212,6 +201,12 @@ export class ElizaCharacterPersistenceService extends Service {
           ...runtimeMetadata,
           character: persistedCharacter,
         },
+      });
+
+      await recordCharacterHistory(this.runtime, {
+        previousCharacter,
+        nextCharacter: runtimeCharacter,
+        source: params.source ?? "agent",
       });
 
       logger.info(

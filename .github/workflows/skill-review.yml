@@ -20,7 +20,7 @@ jobs:
       issues: read
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 1
       - uses: anthropics/claude-code-action@v1
@@ -44,5 +44,5 @@ jobs:
             Leave inline comments only for actionable problems. Skip praise and non-actionable notes.
           allowed_bots: "cursor"
           claude_args: |
-            --model claude-sonnet-4-20250514
+            --model claude-sonnet-4-6
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff *),Bash(gh pr view *),Bash(gh api *)"

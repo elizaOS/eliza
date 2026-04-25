@@ -5,12 +5,7 @@
  * and a summary of recent actions so the agent has continuity.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Provider,
-  State,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { currentPlatform } from "../platform/helpers.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 
@@ -19,12 +14,12 @@ export const computerStateProvider: Provider = {
   description:
     "Current computer state: platform, screen size, available tools, recent computer-use actions, and approval queue",
 
-  get: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state: State,
-  ) => {
-    const service = runtime.getService("computeruse") as unknown as ComputerUseService | undefined;
+  descriptionCompressed:
+    "Platform, screen size, tools, recent actions, approval queue.",
+  get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    const service = runtime.getService("computeruse") as unknown as
+      | ComputerUseService
+      | undefined;
     if (!service) {
       return { text: "" };
     }
@@ -45,7 +40,7 @@ export const computerStateProvider: Provider = {
       `Browser: ${caps.browser.available ? caps.browser.tool : "unavailable"}`,
       `Window List: ${caps.windowList.available ? caps.windowList.tool : "unavailable"}`,
       `Terminal: ${caps.terminal.available ? caps.terminal.tool : "unavailable"}`,
-      `Filesystem: ${caps.fileSystem.available ? caps.fileSystem.tool : "unavailable"}`,
+      `File System: ${caps.fileSystem.available ? caps.fileSystem.tool : "unavailable"}`,
     ];
 
     if (approvals.pendingApprovals.length > 0) {

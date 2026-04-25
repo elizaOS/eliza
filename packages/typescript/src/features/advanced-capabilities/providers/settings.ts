@@ -242,14 +242,23 @@ export const settingsProvider: Provider = {
 			}
 
 			if (!world) {
-				logger.error(
+				logger.warn(
 					{
 						src: "plugin:advanced-capabilities:provider:settings",
 						agentId: runtime.agentId,
 					},
-					"No world found for user during onboarding",
+					"No world found for user during onboarding -- settings provider will be skipped",
 				);
-				throw new Error("No server ownership found for onboarding");
+				return {
+					data: {
+						settings: [],
+					},
+					values: {
+						settings:
+							"No onboarding world found for the user -- settings provider will be skipped",
+					},
+					text: "No onboarding world found for the user -- settings provider will be skipped",
+				};
 			}
 
 			serverId = world.messageServerId;

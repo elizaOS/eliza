@@ -3,10 +3,6 @@
  *
  * Handles multi-chain EVM balance + NFT retrieval with provider-key resolution
  * and automatic fallback to public RPC endpoints when premium APIs are unavailable.
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/wallet-evm-balance`.
- * New development should target the app-steward package.
  */
 import { logger } from "@elizaos/core";
 import type {

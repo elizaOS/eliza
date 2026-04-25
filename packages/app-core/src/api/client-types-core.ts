@@ -8,12 +8,12 @@ import type { DatabaseProviderType } from "@elizaos/agent/contracts/config";
 // Use server-types / types only — do not re-export from api/server or
 // api/trajectory-routes (those modules pull the full API + app-training into Vite).
 export type { StreamEventType } from "@elizaos/agent/api/server-types";
-export type { TrajectoryExportFormat } from "@elizaos/agent/types/trajectory";
 export type {
   TriggerLastStatus,
   TriggerType,
   TriggerWakeMode,
-} from "@elizaos/agent/triggers/types";
+} from "@elizaos/agent/triggers";
+export type { TrajectoryExportFormat } from "@elizaos/agent/types";
 
 export interface DatabaseStatus {
   provider: DatabaseProviderType;
@@ -352,7 +352,7 @@ export interface ExtensionStatus {
   safariAppPath?: string | null;
   safariPackagePath?: string | null;
   releaseManifest?:
-    | import("@elizaos/shared/contracts/lifeops").LifeOpsBrowserCompanionReleaseManifest
+    | import("@elizaos/plugin-browser-bridge/contracts").BrowserBridgeCompanionReleaseManifest
     | null;
 }
 

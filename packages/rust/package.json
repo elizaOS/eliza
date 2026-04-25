@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/rust",
-  "version": "2.0.0-alpha.176",
+  "version": "2.0.0-alpha.345",
   "description": "elizaOS Core - Rust runtime and types",
   "type": "module",
   "main": "pkg/node/elizaos.js",
@@ -24,7 +24,7 @@
   "scripts": {
     "build": "./build.sh",
     "build:native": "cargo build --release",
-    "build:wasm": "wasm-pack build --target web --out-dir pkg/web --no-default-features --features wasm && wasm-pack build --target nodejs --out-dir pkg/node --no-default-features --features wasm",
+    "build:wasm": "./build-wasm.sh",
     "test": "sh ./scripts/test-or-skip.sh",
     "lint": "cargo clippy --lib --features native --fix --allow-dirty --allow-staged -- -D warnings && cargo fmt",
     "lint:fix": "cargo clippy --all-targets --all-features --fix --allow-dirty",

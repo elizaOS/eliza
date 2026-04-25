@@ -1,9 +1,13 @@
 import { WebPlugin } from "@capacitor/core";
 import type {
   MobileSignalsHealthSnapshot,
+  MobileSignalsOpenSettingsOptions,
+  MobileSignalsOpenSettingsResult,
   MobileSignalsPermissionStatus,
   MobileSignalsPlatform,
   MobileSignalsPlugin,
+  MobileSignalsScreenTimeStatus,
+  MobileSignalsSetupAction,
   MobileSignalsSnapshot,
   MobileSignalsSnapshotResult,
   MobileSignalsStartOptions,
@@ -17,6 +21,19 @@ interface BatteryLike {
   level: number;
 }
 
+const SCREEN_TIME_REQUIREMENTS = {
+  entitlements: {
+    familyControls: "com.apple.developer.family-controls",
+  },
+  frameworks: ["FamilyControls", "DeviceActivity"],
+  deviceActivityReportExtension: false,
+  deviceActivityMonitorExtension: false,
+  android: {
+    usageStatsPermission: "android.permission.PACKAGE_USAGE_STATS",
+    usageAccessSettingsAction: "android.settings.USAGE_ACCESS_SETTINGS",
+  },
+};
+
 function getPlatform(): MobileSignalsPlatform {
   if (typeof navigator === "undefined") {
     return "web";
@@ -27,6 +44,60 @@ function getPlatform(): MobileSignalsPlatform {
     return "ios";
   }
   return "web";
+}
+
+function buildScreenTimeStatus(reason: string): MobileSignalsScreenTimeStatus {
+  return {
+    supported: false,
+    requirements: SCREEN_TIME_REQUIREMENTS,
+    entitlements: {
+      familyControls: false,
+    },
+    provisioning: {
+      satisfied: false,
+      inspected: "not-inspectable",
+      reason,
+    },
+    authorization: {
+      status: "unavailable",
+      canRequest: false,
+    },
+    reportAvailable: false,
+    coarseSummaryAvailable: false,
+    thresholdEventsAvailable: false,
+    rawUsageExportAvailable: false,
+    android: {
+      usageAccessGranted: false,
+      packageUsageStatsPermissionDeclared: false,
+      canOpenUsageAccessSettings: false,
+      foregroundEventsAvailable: false,
+      totalTimeForegroundMs: null,
+    },
+    reason,
+  };
+}
+
+function buildSetupActions(reason: string): MobileSignalsSetupAction[] {
+  return [
+    {
+      id: "health_permissions",
+      label: "Health permissions",
+      status: "unavailable",
+      canRequest: false,
+      canOpenSettings: false,
+      settingsTarget: null,
+      reason,
+    },
+    {
+      id: "screen_time_authorization",
+      label: "Screen Time",
+      status: "unavailable",
+      canRequest: false,
+      canOpenSettings: false,
+      settingsTarget: null,
+      reason: "Web fallback cannot open native Screen Time settings.",
+    },
+  ];
 }
 
 async function getBatterySnapshot(): Promise<{
@@ -97,6 +168,9 @@ function buildHealthSnapshot(reason: string): MobileSignalsHealthSnapshot {
     idleTimeSeconds: null,
     onBattery: null,
     healthSource: "healthkit",
+    screenTime: buildScreenTimeStatus(
+      "Web fallback has no Family Controls or DeviceActivity access.",
+    ),
     permissions: {
       sleep: false,
       biometrics: false,
@@ -134,6 +208,12 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
     return {
       status: "not-applicable",
       canRequest: false,
+      screenTime: buildScreenTimeStatus(
+        "Web fallback has no Family Controls or DeviceActivity access.",
+      ),
+      setupActions: buildSetupActions(
+        "Web fallback has no HealthKit or Health Connect access.",
+      ),
       permissions: {
         sleep: false,
         biometrics: false,
@@ -144,6 +224,17 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
 
   async requestPermissions(): Promise<MobileSignalsPermissionStatus> {
     return this.checkPermissions();
+  }
+
+  async openSettings(
+    options: MobileSignalsOpenSettingsOptions = {},
+  ): Promise<MobileSignalsOpenSettingsResult> {
+    return {
+      opened: false,
+      target: options.target ?? "app",
+      actualTarget: "app",
+      reason: "Web fallback cannot open native device settings.",
+    };
   }
 
   private emitSignal = async (reason: string): Promise<void> => {
@@ -225,4 +316,28 @@ export class MobileSignalsWeb extends WebPlugin implements MobileSignalsPlugin {
       healthSnapshot: buildHealthSnapshot("snapshot"),
     };
   }
+
+  async scheduleBackgroundRefresh(): Promise<{
+    scheduled: boolean;
+    reason: string;
+  }> {
+    return {
+      scheduled: false,
+      reason: "Web fallback cannot schedule native background refresh tasks.",
+    };
+  }
+
+  async cancelBackgroundRefresh(): Promise<{
+    cancelled: boolean;
+    reason: string;
+  }> {
+    return {
+      cancelled: false,
+      reason: "Web fallback has no native background refresh task to cancel.",
+    };
+  }
 }
+
+export const __internal = {
+  buildScreenTimeStatus,
+};

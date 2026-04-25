@@ -65,6 +65,7 @@ const CONNECTORS = new Set([
   "whatsapp",
   "signal",
   "imessage",
+  "bluebubbles",
   "farcaster",
   "bluesky",
   "matrix",
@@ -90,6 +91,7 @@ const SOCIAL_CHAT_CONNECTORS = new Set([
   "whatsapp",
   "signal",
   "imessage",
+  "bluebubbles",
   "matrix",
   "mattermost",
   "msteams",
@@ -119,6 +121,7 @@ const NATIVE_RUNTIME_FEATURE_PLUGIN_IDS = new Set([
   "relationships",
   "trajectories",
 ]);
+const BUILT_IN_ADVANCED_CAPABILITY_PLUGIN_IDS = new Set(["experience"]);
 
 export const PLUGIN_SETUP_GUIDE_ROOT =
   "https://docs.eliza.ai/plugin-setup-guide";
@@ -769,6 +772,9 @@ async function main() {
           pkgInfo.supports?.v2 &&
           !NATIVE_RUNTIME_FEATURE_PLUGIN_IDS.has(
             npmName.replace("@elizaos/plugin-", ""),
+          ) &&
+          !BUILT_IN_ADVANCED_CAPABILITY_PLUGIN_IDS.has(
+            npmName.replace("@elizaos/plugin-", ""),
           ),
       )
       .map(([npmName, pkgInfo]) => ({
@@ -786,15 +792,21 @@ async function main() {
 
     const id = npmName.replace("@elizaos/plugin-", "");
     if (NATIVE_RUNTIME_FEATURE_PLUGIN_IDS.has(id)) continue;
-    const dirName = `plugin-${id}`;
+    const isBuiltInAdvancedCapability =
+      BUILT_IN_ADVANCED_CAPABILITY_PLUGIN_IDS.has(id);
+    const dirName = isBuiltInAdvancedCapability ? undefined : `plugin-${id}`;
     // Use v2 npm version (next/alpha)
     const version = pkgInfo.npm?.v2 || undefined;
 
     // Get existing entry to preserve hand-authored metadata
     const existingEntry = existingManifest.get(id);
-    const localMeta = readLocalPackageMetadata(dirName, npmName);
+    const localMeta = dirName
+      ? readLocalPackageMetadata(dirName, npmName)
+      : {};
     const override = metadataOverrides[id] ?? {};
-    const publishedMeta = publishedPackageMetadata.get(npmName) ?? {};
+    const publishedMeta = isBuiltInAdvancedCapability
+      ? {}
+      : (publishedPackageMetadata.get(npmName) ?? {});
 
     // Preserve existing category if the inferred one is just "feature" (default)
     const inferredCategory = categorize(id);
@@ -847,9 +859,9 @@ async function main() {
 
     entries.push({
       id,
-      dirName,
+      ...(dirName ? { dirName } : {}),
       name,
-      npmName,
+      ...(isBuiltInAdvancedCapability ? {} : { npmName }),
       description,
       tags,
       category,

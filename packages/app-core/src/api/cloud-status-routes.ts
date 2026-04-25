@@ -2,11 +2,11 @@ import type {
   CloudConfigLike,
   CloudStatusRouteContext,
 } from "@elizaos/agent/api/cloud-status-routes";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
 import type { ElizaConfig } from "@elizaos/agent/config/types";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
 import {
   CLOUD_BILLING_URL,
-  fetchUnifiedCloudCredits,
+  fetchCloudCredits,
   resolveCloudConnectionSnapshot,
 } from "./cloud-connection";
 
@@ -65,7 +65,7 @@ export async function handleCloudStatusRoutes(
   }
 
   if (method === "GET" && pathname === "/api/cloud/credits") {
-    json(res, await fetchUnifiedCloudCredits(typedConfig, runtime));
+    json(res, await fetchCloudCredits(typedConfig, runtime));
     return true;
   }
 

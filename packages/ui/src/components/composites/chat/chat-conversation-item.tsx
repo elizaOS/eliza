@@ -1,4 +1,4 @@
-import { PencilLine, X } from "lucide-react";
+import { MoreHorizontal, PencilLine, X } from "lucide-react";
 import type React from "react";
 import {
   useCallback,
@@ -11,8 +11,6 @@ import { Z_OVERLAY } from "../../../lib/floating-layers";
 import { cn } from "../../../lib/utils";
 import { Button } from "../../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/tooltip";
-import { PagePanel } from "../page-panel";
-import { ChatSourceIcon } from "./chat-source";
 import type {
   ChatConversationLabels,
   ChatConversationSummary,
@@ -67,10 +65,10 @@ function TruncatingConversationTitle({
                 ? "text-txt text-shadow-glow"
                 : "text-white/90 group-hover:text-white"
             }`
-          : `block min-w-0 max-w-full flex-1 truncate text-left text-sm font-semibold leading-[1.2] tracking-[-0.01em] transition-colors ${
+          : `block min-w-0 max-w-full flex-1 truncate text-left text-sm font-normal leading-snug transition-colors ${
               isActive
                 ? "text-txt"
-                : "text-[color:color-mix(in_srgb,var(--text-strong)_88%,var(--text)_12%)] group-hover:text-txt"
+                : "text-[color:color-mix(in_srgb,var(--text-strong)_80%,var(--text)_20%)] group-hover:text-txt"
             }`
       }
       {...(isTruncated ? { title: displayTitle } : {})}
@@ -169,15 +167,7 @@ export function ChatConversationItem({
   };
 
   const renderedTitle = displayTitle ?? conversation.title;
-  const conversationSource =
-    typeof conversation.source === "string" && conversation.source.trim()
-      ? conversation.source
-      : null;
   const showInlineActions = isGameModal;
-  const showSourceBadge =
-    !isGameModal &&
-    conversationSource !== null &&
-    conversationSource.trim().toLowerCase() !== "app";
   return (
     <div
       data-testid="conv-item"
@@ -189,10 +179,10 @@ export function ChatConversationItem({
                 ? "border-[color:var(--onboarding-accent-border)] bg-[color:var(--onboarding-accent-bg)] shadow-[0_14px_28px_rgba(0,0,0,0.2)]"
                 : "border-transparent bg-transparent hover:border-white/10 hover:bg-white/5"
             }`
-          : `group relative flex w-full items-start justify-start gap-3 rounded-2xl border px-3.5 py-3.5 text-left transition-[border-color,background-color,color,box-shadow,transform] duration-150 focus-within:ring-2 focus-within:ring-accent/35 ${
+          : `group relative flex w-full items-center gap-2 px-2.5 py-1 text-left transition-colors duration-100 ${
               isActive
-                ? "border-accent/26 bg-[linear-gradient(180deg,rgba(var(--accent-rgb),0.18),rgba(var(--accent-rgb),0.08))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_18px_24px_-22px_rgba(var(--accent-rgb),0.22)] ring-1 ring-inset ring-accent/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_18px_28px_-22px_rgba(0,0,0,0.26),0_0_0_1px_rgba(var(--accent-rgb),0.12)]"
-                : "border-border/10 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_18%,transparent),transparent)] text-muted shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-border/28 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_28%,transparent),transparent)] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_14px_20px_-22px_rgba(15,23,42,0.12)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.02)] dark:hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_14px_22px_-22px_rgba(0,0,0,0.22)]"
+                ? "text-txt"
+                : "text-[color:color-mix(in_srgb,var(--text-strong)_78%,var(--text)_22%)] hover:text-txt"
             }`
       }
     >
@@ -203,9 +193,7 @@ export function ChatConversationItem({
         className={
           isGameModal
             ? "flex h-auto w-full min-w-0 flex-1 cursor-pointer flex-col !items-start !justify-start overflow-hidden rounded-none border-none bg-transparent p-0 !text-left"
-            : `m-0 flex h-auto w-full min-w-0 flex-1 cursor-pointer items-start gap-3 overflow-hidden rounded-none border-0 bg-transparent p-0 text-left hover:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 ${
-                showSourceBadge ? "pr-8" : ""
-              }`
+            : "m-0 flex h-auto w-full min-w-0 flex-1 cursor-pointer items-center gap-2 overflow-hidden rounded-none border-0 bg-transparent p-0 text-left hover:bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
         }
         onClick={() => {
           if (suppressClickRef.current) {
@@ -228,7 +216,7 @@ export function ChatConversationItem({
             className={
               isGameModal
                 ? "absolute left-3 top-3 z-[1] h-2 w-2 shrink-0 rounded-full bg-accent shadow-[0_0_10px_rgba(var(--accent-rgb),0.6)] animate-pulse"
-                : "mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-accent shadow-[0_0_8px_rgba(var(--accent-rgb),0.35)]"
+                : "h-1.5 w-1.5 shrink-0 rounded-full bg-accent shadow-[0_0_6px_rgba(var(--accent-rgb),0.4)]"
             }
           />
         ) : null}
@@ -239,24 +227,29 @@ export function ChatConversationItem({
             isActive={isActive}
             variant={variant}
           />
-          {!isGameModal ? (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs-tight font-medium leading-none text-muted/72 [font-variant-numeric:tabular-nums]">
-              {conversation.updatedAtLabel ? (
-                <span>{conversation.updatedAtLabel}</span>
-              ) : null}
-              {isUnread ? (
-                <PagePanel.Meta compact tone="accent">
-                  New
-                </PagePanel.Meta>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </Button>
-      {showSourceBadge && conversationSource !== null ? (
-        <div className="pointer-events-none absolute right-3.5 top-3.5">
-          <ChatSourceIcon source={conversationSource} className="h-4 w-4" />
-        </div>
+      {!isGameModal && !isConfirmingDelete && onOpenActions ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          data-testid="conv-actions"
+          aria-label={labels.actions ?? "More actions"}
+          className={cn(
+            "h-6 w-6 shrink-0 rounded-[var(--radius-sm)] p-0 text-muted hover:bg-transparent hover:text-txt focus-visible:opacity-100",
+            mobile
+              ? "opacity-100"
+              : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto",
+          )}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onOpenActions(event, conversation);
+          }}
+        >
+          <MoreHorizontal className="h-4 w-4" aria-hidden />
+        </Button>
       ) : null}
 
       {showInlineActions && !isConfirmingDelete ? (

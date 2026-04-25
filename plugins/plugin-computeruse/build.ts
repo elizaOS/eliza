@@ -34,11 +34,7 @@ async function build() {
           format: "esm",
           sourcemap: "linked",
           minify: false,
-          external: [
-            "node:*",
-            "@elizaos/core",
-            "puppeteer-core",
-          ],
+          external: ["node:*", "@elizaos/core", "puppeteer-core"],
           naming: {
             entry: "[dir]/[name].[ext]",
           },

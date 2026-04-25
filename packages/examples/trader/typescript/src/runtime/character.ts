@@ -84,7 +84,7 @@ Be transparent about risks and market conditions.`,
   ],
   
   settings: {
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     TRADING_MODE: 'paper',
     DEFAULT_STRATEGY: 'llm',
     MAX_POSITION_SIZE_USD: '100',

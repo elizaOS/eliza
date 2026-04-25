@@ -1,10 +1,42 @@
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 
 export interface TwilioCredentials {
   accountSid: string;
   authToken: string;
   fromPhoneNumber: string;
+}
+
+export interface TwilioSmsBillingBreakdown {
+  segments: number;
+  rawCost: number;
+  markup: number;
+  billedCost: number;
+  markupRate: number;
+  costPerSegment: number;
+}
+
+const TWILIO_SMS_MARKUP_RATE = 0.2;
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function calculateTwilioSmsBilling(
+  body: string,
+  costPerSegmentUsd: number,
+): TwilioSmsBillingBreakdown {
+  const segments = Math.max(1, Math.ceil(body.length / 160));
+  const rawCost = roundCurrency(segments * costPerSegmentUsd);
+  const markup = roundCurrency(rawCost * TWILIO_SMS_MARKUP_RATE);
+  return {
+    segments,
+    rawCost,
+    markup,
+    billedCost: roundCurrency(rawCost + markup),
+    markupRate: TWILIO_SMS_MARKUP_RATE,
+    costPerSegment: costPerSegmentUsd,
+  };
 }
 
 export interface TwilioDeliveryResult {
@@ -14,6 +46,7 @@ export interface TwilioDeliveryResult {
   error?: string;
   /** Number of retries attempted before the final result (0 = first attempt succeeded or failed permanently). */
   retryCount?: number;
+  billing?: TwilioSmsBillingBreakdown;
 }
 
 function encodeBasicAuth(accountSid: string, authToken: string): string {
@@ -22,6 +55,24 @@ function encodeBasicAuth(accountSid: string, authToken: string): string {
 
 function twilioOperation(path: string): string {
   return path.includes("/Calls.") ? "twilio_voice" : "twilio_sms";
+}
+
+const DEFAULT_SMS_COST_PER_SEGMENT_USD = 0.0075;
+
+function resolveSmsCostPerSegment(): number {
+  const raw = process.env.TWILIO_SMS_COST_PER_SEGMENT_USD;
+  if (!raw) return DEFAULT_SMS_COST_PER_SEGMENT_USD;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    logger.warn(
+      {
+        raw,
+      },
+      "[lifeops] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; falling back to default",
+    );
+    return DEFAULT_SMS_COST_PER_SEGMENT_USD;
+  }
+  return parsed;
 }
 
 export function readTwilioCredentialsFromEnv(
@@ -38,6 +89,10 @@ export function readTwilioCredentialsFromEnv(
     authToken,
     fromPhoneNumber,
   };
+}
+
+function getTwilioBaseUrl(): string {
+  return process.env.MILADY_MOCK_TWILIO_BASE ?? "https://api.twilio.com";
 }
 
 /** Maximum number of retries for transient (5xx / network) failures. */
@@ -61,7 +116,7 @@ async function sendTwilioRequest(args: {
   payload: URLSearchParams;
 }): Promise<TwilioDeliveryResult> {
   const { credentials, path, payload } = args;
-  const url = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(credentials.accountSid)}${path}`;
+  const url = `${getTwilioBaseUrl()}/2010-04-01/Accounts/${encodeURIComponent(credentials.accountSid)}${path}`;
   const operation = twilioOperation(path);
 
   let lastResult: TwilioDeliveryResult | null = null;
@@ -176,7 +231,7 @@ export async function sendTwilioSms(args: {
   body: string;
 }): Promise<TwilioDeliveryResult> {
   const { credentials, to, body } = args;
-  return sendTwilioRequest({
+  const result = await sendTwilioRequest({
     credentials,
     path: "/Messages.json",
     payload: new URLSearchParams({
@@ -185,6 +240,15 @@ export async function sendTwilioSms(args: {
       Body: body,
     }),
   });
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ...result,
+    billing: calculateTwilioSmsBilling(body, resolveSmsCostPerSegment()),
+  };
 }
 
 /** Escape special XML characters to prevent TwiML injection. */

@@ -1,27 +1,41 @@
-import { client } from "../../api/client";
-import type {
-  TrajectoryListResult,
-  TrajectoryRecord,
-} from "../../api/client-types-cloud";
-import { useApp } from "../../state/useApp";
-
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  PageLayout,
+  PagePanel,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  TrajectorySidebarItem,
+} from "@elizaos/ui";
+import { Download, RefreshCw, Trash2, XCircle } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
-import { Download, RefreshCw, Trash2, XCircle } from "lucide-react";
-import { TrajectoryDetailView } from "./TrajectoryDetailView";
-import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
-import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, TrajectorySidebarItem, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, PageLayout } from "@elizaos/ui";
+import { client } from "../../api/client";
+import type {
+  TrajectoryListResult,
+  TrajectoryRecord,
+} from "../../api/client-types-cloud";
+import { useApp } from "../../state/useApp";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
+import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
   active: { bg: "rgba(59, 130, 246, 0.15)", fg: "rgb(59, 130, 246)" },
@@ -71,6 +85,7 @@ export function TrajectoriesView({
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
   const pageSize = 50;
+  const previousSearchQueryRef = useRef(searchQuery);
 
   const [exporting, setExporting] = useState(false);
   const [deletingTrajectoryId, setDeletingTrajectoryId] = useState<
@@ -114,6 +129,17 @@ export function TrajectoriesView({
   useEffect(() => {
     void loadTrajectories();
   }, [loadTrajectories]);
+
+  useEffect(() => {
+    const previousSearchQuery = previousSearchQueryRef.current;
+    if (previousSearchQuery === searchQuery) {
+      return;
+    }
+    previousSearchQueryRef.current = searchQuery;
+    if (selectedTrajectoryId != null) {
+      onSelectTrajectory?.(null);
+    }
+  }, [searchQuery, selectedTrajectoryId, onSelectTrajectory]);
 
   const handleExport = async (
     format: "json" | "csv" | "zip",
@@ -286,11 +312,13 @@ export function TrajectoriesView({
     } finally {
       setClearingAll(false);
     }
-  }, [onSelectTrajectory, pageSize, setActionNotice, t]);
+  }, [onSelectTrajectory, setActionNotice, t]);
 
   const trajectoriesSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="trajectories-sidebar"
+      collapsible
+      contentIdentity="trajectories"
       aria-label={t("trajectoriesview.Entries", {
         defaultValue: "Entries",
       })}
@@ -489,7 +517,7 @@ export function TrajectoriesView({
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

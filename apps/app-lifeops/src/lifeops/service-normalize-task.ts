@@ -1,8 +1,10 @@
+import type { BrowserBridgeAction } from "@elizaos/plugin-browser-bridge/contracts";
+import { BROWSER_BRIDGE_ACTION_KINDS } from "@elizaos/plugin-browser-bridge/contracts";
 import type {
   CreateLifeOpsDefinitionRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
-  LifeOpsBrowserAction,
+  GetLifeOpsGmailUnrespondedRequest,
   LifeOpsCadence,
   LifeOpsProgressionRule,
   LifeOpsTimeWindowDefinition,
@@ -10,10 +12,7 @@ import type {
   LifeOpsWindowPolicy,
   LifeOpsWorkflowAction,
   LifeOpsWorkflowActionPlan,
-} from "@elizaos/shared/contracts/lifeops";
-import {
-  LIFEOPS_BROWSER_ACTION_KINDS,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   fail,
   normalizeEnumValue,
@@ -48,12 +47,12 @@ function normalizeOptionalRecord(
 export function normalizeBrowserActionInput(
   value: unknown,
   field: string,
-): Omit<LifeOpsBrowserAction, "id"> {
+): Omit<BrowserBridgeAction, "id"> {
   const input = requireRecord(value, field);
   const kind = normalizeEnumValue(
     input.kind,
     `${field}.kind`,
-    LIFEOPS_BROWSER_ACTION_KINDS,
+    BROWSER_BRIDGE_ACTION_KINDS,
   );
   const label = requireNonEmptyString(input.label, `${field}.label`);
   const browser = normalizeOptionalBrowserKind(
@@ -119,6 +118,8 @@ export function normalizeWorkflowActionPlan(
         "resolve_website_access_callback",
         "get_calendar_feed",
         "get_gmail_triage",
+        "get_gmail_unresponded",
+        "dispatch_n8n_workflow",
         "summarize",
         "browser",
       ] as const,
@@ -184,6 +185,32 @@ export function normalizeWorkflowActionPlan(
           step.request,
           `actionPlan.steps[${index}].request`,
         ) as unknown as GetLifeOpsGmailTriageRequest | undefined,
+      };
+    }
+    if (kind === "get_gmail_unresponded") {
+      return {
+        kind,
+        id,
+        resultKey,
+        request: normalizeOptionalRecord(
+          step.request,
+          `actionPlan.steps[${index}].request`,
+        ) as unknown as GetLifeOpsGmailUnrespondedRequest | undefined,
+      };
+    }
+    if (kind === "dispatch_n8n_workflow") {
+      return {
+        kind,
+        id,
+        resultKey,
+        workflowId: requireNonEmptyString(
+          step.workflowId,
+          `actionPlan.steps[${index}].workflowId`,
+        ),
+        payload: normalizeOptionalRecord(
+          step.payload,
+          `actionPlan.steps[${index}].payload`,
+        ),
       };
     }
     if (kind === "summarize") {

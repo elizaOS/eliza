@@ -18,12 +18,17 @@
     "declaration": false,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/core": ["../typescript/src/index.node.ts"],
       "@elizaos/core/*": ["../typescript/src/*"],
+      "@elizaos/native-activity-tracker": [
+        "../native-plugins/activity-tracker/src/index.ts"
+      ],
       "@elizaos/app-lifeops": ["../../apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["../../apps/app-lifeops/src/*"],
+      "@elizaos/app-elizamaker": ["../../apps/app-elizamaker/src/index.ts"],
+      "@elizaos/app-elizamaker/*": ["../../apps/app-elizamaker/src/*"],
       "@elizaos/app-form": ["../../apps/app-form/src/index.ts"],
       "@elizaos/app-form/*": ["../../apps/app-form/src/*"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],

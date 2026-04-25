@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "paths": {
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/typescript/src/index.ts"
+      ],
+      "@elizaos/plugin-local-embedding": [
+        "../../plugins/plugin-local-embedding/typescript/src/index.ts"
+      ],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/src/index.ts"
+      ],
+      "@elizaos/plugin-telegram/account-auth-service": [
+        "../../plugins/plugin-telegram/src/account-auth-service.ts"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

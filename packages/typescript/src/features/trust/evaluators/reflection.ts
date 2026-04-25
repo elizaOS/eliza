@@ -15,8 +15,6 @@ import { composePrompt } from "../../../utils.ts";
 
 const reflectionTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
 
-{{providers}}
-
 # Examples:
 {{evaluationExamples}}
 
@@ -66,35 +64,54 @@ Generate a response in the following format:
 }
 \`\`\``;
 
+const UUID_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PLACEHOLDER_ENTITY_REFERENCE_PATTERN =
+	/^(entity_(initiating|being)_interaction|user(?:-\d+)?|scenarioagent(?:-agent)?|[a-z]+-agent|clinic|sms-message)$/i;
+
+function normalizeEntityReference(entityId: string): string {
+	const trimmed = entityId.trim();
+	const idWrapper = trimmed.match(/^\(id:\s*([^)]+)\)$/i);
+	const unwrapped = idWrapper?.[1] ?? trimmed;
+	return unwrapped.replace(/^["'`]+|["'`]+$/g, "").trim();
+}
+
+function isPlaceholderEntityReference(entityId: string): boolean {
+	const normalized = normalizeEntityReference(entityId);
+	return (
+		normalized.length === 0 ||
+		PLACEHOLDER_ENTITY_REFERENCE_PATTERN.test(normalized)
+	);
+}
+
 function resolveEntity(entityId: UUID, entities: Entity[]): UUID {
-	if (
-		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-			entityId,
-		)
-	) {
-		return entityId as UUID;
+	const normalizedId = normalizeEntityReference(entityId);
+	if (UUID_PATTERN.test(normalizedId)) {
+		return normalizedId as UUID;
 	}
 
 	let entity: Entity | undefined;
 
-	entity = entities.find((a) => a.id === entityId);
+	entity = entities.find((a) => a.id === normalizedId);
 	if (entity?.id) {
 		return entity.id;
 	}
 
-	entity = entities.find((a) => a.id?.includes(entityId));
+	entity = entities.find((a) => a.id?.includes(normalizedId));
 	if (entity?.id) {
 		return entity.id;
 	}
 
 	entity = entities.find((a) =>
-		a.names.some((n) => n.toLowerCase().includes(entityId.toLowerCase())),
+		a.names.some((n) => n.toLowerCase().includes(normalizedId.toLowerCase())),
 	);
 	if (entity?.id) {
 		return entity.id;
 	}
 
-	throw new Error(`Could not resolve entityId "${entityId}" to a valid UUID`);
+	throw new Error(
+		`Could not resolve entityId "${normalizedId}" to a valid UUID`,
+	);
 }
 
 async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
@@ -118,13 +135,23 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 		}),
 	]);
 
+	// Strip bloated metadata (indicators arrays grow unbounded over time and
+	// blow the prompt past the long-context threshold). Keep only the fields
+	// the reflection LLM needs to dedupe relationships: ids, type, tags.
+	const slimRelationships = existingRelationships.map((r) => ({
+		sourceEntityId: r.sourceEntityId,
+		targetEntityId: r.targetEntityId,
+		tags: r.tags,
+		relationshipType: (r.metadata as { relationshipType?: string } | undefined)
+			?.relationshipType,
+	}));
 	const prompt = composePrompt({
 		state: {
 			...(state?.values || {}),
 			knownFacts: formatFacts(knownFacts),
 			roomType: message.content.channelType as string,
 			entitiesInRoom: JSON.stringify(entities),
-			existingRelationships: JSON.stringify(existingRelationships),
+			existingRelationships: JSON.stringify(slimRelationships),
 			senderId: message.entityId,
 		},
 		template:
@@ -200,6 +227,16 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 			) {
 				continue;
 			}
+			if (
+				isPlaceholderEntityReference(relationship.sourceEntityId) ||
+				isPlaceholderEntityReference(relationship.targetEntityId)
+			) {
+				logger.debug(
+					{ relationship },
+					"Skipping trust reflection relationship with placeholder entity references",
+				);
+				continue;
+			}
 
 			const tags = relationship.tags.filter(
 				(t): t is string => typeof t === "string",
@@ -212,8 +249,13 @@ async function handler(runtime: IAgentRuntime, message: Memory, state?: State) {
 				sourceId = resolveEntity(relationship.sourceEntityId as UUID, entities);
 				targetId = resolveEntity(relationship.targetEntityId as UUID, entities);
 			} catch (error) {
-				logger.warn({ error }, "Failed to resolve relationship entities");
-				logger.warn({ relationship }, "Unresolved relationship");
+				logger.debug(
+					{
+						error: error instanceof Error ? error.message : String(error),
+						relationship,
+					},
+					"Skipping trust reflection relationship with unresolved entity references",
+				);
 				continue;
 			}
 

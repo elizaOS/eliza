@@ -1,5 +1,18 @@
 default_platform(:ios)
 
+APP_ID = ENV["APP_IDENTIFIER"] || "ai.elizaos.app"
+EXTENSION_IDS = (ENV["APP_IDENTIFIER_EXTRA"] || "")
+  .split(",")
+  .map(&:strip)
+  .reject(&:empty?)
+ALL_IDS = [APP_ID, *EXTENSION_IDS].uniq
+
+def match_profile_mapping(type_label)
+  ALL_IDS.each_with_object({}) do |bundle_id, mapping|
+    mapping[bundle_id] = "match #{type_label} #{bundle_id}"
+  end
+end
+
 platform :ios do
 
   desc "Sync certificates and provisioning profiles"
@@ -8,7 +21,7 @@ platform :ios do
 
     match(
       type: "appstore",
-      app_identifier: "ai.elizaos.app",
+      app_identifier: ALL_IDS,
       readonly: is_ci
     )
   end
@@ -22,12 +35,10 @@ platform :ios do
       scheme: "App",
       export_method: "app-store",
       export_options: {
-        provisioningProfiles: {
-          "ai.elizaos.app" => "match AppStore ai.elizaos.app"
-        }
+        provisioningProfiles: match_profile_mapping("AppStore")
       },
       output_directory: "build",
-      output_name: "ElizaOSApp.ipa",
+      output_name: "Milady.ipa",
       clean: true,
       include_bitcode: false
     )
@@ -37,10 +48,19 @@ platform :ios do
   lane :beta do
     build
 
-    upload_to_testflight(
-      skip_waiting_for_build_processing: true,
-      apple_id: ENV["APP_STORE_APP_ID"]
-    )
+    if ENV["APP_STORE_APP_ID"].to_s.strip.empty?
+      UI.important(
+        "APP_STORE_APP_ID not set. Skipping TestFlight upload — the signed " \
+        "IPA is still produced at build/Milady.ipa. Set the App Store " \
+        "Connect numeric app id (e.g. 6502835663) as a repo secret to " \
+        "enable TestFlight delivery."
+      )
+    else
+      upload_to_testflight(
+        skip_waiting_for_build_processing: true,
+        apple_id: ENV["APP_STORE_APP_ID"]
+      )
+    end
   end
 
   desc "Submit to App Store for review"

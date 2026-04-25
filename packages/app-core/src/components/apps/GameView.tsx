@@ -9,7 +9,13 @@
  */
 
 import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
-
+import {
+  Button,
+  Input,
+  useDocumentVisibility,
+  useIntervalWhenDocumentVisible,
+  useTimeout,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type AppRunSummary,
@@ -20,21 +26,16 @@ import {
 } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useBranding } from "../../config/branding";
-import {
-  useMediaQuery,
-} from "../../hooks";
+import { useMediaQuery } from "../../hooks";
 import { useApp } from "../../state";
-import { openExternalUrl } from "../../utils";
+import {
+  navigatePreOpenedWindow,
+  openExternalUrl,
+  preOpenWindow,
+} from "../../utils";
 import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
 import { formatTime } from "../../utils/format";
 import { getAppOperatorSurface } from "./surfaces/registry";
-import {
-  Button,
-  Input,
-  useDocumentVisibility,
-  useIntervalWhenDocumentVisible,
-  useTimeout,
-} from "@elizaos/ui";
 import {
   buildViewerSessionKey,
   resolveEmbeddedViewerUrl,
@@ -558,6 +559,7 @@ export function GameView() {
   const [attachingViewer, setAttachingViewer] = useState(false);
   const [detachingViewer, setDetachingViewer] = useState(false);
   const [showLogsPanel, setShowLogsPanel] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [mobileSurface, setMobileSurface] = useState<
     "game" | "dashboard" | "chat"
   >("game");
@@ -802,6 +804,54 @@ export function GameView() {
     3000,
     Boolean(activeGameRunId || activeGameSession?.sessionId),
   );
+
+  // Cheap liveness ping — separate from the 3s session refresh so it still
+  // fires when the upstream game API is degraded. The server's stale-run
+  // sweeper uses this to decide whether to stop a run whose UI tab has
+  // gone silent. Pauses while the document is hidden; the sweeper's
+  // 90s grace window covers brief tab-switching.
+  useIntervalWhenDocumentVisible(
+    () => {
+      if (!activeGameRunId) return;
+      void client.heartbeatAppRun(activeGameRunId).catch((err: unknown) => {
+        // 404 means the run was reaped (sweeper or another window) — drop
+        // local state so the user sees the empty-state UI instead of a
+        // ghost session that no longer exists server-side.
+        const status = getApiStatus(err);
+        if (status === 404) {
+          setState(
+            "appRuns",
+            appRunsRef.current.filter((run) => run.runId !== activeGameRunId),
+          );
+          setState("activeGameRunId", "");
+        }
+      });
+    },
+    15_000,
+    Boolean(activeGameRunId),
+  );
+
+  // Clean up server-side state when the browser tab closes. `sendBeacon`
+  // is the only request method browsers reliably deliver during unload —
+  // a normal `fetch` would be cancelled. Falls through silently if the
+  // browser is too old or the run is already gone.
+  useEffect(() => {
+    if (!activeGameRunId) return;
+    const handleUnload = () => {
+      const beacon = navigator?.sendBeacon;
+      if (typeof beacon !== "function") return;
+      const baseUrl = client.getBaseUrl();
+      const stopPath = `/api/apps/runs/${encodeURIComponent(activeGameRunId)}/stop`;
+      const stopUrl = baseUrl ? `${baseUrl}${stopPath}` : stopPath;
+      beacon.call(navigator, stopUrl);
+    };
+    window.addEventListener("pagehide", handleUnload);
+    window.addEventListener("beforeunload", handleUnload);
+    return () => {
+      window.removeEventListener("pagehide", handleUnload);
+      window.removeEventListener("beforeunload", handleUnload);
+    };
+  }, [activeGameRunId]);
 
   const sendChatCommand = useCallback(
     async (rawContent: string) => {
@@ -1171,8 +1221,13 @@ export function GameView() {
       );
       return;
     }
+    const popup = preOpenWindow();
     try {
-      await openExternalUrl(openableUrl);
+      if (popup) {
+        navigatePreOpenedWindow(popup, openableUrl);
+      } else {
+        await openExternalUrl(openableUrl);
+      }
     } catch {
       setActionNotice(
         t("gameview.PopupBlocked", {
@@ -1301,9 +1356,7 @@ export function GameView() {
   const renderLogsPanel = (layout: "sidebar" | "standalone" = "sidebar") => (
     <div
       className={`flex min-h-0 flex-col bg-card ${
-        layout === "sidebar"
-          ? "w-80"
-          : "h-full"
+        layout === "sidebar" ? "w-80" : "h-full"
       }`}
     >
       <div className="flex items-center gap-2 px-3 py-2">
@@ -1612,10 +1665,7 @@ export function GameView() {
             .sort((a, b) => Number(b.timestamp ?? 0) - Number(a.timestamp ?? 0))
             .slice(0, 30)
             .map((entry) => (
-              <div
-                key={entry.id}
-                className="py-1 flex flex-col gap-0.5"
-              >
+              <div key={entry.id} className="py-1 flex flex-col gap-0.5">
                 <div className="flex items-center gap-1">
                   <span className="text-muted text-2xs">
                     {formatTime(entry.timestamp ?? 0, { fallback: "—" })}
@@ -1685,23 +1735,77 @@ export function GameView() {
     </div>
   );
 
-  const connectionStatusColor =
-    connectionStatus === "connected"
-      ? "text-ok border-ok"
-      : connectionStatus === "connecting"
-        ? "text-warn border-warn"
-        : "text-danger border-danger";
   const activeRunSummary =
     activeGameRun?.summary ??
     activeGameRun?.health.message ??
     activeSessionState?.summary ??
     null;
+  const gameStatusLabel =
+    connectionStatus !== "connected"
+      ? connectionStatus === "connecting"
+        ? "Starting"
+        : "Offline"
+      : activeGameRun?.health.state === "offline" ||
+          activeGameRun?.health.state === "degraded"
+        ? "Needs attention"
+        : "Live";
+  const gameStatusClass =
+    gameStatusLabel === "Live"
+      ? "border-ok/30 bg-ok/10 text-ok"
+      : gameStatusLabel === "Needs attention"
+        ? "border-warn/35 bg-warn/10 text-warn"
+        : "border-border/45 bg-bg-hover/70 text-muted-strong";
+  const diagnostics = [
+    { label: "Connection", value: connectionStatus },
+    {
+      label: "Viewer",
+      value: activeGameRun?.viewerAttachment ?? "unavailable",
+    },
+    { label: "Health", value: activeGameRun?.health.state ?? "unknown" },
+    {
+      label: "Chat",
+      value: activeGameRun?.chatAvailability ?? "unknown",
+    },
+    {
+      label: "Control",
+      value: activeGameRun?.controlAvailability ?? "unknown",
+    },
+  ];
   const operatorSurfaceFocus =
     isCompactLayout && mobileSurface === "dashboard"
       ? "dashboard"
       : isCompactLayout && mobileSurface === "chat"
         ? "chat"
         : "all";
+  const openInNewTabLabel = hasViewer
+    ? t("game.openInNewTab")
+    : "Open launch URL";
+  const renderOpenInNewTabButton = (
+    variant: "default" | "outline",
+    className?: string,
+  ) => {
+    if (!openableUrl || isElectrobun) {
+      return (
+        <Button
+          variant={variant}
+          size="sm"
+          className={className}
+          onClick={handleOpenInNewTab}
+          disabled={!openableUrl}
+        >
+          {openInNewTabLabel}
+        </Button>
+      );
+    }
+
+    return (
+      <Button asChild variant={variant} size="sm" className={className}>
+        <a href={openableUrl} target="_blank" rel="noreferrer">
+          {openInNewTabLabel}
+        </a>
+      </Button>
+    );
+  };
 
   const renderViewerPane = () => {
     if (!hasViewer) {
@@ -1727,22 +1831,7 @@ export function GameView() {
             watching without restarting the session.
           </div>
           <div className="flex flex-wrap justify-center gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={() => void handleAttachViewer()}
-              disabled={attachingViewer}
-            >
-              {attachingViewer ? "Reattaching..." : "Reattach viewer"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void handleOpenInNewTab()}
-              disabled={!openableUrl}
-            >
-              {t("game.openInNewTab")}
-            </Button>
+            {renderOpenInNewTabButton("outline")}
           </div>
         </div>
       );
@@ -1785,40 +1874,24 @@ export function GameView() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex flex-wrap items-center gap-3 px-4 py-2 bg-card">
-        <span className="font-bold text-sm">
-          {activeGameDisplayName || activeGameApp}
-        </span>
-        <span
-          className={`text-2xs px-1.5 py-0.5 border ${connectionStatusColor}`}
-        >
-          {connectionStatus === "connected"
-            ? t("game.connected")
-            : connectionStatus === "connecting"
-              ? t("game.connecting")
-              : t("game.disconnected")}
-        </span>
-        <span className="text-2xs px-1.5 py-0.5 border border-border text-muted">
-          {activeGameRun?.viewerAttachment ?? "unavailable"}
-        </span>
-        <span className="text-2xs px-1.5 py-0.5 border border-border text-muted">
-          {activeGameRun?.health.state ?? "unknown"}
-        </span>
-        {activeGamePostMessageAuth ? (
-          <span className="text-2xs px-1.5 py-0.5 border border-border text-muted">
-            {t("gameview.postMessageAuth")}
-          </span>
-        ) : null}
-        <span className="flex-1" />
-        {activeSessionState?.status ? (
-          <span
-            data-testid="game-session-status"
-            className="max-w-56 truncate text-2xs px-1.5 py-0.5 border border-border text-muted"
-            title={activeSessionState.summary ?? activeSessionState.status}
-          >
-            {activeSessionState.summary ?? activeSessionState.status}
-          </span>
-        ) : null}
+      <div className="flex flex-wrap items-center gap-3 bg-card px-4 py-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-bold text-sm">
+              {activeGameDisplayName || activeGameApp}
+            </span>
+            <span
+              className={`rounded-full border px-2.5 py-1 text-2xs font-medium uppercase tracking-[0.14em] ${gameStatusClass}`}
+            >
+              {gameStatusLabel}
+            </span>
+          </div>
+          {activeRunSummary ? (
+            <div className="mt-1 max-w-3xl truncate text-xs-tight leading-5 text-muted-strong">
+              {activeRunSummary}
+            </div>
+          ) : null}
+        </div>
         {sessionControlAction ? (
           <Button
             variant="outline"
@@ -1845,15 +1918,17 @@ export function GameView() {
             className="h-7 text-xs shadow-sm hover:border-accent"
             onClick={() => setShowLogsPanel(!showLogsPanel)}
           >
-            {showLogsPanel
-              ? t("gameview.HideDashboard", {
-                  defaultValue: "Hide dashboard",
-                })
-              : t("gameview.ShowDashboard", {
-                  defaultValue: "Show dashboard",
-                })}
+            {showLogsPanel ? "Hide game chat" : "Show game chat"}
           </Button>
         ) : null}
+        <Button
+          variant={showDiagnostics ? "default" : "outline"}
+          size="sm"
+          className="h-7 text-xs shadow-sm hover:border-accent"
+          onClick={() => setShowDiagnostics((current) => !current)}
+        >
+          Details
+        </Button>
         {canAttachViewer ? (
           <Button
             variant="outline"
@@ -1894,15 +1969,7 @@ export function GameView() {
             {gameOverlayEnabled ? t("game.unpinOverlay") : t("game.keepOnTop")}
           </Button>
         ) : null}
-        <Button
-          variant="default"
-          size="sm"
-          className="h-7 text-xs shadow-sm"
-          onClick={handleOpenInNewTab}
-          disabled={!openableUrl}
-        >
-          {hasViewer ? t("game.openInNewTab") : "Open launch URL"}
-        </Button>
+        {renderOpenInNewTabButton("default", "h-7 text-xs shadow-sm")}
         <Button
           variant="default"
           size="sm"
@@ -1924,9 +1991,27 @@ export function GameView() {
           {t("game.backToApps")}
         </Button>
       </div>
-      {activeRunSummary ? (
-        <div className="bg-card/70 px-4 py-2 text-xs-tight leading-5 text-muted-strong">
-          {activeRunSummary}
+      {showDiagnostics ? (
+        <div className="border-t border-border/30 bg-card/70 px-4 py-2 text-xs-tight leading-5 text-muted-strong">
+          <div className="flex flex-wrap gap-2">
+            {diagnostics.map((item) => (
+              <span
+                key={item.label}
+                className="rounded-full border border-border/35 bg-bg/65 px-2.5 py-1"
+              >
+                <span className="text-muted">{item.label}: </span>
+                {item.value}
+              </span>
+            ))}
+            {activeGamePostMessageAuth ? (
+              <span className="rounded-full border border-border/35 bg-bg/65 px-2.5 py-1">
+                {t("gameview.postMessageAuth")}
+              </span>
+            ) : null}
+          </div>
+          {activeGameRun?.health.message ? (
+            <div className="mt-2">{activeGameRun.health.message}</div>
+          ) : null}
         </div>
       ) : null}
       {dashboardPanelEnabled && isCompactLayout ? (
@@ -1950,7 +2035,7 @@ export function GameView() {
             onClick={() => setMobileSurface("dashboard")}
           >
             {t("gameview.MobileSurfaceDashboard", {
-              defaultValue: "Dashboard",
+              defaultValue: "Actions",
             })}
           </Button>
           <Button

@@ -59,6 +59,8 @@ There are two recommended paths for using Eliza:
 
 - **For Power Users & Contributors (Monorepo):** If you plan to contribute to Eliza, create complex custom plugins, or manage multiple projects in one place, we recommend cloning the full monorepo. See the [How to Contribute](#-how-to-contribute) section to get started.
 
+**Monorepo app (API + web UI):** from the repo root, run `bun install` then `bun run dev` (Vite + runtime API for `apps/app`). Desktop: `bun run dev:desktop` / `bun run dev:desktop:watch`. The packaged-agent watch harness lives at `bun run dev:harness`.
+
 ---
 
 Get your first AI agent running in just a few commands.

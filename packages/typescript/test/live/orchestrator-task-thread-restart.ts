@@ -107,7 +107,7 @@ async function main(): Promise<void> {
 		},
 	});
 
-	const session = await service!.spawnSession({
+	const session = await service?.spawnSession({
 		name: "task-thread-restart-shell",
 		agentType: "shell",
 		workdir,
@@ -129,11 +129,11 @@ async function main(): Promise<void> {
 	});
 
 	await waitFor(async () => {
-		const output = await service!.getSessionOutput(session.id);
+		const output = await service?.getSessionOutput(session.id);
 		return output.trim().length > 0;
 	}, "expected the first shell PTY session to become interactive");
 
-	await service!.sendToSession(
+	await service?.sendToSession(
 		session.id,
 		`printf '%s\\n' ${JSON.stringify(sentinel)} > ${JSON.stringify(outputFile)}; ` +
 			`echo ${JSON.stringify(sentinel)}\n`,

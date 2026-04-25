@@ -55,7 +55,7 @@ export const DEFAULT_CONFIG: ExtensionConfig = {
     // Anthropic
     anthropicApiKey: "",
     anthropicSmallModel: "claude-3-5-haiku-20241022",
-    anthropicLargeModel: "claude-sonnet-4-20250514",
+    anthropicLargeModel: "claude-sonnet-4-6",
 
     // xAI (Grok)
     xaiApiKey: "",

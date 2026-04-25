@@ -1,27 +1,15 @@
-/**
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/services/steward-wallet`.
- * New development should target the app-steward package.
- */
-
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import type {
   StewardApprovalActionResponse,
   StewardPendingApproval,
   StewardSignRequest,
   StewardSignResponse,
   StewardStatusResponse,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/app-steward/types/steward";
 import { getWalletAddresses } from "../api/wallet.js";
+import { resolveStewardCredentialsPath } from "../config/paths.js";
 
 const DEFAULT_TIMEOUT_MS = 12_000;
-const STEWARD_CREDENTIALS_PATH = path.join(
-  os.homedir(),
-  ".eliza",
-  "steward-credentials.json",
-);
 
 interface PersistedStewardCredentials {
   apiUrl: string;
@@ -47,13 +35,14 @@ function normalizeEnvValue(value: string | undefined): string | null {
 }
 
 function resolvePersistedStewardCredentials(): PersistedStewardCredentials | null {
+  const credentialsPath = resolveStewardCredentialsPath();
   try {
-    if (!fs.existsSync(STEWARD_CREDENTIALS_PATH)) {
+    if (!fs.existsSync(credentialsPath)) {
       return null;
     }
 
     const parsed = JSON.parse(
-      fs.readFileSync(STEWARD_CREDENTIALS_PATH, "utf8"),
+      fs.readFileSync(credentialsPath, "utf8"),
     ) as Partial<PersistedStewardCredentials>;
     if (!normalizeEnvValue(parsed.apiUrl)) {
       return null;

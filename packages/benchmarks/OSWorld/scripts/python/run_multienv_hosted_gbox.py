@@ -74,8 +74,8 @@ def config() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-        help="Claude model to use (default: Bedrock Sonnet 4.5)"
+        default="us.anthropic.claude-sonnet-4-6",
+        help="Claude model to use (default: Bedrock Sonnet 4.6)"
     )
     parser.add_argument("--max_tokens", type=int, default=1500)
 
@@ -192,7 +192,7 @@ def check_completed_tasks(result_dir: str, test_all_meta: dict) -> List[str]:
                 result_dir,
                 "pyautogui",
                 "screenshot",
-                "claude-sonnet-4-5",  # Model name from args
+                "claude-sonnet-4-6",  # Model name from args
                 domain,
                 example_id,
                 "result.txt"

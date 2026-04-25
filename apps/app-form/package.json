@@ -11,11 +11,16 @@
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "uuid": "^11.0.0"
+    "uuid": "^14.0.0"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
     "pluginParameters": {},
     "description": "Conversational forms for structured data collection."
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
   }
 }

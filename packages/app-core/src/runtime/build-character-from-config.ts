@@ -58,7 +58,7 @@ export function buildCharacterFromConfig(
         all: [...bundledPreset.style.all],
         chat: [...bundledPreset.style.chat],
         post: [...bundledPreset.style.post],
-      } as unknown as NonNullable<(typeof character)["style"]>;
+      } as NonNullable<(typeof character)["style"]>;
     }
     if (
       !agentEntry?.adjectives &&

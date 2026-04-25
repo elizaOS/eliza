@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.7
+# syntax=docker/dockerfile:1.23
 # elizaOS Agent — Cloud-optimized Docker image
 # Goal: keep runtime under ~2GB by doing a production-only install,
 # flattening Bun's store-backed node_modules, and copying only the cloud runtime.
@@ -25,17 +25,135 @@ WORKDIR /src
 
 # Copy only the manifests Bun needs to resolve the production dependency graph.
 COPY package.json bun.lock ./
-COPY patches ./patches
+COPY eliza/packages/app-core/patches ./eliza/packages/app-core/patches
+COPY eliza/packages/typescript/package.json ./eliza/packages/typescript/package.json
 COPY eliza/packages/agent/package.json ./eliza/packages/agent/package.json
 COPY eliza/packages/app-core/package.json ./eliza/packages/app-core/package.json
-COPY plugins/plugin-selfcontrol/package.json ./plugins/plugin-selfcontrol/package.json
 COPY eliza/packages/shared/package.json ./eliza/packages/shared/package.json
+COPY eliza/packages/ui/package.json ./eliza/packages/ui/package.json
+COPY eliza/plugins/plugin-sql/typescript/package.json ./eliza/plugins/plugin-sql/typescript/package.json
+COPY eliza/plugins/plugin-elizacloud/typescript/package.json ./eliza/plugins/plugin-elizacloud/typescript/package.json
 COPY apps/app/package.json ./apps/app/package.json
-COPY apps/app/electrobun/package.json ./apps/app/electrobun/package.json
+COPY eliza/packages/app-core/platforms/electrobun/package.json ./eliza/packages/app-core/platforms/electrobun/package.json
 COPY eliza/packages/app-core/deploy/cloud-agent-template/package.json ./eliza/packages/app-core/deploy/cloud-agent-template/package.json
 
 ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
-RUN bun install --frozen-lockfile --ignore-scripts --no-progress
+# Materialize the standalone cloud-agent template at the Docker deploy
+# boundary. Source manifests stay workspace-local; the image install uses the
+# local package versions as exact npm dependencies.
+RUN node <<'EOF'
+const fs = require("fs");
+
+const KEEP = [
+  "eliza/packages/agent",
+  "eliza/packages/app-core",
+  "eliza/packages/shared",
+  "eliza/packages/ui",
+  "eliza/packages/app-core/platforms/electrobun",
+  "eliza/packages/app-core/deploy/cloud-agent-template",
+  "apps/app",
+];
+const ALLOW = new Set([
+  "@elizaos/agent",
+  "@elizaos/app-core",
+  "@elizaos/shared",
+  "@elizaos/ui",
+]);
+const PRUNE_FIELDS = [
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies",
+  "peerDependencies",
+  "overrides",
+];
+const STRIP_NAMES =
+  /^@elizaos\/(app-|capacitor-|plugin-agent-orchestrator|plugin-cli|plugin-imessage|plugin-local-ai|plugin-pdf|plugin-wechat|steward-)/;
+const VERSION_MANIFESTS = [
+  "eliza/packages/typescript/package.json",
+  "eliza/plugins/plugin-sql/typescript/package.json",
+  "eliza/plugins/plugin-elizacloud/typescript/package.json",
+];
+const CLOUD_AGENT_RELEASE_DEPS = [
+  "@elizaos/core",
+  "@elizaos/plugin-sql",
+  "@elizaos/plugin-elizacloud",
+];
+
+function readJson(path) {
+  return JSON.parse(fs.readFileSync(path, "utf8"));
+}
+
+function writeJson(path, data) {
+  fs.writeFileSync(path, JSON.stringify(data, null, 2) + "\n");
+}
+
+function collectVersions() {
+  const versions = new Map();
+  for (const manifest of VERSION_MANIFESTS) {
+    const pkg = readJson(manifest);
+    if (typeof pkg.name === "string" && typeof pkg.version === "string") {
+      versions.set(pkg.name, pkg.version);
+    }
+  }
+  return versions;
+}
+
+function materializeWorkspaceDeps(path, dependencyNames, versions) {
+  const pkg = readJson(path);
+  let changed = false;
+  for (const name of dependencyNames) {
+    const spec = pkg.dependencies?.[name];
+    if (typeof spec !== "string" || !spec.startsWith("workspace:")) continue;
+    const version = versions.get(name);
+    if (!version) throw new Error(`No local package version found for ${name}`);
+    pkg.dependencies[name] = version;
+    changed = true;
+  }
+  if (changed) writeJson(path, pkg);
+}
+
+function prune(path) {
+  if (!fs.existsSync(path)) return;
+  const pkg = readJson(path);
+  for (const section of PRUNE_FIELDS) {
+    const deps = pkg[section];
+    if (!deps) continue;
+    for (const [name, spec] of Object.entries(deps)) {
+      const isWorkspace =
+        typeof spec === "string" && spec.startsWith("workspace:");
+      const isStripName = STRIP_NAMES.test(name);
+      if ((isWorkspace && !ALLOW.has(name)) || isStripName) {
+        delete deps[name];
+      }
+    }
+  }
+  writeJson(path, pkg);
+}
+
+materializeWorkspaceDeps(
+  "eliza/packages/app-core/deploy/cloud-agent-template/package.json",
+  CLOUD_AGENT_RELEASE_DEPS,
+  collectVersions(),
+);
+
+const root = readJson("package.json");
+root.workspaces = KEEP;
+writeJson("package.json", root);
+[
+  "package.json",
+  "apps/app/package.json",
+  "eliza/packages/agent/package.json",
+  "eliza/packages/app-core/package.json",
+  "eliza/packages/shared/package.json",
+  "eliza/packages/ui/package.json",
+  "eliza/packages/app-core/platforms/electrobun/package.json",
+  "eliza/packages/app-core/deploy/cloud-agent-template/package.json",
+].forEach(prune);
+if (fs.existsSync("bun.lock")) fs.unlinkSync("bun.lock");
+EOF
+# Drop --frozen-lockfile: bun.lock has been removed above so bun regenerates
+# fresh against the pruned workspace set.
+RUN bun install --ignore-scripts --no-progress
 
 FROM node:${NODE_VERSION}-slim AS tsx
 RUN npm install --prefix /opt/tsx --ignore-scripts --no-save tsx@4.21.0 \
@@ -54,17 +172,16 @@ COPY dist ./dist
 COPY apps/app/dist ./apps/app/dist
 COPY eliza/packages/agent ./eliza/packages/agent
 COPY eliza/packages/app-core ./eliza/packages/app-core
-COPY plugins/plugin-selfcontrol ./plugins/plugin-selfcontrol
 COPY eliza/packages/shared ./eliza/packages/shared
 COPY ${APP_ENTRYPOINT} package.json plugins.json ./
-COPY scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+COPY eliza/packages/app-core/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 
 RUN set -eux; \
   mkdir -p /runtime/node_modules /runtime/apps/app /runtime/scripts; \
   # Keep bun's symlink structure intact — cp -rL breaks transitive dep resolution.
   cp -a node_modules/. /runtime/node_modules/; \
   # Overlay workspace packages with full source (not just the symlinked dist).
-  for dir in eliza/packages/agent eliza/packages/app-core plugins/plugin-selfcontrol eliza/packages/shared; do \
+  for dir in eliza/packages/agent eliza/packages/app-core eliza/packages/shared; do \
     name="$(node -p "require('./${dir}/package.json').name")"; \
     target="/runtime/node_modules/${name}"; \
     rm -rf "$target"; \
@@ -75,7 +192,7 @@ RUN set -eux; \
   done; \
   cp -a dist /runtime/dist; \
   cp -a apps/app/dist /runtime/apps/app/dist; \
-  cp -a scripts/docker-entrypoint.sh /runtime/scripts/docker-entrypoint.sh; \
+  cp -a eliza/packages/app-core/scripts/docker-entrypoint.sh /runtime/scripts/docker-entrypoint.sh; \
   cp -a "${APP_ENTRYPOINT}" package.json plugins.json /runtime/; \
   sed -i 's/const stats = service.getCatalogStats();/const stats = typeof service.getCatalogStats === "function" ? service.getCatalogStats() : { loaded: 0, total: 0, storageType: "unknown" };/g' /runtime/node_modules/@elizaos/plugin-agent-skills/dist/index.js 2>/dev/null || true; \
   if [ -n "${VERSION_CLEAN}" ]; then \

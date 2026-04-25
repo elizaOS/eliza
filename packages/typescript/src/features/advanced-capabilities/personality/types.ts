@@ -6,12 +6,6 @@ declare module "../../../types/service.ts" {
 	}
 }
 
-declare module "@elizaos/core" {
-	interface ServiceTypeRegistry {
-		CHARACTER_MANAGEMENT: "CHARACTER_MANAGEMENT";
-	}
-}
-
 // Export service type constant
 export const PersonalityServiceType = {
 	CHARACTER_MANAGEMENT: "CHARACTER_MANAGEMENT" as const,

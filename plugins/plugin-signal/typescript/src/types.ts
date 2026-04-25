@@ -100,6 +100,18 @@ export interface SignalMessage {
   viewOnce: boolean;
 }
 
+export interface SignalRecentMessage {
+  id: string;
+  roomId: string;
+  channelId: string;
+  roomName: string;
+  speakerName: string;
+  text: string;
+  createdAt: number;
+  isFromAgent: boolean;
+  isGroup: boolean;
+}
+
 export interface SignalQuote {
   id: number;
   author: string;
@@ -120,6 +132,7 @@ export interface ISignalService {
   accountNumber: string | null;
   character: Character;
   isConnected: boolean;
+  getRecentMessages(limit?: number): Promise<SignalRecentMessage[]>;
 }
 
 export const SIGNAL_SERVICE_NAME = "signal";

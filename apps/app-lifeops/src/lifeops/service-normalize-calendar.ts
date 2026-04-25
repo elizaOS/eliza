@@ -4,10 +4,10 @@ import type {
   LifeOpsConnectorGrant,
   LifeOpsGmailMessageSummary,
   LifeOpsNextCalendarEventContext,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_CALENDAR_WINDOW_PRESETS,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   fail,
   normalizeEnumValue,
@@ -222,6 +222,24 @@ export function hasGoogleGmailBodyReadScope(grant: LifeOpsConnectorGrant): boole
 export function hasGoogleGmailSendCapability(grant: LifeOpsConnectorGrant): boolean {
   const capabilities = new Set(normalizeGrantCapabilities(grant.capabilities));
   return capabilities.has("google.gmail.send");
+}
+
+export function hasGoogleGmailManageCapability(
+  grant: LifeOpsConnectorGrant,
+): boolean {
+  const capabilities = new Set(normalizeGrantCapabilities(grant.capabilities));
+  if (capabilities.has("google.gmail.manage")) {
+    return true;
+  }
+  const scopes = new Set(
+    (grant.grantedScopes ?? [])
+      .map((scope) => (typeof scope === "string" ? scope.trim() : ""))
+      .filter(Boolean),
+  );
+  return (
+    scopes.has("https://www.googleapis.com/auth/gmail.modify") &&
+    scopes.has("https://www.googleapis.com/auth/gmail.settings.basic")
+  );
 }
 
 export function normalizeCalendarAttendees(

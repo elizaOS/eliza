@@ -28,9 +28,9 @@
 		"zod": "^4.3.6"
 	},
 	"devDependencies": {
-		"@types/node": "^20.0.0",
-		"typescript": "^5.6.0",
-		"vitest": "^2.0.0",
+		"@types/node": "^24.0.0",
+		"typescript": "^6.0.0",
+		"vitest": "^4.0.0",
 		"@biomejs/biome": "^2.3.11"
 	},
 	"milady": {

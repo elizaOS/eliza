@@ -12,15 +12,15 @@
  * legacy paths without the plugin-name prefix.
  */
 
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import path from "node:path";
+import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import {
   SignalPairingSession,
+  type SignalPairingSnapshot,
+  type SignalPairingStatus,
   sanitizeAccountId,
   signalAuthExists,
   signalLogout,
-  type SignalPairingSnapshot,
-  type SignalPairingStatus,
 } from "./pairing-service";
 
 // ── Module-level state ──────────────────────────────────────────────────
@@ -62,9 +62,7 @@ interface ConnectorSetupService {
   broadcastWs(data: object): void;
 }
 
-function getSetupService(
-  runtime: IAgentRuntime,
-): ConnectorSetupService | null {
+function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
   return runtime.getService("connector-setup") as ConnectorSetupService | null;
 }
 
@@ -75,11 +73,10 @@ function resolveSignalStatusResponse(
   session: SignalPairingSessionLike | undefined,
   previousSnapshot: SignalPairingSnapshot | undefined,
   authExists: boolean,
-  serviceConnected: boolean,
+  serviceConnected: boolean
 ) {
   const snapshot = session?.getSnapshot() ?? previousSnapshot;
-  const status =
-    snapshot?.status ?? (authExists || serviceConnected ? "connected" : "idle");
+  const status = snapshot?.status ?? (authExists || serviceConnected ? "connected" : "idle");
 
   return {
     accountId,
@@ -96,11 +93,7 @@ function resolveSignalStatusResponse(
 function reapTerminalSessions(): void {
   for (const [id, session] of signalPairingSessions) {
     const status = session.getStatus();
-    if (
-      status === "disconnected" ||
-      status === "timeout" ||
-      status === "error"
-    ) {
+    if (status === "disconnected" || status === "timeout" || status === "error") {
       signalPairingSnapshots.set(id, session.getSnapshot());
       session.stop();
       signalPairingSessions.delete(id);
@@ -113,7 +106,7 @@ function reapTerminalSessions(): void {
 async function handlePair(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   reapTerminalSessions();
 
@@ -123,7 +116,7 @@ async function handlePair(
     accountId = sanitizeAccountId(
       typeof body.accountId === "string" && body.accountId.trim()
         ? body.accountId.trim()
-        : "default",
+        : "default"
     );
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -163,8 +156,9 @@ async function handlePair(
       signalPairingSnapshots.set(accountId, session.getSnapshot());
 
       if (event.status === "connected") {
-        const phoneNumber = (event as unknown as Record<string, unknown>)
-          .phoneNumber as string | undefined;
+        const phoneNumber = (event as unknown as Record<string, unknown>).phoneNumber as
+          | string
+          | undefined;
 
         if (setupService) {
           setupService.updateConfig((cfg) => {
@@ -206,10 +200,7 @@ async function handlePair(
   signalPairingSnapshots.set(accountId, session.getSnapshot());
 
   void session.start().catch((err) => {
-    console.error(
-      `[signal] Pairing session failed for ${accountId}:`,
-      String(err),
-    );
+    console.error(`[signal] Pairing session failed for ${accountId}:`, String(err));
     signalPairingSnapshots.set(accountId, session.getSnapshot());
     signalPairingSessions.delete(accountId);
   });
@@ -221,7 +212,7 @@ async function handlePair(
       session,
       signalPairingSnapshots.get(accountId),
       false,
-      false,
+      false
     ),
   });
 }
@@ -231,20 +222,19 @@ async function handlePair(
 async function handleStatus(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   reapTerminalSessions();
 
   // Extract accountId from query string
-  const rawUrl = typeof (req as unknown as { url?: string }).url === "string"
-    ? (req as unknown as { url: string }).url
-    : "/";
+  const rawUrl =
+    typeof (req as unknown as { url?: string }).url === "string"
+      ? (req as unknown as { url: string }).url
+      : "/";
   const url = new URL(rawUrl, "http://localhost");
   let accountId: string;
   try {
-    accountId = sanitizeAccountId(
-      url.searchParams.get("accountId") || "default",
-    );
+    accountId = sanitizeAccountId(url.searchParams.get("accountId") || "default");
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
     return;
@@ -259,10 +249,7 @@ async function handleStatus(
 
   let serviceConnected = false;
   try {
-    const sigService = runtime.getService("signal") as Record<
-      string,
-      unknown
-    > | null;
+    const sigService = runtime.getService("signal") as Record<string, unknown> | null;
     if (sigService) {
       serviceConnected =
         Boolean(sigService.connected) ||
@@ -274,15 +261,17 @@ async function handleStatus(
     /* service not yet registered */
   }
 
-  res.status(200).json(
-    resolveSignalStatusResponse(
-      accountId,
-      session,
-      previousSnapshot,
-      authExists,
-      serviceConnected,
-    ),
-  );
+  res
+    .status(200)
+    .json(
+      resolveSignalStatusResponse(
+        accountId,
+        session,
+        previousSnapshot,
+        authExists,
+        serviceConnected
+      )
+    );
 }
 
 // ── POST /api/signal/pair/stop ──────────────────────────────────────────
@@ -290,7 +279,7 @@ async function handleStatus(
 async function handlePairStop(
   req: RouteRequest,
   res: RouteResponse,
-  _runtime: IAgentRuntime,
+  _runtime: IAgentRuntime
 ): Promise<void> {
   const body = (req.body ?? {}) as { accountId?: string };
   let accountId: string;
@@ -298,7 +287,7 @@ async function handlePairStop(
     accountId = sanitizeAccountId(
       typeof body.accountId === "string" && body.accountId.trim()
         ? body.accountId.trim()
-        : "default",
+        : "default"
     );
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -320,7 +309,7 @@ async function handlePairStop(
 async function handleDisconnect(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   const body = (req.body ?? {}) as { accountId?: string };
   let accountId: string;
@@ -328,7 +317,7 @@ async function handleDisconnect(
     accountId = sanitizeAccountId(
       typeof body.accountId === "string" && body.accountId.trim()
         ? body.accountId.trim()
-        : "default",
+        : "default"
     );
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
@@ -415,7 +404,7 @@ export function applySignalQrOverride(
     configured: boolean;
     qrConnected?: boolean;
   }[],
-  workspaceDir: string,
+  workspaceDir: string
 ): void {
   if (signalAuthExists(workspaceDir, "default")) {
     const sigPlugin = plugins.find((plugin) => plugin.id === "signal");

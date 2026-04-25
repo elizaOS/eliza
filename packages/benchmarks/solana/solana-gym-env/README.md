@@ -34,7 +34,7 @@ Ideas we're excited about:
 
 | Model               | Median Score | Max Score | Min Score | Median Programs |
 | ------------------- | ------------ | --------- | --------- | --------------- |
-| **claude-sonnet-4** | **115**      | 181       | 30        | 5               |
+| **claude-sonnet-4-6** | **115**      | 181       | 30        | 5               |
 | gpt-5               | 60           | 66        | 57        | 8               |
 | gemini-2.5-flash    | 40           | 44        | 23        | 6               |
 | gpt-oss-120b        | 23           | 25        | 16        | 6               |
@@ -44,7 +44,7 @@ Ideas we're excited about:
 | Model            | Median Score | Max Score | Min Score | Median Programs |
 | ---------------- | ------------ | --------- | --------- | --------------- |
 | **gpt-5**        | **30**       | 34        | 27        | 16              |
-| claude-sonnet-4  | 33\*         | 102\*     | 19        | 6               |
+| claude-sonnet-4-6  | 33\*         | 102\*     | 19        | 6               |
 | gemini-2.5-flash | 14           | 18        | 0         | 3               |
 | gpt-oss-120b     | 10           | 22        | 8         | 4               |
 
@@ -161,7 +161,7 @@ Contributions are welcome! Areas of interest:
 ## Running the Full Benchmark
 
 It costs about $150-200 USD to run all the models in this benchmark.
-The costs primarily come from `anthropic/claude-sonnet-4`. It is nearly 10x
+The costs primarily come from `anthropic/claude-sonnet-4.6`. It is nearly 10x
 more expensive than `google/gemini-2.5-flash`.
 
 Running the main script will run all the models at once against a `surfpool` instance.
@@ -175,7 +175,7 @@ CODE LOOP MODEL COMPARISON BATCH (PARALLEL)
 Models to test: 4
   - google/gemini-2.5-flash
   - openai/gpt-oss-120b
-  - anthropic/claude-sonnet-4
+  - anthropic/claude-sonnet-4.6
   - qwen/qwen3-coder
 Runs per model: 5
 Messages per run: 50
@@ -206,11 +206,11 @@ Proceed with parallel execution? (y/n): y
   🚀 Starting openai/gpt-oss-120b run 2 (file: batch_openai_gpt_oss_120b_2_164011.ts)
   🚀 Starting openai/gpt-oss-120b run 3 (file: batch_openai_gpt_oss_120b_3_164011.ts)
   🚀 Starting openai/gpt-oss-120b run 4 (file: batch_openai_gpt_oss_120b_4_164011.ts)
-  🚀 Starting anthropic/claude-sonnet-4 run 0 (file: batch_anthropic_claude_sonnet_4_0_164011.ts)
-  🚀 Starting anthropic/claude-sonnet-4 run 1 (file: batch_anthropic_claude_sonnet_4_1_164011.ts)
-  🚀 Starting anthropic/claude-sonnet-4 run 2 (file: batch_anthropic_claude_sonnet_4_2_164011.ts)
-  🚀 Starting anthropic/claude-sonnet-4 run 3 (file: batch_anthropic_claude_sonnet_4_3_164011.ts)
-  🚀 Starting anthropic/claude-sonnet-4 run 4 (file: batch_anthropic_claude_sonnet_4_4_164011.ts)
+  🚀 Starting anthropic/claude-sonnet-4.6 run 0 (file: batch_anthropic_claude_sonnet_4_0_164011.ts)
+  🚀 Starting anthropic/claude-sonnet-4.6 run 1 (file: batch_anthropic_claude_sonnet_4_1_164011.ts)
+  🚀 Starting anthropic/claude-sonnet-4.6 run 2 (file: batch_anthropic_claude_sonnet_4_2_164011.ts)
+  🚀 Starting anthropic/claude-sonnet-4.6 run 3 (file: batch_anthropic_claude_sonnet_4_3_164011.ts)
+  🚀 Starting anthropic/claude-sonnet-4.6 run 4 (file: batch_anthropic_claude_sonnet_4_4_164011.ts)
   🚀 Starting qwen/qwen3-coder run 0 (file: batch_qwen_qwen3_coder_0_164011.ts)
   🚀 Starting qwen/qwen3-coder run 1 (file: batch_qwen_qwen3_coder_1_164011.ts)
   🚀 Starting qwen/qwen3-coder run 2 (file: batch_qwen_qwen3_coder_2_164011.ts)
@@ -226,16 +226,16 @@ Proceed with parallel execution? (y/n): y
   ✅ google/gemini-2.5-flash run 1 completed
   ✅ qwen/qwen3-coder run 0 completed
   ✅ qwen/qwen3-coder run 1 completed
-  ✅ anthropic/claude-sonnet-4 run 2 completed
+  ✅ anthropic/claude-sonnet-4.6 run 2 completed
   ✅ openai/gpt-oss-120b run 1 completed
   ✅ openai/gpt-oss-120b run 3 completed
   ✅ openai/gpt-oss-120b run 2 completed
   ✅ openai/gpt-oss-120b run 4 completed
   ✅ openai/gpt-oss-120b run 0 completed
-  ✅ anthropic/claude-sonnet-4 run 3 completed
-  ✅ anthropic/claude-sonnet-4 run 0 completed
-  ✅ anthropic/claude-sonnet-4 run 1 completed
-  ✅ anthropic/claude-sonnet-4 run 4 completed
+  ✅ anthropic/claude-sonnet-4.6 run 3 completed
+  ✅ anthropic/claude-sonnet-4.6 run 0 completed
+  ✅ anthropic/claude-sonnet-4.6 run 1 completed
+  ✅ anthropic/claude-sonnet-4.6 run 4 completed
   ⏱️  Batch completed in 1072.0 seconds
 ============================================================
 Total experiments: 20
@@ -250,7 +250,7 @@ Failed: 0
 📊 Results by Model:
   google/gemini-2.5-flash: 5/5 successful
   openai/gpt-oss-120b: 5/5 successful
-  anthropic/claude-sonnet-4: 5/5 successful
+  anthropic/claude-sonnet-4.6: 5/5 successful
   qwen/qwen3-coder: 5/5 successful
 
 📈 To analyze results, run:
@@ -275,7 +275,7 @@ CODE LOOP EXPLORER ANALYSIS
 PROGRAMS DISCOVERED BY MODEL
 ============================================================
 
-📊 anthropic/claude-sonnet-4:
+📊 anthropic/claude-sonnet-4.6:
    Total unique programs: 6
    - Token 2022                     (TokenzQd...): 35 interactions
    - Token Program                  (Tokenkeg...): 32 interactions
@@ -321,25 +321,25 @@ By Model:
                           total_reward             success_rate      programs_discovered     unique_instructions
                                   mean    std  max         mean  std                mean max                mean max
 model
-anthropic/claude-sonnet-4         72.2  51.26  139          0.0  0.0                 5.0   6                 0.0   0
+anthropic/claude-sonnet-4.6         72.2  51.26  139          0.0  0.0                 5.0   6                 0.0   0
 google/gemini-2.5-flash           29.4  16.99   42          0.0  0.0                 5.0   7                 0.0   0
 openai/gpt-oss-120b               18.4   6.07   26          0.0  0.0                 5.8   7                 0.0   0
 qwen/qwen3-coder                  13.6   3.05   17          0.0  0.0                 3.4   5                 0.0   0
 
 🏆 Top 5 Runs by Total Reward:
                     model                             run_id  total_reward  programs_discovered
-anthropic/claude-sonnet-4 code_loop_25-08-08_164012_9138bbf9           139                    5
-anthropic/claude-sonnet-4 code_loop_25-08-08_164012_93f08ce9           110                    4
-anthropic/claude-sonnet-4 code_loop_25-08-08_164012_2b5128e5            56                    6
-anthropic/claude-sonnet-4 code_loop_25-08-08_164012_264a312e            43                    6
+anthropic/claude-sonnet-4.6 code_loop_25-08-08_164012_9138bbf9           139                    5
+anthropic/claude-sonnet-4.6 code_loop_25-08-08_164012_93f08ce9           110                    4
+anthropic/claude-sonnet-4.6 code_loop_25-08-08_164012_2b5128e5            56                    6
+anthropic/claude-sonnet-4.6 code_loop_25-08-08_164012_264a312e            43                    6
   google/gemini-2.5-flash code_loop_25-08-08_164012_f60de86f            42                    6
 
 ✅ Top 5 Runs by Success Rate:
                     model                             run_id  success_rate  total_reward
-anthropic/claude-sonnet-4 code_loop_25-08-08_164012_9138bbf9             0           139
-anthropic/claude-sonnet-4 code_loop_25-08-08_164012_93f08ce9             0           110
-anthropic/claude-sonnet-4 code_loop_25-08-08_164012_2b5128e5             0            56
-anthropic/claude-sonnet-4 code_loop_25-08-08_164012_264a312e             0            43
+anthropic/claude-sonnet-4.6 code_loop_25-08-08_164012_9138bbf9             0           139
+anthropic/claude-sonnet-4.6 code_loop_25-08-08_164012_93f08ce9             0           110
+anthropic/claude-sonnet-4.6 code_loop_25-08-08_164012_2b5128e5             0            56
+anthropic/claude-sonnet-4.6 code_loop_25-08-08_164012_264a312e             0            43
   google/gemini-2.5-flash code_loop_25-08-08_164012_f60de86f             0            42
 
 💾 Summary statistics saved to: analysis_results/code_loop_20250808_170341/summary_statistics.csv

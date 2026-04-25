@@ -4,7 +4,7 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsConnectorSourceOfTruth,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   resolveConfiguredGoogleModes,
   resolveGoogleDefaultMode,

@@ -8,14 +8,14 @@
 import { type AgentStartupDiagnostics, client } from "../api";
 import { isElectrobunRuntime } from "../bridge";
 import {
+  computeAgentDeadlineExtensions,
+  getAgentReadyTimeoutMs,
+} from "./agent-startup-timing";
+import {
   asApiLikeError,
   formatStartupErrorDetail,
   type StartupErrorState,
 } from "./internal";
-import {
-  computeAgentDeadlineExtensions,
-  getAgentReadyTimeoutMs,
-} from "./agent-startup-timing";
 import type { StartupEvent } from "./startup-coordinator";
 
 export interface StartingRuntimeDeps {
@@ -129,7 +129,7 @@ export async function runStartingRuntime(
           status = await client.startAgent();
           deps.setAgentStatus(status);
           lastDiag = status.startup;
-        } catch (e) {
+        } catch (e: unknown) {
           lastErr = e;
         }
       }

@@ -5,26 +5,28 @@
  * desktop notifications, and full-reset flows.
  */
 
-import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
 import { getDefaultStylePreset } from "@elizaos/shared/onboarding-presets";
-import { type AgentStatus, type StreamEventEnvelope, client } from "../api";
+import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
+import type {
+  Conversation,
+  ConversationMessage,
+  OnboardingOptions,
+} from "../api";
+import { type AgentStatus, client, type StreamEventEnvelope } from "../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
+import { dispatchElizaCloudStatusUpdated } from "../events";
+import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-runtime-mode";
 import { alertDesktopMessage, confirmDesktopAction } from "../utils";
-import type { AppState } from "./internal";
+import { completeResetLocalStateAfterServerWipe as runCompleteResetLocalStateAfterServerWipe } from "./complete-reset-local-state-after-wipe";
+import { handleResetAppliedFromMainCore } from "./handle-reset-applied-from-main";
+import type { AppState, LifecycleAction } from "./internal";
 import {
   clearAvatarIndex,
   clearPersistedActiveServer,
   LIFECYCLE_MESSAGES,
-  type LoadConversationMessagesResult,
   parseAgentStatusFromMainMenuResetPayload,
 } from "./internal";
-import { completeResetLocalStateAfterServerWipe as runCompleteResetLocalStateAfterServerWipe } from "./complete-reset-local-state-after-wipe";
-import { handleResetAppliedFromMainCore } from "./handle-reset-applied-from-main";
-import { dispatchElizaCloudStatusUpdated } from "../events";
-import type { LifecycleAction } from "./internal";
-import type { Conversation, OnboardingOptions } from "../api";
 import type { OnboardingMode, OnboardingStep } from "./types";
-import type { ConversationMessage } from "../api";
 
 // ── Helpers (file-local) ────────────────────────────────────────────
 
@@ -204,7 +206,6 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
     setPendingRestartReasons,
     setBackendDisconnectedBannerDismissed,
     resetBackendConnection,
-    loadConversations,
     loadPlugins,
     hydrateInitialConversationState,
     requestGreetingWhenRunning,
@@ -612,6 +613,7 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
           setPostOnboardingChecklistDismissed(false);
           setOnboardingName(defaultOnboardingStyle.name);
           setOnboardingStyle(defaultOnboardingStyle.id);
+          persistMobileRuntimeModeForServerTarget("");
           setOnboardingServerTarget("");
           setOnboardingProvider("");
           setOnboardingApiKey("");
@@ -697,7 +699,8 @@ export function useChatLifecycle(deps: UseChatLifecycleDeps) {
       setSelectedVrmIndex,
       setCustomVrmUrl,
       setCustomBackgroundUrl,
-      defaultOnboardingStyle,
+      defaultOnboardingStyle, // Return to splash so user can re-onboard from scratch
+      coordinatorResetRef.current,
     ],
   );
 

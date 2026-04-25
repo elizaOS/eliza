@@ -4,10 +4,7 @@ declare module "@elizaos/signal-native" {
     phoneNumber?: string | null;
   }
 
-  export function linkDevice(
-    authDir: string,
-    deviceName: string,
-  ): Promise<string>;
+  export function linkDevice(authDir: string, deviceName: string): Promise<string>;
 
   export function finishLink(authDir: string): Promise<void>;
 

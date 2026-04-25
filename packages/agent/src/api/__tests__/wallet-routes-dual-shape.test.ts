@@ -112,6 +112,7 @@ beforeEach(async () => {
   tmpStateDir = await fs.mkdtemp(path.join(os.tmpdir(), "wallet-routes-"));
   process.env.MILADY_STATE_DIR = tmpStateDir;
   delete process.env.ENABLE_CLOUD_WALLET;
+  delete process.env.ELIZAOS_CLOUD_API_KEY;
   delete process.env.WALLET_SOURCE_EVM;
   delete process.env.WALLET_SOURCE_SOLANA;
 });
@@ -763,5 +764,90 @@ describe("PUT /api/wallet/config", () => {
       "utf8",
     );
     expect(configEnv).toContain("ENABLE_CLOUD_WALLET=1");
+  });
+});
+
+describe("local wallet writes", () => {
+  it("marks generated local Solana wallets as primary local and reloads the runtime", async () => {
+    const { ctx, sent, restarts, immediateRestarts, savedConfigs } = makeCtx({
+      pathname: "/api/wallet/generate",
+      method: "POST",
+      body: { chain: "solana", source: "local" },
+      restartRuntime: vi.fn(async () => true),
+      depsOverrides: {
+        generateWalletForChain: vi.fn(() => ({
+          privateKey: "generated-solana-private-key",
+          address: "GENERATED_SOLANA_ADDRESS",
+        })),
+      },
+    });
+
+    await handleWalletRoutes(ctx);
+
+    expect(sent.status).toBe(200);
+    expect(sent.body).toMatchObject({
+      ok: true,
+      source: "local",
+      restarting: true,
+    });
+    expect(process.env.WALLET_SOURCE_SOLANA).toBe("local");
+    const configEnv = await fs.readFile(
+      path.join(tmpStateDir, "config.env"),
+      "utf8",
+    );
+    expect(configEnv).toContain("WALLET_SOURCE_SOLANA=local");
+
+    const lastSaved = savedConfigs.at(-1) as {
+      env: { SOLANA_PRIVATE_KEY: string };
+      wallet: { primary: { solana: string } };
+    };
+    expect(lastSaved.env.SOLANA_PRIVATE_KEY).toBe(
+      "generated-solana-private-key",
+    );
+    expect(lastSaved.wallet.primary.solana).toBe("local");
+    expect(immediateRestarts).toEqual(["Wallet configuration updated"]);
+    expect(restarts).toEqual([]);
+  });
+
+  it("marks imported local EVM wallets as primary local and reloads the runtime", async () => {
+    const { ctx, sent, restarts, immediateRestarts, savedConfigs } = makeCtx({
+      pathname: "/api/wallet/import",
+      method: "POST",
+      body: { chain: "evm", privateKey: "0ximported" },
+      restartRuntime: vi.fn(async () => true),
+      depsOverrides: {
+        importWallet: vi.fn((_chain, privateKey) => {
+          process.env.EVM_PRIVATE_KEY = privateKey;
+          return {
+            success: true,
+            address: "0x1234567890abcdef1234567890abcdef12345678",
+          };
+        }),
+      },
+    });
+
+    await handleWalletRoutes(ctx);
+
+    expect(sent.status).toBe(200);
+    expect(sent.body).toMatchObject({
+      ok: true,
+      chain: "evm",
+      restarting: true,
+    });
+    expect(process.env.WALLET_SOURCE_EVM).toBe("local");
+    const configEnv = await fs.readFile(
+      path.join(tmpStateDir, "config.env"),
+      "utf8",
+    );
+    expect(configEnv).toContain("WALLET_SOURCE_EVM=local");
+
+    const lastSaved = savedConfigs.at(-1) as {
+      env: { EVM_PRIVATE_KEY: string };
+      wallet: { primary: { evm: string } };
+    };
+    expect(lastSaved.env.EVM_PRIVATE_KEY).toBe("0ximported");
+    expect(lastSaved.wallet.primary.evm).toBe("local");
+    expect(immediateRestarts).toEqual(["Wallet configuration updated"]);
+    expect(restarts).toEqual([]);
   });
 });

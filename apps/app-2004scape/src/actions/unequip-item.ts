@@ -5,6 +5,7 @@ import { extractParam } from "./param-parser.js";
 export const unequipItem: Action = {
   name: "UNEQUIP_ITEM",
   description: "Unequip a worn item by name",
+  descriptionCompressed: "Unequip worn item.",
   similes: ["REMOVE_ITEM", "TAKE_OFF_ITEM"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

@@ -41,16 +41,7 @@ if TYPE_CHECKING:
     from elizaos.types.plugin import Plugin
     from elizaos.types.runtime import IAgentRuntime
 
-import sys
-from pathlib import Path
-
-sys.path.insert(
-    0,
-    str(Path(__file__).resolve().parents[3] / "plugins" / "plugin-experience" / "python"),
-)
-
-from elizaos_plugin_experience.service import ExperienceService
-from elizaos_plugin_experience.types import ExperienceQuery
+from elizaos_experience_bench.service import ExperienceQuery, ExperienceService
 
 
 # ============================================================================

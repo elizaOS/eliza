@@ -1390,5 +1390,33 @@ export const getContentTypeFromMimeType = (
 	return undefined;
 };
 
+export {
+	AVAILABLE_CONTEXTS_STATE_KEY,
+	attachAvailableContexts,
+	CONTEXT_ROUTING_METADATA_KEY,
+	CONTEXT_ROUTING_STATE_KEY,
+	type ContextRoutingDecision,
+	deriveAvailableContexts,
+	getActiveRoutingContexts,
+	getActiveRoutingContextsForTurn,
+	getContextRoutingFromMessage,
+	getContextRoutingFromState,
+	inferContextRoutingFromMessage,
+	inferContextRoutingFromText,
+	mergeContextRouting,
+	parseContextList,
+	parseContextRoutingMetadata,
+	setContextRoutingMetadata,
+	shouldIncludeByContext,
+} from "./utils/context-routing";
+export { extractAndParseJSONObjectFromText } from "./utils/json-llm";
+export {
+	extractUserText,
+	getUserMessageText,
+	normalizeUserMessageText,
+} from "./utils/message-text";
+// `export * from "./utils"` (in index.node.ts etc.) resolves to this file, not
+// to a `./utils/index.ts`. Any helper in the `utils/` directory that needs to be
+// reachable from `@elizaos/core` must be re-exported here.
 export { getLocalServerUrl } from "./utils/node";
 export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";

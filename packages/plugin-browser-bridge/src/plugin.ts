@@ -1,0 +1,165 @@
+/**
+ * Agent Browser Bridge plugin export.
+ *
+ * plugin-collector discovers `routes` and `schema` at runtime. Phase 4
+ * will register this plugin in the main plugin list (`packages/agent/src/plugins`)
+ * alongside `@elizaos/app-lifeops` and flip the agent-server auth
+ * carve-outs for `/api/browser-bridge/*`.
+ */
+
+import type http from "node:http";
+import { TLSSocket } from "node:tls";
+import {
+  readJsonBody as httpReadJsonBody,
+  sendJson as httpSendJson,
+  sendJsonError as httpSendJsonError,
+} from "@elizaos/agent/api/http-helpers";
+import { decodePathComponent as httpDecodePathComponent } from "@elizaos/agent/api/server-helpers";
+import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import { browserBridgeSchema } from "./schema.ts";
+import {
+  type BrowserBridgeRouteContext,
+  handleBrowserBridgeRoutes,
+} from "./routes.ts";
+
+function json(res: http.ServerResponse, data: unknown, status = 200): void {
+  httpSendJson(res, data, status);
+}
+
+function error(res: http.ServerResponse, message: string, status = 400): void {
+  httpSendJsonError(res, message, status);
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) {
+    return firstHeaderValue(value[0]);
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.split(",")[0]?.trim();
+  return normalized ? normalized : null;
+}
+
+function requestBaseUrl(req: http.IncomingMessage): string {
+  const headers = req.headers ?? {};
+  const protocol =
+    firstHeaderValue(headers["x-forwarded-proto"]) ??
+    (req.socket instanceof TLSSocket && req.socket.encrypted
+      ? "https"
+      : "http");
+  const host =
+    firstHeaderValue(headers["x-forwarded-host"]) ??
+    firstHeaderValue(headers.host) ??
+    "localhost";
+  return `${protocol}://${host}`;
+}
+
+function buildRouteContext(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  runtime: AgentRuntime | null,
+): BrowserBridgeRouteContext {
+  const method = (req.method ?? "GET").toUpperCase();
+  const url = new URL(req.url ?? "/", requestBaseUrl(req));
+  return {
+    req,
+    res,
+    method,
+    pathname: url.pathname,
+    url,
+    state: {
+      runtime,
+      adminEntityId: null,
+    },
+    json,
+    error,
+    readJsonBody: httpReadJsonBody,
+    decodePathComponent: httpDecodePathComponent,
+  };
+}
+
+const STATIC_ROUTES: Array<{ type: string; path: string }> = [
+  { type: "GET", path: "/api/browser-bridge/sessions" },
+  { type: "GET", path: "/api/browser-bridge/settings" },
+  { type: "POST", path: "/api/browser-bridge/settings" },
+  { type: "POST", path: "/api/browser-bridge/companions/pair" },
+  { type: "POST", path: "/api/browser-bridge/companions/auto-pair" },
+  { type: "GET", path: "/api/browser-bridge/companions" },
+  { type: "GET", path: "/api/browser-bridge/packages" },
+  { type: "POST", path: "/api/browser-bridge/packages/open-path" },
+  { type: "POST", path: "/api/browser-bridge/companions/sync" },
+  { type: "GET", path: "/api/browser-bridge/tabs" },
+  { type: "GET", path: "/api/browser-bridge/current-page" },
+  { type: "POST", path: "/api/browser-bridge/sync" },
+  { type: "POST", path: "/api/browser-bridge/sessions" },
+];
+
+const DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
+  { type: "GET", path: "/api/browser-bridge/sessions/:id" },
+  { type: "POST", path: "/api/browser-bridge/sessions/:id/confirm" },
+  { type: "POST", path: "/api/browser-bridge/sessions/:id/progress" },
+  { type: "POST", path: "/api/browser-bridge/sessions/:id/complete" },
+  {
+    type: "POST",
+    path: "/api/browser-bridge/companions/sessions/:id/progress",
+  },
+  {
+    type: "POST",
+    path: "/api/browser-bridge/companions/sessions/:id/complete",
+  },
+  { type: "POST", path: "/api/browser-bridge/packages/:browser/build" },
+  {
+    type: "POST",
+    path: "/api/browser-bridge/packages/:browser/open-manager",
+  },
+  { type: "GET", path: "/api/browser-bridge/packages/:browser/download" },
+];
+
+type PluginRouteHandler = NonNullable<Route["handler"]>;
+
+function routeHandler(): PluginRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const ctx = buildRouteContext(
+      httpReq,
+      httpRes,
+      (runtime as AgentRuntime) ?? null,
+    );
+    await handleBrowserBridgeRoutes(ctx);
+  };
+}
+
+const browserBridgePluginRoutes: Route[] = [
+  ...STATIC_ROUTES.map(
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: routeHandler(),
+      }) as Route,
+  ),
+  ...DYNAMIC_ROUTES.map(
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: routeHandler(),
+      }) as Route,
+  ),
+];
+
+export const browserBridgePlugin: Plugin = {
+  name: "@elizaos/plugin-browser-bridge",
+  description:
+    "Agent Browser Bridge: Chrome/Safari companion pairing, settings, tab + page context sync, packaging artifacts, and workflow-linked browser session endpoints.",
+  schema: browserBridgeSchema,
+  routes: browserBridgePluginRoutes,
+};

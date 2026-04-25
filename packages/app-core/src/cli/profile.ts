@@ -89,10 +89,11 @@ export function parseCliProfileArgs(argv: string[]): CliProfileParseResult {
 
 function resolveProfileStateDir(
   profile: string,
+  namespace: string,
   homedir: () => string,
 ): string {
   const suffix = profile.toLowerCase() === "default" ? "" : `-${profile}`;
-  return path.join(homedir(), `.eliza${suffix}`);
+  return path.join(homedir(), `.${namespace}${suffix}`);
 }
 
 export function applyCliProfileEnv(params: {
@@ -109,32 +110,17 @@ export function applyCliProfileEnv(params: {
 
   // Convenience only: fill defaults, never override explicit env values.
   env.ELIZA_PROFILE = profile;
-  env.ELIZA_PROFILE = profile;
-  env.ELIZA_NAMESPACE = env.ELIZA_NAMESPACE?.trim() || "eliza";
-  env.ELIZA_NAMESPACE = env.ELIZA_NAMESPACE?.trim() || "eliza";
+  const namespace = env.ELIZA_NAMESPACE?.trim() || "milady";
+  env.ELIZA_NAMESPACE = namespace;
 
-  const stateDir =
-    env.ELIZA_STATE_DIR?.trim() ||
-    env.ELIZA_STATE_DIR?.trim() ||
-    resolveProfileStateDir(profile, homedir);
   if (!env.ELIZA_STATE_DIR?.trim()) {
-    env.ELIZA_STATE_DIR = stateDir;
-  }
-  if (!env.ELIZA_STATE_DIR?.trim()) {
-    env.ELIZA_STATE_DIR = stateDir;
+    env.ELIZA_STATE_DIR = resolveProfileStateDir(profile, namespace, homedir);
   }
 
   if (!env.ELIZA_CONFIG_PATH?.trim()) {
-    env.ELIZA_CONFIG_PATH = path.join(stateDir, "eliza.json");
-  }
-  if (!env.ELIZA_CONFIG_PATH?.trim()) {
-    env.ELIZA_CONFIG_PATH =
-      env.ELIZA_CONFIG_PATH ?? path.join(stateDir, "eliza.json");
+    env.ELIZA_CONFIG_PATH = path.join(env.ELIZA_STATE_DIR, `${namespace}.json`);
   }
 
-  if (profile === "dev" && !env.ELIZA_GATEWAY_PORT?.trim()) {
-    env.ELIZA_GATEWAY_PORT = "19001";
-  }
   if (profile === "dev" && !env.ELIZA_GATEWAY_PORT?.trim()) {
     env.ELIZA_GATEWAY_PORT = "19001";
   }

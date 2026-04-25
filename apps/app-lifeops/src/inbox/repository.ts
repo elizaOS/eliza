@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
-  getRuntimeDbCacheKey,
   parseJsonArray,
   sqlBoolean,
   sqlNumber,
@@ -19,113 +18,6 @@ import type {
   TriageExample,
   TriageUrgency,
 } from "./types.js";
-
-// ---------------------------------------------------------------------------
-// Schema guard (one-time migration per DB connection)
-// ---------------------------------------------------------------------------
-
-const schemaReady = new WeakSet<object>();
-const schemaInitializing = new WeakMap<object, Promise<void>>();
-
-async function ensureSchema(runtime: IAgentRuntime): Promise<void> {
-  const key = getRuntimeDbCacheKey(runtime);
-  if (schemaReady.has(key)) return;
-
-  let pending = schemaInitializing.get(key);
-  if (pending) {
-    await pending;
-    return;
-  }
-
-  pending = (async () => {
-    try {
-      await runMigration(runtime);
-      schemaReady.add(key);
-    } finally {
-      schemaInitializing.delete(key);
-    }
-  })();
-  schemaInitializing.set(key, pending);
-  await pending;
-}
-
-async function runMigration(runtime: IAgentRuntime): Promise<void> {
-  await executeRawSql(runtime, "BEGIN");
-  try {
-    await executeRawSql(runtime, "SAVEPOINT inbox_schema");
-    try {
-      await executeRawSql(
-        runtime,
-        `CREATE TABLE IF NOT EXISTS inbox_triage_entries (
-          id              TEXT PRIMARY KEY,
-          agent_id        TEXT NOT NULL,
-          source          TEXT NOT NULL,
-          source_room_id  TEXT,
-          source_entity_id TEXT,
-          source_message_id TEXT,
-          channel_name    TEXT NOT NULL,
-          channel_type    TEXT NOT NULL,
-          deep_link       TEXT,
-          classification  TEXT NOT NULL,
-          urgency         TEXT NOT NULL DEFAULT 'low',
-          confidence      REAL NOT NULL DEFAULT 0.5,
-          snippet         TEXT NOT NULL,
-          sender_name     TEXT,
-          thread_context  TEXT,
-          triage_reasoning TEXT,
-          suggested_response TEXT,
-          draft_response  TEXT,
-          auto_replied    BOOLEAN NOT NULL DEFAULT FALSE,
-          resolved        BOOLEAN NOT NULL DEFAULT FALSE,
-          resolved_at     TEXT,
-          created_at      TEXT NOT NULL,
-          updated_at      TEXT NOT NULL
-        )`,
-      );
-      await executeRawSql(
-        runtime,
-        `CREATE INDEX IF NOT EXISTS idx_inbox_triage_resolved
-           ON inbox_triage_entries (resolved, classification)`,
-      );
-      await executeRawSql(
-        runtime,
-        `CREATE INDEX IF NOT EXISTS idx_inbox_triage_source_msg
-           ON inbox_triage_entries (source_message_id)`,
-      );
-      await executeRawSql(
-        runtime,
-        `CREATE INDEX IF NOT EXISTS idx_inbox_triage_created
-           ON inbox_triage_entries (created_at DESC)`,
-      );
-
-      await executeRawSql(
-        runtime,
-        `CREATE TABLE IF NOT EXISTS inbox_triage_examples (
-          id              TEXT PRIMARY KEY,
-          agent_id        TEXT NOT NULL,
-          source          TEXT NOT NULL,
-          snippet         TEXT NOT NULL,
-          classification  TEXT NOT NULL,
-          owner_action    TEXT NOT NULL,
-          owner_classification TEXT,
-          context_json    TEXT,
-          created_at      TEXT NOT NULL
-        )`,
-      );
-
-      await executeRawSql(runtime, "RELEASE SAVEPOINT inbox_schema");
-    } catch (error) {
-      await executeRawSql(runtime, "ROLLBACK TO SAVEPOINT inbox_schema").catch(
-        () => {},
-      );
-      throw error;
-    }
-    await executeRawSql(runtime, "COMMIT");
-  } catch (error) {
-    await executeRawSql(runtime, "ROLLBACK").catch(() => {});
-    throw error;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Row parsing
@@ -213,10 +105,6 @@ export class InboxTriageRepository {
     return this.runtime.agentId;
   }
 
-  private async ready(): Promise<void> {
-    await ensureSchema(this.runtime);
-  }
-
   // ---- Triage entries ----
 
   async storeTriage(opts: {
@@ -236,13 +124,12 @@ export class InboxTriageRepository {
     triageReasoning?: string;
     suggestedResponse?: string;
   }): Promise<TriageEntry> {
-    await this.ready();
     const id = newId();
     const now = isoNow();
 
     await executeRawSql(
       this.runtime,
-      `INSERT INTO inbox_triage_entries (
+      `INSERT INTO life_inbox_triage_entries (
         id, agent_id, source, source_room_id, source_entity_id, source_message_id,
         channel_name, channel_type, deep_link, classification, urgency, confidence,
         snippet, sender_name, thread_context, triage_reasoning, suggested_response,
@@ -288,11 +175,10 @@ export class InboxTriageRepository {
   }
 
   async getUnresolved(opts?: { limit?: number }): Promise<TriageEntry[]> {
-    await this.ready();
     const limit = opts?.limit ?? 50;
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM inbox_triage_entries
+      `SELECT * FROM life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND resolved = FALSE
        ORDER BY
@@ -307,13 +193,12 @@ export class InboxTriageRepository {
     classification: TriageClassification,
     opts?: { limit?: number; unresolvedOnly?: boolean },
   ): Promise<TriageEntry[]> {
-    await this.ready();
     const limit = opts?.limit ?? 50;
     const unresolvedOnly = opts?.unresolvedOnly !== false;
     const resolvedClause = unresolvedOnly ? "AND resolved = FALSE" : "";
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM inbox_triage_entries
+      `SELECT * FROM life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND classification = ${sqlText(classification)}
          ${resolvedClause}
@@ -324,39 +209,38 @@ export class InboxTriageRepository {
   }
 
   async getById(id: string): Promise<TriageEntry | null> {
-    await this.ready();
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM inbox_triage_entries
+      `SELECT * FROM life_inbox_triage_entries
        WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}
        LIMIT 1`,
     );
-    return rows.length > 0 ? parseTriageEntry(rows[0]) : null;
+    const row = rows[0];
+    return row ? parseTriageEntry(row) : null;
   }
 
   async getBySourceMessageId(
     sourceMessageId: string,
   ): Promise<TriageEntry | null> {
-    await this.ready();
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM inbox_triage_entries
+      `SELECT * FROM life_inbox_triage_entries
        WHERE source_message_id = ${sqlText(sourceMessageId)}
          AND agent_id = ${sqlText(this.agentId)}
        LIMIT 1`,
     );
-    return rows.length > 0 ? parseTriageEntry(rows[0]) : null;
+    const row = rows[0];
+    return row ? parseTriageEntry(row) : null;
   }
 
   async getBySourceMessageIds(
     sourceMessageIds: string[],
   ): Promise<Set<string>> {
     if (sourceMessageIds.length === 0) return new Set();
-    await this.ready();
     const inClause = sourceMessageIds.map((id) => sqlText(id)).join(", ");
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT source_message_id FROM inbox_triage_entries
+      `SELECT source_message_id FROM life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND source_message_id IN (${inClause})`,
     );
@@ -367,7 +251,6 @@ export class InboxTriageRepository {
     id: string,
     opts?: { draftResponse?: string; autoReplied?: boolean },
   ): Promise<void> {
-    await this.ready();
     const now = isoNow();
     const sets = [
       `resolved = TRUE`,
@@ -382,17 +265,16 @@ export class InboxTriageRepository {
     }
     await executeRawSql(
       this.runtime,
-      `UPDATE inbox_triage_entries
+      `UPDATE life_inbox_triage_entries
        SET ${sets.join(", ")}
        WHERE id = ${sqlText(id)} AND agent_id = ${sqlText(this.agentId)}`,
     );
   }
 
   async getRecentForDigest(sinceIso: string): Promise<TriageEntry[]> {
-    await this.ready();
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM inbox_triage_entries
+      `SELECT * FROM life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND created_at >= ${sqlText(sinceIso)}
          AND classification != 'ignore'
@@ -404,10 +286,9 @@ export class InboxTriageRepository {
   }
 
   async getRecentAutoReplies(limit = 5): Promise<TriageEntry[]> {
-    await this.ready();
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM inbox_triage_entries
+      `SELECT * FROM life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND auto_replied = TRUE
        ORDER BY created_at DESC
@@ -417,10 +298,9 @@ export class InboxTriageRepository {
   }
 
   async countAutoRepliesSince(sinceIso: string): Promise<number> {
-    await this.ready();
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT COUNT(*) AS cnt FROM inbox_triage_entries
+      `SELECT COUNT(*) AS cnt FROM life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND auto_replied = TRUE
          AND created_at >= ${sqlText(sinceIso)}`,
@@ -429,10 +309,9 @@ export class InboxTriageRepository {
   }
 
   async cleanupOlderThan(olderThanIso: string): Promise<number> {
-    await this.ready();
     const rows = await executeRawSql(
       this.runtime,
-      `DELETE FROM inbox_triage_entries
+      `DELETE FROM life_inbox_triage_entries
        WHERE agent_id = ${sqlText(this.agentId)}
          AND resolved = TRUE
          AND created_at < ${sqlText(olderThanIso)}
@@ -451,7 +330,6 @@ export class InboxTriageRepository {
     ownerClassification?: TriageClassification;
     contextJson?: Record<string, unknown>;
   }): Promise<TriageExample> {
-    await this.ready();
     const id = newId();
     const now = isoNow();
     const contextStr = opts.contextJson
@@ -460,7 +338,7 @@ export class InboxTriageRepository {
 
     await executeRawSql(
       this.runtime,
-      `INSERT INTO inbox_triage_examples (
+      `INSERT INTO life_inbox_triage_examples (
         id, agent_id, source, snippet, classification, owner_action,
         owner_classification, context_json, created_at
       ) VALUES (
@@ -485,10 +363,9 @@ export class InboxTriageRepository {
   }
 
   async getExamples(limit = 10): Promise<TriageExample[]> {
-    await this.ready();
     const rows = await executeRawSql(
       this.runtime,
-      `SELECT * FROM inbox_triage_examples
+      `SELECT * FROM life_inbox_triage_examples
        WHERE agent_id = ${sqlText(this.agentId)}
        ORDER BY created_at DESC
        LIMIT ${limit}`,

@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { v4 as uuidv4 } from "uuid";
 
 interface WorkingMemoryEntry {
@@ -14,6 +16,7 @@ import {
 import { parseActionParams, validateActionParams } from "./actions";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
 import {
 	type CapabilityConfig,
 	createBasicCapabilitiesPlugin,
@@ -149,11 +152,26 @@ import {
 	parseKeyValueXml,
 	stringToUuid,
 } from "./utils";
+import {
+	collectActionResultSizeWarnings,
+	getActionResultActionName,
+	getActionResultReference,
+	MAX_ACTION_RESULT_ERROR_CHARS,
+	MAX_ACTION_RESULT_TEXT_CHARS,
+	stringifyActionResultError,
+	trimActionResultForPromptState,
+} from "./utils/action-results";
 import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
+import { resolveProviderContexts } from "./utils/context-catalog";
+import {
+	getActiveRoutingContextsForTurn,
+	shouldIncludeByContext,
+} from "./utils/context-routing";
 import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
+import { resolveStateDir } from "./utils/state-dir";
 import {
 	ActionStreamFilter,
 	ValidationStreamExtractor,
@@ -236,6 +254,27 @@ function resolveDynamicPromptModelType(
 	}
 }
 
+/**
+ * Resolves the default structured-output format from a setting value.
+ * Used by `dynamicPromptExecFromState` when no per-call preference is given.
+ * Accepts `toon`, `xml`, `json` (case-insensitive); anything else → TOON.
+ */
+export function resolveDefaultOutputFormat(
+	raw: unknown,
+): "XML" | "JSON" | "TOON" {
+	if (typeof raw !== "string") return "TOON";
+	switch (raw.trim().toLowerCase()) {
+		case "xml":
+			return "XML";
+		case "json":
+			return "JSON";
+		case "toon":
+			return "TOON";
+		default:
+			return "TOON";
+	}
+}
+
 type ServiceResolver = (service: Service) => void;
 type ServiceRejecter = (reason: Error | string) => void;
 type ServicePromiseHandler = {
@@ -254,6 +293,19 @@ function isTextStreamResult(
 		"usage" in value &&
 		"finishReason" in value
 	);
+}
+
+function callbackContentHasVisibleOutput(content: Content): boolean {
+	if (typeof content.text === "string" && content.text.trim().length > 0) {
+		return true;
+	}
+	return Array.isArray(content.attachments) && content.attachments.length > 0;
+}
+
+function safeActionResultFilePart(value: string | undefined): string {
+	const normalized =
+		value?.trim().replace(/[^a-zA-Z0-9._-]/g, "_") || "unknown";
+	return normalized.slice(0, 80) || "unknown";
 }
 
 export class AgentRuntime implements IAgentRuntime {
@@ -1395,9 +1447,6 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		if (this.character.advancedMemory === true) {
-			const { createAdvancedMemoryPlugin } = await import(
-				"./features/advanced-memory/index.ts"
-			);
 			pluginRegistrationPromises.push(
 				this.registerPlugin(createAdvancedMemoryPlugin()),
 			);
@@ -2178,6 +2227,104 @@ export class AgentRuntime implements IAgentRuntime {
 		};
 	}
 
+	private async writeActionResultSnapshot(params: {
+		message: Memory;
+		actionId: UUID;
+		actionName: string;
+		field: "text" | "error";
+		content: string;
+	}): Promise<string | undefined> {
+		try {
+			const directory = join(
+				resolveStateDir(),
+				"action-results",
+				safeActionResultFilePart(params.message.roomId),
+				safeActionResultFilePart(params.message.id),
+			);
+			await mkdir(directory, { recursive: true });
+			const filePath = join(
+				directory,
+				`${Date.now()}-${safeActionResultFilePart(
+					params.actionName,
+				)}-${safeActionResultFilePart(params.actionId)}-${params.field}.txt`,
+			);
+			await writeFile(filePath, params.content, "utf8");
+			return filePath;
+		} catch (error) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					action: params.actionName,
+					actionId: params.actionId,
+					field: params.field,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Failed to persist oversized action result snapshot",
+			);
+			return undefined;
+		}
+	}
+
+	private async prepareActionResultForPromptState(
+		actionResult: ActionResult,
+		message: Memory,
+		actionId: UUID,
+	): Promise<ActionResult> {
+		const actionName = getActionResultActionName(actionResult);
+		for (const warning of collectActionResultSizeWarnings(actionResult)) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					messageId: message.id,
+					roomId: message.roomId,
+					action: warning.actionName,
+					actionId,
+					field: warning.field,
+					rawCharLength: warning.rawCharLength,
+					estimatedTokens: warning.estimatedTokens,
+					thresholdTokens: warning.thresholdTokens,
+				},
+				"Action result exceeds prompt-size warning threshold",
+			);
+		}
+
+		const references: { text?: string; error?: string } = {};
+		if (
+			typeof actionResult.text === "string" &&
+			actionResult.text.trim().length > MAX_ACTION_RESULT_TEXT_CHARS
+		) {
+			references.text =
+				getActionResultReference(actionResult, "text") ??
+				(await this.writeActionResultSnapshot({
+					message,
+					actionId,
+					actionName,
+					field: "text",
+					content: actionResult.text,
+				}));
+		}
+
+		const errorText = stringifyActionResultError(actionResult.error);
+		if (
+			typeof errorText === "string" &&
+			errorText.trim().length > MAX_ACTION_RESULT_ERROR_CHARS
+		) {
+			references.error =
+				getActionResultReference(actionResult, "error") ??
+				(await this.writeActionResultSnapshot({
+					message,
+					actionId,
+					actionName,
+					field: "error",
+					content: errorText,
+				}));
+		}
+
+		return trimActionResultForPromptState(actionResult, references);
+	}
+
 	async processActions(
 		message: Memory,
 		responses: Memory[],
@@ -2483,9 +2630,16 @@ export class AgentRuntime implements IAgentRuntime {
 								action: action.name,
 								errors: validation.errors,
 							},
-							"Action parameter validation incomplete; continuing to handler",
+							"Skipping action with invalid parameters",
 						);
-						options.parameterErrors = validation.errors;
+						if (actionPlan?.steps?.[actionIndex]) {
+							actionPlan = this.updateActionStep(actionPlan, actionIndex, {
+								status: "failed",
+								error: validation.errors.join("; "),
+							});
+						}
+						actionIndex++;
+						continue;
 					}
 
 					if (validation.params) options.parameters = validation.params;
@@ -2570,10 +2724,20 @@ export class AgentRuntime implements IAgentRuntime {
 				});
 
 				const storedCallbackData: Content[] = [];
+				let visibleCallbackIndex: number | null = null;
 
 				const storageCallback = async (response: Content) => {
 					// Use responseMessageId for the text response (separate from action badge)
 					response.responseId = responseMessageId;
+					if (callbackContentHasVisibleOutput(response)) {
+						if (visibleCallbackIndex === null) {
+							visibleCallbackIndex = storedCallbackData.length;
+							storedCallbackData.push(response);
+						} else {
+							storedCallbackData[visibleCallbackIndex] = response;
+						}
+						return [];
+					}
 					storedCallbackData.push(response);
 					return [];
 				};
@@ -2710,6 +2874,11 @@ export class AgentRuntime implements IAgentRuntime {
 						};
 					}
 
+					actionResult = await this.prepareActionResultForPromptState(
+						actionResult,
+						message,
+						actionId,
+					);
 					actionResults.push(actionResult);
 
 					// Merge returned values into state
@@ -2808,10 +2977,8 @@ export class AgentRuntime implements IAgentRuntime {
 				if (
 					callback &&
 					actionText &&
-					!storedCallbackData.some(
-						(content) =>
-							typeof content?.text === "string" &&
-							content.text.trim().length > 0,
+					!storedCallbackData.some((content) =>
+						callbackContentHasVisibleOutput(content),
 					)
 				) {
 					storedCallbackData.push({
@@ -3373,6 +3540,10 @@ export class AgentRuntime implements IAgentRuntime {
 			skipCache || !message.id
 				? emptyObj
 				: (await this.stateCache.get(message.id)) || emptyObj;
+		const activeContexts = getActiveRoutingContextsForTurn(
+			cachedState,
+			message,
+		);
 		const providerNames = new Set<string>();
 		if (filterList && filterList.length > 0) {
 			for (const name of filterList) {
@@ -3380,6 +3551,12 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		} else {
 			for (const p of this.providers.filter((p) => !p.private && !p.dynamic)) {
+				if (
+					activeContexts.length > 0 &&
+					!shouldIncludeByContext(resolveProviderContexts(p), activeContexts)
+				) {
+					continue;
+				}
 				providerNames.add(p.name);
 			}
 		}
@@ -4150,31 +4327,43 @@ export class AgentRuntime implements IAgentRuntime {
 				: typeof response === "string"
 					? response
 					: undefined;
-		this.adapter.createLogs([
-			{
-				entityId: this.agentId,
-				roomId: this.currentRoomId ?? this.agentId,
-				body: {
-					modelType,
-					modelKey,
-					prompt: promptContent ?? undefined,
-					systemPrompt: this.character.system ?? undefined,
-					runId: this.getCurrentRunId(),
-					timestamp: Date.now(),
-					executionTime: elapsedTime,
-					provider:
-						provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
-					actionContext: this.currentActionContext
-						? {
-								actionName: this.currentActionContext.actionName,
-								actionId: this.currentActionContext.actionId,
-							}
-						: undefined,
-					response: responseValue,
+		void this.adapter
+			.createLogs([
+				{
+					entityId: this.agentId,
+					roomId: this.currentRoomId ?? this.agentId,
+					body: {
+						modelType,
+						modelKey,
+						prompt: promptContent ?? undefined,
+						systemPrompt: this.character.system ?? undefined,
+						runId: this.getCurrentRunId(),
+						timestamp: Date.now(),
+						executionTime: elapsedTime,
+						provider:
+							provider || this.models.get(modelKey)?.[0]?.provider || "unknown",
+						actionContext: this.currentActionContext
+							? {
+									actionName: this.currentActionContext.actionName,
+									actionId: this.currentActionContext.actionId,
+								}
+							: undefined,
+						response: responseValue,
+					},
+					type: `useModel:${modelKey}`,
 				},
-				type: `useModel:${modelKey}`,
-			},
-		]);
+			])
+			.catch((error) => {
+				this.logger.debug(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						model: modelKey,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Model call log write failed",
+				);
+			});
 	}
 
 	async useModel<T extends keyof ModelParamsMap, R = ModelResultMap[T]>(
@@ -5087,7 +5276,9 @@ export class AgentRuntime implements IAgentRuntime {
 
 			// Process format options
 			const hasNestedSchema = this.schemaHasNestedStructure(schema);
-			let format: "XML" | "JSON" | "TOON" = "TOON";
+			let format: "XML" | "JSON" | "TOON" = resolveDefaultOutputFormat(
+				this.getSetting("PROMPT_OUTPUT_FORMAT"),
+			);
 			if (options.forceFormat) {
 				if (options.forceFormat === "xml" && hasNestedSchema) {
 					this.logger.warn(
@@ -6967,6 +7158,28 @@ ${section_end}`;
 		}
 	}
 
+	unregisterEvent<T extends keyof EventPayloadMap>(
+		event: T,
+		handler: EventHandler<T>,
+	): void;
+	unregisterEvent<P extends EventPayload = EventPayload>(
+		event: string,
+		handler: (params: P) => Promise<void>,
+	): void;
+	unregisterEvent(
+		event: string,
+		handler: (params: EventPayload) => Promise<void>,
+	): void {
+		const handlers = this.events?.[event];
+		if (!handlers) return;
+		const filtered = handlers.filter((h) => h !== handler);
+		if (filtered.length > 0) {
+			this.events[event] = filtered;
+		} else {
+			delete this.events[event];
+		}
+	}
+
 	getEvent(
 		event: string,
 	):
@@ -7048,6 +7261,10 @@ ${section_end}`;
 
 	getTaskWorker(name: string): TaskWorker | undefined {
 		return this.taskWorkers.get(name);
+	}
+
+	unregisterTaskWorker(name: string): boolean {
+		return this.taskWorkers.delete(name);
 	}
 
 	get db(): object {
@@ -7862,7 +8079,7 @@ ${section_end}`;
 		});
 	}
 
-	// Deprecated entity wrapper
+	// Single-item entity wrapper
 	async updateEntity(entity: Entity): Promise<void> {
 		return await this.adapter.updateEntities([entity]);
 	}
@@ -7884,7 +8101,7 @@ ${section_end}`;
 		return await this.adapter.deleteComponents(componentIds);
 	}
 
-	// Deprecated component wrappers
+	// Single-item component wrappers
 	async createComponent(component: Component): Promise<boolean> {
 		const ids = await this.adapter.createComponents([component]);
 		return ids.length > 0;
@@ -8035,7 +8252,7 @@ ${section_end}`;
 		return await this.adapter.deleteRelationships(relationshipIds);
 	}
 
-	// Deprecated relationship wrappers
+	// Single-item relationship wrappers
 	async createRelationship(params: {
 		sourceEntityId: UUID;
 		targetEntityId: UUID;
@@ -8168,7 +8385,7 @@ ${section_end}`;
 		return await this.adapter.deleteRooms(roomIds);
 	}
 
-	// Deprecated room wrappers
+	// Single-item room wrappers
 	async updateRoom(room: Room): Promise<void> {
 		return await this.adapter.updateRooms([room]);
 	}
@@ -8347,7 +8564,7 @@ ${section_end}`;
 		return await this.adapter.deletePairingAllowlistEntries(ids);
 	}
 
-	// Deprecated pairing wrappers
+	// Single-item pairing wrappers
 	async createPairingRequest(request: PairingRequest): Promise<UUID> {
 		const ids = await this.adapter.createPairingRequests([request]);
 		return ids[0];

@@ -1,4 +1,21 @@
 #!/usr/bin/env node
+/**
+ * Mobile build orchestrator for elizaOS apps.
+ *
+ * Builds an iOS or Android app from any elizaOS host app (Milady, etc.).
+ * Reads app identity from the host's app.config.ts so web, desktop, and
+ * native builds share one canonical app contract.
+ *
+ * Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>
+ *
+ * Phases:
+ *   1. Resolve config  — read app.config.ts for appId / appName
+ *   2. Build web        — vite build → dist/
+ *   3. Capacitor sync   — generate native platform projects
+ *   4. Overlay native   — permissions, services, entitlements, Podfile
+ *   5. Platform patches — Gradle template, SPM compat, xcconfig
+ *   6. Native build     — gradlew / xcodebuild
+ */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -7,155 +24,71 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
+// ── Paths ───────────────────────────────────────────────────────────────
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const appDir = path.join(repoRoot, "apps", "app");
-const iosPlatformDir = path.join(appDir, "ios");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
-const iosWorkspacePath = path.join(iosDir, "App.xcworkspace");
-const prepareIosCocoapodsScript =
-  firstExisting([
-    path.join(
-      repoRoot,
-      "eliza",
-      "packages",
-      "app-core",
-      "scripts",
-      "prepare-ios-cocoapods.sh",
-    ),
-    path.join(repoRoot, "scripts", "prepare-ios-cocoapods.sh"),
-  ]) ??
-  path.join(
-    repoRoot,
-    "eliza",
-    "packages",
-    "app-core",
-    "scripts",
-    "prepare-ios-cocoapods.sh",
-  );
-
-export const PLATFORM_TEMPLATE_FILES = {
-  android: [
-    "build.gradle",
-    "settings.gradle",
-    "variables.gradle",
-    "capacitor.settings.gradle",
-    path.join("app", "build.gradle"),
-    path.join("app", "capacitor.build.gradle"),
-  ],
-  ios: [
-    path.join("App", "Podfile"),
-    path.join("App", "App.xcodeproj", "project.pbxproj"),
-    path.join(
-      "App",
-      "App",
-      "WebsiteBlockerContentExtension",
-      "ActionRequestHandler.swift",
-    ),
-    path.join("App", "App", "WebsiteBlockerContentExtension", "Info.plist"),
-    path.join(
-      "App",
-      "App",
-      "WebsiteBlockerContentExtension",
-      "WebsiteBlockerContentExtension.entitlements",
-    ),
-  ],
-};
-
-export function resolvePlatformTemplateRoot(
-  platform,
-  { repoRootValue = repoRoot } = {},
-) {
-  return firstExisting([
-    path.join(
-      repoRootValue,
-      "eliza",
-      "packages",
-      "app-core",
-      "platforms",
-      platform,
-    ),
-    path.join(repoRootValue, "packages", "app-core", "platforms", platform),
-  ]);
-}
-
-const androidPlatformSrc =
-  resolvePlatformTemplateRoot("android") ??
-  path.join(
-    repoRoot,
-    "eliza",
-    "packages",
-    "app-core",
-    "platforms",
-    "android",
-  );
-const iosPlatformSrc =
-  resolvePlatformTemplateRoot("ios") ??
-  path.join(
-    repoRoot,
-    "eliza",
-    "packages",
-    "app-core",
-    "platforms",
-    "ios",
-  );
-const androidBuildGradleTemplate = path.join(
-  androidPlatformSrc,
-  "build.gradle",
+const miladyOsVendorDir = path.join(
+  repoRoot,
+  "os",
+  "android",
+  "vendor",
+  "milady",
 );
-
-// ── App identity ────────────────────────────────────────────────────────
-// Read appId and appName from app.config.ts (primary) or capacitor.config.ts
-// (fallback). The build script uses these to parameterize entitlements,
-// manifest service names, notification strings, etc.
+const miladyOsApkDir = path.join(miladyOsVendorDir, "apps", "Milady");
+const platformsDir = path.join(
+  repoRoot,
+  "eliza",
+  "packages",
+  "app-core",
+  "platforms",
+);
+const nativePluginsDir = path.join(
+  repoRoot,
+  "eliza",
+  "packages",
+  "native-plugins",
+);
+// ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
 function readAppIdentity() {
-  const defaults = { appId: "ai.elizaos.app", appName: "Eliza" };
-  for (const file of ["app.config.ts", "capacitor.config.ts"]) {
-    const fp = path.join(appDir, file);
-    if (!fs.existsSync(fp)) continue;
-    const src = fs.readFileSync(fp, "utf8");
-    const id = src.match(/appId\s*[:=]\s*["']([^"']+)["']/)?.[1];
-    const name = src.match(/appName\s*[:=]\s*["']([^"']+)["']/)?.[1];
-    if (id) defaults.appId = id;
-    if (name) defaults.appName = name;
+  const cfgPath = path.join(appDir, "app.config.ts");
+  if (!fs.existsSync(cfgPath)) {
+    throw new Error(`app.config.ts not found at ${cfgPath}`);
   }
-  return { ...defaults, appGroup: `group.${defaults.appId}` };
+  const src = fs.readFileSync(cfgPath, "utf8");
+  const appId = src.match(/appId:\s*["']([^"']+)["']/)?.[1];
+  const appName = src.match(/appName:\s*["']([^"']+)["']/)?.[1];
+  const urlScheme = src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId;
+  if (!appId || !appName) {
+    throw new Error("Could not parse appId/appName from app.config.ts");
+  }
+  return { appId, appName, urlScheme };
 }
 
 const APP = readAppIdentity();
 console.log(`[mobile-build] App: ${APP.appName} (${APP.appId})`);
 
+// ── Helpers ─────────────────────────────────────────────────────────────
+
 function run(command, args, { cwd, env = process.env } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      env,
-      stdio: "inherit",
-    });
-
+    const child = spawn(command, args, { cwd, env, stdio: "inherit" });
     child.on("exit", (code, signal) => {
-      if (signal) {
-        reject(new Error(`${command} exited due to signal ${signal}`));
-        return;
-      }
-
-      if ((code ?? 1) !== 0) {
-        reject(new Error(`${command} exited with code ${code ?? 1}`));
-        return;
-      }
-
+      if (signal) return reject(new Error(`${command} killed by ${signal}`));
+      if ((code ?? 1) !== 0)
+        return reject(new Error(`${command} exited with code ${code ?? 1}`));
       resolve();
     });
   });
 }
 
 function firstExisting(paths) {
-  for (const candidate of paths) {
-    if (candidate && fs.existsSync(candidate)) {
-      return candidate;
-    }
+  for (const p of paths) {
+    if (p && fs.existsSync(p)) return p;
   }
   return null;
 }
@@ -180,21 +113,139 @@ function resolveJavaHome() {
   ]);
 }
 
-function withPrependedPath(env, entries) {
-  const separator = process.platform === "win32" ? ";" : ":";
-  const filtered = entries.filter(Boolean);
-  if (filtered.length === 0) {
-    return env.PATH ?? "";
-  }
-  return `${filtered.join(separator)}${separator}${env.PATH ?? ""}`;
+function prependPath(env, entries) {
+  const sep = process.platform === "win32" ? ";" : ":";
+  const valid = entries.filter(Boolean);
+  return valid.length
+    ? `${valid.join(sep)}${sep}${env.PATH ?? ""}`
+    : (env.PATH ?? "");
 }
 
-async function buildSharedApp() {
-  if (process.env.ELIZA_SKIP_WEB_BUILD === "1") {
-    console.log("[mobile-build] Skipping web build (ELIZA_SKIP_WEB_BUILD=1).");
-    return;
+function escapeJavaString(value) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function escapeXmlText(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeXcodeBuildSetting(value) {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function replaceOrInsertPlistString(content, key, value) {
+  const escapedValue = escapeXmlText(value);
+  const keyRe = escapeRegExp(key);
+  const existingRe = new RegExp(
+    `(<key>${keyRe}</key>\\s*<string>)[^<]*(</string>)`,
+  );
+  if (existingRe.test(content)) {
+    return content.replace(existingRe, `$1${escapedValue}$2`);
   }
-  await run("bun", ["scripts/build.mjs"], { cwd: appDir });
+  return content.replace(
+    "</dict>",
+    `\t<key>${key}</key>\n\t<string>${escapedValue}</string>\n</dict>`,
+  );
+}
+
+function ensurePlistArrayStrings(content, key, values) {
+  const escapedValues = values.map(escapeXmlText);
+  const keyRe = escapeRegExp(key);
+  const arrayRe = new RegExp(
+    `(<key>${keyRe}</key>\\s*<array>)([\\s\\S]*?)(\\s*</array>)`,
+  );
+  const match = content.match(arrayRe);
+  if (!match) {
+    const body = escapedValues
+      .map((value) => `\t\t<string>${value}</string>`)
+      .join("\n");
+    return content.replace(
+      "</dict>",
+      `\t<key>${key}</key>\n\t<array>\n${body}\n\t</array>\n</dict>`,
+    );
+  }
+  let body = match[2];
+  for (const value of escapedValues) {
+    if (!body.includes(`<string>${value}</string>`)) {
+      body += `\n\t\t<string>${value}</string>`;
+    }
+  }
+  return content.replace(arrayRe, `$1${body}$3`);
+}
+
+/**
+ * Resolve the real filesystem path to a node_modules package (follows bun
+ * symlinks). Returns a path relative to `relativeTo`.
+ */
+function resolvePackagePath(pkgName, relativeTo) {
+  const linked = path.join(appDir, "node_modules", ...pkgName.split("/"));
+  if (!fs.existsSync(linked)) return null;
+  return path.relative(relativeTo, fs.realpathSync(linked));
+}
+
+function collectTemplateFiles(root, dir = root) {
+  if (!fs.existsSync(dir)) return [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectTemplateFiles(root, fullPath));
+    } else if (entry.isFile()) {
+      files.push(path.relative(root, fullPath));
+    }
+  }
+  return files;
+}
+
+function templateFilePriority(platform, relPath) {
+  if (platform !== "ios") return relPath;
+  const priority = [
+    path.join("App", "Podfile"),
+    path.join("App", "App.xcodeproj", "project.pbxproj"),
+    path.join("App", "App", "Base.lproj", "LaunchScreen.storyboard"),
+    path.join("App", "App", "MiladyIntentPlugin.swift"),
+    path.join("App", "App", "PrivacyInfo.xcprivacy"),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "ActionRequestHandler.swift",
+    ),
+    path.join("App", "App", "WebsiteBlockerContentExtension", "Info.plist"),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    ),
+    path.join(
+      "App",
+      "App",
+      "WebsiteBlockerContentExtension",
+      "PrivacyInfo.xcprivacy",
+    ),
+  ];
+  const index = priority.indexOf(relPath);
+  return `${String(index === -1 ? priority.length : index).padStart(4, "0")}:${relPath}`;
+}
+
+export function resolvePlatformTemplateRoot(
+  platform,
+  { repoRootValue = repoRoot } = {},
+) {
+  const templateRoot = path.join(
+    repoRootValue,
+    "eliza",
+    "packages",
+    "app-core",
+    "platforms",
+    platform,
+  );
+  return fs.existsSync(templateRoot) ? templateRoot : null;
 }
 
 export function syncPlatformTemplateFiles(
@@ -202,394 +253,818 @@ export function syncPlatformTemplateFiles(
   { repoRootValue = repoRoot, appDirValue = appDir, log = console.log } = {},
 ) {
   const templateRoot = resolvePlatformTemplateRoot(platform, { repoRootValue });
-  const templateFiles = PLATFORM_TEMPLATE_FILES[platform];
-
-  if (
-    !templateRoot ||
-    !Array.isArray(templateFiles) ||
-    templateFiles.length === 0
-  ) {
-    return [];
-  }
-
+  if (!templateRoot) return [];
   const targetRoot = path.join(appDirValue, platform);
-  const copiedFiles = [];
-
-  for (const relativeFile of templateFiles) {
-    const sourcePath = path.join(templateRoot, relativeFile);
-    if (!fs.existsSync(sourcePath)) {
-      continue;
-    }
-
-    const destinationPath = path.join(targetRoot, relativeFile);
-    fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-    fs.copyFileSync(sourcePath, destinationPath);
-    copiedFiles.push(relativeFile);
+  const files = collectTemplateFiles(templateRoot).sort((a, b) =>
+    templateFilePriority(platform, a).localeCompare(
+      templateFilePriority(platform, b),
+    ),
+  );
+  const copied = [];
+  for (const relPath of files) {
+    const source = path.join(templateRoot, relPath);
+    const targetPath = path.join(targetRoot, relPath);
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.copyFileSync(source, targetPath);
+    copied.push(relPath);
   }
-
-  if (copiedFiles.length > 0) {
+  if (copied.length > 0) {
     log(
-      `[mobile-build] Synced ${platform} platform template files: ${copiedFiles.join(", ")}`,
+      `[mobile-build] Synced ${copied.length} ${platform} platform template file(s).`,
     );
   }
-
-  return copiedFiles;
+  return copied;
 }
 
-function getCapacitorPlatformRoot(platform) {
-  return platform === "android" ? androidDir : iosPlatformDir;
-}
-
-function isCapacitorPlatformReady(platform) {
+export function isCapacitorPlatformReady(
+  platform,
+  { appDirValue = appDir } = {},
+) {
+  if (platform === "ios") {
+    return (
+      fs.existsSync(path.join(appDirValue, "ios", "App", "Podfile")) &&
+      fs.existsSync(
+        path.join(
+          appDirValue,
+          "ios",
+          "App",
+          "App.xcodeproj",
+          "project.pbxproj",
+        ),
+      )
+    );
+  }
   if (platform === "android") {
     return (
-      fs.existsSync(path.join(androidDir, "gradlew")) &&
-      fs.existsSync(path.join(androidDir, "app", "build.gradle"))
+      fs.existsSync(path.join(appDirValue, "android", "gradlew")) &&
+      fs.existsSync(path.join(appDirValue, "android", "app", "build.gradle"))
     );
   }
-
-  return (
-    fs.existsSync(path.join(iosDir, "Podfile")) &&
-    fs.existsSync(path.join(iosDir, "App.xcodeproj", "project.pbxproj"))
-  );
+  return false;
 }
 
-async function ensureCapacitorPlatform(platform) {
-  if (isCapacitorPlatformReady(platform)) {
-    return;
+function replaceInFile(filePath, replacements) {
+  if (!fs.existsSync(filePath)) return false;
+  let content = fs.readFileSync(filePath, "utf8");
+  const original = content;
+  for (const [search, replacement] of replacements) {
+    content = content.replaceAll(search, replacement);
   }
+  if (content === original) return false;
+  fs.writeFileSync(filePath, content, "utf8");
+  return true;
+}
 
-  const platformRootDir = getCapacitorPlatformRoot(platform);
-  if (fs.existsSync(platformRootDir)) {
-    if (process.env.CI !== "true") {
-      throw new Error(
-        `Capacitor ${platform} platform at ${platformRootDir} is incomplete. Remove it or run 'bun x capacitor add ${platform}' before retrying.`,
+export function applyIosAppIdentity({
+  appDirValue = appDir,
+  appId = APP.appId,
+  appName = APP.appName,
+  appGroup = `group.${appId}`,
+  developmentTeam = process.env.MILADY_IOS_DEVELOPMENT_TEAM ??
+    process.env.ELIZA_IOS_DEVELOPMENT_TEAM ??
+    null,
+  log = console.log,
+} = {}) {
+  const iosAppRoot = path.join(appDirValue, "ios", "App");
+  const changed = [];
+  const projectPath = path.join(iosAppRoot, "App.xcodeproj", "project.pbxproj");
+  if (fs.existsSync(projectPath)) {
+    let project = fs.readFileSync(projectPath, "utf8");
+    const original = project;
+    project = project.replaceAll(
+      "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.WebsiteBlockerContentExtension;",
+      `PRODUCT_BUNDLE_IDENTIFIER = ${appId}.WebsiteBlockerContentExtension;`,
+    );
+    project = project.replaceAll(
+      "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;",
+      `PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
+    );
+    const displayNameSetting = `MILADY_DISPLAY_NAME = ${escapeXcodeBuildSetting(appName)};`;
+    if (project.includes("MILADY_DISPLAY_NAME = ")) {
+      project = project.replace(
+        /MILADY_DISPLAY_NAME = .*?;/g,
+        displayNameSetting,
+      );
+    } else {
+      project = project.replace(
+        new RegExp(
+          `(^[ \\t]*MARKETING_VERSION = 1\\.0;\\n)([ \\t]*)PRODUCT_BUNDLE_IDENTIFIER = ${escapeRegExp(appId)};`,
+          "m",
+        ),
+        `$1$2${displayNameSetting}\n$2PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
       );
     }
-
-    console.log(
-      `[mobile-build] Recreating incomplete Capacitor ${platform} platform at ${platformRootDir}...`,
-    );
-    fs.rmSync(platformRootDir, { force: true, recursive: true });
+    if (developmentTeam) {
+      project = project.replace(
+        /DEVELOPMENT_TEAM = [A-Z0-9]+;/g,
+        `DEVELOPMENT_TEAM = ${developmentTeam};`,
+      );
+    }
+    if (project !== original) {
+      fs.writeFileSync(projectPath, project, "utf8");
+      changed.push(path.relative(iosAppRoot, projectPath));
+    }
   }
 
-  console.log(
-    `[mobile-build] Adding missing Capacitor ${platform} platform...`,
-  );
-  await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
+  const replacements = [
+    ["group.ai.elizaos.app", appGroup],
+    ['"group.ai.elizaos.app"', `"${appGroup}"`],
+  ];
+  for (const relPath of [
+    path.join("App", "App.entitlements"),
+    path.join("App", "ScreenTimeSupport.swift"),
+    path.join(
+      "App",
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    ),
+    path.join(
+      "App",
+      "WebsiteBlockerContentExtension",
+      "ActionRequestHandler.swift",
+    ),
+  ]) {
+    const filePath = path.join(iosAppRoot, relPath);
+    if (replaceInFile(filePath, replacements)) {
+      changed.push(relPath);
+    }
+  }
+
+  const extensionId = `${appId}.WebsiteBlockerContentExtension`;
+  const fastlaneReplacements = [
+    [
+      'ENV["APP_IDENTIFIER"] || "ai.elizaos.app"',
+      `ENV["APP_IDENTIFIER"] || "${appId}"`,
+    ],
+    [
+      'ENV["APP_IDENTIFIER_EXTRA"] || ""',
+      `ENV["APP_IDENTIFIER_EXTRA"] || "${extensionId}"`,
+    ],
+  ];
+  for (const relPath of [
+    path.join("fastlane", "Appfile"),
+    path.join("fastlane", "Fastfile"),
+    path.join("fastlane", "Matchfile"),
+  ]) {
+    const filePath = path.join(path.dirname(iosAppRoot), relPath);
+    if (replaceInFile(filePath, fastlaneReplacements)) {
+      changed.push(relPath);
+    }
+  }
+  if (changed.length > 0) {
+    log(`[mobile-build] Applied iOS identity ${appId}.`);
+  }
+  return changed;
 }
 
-// ── Android post-sync overlay ───────────────────────────────────────────
+// ── Phase 2: Build web bundle ───────────────────────────────────────────
 
-/**
- * Permissions and service declarations that must be present in the manifest.
- * Capacitor sync only generates INTERNET; everything else comes from the
- * source template.
- */
-const ANDROID_REQUIRED_PERMISSIONS = [
-  '<uses-permission android:name="android.permission.RECORD_AUDIO" />',
-  '<uses-permission android:name="android.permission.CAMERA" />',
-  '<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />',
-  '<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />',
-  '<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />',
-  '<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />',
-  '<uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />',
-  '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
-  `<uses-permission\n        android:name="android.permission.WRITE_EXTERNAL_STORAGE"\n        android:maxSdkVersion="28" />`,
-  `<uses-permission\n        android:name="android.permission.READ_EXTERNAL_STORAGE"\n        android:maxSdkVersion="32" />`,
-  '<uses-permission android:name="android.permission.WAKE_LOCK" />',
+async function buildWeb() {
+  await run("bun", ["scripts/build.mjs"], { cwd: appDir });
+}
+
+// ── Phase 3: Capacitor sync ────────────────────────────────────────────
+
+async function ensurePlatform(platform) {
+  const dir = platform === "android" ? androidDir : iosDir;
+  if (!fs.existsSync(dir)) {
+    console.log(`[mobile-build] Adding Capacitor ${platform} platform...`);
+    await run("bun", ["x", "capacitor", "add", platform], { cwd: appDir });
+  }
+  if (!isCapacitorPlatformReady(platform)) {
+    syncPlatformTemplateFiles(platform);
+  }
+}
+
+// ── Phase 4: Android native overlay ─────────────────────────────────────
+
+/** Permissions that Capacitor sync doesn't generate (it only adds INTERNET). */
+const ANDROID_PERMISSIONS = [
+  "READ_CONTACTS",
+  "WRITE_CONTACTS",
+  "CALL_PHONE",
+  "READ_PHONE_STATE",
+  "ANSWER_PHONE_CALLS",
+  "MANAGE_OWN_CALLS",
+  "READ_CALL_LOG",
+  "WRITE_CALL_LOG",
+  "READ_SMS",
+  "SEND_SMS",
+  "RECEIVE_SMS",
+  "RECEIVE_MMS",
+  "RECEIVE_WAP_PUSH",
+  "RECORD_AUDIO",
+  "CAMERA",
+  "ACCESS_FINE_LOCATION",
+  "ACCESS_COARSE_LOCATION",
+  "ACCESS_BACKGROUND_LOCATION",
+  "FOREGROUND_SERVICE",
+  "FOREGROUND_SERVICE_DATA_SYNC",
+  "POST_NOTIFICATIONS",
+  "WAKE_LOCK",
 ];
 
-const ANDROID_SERVICE_BLOCK = `
-        <service
-            android:name="ai.elizaos.app.GatewayConnectionService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />`;
+function replaceOrInsertGradleString(content, key, value) {
+  const quoted = `${key} "${value}"`;
+  const assignmentRe = new RegExp(`${key}\\s+["'][^"']+["']`);
+  if (assignmentRe.test(content)) {
+    return content.replace(assignmentRe, quoted);
+  }
+  return content;
+}
 
-const ANDROID_QUERIES_BLOCK = `
-    <queries>
-        <package android:name="com.google.android.apps.healthdata" />
-    </queries>
+function appendMissingGradleDependency(content, notation) {
+  if (content.includes(notation)) return content;
+  return content.replace(
+    /dependencies\s*\{/,
+    `dependencies {\n    implementation "${notation}"`,
+  );
+}
+
+function patchCapacitorBarcodeScannerGradle() {
+  const pkgRel = resolvePackagePath("@capacitor/barcode-scanner", androidDir);
+  if (!pkgRel) return;
+  patchGradleFileForAgp9(
+    path.resolve(androidDir, pkgRel, "android", "build.gradle"),
+    "@capacitor/barcode-scanner",
+  );
+}
+
+function patchLlamaCppCapacitorGradle() {
+  const pkgRel = resolvePackagePath("llama-cpp-capacitor", androidDir);
+  if (!pkgRel) return;
+  patchGradleFileForAgp9(
+    path.resolve(androidDir, pkgRel, "android", "build.gradle"),
+    "llama-cpp-capacitor",
+  );
+}
+
+function patchGradleFileForAgp9(filePath, label) {
+  if (!fs.existsSync(filePath)) return;
+  const current = fs.readFileSync(filePath, "utf8");
+  const patched = current
+    .replace(
+      /^\s*apply plugin:\s*['"](org\.jetbrains\.kotlin\.android|kotlin-android)['"]\s*\r?\n/gm,
+      "",
+    )
+    .replace(/\n\s*kotlin\s*\{\s*jvmToolchain\(\d+\)\s*\}\s*/g, "\n")
+    .replace(
+      /getDefaultProguardFile\('proguard-android\.txt'\)/g,
+      "getDefaultProguardFile('proguard-android-optimize.txt')",
+    );
+  if (patched !== current) {
+    fs.writeFileSync(filePath, patched, "utf8");
+    console.log(`[mobile-build] Patched ${label} Gradle for AGP 9.`);
+  }
+}
+
+function patchNativePluginGradleForAgp9() {
+  if (!fs.existsSync(nativePluginsDir)) return;
+  for (const entry of fs.readdirSync(nativePluginsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    patchGradleFileForAgp9(
+      path.join(nativePluginsDir, entry.name, "android", "build.gradle"),
+      `@elizaos/capacitor-${entry.name}`,
+    );
+  }
+}
+
+function appendMissingAndroidManifestBlock(xml, marker, block) {
+  if (xml.includes(marker)) return xml;
+  return xml.replace("</manifest>", `${block}\n</manifest>`);
+}
+
+function appendMissingApplicationBlock(xml, marker, block) {
+  if (xml.includes(marker)) return xml;
+  return xml.replace("</application>", `${block}\n    </application>`);
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function removeApplicationComponentBlock(xml, componentName) {
+  const escapedName = escapeRegExp(componentName);
+  const componentRe = new RegExp(
+    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="${escapedName}")[\\s\\S]*?<\\/\\1>\\s*`,
+    "g",
+  );
+  return xml.replace(componentRe, "\n");
+}
+
+function ensureMiladyOsActivityFilters(xml) {
+  if (xml.includes("android.intent.category.HOME")) {
+    return xml;
+  }
+  const mainActivityRe =
+    /(<activity\b(?=[\s\S]*?android:name="\.?MainActivity")[\s\S]*?)(\n\s*<\/activity>)/m;
+  const homeFilter = `
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
 `;
+  return xml.replace(mainActivityRe, `$1${homeFilter}$2`);
+}
 
-/**
- * Copy Java source files from the platform template into the synced project
- * and merge manifest entries that Capacitor sync does not generate.
- */
-function overlayAndroidNativeFiles() {
-  const srcJavaDir = path.join(
-    androidPlatformSrc, "app", "src", "main", "java", "ai", "elizaos", "app",
+function overlayAndroid() {
+  const srcJava = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "src",
+    "main",
+    "java",
+    "ai",
+    "elizaos",
+    "app",
   );
-  const targetJavaDir = path.join(
-    androidDir, "app", "src", "main", "java", "ai", "elizaos", "app",
+  const gradlePath = path.join(androidDir, "app", "build.gradle");
+  const namespace = fs.existsSync(gradlePath)
+    ? fs
+        .readFileSync(gradlePath, "utf8")
+        .match(/namespace\s*(?:[=:]\s*)?["']([^"']+)["']/)?.[1]
+    : APP.appId;
+  const androidPackage = namespace || APP.appId;
+  const dstJava = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    ...androidPackage.split("."),
+  );
+  const legacyJava = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    "ai",
+    "elizaos",
+    "app",
+  );
+  const appIdJava = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    ...APP.appId.split("."),
   );
 
-  // Detect the host app's namespace so we can add an R import.
-  // The source files live under ai.elizaos.app but R is generated under
-  // the app's own namespace (e.g. com.miladyai.milady).
-  const appBuildGradlePath = path.join(androidDir, "app", "build.gradle");
-  let appNamespace = null;
-  if (fs.existsSync(appBuildGradlePath)) {
-    const gradleContent = fs.readFileSync(appBuildGradlePath, "utf8");
-    const nsMatch = gradleContent.match(/namespace\s*[=:]\s*["']([^"']+)["']/);
-    if (nsMatch) {
-      appNamespace = nsMatch[1];
-    }
-  }
-
-  // -- Copy Java files (GatewayConnectionService + source MainActivity) --
-  if (fs.existsSync(srcJavaDir)) {
-    fs.mkdirSync(targetJavaDir, { recursive: true });
-    for (const file of ["GatewayConnectionService.java", "MainActivity.java"]) {
-      const src = path.join(srcJavaDir, file);
-      if (!fs.existsSync(src)) continue;
-
-      let content = fs.readFileSync(src, "utf8");
-
-      // If the host app namespace differs from ai.elizaos.app, the R class
-      // lives in the host namespace. Add an explicit import so unqualified
-      // R references compile.
-      if (appNamespace && appNamespace !== "ai.elizaos.app") {
-        const rImport = `import ${appNamespace}.R;`;
-        if (!content.includes(rImport)) {
-          // Insert right after the package declaration line
-          content = content.replace(
-            /^(package\s+[^;]+;)/m,
-            `$1\n\n${rImport}`,
-          );
-        }
+  if (fs.existsSync(srcJava)) {
+    for (const staleJava of [legacyJava, appIdJava]) {
+      if (staleJava !== dstJava) {
+        fs.rmSync(staleJava, { recursive: true, force: true });
       }
-
-      fs.writeFileSync(path.join(targetJavaDir, file), content, "utf8");
     }
-    console.log("[mobile-build] Copied Android Java source files (GatewayConnectionService, MainActivity).");
+    fs.mkdirSync(dstJava, { recursive: true });
+    for (const file of [
+      "GatewayConnectionService.java",
+      "MainActivity.java",
+      "MiladyAssistActivity.java",
+      "MiladyBootReceiver.java",
+      "MiladyDialActivity.java",
+      "MiladyInCallService.java",
+      "MiladyMmsReceiver.java",
+      "MiladyRespondViaMessageService.java",
+      "MiladySmsComposeActivity.java",
+      "MiladySmsReceiver.java",
+    ]) {
+      const src = path.join(srcJava, file);
+      if (!fs.existsSync(src)) continue;
+      let code = fs.readFileSync(src, "utf8");
+      code = code.replace(
+        /^package\s+ai\.elizaos\.app;/m,
+        `package ${androidPackage};`,
+      );
+      code = code.replaceAll(
+        "ai.elizaos.app.action.",
+        `${androidPackage}.action.`,
+      );
+      code = code.replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`);
+      code = code.replaceAll(
+        "elizaOS Gateway",
+        `${escapeJavaString(APP.appName)} Gateway`,
+      );
+      code = code.replaceAll(
+        "Shows elizaOS gateway connection status",
+        `Shows ${escapeJavaString(APP.appName)} gateway connection status`,
+      );
+      fs.writeFileSync(path.join(dstJava, file), code, "utf8");
+    }
+    console.log("[mobile-build] Overlaid Android Java sources.");
   }
 
-  // -- Merge AndroidManifest.xml --
-  const manifestPath = path.join(androidDir, "app", "src", "main", "AndroidManifest.xml");
+  // Merge AndroidManifest.xml
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
   if (fs.existsSync(manifestPath)) {
-    let manifest = fs.readFileSync(manifestPath, "utf8");
-    let changed = false;
+    let xml = fs.readFileSync(manifestPath, "utf8");
+    let dirty = false;
 
-    // Add usesCleartextTraffic to <application> if missing
-    if (!manifest.includes("usesCleartextTraffic")) {
-      manifest = manifest.replace(
+    if (!xml.includes("usesCleartextTraffic")) {
+      xml = xml.replace(
         "<application",
         '<application\n        android:usesCleartextTraffic="true"',
       );
-      changed = true;
+      dirty = true;
     }
-
-    // Add <queries> block before <application> if missing
-    if (!manifest.includes("<queries>")) {
-      manifest = manifest.replace(
+    if (!xml.includes("<queries>")) {
+      xml = xml.replace(
         /(\s*)<application/,
-        `${ANDROID_QUERIES_BLOCK}\n    <application`,
+        '\n    <queries>\n        <package android:name="com.google.android.apps.healthdata" />\n    </queries>\n\n    <application',
       );
-      changed = true;
+      dirty = true;
     }
-
-    // Add service declaration inside <application> if missing
-    if (!manifest.includes("GatewayConnectionService")) {
-      manifest = manifest.replace(
-        "</application>",
-        `${ANDROID_SERVICE_BLOCK}\n    </application>`,
+    xml = appendMissingAndroidManifestBlock(
+      xml,
+      "android.hardware.telephony",
+      '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
+    );
+    xml = ensureMiladyOsActivityFilters(xml);
+    const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
+    const gatewayServicePattern =
+      /\n\s*<service\b[^>]*android:name="[^"]*GatewayConnectionService"[^>]*\/>\s*/g;
+    const withoutGatewayServices = xml.replace(gatewayServicePattern, "\n");
+    if (withoutGatewayServices !== xml) {
+      xml = withoutGatewayServices;
+      dirty = true;
+    }
+    xml = xml.replace(
+      "</application>",
+      `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`,
+    );
+    dirty = true;
+    for (const component of [
+      "MiladyDialActivity",
+      "MiladyAssistActivity",
+      "MiladyInCallService",
+      "MiladySmsReceiver",
+      "MiladyMmsReceiver",
+      "MiladyRespondViaMessageService",
+      "MiladySmsComposeActivity",
+      "MiladyBootReceiver",
+    ]) {
+      const nextXml = removeApplicationComponentBlock(
+        xml,
+        `${androidPackage}.${component}`,
       );
-      changed = true;
-    }
-
-    // Add missing permissions before </manifest>
-    for (const perm of ANDROID_REQUIRED_PERMISSIONS) {
-      // Extract the permission name for checking
-      const nameMatch = perm.match(/android:name="([^"]+)"/);
-      if (nameMatch && !manifest.includes(nameMatch[1])) {
-        manifest = manifest.replace(
-          "</manifest>",
-          `    ${perm}\n</manifest>`,
-        );
-        changed = true;
+      if (nextXml !== xml) {
+        xml = nextXml;
+        dirty = true;
       }
     }
-
-    if (changed) {
-      fs.writeFileSync(manifestPath, manifest, "utf8");
-      console.log("[mobile-build] Merged permissions and service into AndroidManifest.xml.");
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyDialActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladyDialActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="tel" />
+            </intent-filter>
+        </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyAssistActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladyAssistActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.ASSIST" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyInCallService`,
+      `
+        <service
+            android:name="${androidPackage}.MiladyInCallService"
+            android:exported="true"
+            android:permission="android.permission.BIND_INCALL_SERVICE">
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_UI"
+                android:value="true" />
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_RINGING"
+                android:value="true" />
+            <intent-filter>
+                <action android:name="android.telecom.InCallService" />
+            </intent-filter>
+        </service>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladySmsReceiver`,
+      `
+        <receiver
+            android:name="${androidPackage}.MiladySmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_DELIVER" />
+            </intent-filter>
+        </receiver>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyMmsReceiver`,
+      `
+        <receiver
+            android:name="${androidPackage}.MiladyMmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_WAP_PUSH">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
+                <data android:mimeType="application/vnd.wap.mms-message" />
+            </intent-filter>
+        </receiver>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyRespondViaMessageService`,
+      `
+        <service
+            android:name="${androidPackage}.MiladyRespondViaMessageService"
+            android:exported="true"
+            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+        </service>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladySmsComposeActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladySmsComposeActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SENDTO" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="sms" />
+                <data android:scheme="smsto" />
+                <data android:scheme="mms" />
+                <data android:scheme="mmsto" />
+            </intent-filter>
+        </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyBootReceiver`,
+      `
+        <receiver
+            android:name="${androidPackage}.MiladyBootReceiver"
+            android:directBootAware="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>`,
+    );
+    dirty = true;
+    for (const perm of ANDROID_PERMISSIONS) {
+      const full = `android.permission.${perm}`;
+      if (!xml.includes(full)) {
+        xml = xml.replace(
+          "</manifest>",
+          `    <uses-permission android:name="${full}" />\n</manifest>`,
+        );
+        dirty = true;
+      }
+    }
+    // Storage permissions with maxSdkVersion
+    if (!xml.includes("WRITE_EXTERNAL_STORAGE")) {
+      xml = xml.replace(
+        "</manifest>",
+        '    <uses-permission\n        android:name="android.permission.WRITE_EXTERNAL_STORAGE"\n        android:maxSdkVersion="28" />\n</manifest>',
+      );
+      dirty = true;
+    }
+    if (!xml.includes("READ_EXTERNAL_STORAGE")) {
+      xml = xml.replace(
+        "</manifest>",
+        '    <uses-permission\n        android:name="android.permission.READ_EXTERNAL_STORAGE"\n        android:maxSdkVersion="32" />\n</manifest>',
+      );
+      dirty = true;
+    }
+    if (dirty) {
+      fs.writeFileSync(manifestPath, xml, "utf8");
+      console.log(
+        "[mobile-build] Merged permissions and service into AndroidManifest.xml.",
+      );
     }
   }
 
-  // -- Copy ProGuard rules --
-  const srcProguard = path.join(androidPlatformSrc, "app", "proguard-rules.pro");
-  const targetProguard = path.join(androidDir, "app", "proguard-rules.pro");
-  if (fs.existsSync(srcProguard)) {
-    fs.copyFileSync(srcProguard, targetProguard);
+  // Copy ProGuard rules
+  const srcPro = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "proguard-rules.pro",
+  );
+  if (fs.existsSync(srcPro)) {
+    fs.copyFileSync(srcPro, path.join(androidDir, "app", "proguard-rules.pro"));
     console.log("[mobile-build] Copied ProGuard rules.");
   }
 
-  // -- Patch app/build.gradle for release optimizations --
-  const appBuildGradle = path.join(androidDir, "app", "build.gradle");
-  if (fs.existsSync(appBuildGradle)) {
-    let gradle = fs.readFileSync(appBuildGradle, "utf8");
-    let gradleChanged = false;
-
-    // Enable minification in release builds
-    if (gradle.includes("minifyEnabled false")) {
-      gradle = gradle.replace("minifyEnabled false", "minifyEnabled true");
-      gradleChanged = true;
-    }
-
-    // Add shrinkResources if missing
-    if (!gradle.includes("shrinkResources") && gradle.includes("minifyEnabled true")) {
-      gradle = gradle.replace(
-        "minifyEnabled true",
+  // Enable release minification
+  if (fs.existsSync(gradlePath)) {
+    let g = fs.readFileSync(gradlePath, "utf8");
+    if (g.includes("minifyEnabled false")) {
+      g = g.replace(
+        "minifyEnabled false",
         "minifyEnabled true\n            shrinkResources true",
       );
-      gradleChanged = true;
-    }
-
-    if (gradleChanged) {
-      fs.writeFileSync(appBuildGradle, gradle, "utf8");
-      console.log("[mobile-build] Enabled release minification in app/build.gradle.");
+      fs.writeFileSync(gradlePath, g, "utf8");
+      console.log("[mobile-build] Enabled release minification.");
     }
   }
 }
 
-// ── iOS post-sync overlay ───────────────────────────────────────────────
+// ── Phase 4: iOS native overlay ─────────────────────────────────────────
 
-/**
- * Plist key-value pairs to merge into the Capacitor-generated Info.plist.
- * Order: key line, then value line(s).
- */
-const IOS_PLIST_ENTRIES = [
-  { key: "NSCameraUsageDescription", value: "<string>This app uses your camera to capture photos and video when you ask it to.</string>" },
-  { key: "NSMicrophoneUsageDescription", value: "<string>This app needs microphone access for voice wake, talk mode, and video capture.</string>" },
-  { key: "NSLocationWhenInUseUsageDescription", value: "<string>This app uses your location to provide location-aware responses when you allow it.</string>" },
-  { key: "NSLocationAlwaysAndWhenInUseUsageDescription", value: "<string>This app can share your location in the background so it stays up to date even when the app is not in use.</string>" },
-  { key: "NSPhotoLibraryUsageDescription", value: "<string>This app accesses your photo library to attach and share photos or videos.</string>" },
-  { key: "NSPhotoLibraryAddUsageDescription", value: "<string>This app saves captured photos and videos to your photo library.</string>" },
-  { key: "NSHealthShareUsageDescription", value: "<string>This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.</string>" },
-  { key: "NSHealthUpdateUsageDescription", value: "<string>This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.</string>" },
-  { key: "NSSpeechRecognitionUsageDescription", value: "<string>This app uses on-device speech recognition to listen for voice commands and wake words.</string>" },
-  { key: "NSLocalNetworkUsageDescription", value: "<string>This app discovers and connects to your elizaOS gateway on the local network.</string>" },
+const IOS_PERMISSION_KEYS = [
+  [
+    "NSCameraUsageDescription",
+    "This app uses your camera to capture photos and video when you ask it to.",
+  ],
+  [
+    "NSMicrophoneUsageDescription",
+    "This app needs microphone access for voice wake, talk mode, and video capture.",
+  ],
+  [
+    "NSLocationWhenInUseUsageDescription",
+    "This app uses your location to provide location-aware responses when you allow it.",
+  ],
+  [
+    "NSLocationAlwaysAndWhenInUseUsageDescription",
+    "This app can share your location in the background so it stays up to date even when the app is not in use.",
+  ],
+  [
+    "NSPhotoLibraryUsageDescription",
+    "This app accesses your photo library to attach and share photos or videos.",
+  ],
+  [
+    "NSPhotoLibraryAddUsageDescription",
+    "This app saves captured photos and videos to your photo library.",
+  ],
+  [
+    "NSHealthShareUsageDescription",
+    "This app reads your HealthKit sleep and biometric data to infer when you are asleep, awake, and ready for reminders.",
+  ],
+  [
+    "NSHealthUpdateUsageDescription",
+    "This app does not write to HealthKit, but iOS requires this key when HealthKit capability is enabled.",
+  ],
+  [
+    "NSSpeechRecognitionUsageDescription",
+    "This app uses on-device speech recognition to listen for voice commands and wake words.",
+  ],
+  [
+    "NSLocalNetworkUsageDescription",
+    "This app discovers and connects to your elizaOS gateway on the local network.",
+  ],
 ];
 
-const IOS_BONJOUR_BLOCK = `\t<key>NSBonjourServices</key>
-\t<array>
-\t\t<string>_elizaos-gw._tcp</string>
-\t</array>`;
+const IOS_OFFICIAL_COMPATIBLE_PODS = [
+  ["CapacitorKeyboard", "@capacitor/keyboard"],
+];
 
-/**
- * Merge permission keys into Info.plist, copy entitlements, and overlay
- * any other iOS source files that Capacitor sync does not generate.
- */
-function overlayIosNativeFiles() {
+const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set([
+  "CapacitorApp",
+  "CapacitorPreferences",
+  "CapacitorStatusBar",
+]);
+
+const IOS_BONJOUR_SERVICES = [
+  "_eliza-gw._tcp",
+  "_elizaos-gw._tcp",
+  "_eliza._tcp",
+];
+
+function overlayIos() {
   const targetAppDir = path.join(appDir, "ios", "App", "App");
 
-  // -- Merge Info.plist permission strings --
+  // Merge Info.plist permission strings
   const plistPath = path.join(targetAppDir, "Info.plist");
   if (fs.existsSync(plistPath)) {
     let plist = fs.readFileSync(plistPath, "utf8");
-    let changed = false;
-
-    for (const entry of IOS_PLIST_ENTRIES) {
-      if (!plist.includes(entry.key)) {
+    let dirty = false;
+    for (const [key, desc] of IOS_PERMISSION_KEYS) {
+      if (!plist.includes(key)) {
         plist = plist.replace(
           "</dict>",
-          `\t<key>${entry.key}</key>\n\t${entry.value}\n</dict>`,
+          `\t<key>${key}</key>\n\t<string>${desc}</string>\n</dict>`,
         );
-        changed = true;
+        dirty = true;
       }
     }
-
-    // Add Bonjour services if missing
-    if (!plist.includes("NSBonjourServices")) {
-      plist = plist.replace(
-        "</dict>",
-        `${IOS_BONJOUR_BLOCK}\n</dict>`,
-      );
-      changed = true;
-    }
-
-    if (changed) {
-      fs.writeFileSync(plistPath, plist, "utf8");
-      console.log("[mobile-build] Merged permission strings into iOS Info.plist.");
-    }
-  }
-
-  // -- Copy entitlements file --
-  const srcEntitlements = path.join(iosPlatformSrc, "App", "App", "App.entitlements");
-  const targetEntitlements = path.join(targetAppDir, "App.entitlements");
-  if (fs.existsSync(srcEntitlements)) {
-    let entitlements = fs.readFileSync(srcEntitlements, "utf8");
-    // Replace the generic app group with the Milady-specific one
-    entitlements = entitlements.replace(
-      "group.ai.elizaos.app",
-      APP.appGroup,
+    const nextPlist = ensurePlistArrayStrings(
+      ensurePlistArrayStrings(
+        replaceOrInsertPlistString(
+          plist,
+          "CFBundleDisplayName",
+          "$(MILADY_DISPLAY_NAME)",
+        ),
+        "NSBonjourServices",
+        IOS_BONJOUR_SERVICES,
+      ),
+      "UIBackgroundModes",
+      ["fetch"],
     );
-    fs.writeFileSync(targetEntitlements, entitlements, "utf8");
-    console.log(`[mobile-build] Copied iOS entitlements (app group: ${APP.appGroup}).`);
+    if (nextPlist !== plist) {
+      plist = nextPlist;
+      dirty = true;
+    }
+    if (dirty) {
+      fs.writeFileSync(plistPath, plist, "utf8");
+      console.log("[mobile-build] Merged iOS permission strings.");
+    }
   }
 
-  // -- Copy AppDelegate.swift (Capacitor CLI template has broken API call) --
-  const srcAppDelegate = path.join(iosPlatformSrc, "App", "App", "AppDelegate.swift");
-  if (fs.existsSync(srcAppDelegate)) {
-    fs.copyFileSync(srcAppDelegate, path.join(targetAppDir, "AppDelegate.swift"));
-    console.log("[mobile-build] Copied iOS AppDelegate.swift.");
+  // Copy entitlements with app group derived from appId
+  const srcEnt = path.join(
+    platformsDir,
+    "ios",
+    "App",
+    "App",
+    "App.entitlements",
+  );
+  if (fs.existsSync(srcEnt)) {
+    let ent = fs.readFileSync(srcEnt, "utf8");
+    ent = ent.replace("group.ai.elizaos.app", `group.${APP.appId}`);
+    fs.writeFileSync(path.join(targetAppDir, "App.entitlements"), ent, "utf8");
+    console.log(
+      `[mobile-build] Copied iOS entitlements (app group: group.${APP.appId}).`,
+    );
   }
 
-  // -- Patch xcconfigs to include CocoaPods settings --
-  // Capacitor generates debug/release xcconfigs that the Xcode project uses
-  // as base configurations. CocoaPods needs its own xcconfig included too.
-  for (const config of ["debug", "release"]) {
-    const xcPath = path.join(appDir, "ios", `${config}.xcconfig`);
+  // Patch xcconfigs to include CocoaPods settings
+  for (const cfg of ["debug", "release"]) {
+    const xcPath = path.join(appDir, "ios", `${cfg}.xcconfig`);
     if (fs.existsSync(xcPath)) {
-      let xc = fs.readFileSync(xcPath, "utf8");
-      const include = `#include "App/Pods/Target Support Files/Pods-App/Pods-App.${config}.xcconfig"`;
-      if (!xc.includes(include)) {
-        xc = `${include}\n${xc}`;
-        fs.writeFileSync(xcPath, xc, "utf8");
+      const xc = fs.readFileSync(xcPath, "utf8");
+      const inc = `#include "App/Pods/Target Support Files/Pods-App/Pods-App.${cfg}.xcconfig"`;
+      if (!xc.includes(inc)) {
+        fs.writeFileSync(xcPath, `${inc}\n${xc}`, "utf8");
       }
     }
   }
 
-  // -- Generate Podfile for CocoaPods integration --
-  // SPM binary xcframeworks have known API mismatches with plugin source.
-  // CocoaPods compiles Capacitor from source alongside plugins, avoiding this.
-  generateIosPodfile();
+  // Generate Podfile
+  generatePodfile();
+  applyIosAppIdentity();
 }
 
-/**
- * Resolve the real path to a node_modules package, following symlinks
- * through bun's store. Returns a path relative to the Podfile directory
- * (apps/app/ios/App/).
- */
-function resolveCapacitorPodPath(pkgName) {
-  const linked = path.join(appDir, "node_modules", ...pkgName.split("/"));
-  if (!fs.existsSync(linked)) return null;
-  const real = fs.realpathSync(linked);
-  return path.relative(path.join(appDir, "ios", "App"), real);
+export function prepareIosOverlay() {
+  const syncedFiles = syncPlatformTemplateFiles("ios");
+  overlayIos();
+  stripSpmIncompatiblePlugins();
+  return syncedFiles;
 }
 
-function generateIosPodfile() {
+function generatePodfile() {
   const podfileDir = path.join(appDir, "ios", "App");
-  const iosPath = resolveCapacitorPodPath("@capacitor/ios");
+  const iosPath = resolvePackagePath("@capacitor/ios", podfileDir);
   if (!iosPath) {
-    console.warn("[mobile-build] Could not resolve @capacitor/ios — skipping Podfile generation.");
+    console.warn(
+      "[mobile-build] Could not resolve @capacitor/ios — skipping Podfile.",
+    );
     return;
   }
 
-  // All official plugins compile fine from source via CocoaPods. The errors
-  // only occur with the precompiled SPM binary (capacitor-swift-pm) which
-  // gates APIs behind $NonescapableTypes (a Swift 6.2/Xcode 26 feature).
-  // These same plugins are stripped from SPM by patchIosPluginSwiftCompat().
-  const pluginPods = [
-    ["CapacitorApp", "@capacitor/app"],
-    ["CapacitorKeyboard", "@capacitor/keyboard"],
-    ["CapacitorPreferences", "@capacitor/preferences"],
-    ["CapacitorStatusBar", "@capacitor/status-bar"],
-  ];
-
-  const nativePluginPods = [
+  const customPods = [
     ["ElizaosCapacitorAgent", "agent"],
+    ["ElizaosCapacitorAppblocker", "appblocker"],
     ["ElizaosCapacitorCamera", "camera"],
     ["ElizaosCapacitorCanvas", "canvas"],
     ["ElizaosCapacitorGateway", "gateway"],
@@ -601,27 +1076,27 @@ function generateIosPodfile() {
     ["ElizaosCapacitorWebsiteblocker", "websiteblocker"],
   ];
 
-  let podLines = [];
-  podLines.push(`  pod 'Capacitor', :path => '${iosPath}'`);
-  podLines.push(`  pod 'CapacitorCordova', :path => '${iosPath}'`);
+  const lines = [
+    `  pod 'Capacitor', :path => '${iosPath}'`,
+    `  pod 'CapacitorCordova', :path => '${iosPath}'`,
+  ];
 
-  for (const [podName, npmPkg] of pluginPods) {
-    const p = resolveCapacitorPodPath(npmPkg);
-    if (p) podLines.push(`  pod '${podName}', :path => '${p}'`);
+  for (const [name, pkg] of IOS_OFFICIAL_COMPATIBLE_PODS) {
+    const p = resolvePackagePath(pkg, podfileDir);
+    if (p) lines.push(`  pod '${name}', :path => '${p}'`);
   }
 
-  const nativePluginsBase = path.relative(
-    podfileDir,
-    path.join(repoRoot, "eliza", "packages", "native-plugins"),
-  );
-  for (const [podName, dirName] of nativePluginPods) {
-    const pluginDir = path.join(repoRoot, "eliza", "packages", "native-plugins", dirName);
-    if (fs.existsSync(pluginDir)) {
-      podLines.push(`  pod '${podName}', :path => '${nativePluginsBase}/${dirName}'`);
+  const pluginsRel = path.relative(podfileDir, nativePluginsDir);
+  for (const [name, dir] of customPods) {
+    if (fs.existsSync(path.join(nativePluginsDir, dir))) {
+      lines.push(`  pod '${name}', :path => '${pluginsRel}/${dir}'`);
     }
   }
 
-  const podfile = `require_relative '${iosPath}/scripts/pods_helpers'
+  fs.writeFileSync(
+    path.join(podfileDir, "Podfile"),
+    `\
+require_relative '${iosPath}/scripts/pods_helpers'
 
 platform :ios, '15.0'
 use_frameworks!
@@ -629,7 +1104,7 @@ use_frameworks!
 install! 'cocoapods', :disable_input_output_paths => true
 
 def capacitor_pods
-${podLines.join("\n")}
+${lines.join("\n")}
 end
 
 target 'App' do
@@ -639,150 +1114,215 @@ end
 post_install do |installer|
   assertDeploymentTarget(installer)
 end
-`;
-
-  fs.writeFileSync(path.join(podfileDir, "Podfile"), podfile, "utf8");
-  console.log("[mobile-build] Generated Podfile for CocoaPods integration.");
+`,
+    "utf8",
+  );
+  console.log("[mobile-build] Generated Podfile.");
 }
 
-/**
- * Strip official Capacitor plugins from SPM Package.swift.
- *
- * The capacitor-swift-pm xcframework was built with Xcode 26 / Swift 6.2.
- * Its .swiftinterface files gate APIs behind $NonescapableTypes, making
- * them invisible to Xcode 16. These plugins compile fine from source via
- * CocoaPods (included in the Podfile), so we only strip them from SPM to
- * prevent Xcode from trying to build them through the broken binary path.
- *
- * This becomes a no-op once the project uses Xcode 26+.
- */
-function patchIosPluginSwiftCompat() {
-  const packageSwiftPath = path.join(appDir, "ios", "App", "CapApp-SPM", "Package.swift");
-  if (!fs.existsSync(packageSwiftPath)) return;
+// ── Phase 5: Platform patches ───────────────────────────────────────────
 
-  let content = fs.readFileSync(packageSwiftPath, "utf8");
-  const incompatible = ["CapacitorStatusBar", "CapacitorPreferences", "CapacitorApp"];
-  let changed = false;
+/** Strip incompatible official plugins from SPM Package.swift. */
+function stripSpmIncompatiblePlugins() {
+  const pkgPath = path.join(
+    appDir,
+    "ios",
+    "App",
+    "CapApp-SPM",
+    "Package.swift",
+  );
+  if (!fs.existsSync(pkgPath)) return;
 
-  for (const name of incompatible) {
-    // Remove .package(name: "...", path: "...") from dependencies
-    const depRe = new RegExp(
-      `\\s*\\.package\\(name:\\s*"${name}"[^)]*\\),?\\n?`,
-    );
-    if (depRe.test(content)) {
-      content = content.replace(depRe, "\n");
-      changed = true;
+  let content = fs.readFileSync(pkgPath, "utf8");
+  const lines = content.split("\n");
+  const filtered = lines.filter((line) => {
+    for (const name of IOS_INCOMPATIBLE_SPM_PLUGINS) {
+      if (line.includes(`"${name}"`)) return false;
     }
-
-    // Remove .product(name: "...", package: "...") from target dependencies
-    const prodRe = new RegExp(
-      `\\s*\\.product\\(name:\\s*"${name}"[^)]*\\),?\\n?`,
-    );
-    if (prodRe.test(content)) {
-      content = content.replace(prodRe, "\n");
-      changed = true;
-    }
-  }
+    return true;
+  });
+  const changed = filtered.length !== lines.length;
+  content = filtered.join("\n");
 
   if (changed) {
-    // Clean up trailing commas before closing brackets
-    content = content.replace(/,(\s*\])/g, "$1");
-    fs.writeFileSync(packageSwiftPath, content, "utf8");
+    content = content.replace(/,(\s*[\])])/g, "$1").replace(/\n{3,}/g, "\n\n");
+    fs.writeFileSync(pkgPath, content, "utf8");
     console.log(
-      `[mobile-build] Stripped incompatible SPM plugins (${incompatible.join(", ")}) — using web fallbacks until Capacitor versions are aligned.`,
+      `[mobile-build] Stripped incompatible SPM plugins: ${Array.from(
+        IOS_INCOMPATIBLE_SPM_PLUGINS,
+      ).join(", ")}`,
     );
   }
 }
 
-function ensureAndroidBuildGradlePatched() {
-  const targetPath = path.join(androidDir, "build.gradle");
-  if (!fs.existsSync(targetPath) || !fs.existsSync(androidBuildGradleTemplate)) {
-    return;
+function patchAndroidGradle() {
+  // Overwrite root build.gradle with our template (Maven mirrors, Kotlin version)
+  const templateGradle = path.join(platformsDir, "android", "build.gradle");
+  const targetGradle = path.join(androidDir, "build.gradle");
+  if (fs.existsSync(templateGradle) && fs.existsSync(targetGradle)) {
+    const current = fs.readFileSync(targetGradle, "utf8");
+    const template = fs.readFileSync(templateGradle, "utf8");
+    if (current !== template) {
+      fs.writeFileSync(targetGradle, template, "utf8");
+      console.log("[mobile-build] Patched android/build.gradle.");
+    }
   }
 
-  const current = fs.readFileSync(targetPath, "utf8");
-  const template = fs.readFileSync(androidBuildGradleTemplate, "utf8");
-  if (current === template) {
-    return;
+  // Keep generated Android projects aligned with current Capacitor/AndroidX requirements.
+  const varsPath = path.join(androidDir, "variables.gradle");
+  if (fs.existsSync(varsPath)) {
+    const vars = fs.readFileSync(varsPath, "utf8");
+    const patched = vars
+      .replace(/minSdkVersion\s*=\s*\d+/, "minSdkVersion = 26")
+      .replace(/compileSdkVersion\s*=\s*\d+/, "compileSdkVersion = 36");
+    if (patched !== vars) {
+      fs.writeFileSync(varsPath, patched, "utf8");
+      console.log("[mobile-build] Patched Android SDK versions.");
+    }
   }
 
-  fs.writeFileSync(targetPath, template, "utf8");
-  console.log("[mobile-build] Patched android/build.gradle for native plugins.");
-}
-
-function ensureAndroidVariablesPatched() {
-  const targetPath = path.join(androidDir, "variables.gradle");
-  if (!fs.existsSync(targetPath)) {
-    return;
+  const appGradlePath = path.join(androidDir, "app", "build.gradle");
+  if (fs.existsSync(appGradlePath)) {
+    const current = fs.readFileSync(appGradlePath, "utf8");
+    let patched = replaceOrInsertGradleString(current, "namespace", APP.appId);
+    patched = replaceOrInsertGradleString(patched, "applicationId", APP.appId);
+    patched = appendMissingGradleDependency(
+      patched,
+      "com.google.code.gson:gson:2.13.2",
+    );
+    patched = appendMissingGradleDependency(
+      patched,
+      "com.google.firebase:firebase-common-ktx:21.0.0",
+    );
+    patched = patched.replace(
+      /getDefaultProguardFile\('proguard-android\.txt'\)/g,
+      "getDefaultProguardFile('proguard-android-optimize.txt')",
+    );
+    if (patched !== current) {
+      fs.writeFileSync(appGradlePath, patched, "utf8");
+      console.log(
+        `[mobile-build] Applied Android package identity ${APP.appId}.`,
+      );
+    }
   }
 
-  const current = fs.readFileSync(targetPath, "utf8");
-  const next = current.replace(
-    /minSdkVersion\s*=\s*\d+/,
-    "minSdkVersion = 26",
+  patchCapacitorBarcodeScannerGradle();
+  patchLlamaCppCapacitorGradle();
+  patchNativePluginGradleForAgp9();
+
+  const stringsPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "res",
+    "values",
+    "strings.xml",
   );
-  if (next === current) {
-    return;
+  if (fs.existsSync(stringsPath)) {
+    const current = fs.readFileSync(stringsPath, "utf8");
+    const appName = escapeXmlText(APP.appName);
+    const appId = escapeXmlText(APP.appId);
+    const urlScheme = escapeXmlText(APP.urlScheme);
+    const patched = current
+      .replace(
+        /<string name="app_name">[^<]*<\/string>/,
+        `<string name="app_name">${appName}</string>`,
+      )
+      .replace(
+        /<string name="title_activity_main">[^<]*<\/string>/,
+        `<string name="title_activity_main">${appName}</string>`,
+      )
+      .replace(
+        /<string name="package_name">[^<]*<\/string>/,
+        `<string name="package_name">${appId}</string>`,
+      )
+      .replace(
+        /<string name="custom_url_scheme">[^<]*<\/string>/,
+        `<string name="custom_url_scheme">${urlScheme}</string>`,
+      );
+    if (patched !== current) {
+      fs.writeFileSync(stringsPath, patched, "utf8");
+      console.log(
+        `[mobile-build] Applied Android app strings for ${APP.appName}.`,
+      );
+    }
   }
-
-  fs.writeFileSync(targetPath, next, "utf8");
-  console.log("[mobile-build] Raised android minSdkVersion to 26.");
 }
 
-async function ensureIosWorkspace() {
-  if (fs.existsSync(iosWorkspacePath)) {
-    return;
-  }
-
-  console.log("[mobile-build] Running CocoaPods install for iOS workspace...");
-  await run("pod", ["install"], { cwd: iosDir });
-
-  if (!fs.existsSync(iosWorkspacePath)) {
-    throw new Error(
-      `Expected iOS workspace at ${iosWorkspacePath} after pod install.`,
-    );
-  }
-}
+// ── Phase 6: Native builds ──────────────────────────────────────────────
 
 export function shouldRunIosPodInstall(syncedFiles = []) {
   return syncedFiles.includes(path.join("App", "Podfile"));
 }
 
+export function resolveIosBuildTarget({
+  env = process.env,
+  appDirValue = appDir,
+} = {}) {
+  const explicitDestination =
+    env.MILADY_IOS_BUILD_DESTINATION ?? env.ELIZA_IOS_BUILD_DESTINATION;
+  const explicitSdk = env.MILADY_IOS_BUILD_SDK ?? env.ELIZA_IOS_BUILD_SDK;
+
+  if (explicitDestination || explicitSdk) {
+    return {
+      destination: explicitDestination ?? "generic/platform=iOS Simulator",
+      sdk: explicitSdk ?? "iphonesimulator",
+      reason: "explicit environment override",
+    };
+  }
+
+  const llamaCppFramework = path.join(
+    appDirValue,
+    "node_modules",
+    "llama-cpp-capacitor",
+    "ios",
+    "Frameworks",
+    "llama-cpp.framework",
+    "llama-cpp",
+  );
+
+  if (fs.existsSync(llamaCppFramework)) {
+    return {
+      destination: "generic/platform=iOS",
+      sdk: "iphoneos",
+      reason: "llama-cpp-capacitor ships a device iOS framework",
+    };
+  }
+
+  return {
+    destination: "generic/platform=iOS Simulator",
+    sdk: "iphonesimulator",
+    reason: "default simulator build",
+  };
+}
+
 async function buildAndroid() {
-  const androidSdkRoot = resolveAndroidSdkRoot();
-  const javaHome = resolveJavaHome();
-
-  if (!androidSdkRoot) {
+  const sdk = resolveAndroidSdkRoot();
+  const jdk = resolveJavaHome();
+  if (!sdk)
     throw new Error(
-      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME before running the Android mobile build.",
+      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
     );
-  }
+  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
 
-  if (!javaHome) {
-    throw new Error(
-      "JDK 21 not found. Set JAVA_HOME before running the Android mobile build.",
-    );
-  }
-
-  await buildSharedApp();
-  await ensureCapacitorPlatform("android");
+  await buildWeb();
+  await ensurePlatform("android");
   await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
-  syncPlatformTemplateFiles("android");
-  overlayAndroidNativeFiles();
-  ensureAndroidBuildGradlePatched();
-  ensureAndroidVariablesPatched();
+
+  patchAndroidGradle();
+  overlayAndroid();
 
   const env = {
     ...process.env,
-    ANDROID_HOME: androidSdkRoot,
-    ANDROID_SDK_ROOT: androidSdkRoot,
-    JAVA_HOME: javaHome,
+    ANDROID_HOME: sdk,
+    ANDROID_SDK_ROOT: sdk,
+    JAVA_HOME: jdk,
+    PATH: prependPath(process.env, [
+      path.join(jdk, "bin"),
+      path.join(sdk, "platform-tools"),
+    ]),
   };
-
-  env.PATH = withPrependedPath(env, [
-    path.join(javaHome, "bin"),
-    path.join(androidSdkRoot, "platform-tools"),
-  ]);
 
   await run(
     "./gradlew",
@@ -797,42 +1337,132 @@ async function buildAndroid() {
   );
 }
 
-async function buildIos() {
-  if (process.platform !== "darwin") {
-    throw new Error("iOS builds require macOS and Xcode.");
+function findAndroidSystemApk() {
+  const candidates = [
+    path.join(
+      androidDir,
+      "app",
+      "build",
+      "outputs",
+      "apk",
+      "release",
+      "app-release-unsigned.apk",
+    ),
+    path.join(
+      androidDir,
+      "app",
+      "build",
+      "outputs",
+      "apk",
+      "release",
+      "app-release.apk",
+    ),
+    path.join(
+      androidDir,
+      "app",
+      "build",
+      "outputs",
+      "apk",
+      "debug",
+      "app-debug.apk",
+    ),
+  ];
+  return firstExisting(candidates);
+}
+
+function stageAndroidSystemApk() {
+  const apk = findAndroidSystemApk();
+  if (!apk) {
+    throw new Error("No Android APK found to stage for MiladyOS.");
   }
+  fs.mkdirSync(miladyOsApkDir, { recursive: true });
+  const target = path.join(miladyOsApkDir, "Milady.apk");
+  fs.copyFileSync(apk, target);
+  console.log(`[mobile-build] Staged MiladyOS APK at ${target}.`);
+}
 
-  await buildSharedApp();
-  await ensureCapacitorPlatform("ios");
-  await run("bash", [prepareIosCocoapodsScript], { cwd: repoRoot });
-  await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
-  const syncedFiles = syncPlatformTemplateFiles("ios");
-  overlayIosNativeFiles();
-
-  // Always strip incompatible official plugins from SPM Package.swift.
-  // Xcode compiles SPM targets regardless of whether CocoaPods is used.
-  patchIosPluginSwiftCompat();
-
-  if (shouldRunIosPodInstall(syncedFiles)) {
-    console.log(
-      "[mobile-build] Re-running CocoaPods install after syncing the iOS Podfile...",
+async function buildAndroidSystem() {
+  const sdk = resolveAndroidSdkRoot();
+  const jdk = resolveJavaHome();
+  if (!sdk)
+    throw new Error(
+      "Android SDK not found. Set ANDROID_SDK_ROOT or ANDROID_HOME.",
     );
+  if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
+
+  await buildWeb();
+  await ensurePlatform("android");
+  await run("bun", ["run", "cap:sync:android"], { cwd: appDir });
+
+  patchAndroidGradle();
+  overlayAndroid();
+
+  const env = {
+    ...process.env,
+    ANDROID_HOME: sdk,
+    ANDROID_SDK_ROOT: sdk,
+    JAVA_HOME: jdk,
+    PATH: prependPath(process.env, [
+      path.join(jdk, "bin"),
+      path.join(sdk, "platform-tools"),
+    ]),
+  };
+
+  await run("./gradlew", [":app:assembleRelease"], {
+    cwd: androidDir,
+    env,
+  });
+  stageAndroidSystemApk();
+}
+
+async function buildIos() {
+  if (process.platform !== "darwin")
+    throw new Error("iOS builds require macOS and Xcode.");
+
+  const cocoapodsScript = path.join(
+    repoRoot,
+    "eliza",
+    "packages",
+    "app-core",
+    "scripts",
+    "prepare-ios-cocoapods.sh",
+  );
+
+  await buildWeb();
+  await ensurePlatform("ios");
+  if (fs.existsSync(cocoapodsScript)) {
+    await run("bash", [cocoapodsScript], { cwd: repoRoot });
+  }
+  await run("bun", ["run", "cap:sync:ios"], { cwd: appDir });
+
+  const syncedFiles = prepareIosOverlay();
+
+  // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues
+  if (
+    fs.existsSync(path.join(iosDir, "Podfile")) ||
+    shouldRunIosPodInstall(syncedFiles)
+  ) {
     await run("pod", ["install"], { cwd: iosDir });
   }
-  await ensureIosWorkspace();
+
+  const wsPath = path.join(iosDir, "App.xcworkspace");
+  const projectArgs = fs.existsSync(wsPath)
+    ? ["-workspace", "App.xcworkspace"]
+    : ["-project", "App.xcodeproj"];
+  const buildTarget = resolveIosBuildTarget();
+
   await run(
     "xcodebuild",
     [
-      "-workspace",
-      "App.xcworkspace",
+      ...projectArgs,
       "-scheme",
       "App",
       "-configuration",
       "Debug",
       "-destination",
-      "generic/platform=iOS Simulator",
+      buildTarget.destination,
       "-sdk",
-      "iphonesimulator",
+      buildTarget.sdk,
       "CODE_SIGNING_ALLOWED=NO",
       "build",
     ],
@@ -840,18 +1470,30 @@ async function buildIos() {
   );
 }
 
-export async function main(target = process.argv[2]) {
-  if (target !== "android" && target !== "ios") {
-    console.error("Usage: node scripts/run-mobile-build.mjs <android|ios>");
+// ── Entry point ─────────────────────────────────────────────────────────
+
+export async function main(argv = process.argv.slice(2)) {
+  const target = argv[0];
+  if (
+    target !== "android" &&
+    target !== "android-system" &&
+    target !== "ios" &&
+    target !== "ios-overlay"
+  ) {
+    console.error(
+      "Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>",
+    );
     process.exit(1);
   }
-
   if (target === "android") {
     await buildAndroid();
-    return;
+  } else if (target === "android-system") {
+    await buildAndroidSystem();
+  } else if (target === "ios") {
+    await buildIos();
+  } else {
+    prepareIosOverlay();
   }
-
-  await buildIos();
 }
 
 const isMain =

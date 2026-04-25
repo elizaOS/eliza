@@ -3,6 +3,7 @@ import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@eli
 export const burnLogs: Action = {
   name: "BURN_LOGS",
   description: "Use tinderbox on logs in inventory to light a fire",
+  descriptionCompressed: "Use tinderbox on logs to light fire.",
   similes: ["LIGHT_FIRE", "FIREMAKING"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

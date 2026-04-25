@@ -19,10 +19,14 @@ const SAMPLE_OPTIONAL = [
 describe("optional core plugins (require explicit opt-in)", () => {
   const prevCloudKey = process.env.ELIZAOS_CLOUD_API_KEY;
   const prevCloudEnabled = process.env.ELIZAOS_CLOUD_ENABLED;
+  const prevOpenAiKey = process.env.OPENAI_API_KEY;
+  const prevOllamaBaseUrl = process.env.OLLAMA_BASE_URL;
 
   beforeEach(() => {
     delete process.env.ELIZAOS_CLOUD_API_KEY;
     delete process.env.ELIZAOS_CLOUD_ENABLED;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OLLAMA_BASE_URL;
   });
 
   afterEach(() => {
@@ -35,6 +39,16 @@ describe("optional core plugins (require explicit opt-in)", () => {
       process.env.ELIZAOS_CLOUD_ENABLED = prevCloudEnabled;
     } else {
       delete process.env.ELIZAOS_CLOUD_ENABLED;
+    }
+    if (prevOpenAiKey !== undefined) {
+      process.env.OPENAI_API_KEY = prevOpenAiKey;
+    } else {
+      delete process.env.OPENAI_API_KEY;
+    }
+    if (prevOllamaBaseUrl !== undefined) {
+      process.env.OLLAMA_BASE_URL = prevOllamaBaseUrl;
+    } else {
+      delete process.env.OLLAMA_BASE_URL;
     }
   });
 
@@ -99,5 +113,21 @@ describe("optional core plugins (require explicit opt-in)", () => {
       },
     } as ElizaConfig);
     expect(names.has("@elizaos/plugin-discord")).toBe(false);
+  });
+
+  it("local inference mode blocks remote model providers while keeping local providers", () => {
+    process.env.OPENAI_API_KEY = "sk-test";
+    process.env.OLLAMA_BASE_URL = "http://localhost:11434";
+
+    const names = collectPluginNames({
+      cloud: { enabled: false, inferenceMode: "local" },
+      plugins: {
+        allow: ["@elizaos/plugin-openai"],
+      },
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+    expect(names.has("@elizaos/plugin-openai")).toBe(false);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
   });
 });

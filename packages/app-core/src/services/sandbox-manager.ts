@@ -7,7 +7,6 @@ import {
   createEngine,
   detectBestEngine,
   type ISandboxEngine,
-  type SandboxEngineType,
 } from "@elizaos/agent/services";
 
 export type {

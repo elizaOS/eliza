@@ -53,6 +53,8 @@ export class TaskService extends Service {
 	private readonly TICK_INTERVAL = 1000; // Check every second
 	/** Tracks task IDs currently being executed to prevent overlapping runs. WHY: blocking tasks must not run again until current run finishes. */
 	private executingTasks: Set<string> = new Set();
+	/** Tracks in-flight task promises so stop() can await a clean drain before runtime.close(). */
+	private executingTaskPromises = new Set<Promise<void>>();
 	/** When false, checkTasks skips the DB query. Set true by markDirty(); start true so first tick always queries. WHY: avoid redundant getTasks every second when nothing changed. */
 	private tasksDirty = true;
 	/** Set true in stop(). runTick is a no-op when true (daemon may call runTick after unregister). */
@@ -356,6 +358,16 @@ export class TaskService extends Service {
 	 * @param {Task} task - The task to be executed.
 	 */
 	private async executeTask(task: Task) {
+		const execution = this.executeTaskInternal(task);
+		this.executingTaskPromises.add(execution);
+		try {
+			await execution;
+		} finally {
+			this.executingTaskPromises.delete(execution);
+		}
+	}
+
+	private async executeTaskInternal(task: Task) {
 		if (!task?.id) {
 			this.runtime.logger.debug(
 				{
@@ -391,7 +403,11 @@ export class TaskService extends Service {
 			const result = await worker.execute(this.runtime, taskOptions, task);
 
 			if (task.tags?.includes("repeat")) {
-				const meta = task.metadata as TaskMetadata | undefined;
+				const latestTask = await this.runtime.getTask(task.id);
+				if (!latestTask) {
+					return;
+				}
+				const meta = latestTask.metadata as TaskMetadata | undefined;
 				const baseInterval = meta?.baseInterval ?? meta?.updateInterval;
 				const newMeta: TaskMetadata = {
 					...meta,
@@ -425,13 +441,17 @@ export class TaskService extends Service {
 			}
 		} catch (error) {
 			if (task.tags?.includes("repeat")) {
-				const failureCount =
-					((task.metadata as TaskMetadata)?.failureCount ?? 0) + 1;
-				const rawMax = (task.metadata as TaskMetadata)?.maxFailures;
+				const latestTask = await this.runtime.getTask(task.id);
+				if (!latestTask) {
+					return;
+				}
+				const meta = latestTask.metadata as TaskMetadata | undefined;
+				const failureCount = (meta?.failureCount ?? 0) + 1;
+				const rawMax = meta?.maxFailures;
 				const neverPause = rawMax === Infinity || rawMax === -1;
 				const maxFailures = neverPause ? Infinity : (rawMax ?? 5);
 				const newMeta: TaskMetadata & Record<string, unknown> = {
-					...(task.metadata as TaskMetadata),
+					...(meta ?? {}),
 					updatedAt: Date.now(),
 					failureCount,
 					lastError: error instanceof Error ? error.message : String(error),
@@ -448,9 +468,7 @@ export class TaskService extends Service {
 					);
 				} else {
 					const baseInterval =
-						(task.metadata as TaskMetadata)?.baseInterval ??
-						(task.metadata as TaskMetadata)?.updateInterval ??
-						1000;
+						meta?.baseInterval ?? meta?.updateInterval ?? 1000;
 					newMeta.updateInterval = Math.min(
 						baseInterval * 2 ** failureCount,
 						300_000,
@@ -618,6 +636,10 @@ export class TaskService extends Service {
 		if (this.timer) {
 			clearInterval(this.timer);
 			this.timer = null;
+		}
+		const inFlight = Array.from(this.executingTaskPromises);
+		if (inFlight.length > 0) {
+			await Promise.allSettled(inFlight);
 		}
 		// Clear executing tasks set on stop
 		this.executingTasks.clear();

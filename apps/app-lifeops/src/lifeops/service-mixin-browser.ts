@@ -1,38 +1,114 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
 import type {
+  BrowserBridgeCompanionAutoPairResponse,
+  BrowserBridgeCompanionConfig,
+  BrowserBridgeCompanionPairingResponse,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgeCompanionSyncResponse,
+  BrowserBridgePageContext,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+  CreateBrowserBridgeCompanionAutoPairRequest,
+  CreateBrowserBridgeCompanionPairingRequest,
+  SyncBrowserBridgeStateRequest,
+  UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge/contracts";
+import { BROWSER_BRIDGE_KINDS } from "@elizaos/plugin-browser-bridge/contracts";
+import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserCompanionPairingRequest,
   CreateLifeOpsBrowserSessionRequest,
-  LifeOpsBrowserCompanionPairingResponse,
-  LifeOpsBrowserCompanionStatus,
-  LifeOpsBrowserCompanionSyncResponse,
-  LifeOpsBrowserPageContext,
   LifeOpsBrowserSession,
-  LifeOpsBrowserSettings,
-  LifeOpsBrowserTabSummary,
-  SyncLifeOpsBrowserStateRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
-  UpdateLifeOpsBrowserSettingsRequest,
-} from "@elizaos/shared/contracts/lifeops";
-import {
-  LIFEOPS_BROWSER_KINDS,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+import { recordBrowserFocusWindow } from "./browser-extension-store.js";
 import {
   fail,
   normalizeEnumValue,
+  normalizeOptionalBoolean,
+  normalizeOptionalIsoString,
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import { normalizeBrowserActionInput } from "./service-normalize-task.js";
+import { normalizeOptionalRecord, requireRecord } from "./service-helpers-misc.js";
+import {
+  browserPageContextIdentityKey,
+  browserSessionMatchesCompanion,
+  browserTabIdentityKey,
+  browserUrlAllowedBySettings,
+  createBrowserSessionActions,
+  hashBrowserCompanionPairingToken,
+  normalizeBrowserSessionActionIndex,
+  normalizePageForms,
+  normalizePageHeadings,
+  normalizePageLinks,
+  normalizePendingBrowserPairingTokenHashes,
+  redactSecretLikeText,
+  resolveAwaitingBrowserActionId,
+  selectRememberedBrowserTabs,
+} from "./service-helpers-browser.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 
-// ---------------------------------------------------------------------------
-// Local helpers (copied from service.ts)
-// ---------------------------------------------------------------------------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+export interface BrowserBridgeService {
+  getBrowserSettings(): Promise<BrowserBridgeSettings>;
+  updateBrowserSettings(
+    request: UpdateBrowserBridgeSettingsRequest,
+  ): Promise<BrowserBridgeSettings>;
+  listBrowserCompanions(): Promise<BrowserBridgeCompanionStatus[]>;
+  listBrowserTabs(): Promise<BrowserBridgeTabSummary[]>;
+  getCurrentBrowserPage(): Promise<BrowserBridgePageContext | null>;
+  syncBrowserState(request: SyncBrowserBridgeStateRequest): Promise<{
+    companion: BrowserBridgeCompanionStatus;
+    tabs: BrowserBridgeTabSummary[];
+    currentPage: BrowserBridgePageContext | null;
+  }>;
+  createBrowserCompanionPairing(
+    request: CreateBrowserBridgeCompanionPairingRequest,
+  ): Promise<BrowserBridgeCompanionPairingResponse>;
+  syncBrowserCompanion(
+    companionId: string,
+    pairingToken: string,
+    request: SyncBrowserBridgeStateRequest,
+  ): Promise<BrowserBridgeCompanionSyncResponse>;
+  listBrowserSessions(): Promise<LifeOpsBrowserSession[]>;
+  getBrowserSession(sessionId: string): Promise<LifeOpsBrowserSession>;
+  createBrowserSession(
+    request: CreateLifeOpsBrowserSessionRequest,
+  ): Promise<LifeOpsBrowserSession>;
+  confirmBrowserSession(
+    sessionId: string,
+    request: ConfirmLifeOpsBrowserSessionRequest,
+  ): Promise<LifeOpsBrowserSession>;
+  completeBrowserSession(
+    sessionId: string,
+    request: CompleteLifeOpsBrowserSessionRequest,
+  ): Promise<LifeOpsBrowserSession>;
+  updateBrowserSessionProgressFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    sessionId: string,
+    request: UpdateLifeOpsBrowserSessionProgressRequest,
+  ): Promise<LifeOpsBrowserSession>;
+  completeBrowserSessionFromCompanion(
+    companionId: string,
+    pairingToken: string,
+    sessionId: string,
+    request: CompleteLifeOpsBrowserSessionRequest,
+  ): Promise<LifeOpsBrowserSession>;
+  autoPairBrowserCompanion(
+    request: CreateBrowserBridgeCompanionAutoPairRequest,
+    apiBaseUrl: string,
+  ): Promise<BrowserBridgeCompanionAutoPairResponse>;
+  updateBrowserSessionProgress(
+    sessionId: string,
+    request: UpdateLifeOpsBrowserSessionProgressRequest,
+  ): Promise<LifeOpsBrowserSession>;
 }
 
 function mergeMetadata(
@@ -46,185 +122,25 @@ function mergeMetadata(
   return { ...current, ...cloned };
 }
 
-function requireRecord(value: unknown, field: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail(400, `${field} must be an object`);
-  }
-  return { ...value } as Record<string, unknown>;
-}
+const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
 
-function normalizeOptionalBoolean(
-  value: unknown,
-  field: string,
-): boolean | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value === "boolean") return value;
-  if (value === "true") return true;
-  if (value === "false") return false;
-  fail(400, `${field} must be a boolean`);
-}
-
-function normalizeOptionalIsoString(
-  value: unknown,
-  field: string,
-): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string" || value.trim().length === 0) {
-    fail(400, `${field} must be an ISO 8601 string`);
-  }
-  const ms = Date.parse(value);
-  if (!Number.isFinite(ms)) {
-    fail(400, `${field} must be a valid ISO 8601 string`);
-  }
-  return value;
-}
-
-function normalizeOptionalRecord(
-  value: unknown,
-  field: string,
-): Record<string, unknown> | undefined {
-  if (value === undefined) return undefined;
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail(400, `${field} must be an object`);
-  }
-  return { ...value } as Record<string, unknown>;
-}
-
-// Browser-specific helpers
-
-function hashBrowserCompanionPairingToken(token: string): string {
-  return crypto.createHash("sha256").update(token).digest("hex");
-}
-
-function normalizePendingBrowserPairingTokenHashes(
-  pending: string[],
-  currentHash: string,
-): string[] {
-  const MAX_PENDING = 3;
-  return pending
-    .filter((hash) => hash !== currentHash)
-    .slice(0, MAX_PENDING);
-}
-
-function browserSessionMatchesCompanion(
-  session: LifeOpsBrowserSession,
-  companion: LifeOpsBrowserCompanionStatus,
-): boolean {
-  if (session.companionId && session.companionId !== companion.id) {
-    return false;
-  }
-  if (session.browser && session.browser !== companion.browser) {
-    return false;
-  }
-  if (session.profileId && session.profileId !== companion.profileId) {
-    return false;
-  }
-  return true;
-}
-
-function normalizeBrowserSessionActionIndex(
-  value: unknown,
-  actionsLength: number,
-): number {
-  const num = typeof value === "string" ? Number(value) : value;
-  if (typeof num !== "number" || !Number.isInteger(num) || num < 0) {
-    fail(400, "currentActionIndex must be a non-negative integer");
-  }
-  return Math.min(num, Math.max(0, actionsLength - 1));
-}
-
-function browserTabIdentityKey(
-  tab: Pick<LifeOpsBrowserTabSummary, "browser" | "profileId" | "windowId" | "tabId">,
-): string {
-  return `${tab.browser}:${tab.profileId}:${tab.windowId}:${tab.tabId}`;
-}
-
-function browserPageContextIdentityKey(
-  context: Pick<LifeOpsBrowserPageContext, "browser" | "profileId" | "windowId" | "tabId">,
-): string {
-  return `${context.browser}:${context.profileId}:${context.windowId}:${context.tabId}`;
-}
-
-function selectRememberedBrowserTabs(
-  tabs: LifeOpsBrowserTabSummary[],
-  maxRememberedTabs: number,
-): LifeOpsBrowserTabSummary[] {
-  if (tabs.length <= maxRememberedTabs) return tabs;
-  const sorted = tabs.slice().sort((left, right) => {
-    if (left.focusedActive && !right.focusedActive) return -1;
-    if (!left.focusedActive && right.focusedActive) return 1;
-    if (left.activeInWindow && !right.activeInWindow) return -1;
-    if (!left.activeInWindow && right.activeInWindow) return 1;
-    const leftFocusMs = left.lastFocusedAt ? Date.parse(left.lastFocusedAt) : 0;
-    const rightFocusMs = right.lastFocusedAt ? Date.parse(right.lastFocusedAt) : 0;
-    return rightFocusMs - leftFocusMs;
-  });
-  return sorted.slice(0, maxRememberedTabs);
-}
-
-function browserUrlAllowedBySettings(
-  url: string,
-  settings: LifeOpsBrowserSettings,
-): boolean {
-  if (!url) return false;
+function browserDomainFromUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
-    const origin = parsed.origin.toLowerCase();
-    if (settings.blockedOrigins.some((blocked) => origin.includes(blocked.toLowerCase()))) {
-      return false;
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
     }
-    if (settings.siteAccessMode === "granted_sites_only" && settings.grantedOrigins.length > 0) {
-      return settings.grantedOrigins.some((granted) => origin.includes(granted.toLowerCase()));
-    }
-    return true;
+    const hostname = parsed.hostname.trim().toLowerCase().replace(/\.+$/, "");
+    return hostname.length > 0 ? hostname : null;
   } catch {
-    return false;
+    return null;
   }
-}
-
-function redactSecretLikeText(value: unknown): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string") return null;
-  return value;
-}
-
-function normalizePageLinks(
-  value: unknown,
-  field: string,
-): Array<{ text: string; href: string }> {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) {
-    fail(400, `${field} must be an array`);
-  }
-  return value as Array<{ text: string; href: string }>;
-}
-
-function normalizePageHeadings(
-  value: unknown,
-  field: string,
-): string[] {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) {
-    fail(400, `${field} must be an array`);
-  }
-  return value as string[];
-}
-
-function normalizePageForms(
-  value: unknown,
-  field: string,
-): Array<Record<string, unknown>> {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) {
-    fail(400, `${field} must be an array`);
-  }
-  return value as Array<Record<string, unknown>>;
 }
 
 function normalizeBrowserSettingsUpdate(
-  request: UpdateLifeOpsBrowserSettingsRequest,
-  current: LifeOpsBrowserSettings,
-): LifeOpsBrowserSettings {
+  request: UpdateBrowserBridgeSettingsRequest,
+  current: BrowserBridgeSettings,
+): BrowserBridgeSettings {
   return {
     ...current,
     enabled: normalizeOptionalBoolean(request.enabled, "enabled") ?? current.enabled,
@@ -237,7 +153,13 @@ function normalizeBrowserSettingsUpdate(
     blockedOrigins: request.blockedOrigins ?? [...current.blockedOrigins],
     maxRememberedTabs: request.maxRememberedTabs ?? current.maxRememberedTabs,
     pauseUntil: request.pauseUntil !== undefined ? (request.pauseUntil ?? null) : current.pauseUntil,
-    metadata: request.metadata !== undefined ? mergeMetadata(current.metadata, request.metadata as Record<string, unknown>) : current.metadata,
+    metadata:
+      request.metadata !== undefined
+        ? mergeMetadata(
+            current.metadata,
+            normalizeOptionalRecord(request.metadata, "metadata"),
+          )
+        : current.metadata,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -247,45 +169,19 @@ function normalizeOptionalBrowserKind(
   field: string,
 ): string | null {
   if (value === undefined || value === null) return null;
-  return normalizeEnumValue(value, field, LIFEOPS_BROWSER_KINDS);
-}
-
-function normalizeBrowserActionInput(
-  value: unknown,
-  field: string,
-): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    fail(400, `${field} must be an object`);
-  }
-  return { ...value } as Record<string, unknown>;
-}
-
-function createBrowserSessionActions(
-  actions: Record<string, unknown>[],
-): any[] {
-  return actions.map((action, index) => ({
-    id: crypto.randomUUID(),
-    ...action,
-  }));
-}
-
-function resolveAwaitingBrowserActionId(
-  actions: readonly any[],
-): string | null {
-  for (const action of actions) {
-    if (action.requireConfirmation === true) {
-      return action.id ?? null;
-    }
-  }
-  return null;
+  return normalizeEnumValue(value, field, BROWSER_BRIDGE_KINDS);
 }
 
 // Imports from repository
 import {
-  createLifeOpsBrowserPageContext,
+  createBrowserBridgePageContext,
   createLifeOpsBrowserSession,
-  createLifeOpsBrowserTabSummary,
+  createBrowserBridgeTabSummary,
 } from "./repository.js";
+import {
+  mergeBrowserTaskLifecycle,
+  summarizeBrowserTaskLifecycle,
+} from "./browser-session-lifecycle.js";
 import {
   DEFAULT_BROWSER_PERMISSION_STATE,
 } from "./service-constants.js";
@@ -297,9 +193,9 @@ import {
 /** @internal */
 export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsBrowserServiceMixin extends Base {
-    public async createBrowserSessionInternal(
+): MixinClass<TBase, BrowserBridgeService> {
+  return class extends Base {
+    protected async createBrowserSessionInternal(
       request: CreateLifeOpsBrowserSessionRequest,
     ): Promise<LifeOpsBrowserSession> {
       const workflowId = normalizeOptionalString(request.workflowId) ?? null;
@@ -334,31 +230,40 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         metadata: {},
         finishedAt: null,
       });
-      await this.repository.createBrowserSession(session);
+      const lifecycle = mergeBrowserTaskLifecycle({
+        session,
+        now: new Date().toISOString(),
+      });
+      const initializedSession: LifeOpsBrowserSession = {
+        ...session,
+        result: lifecycle.result,
+        metadata: lifecycle.metadata,
+      };
+      await this.repository.createBrowserSession(initializedSession);
       await this.recordBrowserAudit(
         "browser_session_created",
-        session.id,
+        initializedSession.id,
         "browser session created",
         {
-          workflowId: session.workflowId,
-          title: session.title,
-          browser: session.browser,
-          profileId: session.profileId,
-          windowId: session.windowId,
-          tabId: session.tabId,
+          workflowId: initializedSession.workflowId,
+          title: initializedSession.title,
+          browser: initializedSession.browser,
+          profileId: initializedSession.profileId,
+          windowId: initializedSession.windowId,
+          tabId: initializedSession.tabId,
         },
         {
-          status: session.status,
-          actionCount: session.actions.length,
+          status: initializedSession.status,
+          actionCount: initializedSession.actions.length,
         },
       );
-      return session;
+      return initializedSession;
     }
 
     public async requireBrowserCompanion(
       companionId: string,
       pairingToken: string,
-    ): Promise<LifeOpsBrowserCompanionStatus> {
+    ): Promise<BrowserBridgeCompanionStatus> {
       const credential = await this.repository.getBrowserCompanionCredential(
         this.agentId(),
         requireNonEmptyString(companionId, "companionId"),
@@ -428,7 +333,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     public async claimQueuedBrowserSession(
-      companion: LifeOpsBrowserCompanionStatus,
+      companion: BrowserBridgeCompanionStatus,
     ): Promise<LifeOpsBrowserSession | null> {
       const claimable = (await this.listBrowserSessions())
         .filter(
@@ -479,7 +384,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     public async requireBrowserSessionForCompanion(
-      companion: LifeOpsBrowserCompanionStatus,
+      companion: BrowserBridgeCompanionStatus,
       sessionId: string,
     ): Promise<LifeOpsBrowserSession> {
       const session = await this.getBrowserSession(sessionId);
@@ -489,13 +394,13 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       return session;
     }
 
-    async getBrowserSettings(): Promise<LifeOpsBrowserSettings> {
+    async getBrowserSettings(): Promise<BrowserBridgeSettings> {
       return this.getBrowserSettingsInternal();
     }
 
     async updateBrowserSettings(
-      request: UpdateLifeOpsBrowserSettingsRequest,
-    ): Promise<LifeOpsBrowserSettings> {
+      request: UpdateBrowserBridgeSettingsRequest,
+    ): Promise<BrowserBridgeSettings> {
       const current = await this.getBrowserSettingsInternal();
       const next = normalizeBrowserSettingsUpdate(request, current);
       await this.repository.upsertBrowserSettings(this.agentId(), next);
@@ -510,11 +415,11 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       return this.getBrowserSettingsInternal();
     }
 
-    async listBrowserCompanions(): Promise<LifeOpsBrowserCompanionStatus[]> {
+    async listBrowserCompanions(): Promise<BrowserBridgeCompanionStatus[]> {
       return this.repository.listBrowserCompanions(this.agentId());
     }
 
-    async listBrowserTabs(): Promise<LifeOpsBrowserTabSummary[]> {
+    async listBrowserTabs(): Promise<BrowserBridgeTabSummary[]> {
       const settings = await this.getBrowserSettingsInternal();
       if (
         !settings.enabled ||
@@ -530,7 +435,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    async getCurrentBrowserPage(): Promise<LifeOpsBrowserPageContext | null> {
+    async getCurrentBrowserPage(): Promise<BrowserBridgePageContext | null> {
       const settings = await this.getBrowserSettingsInternal();
       if (
         !settings.enabled ||
@@ -561,16 +466,16 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
 
-    async syncBrowserState(request: SyncLifeOpsBrowserStateRequest): Promise<{
-      companion: LifeOpsBrowserCompanionStatus;
-      tabs: LifeOpsBrowserTabSummary[];
-      currentPage: LifeOpsBrowserPageContext | null;
+    async syncBrowserState(request: SyncBrowserBridgeStateRequest): Promise<{
+      companion: BrowserBridgeCompanionStatus;
+      tabs: BrowserBridgeTabSummary[];
+      currentPage: BrowserBridgePageContext | null;
     }> {
       const companionInput = requireRecord(request.companion, "companion");
       const browser = normalizeEnumValue(
         companionInput.browser,
         "companion.browser",
-        LIFEOPS_BROWSER_KINDS,
+        BROWSER_BRIDGE_KINDS,
       );
       const profileId = requireNonEmptyString(
         companionInput.profileId,
@@ -602,8 +507,46 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         };
       }
 
-      const nowIso = new Date().toISOString();
+      const nowIso =
+        normalizeOptionalIsoString(
+          companionInput.lastSeenAt,
+          "companion.lastSeenAt",
+        ) ?? new Date().toISOString();
       const existingTabs = await this.repository.listBrowserTabs(this.agentId());
+      const currentSyncMs = Date.parse(nowIso);
+      const previouslyFocusedTab =
+        existingTabs.find((tab) => tab.focusedActive) ?? null;
+      if (previouslyFocusedTab && Number.isFinite(currentSyncMs)) {
+        const previousSeenMs = Date.parse(previouslyFocusedTab.lastSeenAt);
+        if (Number.isFinite(previousSeenMs) && currentSyncMs > previousSeenMs) {
+          const cappedStartMs = Math.max(
+            previousSeenMs,
+            currentSyncMs - MAX_BROWSER_FOCUS_WINDOW_MS,
+          );
+          await recordBrowserFocusWindow(this.runtime, {
+            deviceId: companion.id,
+            url: previouslyFocusedTab.url,
+            windowStart: new Date(cappedStartMs).toISOString(),
+            windowEnd: nowIso,
+          });
+          const domain = browserDomainFromUrl(previouslyFocusedTab.url);
+          if (domain) {
+            await this.recordScreenTimeEvent({
+              source: "website",
+              identifier: domain,
+              displayName: domain,
+              startAt: new Date(cappedStartMs).toISOString(),
+              endAt: nowIso,
+              metadata: {
+                url: previouslyFocusedTab.url,
+                browser: previouslyFocusedTab.browser,
+                profileId: previouslyFocusedTab.profileId,
+                companionId: companion.id,
+              },
+            });
+          }
+        }
+      }
       const existingTabsByKey = new Map(
         existingTabs.map((tab) => [browserTabIdentityKey(tab), tab]),
       );
@@ -612,7 +555,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         const tabBrowser = normalizeEnumValue(
           tabRecord.browser,
           `tabs[${index}].browser`,
-          LIFEOPS_BROWSER_KINDS,
+          BROWSER_BRIDGE_KINDS,
         );
         const tabProfileId = requireNonEmptyString(
           tabRecord.profileId,
@@ -685,7 +628,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
               ),
               updatedAt: nowIso,
             }
-          : createLifeOpsBrowserTabSummary({
+          : createBrowserBridgeTabSummary({
               agentId: this.agentId(),
               companionId: companion.id,
               browser: tabBrowser,
@@ -762,7 +705,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         const contextBrowser = normalizeEnumValue(
           contextRecord.browser,
           `pageContexts[${index}].browser`,
-          LIFEOPS_BROWSER_KINDS,
+          BROWSER_BRIDGE_KINDS,
         );
         const contextProfileId = requireNonEmptyString(
           contextRecord.profileId,
@@ -832,7 +775,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
                 ),
               ),
             }
-          : createLifeOpsBrowserPageContext({
+          : createBrowserBridgePageContext({
               agentId: this.agentId(),
               browser: contextBrowser,
               profileId: contextProfileId,
@@ -903,12 +846,12 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async createBrowserCompanionPairing(
-      request: CreateLifeOpsBrowserCompanionPairingRequest,
-    ): Promise<LifeOpsBrowserCompanionPairingResponse> {
+      request: CreateBrowserBridgeCompanionPairingRequest,
+    ): Promise<BrowserBridgeCompanionPairingResponse> {
       const browser = normalizeEnumValue(
         request.browser,
         "browser",
-        LIFEOPS_BROWSER_KINDS,
+        BROWSER_BRIDGE_KINDS,
       );
       const profileId = requireNonEmptyString(request.profileId, "profileId");
       const currentCompanion = await this.repository.getBrowserCompanionByProfile(
@@ -923,7 +866,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       const label =
         normalizeOptionalString(request.label) ??
         currentCompanion?.label ??
-        `LifeOps Browser ${browser} ${profileLabel}`;
+        `Agent Browser Bridge ${browser} ${profileLabel}`;
       const companion = this.buildBrowserCompanion(
         {
           browser,
@@ -978,11 +921,47 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
+    async autoPairBrowserCompanion(
+      request: CreateBrowserBridgeCompanionAutoPairRequest,
+      apiBaseUrl: string,
+    ): Promise<BrowserBridgeCompanionAutoPairResponse> {
+      const profileId = normalizeOptionalString(request.profileId) ?? "default";
+      const profileLabel =
+        normalizeOptionalString(request.profileLabel) ?? "Default";
+      const label =
+        normalizeOptionalString(request.label) ??
+        `Agent Browser Bridge ${normalizeEnumValue(request.browser, "browser", BROWSER_BRIDGE_KINDS)} ${profileLabel}`;
+      const pairing = await this.createBrowserCompanionPairing({
+        browser: request.browser,
+        profileId,
+        profileLabel,
+        label,
+        extensionVersion: request.extensionVersion ?? null,
+        metadata: request.metadata,
+      });
+      const config: BrowserBridgeCompanionConfig = {
+        apiBaseUrl: requireNonEmptyString(apiBaseUrl, "apiBaseUrl").replace(
+          /\/+$/,
+          "",
+        ),
+        companionId: pairing.companion.id,
+        pairingToken: pairing.pairingToken,
+        browser: pairing.companion.browser,
+        profileId: pairing.companion.profileId,
+        profileLabel: pairing.companion.profileLabel,
+        label: pairing.companion.label,
+      };
+      return {
+        companion: pairing.companion,
+        config,
+      };
+    }
+
     async syncBrowserCompanion(
       companionId: string,
       pairingToken: string,
-      request: SyncLifeOpsBrowserStateRequest,
-    ): Promise<LifeOpsBrowserCompanionSyncResponse> {
+      request: SyncBrowserBridgeStateRequest,
+    ): Promise<BrowserBridgeCompanionSyncResponse> {
       const companion = await this.requireBrowserCompanion(
         companionId,
         pairingToken,
@@ -991,7 +970,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       const browser = normalizeEnumValue(
         companionInput.browser,
         "companion.browser",
-        LIFEOPS_BROWSER_KINDS,
+        BROWSER_BRIDGE_KINDS,
       );
       const profileId = requireNonEmptyString(
         companionInput.profileId,
@@ -1064,13 +1043,82 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
             finishedAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
+      const lifecycle = mergeBrowserTaskLifecycle({
+        session: nextSession,
+        now: nextSession.updatedAt,
+        approvalSatisfied: confirmed,
+        completed: !confirmed ? false : undefined,
+      });
+      const finalizedSession: LifeOpsBrowserSession = {
+        ...nextSession,
+        result: lifecycle.result,
+        metadata: lifecycle.metadata,
+      };
+      await this.repository.updateBrowserSession(finalizedSession);
+      await this.recordBrowserAudit(
+        "browser_session_updated",
+        finalizedSession.id,
+        confirmed ? "browser session confirmed" : "browser session cancelled",
+        {
+          confirmed,
+        },
+        {
+          status: finalizedSession.status,
+        },
+      );
+      return finalizedSession;
+    }
+
+    async updateBrowserSessionProgress(
+      sessionId: string,
+      request: UpdateLifeOpsBrowserSessionProgressRequest,
+    ): Promise<LifeOpsBrowserSession> {
+      const session = await this.getBrowserSession(sessionId);
+      if (
+        session.status !== "queued" &&
+        session.status !== "running" &&
+        session.status !== "awaiting_confirmation"
+      ) {
+        fail(
+          409,
+          `browser session cannot update progress from status ${session.status}`,
+        );
+      }
+      const updatedAt = new Date().toISOString();
+      const lifecycle = mergeBrowserTaskLifecycle({
+        session,
+        resultPatch:
+          request.result === undefined
+            ? undefined
+            : requireRecord(request.result, "result"),
+        metadataPatch:
+          request.metadata === undefined
+            ? undefined
+            : requireRecord(request.metadata, "metadata"),
+        now: updatedAt,
+      });
+      const nextSession: LifeOpsBrowserSession = {
+        ...session,
+        status: "running",
+        currentActionIndex:
+          request.currentActionIndex === undefined
+            ? session.currentActionIndex
+            : normalizeBrowserSessionActionIndex(
+                request.currentActionIndex,
+                session.actions.length,
+              ),
+        result: lifecycle.result,
+        metadata: lifecycle.metadata,
+        updatedAt,
+      };
       await this.repository.updateBrowserSession(nextSession);
       await this.recordBrowserAudit(
         "browser_session_updated",
         nextSession.id,
-        confirmed ? "browser session confirmed" : "browser session cancelled",
+        "browser session progress updated",
         {
-          confirmed,
+          currentActionIndex: nextSession.currentActionIndex,
+          browserTask: summarizeBrowserTaskLifecycle(nextSession),
         },
         {
           status: nextSession.status,
@@ -1103,6 +1151,19 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
           "Browser session requires explicit confirmation before execution.",
         );
       }
+      const updatedAt = new Date().toISOString();
+      const lifecycle = mergeBrowserTaskLifecycle({
+        session,
+        resultPatch:
+          request.result === undefined
+            ? undefined
+            : requireRecord(request.result, "result"),
+        now: updatedAt,
+        completed:
+          request.status === "failed"
+            ? false
+            : request.status === "done" || request.status === undefined,
+      });
       const nextSession: LifeOpsBrowserSession = {
         ...session,
         status:
@@ -1113,15 +1174,10 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
                 "failed",
               ] as const),
         currentActionIndex: Math.max(0, session.actions.length - 1),
-        result:
-          request.result === undefined
-            ? session.result
-            : {
-                ...session.result,
-                ...requireRecord(request.result, "result"),
-              },
+        result: lifecycle.result,
+        metadata: lifecycle.metadata,
         finishedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        updatedAt,
       };
       await this.repository.updateBrowserSession(nextSession);
       await this.recordBrowserAudit(
@@ -1164,34 +1220,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
           `browser session cannot update progress from status ${session.status}`,
         );
       }
-      const nextSession: LifeOpsBrowserSession = {
-        ...session,
-        status: "running",
-        currentActionIndex:
-          request.currentActionIndex === undefined
-            ? session.currentActionIndex
-            : normalizeBrowserSessionActionIndex(
-                request.currentActionIndex,
-                session.actions.length,
-              ),
-        result:
-          request.result === undefined
-            ? session.result
-            : {
-                ...session.result,
-                ...requireRecord(request.result, "result"),
-              },
-        metadata:
-          request.metadata === undefined
-            ? session.metadata
-            : mergeMetadata(
-                session.metadata,
-                requireRecord(request.metadata, "metadata"),
-              ),
-        updatedAt: new Date().toISOString(),
-      };
-      await this.repository.updateBrowserSession(nextSession);
-      return nextSession;
+      return this.updateBrowserSessionProgress(session.id, request);
     }
 
     async completeBrowserSessionFromCompanion(
@@ -1207,7 +1236,5 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.requireBrowserSessionForCompanion(companion, sessionId);
       return this.completeBrowserSession(sessionId, request);
     }
-  }
-
-  return LifeOpsBrowserServiceMixin;
+  } as MixinClass<TBase, BrowserBridgeService>;
 }

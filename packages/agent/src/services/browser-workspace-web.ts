@@ -1073,7 +1073,10 @@ export async function executeWebBrowserWorkspaceDomCommand(
             value = element.innerHTML;
             break;
           case "styles":
-            value = getBrowserWorkspaceElementStyles(element, dom.window);
+            value = getBrowserWorkspaceElementStyles(
+              element,
+              dom.window as unknown as Window,
+            );
             break;
           case "value":
             value = getBrowserWorkspaceElementValue(element);

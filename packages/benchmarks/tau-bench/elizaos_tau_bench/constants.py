@@ -12,7 +12,7 @@ LEADERBOARD_SCORES: dict[str, dict[str, float]] = {
     "o4-mini": {"retail": 0.718, "airline": 0.695},
     "gpt-5": {"retail": 0.485, "airline": 0.462},
     "gpt-4-turbo": {"retail": 0.421, "airline": 0.398},
-    "claude-3-opus": {"retail": 0.512, "airline": 0.489},
+    "claude-opus-4-7": {"retail": 0.512, "airline": 0.489},
     "llama-3.1-70b": {"retail": 0.382, "airline": 0.356},
 }
 

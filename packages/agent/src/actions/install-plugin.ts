@@ -1,4 +1,9 @@
-import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  HandlerOptions,
+  IAgentRuntime,
+} from "@elizaos/core";
 import {
   isPluginManagerLike,
   type PluginManagerLike,
@@ -83,4 +88,34 @@ export const installPluginAction: Action = {
       schema: { type: "string" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I'd like to connect Telegram — can you set that up?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Plugin @elizaos/plugin-telegram@1.4.0 installed successfully. The agent will restart to load it.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Add the polymarket integration for me.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Plugin @elizaos/plugin-polymarket@0.9.2 installed successfully.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

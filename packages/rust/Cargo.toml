@@ -17,7 +17,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["native"]
 native = ["tokio/full", "sqlx", "which"]
-wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/js"]
+wasm = ["wasm-bindgen", "wasm-bindgen-futures", "js-sys", "web-sys", "console_error_panic_hook", "getrandom/wasm_js"]
 basic_capabilities = ["native", "dep:quick-xml"]
 basic_capabilities-internal = ["basic_capabilities"]
 
@@ -40,19 +40,18 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 # Protocol Buffers (for generated types)
-prost = "0.13"
-prost-types = "0.13"
+prost = "0.14"
+prost-types = "0.14"
 
 # Hashing (for deterministic UUIDs that match TypeScript's stringToUuid)
-sha1 = "0.10"
-sha2 = "0.10"
+sha1 = "0.11"
+sha2 = "0.11"
 
 # Secret encryption/decryption compatibility (matches TS AES-256-CBC helpers)
-aes = "0.8"
-cbc = "0.1"
-cipher = "0.4"
+aes = "0.9"
+cbc = "0.2"
 hex = "0.4"
-aes-gcm = "0.10"
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
 base64 = "0.22"
 
 # Async runtime
@@ -76,7 +75,7 @@ regex = "1.0"
 lazy_static = "1.4"
 
 # MIME type detection
-infer = "0.16"
+infer = "0.19"
 url = "2.5"
 
 # URL encoding (for stringToUuid compatibility with TypeScript)
@@ -88,7 +87,7 @@ handlebars = "6.4"
 # Native-only dependencies
 tokio = { version = "1.0", features = ["rt-multi-thread", "macros"], optional = true }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres"], optional = true }
-which = { version = "6.0", optional = true }
+which = { version = "8.0", optional = true }
 
 # WASM-only dependencies
 wasm-bindgen = { version = "0.2", optional = true }
@@ -96,11 +95,11 @@ wasm-bindgen-futures = { version = "0.4", optional = true }
 js-sys = { version = "0.3", optional = true }
 web-sys = { version = "0.3", features = ["console"], optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
-getrandom = { version = "0.2", optional = true }
+getrandom = { version = "0.4", features = ["wasm_js"], optional = true }
 once_cell = "1.21.3"
 
 [build-dependencies]
-prost-build = "0.13"
+prost-build = "0.14"
 protoc-bin-vendored = "3.1"
 
 [dev-dependencies]

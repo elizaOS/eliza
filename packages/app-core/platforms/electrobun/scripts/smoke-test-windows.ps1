@@ -1,6 +1,14 @@
 param(
-  [string]$ArtifactsDir = (Join-Path $PSScriptRoot "..\\artifacts"),
-  [string]$BuildDir = (Join-Path $PSScriptRoot "..\\build"),
+  [string]$ArtifactsDir = $(
+    if ($env:MILADY_TEST_WINDOWS_ARTIFACTS_DIR) { $env:MILADY_TEST_WINDOWS_ARTIFACTS_DIR }
+    elseif ($env:ELIZA_TEST_WINDOWS_ARTIFACTS_DIR) { $env:ELIZA_TEST_WINDOWS_ARTIFACTS_DIR }
+    else { Join-Path $PSScriptRoot "..\\artifacts" }
+  ),
+  [string]$BuildDir = $(
+    if ($env:MILADY_TEST_WINDOWS_BUILD_DIR) { $env:MILADY_TEST_WINDOWS_BUILD_DIR }
+    elseif ($env:ELIZA_TEST_WINDOWS_BUILD_DIR) { $env:ELIZA_TEST_WINDOWS_BUILD_DIR }
+    else { Join-Path $PSScriptRoot "..\\build" }
+  ),
   [int]$BackendPort = 2138,
   [int]$TimeoutSeconds = 240
 )
@@ -135,7 +143,7 @@ function Stop-MiladyProcesses() {
       (
         $_.ProcessName -in @("launcher", "bun") -or
         $_.ProcessName -like "Milady*" -or
-        $_.ProcessName -like "Milady-Setup*"
+        $_.ProcessName -like "ElizaOSApp-Setup*"
       )
     } |
     Stop-Process -Force
@@ -444,7 +452,7 @@ if (-not $requireInstaller -and -not $launcher) {
 
 # Installer-required runs skip build/tarball reuse and validate the installed package directly.
 if (-not $launcher) {
-  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Milady-Setup-*.exe" -ErrorAction SilentlyContinue |
+  $installer = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
     Select-Object -First 1
 
   if (-not $installer) {
@@ -453,7 +461,7 @@ if (-not $launcher) {
   }
 
   if (-not $installer) {
-    $installerZip = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "Milady-Setup-*.exe.zip" -ErrorAction SilentlyContinue |
+    $installerZip = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "ElizaOSApp-Setup-*.exe.zip" -ErrorAction SilentlyContinue |
       Select-Object -First 1
     if (-not $installerZip) {
       $installerZip = Get-ChildItem -Path $resolvedArtifactsDir -File -Filter "*Setup*.zip" -ErrorAction SilentlyContinue |

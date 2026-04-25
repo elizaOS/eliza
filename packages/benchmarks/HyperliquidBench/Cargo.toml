@@ -23,12 +23,12 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_with = { version = "3.8", features = ["macros"] }
 serde_yaml = "0.9"
-thiserror = "1.0"
+thiserror = "2.0"
 tokio = { version = "1.37", features = ["rt-multi-thread", "macros", "signal", "time"] }
 tokio-stream = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
 uuid = { version = "1.7", features = ["serde", "v4"] }
 ethers = "2.0"
-reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
-sha2 = "0.10"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-tls"] }
+sha2 = "0.11"

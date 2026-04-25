@@ -483,7 +483,7 @@ Reference:
 
 Current Leaderboard Scores:
   1. Grok 4:           $4,694.15
-  2. Claude 3.5 Sonnet: $2,217.93
+  2. Claude Sonnet 4.6: $2,217.93
   3. Claude Opus 4:     $2,077.41
 
 Benchmark Parameters:

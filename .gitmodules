@@ -9,6 +9,7 @@
 [submodule "plugins/plugin-cli"]
 	path = plugins/plugin-cli
 	url = https://github.com/elizaos-plugins/plugin-cli.git
+	branch = alpha
 [submodule "plugins/plugin-commands"]
 	path = plugins/plugin-commands
 	url = https://github.com/elizaos-plugins/plugin-commands.git
@@ -40,6 +41,7 @@
 [submodule "plugins/plugin-imessage"]
 	path = plugins/plugin-imessage
 	url = https://github.com/elizaOS-plugins/plugin-imessage.git
+	branch = alpha
 [submodule "plugins/plugin-local-ai"]
 	path = plugins/plugin-local-ai
 	url = https://github.com/elizaos-plugins/plugin-local-ai.git
@@ -68,16 +70,9 @@
 	path = plugins/plugin-openrouter
 	url = https://github.com/elizaos-plugins/plugin-openrouter.git
 	branch = alpha
-[submodule "plugins/plugin-pi-ai"]
-	path = plugins/plugin-pi-ai
-	url = https://github.com/elizaos-plugins/plugin-pi-ai.git
 [submodule "plugins/plugin-pdf"]
 	path = plugins/plugin-pdf
 	url = https://github.com/elizaos-plugins/plugin-pdf.git
-	branch = alpha
-[submodule "plugins/plugin-selfcontrol"]
-	path = plugins/plugin-selfcontrol
-	url = https://github.com/elizaos-plugins/plugin-selfcontrol.git
 	branch = alpha
 [submodule "plugins/plugin-shell"]
 	path = plugins/plugin-shell
@@ -106,10 +101,6 @@
 [submodule "cloud"]
 	path = cloud
 	url = https://github.com/elizaOS/cloud.git
-	branch = dev
-[submodule "steward-fi"]
-	path = steward-fi
-	url = https://github.com/Dexploarer/steward.git
 	branch = develop
 [submodule "plugins/plugin-elizacloud"]
 	path = plugins/plugin-elizacloud
@@ -121,7 +112,8 @@
 	branch = alpha
 [submodule "plugins/plugin-wechat"]
 	path = plugins/plugin-wechat
-	url = https://github.com/milady-ai/plugin-wechat.git
+	url = https://github.com/elizaos-plugins/plugin-wechat.git
+	branch = alpha
 [submodule "plugins/plugin-agent-orchestrator"]
 	path = plugins/plugin-agent-orchestrator
 	url = https://github.com/elizaos-plugins/plugin-agent-orchestrator.git

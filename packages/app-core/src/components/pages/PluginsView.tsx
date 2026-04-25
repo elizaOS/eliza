@@ -1,5 +1,3 @@
-
-
 import { Package } from "lucide-react";
 import {
   type ReactNode,
@@ -31,6 +29,16 @@ import {
 
 export { paramsToSchema } from "./plugin-list-utils";
 
+import {
+  Button,
+  PageLayoutHeader,
+  PagePanel,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+  useLinkedSidebarSelection,
+} from "@elizaos/ui";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { PluginCard } from "./PluginCard";
 import {
   ConnectorPluginGroups,
@@ -39,7 +47,6 @@ import {
 import { PluginSettingsDialog } from "./plugin-view-dialogs";
 import { PluginGameModal } from "./plugin-view-modal";
 import { ConnectorSidebar } from "./plugin-view-sidebar";
-import { PagePanel, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, useLinkedSidebarSelection, PageLayout, PageLayoutHeader } from "@elizaos/ui";
 
 /* ── Shared PluginListView ─────────────────────────────────────────── */
 
@@ -61,7 +68,6 @@ function PluginListView({
   contentHeader,
   mode = "all",
   inModal,
-  connectorDesktopPlacement = "left",
 }: PluginListViewProps) {
   const {
     plugins = [],
@@ -884,7 +890,8 @@ function PluginListView({
             src={imageSrc}
             alt=""
             className={
-              options?.className ?? "w-5 h-5 rounded-[var(--radius-sm)] object-contain"
+              options?.className ??
+              "w-5 h-5 rounded-[var(--radius-sm)] object-contain"
             }
             onError={(e) => {
               (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -1129,7 +1136,7 @@ function PluginListView({
         : "This workspace will list plugins here as they become available.";
     const hasActivePluginFilters =
       pluginSearch.trim().length > 0 || subgroupFilter !== "all";
-    const desktopSidebar = (
+    const _desktopSidebar = (
       <ConnectorSidebar
         collapseLabel={collapseLabel}
         connectorExpandedIds={connectorExpandedIds}
@@ -1144,7 +1151,6 @@ function PluginListView({
         onSearchClear={() => setState("pluginSearch", "")}
         onSubgroupFilterChange={(value: string) => setSubgroupFilter(value)}
         onTogglePlugin={handleTogglePlugin}
-        pluginDescriptionFallback={pluginDescriptionFallback}
         pluginSearch={pluginSearch}
         registerConnectorRailItem={registerConnectorRailItem}
         registerConnectorSidebarItem={registerConnectorSidebarItem}
@@ -1291,11 +1297,28 @@ function PluginListView({
         data-testid="plugins-shell"
       >
         {showDesktopSubgroupSidebar && (
-          <Sidebar
+          <AppPageSidebar
             className="hidden lg:flex"
             testId="plugins-subgroup-sidebar"
+            collapsible
+            contentIdentity="plugins-subgroups"
             aria-label={t("pluginsview.PluginTypes", {
               defaultValue: "Plugin types",
+            })}
+            collapsedRailItems={subgroupTags.map((tag) => {
+              const Icon = SUBGROUP_NAV_ICONS[tag.id] ?? Package;
+              const isActive = subgroupFilter === tag.id;
+              return (
+                <SidebarContent.RailItem
+                  key={tag.id}
+                  aria-label={tag.label}
+                  title={tag.label}
+                  active={isActive}
+                  onClick={() => setSubgroupFilter(tag.id)}
+                >
+                  <Icon className="h-4 w-4" />
+                </SidebarContent.RailItem>
+              );
             })}
           >
             <SidebarScrollRegion className="pt-4">
@@ -1305,7 +1328,7 @@ function PluginListView({
                 )}
               </SidebarPanel>
             </SidebarScrollRegion>
-          </Sidebar>
+          </AppPageSidebar>
         )}
 
         <PagePanel.ContentArea>
@@ -1431,7 +1454,7 @@ function PluginListView({
 
 /* ── Exported views ────────────────────────────────────────────────── */
 
-/** Unified plugins view — tag-filtered plugin list. */
+/** Plugins view — tag-filtered plugin list. */
 export function PluginsView({
   contentHeader,
   mode = "all",

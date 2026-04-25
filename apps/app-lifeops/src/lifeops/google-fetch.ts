@@ -6,12 +6,62 @@ const BASE_DELAY_MS = 1_000;
 const TIMEOUT_MS = 10_000;
 
 /**
+ * Rewrite Google API hostnames to a mock base when MILADY_MOCK_GOOGLE_BASE is set.
+ * Used in tests to point all Google API traffic at a Mockoon environment.
+ */
+export function rewriteGoogleUrlForMock(url: string): string {
+  const mockBase = process.env.MILADY_MOCK_GOOGLE_BASE;
+  if (!mockBase) return url;
+  const mockUrl = new URL(mockBase);
+  if (
+    mockUrl.hostname !== "127.0.0.1" &&
+    mockUrl.hostname !== "localhost" &&
+    mockUrl.hostname !== "::1" &&
+    mockUrl.hostname !== "[::1]"
+  ) {
+    throw new GoogleApiError(
+      409,
+      "MILADY_MOCK_GOOGLE_BASE must point to loopback for Gmail/Google mock tests.",
+    );
+  }
+  return url.replace(
+    /^https:\/\/(?:gmail|www|oauth2|openidconnect|sheets|docs|fitness)\.googleapis\.com|^https:\/\/accounts\.google\.com/,
+    mockUrl.toString().replace(/\/+$/, ""),
+  );
+}
+
+/**
  * Returns `true` for HTTP statuses that are worth retrying (5xx, 429).
  * 4xx errors (other than 429) are permanent — auth failures, bad requests, etc.
  */
 function isTransientStatus(status: number): boolean {
   if (status === 429) return true;
   return status >= 500;
+}
+
+function isGoogleGmailWrite(method: string, url: string): boolean {
+  if (!["POST", "PATCH", "PUT", "DELETE"].includes(method.toUpperCase())) {
+    return false;
+  }
+  return /^https:\/\/gmail\.googleapis\.com\/gmail\/v1\/users\/me\//.test(url);
+}
+
+function guardRealGmailWrite(method: string, originalUrl: string, targetUrl: string): void {
+  if (!isGoogleGmailWrite(method, originalUrl)) {
+    return;
+  }
+  if (process.env.MILADY_ALLOW_REAL_GMAIL_WRITES === "1") {
+    return;
+  }
+  if (targetUrl !== originalUrl) {
+    return;
+  }
+  if (process.env.MILADY_BLOCK_REAL_GMAIL_WRITES === "1") {
+    throw new GoogleApiError(
+      409,
+      "Real Gmail writes are disabled by MILADY_BLOCK_REAL_GMAIL_WRITES. Point MILADY_MOCK_GOOGLE_BASE at Mockoon or set MILADY_ALLOW_REAL_GMAIL_WRITES=1 for an explicitly confirmed real write.",
+    );
+  }
 }
 
 /**
@@ -28,6 +78,8 @@ export async function googleApiFetch(
   init?: RequestInit,
 ): Promise<Response> {
   const method = init?.method ?? "GET";
+  const targetUrl = rewriteGoogleUrlForMock(url);
+  guardRealGmailWrite(method, url, targetUrl);
   let lastError: GoogleApiError | null = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -47,7 +99,7 @@ export async function googleApiFetch(
     }
 
     try {
-      const response = await fetch(url, {
+      const response = await fetch(targetUrl, {
         ...init,
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });

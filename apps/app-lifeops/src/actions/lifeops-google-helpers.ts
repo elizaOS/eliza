@@ -5,6 +5,7 @@ import type {
   LifeOpsGmailBatchReplyDraftsFeed,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailNeedsResponseFeed,
+  LifeOpsGmailRecommendationsFeed,
   LifeOpsGmailReplyDraft,
   LifeOpsGmailSearchFeed,
   LifeOpsGmailTriageFeed,
@@ -12,10 +13,10 @@ import type {
   LifeOpsNextCalendarEventContext,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import type { LifeOpsService } from "../lifeops/service.js";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
-import { hasPrivateAccess } from "@elizaos/agent/security/access";
+import { hasPrivateAccess } from "@elizaos/agent";
 
 export const INTERNAL_URL = new URL("http://127.0.0.1/");
 
@@ -377,6 +378,31 @@ export function formatEmailNeedsResponse(
   return lines.join("\n");
 }
 
+export function formatGmailRecommendations(
+  feed: LifeOpsGmailRecommendationsFeed,
+): string {
+  if (feed.recommendations.length === 0) {
+    return "No Gmail actions are recommended from the current email set.";
+  }
+  const lines = [
+    `Recommended Gmail actions: ${feed.summary.totalCount}.`,
+  ];
+  for (const recommendation of feed.recommendations.slice(0, 6)) {
+    const operation = recommendation.operation
+      ? ` (${recommendation.operation.replace("_", " ")})`
+      : "";
+    lines.push(
+      `- **${recommendation.title}**${operation}: ${recommendation.affectedCount} message${recommendation.affectedCount === 1 ? "" : "s"}`,
+    );
+    lines.push(`  ${recommendation.rationale}`);
+    for (const sample of recommendation.sampleMessages.slice(0, 2)) {
+      const sender = formatEmailSender(sample.from, sample.fromEmail);
+      lines.push(`  - ${sample.subject} from ${sender}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 function describeEmailSearchQuery(query: string): string {
   const parts = query
     .trim()
@@ -414,13 +440,21 @@ function describeEmailSearchQuery(query: string): string {
     if (!match) {
       return value;
     }
+    const unitToken = match[2];
+    if (!unitToken) {
+      return value;
+    }
     const unit =
-      match[2].toLowerCase() === "d"
+      unitToken.toLowerCase() === "d"
         ? "day"
-        : match[2].toLowerCase() === "m"
+        : unitToken.toLowerCase() === "m"
           ? "month"
           : "year";
-    const amount = Number(match[1]);
+    const amountToken = match[1];
+    if (!amountToken) {
+      return value;
+    }
+    const amount = Number(amountToken);
     return `${amount} ${unit}${amount === 1 ? "" : "s"}`;
   };
   if (sender) {
@@ -558,6 +592,47 @@ export function formatOverview(overview: LifeOpsOverview): string {
     `- ${summary.activeGoalCount} active goals`,
     `- ${summary.activeReminderCount} pending reminders`,
   ];
+  if (overview.schedule) {
+    const schedule = overview.schedule;
+    const isAsleepState =
+      schedule.circadianState === "sleeping" ||
+      schedule.circadianState === "napping";
+    const sleepLine = isAsleepState
+      ? schedule.currentSleepStartedAt
+        ? `Likely asleep since ${schedule.currentSleepStartedAt}`
+        : "Likely asleep now"
+      : schedule.lastSleepEndedAt
+        ? `Last wake ${schedule.lastSleepEndedAt}${schedule.lastSleepDurationMinutes ? ` after ${schedule.lastSleepDurationMinutes} minutes asleep` : ""}`
+        : `Sleep status ${schedule.sleepStatus}`;
+    lines.push(`- Circadian state: ${schedule.circadianState}`);
+    if (schedule.relativeTime.minutesSinceWake !== null) {
+      const bedtimeClause =
+        schedule.relativeTime.minutesUntilBedtimeTarget !== null
+          ? `; bedtime in ${schedule.relativeTime.minutesUntilBedtimeTarget} minutes`
+          : schedule.relativeTime.minutesSinceBedtimeTarget !== null
+            ? `; bedtime was ${schedule.relativeTime.minutesSinceBedtimeTarget} minutes ago`
+            : "";
+      lines.push(
+        `- Relative time: woke ${schedule.relativeTime.minutesSinceWake} minutes ago${bedtimeClause}`,
+      );
+    } else if (schedule.relativeTime.minutesUntilBedtimeTarget !== null) {
+      lines.push(
+        `- Relative time: bedtime in ${schedule.relativeTime.minutesUntilBedtimeTarget} minutes`,
+      );
+    } else if (schedule.relativeTime.minutesSinceBedtimeTarget !== null) {
+      lines.push(
+        `- Relative time: bedtime was ${schedule.relativeTime.minutesSinceBedtimeTarget} minutes ago`,
+      );
+    }
+    lines.push(`- ${sleepLine}`);
+    if (schedule.nextMealLabel && schedule.nextMealWindowStartAt) {
+      lines.push(
+        `- Next ${schedule.nextMealLabel} window starts ${schedule.nextMealWindowStartAt} (${Math.round(schedule.nextMealConfidence * 100)}% confidence)`,
+      );
+    } else if (schedule.lastMealAt) {
+      lines.push(`- Last inferred meal ${schedule.lastMealAt}`);
+    }
+  }
   if (overview.owner.occurrences.length > 0) {
     lines.push("\nCurrent items:");
     for (const occurrence of overview.owner.occurrences.slice(0, 5)) {
@@ -724,6 +799,7 @@ export type GoogleCapabilityStatus = {
   hasCalendarWrite: boolean;
   hasGmailTriage: boolean;
   hasGmailSend: boolean;
+  hasGmailManage: boolean;
 };
 
 export async function getGoogleCapabilityStatus(
@@ -740,6 +816,7 @@ export async function getGoogleCapabilityStatus(
       hasCalendarWrite: false,
       hasGmailTriage: false,
       hasGmailSend: false,
+      hasGmailManage: false,
     };
   }
   const capabilities = new Set(status.grantedCapabilities ?? []);
@@ -752,6 +829,7 @@ export async function getGoogleCapabilityStatus(
     hasCalendarWrite: capabilities.has("google.calendar.write"),
     hasGmailTriage: capabilities.has("google.gmail.triage"),
     hasGmailSend: capabilities.has("google.gmail.send"),
+    hasGmailManage: capabilities.has("google.gmail.manage"),
   };
 }
 

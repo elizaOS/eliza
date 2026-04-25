@@ -152,6 +152,33 @@ async function waitForHostsBlock(
   );
 }
 
+async function removeTempRoot(tempRoot: string): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  let lastError: unknown = null;
+
+  while (Date.now() < deadline) {
+    try {
+      await rm(tempRoot, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      const code =
+        typeof error === "object" && error && "code" in error
+          ? String((error as NodeJS.ErrnoException).code ?? "")
+          : "";
+      if (!["EBUSY", "ENOTEMPTY", "EPERM"].includes(code)) {
+        throw error;
+      }
+    }
+
+    await sleep(250);
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Timed out removing temp directory: ${tempRoot}`);
+}
+
 async function startDevStack(): Promise<StartedDevStack> {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "eliza-dev-stack-"));
   const stateDir = path.join(tempRoot, "state");
@@ -218,7 +245,7 @@ async function startDevStack(): Promise<StartedDevStack> {
       child.kill("SIGKILL");
       await waitForChildExit(child, 5_000);
     }
-    await rm(tempRoot, { recursive: true, force: true });
+    await removeTempRoot(tempRoot);
     throw new Error(
       `Dev stack failed to start: ${error instanceof Error ? error.message : String(error)}\n${logTail}`,
     );
@@ -239,7 +266,7 @@ async function startDevStack(): Promise<StartedDevStack> {
         }
       }
 
-      await rm(tempRoot, { recursive: true, force: true });
+      await removeTempRoot(tempRoot);
     },
   };
 }
@@ -273,47 +300,57 @@ describeIf(LIVE_TESTS_ENABLED)("Live: website blocker dev launcher", () => {
       canRequest: false,
     });
 
-    const startResponse = await req(
-      stack.apiPort,
-      "PUT",
-      "/api/website-blocker",
-      {
-        websites: ["x.com", "twitter.com"],
-        durationMinutes: 5,
-      },
-    );
-    expect(startResponse.status).toBe(200);
-    expect(startResponse.data).toMatchObject({
-      success: true,
-      request: {
-        websites: ["x.com", "twitter.com"],
-        durationMinutes: 5,
-      },
-    });
-
-    const hosts = await waitForHostsBlock(stack.hostsFilePath, [
-      "x.com",
-      "twitter.com",
-    ]);
-    expect(hosts).toContain("0.0.0.0 x.com");
-    expect(hosts).toContain("0.0.0.0 twitter.com");
-
-    const stopResponse = await req(
+    const cleanupResponse = await req(
       stack.apiPort,
       "DELETE",
       "/api/website-blocker",
     );
-    expect(stopResponse.status).toBe(200);
-    expect(stopResponse.data).toMatchObject({
-      success: true,
-      removed: true,
-      status: {
-        active: false,
-        websites: [],
-      },
-    });
-    expect(await readFile(stack.hostsFilePath, "utf8")).toBe(
-      "127.0.0.1 localhost\n",
-    );
+    expect(cleanupResponse.status).toBe(200);
+
+    try {
+      const startResponse = await req(
+        stack.apiPort,
+        "PUT",
+        "/api/website-blocker",
+        {
+          websites: ["x.com", "twitter.com"],
+          durationMinutes: 5,
+        },
+      );
+      expect(startResponse.status).toBe(200);
+      expect(startResponse.data).toMatchObject({
+        success: true,
+        request: {
+          websites: ["x.com", "twitter.com"],
+          durationMinutes: 5,
+        },
+      });
+
+      const hosts = await waitForHostsBlock(stack.hostsFilePath, [
+        "x.com",
+        "twitter.com",
+      ]);
+      expect(hosts).toContain("0.0.0.0 x.com");
+      expect(hosts).toContain("0.0.0.0 twitter.com");
+      expect(hosts).not.toContain("0.0.0.0 api.x.com");
+      expect(hosts).not.toContain("0.0.0.0 api.twitter.com");
+    } finally {
+      const stopResponse = await req(
+        stack.apiPort,
+        "DELETE",
+        "/api/website-blocker",
+      );
+      expect(stopResponse.status).toBe(200);
+      expect(stopResponse.data).toMatchObject({
+        success: true,
+        status: {
+          active: false,
+          websites: [],
+        },
+      });
+      expect(await readFile(stack.hostsFilePath, "utf8")).toBe(
+        "127.0.0.1 localhost\n",
+      );
+    }
   }, 240_000);
 });

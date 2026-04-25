@@ -10,6 +10,11 @@
  * Requires at least one LLM provider API key. Skips when unavailable.
  */
 
+import {
+  buildExtractionPrompt,
+  extractTaskCreatePlanWithLlm,
+  extractTaskParamsWithLlm,
+} from "@elizaos/app-lifeops/actions/life-param-extractor.js";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
@@ -17,11 +22,6 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../../test/helpers/real-runtime";
-import {
-  buildExtractionPrompt,
-  extractTaskCreatePlanWithLlm,
-  extractTaskParamsWithLlm,
-} from "./life-param-extractor.js";
 
 const provider = selectLiveProvider();
 const describeWithLLM = provider ? describe : describe.skip;

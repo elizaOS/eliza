@@ -1,5 +1,6 @@
 import type { Plugin } from "@elizaos/core";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
+import { evmAutoEnableReasonFromCapability } from "../services/evm-signing-capability.js";
 import type { ElizaConfig } from "./types.js";
 
 export interface ApplyPluginAutoEnableResult {
@@ -17,6 +18,14 @@ export interface ApplyPluginAutoEnableParams {
    * conditions no longer need entries in the central map.
    */
   loadedPlugins?: Plugin[];
+  /**
+   * True when the runtime is hosted inside a Capacitor native shell
+   * (iOS / Android). Mobile cannot spawn a local n8n sidecar via
+   * `node:child_process`, so the n8n plugin is only auto-enabled when the
+   * Eliza Cloud gateway is authenticated. Desktop / server / web leave this
+   * undefined.
+   */
+  isNativePlatform?: boolean;
 }
 
 export const CONNECTOR_PLUGINS: Record<string, string> = {
@@ -99,11 +108,9 @@ export const AUTH_PROVIDER_PLUGINS: Record<string, string> = {
   OBSIDAN_VAULT_PATH: "@elizaos/plugin-obsidian",
   REPOPROMPT_CLI_PATH: "@elizaos/plugin-repoprompt",
   CLAUDE_CODE_WORKBENCH_ENABLED: "@elizaos/plugin-claude-code-workbench",
-  // EVM plugin gated behind explicit opt-in flag instead of EVM_PRIVATE_KEY.
-  // plugin-evm's CROSS_CHAIN_TRANSFER action has a 'BRIDGE' simile that
-  // crashes with 'Action spec not found: BRIDGE' during startup.
-  // Gate behind ENABLE_EVM_PLUGIN=1 until the spec registration is fixed.
-  ENABLE_EVM_PLUGIN: "@elizaos/plugin-evm",
+  // NOTE: @elizaos/plugin-evm is NOT enabled via this map. Its auto-enable
+  // reasons (local key / Steward cloud / Steward self-hosted) are resolved by
+  // resolveEvmAutoEnableReason() below so a single code path owns the decision.
   SOLANA_PRIVATE_KEY: "@elizaos/plugin-solana",
   LASTFM_API_KEY: "@elizaos/plugin-music-library",
   GENIUS_API_KEY: "@elizaos/plugin-music-library",
@@ -120,6 +127,7 @@ const FEATURE_PLUGINS: Record<string, string> = {
   obsidian: "@elizaos/plugin-obsidian",
   cron: "@elizaos/plugin-cron",
   shell: "@elizaos/plugin-shell",
+  executeCode: "@elizaos/plugin-executecode",
   imageGen: "@elizaos/plugin-image-generation",
   tts: "@elizaos/plugin-edge-tts",
   stt: "@elizaos/plugin-stt",
@@ -149,18 +157,12 @@ const EVM_PLUGIN_SHORT_ID = "evm";
 const STEWARD_ELIZA_PLUGIN_PACKAGE = "@stwd/eliza-plugin";
 const STEWARD_ELIZA_PLUGIN_SHORT_ID = "stwd-eliza-plugin";
 
+// Delegates to resolveEvmSigningCapability so plugin-evm auto-enable and the
+// wallet-capability UI agree on whether a signing path exists. A cloud address
+// without signing (cloud-view-only) returns null — plugin-evm must not load
+// without a working signer.
 function resolveEvmAutoEnableReason(env: NodeJS.ProcessEnv): string | null {
-  if (env.EVM_PRIVATE_KEY?.trim()) {
-    return "env: EVM_PRIVATE_KEY";
-  }
-
-  const cloudProvisioned = env.ELIZA_CLOUD_PROVISIONED === "1";
-
-  if (cloudProvisioned && env.STEWARD_AGENT_TOKEN?.trim()) {
-    return "cloud-provisioned Steward wallet";
-  }
-
-  return null;
+  return evmAutoEnableReasonFromCapability(env);
 }
 
 export function isConnectorConfigured(
@@ -514,6 +516,25 @@ export function applyPluginAutoEnable(
     }
   }
 
+  // Heal entries→allow drift: anything user-enabled via plugins.entries should
+  // also appear in the allowlist. Covers plugins that were toggled on via the
+  // API before the entries↔allow sync existed, so the persisted config
+  // stabilises after one boot instead of warning forever.
+  for (const [entryId, entry] of Object.entries(pluginsConfig.entries)) {
+    if (!entry || entry.enabled !== true) continue;
+    const connectorPackage = CONNECTOR_PLUGINS[entryId];
+    const featurePackage = FEATURE_PLUGINS[entryId];
+    const pluginName =
+      connectorPackage ?? featurePackage ?? `@elizaos/plugin-${entryId}`;
+    addToAllowlist(
+      pluginsConfig.allow,
+      pluginName,
+      entryId,
+      changes,
+      `entries: ${entryId}`,
+    );
+  }
+
   // Hooks: webhooks + gmail
   const hooksConfig = updatedConfig.hooks;
   if (hooksConfig && hooksConfig.enabled !== false && hooksConfig.token) {
@@ -613,6 +634,48 @@ export function applyPluginAutoEnable(
           `media.vision.provider=${mediaConfig.vision.provider}`,
         );
       }
+    }
+  }
+
+  // n8n workflow plugin — auto-enable when EITHER Eliza Cloud is authenticated
+  // (cloud supplies N8N_HOST + N8N_API_KEY via its gateway) OR the local n8n
+  // sidecar is permitted (config.n8n.localEnabled !== false, default true).
+  // The authoritative boot-config shape is `config.n8n` (N8nConfig in
+  // types.eliza.ts); the sidecar lifecycle writes `config.n8n.host` and
+  // `config.n8n.apiKey` once ready. The plugin's init() refuses to activate
+  // when neither is resolved, so this is safe to auto-enable eagerly.
+  //
+  // On mobile (iOS / Android), the local sidecar cannot spawn a child
+  // process, so auto-enable is gated on `cloudAuthed` alone regardless of
+  // `localEnabled`.
+  {
+    const n8nPluginName = "@elizaos/plugin-n8n-workflow";
+    const n8nPluginId = "n8n-workflow";
+    const n8nConfig = updatedConfig.n8n;
+    const n8nMasterEnabled = n8nConfig?.enabled !== false;
+    const cloudAuthed = Boolean(
+      updatedConfig.cloud?.apiKey && updatedConfig.cloud?.enabled !== false,
+    );
+    // Default is "local sidecar allowed" — only disable if explicitly set to
+    // false. Mobile forces this to false regardless of user setting.
+    const localN8nEnabled =
+      params.isNativePlatform === true
+        ? false
+        : n8nConfig?.localEnabled !== false;
+    const n8nExplicitlyDisabled =
+      pluginsConfig.entries[n8nPluginId]?.enabled === false;
+    if (
+      n8nMasterEnabled &&
+      !n8nExplicitlyDisabled &&
+      (cloudAuthed || localN8nEnabled)
+    ) {
+      addToAllowlist(
+        pluginsConfig.allow,
+        n8nPluginName,
+        n8nPluginId,
+        changes,
+        cloudAuthed ? "cloud: n8n gateway" : "n8n.localEnabled",
+      );
     }
   }
 

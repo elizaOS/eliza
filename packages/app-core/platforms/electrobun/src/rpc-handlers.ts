@@ -17,6 +17,7 @@ import { getBrandConfig } from "./brand-config";
 import { postCloudDisconnectFromMain } from "./cloud-disconnect-from-main";
 import { getFloatingChatManager } from "./floating-chat-window";
 import { getAgentManager } from "./native/agent";
+import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";
 import { getCanvasManager } from "./native/canvas";
 import {
@@ -111,6 +112,7 @@ export function registerRpcHandlers(
   }
 
   const agent = getAgentManager();
+  const browserWorkspace = getBrowserWorkspaceManager();
   const camera = getCameraManager();
   const canvas = getCanvasManager();
   const desktop = getDesktopManager();
@@ -388,6 +390,87 @@ export function registerRpcHandlers(
         params.surface,
         params.surface === "browser" ? params.browse : undefined,
       );
+    },
+
+    // ---- Browser Workspace ----
+    browserWorkspaceGetSnapshot: async () => ({
+      mode: "desktop" as const,
+      tabs: (await browserWorkspace.listTabs()).tabs,
+    }),
+    browserWorkspaceOpenTab: async (
+      params?: {
+        url?: string;
+        title?: string;
+        show?: boolean;
+        partition?: string;
+        kind?: "internal" | "standard";
+        width?: number;
+        height?: number;
+      } | null,
+    ) => ({
+      tab: await browserWorkspace.openTab({
+        url: params?.url,
+        title: params?.title,
+        show: params?.show,
+        partition: params?.partition,
+        kind: params?.kind,
+        width: params?.width,
+        height: params?.height,
+      }),
+    }),
+    browserWorkspaceNavigateTab: async (
+      params?: { id?: string; url?: string } | null,
+    ) => {
+      const id = params?.id?.trim();
+      const url = params?.url?.trim();
+      if (!id || !url) {
+        throw new Error("browser workspace navigate requires id and url");
+      }
+      const tab = await browserWorkspace.navigateTab({ id, url });
+      if (!tab) {
+        throw new Error(`browser workspace tab not found: ${id}`);
+      }
+      return { tab };
+    },
+    browserWorkspaceShowTab: async (params?: { id?: string } | null) => {
+      const id = params?.id?.trim();
+      if (!id) {
+        throw new Error("browser workspace show requires id");
+      }
+      const tab = await browserWorkspace.showTab({ id });
+      if (!tab) {
+        throw new Error(`browser workspace tab not found: ${id}`);
+      }
+      return { tab };
+    },
+    browserWorkspaceHideTab: async (params?: { id?: string } | null) => {
+      const id = params?.id?.trim();
+      if (!id) {
+        throw new Error("browser workspace hide requires id");
+      }
+      const tab = await browserWorkspace.hideTab({ id });
+      if (!tab) {
+        throw new Error(`browser workspace tab not found: ${id}`);
+      }
+      return { tab };
+    },
+    browserWorkspaceCloseTab: async (params?: { id?: string } | null) => {
+      const id = params?.id?.trim();
+      if (!id) {
+        throw new Error("browser workspace close requires id");
+      }
+      return { closed: await browserWorkspace.closeTab({ id }) };
+    },
+    browserWorkspaceSnapshotTab: async (params?: { id?: string } | null) => {
+      const id = params?.id?.trim();
+      if (!id) {
+        throw new Error("browser workspace snapshot requires id");
+      }
+      const snapshot = await browserWorkspace.snapshotTab({ id });
+      if (!snapshot) {
+        throw new Error("browser workspace snapshot unavailable");
+      }
+      return snapshot;
     },
 
     // ---- Desktop: Screen ----

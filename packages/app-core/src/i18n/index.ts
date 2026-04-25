@@ -6,10 +6,7 @@ import {
   type UiLanguage,
 } from "./messages";
 
-export type TranslationVars = Record<
-  string,
-  string | number | boolean | null | undefined
->;
+export type TranslationVars = Record<string, unknown>;
 
 const UI_LANGUAGE_SET = new Set<string>(UI_LANGUAGES);
 

@@ -8,7 +8,10 @@ describe("@elizaos/plugin-computeruse", () => {
 
   it("has required plugin properties", async () => {
     const mod = await import("../index.ts");
-    const plugin = mod.default ?? mod.computerUsePlugin ?? Object.values(mod).find((v: any) => v?.name);
+    const plugin =
+      mod.default ??
+      mod.computerUsePlugin ??
+      Object.values(mod).find((v: any) => v?.name);
     expect(plugin).toBeDefined();
     if (plugin) {
       expect(typeof plugin.name).toBe("string");
@@ -19,7 +22,10 @@ describe("@elizaos/plugin-computeruse", () => {
 
   it("declares actions", async () => {
     const mod = await import("../index.ts");
-    const plugin = mod.default ?? mod.computerUsePlugin ?? Object.values(mod).find((v: any) => v?.name);
+    const plugin =
+      mod.default ??
+      mod.computerUsePlugin ??
+      Object.values(mod).find((v: any) => v?.name);
     expect(plugin).toBeDefined();
     if (plugin) {
       expect(Array.isArray(plugin.actions)).toBe(true);
@@ -29,7 +35,10 @@ describe("@elizaos/plugin-computeruse", () => {
 
   it("declares services", async () => {
     const mod = await import("../index.ts");
-    const plugin = mod.default ?? mod.computerUsePlugin ?? Object.values(mod).find((v: any) => v?.name);
+    const plugin =
+      mod.default ??
+      mod.computerUsePlugin ??
+      Object.values(mod).find((v: any) => v?.name);
     expect(plugin).toBeDefined();
     if (plugin) {
       expect(Array.isArray(plugin.services)).toBe(true);
@@ -39,7 +48,10 @@ describe("@elizaos/plugin-computeruse", () => {
 
   it("declares providers", async () => {
     const mod = await import("../index.ts");
-    const plugin = mod.default ?? mod.computerUsePlugin ?? Object.values(mod).find((v: any) => v?.name);
+    const plugin =
+      mod.default ??
+      mod.computerUsePlugin ??
+      Object.values(mod).find((v: any) => v?.name);
     expect(plugin).toBeDefined();
     if (plugin) {
       expect(Array.isArray(plugin.providers)).toBe(true);

@@ -1,9 +1,12 @@
 @import "tailwindcss";
 @import "./base.css";
 @import "../../../ui/src/styles/electrobun-mac-window-drag.css";
+/* React Flow base styles — required for @xyflow/react canvas to render correctly */
+@import "@xyflow/react/dist/style.css";
 
 @source "..";
 @source "../../../ui/src";
+@source "../../../../apps/app-lifeops/src";
 
 /*
  * Map the existing theme CSS custom properties to Tailwind theme tokens.

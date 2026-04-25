@@ -41,7 +41,7 @@ export function isElectrobunRuntime(): boolean {
     return true;
   }
 
-  // Preload injects `__MILADY_ELECTROBUN_RPC__` before (or without) Electrobun window/webview ids.
+  // Preload injects `__ELIZA_ELECTROBUN_RPC__` before (or without) Electrobun window/webview ids.
   // Without this, tray/menu IPC subscribers never register and menu Reset appears to do nothing.
   return hasElectrobunRendererBridge();
 }

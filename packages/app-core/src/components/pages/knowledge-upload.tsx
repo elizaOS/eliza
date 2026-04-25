@@ -1,7 +1,7 @@
-import { useApp } from "../../state/useApp";
+import { Button, Checkbox, Input } from "@elizaos/ui";
 
 import { useCallback, useRef, useState } from "react";
-import { Button, Checkbox, Input } from "@elizaos/ui";
+import { useApp } from "../../state/useApp";
 
 export const MAX_UPLOAD_REQUEST_BYTES = 32 * 1_048_576; // Must match server knowledge route limit
 export const BULK_UPLOAD_TARGET_BYTES = 24 * 1_048_576;
@@ -23,6 +23,9 @@ export const SUPPORTED_UPLOAD_EXTENSIONS = new Set([
   ".webp",
   ".gif",
 ]);
+export const KNOWLEDGE_UPLOAD_ACCEPT = Array.from(
+  SUPPORTED_UPLOAD_EXTENSIONS,
+).join(",");
 
 export type KnowledgeUploadFile = File & {
   webkitRelativePath?: string;
@@ -91,11 +94,13 @@ export function isSupportedKnowledgeFile(file: Pick<File, "name">): boolean {
 /* ── Upload Zone ────────────────────────────────────────────────────── */
 
 export function UploadZone({
+  fileInputId,
   onFilesUpload,
   onUrlUpload,
   uploading,
   uploadStatus,
 }: {
+  fileInputId?: string;
   onFilesUpload: (
     files: KnowledgeUploadFile[],
     options: KnowledgeUploadOptions,
@@ -158,11 +163,12 @@ export function UploadZone({
       aria-label={t("aria.knowledgeUpload")}
     >
       <input
+        id={fileInputId}
         ref={fileInputRef}
         type="file"
         className="hidden"
         multiple
-        accept=".txt,.md,.mdx,.pdf,.docx,.json,.csv,.xml,.html,.png,.jpg,.jpeg,.webp,.gif"
+        accept={KNOWLEDGE_UPLOAD_ACCEPT}
         onChange={handleFileSelect}
       />
       <div

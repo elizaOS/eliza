@@ -1,9 +1,3 @@
-/**
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/wallet-rpc`.
- * New development should target the app-steward package.
- */
-
 import {
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,
@@ -550,7 +544,7 @@ export function resolveSolanaRpcUrls(
       process.env.SOLANA_RPC_URL,
       cloudRpcUrl,
     ],
-    options.cloudManagedAccess ? publicDefaults : [],
+    publicDefaults,
   );
 }
 

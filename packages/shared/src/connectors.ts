@@ -31,7 +31,10 @@ export function registerConnectorSourceAliases(
   const key = canonical.trim().toLowerCase();
   if (!key) return;
   const existing = _registeredAliases[key] ?? [];
-  const merged = new Set([...existing, ...aliases.map((a) => a.trim().toLowerCase())]);
+  const merged = new Set([
+    ...existing,
+    ...aliases.map((a) => a.trim().toLowerCase()),
+  ]);
   _registeredAliases[key] = Array.from(merged);
   // Rebuild the lookup map to include new aliases
   _rebuildRawToCanonical();
@@ -70,7 +73,9 @@ function _getMergedAliases(canonical: string): readonly string[] {
   return Array.from(merged);
 }
 
-export function normalizeConnectorSource(source: string | null | undefined): string {
+export function normalizeConnectorSource(
+  source: string | null | undefined,
+): string {
   if (typeof source !== "string") {
     return "";
   }
@@ -91,9 +96,11 @@ export function getConnectorSourceAliases(
     return [];
   }
 
-  return [...(_getMergedAliases(canonical).length > 0
-    ? _getMergedAliases(canonical)
-    : [canonical])];
+  return [
+    ...(_getMergedAliases(canonical).length > 0
+      ? _getMergedAliases(canonical)
+      : [canonical]),
+  ];
 }
 
 export function expandConnectorSourceFilter(

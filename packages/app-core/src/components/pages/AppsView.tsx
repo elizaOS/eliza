@@ -1,4 +1,4 @@
-
+import { PageLayout } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { getAppSlugFromPath } from "../../navigation";
@@ -6,11 +6,11 @@ import { getAppSlugFromPath } from "../../navigation";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { AppsCatalogGrid } from "../apps/AppsCatalogGrid";
+import { AppsSidebar } from "../apps/AppsSidebar";
 import {
   filterAppsForCatalog,
   findAppBySlug,
   getAppSlug,
-  shouldShowAppInAppsView,
 } from "../apps/helpers";
 import {
   getInternalToolApps,
@@ -21,13 +21,46 @@ import {
   isOverlayApp,
   overlayAppToRegistryInfo,
 } from "../apps/overlay-app-registry";
-import { PagePanel } from "@elizaos/ui";
-import {
-  getRunAttentionReasons,
-  RunningAppsPanel,
-} from "../apps/RunningAppsPanel";
+import { RunningAppsRow } from "../apps/RunningAppsRow";
 
 export { shouldShowAppInAppsView } from "../apps/helpers";
+
+/** Max items retained in launch history. */
+const RECENT_APPS_LIMIT = 10;
+
+const APPS_SIDEBAR_WIDTH_KEY = "milady:apps:sidebar:width";
+const APPS_SIDEBAR_COLLAPSED_KEY = "milady:apps:sidebar:collapsed";
+const APPS_SIDEBAR_DEFAULT_WIDTH = 240;
+const APPS_SIDEBAR_MIN_WIDTH = 200;
+const APPS_SIDEBAR_MAX_WIDTH = 520;
+
+function clampWidth(value: number): number {
+  return Math.min(
+    Math.max(value, APPS_SIDEBAR_MIN_WIDTH),
+    APPS_SIDEBAR_MAX_WIDTH,
+  );
+}
+
+function loadInitialSidebarWidth(): number {
+  if (typeof window === "undefined") return APPS_SIDEBAR_DEFAULT_WIDTH;
+  try {
+    const raw = window.localStorage.getItem(APPS_SIDEBAR_WIDTH_KEY);
+    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    if (Number.isFinite(parsed)) return clampWidth(parsed);
+  } catch {
+    /* ignore sandboxed storage */
+  }
+  return APPS_SIDEBAR_DEFAULT_WIDTH;
+}
+
+function loadInitialSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(APPS_SIDEBAR_COLLAPSED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 export function AppsView() {
   const {
@@ -36,6 +69,7 @@ export function AppsView() {
     activeGameViewerUrl,
     appsSubTab,
     favoriteApps,
+    recentApps,
     setTab,
     setState,
     setActionNotice,
@@ -44,17 +78,40 @@ export function AppsView() {
   const [apps, setApps] = useState<RegistryAppInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showActiveOnly, setShowActiveOnly] = useState(false);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [searchQuery, _setSearchQuery] = useState("");
   const [busyRunId, setBusyRunId] = useState<string | null>(null);
+  const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
+    loadInitialSidebarCollapsed,
+  );
+  const [sidebarWidth, setSidebarWidth] = useState<number>(
+    loadInitialSidebarWidth,
+  );
   const slugAutoLaunchDone = useRef(false);
+
+  const handleSidebarCollapsedChange = useCallback((next: boolean) => {
+    setSidebarCollapsed(next);
+    try {
+      window.localStorage.setItem(APPS_SIDEBAR_COLLAPSED_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleSidebarWidthChange = useCallback((next: number) => {
+    const clamped = clampWidth(next);
+    setSidebarWidth(clamped);
+    try {
+      window.localStorage.setItem(APPS_SIDEBAR_WIDTH_KEY, String(clamped));
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const activeAppNames = useMemo(
     () => new Set(appRuns.map((run) => run.appName)),
     [appRuns],
   );
-  const hasActiveApps = activeAppNames.size > 0;
   const favoriteAppNames = useMemo(() => new Set(favoriteApps), [favoriteApps]);
   const activeGameRun = useMemo(
     () => appRuns.find((run) => run.runId === activeGameRunId) ?? null,
@@ -85,25 +142,12 @@ export function AppsView() {
     () => [...appRuns].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [appRuns],
   );
-  const attentionRuns = useMemo(
-    () => sortedRuns.filter((run) => getRunAttentionReasons(run).length > 0),
-    [sortedRuns],
-  );
   const mergeRun = useCallback(
     (run: AppRunSummary) => {
       const nextRuns = [
         run,
         ...appRuns.filter((item) => item.runId !== run.runId),
       ].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      setState("appRuns", nextRuns);
-      return nextRuns;
-    },
-    [appRuns, setState],
-  );
-
-  const removeRun = useCallback(
-    (runId: string) => {
-      const nextRuns = appRuns.filter((run) => run.runId !== runId);
       setState("appRuns", nextRuns);
       return nextRuns;
     },
@@ -141,18 +185,38 @@ export function AppsView() {
           serverAppsResult.reason,
         );
       }
-      const internalToolApps = getInternalToolApps();
+      // Internal tool apps are client-owned navigation surfaces. The registry
+      // augments them with curated apps, but it must not be able to hide them.
+      let catalogApps: RegistryAppInfo[];
+      try {
+        catalogApps = [
+          ...getInternalToolApps(),
+          ...(await client.listCatalogApps()),
+        ];
+      } catch (catalogErr) {
+        console.warn(
+          "[AppsView] Failed to load catalog apps; using internal tools:",
+          catalogErr,
+        );
+        catalogApps = getInternalToolApps();
+      }
       // Inject registered overlay apps (e.g. companion) if not already from server
       const overlayDescriptors = getAllOverlayApps()
         .filter((oa) => !serverApps.some((a) => a.name === oa.name))
+        .filter((oa) => !catalogApps.some((a) => a.name === oa.name))
         .map(overlayAppToRegistryInfo);
+      // Server-discovered apps win on conflicts — they have live runtime data.
+      // Catalog apps fill in known-but-not-installed entries (scape, vincent,
+      // hyperscape, etc.) so the page keeps showing them.
       const list = [
-        ...internalToolApps,
+        ...catalogApps,
         ...overlayDescriptors,
         ...serverApps,
       ].filter(
         (app, index, items) =>
-          items.findIndex((candidate) => candidate.name === app.name) === index,
+          !items
+            .slice(index + 1)
+            .some((candidate: RegistryAppInfo) => candidate.name === app.name),
       );
       setApps(list);
     } catch (err) {
@@ -167,40 +231,9 @@ export function AppsView() {
     }
   }, [refreshRuns, t]);
 
-  const refreshApps = useCallback(async () => {
-    try {
-      await client.refreshRegistry();
-    } catch (err) {
-      console.warn("[AppsView] Failed to refresh registry:", err);
-    }
-    await loadApps();
-  }, [loadApps]);
-
   useEffect(() => {
     void loadApps();
   }, [loadApps]);
-
-  // Auto-launch from URL slug on first load (e.g. /apps/babylon after refresh)
-  useEffect(() => {
-    if (slugAutoLaunchDone.current || apps.length === 0) return;
-    slugAutoLaunchDone.current = true;
-
-    // Skip if a game run is already restored from sessionStorage
-    if (activeGameRunId) return;
-
-    const slug = getAppSlugFromPath(
-      window.location.protocol === "file:"
-        ? window.location.hash.replace(/^#/, "") || "/"
-        : window.location.pathname,
-    );
-    if (!slug) return;
-
-    const app = findAppBySlug(apps, slug);
-    if (app) {
-      void handleLaunch(app);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time on first apps load
-  }, [apps]);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,44 +259,31 @@ export function AppsView() {
   }, [refreshRuns]);
 
   useEffect(() => {
-    if (sortedRuns.length === 0) {
-      if (selectedRunId !== null) setSelectedRunId(null);
-      return;
-    }
-    if (
-      selectedRunId &&
-      sortedRuns.some((run) => run.runId === selectedRunId)
-    ) {
-      return;
-    }
-    const preferredRunId =
-      activeGameRunId && sortedRuns.some((run) => run.runId === activeGameRunId)
-        ? activeGameRunId
-        : (attentionRuns[0]?.runId ?? sortedRuns[0].runId);
-    setSelectedRunId(preferredRunId);
-  }, [activeGameRunId, attentionRuns, selectedRunId, sortedRuns]);
-
-  useEffect(() => {
     if (appsSubTab !== "running") return;
     setState("appsSubTab", "browse");
-    setShowActiveOnly(hasActiveApps);
-  }, [appsSubTab, hasActiveApps, setState]);
+  }, [appsSubTab, setState]);
 
-  useEffect(() => {
-    if (hasActiveApps || !showActiveOnly) return;
-    setShowActiveOnly(false);
-  }, [hasActiveApps, showActiveOnly]);
+  const pushRecentApp = useCallback(
+    (appName: string) => {
+      const next = [appName, ...recentApps.filter((name) => name !== appName)];
+      if (next.length > RECENT_APPS_LIMIT) next.length = RECENT_APPS_LIMIT;
+      setState("recentApps", next);
+    },
+    [recentApps, setState],
+  );
 
   const handleLaunch = useCallback(
     async (app: RegistryAppInfo) => {
       const internalToolTab = getInternalToolAppTargetTab(app.name);
       if (internalToolTab) {
+        pushRecentApp(app.name);
         setTab(internalToolTab);
         return;
       }
 
       // Overlay apps (e.g. companion) are local-only — launch without server round-trip
       if (isOverlayApp(app.name)) {
+        pushRecentApp(app.name);
         setState("activeOverlayApp", app.name);
         pushAppsUrl(getAppSlug(app.name));
         return;
@@ -277,6 +297,8 @@ export function AppsView() {
         const launchedRun = result.run ? mergeRun(result.run) : null;
         const primaryRun =
           launchedRun?.find((run) => run.appName === app.name) ?? result.run;
+
+        if (primaryRun) pushRecentApp(app.name);
 
         if (primaryRun?.viewer?.url) {
           setState("activeGameRunId", primaryRun.runId);
@@ -306,9 +328,7 @@ export function AppsView() {
         }
 
         if (primaryRun) {
-          setSelectedRunId(primaryRun.runId);
           setState("appsSubTab", "browse");
-          setShowActiveOnly(true);
           pushAppsUrl(getAppSlug(app.name));
         }
 
@@ -362,13 +382,36 @@ export function AppsView() {
     [
       mergeRun,
       pushAppsUrl,
+      pushRecentApp,
       setActionNotice,
-      setShowActiveOnly,
       setState,
       setTab,
       t,
     ],
   );
+
+  // Auto-launch from URL slug on first load (e.g. /apps/babylon after refresh)
+  useEffect(() => {
+    if (slugAutoLaunchDone.current || apps.length === 0) return;
+
+    const slug = getAppSlugFromPath(
+      window.location.protocol === "file:"
+        ? window.location.hash.replace(/^#/, "") || "/"
+        : window.location.pathname,
+    );
+    if (!slug) return;
+
+    const app = findAppBySlug(apps, slug);
+    slugAutoLaunchDone.current = true;
+    if (!app) return;
+
+    // Restored game runs should not block direct overlay-app routes like
+    // /apps/companion, which are expected to take over immediately.
+    if (activeGameRunId && !isOverlayApp(app.name)) return;
+
+    void handleLaunch(app);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time on first apps load
+  }, [apps, handleLaunch, activeGameRunId]);
 
   const handleOpenCurrentGame = useCallback(() => {
     if (!hasActiveRun || !activeGameRun) return;
@@ -429,6 +472,7 @@ export function AppsView() {
             viewerAttachment: "attached",
           } satisfies AppRunSummary);
         mergeRun(nextRun);
+        pushRecentApp(nextRun.appName);
         setState("activeGameRunId", nextRun.runId);
         setState("tab", "apps");
         setState("appsSubTab", "games");
@@ -457,100 +501,19 @@ export function AppsView() {
         setBusyRunId(null);
       }
     },
-    [mergeRun, pushAppsUrl, setActionNotice, setState, t],
-  );
-
-  const handleDetachRun = useCallback(
-    async (run: AppRunSummary) => {
-      setBusyRunId(run.runId);
-      try {
-        const result = await client.detachAppRun(run.runId);
-        const nextRun =
-          result.run ??
-          ({
-            ...run,
-            viewerAttachment: run.viewer ? "detached" : "unavailable",
-          } satisfies AppRunSummary);
-        mergeRun(nextRun);
-        if (activeGameRunId === run.runId) {
-          setState("activeGameRunId", "");
-          setState("appsSubTab", "browse");
-          setShowActiveOnly(true);
-          pushAppsUrl();
-        }
-        setActionNotice(result.message, "success", 2200);
-      } catch (err) {
-        setActionNotice(
-          t("appsview.LaunchFailed", {
-            name: run.displayName,
-            message: err instanceof Error ? err.message : t("common.error"),
-          }),
-          "error",
-          4000,
-        );
-      } finally {
-        setBusyRunId(null);
-      }
-    },
-    [
-      activeGameRunId,
-      mergeRun,
-      pushAppsUrl,
-      setActionNotice,
-      setShowActiveOnly,
-      setState,
-      t,
-    ],
-  );
-
-  const handleStopRun = useCallback(
-    async (run: AppRunSummary) => {
-      setBusyRunId(run.runId);
-      try {
-        const result = await client.stopAppRun(run.runId);
-        const nextRuns = removeRun(run.runId);
-        if (activeGameRunId === run.runId) {
-          setState("activeGameRunId", "");
-          setState("appsSubTab", "browse");
-          setShowActiveOnly(nextRuns.length > 0);
-          pushAppsUrl();
-        }
-        setActionNotice(
-          result.message,
-          result.success ? "success" : "info",
-          result.needsRestart ? 5000 : 3200,
-        );
-      } catch (err) {
-        setActionNotice(
-          t("appsview.LaunchFailed", {
-            name: run.displayName,
-            message: err instanceof Error ? err.message : t("common.error"),
-          }),
-          "error",
-          4000,
-        );
-      } finally {
-        setBusyRunId(null);
-      }
-    },
-    [
-      activeGameRunId,
-      pushAppsUrl,
-      removeRun,
-      setActionNotice,
-      setShowActiveOnly,
-      setState,
-      t,
-    ],
+    [mergeRun, pushAppsUrl, pushRecentApp, setActionNotice, setState, t],
   );
 
   const visibleApps = useMemo(() => {
     return filterAppsForCatalog(apps, {
       activeAppNames,
       searchQuery,
-      showActiveOnly,
     });
-  }, [activeAppNames, apps, searchQuery, showActiveOnly]);
+  }, [activeAppNames, apps, searchQuery]);
+
+  const browseApps = useMemo(() => {
+    return filterAppsForCatalog(apps);
+  }, [apps]);
 
   const handleToggleFavorite = useCallback(
     (appName: string) => {
@@ -563,52 +526,101 @@ export function AppsView() {
     [favoriteApps, setState],
   );
 
+  const handleStopRun = useCallback(
+    async (run: AppRunSummary) => {
+      if (stoppingRunId === run.runId) return;
+      setStoppingRunId(run.runId);
+      try {
+        await client.stopAppRun(run.runId);
+        // Remove the run from local state so the UI updates immediately.
+        const nextRuns = appRuns.filter((r) => r.runId !== run.runId);
+        setState("appRuns", nextRuns);
+        if (activeGameRunId === run.runId) {
+          setState("activeGameRunId", "");
+        }
+        setActionNotice(
+          t("appsview.Stopped", {
+            defaultValue: `${run.displayName} stopped.`,
+          }),
+          "success",
+          2600,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setActionNotice(
+          t("appsview.StopFailed", {
+            defaultValue: `Could not stop ${run.displayName}: ${message}`,
+          }),
+          "error",
+          4000,
+        );
+      } finally {
+        setStoppingRunId(null);
+      }
+    },
+    [activeGameRunId, appRuns, setActionNotice, setState, stoppingRunId, t],
+  );
+
+  const appsSidebar = (
+    <AppsSidebar
+      apps={apps}
+      browseApps={browseApps}
+      runs={sortedRuns}
+      activeAppNames={activeAppNames}
+      favoriteAppNames={favoriteAppNames}
+      selectedAppName={activeGameRun?.appName ?? null}
+      collapsed={sidebarCollapsed}
+      onCollapsedChange={handleSidebarCollapsedChange}
+      width={sidebarWidth}
+      onWidthChange={handleSidebarWidthChange}
+      minWidth={APPS_SIDEBAR_MIN_WIDTH}
+      maxWidth={APPS_SIDEBAR_MAX_WIDTH}
+      onLaunchApp={(app) => void handleLaunch(app)}
+      onOpenRun={(run) => void handleOpenRun(run)}
+    />
+  );
+
   return (
-    <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
-          Apps
-        </h1>
+    <PageLayout
+      className="h-full bg-transparent"
+      data-testid="apps-shell"
+      sidebar={appsSidebar}
+      contentInnerClassName="w-full"
+      contentClassName="![scrollbar-width:none] [&::-webkit-scrollbar]:!hidden"
+    >
+      <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
         {hasActiveRun ? (
-          <button
-            type="button"
-            className="rounded-full border border-ok/35 bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
-            onClick={handleOpenCurrentGame}
-          >
-            {hasCurrentGame ? "Live viewer" : "Active run"}
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              className="rounded-full border border-ok/35 bg-ok/10 px-3 py-1.5 text-xs-tight font-medium text-ok transition-colors hover:bg-ok/15"
+              onClick={handleOpenCurrentGame}
+            >
+              {hasCurrentGame ? "Live viewer" : "Active run"}
+            </button>
+          </div>
         ) : null}
+
+        <RunningAppsRow
+          runs={sortedRuns}
+          catalogApps={apps}
+          busyRunId={busyRunId}
+          onOpenRun={(run) => void handleOpenRun(run)}
+          onStopRun={(run) => void handleStopRun(run)}
+          stoppingRunId={stoppingRunId}
+        />
+
+        <AppsCatalogGrid
+          activeAppNames={activeAppNames}
+          error={error}
+          favoriteAppNames={favoriteAppNames}
+          loading={loading}
+          searchQuery={searchQuery}
+          visibleApps={visibleApps}
+          onLaunch={(app) => void handleLaunch(app)}
+          onToggleFavorite={handleToggleFavorite}
+        />
       </div>
-
-      <AppsCatalogGrid
-        activeAppNames={activeAppNames}
-        error={error}
-        favoriteAppNames={favoriteAppNames}
-        loading={loading}
-        searchQuery={searchQuery}
-        showActiveOnly={showActiveOnly}
-        visibleApps={visibleApps}
-        onLaunch={(app) => void handleLaunch(app)}
-        onRefresh={() => void refreshApps()}
-        onSearchQueryChange={setSearchQuery}
-        onToggleActiveOnly={() => setShowActiveOnly((current) => !current)}
-        onToggleFavorite={handleToggleFavorite}
-      />
-
-      {sortedRuns.length > 0 ? (
-        <PagePanel variant="inset" className="rounded-2xl p-4 lg:p-5">
-          <RunningAppsPanel
-            runs={sortedRuns}
-            catalogApps={apps}
-            selectedRunId={selectedRunId}
-            busyRunId={busyRunId}
-            onSelectRun={setSelectedRunId}
-            onOpenRun={(run) => void handleOpenRun(run)}
-            onDetachRun={(run) => void handleDetachRun(run)}
-            onStopRun={(run) => void handleStopRun(run)}
-          />
-        </PagePanel>
-      ) : null}
-    </div>
+    </PageLayout>
   );
 }

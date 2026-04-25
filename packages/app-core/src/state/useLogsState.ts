@@ -6,8 +6,8 @@
  */
 
 import { useCallback, useState } from "react";
-import { client } from "../api";
 import type { LogEntry } from "../api";
+import { client } from "../api";
 
 function isLogEntry(value: unknown): value is LogEntry {
   if (typeof value !== "object" || value === null) return false;

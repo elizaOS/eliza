@@ -8,12 +8,12 @@
  *   import { OSWorldAdapter, fromOSWorldAction, fromPyAutoGUI } from "@elizaos/plugin-computeruse/osworld";
  */
 
-export { OSWorldAdapter } from "./adapter.js";
 export {
   fromOSWorldAction,
   fromPyAutoGUI,
   toOSWorldAction,
 } from "./action-converter.js";
+export { OSWorldAdapter } from "./adapter.js";
 export type {
   OSWorldAction,
   OSWorldActionType,

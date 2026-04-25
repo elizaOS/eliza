@@ -3,11 +3,17 @@
 // Knowledge*, Memory*, MCP*, Share*
 // ---------------------------------------------------------------------------
 
+import type {
+  ConversationMetadata,
+  ConversationScope,
+} from "@elizaos/agent/api/server-types";
+
 // Conversations
 export interface Conversation {
   id: string;
   title: string;
   roomId: string;
+  metadata?: ConversationMetadata;
   createdAt: string;
   updatedAt: string;
 }
@@ -23,7 +29,10 @@ export interface CreateConversationOptions {
   includeGreeting?: boolean;
   bootstrapGreeting?: boolean;
   lang?: string;
+  metadata?: ConversationMetadata;
 }
+
+export type { ConversationMetadata, ConversationScope };
 
 // ── A2UI Content Blocks (Agent-to-UI) ────────────────────────────────
 
@@ -76,6 +85,10 @@ export interface ConversationMessage {
   blocks?: ContentBlock[];
   /** Source channel when forwarded from another channel (e.g. "autonomy"). */
   source?: string;
+  /** Concrete action name that produced this assistant turn, when applicable. */
+  actionName?: string;
+  /** Callback/status lines emitted while the action was running. */
+  actionCallbackHistory?: string[];
   /** Username of the sender (e.g. viewer username, discord username). */
   from?: string;
   /** Connector username/handle when available. */
@@ -118,6 +131,21 @@ export interface KnowledgeStats {
   agentId: string;
 }
 
+export type KnowledgeDocumentProvenanceKind =
+  | "upload"
+  | "learned"
+  | "character"
+  | "url"
+  | "youtube"
+  | "bundled"
+  | "unknown";
+
+export interface KnowledgeDocumentProvenance {
+  kind: KnowledgeDocumentProvenanceKind;
+  label: string;
+  detail?: string;
+}
+
 export interface KnowledgeDocument {
   id: string;
   filename: string;
@@ -125,13 +153,18 @@ export interface KnowledgeDocument {
   fileSize: number;
   createdAt: number;
   fragmentCount: number;
-  source: string;
+  source: KnowledgeDocumentProvenanceKind;
   url?: string;
+  provenance: KnowledgeDocumentProvenance;
+  canEditText: boolean;
+  editabilityReason?: string;
+  canDelete: boolean;
+  deleteabilityReason?: string;
   content?: { text?: string };
 }
 
 export interface KnowledgeDocumentDetail extends KnowledgeDocument {
-  content: { text?: string };
+  content?: { text?: string };
 }
 
 export interface KnowledgeDocumentsResponse {
@@ -160,6 +193,7 @@ export interface KnowledgeSearchResult {
   similarity: number;
   documentId?: string;
   documentTitle?: string;
+  documentProvenance?: KnowledgeDocumentProvenance;
   position?: number;
 }
 
@@ -178,6 +212,12 @@ export interface KnowledgeUploadResult {
   contentType?: string;
   isYouTubeTranscript?: boolean;
   warnings?: string[];
+}
+
+export interface KnowledgeDocumentUpdateResult {
+  ok: boolean;
+  documentId: string;
+  fragmentCount: number;
 }
 
 export interface KnowledgeBulkUploadItemResult {
@@ -327,4 +367,94 @@ export interface ShareIngestPayload {
 export interface ShareIngestItem {
   suggestedPrompt: string;
   files: Array<{ name: string }>;
+}
+
+// ── n8n Workflow types ────────────────────────────────────────────────────────
+
+export type N8nMode = "cloud" | "local" | "disabled";
+export type N8nSidecarStatus = "stopped" | "starting" | "ready" | "error";
+
+export interface N8nStatusResponse {
+  mode: N8nMode;
+  host: string | null;
+  status: N8nSidecarStatus;
+  cloudConnected: boolean;
+  localEnabled: boolean;
+  /** Track B: populated by /api/n8n/status once backend lands. */
+  platform?: "desktop" | "mobile";
+  /** Track C: populated by /api/n8n/status once backend lands. */
+  cloudHealth?: "ok" | "degraded" | "unknown";
+}
+
+export interface N8nWorkflowNode {
+  id: string;
+  name: string;
+  type: string;
+  typeVersion?: number;
+  /** Canvas position from n8n — [x, y]. Present on single-workflow GET; absent on list. */
+  position?: [number, number];
+  /** Node parameters from n8n. Present on single-workflow GET; absent on list. */
+  parameters?: Record<string, unknown>;
+  notes?: string;
+  notesInFlow?: boolean;
+}
+
+/** A single outbound connection edge from n8n's connection map. */
+export interface N8nConnection {
+  node: string;
+  type: "main";
+  index: number;
+}
+
+/**
+ * n8n connection map shape.
+ * Keys are source node names; values group edges by output type.
+ * Present on single-workflow GET only — list endpoint stays shallow.
+ */
+export type N8nConnectionMap = Record<string, { main?: N8nConnection[][] }>;
+
+export interface N8nWorkflow {
+  id: string;
+  name: string;
+  active: boolean;
+  description?: string;
+  nodeCount?: number;
+  nodes?: N8nWorkflowNode[];
+  lastExecutionAt?: string;
+  /** Connection graph. Present on single-workflow GET; absent on list. */
+  connections?: N8nConnectionMap;
+}
+
+export interface N8nWorkflowWriteNode {
+  id?: string;
+  name: string;
+  type: string;
+  typeVersion: number;
+  position: [number, number];
+  parameters: Record<string, unknown>;
+  credentials?: Record<string, { id: string; name: string }>;
+  disabled?: boolean;
+  notes?: string;
+  notesInFlow?: boolean;
+  color?: string;
+  continueOnFail?: boolean;
+  executeOnce?: boolean;
+  alwaysOutputData?: boolean;
+  retryOnFail?: boolean;
+  maxTries?: number;
+  waitBetweenTries?: number;
+  onError?: "continueErrorOutput" | "continueRegularOutput" | "stopWorkflow";
+}
+
+export interface N8nWorkflowWriteRequest {
+  name: string;
+  nodes: N8nWorkflowWriteNode[];
+  connections: N8nConnectionMap;
+  settings?: Record<string, unknown>;
+}
+
+export interface N8nWorkflowGenerateRequest {
+  prompt: string;
+  name?: string;
+  workflowId?: string;
 }

@@ -193,8 +193,11 @@ function formatActionExampleSummary(action: Action): string | null {
 
 		const userMessage = example[0]?.content?.text?.trim();
 		const actionHints = getExampleActionHints(example);
-		if (!userMessage || actionHints.length === 0) {
+		if (!userMessage) {
 			continue;
+		}
+		if (actionHints.length === 0) {
+			return `User: ${JSON.stringify(userMessage)} -> actions: ${action.name}`;
 		}
 
 		return `User: ${JSON.stringify(userMessage)} -> actions: ${actionHints.join(", ")}`;
@@ -205,6 +208,30 @@ function formatActionExampleSummary(action: Action): string | null {
 
 function shuffleActions<T>(items: T[], seed = "actions"): T[] {
 	return deterministicShuffle(items, seed);
+}
+
+function formatActionSimiles(action: Action): string | null {
+	const similes = [
+		...new Set((action.similes ?? []).map((simile) => simile.trim())),
+	].filter((simile) => simile.length > 0);
+
+	if (similes.length === 0) {
+		return null;
+	}
+
+	return `  aliases[${similes.length}]: ${similes.join(", ")}`;
+}
+
+function formatActionTags(action: Action): string | null {
+	const tags = [
+		...new Set((action.tags ?? []).map((tag) => tag.trim())),
+	].filter((tag) => tag.length > 0 && tag !== "always-include");
+
+	if (tags.length === 0) {
+		return null;
+	}
+
+	return `  tags[${tags.length}]: ${tags.join(", ")}`;
 }
 
 export function formatActionNames(actions: Action[], seed = "actions"): string {
@@ -227,6 +254,16 @@ export function formatActions(actions: Action[], seed = "actions"): string {
 				`- ${action.name}: ${action.description || "No description available"}`,
 			];
 			const exampleSummary = formatActionExampleSummary(action);
+			const similes = formatActionSimiles(action);
+			const tags = formatActionTags(action);
+
+			if (similes) {
+				lines.push(similes);
+			}
+
+			if (tags) {
+				lines.push(tags);
+			}
 
 			if (action.parameters && action.parameters.length > 0) {
 				lines.push(
@@ -521,9 +558,10 @@ export function validateActionParams(
 	}
 
 	for (const paramDef of action.parameters) {
-		const extractedValue = extractedParams
-			? extractedParams[paramDef.name]
-			: undefined;
+		const extractedValue = coerceActionParamValue(
+			paramDef,
+			extractedParams ? extractedParams[paramDef.name] : undefined,
+		);
 
 		if (extractedValue === undefined || extractedValue === null) {
 			if (paramDef.required) {
@@ -552,6 +590,69 @@ export function validateActionParams(
 		params: Object.keys(params).length > 0 ? params : undefined,
 		errors,
 	};
+}
+
+function coerceActionParamValue(
+	paramDef: ActionParameter,
+	value: ActionParameters[string] | undefined,
+): ActionParameters[string] | undefined {
+	if (
+		paramDef.schema.type === "string" &&
+		(typeof value === "number" || typeof value === "bigint")
+	) {
+		return String(value);
+	}
+
+	if (paramDef.schema.type !== "array" || Array.isArray(value)) {
+		return value;
+	}
+
+	if (typeof value !== "string") {
+		return value;
+	}
+
+	const trimmed = value.trim();
+	if (!trimmed) {
+		return [];
+	}
+
+	if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+		try {
+			const parsed = JSON.parse(trimmed);
+			if (Array.isArray(parsed)) {
+				return parsed.map((entry) => toActionParameterValue(entry));
+			}
+		} catch {
+			// Fall through to the permissive toon/string coercion paths below.
+		}
+	}
+
+	const xmlChildren = extractXmlChildren(trimmed);
+	if (xmlChildren.length > 0) {
+		return xmlChildren.map(({ value: childValue }) =>
+			toActionParameterValue(childValue),
+		);
+	}
+
+	const toonValue = tryParseToonValue(trimmed);
+	if (Array.isArray(toonValue)) {
+		return toonValue.map((entry) => toActionParameterValue(entry));
+	}
+
+	if (paramDef.schema.items?.type !== "string") {
+		return value;
+	}
+
+	const splitValues = trimmed
+		.split(/\s*\|\|\s*|,|\n/)
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0);
+
+	if (splitValues.length === 0) {
+		return [];
+	}
+
+	return splitValues;
 }
 
 type ValidatableParamValue =

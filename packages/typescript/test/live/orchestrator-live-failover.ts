@@ -230,7 +230,7 @@ async function main(): Promise<void> {
 			(replacementSession.status === "error" ||
 				replacementSession.status === "stopped")
 		) {
-			const output = await service!.getSessionOutput(replacementSessionId, 400);
+			const output = await service?.getSessionOutput(replacementSessionId, 400);
 			throw new Error(
 				`${FALLBACK_FRAMEWORK} replacement session ended early with status ${replacementSession.status}. Recent output: ${output.slice(-400)}`,
 			);
@@ -243,10 +243,9 @@ async function main(): Promise<void> {
 		}
 		const detail = await coordinator.getTaskThread(thread.id);
 		return Boolean(
-			detail &&
-				detail.events.some(
-					(event) => event.eventType === "framework_unavailable",
-				) &&
+			detail?.events.some(
+				(event) => event.eventType === "framework_unavailable",
+			) &&
 				detail.events.some(
 					(event) => event.eventType === "framework_failover_started",
 				) &&

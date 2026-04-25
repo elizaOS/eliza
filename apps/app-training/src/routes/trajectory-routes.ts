@@ -13,7 +13,12 @@
  */
 
 import type http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
+import {
+  readJsonBody as parseJsonBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/agent/api/http-helpers";
+import { createZipArchive } from "@elizaos/agent/api/zip-utils";
 import {
   enrichTrajectoryLlmCall,
   executeRawSql,
@@ -31,16 +36,10 @@ import type {
   TrajectoryListOptions,
   TrajectoryListResult,
   TrajectoryLlmCall,
-  TrajectoryProviderAccess,
   TrajectoryStatus,
   TrajectoryStep,
-} from "@elizaos/agent/types/trajectory";
-import {
-  readJsonBody as parseJsonBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/agent/api/http-helpers";
-import { createZipArchive } from "@elizaos/agent/api/zip-utils";
+} from "@elizaos/agent/types";
+import type { AgentRuntime } from "@elizaos/core";
 
 export type { TrajectoryExportFormat };
 
@@ -432,7 +431,7 @@ function listItemToUIRecord(item: TrajectoryListItem): UITrajectoryRecord {
     endTime: item.endTime,
     durationMs: item.durationMs,
     llmCallCount: item.llmCallCount,
-    providerAccessCount: item.providerAccessCount ?? 0,
+    providerAccessCount: item.providerAccessCount,
     totalPromptTokens: item.totalPromptTokens,
     totalCompletionTokens: item.totalCompletionTokens,
     ...(item.scenarioId ? { scenarioId: item.scenarioId } : {}),
@@ -744,7 +743,7 @@ async function maybeBackfillTrajectoryFromUseModelLogs(
             ? body.provider.trim()
             : "";
         const model =
-          provider && modelKey && modelKey.toUpperCase().startsWith("TEXT_")
+          provider && modelKey?.toUpperCase().startsWith("TEXT_")
             ? `${provider}/${modelKey}`
             : modelKey || provider || "unknown";
         return {
@@ -862,9 +861,13 @@ async function maybeBackfillTrajectoryFromConversationMemory(
 
     const normalizedUserPrompt = userPrompt.toLowerCase();
     const normalizedResponse = response.toLowerCase();
-    const existingCalls = (traj.steps ?? []).flatMap((step) => step.llmCalls ?? []);
+    const existingCalls = (traj.steps ?? []).flatMap(
+      (step) => step.llmCalls ?? [],
+    );
     const alreadyCapturedConversation = existingCalls.some((call) => {
-      const callPrompt = String(call.userPrompt ?? "").trim().toLowerCase();
+      const callPrompt = String(call.userPrompt ?? "")
+        .trim()
+        .toLowerCase();
       if (
         callPrompt &&
         (callPrompt.includes(normalizedUserPrompt) ||
@@ -873,7 +876,9 @@ async function maybeBackfillTrajectoryFromConversationMemory(
         return true;
       }
 
-      const callResponse = String(call.response ?? "").trim().toLowerCase();
+      const callResponse = String(call.response ?? "")
+        .trim()
+        .toLowerCase();
       return (
         callResponse.length > 0 &&
         (callResponse.includes(normalizedResponse) ||

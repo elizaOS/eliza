@@ -6,7 +6,7 @@ import type {
   LifeOpsGoogleConnectorStatus,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   GoogleApiError,
   googleErrorLooksLikeAdminPolicyBlock,
@@ -34,7 +34,41 @@ import {
   startGoogleConnectorOAuth,
 } from "./google-oauth.js";
 import { createLifeOpsConnectorGrant } from "./repository.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
+
+export interface LifeOpsGoogleService {
+  getGoogleConnectorStatus(
+    requestUrl: URL,
+    requestedMode?: LifeOpsConnectorMode,
+    requestedSide?: LifeOpsConnectorSide,
+    grantId?: string,
+  ): Promise<LifeOpsGoogleConnectorStatus>;
+  getGoogleConnectorAccounts(
+    requestUrl: URL,
+    requestedSide?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsGoogleConnectorStatus[]>;
+  selectGoogleConnectorMode(
+    requestUrl: URL,
+    preferredModeInput: LifeOpsConnectorMode | undefined,
+    requestedSide?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsGoogleConnectorStatus>;
+  startGoogleConnector(
+    request: StartLifeOpsGoogleConnectorRequest,
+    requestUrl: URL,
+  ): Promise<StartLifeOpsGoogleConnectorResponse>;
+  completeGoogleConnectorCallback(
+    callbackUrl: URL,
+  ): Promise<LifeOpsGoogleConnectorStatus>;
+  disconnectGoogleConnector(
+    request: DisconnectLifeOpsGoogleConnectorRequest,
+    requestUrl: URL,
+  ): Promise<LifeOpsGoogleConnectorStatus>;
+}
+
 import { fail } from "./service-normalize.js";
 import {
   normalizeGoogleCapabilityRequest,
@@ -78,8 +112,8 @@ function sameNormalizedStringSet(
 /** @internal */
 export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsGoogleServiceMixin extends Base {
+): MixinClass<TBase, LifeOpsGoogleService> {
+  return class extends Base {
     // -----------------------------------------------------------------
     // Internal Google grant operations
     // -----------------------------------------------------------------
@@ -190,6 +224,11 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         "google",
         side,
       );
+      await this.repository.deleteGmailSpamReviewItemsForProvider(
+        this.agentId(),
+        "google",
+        side,
+      );
       await this.repository.deleteGmailSyncState(
         this.agentId(),
         "google",
@@ -227,31 +266,36 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         await this.repository.listConnectorGrants(this.agentId())
       ).filter((grant) => grant.provider === "google");
 
-      const resolvedPreferredGrant =
-        (preferredMode && preferredSide
-          ? (googleGrants.find(
-              (grant) =>
-                grant.mode === preferredMode && grant.side === preferredSide,
-            ) ?? null)
-          : null) ??
-        (preferredMode
-          ? ([...googleGrants]
-              .filter((grant) => grant.mode === preferredMode)
-              .sort((left, right) =>
-                right.updatedAt.localeCompare(left.updatedAt),
-              )[0] ?? null)
-          : null) ??
-        (preferredSide
-          ? ([...googleGrants]
-              .filter((grant) => grant.side === preferredSide)
-              .sort((left, right) =>
-                right.updatedAt.localeCompare(left.updatedAt),
-              )[0] ?? null)
-          : null) ??
-        [...googleGrants].sort((left, right) =>
-          right.updatedAt.localeCompare(left.updatedAt),
-        )[0] ??
-        null;
+      let resolvedPreferredGrant: LifeOpsConnectorGrant | null = null;
+      if (preferredMode && preferredSide) {
+        resolvedPreferredGrant =
+          googleGrants.find(
+            (grant) =>
+              grant.mode === preferredMode && grant.side === preferredSide,
+          ) ?? null;
+      }
+      if (resolvedPreferredGrant === null && preferredMode) {
+        resolvedPreferredGrant =
+          [...googleGrants]
+            .filter((grant) => grant.mode === preferredMode)
+            .sort((left, right) =>
+              right.updatedAt.localeCompare(left.updatedAt),
+            )[0] ?? null;
+      }
+      if (resolvedPreferredGrant === null && preferredSide) {
+        resolvedPreferredGrant =
+          [...googleGrants]
+            .filter((grant) => grant.side === preferredSide)
+            .sort((left, right) =>
+              right.updatedAt.localeCompare(left.updatedAt),
+            )[0] ?? null;
+      }
+      if (resolvedPreferredGrant === null) {
+        resolvedPreferredGrant =
+          [...googleGrants].sort((left, right) =>
+            right.updatedAt.localeCompare(left.updatedAt),
+          )[0] ?? null;
+      }
 
       for (const grant of googleGrants) {
         const shouldPrefer =
@@ -606,7 +650,10 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
 
         let managedStatus: ManagedGoogleConnectorStatusResponse;
         try {
-          managedStatus = await this.googleManagedClient.getStatus(side, grantId);
+          managedStatus = await this.googleManagedClient.getStatus(
+            side,
+            grantId,
+          );
         } catch (error) {
           if (error instanceof ManagedGoogleClientError) {
             if (error.status === 404) {
@@ -1185,7 +1232,5 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       );
       return this.getGoogleConnectorStatus(requestUrl, mode, side);
     }
-  }
-
-  return LifeOpsGoogleServiceMixin;
+  } as unknown as MixinClass<TBase, LifeOpsGoogleService>;
 }

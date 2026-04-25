@@ -1,7 +1,7 @@
 /**
  * Onboarding State Machine
  *
- * A unified state machine for onboarding that can be driven by CLI prompts
+ * A state machine for onboarding that can be driven by CLI prompts
  * OR chat messages. Handles step transitions, validation, and persistence.
  */
 
@@ -77,7 +77,7 @@ export interface OnboardingStateMachineConfig {
 }
 
 /**
- * Unified Onboarding State Machine.
+ * Onboarding State Machine.
  *
  * Manages the onboarding flow across CLI and conversational interfaces.
  * Supports step progression, validation, persistence, and event callbacks.

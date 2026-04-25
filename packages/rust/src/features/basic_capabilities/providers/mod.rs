@@ -9,6 +9,7 @@ pub mod context_bench;
 pub mod current_time;
 pub mod entities;
 pub mod evaluators_list;
+pub mod prompt_compression;
 pub mod providers_list;
 pub mod recent_messages;
 pub mod time;

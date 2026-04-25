@@ -129,7 +129,7 @@ export const NAV_COMMANDS: readonly { id: string; label: string; tab: Tab }[] =
     { id: "nav-apps", label: "Open Apps", tab: "apps" },
     { id: "nav-character", label: "Open Character", tab: "character" },
     { id: "nav-triggers", label: "Open Heartbeats", tab: "triggers" },
-    { id: "nav-inventory", label: "Open Inventory", tab: "inventory" },
+    { id: "nav-inventory", label: "Open Wallet", tab: "inventory" },
     { id: "nav-knowledge", label: "Open Knowledge", tab: "knowledge" },
     { id: "nav-connectors", label: "Open Connectors", tab: "connectors" },
     { id: "nav-plugins", label: "Open Plugins", tab: "plugins" },
@@ -177,15 +177,6 @@ export const DESKTOP_COMMAND_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     label: "Open Voice Controls",
     expectedAction:
       "Open a detached settings window focused on the voice section.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-open-media-controls",
-    entryPoint: "command-palette",
-    label: "Open Media Controls",
-    expectedAction:
-      "Open a detached settings window focused on the media section.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
@@ -292,12 +283,6 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
         action: () => openDesktopSettingsWindow("voice"),
       },
       {
-        id: "desktop-open-media-controls",
-        label: "Open Media Controls",
-        category: "desktop",
-        action: () => openDesktopSettingsWindow("media"),
-      },
-      {
         id: "desktop-focus-main-window",
         label: "Focus Main Window",
         category: "desktop",
@@ -359,5 +344,3 @@ export function buildCommands(args: BuildCommandsArgs): CommandItem[] {
 
   return commands;
 }
-
-export * from "./coding-agent-session-state";

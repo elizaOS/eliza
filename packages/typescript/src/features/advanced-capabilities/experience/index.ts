@@ -1,6 +1,5 @@
 /**
- * Experience learning — bundled with advanced capabilities (extended basic-capabilities).
- * Replaces the standalone `@elizaos/plugin-experience` package for TypeScript core.
+ * Experience learning bundled with advanced capabilities.
  */
 
 export { recordExperienceAction } from "./actions/record-experience.ts";

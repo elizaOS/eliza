@@ -5,7 +5,7 @@ import type {
   LifeOpsProgressionRule,
   LifeOpsTaskDefinition,
   LifeOpsTimeWindowDefinition,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { normalizeWindowPolicy } from "./defaults.js";
 import {
   addDaysToLocalDate,
@@ -106,6 +106,11 @@ function buildOccurrenceKey(
   suffix: string,
 ): string {
   return `${prefix}:${localDateKey}:${suffix}`;
+}
+
+function getCadenceWindows(cadence: LifeOpsCadence): string[] {
+  const windows = (cadence as { windows?: string[] }).windows;
+  return Array.isArray(windows) ? windows : [];
 }
 
 function buildWindowOccurrence(
@@ -461,7 +466,7 @@ export function materializeDefinitionOccurrences(
       if (!definition.cadence.weekdays.includes(weekday)) {
         continue;
       }
-      for (const windowName of definition.cadence.windows) {
+      for (const windowName of getCadenceWindows(definition.cadence)) {
         const window = windowMap.get(windowName);
         if (!window) continue;
         const scheduledLocal = {
@@ -530,7 +535,7 @@ export function materializeDefinitionOccurrences(
     }
 
     if (definition.cadence.kind === "interval") {
-      const windows = definition.cadence.windows
+      const windows = getCadenceWindows(definition.cadence)
         .map((windowName) => windowMap.get(windowName))
         .filter((window): window is LifeOpsTimeWindowDefinition =>
           Boolean(window),
@@ -608,7 +613,7 @@ export function materializeDefinitionOccurrences(
       continue;
     }
 
-    for (const windowName of definition.cadence.windows) {
+    for (const windowName of getCadenceWindows(definition.cadence)) {
       const window = windowMap.get(windowName);
       if (!window) continue;
       const scheduledLocal = {

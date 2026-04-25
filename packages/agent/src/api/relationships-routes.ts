@@ -17,14 +17,32 @@ export interface RelationshipsRouteContext extends RouteRequestContext {
 
 function parseQuery(reqUrl: string | undefined): RelationshipsGraphQuery {
   const url = new URL(reqUrl ?? "/api/relationships/graph", "http://localhost");
-  const limit = url.searchParams.get("limit");
-  const offset = url.searchParams.get("offset");
+  const parseInteger = (
+    value: string | null,
+    options?: { min?: number },
+  ): number | undefined => {
+    if (!value) {
+      return undefined;
+    }
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) {
+      return undefined;
+    }
+    if (typeof options?.min === "number" && parsed < options.min) {
+      return undefined;
+    }
+    return parsed;
+  };
+  const scopeParam = url.searchParams.get("scope");
+  const scope =
+    scopeParam === "relevant" || scopeParam === "all" ? scopeParam : undefined;
 
   return {
     search: url.searchParams.get("search"),
     platform: url.searchParams.get("platform"),
-    limit: limit ? Number.parseInt(limit, 10) : undefined,
-    offset: offset ? Number.parseInt(offset, 10) : undefined,
+    limit: parseInteger(url.searchParams.get("limit"), { min: 1 }),
+    offset: parseInteger(url.searchParams.get("offset"), { min: 0 }),
+    scope,
   };
 }
 
@@ -64,21 +82,64 @@ async function getRelationshipsGraphService(
   );
 }
 
+type LinkRequestBody = {
+  targetEntityId?: unknown;
+  evidence?: unknown;
+};
+
+function asEvidenceRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function parseActivityInteger(
+  value: string | null,
+  fallback: number,
+  options: { min: number; max?: number },
+): number | null {
+  if (value === null) {
+    return fallback;
+  }
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < options.min) {
+    return null;
+  }
+  return typeof options.max === "number"
+    ? Math.min(parsed, options.max)
+    : parsed;
+}
+
 export async function handleRelationshipsRoutes(
   ctx: RelationshipsRouteContext,
 ): Promise<boolean> {
-  const { req, res, method, pathname, json, error, runtime } = ctx;
+  const { req, res, method, pathname, json, error, readJsonBody, runtime } =
+    ctx;
+
+  const isCandidatesRoute =
+    pathname === "/api/relationships/candidates" ||
+    pathname.startsWith("/api/relationships/candidates/");
+  const isPersonLinkRoute =
+    pathname.startsWith("/api/relationships/people/") &&
+    pathname.endsWith("/link");
 
   if (
     pathname !== "/api/relationships/graph" &&
     pathname !== "/api/relationships/people" &&
     pathname !== "/api/relationships/activity" &&
-    !pathname.startsWith("/api/relationships/people/")
+    !pathname.startsWith("/api/relationships/people/") &&
+    !isCandidatesRoute
   ) {
     return false;
   }
 
-  if (method !== "GET") {
+  // GET routes go through the read paths below; merge/link mutations are
+  // POST-only and handled before the GET-only fast-fail.
+  if (method !== "GET" && method !== "POST") {
     return false;
   }
 
@@ -89,6 +150,70 @@ export async function handleRelationshipsRoutes(
       "Relationships graph service is not available. Make sure the native relationships feature is enabled.",
       503,
     );
+    return true;
+  }
+
+  if (method === "POST") {
+    if (pathname === "/api/relationships/candidates") {
+      // Read-only on this exact pathname; POST is reserved for nested IDs.
+      error(res, "Method not allowed.", 405);
+      return true;
+    }
+
+    if (
+      pathname.startsWith("/api/relationships/candidates/") &&
+      (pathname.endsWith("/accept") || pathname.endsWith("/reject"))
+    ) {
+      const action = pathname.endsWith("/accept") ? "accept" : "reject";
+      const idStart = "/api/relationships/candidates/".length;
+      const idEnd = pathname.lastIndexOf("/");
+      const candidateId = decodeURIComponent(pathname.slice(idStart, idEnd));
+      if (!candidateId) {
+        error(res, "Missing merge candidate id.", 400);
+        return true;
+      }
+      if (action === "accept") {
+        await relationshipsGraph.acceptMerge(candidateId as UUID);
+      } else {
+        await relationshipsGraph.rejectMerge(candidateId as UUID);
+      }
+      json(res, { data: { id: candidateId, status: action } }, 200);
+      return true;
+    }
+
+    if (isPersonLinkRoute) {
+      const idStart = "/api/relationships/people/".length;
+      const idEnd = pathname.lastIndexOf("/");
+      const sourceEntityId = decodeURIComponent(pathname.slice(idStart, idEnd));
+      if (!sourceEntityId) {
+        error(res, "Missing source entity id.", 400);
+        return true;
+      }
+      const body = await readJsonBody<LinkRequestBody>(req, res);
+      if (!body) return true;
+      const targetEntityId =
+        typeof body.targetEntityId === "string" ? body.targetEntityId : "";
+      if (!targetEntityId) {
+        error(res, "targetEntityId is required.", 400);
+        return true;
+      }
+      const evidence = asEvidenceRecord(body.evidence);
+      const candidateId = await relationshipsGraph.proposeMerge(
+        sourceEntityId as UUID,
+        targetEntityId as UUID,
+        evidence,
+      );
+      json(res, { data: { id: candidateId, status: "pending" } }, 201);
+      return true;
+    }
+
+    error(res, "Method not allowed.", 405);
+    return true;
+  }
+
+  if (method === "GET" && pathname === "/api/relationships/candidates") {
+    const candidates = await relationshipsGraph.getCandidateMerges();
+    json(res, { data: candidates }, 200);
     return true;
   }
 
@@ -116,7 +241,7 @@ export async function handleRelationshipsRoutes(
   }
 
   if (pathname === "/api/relationships/activity") {
-    const snapshot = await relationshipsGraph.getGraphSnapshot({ limit: 200 });
+    const snapshot = await relationshipsGraph.getGraphSnapshot();
     type ActivityItem = {
       type: "relationship" | "identity" | "fact";
       personName: string;
@@ -230,21 +355,27 @@ export async function handleRelationshipsRoutes(
       req.url ?? "/api/relationships/activity",
       "http://localhost",
     );
-    const limitParam = activityUrl.searchParams.get("limit");
-    const limit = limitParam
-      ? Math.min(Number.parseInt(limitParam, 10), 100)
-      : 50;
-    const offsetParam = activityUrl.searchParams.get("offset");
-    const offset = offsetParam
-      ? Math.max(0, Number.parseInt(offsetParam, 10))
-      : 0;
+    const limit = parseActivityInteger(
+      activityUrl.searchParams.get("limit"),
+      50,
+      { min: 1, max: 100 },
+    );
+    const offset = parseActivityInteger(
+      activityUrl.searchParams.get("offset"),
+      0,
+      { min: 0 },
+    );
+    if (limit === null || offset === null) {
+      error(res, "Invalid relationships activity pagination.", 400);
+      return true;
+    }
 
     json(
       res,
       {
         activity: activity.slice(offset, offset + limit),
         total: activity.length,
-        count: Math.min(limit, activity.length - offset),
+        count: Math.max(0, Math.min(limit, activity.length - offset)),
         offset,
         limit,
         hasMore: offset + limit < activity.length,

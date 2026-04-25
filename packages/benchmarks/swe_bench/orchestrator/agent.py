@@ -94,7 +94,7 @@ class OrchestratingAgent:
     def _create_provider(self, provider_type: ProviderType) -> BaseSWEBenchProvider:
         """Create a provider instance for the given type."""
         if provider_type == ProviderType.CLAUDE_CODE:
-            model = self.config.provider_models.get("claude-code", "claude-sonnet-4-20250514")
+            model = self.config.provider_models.get("claude-code", "claude-sonnet-4-6")
             return ClaudeCodeProvider(
                 repo_manager=self.repo_manager,
                 max_steps=self.config.provider_max_steps,

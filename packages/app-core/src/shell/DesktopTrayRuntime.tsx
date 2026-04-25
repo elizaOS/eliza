@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -6,9 +7,8 @@ import {
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { TRAY_ACTION_EVENT } from "../events";
 import { useApp } from "../state/useApp";
-import { openDesktopSettingsWindow } from "../utils/desktop-workspace";
 import type { DesktopClickAuditItem } from "../utils/desktop-workspace";
-import { useEffect } from "react";
+import { openDesktopSettingsWindow } from "../utils/desktop-workspace";
 
 interface DesktopTrayMenuItem {
   id: string;
@@ -21,7 +21,6 @@ export const DESKTOP_TRAY_MENU_ITEMS: readonly DesktopTrayMenuItem[] = [
   { id: "tray-open-plugins", label: "Open Plugins" },
   { id: "tray-open-desktop-workspace", label: "Open Desktop Workspace" },
   { id: "tray-open-voice-controls", label: "Open Voice Controls" },
-  { id: "tray-open-media-controls", label: "Open Media Controls" },
   { id: "tray-sep-0", type: "separator" },
   { id: "tray-toggle-lifecycle", label: "Start/Stop Agent" },
   { id: "tray-restart", label: "Restart Agent" },
@@ -65,15 +64,6 @@ export const DESKTOP_TRAY_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
     label: "Open Voice Controls",
     expectedAction:
       "Open a detached settings window focused on the voice controls section.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "tray-open-media-controls",
-    entryPoint: "tray",
-    label: "Open Media Controls",
-    expectedAction:
-      "Open a detached settings window focused on the media controls section.",
     runtimeRequirement: "desktop",
     coverage: "automated",
   },
@@ -265,9 +255,6 @@ export function DesktopTrayRuntime() {
             return;
           case "tray-open-voice-controls":
             await openDesktopSettingsWindow("voice");
-            return;
-          case "tray-open-media-controls":
-            await openDesktopSettingsWindow("media");
             return;
           case "tray-toggle-lifecycle":
             if (isAgentActive(agentStatus?.state)) {
