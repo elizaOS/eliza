@@ -11,7 +11,6 @@ interface LifeOpsWorkspaceShellProps {
   children: ReactNode;
 }
 
-const LIFEOPS_TITLE = "LifeOps";
 const MOBILE_TOP_BAR_HEIGHT = "2.375rem";
 const MOBILE_BOTTOM_CLEARANCE = "calc(3.625rem + var(--safe-area-bottom, 0px))";
 
@@ -75,8 +74,8 @@ export function LifeOpsWorkspaceShell({
         </LifeOpsResizableSidebar>
       )}
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="relative flex h-[2.375rem] shrink-0 items-center border-b border-border/12 bg-bg/90 px-2 backdrop-blur sm:px-3">
-          {compactLayout ? (
+        {compactLayout ? (
+          <div className="relative flex h-[2.375rem] shrink-0 items-center border-b border-border/12 bg-bg/90 px-2 backdrop-blur sm:px-3">
             <button
               type="button"
               data-testid="lifeops-workspace-nav-toggle"
@@ -93,19 +92,8 @@ export function LifeOpsWorkspaceShell({
                 <Menu className="h-4 w-4" aria-hidden />
               )}
             </button>
-          ) : (
-            <span className="h-8 w-8 shrink-0" aria-hidden />
-          )}
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-14">
-            <span
-              className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-muted"
-              data-testid="lifeops-workspace-title"
-            >
-              {LIFEOPS_TITLE}
-            </span>
           </div>
-          <span className="ml-auto h-8 w-8 shrink-0" aria-hidden />
-        </div>
+        ) : null}
 
         {compactLayout && mobileNavOpen ? (
           <>

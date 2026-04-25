@@ -1131,7 +1131,7 @@ export function LifeOpsOverviewSection({
                 <IconAction
                   label="Social"
                   icon={<Share2 className="h-3.5 w-3.5" aria-hidden />}
-                  onClick={() => onNavigate("social")}
+                  onClick={() => onNavigate("screen-time")}
                 />
               }
               className="xl:col-span-3"

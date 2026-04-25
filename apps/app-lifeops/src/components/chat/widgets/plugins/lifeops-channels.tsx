@@ -369,18 +369,21 @@ function LifeOpsAutomationsWidget(_props: ChatSidebarWidgetProps) {
   }, []);
 
   const upcoming = useMemo(() => {
+    // Show every enabled trigger. Triggers without a computed next-run
+    // timestamp (manual / event-driven) sort last but still surface so the
+    // widget reflects what actually exists in the system rather than only
+    // what's about to fire.
     return triggers
-      .filter(
-        (trigger) =>
-          trigger.enabled !== false &&
-          typeof trigger.nextRunAtMs === "number" &&
-          Number.isFinite(trigger.nextRunAtMs),
-      )
-      .sort(
-        (a, b) =>
-          (a.nextRunAtMs ?? Number.POSITIVE_INFINITY) -
-          (b.nextRunAtMs ?? Number.POSITIVE_INFINITY),
-      )
+      .filter((trigger) => trigger.enabled !== false)
+      .sort((a, b) => {
+        const aNext = typeof a.nextRunAtMs === "number" && Number.isFinite(a.nextRunAtMs)
+          ? a.nextRunAtMs
+          : Number.POSITIVE_INFINITY;
+        const bNext = typeof b.nextRunAtMs === "number" && Number.isFinite(b.nextRunAtMs)
+          ? b.nextRunAtMs
+          : Number.POSITIVE_INFINITY;
+        return aNext - bNext;
+      })
       .slice(0, AUTOMATIONS_ROW_LIMIT);
   }, [triggers]);
 

@@ -1,17 +1,30 @@
 import { Button, MetaPill, PagePanel } from "@elizaos/ui";
 import {
+  Brain,
   CalendarClock,
   Crown,
   Fingerprint,
+  Frown,
   Globe2,
   Link2,
   Mail,
+  Meh,
   MessageCircle,
+  Pencil,
   Phone,
+  Smile,
   Tags,
   UserRound,
 } from "lucide-react";
-import type { ComponentType, ReactNode } from "react";
+import {
+  type ComponentType,
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { client } from "../../../api/client";
 import type {
   RelationshipsGraphEdge,
   RelationshipsPersonDetail,
@@ -110,6 +123,129 @@ function sentimentClasses(sentiment: string): string {
   return "border-warning/28 bg-warning/10 text-warning";
 }
 
+function sentimentIcon(
+  sentiment: string,
+): ComponentType<{ className?: string }> {
+  if (sentiment === "positive") return Smile;
+  if (sentiment === "negative") return Frown;
+  return Meh;
+}
+
+function sentimentAriaLabel(sentiment: string): string {
+  if (sentiment === "positive") return "Positive sentiment";
+  if (sentiment === "negative") return "Negative sentiment";
+  return "Neutral sentiment";
+}
+
+function findOwnerEdge(
+  person: RelationshipsPersonDetail,
+  ownerGroupId: string | null,
+): RelationshipsGraphEdge | null {
+  if (!ownerGroupId || ownerGroupId === person.groupId) return null;
+  return (
+    person.relationships.find(
+      (edge) =>
+        edge.sourcePersonId === ownerGroupId ||
+        edge.targetPersonId === ownerGroupId,
+    ) ?? null
+  );
+}
+
+function OwnerNameEditor({
+  initialName,
+  onSaved,
+}: {
+  initialName: string;
+  onSaved: (next: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(initialName);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraft(initialName);
+    } else {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing, initialName]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    const next = draft.trim();
+    if (!next || next === initialName) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await client.updateConfig({ ui: { ownerName: next } });
+      onSaved(next);
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save name.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="group inline-flex items-center gap-2 rounded-md text-left transition hover:bg-card/40"
+        aria-label="Edit owner name"
+      >
+        <span className="break-words text-[1.75rem] font-semibold leading-tight text-txt">
+          {initialName}
+        </span>
+        <Pencil className="h-4 w-4 opacity-0 transition group-hover:opacity-60" />
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="flex items-center gap-2">
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setEditing(false);
+          }
+        }}
+        disabled={saving}
+        maxLength={60}
+        className="min-w-0 flex-1 rounded-md border border-accent/40 bg-card/60 px-2 py-1 text-[1.5rem] font-semibold text-txt outline-none focus:border-accent"
+        aria-label="Owner name"
+      />
+      <Button type="submit" size="sm" disabled={saving}>
+        {saving ? "Saving..." : "Save"}
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={saving}
+        onClick={() => setEditing(false)}
+      >
+        Cancel
+      </Button>
+      {error ? (
+        <span className="text-xs text-danger" role="alert">
+          {error}
+        </span>
+      ) : null}
+    </form>
+  );
+}
+
 function DetailLabel({
   icon: Icon,
   children,
@@ -174,17 +310,25 @@ function ProfileCard({
 export function RelationshipsPersonSummaryPanel({
   person,
   compact = false,
+  ownerGroupId = null,
+  ownerDisplayName = null,
   onViewMemories,
+  onOwnerNameUpdated,
 }: {
   person: RelationshipsDisplayPerson;
   compact?: boolean;
+  ownerGroupId?: string | null;
+  ownerDisplayName?: string | null;
   onViewMemories?: (entityIds: string[]) => void;
+  onOwnerNameUpdated?: (next: string) => void;
 }) {
   const avatarUrl = resolvePrimaryAvatar(person);
   const contacts = topContacts(person);
   const hasProfiles = person.profiles.length > 0;
   const hasCategories = person.categories.length > 0;
   const hasTags = person.tags.length > 0;
+  const ownerEdge = findOwnerEdge(person, ownerGroupId);
+  const ownerLabel = ownerDisplayName ?? "Owner";
 
   return (
     <PagePanel variant="padded" className={compact ? "space-y-3" : "space-y-4"}>
@@ -198,51 +342,55 @@ export function RelationshipsPersonSummaryPanel({
             />
           ) : null}
           <div className="min-w-0">
-            <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-              Person
+            <div className="flex items-center gap-2 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+              {person.isOwner ? (
+                <Crown className="h-3.5 w-3.5 text-accent" />
+              ) : (
+                <UserRound className="h-3.5 w-3.5" />
+              )}
+              {person.isOwner ? "Owner" : "Person"}
             </div>
-            <div
-              className={`${compact ? "mt-1 text-xl" : "mt-2 text-[1.75rem]"} break-words font-semibold leading-tight text-txt`}
-            >
-              {person.displayName}
+            <div className={compact ? "mt-1" : "mt-2"}>
+              {person.isOwner ? (
+                <OwnerNameEditor
+                  initialName={person.displayName}
+                  onSaved={(next) => {
+                    onOwnerNameUpdated?.(next);
+                  }}
+                />
+              ) : (
+                <div
+                  className={`${compact ? "text-xl" : "text-[1.75rem]"} break-words font-semibold leading-tight text-txt`}
+                >
+                  {person.displayName}
+                </div>
+              )}
             </div>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
               {personSummary(person)}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {person.isOwner ? (
-            <MetaPill compact>
-              <Crown className="mr-1 h-3.5 w-3.5" />
-              Owner
-            </MetaPill>
-          ) : null}
-          <MetaPill compact>
-            <Fingerprint className="mr-1 h-3.5 w-3.5" />
-            {person.memberEntityIds.length} identities
-          </MetaPill>
-          <MetaPill compact>
-            <Tags className="mr-1 h-3.5 w-3.5" />
-            {person.factCount} facts
-          </MetaPill>
-          <MetaPill compact>
-            <Link2 className="mr-1 h-3.5 w-3.5" />
-            {person.relationshipCount} links
-          </MetaPill>
-          {onViewMemories ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="ml-1 h-7 rounded-full px-3 text-2xs font-semibold tracking-[0.12em]"
-              onClick={() => onViewMemories(person.memberEntityIds)}
-            >
-              View memories
-            </Button>
-          ) : null}
-        </div>
+        {onViewMemories ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 rounded-full px-3 text-2xs font-semibold tracking-[0.12em]"
+            onClick={() => onViewMemories(person.memberEntityIds)}
+          >
+            View memories
+          </Button>
+        ) : null}
       </div>
+
+      {!person.isOwner ? (
+        <OwnerRelationshipSection
+          person={person}
+          ownerLabel={ownerLabel}
+          ownerEdge={ownerEdge}
+        />
+      ) : null}
 
       <div
         className={
@@ -251,70 +399,103 @@ export function RelationshipsPersonSummaryPanel({
             : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]"
         }
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <PagePanel variant="inset" className="px-4 py-4">
-            <DetailLabel icon={UserRound}>Platforms</DetailLabel>
-            <div className="mt-2 text-sm font-semibold text-txt">
-              {listValue(person.platforms, "No linked platforms")}
+        <PagePanel variant="surface" className="px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <DetailLabel icon={UserRound}>Person info</DetailLabel>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <MetaPill compact>
+                <Fingerprint className="mr-1 h-3 w-3" />
+                {person.memberEntityIds.length}
+              </MetaPill>
+              <MetaPill compact>
+                <Link2 className="mr-1 h-3 w-3" />
+                {person.relationshipCount}
+              </MetaPill>
+              <MetaPill compact>
+                <Brain className="mr-1 h-3 w-3" />
+                {person.factCount}
+              </MetaPill>
             </div>
-          </PagePanel>
-          <PagePanel variant="inset" className="px-4 py-4">
-            <DetailLabel icon={CalendarClock}>Last interaction</DetailLabel>
-            <div className="mt-2 text-sm font-semibold text-txt">
-              {formatDateTime(person.lastInteractionAt, {
-                fallback: "No date",
-              })}
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-border/24 bg-card/30 px-3 py-3">
+              <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
+                Platforms
+              </div>
+              <div className="mt-1 text-sm font-semibold text-txt">
+                {listValue(person.platforms, "No linked platforms")}
+              </div>
             </div>
-          </PagePanel>
-
-          {hasCategories || hasTags ? (
-            <PagePanel variant="surface" className="sm:col-span-2 px-4 py-4">
-              <DetailLabel icon={Tags}>Labels</DetailLabel>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {person.categories.map((category) => (
-                  <MetaPill key={`category:${category}`} compact>
-                    {category}
-                  </MetaPill>
-                ))}
-                {person.tags.map((tag) => (
-                  <MetaPill key={`tag:${tag}`} compact>
-                    {tag}
-                  </MetaPill>
-                ))}
+            <div className="rounded-xl border border-border/24 bg-card/30 px-3 py-3">
+              <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
+                <CalendarClock className="h-3 w-3 text-accent" />
+                Last interaction
               </div>
-            </PagePanel>
-          ) : null}
-
-          {contacts.length > 0 ? (
-            <PagePanel variant="surface" className="sm:col-span-2 px-4 py-4">
-              <DetailLabel icon={Mail}>Reachability</DetailLabel>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                {contacts.map((contact) => (
-                  <div
-                    key={`${contact.label}:${contact.value}`}
-                    className="rounded-xl border border-border/24 bg-card/35 px-3 py-3"
-                  >
-                    <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                      {contact.label === "Phone" ? (
-                        <Phone className="h-3 w-3 text-accent" />
-                      ) : contact.label === "Website" ? (
-                        <Globe2 className="h-3 w-3 text-accent" />
-                      ) : (
-                        <Mail className="h-3 w-3 text-accent" />
-                      )}
-                      {contact.label}
-                    </div>
-                    <div className="mt-1 text-sm font-semibold text-txt">
-                      {contact.value}
-                    </div>
-                  </div>
-                ))}
+              <div className="mt-1 text-sm font-semibold text-txt">
+                {formatDateTime(person.lastInteractionAt, {
+                  fallback: "No date",
+                })}
               </div>
-            </PagePanel>
-          ) : null}
+            </div>
 
-          {hasProfiles && !compact ? <ProfilesPanel person={person} /> : null}
-        </div>
+            {hasCategories || hasTags ? (
+              <div className="sm:col-span-2 rounded-xl border border-border/24 bg-card/30 px-3 py-3">
+                <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
+                  <Tags className="h-3 w-3 text-accent" />
+                  Labels
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {person.categories.map((category) => (
+                    <MetaPill key={`category:${category}`} compact>
+                      {category}
+                    </MetaPill>
+                  ))}
+                  {person.tags.map((tag) => (
+                    <MetaPill key={`tag:${tag}`} compact>
+                      {tag}
+                    </MetaPill>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {contacts.length > 0 ? (
+              <div className="sm:col-span-2 rounded-xl border border-border/24 bg-card/30 px-3 py-3">
+                <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
+                  <Mail className="h-3 w-3 text-accent" />
+                  Reachability
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {contacts.map((contact) => (
+                    <div
+                      key={`${contact.label}:${contact.value}`}
+                      className="rounded-lg border border-border/24 bg-card/40 px-2.5 py-2"
+                    >
+                      <div className="flex items-center gap-1.5 text-2xs text-muted/70">
+                        {contact.label === "Phone" ? (
+                          <Phone className="h-3 w-3 text-accent" />
+                        ) : contact.label === "Website" ? (
+                          <Globe2 className="h-3 w-3 text-accent" />
+                        ) : (
+                          <Mail className="h-3 w-3 text-accent" />
+                        )}
+                      </div>
+                      <div className="mt-0.5 text-sm font-semibold text-txt">
+                        {contact.value}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {hasProfiles && !compact ? (
+              <div className="sm:col-span-2">
+                <ProfilesPanel person={person} />
+              </div>
+            ) : null}
+          </div>
+        </PagePanel>
 
         {compact ? (
           <details className="rounded-xl border border-border/24 bg-card/24 px-3 py-2">
@@ -334,6 +515,100 @@ export function RelationshipsPersonSummaryPanel({
           </PagePanel>
         )}
       </div>
+    </PagePanel>
+  );
+}
+
+function OwnerRelationshipSection({
+  person,
+  ownerLabel,
+  ownerEdge,
+}: {
+  person: RelationshipsPersonDetail;
+  ownerLabel: string;
+  ownerEdge: RelationshipsGraphEdge | null;
+}) {
+  const sentiment = ownerEdge?.sentiment ?? "neutral";
+  const SentimentIcon = sentimentIcon(sentiment);
+  const memoryCount = person.relevantMemories.length;
+  const conversationCount = person.recentConversations.length;
+  const interactionCount = ownerEdge?.interactionCount ?? 0;
+  const strengthPercent = ownerEdge
+    ? Math.round(ownerEdge.strength * 100)
+    : null;
+  const lastInteraction =
+    ownerEdge?.lastInteractionAt ?? person.lastInteractionAt;
+  const types = ownerEdge?.relationshipTypes ?? [];
+
+  return (
+    <PagePanel
+      variant="surface"
+      className="border border-accent/20 bg-accent/[0.04] px-4 py-4"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/70">
+          <Crown className="h-3.5 w-3.5 text-accent" />
+          {ownerLabel} <span aria-hidden>↔</span> {person.displayName}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span
+            role="img"
+            aria-label={sentimentAriaLabel(sentiment)}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold ${sentimentClasses(sentiment)}`}
+          >
+            <SentimentIcon className="h-3 w-3" />
+            {strengthPercent !== null ? `${strengthPercent}%` : "—"}
+          </span>
+          <MetaPill compact>
+            <MessageCircle className="mr-1 h-3 w-3" />
+            {interactionCount}
+          </MetaPill>
+          <MetaPill compact>
+            <Brain className="mr-1 h-3 w-3" />
+            {memoryCount}
+          </MetaPill>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-lg border border-border/24 bg-card/40 px-3 py-2">
+          <div className="flex items-center gap-1.5 text-2xs text-muted/70">
+            <CalendarClock className="h-3 w-3 text-accent" />
+            Last
+          </div>
+          <div className="mt-0.5 text-sm font-semibold text-txt">
+            {formatDateTime(lastInteraction, { fallback: "—" })}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border/24 bg-card/40 px-3 py-2">
+          <div className="flex items-center gap-1.5 text-2xs text-muted/70">
+            <MessageCircle className="h-3 w-3 text-accent" />
+            Conversations
+          </div>
+          <div className="mt-0.5 text-sm font-semibold text-txt">
+            {conversationCount}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border/24 bg-card/40 px-3 py-2">
+          <div className="flex items-center gap-1.5 text-2xs text-muted/70">
+            <Brain className="h-3 w-3 text-accent" />
+            Memories
+          </div>
+          <div className="mt-0.5 text-sm font-semibold text-txt">
+            {memoryCount}
+          </div>
+        </div>
+      </div>
+
+      {types.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {types.map((entry) => (
+            <MetaPill key={`owner-rel:${entry}`} compact>
+              {entry}
+            </MetaPill>
+          ))}
+        </div>
+      ) : null}
     </PagePanel>
   );
 }
@@ -440,41 +715,42 @@ export function RelationshipsConnectionsPanel({
   const hiddenRelationships = person.relationships.slice(PANEL_PREVIEW_LIMIT);
   const renderRelationship = (
     relationship: (typeof person.relationships)[number],
-  ) => (
-    <div
-      key={relationship.id}
-      className="rounded-xl border border-border/24 bg-card/32 px-3.5 py-3"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.12em] ${sentimentClasses(relationship.sentiment)}`}
-        >
-          <span className="h-1.5 w-1.5 rounded-full bg-current" />
-          {relationship.sentiment || "neutral"}
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/36 px-2 py-0.5 text-2xs font-semibold text-muted">
-          <Link2 className="h-3 w-3" />
-          {Math.round(relationship.strength * 100)}%
-        </span>
-        <span className="inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/36 px-2 py-0.5 text-2xs font-semibold text-muted">
-          <MessageCircle className="h-3 w-3" />
-          {relationship.interactionCount}
-        </span>
+  ) => {
+    const SentimentIcon = sentimentIcon(relationship.sentiment);
+    return (
+      <div
+        key={relationship.id}
+        className="rounded-xl border border-border/24 bg-card/32 px-3.5 py-3"
+      >
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span
+            role="img"
+            aria-label={sentimentAriaLabel(relationship.sentiment)}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-2xs font-semibold ${sentimentClasses(relationship.sentiment)}`}
+          >
+            <SentimentIcon className="h-3 w-3" />
+            {Math.round(relationship.strength * 100)}%
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/36 px-2 py-0.5 text-2xs font-semibold text-muted">
+            <MessageCircle className="h-3 w-3" />
+            {relationship.interactionCount}
+          </span>
+        </div>
+        <div className="mt-2 text-sm font-semibold text-txt">
+          {relationshipCounterpartName(relationship, person.groupId)}
+        </div>
+        <div className="mt-1 text-xs uppercase tracking-[0.12em] text-muted/70">
+          {relationship.relationshipTypes.join(" • ") || "Unlabeled"}
+        </div>
+        <div className="mt-2 text-xs text-muted">
+          Last interaction{" "}
+          {formatDateTime(relationship.lastInteractionAt, {
+            fallback: "No date",
+          })}
+        </div>
       </div>
-      <div className="mt-2 text-sm font-semibold text-txt">
-        {relationshipCounterpartName(relationship, person.groupId)}
-      </div>
-      <div className="mt-1 text-xs uppercase tracking-[0.12em] text-muted/70">
-        {relationship.relationshipTypes.join(" • ") || "Unlabeled"}
-      </div>
-      <div className="mt-2 text-xs text-muted">
-        Last interaction{" "}
-        {formatDateTime(relationship.lastInteractionAt, {
-          fallback: "No date",
-        })}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <PagePanel variant="surface" className="px-4 py-4">

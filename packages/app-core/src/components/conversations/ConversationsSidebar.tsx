@@ -571,34 +571,50 @@ export function ConversationsSidebar({
   // Connector sections: one section per source (Discord, Telegram, …) with
   // every room from that source listed underneath. No world sub-grouping
   // and no time-bucket headers — just a flat, newest-first list.
+  // Connector sections: one section per (source, world) tuple. Each Discord
+  // server / Telegram account / etc. gets its own collapsible header listing
+  // its channels. Falls back to a single source-level section if a connector
+  // doesn't expose worlds.
   const connectorSections = useMemo(() => {
     const groups = new Map<
       string,
-      { key: string; label: string; rows: ConversationsSidebarRow[] }
+      {
+        key: string;
+        label: string;
+        sourceKey: string;
+        worldKey: string | null;
+        rows: ConversationsSidebarRow[];
+      }
     >();
     for (const row of connectorsModel.rows) {
       const sourceKey = row.sourceKey;
-      const existing = groups.get(sourceKey);
+      const worldKey = row.worldKey;
+      const groupKey = worldKey ? `${sourceKey}:${worldKey}` : sourceKey;
+      const sourceMeta = getChatSourceMeta(sourceKey);
+      const label = row.worldLabel?.trim() || sourceMeta.label;
+      const existing = groups.get(groupKey);
       if (existing) {
         existing.rows.push(row);
         continue;
       }
-      groups.set(sourceKey, {
-        key: sourceKey,
-        label: getChatSourceMeta(sourceKey).label,
+      groups.set(groupKey, {
+        key: groupKey,
+        label,
+        sourceKey,
+        worldKey,
         rows: [row],
       });
     }
     return Array.from(groups.values())
       .map((group) => {
-        const Brand = getBrandIcon(group.key);
+        const Brand = getBrandIcon(group.sourceKey);
         return {
           ...group,
           icon: Brand ? (
             <Brand className="h-3.5 w-3.5" />
           ) : (
             <ChatSourceIcon
-              source={group.key}
+              source={group.sourceKey}
               className="h-3.5 w-3.5"
               decorative
             />
@@ -608,7 +624,14 @@ export function ConversationsSidebar({
           ),
         };
       })
-      .sort((left, right) => left.label.localeCompare(right.label));
+      .sort((left, right) => {
+        // Group by source first, then alphabetical by world label so all
+        // Discord servers cluster, all Telegram accounts cluster, etc.
+        if (left.sourceKey !== right.sourceKey) {
+          return left.sourceKey.localeCompare(right.sourceKey);
+        }
+        return left.label.localeCompare(right.label);
+      });
   }, [connectorsModel.rows]);
 
   const terminalListId = activeTerminalSessionId

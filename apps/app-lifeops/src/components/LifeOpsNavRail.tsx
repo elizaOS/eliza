@@ -16,7 +16,6 @@ import {
   Monitor,
   Moon,
   Settings2,
-  Share2,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
@@ -62,12 +61,6 @@ const NAV_GROUPS: NavGroup[] = [
         label: "Screen Time",
         icon: <Monitor className="h-4 w-4" aria-hidden />,
         dotColor: "bg-amber-300",
-      },
-      {
-        id: "social",
-        label: "Social",
-        icon: <Share2 className="h-4 w-4" aria-hidden />,
-        dotColor: "bg-cyan-300",
       },
       {
         id: "messages",

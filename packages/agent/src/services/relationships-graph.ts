@@ -8,6 +8,7 @@ import type {
 } from "@elizaos/core";
 import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
 import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
+import { fetchConfiguredOwnerName } from "./owner-name.js";
 
 export type RelationshipsGraphQuery = {
   search?: string | null;
@@ -1144,6 +1145,7 @@ function buildSummaries(
   ownerInfo: {
     ownerEntityId: UUID | null;
     cloudUserId: string | null;
+    configuredOwnerName: string | null;
   },
 ): RelationshipsPersonSummary[] {
   return clusters.map((cluster) => {
@@ -1218,13 +1220,17 @@ function buildSummaries(
     }
 
     const primaryContext = contexts.get(cluster.primaryEntityId);
-    const displayName =
+    const fallbackDisplayName =
       preferredContactLabel(primaryContext?.contact ?? null) ??
       entityNames(primaryContext?.entity ?? null)[0] ??
       identities.find((identity) => identity.names[0])?.names[0] ??
       identities.find((identity) => identity.handles[0])?.handles[0]?.handle ??
       emails.values().next().value ??
       cluster.primaryEntityId;
+    const displayName =
+      isOwner && ownerInfo.configuredOwnerName
+        ? ownerInfo.configuredOwnerName
+        : fallbackDisplayName;
 
     aliases.delete(displayName);
 
@@ -2124,6 +2130,9 @@ async function buildGraphModel(
     getUserId?: () => string | undefined;
   } | null;
   const cloudUserId = asString(cloudAuth?.getUserId?.()) ?? null;
+  const configuredOwnerName = await fetchConfiguredOwnerName().catch(
+    () => null,
+  );
   const entityContexts = new Map<UUID, EntityContext>();
 
   await Promise.all(
@@ -2165,6 +2174,7 @@ async function buildGraphModel(
   const summaries = buildSummaries(clustersList, entityContexts, factCounts, {
     ownerEntityId,
     cloudUserId,
+    configuredOwnerName,
   });
   const peopleByGroupId = new Map(
     summaries.map((summary) => [summary.groupId, summary]),
@@ -2243,9 +2253,22 @@ export function createNativeRelationshipsGraphService(
     return modelBuildPromise;
   }
 
+  function applyOwnerName(
+    summaries: RelationshipsPersonSummary[],
+    ownerName: string | null,
+  ): RelationshipsPersonSummary[] {
+    if (!ownerName) return summaries;
+    return summaries.map((summary) =>
+      summary.isOwner ? { ...summary, displayName: ownerName } : summary,
+    );
+  }
+
   return {
     async getGraphSnapshot(query = {}): Promise<RelationshipsGraphSnapshot> {
-      const model = await getCachedModel();
+      const [model, ownerName] = await Promise.all([
+        getCachedModel(),
+        fetchConfiguredOwnerName().catch(() => null),
+      ]);
       const scopedGraph = graphViewForScope(
         model.summaries,
         model.edges,
@@ -2263,9 +2286,9 @@ export function createNativeRelationshipsGraphService(
           matchingGroupIds.has(edge.sourcePersonId) &&
           matchingGroupIds.has(edge.targetPersonId),
       );
-      const decoratedSummaries = applyRelationshipCounts(
-        matchingSummaries,
-        filteredEdges,
+      const decoratedSummaries = applyOwnerName(
+        applyRelationshipCounts(matchingSummaries, filteredEdges),
+        ownerName,
       );
       const offset = Math.max(0, query.offset ?? 0);
       const limit =
@@ -2305,7 +2328,10 @@ export function createNativeRelationshipsGraphService(
     async getPersonDetail(
       primaryEntityId: UUID,
     ): Promise<RelationshipsPersonDetail | null> {
-      const model = await getCachedModel();
+      const [model, ownerName] = await Promise.all([
+        getCachedModel(),
+        fetchConfiguredOwnerName().catch(() => null),
+      ]);
       const cluster =
         Array.from(model.clusters.values()).find(
           (entry) =>
@@ -2316,13 +2342,16 @@ export function createNativeRelationshipsGraphService(
         return null;
       }
 
-      const summary = applyRelationshipCounts(
-        model.summaries.filter((entry) => entry.groupId === cluster.groupId),
-        model.edges.filter(
-          (edge) =>
-            edge.sourcePersonId === cluster.groupId ||
-            edge.targetPersonId === cluster.groupId,
+      const summary = applyOwnerName(
+        applyRelationshipCounts(
+          model.summaries.filter((entry) => entry.groupId === cluster.groupId),
+          model.edges.filter(
+            (edge) =>
+              edge.sourcePersonId === cluster.groupId ||
+              edge.targetPersonId === cluster.groupId,
+          ),
         ),
+        ownerName,
       )[0];
       if (!summary) {
         return null;

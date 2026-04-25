@@ -1,15 +1,6 @@
 import { Button, PageLayout, PagePanel } from "@elizaos/ui";
+import { Filter, RefreshCw, Search, X } from "lucide-react";
 import {
-  Filter,
-  Fingerprint,
-  Link2,
-  RefreshCw,
-  Search,
-  UserRound,
-  X,
-} from "lucide-react";
-import {
-  type ComponentType,
   type ReactNode,
   useCallback,
   useDeferredValue,
@@ -40,24 +31,6 @@ import {
   platformOptions,
   sortPeople,
 } from "./relationships-utils";
-
-function ToolbarMetric({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="inline-flex h-9 items-center gap-2 rounded-full border border-border/28 bg-card/42 px-3 text-sm text-muted-strong">
-      <Icon className="h-4 w-4 text-accent" />
-      <span className="font-semibold tabular-nums text-txt">{value}</span>
-      <span>{label}</span>
-    </div>
-  );
-}
 
 export function RelationshipsWorkspaceView({
   contentHeader,
@@ -180,6 +153,9 @@ export function RelationshipsWorkspaceView({
       (person) => person.primaryEntityId === selectedPersonId,
     ) ?? null;
   const selectedGroupId = selectedSummary?.groupId ?? null;
+  const ownerSummary = graph?.people.find((person) => person.isOwner) ?? null;
+  const ownerGroupId = ownerSummary?.groupId ?? null;
+  const ownerDisplayName = ownerSummary?.displayName ?? null;
   const handleViewMemories =
     onViewMemories ??
     (() => {
@@ -193,42 +169,6 @@ export function RelationshipsWorkspaceView({
   const toolbar = (
     <PagePanel variant="surface" className="px-3 py-3">
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2">
-          <ToolbarMetric
-            icon={UserRound}
-            label="people"
-            value={
-              graph
-                ? graph.stats.totalPeople
-                : graphLoading || graphError
-                  ? "..."
-                  : 0
-            }
-          />
-          <ToolbarMetric
-            icon={Link2}
-            label="links"
-            value={
-              graph
-                ? graph.stats.totalRelationships
-                : graphLoading || graphError
-                  ? "..."
-                  : 0
-            }
-          />
-          <ToolbarMetric
-            icon={Fingerprint}
-            label="identities"
-            value={
-              graph
-                ? graph.stats.totalIdentities
-                : graphLoading || graphError
-                  ? "..."
-                  : 0
-            }
-          />
-        </div>
-
         <div
           className={
             embedded
@@ -369,7 +309,10 @@ export function RelationshipsWorkspaceView({
                 <RelationshipsPersonSummaryPanel
                   person={detail}
                   compact={embedded}
+                  ownerGroupId={ownerGroupId}
+                  ownerDisplayName={ownerDisplayName}
                   onViewMemories={handleViewMemories}
+                  onOwnerNameUpdated={() => refreshGraph()}
                 />
               </div>
             ) : detailLoading ? (

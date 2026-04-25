@@ -11,10 +11,12 @@ import {
   Brain,
   LayoutDashboard,
   type LucideIcon,
+  MessageCircle,
   Network,
   PencilLine,
   Sparkles,
 } from "lucide-react";
+import { getBrandIcon } from "../conversations/brand-icons";
 import {
   type ReactNode,
   useCallback,
@@ -47,14 +49,12 @@ import {
   CharacterOverviewSection,
   type CharacterOverviewWidget,
 } from "./CharacterOverviewSection";
-import { CharacterPersonalityTimeline } from "./CharacterPersonalityTimeline";
 import { CharacterRelationshipsSection } from "./CharacterRelationshipsSection";
 import {
   CHARACTER_HUB_SECTIONS,
   type CharacterHubSection,
   getCharacterHubSectionLabel,
   mapExperienceRecordToHubRecord,
-  mapHistoryEntryToTimelineItem,
 } from "./character-hub-helpers";
 
 type CharacterStyleSection = "all" | "chat" | "post";
@@ -165,6 +165,33 @@ function latestTimestamp(value: string | number | null | undefined): number {
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
+const HUB_CACHE_PREFIX = "character-hub-cache";
+
+function hubCacheKey(suffix: string): string {
+  return `${HUB_CACHE_PREFIX}:${suffix}`;
+}
+
+function readHubCache<T>(suffix: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(hubCacheKey(suffix));
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as T;
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeHubCache<T>(suffix: string, value: T): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(hubCacheKey(suffix), JSON.stringify(value));
+  } catch {
+    /* ignore quota / serialization errors */
+  }
+}
+
 function formatRelativeTime(value: number | string | null | undefined): string {
   if (value === null || value === undefined) return "";
   const time = typeof value === "number" ? value : new Date(value).getTime();
@@ -233,24 +260,30 @@ export function CharacterHubView({
   );
   const [knowledgeDocuments, setKnowledgeDocuments] = useState<
     KnowledgeDocument[]
-  >([]);
+  >(() => readHubCache<KnowledgeDocument[]>("knowledge-docs", []));
+  const [knowledgeLoading, setKnowledgeLoading] = useState(true);
   const [selectedKnowledgeDocumentId, setSelectedKnowledgeDocumentId] =
     useState<string | null>(null);
   const [historyEntries, setHistoryEntries] = useState<CharacterHistoryEntry[]>(
-    [],
+    () => readHubCache<CharacterHistoryEntry[]>("history", []),
   );
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [relationshipActivity, setRelationshipActivity] = useState<
     RelationshipsActivityItem[]
-  >([]);
+  >(() => readHubCache<RelationshipsActivityItem[]>("relationship-activity", []));
+  const [relationshipActivityLoading, setRelationshipActivityLoading] =
+    useState(true);
   const [relationshipActivityError, setRelationshipActivityError] = useState<
     string | null
   >(null);
-  const [learnedSkills, setLearnedSkills] = useState<LearnedSkillSummary[]>([]);
+  const [learnedSkills, setLearnedSkills] = useState<LearnedSkillSummary[]>(
+    () => readHubCache<LearnedSkillSummary[]>("learned-skills", []),
+  );
+  const [learnedSkillsLoading, setLearnedSkillsLoading] = useState(true);
   const [experienceRecords, setExperienceRecords] = useState<
     ExperienceRecord[]
-  >([]);
+  >(() => readHubCache<ExperienceRecord[]>("experience-records", []));
   const [selectedExperienceId, setSelectedExperienceId] = useState<
     string | null
   >(null);
@@ -337,6 +370,7 @@ export function CharacterHubView({
       .then((response) => {
         if (!cancelled) {
           setHistoryEntries(response.history);
+          writeHubCache("history", response.history);
         }
       })
       .catch((error) => {
@@ -369,6 +403,7 @@ export function CharacterHubView({
       .then((response) => {
         if (!cancelled) {
           setExperienceRecords(response.experiences);
+          writeHubCache("experience-records", response.experiences);
           setSelectedExperienceId(
             (current) => current ?? response.experiences[0]?.id ?? null,
           );
@@ -401,7 +436,9 @@ export function CharacterHubView({
       .getRelationshipsActivity(50)
       .then((response) => {
         if (!cancelled) {
-          setRelationshipActivity(response.activity ?? []);
+          const activity = response.activity ?? [];
+          setRelationshipActivity(activity);
+          writeHubCache("relationship-activity", activity);
         }
       })
       .catch((error) => {
@@ -411,6 +448,36 @@ export function CharacterHubView({
               ? error.message
               : "Failed to load relationship activity.",
           );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setRelationshipActivityLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void client
+      .listKnowledgeDocuments({ limit: 100 })
+      .then((response) => {
+        if (cancelled) return;
+        const docs = response.documents ?? [];
+        setKnowledgeDocuments(docs);
+        writeHubCache("knowledge-docs", docs);
+      })
+      .catch(() => {
+        /* ignored — KnowledgeView shows its own error when active */
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setKnowledgeLoading(false);
         }
       });
 
@@ -426,13 +493,20 @@ export function CharacterHubView({
       .fetch<LearnedSkillsResponse>("/api/skills/curated")
       .then((data) => {
         if (cancelled) return;
-        setLearnedSkills(
-          (data.skills ?? []).filter((skill) => skill.source !== "human"),
+        const filtered = (data.skills ?? []).filter(
+          (skill) => skill.source !== "human",
         );
+        setLearnedSkills(filtered);
+        writeHubCache("learned-skills", filtered);
       })
       .catch(() => {
         if (!cancelled) {
           setLearnedSkills([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLearnedSkillsLoading(false);
         }
       });
 
@@ -477,10 +551,12 @@ export function CharacterHubView({
       0,
     );
     const exampleCount = normalizedMessageExamples.length;
-    const latestPersonalityUpdate = historyEntries.reduce(
-      (latest, entry) => Math.max(latest, latestTimestamp(entry.timestamp)),
-      0,
-    );
+    const recentHistory = [...historyEntries]
+      .sort(
+        (left, right) =>
+          latestTimestamp(right.timestamp) - latestTimestamp(left.timestamp),
+      )
+      .slice(0, 3);
     const activeSkills = learnedSkills.filter(
       (skill) => skill.status !== "disabled",
     );
@@ -496,18 +572,57 @@ export function CharacterHubView({
           latestTimestamp(right.updatedAt ?? right.createdAt) -
           latestTimestamp(left.updatedAt ?? left.createdAt),
       )[0];
-    const relationshipNames = Array.from(
-      new Set(
-        relationshipActivity
-          .map((item) => item.personName?.trim())
-          .filter((name): name is string => Boolean(name)),
-      ),
-    );
+    const recentRelationshipActivity = [...relationshipActivity]
+      .filter((item) => item.type !== "relationship")
+      .sort(
+        (left, right) =>
+          latestTimestamp(right.timestamp) - latestTimestamp(left.timestamp),
+      )
+      .slice(0, 5);
 
+    const personalityHasHistory = recentHistory.length > 0;
     const trimmedBio = bioText.trim();
     const personalityHasContent =
-      trimmedBio.length > 0 || styleItems > 0 || exampleCount > 0;
-    const personalityBody: ReactNode = trimmedBio ? (
+      personalityHasHistory ||
+      trimmedBio.length > 0 ||
+      styleItems > 0 ||
+      exampleCount > 0;
+    const personalityBody: ReactNode = personalityHasHistory ? (
+      <ul className="flex flex-col divide-y divide-border/10 text-xs text-muted">
+        {recentHistory.map((entry, index) => {
+          const fields = entry.fieldsChanged ?? [];
+          const headField = fields[0];
+          const extraCount = Math.max(fields.length - 1, 0);
+          const actor =
+            entry.source === "agent"
+              ? d.name?.trim() || "agent"
+              : entry.source === "restore"
+                ? "system"
+                : "you";
+          const fieldLabel = headField
+            ? extraCount > 0
+              ? `${headField} +${extraCount} more`
+              : headField
+            : (entry.summary?.trim() ?? "personality");
+          return (
+            <li
+              key={entry.id ?? `history-${index}`}
+              className="flex min-w-0 items-baseline gap-2 py-1.5 first:pt-0 last:pb-0"
+            >
+              <span className="shrink-0 rounded-full border border-border/40 bg-bg-muted/30 px-1.5 py-0.5 text-2xs font-medium text-muted">
+                @{actor}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-muted">
+                edited <span className="text-txt">{fieldLabel}</span>
+              </span>
+              <span className="shrink-0 text-2xs text-muted/70">
+                {formatRelativeTime(entry.timestamp)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    ) : trimmedBio ? (
       <p className="line-clamp-3 text-xs leading-relaxed text-muted">
         {trimmedBio}
       </p>
@@ -526,16 +641,115 @@ export function CharacterHubView({
       </div>
     );
 
+    function parseConnectorsFromDetail(detail: string | null): string[] {
+      if (!detail) return [];
+      const match = detail.match(/identity on ([^·]+?)(?:\s+·|$)/i);
+      if (!match) return [];
+      return match[1]
+        .split(/[, ]+/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+    }
+
+    function shortenConnectorLabel(value: string): string {
+      const lower = value.toLowerCase();
+      if (lower === "client_chat") return "chat";
+      if (lower === "telegram") return "tg";
+      return lower;
+    }
+
+    function ConnectorBadge({ connector }: { connector: string }) {
+      const Brand = getBrandIcon(connector);
+      const label = shortenConnectorLabel(connector);
+      const Icon =
+        Brand ?? (connector === "client_chat" ? MessageCircle : null);
+      if (Icon) {
+        return (
+          <span
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted/80"
+            title={label}
+            aria-label={label}
+          >
+            <Icon className="h-3.5 w-3.5" />
+          </span>
+        );
+      }
+      return (
+        <span
+          className="rounded-full border border-border/30 bg-bg-muted/20 px-1.5 py-0.5 text-2xs lowercase text-muted/80"
+          title={label}
+        >
+          {label}
+        </span>
+      );
+    }
+
+    const emptyHint = (text: string): ReactNode => (
+      <p className="text-xs leading-relaxed text-muted">{text}</p>
+    );
+
     return [
       {
         section: "personality",
         title: "Personality",
-        meta:
-          latestPersonalityUpdate > 0
-            ? `Updated ${formatRelativeTime(latestPersonalityUpdate)}`
-            : null,
-        body: personalityBody,
+        meta: null,
+        body: personalityHasContent
+          ? personalityBody
+          : emptyHint(
+              "Bio, voice, and how I show up. Tell me who I am — I'll keep this in mind every conversation.",
+            ),
+        isLoading: historyLoading && !personalityHasContent,
         isEmpty: !personalityHasContent,
+      },
+      {
+        section: "relationships",
+        title: "Relationships",
+        meta: null,
+        body:
+          recentRelationshipActivity.length > 0 ? (
+            <ul className="flex flex-col divide-y divide-border/10 text-xs text-muted">
+              {recentRelationshipActivity.map((item, index) => {
+                const connectors = parseConnectorsFromDetail(item.detail);
+                const memoryText =
+                  item.type === "fact"
+                    ? item.summary?.trim() || item.detail?.trim() || "fact"
+                    : item.type === "identity"
+                      ? "joined"
+                      : item.summary?.trim() || item.type;
+                return (
+                  <li
+                    key={`${item.personId ?? "person"}-${index}-${item.timestamp ?? ""}`}
+                    className="flex min-w-0 items-center gap-2 py-1.5 first:pt-0 last:pb-0"
+                  >
+                    <span className="inline-flex shrink-0 items-center gap-1">
+                      <span className="rounded-full border border-border/40 bg-bg-muted/30 px-1.5 py-0.5 text-2xs font-medium text-muted">
+                        @{item.personName?.trim() || "unknown"}
+                      </span>
+                      {connectors.map((connector) => (
+                        <ConnectorBadge
+                          key={connector}
+                          connector={connector}
+                        />
+                      ))}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {memoryText}
+                    </span>
+                    <span className="shrink-0 text-2xs text-muted/70">
+                      {formatRelativeTime(item.timestamp)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            emptyHint(
+              "People I know — names, facts, preferences. Builds up as we talk.",
+            )
+          ),
+        isLoading:
+          relationshipActivityLoading && recentRelationshipActivity.length === 0,
+        isEmpty: recentRelationshipActivity.length === 0,
       },
       {
         section: "knowledge",
@@ -545,9 +759,7 @@ export function CharacterHubView({
             ? `${customKnowledgeDocuments.length} doc${
                 customKnowledgeDocuments.length === 1 ? "" : "s"
               }`
-            : knowledgeDocuments.length > 0
-              ? "Defaults"
-              : null,
+            : null,
         body:
           recentDocs.length > 0 ? (
             <ul className="flex flex-col gap-1 text-xs text-muted">
@@ -558,20 +770,22 @@ export function CharacterHubView({
               ))}
             </ul>
           ) : knowledgeDocuments.length > 0 ? (
-            <p className="text-xs leading-relaxed text-muted">
-              Just the default knowledge so far. Upload notes, docs, or links to
-              teach me what matters to you.
-            </p>
-          ) : null,
+            emptyHint(
+              "Just the default knowledge so far. Upload notes, docs, or links to teach me what matters.",
+            )
+          ) : (
+            emptyHint(
+              "Things I should read and remember. Upload notes, docs, or links.",
+            )
+          ),
+        isLoading: knowledgeLoading && knowledgeDocuments.length === 0,
         isEmpty: knowledgeDocuments.length === 0,
       },
       {
         section: "skills",
         title: "Skills",
         meta:
-          activeSkills.length > 0
-            ? `${activeSkills.length} active`
-            : null,
+          activeSkills.length > 0 ? `${activeSkills.length} active` : null,
         body:
           activeSkills.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
@@ -590,7 +804,12 @@ export function CharacterHubView({
                 </span>
               ) : null}
             </div>
-          ) : null,
+          ) : (
+            emptyHint(
+              "Abilities I'll pick up over time. Browse the catalog or teach me by example.",
+            )
+          ),
+        isLoading: learnedSkillsLoading && activeSkills.length === 0,
         isEmpty: activeSkills.length === 0,
       },
       {
@@ -609,56 +828,33 @@ export function CharacterHubView({
               recentExperience.context ||
               recentExperience.type}
           </p>
-        ) : null,
+        ) : (
+          emptyHint(
+            "Lessons from what worked and what didn't. I'll add these as we go.",
+          )
+        ),
+        isLoading: experienceLoading && experienceRecords.length === 0,
         isEmpty: experienceRecords.length === 0,
-      },
-      {
-        section: "relationships",
-        title: "Relationships",
-        meta:
-          relationshipNames.length > 0
-            ? `${relationshipNames.length} ${
-                relationshipNames.length === 1 ? "person" : "people"
-              }`
-            : null,
-        body:
-          relationshipNames.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {relationshipNames.slice(0, 4).map((name) => (
-                <span
-                  key={name}
-                  className="truncate rounded-full border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-2xs text-muted"
-                  title={name}
-                >
-                  {name}
-                </span>
-              ))}
-              {relationshipNames.length > 4 ? (
-                <span className="text-2xs text-muted">
-                  +{relationshipNames.length - 4} more
-                </span>
-              ) : null}
-            </div>
-          ) : null,
-        isEmpty: relationshipNames.length === 0,
       },
     ];
   }, [
     bioText,
     customKnowledgeDocuments,
+    d.name,
     d.style,
+    experienceLoading,
     experienceRecords,
     historyEntries,
+    historyLoading,
     knowledgeDocuments.length,
+    knowledgeLoading,
     learnedSkills,
+    learnedSkillsLoading,
     normalizedMessageExamples.length,
     relationshipActivity,
+    relationshipActivityLoading,
   ]);
 
-  const timelineItems = useMemo(
-    () => historyEntries.map(mapHistoryEntryToTimelineItem),
-    [historyEntries],
-  );
   const hubExperienceRecords = useMemo(
     () => experienceRecords.map(mapExperienceRecordToHubRecord),
     [experienceRecords],
@@ -923,20 +1119,18 @@ export function CharacterHubView({
             </div>
           </section>
 
-          <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
-            <CharacterStylePanel
-              d={d}
-              pendingStyleEntries={pendingStyleEntries}
-              styleEntryDrafts={styleEntryDrafts}
-              handlePendingStyleEntryChange={handlePendingStyleEntryChange}
-              handleAddStyleEntry={handleAutoAddStyleEntry}
-              handleRemoveStyleEntry={handleAutoRemoveStyleEntry}
-              handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-              handleCommitStyleEntry={handleAutoCommitStyleEntry}
-              handleReorderStyleEntries={handleAutoReorderStyleEntries}
-              t={t}
-            />
-          </section>
+          <CharacterStylePanel
+            d={d}
+            pendingStyleEntries={pendingStyleEntries}
+            styleEntryDrafts={styleEntryDrafts}
+            handlePendingStyleEntryChange={handlePendingStyleEntryChange}
+            handleAddStyleEntry={handleAutoAddStyleEntry}
+            handleRemoveStyleEntry={handleAutoRemoveStyleEntry}
+            handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+            handleCommitStyleEntry={handleAutoCommitStyleEntry}
+            handleReorderStyleEntries={handleAutoReorderStyleEntries}
+            t={t}
+          />
 
           <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
             <CharacterExamplesPanel
@@ -946,22 +1140,6 @@ export function CharacterHubView({
               t={t}
             />
           </section>
-
-          {historyLoading || historyError || timelineItems.length > 0 ? (
-            <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
-              {historyError ? (
-                <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-                  {historyError}
-                </div>
-              ) : historyLoading ? (
-                <div className="text-sm text-muted">
-                  Loading personality history…
-                </div>
-              ) : (
-                <CharacterPersonalityTimeline entries={timelineItems} />
-              )}
-            </section>
-          ) : null}
         </div>
       );
     }
@@ -972,7 +1150,11 @@ export function CharacterHubView({
           <KnowledgeView
             embedded
             fileInputId="character-hub-knowledge-upload"
-            onDocumentsChange={setKnowledgeDocuments}
+            onDocumentsChange={(docs) => {
+              setKnowledgeDocuments(docs);
+              writeHubCache("knowledge-docs", docs);
+              setKnowledgeLoading(false);
+            }}
             onSelectedDocumentIdChange={setSelectedKnowledgeDocumentId}
             selectedDocumentId={selectedKnowledgeDocumentId}
             showSelectorRail={false}
@@ -1052,7 +1234,7 @@ export function CharacterHubView({
           collapsible
           contentIdentity="character-hub"
         >
-          <SidebarScrollRegion className="scrollbar-hide !px-0 pb-3 pt-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <SidebarScrollRegion className="scrollbar-hide !px-0 pb-3 pt-0 [scrollbar-width:none] [scrollbar-gutter:auto] supports-[scrollbar-gutter:stable]:[scrollbar-gutter:auto] [&::-webkit-scrollbar]:hidden">
             {sectionNav}
           </SidebarScrollRegion>
         </AppPageSidebar>
