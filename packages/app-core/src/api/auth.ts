@@ -150,6 +150,97 @@ export function isDevEnvironment(): boolean {
   return env === "development" || env === "dev";
 }
 
+// ── Cookie / session helpers ──────────────────────────────────────────────────
+
+const SESSION_COOKIE_NAME = "milady_session";
+
+/** Cookie name used by the session model. Exported for tests + UI client. */
+export function getSessionCookieName(): string {
+  return SESSION_COOKIE_NAME;
+}
+
+/**
+ * Read the named cookie from the `cookie` header. Returns `null` when the
+ * header is missing or the cookie is not set.
+ *
+ * Pulled out here so route handlers don't reimplement parsing — the existing
+ * `compat-route-shared.ts` predates the cookie-based session model.
+ */
+export function readCookie(
+  req: Pick<http.IncomingMessage, "headers">,
+  name: string,
+): string | null {
+  const raw = extractHeaderValue(req.headers.cookie);
+  if (!raw) return null;
+  for (const part of raw.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    const k = part.slice(0, eq).trim();
+    if (k !== name) continue;
+    const v = part.slice(eq + 1).trim();
+    return v.length > 0 ? decodeURIComponent(v) : null;
+  }
+  return null;
+}
+
+/**
+ * Resolved auth context for a sensitive request.
+ *
+ * `kind === "session"` — request carries a valid session cookie / bearer that
+ * resolves to an unrevoked, unexpired session row.
+ *
+ * `kind === "bootstrap"` — request carries a one-shot bootstrap token. The
+ * token has been verified and its `jti` consumed; the caller is expected to
+ * mint a session row for the identity in `claims.sub` and reply with the
+ * session id.
+ *
+ * `kind === "denied"` — request is rejected. The handler must send 401/403/429
+ * per `status` and not proceed.
+ */
+export type AuthSessionOrBootstrapResult =
+  | { kind: "session"; sessionId: string }
+  | { kind: "bootstrap"; token: string; bearer: string }
+  | { kind: "denied"; status: 401 | 403 | 429; reason: string };
+
+/**
+ * Decide whether a request carries a valid session cookie or a bootstrap
+ * bearer eligible for exchange. This is the single chokepoint that replaces
+ * the deleted "cloud-provisioned bypass" branches.
+ *
+ * The function does NOT exchange the bootstrap token here — that's the job
+ * of `POST /api/auth/bootstrap/exchange`, which is rate-limited and audited.
+ * On the legacy onboarding routes we treat a valid session OR an unconsumed
+ * bootstrap bearer as authorisation to read; the exchange route is the
+ * single place that flips bootstrap → session.
+ *
+ * Fails closed on every error path. There is no path through this function
+ * that returns "session" without a real session row id.
+ */
+export function ensureAuthSessionOrBootstrap(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+): AuthSessionOrBootstrapResult {
+  const ip = req.socket?.remoteAddress ?? null;
+  if (isAuthRateLimited(ip)) {
+    return { kind: "denied", status: 429, reason: "rate_limited" };
+  }
+
+  const cookie = readCookie(req, SESSION_COOKIE_NAME);
+  if (cookie) {
+    // Caller is expected to look up the session by id and confirm it is
+    // valid. We don't hit the DB here to keep the helper synchronous; the
+    // DB lookup happens in the route handler with `AuthStore.findSession`.
+    return { kind: "session", sessionId: cookie };
+  }
+
+  const bearer = getProvidedApiToken(req);
+  if (bearer) {
+    return { kind: "bootstrap", token: bearer, bearer };
+  }
+
+  recordFailedAuth(ip);
+  return { kind: "denied", status: 401, reason: "auth_required" };
+}
+
 /**
  * Gate a sensitive route. In dev mode the request is allowed through ONLY
  * when `ELIZA_DEV_AUTH_BYPASS=1` is explicitly set and no token is configured.

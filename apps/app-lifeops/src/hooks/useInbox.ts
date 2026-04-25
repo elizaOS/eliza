@@ -3,20 +3,31 @@ import type {
   LifeOpsInbox,
   LifeOpsInboxChannel,
   LifeOpsInboxMessage,
+  LifeOpsInboxThreadGroup,
 } from "@elizaos/shared/contracts/lifeops";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type InboxChannel = "all" | LifeOpsInboxChannel;
+export type InboxChatType = "dm" | "group" | "channel";
 
 export interface UseInboxOptions {
   maxResults?: number;
   channel?: InboxChannel;
   channels?: readonly LifeOpsInboxChannel[];
   searchQuery?: string;
+  /** When true, request `threadGroups` from the backend. */
+  groupByThread?: boolean;
+  /** Server-side chatType filter (DM / small group / channel). */
+  chatTypeFilter?: ReadonlyArray<InboxChatType>;
+  /** Server-side cap on group participants. */
+  maxParticipants?: number;
+  /** Filter Gmail to a specific Google grant. */
+  gmailAccountId?: string;
 }
 
 export interface UseInboxResult {
   messages: LifeOpsInboxMessage[];
+  threadGroups: LifeOpsInboxThreadGroup[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -27,6 +38,18 @@ export interface UseInboxResult {
 }
 
 const DEFAULT_MAX_RESULTS = 40;
+
+function matchesQuery(
+  message: LifeOpsInboxMessage,
+  q: string,
+): boolean {
+  return (
+    (message.subject ?? "").toLowerCase().includes(q) ||
+    message.sender.displayName.toLowerCase().includes(q) ||
+    message.snippet.toLowerCase().includes(q) ||
+    message.channel.toLowerCase().includes(q)
+  );
+}
 
 export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
   const { t } = useApp();
@@ -39,6 +62,10 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
   useEffect(() => {
     setChannel(opts.channel ?? "all");
   }, [opts.channel]);
+
+  const chatTypeFilterKey = opts.chatTypeFilter
+    ? opts.chatTypeFilter.join(",")
+    : "";
 
   const fetch = useCallback(async () => {
     setLoading(true);
@@ -53,6 +80,12 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
       const result = await client.getLifeOpsInbox({
         limit: opts.maxResults ?? DEFAULT_MAX_RESULTS,
         channels: selectedChannels,
+        groupByThread: opts.groupByThread,
+        chatTypeFilter: opts.chatTypeFilter
+          ? [...opts.chatTypeFilter]
+          : undefined,
+        maxParticipants: opts.maxParticipants,
+        gmailAccountId: opts.gmailAccountId,
       });
       setFeed(result);
     } catch (cause) {
@@ -66,7 +99,16 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
     } finally {
       setLoading(false);
     }
-  }, [channel, opts.channels, opts.maxResults, t]);
+  }, [
+    channel,
+    opts.channels,
+    opts.maxResults,
+    opts.groupByThread,
+    chatTypeFilterKey,
+    opts.maxParticipants,
+    opts.gmailAccountId,
+    t,
+  ]);
 
   useEffect(() => {
     void fetch();
@@ -75,20 +117,18 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
   const messages = useMemo<LifeOpsInboxMessage[]>(() => {
     const base = feed?.messages ?? [];
     const q = searchQuery.trim().toLowerCase();
-    if (!q) {
-      return base;
-    }
-    return base.filter(
-      (m) =>
-        (m.subject ?? "").toLowerCase().includes(q) ||
-        m.sender.displayName.toLowerCase().includes(q) ||
-        m.snippet.toLowerCase().includes(q) ||
-        m.channel.toLowerCase().includes(q),
-    );
+    return q ? base.filter((m) => matchesQuery(m, q)) : base;
+  }, [feed, searchQuery]);
+
+  const threadGroups = useMemo<LifeOpsInboxThreadGroup[]>(() => {
+    const base = feed?.threadGroups ?? [];
+    const q = searchQuery.trim().toLowerCase();
+    return q ? base.filter((g) => matchesQuery(g.latestMessage, q)) : base;
   }, [feed, searchQuery]);
 
   return {
     messages,
+    threadGroups,
     loading,
     error,
     refresh: fetch,

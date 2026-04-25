@@ -1,10 +1,15 @@
-import { client } from "@elizaos/app-core";
+import {
+  type CloudBillingHistoryItem,
+  client,
+  useApp,
+} from "@elizaos/app-core";
 import {
   CreditCard,
   DollarSign,
   FilePlus2,
   Loader2,
   RefreshCw,
+  Sparkles,
   Trash2,
   TrendingDown,
   Upload,
@@ -36,6 +41,39 @@ function formatDate(iso: string): string {
   }
 }
 
+const RELATIVE_TIME_UNITS: Array<{
+  unit: Intl.RelativeTimeFormatUnit;
+  ms: number;
+}> = [
+  { unit: "year", ms: 365 * 24 * 60 * 60 * 1000 },
+  { unit: "month", ms: 30 * 24 * 60 * 60 * 1000 },
+  { unit: "day", ms: 24 * 60 * 60 * 1000 },
+  { unit: "hour", ms: 60 * 60 * 1000 },
+  { unit: "minute", ms: 60 * 1000 },
+];
+
+function formatRelative(iso: string): string {
+  const ts = Date.parse(iso);
+  if (!Number.isFinite(ts)) return iso.slice(0, 10);
+  const diffMs = ts - Date.now();
+  const absMs = Math.abs(diffMs);
+  if (absMs < 30_000) return "just now";
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  for (const { unit, ms } of RELATIVE_TIME_UNITS) {
+    if (absMs >= ms) {
+      return formatter.format(Math.round(diffMs / ms), unit);
+    }
+  }
+  return formatter.format(Math.round(diffMs / 1000), "second");
+}
+
+function formatCredits(value: number): string {
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function cadenceLabel(cadence: LifeOpsRecurringCharge["cadence"]): string {
   switch (cadence) {
     case "weekly":
@@ -62,6 +100,19 @@ export function LifeOpsMoneySection(): JSX.Element | null {
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const { openLifeOpsChat } = useLifeOpsChatLauncher();
 
+  const {
+    elizaCloudConnected,
+    elizaCloudCredits,
+    elizaCloudCreditsLow,
+    elizaCloudCreditsCritical,
+  } = useApp();
+
+  const [creditTransactions, setCreditTransactions] = useState<
+    CloudBillingHistoryItem[] | null
+  >(null);
+  const [creditTransactionsLoading, setCreditTransactionsLoading] =
+    useState(false);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -78,6 +129,32 @@ export function LifeOpsMoneySection(): JSX.Element | null {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const refreshCreditTransactions = useCallback(async () => {
+    if (!elizaCloudConnected) {
+      setCreditTransactions(null);
+      return;
+    }
+    setCreditTransactionsLoading(true);
+    try {
+      const result = await client.getCloudBillingHistory();
+      const list =
+        result.data ??
+        result.items ??
+        result.history ??
+        ([] as CloudBillingHistoryItem[]);
+      setCreditTransactions(list);
+    } catch {
+      // 401/404/network → no data yet, keep section quiet rather than erroring loudly.
+      setCreditTransactions([]);
+    } finally {
+      setCreditTransactionsLoading(false);
+    }
+  }, [elizaCloudConnected]);
+
+  useEffect(() => {
+    void refreshCreditTransactions();
+  }, [refreshCreditTransactions]);
 
   const onAddSource = useCallback(async () => {
     const label = window.prompt(
@@ -247,7 +324,10 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           </button>
           <button
             type="button"
-            onClick={() => void refresh()}
+            onClick={() => {
+              void refresh();
+              void refreshCreditTransactions();
+            }}
             className="inline-flex items-center gap-1.5 rounded-md border border-border/30 bg-bg-muted/30 px-2.5 py-1 text-xs font-medium hover:bg-bg-muted/60"
             title="Refresh dashboard"
           >
@@ -261,6 +341,13 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           {importStatus}
         </div>
       ) : null}
+
+      <CloudCreditsBalance
+        connected={elizaCloudConnected}
+        balance={elizaCloudCredits}
+        low={elizaCloudCreditsLow}
+        critical={elizaCloudCreditsCritical}
+      />
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <Kpi
@@ -280,89 +367,97 @@ export function LifeOpsMoneySection(): JSX.Element | null {
         />
       </section>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
-          <header className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Sources</h2>
-            <button
-              type="button"
-              onClick={() => void onAddSource()}
-              className="inline-flex items-center gap-1 rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-xs font-medium hover:bg-bg-muted/60"
-            >
-              <FilePlus2 className="h-3 w-3" /> Add
-            </button>
-          </header>
-          {dash.sources.length === 0 ? (
-            <p className="text-xs text-muted">No sources.</p>
-          ) : (
-            <ul className="space-y-2">
-              {dash.sources.map((source) => (
-                <li
-                  key={source.id}
-                  className="flex items-center justify-between gap-2 rounded border border-border/20 bg-bg/40 px-3 py-2 text-xs"
-                >
-                  <div className="min-w-0">
-                    <div className="truncate font-medium text-txt">
-                      {source.label}
-                      <span className="ml-2 rounded bg-bg-muted/40 px-1.5 py-0.5 text-[10px] font-mono text-muted">
-                        {source.kind}
-                      </span>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
+            <header className="mb-2 flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Sources</h2>
+              <button
+                type="button"
+                onClick={() => void onAddSource()}
+                className="inline-flex items-center gap-1 rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-xs font-medium hover:bg-bg-muted/60"
+              >
+                <FilePlus2 className="h-3 w-3" /> Add
+              </button>
+            </header>
+            {dash.sources.length === 0 ? (
+              <p className="text-xs text-muted">No sources.</p>
+            ) : (
+              <ul className="space-y-2">
+                {dash.sources.map((source) => (
+                  <li
+                    key={source.id}
+                    className="flex items-center justify-between gap-2 rounded border border-border/20 bg-bg/40 px-3 py-2 text-xs"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-txt">
+                        {source.label}
+                        <span className="ml-2 rounded bg-bg-muted/40 px-1.5 py-0.5 text-[10px] font-mono text-muted">
+                          {source.kind}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 truncate text-[11px] text-muted">
+                        {source.institution ?? "—"} · {source.transactionCount}{" "}
+                        transactions
+                        {source.lastSyncedAt
+                          ? ` · last sync ${formatDate(source.lastSyncedAt)}`
+                          : " · never synced"}
+                      </div>
                     </div>
-                    <div className="mt-0.5 truncate text-[11px] text-muted">
-                      {source.institution ?? "—"} · {source.transactionCount}{" "}
-                      transactions
-                      {source.lastSyncedAt
-                        ? ` · last sync ${formatDate(source.lastSyncedAt)}`
-                        : " · never synced"}
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {source.kind === "csv" ? (
+                    <div className="flex shrink-0 items-center gap-1">
+                      {source.kind === "csv" ? (
+                        <button
+                          type="button"
+                          onClick={() => void onImportCsv(source)}
+                          className="rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                        >
+                          Import CSV
+                        </button>
+                      ) : null}
                       <button
                         type="button"
-                        onClick={() => void onImportCsv(source)}
-                        className="rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                        onClick={() => void onDeleteSource(source)}
+                        className="rounded-md p-1 text-muted hover:bg-bg-muted/40 hover:text-rose-300"
+                        title="Remove source"
                       >
-                        Import CSV
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => void onDeleteSource(source)}
-                      className="rounded-md p-1 text-muted hover:bg-bg-muted/40 hover:text-rose-300"
-                      title="Remove source"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-        <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
-          <h2 className="mb-2 text-sm font-semibold">Top categories</h2>
-          {dash.spending.topCategories.length === 0 ? (
-            <p className="text-xs text-muted">No categories.</p>
-          ) : (
-            <ul className="space-y-1.5">
-              {dash.spending.topCategories.map((category) => (
-                <li
-                  key={category.category}
-                  className="flex items-center justify-between text-xs"
-                >
-                  <span className="truncate text-txt/85">
-                    {category.category}
-                  </span>
-                  <span className="tabular-nums text-muted">
-                    {formatUsd(category.totalUsd)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+          <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
+            <h2 className="mb-2 text-sm font-semibold">Top categories</h2>
+            {dash.spending.topCategories.length === 0 ? (
+              <p className="text-xs text-muted">No categories.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {dash.spending.topCategories.map((category) => (
+                  <li
+                    key={category.category}
+                    className="flex items-center justify-between text-xs"
+                  >
+                    <span className="truncate text-txt/85">
+                      {category.category}
+                    </span>
+                    <span className="tabular-nums text-muted">
+                      {formatUsd(category.totalUsd)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        <CloudCreditsActivity
+          connected={elizaCloudConnected}
+          loading={creditTransactionsLoading}
+          transactions={creditTransactions}
+        />
       </div>
 
       <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
@@ -472,5 +567,123 @@ function Kpi(props: {
         {props.value}
       </div>
     </div>
+  );
+}
+
+function CloudCreditsBalance(props: {
+  connected: boolean;
+  balance: number | null;
+  low: boolean;
+  critical: boolean;
+}): JSX.Element {
+  if (!props.connected) {
+    return (
+      <section className="rounded-lg border border-border/20 bg-bg/30 px-4 py-3 text-xs text-muted">
+        Connect Eliza Cloud to see your credit balance.{" "}
+        <a
+          href="#/settings"
+          className="font-medium text-txt underline-offset-2 hover:underline"
+        >
+          Open settings →
+        </a>
+      </section>
+    );
+  }
+
+  const showLoading = props.balance === null;
+  const accentColor = props.critical
+    ? "text-rose-300"
+    : props.low
+      ? "text-amber-300"
+      : "text-emerald-300";
+
+  return (
+    <section className="flex items-center justify-between gap-4 rounded-lg border border-border/20 bg-bg/40 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="rounded-md border border-border/30 bg-bg-muted/30 p-2 text-txt/80">
+          <Sparkles className="h-4 w-4" aria-hidden />
+        </div>
+        <div>
+          <div className="text-[11px] uppercase tracking-wide text-muted">
+            Eliza Cloud balance
+          </div>
+          {showLoading ? (
+            <div className="mt-1 h-6 w-32 animate-pulse rounded bg-bg-muted/40" />
+          ) : (
+            <div
+              className={`mt-0.5 text-2xl font-semibold tabular-nums ${accentColor}`}
+            >
+              {formatCredits(props.balance ?? 0)}
+              <span className="ml-2 text-xs font-normal text-muted">
+                credits remaining
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+      {props.low && !showLoading ? (
+        <div className="text-[11px] text-amber-300">
+          Low balance — consider topping up.
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function CloudCreditsActivity(props: {
+  connected: boolean;
+  loading: boolean;
+  transactions: CloudBillingHistoryItem[] | null;
+}): JSX.Element | null {
+  if (!props.connected) return null;
+
+  const recent = (props.transactions ?? []).slice(0, 10);
+
+  return (
+    <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
+      <header className="mb-2 flex items-center justify-between">
+        <h2 className="text-sm font-semibold">Recent credit activity</h2>
+        {props.loading ? (
+          <Loader2
+            className="h-3.5 w-3.5 animate-spin text-muted"
+            aria-hidden
+          />
+        ) : null}
+      </header>
+      {recent.length === 0 ? (
+        <p className="text-xs text-muted">
+          {props.loading ? "Loading…" : "No recent activity"}
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {recent.map((txn) => {
+            const isCredit = txn.amount >= 0;
+            return (
+              <li
+                key={txn.id}
+                className="flex items-center justify-between gap-2 rounded border border-border/10 bg-bg/40 px-2.5 py-1.5 text-xs"
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-txt/90">
+                    {txn.description ?? (isCredit ? "Top-up" : "Usage")}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted">
+                    {formatRelative(txn.createdAt)}
+                  </div>
+                </div>
+                <span
+                  className={`shrink-0 tabular-nums font-semibold ${
+                    isCredit ? "text-emerald-300" : "text-rose-300"
+                  }`}
+                >
+                  {isCredit ? "+" : "−"}
+                  {formatCredits(Math.abs(txn.amount))}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }

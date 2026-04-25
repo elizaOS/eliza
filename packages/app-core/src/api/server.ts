@@ -122,6 +122,7 @@ import {
   sanitizeIdentifier,
   sqlLiteral,
 } from "../utils/sql-compat";
+import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudRoute } from "./cloud-routes";
@@ -736,6 +737,11 @@ async function handleCompatRoute(
 
   // Dev observability routes — extracted to dev-compat-routes.ts
   if (await handleDevCompatRoutes(req, res, state)) return true;
+
+  // Bootstrap-token exchange (P0 cloud-provisioned auth) — must precede the
+  // legacy auth-pairing handler so the dedicated rate-limited route owns
+  // `/api/auth/bootstrap/exchange`.
+  if (await handleAuthBootstrapRoutes(req, res, state)) return true;
 
   // Auth / pairing / onboarding status — extracted to auth-pairing-compat-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;

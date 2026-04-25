@@ -1134,7 +1134,44 @@ export async function handleLifeOpsRoutes(
         }
         channels = parsedChannels;
       }
-      const request: GetLifeOpsInboxRequest = { limit, channels };
+      const groupByThread = url.searchParams.get("groupByThread") === "true";
+      const rawChatTypeFilter = url.searchParams.get("chatTypeFilter");
+      let chatTypeFilter: Array<"dm" | "group" | "channel"> | undefined;
+      if (rawChatTypeFilter !== null && rawChatTypeFilter.trim().length > 0) {
+        const parsed = rawChatTypeFilter
+          .split(",")
+          .map((value) => value.trim().toLowerCase())
+          .filter((value) => value.length > 0);
+        const allowed: Array<"dm" | "group" | "channel"> = [];
+        for (const value of parsed) {
+          if (value !== "dm" && value !== "group" && value !== "channel") {
+            throw new LifeOpsServiceError(
+              400,
+              "chatTypeFilter must be a comma-separated subset of: dm, group, channel",
+            );
+          }
+          allowed.push(value);
+        }
+        if (allowed.length > 0) chatTypeFilter = allowed;
+      }
+      const maxParticipants =
+        parsePositiveIntegerQuery(
+          url.searchParams.get("maxParticipants"),
+          "maxParticipants",
+        ) ?? undefined;
+      const gmailAccountIdRaw = url.searchParams.get("gmailAccountId");
+      const gmailAccountId =
+        gmailAccountIdRaw !== null && gmailAccountIdRaw.trim().length > 0
+          ? gmailAccountIdRaw.trim()
+          : undefined;
+      const request: GetLifeOpsInboxRequest = {
+        limit,
+        channels,
+        groupByThread: groupByThread || undefined,
+        chatTypeFilter,
+        maxParticipants,
+        gmailAccountId,
+      };
       json(res, await service.getInbox(request));
     });
   }
