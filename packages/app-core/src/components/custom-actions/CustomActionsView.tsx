@@ -92,8 +92,8 @@ export function CustomActionsView() {
       const confirmed = await confirmDesktopAction({
         title: t("customactionsview.DeleteCustomActionTitle"),
         message: t("customactionsview.DeleteCustomActionMessage", { name }),
-        confirmLabel: t("customactionsview.Delete"),
-        cancelLabel: t("customactionsview.Cancel"),
+        confirmLabel: t("common.delete"),
+        cancelLabel: t("common.cancel"),
         type: "warning",
       });
       if (!confirmed) {
@@ -345,8 +345,8 @@ export function CustomActionsView() {
                     </span>
                     <span className="rounded-full border border-border/45 bg-bg/30 px-2.5 py-1">
                       {action.enabled
-                        ? t("customactionsview.Enabled")
-                        : t("customactionsview.Disabled")}
+                        ? t("common.enabled")
+                        : t("common.disabled")}
                     </span>
                   </div>
                 </div>
@@ -362,7 +362,7 @@ export function CustomActionsView() {
                     }
                   />
                   <span className="text-xs text-muted">
-                    {t("customactionsview.Enabled")}
+                    {t("common.enabled")}
                   </span>
                 </label>
 
@@ -373,7 +373,7 @@ export function CustomActionsView() {
                     onClick={() => handleEdit(action)}
                     className="h-9 rounded-xl px-3 text-xs bg-bg/35 text-muted hover:bg-bg/55"
                   >
-                    {t("triggersview.Edit")}
+                    {t("common.edit")}
                   </Button>
                   <Button
                     variant="outline"
@@ -381,7 +381,7 @@ export function CustomActionsView() {
                     onClick={() => handleDelete(action.id, action.name)}
                     className="h-9 rounded-xl border-danger/35 bg-danger/5 px-3 text-xs text-danger hover:border-danger hover:bg-danger/10"
                   >
-                    {t("triggersview.Delete")}
+                    {t("common.delete")}
                   </Button>
                 </div>
               </div>

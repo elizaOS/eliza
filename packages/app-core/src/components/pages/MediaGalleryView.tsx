@@ -70,13 +70,13 @@ function normalizeMediaUrl(url: string): string {
 function mediaTypeLabel(t: TranslateFn, type: MediaType): string {
   switch (type) {
     case "all":
-      return t("mediagalleryview.All", { defaultValue: "All" });
+      return t("common.all", { defaultValue: "All" });
     case "image":
       return t("mediagalleryview.Images", { defaultValue: "Images" });
     case "video":
-      return t("mediagalleryview.Video", { defaultValue: "Video" });
+      return t("common.video", { defaultValue: "Video" });
     case "audio":
-      return t("mediagalleryview.Audio", { defaultValue: "Audio" });
+      return t("common.audio", { defaultValue: "Audio" });
   }
 }
 
@@ -444,7 +444,7 @@ export function MediaGalleryView({
                 </span>
               </div>
               <div className="mt-2 text-sm text-muted">
-                {t("mediagalleryview.SourceLabel", {
+                {t("common.source", {
                   defaultValue: "Source:",
                 })}{" "}
                 {selectedItem.source}
@@ -497,7 +497,7 @@ export function MediaGalleryView({
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <div>
                   <div className="text-xs-tight uppercase tracking-[0.16em] text-muted/60">
-                    {t("mediagalleryview.Type", { defaultValue: "Type" })}
+                    {t("common.type", { defaultValue: "Type" })}
                   </div>
                   <div className="mt-1 text-sm text-txt">
                     {mediaTypeLabel(t, selectedItem.type)}
@@ -505,7 +505,7 @@ export function MediaGalleryView({
                 </div>
                 <div>
                   <div className="text-xs-tight uppercase tracking-[0.16em] text-muted/60">
-                    {t("mediagalleryview.Source", {
+                    {t("logsview.Source", {
                       defaultValue: "Source",
                     })}
                   </div>

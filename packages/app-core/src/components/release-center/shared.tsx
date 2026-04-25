@@ -52,7 +52,7 @@ export function DefinitionRow({
       <div className="text-right text-xs text-txt break-all">
         {value ??
           emptyFallback ??
-          t("releasecenter.Unavailable", { defaultValue: "Unavailable" })}
+          t("common.unavailable", { defaultValue: "Unavailable" })}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import { Button, Input, Textarea } from "@elizaos/ui";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "../../state/TranslationContext";
 import type {
   CharacterExperienceDraft,
   CharacterExperienceRecord,
@@ -188,6 +189,7 @@ export function CharacterExperienceWorkspace({
   savingExperienceId?: string | null;
   deletingExperienceId?: string | null;
 }) {
+  const { t } = useTranslation();
   const [searchQuery, setSearchQuery] = useState("");
   const [outcomeFilter, setOutcomeFilter] = useState("all");
   const [domainFilter, setDomainFilter] = useState("all");
@@ -396,14 +398,14 @@ export function CharacterExperienceWorkspace({
               type="search"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search learning, evidence, tags..."
+              placeholder={t("character.searchLearningEvidenceTags")}
               className="h-9 rounded-xl border-border/40 bg-bg-muted/15"
             />
           </label>
           <label className="min-w-0">
             <span className="sr-only">Outcome filter</span>
             <select
-              aria-label="Outcome filter"
+              aria-label={t("character.outcomeFilter")}
               value={outcomeFilter}
               onChange={(event) => setOutcomeFilter(event.target.value)}
               className="h-9 w-full rounded-xl border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
@@ -419,7 +421,7 @@ export function CharacterExperienceWorkspace({
           <label className="min-w-0">
             <span className="sr-only">Domain filter</span>
             <select
-              aria-label="Domain filter"
+              aria-label={t("character.domainFilter")}
               value={domainFilter}
               onChange={(event) => setDomainFilter(event.target.value)}
               className="h-9 w-full rounded-xl border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
@@ -435,7 +437,7 @@ export function CharacterExperienceWorkspace({
           <label className="min-w-0">
             <span className="sr-only">Tag filter</span>
             <select
-              aria-label="Tag filter"
+              aria-label={t("character.tagFilter")}
               value={tagFilter}
               onChange={(event) => setTagFilter(event.target.value)}
               className="h-9 w-full rounded-xl border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"
@@ -451,7 +453,7 @@ export function CharacterExperienceWorkspace({
           <label className="min-w-0">
             <span className="sr-only">Review filter</span>
             <select
-              aria-label="Review filter"
+              aria-label={t("character.reviewFilter")}
               value={reviewFilter}
               onChange={(event) =>
                 setReviewFilter(event.target.value as ReviewFilter)
@@ -467,7 +469,7 @@ export function CharacterExperienceWorkspace({
           <label className="min-w-0">
             <span className="sr-only">Sort experiences</span>
             <select
-              aria-label="Sort experiences"
+              aria-label={t("character.sortExperiences")}
               value={sortMode}
               onChange={(event) => setSortMode(event.target.value as SortMode)}
               className="h-9 w-full rounded-xl border border-border/40 bg-bg-muted/15 px-3 text-sm text-txt"

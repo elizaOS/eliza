@@ -298,7 +298,7 @@ export function ChatView({
   const agentName =
     characterData?.name ||
     agentStatus?.agentName ||
-    t("chat.agentType", { defaultValue: "Agent" });
+    t("common.agent", { defaultValue: "Agent" });
   const msgs = Array.isArray(conversationMessages) ? conversationMessages : [];
   const visibleMsgs = useMemo(
     () =>
@@ -490,7 +490,7 @@ export function ChatView({
     saveAndResend: t("chatmessage.SaveAndResend", {
       defaultValue: "Save and resend",
     }),
-    saving: t("chatmessage.Saving", {
+    saving: t("common.saving", {
       defaultValue: "Saving...",
     }),
   };
@@ -889,7 +889,7 @@ function InboxChatPanel({
   const sourceLabel = activeInboxChat.source
     ? activeInboxChat.source.charAt(0).toUpperCase() +
       activeInboxChat.source.slice(1)
-    : t("inboxview.channel", { defaultValue: "Channel" });
+    : t("common.channel", { defaultValue: "Channel" });
 
   const handleReplySend = useCallback(async () => {
     const text = replyText.trim();

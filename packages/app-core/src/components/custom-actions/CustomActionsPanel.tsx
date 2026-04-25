@@ -160,7 +160,7 @@ export function CustomActionsPanel({
       message: t("customactionsview.DeleteCustomActionMessage", {
         name: action.name,
       }),
-      confirmLabel: t("customactionsview.Delete"),
+      confirmLabel: t("common.delete"),
       cancelLabel: t("common.cancel"),
       type: "warning",
     });
@@ -201,7 +201,7 @@ export function CustomActionsPanel({
           <div className="flex items-start justify-between p-4">
             <div>
               <h2 className="text-sm font-semibold text-txt">
-                {t("customactionspanel.CustomActions")}
+                {t("customactionsview.CustomActions")}
               </h2>
               <p className="text-xs text-muted mt-0.5">{actionSummary}</p>
             </div>
@@ -221,7 +221,7 @@ export function CustomActionsPanel({
                 strokeWidth="2"
                 strokeLinecap="round"
               >
-                <title>{t("conversations.closePanel")}</title>
+                <title>{t("aria.closePanel")}</title>
                 <path d="M12 4L4 12M4 4l8 8" />
               </svg>
             </Button>
@@ -313,7 +313,7 @@ export function CustomActionsPanel({
                         onCheckedChange={() => handleToggleEnabled(action)}
                         className="scale-75"
                       />
-                      <span>{t("customactionsview.Enabled")}</span>
+                      <span>{t("common.enabled")}</span>
                     </label>
 
                     <div className="ml-auto flex items-center gap-2">
@@ -324,7 +324,7 @@ export function CustomActionsPanel({
                         className="h-6 px-2 text-xs text-txt hover:text-txt/80 hover:bg-accent/10"
                         title={t("customactionspanel.EditAction")}
                       >
-                        {t("triggersview.Edit")}
+                        {t("common.edit")}
                       </Button>
                       <Button
                         variant="ghost"
@@ -333,7 +333,7 @@ export function CustomActionsPanel({
                         className="h-6 px-2 text-xs text-danger hover:text-danger/80 hover:bg-danger/10"
                         title={t("customactionspanel.DeleteAction")}
                       >
-                        {t("triggersview.Delete")}
+                        {t("common.delete")}
                       </Button>
                     </div>
                   </div>

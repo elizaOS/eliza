@@ -126,7 +126,7 @@ export function CreateTaskPopover({
               htmlFor="chat-task-agent-type"
               className="text-xs text-muted-foreground"
             >
-              {t("chat.agentType", { defaultValue: "Agent" })}
+              {t("common.agent", { defaultValue: "Agent" })}
             </label>
             <Select
               value={agentType}
@@ -148,7 +148,7 @@ export function CreateTaskPopover({
           </div>
 
           <Button onClick={handleCreate} disabled={!description.trim()}>
-            {t("chat.createTaskButton", { defaultValue: "Create" })}
+            {t("common.create", { defaultValue: "Create" })}
           </Button>
         </div>
       </PopoverContent>

@@ -291,7 +291,7 @@ export const VOICE_PROVIDERS: Array<{
   {
     id: "elevenlabs",
     label: "ElevenLabs",
-    labelKey: "voice.provider.elevenlabs",
+    labelKey: "provider.elevenlabs",
     hint: "High quality, realistic voices",
     hintKey: "voice.provider.elevenlabs.hint",
     needsKey: true,

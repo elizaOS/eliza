@@ -1083,7 +1083,7 @@ export function SettingsView({
       {visibleSectionIds.has("ai-model") && (
         <SettingsSection
           id="ai-model"
-          title={t("settings.sections.aimodel.label", {
+          title={t("common.providers", {
             defaultValue: "Providers",
           })}
           description={t("settings.sections.aimodel.desc", {
@@ -1143,7 +1143,7 @@ export function SettingsView({
       {visibleSectionIds.has("capabilities") && (
         <SettingsSection
           id="capabilities"
-          title={t("settings.sections.capabilities.label", {
+          title={t("common.capabilities", {
             defaultValue: "Capabilities",
           })}
           description={t("settings.sections.capabilities.desc", {
@@ -1174,7 +1174,7 @@ export function SettingsView({
       {visibleSectionIds.has("permissions") && (
         <SettingsSection
           id="permissions"
-          title={t("settings.sections.permissions.label", {
+          title={t("common.permissions", {
             defaultValue: "Permissions",
           })}
           description={t("settings.sections.permissions.desc", {

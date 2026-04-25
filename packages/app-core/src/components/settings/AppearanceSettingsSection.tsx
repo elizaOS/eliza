@@ -409,7 +409,7 @@ export function AppearanceSettingsSection() {
 
       <section className="space-y-2">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-          {t("settings.appearance.loadPack", {
+          {t("startupshell.LoadPack", {
             defaultValue: "Load content pack",
           })}
         </h3>

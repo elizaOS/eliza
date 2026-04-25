@@ -676,7 +676,7 @@ function AdvancedSectionToggle({
         &#9654;
       </span>
       <span className="text-xs font-bold uppercase tracking-wider text-muted group-hover:text-txt transition-colors">
-        {t("config-renderer.Advanced", { defaultValue: "Advanced" })}
+        {t("nav.advanced", { defaultValue: "Advanced" })}
       </span>
       <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-2xs font-bold bg-[var(--accent-subtle,rgba(255,255,255,0.05))] text-accent border border-border rounded-sm">
         {advanced.length}

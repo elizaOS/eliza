@@ -22,11 +22,11 @@ export const STATUS_BADGE: Record<
   { i18nKey: string; className: string }
 > = {
   running: {
-    i18nKey: "elizaclouddashboard.statusRunning",
+    i18nKey: "appsview.Running",
     className: "bg-ok/10 text-ok border-ok/20",
   },
   queued: {
-    i18nKey: "elizaclouddashboard.statusQueued",
+    i18nKey: "common.queued",
     className: "bg-warn/10 text-warn border-warn/20",
   },
   provisioning: {
@@ -38,7 +38,7 @@ export const STATUS_BADGE: Record<
     className: "bg-muted/10 text-muted border-border/40",
   },
   failed: {
-    i18nKey: "elizaclouddashboard.statusFailed",
+    i18nKey: "heartbeatsview.statusFailed",
     className: "bg-danger/10 text-danger border-danger/20",
   },
 };

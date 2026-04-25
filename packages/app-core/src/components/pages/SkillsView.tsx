@@ -112,7 +112,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
   const filterTabs: { key: typeof filterTab; label: string }[] = [
     {
       key: "all",
-      label: `${t("skillsview.all", { defaultValue: "All" })} (${skills.length})`,
+      label: `${t("common.all", { defaultValue: "All" })} (${skills.length})`,
     },
     {
       key: "on",
@@ -210,7 +210,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                 className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em]"
                 onClick={() => setInstallModalOpen(true)}
               >
-                {t("skillsview.Install", { defaultValue: "Install" })}
+                {t("common.install", { defaultValue: "Install" })}
               </Button>
               <Button
                 variant="ghost"
@@ -416,7 +416,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       </div>
                       <div>
                         <span className="mb-1 block text-xs-tight font-medium text-muted">
-                          {t("skillsview.Description")}
+                          {t("common.description")}
                         </span>
                         <Input
                           className="w-full border-border/50 bg-bg/50 focus-visible:ring-accent"
@@ -493,8 +493,8 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                               : selectedSkill.scanStatus === "warning"
                                 ? t("skillsview.statusWarning")
                                 : selectedSkill.enabled
-                                  ? t("skillsview.statusActive")
-                                  : t("skillsview.statusInactive")
+                                  ? t("common.active")
+                                  : t("common.inactive")
                           }
                           variant={
                             selectedSkill.scanStatus === "warning"
@@ -537,7 +537,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                           className="h-auto rounded-full border-border/50 px-3 py-1.5 text-xs-tight font-semibold text-muted hover:text-txt"
                           onClick={handleDismissReview}
                         >
-                          {t("skillsview.Dismiss")}
+                          {t("common.dismiss")}
                         </Button>
                       )}
                       <Switch
@@ -576,8 +576,8 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                         triggerClassName="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em] !bg-transparent text-danger hover:!bg-danger/15 hover:text-danger-foreground transition-colors border border-danger/30"
                         confirmClassName="px-3 py-1 text-xs-tight font-bold bg-danger text-danger-foreground hover:bg-danger/90 transition-colors rounded-md shadow-sm"
                         cancelClassName="px-3 py-1 text-xs-tight font-bold text-muted border border-border/40 hover:text-txt transition-colors rounded-md"
-                        confirmLabel={t("conversations.deleteYes")}
-                        cancelLabel={t("conversations.deleteNo")}
+                        confirmLabel={t("common.yes")}
+                        cancelLabel={t("common.no")}
                         onConfirm={() =>
                           handleDeleteSkill(
                             selectedSkill.id,
@@ -647,7 +647,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                             className="h-9 rounded-full px-4 text-xs-tight font-bold tracking-[0.12em] text-muted hover:text-txt"
                             onClick={handleDismissReview}
                           >
-                            {t("skillsview.Dismiss")}
+                            {t("common.dismiss")}
                           </Button>
                         </div>
                       </PagePanel>

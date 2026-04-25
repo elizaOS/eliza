@@ -81,10 +81,10 @@ export function ConnectionLostOverlay() {
               className="w-full sm:w-auto sm:min-w-[11rem]"
             >
               {busy === "restart"
-                ? t("connectionlostoverlay.Restarting", {
+                ? t("restartbanner.Restarting", {
                     defaultValue: "Restarting...",
                   })
-                : t("connectionlostoverlay.Restart", {
+                : t("finetuningview.Restart", {
                     defaultValue: desktopRuntime ? "Restart App" : "Restart",
                   })}
             </Button>

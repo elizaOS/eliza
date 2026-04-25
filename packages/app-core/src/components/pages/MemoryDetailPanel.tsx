@@ -26,7 +26,7 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="px-6 py-5">
         <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-muted/60">
-          {t("vectorbrowserview.Vectors", { defaultValue: "Vectors" })}
+          {t("common.vectors", { defaultValue: "Vectors" })}
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h2 className="text-2xl font-semibold text-txt">
@@ -74,7 +74,7 @@ export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {
             </div>
             <div>
               <div className="text-xs-tight uppercase tracking-[0.16em] text-muted/60">
-                {t("vectorbrowserview.Type")}
+                {t("common.type")}
               </div>
               <div className="mt-1 text-sm text-txt">{memory.type || "—"}</div>
             </div>

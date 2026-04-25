@@ -500,7 +500,7 @@ export function TrajectoriesView({
                   onClick={() => setPage((current) => Math.max(0, current - 1))}
                   disabled={page === 0}
                 >
-                  {t("databaseview.Prev")}
+                  {t("common.prev")}
                 </Button>
                 <Button
                   variant="outline"
@@ -510,7 +510,7 @@ export function TrajectoriesView({
                   onClick={() => setPage((current) => current + 1)}
                   disabled={page >= totalPages - 1}
                 >
-                  {t("onboarding.next")}
+                  {t("common.next")}
                 </Button>
               </div>
             </div>

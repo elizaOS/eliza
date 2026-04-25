@@ -185,8 +185,8 @@ export function HeartbeatForm({
                 }
               >
                 {editorEnabled
-                  ? t("heartbeatsview.disable")
-                  : t("heartbeatsview.enable")}
+                  ? t("common.disable")
+                  : t("common.enable")}
               </Button>
               <div className="w-px h-6 bg-border/50 mx-1 hidden sm:block" />
               <Button
@@ -195,7 +195,7 @@ export function HeartbeatForm({
                 className="h-9 px-3 text-xs text-danger hover:border-danger hover:bg-danger/10 hover:text-danger"
                 onClick={() => void onDelete()}
               >
-                {t("triggersview.Delete")}
+                {t("common.delete")}
               </Button>
             </>
           )}
@@ -404,7 +404,7 @@ export function HeartbeatForm({
               onClick={() => void onSubmit()}
             >
               {triggersSaving
-                ? t("apikeyconfig.saving")
+                ? t("common.saving")
                 : editingId
                   ? (submitLabelEdit ?? t("heartbeatsview.saveChanges"))
                   : (submitLabelCreate ?? t("heartbeatsview.createHeartbeat"))}
@@ -571,7 +571,7 @@ function TriggerKindSection({
                 }}
                 placeholder={
                   workflowsLoading
-                    ? t("databaseview.Loading")
+                    ? t("appsview.Loading")
                     : t("triggers.workflowPlaceholder")
                 }
               >
@@ -917,7 +917,7 @@ function HeartbeatRunHistory({
             return (
               <div className="py-6 text-sm text-muted/70 flex items-center gap-2">
                 <div className="w-4 h-4 border-2 border-muted/30 border-t-muted/80 rounded-full animate-spin" />{" "}
-                {t("databaseview.Loading")}
+                {t("appsview.Loading")}
               </div>
             );
           }

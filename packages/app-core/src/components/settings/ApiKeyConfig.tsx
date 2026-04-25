@@ -86,7 +86,7 @@ export function ApiKeyConfig({
           tone: "error",
           message: t("apikeyconfig.error", {
             message:
-              err instanceof Error ? err.message : t("apikeyconfig.failed"),
+              err instanceof Error ? err.message : t("common.failed"),
           }),
         });
         setTimeout(() => setModelsFetchResult(null), 5000);
@@ -206,10 +206,10 @@ export function ApiKeyConfig({
           disabled={isSaving}
         >
           {isSaving
-            ? t("apikeyconfig.saving")
+            ? t("common.saving")
             : saveSuccess
-              ? t("apikeyconfig.saved")
-              : t("apikeyconfig.save")}
+              ? t("common.saved")
+              : t("common.save")}
         </Button>
       </div>
     </div>

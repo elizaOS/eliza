@@ -194,7 +194,7 @@ export function DeferredSetupChecklist({
           className="rounded-full text-xs-tight font-semibold uppercase tracking-[0.12em] text-muted"
           onClick={() => setState("postOnboardingChecklistDismissed", true)}
         >
-          {t("flaminaguide.Dismiss")}
+          {t("common.dismiss")}
         </Button>
       </div>
 
@@ -223,7 +223,7 @@ export function DeferredSetupChecklist({
                 className="rounded-full border-accent/30 bg-accent/10 text-xs-tight font-semibold uppercase tracking-[0.12em]"
                 onClick={() => onOpenTask?.(task)}
               >
-                {t("flaminaguide.Open")}
+                {t("common.open")}
               </Button>
               <Button
                 variant="ghost"
@@ -231,7 +231,7 @@ export function DeferredSetupChecklist({
                 className="rounded-full text-xs-tight font-semibold uppercase tracking-[0.12em] text-muted"
                 onClick={() => markDone(task)}
               >
-                {t("flaminaguide.Done")}
+                {t("common.done")}
               </Button>
             </div>
           </div>

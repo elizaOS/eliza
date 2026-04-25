@@ -109,7 +109,7 @@ function N8nStatusBanner({
               setTab("settings");
             }}
           >
-            {t("automations.n8n.ctaSignInCloud")}
+            {t("startupshell.CloudLogin")}
           </Button>
         </section>
       );
@@ -138,7 +138,7 @@ function N8nStatusBanner({
               setTab("settings");
             }}
           >
-            {t("automations.n8n.ctaSignInCloud")}
+            {t("startupshell.CloudLogin")}
           </Button>
           <Button
             type="button"
@@ -178,13 +178,13 @@ function N8nStatusBanner({
           onClick={onRetry}
           disabled={retrying}
         >
-          {t("automations.n8n.cloudDegradedRetry")}
+          {t("common.retry")}
         </Button>
         <Button
           type="button"
           variant="ghost"
           size="icon"
-          aria-label={t("automations.n8n.bannerDismiss")}
+          aria-label={t("common.dismiss")}
           onClick={onDismiss}
           className="shrink-0 h-5 w-5 text-muted hover:text-txt"
         >
@@ -243,14 +243,14 @@ function N8nStatusBanner({
           onClick={onRetry}
           disabled={retrying}
         >
-          {t("automations.n8n.bannerRetry")}
+          {t("common.retry")}
         </Button>
       )}
       <Button
         type="button"
         variant="ghost"
         size="icon"
-        aria-label={t("automations.n8n.bannerDismiss")}
+        aria-label={t("common.dismiss")}
         onClick={onDismiss}
         className="h-5 w-5 text-muted hover:text-txt"
       >
@@ -303,8 +303,8 @@ function WorkflowSidebarRow({
       <StatusBadge
         label={
           workflow.active
-            ? t("automations.n8n.workflowActive")
-            : t("automations.n8n.workflowInactive")
+            ? t("common.active")
+            : t("common.paused")
         }
         variant={workflow.active ? "success" : "muted"}
         withDot
@@ -398,8 +398,8 @@ function WorkflowDetailPane({
               <StatusBadge
                 label={
                   workflow.active
-                    ? t("automations.n8n.workflowActive")
-                    : t("automations.n8n.workflowInactive")
+                    ? t("common.active")
+                    : t("common.paused")
                 }
                 variant={workflow.active ? "success" : "muted"}
                 withDot
@@ -430,7 +430,7 @@ function WorkflowDetailPane({
             onClick={() => onToggleActive(workflow)}
           >
             {busy === workflow.id
-              ? t("automations.n8n.updating")
+              ? t("common.updating")
               : workflow.active
                 ? t("automations.n8n.deactivate")
                 : t("automations.n8n.activate")}
@@ -477,7 +477,7 @@ function WorkflowDetailPane({
           onClick={() => onDelete(workflow)}
         >
           {busy === workflow.id
-            ? t("automations.n8n.updating")
+            ? t("common.updating")
             : t("automations.n8n.deleteWorkflow")}
         </Button>
       </div>
@@ -890,7 +890,7 @@ export function N8nWorkflowsPanel({
           className="shrink-0 flex items-center gap-1 text-muted hover:text-txt text-xs px-2 py-1 rounded-lg hover:bg-bg/50 transition-colors mb-3 h-7 w-7"
           onClick={handleRefresh}
           disabled={workflowsLoading}
-          aria-label={t("actions.refresh")}
+          aria-label={t("common.refresh")}
         >
           <RefreshCw
             className={`h-3.5 w-3.5 ${workflowsLoading ? "animate-spin" : ""}`}

@@ -153,7 +153,7 @@ export function ReleaseCenterView() {
       ipcChannel: "desktop:openReleaseNotesWindow",
       params: {
         url: releaseNotesUrl,
-        title: t("releasecenterview.ReleaseNotesWindowTitle", {
+        title: t("releasecenterview.ReleaseNotes", {
           defaultValue: "Release Notes",
         }),
       },
@@ -170,14 +170,14 @@ export function ReleaseCenterView() {
   const lastCheckAt = appStatus?.lastCheckAt;
   const lastChecked = lastCheckAt
     ? new Date(lastCheckAt).toLocaleString()
-    : t("releasecenterview.NotYet", { defaultValue: "Not yet" });
+    : t("releasecenter.NotYet", { defaultValue: "Not yet" });
   const updaterStatus = nativeUpdater?.updateReady
     ? t("releasecenterview.UpdateReady", { defaultValue: "Update ready" })
     : nativeUpdater?.updateAvailable
       ? t("releasecenterview.UpdateAvailable", {
           defaultValue: "Update available",
         })
-      : t("releasecenterview.Idle", { defaultValue: "Idle" });
+      : t("common.idle", { defaultValue: "Idle" });
   const updaterNeedsAttention = Boolean(
     nativeUpdater?.updateReady || nativeUpdater?.updateAvailable,
   );
@@ -192,13 +192,13 @@ export function ReleaseCenterView() {
     ...(desktopRuntime
       ? [
           {
-            label: t("releasecenterview.Desktop", {
+            label: t("common.desktop", {
               defaultValue: "Desktop",
             }),
             value: desktopVersion,
           },
           {
-            label: t("releasecenterview.Channel", {
+            label: t("common.channel", {
               defaultValue: "Channel",
             }),
             value: channel,
@@ -210,13 +210,13 @@ export function ReleaseCenterView() {
       value: latestVersion,
     },
     {
-      label: t("releasecenterview.LastChecked", {
+      label: t("releasecenter.LastChecked", {
         defaultValue: "Last checked",
       }),
       value: lastChecked,
     },
     {
-      label: t("releasecenterview.Status", { defaultValue: "Status" }),
+      label: t("common.status", { defaultValue: "Status" }),
       value: (
         <span className="inline-flex items-center gap-1.5">
           {updaterNeedsAttention ? (
@@ -291,7 +291,7 @@ export function ReleaseCenterView() {
               )
             }
           >
-            {t("releasecenterview.CheckDownloadUpdate", {
+            {t("releasecenter.CheckDownloadUpdate", {
               defaultValue: "Check / Download Update",
             })}
           </Button>
@@ -311,7 +311,7 @@ export function ReleaseCenterView() {
               )
             }
           >
-            {t("releasecenterview.ApplyDownloadedUpdate", {
+            {t("releasecenter.ApplyDownloadedUpdate", {
               defaultValue: "Apply Downloaded Update",
             })}
           </Button>
@@ -354,7 +354,7 @@ export function ReleaseCenterView() {
               )
             }
           >
-            {t("releasecenterview.OpenDetachedReleaseCenter", {
+            {t("releasecenter.OpenDetachedReleaseCenter", {
               defaultValue: "Open Detached Release Center",
             })}
           </Button>
@@ -404,10 +404,10 @@ export function ReleaseCenterView() {
               size="icon"
               variant="ghost"
               className="h-9 w-9 rounded-lg text-muted-strong"
-              aria-label={t("releasecenterview.ResetUrl", {
+              aria-label={t("releasecenter.ResetUrl", {
                 defaultValue: "Reset URL",
               })}
-              title={t("releasecenterview.ResetUrl", {
+              title={t("releasecenter.ResetUrl", {
                 defaultValue: "Reset URL",
               })}
               onClick={() =>

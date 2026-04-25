@@ -314,10 +314,10 @@ export function DiscordLocalConnectorPanel() {
               disabled={disconnecting}
             >
               {disconnecting
-                ? t("pluginsview.DiscordLocalDisconnecting", {
+                ? t("common.disconnecting", {
                     defaultValue: "Disconnecting…",
                   })
-                : t("providerswitcher.disconnect")}
+                : t("common.disconnect")}
             </Button>
           ) : null}
         </div>
@@ -342,7 +342,7 @@ export function DiscordLocalConnectorPanel() {
             {guilds.length > 0 ? (
               <label className="block space-y-1">
                 <span className="font-medium text-txt">
-                  {t("pluginsview.DiscordLocalGuild", {
+                  {t("common.server", {
                     defaultValue: "Server",
                   })}
                 </span>
@@ -427,7 +427,7 @@ export function DiscordLocalConnectorPanel() {
                     disabled={saving}
                   >
                     {saving
-                      ? t("apikeyconfig.saving", { defaultValue: "Saving..." })
+                      ? t("common.saving", { defaultValue: "Saving..." })
                       : t("pluginsview.SaveChannelSubscriptions", {
                           defaultValue: "Save channel subscriptions",
                         })}

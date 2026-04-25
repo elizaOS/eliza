@@ -2,6 +2,7 @@ import { SidebarContent, SidebarPanel, SidebarScrollRegion } from "@elizaos/ui";
 import { Play, Star } from "lucide-react";
 import { type ReactNode, useMemo } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
+import { useTranslation } from "../../state/TranslationContext";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { type AppIdentitySource, getAppCategoryIcon } from "./app-identity";
 import {
@@ -279,6 +280,7 @@ function AppsSidebarAppButton({
   identitySource,
   onClick,
 }: AppsSidebarAppButtonProps) {
+  const { t } = useTranslation();
   const Icon = getAppCategoryIcon(identitySource);
   return (
     <button
@@ -300,7 +302,7 @@ function AppsSidebarAppButton({
       {active ? (
         <span
           role="img"
-          aria-label="Running"
+          aria-label={t("appsview.Running")}
           className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok shadow-[0_0_0_2px_rgba(16,185,129,0.25)]"
         />
       ) : null}

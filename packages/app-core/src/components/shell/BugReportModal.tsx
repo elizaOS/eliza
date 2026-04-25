@@ -431,7 +431,7 @@ export function BugReportModal() {
           </div>
           <DialogFooter className="px-5 py-4 sm:justify-end">
             <Button variant="outline" size="sm" onClick={close}>
-              {t("bugreportmodal.Close")}
+              {t("common.close")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -482,7 +482,7 @@ export function BugReportModal() {
             )}
             <Field>
               <FieldLabel htmlFor="bug-report-description">
-                {t("skillsview.Description")}{" "}
+                {t("common.description")}{" "}
                 <span className="text-danger" aria-hidden="true">
                   *
                 </span>
@@ -620,7 +620,7 @@ export function BugReportModal() {
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-1">
                   <FieldLabel className="mb-0">
-                    {t("bugreportmodal.Logs")}
+                    {t("common.logs")}
                   </FieldLabel>
                   <FieldDescription className={subtleMonoDescriptionClassName}>
                     {t("bugreportmodal.LogsHint", {
@@ -739,7 +739,7 @@ export function BugReportModal() {
               >
                 {submitting
                   ? t("bugreportmodal.submitting")
-                  : t("bugreportmodal.submit")}
+                  : t("common.submit")}
               </Button>
             </div>
           </DialogFooter>

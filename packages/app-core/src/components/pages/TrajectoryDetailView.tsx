@@ -219,15 +219,15 @@ export function TrajectoryDetailView({
 
   const _summaryCards = [
     {
-      label: t("trajectorydetailview.Source"),
+      label: t("logsview.Source"),
       value: trajectory.source,
     },
     {
-      label: t("trajectorydetailview.Status"),
+      label: t("common.status"),
       value: trajectory.status,
     },
     {
-      label: t("trajectorydetailview.Duration"),
+      label: t("common.duration"),
       value: formatTrajectoryDuration(trajectory.durationMs),
     },
     {
@@ -397,7 +397,7 @@ export function TrajectoryDetailView({
                   t("trajectorydetailview.Response"),
                 )}
                 latencyLabel={formatTrajectoryDuration(call.latencyMs)}
-                tokensLabel={t("trajectorydetailview.Tokens")}
+                tokensLabel={t("common.tokens")}
                 totalTokensValue={formatTrajectoryTokenCount(
                   (call.promptTokens ?? 0) + (call.completionTokens ?? 0),
                   { emptyLabel: "—" },
@@ -424,10 +424,10 @@ export function TrajectoryDetailView({
                 systemLinesLabel={`${call.systemPrompt?.split("\n").length ?? 0} ${t(
                   "trajectorydetailview.lines",
                 )}`}
-                systemCollapseLabel={t("trajectorydetailview.Collapse", {
+                systemCollapseLabel={t("common.collapse", {
                   defaultValue: "Collapse",
                 })}
-                systemExpandLabel={t("trajectorydetailview.Expand", {
+                systemExpandLabel={t("common.expand", {
                   defaultValue: "Expand",
                 })}
                 inputLabel={t("trajectorydetailview.InputUser")}

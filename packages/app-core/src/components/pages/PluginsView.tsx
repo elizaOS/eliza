@@ -113,33 +113,33 @@ function PluginListView({
   });
   const installProgressLabel = (message?: string) =>
     message ||
-    t("pluginsview.Installing", {
+    t("common.installing", {
       defaultValue: "Installing...",
     });
   const installPluginLabel = t("pluginsview.InstallPlugin", {
     defaultValue: "Install Plugin",
   });
-  const installLabel = t("pluginsview.Install", {
+  const installLabel = t("common.install", {
     defaultValue: "Install",
   });
-  const testingLabel = t("pluginsview.Testing", {
+  const testingLabel = t("common.testing", {
     defaultValue: "Testing...",
   });
   const saveSettingsLabel = t("pluginsview.SaveSettings", {
     defaultValue: "Save Settings",
   });
   const saveLabel = t("common.save", { defaultValue: "Save" });
-  const savingLabel = t("apikeyconfig.saving", {
+  const savingLabel = t("common.saving", {
     defaultValue: "Saving...",
   });
-  const savedLabel = t("pluginsview.Saved", {
+  const savedLabel = t("common.saved", {
     defaultValue: "Saved",
   });
   const savedWithBangLabel = t("pluginsview.SavedWithBang", {
     defaultValue: "Saved!",
   });
-  const readyLabel = t("pluginsview.Ready", { defaultValue: "Ready" });
-  const needsSetupLabel = t("pluginsview.NeedsSetup", {
+  const readyLabel = t("common.ready", { defaultValue: "Ready" });
+  const needsSetupLabel = t("common.needsSetup", {
     defaultValue: "Needs setup",
   });
   const loadFailedLabel = t("pluginsview.LoadFailed", {
@@ -148,8 +148,8 @@ function PluginListView({
   const notInstalledLabel = t("pluginsview.NotInstalled", {
     defaultValue: "Not installed",
   });
-  const expandLabel = t("pluginsview.Expand", { defaultValue: "Expand" });
-  const collapseLabel = t("pluginsview.Collapse", {
+  const expandLabel = t("common.expand", { defaultValue: "Expand" });
+  const collapseLabel = t("common.collapse", {
     defaultValue: "Collapse",
   });
   const noConfigurationNeededLabel = t("pluginsview.NoConfigurationNeeded", {

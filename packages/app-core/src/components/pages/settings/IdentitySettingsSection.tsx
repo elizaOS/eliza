@@ -385,13 +385,13 @@ export function IdentitySettingsSection() {
       <div className="grid gap-4 lg:grid-cols-2">
         <SettingsField className="min-w-0">
           <SettingsFieldLabel htmlFor="settings-identity-name">
-            {t("charactereditor.Name", { defaultValue: "Name" })}
+            {t("common.name", { defaultValue: "Name" })}
           </SettingsFieldLabel>
           <Input
             id="settings-identity-name"
             type="text"
             value={draftName}
-            placeholder={t("charactereditor.AgentNamePlaceholder", {
+            placeholder={t("startupshell.AgentName", {
               defaultValue: "Agent name",
             })}
             onChange={(event) =>
@@ -403,7 +403,7 @@ export function IdentitySettingsSection() {
 
         <SettingsField className="min-w-0">
           <SettingsFieldLabel id="settings-identity-voice-label">
-            {t("charactereditor.Voice", { defaultValue: "Voice" })}
+            {t("common.voice", { defaultValue: "Voice" })}
           </SettingsFieldLabel>
           <div className="flex items-center gap-2">
             <ThemedSelect

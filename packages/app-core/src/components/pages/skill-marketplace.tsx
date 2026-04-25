@@ -61,11 +61,11 @@ export function MarketplaceCard({
       }
     : enabled
       ? {
-          label: t("skillsview.statusActive", { defaultValue: "Enabled" }),
+          label: t("common.active", { defaultValue: "Enabled" }),
           tone: "success" as const,
         }
       : {
-          label: t("skillsview.statusInactive", { defaultValue: "Disabled" }),
+          label: t("common.inactive", { defaultValue: "Disabled" }),
           tone: "warning" as const,
         };
 
@@ -132,8 +132,8 @@ export function MarketplaceCard({
               data-testid={`skill-action-install-${item.id}`}
             >
               {isInstalling
-                ? t("skillsview.installing", { defaultValue: "Installing..." })
-                : t("skillsview.Install")}
+                ? t("common.installing", { defaultValue: "Installing..." })
+                : t("common.install")}
             </Button>
             <Button
               variant="ghost"
@@ -230,7 +230,7 @@ export function MarketplaceCard({
             >
               {isUninstalling
                 ? t("skillsview.removing", { defaultValue: "Removing..." })
-                : t("skillsview.Uninstall", { defaultValue: "Uninstall" })}
+                : t("common.uninstall", { defaultValue: "Uninstall" })}
             </Button>
           </>
         )}
@@ -374,10 +374,10 @@ export function InstallModal({
                   disabled={skillsMarketplaceLoading}
                 >
                   {skillsMarketplaceLoading
-                    ? t("skillsview.searching", {
+                    ? t("common.searching", {
                         defaultValue: "Searching...",
                       })
-                    : t("skillsview.search", { defaultValue: "Search" })}
+                    : t("common.search", { defaultValue: "Search" })}
                 </Button>
               </div>
 
@@ -473,10 +473,10 @@ export function InstallModal({
                   }
                 >
                   {skillsMarketplaceAction === "install:manual"
-                    ? t("skillsview.installing", {
+                    ? t("common.installing", {
                         defaultValue: "Installing...",
                       })
-                    : t("skillsview.Install")}
+                    : t("common.install")}
                 </Button>
               </div>
 

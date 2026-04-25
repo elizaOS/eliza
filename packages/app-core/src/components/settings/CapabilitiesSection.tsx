@@ -91,7 +91,7 @@ export function CapabilitiesSection() {
   return (
     <div className="space-y-4">
       <CapabilityRow
-        label={t("settings.sections.capabilities.walletName", {
+        label={t("nav.wallet", {
           defaultValue: "Wallet",
         })}
       >
@@ -100,13 +100,13 @@ export function CapabilitiesSection() {
           onCheckedChange={(checked: boolean | "indeterminate") =>
             setState("walletEnabled", !!checked)
           }
-          aria-label={t("settings.sections.capabilities.walletLabel", {
+          aria-label={t("settings.sections.wallet.enableLabel", {
             defaultValue: "Enable Wallet",
           })}
         />
       </CapabilityRow>
       <CapabilityRow
-        label={t("settings.sections.capabilities.browserName", {
+        label={t("nav.browser", {
           defaultValue: "Browser",
         })}
       >

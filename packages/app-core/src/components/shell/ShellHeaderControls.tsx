@@ -142,8 +142,8 @@ export function ShellHeaderControls({
     },
   ];
   const voiceToggleLabel = chatAgentVoiceMuted
-    ? t("companion.agentVoiceOff")
-    : t("companion.agentVoiceOn");
+    ? t("aria.agentVoiceOff")
+    : t("aria.agentVoiceOn");
   const compactCompanionActionClassName = `${SHELL_ICON_BUTTON_CLASSNAME} pointer-events-auto text-sm leading-none`;
   const expandedCompanionActionClassName = `${SHELL_EXPANDED_BUTTON_CLASSNAME} !w-auto gap-1.5 !px-3.5 justify-center text-sm leading-none`;
 
@@ -172,7 +172,7 @@ export function ShellHeaderControls({
         )}
         {iconOnly ? null : (
           <span className="pointer-events-none">
-            {t("companion.voiceToggle")}
+            {t("common.voice")}
           </span>
         )}
       </Button>
@@ -182,8 +182,8 @@ export function ShellHeaderControls({
     <Button
       size="icon"
       variant="outline"
-      aria-label={t("companion.newChat")}
-      title={t("companion.newChat")}
+      aria-label={t("common.newChat")}
+      title={t("common.newChat")}
       className={
         iconOnly
           ? compactCompanionActionClassName
@@ -197,7 +197,7 @@ export function ShellHeaderControls({
       <MessageCirclePlus className="pointer-events-none h-4 w-4 shrink-0" />
       {iconOnly ? null : (
         <span className="pointer-events-none">
-          {t("companion.newChatButton")}
+          {t("common.newChat")}
         </span>
       )}
     </Button>
@@ -207,8 +207,8 @@ export function ShellHeaderControls({
     <Button
       size="icon"
       variant="outline"
-      aria-label={t("charactereditor.Save")}
-      title={t("charactereditor.Save")}
+      aria-label={t("common.save")}
+      title={t("common.save")}
       className={
         iconOnly
           ? compactCompanionActionClassName
@@ -232,8 +232,8 @@ export function ShellHeaderControls({
           {isSaving
             ? t("charactereditor.Saving")
             : saveSuccess
-              ? t("charactereditor.Saved")
-              : t("charactereditor.Save")}
+              ? t("common.saved")
+              : t("common.save")}
         </span>
       )}
     </Button>

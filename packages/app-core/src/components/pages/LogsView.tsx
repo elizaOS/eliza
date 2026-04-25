@@ -108,7 +108,7 @@ export function LogsView() {
               <SelectItem value="debug">{t("logsview.Debug")}</SelectItem>
               <SelectItem value="info">{t("logsview.Info")}</SelectItem>
               <SelectItem value="warn">{t("logsview.Warn")}</SelectItem>
-              <SelectItem value="error">{t("logsview.Error")}</SelectItem>
+              <SelectItem value="error">{t("common.error")}</SelectItem>
             </SelectContent>
           </Select>
 
@@ -233,7 +233,7 @@ export function LogsView() {
               <span>{t("logsview.Level")}</span>
               <span>{t("logsview.Source")}</span>
               <span>{t("logsview.Tags")}</span>
-              <span>{t("logsview.Message")}</span>
+              <span>{t("common.message")}</span>
             </div>
             {filteredLogs.map((entry: LogEntry) => (
               <div

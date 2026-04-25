@@ -65,7 +65,7 @@ export function ConversationRenameDialog({
       onSave={() => void handleSave()}
       onSuggest={() => void handleSuggest()}
       saveDisabled={!conversationId || !draft.trim() || saving || suggesting}
-      saveLabel={t("conversations.renameDialogSave")}
+      saveLabel={t("common.save")}
       savePendingLabel={t("conversations.renameDialogSaving")}
       saving={saving}
       suggestDisabled={!conversationId || suggesting || saving}

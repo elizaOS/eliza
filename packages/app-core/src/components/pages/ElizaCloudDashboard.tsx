@@ -420,7 +420,7 @@ export function CloudDashboard() {
     }
     setActionNotice(
       callback.message ||
-        t("elizaclouddashboard.ManagedGithubConnectFailed", {
+        t("lifeopspage.githubSetupIncomplete", {
           defaultValue: "GitHub setup did not complete.",
         }),
       "error",
@@ -504,7 +504,7 @@ export function CloudDashboard() {
             <Zap className="mr-2 h-4 w-4" />
           )}
           {elizaCloudLoginBusy
-            ? t("onboarding.connecting")
+            ? t("game.connecting")
             : t("elizaclouddashboard.ConnectElizaCloud")}
         </Button>
         <Button
@@ -564,7 +564,7 @@ export function CloudDashboard() {
       <dl className="mb-3 space-y-1 text-xs">
         <div className="flex items-center justify-between gap-3">
           <dt className="text-muted">
-            {t("elizaclouddashboard.Account", { defaultValue: "Account" })}
+            {t("common.account", { defaultValue: "Account" })}
           </dt>
           <dd className="min-w-0">
             {accountIdDisplay.mono ? (
@@ -630,7 +630,7 @@ export function CloudDashboard() {
         >
           {cloudDisconnecting
             ? t("providerswitcher.disconnecting")
-            : t("providerswitcher.disconnect")}
+            : t("common.disconnect")}
         </Button>
       </div>
     </div>
@@ -808,7 +808,7 @@ export function CloudDashboard() {
             {billingSettingsBusy && (
               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
             )}
-            {t("apikeyconfig.save")}
+            {t("common.save")}
           </Button>
         </div>
       </div>

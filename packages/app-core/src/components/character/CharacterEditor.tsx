@@ -952,10 +952,10 @@ export function CharacterEditor({
         size="icon"
         className="h-9 w-9 rounded-xl"
         onClick={() => document.getElementById(uploadInputId)?.click()}
-        title={t("charactereditor.UploadVRM", {
+        title={t("aria.upload", {
           defaultValue: "Upload VRM",
         })}
-        aria-label={t("charactereditor.UploadVRM", {
+        aria-label={t("aria.upload", {
           defaultValue: "Upload VRM",
         })}
       >
@@ -988,7 +988,7 @@ export function CharacterEditor({
           defaultValue: "Reset to Defaults",
         })}
       >
-        {t("charactereditor.Reset", { defaultValue: "Reset" })}
+        {t("common.reset", { defaultValue: "Reset" })}
       </Button>
       <Button
         size="sm"
@@ -1004,7 +1004,7 @@ export function CharacterEditor({
       >
         {characterSaving || voiceSaving
           ? t("charactereditor.Saving", { defaultValue: "saving..." })
-          : t("charactereditor.Save", { defaultValue: "Save" })}
+          : t("common.save", { defaultValue: "Save" })}
       </Button>
     </div>
   );
@@ -1204,7 +1204,7 @@ export function CharacterEditor({
                           ? t("charactereditor.TabExamples", {
                               defaultValue: "Examples",
                             })
-                          : t("charactereditor.TabKnowledge", {
+                          : t("nav.knowledge", {
                               defaultValue: "Knowledge",
                             })}
                   </button>
@@ -1400,7 +1400,7 @@ export function CharacterEditor({
                               ? t("charactereditor.TabExamples", {
                                   defaultValue: "Examples",
                                 })
-                              : t("charactereditor.TabKnowledge", {
+                              : t("nav.knowledge", {
                                   defaultValue: "Knowledge",
                                 }),
                     })}`
@@ -1414,7 +1414,7 @@ export function CharacterEditor({
               onClick={() => void resolvePendingNavigation(true)}
               disabled={characterSaving || voiceSaving}
             >
-              {t("charactereditor.Save", { defaultValue: "Save" })}
+              {t("common.save", { defaultValue: "Save" })}
             </Button>
             <Button
               type="button"
@@ -1465,7 +1465,7 @@ export function CharacterEditor({
                 setResetConfirmOpen(false);
               }}
             >
-              {t("charactereditor.Reset", { defaultValue: "Reset" })}
+              {t("common.reset", { defaultValue: "Reset" })}
             </Button>
             <Button
               type="button"

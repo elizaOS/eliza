@@ -419,7 +419,7 @@ export function RuntimeGate() {
                       className="shrink-0 rounded-lg border-[#f0b90b]/40 bg-[#f0b90b]/15 text-[#fffaee] font-semibold hover:bg-[#f0b90b]/25 hover:border-[#f0b90b]/60"
                       onClick={() => finishAsRemoteGateway(gateway)}
                     >
-                      {t("startupshell.Connect", { defaultValue: "Connect" })}
+                      {t("common.connect", { defaultValue: "Connect" })}
                     </Button>
                   </CardContent>
                 </Card>
@@ -621,7 +621,7 @@ export function RuntimeGate() {
                           onClick={() => finishAsCloud(agent)}
                           disabled={agent.status === "failed"}
                         >
-                          {t("startupshell.Connect", {
+                          {t("common.connect", {
                             defaultValue: "Connect",
                           })}
                         </Button>
@@ -681,7 +681,7 @@ export function RuntimeGate() {
           onClick={finishAsRemote}
           disabled={!remoteUrl.trim()}
         >
-          {t("startupshell.Connect", { defaultValue: "Connect" })}
+          {t("common.connect", { defaultValue: "Connect" })}
         </Button>
 
         <BackButton t={t} onClick={() => setSubView("chooser")} />
@@ -813,7 +813,7 @@ function BackButton({
       style={{ fontFamily: MONO_FONT }}
       className="mt-2 self-center text-3xs uppercase text-white/60 underline hover:text-white"
     >
-      {t("startupshell.Back", { defaultValue: "Back" })}
+      {t("common.back", { defaultValue: "Back" })}
     </button>
   );
 }

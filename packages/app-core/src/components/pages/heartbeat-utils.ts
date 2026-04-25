@@ -454,15 +454,15 @@ export function localizedExecutionStatus(
     case "success":
       // Trigger "success" currently means the instruction was queued into the
       // autonomy room, not that the autonomous action already completed.
-      return t("heartbeatsview.statusQueued");
+      return t("common.queued");
     case "completed":
-      return t("trajectoriesview.Completed");
+      return t("common.completed");
     case "skipped":
       return t("heartbeatsview.statusSkipped");
     case "queued":
-      return t("heartbeatsview.statusQueued");
+      return t("common.queued");
     case "error":
-      return t("logsview.Error");
+      return t("common.error");
     case "failed":
       return t("heartbeatsview.statusFailed");
     default:

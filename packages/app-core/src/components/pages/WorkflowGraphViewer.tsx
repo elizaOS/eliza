@@ -462,7 +462,7 @@ function NodeDetailDrawer({
             {/* Parameters */}
             <div className="space-y-2">
               <div className="text-xs font-semibold uppercase tracking-wider text-muted">
-                {t("workflowGraph.nodeDrawer.parametersLabel")}
+                {t("common.parameters")}
               </div>
               {hasParams ? (
                 <div className="space-y-2">

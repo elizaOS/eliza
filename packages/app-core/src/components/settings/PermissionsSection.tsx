@@ -341,7 +341,7 @@ function DesktopPermissionsView() {
               disabled={refreshing}
             >
               {refreshing
-                ? t("permissionssection.Refreshing", {
+                ? t("common.refreshing", {
                     defaultValue: "Refreshing...",
                   })
                 : t("common.refresh", { defaultValue: "Refresh" })}
@@ -392,7 +392,7 @@ function DesktopPermissionsView() {
       <section className="space-y-2 border-t border-border/40 pt-5">
         <header className="space-y-0.5">
           <h3 className="text-sm font-semibold text-txt">
-            {t("appsview.Capabilities")}
+            {t("common.capabilities")}
           </h3>
           <p className="max-w-2xl text-xs-tight leading-5 text-muted">
             {t("permissionssection.CapabilitiesDescription", {
@@ -598,7 +598,7 @@ function DesktopOnboardingPermissions({
           data-testid="permissions-onboarding-continue"
           onClick={() => onContinue()}
         >
-          {t("onboarding.savedMyKeys", { defaultValue: "Continue" })}
+          {t("common.continue", { defaultValue: "Continue" })}
         </Button>
       </div>
     );
@@ -719,7 +719,7 @@ function DesktopOnboardingPermissions({
               onClick={canProceed ? () => onContinue() : handleGrantPermissions}
             >
               {canProceed
-                ? t("onboarding.savedMyKeys", { defaultValue: "Continue" })
+                ? t("common.continue", { defaultValue: "Continue" })
                 : grantingPermissions
                   ? t("permissionssection.GrantingPermissions", {
                       defaultValue: "Granting...",

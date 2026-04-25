@@ -345,7 +345,7 @@ export function SecretsView({
               onClick={handleSave}
             >
               {saving
-                ? t("secretsview.Saving", {
+                ? t("common.saving", {
                     defaultValue: "Saving...",
                   })
                 : dirtyKeys.length > 0
@@ -475,7 +475,7 @@ function SecretPicker({
                         className="px-2.5 py-1 h-7 text-xs shadow-sm flex-shrink-0"
                         onClick={() => onAdd(s.key)}
                       >
-                        {t("secretsview.Add")}
+                        {t("common.add")}
                       </Button>
                     </div>
                   );

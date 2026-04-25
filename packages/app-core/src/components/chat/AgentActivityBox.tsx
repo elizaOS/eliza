@@ -22,9 +22,9 @@ function deriveActivity(
     });
   }
   if (s.status === "error") {
-    return t("agentactivitybox.Error", { defaultValue: "Error" });
+    return t("common.error", { defaultValue: "Error" });
   }
-  return t("agentactivitybox.Running", { defaultValue: "Running" });
+  return t("appsview.Running", { defaultValue: "Running" });
 }
 
 interface AgentActivityBoxProps {

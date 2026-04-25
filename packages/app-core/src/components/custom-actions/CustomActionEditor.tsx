@@ -527,7 +527,7 @@ export function CustomActionEditor({
           {/* Name */}
           <div className="flex flex-col gap-1">
             <span className={editorFieldLabelClassName}>
-              {t("wallet.name")}
+              {t("common.name")}
             </span>
             <Input
               type="text"
@@ -541,7 +541,7 @@ export function CustomActionEditor({
           {/* Description */}
           <div className="flex flex-col gap-1">
             <span className={editorFieldLabelClassName}>
-              {t("skillsview.Description")}
+              {t("common.description")}
             </span>
             <Textarea
               value={description}
@@ -746,7 +746,7 @@ export function CustomActionEditor({
           <div className="flex flex-col gap-2 pt-3">
             <div className="flex items-center justify-between">
               <span className={editorFieldLabelClassName}>
-                {t("customactioneditor.Parameters")}
+                {t("common.parameters")}
               </span>
               <Button
                 variant="ghost"
@@ -777,7 +777,7 @@ export function CustomActionEditor({
                   onChange={(e) =>
                     updateParameter(paramIdx, "description", e.target.value)
                   }
-                  placeholder={t("skillsview.Description")}
+                  placeholder={t("common.description")}
                   className={`flex-1 ${editorInputClassName}`}
                 />
                 <span className="flex items-center gap-1 text-xs text-muted cursor-pointer">
@@ -877,7 +877,7 @@ export function CustomActionEditor({
               disabled={testing || saving}
             >
               {testing
-                ? t("customactioneditor.Testing", {
+                ? t("common.testing", {
                     defaultValue: "Testing...",
                   })
                 : t("customactioneditor.Test", {
@@ -895,7 +895,7 @@ export function CustomActionEditor({
             disabled={saving}
           >
             {saving
-              ? t("customactioneditor.Saving", {
+              ? t("common.saving", {
                   defaultValue: "Saving...",
                 })
               : t("common.save")}

@@ -29,7 +29,7 @@ export function SqlEditorPanel({
     <>
       <PagePanel variant="surface" as="section" className="px-5 py-5 sm:px-6">
         <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-          {t("databaseview.Database")}
+          {t("common.database")}
         </div>
         <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
           {t("databaseview.SQLEditor")}
@@ -77,7 +77,7 @@ export function SqlEditorPanel({
               <span className="text-txt">{queryResult.rowCount}</span>{" "}
               {queryResult.rowCount === 1
                 ? t("databaseview.row")
-                : t("databaseview.Rows")}{" "}
+                : t("common.rows")}{" "}
               · <span className="text-txt">{queryResult.durationMs}ms</span>
             </div>
           )}
@@ -124,7 +124,7 @@ export function SqlEditorPanel({
         <PagePanel.Empty
           className="mt-4 min-h-[12rem]"
           title={t("databaseview.QueryReturnedNoRo")}
-          description={t("databaseview.QueryNoRowsDescription")}
+          description={t("databaseview.QueryReturnedNoRo")}
         />
       ) : null}
     </>

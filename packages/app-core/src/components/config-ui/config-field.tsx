@@ -1256,7 +1256,7 @@ function KeyValueFieldInner({ fp: props }: { fp: FieldRenderProps }) {
             className={`${inputCls(!!props.errors?.length)} flex-1`}
             type="text"
             value={pair.value}
-            placeholder={t("config-field.Value", { defaultValue: "Value" })}
+            placeholder={t("common.value", { defaultValue: "Value" })}
             disabled={props.readonly}
             onChange={(e) => updateRow(index, "value", e.target.value)}
             onBlur={() => fireAction(props, "blur")}
@@ -1562,7 +1562,7 @@ function MarkdownFieldInner(props: FieldRenderProps) {
           }`}
           onClick={() => setPreview(false)}
         >
-          {t("config-field.Edit", { defaultValue: "Edit" })}
+          {t("common.edit", { defaultValue: "Edit" })}
         </Button>
         <Button
           type="button"
@@ -1575,7 +1575,7 @@ function MarkdownFieldInner(props: FieldRenderProps) {
           }`}
           onClick={() => setPreview(true)}
         >
-          {t("config-field.Preview", { defaultValue: "Preview" })}
+          {t("common.preview", { defaultValue: "Preview" })}
         </Button>
       </div>
       {preview ? (
@@ -1980,7 +1980,7 @@ export function ConfigField({
             {renderProps.schema.default != null && (
               <span className="opacity-70">
                 {" "}
-                {t("config-field.Default", { defaultValue: "Default" })}{" "}
+                {t("common.default", { defaultValue: "Default" })}{" "}
                 {String(renderProps.schema.default)})
               </span>
             )}
