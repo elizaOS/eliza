@@ -3,6 +3,7 @@ import type {
   LifeOpsActiveReminderView,
   LifeOpsCalendarEvent,
   LifeOpsCapabilitiesStatus,
+  LifeOpsCircadianState,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
   LifeOpsInboxChannel,
@@ -41,6 +42,7 @@ import {
 } from "react";
 import type {
   LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeSummaryItem,
   LifeOpsSocialHabitSummary,
 } from "../api/client-lifeops.js";
 import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
@@ -49,11 +51,14 @@ import { useInbox } from "../hooks/useInbox.js";
 import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesStatus.js";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
+import { BrowserBridgeStatusChip } from "./BrowserBridgeStatusChip.js";
+import { DataSourcesStrip } from "./DataSourcesStrip.js";
 import {
   LIFEOPS_MAIL_CHANNELS,
   LIFEOPS_MESSAGE_CHANNELS,
 } from "./LifeOpsInboxSection.js";
 import { useLifeOpsSelection } from "./LifeOpsSelectionContext.js";
+import { MissingSourceCard } from "./MissingSourceCard.js";
 
 interface LifeOpsOverviewSectionProps {
   onNavigate: (section: LifeOpsSection) => void;
@@ -246,6 +251,79 @@ function classifyReminder(iso: string): ReminderUrgency {
   if (diffMin < 60) return "soon";
   if (diffMin < 60 * 24) return "today";
   return "later";
+}
+
+const CIRCADIAN_LABELS: Record<LifeOpsCircadianState, string> = {
+  awake: "Awake",
+  winding_down: "Winding down",
+  sleeping: "Sleeping",
+  waking: "Waking up",
+  napping: "Napping",
+  unclear: "Schedule unclear",
+};
+
+function circadianHeadline(
+  schedule: LifeOpsScheduleInsight | null | undefined,
+): string | null {
+  if (!schedule) return null;
+  const base = CIRCADIAN_LABELS[schedule.circadianState];
+  if (!base) return null;
+  if (schedule.circadianState === "winding_down") {
+    const minutes = schedule.relativeTime.minutesUntilBedtimeTarget;
+    if (typeof minutes === "number" && minutes > 0) {
+      const formatted = formatDurationMinutes(minutes);
+      if (formatted) return `Winding down for bed in ${formatted}`;
+    }
+  }
+  if (schedule.circadianState === "awake") {
+    const minutes = schedule.relativeTime.minutesAwake;
+    if (typeof minutes === "number" && minutes > 0) {
+      const formatted = formatDurationMinutes(minutes);
+      if (formatted) return `Awake for ${formatted}`;
+    }
+  }
+  if (schedule.circadianState === "sleeping") {
+    return "Sleeping now";
+  }
+  return base;
+}
+
+function topActiveSession(
+  screenTime: LifeOpsScreenTimeSummary | null,
+): LifeOpsScreenTimeSummaryItem | null {
+  const items = screenTime?.items ?? [];
+  if (items.length === 0) return null;
+  return items.reduce<LifeOpsScreenTimeSummaryItem>(
+    (best, current) =>
+      current.totalSeconds > best.totalSeconds ? current : best,
+    items[0],
+  );
+}
+
+function computeWeeklyDelta(args: {
+  todayTotalSeconds: number | null | undefined;
+  weeklyTotalSeconds: number | null | undefined;
+}): { label: string; arrow: "up" | "down" | "flat" } | null {
+  const { todayTotalSeconds, weeklyTotalSeconds } = args;
+  if (
+    typeof todayTotalSeconds !== "number" ||
+    typeof weeklyTotalSeconds !== "number" ||
+    !Number.isFinite(todayTotalSeconds) ||
+    !Number.isFinite(weeklyTotalSeconds) ||
+    weeklyTotalSeconds <= 0
+  ) {
+    return null;
+  }
+  const dailyAverage = weeklyTotalSeconds / 7;
+  if (dailyAverage <= 0) return null;
+  const delta = (todayTotalSeconds - dailyAverage) / dailyAverage;
+  const percent = Math.round(Math.abs(delta) * 100);
+  if (percent < 1) {
+    return { label: "On par with avg", arrow: "flat" };
+  }
+  const arrow: "up" | "down" = delta > 0 ? "up" : "down";
+  const symbol = arrow === "up" ? "↑" : "↓";
+  return { label: `${symbol} ${percent}% vs avg`, arrow };
 }
 
 function sleepStatusLabel(schedule: LifeOpsScheduleInsight | null | undefined) {
@@ -626,6 +704,9 @@ export function LifeOpsOverviewSection({
   const [social, setSocial] = useState<LifeOpsSocialHabitSummary | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
   const [socialError, setSocialError] = useState<string | null>(null);
+  const [weeklyScreenTotalSeconds, setWeeklyScreenTotalSeconds] = useState<
+    number | null
+  >(null);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -689,11 +770,25 @@ export function LifeOpsOverviewSection({
     }
   }, []);
 
+  const loadWeeklyScreenTime = useCallback(async () => {
+    const now = new Date();
+    const since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const breakdown = await client.getLifeOpsScreenTimeBreakdown({
+      since: since.toISOString(),
+      until: now.toISOString(),
+      topN: 1,
+    });
+    setWeeklyScreenTotalSeconds(
+      Number.isFinite(breakdown.totalSeconds) ? breakdown.totalSeconds : null,
+    );
+  }, []);
+
   useEffect(() => {
     void loadOverview();
     void loadScreenTime();
     void loadSocial();
-  }, [loadOverview, loadScreenTime, loadSocial]);
+    void loadWeeklyScreenTime();
+  }, [loadOverview, loadScreenTime, loadSocial, loadWeeklyScreenTime]);
 
   const calendar = useCalendarWeek({ viewMode: "week" });
   const messagesInbox = useInbox({
@@ -860,10 +955,35 @@ export function LifeOpsOverviewSection({
     return lines.slice(0, 5);
   }, [hasUnread, schedule]);
 
+  const circadianLine = useMemo(() => circadianHeadline(schedule), [schedule]);
+  const activeSession = useMemo(
+    () => topActiveSession(screenTime),
+    [screenTime],
+  );
+  const activeSessionLine = useMemo(() => {
+    if (!activeSession) return null;
+    const duration = formatDurationSeconds(activeSession.totalSeconds);
+    if (!duration) return null;
+    return `Current focus: ${activeSession.displayName} (${duration})`;
+  }, [activeSession]);
+  const hasNowPanelContent =
+    Boolean(circadianLine) ||
+    Boolean(activeSessionLine) ||
+    briefingLines.length > 0;
+  const weeklyDelta = useMemo(
+    () =>
+      computeWeeklyDelta({
+        todayTotalSeconds: screenTime?.totalSeconds ?? null,
+        weeklyTotalSeconds: weeklyScreenTotalSeconds,
+      }),
+    [screenTime?.totalSeconds, weeklyScreenTotalSeconds],
+  );
+
   const refresh = useCallback(() => {
     void loadOverview();
     void loadScreenTime();
     void loadSocial();
+    void loadWeeklyScreenTime();
     void capabilities.refresh();
     void googleConnector.refresh({ silent: true });
     void xConnector.refresh();
@@ -877,6 +997,7 @@ export function LifeOpsOverviewSection({
     loadSocial,
     loadOverview,
     loadScreenTime,
+    loadWeeklyScreenTime,
     mailInbox.refresh,
     messagesInbox.refresh,
     xConnector,
@@ -919,27 +1040,30 @@ export function LifeOpsOverviewSection({
               })}
             </h1>
           </div>
-          <button
-            type="button"
-            aria-label="Refresh LifeOps dashboard"
-            title="Refresh"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/20 bg-bg/30 text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
-            onClick={refresh}
-            disabled={
-              loading ||
-              screenTimeLoading ||
-              calendar.loading ||
-              messagesInbox.loading ||
-              mailInbox.loading
-            }
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${
-                loading || screenTimeLoading ? "animate-spin" : ""
-              }`}
-              aria-hidden
-            />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <BrowserBridgeStatusChip onNavigate={onNavigate} />
+            <button
+              type="button"
+              aria-label="Refresh LifeOps dashboard"
+              title="Refresh"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/20 bg-bg/30 text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
+              onClick={refresh}
+              disabled={
+                loading ||
+                screenTimeLoading ||
+                calendar.loading ||
+                messagesInbox.loading ||
+                mailInbox.loading
+              }
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${
+                  loading || screenTimeLoading ? "animate-spin" : ""
+                }`}
+                aria-hidden
+              />
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 grid overflow-hidden rounded-lg border border-border/16 bg-card/10 sm:grid-cols-3">
@@ -1042,13 +1166,19 @@ export function LifeOpsOverviewSection({
 
       {!showNoAccessState ? (
         <div className="grid items-start gap-4 xl:grid-cols-12">
-          {briefingLines.length > 0 ? (
+          {hasNowPanelContent ? (
             <DashboardPanel
               title="Now"
               icon={<Flame className="h-4 w-4" aria-hidden />}
               className="xl:col-span-3"
             >
               <div className="space-y-3">
+                {circadianLine ? (
+                  <TinyStatus color="bg-indigo-300" label={circadianLine} />
+                ) : null}
+                {activeSessionLine ? (
+                  <TinyStatus color="bg-amber-300" label={activeSessionLine} />
+                ) : null}
                 {briefingLines.map((line) => (
                   <TinyStatus key={line} color="bg-accent" label={line} />
                 ))}
@@ -1093,7 +1223,15 @@ export function LifeOpsOverviewSection({
                 </div>
               </div>
             </DashboardPanel>
-          ) : null}
+          ) : (
+            <MissingSourceCard
+              title="Sleep"
+              reason="Sleep needs activity or health data."
+              ctaLabel="Connect Health"
+              onCta={() => onNavigate("setup")}
+              className="xl:col-span-3"
+            />
+          )}
 
           {screenTimeAccess ? (
             <DashboardPanel
@@ -1113,6 +1251,14 @@ export function LifeOpsOverviewSection({
                   <div className="text-2xl font-semibold leading-none text-txt">
                     {screenTimeLabel || "No data"}
                   </div>
+                  {weeklyDelta ? (
+                    <div
+                      className="mt-1 text-[11px] font-medium tabular-nums text-muted"
+                      data-testid="lifeops-overview-screen-weekly-delta"
+                    >
+                      {weeklyDelta.label}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <ScreenTimeList
@@ -1121,7 +1267,15 @@ export function LifeOpsOverviewSection({
                 error={screenTimeError}
               />
             </DashboardPanel>
-          ) : null}
+          ) : (
+            <MissingSourceCard
+              title="Screen Time"
+              reason="Screen Time needs the browser bridge or mobile signals."
+              ctaLabel="Set up tracking"
+              onCta={() => onNavigate("setup")}
+              className="xl:col-span-3"
+            />
+          )}
 
           {socialAccess ? (
             <DashboardPanel
@@ -1164,10 +1318,24 @@ export function LifeOpsOverviewSection({
                       social?.messages.outbound ?? 0
                     } sent`}
                   />
+                  {(social?.dataSources ?? []).length > 0 ? (
+                    <DataSourcesStrip
+                      sources={social?.dataSources ?? []}
+                      onSetup={() => onNavigate("setup")}
+                    />
+                  ) : null}
                 </div>
               )}
             </DashboardPanel>
-          ) : null}
+          ) : (
+            <MissingSourceCard
+              title="Social"
+              reason="Social tracking needs the browser bridge installed and paired."
+              ctaLabel="Set up bridge"
+              onCta={() => onNavigate("setup")}
+              className="xl:col-span-3"
+            />
+          )}
 
           {calendarAccess ? (
             <DashboardPanel
@@ -1202,7 +1370,15 @@ export function LifeOpsOverviewSection({
                 </div>
               )}
             </DashboardPanel>
-          ) : null}
+          ) : (
+            <MissingSourceCard
+              title="Calendar"
+              reason="Connect Google for Calendar and Mail."
+              ctaLabel="Connect Google"
+              onCta={() => onNavigate("setup")}
+              className="xl:col-span-4"
+            />
+          )}
 
           {messagesAccess ? (
             <DashboardPanel
@@ -1259,7 +1435,15 @@ export function LifeOpsOverviewSection({
                 </div>
               )}
             </DashboardPanel>
-          ) : null}
+          ) : (
+            <MissingSourceCard
+              title="Messages"
+              reason="Connect a messaging platform from Settings."
+              ctaLabel="Connect platform"
+              onCta={() => onNavigate("setup")}
+              className="xl:col-span-4"
+            />
+          )}
 
           {mailAccess ? (
             <DashboardPanel
@@ -1296,7 +1480,15 @@ export function LifeOpsOverviewSection({
                 </div>
               )}
             </DashboardPanel>
-          ) : null}
+          ) : (
+            <MissingSourceCard
+              title="Mail"
+              reason="Connect Google for Calendar and Mail."
+              ctaLabel="Connect Google"
+              onCta={() => onNavigate("setup")}
+              className="xl:col-span-4"
+            />
+          )}
 
           {remindersAccess ? (
             <DashboardPanel
