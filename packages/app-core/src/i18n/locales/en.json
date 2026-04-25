@@ -2426,6 +2426,8 @@
   "subscriptionstatus.CallbackUrlMissingCode": "Callback URL is missing the ?code= parameter.",
   "subscriptionstatus.ChatGPTSubscription": "ChatGPT subscription credentials are expired or invalid. Reconnect\n              to continue.",
   "subscriptionstatus.ChatGPTSubscriptionTitle": "ChatGPT Subscription",
+  "subscriptionstatus.ClaudeCodeCliDetectedBody": "Signed in via the Claude Code CLI on this machine. To sign out, run `claude logout` in a terminal — the app can't clear CLI credentials. Connect in-app below to link this account to Milady explicitly.",
+  "subscriptionstatus.ClaudeCodeCliDetectedTitle": "Claude Code CLI detected",
   "subscriptionstatus.ClaudeSubscription": "Claude subscription credentials are expired or invalid. Reconnect\n              to continue.",
   "subscriptionstatus.ClaudeSubscriptionTitle": "Claude Subscription",
   "subscriptionstatus.ClaudeTosWarning": "Claude subscriptions can only be used through the Claude Code CLI (Anthropic TOS). Your subscription will power task agents but not the main agent runtime. For the main agent, use Eliza Cloud, a direct Anthropic API key, or another provider.",
