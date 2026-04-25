@@ -549,7 +549,7 @@ declare module "@elizaos/app-core/api/client-base" {
       sessionId: string,
     ): Promise<LifeOpsSignalPairingStatus>;
     stopLifeOpsSignalPairing(
-      sessionId: string,
+      data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsSignalPairingStatus>;
     disconnectSignalConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
@@ -1710,13 +1710,13 @@ ElizaClient.prototype.getLifeOpsSignalPairingStatus = async function (
 
 ElizaClient.prototype.stopLifeOpsSignalPairing = async function (
   this: ElizaClient,
-  sessionId,
+  data = { provider: "signal" },
 ): Promise<LifeOpsSignalPairingStatus> {
   return this.fetch<LifeOpsSignalPairingStatus>(
     "/api/lifeops/connectors/signal/stop",
     {
       method: "POST",
-      body: JSON.stringify({ sessionId }),
+      body: JSON.stringify(data),
     },
   );
 };

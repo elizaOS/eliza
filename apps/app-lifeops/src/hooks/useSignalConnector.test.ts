@@ -21,6 +21,18 @@ const { clientMock, reactModuleUrl } = vi.hoisted(() => {
     qrDataUrl: "data:image/png;base64,qr",
     error: null,
   };
+  const connectedPairing = {
+    sessionId: "pairing-existing",
+    state: "connected" as const,
+    qrDataUrl: null,
+    error: null,
+  };
+  const failedPairing = {
+    sessionId: "pairing-failed",
+    state: "failed" as const,
+    qrDataUrl: null,
+    error: "signal-cli is not installed",
+  };
 
   return {
     clientMock: {
@@ -40,6 +52,8 @@ const { clientMock, reactModuleUrl } = vi.hoisted(() => {
       disconnectSignalConnector: vi.fn(async () => disconnectedStatus),
       disconnectedStatus,
       waitingForScanPairing,
+      connectedPairing,
+      failedPairing,
     },
     reactModuleUrl: `${process.cwd()}/node_modules/react/index.js`,
   };
@@ -113,9 +127,54 @@ describe("useSignalConnector", () => {
     });
 
     expect(clientMock.stopLifeOpsSignalPairing).toHaveBeenCalledWith(
-      "pairing-existing",
+      { provider: "signal", side: "owner" },
     );
     expect(result.current.pairingStatus).toBeNull();
+    unmount();
+  });
+
+  it("continues polling restored active pairing sessions", async () => {
+    clientMock.getSignalConnectorStatus
+      .mockResolvedValueOnce({
+        ...clientMock.disconnectedStatus,
+        pairing: clientMock.waitingForScanPairing,
+      })
+      .mockResolvedValue(clientMock.disconnectedStatus);
+    clientMock.getLifeOpsSignalPairingStatus.mockResolvedValueOnce(
+      clientMock.connectedPairing,
+    );
+
+    const { result, unmount } = renderHook(() => useSignalConnector());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await waitFor(
+      () =>
+        expect(clientMock.getLifeOpsSignalPairingStatus).toHaveBeenCalledWith(
+          "pairing-existing",
+        ),
+      { timeout: 3_000 },
+    );
+
+    await waitFor(
+      () => expect(clientMock.getSignalConnectorStatus).toHaveBeenCalledTimes(2),
+      { timeout: 3_000 },
+    );
+    expect(result.current.pairingStatus).toBeNull();
+    unmount();
+  });
+
+  it("surfaces failed pairing status errors from connector status", async () => {
+    clientMock.getSignalConnectorStatus.mockResolvedValueOnce({
+      ...clientMock.disconnectedStatus,
+      pairing: clientMock.failedPairing,
+    });
+
+    const { result, unmount } = renderHook(() => useSignalConnector());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.pairingStatus).toEqual(clientMock.failedPairing);
+    expect(result.current.error).toBe("signal-cli is not installed");
+    expect(clientMock.getLifeOpsSignalPairingStatus).not.toHaveBeenCalled();
     unmount();
   });
 });

@@ -46,8 +46,12 @@ try {
   ({ DatabaseSync: DatabaseSyncValue } = require("node:sqlite") as {
     DatabaseSync: SqliteDatabaseSyncConstructor;
   });
-  hasSqliteValue = true;
+  hasSqliteValue = typeof DatabaseSyncValue === "function";
 } catch {
+  DatabaseSyncValue = undefined;
+}
+
+if (!hasSqliteValue) {
   if (isBunRuntime()) {
     try {
       const { Database } = require("bun:sqlite") as BunSqliteModule;
