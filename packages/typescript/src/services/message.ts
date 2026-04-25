@@ -2350,6 +2350,15 @@ export function shouldEmitPlannerPreamble(
 	);
 }
 
+// Actions that are passive bookkeeping / chitchat. Safe to drop when a
+// turn-owning action (one that sets suppressPostActionContinuation = true,
+// e.g. SPAWN_AGENT) is also picked for the same turn. Keeping them around
+// alongside explicit delegation produces duplicate user-visible noise:
+// "Created task X" message followed by the actual delegated result.
+const PASSIVE_TURN_ACTIONS = new Set(
+	["REPLY", "MANAGE_TASKS"].map(normalizeActionIdentifier),
+);
+
 export function stripReplyWhenActionOwnsTurn(
 	runtime: Pick<IAgentRuntime, "actions" | "logger">,
 	actions: readonly string[] | null | undefined,
@@ -2358,18 +2367,17 @@ export function stripReplyWhenActionOwnsTurn(
 		return Array.isArray(actions) ? [...actions] : [];
 	}
 
-	const normalizedReply = normalizeActionIdentifier("REPLY");
-	const hasReply = actions.some(
-		(action) => normalizeActionIdentifier(action) === normalizedReply,
+	const hasPassive = actions.some((action) =>
+		PASSIVE_TURN_ACTIONS.has(normalizeActionIdentifier(action)),
 	);
-	if (!hasReply) {
+	if (!hasPassive) {
 		return [...actions];
 	}
 
 	const actionLookup = buildRuntimeActionLookup(runtime);
 	const ownedActions = actions.filter((action) => {
 		const normalized = normalizeActionIdentifier(action);
-		if (!normalized || normalized === normalizedReply) {
+		if (!normalized || PASSIVE_TURN_ACTIONS.has(normalized)) {
 			return false;
 		}
 		return (
@@ -2382,16 +2390,16 @@ export function stripReplyWhenActionOwnsTurn(
 	}
 
 	const filtered = actions.filter(
-		(action) => normalizeActionIdentifier(action) !== normalizedReply,
+		(action) => !PASSIVE_TURN_ACTIONS.has(normalizeActionIdentifier(action)),
 	);
 	runtime.logger.info(
 		{
 			src: "service:message",
 			originalActions: actions,
 			filteredActions: filtered,
-			replySuppressedBy: ownedActions,
+			suppressedBy: ownedActions,
 		},
-		"Dropped REPLY because another selected action already owns the turn",
+		"Dropped passive actions because another selected action already owns the turn",
 	);
 	return filtered.length > 0 ? filtered : ["REPLY"];
 }
