@@ -28,11 +28,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { afterAll, beforeAll, describe, expect } from "vitest";
-import { itIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider";
-import { withTimeout, sleep } from "../../../../../test/helpers/test-utils";
-import { USER_PREFS_TABLE } from "../../../typescript/src/features/advanced-capabilities/personality/types.ts";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { itIf } from "../helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../helpers/live-provider";
+import { withTimeout, sleep } from "../helpers/test-utils";
+/** Matches the table name used by @elizaos/core personality module. */
+const USER_PREFS_TABLE = "user_personality_preferences";
 import { startApiServer } from "@elizaos/agent/api/server";
 import { ensureAgentWorkspace } from "@elizaos/agent/providers/workspace";
 import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
@@ -51,7 +52,8 @@ dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
 const liveModelTestsEnabled =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const selectedLiveProvider = liveModelTestsEnabled
   ? selectLiveProvider()
   : null;
@@ -214,7 +216,7 @@ async function shouldSkipDueModelProviderUnavailable(
   return false;
 }
 
-function _readSerializedProperty(
+function readSerializedProperty(
   value: unknown,
   key: string,
 ): unknown | undefined {
@@ -231,7 +233,7 @@ function _readSerializedProperty(
   return (properties as Record<string, unknown>)[key];
 }
 
-function _readSerializedArray(value: unknown): Array<Record<string, unknown>> {
+function readSerializedArray(value: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(value)) return value as Array<Record<string, unknown>>;
   if (!value || typeof value !== "object") return [];
   const items = (value as Record<string, unknown>).items;
@@ -863,35 +865,19 @@ describe("Agent Runtime E2E", () => {
           channelId: conversationRoomId,
           type: ChannelType.DM,
         });
-        const createProbeMessage = () =>
-          createMessageMemory({
-            id: crypto.randomUUID() as UUID,
-            entityId: userId,
-            roomId: conversationRoomId,
-            content: {
-              text: "Say hello in one word.",
-              source: "test",
-              channelType: ChannelType.DM,
-            },
-          });
-
-        let resp = await handleMessageAndCollectText(
-          runtime,
-          createProbeMessage(),
-          {
-            timeoutMs: 90_000,
+        const msg = createMessageMemory({
+          id: crypto.randomUUID() as UUID,
+          entityId: userId,
+          roomId: conversationRoomId,
+          content: {
+            text: "Say hello in one word.",
+            source: "test",
+            channelType: ChannelType.DM,
           },
-        );
-        if (resp.length === 0) {
-          await sleep(1_000);
-          resp = await handleMessageAndCollectText(
-            runtime,
-            createProbeMessage(),
-            {
-              timeoutMs: 90_000,
-            },
-          );
-        }
+        });
+        const resp = await handleMessageAndCollectText(runtime, msg, {
+          timeoutMs: 90_000,
+        });
         if (resp.length === 0) {
           if (
             await shouldSkipDueModelProviderUnavailable(

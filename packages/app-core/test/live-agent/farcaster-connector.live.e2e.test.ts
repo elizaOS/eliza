@@ -24,14 +24,14 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { logger, type Plugin } from "@elizaos/core";
 import {
   extractPlugin,
   resolveFarcasterPluginImportSpecifier,
 } from "@elizaos/app-core";
-import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
-import { afterAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describeIf } from "../helpers/conditional-tests.ts";
 
 // ---------------------------------------------------------------------------
 // Environment Setup
@@ -295,7 +295,7 @@ describeIfPluginAvailable(
         const p = plugin as Plugin & { actions?: unknown[] };
         expect(p.actions).toBeDefined();
         expect(Array.isArray(p.actions)).toBe(true);
-        expect(p.actions?.length).toBeGreaterThan(0);
+        expect(p.actions!.length).toBeGreaterThan(0);
       },
       TEST_TIMEOUT,
     );
@@ -314,7 +314,7 @@ describeIfPluginAvailable(
             users?: Array<{ fid: number }>;
           };
           expect(data.users).toBeDefined();
-          expect(data.users?.length).toBeGreaterThan(0);
+          expect(data.users!.length).toBeGreaterThan(0);
         },
         TEST_TIMEOUT,
       );
@@ -339,7 +339,7 @@ describeIfPluginAvailable(
             return;
           }
           expect(typeof username).toBe("string");
-          expect(username?.length).toBeGreaterThan(0);
+          expect(username!.length).toBeGreaterThan(0);
         },
         TEST_TIMEOUT,
       );
@@ -614,7 +614,7 @@ describeIfLiveWrite("Farcaster Connector - Farcaster-Specific Features", () => {
       }
       expect(cast.embeds).toBeDefined();
       expect(Array.isArray(cast.embeds)).toBe(true);
-      expect(cast.embeds?.length).toBeGreaterThan(0);
+      expect(cast.embeds!.length).toBeGreaterThan(0);
     },
     LIVE_WRITE_TIMEOUT,
   );
@@ -711,7 +711,7 @@ describeIfLiveWrite("Farcaster Connector - Media & Attachments", () => {
       // The cast should have embeds array with the image URL
       expect(cast.embeds).toBeDefined();
       expect(Array.isArray(cast.embeds)).toBe(true);
-      expect(cast.embeds?.length).toBeGreaterThan(0);
+      expect(cast.embeds!.length).toBeGreaterThan(0);
     },
     LIVE_WRITE_TIMEOUT,
   );
@@ -778,7 +778,7 @@ describeIfLiveWrite("Farcaster Connector - Media & Attachments", () => {
       expect(cast.embeds).toBeDefined();
       expect(Array.isArray(cast.embeds)).toBe(true);
       // URL embed should be present
-      const hasUrlEmbed = cast.embeds?.some((e) => e.url !== undefined);
+      const hasUrlEmbed = cast.embeds!.some((e) => e.url !== undefined);
       expect(hasUrlEmbed).toBe(true);
     },
     LIVE_WRITE_TIMEOUT,
@@ -827,6 +827,7 @@ describeIfLive("Farcaster Connector - Error Handling", () => {
     },
     TEST_TIMEOUT,
   );
+
 });
 
 // ---------------------------------------------------------------------------

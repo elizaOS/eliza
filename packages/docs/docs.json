@@ -102,6 +102,8 @@
               "plugins/development",
               "plugins/patterns",
               "plugins/webhooks-and-routes",
+              "plugins/x402-paid-routes",
+              "plugins/x402-roadmap",
               "plugins/schemas",
               "plugins/migration",
               "plugins/reference"

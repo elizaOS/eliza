@@ -265,6 +265,76 @@ export function LifeOpsMoneySection(): JSX.Element | null {
     [openLifeOpsChat],
   );
 
+  /**
+   * Deep-link from a recurring-charge row to the SUBSCRIPTIONS cancellation
+   * flow. Two-stage UX:
+   *   1. First click — start the cancellation (executor: user_browser).
+   *      The agent opens the management URL and stops at the destructive
+   *      step. Cancellation status will return one of: awaiting_confirmation,
+   *      needs_login, needs_mfa, phone_only, chat_only, blocked, completed.
+   *   2. Second click — re-call with confirmed=true to execute the
+   *      destructive step.
+   * The button hands off to chat for any non-completed terminal state so the
+   * user can finish in a richer surface.
+   */
+  const onCancelRecurringCharge = useCallback(
+    async (charge: LifeOpsRecurringCharge, playbookKey: string) => {
+      try {
+        const summary = (await client.cancelLifeOpsSubscription({
+          serviceSlug: playbookKey,
+          executor: "user_browser",
+          confirmed: false,
+        })) as {
+          cancellation: { status: string; serviceName: string; error?: string };
+        };
+        const status = summary.cancellation.status;
+        if (status === "completed" || status === "already_canceled") {
+          window.alert(
+            `${summary.cancellation.serviceName} cancellation: ${status.replace("_", " ")}.`,
+          );
+          await refresh();
+          return;
+        }
+        if (
+          status === "awaiting_confirmation" ||
+          status === "needs_login" ||
+          status === "needs_mfa" ||
+          status === "phone_only" ||
+          status === "chat_only" ||
+          status === "blocked"
+        ) {
+          openLifeOpsChat(
+            [
+              `Cancellation for ${charge.merchantDisplay} is in state "${status}".`,
+              "Continue in chat — I'll guide you through the next step (login, MFA, retention prompts, or phone/chat handoff).",
+            ].join(" "),
+          );
+          return;
+        }
+        if (status === "failed" || status === "unsupported_surface") {
+          window.alert(
+            `Cancellation could not start: ${summary.cancellation.error ?? status}`,
+          );
+          return;
+        }
+      } catch (err) {
+        window.alert(
+          `Cancellation failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+    [openLifeOpsChat, refresh],
+  );
+
+  const playbookHitsByMerchant = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!dashboard?.recurringPlaybookHits) return map;
+    for (const hit of dashboard.recurringPlaybookHits) {
+      map.set(hit.merchantNormalized, hit.playbookKey);
+    }
+    return map;
+  }, [dashboard]);
+
   const annualRecurring = useMemo(() => {
     if (!dashboard) return 0;
     return dashboard.recurring.reduce(
@@ -505,6 +575,29 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                       {formatDate(charge.latestSeenAt)}
                     </td>
                     <td className="py-1.5 text-muted">
+                      {(() => {
+                        const playbookKey = playbookHitsByMerchant.get(
+                          charge.merchantNormalized,
+                        );
+                        if (playbookKey) {
+                          return (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void onCancelRecurringCharge(
+                                  charge,
+                                  playbookKey,
+                                )
+                              }
+                              className="mr-1 rounded border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20"
+                              title={`Open the cancellation flow for ${charge.merchantDisplay}`}
+                            >
+                              Cancel
+                            </button>
+                          );
+                        }
+                        return null;
+                      })()}
                       <button
                         type="button"
                         onClick={() => onChatAboutRecurringCharge(charge)}

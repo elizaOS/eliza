@@ -48,6 +48,7 @@ import {
   type AgentRuntime,
   type IAgentRuntime,
   logger,
+  type Route,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -67,6 +68,7 @@ import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.j
 import { CharacterSchema } from "../config/zod-schema.js";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+import { validateX402Startup } from "../middleware/x402/startup-validator.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import {
   type AgentEventPayloadLike,
@@ -4100,8 +4102,28 @@ export async function startApiServer(opts?: {
     registerClientChatSendHandler(opts.runtime, state);
   }
 
+  const assertX402RoutesValid = (rt: AgentRuntime | null | undefined): void => {
+    if (!rt?.routes?.length) return;
+    const agentId =
+      rt.agentId != null && String(rt.agentId).length > 0
+        ? String(rt.agentId)
+        : undefined;
+    const result = validateX402Startup(rt.routes as Route[], rt.character, {
+      agentId,
+    });
+    if (!result.valid) {
+      throw new Error(
+        `x402 configuration invalid:\n${result.errors.map((e) => `  • ${e}`).join("\n")}`,
+      );
+    }
+    for (const w of result.warnings) {
+      logger.warn(`[x402] ${w}`);
+    }
+  };
+
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
+    assertX402RoutesValid(rt);
     state.runtime = rt;
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
@@ -4177,6 +4199,11 @@ export async function startApiServer(opts?: {
   console.log(
     `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
   );
+  try {
+    assertX402RoutesValid(state.runtime);
+  } catch (err) {
+    return Promise.reject(err);
+  }
   return new Promise((resolve, reject) => {
     let currentPort = port;
 

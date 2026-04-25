@@ -383,9 +383,31 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       const latestAudit = await this.repository.getLatestSubscriptionAudit(
         this.agentId(),
       );
+      const recurringPlaybookHits = recurring
+        .map((charge) => {
+          const direct =
+            this.findSubscriptionPlaybookForMerchant(charge.merchantDisplay) ??
+            this.findSubscriptionPlaybookForMerchant(
+              charge.merchantNormalized,
+            );
+          if (!direct) {
+            return null;
+          }
+          return {
+            merchantNormalized: charge.merchantNormalized,
+            playbookKey: direct.key,
+            serviceName: direct.serviceName,
+            managementUrl: direct.managementUrl,
+            executorPreference: direct.executorPreference,
+          };
+        })
+        .filter(
+          (hit): hit is NonNullable<typeof hit> => hit !== null,
+        );
       return {
         sources,
         recurring,
+        recurringPlaybookHits,
         spending,
         gmailSubscriptionAuditId: latestAudit?.id ?? null,
         generatedAt: new Date().toISOString(),

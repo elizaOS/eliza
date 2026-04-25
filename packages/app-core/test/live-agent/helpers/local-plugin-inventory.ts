@@ -58,13 +58,15 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
   "..",
-  "..",
 );
 const PLUGIN_MANIFEST_PATH = path.join(REPO_ROOT, "plugins.json");
 
 let cachedPluginsPromise: Promise<LocalWorkspacePlugin[]> | null = null;
 
 function readPluginManifest(): PluginManifest {
+  if (!fs.existsSync(PLUGIN_MANIFEST_PATH)) {
+    return { plugins: [] };
+  }
   return JSON.parse(
     fs.readFileSync(PLUGIN_MANIFEST_PATH, "utf8"),
   ) as PluginManifest;
@@ -72,6 +74,9 @@ function readPluginManifest(): PluginManifest {
 
 function findPackageRoot(dirName: string): string | null {
   const candidates = [
+    path.join(REPO_ROOT, "plugins", dirName, "typescript"),
+    path.join(REPO_ROOT, "plugins", dirName),
+    path.join(REPO_ROOT, "packages", dirName),
     path.join(REPO_ROOT, "eliza", "plugins", dirName, "typescript"),
     path.join(REPO_ROOT, "eliza", "plugins", dirName),
     path.join(REPO_ROOT, "eliza", "packages", dirName),

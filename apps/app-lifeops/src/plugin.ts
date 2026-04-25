@@ -389,40 +389,15 @@ const rawAppLifeOpsPlugin: Plugin = {
   },
 };
 
-// Sanitize: filter out any undefined actions/providers/services so a broken
-// circular import during test load doesn't crash runtime.registerPlugin with
-// an opaque "Cannot read properties of undefined" error. Log what was dropped
-// so the underlying import cycle stays visible.
-function sanitizePlugin(plugin: Plugin): Plugin {
-  const filter = <T extends { name?: string }>(arr: readonly T[] | undefined, label: string): T[] => {
-    if (!arr) return [];
-    const kept: T[] = [];
-    arr.forEach((entry, index) => {
-      if (!entry || typeof (entry as { name?: unknown }).name !== "string") {
-        logger.warn(
-          `[app-lifeops plugin] dropped undefined or unnamed ${label} entry at index ${index}; likely a circular-import casualty`,
-        );
-        return;
-      }
-      kept.push(entry);
-    });
-    return kept;
-  };
-  return {
-    ...plugin,
-    actions: filter(plugin.actions as Array<{ name?: string }>, "action") as Plugin["actions"],
-    providers: filter(plugin.providers as Array<{ name?: string }>, "provider") as Plugin["providers"],
-    services: (plugin.services ?? []).filter((service) => {
-      if (!service) {
-        logger.warn("[app-lifeops plugin] dropped undefined service");
-        return false;
-      }
-      return true;
-    }) as Plugin["services"],
-  };
-}
+// Diagnostic: log any undefined actions/providers to surface cycles fast.
+(rawAppLifeOpsPlugin.actions ?? []).forEach((a, i) => {
+  if (!a || typeof (a as { name?: unknown }).name !== "string") {
+    // eslint-disable-next-line no-console
+    console.error(`[diag] action[${i}] is`, a, typeof a);
+  }
+});
 
-export const appLifeOpsPlugin: Plugin = sanitizePlugin(rawAppLifeOpsPlugin);
+export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
 export {
   runMorningCheckinAction,

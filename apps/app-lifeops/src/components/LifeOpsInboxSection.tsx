@@ -595,23 +595,18 @@ function InboxUnsubscribeButton({
   message,
 }: {
   message: LifeOpsInboxMessage;
-}): JSX.Element {
+}): JSX.Element | null {
+  const senderEmail = message.sender.email?.trim().toLowerCase() || null;
   const [state, setState] = useState<"idle" | "working" | "done" | "error">(
     "idle",
   );
   const [note, setNote] = useState<string | null>(null);
 
   const onClick = useCallback(async () => {
-    const senderEmail = message.sender.email?.trim().toLowerCase() || null;
-    if (!senderEmail) {
-      window.alert(
-        "This message does not include a sender email for unsubscribe.",
-      );
-      return;
-    }
+    if (!senderEmail) return;
     if (
       !window.confirm(
-        `Unsubscribe from ${senderEmail} and create a filter to auto-trash future mail?`,
+        `Unsubscribe from ${senderEmail} and create a Gmail filter that auto-trashes future mail?`,
       )
     ) {
       return;
@@ -630,7 +625,12 @@ function InboxUnsubscribeButton({
       setState("error");
       setNote(error instanceof Error ? error.message : String(error));
     }
-  }, [message.sender.email]);
+  }, [senderEmail]);
+
+  // Hide entirely when the message has no parsed From email (chat channels,
+  // malformed Gmail headers). Showing a button that can't work is worse than
+  // not showing it.
+  if (!senderEmail) return null;
 
   const label =
     state === "working"
@@ -648,7 +648,7 @@ function InboxUnsubscribeButton({
       className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
       disabled={state === "working" || state === "done"}
       onClick={() => void onClick()}
-      title="Send RFC 8058 one-click unsubscribe and create a Gmail filter"
+      title={`Send RFC 8058 one-click unsubscribe to ${senderEmail} and create a Gmail filter`}
     >
       {label}
     </Button>

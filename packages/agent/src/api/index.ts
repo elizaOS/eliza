@@ -1,3 +1,4 @@
+export * from "@elizaos/app-lifeops/routes/website-blocker-routes";
 export * from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 export * from "./agent-admin-routes.js";
 export * from "./agent-lifecycle-routes.js";

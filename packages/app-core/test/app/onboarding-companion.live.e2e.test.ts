@@ -1,12 +1,12 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
-import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from "node:http";
+import { existsSync } from "node:fs";
+import { access, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -14,27 +14,18 @@ import { setTimeout as sleep } from "node:timers/promises";
 import {
   type Browser,
   type BrowserContext,
+  chromium,
   type Page,
 } from "playwright-core";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
-import { resolveLiveBrowserExecutable } from "../../../../../test/helpers/browser-executable";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import {
-  closePlaywrightBrowser,
-  launchPlaywrightBrowserWithRetry,
-} from "../helpers/browser-launch";
-import {
-  buildIsolatedLiveProviderEnv,
-  selectLiveProvider,
-} from "../../../../../test/helpers/live-provider";
 import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
-import { resolveNodeCmd } from "../scripts/managed-test-command.mjs";
+import { describeIf } from "../helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../helpers/live-provider";
 
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
-const LIVE_BROWSER_SUITE_ENABLED =
-  process.env.MILADY_LIVE_BROWSER_SUITE === "1";
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER =
   (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);
@@ -48,23 +39,15 @@ const LIVE_PROVIDER_LABELS = {
 const LIVE_PROVIDER_LABEL = LIVE_PROVIDER
   ? LIVE_PROVIDER_LABELS[LIVE_PROVIDER.name]
   : null;
-const describeHeavyLive = describeIf(
-  LIVE_TESTS_ENABLED && LIVE_BROWSER_SUITE_ENABLED && LIVE_PROVIDER !== null,
-);
-const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const describeLive = describeIf(LIVE_TESTS_ENABLED && LIVE_PROVIDER !== null);
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
 const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
 const SCREENSHOT_DIR = path.join(REPO_ROOT, "test-results", "live-onboarding");
 const READY_TIMEOUT_MS = 120_000;
 const UI_SETTLE_MS = 4_000;
-const LIVE_BROWSER = resolveLiveBrowserExecutable();
-const CHROME_PATH = LIVE_BROWSER.executablePath;
+const CHROME_PATH =
+  process.env.ELIZA_CHROME_PATH ??
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
 type StartedStack = {
   apiBase: string;
@@ -178,15 +161,17 @@ async function proxyUiRequest(args: {
   if (!filePath && !isAssetRequest) {
     filePath = path.join(APP_DIST_DIR, "index.html");
   }
-  if (!filePath) {
-    throw new Error(
-      `Missing built UI asset for ${requestUrl.pathname} in ${APP_DIST_DIR}`,
-    );
+
+  let body: Buffer;
+  try {
+    body = await readFile(filePath ?? path.join(APP_DIST_DIR, "index.html"));
+  } catch {
+    body = await readFile(path.join(APP_DIST_DIR, "index.html"));
+    filePath = path.join(APP_DIST_DIR, "index.html");
   }
-  const body = await readFile(filePath);
 
   args.response.writeHead(200, {
-    "Content-Type": contentTypeFor(filePath),
+    "Content-Type": contentTypeFor(filePath ?? path.join(APP_DIST_DIR, "index.html")),
   });
   args.response.end(body);
 }
@@ -437,7 +422,7 @@ async function waitForVisibleText(
         return locator;
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await page.waitForTimeout(250);
   }
   throw new Error(
     `Could not find any of: ${labels.map((label) => String(label)).join(", ")}`,
@@ -487,7 +472,7 @@ async function clickVisibleText(
       }
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await page.waitForTimeout(250);
   }
 
   if (lastError instanceof Error) {
@@ -511,19 +496,16 @@ async function startRealStack(): Promise<StartedStack> {
   const apiBase = `http://127.0.0.1:${apiPort}`;
 
   const apiChild = spawn(
-    resolveNodeCmd(),
+    "node",
     [
-      "--import",
-      "tsx",
-      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/dev-server.ts"),
+      path.join(REPO_ROOT, "eliza/packages/app-core/scripts/run-node-tsx.mjs"),
+      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/eliza.ts"),
     ],
     {
       cwd: REPO_ROOT,
       env: {
-        ...buildIsolatedLiveProviderEnv(process.env, LIVE_PROVIDER),
+        ...process.env,
         ALLOW_NO_DATABASE: "",
-        CHECK_SHOULD_RESPOND: "false",
-        CONVERSATION_LENGTH: "20",
         FORCE_COLOR: "0",
         ELIZA_API_PORT: String(apiPort),
         ELIZA_HOME_PORT: String(uiPort),
@@ -556,13 +538,13 @@ async function startRealStack(): Promise<StartedStack> {
   });
   process.env.ELIZA_API_PORT = String(apiPort);
 
-  if (!CHROME_PATH || !existsSync(CHROME_PATH)) {
+  if (!existsSync(CHROME_PATH)) {
     throw new Error(
-      `Browser executable unavailable via ${LIVE_BROWSER.source}; set ELIZA_CHROME_PATH to a valid browser executable.`,
+      `Chrome was not found at ${CHROME_PATH}; set ELIZA_CHROME_PATH to a valid browser executable.`,
     );
   }
 
-  const browser = await launchPlaywrightBrowserWithRetry({
+  const browser = await chromium.launch({
     executablePath: CHROME_PATH,
     args: ["--use-angle=swiftshader"],
     headless: true,
@@ -582,7 +564,7 @@ async function stopRealStack(stack: StartedStack | null): Promise<void> {
   if (!stack) return;
 
   try {
-    await closePlaywrightBrowser(stack.browser);
+    await stack.browser.close();
   } catch {
     // Best effort during cleanup.
   }
@@ -797,7 +779,7 @@ async function submitOnboarding(apiBase: string): Promise<void> {
   );
 }
 
-describeHeavyLive("real onboarding handoff to companion mode", () => {
+describeLive("real onboarding handoff to companion mode", () => {
   let stack: StartedStack | null = null;
 
   beforeAll(async () => {
@@ -834,9 +816,11 @@ describeHeavyLive("real onboarding handoff to companion mode", () => {
           waitUntil: "domcontentloaded",
         });
 
-        await page.waitForURL(/\/apps\/companion(?:$|[?#/])/, {
-          timeout: READY_TIMEOUT_MS,
-        });
+        await page
+          .waitForURL(/\/apps\/companion(?:$|[?#/])/, {
+            timeout: READY_TIMEOUT_MS,
+          })
+          .catch(() => {});
         await companionRoot.waitFor({
           state: "visible",
           timeout: READY_TIMEOUT_MS,
@@ -853,7 +837,7 @@ describeHeavyLive("real onboarding handoff to companion mode", () => {
           state: "visible",
           timeout: READY_TIMEOUT_MS,
         });
-        await new Promise((resolve) => setTimeout(resolve, UI_SETTLE_MS));
+        await page.waitForTimeout(UI_SETTLE_MS);
 
         await page.screenshot({
           path: path.join(

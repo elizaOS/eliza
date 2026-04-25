@@ -20,12 +20,31 @@ vi.mock("../../state", () => ({
 
 vi.mock("../../api/client", () => ({
   client: {
+    getBaseUrl: () => "http://127.0.0.1:3000",
+    getRestAuthToken: () => null,
     getComputerUseApprovals: (...args: unknown[]) =>
       getComputerUseApprovalsMock(...args),
     respondToComputerUseApproval: (...args: unknown[]) =>
       respondToComputerUseApprovalMock(...args),
   },
 }));
+
+/**
+ * The overlay prefers SSE, then falls back to polling. A silent stub never
+ * triggers `onerror`, so the component would never call `getComputerUseApprovals`
+ * (see useEffect) — fire `onerror` after handlers are attached, like a failed stream.
+ */
+class NoopEventSource {
+  onmessage: ((ev: MessageEvent) => void) | null = null;
+  onerror: ((ev: Event) => void) | null = null;
+  close = vi.fn();
+  constructor() {
+    setTimeout(() => {
+      this.onerror?.(new Event("error"));
+    }, 0);
+  }
+}
+vi.stubGlobal("EventSource", NoopEventSource);
 
 describe("ComputerUseApprovalOverlay", () => {
   beforeEach(() => {

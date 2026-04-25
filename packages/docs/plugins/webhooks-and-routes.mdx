@@ -7,6 +7,8 @@ description: "How to expose HTTP endpoints and send messages as agents using plu
 
 Plugins in elizaOS can expose HTTP routes that act as webhooks, allowing external services to trigger agent actions and send messages on behalf of agents. This enables powerful integrations with third-party services, automated workflows, and custom APIs.
 
+For **HTTP 402 micropayments (x402)** on plugin routes (paid APIs, wallet flows, test mode, and buyer clients), see [x402 paid plugin routes](/plugins/x402-paid-routes) and the [x402 roadmap](/plugins/x402-roadmap) for protocol alignment and planned work.
+
 ## Defining Routes in Plugins
 
 Routes are defined in your plugin's main export using the `routes` property. Each route specifies an HTTP method, path, and handler function.
