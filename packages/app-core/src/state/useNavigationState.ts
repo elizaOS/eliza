@@ -14,7 +14,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { pathForTab, type Tab } from "../navigation";
+import { pathForTab, shouldUseHashNavigation, type Tab } from "../navigation";
 import {
   loadLastNativeTab,
   normalizeUiShellMode,
@@ -65,7 +65,7 @@ export function useNavigationState(deps: NavigationStateDeps) {
       }
       const path = pathForTab(newTab);
       try {
-        if (window.location.protocol === "file:") {
+        if (shouldUseHashNavigation()) {
           window.location.hash = path;
         } else {
           window.history.pushState(null, "", path);
