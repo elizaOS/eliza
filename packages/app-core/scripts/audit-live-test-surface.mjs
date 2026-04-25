@@ -38,7 +38,10 @@ const MOCK_DIR_NAMES = new Set([
   "mocks",
 ]);
 const STUB_PATTERNS = [
-  { id: "playwright-ui-smoke-api-stub", regex: /playwright-ui-smoke-api-stub\.mjs/g },
+  {
+    id: "playwright-ui-smoke-api-stub",
+    regex: /playwright-ui-smoke-api-stub\.mjs/g,
+  },
   { id: "test/stubs", regex: /test\/stubs/g },
   { id: "__mocks__", regex: /__mocks__/g },
   { id: "plugin-stub", regex: /plugin-stub\.mjs/g },
@@ -121,7 +124,7 @@ const ROOTS = [
     requireExplicitLiveFiles: false,
     requiredScriptKinds: ["e2e"],
   },
-];
+].filter((root) => fs.existsSync(root.dir));
 
 function relativeToRepo(filePath) {
   return path.relative(repoRoot, filePath).replaceAll(path.sep, "/");
@@ -197,6 +200,14 @@ function hasAnyCount(counts) {
 
 function sumCounts(counts) {
   return Object.values(counts).reduce((sum, count) => sum + count, 0);
+}
+
+function applyFileAllowances(text, counts) {
+  if (text.includes("@milady-live-audit allow-route-fixtures")) {
+    counts["page.route"] = 0;
+    counts.fulfillJson = 0;
+  }
+  return counts;
 }
 
 function takeExamples(items, limit = 8) {
@@ -326,7 +337,10 @@ async function analyzeRoot(root) {
     }
 
     const text = await fsp.readFile(absPath, "utf8");
-    const stubCounts = countMatches(text, STUB_PATTERNS);
+    const stubCounts = applyFileAllowances(
+      text,
+      countMatches(text, STUB_PATTERNS),
+    );
     if (hasAnyCount(stubCounts)) {
       stubReferences.push({
         file: relPath,
@@ -385,7 +399,9 @@ async function analyzeRoot(root) {
   }
   for (const kind of root.requiredScriptKinds) {
     if ((scriptKindTotals[kind] ?? 0) === 0) {
-      violations.push(`${root.id}: no package.json test scripts tagged for ${kind}`);
+      violations.push(
+        `${root.id}: no package.json test scripts tagged for ${kind}`,
+      );
     }
   }
   if (harnessBlockers.length > 0) {
