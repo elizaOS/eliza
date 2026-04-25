@@ -63,7 +63,7 @@ function resolveCloudConfig(): ResolvedCloudConfig {
     // Fall through to env.
   }
   const apiKey = configKey ?? normalizeApiKey(process.env.ELIZAOS_CLOUD_API_KEY);
-  const baseUrl = configBase ?? process.env.ELIZAOS_CLOUD_BASE_URL ?? null;
+  const baseUrl = configBase ?? process.env.ELIZAOS_CLOUD_BASE_URL ?? undefined;
   return {
     configured: Boolean(apiKey),
     apiKey,

@@ -76,7 +76,7 @@ export async function replayGuardTryBegin(
         // Already in-flight in this process — release the durable reservation
         // we just took so it does not linger until TTL expiry and block
         // subsequent legitimate attempts for the same credential.
-        if (durableOwner) {
+        if (durableOwner && runtime) {
           await durableReplayAbortReservation(
             runtime,
             agentId,
