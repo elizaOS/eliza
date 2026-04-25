@@ -326,7 +326,7 @@ async function verifyPayment(
             standardDecoded,
             paymentRequirements,
           );
-          if (!postResult.ok) {
+          if (postResult.ok !== true) {
             log(
               "Standard X-Payment facilitator verify failed:",
               postResult.invalidReason,
