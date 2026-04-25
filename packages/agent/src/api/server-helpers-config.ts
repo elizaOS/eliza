@@ -14,7 +14,7 @@ import {
   getDefaultStylePreset,
   getStylePresets,
   normalizeCharacterLanguage,
-} from "../onboarding-presets.js";
+} from "@elizaos/shared/onboarding-presets";
 import { sendJsonError } from "./http-helpers.js";
 import { generateWalletKeys, setSolanaWalletEnv } from "./wallet.js";
 

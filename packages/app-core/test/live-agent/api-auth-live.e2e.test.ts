@@ -7,23 +7,23 @@
 
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { config as loadDotenv } from "dotenv";
-import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import {
-  createConversation,
-  postConversationMessage,
-  req,
-} from "../../../../../test/helpers/http";
+import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
+import { describeIf } from "../helpers/conditional-tests.ts";
 import {
   buildIsolatedLiveProviderEnv,
   isLiveTestEnabled,
   LIVE_PROVIDER_ENV_KEYS,
   selectLiveProvider,
-} from "../../../../../test/helpers/live-provider";
-import { createRealTestRuntime } from "../../../../../test/helpers/real-runtime";
-import { saveEnv } from "../../../../../test/helpers/test-utils";
+} from "../helpers/live-provider";
+import { createRealTestRuntime } from "../helpers/real-runtime";
+import { saveEnv } from "../helpers/test-utils";
+import {
+  createConversation,
+  postConversationMessage,
+  req,
+} from "../helpers/http";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
 loadDotenv({ path: envPath });

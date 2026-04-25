@@ -92,9 +92,23 @@ export interface LifeOpsSpendingSummary {
   }>;
 }
 
+export interface LifeOpsRecurringChargePlaybookHit {
+  merchantNormalized: string;
+  playbookKey: string;
+  serviceName: string;
+  managementUrl: string;
+  executorPreference: "user_browser" | "agent_browser" | "desktop_native";
+}
+
 export interface LifeOpsPaymentsDashboard {
   sources: LifeOpsPaymentSource[];
   recurring: LifeOpsRecurringCharge[];
+  /**
+   * For every recurring charge whose merchant matches a known cancellation
+   * playbook (Netflix, Spotify, NYT, etc.), this map carries the playbook
+   * descriptor. UI shows a deep-link "Cancel" button only when there is a hit.
+   */
+  recurringPlaybookHits: LifeOpsRecurringChargePlaybookHit[];
   spending: LifeOpsSpendingSummary;
   gmailSubscriptionAuditId: string | null;
   generatedAt: string;

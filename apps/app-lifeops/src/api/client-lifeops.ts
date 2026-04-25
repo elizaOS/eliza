@@ -293,6 +293,40 @@ declare module "@elizaos/app-core/api/client-base" {
     scanLifeOpsEmailSubscriptions(): Promise<
       import("../lifeops/email-unsubscribe-types.js").EmailSubscriptionScanResult
     >;
+    lookupLifeOpsSubscriptionPlaybook(merchant: string): Promise<{
+      playbook: {
+        key: string;
+        serviceName: string;
+        managementUrl: string;
+        executorPreference:
+          | "user_browser"
+          | "agent_browser"
+          | "desktop_native";
+      } | null;
+    }>;
+    listLifeOpsSubscriptionPlaybooks(): Promise<{
+      playbooks: Array<{
+        key: string;
+        serviceName: string;
+        aliases: string[];
+        managementUrl: string;
+        executorPreference:
+          | "user_browser"
+          | "agent_browser"
+          | "desktop_native";
+      }>;
+    }>;
+    cancelLifeOpsSubscription(data: {
+      serviceName?: string | null;
+      serviceSlug?: string | null;
+      candidateId?: string | null;
+      executor?:
+        | "user_browser"
+        | "agent_browser"
+        | "desktop_native"
+        | null;
+      confirmed?: boolean;
+    }): Promise<unknown>;
     unsubscribeLifeOpsEmailSender(data: {
       senderEmail: string;
       blockAfter?: boolean;
@@ -724,6 +758,32 @@ ElizaClient.prototype.scanLifeOpsEmailSubscriptions = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/email-unsubscribe/scan", { method: "POST" });
+};
+
+ElizaClient.prototype.lookupLifeOpsSubscriptionPlaybook = async function (
+  this: ElizaClient,
+  merchant: string,
+) {
+  const params = new URLSearchParams({ merchant });
+  return this.fetch(
+    `/api/lifeops/subscriptions/playbook-lookup?${params.toString()}`,
+  );
+};
+
+ElizaClient.prototype.listLifeOpsSubscriptionPlaybooks = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/subscriptions/playbooks");
+};
+
+ElizaClient.prototype.cancelLifeOpsSubscription = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/subscriptions/cancel", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.unsubscribeLifeOpsEmailSender = async function (

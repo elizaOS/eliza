@@ -2216,6 +2216,56 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/subscriptions/playbook-lookup"
+  ) {
+    return runRoute(ctx, async (service) => {
+      const merchant = url.searchParams.get("merchant") ?? "";
+      const playbook = service.findSubscriptionPlaybookForMerchant(merchant);
+      json(res, { playbook });
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/subscriptions/playbooks") {
+    return runRoute(ctx, async (service) => {
+      const playbooks = await service.listSubscriptionPlaybooks();
+      // Trim to a UI-friendly summary; the full step machinery isn't useful
+      // to the client and leaks fixture-only entries we don't want exposed.
+      const summary = playbooks
+        .filter((playbook) => !playbook.key.startsWith("fixture_"))
+        .map((playbook) => ({
+          key: playbook.key,
+          serviceName: playbook.serviceName,
+          aliases: playbook.aliases,
+          managementUrl: playbook.managementUrl,
+          executorPreference: playbook.executorPreference,
+        }));
+      json(res, { playbooks: summary });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/subscriptions/cancel") {
+    const body = await readJsonBody<{
+      serviceName?: string | null;
+      serviceSlug?: string | null;
+      candidateId?: string | null;
+      executor?: "user_browser" | "agent_browser" | "desktop_native" | null;
+      confirmed?: boolean;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const summary = await service.cancelSubscription({
+        candidateId: body.candidateId ?? null,
+        serviceName: body.serviceName ?? null,
+        serviceSlug: body.serviceSlug ?? null,
+        executor: body.executor ?? null,
+        confirmed: body.confirmed ?? false,
+      });
+      json(res, summary);
+    });
+  }
+
   if (method === "POST" && pathname === "/api/lifeops/email-unsubscribe/scan") {
     return runRoute(ctx, async (service) => {
       const requestUrl = ctx.url;

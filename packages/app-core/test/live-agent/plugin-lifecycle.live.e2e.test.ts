@@ -32,7 +32,6 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
   "..",
-  "..",
 );
 loadDotenv({ path: path.join(REPO_ROOT, ".env") });
 

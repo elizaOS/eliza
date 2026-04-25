@@ -483,6 +483,30 @@ export function withSubscriptions<
       return [...listLifeOpsSubscriptionPlaybooks()];
     }
 
+    /**
+     * Best-effort merchant→playbook lookup used by the Payments dashboard to
+     * deep-link from a recurring charge row to the cancellation flow. Returns
+     * a *trimmed* playbook descriptor (no `steps`) so callers don't render
+     * automation internals.
+     */
+    findSubscriptionPlaybookForMerchant(merchant: string): {
+      key: string;
+      serviceName: string;
+      managementUrl: string;
+      executorPreference: LifeOpsSubscriptionPlaybook["executorPreference"];
+    } | null {
+      const playbook = findLifeOpsSubscriptionPlaybook(merchant);
+      if (!playbook) {
+        return null;
+      }
+      return {
+        key: playbook.key,
+        serviceName: playbook.serviceName,
+        managementUrl: playbook.managementUrl,
+        executorPreference: playbook.executorPreference,
+      };
+    }
+
     async getLatestSubscriptionAudit(): Promise<LifeOpsSubscriptionAuditSummary | null> {
       const audit = await this.repository.getLatestSubscriptionAudit(
         this.agentId(),
