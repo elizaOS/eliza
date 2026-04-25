@@ -50,11 +50,11 @@ type MutateActionParams = {
     | "archive"
     | "trash"
     | "delete"
+    | "report_spam"
     | "mark_read"
     | "mark_unread"
-    | "star"
-    | "unstar"
-    | "report_spam";
+    | "apply_label"
+    | "remove_label";
   messageIds?: string[];
   query?: string;
   maxResults?: number;
@@ -73,7 +73,7 @@ type MutateActionParams = {
   startAt?: string;
   endAt?: string;
   timeZone?: string;
-  attendees?: { email?: string; displayName?: string }[];
+  attendees?: { email: string; displayName?: string; optional?: boolean }[];
 
   // reminder_snooze
   occurrenceId?: string;
@@ -654,7 +654,7 @@ export const lifeOpsMutateAction: Action & {
     {
       name: "operation",
       description:
-        "gmail_manage only — archive | trash | delete | mark_read | mark_unread | star | unstar | report_spam.",
+        "gmail_manage only — archive | trash | delete | report_spam | mark_read | mark_unread | apply_label | remove_label.",
       required: false,
       schema: {
         type: "string" as const,
@@ -662,11 +662,11 @@ export const lifeOpsMutateAction: Action & {
           "archive",
           "trash",
           "delete",
+          "report_spam",
           "mark_read",
           "mark_unread",
-          "star",
-          "unstar",
-          "report_spam",
+          "apply_label",
+          "remove_label",
         ],
       },
     },
