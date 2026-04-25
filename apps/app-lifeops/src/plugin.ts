@@ -389,14 +389,6 @@ const rawAppLifeOpsPlugin: Plugin = {
   },
 };
 
-// Diagnostic: log any undefined actions/providers to surface cycles fast.
-(rawAppLifeOpsPlugin.actions ?? []).forEach((a, i) => {
-  if (!a || typeof (a as { name?: unknown }).name !== "string") {
-    // eslint-disable-next-line no-console
-    console.error(`[diag] action[${i}] is`, a, typeof a);
-  }
-});
-
 export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
 export {
