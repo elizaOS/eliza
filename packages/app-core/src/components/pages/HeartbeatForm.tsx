@@ -710,7 +710,11 @@ function EventInputSection({
 
       {form.eventKind.trim() && (
         <div className="rounded-lg border border-border/30 bg-bg/30 px-4 py-3 text-xs text-muted">
-          Runs when <span className="font-medium text-txt">{humanizeEventKind(form.eventKind)}</span> arrives.
+          Runs when{" "}
+          <span className="font-medium text-txt">
+            {humanizeEventKind(form.eventKind)}
+          </span>{" "}
+          arrives.
         </div>
       )}
     </div>
@@ -801,7 +805,8 @@ function SchedulePreview({
         </div>
       ) : preview.kind === "event" ? (
         <p className="text-xs text-muted">
-          Waiting for <span className="font-medium text-txt">{preview.label}</span>.
+          Waiting for{" "}
+          <span className="font-medium text-txt">{preview.label}</span>.
         </p>
       ) : (
         <div>

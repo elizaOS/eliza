@@ -213,7 +213,8 @@ describe("BrowserWorkspaceView", () => {
   });
 
   it("locks internal tabs so the URL cannot be edited and the tab cannot be closed", async () => {
-    clientMock!.getBrowserWorkspace.mockResolvedValue({
+    const mockClient = getClientMock();
+    mockClient.getBrowserWorkspace.mockResolvedValue({
       mode: "web",
       tabs: [
         {
