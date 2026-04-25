@@ -132,15 +132,32 @@ export async function replayGuardCommit(
 ): Promise<void> {
   const useDurable = isDurableReplayEnabled() && runtime != null;
   const exp = Date.now() + replayWindowMs();
-  const owner = keys
-    .map((k) => durableReservationOwners.get(k))
-    .find((x): x is string => typeof x === "string");
+  // Require all keys to map to the same owner. If owners diverge, the
+  // in-process map raced with another request — drop the owner so the durable
+  // layer can no-op the owner-bound path instead of recording wrong lineage.
+  let owner: string | undefined;
+  let ownerConsistent = true;
+  for (const k of keys) {
+    const o = durableReservationOwners.get(k);
+    if (typeof o !== "string") continue;
+    if (owner === undefined) {
+      owner = o;
+    } else if (owner !== o) {
+      ownerConsistent = false;
+      break;
+    }
+  }
   for (const k of keys) {
     inflight.delete(k);
     durableReservationOwners.delete(k);
   }
   if (useDurable && keys.length > 0 && runtime) {
-    await durableReplayCommitReservation(runtime, agentId, keys, owner);
+    await durableReplayCommitReservation(
+      runtime,
+      agentId,
+      keys,
+      ownerConsistent ? owner : undefined,
+    );
   } else if (!useDurable) {
     for (const k of keys) consumedMemory.set(k, exp);
   }
