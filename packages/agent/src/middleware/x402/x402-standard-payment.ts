@@ -471,13 +471,24 @@ export async function settlePaymentPayloadViaFacilitatorPost(
       }
     }
 
-    // Some facilitators return HTTP 200 with `{ success: false }` on business
-    // errors. Why not `res.ok` alone: that would treat “200 + failure JSON” as
-    // success and unlock paid routes incorrectly.
+    if (!res.ok) {
+      return {
+        ok: false,
+        invalidReason:
+          typeof body.errorReason === "string"
+            ? body.errorReason
+            : typeof body.invalidReason === "string"
+              ? body.invalidReason
+              : `settle_http_${res.status}`,
+      };
+    }
+
+    // Must match verify semantics: do not treat bare HTTP 200 or `{}` as
+    // settlement. Require explicit `success: true` or `isValid: true` (some
+    // facilitators return `{ success: false }` on 200 for business errors).
     const explicitFailure = body.success === false || body.isValid === false;
-    const success =
-      !explicitFailure &&
-      (body.success === true || body.isValid === true || res.ok);
+    const explicitSuccess = body.success === true || body.isValid === true;
+    const success = !explicitFailure && explicitSuccess;
     if (!success) {
       return {
         ok: false,

@@ -343,11 +343,14 @@ async function verifyPayment(
                 proofId: standardDecoded.payload.signature,
                 paymentResponse: settleResult.paymentResponse,
               });
-            } else if (postResult.ok === false) {
+            } else {
               log(
                 "Standard X-Payment facilitator verify failed:",
                 postResult.invalidReason,
               );
+              // Do not fall through to legacy JSON / local EIP-712 paths with the
+              // same header — the facilitator has already rejected this credential.
+              return { ok: false };
             }
           }
         }
