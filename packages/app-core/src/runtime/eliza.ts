@@ -27,10 +27,13 @@ import {
   type AgentRuntime,
   AutonomyService,
   ChannelType,
+  EventType,
   logger,
+  type Memory,
   ModelType,
   type Plugin,
   stringToUuid,
+  type UUID,
 } from "@elizaos/core";
 
 export {
@@ -716,6 +719,44 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
           logger.info(
             `[eliza] Telegram message from @${username}: ${text.substring(0, 80)}`,
           );
+
+          // Surface the inbound Telegram message on the runtime event bus
+          // so event-kind triggers (Session 2 G1 bridge → executeTriggerTask)
+          // can fire on real Telegram messages. Without this hop the Milady
+          // shim handles the chat reply via useModel directly and bypasses
+          // messageService entirely — DoD-F4 fails (Session 17b finding).
+          // Build a minimal Memory that satisfies the event-bus contract;
+          // the trigger-event-bridge only reads roomId / source / kind.
+          try {
+            const telegramRoomId = stringToUuid(
+              `telegram:${chatId}`,
+            ) as UUID;
+            const entityId = stringToUuid(
+              `telegram-user:${username}:${chatId}`,
+            ) as UUID;
+            const memory: Memory = {
+              id: stringToUuid(
+                `telegram:${chatId}:${ctx.message.from?.username ?? ""}:${Date.now()}`,
+              ) as UUID,
+              entityId,
+              agentId: runtime.agentId,
+              roomId: telegramRoomId,
+              content: {
+                text,
+                source: "telegram",
+              },
+              createdAt: Date.now(),
+            };
+            await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+              runtime,
+              message: memory,
+              source: "telegram",
+            });
+          } catch (emitErr) {
+            logger.warn(
+              `[eliza] Telegram MESSAGE_RECEIVED emit failed: ${emitErr instanceof Error ? emitErr.message : String(emitErr)}`,
+            );
+          }
 
           let history = chatHistories.get(chatId);
           if (!history) {
