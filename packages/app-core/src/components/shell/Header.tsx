@@ -1,10 +1,11 @@
 import { Button } from "@elizaos/ui";
-import { ListTodo, Settings } from "lucide-react";
+import { ChevronRight, ListTodo, Settings } from "lucide-react";
 import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useMemo } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useMediaQuery } from "../../hooks";
 import { getTabGroups, type TabGroup } from "../../navigation";
+import { getOverlayApp } from "../apps/overlay-app-registry";
 import {
   isDetachedWindowShell,
   resolveWindowShellRoute,
@@ -93,6 +94,9 @@ export function Header({
   onToggleTasksPanel,
 }: HeaderProps) {
   const {
+    activeGameRunId,
+    activeOverlayApp,
+    appRuns,
     browserEnabled,
     chatLastUsage,
     conversationMessages,
@@ -194,6 +198,72 @@ export function Header({
     () => tabGroups.filter((group) => group.label !== "Settings"),
     [tabGroups],
   );
+
+  // ── Active-app breadcrumb ────────────────────────────────────────────
+  // Surfaces "Apps > <AppName>" in the header center so the user knows which
+  // app they're inside. Resolves the display name from either an active
+  // overlay app (registered via overlay-app-registry) or an active game run
+  // (looked up in appRuns by runId). Hides when neither is active.
+  const activeAppCrumbLabel = useMemo(() => {
+    if (activeGameRunId) {
+      const run = appRuns.find((entry) => entry.runId === activeGameRunId);
+      if (run) {
+        return (run.displayName ?? run.appName ?? "").trim() || null;
+      }
+    }
+    if (activeOverlayApp) {
+      const overlay = getOverlayApp(activeOverlayApp);
+      if (overlay) {
+        return (overlay.displayName ?? overlay.name ?? "").trim() || null;
+      }
+      return activeOverlayApp;
+    }
+    return null;
+  }, [activeGameRunId, activeOverlayApp, appRuns]);
+
+  const handleAppCrumbHomeClick = useCallback(() => {
+    setState("activeOverlayApp", null);
+    setState("activeGameRunId", "");
+    setTab("apps");
+  }, [setState, setTab]);
+
+  const appsLabel = useMemo(() => {
+    const fallback = "Apps";
+    const key = NAV_LABEL_I18N_KEY.Apps;
+    if (!key) return fallback;
+    const localized = t(key, { defaultValue: fallback });
+    return localized || fallback;
+  }, [t]);
+
+  const breadcrumbNode = activeAppCrumbLabel ? (
+    <nav
+      className="flex min-w-0 items-center gap-1 px-2 text-xs"
+      aria-label={t("aria.breadcrumb", { defaultValue: "Page location" })}
+      data-testid="header-breadcrumb"
+      data-no-camera-drag="true"
+    >
+      <button
+        type="button"
+        onClick={handleAppCrumbHomeClick}
+        onPointerDown={stopHeaderPointerPropagation}
+        data-testid="header-breadcrumb-home"
+        className="truncate rounded-[var(--radius-sm)] px-1 py-0.5 font-medium text-muted transition-colors hover:bg-bg-hover/40 hover:text-txt"
+      >
+        {appsLabel}
+      </button>
+      <ChevronRight
+        className="h-3 w-3 shrink-0 text-muted/60"
+        aria-hidden="true"
+      />
+      <span
+        className="truncate px-1 py-0.5 font-medium text-txt"
+        data-testid="header-breadcrumb-current"
+        title={activeAppCrumbLabel}
+      >
+        {activeAppCrumbLabel}
+      </span>
+    </nav>
+  ) : null;
 
   const localizeTabGroup = useCallback(
     (group: TabGroup) => ({
@@ -484,15 +554,24 @@ export function Header({
                     );
                   })}
                 </nav>
-                <div
-                  className="pointer-events-none h-[2.375rem] w-[clamp(3rem,8vw,8rem)] min-w-0"
-                  data-testid={
-                    showMacDesktopTitleBar
-                      ? "desktop-window-titlebar-drag-zone"
-                      : undefined
-                  }
-                  aria-hidden="true"
-                />
+                {breadcrumbNode ? (
+                  <div
+                    className="flex h-[2.375rem] min-w-0 items-center justify-center"
+                    data-no-camera-drag="true"
+                  >
+                    {breadcrumbNode}
+                  </div>
+                ) : (
+                  <div
+                    className="pointer-events-none h-[2.375rem] w-[clamp(3rem,8vw,8rem)] min-w-0"
+                    data-testid={
+                      showMacDesktopTitleBar
+                        ? "desktop-window-titlebar-drag-zone"
+                        : undefined
+                    }
+                    aria-hidden="true"
+                  />
+                )}
                 {rightDesktopControls}
               </>
             )}

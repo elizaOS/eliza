@@ -32,7 +32,7 @@ import {
 import { LifeOpsXPanel } from "./LifeOpsOperationalPanels";
 import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
-import { LifeOpsPaymentsSection } from "./LifeOpsPaymentsSection.js";
+import { LifeOpsMoneySection } from "./LifeOpsMoneySection.js";
 import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
 import { LifeOpsScreenTimeSection } from "./LifeOpsScreenTimeSection.js";
 import {
@@ -982,8 +982,8 @@ function LifeOpsWorkspaceInner() {
         );
       case "reminders":
         return <LifeOpsRemindersSection />;
-      case "payments":
-        return <LifeOpsPaymentsSection />;
+      case "money":
+        return <LifeOpsMoneySection />;
       case "setup":
         return (
           <LifeOpsSettingsSectionView

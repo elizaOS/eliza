@@ -59,6 +59,32 @@ export interface InboundMessage {
   gmailMessageId?: string;
   gmailIsImportant?: boolean;
   gmailLikelyReplyNeeded?: boolean;
+
+  // ---------------------------------------------------------------------------
+  // Optional schema additions for downstream LifeOps inbox features.
+  // Producers may omit any of these; consumers must treat them as optional.
+  // ---------------------------------------------------------------------------
+
+  /** Stable per-conversation key. For chat: roomId. For Gmail: thread id. */
+  threadId?: string;
+  /** Identifies which Google grant the message came from when multiple Gmail accounts exist. */
+  gmailAccountId?: string;
+  /** Display label for the Gmail account (e.g., `work@example.com`). */
+  gmailAccountEmail?: string;
+  /** ISO timestamp of when the user last viewed this thread. */
+  lastSeenAt?: string;
+  /** ISO timestamp if the user has replied since this message arrived. */
+  repliedAt?: string;
+  /** 0–100 score; higher = more important. */
+  priorityScore?: number;
+  /**
+   * DM, small/medium group chat, or public channel/broadcast.
+   * Mirrors the existing `channelType` field but with broader coverage; downstream
+   * code will migrate from `channelType` to `chatType` over time.
+   */
+  chatType?: "dm" | "group" | "channel";
+  /** For groups, number of participants. */
+  participantCount?: number;
 }
 
 // ---------------------------------------------------------------------------

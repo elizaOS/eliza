@@ -9,6 +9,7 @@ import { decodePathComponent as httpDecodePathComponent } from "@elizaos/agent/a
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
+import { handleSleepRoutes } from "./sleep-routes.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
 import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
 
@@ -188,12 +189,12 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/screen-time/breakdown" },
   { type: "GET", path: "/api/lifeops/social/summary" },
   { type: "GET", path: "/api/lifeops/overview" },
-  { type: "GET", path: "/api/lifeops/payments/dashboard" },
-  { type: "GET", path: "/api/lifeops/payments/sources" },
-  { type: "POST", path: "/api/lifeops/payments/sources" },
-  { type: "POST", path: "/api/lifeops/payments/import-csv" },
-  { type: "GET", path: "/api/lifeops/payments/transactions" },
-  { type: "GET", path: "/api/lifeops/payments/recurring" },
+  { type: "GET", path: "/api/lifeops/money/dashboard" },
+  { type: "GET", path: "/api/lifeops/money/sources" },
+  { type: "POST", path: "/api/lifeops/money/sources" },
+  { type: "POST", path: "/api/lifeops/money/import-csv" },
+  { type: "GET", path: "/api/lifeops/money/transactions" },
+  { type: "GET", path: "/api/lifeops/money/recurring" },
   { type: "POST", path: "/api/lifeops/email-unsubscribe/scan" },
   { type: "POST", path: "/api/lifeops/email-unsubscribe/unsubscribe" },
   { type: "GET", path: "/api/lifeops/seed-templates" },
@@ -210,8 +211,8 @@ const LIFEOPS_STATIC_ROUTES: Array<{
 // ---------------------------------------------------------------------------
 
 const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
-  // /api/lifeops/payments/sources/:sourceId
-  { type: "DELETE", path: "/api/lifeops/payments/sources/:sourceId" },
+  // /api/lifeops/money/sources/:sourceId
+  { type: "DELETE", path: "/api/lifeops/money/sources/:sourceId" },
   // /api/lifeops/calendar/events/:eventId
   { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
   { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },
@@ -247,6 +248,16 @@ const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
 ];
 
 // ---------------------------------------------------------------------------
+// Sleep routes (history / regularity / baseline)
+// ---------------------------------------------------------------------------
+
+const LIFEOPS_SLEEP_ROUTES: Array<{ type: string; path: string }> = [
+  { type: "GET", path: "/api/lifeops/sleep/history" },
+  { type: "GET", path: "/api/lifeops/sleep/regularity" },
+  { type: "GET", path: "/api/lifeops/sleep/baseline" },
+];
+
+// ---------------------------------------------------------------------------
 // Website-blocker routes
 // ---------------------------------------------------------------------------
 
@@ -278,6 +289,23 @@ function lifeOpsRouteHandler(): PluginRouteHandler {
       (runtime as AgentRuntime) ?? null,
     );
     await handleLifeOpsRoutes(ctx);
+  };
+}
+
+function sleepRouteHandler(): PluginRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const ctx = buildLifeOpsContext(
+      httpReq,
+      httpRes,
+      (runtime as AgentRuntime) ?? null,
+    );
+    await handleSleepRoutes(ctx);
   };
 }
 
@@ -318,6 +346,16 @@ const lifeOpsPluginRoutes: Route[] = [
         path: r.path,
         rawPath: true as const,
         handler: lifeOpsRouteHandler(),
+      }) as Route,
+  ),
+  // Sleep routes (history / regularity / baseline)
+  ...LIFEOPS_SLEEP_ROUTES.map(
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: sleepRouteHandler(),
       }) as Route,
   ),
   // Website blocker routes

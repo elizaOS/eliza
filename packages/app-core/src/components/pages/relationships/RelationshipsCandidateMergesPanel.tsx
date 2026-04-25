@@ -1,4 +1,5 @@
 import { Button, MetaPill, PagePanel } from "@elizaos/ui";
+import { CalendarClock, FileText, Gauge } from "lucide-react";
 import { useState } from "react";
 import { client } from "../../../api/client";
 import type {
@@ -101,15 +102,38 @@ export function RelationshipsCandidateMergesPanel({
               key={candidate.id}
               className="rounded-2xl border border-border/24 bg-card/32 px-3.5 py-3"
             >
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <MetaPill compact>
-                  {Math.round(candidate.confidence * 100)}% confidence
+                  <span
+                    role="img"
+                    aria-label="Confidence"
+                    className="inline-flex items-center gap-1"
+                  >
+                    <Gauge className="h-3 w-3" />
+                    {Math.round(candidate.confidence * 100)}%
+                  </span>
                 </MetaPill>
-                <MetaPill compact>{evidenceCount} evidence</MetaPill>
                 <MetaPill compact>
-                  {formatDateTime(candidate.proposedAt, {
-                    fallback: "No date",
-                  })}
+                  <span
+                    role="img"
+                    aria-label="Evidence count"
+                    className="inline-flex items-center gap-1"
+                  >
+                    <FileText className="h-3 w-3" />
+                    {evidenceCount}
+                  </span>
+                </MetaPill>
+                <MetaPill compact>
+                  <span
+                    role="img"
+                    aria-label="Proposed at"
+                    className="inline-flex items-center gap-1"
+                  >
+                    <CalendarClock className="h-3 w-3" />
+                    {formatDateTime(candidate.proposedAt, {
+                      fallback: "No date",
+                    })}
+                  </span>
                 </MetaPill>
               </div>
               <div className="mt-2 text-sm font-semibold text-txt">

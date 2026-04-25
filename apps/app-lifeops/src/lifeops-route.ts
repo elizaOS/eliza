@@ -28,7 +28,7 @@ export type LifeOpsRouteSection =
   | "calendar"
   | "messages"
   | "mail"
-  | "payments";
+  | "money";
 
 const LIFEOPS_SECTIONS: readonly LifeOpsRouteSection[] = [
   "overview",
@@ -39,7 +39,7 @@ const LIFEOPS_SECTIONS: readonly LifeOpsRouteSection[] = [
   "calendar",
   "messages",
   "mail",
-  "payments",
+  "money",
 ] as const;
 
 export interface LifeOpsRouteState {
