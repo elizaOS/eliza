@@ -1445,6 +1445,18 @@ ElizaClient.prototype.getLifeOpsInbox = async function (
   if (options.channels && options.channels.length > 0) {
     params.set("channels", options.channels.join(","));
   }
+  if (options.groupByThread === true) {
+    params.set("groupByThread", "true");
+  }
+  if (options.chatTypeFilter && options.chatTypeFilter.length > 0) {
+    params.set("chatTypeFilter", options.chatTypeFilter.join(","));
+  }
+  if (options.maxParticipants !== undefined) {
+    params.set("maxParticipants", String(options.maxParticipants));
+  }
+  if (options.gmailAccountId) {
+    params.set("gmailAccountId", options.gmailAccountId);
+  }
   const query = params.toString();
   return this.fetch(`/api/lifeops/inbox${query ? `?${query}` : ""}`);
 };

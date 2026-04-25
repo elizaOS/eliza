@@ -2144,6 +2144,13 @@ export interface CreateLifeOpsCalendarEventRequest {
   durationMinutes?: number;
   windowPreset?: LifeOpsCalendarWindowPreset;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
+  /**
+   * RFC 5545 RRULE strings (without the leading "RRULE:" prefix), e.g.
+   * `["FREQ=WEEKLY;BYDAY=MO"]`. Forwarded to Google Calendar's
+   * `recurrence` array when creating the event.
+   */
+  recurrence?: string[];
+  reminders?: LifeOpsCalendarEventReminderOverride[];
 }
 
 export interface LifeOpsNextCalendarEventContext {
@@ -2178,6 +2185,13 @@ export interface LifeOpsCalendarEventUpdate {
   endAt?: string;
   timeZone?: string;
   notes?: string;
+  location?: string;
+  attendees?: CreateLifeOpsCalendarEventAttendee[];
+  /**
+   * RFC 5545 RRULE strings (without the leading "RRULE:" prefix). Forwarded
+   * to Google Calendar's `recurrence` array on patch when supplied.
+   */
+  recurrence?: string[];
   reminders?: LifeOpsCalendarEventReminderOverride[];
 }
 

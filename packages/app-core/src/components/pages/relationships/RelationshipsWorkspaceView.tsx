@@ -345,18 +345,11 @@ export function RelationshipsWorkspaceView({
                 onResolved={refreshGraph}
               />
 
-              <PagePanel variant="surface" className="px-4 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-                      Activity feed
-                    </div>
-                    <div className="mt-2 text-lg font-semibold text-txt">
-                      Recent relationship, identity, and fact events
-                    </div>
-                  </div>
+              <PagePanel variant="surface" className="px-3 py-3">
+                <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+                  Activity
                 </div>
-                <div className="mt-4 max-h-[24rem] overflow-auto pr-1">
+                <div className="mt-3 max-h-[24rem] overflow-auto pr-1">
                   <RelationshipsActivityFeed />
                 </div>
               </PagePanel>

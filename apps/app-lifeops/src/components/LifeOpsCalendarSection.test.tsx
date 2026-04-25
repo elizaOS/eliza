@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { useCalendarWeekMock, useLifeOpsSelectionMock } = vi.hoisted(() => ({
@@ -15,6 +16,25 @@ const { useCalendarWeekMock, useLifeOpsSelectionMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@elizaos/app-core", () => ({
+  Button: ({
+    children,
+    onClick,
+    ...rest
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+  } & Record<string, unknown>) => (
+    <button type="button" onClick={onClick} {...rest}>
+      {children}
+    </button>
+  ),
+  Popover: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  PopoverTrigger: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+  PopoverContent: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
   SegmentedControl: ({
     items,
     onValueChange,

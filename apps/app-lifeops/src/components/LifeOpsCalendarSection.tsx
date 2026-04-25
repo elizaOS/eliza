@@ -8,13 +8,17 @@
  */
 
 import {
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   SegmentedControl,
   Spinner,
   useApp,
   useMediaQuery,
 } from "@elizaos/app-core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type CalendarViewMode,
@@ -747,9 +751,53 @@ function MonthGrid({
                   );
                 })}
                 {dayEvents.length > 3 ? (
-                  <span className="px-1 text-[10px] font-medium text-muted">
-                    +{dayEvents.length - 3} more
-                  </span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="rounded-sm px-1 text-left text-[10px] font-medium text-muted hover:bg-bg-hover/40 hover:text-txt"
+                      >
+                        +{dayEvents.length - 3} more
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      className="w-64 p-0"
+                      data-testid="lifeops-calendar-day-overflow"
+                    >
+                      <div className="border-b border-border/12 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                        {formatAgendaDayLabel(day)}
+                      </div>
+                      <div className="max-h-72 overflow-y-auto py-1">
+                        {dayEvents.map((event) => {
+                          const overflowColor = paletteFor(event);
+                          return (
+                            <button
+                              key={`overflow-${event.id}`}
+                              type="button"
+                              onClick={() => onSelectEvent(event)}
+                              className="flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-bg-hover/40"
+                            >
+                              <span
+                                aria-hidden
+                                className={`mt-1 h-2 w-2 shrink-0 rounded-full ${overflowColor.dot}`}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-xs font-medium text-txt">
+                                  {event.title}
+                                </span>
+                                <span className="mt-0.5 block text-[10px] text-muted">
+                                  {event.isAllDay
+                                    ? "All day"
+                                    : formatTimeOfDay(event.startAt)}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 ) : null}
               </div>
             </div>
@@ -868,6 +916,8 @@ export function LifeOpsCalendarSection(
   const [drawerEvent, setDrawerEvent] = useState<LifeOpsCalendarEvent | null>(
     null,
   );
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDefaultDate, setCreateDefaultDate] = useState<Date>(new Date());
 
   const selectedEventId = selection.eventId ?? null;
 
@@ -983,7 +1033,7 @@ export function LifeOpsCalendarSection(
             </h2>
           </div>
 
-          <div className="w-full sm:w-auto">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             <SegmentedControl<CalendarViewMode>
               aria-label={t("lifeopsCalendar.viewModeAria", {
                 defaultValue: "Calendar view",
@@ -994,6 +1044,18 @@ export function LifeOpsCalendarSection(
               className="w-full border-border/24 bg-card/24 p-0.5"
               buttonClassName="min-h-8 flex-1 px-3 py-1 text-xs"
             />
+            <Button
+              size="sm"
+              className="h-8 shrink-0 gap-1 rounded-xl px-3 text-xs font-semibold"
+              onClick={() => {
+                setCreateDefaultDate(new Date(calendar.windowStart));
+                setCreateOpen(true);
+              }}
+              data-testid="lifeops-calendar-new-event"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+              {t("lifeopsCalendar.newEvent", { defaultValue: "New" })}
+            </Button>
           </div>
         </div>
 
@@ -1037,6 +1099,7 @@ export function LifeOpsCalendarSection(
 
       <EventEditorDrawer
         open={drawerEvent !== null}
+        mode="edit"
         event={drawerEvent}
         onChat={chatAboutEvent}
         onClose={handleCloseEditor}
@@ -1048,6 +1111,19 @@ export function LifeOpsCalendarSection(
           void calendar.refresh();
           setDrawerEvent(null);
           onSelect({ eventId: null });
+        }}
+      />
+
+      <EventEditorDrawer
+        open={createOpen}
+        mode="create"
+        event={null}
+        createDefaults={{ date: createDefaultDate, side: "owner" }}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(createdEvent) => {
+          void calendar.refresh();
+          setCreateOpen(false);
+          onSelect({ eventId: createdEvent.id });
         }}
       />
     </>

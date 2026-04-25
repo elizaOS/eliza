@@ -332,8 +332,6 @@ export function RelationshipsPersonSummaryPanel({
   const avatarUrl = resolvePrimaryAvatar(person);
   const contacts = topContacts(person);
   const hasProfiles = person.profiles.length > 0;
-  const hasCategories = person.categories.length > 0;
-  const hasTags = person.tags.length > 0;
   const ownerEdge = findOwnerEdge(person, ownerGroupId);
   const ownerLabel = ownerDisplayName ?? "Owner";
 
@@ -640,10 +638,11 @@ export function RelationshipsConnectionsPanel({
     relationship: (typeof person.relationships)[number],
   ) => {
     const SentimentIcon = sentimentIcon(relationship.sentiment);
+    const types = relationship.relationshipTypes;
     return (
       <div
         key={relationship.id}
-        className="rounded-xl border border-border/24 bg-card/32 px-3.5 py-3"
+        className="rounded-xl border border-border/24 bg-card/32 px-3 py-2"
       >
         <div className="flex flex-wrap items-center gap-1.5">
           <span
@@ -654,23 +653,30 @@ export function RelationshipsConnectionsPanel({
             <SentimentIcon className="h-3 w-3" />
             {Math.round(relationship.strength * 100)}%
           </span>
-          <span className="inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/36 px-2 py-0.5 text-2xs font-semibold text-muted">
+          <span className="inline-flex items-center gap-1 text-2xs font-semibold text-muted">
             <MessageCircle className="h-3 w-3" />
             {relationship.interactionCount}
           </span>
+          <span className="ml-1 truncate text-sm font-semibold text-txt">
+            {relationshipCounterpartName(relationship, person.groupId)}
+          </span>
+          <span className="ml-auto inline-flex items-center gap-1 text-2xs text-muted">
+            <CalendarClock className="h-3 w-3" />
+            {formatDateTime(relationship.lastInteractionAt, { fallback: "—" })}
+          </span>
         </div>
-        <div className="mt-2 text-sm font-semibold text-txt">
-          {relationshipCounterpartName(relationship, person.groupId)}
-        </div>
-        <div className="mt-1 text-xs uppercase tracking-[0.12em] text-muted/70">
-          {relationship.relationshipTypes.join(" • ") || "Unlabeled"}
-        </div>
-        <div className="mt-2 text-xs text-muted">
-          Last interaction{" "}
-          {formatDateTime(relationship.lastInteractionAt, {
-            fallback: "No date",
-          })}
-        </div>
+        {types.length > 0 ? (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {types.slice(0, 3).map((entry) => (
+              <span
+                key={`rel-type:${relationship.id}:${entry}`}
+                className="text-2xs text-muted/80"
+              >
+                {entry}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
     );
   };

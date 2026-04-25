@@ -481,7 +481,7 @@ export function Header({
                 </div>
                 <div
                   className={
-                    mobileCenter
+                    mobileCenter || breadcrumbNode
                       ? "flex h-[2.375rem] min-w-0 items-center justify-center"
                       : "pointer-events-none h-[2.375rem] min-w-0"
                   }
@@ -490,10 +490,14 @@ export function Header({
                       ? "desktop-window-titlebar-drag-zone"
                       : undefined
                   }
-                  data-no-camera-drag={mobileCenter ? "true" : undefined}
-                  aria-hidden={mobileCenter ? undefined : "true"}
+                  data-no-camera-drag={
+                    mobileCenter || breadcrumbNode ? "true" : undefined
+                  }
+                  aria-hidden={
+                    mobileCenter || breadcrumbNode ? undefined : "true"
+                  }
                 >
-                  {mobileCenter}
+                  {mobileCenter ?? breadcrumbNode}
                 </div>
                 <div
                   className="flex min-w-0 items-center justify-end gap-1"

@@ -15,7 +15,6 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 
 // ---------------------------------------------------------------------------
 // Pairing state & helpers
@@ -118,13 +117,13 @@ export async function handleAuthPairingCompatRoutes(
   const url = new URL(req.url ?? "/", "http://localhost");
 
   // ── GET /api/onboarding/status ──────────────────────────────────────
+  // Cloud-provisioned containers used to skip auth here entirely; that
+  // bypass was the audited critical gap and is gone. Every caller now
+  // goes through the same compat-token path until P1+ adds session
+  // cookies; cloud-provisioned containers exchange their bootstrap
+  // token via `/api/auth/bootstrap/exchange` before reaching this
+  // route.
   if (method === "GET" && url.pathname === "/api/onboarding/status") {
-    // Cloud-provisioned containers always report onboarding complete and
-    // skip auth so the SPA can read this before pairing/token exchange.
-    if (_isCloudProvisioned()) {
-      sendJsonResponse(res, 200, { complete: true, cloudProvisioned: true });
-      return true;
-    }
     if (!ensureCompatApiAuthorized(req, res)) {
       return true;
     }
@@ -136,13 +135,11 @@ export async function handleAuthPairingCompatRoutes(
   }
 
   // ── GET /api/auth/status ────────────────────────────────────────────
+  // Cloud-provisioned bypass deleted (was the second half of the audited
+  // gap at line 140). The SPA reads this through a session cookie or
+  // exchanges a bootstrap token first; either way auth is required.
   if (method === "GET" && url.pathname === "/api/auth/status") {
-    if (_isCloudProvisioned()) {
-      sendJsonResponse(res, 200, {
-        required: false,
-        pairingEnabled: false,
-        expiresAt: null,
-      });
+    if (!ensureCompatApiAuthorized(req, res)) {
       return true;
     }
     const required = Boolean(getCompatApiToken());
