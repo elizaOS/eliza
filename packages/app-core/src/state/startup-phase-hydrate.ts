@@ -617,6 +617,10 @@ export function bindReadyPhase(
                 : s,
             );
           if (eventType === "error") {
+            // `task_registered` is optimistic; spawn can still fail before a
+            // real PTY session exists. Rehydrate immediately so ghost rows
+            // disappear instead of lingering until the next background poll.
+            needsHydrate = true;
             const em = (dd?.message as string) ?? "Unknown error";
             return prev.map((s) =>
               s.sessionId === sid

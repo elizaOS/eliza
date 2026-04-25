@@ -110,4 +110,29 @@ describe("bindReadyPhase wallet recovery", () => {
 
     cleanup();
   });
+
+  it("rehydrates PTY sessions immediately after an error event", async () => {
+    const setPtySessions = vi.fn();
+    const deps = createReadyDeps({
+      setPtySessions,
+      hasPtySessionsRef: { current: true },
+    });
+    const cleanup = bindReadyPhase({
+      current: deps,
+    });
+
+    expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(1);
+
+    wsHandlers.get("pty-session-event")?.({
+      eventType: "error",
+      sessionId: "ghost-session",
+      data: { message: "Cannot create process, error code: 2" },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(clientMock.getCodingAgentStatus).toHaveBeenCalledTimes(2);
+
+    cleanup();
+  });
 });
