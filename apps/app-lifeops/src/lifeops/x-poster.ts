@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
 
 export interface XPosterCredentials {
   apiKey: string;

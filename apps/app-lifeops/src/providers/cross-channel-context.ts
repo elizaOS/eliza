@@ -24,7 +24,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
+import { hasAdminAccess } from "@elizaos/agent/security";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
   runCrossChannelSearch,

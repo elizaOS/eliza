@@ -27,7 +27,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
   extractRegistrableDomain,
