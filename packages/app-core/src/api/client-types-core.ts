@@ -115,6 +115,20 @@ export interface AgentStatus {
 
 export type AgentAutomationMode = "connectors-only" | "full";
 
+export type ProviderModelCategory =
+  | "chat"
+  | "embedding"
+  | "image"
+  | "tts"
+  | "stt"
+  | "other";
+
+export interface ProviderModelRecord {
+  id: string;
+  name: string;
+  category: ProviderModelCategory;
+}
+
 import type { TradePermissionMode as WalletTradePermissionMode } from "@elizaos/agent/contracts/wallet";
 export type TradePermissionMode = WalletTradePermissionMode;
 
