@@ -1,5 +1,6 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
+import { findLifeOpsSubscriptionPlaybook } from "./subscriptions-playbooks.js";
 import {
   parseTransactionsCsv,
   type ParsedCsvTransaction,
@@ -383,13 +384,15 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       const latestAudit = await this.repository.getLatestSubscriptionAudit(
         this.agentId(),
       );
+      // Use the free `findLifeOpsSubscriptionPlaybook` function rather than
+      // `this.findSubscriptionPlaybookForMerchant`, because the Payments mixin
+      // is composed BELOW Subscriptions in service.ts and cannot see methods
+      // declared by mixins layered above it.
       const recurringPlaybookHits = recurring
         .map((charge) => {
           const direct =
-            this.findSubscriptionPlaybookForMerchant(charge.merchantDisplay) ??
-            this.findSubscriptionPlaybookForMerchant(
-              charge.merchantNormalized,
-            );
+            findLifeOpsSubscriptionPlaybook(charge.merchantDisplay) ??
+            findLifeOpsSubscriptionPlaybook(charge.merchantNormalized);
           if (!direct) {
             return null;
           }
@@ -401,9 +404,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
             executorPreference: direct.executorPreference,
           };
         })
-        .filter(
-          (hit): hit is NonNullable<typeof hit> => hit !== null,
-        );
+        .filter((hit): hit is NonNullable<typeof hit> => hit !== null);
       return {
         sources,
         recurring,
