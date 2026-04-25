@@ -37,6 +37,7 @@
  * `X402_REPLAY_DURABLE=0` for in-memory TTL-only behavior (dev / tests).
  */
 
+import { logger } from "@elizaos/core";
 import type { X402ScanNetwork } from "./x402-types.ts";
 
 /** Networks supported by built-in x402 presets and verification */
@@ -357,8 +358,9 @@ export function registerX402Config(
 
   CUSTOM_PAYMENT_CONFIGS[registryKey] = config;
 
-  console.log(
-    `✓ Registered x402 payment config: ${registryKey} (${config.symbol} on ${config.network})`,
+  logger.debug(
+    { registryKey, symbol: config.symbol, network: config.network },
+    "[x402] registered payment config",
   );
 }
 

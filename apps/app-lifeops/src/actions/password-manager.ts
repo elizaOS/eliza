@@ -73,48 +73,6 @@ function readConfig(
   return config;
 }
 
-function inferSubactionFromText(
-  text: string,
-): PasswordManagerSubaction | undefined {
-  const lower = text.toLowerCase();
-  if (!lower.trim()) return undefined;
-  // Injection requests usually name an explicit target plus "copy" or "paste"
-  if (/\bcopy\b.*\b(password|secret|token)\b/.test(lower))
-    return "inject_password";
-  if (/\bcopy\b.*\b(username|user|login|email)\b/.test(lower))
-    return "inject_username";
-  if (/\bpaste\b.*\bpassword\b/.test(lower)) return "inject_password";
-  // Listing: "show/list my (saved) logins/passwords/credentials"
-  if (
-    /\b(show|list|see|view|display|what are)\b.*\b(saved|my)?\s*(logins?|passwords?|credentials?|items?|entries|vault)/.test(
-      lower,
-    )
-  ) {
-    return "list";
-  }
-  // Search: "find/lookup my <service> (password|login)"
-  if (
-    /\b(find|look ?up|search|get|fetch|where is|what('?s| is))\b.*\b(password|login|credential|account)\b/.test(
-      lower,
-    ) ||
-    /\bmy\b.*\b(password|login|credential)\b\s+for\b/.test(lower)
-  ) {
-    return "search";
-  }
-  return undefined;
-}
-
-function extractPasswordSearchQuery(text: string): string | undefined {
-  const domainMatch = text.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i);
-  if (domainMatch?.[1]) {
-    return domainMatch[1].toLowerCase();
-  }
-  const serviceMatch = text.match(
-    /\b(?:for|about|on|my)\s+([a-z0-9._-]+)(?:\s+(?:login|password|credentials?))?\b/i,
-  );
-  return serviceMatch?.[1];
-}
-
 function describeItems(items: PasswordManagerItem[]): string {
   if (items.length === 0) return "No matching items.";
   return items
@@ -214,18 +172,11 @@ export const passwordManagerAction: Action & {
         : {}) ?? {}),
     } satisfies PasswordManagerParameters;
 
-    const messageText =
-      typeof message.content?.text === "string" ? message.content.text : "";
-    const rawSubaction = (params.subaction ?? "").toString().trim().toLowerCase();
-    const subaction =
-      rawSubaction || inferSubactionFromText(params.intent ?? messageText) || "";
+    const subaction = (params.subaction ?? "").toString().trim().toLowerCase();
     const config = readConfig(runtime);
 
     if (subaction === "search") {
-      const query =
-        (params.query ?? extractPasswordSearchQuery(params.intent ?? messageText) ?? params.intent ?? messageText)
-          .toString()
-          .trim();
+      const query = (params.query ?? params.intent ?? "").toString().trim();
       if (!query) return failure("MISSING_QUERY");
       const items = await searchPasswordItems(query, config);
       const text = `Saved login items only — passwords remain hidden.\n${describeItems(items)}`;

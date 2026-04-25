@@ -58,10 +58,11 @@ export async function replayGuardTryBegin(
   const useDurable = isDurableReplayEnabled() && runtime != null;
 
   try {
+    let durableOwner: string | null = null;
     if (useDurable) {
       const reservation = await durableReplayTryReserve(runtime, agentId, keys);
       if (!reservation.ok) return false;
-      for (const k of keys) durableReservationOwners.set(k, reservation.owner);
+      durableOwner = reservation.owner;
     } else {
       pruneConsumedMemory(now);
       for (const k of keys) {
@@ -71,7 +72,23 @@ export async function replayGuardTryBegin(
     }
 
     for (const k of keys) {
-      if (inflight.has(k)) return false;
+      if (inflight.has(k)) {
+        // Already in-flight in this process — release the durable reservation
+        // we just took so it does not linger until TTL expiry and block
+        // subsequent legitimate attempts for the same credential.
+        if (durableOwner) {
+          await durableReplayAbortReservation(
+            runtime,
+            agentId,
+            keys,
+            durableOwner,
+          );
+        }
+        return false;
+      }
+    }
+    if (durableOwner) {
+      for (const k of keys) durableReservationOwners.set(k, durableOwner);
     }
     for (const k of keys) inflight.add(k);
     return true;
