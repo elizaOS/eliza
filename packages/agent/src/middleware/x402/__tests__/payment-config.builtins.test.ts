@@ -70,4 +70,39 @@ describe("payment-config built-in presets", () => {
     });
     expect(getPaymentConfig(name).symbol).toBe("TEST");
   });
+
+  it("registerX402Config throws on duplicate custom name without override", () => {
+    const name = `dup_custom_x402_${Date.now()}`;
+    const def = {
+      network: "BASE" as const,
+      assetNamespace: "erc20" as const,
+      assetReference: "0x0000000000000000000000000000000000000001",
+      paymentAddress: "0x066E94e1200aa765d0A6392777D543Aa6Dea606C",
+      symbol: "A",
+      chainId: "8453",
+    };
+    registerX402Config(name, def);
+    expect(() => registerX402Config(name, { ...def, symbol: "B" })).toThrow(
+      /already registered/,
+    );
+    registerX402Config(name, { ...def, symbol: "B" }, { override: true });
+    expect(getPaymentConfig(name).symbol).toBe("B");
+  });
+
+  it("registerX402Config throws on duplicate agent-scoped key without override", () => {
+    const aid = `ag-${Date.now()}`;
+    const name = `scoped_dup_${Date.now()}`;
+    const def = {
+      network: "BASE" as const,
+      assetNamespace: "erc20" as const,
+      assetReference: "0x0000000000000000000000000000000000000001",
+      paymentAddress: "0x066E94e1200aa765d0A6392777D543Aa6Dea606C",
+      symbol: "A",
+      chainId: "8453",
+    };
+    registerX402Config(name, def, { agentId: aid });
+    expect(() =>
+      registerX402Config(name, { ...def, symbol: "B" }, { agentId: aid }),
+    ).toThrow(/already registered/);
+  });
 });

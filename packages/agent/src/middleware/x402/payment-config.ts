@@ -317,6 +317,10 @@ const CUSTOM_PAYMENT_CONFIGS: Record<string, PaymentConfigDefinition> = {};
  * Register a custom payment configuration
  * Plugins call this in their init() function
  *
+ * A second call with the same `name` (or the same `agentId`+`name` for scoped
+ * keys) throws unless `override: true` is set, so two plugins cannot silently
+ * replace each other in `CUSTOM_PAYMENT_CONFIGS`.
+ *
  * @example
  * ```typescript
  * registerX402Config('base_ai16z', {
@@ -345,6 +349,12 @@ export function registerX402Config(
   }
 
   const registryKey = options?.agentId ? `${options.agentId}:${name}` : name;
+  if (CUSTOM_PAYMENT_CONFIGS[registryKey] && !options?.override) {
+    throw new Error(
+      `Payment config '${registryKey}' is already registered. Use override: true to replace it.`,
+    );
+  }
+
   CUSTOM_PAYMENT_CONFIGS[registryKey] = config;
 
   console.log(

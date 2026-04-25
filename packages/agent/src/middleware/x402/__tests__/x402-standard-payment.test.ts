@@ -306,6 +306,54 @@ describe("x402-standard-payment", () => {
     vi.unstubAllGlobals();
   });
 
+  it("settlePaymentPayloadViaFacilitatorPost rejects 200 with ambiguous JSON (no explicit success)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({}),
+      }),
+    );
+    const rt = {
+      getSetting: () => undefined,
+    } as unknown as X402Runtime;
+    const payload = decodeXPaymentHeader(
+      JSON.stringify({
+        x402Version: 2,
+        accepted: {
+          scheme: "exact",
+          network: "eip155:8453",
+          asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          amount: "1",
+          payTo: "0x0",
+        },
+        payload: {
+          signature: "0x",
+          authorization: {
+            from: "0xa",
+            to: "0x0",
+            value: "1",
+            validBefore: "9",
+            nonce: "0x0",
+          },
+        },
+      }),
+    );
+    if (!isX402StandardPaymentPayload(payload)) throw new Error("bad fixture");
+
+    const out = await settlePaymentPayloadViaFacilitatorPost(rt, payload, {
+      scheme: "exact",
+      network: "eip155:8453",
+      asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      amount: "1",
+      payTo: "0x0",
+    });
+    expect(out).toEqual({ ok: false, invalidReason: "settle_http_200" });
+
+    vi.unstubAllGlobals();
+  });
+
   it("settlePaymentPayloadViaFacilitatorPost rejects explicit success false", async () => {
     vi.stubGlobal(
       "fetch",
