@@ -2216,6 +2216,51 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (method === "POST" && pathname === "/api/lifeops/money/plaid/link-token") {
+    return runRoute(ctx, async (service) => {
+      const result = await service.createPlaidLinkToken();
+      json(res, result);
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/money/plaid/complete") {
+    const body = await readJsonBody<{
+      publicToken: string;
+      label?: string | null;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const source = await service.completePlaidLink({
+        publicToken: body.publicToken,
+        label: body.label ?? null,
+      });
+      // Strip the Plaid access_token from the response — never echo secrets
+      // back to the browser. The token stays server-side in source.metadata.
+      const sanitizedMetadata: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(source.metadata)) {
+        if (key !== "plaid") sanitizedMetadata[key] = value;
+      }
+      json(
+        res,
+        {
+          source: { ...source, metadata: sanitizedMetadata },
+        },
+        201,
+      );
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/money/plaid/sync") {
+    const body = await readJsonBody<{ sourceId: string }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const result = await service.syncPlaidTransactions({
+        sourceId: body.sourceId,
+      });
+      json(res, result);
+    });
+  }
+
   if (
     method === "GET" &&
     pathname === "/api/lifeops/subscriptions/playbook-lookup"
