@@ -161,7 +161,8 @@ export function CharacterLearnedSkillsSection() {
 
         {isEmpty ? (
           <div className="rounded-xl border border-dashed border-border/60 bg-bg-hover/40 px-3 py-3 text-xs-tight leading-5 text-muted">
-            No learned skills yet.
+            I haven&rsquo;t picked up any abilities yet. Browse the catalog or
+            add one by example, and I&rsquo;ll start using it.
           </div>
         ) : null}
       </div>

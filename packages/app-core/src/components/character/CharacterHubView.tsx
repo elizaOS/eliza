@@ -165,9 +165,29 @@ function latestTimestamp(value: string | number | null | undefined): number {
   return Number.isNaN(date.getTime()) ? 0 : date.getTime();
 }
 
-function ratio(value: number, max: number): number {
-  if (max <= 0) return 0;
-  return Math.max(0, Math.min(1, value / max));
+function formatRelativeTime(value: number | string | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const time = typeof value === "number" ? value : new Date(value).getTime();
+  if (Number.isNaN(time) || time <= 0) return "";
+  const diff = Date.now() - time;
+  if (diff < 0) return "just now";
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < minute) return "just now";
+  if (diff < hour) {
+    const value = Math.round(diff / minute);
+    return `${value}m ago`;
+  }
+  if (diff < day) {
+    const value = Math.round(diff / hour);
+    return `${value}h ago`;
+  }
+  if (diff < 7 * day) {
+    const value = Math.round(diff / day);
+    return `${value}d ago`;
+  }
+  return new Date(time).toLocaleDateString();
 }
 
 export function CharacterHubView({
@@ -451,46 +471,12 @@ export function CharacterHubView({
     [knowledgeDocuments],
   );
 
-  const starterOverviewWidgets = useMemo<CharacterOverviewWidget[]>(
-    () => [
-      {
-        section: "personality",
-        title: "Personality",
-        caption: "Add bio, style, and examples",
-        score: 0,
-      },
-      {
-        section: "knowledge",
-        title: "Knowledge",
-        caption: "Upload or teach source material",
-        score: 0,
-      },
-      {
-        section: "skills",
-        title: "Skills",
-        caption: "Let the agent learn useful abilities",
-        score: 0,
-      },
-      {
-        section: "experience",
-        title: "Experience",
-        caption: "Record outcomes and lessons",
-        score: 0,
-      },
-      {
-        section: "relationships",
-        title: "Relationships",
-        caption: "Build identity and preference memory",
-        score: 0,
-      },
-    ],
-    [],
-  );
   const overviewWidgets = useMemo<CharacterOverviewWidget[]>(() => {
     const styleItems = Object.values(d.style ?? {}).reduce(
       (count, values) => count + (Array.isArray(values) ? values.length : 0),
       0,
     );
+    const exampleCount = normalizedMessageExamples.length;
     const latestPersonalityUpdate = historyEntries.reduce(
       (latest, entry) => Math.max(latest, latestTimestamp(entry.timestamp)),
       0,
@@ -498,86 +484,166 @@ export function CharacterHubView({
     const activeSkills = learnedSkills.filter(
       (skill) => skill.status !== "disabled",
     );
-    const averageExperienceConfidence =
-      experienceRecords.length > 0
-        ? experienceRecords.reduce(
-            (total, experience) => total + experience.confidence,
-            0,
-          ) / experienceRecords.length
-        : 0;
-    const averageExperienceImportance =
-      experienceRecords.length > 0
-        ? experienceRecords.reduce(
-            (total, experience) => total + experience.importance,
-            0,
-          ) / experienceRecords.length
-        : 0;
-    const relationshipNames = relationshipActivity
-      .map((item) => item.personName)
-      .filter(Boolean);
+    const recentDocs = [...customKnowledgeDocuments]
+      .sort(
+        (left, right) =>
+          latestTimestamp(right.createdAt) - latestTimestamp(left.createdAt),
+      )
+      .slice(0, 3);
+    const recentExperience = [...experienceRecords]
+      .sort(
+        (left, right) =>
+          latestTimestamp(right.updatedAt ?? right.createdAt) -
+          latestTimestamp(left.updatedAt ?? left.createdAt),
+      )[0];
+    const relationshipNames = Array.from(
+      new Set(
+        relationshipActivity
+          .map((item) => item.personName?.trim())
+          .filter((name): name is string => Boolean(name)),
+      ),
+    );
+
+    const trimmedBio = bioText.trim();
+    const personalityHasContent =
+      trimmedBio.length > 0 || styleItems > 0 || exampleCount > 0;
+    const personalityBody: ReactNode = trimmedBio ? (
+      <p className="line-clamp-3 text-xs leading-relaxed text-muted">
+        {trimmedBio}
+      </p>
+    ) : (
+      <div className="flex flex-wrap gap-1.5 text-2xs">
+        {styleItems > 0 ? (
+          <span className="rounded-full border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-muted">
+            {styleItems} style rule{styleItems === 1 ? "" : "s"}
+          </span>
+        ) : null}
+        {exampleCount > 0 ? (
+          <span className="rounded-full border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-muted">
+            {exampleCount} example{exampleCount === 1 ? "" : "s"}
+          </span>
+        ) : null}
+      </div>
+    );
 
     return [
       {
         section: "personality",
         title: "Personality",
-        caption:
+        meta:
           latestPersonalityUpdate > 0
-            ? `Updated ${new Date(latestPersonalityUpdate).toLocaleDateString()}`
-            : "No personality edits yet",
-        score: ratio(
-          (bioText.trim() ? 1 : 0) + styleItems + historyEntries.length,
-          12,
-        ),
-        bars: [
-          { label: "Bio", value: bioText.trim() ? 1 : 0 },
-          { label: "Style", value: ratio(styleItems, 8) },
-          { label: "History", value: ratio(historyEntries.length, 8) },
-        ],
+            ? `Updated ${formatRelativeTime(latestPersonalityUpdate)}`
+            : null,
+        body: personalityBody,
+        isEmpty: !personalityHasContent,
       },
       {
         section: "knowledge",
         title: "Knowledge",
-        caption: `${customKnowledgeDocuments.length} custom document${customKnowledgeDocuments.length === 1 ? "" : "s"}`,
-        score: ratio(customKnowledgeDocuments.length, 8),
-        bars: [
-          { label: "Custom", value: ratio(customKnowledgeDocuments.length, 8) },
-          { label: "Total", value: ratio(knowledgeDocuments.length, 12) },
-        ],
+        meta:
+          customKnowledgeDocuments.length > 0
+            ? `${customKnowledgeDocuments.length} doc${
+                customKnowledgeDocuments.length === 1 ? "" : "s"
+              }`
+            : null,
+        body:
+          recentDocs.length > 0 ? (
+            <ul className="flex flex-col gap-1 text-xs text-muted">
+              {recentDocs.map((doc) => (
+                <li key={doc.id} className="truncate">
+                  {doc.filename}
+                </li>
+              ))}
+            </ul>
+          ) : null,
+        isEmpty: customKnowledgeDocuments.length === 0,
       },
       {
         section: "skills",
         title: "Skills",
-        caption: `${activeSkills.length} learned skill${activeSkills.length === 1 ? "" : "s"}`,
-        score: ratio(activeSkills.length, 8),
-        nodes: activeSkills.map((skill) => skill.name),
+        meta:
+          activeSkills.length > 0
+            ? `${activeSkills.length} active`
+            : null,
+        body:
+          activeSkills.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {activeSkills.slice(0, 5).map((skill) => (
+                <span
+                  key={skill.name}
+                  className="truncate rounded-full border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-2xs text-muted"
+                  title={skill.name}
+                >
+                  {skill.name}
+                </span>
+              ))}
+              {activeSkills.length > 5 ? (
+                <span className="text-2xs text-muted">
+                  +{activeSkills.length - 5} more
+                </span>
+              ) : null}
+            </div>
+          ) : null,
+        isEmpty: activeSkills.length === 0,
       },
       {
         section: "experience",
         title: "Experience",
-        caption: `${experienceRecords.length} recorded experience${experienceRecords.length === 1 ? "" : "s"}`,
-        score: ratio(experienceRecords.length, 10),
-        bars: [
-          { label: "Confidence", value: averageExperienceConfidence },
-          { label: "Importance", value: averageExperienceImportance },
-          { label: "Records", value: ratio(experienceRecords.length, 10) },
-        ],
+        meta:
+          experienceRecords.length > 0
+            ? `${experienceRecords.length} lesson${
+                experienceRecords.length === 1 ? "" : "s"
+              }`
+            : null,
+        body: recentExperience ? (
+          <p className="line-clamp-3 text-xs italic leading-relaxed text-muted">
+            {recentExperience.learning ||
+              recentExperience.result ||
+              recentExperience.context ||
+              recentExperience.type}
+          </p>
+        ) : null,
+        isEmpty: experienceRecords.length === 0,
       },
       {
         section: "relationships",
         title: "Relationships",
-        caption: `${relationshipActivity.length} recent signal${relationshipActivity.length === 1 ? "" : "s"}`,
-        score: ratio(relationshipActivity.length, 10),
-        nodes: relationshipNames,
+        meta:
+          relationshipNames.length > 0
+            ? `${relationshipNames.length} ${
+                relationshipNames.length === 1 ? "person" : "people"
+              }`
+            : null,
+        body:
+          relationshipNames.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {relationshipNames.slice(0, 4).map((name) => (
+                <span
+                  key={name}
+                  className="truncate rounded-full border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-2xs text-muted"
+                  title={name}
+                >
+                  {name}
+                </span>
+              ))}
+              {relationshipNames.length > 4 ? (
+                <span className="text-2xs text-muted">
+                  +{relationshipNames.length - 4} more
+                </span>
+              ) : null}
+            </div>
+          ) : null,
+        isEmpty: relationshipNames.length === 0,
       },
     ];
   }, [
     bioText,
-    customKnowledgeDocuments.length,
+    customKnowledgeDocuments,
     d.style,
     experienceRecords,
     historyEntries,
-    knowledgeDocuments.length,
     learnedSkills,
+    normalizedMessageExamples.length,
     relationshipActivity,
   ]);
 
@@ -798,7 +864,7 @@ export function CharacterHubView({
     if (activeSection === "overview") {
       return (
         <CharacterOverviewSection
-          starterWidgets={starterOverviewWidgets}
+          characterName={d.name}
           widgets={overviewWidgets}
           onOpenSection={handleOverviewOpenSection}
         />
@@ -873,20 +939,21 @@ export function CharacterHubView({
             />
           </section>
 
-          <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
-            {historyError ? (
-              <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-                {historyError}
-              </div>
-            ) : null}
-            {historyLoading ? (
-              <div className="text-sm text-muted">
-                Loading personality history…
-              </div>
-            ) : (
-              <CharacterPersonalityTimeline entries={timelineItems} />
-            )}
-          </section>
+          {historyLoading || historyError || timelineItems.length > 0 ? (
+            <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
+              {historyError ? (
+                <div className="rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+                  {historyError}
+                </div>
+              ) : historyLoading ? (
+                <div className="text-sm text-muted">
+                  Loading personality history…
+                </div>
+              ) : (
+                <CharacterPersonalityTimeline entries={timelineItems} />
+              )}
+            </section>
+          ) : null}
         </div>
       );
     }

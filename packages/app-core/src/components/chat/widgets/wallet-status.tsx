@@ -1,7 +1,12 @@
 import { Check, Copy, Wallet } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../../../state";
-import { type ChainKey, resolveChainKey } from "../../inventory/chainConfig";
+import {
+  type ChainKey,
+  getNativeLogoUrl,
+  resolveChainKey,
+} from "../../inventory/chainConfig";
+import { normalizeInventoryImageUrl } from "../../inventory/media-url";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
   ChatSidebarWidgetDefinition,
@@ -20,15 +25,15 @@ const EVM_CHAIN_ORDER: ChainKey[] = [
   "avax",
 ];
 const EVM_CHAIN_KEYS = new Set<ChainKey>(EVM_CHAIN_ORDER);
-const CHAIN_BADGE_LABELS: Record<ChainKey, string> = {
-  ethereum: "ETH",
-  base: "BASE",
-  arbitrum: "ARB",
-  optimism: "OP",
-  polygon: "POL",
-  bsc: "BSC",
-  avax: "AVAX",
-  solana: "SOL",
+const CHAIN_DISPLAY_LABELS: Record<ChainKey, string> = {
+  ethereum: "Ethereum",
+  base: "Base",
+  arbitrum: "Arbitrum",
+  optimism: "Optimism",
+  polygon: "Polygon",
+  bsc: "BNB Chain",
+  avax: "Avalanche",
+  solana: "Solana",
 };
 
 function shortenAddress(value: string | null | undefined): string | null {
@@ -71,12 +76,38 @@ function normalizeEvmChainKeys(chainNames: readonly string[]): ChainKey[] {
 }
 
 function ChainBadge({ chain }: { chain: ChainKey }) {
+  // Use the same per-chain logo URLs the wallet page uses — these are real
+  // raster logos pulled from the trustwallet/assets repo (see
+  // CHAIN_CONFIGS[*].nativeLogoUrl) and cover every chain we register,
+  // including Arbitrum / Optimism / Polygon that the SVG-only ChainIcon
+  // doesn't have paths for.
+  const [errored, setErrored] = useState(false);
+  const label = CHAIN_DISPLAY_LABELS[chain];
+  const url = errored
+    ? null
+    : (normalizeInventoryImageUrl(getNativeLogoUrl(chain)) ?? null);
+
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={label}
+        title={label}
+        width={16}
+        height={16}
+        className="inline-flex h-4 w-4 shrink-0 rounded-full bg-bg/40 object-cover"
+        onError={() => setErrored(true)}
+      />
+    );
+  }
+  // Tiny initials fallback when the logo URL fails or is missing.
   return (
     <span
       className="inline-flex h-4 shrink-0 items-center rounded-full border border-border/35 bg-bg/40 px-1.5 font-mono text-[0.52rem] font-semibold leading-none text-muted"
-      title={chain}
+      title={label}
+      aria-label={label}
     >
-      {CHAIN_BADGE_LABELS[chain]}
+      {label.slice(0, 3).toUpperCase()}
     </span>
   );
 }
