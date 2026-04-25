@@ -1,4 +1,5 @@
-import type { LifeOpsGoalReviewState } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsGoalReviewState } from "@elizaos/app-lifeops/contracts";
+import { LIFEOPS_REVIEW_STATES } from "@elizaos/app-lifeops/contracts";
 
 export const GOAL_GROUNDING_STATES = [
   "grounded",
@@ -37,13 +38,6 @@ export interface GoalSemanticReviewMetadata {
   suggestions: GoalSemanticSuggestionMetadata[];
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
-
 function asText(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -67,6 +61,13 @@ function asStringArray(value: unknown): string[] {
     .filter((entry): entry is string => typeof entry === "string")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
 }
 
 export function buildGoalGroundingMetadata(args: {
@@ -201,7 +202,12 @@ export function readGoalSemanticReviewMetadata(
   const reviewedAt = asText(candidate.reviewedAt);
   const reviewState = asText(candidate.reviewState);
   const explanation = asText(candidate.explanation);
-  if (!reviewedAt || !reviewState || !explanation) {
+  if (
+    !reviewedAt ||
+    !reviewState ||
+    !LIFEOPS_REVIEW_STATES.includes(reviewState as LifeOpsGoalReviewState) ||
+    !explanation
+  ) {
     return null;
   }
   return buildGoalSemanticReviewMetadata({

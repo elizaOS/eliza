@@ -26,7 +26,6 @@ import {
   resolveDataDir,
 } from "./steward-sidecar/helpers";
 import {
-  ensureStewardWorkspaceReady,
   findStewardEntryPoint,
   pipeOutput,
 } from "./steward-sidecar/process-management";
@@ -322,11 +321,9 @@ export class StewardSidecar {
 
     if (!entryPoint) {
       throw new Error(
-        "Steward API entry point not found. Set stewardEntryPoint in config or ensure @stwd/api is installed.",
+        "Steward API entry point not found. Set STEWARD_ENTRY_POINT or install a package that exposes @stwd/api.",
       );
     }
-
-    await ensureStewardWorkspaceReady(entryPoint, this.config.onLog);
 
     const preferredPort = this.config.port;
     const allocatedPort = await allocateFirstFreeLoopbackPort(preferredPort);

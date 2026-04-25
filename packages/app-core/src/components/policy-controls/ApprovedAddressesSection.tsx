@@ -1,10 +1,12 @@
-
-
+import { Button, Input } from "@elizaos/ui";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { chainTypeLabel, isValidAddress } from "./helpers";
+import {
+  approvedAddressValue,
+  chainTypeLabel,
+  isValidAddress,
+} from "./helpers";
 import type { ApprovedAddressEntry, ApprovedAddressesConfig } from "./types";
-import { Button, Input } from "@elizaos/ui";
 
 export function ApprovedAddressesSection({
   config,
@@ -20,18 +22,15 @@ export function ApprovedAddressesSection({
   const entries: ApprovedAddressEntry[] = useMemo(
     () =>
       (config.addresses ?? []).map((addr) => {
-        const addressEntry =
-          typeof addr === "object" && addr !== null ? addr : null;
-        if (addressEntry && "address" in addressEntry) {
-          const obj = addressEntry as unknown as {
-            address: string;
-            label?: string;
+        if (typeof addr !== "string") {
+          return {
+            address: addr.address,
+            label: addr.label,
           };
-          return { address: obj.address, label: obj.label ?? "" };
         }
         return {
-          address: String(addr),
-          label: config.labels?.[String(addr)] ?? "",
+          address: addr,
+          label: config.labels?.[addr] ?? "",
         };
       }),
     [config],
@@ -44,7 +43,9 @@ export function ApprovedAddressesSection({
       setAddressError("Invalid address format (EVM 0x... or Solana base58)");
       return;
     }
-    if (config.addresses.includes(trimmed)) {
+    if (
+      config.addresses.some((entry) => approvedAddressValue(entry) === trimmed)
+    ) {
       setAddressError("Already in list");
       return;
     }
@@ -67,7 +68,9 @@ export function ApprovedAddressesSection({
       delete labels[addr];
       onChange({
         ...config,
-        addresses: config.addresses.filter((a) => a !== addr),
+        addresses: config.addresses.filter(
+          (entry) => approvedAddressValue(entry) !== addr,
+        ),
         labels,
       });
     },

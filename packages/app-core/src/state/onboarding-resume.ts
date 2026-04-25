@@ -7,6 +7,7 @@ import {
   resolveLinkedAccountsInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared/contracts";
+import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
 import type { BuildOnboardingConnectionArgs } from "../onboarding-config";
 import { asRecord } from "./config-readers";
 import type { OnboardingStep } from "./types";
@@ -23,10 +24,7 @@ export function hasPartialOnboardingConnectionConfig(
     return true;
   }
 
-  const root =
-    config && typeof config === "object" && !Array.isArray(config)
-      ? (config as Record<string, unknown>)
-      : null;
+  const root = asRecord(config);
   if (
     root &&
     (Object.hasOwn(root, "deploymentTarget") ||
@@ -73,11 +71,15 @@ export function deriveOnboardingResumeFieldsFromConfig(
       ? cloud.apiKey.trim()
       : "";
 
+  const cloudServerTarget =
+    readPersistedMobileRuntimeMode() === "cloud-hybrid"
+      ? "elizacloud-hybrid"
+      : "elizacloud";
   const onboardingServerTarget =
     deploymentTarget.runtime === "remote"
       ? "remote"
       : deploymentTarget.runtime === "cloud"
-        ? "elizacloud"
+        ? cloudServerTarget
         : "local";
 
   const fields: Partial<BuildOnboardingConnectionArgs> = {

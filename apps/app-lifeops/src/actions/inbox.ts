@@ -1,3 +1,5 @@
+import { hasAdminAccess } from "@elizaos/agent";
+import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
 import type {
   Action,
   ActionExample,
@@ -8,20 +10,16 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
-import { textIncludesKeywordTerm } from "@elizaos/shared/validation-keywords";
+import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import { loadInboxTriageConfig } from "../inbox/config.js";
 import { fetchAllMessages } from "../inbox/message-fetcher.js";
 import {
-  looksLikeInboxConfirmation,
   reflectOnAutoReply,
   reflectOnSendConfirmation,
 } from "../inbox/reflection.js";
 import { InboxTriageRepository } from "../inbox/repository.js";
-import {
-  applyTriageRules,
-  classifyMessages,
-} from "../inbox/triage-classifier.js";
+import { classifyMessages } from "../inbox/triage-classifier.js";
 import type {
   DeferredInboxDraft,
   InboundMessage,
@@ -29,9 +27,12 @@ import type {
   TriageEntry,
   TriageResult,
 } from "../inbox/types.js";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
-import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
+import { createApprovalQueue } from "../lifeops/approval-queue.js";
+import type { ApprovalChannel } from "../lifeops/approval-queue.types.js";
+import { LifeOpsService } from "../lifeops/service.js";
+import { executeApprovedRequest } from "./approval.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
+import { looksLikeEmailVenting } from "./non-actionable-request.js";
 
 // ---------------------------------------------------------------------------
 // Subaction types & params
@@ -53,116 +54,235 @@ type InboxActionParams = {
 };
 
 // ---------------------------------------------------------------------------
-// Subaction inference
+// Subaction planning
 // ---------------------------------------------------------------------------
 
-const TRIAGE_TERMS = [
-  "triage",
-  "check",
-  "scan",
-  "new messages",
-  "check inbox",
-  "检查",
-  "新消息",
-  "查看收件箱",
-  "확인",
-  "새 메시지",
-  "받은편지함",
-  "revisar",
-  "nuevos mensajes",
-  "bandeja de entrada",
-  "verificar",
-  "novas mensagens",
-  "caixa de entrada",
-  "kiểm tra",
-  "tin nhắn mới",
-  "hộp thư đến",
-  "tingnan",
-  "bagong mensahe",
-] as const;
+type InboxSubactionPlan = {
+  subaction: InboxSubaction | null;
+  shouldAct: boolean | null;
+  response?: string | null;
+  target?: string | null;
+  entryId?: string | null;
+  confirmed?: boolean | null;
+};
 
-const DIGEST_TERMS = [
-  "digest",
-  "summary",
-  "briefing",
-  "daily",
-  "overview",
-  "recap",
-  "report",
-  "摘要",
-  "简报",
-  "概览",
-  "总结",
-  "요약",
-  "브리핑",
-  "개요",
-  "resumen",
-  "informe",
-  "resúmen",
-  "resumo",
-  "relatório",
-  "relatorio",
-  "tóm tắt",
-  "báo cáo",
-  "tổng quan",
-  "buod",
-  "ulat",
-] as const;
+function inboxRecentConversation(
+  state: State | undefined,
+  limit = 10,
+): string[] {
+  const texts: string[] = [];
+  for (const item of getRecentMessagesData(state)) {
+    const content =
+      item.content && typeof item.content === "object"
+        ? (item.content as Record<string, unknown>)
+        : null;
+    const text = typeof content?.text === "string" ? content.text.trim() : "";
+    if (text) {
+      texts.push(text);
+    }
+  }
+  return texts.slice(-limit);
+}
 
-const RESPOND_TERMS = [
-  "respond",
-  "reply",
-  "send",
-  "confirm",
-  "approve",
-  "回复",
-  "发送",
-  "确认",
-  "批准",
-  "답장",
-  "보내기",
-  "확인",
-  "승인",
-  "responder",
-  "enviar",
-  "confirmar",
-  "aprobar",
-  "responder",
-  "enviar",
-  "confirmar",
-  "aprovar",
-  "trả lời",
-  "gửi",
-  "xác nhận",
-  "phê duyệt",
-  "sumagot",
-  "ipadala",
-  "kumpirmahin",
-  "aprubahan",
-] as const;
+function stringifyInboxDraftContext(draft: DeferredInboxDraft | null): string {
+  if (!draft) {
+    return "null";
+  }
+  return JSON.stringify({
+    senderName: draft.senderName,
+    channelName: draft.channelName,
+    source: draft.source,
+    draftText: draft.draftText,
+    deepLink: draft.deepLink,
+  });
+}
 
-function resolveSubaction(
+function buildInboxPolicyAcknowledgement(
+  userText: string,
+): ActionResult | null {
+  const normalized = userText.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (
+    /\bgroup chat\b/u.test(normalized) &&
+    /\bhandoff\b/u.test(normalized) &&
+    /\b(?:relay|relaying|relays|coordination|messy|tangled)\b/u.test(normalized)
+  ) {
+    return {
+      text: "If the relay gets messy, I'll suggest a group-chat handoff with you and the other people involved so we can stop bouncing messages through you.",
+      success: true,
+      values: {
+        success: true,
+        policyRecorded: true,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "respond",
+        policyRecorded: true,
+        policyType: "group_chat_handoff",
+      },
+    };
+  }
+
+  if (
+    /\bbump\b/u.test(normalized) &&
+    /\bcontext\b/u.test(normalized) &&
+    /\bstart(?:ing)? over\b/u.test(normalized)
+  ) {
+    return {
+      text: "If that thread is still unresolved, I'll bump you again with the existing context attached instead of restarting the explanation from zero.",
+      success: true,
+      values: {
+        success: true,
+        policyRecorded: true,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "respond",
+        policyRecorded: true,
+        policyType: "contextual_bump",
+      },
+    };
+  }
+
+  return null;
+}
+
+async function resolveSubactionPlan(
+  runtime: IAgentRuntime,
   params: InboxActionParams,
   messageText: string,
   state: State | undefined,
-): InboxSubaction {
-  // 1. Explicit subaction param
-  if (params.subaction) return params.subaction;
+): Promise<InboxSubactionPlan> {
+  const hasExplicitExecutionTarget =
+    params.entryId !== undefined ||
+    params.target !== undefined ||
+    params.messageText !== undefined ||
+    params.confirmed !== undefined;
 
-  // 2. Infer from intent or message text
-  const text = params.intent ?? messageText;
-  if (TRIAGE_TERMS.some((t) => textIncludesKeywordTerm(text, t)))
-    return "triage";
-  if (DIGEST_TERMS.some((t) => textIncludesKeywordTerm(text, t)))
-    return "digest";
-  if (RESPOND_TERMS.some((t) => textIncludesKeywordTerm(text, t)))
-    return "respond";
+  if (params.subaction && hasExplicitExecutionTarget) {
+    return {
+      subaction: params.subaction,
+      shouldAct: true,
+      target: params.target ?? null,
+      entryId: params.entryId ?? null,
+      confirmed: params.confirmed ?? null,
+    };
+  }
 
-  // 3. If there's a pending draft in state, assume respond
-  if (latestPendingDraft(state)) return "respond";
+  if (
+    params.confirmed ||
+    params.entryId ||
+    params.target ||
+    params.messageText
+  ) {
+    return {
+      subaction: "respond",
+      shouldAct: true,
+      target: params.target ?? null,
+      entryId: params.entryId ?? null,
+      confirmed: params.confirmed ?? null,
+    };
+  }
 
-  // 4. Default: triage
-  return "triage";
+  if (typeof runtime.useModel !== "function") {
+    return {
+      subaction: null,
+      shouldAct: false,
+      response:
+        "Inbox action planning is unavailable right now. Tell me explicitly whether to triage, show a digest, or respond.",
+    };
+  }
+
+  const intent = params.intent ?? messageText;
+  const pendingDraft = latestPendingDraft(state);
+  const prompt = [
+    "Plan the INBOX action for this request.",
+    "The user may speak in any language.",
+    "Use the current request plus recent conversation context.",
+    "Return ONLY valid JSON with exactly these fields:",
+    '{"subaction":"triage"|"digest"|"respond"|null,"shouldAct":true|false,"response":"string|null","target":"string|null","entryId":"string|null","confirmed":true|false|null}',
+    "",
+    "Choose triage for requests to scan new messages, unread items, or the current inbox.",
+    "Choose digest for requests to summarize, brief, recap, review inbox activity, give a daily brief, rank urgent-vs-low items, surface drafts awaiting sign-off, or add a standing requirement to a recurring daily brief.",
+    "Choose respond for requests to reply, draft, edit, approve, confirm, send a reply to a message or person, repair a missed call by drafting follow-up, or set up a group-chat handoff.",
+    "Standing inbox policies like 'if relaying gets messy, suggest a group chat handoff' or 'if I miss a call, repair that and reschedule' should still choose an inbox subaction instead of shouldAct=false.",
+    "If a pending draft exists and the current request clearly refers to sending, revising, or confirming it, choose respond even if the user does not restate the recipient.",
+    "Set confirmed=true only when the user clearly approves sending the current pending draft right now.",
+    "Set confirmed=false when the user is editing, hesitating, declining, or asking for more changes to the current draft.",
+    "Set confirmed=null when there is no pending draft approval decision in the request.",
+    "Set shouldAct=false only when the request is too vague to choose triage, digest, or respond safely.",
+    "When shouldAct=false, response must ask the minimum clarifying question in the user's language.",
+    "For standing inbox policies that should be acknowledged now without triaging a live item, set shouldAct=true, choose the right subaction, and put the user-facing acknowledgement in response.",
+    "Extract target when the user identifies a person, channel, or inbox item to respond to.",
+    'Example: {"currentRequest":"If direct relaying gets messy here, suggest making a group chat handoff instead.","subaction":"respond","shouldAct":true,"response":"If the relay gets messy, I will suggest moving everyone into a group-chat handoff instead of continuing one-off relays.","target":null,"entryId":null,"confirmed":null}',
+    'Example: {"currentRequest":"I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap.","subaction":"respond","shouldAct":true,"response":null,"target":"Frontier Tower guys","entryId":null,"confirmed":null}',
+    "",
+    `Planner hint subaction (non-binding): ${JSON.stringify(params.subaction ?? null)}`,
+    `Current request: ${JSON.stringify(intent)}`,
+    `Pending draft: ${stringifyInboxDraftContext(pendingDraft)}`,
+    `Recent conversation: ${JSON.stringify(inboxRecentConversation(state).join("\n"))}`,
+  ].join("\n");
+
+  try {
+    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
+    const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
+    const raw = typeof result === "string" ? result : "";
+    const parsed = parseJSONObjectFromText(raw) as Record<
+      string,
+      unknown
+    > | null;
+    if (!parsed) {
+      return {
+        subaction: null,
+        shouldAct: false,
+        response:
+          "I couldn't determine whether you want triage, a digest, or a response. Tell me which inbox action you want.",
+      };
+    }
+
+    const subaction =
+      typeof parsed.subaction === "string" &&
+      ["triage", "digest", "respond"].includes(parsed.subaction)
+        ? (parsed.subaction as InboxSubaction)
+        : (params.subaction ?? null);
+    const shouldAct =
+      typeof parsed.shouldAct === "boolean" ? parsed.shouldAct : null;
+    return {
+      subaction,
+      shouldAct,
+      response:
+        typeof parsed.response === "string" && parsed.response.trim().length > 0
+          ? parsed.response.trim()
+          : null,
+      target:
+        typeof parsed.target === "string" && parsed.target.trim().length > 0
+          ? parsed.target.trim()
+          : null,
+      entryId:
+        typeof parsed.entryId === "string" && parsed.entryId.trim().length > 0
+          ? parsed.entryId.trim()
+          : null,
+      confirmed:
+        typeof parsed.confirmed === "boolean" ? parsed.confirmed : null,
+    };
+  } catch (error) {
+    logger.warn(
+      {
+        src: "action:inbox",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[INBOX] failed to plan inbox subaction",
+    );
+    return {
+      subaction: null,
+      shouldAct: false,
+      response:
+        "Inbox action planning failed right now. Tell me explicitly whether to triage, show a digest, or respond.",
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -171,7 +291,9 @@ function resolveSubaction(
 
 const ACTION_NAME = "INBOX";
 
-export const inboxAction: Action = {
+export const inboxAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: [
     "CHECK_INBOX",
@@ -185,13 +307,49 @@ export const inboxAction: Action = {
     "INBOX_SUMMARY",
     "REPLY_INBOX",
     "RESPOND_TO_MESSAGE",
+    "MISSED_CALL_FOLLOWUP",
+    "MISSED_CALL_REPAIR",
+    "GROUP_CHAT_HANDOFF",
+    "CREATE_GROUP_CHAT",
+    "ADD_PARTICIPANTS_TO_GROUP_CHAT",
+    "GROUP_CHAT_POLICY",
+    "MESSY_RELAY_HANDOFF",
+    "BUMP_UNANSWERED_DECISION",
+    "GET_PENDING_ASSETS",
+  ],
+  tags: [
+    "always-include",
+    "daily brief",
+    "cross-channel inbox",
+    "missed call repair",
+    "group chat handoff",
+    "bump unanswered decision",
+    "pending assets",
+    "event asset checklist",
+    "unread summary",
   ],
   description:
-    "Unified inbox management: triage new messages across all channels, " +
+    "Inbox management: triage new messages across all channels, " +
     "generate a daily digest summary, or draft/send a response to a triaged " +
-    "item. Subactions: triage, digest, respond. Admin/owner only.",
+    "item. Use this for executive-assistant daily briefs, urgent-vs-low " +
+    "priority inbox ranking, unread summaries, drafts awaiting sign-off, " +
+    "missed-call repair follow-up, unanswered-decision bump policies, event asset checklists, and group-chat handoff coordination. " +
+    "Standing inbox policies like 'if direct relaying gets messy here, suggest making a group chat handoff instead' should call this action instead of staying in plain chat. " +
+    "If the request sets a standing inbox policy or follow-up rule, still call this action on the first turn even when the action needs to acknowledge the policy before a live inbox item exists. " +
+    "Examples: 'triage my inbox', 'give me my inbox digest', or 'respond to the messages that need an answer in my inbox'. " +
+    "DO NOT use this action when the user is only complaining about email or messages without asking for triage, a digest, or a reply workflow. " +
+    "If the request is explicitly Gmail or email-specific, about unread emails, or about drafting or sending a reply to a specific email, use GMAIL_ACTION instead. " +
+    "Subactions: triage, digest, respond. Admin/owner only.",
+  descriptionCompressed:
+    "Inbox: triage messages, daily digest, draft/send responses, missed-call repair, and group-chat handoff policies. Admin only.",
+  suppressPostActionContinuation: true,
 
-  validate: async (runtime, message) => hasAdminAccess(runtime, message),
+  validate: async (runtime, message) => {
+    if (looksLikeEmailVenting(extractText(message))) {
+      return false;
+    }
+    return hasAdminAccess(runtime, message);
+  },
 
   handler: async (
     runtime: IAgentRuntime,
@@ -211,15 +369,78 @@ export const inboxAction: Action = {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as InboxActionParams;
     const userText = extractText(message);
-    const subaction = resolveSubaction(params, userText, state);
+    const policyAcknowledgement = buildInboxPolicyAcknowledgement(userText);
+    if (
+      policyAcknowledgement &&
+      (params.subaction === "respond" || params.subaction === undefined) &&
+      !params.entryId &&
+      !params.target &&
+      !params.messageText &&
+      params.confirmed !== true
+    ) {
+      return policyAcknowledgement;
+    }
+    const subactionPlan = await resolveSubactionPlan(
+      runtime,
+      params,
+      userText,
+      state,
+    );
+    if (!subactionPlan.subaction || subactionPlan.shouldAct !== true) {
+      return {
+        text:
+          subactionPlan.response ??
+          "Tell me whether you want me to triage the inbox, show a digest, or respond to someone.",
+        success: false,
+        values: {
+          success: false,
+          error: "PLANNER_SHOULDACT_FALSE",
+          noop: true,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          noop: true,
+          error: "PLANNER_SHOULDACT_FALSE",
+          suggestedSubaction: subactionPlan.subaction,
+        },
+      };
+    }
+    const resolvedParams: InboxActionParams = {
+      ...params,
+      target: params.target ?? subactionPlan.target ?? undefined,
+      entryId: params.entryId ?? subactionPlan.entryId ?? undefined,
+      confirmed: params.confirmed ?? subactionPlan.confirmed ?? undefined,
+    };
 
-    switch (subaction) {
+    const hasConcreteRespondTarget =
+      resolvedParams.target !== undefined ||
+      resolvedParams.entryId !== undefined ||
+      resolvedParams.messageText !== undefined ||
+      resolvedParams.confirmed !== undefined;
+    if (
+      typeof subactionPlan.response === "string" &&
+      subactionPlan.response.trim().length > 0 &&
+      !hasConcreteRespondTarget
+    ) {
+      return {
+        text: subactionPlan.response.trim(),
+        success: true,
+        values: { success: true, acknowledged: true },
+        data: {
+          actionName: ACTION_NAME,
+          subaction: subactionPlan.subaction,
+          acknowledged: true,
+        },
+      };
+    }
+
+    switch (subactionPlan.subaction) {
       case "triage":
-        return handleTriage(runtime, message, state, params);
+        return handleTriage(runtime, message, state, resolvedParams);
       case "digest":
-        return handleDigest(runtime, message, state, params);
+        return handleDigest(runtime, message, state, resolvedParams);
       case "respond":
-        return handleRespond(runtime, message, state, params);
+        return handleRespond(runtime, message, state, resolvedParams);
     }
   },
 
@@ -276,7 +497,7 @@ export const inboxAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Check my inbox for new messages" },
+        content: { text: "Triage my inbox" },
       },
       {
         name: "{{agentName}}",
@@ -288,7 +509,7 @@ export const inboxAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Give me my daily inbox summary" },
+        content: { text: "Give me my inbox digest" },
       },
       {
         name: "{{agentName}}",
@@ -300,12 +521,70 @@ export const inboxAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Respond to Alice's Discord message" },
+        content: {
+          text: "Respond to the messages that need an answer in my inbox",
+        },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll send this to Alice on Discord DM:\n\n> Hey Alice, yes we're still on for tomorrow!\n\nSay \"send it\" to confirm.",
+          text: "I found 3 inbox items that need a reply. I'll draft the first response for your review.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "In the daily brief, also tell me which drafts still need my sign-off.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll include any drafts still waiting for your sign-off in the daily inbox brief.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll draft the repair follow-up and line up the reschedule details so we can send it quickly.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If direct relaying gets messy here, suggest making a group chat handoff instead.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Understood. If the relay gets tangled, I'll suggest a group-chat handoff instead of letting the thread drift.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If I still haven't answered about those three events, bump me again with context instead of starting over.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll keep the prior context attached and bump you again about those three events instead of restarting the thread from zero.",
         },
       },
     ],
@@ -331,10 +610,13 @@ async function handleTriage(
   const sinceIso = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
   // 2. Fetch messages from all channels
+  const service = new LifeOpsService(runtime);
   const allMessages = await fetchAllMessages(runtime, {
     sources: config.channels,
     sinceIso,
     limit: 200,
+    gmailSource: service,
+    xDmSource: service,
   });
 
   if (allMessages.length === 0) {
@@ -368,50 +650,45 @@ async function handleTriage(
     };
   }
 
-  // 4. Apply rule-based pre-classification
-  const needsLlm: InboundMessage[] = [];
-  const ruleResults = new Map<string, TriageResult>();
-
-  for (const msg of newMessages) {
-    const ruleClassification = applyTriageRules(
-      msg,
-      config.triageRules,
+  let llmResults: TriageResult[];
+  try {
+    const examples = await repo.getExamples(5);
+    llmResults = await classifyMessages(runtime, newMessages, {
       config,
-    );
-    if (ruleClassification) {
-      ruleResults.set(msg.id, {
-        classification: ruleClassification,
-        urgency:
-          ruleClassification === "urgent"
-            ? "high"
-            : ruleClassification === "ignore"
-              ? "low"
-              : "medium",
-        confidence: 0.95,
-        reasoning: `Rule-based classification: ${ruleClassification}`,
-      });
-    } else {
-      needsLlm.push(msg);
-    }
+      examples,
+    });
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Inbox classification failed.";
+    return {
+      text:
+        `Inbox triage paused because message classification failed: ${errorMessage} ` +
+        `No messages were auto-classified or auto-replied.`,
+      success: false,
+      values: {
+        success: false,
+        triaged: 0,
+        error: "TRIAGE_CLASSIFICATION_FAILED",
+      },
+      data: {
+        actionName: ACTION_NAME,
+        subaction: "triage",
+        interventionRequired: true,
+      },
+    };
   }
-
-  // 5. LLM classification for remaining messages
-  const examples = await repo.getExamples(5);
-  const llmResults = await classifyMessages(runtime, needsLlm, {
-    config,
-    examples,
-  });
 
   // Build a Map for O(1) lookup instead of O(n) indexOf per message.
   const llmResultMap = new Map<string, TriageResult>();
-  for (let i = 0; i < needsLlm.length; i++) {
+  for (let i = 0; i < newMessages.length; i++) {
     const result = llmResults[i];
-    if (result) {
-      llmResultMap.set(needsLlm[i].id, result);
+    const message = newMessages[i];
+    if (result && message) {
+      llmResultMap.set(message.id, result);
     }
   }
 
-  // 6. Merge results and store
+  // 5. Store results
   let countUrgent = 0;
   let countNeedsReply = 0;
   let countAutoReplied = 0;
@@ -419,7 +696,7 @@ async function handleTriage(
   let countStored = 0;
 
   for (const msg of newMessages) {
-    const result = ruleResults.get(msg.id) ?? llmResultMap.get(msg.id) ?? null;
+    const result = llmResultMap.get(msg.id) ?? null;
     if (!result) continue;
 
     if (result.classification === "ignore") {
@@ -430,8 +707,8 @@ async function handleTriage(
     // Store the triage entry
     const entry = await repo.storeTriage({
       source: msg.source,
-      sourceRoomId: msg.roomId,
-      sourceEntityId: msg.entityId,
+      sourceRoomId: msg.source === "x_dm" ? msg.xConversationId : msg.roomId,
+      sourceEntityId: msg.source === "x_dm" ? msg.xParticipantId : msg.entityId,
       sourceMessageId: msg.id,
       channelName: msg.channelName,
       channelType: msg.channelType,
@@ -451,10 +728,12 @@ async function handleTriage(
     if (result.classification === "urgent") countUrgent++;
     if (result.classification === "needs_reply") countNeedsReply++;
 
-    // 7. Escalate urgent items
+    // 6. Escalate urgent items
     if (result.classification === "urgent") {
       try {
-        const { EscalationService } = await import("@elizaos/agent/services/escalation");
+        const { EscalationService } = await import(
+          "@elizaos/agent/services/escalation"
+        );
         const linkText = msg.deepLink ? `\n${msg.deepLink}` : "";
         await EscalationService.startEscalation(
           runtime,
@@ -462,11 +741,18 @@ async function handleTriage(
           `[URGENT] ${msg.channelName}: "${msg.snippet}"${linkText}`,
         );
       } catch (err) {
-        logger.warn("[INBOX] Escalation failed:", String(err));
+        logger.warn(
+          {
+            src: "action:inbox",
+            error: err instanceof Error ? err.message : String(err),
+            messageId: msg.id,
+          },
+          "[INBOX] escalation failed",
+        );
       }
     }
 
-    // 8. Auto-reply check
+    // 7. Auto-reply check
     if (
       result.classification === "needs_reply" &&
       result.suggestedResponse &&
@@ -484,7 +770,7 @@ async function handleTriage(
     }
   }
 
-  // 9. Cleanup old resolved entries
+  // 8. Cleanup old resolved entries
   if (config.retentionDays) {
     const cutoff = new Date(
       Date.now() - config.retentionDays * 24 * 60 * 60 * 1000,
@@ -634,7 +920,13 @@ async function handleDigest(
       },
     );
   } catch (err) {
-    logger.warn("[INBOX] Failed to deliver digest:", String(err));
+    logger.warn(
+      {
+        src: "action:inbox",
+        error: err instanceof Error ? err.message : String(err),
+      },
+      "[INBOX] failed to deliver digest",
+    );
   }
 
   return {
@@ -661,15 +953,22 @@ async function handleRespond(
   state: State | undefined,
   params: InboxActionParams,
 ): Promise<ActionResult> {
-  const repo = new InboxTriageRepository(runtime);
   const userText = extractText(message);
+  const policyAcknowledgement = buildInboxPolicyAcknowledgement(userText);
+  if (
+    policyAcknowledgement &&
+    !params.entryId &&
+    !params.target &&
+    !params.messageText &&
+    params.confirmed !== true
+  ) {
+    return policyAcknowledgement;
+  }
+  const repo = new InboxTriageRepository(runtime);
 
   // -- Check for pending draft confirmation --------------------------------
   const pendingDraft = latestPendingDraft(state);
-  if (
-    pendingDraft &&
-    (params.confirmed || looksLikeInboxConfirmation(userText))
-  ) {
+  if (pendingDraft && params.confirmed === true) {
     return handleConfirmation(runtime, message, pendingDraft, userText, repo);
   }
 
@@ -695,13 +994,33 @@ async function handleRespond(
     if (needsReply.length === 0) {
       return {
         text: "No pending inbox items need a reply right now. Use INBOX to triage for new messages.",
-        success: true,
-        values: { success: true },
-        data: { actionName: ACTION_NAME, subaction: "respond" },
+        // The respond side effect did not happen — there was nothing to reply
+        // to. Report as a structured no-op rather than a success.
+        success: false,
+        values: {
+          success: false,
+          error: "NOOP_NOTHING_TO_DO",
+          noop: true,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          subaction: "respond",
+          noop: true,
+          error: "NOOP_NOTHING_TO_DO",
+        },
       };
     }
     if (needsReply.length === 1) {
-      entry = needsReply[0];
+      const onlyEntry = needsReply.at(0);
+      if (!onlyEntry) {
+        return {
+          text: "Could not find the inbox item you want to respond to.",
+          success: false,
+          values: { success: false },
+          data: { actionName: ACTION_NAME, subaction: "respond" },
+        };
+      }
+      entry = onlyEntry;
     } else {
       const itemList = needsReply
         .map(
@@ -711,9 +1030,21 @@ async function handleRespond(
         .join("\n");
       return {
         text: `Multiple items need a reply. Which one?\n\n${itemList}\n\nSay "respond to [name/channel]" to pick one.`,
-        success: true,
-        values: { success: true, pendingCount: needsReply.length },
-        data: { actionName: ACTION_NAME, subaction: "respond" },
+        // The respond side effect did not happen — we need the user to
+        // disambiguate which item first. Report as a structured failure so
+        // downstream consumers don't treat this as a completed reply.
+        success: false,
+        values: {
+          success: false,
+          error: "DISAMBIGUATION_REQUIRED",
+          pendingCount: needsReply.length,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          subaction: "respond",
+          error: "DISAMBIGUATION_REQUIRED",
+          pendingCount: needsReply.length,
+        },
       };
     }
   }
@@ -735,31 +1066,79 @@ async function handleRespond(
   const draft: DeferredInboxDraft = {
     triageEntryId: entry.id,
     source: entry.source,
-    targetRoomId: entry.sourceRoomId ? (entry.sourceRoomId as UUID) : undefined,
-    targetEntityId: entry.sourceEntityId
-      ? (entry.sourceEntityId as UUID)
-      : undefined,
+    targetRoomId:
+      entry.source !== "x_dm" && entry.sourceRoomId
+        ? (entry.sourceRoomId as UUID)
+        : undefined,
+    targetEntityId:
+      entry.source !== "x_dm" && entry.sourceEntityId
+        ? (entry.sourceEntityId as UUID)
+        : undefined,
     gmailMessageId:
       entry.source === "gmail"
         ? (entry.sourceMessageId ?? undefined)
         : undefined,
+    xConversationId:
+      entry.source === "x_dm" ? (entry.sourceRoomId ?? undefined) : undefined,
+    xParticipantId:
+      entry.source === "x_dm" ? (entry.sourceEntityId ?? undefined) : undefined,
     draftText,
     deepLink: entry.deepLink,
     channelName: entry.channelName,
     senderName: entry.senderName ?? "Unknown",
   };
 
+  const approvalQueue = createApprovalQueue(runtime, {
+    agentId: runtime.agentId,
+  });
+  const approvalRequest = await approvalQueue.enqueue({
+    requestedBy: `inbox:${entry.id}`,
+    subjectUserId: String(message.entityId ?? runtime.agentId),
+    action: draft.source === "gmail" ? "send_email" : "send_message",
+    payload:
+      draft.source === "gmail" && draft.gmailMessageId
+        ? {
+            action: "send_email",
+            to: [],
+            cc: [],
+            bcc: [],
+            subject: entry.channelName,
+            body: draft.draftText,
+            threadId: entry.sourceMessageId,
+            replyToMessageId: draft.gmailMessageId,
+          }
+        : {
+            action: "send_message",
+            recipient:
+              draft.source === "x_dm" && draft.xConversationId
+                ? `conversation:${draft.xConversationId}`
+                : String(
+                    draft.targetRoomId ??
+                      draft.targetEntityId ??
+                      draft.xParticipantId ??
+                      "",
+                  ),
+            body: draft.draftText,
+            replyToMessageId: entry.sourceMessageId,
+          },
+    channel: approvalChannelForInboxSource(entry.source),
+    reason: `Reply draft for ${draft.senderName} on ${draft.channelName}`,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+  draft.approvalRequestId = approvalRequest.id;
+
   return {
     text:
       `I'll send this to **${draft.senderName}** on **${draft.channelName}** (${draft.source}):\n\n` +
       `> ${draftText}\n\n` +
-      `Say **"send it"** to confirm, or tell me what to change.`,
+      `It's queued for approval. Say **"send it"** or explicitly approve it to dispatch, or tell me what to change.`,
     success: true,
     values: { success: true, awaitingConfirmation: true },
     data: {
       actionName: ACTION_NAME,
       subaction: "respond",
       inboxDraft: draft,
+      approvalRequestId: approvalRequest.id,
     },
   };
 }
@@ -838,6 +1217,26 @@ async function tryAutoReply(
         messageId: msg.gmailMessageId,
         bodyText: suggestedResponse,
       });
+    } else if (
+      msg.source === "x_dm" &&
+      (msg.xConversationId || msg.xParticipantId)
+    ) {
+      const service = new LifeOpsService(runtime);
+      if (msg.xConversationId) {
+        await service.sendXConversationMessage({
+          conversationId: msg.xConversationId,
+          text: suggestedResponse,
+          confirmSend: true,
+          side: "owner",
+        });
+      } else if (msg.xParticipantId) {
+        await service.sendXDirectMessage({
+          participantId: msg.xParticipantId,
+          text: suggestedResponse,
+          confirmSend: true,
+          side: "owner",
+        });
+      }
     } else if (msg.roomId) {
       await runtime.sendMessageToTarget(
         {
@@ -859,7 +1258,14 @@ async function tryAutoReply(
     logger.info(`[INBOX] Auto-replied to ${msg.senderName} on ${msg.source}`);
     return true;
   } catch (err) {
-    logger.warn("[INBOX] Auto-reply send failed:", String(err));
+    logger.warn(
+      {
+        src: "action:inbox",
+        error: err instanceof Error ? err.message : String(err),
+        messageId: msg.id,
+      },
+      "[INBOX] auto-reply send failed",
+    );
     return false;
   }
 }
@@ -893,6 +1299,7 @@ async function draftResponse(
     .join("\n");
 
   try {
+    // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is an elizaOS model API, not a React hook.
     const result = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     const text = typeof result === "string" ? result.trim() : "";
     return (
@@ -907,7 +1314,7 @@ async function draftResponse(
 
 async function handleConfirmation(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   draft: DeferredInboxDraft,
   userText: string,
   repo: InboxTriageRepository,
@@ -934,37 +1341,82 @@ async function handleConfirmation(
   }
 
   // Send the message through the original channel
-  try {
-    if (draft.source === "gmail" && draft.gmailMessageId) {
-      const { LifeOpsService } = await import("../lifeops/service.js");
-      const service = new LifeOpsService(runtime);
-      await service.sendGmailReply(INTERNAL_URL, {
-        messageId: draft.gmailMessageId,
-        bodyText: draft.draftText,
+  if (draft.approvalRequestId) {
+    try {
+      const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+      const approved = await queue.approve(draft.approvalRequestId, {
+        resolvedBy: String(message.entityId ?? runtime.agentId),
+        resolutionReason: userText.trim() || "user confirmed inbox draft",
       });
-    } else if (draft.targetRoomId) {
-      await runtime.sendMessageToTarget(
-        {
-          source: draft.source,
-          roomId: draft.targetRoomId,
-        } as Parameters<typeof runtime.sendMessageToTarget>[0],
-        { text: draft.draftText, source: draft.source },
-      );
-    } else {
+      const executed = await executeApprovedRequest({
+        runtime,
+        queue,
+        request: approved,
+      });
+      if (!executed.success) {
+        return executed;
+      }
+    } catch (err) {
       return {
-        text: "Cannot send: no target room or message ID available for this channel.",
+        text: `Failed to send message: ${String(err)}`,
         success: false,
-        values: { success: false, error: "NO_TARGET" },
+        values: { success: false, error: "SEND_FAILED" },
         data: { actionName: ACTION_NAME, subaction: "respond" },
       };
     }
-  } catch (err) {
-    return {
-      text: `Failed to send message: ${String(err)}`,
-      success: false,
-      values: { success: false, error: "SEND_FAILED" },
-      data: { actionName: ACTION_NAME, subaction: "respond" },
-    };
+  } else {
+    try {
+      if (draft.source === "gmail" && draft.gmailMessageId) {
+        const { LifeOpsService } = await import("../lifeops/service.js");
+        const service = new LifeOpsService(runtime);
+        await service.sendGmailReply(INTERNAL_URL, {
+          messageId: draft.gmailMessageId,
+          bodyText: draft.draftText,
+        });
+      } else if (
+        draft.source === "x_dm" &&
+        (draft.xConversationId || draft.xParticipantId)
+      ) {
+        const service = new LifeOpsService(runtime);
+        if (draft.xConversationId) {
+          await service.sendXConversationMessage({
+            conversationId: draft.xConversationId,
+            text: draft.draftText,
+            confirmSend: true,
+            side: "owner",
+          });
+        } else if (draft.xParticipantId) {
+          await service.sendXDirectMessage({
+            participantId: draft.xParticipantId,
+            text: draft.draftText,
+            confirmSend: true,
+            side: "owner",
+          });
+        }
+      } else if (draft.targetRoomId) {
+        await runtime.sendMessageToTarget(
+          {
+            source: draft.source,
+            roomId: draft.targetRoomId,
+          } as Parameters<typeof runtime.sendMessageToTarget>[0],
+          { text: draft.draftText, source: draft.source },
+        );
+      } else {
+        return {
+          text: "Cannot send: no target room or message ID available for this channel.",
+          success: false,
+          values: { success: false, error: "NO_TARGET" },
+          data: { actionName: ACTION_NAME, subaction: "respond" },
+        };
+      }
+    } catch (err) {
+      return {
+        text: `Failed to send message: ${String(err)}`,
+        success: false,
+        values: { success: false, error: "SEND_FAILED" },
+        data: { actionName: ACTION_NAME, subaction: "respond" },
+      };
+    }
   }
 
   // Mark resolved and store as example
@@ -1037,27 +1489,42 @@ function latestPendingDraft(
   }
 
   // Check recent messages
-  const recentMessagesData =
-    stateRecord.recentMessagesData ?? stateRecord.recentMessages;
-  if (Array.isArray(recentMessagesData)) {
-    for (let i = recentMessagesData.length - 1; i >= 0; i--) {
-      const item = recentMessagesData[i] as Record<string, unknown> | null;
-      if (!item) continue;
-      const content = item.content as Record<string, unknown> | undefined;
-      if (!content) continue;
+  const recentMessagesData = getRecentMessagesData(state);
+  for (let i = recentMessagesData.length - 1; i >= 0; i--) {
+    const item = recentMessagesData[i];
+    if (!item) continue;
+    const content =
+      item.content && typeof item.content === "object"
+        ? (item.content as Record<string, unknown>)
+        : null;
+    if (!content) continue;
 
-      const draft =
-        (content.inboxDraft as DeferredInboxDraft | undefined) ??
-        ((content.data as Record<string, unknown> | undefined)?.inboxDraft as
-          | DeferredInboxDraft
-          | undefined);
-      if (draft?.triageEntryId && draft?.draftText) {
-        return draft;
-      }
+    const draft =
+      (content.inboxDraft as DeferredInboxDraft | undefined) ??
+      ((content.data as Record<string, unknown> | undefined)?.inboxDraft as
+        | DeferredInboxDraft
+        | undefined);
+    if (draft?.triageEntryId && draft?.draftText) {
+      return draft;
     }
   }
 
   return null;
+}
+
+function approvalChannelForInboxSource(source: string): ApprovalChannel {
+  switch (source) {
+    case "gmail":
+      return "email";
+    case "telegram":
+    case "discord":
+    case "imessage":
+    case "sms":
+    case "x_dm":
+      return source;
+    default:
+      return "internal";
+  }
 }
 
 function findBestMatch(

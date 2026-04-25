@@ -1,25 +1,36 @@
+import { Button, PagePanel } from "@elizaos/ui";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { client } from "../../api/client";
 import type {
   KnowledgeDocument,
   KnowledgeSearchResult,
 } from "../../api/client-types-chat";
-import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
-
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
 import { formatByteSize } from "../../utils/format";
-import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   isKnowledgeImageFile,
   MAX_KNOWLEDGE_IMAGE_PROCESSING_BYTES,
   maybeCompressKnowledgeUploadImage,
 } from "../../utils/knowledge-upload-image";
-import { DocumentViewer } from "./knowledge-detail";
-import { PagePanel, Button } from "@elizaos/ui";
+import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
+import {
+  DocumentViewer,
+  getKnowledgeDocumentSummary,
+  getKnowledgeTypeLabel,
+} from "./knowledge-detail";
 import {
   BULK_UPLOAD_TARGET_BYTES,
   getKnowledgeUploadFilename,
   isSupportedKnowledgeFile,
+  KNOWLEDGE_UPLOAD_ACCEPT,
   type KnowledgeUploadFile,
   type KnowledgeUploadOptions,
   LARGE_FILE_WARNING_BYTES,
@@ -55,9 +66,7 @@ function SearchResultListItem({
       type="button"
       aria-current={active ? "page" : undefined}
       className={`group flex w-full items-start px-0 py-3 text-left transition-colors ${
-        active
-          ? "bg-transparent"
-          : "bg-transparent hover:bg-white/[0.03]"
+        active ? "bg-transparent" : "bg-transparent hover:bg-white/[0.03]"
       }`}
     >
       <span
@@ -103,9 +112,7 @@ function DocumentListItem({
   return (
     <div
       className={`group relative flex w-full transition-colors ${
-        active
-          ? "bg-transparent"
-          : "bg-transparent hover:bg-white/[0.03]"
+        active ? "bg-transparent" : "bg-transparent hover:bg-white/[0.03]"
       }`}
     >
       <button
@@ -124,8 +131,32 @@ function DocumentListItem({
             active ? "bg-accent" : "bg-border"
           }`}
         />
-        <div className="truncate text-sm font-semibold leading-snug text-txt">
-          {doc.filename}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-semibold leading-snug text-txt">
+            {doc.filename}
+          </div>
+          <div className="mt-1 truncate text-xs text-muted">
+            {getKnowledgeDocumentSummary(doc, t)}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted/70">
+            <span>{getKnowledgeTypeLabel(doc.contentType)}</span>
+            {doc.canEditText ? (
+              <>
+                <span>•</span>
+                <span>
+                  {t("knowledgeview.Editable", { defaultValue: "editable" })}
+                </span>
+              </>
+            ) : null}
+            {!doc.canDelete ? (
+              <>
+                <span>•</span>
+                <span>
+                  {t("knowledgeview.Locked", { defaultValue: "locked" })}
+                </span>
+              </>
+            ) : null}
+          </div>
         </div>
       </button>
       <span className="absolute right-2 top-2 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
@@ -133,7 +164,7 @@ function DocumentListItem({
           triggerClassName="h-7 rounded-lg border border-transparent px-2 text-2xs font-bold !bg-transparent text-danger/70 transition-all hover:!bg-danger/12 hover:border-danger/25 hover:text-danger"
           confirmClassName="h-7 rounded-lg border border-danger/25 bg-danger/14 px-2 text-2xs font-bold text-danger transition-all hover:bg-danger/20"
           cancelClassName="h-7 rounded-lg border border-border/35 px-2 text-2xs font-bold text-muted-strong transition-all hover:border-border-strong hover:text-txt"
-          disabled={deleting}
+          disabled={deleting || !doc.canDelete}
           busyLabel="..."
           onConfirm={() => onDelete(doc.id)}
         />
@@ -145,11 +176,21 @@ function DocumentListItem({
 /* ── Main KnowledgeView Component ───────────────────────────────────── */
 
 export function KnowledgeView({
+  fileInputId,
   inModal,
-  embedded: _embedded,
+  embedded = false,
+  onDocumentsChange,
+  onSelectedDocumentIdChange,
+  selectedDocumentId,
+  showSelectorRail,
 }: {
+  fileInputId?: string;
   inModal?: boolean;
   embedded?: boolean;
+  onDocumentsChange?: (documents: KnowledgeDocument[]) => void;
+  onSelectedDocumentIdChange?: (documentId: string | null) => void;
+  selectedDocumentId?: string | null;
+  showSelectorRail?: boolean;
 } = {}) {
   const { t } = useApp();
   const { setActionNotice } = useApp();
@@ -169,10 +210,24 @@ export function KnowledgeView({
   } | null>(null);
   const [searching, setSearching] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [internalSelectedDocId, setInternalSelectedDocId] = useState<
+    string | null
+  >(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isServiceLoading, setIsServiceLoading] = useState(false);
   const serviceRetryRef = useRef(0);
+  const selectedDocId = selectedDocumentId ?? internalSelectedDocId;
+  const setSelectedDocId = useCallback(
+    (documentId: string | null) => {
+      if (selectedDocumentId === undefined) {
+        setInternalSelectedDocId(documentId);
+      }
+      onSelectedDocumentIdChange?.(documentId);
+    },
+    [onSelectedDocumentIdChange, selectedDocumentId],
+  );
+  const shouldRenderSelectorRail = showSelectorRail !== false || embedded;
+  const useCompactSelectorRail = embedded;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -180,6 +235,7 @@ export function KnowledgeView({
     try {
       const docsRes = await client.listKnowledgeDocuments({ limit: 100 });
       setDocuments(docsRes.documents);
+      onDocumentsChange?.(docsRes.documents);
       setIsServiceLoading(false);
       serviceRetryRef.current = 0;
     } catch (err) {
@@ -200,7 +256,7 @@ export function KnowledgeView({
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [onDocumentsChange, t]);
 
   useEffect(() => {
     loadData().catch((err) => {
@@ -615,6 +671,19 @@ export function KnowledgeView({
     [loadData, setActionNotice, t],
   );
 
+  const handleExternalFileInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (files && files.length > 0 && !uploading) {
+        void handleFilesUpload(Array.from(files) as KnowledgeUploadFile[], {
+          includeImageDescriptions: true,
+        });
+      }
+      event.target.value = "";
+    },
+    [handleFilesUpload, uploading],
+  );
+
   const handleSearch = useCallback(
     async (query: string) => {
       setSearching(true);
@@ -723,7 +792,7 @@ export function KnowledgeView({
     if (!hasSelectedDocument) {
       setSelectedDocId(documents[0]?.id ?? null);
     }
-  }, [documents, selectedDocId]);
+  }, [documents, selectedDocId, setSelectedDocId]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -794,17 +863,29 @@ export function KnowledgeView({
 
   const documentContent = (
     <div className="order-2 flex min-w-0 flex-1 lg:order-1">
-      <DocumentViewer documentId={selectedDocId} />
+      <DocumentViewer
+        documentId={selectedDocId}
+        onUpdated={() => {
+          void loadData();
+        }}
+      />
     </div>
   );
 
   const selectorRail = (
-    <div className="order-1 flex w-full shrink-0 flex-col gap-3 lg:order-2 lg:w-[22rem] xl:w-[24rem]">
+    <div
+      className={`order-1 flex w-full shrink-0 flex-col gap-3 lg:order-2 ${
+        useCompactSelectorRail
+          ? "lg:w-[18.5rem] xl:w-[20rem]"
+          : "lg:w-[22rem] xl:w-[24rem]"
+      }`}
+    >
       <PagePanel
         variant="inset"
-        className="p-3 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+        className={`${useCompactSelectorRail ? "p-2" : "p-3"} !rounded-none !border-0 !bg-transparent !shadow-none !ring-0`}
       >
         <UploadZone
+          fileInputId={fileInputId}
           onFilesUpload={handleFilesUpload}
           onUrlUpload={handleUrlUpload}
           uploading={uploading}
@@ -814,8 +895,29 @@ export function KnowledgeView({
 
       <PagePanel
         variant="inset"
-        className="flex min-h-[18rem] flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+        className={`flex flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0 ${
+          useCompactSelectorRail ? "min-h-[14rem]" : "min-h-[18rem]"
+        }`}
       >
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <div className="min-w-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
+            {isShowingSearchResults
+              ? t("knowledgeview.SearchResults", {
+                  defaultValue: "Search results",
+                })
+              : t("knowledgeview.Documents", { defaultValue: "Documents" })}
+          </div>
+          <div className="shrink-0 text-2xs text-muted">
+            {documents.length === 1
+              ? t("knowledgeview.DocumentCountOne", {
+                  defaultValue: "1 doc",
+                })
+              : t("knowledgeview.DocumentCountMany", {
+                  defaultValue: "{{count}} docs",
+                  count: documents.length,
+                })}
+          </div>
+        </div>
         {searchInput}
 
         <div className="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-0.5 py-0.5">
@@ -896,6 +998,17 @@ export function KnowledgeView({
       className={`flex flex-1 min-h-0 flex-col gap-4 ${inModal ? "min-h-0" : ""}`}
       data-testid="knowledge-view"
     >
+      {!shouldRenderSelectorRail && fileInputId ? (
+        <input
+          id={fileInputId}
+          type="file"
+          className="hidden"
+          multiple
+          accept={KNOWLEDGE_UPLOAD_ACCEPT}
+          onChange={handleExternalFileInputChange}
+        />
+      ) : null}
+
       {isServiceLoading && (
         <PagePanel
           variant="inset"
@@ -926,7 +1039,7 @@ export function KnowledgeView({
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {documentContent}
-        {selectorRail}
+        {shouldRenderSelectorRail ? selectorRail : null}
       </div>
     </div>
   );

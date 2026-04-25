@@ -90,7 +90,7 @@ export async function loggedLLMCall(
 		userPrompt: string;
 		temperature?: number;
 		maxTokens?: number;
-		purpose?: "action" | "reasoning" | "evaluation" | "response" | "other";
+		purpose?: string;
 		actionType?: string;
 	},
 	llmCallFn: () => Promise<{

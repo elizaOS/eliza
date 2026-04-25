@@ -1,11 +1,20 @@
-
-
+import {
+  Button,
+  Input,
+  MetaPill,
+  PageLayout,
+  PagePanel,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client, type QueryResult } from "../../api";
 import { useApp } from "../../state";
+import type { TranslateFn } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
-import { PagePanel, MetaPill, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 
 type MediaType = "all" | "image" | "video" | "audio";
 
@@ -16,11 +25,6 @@ interface MediaItem {
   source: string;
   createdAt: string;
 }
-
-type TranslateFn = (
-  key: string,
-  vars?: Record<string, string | number | boolean | null | undefined>,
-) => string;
 
 const IMAGE_EXTS = /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)(\?|$)/i;
 const VIDEO_EXTS = /\.(mp4|webm|mov|avi|mkv|ogv)(\?|$)/i;
@@ -280,7 +284,7 @@ export function MediaGalleryView({
     null;
 
   const mediaSidebar = (
-    <Sidebar testId="media-sidebar">
+    <AppPageSidebar testId="media-sidebar" collapsible contentIdentity="media">
       <SidebarPanel>
         <div className="space-y-3 pt-4">
           {leftNav}
@@ -388,7 +392,7 @@ export function MediaGalleryView({
           )}
         </SidebarScrollRegion>
       </SidebarPanel>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

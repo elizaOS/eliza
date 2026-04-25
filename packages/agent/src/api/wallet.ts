@@ -6,18 +6,14 @@
  *
  * DEX price oracle logic lives in ./wallet-dex-prices.ts
  * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
- *
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/api/wallet`.
- * New development should target the app-steward package.
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
+
 import { logger } from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
+import { resolveStewardCredentialsPath } from "../config/paths.js";
 import type {
   KeyValidationResult,
   SolanaTokenBalance,
@@ -27,6 +23,7 @@ import type {
   WalletImportResult,
   WalletKeys,
 } from "../contracts/wallet.js";
+import { computeValueUsd } from "./wallet-dex-prices.js";
 
 type StewardAgentPayload = {
   walletAddress?: string;
@@ -103,6 +100,10 @@ export const CLOUD_EVM_ADDRESS_ENV_KEY = "MILADY_CLOUD_EVM_ADDRESS";
 export const CLOUD_SOLANA_ADDRESS_ENV_KEY = "MILADY_CLOUD_SOLANA_ADDRESS";
 export const WALLET_SOURCE_EVM_ENV_KEY = "WALLET_SOURCE_EVM";
 export const WALLET_SOURCE_SOLANA_ENV_KEY = "WALLET_SOURCE_SOLANA";
+const SOLANA_WRAPPED_NATIVE_MINT =
+  "So11111111111111111111111111111111111111112";
+const SOLANA_SPL_TOKEN_PROGRAM_ID =
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 
 /** Module-level cache for steward wallet addresses (avoids process.env mutation). */
 let stewardAddressCache: { evm: string | null; solana: string | null } | null =
@@ -142,7 +143,7 @@ function deriveLocalEvmAddress(): string | null {
   if (!evmKey || PLACEHOLDER_RE.test(evmKey)) return null;
   try {
     return deriveEvmAddress(evmKey);
-  } catch (e) {
+  } catch (e: unknown) {
     logger.warn(`Bad EVM key: ${e}`);
     return null;
   }
@@ -153,7 +154,7 @@ function deriveLocalSolanaAddress(): string | null {
   if (!solKey || PLACEHOLDER_RE.test(solKey)) return null;
   try {
     return deriveSolanaAddress(solKey);
-  } catch (e) {
+  } catch (e: unknown) {
     logger.warn(`Bad SOL key: ${e}`);
     return null;
   }
@@ -492,11 +493,6 @@ export function importWallet(
 
 export const STEWARD_EVM_ADDRESS_ENV_KEY = "STEWARD_EVM_ADDRESS";
 export const STEWARD_SOLANA_ADDRESS_ENV_KEY = "STEWARD_SOLANA_ADDRESS";
-const STEWARD_CREDENTIALS_PATH = path.join(
-  os.homedir(),
-  ".eliza",
-  "steward-credentials.json",
-);
 
 type PersistedStewardCredentials = {
   apiUrl?: string;
@@ -521,12 +517,13 @@ function readPersistedStewardCredentials(): {
   apiKey: string | null;
   agentToken: string | null;
 } | null {
+  const credentialsPath = resolveStewardCredentialsPath();
   try {
-    if (!fs.existsSync(STEWARD_CREDENTIALS_PATH)) {
+    if (!fs.existsSync(credentialsPath)) {
       return null;
     }
     const parsed = JSON.parse(
-      fs.readFileSync(STEWARD_CREDENTIALS_PATH, "utf8"),
+      fs.readFileSync(credentialsPath, "utf8"),
     ) as PersistedStewardCredentials;
     return {
       apiUrl: normalizeOptionalString(parsed.apiUrl),
@@ -777,6 +774,135 @@ interface HeliusAsset {
   }>;
 }
 
+interface SolanaDexScreenerPair {
+  baseToken?: {
+    address?: string;
+    name?: string;
+    symbol?: string;
+  };
+  priceUsd?: string | null;
+  liquidity?: { usd?: number };
+  info?: { imageUrl?: string };
+}
+
+interface SolanaParsedTokenAccountResponse {
+  result?: {
+    value?: Array<{
+      account?: {
+        data?: {
+          parsed?: {
+            info?: {
+              mint?: string;
+              tokenAmount?: {
+                amount?: string;
+                decimals?: number;
+                uiAmountString?: string;
+              };
+            };
+          };
+        };
+      };
+    }>;
+  };
+  error?: { message?: string };
+}
+
+interface SolanaDexMeta {
+  priceUsd: string | null;
+  imageUrl?: string;
+  name?: string;
+  symbol?: string;
+}
+
+function shortenMint(mint: string): string {
+  if (mint.length <= 10) return mint;
+  return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+}
+
+async function fetchSolanaDexMeta(
+  addresses: string[],
+): Promise<Map<string, SolanaDexMeta>> {
+  const uniqueAddresses = [
+    ...new Set(addresses.map((address) => address.trim())),
+  ].filter(Boolean);
+  const results = new Map<string, SolanaDexMeta>();
+  if (uniqueAddresses.length === 0) return results;
+
+  for (let index = 0; index < uniqueAddresses.length; index += 30) {
+    const batch = uniqueAddresses.slice(index, index + 30);
+    try {
+      const res = await fetch(
+        `https://api.dexscreener.com/tokens/v1/solana/${batch.join(",")}`,
+        { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
+      );
+      if (!res.ok) continue;
+      const pairs = (await res.json()) as SolanaDexScreenerPair[];
+      if (!Array.isArray(pairs)) continue;
+
+      const bestPairByMint = new Map<string, SolanaDexScreenerPair>();
+      for (const pair of pairs) {
+        const mint = pair.baseToken?.address?.trim();
+        if (!mint) continue;
+        const existing = bestPairByMint.get(mint);
+        if (
+          !existing ||
+          (pair.liquidity?.usd ?? 0) > (existing.liquidity?.usd ?? 0)
+        ) {
+          bestPairByMint.set(mint, pair);
+        }
+      }
+
+      for (const [mint, pair] of bestPairByMint) {
+        results.set(mint, {
+          priceUsd: pair.priceUsd ?? null,
+          imageUrl: pair.info?.imageUrl?.trim() || undefined,
+          name: pair.baseToken?.name?.trim() || undefined,
+          symbol: pair.baseToken?.symbol?.trim() || undefined,
+        });
+      }
+    } catch (err) {
+      logger.warn(`[wallet] Solana DexScreener fetch failed: ${String(err)}`);
+    }
+  }
+
+  return results;
+}
+
+function buildSolanaTokenBalance(
+  token: {
+    mint: string;
+    balance: string;
+    decimals: number;
+    symbol?: string | null;
+    name?: string | null;
+    valueUsd?: string | null;
+    logoUrl?: string | null;
+  },
+  dexMeta: Map<string, SolanaDexMeta>,
+): SolanaTokenBalance {
+  const meta = dexMeta.get(token.mint);
+  const computedValueUsd =
+    meta?.priceUsd && meta.priceUsd.length > 0
+      ? computeValueUsd(token.balance, meta.priceUsd)
+      : "0";
+
+  return {
+    mint: token.mint,
+    symbol:
+      token.symbol?.trim() ||
+      meta?.symbol?.trim() ||
+      shortenMint(token.mint).toUpperCase(),
+    name: token.name?.trim() || meta?.name?.trim() || token.mint,
+    balance: token.balance,
+    decimals: token.decimals,
+    valueUsd:
+      token.valueUsd && Number.parseFloat(token.valueUsd) > 0
+        ? token.valueUsd
+        : computedValueUsd,
+    logoUrl: token.logoUrl?.trim() || meta?.imageUrl || "",
+  };
+}
+
 function rpcJsonRequest(body: string): RequestInit {
   return {
     method: "POST",
@@ -822,77 +948,91 @@ export async function fetchSolanaBalances(
   });
 
   let solBalance = "0";
-  try {
-    const data = await jsonOrThrow<{
-      result?: { value?: number };
-      error?: { message?: string };
-    }>(
-      await fetch(
-        url,
-        rpc(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "getBalance",
-            params: [address],
-          }),
-        ),
+  const balanceData = await jsonOrThrow<{
+    result?: { value?: number };
+    error?: { message?: string };
+  }>(
+    await fetch(
+      url,
+      rpc(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getBalance",
+          params: [address],
+        }),
       ),
-    );
-    if (data.error?.message) throw new Error(data.error.message);
-    solBalance = ((data.result?.value ?? 0) / 1e9).toFixed(9);
-  } catch (err) {
-    logger.warn(`SOL balance fetch failed: ${String(err)}`);
-  }
+    ),
+  );
+  if (balanceData.error?.message) throw new Error(balanceData.error.message);
+  solBalance = ((balanceData.result?.value ?? 0) / 1e9).toFixed(9);
 
+  const tokenData = await jsonOrThrow<{
+    result?: { items?: HeliusAsset[] };
+    error?: { message?: string };
+  }>(
+    await fetch(
+      url,
+      rpc(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "getAssetsByOwner",
+          params: {
+            ownerAddress: address,
+            displayOptions: { showFungible: true, showNativeBalance: true },
+            page: 1,
+            limit: 100,
+          },
+        }),
+      ),
+    ),
+  );
+  if (tokenData.error?.message) throw new Error(tokenData.error.message);
+  const fungibleAssets = (tokenData.result?.items ?? []).filter(
+    (item) =>
+      item.interface === "FungibleToken" || item.interface === "FungibleAsset",
+  );
+  const dexMeta = await fetchSolanaDexMeta([
+    SOLANA_WRAPPED_NATIVE_MINT,
+    ...fungibleAssets.map((item) => item.id),
+  ]);
   const tokens: SolanaTokenBalance[] = [];
-  try {
-    const data = await jsonOrThrow<{
-      result?: { items?: HeliusAsset[] };
-      error?: { message?: string };
-    }>(
-      await fetch(
-        url,
-        rpc(
-          JSON.stringify({
-            jsonrpc: "2.0",
-            id: 2,
-            method: "getAssetsByOwner",
-            params: {
-              ownerAddress: address,
-              displayOptions: { showFungible: true, showNativeBalance: true },
-              page: 1,
-              limit: 100,
-            },
-          }),
-        ),
+  for (const item of tokenData.result?.items ?? []) {
+    if (
+      item.interface !== "FungibleToken" &&
+      item.interface !== "FungibleAsset"
+    )
+      continue;
+    const decimals = item.token_info?.decimals ?? 0;
+    const rawBalance = item.token_info?.balance ?? 0;
+    const balance =
+      decimals > 0
+        ? (rawBalance / 10 ** decimals).toString()
+        : rawBalance.toString();
+    tokens.push(
+      buildSolanaTokenBalance(
+        {
+          mint: item.id,
+          symbol: item.token_info?.symbol ?? item.content?.metadata?.symbol,
+          name: item.content?.metadata?.name ?? null,
+          balance,
+          decimals,
+          valueUsd:
+            item.token_info?.price_info?.total_price?.toFixed(2) ?? null,
+          logoUrl: item.content?.links?.image ?? null,
+        },
+        dexMeta,
       ),
     );
-    if (data.error?.message) throw new Error(data.error.message);
-    for (const item of data.result?.items ?? []) {
-      if (
-        item.interface !== "FungibleToken" &&
-        item.interface !== "FungibleAsset"
-      )
-        continue;
-      const dec = item.token_info?.decimals ?? 0;
-      const raw = item.token_info?.balance ?? 0;
-      tokens.push({
-        symbol:
-          item.token_info?.symbol ?? item.content?.metadata?.symbol ?? "???",
-        name: item.content?.metadata?.name ?? "Unknown",
-        mint: item.id,
-        balance: dec > 0 ? (raw / 10 ** dec).toString() : raw.toString(),
-        decimals: dec,
-        valueUsd: item.token_info?.price_info?.total_price?.toFixed(2) ?? "0",
-        logoUrl: item.content?.links?.image ?? "",
-      });
-    }
-  } catch (err) {
-    logger.warn(`Solana token fetch failed: ${String(err)}`);
   }
 
-  return { solBalance, solValueUsd: "0", tokens };
+  const solPriceUsd = dexMeta.get(SOLANA_WRAPPED_NATIVE_MINT)?.priceUsd ?? "0";
+  return {
+    solBalance,
+    solValueUsd: computeValueUsd(solBalance, solPriceUsd),
+    tokens,
+  };
 }
 
 export async function fetchSolanaNativeBalanceViaRpc(
@@ -908,7 +1048,7 @@ export async function fetchSolanaNativeBalanceViaRpc(
 
   for (const rpcUrl of urls) {
     try {
-      const data = await jsonOrThrow<{
+      const balanceData = await jsonOrThrow<{
         result?: { value?: number };
         error?: { message?: string };
       }>(
@@ -924,10 +1064,69 @@ export async function fetchSolanaNativeBalanceViaRpc(
           ),
         ),
       );
-      if (data.error?.message) throw new Error(data.error.message);
+      if (balanceData.error?.message)
+        throw new Error(balanceData.error.message);
 
-      const solBalance = ((data.result?.value ?? 0) / 1e9).toFixed(9);
-      return { solBalance, solValueUsd: "0", tokens: [] };
+      const tokenAccounts = await jsonOrThrow<SolanaParsedTokenAccountResponse>(
+        await fetch(
+          rpcUrl,
+          rpcJsonRequest(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 2,
+              method: "getTokenAccountsByOwner",
+              params: [
+                address,
+                { programId: SOLANA_SPL_TOKEN_PROGRAM_ID },
+                { encoding: "jsonParsed" },
+              ],
+            }),
+          ),
+        ),
+      );
+      if (tokenAccounts.error?.message) {
+        throw new Error(tokenAccounts.error.message);
+      }
+
+      const rawTokens = (tokenAccounts.result?.value ?? [])
+        .map((item) => {
+          const info = item.account?.data?.parsed?.info;
+          const mint = info?.mint?.trim();
+          const tokenAmount = info?.tokenAmount;
+          const balance =
+            tokenAmount?.uiAmountString?.trim() ||
+            tokenAmount?.amount?.trim() ||
+            "0";
+          const decimals = tokenAmount?.decimals ?? 0;
+          if (!mint || Number.parseFloat(balance) <= 0) return null;
+          return {
+            mint,
+            balance,
+            decimals,
+          };
+        })
+        .filter(
+          (
+            token,
+          ): token is { mint: string; balance: string; decimals: number } =>
+            token !== null,
+        );
+
+      const dexMeta = await fetchSolanaDexMeta([
+        SOLANA_WRAPPED_NATIVE_MINT,
+        ...rawTokens.map((token) => token.mint),
+      ]);
+      const tokens = rawTokens.map((token) =>
+        buildSolanaTokenBalance(token, dexMeta),
+      );
+      const solBalance = ((balanceData.result?.value ?? 0) / 1e9).toFixed(9);
+      const solPriceUsd =
+        dexMeta.get(SOLANA_WRAPPED_NATIVE_MINT)?.priceUsd ?? "0";
+      return {
+        solBalance,
+        solValueUsd: computeValueUsd(solBalance, solPriceUsd),
+        tokens,
+      };
     } catch (err) {
       const msg = String(err);
       errors.push(`${describeRpcEndpoint(rpcUrl)}: ${msg}`);

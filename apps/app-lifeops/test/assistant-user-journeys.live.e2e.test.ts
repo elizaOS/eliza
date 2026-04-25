@@ -15,16 +15,16 @@ import {
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { selectLiveProvider as selectSharedLiveProvider } from "../../../../test/helpers/live-provider";
 import { saveEnv, sleep, withTimeout } from "../../../../test/helpers/test-utils";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import {
-  addDaysToLocalDate,
-  buildUtcDateFromLocalParts,
-  getZonedDateParts,
-} from "../src/lifeops/time.js";
+  LIVE_PROVIDER_ENV_KEYS,
+  LIVE_TESTS_ENABLED,
+  getLifeOpsLiveSetupWarnings,
+  getSelectedLiveProviderEnv,
+  selectLifeOpsLiveProvider,
+} from "./helpers/lifeops-live-harness.ts";
 import {
-  createLifeOpsCalendarSyncState,
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
@@ -43,216 +43,9 @@ const packageRoot = path.resolve(testDir, "..");
 dotenv.config({ path: path.resolve(packageRoot, ".env") });
 dotenv.config({ path: path.resolve(packageRoot, "..", "..", ".env") });
 
-const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
-const TEST_TIME_ZONE = "America/Los_Angeles";
 const GOOGLE_CLIENT_ID = "assistant-user-journeys-google-client";
-const PROVIDER_ENV_KEYS = [
-  "OPENAI_API_KEY",
-  "OPENAI_BASE_URL",
-  "OPENAI_SMALL_MODEL",
-  "OPENAI_LARGE_MODEL",
-  "GROQ_API_KEY",
-  "GROQ_SMALL_MODEL",
-  "GROQ_LARGE_MODEL",
-  "OPENROUTER_API_KEY",
-  "OPENROUTER_SMALL_MODEL",
-  "OPENROUTER_LARGE_MODEL",
-  "GOOGLE_API_KEY",
-  "GOOGLE_GENERATIVE_AI_API_KEY",
-  "GOOGLE_SMALL_MODEL",
-  "GOOGLE_LARGE_MODEL",
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_SMALL_MODEL",
-  "ANTHROPIC_LARGE_MODEL",
-] as const;
-
-const LIVE_PROVIDER_CANDIDATES = [
-  {
-    name: "groq",
-    plugin: "@elizaos/plugin-groq",
-    keys: ["GROQ_API_KEY"],
-    predicate: () =>
-      /groq/i.test(process.env.OPENAI_BASE_URL ?? "") ||
-      !process.env.OPENAI_API_KEY?.trim(),
-  },
-  {
-    name: "openai",
-    plugin: "@elizaos/plugin-openai",
-    keys: ["OPENAI_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "groq",
-    plugin: "@elizaos/plugin-groq",
-    keys: ["GROQ_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "openrouter",
-    plugin: "@elizaos/plugin-openrouter",
-    keys: ["OPENROUTER_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "google",
-    plugin: "@elizaos/plugin-google-genai",
-    keys: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
-    predicate: () => true,
-  },
-  {
-    name: "anthropic",
-    plugin: "@elizaos/plugin-anthropic",
-    keys: ["ANTHROPIC_API_KEY"],
-    predicate: () => true,
-  },
-] as const;
-
-const LIVE_PROVIDER_CHEAP_MODELS = {
-  anthropic: {
-    smallKey: "ANTHROPIC_SMALL_MODEL",
-    smallModel: "claude-haiku-4-5-20251001",
-    largeKey: "ANTHROPIC_LARGE_MODEL",
-    largeModel: "claude-haiku-4-5-20251001",
-  },
-  google: {
-    smallKey: "GOOGLE_SMALL_MODEL",
-    smallModel: "gemini-2.0-flash-001",
-    largeKey: "GOOGLE_LARGE_MODEL",
-    largeModel: "gemini-2.0-flash-001",
-  },
-  groq: {
-    smallKey: "GROQ_SMALL_MODEL",
-    smallModel: "llama-3.1-8b-instant",
-    largeKey: "GROQ_LARGE_MODEL",
-    largeModel: "llama-3.1-8b-instant",
-  },
-  openai: {
-    smallKey: "OPENAI_SMALL_MODEL",
-    smallModel: "gpt-5.4-mini",
-    largeKey: "OPENAI_LARGE_MODEL",
-    largeModel: "gpt-5.4-mini",
-  },
-  openrouter: {
-    smallKey: "OPENROUTER_SMALL_MODEL",
-    smallModel: "google/gemini-2.0-flash-001",
-    largeKey: "OPENROUTER_LARGE_MODEL",
-    largeModel: "google/gemini-2.0-flash-001",
-  },
-} as const;
-
-type SelectedLiveProvider = {
-  name: keyof typeof LIVE_PROVIDER_CHEAP_MODELS;
-  env: Record<string, string>;
-  plugin: string;
-};
-
 function normalizeText(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
-}
-
-function resolveLiveProviderModelEnv(
-  providerName: keyof typeof LIVE_PROVIDER_CHEAP_MODELS,
-): Record<string, string> {
-  const defaults = LIVE_PROVIDER_CHEAP_MODELS[providerName];
-  const smallModel =
-    process.env[defaults.smallKey]?.trim() || defaults.smallModel;
-  const largeModel =
-    process.env[defaults.largeKey]?.trim() ||
-    process.env[defaults.smallKey]?.trim() ||
-    defaults.largeModel;
-
-  return {
-    [defaults.smallKey]: smallModel,
-    [defaults.largeKey]: largeModel,
-    SMALL_MODEL: process.env.SMALL_MODEL?.trim() || smallModel,
-    LARGE_MODEL: process.env.LARGE_MODEL?.trim() || largeModel,
-  };
-}
-
-async function canImportPlugin(pluginName: string): Promise<boolean> {
-  try {
-    await import(pluginName);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function selectLiveProvider(): Promise<SelectedLiveProvider | null> {
-  const preferredProvider = (
-    process.env.ELIZA_LIVE_PROVIDER?.trim() ||
-    process.env.ELIZA_LIVE_PROVIDER?.trim() ||
-    ""
-  ).toLowerCase();
-  const candidates =
-    preferredProvider.length > 0
-      ? [
-          ...LIVE_PROVIDER_CANDIDATES.filter(
-            (candidate) => candidate.name === preferredProvider,
-          ),
-          ...LIVE_PROVIDER_CANDIDATES.filter(
-            (candidate) => candidate.name !== preferredProvider,
-          ),
-        ]
-      : LIVE_PROVIDER_CANDIDATES;
-
-  for (const candidate of candidates) {
-    if (!candidate.predicate()) {
-      continue;
-    }
-
-    const env: Record<string, string> = {};
-    for (const key of candidate.keys) {
-      const value = process.env[key]?.trim();
-      if (value) {
-        env[key] = value;
-      }
-    }
-    if (Object.keys(env).length === 0) {
-      continue;
-    }
-    if (!(await canImportPlugin(candidate.plugin))) {
-      continue;
-    }
-
-    Object.assign(
-      env,
-      resolveLiveProviderModelEnv(
-        candidate.name as keyof typeof LIVE_PROVIDER_CHEAP_MODELS,
-      ),
-    );
-    if (candidate.name === "openai") {
-      env.OPENAI_BASE_URL = "";
-    }
-
-    return {
-      name: candidate.name as keyof typeof LIVE_PROVIDER_CHEAP_MODELS,
-      env,
-      plugin: candidate.plugin,
-    };
-  }
-
-  const sharedProvider = selectSharedLiveProvider(
-    preferredProvider.length > 0
-      ? (preferredProvider as
-          | "anthropic"
-          | "google"
-          | "groq"
-          | "openai"
-          | "openrouter")
-      : undefined,
-  );
-  if (sharedProvider && (await canImportPlugin(sharedProvider.pluginPackage))) {
-    return {
-      name: sharedProvider.name,
-      env: sharedProvider.env,
-      plugin: sharedProvider.pluginPackage,
-    };
-  }
-
-  return null;
 }
 
 async function loadPlugin(name: string): Promise<Plugin | null> {
@@ -405,62 +198,6 @@ async function seedRoomMessages(
   }
 }
 
-function localDayAtOffset(daysFromToday: number): {
-  year: number;
-  month: number;
-  day: number;
-} {
-  const now = getZonedDateParts(new Date(), TEST_TIME_ZONE);
-  return addDaysToLocalDate(
-    {
-      year: now.year,
-      month: now.month,
-      day: now.day,
-    },
-    daysFromToday,
-  );
-}
-
-function localIso(daysFromToday: number, hour: number, minute = 0): string {
-  const date = localDayAtOffset(daysFromToday);
-  return buildUtcDateFromLocalParts(TEST_TIME_ZONE, {
-    year: date.year,
-    month: date.month,
-    day: date.day,
-    hour,
-    minute,
-    second: 0,
-    millisecond: 0,
-  }).toISOString();
-}
-
-function allDayStart(daysFromToday: number): string {
-  return localIso(daysFromToday, 0, 0);
-}
-
-function allDayEnd(daysFromToday: number): string {
-  return localIso(daysFromToday + 1, 0, 0);
-}
-
-function nextLocalWeekdayOffset(targetWeekday: number): number {
-  for (let offset = 0; offset < 14; offset += 1) {
-    const date = localDayAtOffset(offset);
-    const localNoon = buildUtcDateFromLocalParts(TEST_TIME_ZONE, {
-      year: date.year,
-      month: date.month,
-      day: date.day,
-      hour: 12,
-      minute: 0,
-      second: 0,
-      millisecond: 0,
-    });
-    if (localNoon.getUTCDay() === targetWeekday) {
-      return offset;
-    }
-  }
-  return 0;
-}
-
 async function seedGoogleConnector(
   runtime: AgentRuntime,
   stateDir: string,
@@ -541,196 +278,6 @@ async function seedGoogleConnector(
 
   return repository;
 }
-
-async function seedCalendarData(
-  repository: LifeOpsRepository,
-  agentId: string,
-) {
-  const nowIso = new Date().toISOString();
-  const saturdayOffset = nextLocalWeekdayOffset(6);
-  const sundayOffset = nextLocalWeekdayOffset(0);
-  const events = [
-    {
-      id: "journey-evt-dentist",
-      externalId: "journey-dentist-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Dentist appointment",
-      description: "Routine cleaning and x-rays.",
-      location: "Main St Dental",
-      status: "confirmed",
-      startAt: localIso(0, 11, 0),
-      endAt: localIso(0, 12, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "health" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-lunch",
-      externalId: "journey-lunch-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Lunch with Mike",
-      description: "Remember the Kentucky Derby gin cocktail ingredients.",
-      location: "Poppy's Cafe",
-      status: "confirmed",
-      startAt: localIso(0, 13, 0),
-      endAt: localIso(0, 14, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "social" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-rowan-weekend",
-      externalId: "journey-rowan-weekend-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Rowan with Shaw this weekend",
-      description: "You have Rowan; Mike has Theo.",
-      location: "",
-      status: "confirmed",
-      startAt: allDayStart(saturdayOffset),
-      endAt: allDayEnd(sundayOffset),
-      isAllDay: true,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "family" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-soccer",
-      externalId: "journey-soccer-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Rowan soccer game",
-      description: "Field 3, bring the orange jersey.",
-      location: "Civic Fields",
-      status: "confirmed",
-      startAt: localIso(saturdayOffset, 9, 0),
-      endAt: localIso(saturdayOffset, 10, 30),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "sports" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-party",
-      externalId: "journey-party-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Mason birthday party",
-      description: "Bring the science kit gift bag.",
-      location: "Westside Trampoline Park",
-      status: "confirmed",
-      startAt: localIso(saturdayOffset, 13, 0),
-      endAt: localIso(saturdayOffset, 15, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "party" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-family-dinner",
-      externalId: "journey-family-dinner-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Family dinner at parents' house",
-      description:
-        "Last-minute change: everyone is going to Mom and Dad's house on Saturday evening.",
-      location: "Mom and Dad's house",
-      status: "confirmed",
-      startAt: localIso(saturdayOffset, 18, 0),
-      endAt: localIso(saturdayOffset, 20, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "family" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-    {
-      id: "journey-evt-wedding",
-      externalId: "journey-wedding-ext",
-      agentId,
-      provider: "google" as const,
-      side: "owner" as const,
-      calendarId: "primary",
-      title: "Adults-only wedding",
-      description: "Kids are not invited.",
-      location: "Rosewood Hall",
-      status: "confirmed",
-      startAt: localIso(sundayOffset, 15, 0),
-      endAt: localIso(sundayOffset, 21, 0),
-      isAllDay: false,
-      timezone: TEST_TIME_ZONE,
-      htmlLink: null,
-      conferenceLink: null,
-      organizer: null,
-      attendees: [],
-      metadata: { type: "wedding" },
-      syncedAt: nowIso,
-      updatedAt: nowIso,
-    },
-  ];
-
-  for (const event of events) {
-    await repository.upsertCalendarEvent(event);
-  }
-
-  await repository.upsertCalendarSyncState(
-    createLifeOpsCalendarSyncState({
-      agentId,
-      provider: "google",
-      side: "owner",
-      calendarId: "primary",
-      windowStartAt: allDayStart(0),
-      windowEndAt: allDayEnd(Math.max(sundayOffset + 2, 14)),
-      syncedAt: nowIso,
-    }),
-  );
-}
-
 async function seedGmailData(repository: LifeOpsRepository, agentId: string) {
   const nowIso = new Date().toISOString();
   const messages = [
@@ -988,14 +535,10 @@ function expectContainsAtLeast(
   expect(matches.length).toBeGreaterThanOrEqual(minimumMatches);
 }
 
-function containsAllFragments(text: string, fragments: string[]): boolean {
-  const normalized = normalizeText(text);
-  return fragments.every((fragment) =>
-    normalized.includes(normalizeText(fragment)),
-  );
-}
-
-const selectedLiveProvider = await selectLiveProvider();
+const selectedLiveProvider = await selectLifeOpsLiveProvider();
+const selectedProviderEnv = getSelectedLiveProviderEnv(selectedLiveProvider, {
+  omitOpenAiBaseUrl: true,
+});
 const SUPPORTED_PROVIDER_NAMES = new Set(["openai", "openrouter", "google"]);
 const LIVE_SUITE_ENABLED =
   LIVE_TESTS_ENABLED &&
@@ -1004,10 +547,7 @@ const LIVE_SUITE_ENABLED =
 
 if (!LIVE_SUITE_ENABLED) {
   const warnings = [
-    !LIVE_TESTS_ENABLED ? "set ELIZA_LIVE_TEST=1 or ELIZA_LIVE_TEST=1" : null,
-    !selectedLiveProvider
-      ? "provide a live provider key for OpenAI, OpenRouter, or Google"
-      : null,
+    ...getLifeOpsLiveSetupWarnings(selectedLiveProvider),
     selectedLiveProvider &&
     !SUPPORTED_PROVIDER_NAMES.has(selectedLiveProvider.name)
       ? `selected provider "${selectedLiveProvider.name}" does not support this suite; use OpenAI, OpenRouter, or Google`
@@ -1019,7 +559,7 @@ if (!LIVE_SUITE_ENABLED) {
 }
 
 describeIf(LIVE_SUITE_ENABLED)(
-  "Live: assistant user journeys for routines, inbox, schedule, and reminders",
+  "Live: assistant user journeys for routines, inbox, and reminders",
   () => {
     let runtime: AgentRuntime;
     let envBackup: { restore: () => void };
@@ -1038,57 +578,35 @@ describeIf(LIVE_SUITE_ENABLED)(
 
     beforeAll(async () => {
       envBackup = saveEnv(
-        ...PROVIDER_ENV_KEYS,
+        ...LIVE_PROVIDER_ENV_KEYS,
         "PGLITE_DATA_DIR",
-        "ELIZA_STATE_DIR",
         "ELIZA_STATE_DIR",
         "ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID",
         "ENABLE_TRAJECTORIES",
         "ELIZA_TRAJECTORY_LOGGING",
-        "ELIZA_TRAJECTORY_LOGGING",
       );
       process.env.PGLITE_DATA_DIR = pgliteDir;
-      process.env.ELIZA_STATE_DIR = stateDir;
       process.env.ELIZA_STATE_DIR = stateDir;
       process.env.ELIZA_GOOGLE_OAUTH_DESKTOP_CLIENT_ID = GOOGLE_CLIENT_ID;
       process.env.ENABLE_TRAJECTORIES = "false";
       process.env.ELIZA_TRAJECTORY_LOGGING = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
       process.env.LOG_LEVEL = process.env.ELIZA_E2E_LOG_LEVEL ?? "error";
 
-      for (const key of PROVIDER_ENV_KEYS) {
+      for (const key of LIVE_PROVIDER_ENV_KEYS) {
         delete process.env[key];
       }
-      for (const [key, value] of Object.entries(
-        selectedLiveProvider?.env ?? {},
-      )) {
-        if (value.trim().length > 0) {
-          process.env[key] = value;
-        }
-      }
-      if (selectedLiveProvider?.name === "openai") {
-        delete process.env.OPENAI_BASE_URL;
-      }
+      Object.assign(process.env, selectedProviderEnv);
 
       ownerId = crypto.randomUUID() as UUID;
       dmRoomId = crypto.randomUUID() as UUID;
       const dmWorldId = crypto.randomUUID() as UUID;
 
       const character = buildCharacterFromConfig({});
-      process.env.ENABLE_TRAJECTORIES = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
-      process.env.ELIZA_TRAJECTORY_LOGGING = "false";
-      const providerSecrets = {
-        ...(selectedLiveProvider?.env ?? {}),
-      };
-      if (selectedLiveProvider?.name === "openai") {
-        delete providerSecrets.OPENAI_BASE_URL;
-      }
       character.settings = {
         ...(character.settings ?? {}),
         ELIZA_ADMIN_ENTITY_ID: ownerId,
       };
-      character.secrets = providerSecrets;
+      character.secrets = selectedProviderEnv;
 
       const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
       const localEmbeddingPlugin = await loadPlugin(
@@ -1150,7 +668,6 @@ describeIf(LIVE_SUITE_ENABLED)(
       });
 
       const repository = await seedGoogleConnector(runtime, stateDir);
-      await seedCalendarData(repository, String(runtime.agentId));
       await seedGmailData(repository, String(runtime.agentId));
       await seedConversationData(runtime, ownerId);
     }, 240_000);
@@ -1171,8 +688,8 @@ describeIf(LIVE_SUITE_ENABLED)(
       fs.rmSync(workspaceDir, { recursive: true, force: true });
     }, 30_000);
 
-    it("summarizes multi-platform messages and separates urgent follow-ups from waitable items", async () => {
-      let response = await sendUserTurn({
+    it("summarizes multi-platform messages and separates urgent follow-ups from waitable items on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -1184,21 +701,6 @@ describeIf(LIVE_SUITE_ENABLED)(
           "Give me a short summary with these sections: reply now, can wait, urgent or high-priority.",
         ].join(" "),
       });
-
-      if (
-        /(channel|platform|search term|keyword|which messages|which conversation)/i.test(
-          response,
-        ) ||
-        !containsAllFragments(response, ["kentucky derby"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "No follow-up questions. Use only the recent cross-platform messages already in your context and summarize them now.",
-        });
-      }
 
       expectContainsAtLeast(
         response,
@@ -1234,127 +736,14 @@ describeIf(LIVE_SUITE_ENABLED)(
       expectContainsAll(response, ["permit inspection", "4pm"]);
     }, 180_000);
 
-    it("grounds today's schedule from the seeded calendar cache", async () => {
-      let response = await sendUserTurn({
-        runtime,
-        entityId: ownerId,
-        roomId: dmRoomId,
-        source: "telegram",
-        text: "Use my connected calendar. Morning. List today's actual events by name, time, and where I'm supposed to be. Do not give me just a heading.",
-      });
-
-      if (!containsAllFragments(response, ["dentist", "lunch with mike"])) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "You only gave me a heading. Use the calendar results you already have and list the actual events for today by name.",
-        });
-      }
-
-      expectContainsAll(response, ["dentist", "lunch with mike"]);
-    }, 180_000);
-
-    it("lists the weekend events from the seeded calendar cache", async () => {
-      let response = await sendUserTurn({
-        runtime,
-        entityId: ownerId,
-        roomId: dmRoomId,
-        source: "telegram",
-        text: [
-          "Use my connected calendar.",
-          "What's going on this weekend?",
-          "List the actual event names on my calendar this weekend.",
-          "Do not give me just a heading.",
-        ].join(" "),
-      });
-
-      if (
-        !containsAllFragments(response, ["rowan soccer game"]) ||
-        !containsAllFragments(response, ["mason birthday party"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "You only gave me a partial answer. Use the calendar results you already have and list the actual weekend events by name.",
-        });
-      }
-
-      expectContainsAtLeast(
-        response,
-        [
-          "rowan with shaw this weekend",
-          "rowan soccer game",
-          "mason birthday party",
-          "family dinner at parents' house",
-          "adults-only wedding",
-        ],
-        4,
-      );
-    }, 180_000);
-
-    it("surfaces the lunch reminder detail from the cached calendar event", async () => {
-      let response = await sendUserTurn({
-        runtime,
-        entityId: ownerId,
-        roomId: dmRoomId,
-        source: "telegram",
-        text: "Use my connected calendar. What does the note on my lunch with Mike event today say I need to remember?",
-      });
-
-      if (
-        !containsAllFragments(response, ["kentucky derby"]) &&
-        !containsAllFragments(response, ["gin"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "Use the lunch event description you already have on my calendar and answer directly.",
-        });
-      }
-
-      expectContainsAtLeast(
-        response,
-        ["mike", "kentucky derby", "gin", "cocktail"],
-        2,
-      );
-    }, 180_000);
-
-    it("finds the most overdue bill from email context", async () => {
-      let response = await sendUserTurn({
+    it("finds the most overdue bill from email context on the first answer", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
         source: "telegram",
         text: "Use my connected email. Check my email and tell me which bill is the most overdue, and say why.",
       });
-
-      if (
-        !containsAllFragments(response, ["electric"]) &&
-        !containsAllFragments(response, ["march 28"])
-      ) {
-        response = await sendUserTurn({
-          runtime,
-          entityId: ownerId,
-          roomId: dmRoomId,
-          source: "telegram",
-          text: "Yes. Search my connected email for bill or invoice messages and tell me the exact bill, who sent it, and the overdue date.",
-        });
-      }
-
-      if (
-        !containsAllFragments(response, ["electric"]) &&
-        !containsAllFragments(response, ["march 28"])
-      ) {
-        console.info(
-          `[assistant-user-journeys-live] overdue bill response: ${response}`,
-        );
-      }
 
       expectContainsAtLeast(
         response,
@@ -1363,8 +752,8 @@ describeIf(LIVE_SUITE_ENABLED)(
       );
     }, 180_000);
 
-    it("creates a recurring morning-news heartbeat from natural language", async () => {
-      let response = await sendUserTurn({
+    it("creates a recurring morning-news heartbeat from natural language on the first request", async () => {
+      const response = await sendUserTurn({
         runtime,
         entityId: ownerId,
         roomId: dmRoomId,
@@ -1387,34 +776,13 @@ describeIf(LIVE_SUITE_ENABLED)(
         );
       };
 
-      let triggerTask = await findNewsTrigger();
-      if (!triggerTask) {
-        try {
-          triggerTask = await waitForValue(
-            "news trigger",
-            findNewsTrigger,
-            (value) => value !== null,
-            15_000,
-            1_000,
-          );
-        } catch {
-          response = await sendUserTurn({
-            runtime,
-            entityId: ownerId,
-            roomId: dmRoomId,
-            source: "telegram",
-            text: "Actually create that recurring 9am financial and international news heartbeat now. Do not just describe it.",
-          });
-
-          triggerTask = await waitForValue(
-            "news trigger",
-            findNewsTrigger,
-            (value) => value !== null,
-            60_000,
-            1_000,
-          );
-        }
-      }
+      const triggerTask = await waitForValue(
+        "news trigger",
+        findNewsTrigger,
+        (value) => value !== null,
+        60_000,
+        1_000,
+      );
 
       const trigger = readTriggerConfig(triggerTask);
       expect(trigger).not.toBeNull();

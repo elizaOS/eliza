@@ -3,6 +3,7 @@
 // Update*, Extension*, Workbench*, Character*, Voice*, Skill*
 // ---------------------------------------------------------------------------
 
+import type { ConversationScope } from "@elizaos/agent/api/server-types";
 import type { ReleaseChannel } from "@elizaos/agent/contracts/config";
 import type {
   CreateTriggerRequest as _CreateTriggerRequest,
@@ -10,19 +11,15 @@ import type {
   TriggerRunRecord as _TriggerRunRecord,
   TriggerSummary as _TriggerSummary,
   UpdateTriggerRequest as _UpdateTriggerRequest,
-} from "@elizaos/agent/triggers/types";
-import type {
-  LifeOpsOccurrenceView,
-  LifeOpsOverview,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/agent/triggers";
 import type { MessageExampleContent } from "@elizaos/shared/contracts/onboarding";
 import type { ConfigUiHint } from "../types";
 
 export type {
-  CompleteLifeOpsBrowserSessionRequest,
+  CompleteLifeOpsBrowserSessionRequest as CompleteBrowserBridgeSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
-  ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserSessionRequest,
+  ConfirmLifeOpsBrowserSessionRequest as ConfirmBrowserBridgeSessionRequest,
+  CreateLifeOpsBrowserSessionRequest as CreateBrowserBridgeSessionRequest,
   CreateLifeOpsCalendarEventRequest,
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGmailReplyDraftRequest,
@@ -30,11 +27,7 @@ export type {
   DisconnectLifeOpsGoogleConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
-  LifeOpsBrowserCompanionStatus,
-  LifeOpsBrowserPageContext,
-  LifeOpsBrowserSession,
-  LifeOpsBrowserSettings,
-  LifeOpsBrowserTabSummary,
+  LifeOpsBrowserSession as BrowserBridgeSession,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsDefinitionRecord,
@@ -56,11 +49,18 @@ export type {
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
-  SyncLifeOpsBrowserStateRequest,
-  UpdateLifeOpsBrowserSettingsRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
+export type {
+  BrowserBridgeCompanionPackageStatus,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgePageContext,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+  SyncBrowserBridgeStateRequest,
+  UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge/contracts";
 
 export interface SecretInfo {
   key: string;
@@ -120,6 +120,24 @@ export interface PluginInfo {
   configUiHints?: Record<string, ConfigUiHint>;
   /** Optional icon URL or emoji for the plugin card header. */
   icon?: string | null;
+  /**
+   * Lucide icon name (e.g. "Send", "Brain") sourced from the registry.
+   * Replaces the frontend-side DEFAULT_ICONS lookup table.
+   */
+  iconName?: string;
+  /**
+   * Display group from the registry (e.g. "ai-provider", "voice").
+   * Replaces the frontend-side FEATURE_SUBGROUP lookup.
+   */
+  group?: string;
+  /**
+   * Sort order within the display group. Replaces SUBGROUP_DISPLAY_ORDER.
+   */
+  groupOrder?: number;
+  /**
+   * Whether this entry is user-visible. Replaces VISIBLE_CONNECTOR_IDS.
+   */
+  visible?: boolean;
   homepage?: string;
   repository?: string;
   setupGuideUrl?: string;
@@ -162,6 +180,22 @@ export type TriggerRunRecord = _TriggerRunRecord;
 export type TriggerHealthSnapshot = _TriggerHealthSnapshot;
 export type CreateTriggerRequest = _CreateTriggerRequest;
 export type UpdateTriggerRequest = _UpdateTriggerRequest;
+
+export interface TriggerEventDispatchResponse {
+  ok: boolean;
+  eventKind: string;
+  matched: number;
+  results: Array<{
+    taskId?: string;
+    result: {
+      status: TriggerRunRecord["status"];
+      error?: string;
+      taskDeleted: boolean;
+      executionId?: string;
+    };
+    trigger?: TriggerSummary | null;
+  }>;
+}
 
 // Fine-tuning / training
 export type TrainingJobStatus =
@@ -439,7 +473,6 @@ export interface WorkbenchOverview {
   tasks: WorkbenchTask[];
   triggers: TriggerSummary[];
   todos: WorkbenchTodo[];
-  lifeops?: LifeOpsOverview;
   autonomy?: {
     enabled: boolean;
     thinking: boolean;
@@ -447,9 +480,100 @@ export interface WorkbenchOverview {
   };
 }
 
-export interface LifeOpsOccurrenceActionResult {
-  occurrence: LifeOpsOccurrenceView;
+export type AutomationType =
+  | "coordinator_text"
+  | "n8n_workflow"
+  | "automation_draft";
+export type AutomationSource =
+  | "workbench_task"
+  | "trigger"
+  | "n8n_workflow"
+  | "workflow_draft"
+  | "workflow_shadow"
+  | "automation_draft";
+export type AutomationStatus =
+  | "active"
+  | "paused"
+  | "completed"
+  | "draft"
+  | "system";
+export type AutomationNodeClass =
+  | "trigger"
+  | "action"
+  | "context"
+  | "integration"
+  | "agent"
+  | "flow-control";
+
+export interface AutomationRoomBinding {
+  conversationId: string | null;
+  roomId: string;
+  scope: ConversationScope;
+  sourceConversationId?: string;
+  terminalBridgeConversationId?: string;
 }
+
+export interface AutomationItem {
+  id: string;
+  type: AutomationType;
+  source: AutomationSource;
+  title: string;
+  description: string;
+  status: AutomationStatus;
+  enabled: boolean;
+  system: boolean;
+  isDraft: boolean;
+  hasBackingWorkflow: boolean;
+  updatedAt: string | null;
+  taskId?: string;
+  triggerId?: string;
+  workflowId?: string;
+  draftId?: string;
+  task?: WorkbenchTask;
+  trigger?: TriggerSummary;
+  workflow?: import("./client-types-chat").N8nWorkflow;
+  schedules: TriggerSummary[];
+  room?: AutomationRoomBinding | null;
+}
+
+export interface AutomationSummary {
+  total: number;
+  coordinatorCount: number;
+  workflowCount: number;
+  scheduledCount: number;
+  draftCount: number;
+}
+
+export interface AutomationListResponse {
+  automations: AutomationItem[];
+  summary: AutomationSummary;
+  n8nStatus: import("./client-types-chat").N8nStatusResponse | null;
+  workflowFetchError: string | null;
+}
+
+export interface AutomationNodeDescriptor {
+  id: string;
+  label: string;
+  description: string;
+  class: AutomationNodeClass;
+  source: "runtime_action" | "runtime_provider" | "lifeops" | "lifeops_event";
+  backingCapability: string;
+  ownerScoped: boolean;
+  requiresSetup: boolean;
+  availability: "enabled" | "disabled";
+  disabledReason?: string;
+}
+
+export interface AutomationNodeCatalogResponse {
+  nodes: AutomationNodeDescriptor[];
+  summary: {
+    total: number;
+    enabled: number;
+    disabled: number;
+  };
+}
+
+export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared/contracts/lifeops";
 
 // Voice / TTS config
 export type VoiceProvider = "elevenlabs" | "simple-voice" | "edge";

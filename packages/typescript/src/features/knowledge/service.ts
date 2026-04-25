@@ -1,12 +1,11 @@
+import { existsSync, statSync } from "node:fs";
 import { createUniqueUuid } from "../../entities";
 import { logger } from "../../logger";
 import {
 	type Content,
 	type CustomMetadata,
-	type FragmentMetadata,
 	type IAgentRuntime,
 	type Memory,
-	type MemoryMetadata,
 	MemoryType,
 	type Metadata,
 	ModelType,
@@ -16,18 +15,28 @@ import {
 import { splitChunks } from "../../utils";
 import { Semaphore } from "../../utils/prompt-batcher/shared";
 import { validateModelConfig } from "./config";
-import { loadDocsFromPath } from "./docs-loader";
+import { addKnowledgeFromFilePath, loadDocsFromPath } from "./docs-loader";
 import {
 	createDocumentMemory,
 	extractTextFromDocument,
 	processFragmentsSynchronously,
 } from "./document-processor.ts";
-import type { KnowledgeConfig, LoadResult, StoredKnowledgeItem } from "./types";
+import type {
+	KnowledgeConfig,
+	KnowledgeDocumentMemoryMetadata,
+	KnowledgeFragmentMemoryMetadata,
+	LoadResult,
+	StoredKnowledgeItem,
+} from "./types";
 import type { AddKnowledgeOptions } from "./types.ts";
 import {
+	createKnowledgeNoteFilename,
+	deriveKnowledgeTitle,
 	generateContentBasedId,
 	isBinaryContentType,
+	isTextBackedKnowledgeContent,
 	looksLikeBase64,
+	stripKnowledgeFilenameExtension,
 } from "./utils.ts";
 
 function describeEmbeddingConfig(config: {
@@ -124,10 +133,18 @@ export class KnowledgeService extends Service {
 		) {
 			const stringKnowledge = service.runtime.character.knowledge
 				.map((item) => {
-					// Handle new KnowledgeSourceItem format with item.case/item.value
 					const itemAny = item as {
-						item?: { case?: string; value?: string };
+						item?: {
+							case?: string;
+							value?:
+								| string
+								| {
+										path?: string;
+										directory?: string;
+								  };
+						};
 						path?: string;
+						directory?: string;
 					};
 					if (
 						itemAny?.item?.case === "path" &&
@@ -135,11 +152,21 @@ export class KnowledgeService extends Service {
 					) {
 						return itemAny.item.value;
 					}
-					// Handle legacy format with direct path property
+					if (
+						itemAny?.item?.case === "directory" &&
+						typeof itemAny.item.value === "object" &&
+						itemAny.item.value !== null
+					) {
+						return (
+							itemAny.item.value.path || itemAny.item.value.directory || null
+						);
+					}
 					if (typeof itemAny?.path === "string") {
 						return itemAny.path;
 					}
-					// Handle string items directly
+					if (typeof itemAny?.directory === "string") {
+						return itemAny.directory;
+					}
 					if (typeof item === "string") {
 						return item;
 					}
@@ -194,7 +221,8 @@ export class KnowledgeService extends Service {
 			const existingDocument = await this.runtime.getMemoryById(contentBasedId);
 			if (
 				existingDocument &&
-				existingDocument.metadata?.type === MemoryType.DOCUMENT
+				(existingDocument.metadata?.type === MemoryType.DOCUMENT ||
+					existingDocument.metadata?.type === MemoryType.CUSTOM)
 			) {
 				logger.info(`"${options.originalFilename}" already exists - skipping`);
 
@@ -205,7 +233,8 @@ export class KnowledgeService extends Service {
 				const relatedFragments = fragments.filter(
 					(f) =>
 						f.metadata?.type === MemoryType.FRAGMENT &&
-						(f.metadata as FragmentMetadata).documentId === contentBasedId,
+						(f.metadata as KnowledgeFragmentMemoryMetadata | undefined)
+							?.documentId === contentBasedId,
 				);
 
 				return {
@@ -343,7 +372,9 @@ export class KnowledgeService extends Service {
 				originalFilename,
 				contentType,
 				worldId,
-				fileSize: fileBuffer ? fileBuffer.length : extractedText.length,
+				fileSize: fileBuffer
+					? fileBuffer.length
+					: Buffer.byteLength(extractedText, "utf8"),
 				documentId: clientDocumentId,
 				customMetadata: metadata,
 			});
@@ -368,6 +399,8 @@ export class KnowledgeService extends Service {
 				entityId: entityId || agentId,
 				worldId: worldId || agentId,
 				documentTitle: originalFilename,
+				documentMetadata:
+					(documentMemory.metadata as Record<string, unknown>) ?? undefined,
 			});
 
 			logger.debug(
@@ -572,45 +605,80 @@ export class KnowledgeService extends Service {
 		const processingPromises = items.map(async (item) => {
 			await this.knowledgeProcessingSemaphore.acquire();
 			try {
-				const knowledgeId = generateContentBasedId(item, this.runtime.agentId, {
-					maxChars: 2000,
-					includeFilename: "character-knowledge",
-				}) as UUID;
-
-				if (await this.checkExistingKnowledge(knowledgeId)) {
+				const trimmedItem = item.trim();
+				if (trimmedItem.length === 0) {
 					return;
 				}
 
-				let metadata: CustomMetadata = {
-					type: MemoryType.CUSTOM,
-					timestamp: Date.now(),
-					source: "character",
-				};
+				if (existsSync(trimmedItem) && statSync(trimmedItem).isDirectory()) {
+					await loadDocsFromPath(
+						this,
+						this.runtime.agentId as UUID,
+						this.runtime.agentId as UUID,
+						trimmedItem,
+						{
+							roomId: this.runtime.agentId as UUID,
+							entityId: this.runtime.agentId as UUID,
+							metadata: {
+								source: "character",
+								characterKnowledgeDirectory: trimmedItem,
+							},
+						},
+					);
+					return;
+				}
 
-				const pathMatch = item.match(/^Path: (.+?)(?:\n|\r\n)/);
-				if (pathMatch) {
-					const filePath = pathMatch[1].trim();
-					const extension = filePath.split(".").pop() || "";
-					const filename = filePath.split("/").pop() || "";
-					const title = filename.replace(`.${extension}`, "");
-					metadata = {
-						...metadata,
-						path: filePath,
-						filename: filename,
-						fileExt: extension,
-						title: title,
-						fileType: `text/${extension || "plain"}`,
-						fileSize: item.length,
-					};
+				if (existsSync(trimmedItem) && statSync(trimmedItem).isFile()) {
+					await addKnowledgeFromFilePath({
+						service: this,
+						agentId: this.runtime.agentId as UUID,
+						worldId: this.runtime.agentId as UUID,
+						roomId: this.runtime.agentId as UUID,
+						entityId: this.runtime.agentId as UUID,
+						filePath: trimmedItem,
+						metadata: {
+							source: "character",
+							characterKnowledgePath: trimmedItem,
+						},
+					});
+					return;
+				}
+
+				const title = deriveKnowledgeTitle(trimmedItem, "Character knowledge");
+				const filename = createKnowledgeNoteFilename(title);
+				const knowledgeId = generateContentBasedId(
+					trimmedItem,
+					this.runtime.agentId,
+					{
+						maxChars: 2000,
+						includeFilename: filename,
+					},
+				) as UUID;
+
+				if (await this.checkExistingKnowledge(knowledgeId)) {
+					return;
 				}
 
 				await this._internalAddKnowledge(
 					{
 						id: knowledgeId,
 						content: {
-							text: item,
+							text: trimmedItem,
 						} as Content,
-						metadata,
+						metadata: {
+							type: MemoryType.DOCUMENT,
+							documentId: knowledgeId,
+							timestamp: Date.now(),
+							source: "character",
+							title,
+							filename,
+							originalFilename: filename,
+							fileExt: "txt",
+							fileType: "text/plain",
+							contentType: "text/plain",
+							fileSize: Buffer.byteLength(trimmedItem, "utf8"),
+							textBacked: true,
+						} satisfies KnowledgeDocumentMemoryMetadata,
 					},
 					undefined,
 					{
@@ -627,6 +695,133 @@ export class KnowledgeService extends Service {
 		});
 
 		await Promise.all(processingPromises);
+	}
+
+	async updateKnowledgeDocument(options: {
+		documentId: UUID;
+		content: string;
+	}): Promise<{
+		documentId: UUID;
+		fragmentCount: number;
+	}> {
+		const existingDocument = await this.runtime.getMemoryById(
+			options.documentId,
+		);
+		if (!existingDocument) {
+			throw new Error(`Knowledge document ${options.documentId} not found`);
+		}
+
+		const existingMetadata = (existingDocument.metadata ??
+			{}) as KnowledgeDocumentMemoryMetadata;
+		const filename =
+			typeof existingMetadata.filename === "string" &&
+			existingMetadata.filename.trim().length > 0
+				? existingMetadata.filename.trim()
+				: typeof existingMetadata.originalFilename === "string" &&
+						existingMetadata.originalFilename.trim().length > 0
+					? existingMetadata.originalFilename.trim()
+					: createKnowledgeNoteFilename(
+							deriveKnowledgeTitle(options.content, "Knowledge note"),
+						);
+		const fileExt =
+			typeof existingMetadata.fileExt === "string" &&
+			existingMetadata.fileExt.trim().length > 0
+				? existingMetadata.fileExt.trim()
+				: (() => {
+						const stripped = stripKnowledgeFilenameExtension(filename);
+						return stripped === filename
+							? "txt"
+							: filename.slice(stripped.length + 1);
+					})();
+		const contentType =
+			typeof existingMetadata.contentType === "string" &&
+			existingMetadata.contentType.trim().length > 0
+				? existingMetadata.contentType.trim()
+				: "text/plain";
+		const updatedMetadata: KnowledgeDocumentMemoryMetadata = {
+			...existingMetadata,
+			type: MemoryType.DOCUMENT,
+			documentId: options.documentId,
+			source:
+				typeof existingMetadata.source === "string" &&
+				existingMetadata.source.trim().length > 0
+					? existingMetadata.source.trim()
+					: "unknown",
+			filename,
+			originalFilename:
+				typeof existingMetadata.originalFilename === "string" &&
+				existingMetadata.originalFilename.trim().length > 0
+					? existingMetadata.originalFilename.trim()
+					: filename,
+			title:
+				typeof existingMetadata.title === "string" &&
+				existingMetadata.title.trim().length > 0
+					? existingMetadata.title.trim()
+					: deriveKnowledgeTitle(options.content, "Knowledge note"),
+			fileExt,
+			fileType:
+				typeof existingMetadata.fileType === "string" &&
+				existingMetadata.fileType.trim().length > 0
+					? existingMetadata.fileType.trim()
+					: contentType,
+			contentType,
+			fileSize: Buffer.byteLength(options.content, "utf8"),
+			textBacked: isTextBackedKnowledgeContent(contentType, filename),
+			timestamp: Date.now(),
+			editedAt: Date.now(),
+		};
+
+		await this.runtime.updateMemory({
+			id: options.documentId,
+			agentId: this.runtime.agentId,
+			roomId: existingDocument.roomId,
+			worldId: existingDocument.worldId,
+			entityId: existingDocument.entityId,
+			content: { text: options.content },
+			metadata: updatedMetadata,
+			createdAt: existingDocument.createdAt,
+		});
+
+		const existingFragments = await this.runtime.getMemories({
+			tableName: "knowledge",
+			agentId: this.runtime.agentId,
+			roomId: existingDocument.roomId,
+			limit: 10_000,
+		});
+		const relatedFragments = existingFragments.filter((fragment) => {
+			const metadata = fragment.metadata as Record<string, unknown> | undefined;
+			return metadata?.documentId === options.documentId;
+		});
+
+		for (const fragment of relatedFragments) {
+			if (typeof fragment.id === "string") {
+				await this.runtime.deleteMemory(fragment.id as UUID);
+			}
+		}
+
+		const fragments = await this.splitAndCreateFragments(
+			{
+				id: options.documentId,
+				content: { text: options.content },
+				metadata: updatedMetadata,
+			},
+			1500,
+			200,
+			{
+				roomId: existingDocument.roomId ?? this.runtime.agentId,
+				worldId: existingDocument.worldId ?? this.runtime.agentId,
+				entityId: existingDocument.entityId ?? this.runtime.agentId,
+			},
+		);
+
+		for (const fragment of fragments) {
+			await this.processDocumentFragment(fragment);
+		}
+
+		return {
+			documentId: options.documentId,
+			fragmentCount: fragments.length,
+		};
 	}
 
 	async _internalAddKnowledge(
@@ -650,9 +845,14 @@ export class KnowledgeService extends Service {
 
 		const documentMetadata = {
 			...(item.metadata ?? {}),
-			type: MemoryType.CUSTOM,
+			type: MemoryType.DOCUMENT,
 			documentId: item.id,
-		};
+			source:
+				typeof item.metadata?.source === "string" &&
+				item.metadata.source.trim().length > 0
+					? item.metadata.source.trim()
+					: "unknown",
+		} satisfies KnowledgeDocumentMemoryMetadata;
 
 		const documentMemory: Memory = {
 			id: item.id,
@@ -661,7 +861,7 @@ export class KnowledgeService extends Service {
 			worldId: finalScope.worldId,
 			entityId: finalScope.entityId,
 			content: item.content as unknown as Content,
-			metadata: documentMetadata as unknown as MemoryMetadata,
+			metadata: documentMetadata,
 			createdAt: Date.now(),
 		};
 
@@ -721,6 +921,13 @@ export class KnowledgeService extends Service {
 		return chunks.map((chunk, index) => {
 			const fragmentIdContent = `${document.id}-fragment-${index}-${Date.now()}`;
 			const fragmentId = createUniqueUuid(this.runtime, fragmentIdContent);
+			const fragmentMetadata: KnowledgeFragmentMemoryMetadata = {
+				...(document.metadata || {}),
+				type: MemoryType.FRAGMENT,
+				documentId: document.id,
+				position: index,
+				timestamp: Date.now(),
+			};
 
 			return {
 				id: fragmentId,
@@ -731,13 +938,7 @@ export class KnowledgeService extends Service {
 				content: {
 					text: chunk,
 				},
-				metadata: {
-					...(document.metadata || {}),
-					type: MemoryType.FRAGMENT,
-					documentId: document.id,
-					position: index,
-					timestamp: Date.now(),
-				},
+				metadata: fragmentMetadata,
 				createdAt: Date.now(),
 			};
 		});

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import type { AgentRuntime, Content, State, Task, UUID } from "@elizaos/core";
 import { DatabaseSync } from "@elizaos/agent/test-utils/sqlite-compat";
+import type { AgentRuntime, Content, State, Task, UUID } from "@elizaos/core";
 
 type SqlQuery = {
   queryChunks?: Array<{ value?: unknown }>;
@@ -67,7 +67,326 @@ export function createLifeOpsChatTestRuntime(options: {
   useModel: AgentRuntime["useModel"];
 }): AgentRuntime {
   const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS life_browser_settings (
+      agent_id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      tracking_mode TEXT NOT NULL DEFAULT 'current_tab',
+      allow_browser_control INTEGER NOT NULL DEFAULT 0,
+      require_confirmation_for_account_affecting INTEGER NOT NULL DEFAULT 1,
+      incognito_enabled INTEGER NOT NULL DEFAULT 0,
+      site_access_mode TEXT NOT NULL DEFAULT 'current_site_only',
+      granted_origins_json TEXT NOT NULL DEFAULT '[]',
+      blocked_origins_json TEXT NOT NULL DEFAULT '[]',
+      max_remembered_tabs INTEGER NOT NULL DEFAULT 10,
+      pause_until TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS browser_bridge_settings (
+      agent_id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      tracking_mode TEXT NOT NULL DEFAULT 'current_tab',
+      allow_browser_control INTEGER NOT NULL DEFAULT 0,
+      require_confirmation_for_account_affecting INTEGER NOT NULL DEFAULT 1,
+      incognito_enabled INTEGER NOT NULL DEFAULT 0,
+      site_access_mode TEXT NOT NULL DEFAULT 'current_site_only',
+      granted_origins_json TEXT NOT NULL DEFAULT '[]',
+      blocked_origins_json TEXT NOT NULL DEFAULT '[]',
+      max_remembered_tabs INTEGER NOT NULL DEFAULT 10,
+      pause_until TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS life_connector_grants (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      side TEXT NOT NULL DEFAULT 'owner',
+      identity_json TEXT NOT NULL DEFAULT '{}',
+      identity_email TEXT,
+      granted_scopes_json TEXT NOT NULL DEFAULT '[]',
+      capabilities_json TEXT NOT NULL DEFAULT '[]',
+      token_ref TEXT,
+      mode TEXT NOT NULL DEFAULT 'oauth',
+      execution_target TEXT NOT NULL DEFAULT 'local',
+      source_of_truth TEXT NOT NULL DEFAULT 'local_storage',
+      preferred_by_agent INTEGER NOT NULL DEFAULT 0,
+      cloud_connection_id TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      last_refresh_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, provider, side, mode, identity_email)
+    );
+    CREATE TABLE IF NOT EXISTS life_browser_companions (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      browser TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      profile_label TEXT NOT NULL DEFAULT '',
+      label TEXT NOT NULL DEFAULT '',
+      extension_version TEXT,
+      connection_state TEXT NOT NULL DEFAULT 'disconnected',
+      permissions_json TEXT NOT NULL DEFAULT '{}',
+      pairing_token_hash TEXT,
+      pending_pairing_token_hashes_json TEXT NOT NULL DEFAULT '[]',
+      last_seen_at TEXT,
+      paired_at TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, browser, profile_id)
+    );
+    CREATE TABLE IF NOT EXISTS browser_bridge_companions (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      browser TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      profile_label TEXT NOT NULL DEFAULT '',
+      label TEXT NOT NULL DEFAULT '',
+      extension_version TEXT,
+      connection_state TEXT NOT NULL DEFAULT 'disconnected',
+      permissions_json TEXT NOT NULL DEFAULT '{}',
+      pairing_token_hash TEXT,
+      pending_pairing_token_hashes_json TEXT NOT NULL DEFAULT '[]',
+      last_seen_at TEXT,
+      paired_at TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, browser, profile_id)
+    );
+    CREATE TABLE IF NOT EXISTS life_browser_sessions (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      domain TEXT NOT NULL DEFAULT 'user_lifeops',
+      subject_type TEXT NOT NULL DEFAULT 'owner',
+      subject_id TEXT NOT NULL,
+      visibility_scope TEXT NOT NULL DEFAULT 'owner_agent_admin',
+      context_policy TEXT NOT NULL DEFAULT 'explicit_only',
+      workflow_id TEXT,
+      browser TEXT,
+      companion_id TEXT,
+      profile_id TEXT,
+      window_id TEXT,
+      tab_id TEXT,
+      title TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      actions_json TEXT NOT NULL DEFAULT '[]',
+      current_action_index INTEGER NOT NULL DEFAULT 0,
+      awaiting_confirmation_for_action_id TEXT,
+      result_json TEXT NOT NULL DEFAULT '{}',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      finished_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS life_workflow_browser_sessions (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      domain TEXT NOT NULL DEFAULT 'user_lifeops',
+      subject_type TEXT NOT NULL DEFAULT 'owner',
+      subject_id TEXT NOT NULL,
+      visibility_scope TEXT NOT NULL DEFAULT 'owner_agent_admin',
+      context_policy TEXT NOT NULL DEFAULT 'explicit_only',
+      workflow_id TEXT,
+      browser TEXT,
+      companion_id TEXT,
+      profile_id TEXT,
+      window_id TEXT,
+      tab_id TEXT,
+      title TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      actions_json TEXT NOT NULL DEFAULT '[]',
+      current_action_index INTEGER NOT NULL DEFAULT 0,
+      awaiting_confirmation_for_action_id TEXT,
+      result_json TEXT NOT NULL DEFAULT '{}',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      finished_at TEXT
+    );
+    CREATE TABLE IF NOT EXISTS life_browser_tabs (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      companion_id TEXT,
+      browser TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      window_id TEXT NOT NULL,
+      tab_id TEXT NOT NULL,
+      url TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      active_in_window INTEGER NOT NULL DEFAULT 0,
+      focused_window INTEGER NOT NULL DEFAULT 0,
+      focused_active INTEGER NOT NULL DEFAULT 0,
+      incognito INTEGER NOT NULL DEFAULT 0,
+      favicon_url TEXT,
+      last_seen_at TEXT NOT NULL,
+      last_focused_at TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
+    );
+    CREATE TABLE IF NOT EXISTS browser_bridge_tabs (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      companion_id TEXT,
+      browser TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      window_id TEXT NOT NULL,
+      tab_id TEXT NOT NULL,
+      url TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      active_in_window INTEGER NOT NULL DEFAULT 0,
+      focused_window INTEGER NOT NULL DEFAULT 0,
+      focused_active INTEGER NOT NULL DEFAULT 0,
+      incognito INTEGER NOT NULL DEFAULT 0,
+      favicon_url TEXT,
+      last_seen_at TEXT NOT NULL,
+      last_focused_at TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
+    );
+    CREATE TABLE IF NOT EXISTS life_browser_page_contexts (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      browser TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      window_id TEXT NOT NULL,
+      tab_id TEXT NOT NULL,
+      url TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      selection_text TEXT,
+      main_text TEXT,
+      headings_json TEXT NOT NULL DEFAULT '[]',
+      links_json TEXT NOT NULL DEFAULT '[]',
+      forms_json TEXT NOT NULL DEFAULT '[]',
+      captured_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
+    );
+    CREATE TABLE IF NOT EXISTS browser_bridge_page_contexts (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      browser TEXT NOT NULL,
+      profile_id TEXT NOT NULL,
+      window_id TEXT NOT NULL,
+      tab_id TEXT NOT NULL,
+      url TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      selection_text TEXT,
+      main_text TEXT,
+      headings_json TEXT NOT NULL DEFAULT '[]',
+      links_json TEXT NOT NULL DEFAULT '[]',
+      forms_json TEXT NOT NULL DEFAULT '[]',
+      captured_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      UNIQUE(agent_id, browser, profile_id, window_id, tab_id)
+    );
+    CREATE TABLE IF NOT EXISTS life_screen_time_sessions (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      identifier TEXT NOT NULL,
+      display_name TEXT NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT,
+      duration_seconds INTEGER NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 0,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS life_screen_time_daily (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      identifier TEXT NOT NULL,
+      date TEXT NOT NULL,
+      total_seconds INTEGER NOT NULL DEFAULT 0,
+      session_count INTEGER NOT NULL DEFAULT 0,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, source, identifier, date)
+    );
+    CREATE TABLE IF NOT EXISTS life_audit_events (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      owner_type TEXT NOT NULL,
+      owner_id TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      inputs_json TEXT NOT NULL DEFAULT '{}',
+      decision_json TEXT NOT NULL DEFAULT '{}',
+      actor TEXT NOT NULL DEFAULT 'agent',
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS life_subscription_audits (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'gmail',
+      query_window_days INTEGER NOT NULL DEFAULT 180,
+      status TEXT NOT NULL DEFAULT 'completed',
+      total_candidates INTEGER NOT NULL DEFAULT 0,
+      active_candidates INTEGER NOT NULL DEFAULT 0,
+      canceled_candidates INTEGER NOT NULL DEFAULT 0,
+      uncertain_candidates INTEGER NOT NULL DEFAULT 0,
+      summary TEXT NOT NULL DEFAULT '',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS life_subscription_candidates (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      audit_id TEXT NOT NULL,
+      service_slug TEXT NOT NULL,
+      service_name TEXT NOT NULL,
+      provider TEXT NOT NULL DEFAULT 'unknown',
+      cadence TEXT NOT NULL DEFAULT 'unknown',
+      state TEXT NOT NULL DEFAULT 'uncertain',
+      confidence REAL NOT NULL DEFAULT 0,
+      annual_cost_estimate_usd REAL,
+      management_url TEXT,
+      latest_evidence_at TEXT,
+      evidence_json TEXT NOT NULL DEFAULT '[]',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(agent_id, audit_id, service_slug)
+    );
+    CREATE TABLE IF NOT EXISTS life_subscription_cancellations (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      audit_id TEXT,
+      candidate_id TEXT,
+      service_slug TEXT NOT NULL,
+      service_name TEXT NOT NULL,
+      executor TEXT NOT NULL DEFAULT 'agent_browser',
+      status TEXT NOT NULL DEFAULT 'draft',
+      confirmed INTEGER NOT NULL DEFAULT 0,
+      current_step TEXT,
+      browser_session_id TEXT,
+      evidence_summary TEXT,
+      artifact_count INTEGER NOT NULL DEFAULT 0,
+      management_url TEXT,
+      error TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      finished_at TEXT
+    );
+  `);
   let tasks: Task[] = [];
+  const settings = new Map<string, string>();
+  const cache = new Map<string, unknown>();
   const memoriesByRoom = new Map<string, Array<Record<string, unknown>>>();
   const roomsById = new Map<string, { id: UUID; worldId: UUID }>();
   const worldsById = new Map<
@@ -91,7 +410,17 @@ export function createLifeOpsChatTestRuntime(options: {
         error: () => {},
       } as AgentRuntime["logger"]),
     useModel: options.useModel,
-    getSetting: () => undefined,
+    getSetting: (key: string) => settings.get(key),
+    setSetting: (key: string, value: string) => {
+      settings.set(key, value);
+    },
+    getCache: async <T>(key: string) => cache.get(key) as T | undefined,
+    setCache: async (key: string, value: unknown) => {
+      cache.set(key, value);
+    },
+    deleteCache: async (key: string) => {
+      cache.delete(key);
+    },
     getService: () => null,
     getRoomsByWorld: async () => [],
     getRoom: async (roomId: UUID) => roomsById.get(String(roomId)) ?? null,
@@ -216,7 +545,10 @@ export function createLifeOpsChatTestRuntime(options: {
         roomId: String(roomId),
         count: 20,
       })) as Array<Record<string, unknown>>;
-      const recentMessages = buildRecentMessagesTranscript(runtimeArg, memories);
+      const recentMessages = buildRecentMessagesTranscript(
+        runtimeArg,
+        memories,
+      );
       const baseContent =
         message.content && typeof message.content === "object"
           ? (message.content as Record<string, unknown>)
@@ -236,9 +568,15 @@ export function createLifeOpsChatTestRuntime(options: {
           agentName: runtimeArg.character.name ?? "Agent",
           recentMessages,
         },
-        data: {},
+        data: {
+          providers: {
+            RECENT_MESSAGES: {
+              data: { recentMessages: memories },
+              values: { recentMessages },
+            },
+          },
+        },
         text: recentMessages,
-        recentMessagesData: memories,
       } as State;
 
       const turn = await options.handleTurn({

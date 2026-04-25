@@ -107,7 +107,7 @@ class OrchestratedBenchmarkConfig(SWEBenchConfig):
     openai_api_key: str | None = None
 
     # Model to use for the orchestrator agent
-    orchestrator_model: str = "claude-sonnet-4-20250514"
+    orchestrator_model: str = "claude-sonnet-4-6"
 
     # Model to use for each provider (overrides per-provider defaults)
     provider_models: dict[str, str] = field(default_factory=dict)

@@ -9,19 +9,31 @@ export interface WalletKeys {
   solanaAddress: string;
 }
 
-export interface WalletAddresses {
+export interface WalletAddressPair {
   evmAddress: string | null;
   solanaAddress: string | null;
 }
 
-export interface EvmTokenBalance {
+export interface WalletAddresses extends WalletAddressPair {}
+
+export interface WalletTokenBalanceBase {
   symbol: string;
   name: string;
-  contractAddress: string;
   balance: string;
   decimals: number;
   valueUsd: string;
   logoUrl: string;
+}
+
+export interface WalletNftMetadataBase {
+  name: string;
+  description: string;
+  imageUrl: string;
+  collectionName: string;
+}
+
+export interface EvmTokenBalance extends WalletTokenBalanceBase {
+  contractAddress: string;
 }
 
 export interface EvmChainBalance {
@@ -34,47 +46,49 @@ export interface EvmChainBalance {
   error: string | null;
 }
 
-export interface SolanaTokenBalance {
-  symbol: string;
-  name: string;
+export interface SolanaTokenBalance extends WalletTokenBalanceBase {
   mint: string;
-  balance: string;
-  decimals: number;
-  valueUsd: string;
-  logoUrl: string;
+}
+
+export interface WalletEvmBalances {
+  address: string;
+  chains: EvmChainBalance[];
+}
+
+export interface WalletSolanaBalances {
+  address: string;
+  solBalance: string;
+  solValueUsd: string;
+  tokens: SolanaTokenBalance[];
 }
 
 export interface WalletBalancesResponse {
-  evm: { address: string; chains: EvmChainBalance[] } | null;
-  solana: {
-    address: string;
-    solBalance: string;
-    solValueUsd: string;
-    tokens: SolanaTokenBalance[];
-  } | null;
+  evm: WalletEvmBalances | null;
+  solana: WalletSolanaBalances | null;
 }
 
-export interface EvmNft {
+export interface EvmNft extends WalletNftMetadataBase {
   contractAddress: string;
   tokenId: string;
-  name: string;
-  description: string;
-  imageUrl: string;
-  collectionName: string;
   tokenType: string;
 }
 
-export interface SolanaNft {
+export interface SolanaNft extends WalletNftMetadataBase {
   mint: string;
-  name: string;
-  description: string;
-  imageUrl: string;
-  collectionName: string;
+}
+
+export interface WalletEvmNftCollection {
+  chain: string;
+  nfts: EvmNft[];
+}
+
+export interface WalletSolanaNftCollection {
+  nfts: SolanaNft[];
 }
 
 export interface WalletNftsResponse {
-  evm: Array<{ chain: string; nfts: EvmNft[] }>;
-  solana: { nfts: SolanaNft[] } | null;
+  evm: WalletEvmNftCollection[];
+  solana: WalletSolanaNftCollection | null;
 }
 
 export const WALLET_RPC_PROVIDER_OPTIONS = {
@@ -192,7 +206,26 @@ export interface WalletConfigUpdateRequest {
 
 export type WalletNetworkMode = "mainnet" | "testnet";
 
-export interface WalletConfigStatus {
+/**
+ * Paths through which plugin-evm can produce a signature.
+ *
+ * - "local":             EVM_PRIVATE_KEY env var (non-placeholder)
+ * - "steward-self":      self-hosted Steward vault
+ * - "steward-cloud":     cloud-provisioned Steward sidecar
+ * - "cloud-view-only":   cloud-custodied address known, but no signing path
+ *                        is wired in this runtime — view-only
+ * - "none":              no signer, no address
+ *
+ * Source of truth: packages/agent/src/services/evm-signing-capability.ts.
+ */
+export type EvmSigningCapabilityKind =
+  | "local"
+  | "steward-self"
+  | "steward-cloud"
+  | "cloud-view-only"
+  | "none";
+
+export interface WalletConfigStatus extends WalletAddressPair {
   selectedRpcProviders: WalletRpcSelections;
   walletNetwork?: WalletNetworkMode;
   legacyCustomChains: WalletRpcChain[];
@@ -215,14 +248,14 @@ export interface WalletConfigStatus {
   heliusKeySet: boolean;
   birdeyeKeySet: boolean;
   evmChains: string[];
-  evmAddress: string | null;
-  solanaAddress: string | null;
   walletSource?: "local" | "managed" | "none";
   automationMode?: "full" | "connectors-only";
   pluginEvmLoaded?: boolean;
   pluginEvmRequired?: boolean;
   executionReady?: boolean;
   executionBlockedReason?: string | null;
+  evmSigningCapability?: EvmSigningCapabilityKind;
+  evmSigningReason?: string;
   solanaSigningAvailable?: boolean;
   /** Present only when ENABLE_CLOUD_WALLET is on. */
   wallets?: WalletEntry[];
@@ -389,7 +422,7 @@ export interface BscTradeTxStatusResponse {
 
 export type WalletTradeSource = "agent" | "manual";
 
-export type WalletTradingProfileWindow = "7d" | "30d" | "all";
+export type WalletTradingProfileWindow = "24h" | "7d" | "30d" | "all";
 
 export type WalletTradingProfileSourceFilter = "all" | WalletTradeSource;
 
@@ -481,10 +514,63 @@ export interface WalletTradingProfileResponse {
   recentSwaps: WalletTradingProfileRecentSwap[];
 }
 
-/**
- * Result from a Steward policy evaluation.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
+export interface WalletMarketPriceSnapshot {
+  id: string;
+  symbol: string;
+  name: string;
+  priceUsd: number;
+  change24hPct: number;
+  imageUrl: string | null;
+}
+
+export interface WalletMarketMover {
+  id: string;
+  symbol: string;
+  name: string;
+  priceUsd: number;
+  change24hPct: number;
+  marketCapRank: number | null;
+  imageUrl: string | null;
+}
+
+export interface WalletMarketPrediction {
+  id: string;
+  slug: string | null;
+  question: string;
+  highlightedOutcomeLabel: string;
+  highlightedOutcomeProbability: number | null;
+  volume24hUsd: number;
+  totalVolumeUsd: number | null;
+  endsAt: string | null;
+  imageUrl: string | null;
+}
+
+export type WalletMarketOverviewProviderId = "coingecko" | "polymarket";
+
+export interface WalletMarketOverviewSource {
+  providerId: WalletMarketOverviewProviderId;
+  providerName: string;
+  providerUrl: string;
+  available: boolean;
+  stale: boolean;
+  error: string | null;
+}
+
+export interface WalletMarketOverviewResponse {
+  generatedAt: string;
+  cacheTtlSeconds: number;
+  stale: boolean;
+  sources: {
+    prices: WalletMarketOverviewSource;
+    movers: WalletMarketOverviewSource;
+    predictions: WalletMarketOverviewSource;
+  };
+  prices: WalletMarketPriceSnapshot[];
+  movers: WalletMarketMover[];
+  predictions: WalletMarketPrediction[];
+}
+
+/** Result from a Steward policy evaluation. */
 export interface StewardPolicyResult {
   policyId?: string;
   name?: string;
@@ -492,37 +578,14 @@ export interface StewardPolicyResult {
   reason?: string;
 }
 
-/**
- * Steward pending-approval or rejection info attached to a tx step.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
+/** Steward pending-approval or rejection info attached to a tx step. */
 export interface StewardApprovalInfo {
   status: "pending_approval" | "rejected";
   policyResults?: StewardPolicyResult[];
 }
 
-/**
- * Response from GET /api/wallet/steward-status.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardStatusResponse {
-  configured: boolean;
-  available: boolean;
-  connected: boolean;
-  baseUrl?: string;
-  agentId?: string;
-  evmAddress?: string;
-  error?: string | null;
-  walletAddresses?: { evm: string | null; solana: string | null };
-  agentName?: string;
-  vaultHealth?: "ok" | "degraded" | "error";
-}
-
 /** Response from GET /api/wallet/steward-addresses. */
-export interface StewardWalletAddressesResponse {
-  evmAddress: string | null;
-  solanaAddress: string | null;
-}
+export interface StewardWalletAddressesResponse extends WalletAddressPair {}
 
 /** Response from GET /api/wallet/steward-balances. */
 export interface StewardBalanceResponse {
@@ -532,19 +595,21 @@ export interface StewardBalanceResponse {
   chainId: number;
 }
 
+export interface StewardTokenBalance {
+  address: string;
+  symbol: string;
+  name: string;
+  balance: string;
+  formatted: string;
+  decimals: number;
+  valueUsd?: string;
+  logoUrl?: string;
+}
+
 /** Response from GET /api/wallet/steward-tokens. */
 export interface StewardTokenBalancesResponse {
   native: StewardBalanceResponse;
-  tokens: Array<{
-    address: string;
-    symbol: string;
-    name: string;
-    balance: string;
-    formatted: string;
-    decimals: number;
-    valueUsd?: string;
-    logoUrl?: string;
-  }>;
+  tokens: StewardTokenBalance[];
 }
 
 export type StewardWebhookEventType =
@@ -660,105 +725,6 @@ export interface WalletGenerateResult {
   chain: WalletChain;
   address: string;
   privateKey: string;
-}
-
-// ─── Steward Transaction History & Approval Queue ─────────────────────────────
-// @deprecated These types are maintained for backward compatibility.
-// Import from `@elizaos/app-steward/types/steward` instead.
-
-export type StewardTxStatus =
-  | "pending"
-  | "approved"
-  | "rejected"
-  | "signed"
-  | "broadcast"
-  | "confirmed"
-  | "failed";
-
-/**
- * A transaction record from the Steward vault history.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardTxRecord {
-  id: string;
-  agentId: string;
-  status: StewardTxStatus;
-  request: {
-    agentId: string;
-    tenantId: string;
-    to: string;
-    value: string;
-    data?: string;
-    chainId: number;
-  };
-  txHash?: string;
-  policyResults: StewardPolicyResult[];
-  createdAt: string;
-  signedAt?: string;
-  confirmedAt?: string;
-}
-
-/**
- * A pending approval entry from the Steward approval queue.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardPendingApproval {
-  queueId: string;
-  status: "pending" | "approved" | "rejected";
-  requestedAt: string;
-  transaction: StewardTxRecord;
-}
-
-/**
- * Response shape for GET /api/wallet/steward-history
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export type StewardHistoryResponse = StewardTxRecord[];
-
-/**
- * Response shape for GET /api/wallet/steward-pending
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export type StewardPendingResponse = StewardPendingApproval[];
-
-/**
- * Response shape for POST /api/wallet/steward-approve and steward-reject
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardApprovalActionResponse {
-  ok: boolean;
-  txHash?: string;
-  error?: string;
-}
-
-// ─── Steward Vault Signing ────────────────────────────────────────────────────
-// @deprecated These types are maintained for backward compatibility.
-// Import from `@elizaos/app-steward/types/steward` instead.
-
-/**
- * Request body for signing a transaction through the Steward vault.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardSignRequest {
-  to: string;
-  value: string;
-  chainId: number;
-  data?: string;
-  broadcast?: boolean;
-  description?: string;
-}
-
-/**
- * Response from a Steward vault sign operation.
- * @deprecated Import from `@elizaos/app-steward/types/steward` instead.
- */
-export interface StewardSignResponse {
-  approved: boolean;
-  txHash?: string;
-  txId?: string;
-  pending?: boolean;
-  denied?: boolean;
-  violations?: Array<{ policy: string; reason: string }>;
 }
 
 // ── Wallet Export ──────────────────────────────────────────────────────────

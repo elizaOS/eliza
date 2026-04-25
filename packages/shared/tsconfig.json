@@ -6,7 +6,7 @@
     "allowJs": false,
     "jsx": "react-jsx",
     "skipLibCheck": true,
-    "esModuleInterop": false,
+    "ignoreDeprecations": "6.0",
     "allowSyntheticDefaultImports": true,
     "strict": false,
     "useUnknownInCatchVariables": false,
@@ -29,7 +29,6 @@
       "../../../node_modules",
       "../../../node_modules/.bun/node_modules"
     ],
-    "baseUrl": ".",
     "paths": {
       "@types/*": ["./src/*"],
       "@elizaos/core": ["../typescript/src/index.node.ts"],

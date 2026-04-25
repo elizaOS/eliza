@@ -1,4 +1,6 @@
 import { cva } from "class-variance-authority";
+// biome-ignore lint/correctness/noUnusedImports: Required for this package's JSX transform in tests.
+import * as React from "react";
 
 import { cn } from "../../../lib/utils";
 import type { SidebarScrollRegionProps } from "./sidebar-types";

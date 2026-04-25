@@ -20,7 +20,7 @@ import type {
 } from "../api";
 
 /**
- * Currently-selected connector chat in the unified messages sidebar.
+ * Currently-selected connector chat in the messages sidebar.
  * When non-null, ChatView swaps its main panel out for a read-only
  * view of that room's inbox messages (rendered via `/api/inbox/
  * messages?roomId=…`). Mutually exclusive with a live dashboard
@@ -116,11 +116,18 @@ export function useMiscUiState() {
     if (!activeGameRunId) return;
     if (appRuns.some((run) => run.runId === activeGameRunId)) return;
     setActiveGameRunId("");
-  }, [activeGameRunId, appRuns]);
+  }, [activeGameRunId, appRuns, setActiveGameRunId]);
 
-  // ── Unified messages sidebar ───────────────────────────────────────
+  // ── Messages sidebar ───────────────────────────────────────
   const [activeInboxChat, setActiveInboxChat] =
     useState<ActiveInboxChat | null>(null);
+
+  // ── Terminal channel ───────────────────────────────────────────────
+  // Selected PTY session id when the Terminal channel is active.
+  // Mutually exclusive with activeInboxChat / activeConversationId.
+  const [activeTerminalSessionId, setActiveTerminalSessionId] = useState<
+    string | null
+  >(null);
 
   // ── Callbacks ──────────────────────────────────────────────────────
 
@@ -169,8 +176,10 @@ export function useMiscUiState() {
       companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
+      activeTerminalSessionId,
     },
     setActiveInboxChat,
+    setActiveTerminalSessionId,
     setCommandQuery,
     setCommandActiveIndex,
     setEmotePickerOpen,

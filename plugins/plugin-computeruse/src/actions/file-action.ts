@@ -6,8 +6,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { FileActionParams } from "../types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
+import type { FileActionParams } from "../types.js";
 import { resolveActionParams } from "./helpers.js";
 
 export const fileAction: Action = {
@@ -23,6 +23,8 @@ export const fileAction: Action = {
   description:
     "Perform local filesystem operations through the computer-use service. This includes read, write, edit, append, delete, exists, list, delete_directory, upload, download, and list_downloads actions.\n\n" +
     "Why this exists: it gives the agent controlled local file access with the same approval, safety, and history path as the rest of computer use.",
+  descriptionCompressed:
+    "File ops: read, write, edit, append, delete, list directory.",
   parameters: [
     {
       name: "action",
@@ -149,11 +151,11 @@ export const fileAction: Action = {
     if (callback) {
       await callback({
         text: result.success
-          ? result.content ??
+          ? (result.content ??
             result.message ??
             (result.items
               ? `Listed ${result.count ?? result.items.length} filesystem entries.`
-              : "File action completed.")
+              : "File action completed."))
           : `File action failed: ${result.error}`,
       });
     }

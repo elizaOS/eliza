@@ -492,3 +492,5 @@ export const MAX_BODY_BYTES = 1_048_576;
  * (~3–7 MB base64); 20 MB accommodates up to 4 images with room to spare.
  */
 export const CHAT_MAX_BODY_BYTES = 20 * 1_048_576;
+const _ELEVENLABS_FETCH_TIMEOUT_MS = 20_000;
+const _ELEVENLABS_AUDIO_MAX_BYTES = 20 * 1_048_576;

@@ -7,20 +7,73 @@
  * with various parameter combinations:
  *
  *   1. LLM provides `action` param (primary path, reliable)
- *   2. LLM omits `action` but provides `intent` (classifier path)
+ *   2. LLM omits `action` but provides `intent` (extractor path)
  *   3. LLM provides both (action wins)
  *   4. LLM provides malformed/missing params (error paths)
  *
  * Run: bunx vitest run eliza/apps/app-lifeops/test/life-smoke.integration.test.ts
  */
 
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
-import { classifyIntent, lifeAction } from "../src/actions/life.js";
+import { lifeAction } from "../src/actions/life.js";
+import { appLifeOpsPlugin } from "../src/plugin.js";
 
 let runtime: AgentRuntime;
 let cleanup: () => Promise<void>;
+let isolatedStateDir: string;
+let isolatedConfigPath: string;
+
+const isolatedEnvKeys = [
+  "MILADY_STATE_DIR",
+  "ELIZA_STATE_DIR",
+  "MILADY_CONFIG_PATH",
+  "ELIZA_CONFIG_PATH",
+  "MILADY_PERSIST_CONFIG_PATH",
+  "ELIZA_PERSIST_CONFIG_PATH",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+] as const;
+
+const previousEnv = new Map<string, string | undefined>();
+
+function setIsolatedLifeSmokeEnv(): void {
+  isolatedStateDir = mkdtempSync(join(tmpdir(), "life-smoke-state-"));
+  isolatedConfigPath = join(isolatedStateDir, "milady.json");
+  writeFileSync(
+    isolatedConfigPath,
+    JSON.stringify({ logging: { level: "error" } }),
+    "utf8",
+  );
+
+  for (const key of isolatedEnvKeys) {
+    previousEnv.set(key, process.env[key]);
+  }
+
+  process.env.MILADY_STATE_DIR = isolatedStateDir;
+  process.env.MILADY_CONFIG_PATH = isolatedConfigPath;
+  process.env.MILADY_PERSIST_CONFIG_PATH = isolatedConfigPath;
+  delete process.env.ELIZA_STATE_DIR;
+  delete process.env.ELIZA_CONFIG_PATH;
+  delete process.env.ELIZA_PERSIST_CONFIG_PATH;
+  delete process.env.ELIZAOS_CLOUD_API_KEY;
+  delete process.env.ELIZAOS_CLOUD_BASE_URL;
+}
+
+function restoreIsolatedLifeSmokeEnv(): void {
+  for (const key of isolatedEnvKeys) {
+    const value = previousEnv.get(key);
+    if (value === undefined) {
+      delete process.env[key];
+      continue;
+    }
+    process.env[key] = value;
+  }
+}
 
 function send(params: Record<string, unknown>, messageText?: string) {
   return lifeAction.handler?.(
@@ -38,13 +91,18 @@ function send(params: Record<string, unknown>, messageText?: string) {
 }
 
 beforeAll(async () => {
-  const result = await createRealTestRuntime();
+  setIsolatedLifeSmokeEnv();
+  const result = await createRealTestRuntime({
+    plugins: [appLifeOpsPlugin],
+  });
   runtime = result.runtime;
   cleanup = result.cleanup;
 }, 180_000);
 
 afterAll(async () => {
   await cleanup();
+  restoreIsolatedLifeSmokeEnv();
+  rmSync(isolatedStateDir, { recursive: true, force: true });
 });
 
 describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
@@ -81,12 +139,6 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     expect(result).toMatchObject({ success: true });
     expect((result as { text: string }).text).toContain("Brush teeth");
   }, 60_000);
-
-  it("AC-1 classifier: routes brushing request to create_definition", () => {
-    expect(classifyIntent("I need help brushing my teeth twice a day")).toBe(
-      "create_definition",
-    );
-  });
 
   // -- AC-2: Snooze a brushing reminder for 30 minutes --
   // Requires an existing occurrence in the DB. We create a definition first,
@@ -157,6 +209,12 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
       title: "Call Mom every week",
       details: {
         cadence: { kind: "weekly" },
+        successCriteria: {
+          summary: "Call Mom at least once every calendar week.",
+          metric: "weekly_call_completed",
+          target: { callsPerWeek: 1 },
+          evidenceSignals: ["manual_checkin"],
+        },
         supportStrategy: {
           approach: "weekly_nudge",
           message: "Have you called Mom this week?",
@@ -173,10 +231,6 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     expect(typeof text).toBe("string");
     expect(text.length).toBeGreaterThan(0);
   }, 60_000);
-
-  it("AC-4 classifier: explicit goal phrasing routes to goal creation", () => {
-    expect(classifyIntent("my goal is to stay healthy")).toBe("create_goal");
-  });
 
   // -- AC-5: Calendar query --
   // Calendar depends on Google connector which we don't have in test.
@@ -205,11 +259,6 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     expect(result).toMatchObject({ success: false });
   }, 60_000);
 
-  it("AC-7 classifier: routes email query", () => {
-    expect(
-      classifyIntent("Do I have anything important I need to respond to?"),
-    ).toBe("query_email");
-  });
 });
 
 describe("LIFE action -- robustness scenarios", () => {

@@ -170,7 +170,7 @@ export const updateEntityAction: Action = {
 					error: "STATE_REQUIRED",
 				},
 				data: {
-					actionName: "UPDATE_CONTACT",
+					actionName: "UPDATE_ENTITY",
 					error: "State is required",
 				},
 				success: false,
@@ -193,7 +193,7 @@ export const updateEntityAction: Action = {
 					error: "CALLBACK_REQUIRED",
 				},
 				data: {
-					actionName: "UPDATE_CONTACT",
+					actionName: "UPDATE_ENTITY",
 					error: "Callback is required",
 				},
 				success: false,
@@ -216,7 +216,7 @@ export const updateEntityAction: Action = {
 					error: "RESPONSES_REQUIRED",
 				},
 				data: {
-					actionName: "UPDATE_CONTACT",
+					actionName: "UPDATE_ENTITY",
 					error: "Responses are required",
 				},
 				success: false,
@@ -239,7 +239,7 @@ export const updateEntityAction: Action = {
 					error: "MESSAGE_REQUIRED",
 				},
 				data: {
-					actionName: "UPDATE_CONTACT",
+					actionName: "UPDATE_ENTITY",
 					error: "Message is required",
 				},
 				success: false,
@@ -261,7 +261,7 @@ export const updateEntityAction: Action = {
 				text: "Could not find room or world",
 				values: { success: false, error: "ROOM_NOT_FOUND" },
 				data: {
-					actionName: "UPDATE_CONTACT",
+					actionName: "UPDATE_ENTITY",
 					error: "Room or world not found",
 				},
 				success: false,
@@ -286,7 +286,7 @@ export const updateEntityAction: Action = {
 					error: "ENTITY_NOT_FOUND",
 				},
 				data: {
-					actionName: "UPDATE_CONTACT",
+					actionName: "UPDATE_ENTITY",
 					error: "Could not find entity to update",
 				},
 				success: false,
@@ -330,7 +330,7 @@ export const updateEntityAction: Action = {
 					error: "PARSE_ERROR",
 				},
 				data: {
-					actionName: "UPDATE_CONTACT",
+					actionName: "UPDATE_ENTITY",
 					error: "Invalid response format - missing source or data",
 				},
 				success: false,
@@ -351,7 +351,7 @@ export const updateEntityAction: Action = {
 					error: "ENTITY_ID_REQUIRED",
 				},
 				data: {
-					actionName: "UPDATE_CONTACT",
+					actionName: "UPDATE_ENTITY",
 					error: "Entity ID is required",
 				},
 				success: false,
@@ -396,7 +396,7 @@ export const updateEntityAction: Action = {
 					isNewComponent: false,
 				},
 				data: {
-					actionName: "UPDATE_CONTACT",
+					actionName: "UPDATE_ENTITY",
 					entityId: entity.id ?? null,
 					entityName,
 					componentType,
@@ -437,7 +437,7 @@ export const updateEntityAction: Action = {
 					isNewComponent: true,
 				},
 				data: {
-					actionName: "UPDATE_CONTACT",
+					actionName: "UPDATE_ENTITY",
 					entityId: entity.id ?? null,
 					entityName,
 					componentType,

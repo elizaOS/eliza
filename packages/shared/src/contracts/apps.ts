@@ -103,6 +103,15 @@ export interface RegistryAppInfo {
   launchType: string;
   launchUrl: string | null;
   icon: string | null;
+  /**
+   * Absolute or app-scoped URL to a large hero image (ideally a 1024×1024
+   * square webp) used as the card background on the apps page. Apps declare
+   * this in their `package.json` under `elizaos.app.heroImage` as a path
+   * relative to the package root; the runtime rewrites app hero requests
+   * through `/api/apps/hero/<slug>` and will synthesize generated artwork
+   * there when the app does not ship a dedicated hero asset.
+   */
+  heroImage: string | null;
   capabilities: string[];
   stars: number;
   repository: string;

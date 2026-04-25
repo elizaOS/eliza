@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import sharp from "sharp";
+import { logger } from "@elizaos/core";
 import { FRAME_FILE } from "@elizaos/agent/services/browser-capture";
 
 export type LifeOpsScreenFocus =
@@ -80,6 +81,22 @@ const LEISURE_KEYWORDS = [
   "gaming",
   "spotify",
 ];
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message.trim()
+    : String(error);
+}
+
+function isMissingOptionalVisionImport(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    ((error as { code?: unknown }).code === "ERR_MODULE_NOT_FOUND" ||
+      (error as { code?: unknown }).code === "MODULE_NOT_FOUND")
+  );
+}
 const TRANSITION_KEYWORDS = [
   "lock screen",
   "login",
@@ -425,7 +442,13 @@ export async function tryCreateVisionOcrAdapter(): Promise<LifeOpsScreenOcrAdapt
           return normalizeText(result.fullText ?? result.text ?? null) || null;
         },
       };
-    } catch {}
+    } catch (error) {
+      if (!isMissingOptionalVisionImport(error)) {
+        logger.warn(
+          `[LifeOpsScreenContext] vision OCR adapter unavailable for ${specifier}: ${errorMessage(error)}`,
+        );
+      }
+    }
   }
 
   return null;

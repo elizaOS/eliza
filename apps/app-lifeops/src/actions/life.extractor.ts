@@ -4,6 +4,7 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import { resolveContextWindow } from "./lifeops-extraction-config.js";
 
 export const LIFE_OPERATION_VALUES = [
@@ -42,6 +43,13 @@ type ExtractedLifeOperationPlan = {
   missing: ExtractedLifeMissingField[];
   shouldAct: boolean;
 };
+
+type CoreLifeOperation =
+  | "create_definition"
+  | "complete_occurrence"
+  | "snooze_occurrence"
+  | "query_overview"
+  | null;
 
 function messageText(message: Memory): string {
   const text = message.content?.text;
@@ -83,19 +91,12 @@ function stateTextCandidates(state: State | undefined): string[] {
   pushText(values?.recentMessages);
   pushText(stateRecord.text);
 
-  const recentMessagesData =
-    stateRecord.recentMessagesData ?? stateRecord.recentMessages;
-  if (Array.isArray(recentMessagesData)) {
-    for (const item of recentMessagesData) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      const content = (item as Record<string, unknown>).content;
-      if (!content || typeof content !== "object") {
-        continue;
-      }
-      pushText((content as Record<string, unknown>).text);
+  for (const item of getRecentMessagesData(state)) {
+    const content = item.content;
+    if (!content || typeof content !== "object") {
+      continue;
     }
+    pushText(content.text);
   }
 
   return [...new Set(candidates)];
@@ -179,7 +180,10 @@ function normalizeOperationPlan(
   parsed: Record<string, unknown>,
 ): ExtractedLifeOperationPlan | null {
   const operation = normalizeOperation(parsed.operation);
-  const shouldAct = normalizeShouldAct(parsed.shouldAct);
+  const missing = normalizeMissingFields(parsed.missing);
+  const shouldAct =
+    normalizeShouldAct(parsed.shouldAct) ??
+    (operation ? missing.length === 0 : null);
   if (shouldAct === null) {
     return null;
   }
@@ -192,7 +196,7 @@ function normalizeOperationPlan(
   return {
     operation,
     confidence: normalizeConfidence(parsed.confidence) ?? 0,
-    missing: normalizeMissingFields(parsed.missing),
+    missing,
     shouldAct,
   };
 }
@@ -219,6 +223,97 @@ function buildRepairPrompt(args: {
     `Recent conversation: ${JSON.stringify(args.recentConversation.join("\n"))}`,
     `Previous invalid output: ${JSON.stringify(args.rawResponse)}`,
   ].join("\n");
+}
+
+function normalizeCoreLifeOperation(value: unknown): CoreLifeOperation {
+  switch (value) {
+    case "create_definition":
+    case "complete_occurrence":
+    case "snooze_occurrence":
+    case "query_overview":
+      return value;
+    default:
+      return null;
+  }
+}
+
+function normalizeCoreLifeOperationPlan(
+  parsed: Record<string, unknown>,
+): ExtractedLifeOperationPlan | null {
+  const operation = normalizeCoreLifeOperation(parsed.operation);
+  const missing = normalizeMissingFields(parsed.missing);
+  const shouldAct =
+    normalizeShouldAct(parsed.shouldAct) ??
+    (operation ? missing.length === 0 : null);
+  if (shouldAct === null) {
+    return null;
+  }
+
+  if (shouldAct && operation === null) {
+    return null;
+  }
+
+  return {
+    operation,
+    confidence: normalizeConfidence(parsed.confidence) ?? 0,
+    missing,
+    shouldAct,
+  };
+}
+
+async function recoverCoreLifeOperationWithLlm(args: {
+  runtime: IAgentRuntime;
+  currentMessage: string;
+  intent: string;
+  recentConversation: string[];
+}): Promise<ExtractedLifeOperationPlan | null> {
+  const prompt = [
+    "Recover the core LifeOps intent for this request.",
+    "The user may speak in any language.",
+    "Choose the closest operation from: create_definition, complete_occurrence, snooze_occurrence, query_overview, or null.",
+    "create_definition is for creating a reminder, alarm, routine, or recurring task.",
+    "complete_occurrence is for saying the user already did something.",
+    "snooze_occurrence is for deferring or postponing something to later.",
+    "query_overview is for asking what is still left, active, or remaining today.",
+    "Use null only when the request is casual chat or not a core LifeOps action.",
+    "",
+    "Return ONLY valid JSON with exactly these fields:",
+    "  operation: create_definition, complete_occurrence, snooze_occurrence, query_overview, or null",
+    "  confidence: number from 0 to 1",
+    "  shouldAct: boolean",
+    '  missing: array of missing fields from ["title","schedule","target","goal","phone_number","reminder_intensity","details"]',
+    "",
+    "Examples:",
+    '  "remind me to brush my teeth every night" -> {"operation":"create_definition","confidence":0.95,"shouldAct":true,"missing":[]}',
+    '  "Je viens de me brosser les dents" -> {"operation":"complete_occurrence","confidence":0.95,"shouldAct":true,"missing":[]}',
+    '  "remind me later" -> {"operation":"snooze_occurrence","confidence":0.9,"shouldAct":true,"missing":[]}',
+    '  "¿Qué me queda por hacer hoy?" -> {"operation":"query_overview","confidence":0.88,"shouldAct":true,"missing":[]}',
+    '  "yeah lol" -> {"operation":null,"confidence":0.6,"shouldAct":false,"missing":[]}',
+    "",
+    `Current request: ${JSON.stringify(args.currentMessage)}`,
+    `Resolved intent: ${JSON.stringify(args.intent)}`,
+    `Recent conversation: ${JSON.stringify(args.recentConversation.join("\\n"))}`,
+  ].join("\n");
+
+  try {
+    const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+      prompt,
+    });
+    const rawResponse = typeof result === "string" ? result : "";
+    const parsed =
+      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+      parseJSONObjectFromText(rawResponse);
+    return parsed ? normalizeCoreLifeOperationPlan(parsed) : null;
+  } catch (error) {
+    args.runtime.logger?.warn?.(
+      {
+        src: "action:life",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Core LifeOps recovery model call failed",
+    );
+    return null;
+  }
 }
 
 export async function extractLifeOperationWithLlm(args: {
@@ -250,6 +345,8 @@ export async function extractLifeOperationWithLlm(args: {
     "Only set shouldAct=true when the assistant should execute, preview, update, or query right now.",
     "Requests with concrete routine content and interpretable cadence are actionable even when some fields are implied.",
     "Treat requests like weekdays after lunch, during the day, every morning, tomorrow at 9, set an alarm for 7 am, and remind me about my Invisalign as specific enough to act on now.",
+    "A goal horizon like this year, this month, by June, or before my trip does not create a routine cadence by itself.",
+    "Use create_goal for aspirations with a target or horizon unless the user explicitly asks for reminders, recurrence, or a routine schedule.",
     "",
     "Return a JSON object with exactly these fields:",
     "  operation: one of the allowed operations below, or null when this should be reply-only/no-op",
@@ -267,7 +364,7 @@ export async function extractLifeOperationWithLlm(args: {
     "  complete_occurrence — mark an item as done (e.g. 'I brushed my teeth', 'done with workout', 'I did it')",
     "  skip_occurrence — skip an item for today (e.g. 'skip brushing', 'not today', 'pass on workout')",
     "  snooze_occurrence — postpone or defer an item (e.g. 'snooze', 'remind me later', 'push it back')",
-    "  review_goal — check progress on a goal (e.g. 'how am I doing on my marathon goal', 'review my progress')",
+    "  review_goal — check progress on a goal or ask for a weekly goal review (e.g. 'how am I doing on my marathon goal', 'review my progress', 'give me my weekly goal review')",
     "  capture_phone — save or confirm a phone number (e.g. 'my number is 555-1234', 'text me at...')",
     "  configure_escalation — set up SMS/voice/call escalation (e.g. 'text me if I ignore the reminder', 'call me if I miss it')",
     "  set_reminder_preference — adjust reminder frequency (e.g. 'less reminders', 'more reminders', 'pause reminders', 'high priority only')",
@@ -286,8 +383,12 @@ export async function extractLifeOperationWithLlm(args: {
     '  "help me remember to drink water" -> {"operation":"create_definition","confidence":0.9,"shouldAct":true,"missing":[]}',
     '  "help me remember to stretch during the day" -> {"operation":"create_definition","confidence":0.9,"shouldAct":true,"missing":[]}',
     '  "make sure I brush my teeth when I wake up and before bed" -> {"operation":"create_definition","confidence":0.95,"shouldAct":true,"missing":[]}',
+    '  "I want to learn guitar this year" -> {"operation":"create_goal","confidence":0.9,"shouldAct":true,"missing":[]}',
+    '  "I want to run a marathon by October" -> {"operation":"create_goal","confidence":0.9,"shouldAct":true,"missing":[]}',
     '  "how am I doing on my reading goal" -> {"operation":"review_goal","confidence":0.9,"shouldAct":true,"missing":[]}',
+    '  "give me my weekly goal review" -> {"operation":"review_goal","confidence":0.88,"shouldAct":true,"missing":[]}',
     '  "what\'s still left for today" -> {"operation":"query_overview","confidence":0.88,"shouldAct":true,"missing":[]}',
+    '  "¿Qué me queda por hacer hoy?" -> {"operation":"query_overview","confidence":0.88,"shouldAct":true,"missing":[]}',
     '  "lol yeah. can you help me add a todo for my life?" -> {"operation":"create_definition","confidence":0.82,"shouldAct":false,"missing":["title","schedule"]}',
     '  "yeah lol" -> {"operation":null,"confidence":0.62,"shouldAct":false,"missing":[]}',
     "",
@@ -311,7 +412,16 @@ export async function extractLifeOperationWithLlm(args: {
     const rawResponse = typeof result === "string" ? result : "";
     const parsedPlan = parseResponse(rawResponse);
     if (parsedPlan) {
-      return parsedPlan;
+      if (parsedPlan.operation !== null) {
+        return parsedPlan;
+      }
+      const recoveredPlan = await recoverCoreLifeOperationWithLlm({
+        runtime,
+        currentMessage,
+        intent,
+        recentConversation,
+      });
+      return recoveredPlan ?? parsedPlan;
     }
 
     const repairResult = await runtime.useModel(ModelType.TEXT_LARGE, {
@@ -324,7 +434,22 @@ export async function extractLifeOperationWithLlm(args: {
     });
     const repairedRawResponse =
       typeof repairResult === "string" ? repairResult : "";
-    return parseResponse(repairedRawResponse) ?? REPLY_ONLY_OPERATION_PLAN;
+    const repairedPlan = parseResponse(repairedRawResponse);
+    if (repairedPlan && repairedPlan.operation !== null) {
+      return repairedPlan;
+    }
+
+    const recoveredPlan = await recoverCoreLifeOperationWithLlm({
+      runtime,
+      currentMessage,
+      intent,
+      recentConversation,
+    });
+    if (recoveredPlan) {
+      return recoveredPlan;
+    }
+
+    return repairedPlan ?? REPLY_ONLY_OPERATION_PLAN;
   } catch (error) {
     runtime.logger?.warn?.(
       {

@@ -1,42 +1,45 @@
 #!/usr/bin/env node
+
 /**
  * fix-workspace-deps.mjs
  *
- * Manages workspace dependency references in the monorepo. Two modes:
+ * Enforces workspace dependency references in the monorepo. Two modes:
  *
- *   LOCAL mode (default):
+ *   SOURCE mode (default):
  *     Rewrites every workspace dependency to "workspace:*" so bun resolves
- *     to the local package. Use this for local development.
+ *     to the local package. This is the committed source state.
  *
  *   RESTORE mode (--restore):
- *     Reads the original version strings from a git ref and puts them back,
- *     reversing the workspace:* conversion WITHOUT touching other changes.
- *     Use this before committing so the repo doesn't ship workspace:* refs.
+ *     Reads old version strings from a git ref and puts them back, reversing
+ *     the workspace:* conversion WITHOUT touching other changes. Use only for
+ *     explicit publish/deploy compatibility work that needs registry specs.
  *
  * Usage:
- *   node scripts/fix-workspace-deps.mjs                  # set workspace:* (local dev)
+ *   node scripts/fix-workspace-deps.mjs                  # set workspace:*
  *   node scripts/fix-workspace-deps.mjs --check          # CI — exit 1 if any need fixing
  *   node scripts/fix-workspace-deps.mjs --restore        # restore from HEAD
  *   node scripts/fix-workspace-deps.mjs --restore --ref HEAD~3  # restore from specific ref
  *
  * Workflow:
- *   1. Pull/clone — package.json files have proper versioned refs
- *   2. `bun run fix-deps` — switches to workspace:* for local dev
- *   3. Develop…
- *   4. `bun run fix-deps:restore` — restores original versions from HEAD
- *   5. Commit your changes
- *   6. `bun run fix-deps` again — back to workspace:* for more dev
+ *   1. Pull/clone
+ *   2. `bun run fix-deps:check` verifies local packages use workspace:*
+ *   3. `bun run fix-deps` repairs drift if a manifest picked up a registry pin
+ *   4. Publish/deploy tooling materializes exact npm versions at the boundary
  *
- * Git submodule plugins (plugins/*) use `alpha` in the repo until you run
- * `bun run dev` (see scripts/dev.mjs + plugin-submodules-dev.mjs). That flow
- * inits submodules, adds their typescript/ paths to workspaces, then runs this script.
- * `bun run plugin-submodules:restore` runs fix-deps --restore, strips those workspaces,
- * and resets each submodule's typescript/package.json.
+ * Git submodule plugins (plugins/*) can drift to registry pins from their
+ * standalone repos. The dev flow adds their typescript/ paths to workspaces and
+ * runs this script so the checked-out monorepo graph stays workspace-local.
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, resolve, relative } from "node:path";
 import { execFileSync } from "node:child_process";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { join, relative, resolve } from "node:path";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
@@ -80,11 +83,16 @@ function expandPattern(pattern) {
       // Glob segment — list the directory and match
       if (!existsSync(base) || !statSync(base).isDirectory()) return;
       const regex = new RegExp(
-        "^" + segment.replace(/\*/g, ".*").replace(/\?/g, ".") + "$"
+        "^" + segment.replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
       );
       for (const entry of readdirSync(base)) {
         // Never walk into node_modules, dist, or hidden directories
-        if (entry === "node_modules" || entry === "dist" || entry.startsWith(".")) continue;
+        if (
+          entry === "node_modules" ||
+          entry === "dist" ||
+          entry.startsWith(".")
+        )
+          continue;
         if (regex.test(entry)) {
           const full = join(base, entry);
           if (statSync(full).isDirectory()) {
@@ -139,7 +147,11 @@ const isWorkspacePackage = (depName) => nameToDir.has(depName);
 if (!QUIET) {
   console.log(`Workspace packages: ${nameToDir.size}`);
   console.log(`Package.json files to scan: ${workspaceDirs.length}`);
-  const mode = RESTORE_MODE ? "restore (from git)" : CHECK_MODE ? "check (read-only)" : "fix (→ workspace:*)";
+  const mode = RESTORE_MODE
+    ? "restore (from git)"
+    : CHECK_MODE
+      ? "check (read-only)"
+      : "fix (→ workspace:*)";
   console.log(`Mode: ${mode}\n`);
 }
 
@@ -148,7 +160,11 @@ if (!QUIET) {
 function gitShowFile(ref, filePath) {
   const relPath = relative(ROOT, filePath);
   try {
-    return execFileSync("git", ["show", `${ref}:${relPath}`], { cwd: ROOT, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
+    return execFileSync("git", ["show", `${ref}:${relPath}`], {
+      cwd: ROOT,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
   } catch {
     return null; // file doesn't exist at that ref
   }
@@ -204,7 +220,9 @@ if (RESTORE_MODE) {
 
         if (oldVersion && oldVersion !== "workspace:*") {
           if (!QUIET) {
-            console.log(`  restore  ${rel}  ${section}.${depName}: "workspace:*" → "${oldVersion}"`);
+            console.log(
+              `  restore  ${rel}  ${section}.${depName}: "workspace:*" → "${oldVersion}"`,
+            );
           }
           pkg[section][depName] = oldVersion;
           changed = true;
@@ -213,7 +231,9 @@ if (RESTORE_MODE) {
           // Dep didn't exist at the old ref — it was added by us. Keep workspace:*
           // but warn so the developer can set a proper version.
           if (!QUIET) {
-            console.log(`  new      ${rel}  ${section}.${depName}: "workspace:*" (no original — set version manually)`);
+            console.log(
+              `  new      ${rel}  ${section}.${depName}: "workspace:*" (no original — set version manually)`,
+            );
           }
           newDepCount++;
         } else {
@@ -231,12 +251,17 @@ if (RESTORE_MODE) {
   console.log("");
   const parts = [];
   if (restoreCount > 0) parts.push(`${restoreCount} dep(s) restored`);
-  if (newDepCount > 0) parts.push(`${newDepCount} new dep(s) left as workspace:* (set versions manually)`);
+  if (newDepCount > 0)
+    parts.push(
+      `${newDepCount} new dep(s) left as workspace:* (set versions manually)`,
+    );
   if (skipCount > 0) parts.push(`${skipCount} already correct`);
   if (parts.length > 0) {
     console.log(`Done: ${parts.join(", ")}.`);
   } else {
-    console.log(`Nothing to restore — no workspace:* refs found for workspace packages.`);
+    console.log(
+      `Nothing to restore — no workspace:* refs found for workspace packages.`,
+    );
   }
   if (restoreCount > 0) {
     console.log(`\nRemember to run \`bun install\` to update the lockfile.`);
@@ -284,10 +309,14 @@ for (const dir of workspaceDirs) {
       if (depVersion === "workspace:*") continue;
 
       if (CHECK_MODE) {
-        issues.push(`${rel}  ${section}.${depName}: "${depVersion}" (should be "workspace:*")`);
+        issues.push(
+          `${rel}  ${section}.${depName}: "${depVersion}" (should be "workspace:*")`,
+        );
       } else {
         if (!QUIET) {
-          console.log(`  fix  ${rel}  ${section}.${depName}: "${depVersion}" → "workspace:*"`);
+          console.log(
+            `  fix  ${rel}  ${section}.${depName}: "${depVersion}" → "workspace:*"`,
+          );
         }
         pkg[section][depName] = "workspace:*";
         changed = true;
@@ -325,10 +354,14 @@ for (const dir of workspaceDirs) {
     for (const [depName, depVersion] of Object.entries(pkg[section])) {
       if (depVersion === "workspace:*" && !nameToDir.has(depName)) {
         if (CHECK_MODE) {
-          danglingIssues.push(`${rel}  ${section}.${depName}: "workspace:*" references nonexistent package`);
+          danglingIssues.push(
+            `${rel}  ${section}.${depName}: "workspace:*" references nonexistent package`,
+          );
         } else {
           if (!QUIET) {
-            console.log(`  rm   ${rel}  ${section}.${depName}: "workspace:*" (package not in workspace)`);
+            console.log(
+              `  rm   ${rel}  ${section}.${depName}: "workspace:*" (package not in workspace)`,
+            );
           }
           delete pkg[section][depName];
           changed = true;
@@ -356,7 +389,9 @@ if (CHECK_MODE) {
     console.log(`\nRun \`node scripts/fix-workspace-deps.mjs\` to fix them.`);
     process.exit(1);
   } else {
-    console.log(`OK: all ${nameToDir.size} workspace packages use correct references.`);
+    console.log(
+      `OK: all ${nameToDir.size} workspace packages use correct references.`,
+    );
   }
 } else {
   const parts = [];
@@ -365,6 +400,8 @@ if (CHECK_MODE) {
   if (parts.length > 0) {
     console.log(`Done: ${parts.join(", ")}.`);
   } else {
-    console.log(`All workspace references are already correct. Nothing to fix.`);
+    console.log(
+      `All workspace references are already correct. Nothing to fix.`,
+    );
   }
 }

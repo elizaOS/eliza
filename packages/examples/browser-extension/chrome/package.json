@@ -18,13 +18,13 @@
     "@elizaos/plugin-groq": "alpha",
     "@elizaos/plugin-localdb": "alpha",
     "@elizaos/plugin-openai": "alpha",
-    "uuid": "^11.1.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.33",
     "@types/uuid": "^11.0.0",
     "tsup": "^8.4.0",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

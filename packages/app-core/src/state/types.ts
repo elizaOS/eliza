@@ -5,7 +5,6 @@ import type {
   WalletSource,
 } from "@elizaos/shared/contracts/wallet";
 import type { Dispatch, SetStateAction } from "react";
-import type { AgentProfile } from "./agent-profile-types";
 import type {
   AgentStatus,
   AppRunSummary,
@@ -76,6 +75,7 @@ import type {
 import type { UiLanguage } from "../i18n";
 import type { Tab } from "../navigation";
 import type { OnboardingServerTarget } from "../onboarding/server-target";
+import type { AgentProfile } from "./agent-profile-types";
 import type { UiShellMode, UiTheme } from "./ui-preferences";
 
 export type { UiShellMode } from "./ui-preferences";
@@ -92,6 +92,18 @@ export interface TabCommittedDetail {
   tab: Tab;
   previousTab: Tab | null;
   uiShellMode: UiShellMode;
+}
+
+/**
+ * Optional flags for {@link AppActions.completeOnboarding} when finishing the
+ * full onboarding wizard (not RuntimeGate).
+ */
+export interface CompleteOnboardingOptions {
+  /**
+   * When true, opens the `@elizaos/app-companion` overlay and syncs the URL to
+   * `/apps/companion`. Ignored when companion mode or the apps surface is disabled.
+   */
+  launchCompanionOverlay?: boolean;
 }
 
 /** Tab commit subscription + deferred work (for multi-step navigation). */
@@ -160,6 +172,7 @@ export const ONBOARDING_PERMISSION_LABELS: Record<SystemPermissionId, string> =
   };
 
 import type { ActionNotice } from "./action-notice";
+
 export type { ActionNotice };
 
 export type LifecycleAction = "start" | "stop" | "restart" | "reset";
@@ -364,8 +377,7 @@ export interface AppState {
   conversationMessages: ConversationMessage[];
   autonomousEvents: StreamEventEnvelope[];
   autonomousLatestEventId: string | null;
-  // biome-ignore lint/suspicious/noExplicitAny: app-core keeps this app-owned replay map structural without importing app-local types.
-  autonomousRunHealthByRunId: Record<string, any>; // defined in autonomy-events.ts in app
+  autonomousRunHealthByRunId: import("../autonomy").AutonomyRunHealthMap;
   /** Active PTY coding agent sessions from the SwarmCoordinator. */
   ptySessions: CodingAgentSession[];
   /** Conversation IDs with unread proactive messages from the agent. */
@@ -497,7 +509,7 @@ export interface AppState {
   elizaCloudUserId: string | null;
   /** Last `reason` from GET /api/cloud/status (e.g. API-key-only vs OAuth). */
   elizaCloudStatusReason: string | null;
-  cloudDashboardView: "billing" | "agents";
+  cloudDashboardView: "overview" | "billing";
   elizaCloudLoginBusy: boolean;
   elizaCloudLoginError: string | null;
   elizaCloudDisconnecting: boolean;
@@ -668,7 +680,7 @@ export interface AppState {
   activeOverlayApp: string | null;
 
   /**
-   * Currently-selected connector chat in the unified messages sidebar.
+   * Currently-selected connector chat in the messages sidebar.
    * When non-null, the Chat view swaps its main panel out for a
    * read-only view of that room's inbox messages. Mutually exclusive
    * with an active dashboard conversation.
@@ -684,6 +696,14 @@ export interface AppState {
     worldLabel?: string;
   } | null;
 
+  /**
+   * Currently-selected PTY session in the Terminal channel. When
+   * non-null, ChatView renders a full-window terminal bound to this
+   * session id. Mutually exclusive with `activeInboxChat` and a live
+   * dashboard conversation.
+   */
+  activeTerminalSessionId: string | null;
+
   // Sub-tabs
   appsSubTab: "browse" | "running" | "games";
   agentSubTab: "character" | "inventory" | "knowledge";
@@ -692,6 +712,9 @@ export interface AppState {
 
   // Favorite apps
   favoriteApps: string[];
+
+  // Recently launched apps, most recent first (capped)
+  recentApps: string[];
 
   // Config text
   configRaw: Record<string, unknown>;
@@ -804,12 +827,16 @@ export interface AppActions {
   installSkillFromMarketplace: (item: SkillMarketplaceResult) => Promise<void>;
   uninstallMarketplaceSkill: (skillId: string, name: string) => Promise<void>;
   installSkillFromGithubUrl: () => Promise<void>;
+  enableMarketplaceSkill: (skillId: string, name: string) => Promise<void>;
+  disableMarketplaceSkill: (skillId: string, name: string) => Promise<void>;
+  copyMarketplaceSkillSource: (skillId: string, name: string) => Promise<void>;
 
   // Logs
   loadLogs: () => Promise<void>;
 
   // Inventory
   loadInventory: () => Promise<void>;
+  loadWalletConfig: () => Promise<void>;
   loadBalances: () => Promise<void>;
   loadNfts: () => Promise<void>;
   executeBscTrade: (
@@ -897,6 +924,20 @@ export interface AppActions {
   goToOnboardingStep: (step: OnboardingStep) => void;
   handleOnboardingRemoteConnect: () => Promise<void>;
   handleOnboardingUseLocalBackend: () => void;
+  /**
+   * Finalize onboarding without running the chat handoff.
+   * Used by RuntimeGate: the gate only picks a runtime target; it does
+   * not collect provider/character info, so there is no submit payload.
+   * Dispatches ONBOARDING_COMPLETE to the startup coordinator.
+   *
+   * The full wizard passes `{ launchCompanionOverlay: true }` so first-time
+   * setup lands in `@elizaos/app-companion` at `/apps/companion`. RuntimeGate
+   * omits options and lands on chat only.
+   */
+  completeOnboarding: (
+    landingTab?: Tab,
+    options?: CompleteOnboardingOptions,
+  ) => void;
 
   // Cloud
   handleCloudLogin: () => Promise<void>;
@@ -947,8 +988,7 @@ export interface AppActions {
   copyToClipboard: (text: string) => Promise<void>;
 
   // Translations
-  // biome-ignore lint/suspicious/noExplicitAny: translation interpolation values are intentionally open-ended.
-  t: (key: string, values?: Record<string, any>) => string;
+  t: (key: string, values?: Record<string, unknown>) => string;
 }
 
 export type AppContextValue = AppState & AppActions;

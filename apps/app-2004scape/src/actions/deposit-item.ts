@@ -5,6 +5,7 @@ import { extractParam, extractParamInt } from "./param-parser.js";
 export const depositItem: Action = {
   name: "DEPOSIT_ITEM",
   description: "Deposit an item into the bank by name, optionally specifying a count (defaults to all)",
+  descriptionCompressed: "Deposit item into bank.",
   similes: ["BANK_ITEM", "STORE_ITEM"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

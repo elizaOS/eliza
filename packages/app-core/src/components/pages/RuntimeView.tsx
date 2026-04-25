@@ -1,5 +1,14 @@
-
-
+import {
+  Button,
+  Input,
+  MetaPill,
+  PageLayout,
+  PagePanel,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   client,
@@ -9,7 +18,7 @@ import {
 } from "../../api";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
-import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, PageLayout } from "@elizaos/ui";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 
 type RuntimeSectionKey =
   | "summary"
@@ -457,7 +466,11 @@ export function RuntimeView({
     : SECTION_TAB_KEYS;
 
   const runtimeSidebar = (
-    <Sidebar testId="runtime-sidebar">
+    <AppPageSidebar
+      testId="runtime-sidebar"
+      collapsible
+      contentIdentity="runtime"
+    >
       <SidebarHeader
         search={{
           value: sidebarSearch,
@@ -590,7 +603,7 @@ export function RuntimeView({
           </div>
         </SidebarScrollRegion>
       </SidebarPanel>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

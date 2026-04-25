@@ -68,15 +68,6 @@ export const PLUGIN_WIDGET_MAP: Record<
       defaultEnabled: true,
     },
     {
-      id: "agent-orchestrator.tasks",
-      pluginId: "agent-orchestrator",
-      slot: "chat-sidebar",
-      label: "Tasks",
-      icon: "ListTodo",
-      order: 200,
-      defaultEnabled: true,
-    },
-    {
       id: "agent-orchestrator.activity",
       pluginId: "agent-orchestrator",
       slot: "chat-sidebar",

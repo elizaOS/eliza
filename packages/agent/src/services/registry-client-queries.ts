@@ -124,6 +124,34 @@ export function toSearchResults<T extends RegistryPluginInfo>(
   }));
 }
 
+/**
+ * Resolve a declared `heroImage` value to a URL the client can load.
+ *
+ * Accepts three shapes:
+ *   - null / empty → `/api/apps/hero/<slug>` for generated fallback art
+ *   - absolute URL / data URL / already-rooted `/api/...` or `/...` path → returned as-is
+ *   - package-relative path (e.g. `"assets/hero.png"`) → rewritten to
+ *     `/api/apps/hero/<slug>` so the runtime can stream it from the app's
+ *     local package directory or synthesize fallback art
+ */
+export function resolveAppHeroImage(
+  packageName: string,
+  heroImage: string | null | undefined,
+): string | null {
+  const value = heroImage?.trim();
+  if (
+    value &&
+    /^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/)/i.test(
+      value,
+    )
+  ) {
+    return value;
+  }
+  const slug = packageNameToAppRouteSlug(packageName);
+  if (!slug) return null;
+  return `/api/apps/hero/${slug}`;
+}
+
 export function toAppInfo(
   p: RegistryPluginInfo,
   sanitizeSandbox: (value?: string) => string,
@@ -152,6 +180,7 @@ export function toAppInfo(
     launchType: meta?.launchType ?? "url",
     launchUrl: meta?.launchUrl ?? p.homepage,
     icon: meta?.icon ?? null,
+    heroImage: resolveAppHeroImage(p.name, meta?.heroImage),
     capabilities: meta?.capabilities ?? [],
     stars: p.stars,
     repository: `https://github.com/${p.gitRepo}`,

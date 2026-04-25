@@ -4,6 +4,7 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
@@ -89,19 +90,12 @@ function stateTextCandidates(state: State | undefined): string[] {
   pushText(values?.recentMessages);
   pushText(stateRecord.text);
 
-  const recentMessagesData =
-    stateRecord.recentMessagesData ?? stateRecord.recentMessages;
-  if (Array.isArray(recentMessagesData)) {
-    for (const item of recentMessagesData) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-      const content = (item as Record<string, unknown>).content;
-      if (!content || typeof content !== "object") {
-        continue;
-      }
-      pushText((content as Record<string, unknown>).text);
+  for (const item of getRecentMessagesData(state)) {
+    const content = item.content;
+    if (!content || typeof content !== "object") {
+      continue;
     }
+    pushText(content.text);
   }
 
   return [...new Set(candidates)];

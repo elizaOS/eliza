@@ -5,6 +5,21 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { resolveUserPath } from "@elizaos/agent/config/paths";
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+import {
+  type BootElizaRuntimeOptions,
+  type StartElizaOptions,
+  applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
+  applyN8nConfigToEnv as upstreamApplyN8nConfigToEnv,
+  bootElizaRuntime as upstreamBootElizaRuntime,
+  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
+  collectPluginNames as upstreamCollectPluginNames,
+  configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
+  shutdownRuntime as upstreamShutdownRuntime,
+  startEliza as upstreamStartEliza,
+} from "@elizaos/agent/runtime/eliza";
 import {
   type AgentRuntime,
   AutonomyService,
@@ -15,31 +30,19 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { resolveUserPath } from "@elizaos/agent/config/paths";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
-import {
-  type BootElizaRuntimeOptions,
-  type StartElizaOptions,
-  applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
-  bootElizaRuntime as upstreamBootElizaRuntime,
-  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
-  collectPluginNames as upstreamCollectPluginNames,
-  configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
-  shutdownRuntime as upstreamShutdownRuntime,
-  startEliza as upstreamStartEliza,
-} from "@elizaos/agent/runtime/eliza";
 export {
   CUSTOM_PLUGINS_DIRNAME,
   resolvePackageEntry,
   scanDropInPlugins,
 } from "@elizaos/agent/runtime/plugin-types";
+
 import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 import {
   resolveServerOnlyPort,
   syncResolvedApiPort,
 } from "@elizaos/shared/runtime-env";
-import { syncElizaEnvAliases, syncAppEnvToEliza } from "../utils/env.js";
+import { isNativeServerPlatform } from "../platform/is-native-server.js";
+import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
 import type { EmbeddingProgressCallback } from "./embedding-manager-support.js";
 import {
@@ -51,7 +54,7 @@ import {
 } from "./embedding-manager-support.js";
 import { detectEmbeddingPreset } from "./embedding-presets.js";
 import { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy.js";
-import { buildCharacterFromConfig } from "./build-character-from-config.js";
+import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
 import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
@@ -91,6 +94,19 @@ type ErrorWithCause = Error & {
   code?: unknown;
   dataDir?: unknown;
 };
+
+type AutonomyServiceLike = {
+  enableAutonomy(): Promise<void>;
+};
+
+function isAutonomyService(value: unknown): value is AutonomyServiceLike {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "enableAutonomy" in value &&
+    typeof value.enableAutonomy === "function"
+  );
+}
 
 export const CHANNEL_PLUGIN_MAP = {
   ...upstreamChannelPluginMap,
@@ -156,6 +172,22 @@ interface RuntimeModelCompat {
   ) => Promise<unknown>;
 }
 
+function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
+  const svc = runtime.getService("AUTONOMY") ?? runtime.getService("autonomy");
+  if (isAutonomyService(svc)) {
+    return svc;
+  }
+  return null;
+}
+
+async function startAndRegisterAutonomyService(
+  runtime: AgentRuntime,
+): Promise<AutonomyServiceLike> {
+  const service = await AutonomyService.start(runtime);
+  runtime.services.set("AUTONOMY" as never, [service as never]);
+  return service;
+}
+
 function syncBrandEnvAliases(): void {
   syncElizaEnvAliases();
   syncAppEnvToEliza();
@@ -183,6 +215,30 @@ export function applyCloudConfigToEnv(
 ): ReturnType<typeof upstreamApplyCloudConfigToEnv> {
   syncBrandEnvAliases();
   const result = upstreamApplyCloudConfigToEnv(...args);
+  syncBrandEnvAliases();
+  return result;
+}
+
+export function applyN8nConfigToEnv(
+  ...args: Parameters<typeof upstreamApplyN8nConfigToEnv>
+): ReturnType<typeof upstreamApplyN8nConfigToEnv> {
+  syncBrandEnvAliases();
+  // On mobile (iOS / Android) the local n8n sidecar cannot run — spawning a
+  // child process via node:child_process is unavailable. Treat
+  // `config.n8n.localEnabled` as false regardless of the stored user setting
+  // so the env pump only considers the Eliza Cloud gateway path. The stored
+  // config is not mutated.
+  if (isNativeServerPlatform()) {
+    const [config, agentId] = args;
+    const mobileConfig =
+      config?.n8n?.localEnabled === false
+        ? config
+        : { ...config, n8n: { ...(config.n8n ?? {}), localEnabled: false } };
+    const result = upstreamApplyN8nConfigToEnv(mobileConfig, agentId);
+    syncBrandEnvAliases();
+    return result;
+  }
+  const result = upstreamApplyN8nConfigToEnv(...args);
   syncBrandEnvAliases();
   return result;
 }
@@ -283,30 +339,94 @@ async function ensureAutonomyBootstrapContext(
 // ---------------------------------------------------------------------------
 
 async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
-  const { vincentPlugin } = await import("@elizaos/app-vincent/plugin");
-  const { shopifyPlugin } = await import("@elizaos/app-shopify/plugin");
-  const { stewardPlugin } = await import("@elizaos/app-steward/plugin");
-  const { lifeopsPlugin } = await import("@elizaos/app-lifeops/routes/plugin");
+  const pluginLoaders: Array<() => Promise<Plugin>> = [
+    async () => (await import("@elizaos/app-vincent/plugin")).vincentPlugin,
+    async () => (await import("@elizaos/app-shopify/plugin")).shopifyPlugin,
+    async () => (await import("@elizaos/app-steward/plugin")).stewardPlugin,
+    async () => (await import("@elizaos/app-lifeops/public")).lifeopsPlugin,
+  ];
 
-  for (const plugin of [vincentPlugin, shopifyPlugin, stewardPlugin, lifeopsPlugin]) {
+  for (const loadPlugin of pluginLoaders) {
     try {
+      const plugin = await loadPlugin();
       // Push rawPath routes directly onto runtime.routes to avoid the core's
       // registerPlugin() path mangling (which prepends /<pluginName>/ to every
       // route path). The rawPath flag means these routes already have their
       // final absolute paths (e.g. /api/lifeops/app-state).
       if (plugin.routes?.length) {
         for (const route of plugin.routes) {
-          const routePath = route.path.startsWith("/") ? route.path : `/${route.path}`;
+          const routePath = route.path.startsWith("/")
+            ? route.path
+            : `/${route.path}`;
           runtime.routes.push({ ...route, path: routePath });
         }
       }
-      logger.info(`[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`);
+      logger.info(
+        `[eliza] Registered app route plugin: ${plugin.name} (${plugin.routes?.length ?? 0} routes)`,
+      );
     } catch (err) {
       logger.warn(
-        `[eliza] Failed to register app route plugin ${plugin.name}: ${err instanceof Error ? err.message : String(err)}`,
+        `[eliza] Failed to register app route plugin: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
+}
+
+/**
+ * Register the nightly Track C training crons (trajectory export + skill
+ * scoring) against the live runtime. The @elizaos/app-training package is
+ * optional — if it is not installed, the dynamic import fails and we skip
+ * silently. Each underlying registration also no-ops when the CRON service
+ * is missing, so installs without plugin-cron are safe.
+ */
+async function registerTrackCTrainingCrons(
+  runtime: AgentRuntime,
+): Promise<void> {
+  // `@elizaos/app-training` is an optional dependency: the package may not be
+  // installed at all in minimal deployments. Scope the try/catch to the
+  // dynamic imports so a missing package logs a skip, but real errors inside
+  // the registration helpers propagate with full context.
+  let exportMod: typeof import("@elizaos/app-training/core/trajectory-export-cron");
+  let scoringMod: typeof import("@elizaos/app-training/core/skill-scoring-cron");
+  let triggerMod: typeof import("@elizaos/app-training/services/training-trigger");
+  try {
+    [exportMod, scoringMod, triggerMod] = await Promise.all([
+      import("@elizaos/app-training/core/trajectory-export-cron"),
+      import("@elizaos/app-training/core/skill-scoring-cron"),
+      import("@elizaos/app-training/services/training-trigger"),
+    ]);
+  } catch (err) {
+    logger.warn(
+      `[eliza] @elizaos/app-training not installed, skipping Track C training crons: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return;
+  }
+
+  await exportMod.registerTrajectoryExportCron(runtime);
+  await scoringMod.registerSkillScoringCron(runtime);
+  const triggerService = triggerMod.registerTrainingTriggerService(runtime);
+  logger.info(
+    "[eliza] Registered Track C training crons + auto-train trigger service",
+  );
+  // Phase 5.5 — Hermes-parity default-on bootstrap. Fire-and-forget so
+  // runtime boot stays fast; the bootstrap helper short-circuits when
+  // counters are below threshold or an artifact already exists. We log the
+  // rejection instead of swallowing so a bug in the bootstrap helper is
+  // surfaced at boot time rather than silently lost.
+  void triggerMod
+    .bootstrapOptimizationFromAccumulatedTrajectories(runtime, triggerService)
+    .then((fired) => {
+      if (fired.length > 0) {
+        logger.info(
+          `[eliza] Bootstrapped prompt optimization for ${fired.join(", ")}`,
+        );
+      }
+    })
+    .catch((err) => {
+      logger.error(
+        `[eliza] bootstrapOptimizationFromAccumulatedTrajectories failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+      );
+    });
 }
 
 async function repairRuntimeAfterBoot(
@@ -314,6 +434,7 @@ async function repairRuntimeAfterBoot(
 ): Promise<AgentRuntime> {
   await ensureRuntimeSqlCompatibility(runtime);
   await ensureTextToSpeechHandler(runtime);
+  await ensureLocalInferenceHandler(runtime);
   await ensureAutonomyBootstrapContext(runtime);
 
   // ── Register app-specific route plugins (Phase 2 extraction) ────────
@@ -322,9 +443,15 @@ async function repairRuntimeAfterBoot(
   // route system.
   await registerAppRoutePlugins(runtime);
 
+  // ── Register Track C training crons (trajectory export + skill scoring) ─
+  // Optional: only runs when @elizaos/app-training is installed. Both cron
+  // registrations internally no-op when the CRON service is unavailable, so
+  // installs without plugin-cron are also safe.
+  await registerTrackCTrainingCrons(runtime);
+
   if (!runtime.getService("AUTONOMY")) {
     try {
-      await AutonomyService.start(runtime);
+      await startAndRegisterAutonomyService(runtime);
       logger.info(
         "[eliza] AutonomyService started after SQL compatibility repair",
       );
@@ -337,12 +464,8 @@ async function repairRuntimeAfterBoot(
 
   // Enable the autonomy loop so trigger/heartbeat instructions are processed.
   {
-    const autonomySvc = (runtime.getService("AUTONOMY") ??
-      runtime.getService("autonomy")) as unknown as
-      | { enableAutonomy(): Promise<void> }
-      | null
-      | undefined;
-    if (autonomySvc && typeof autonomySvc.enableAutonomy === "function") {
+    const autonomySvc = getAutonomyService(runtime);
+    if (autonomySvc) {
       try {
         await autonomySvc.enableAutonomy();
         logger.info(
@@ -361,7 +484,138 @@ async function repairRuntimeAfterBoot(
   // Telegraf instance with proper lifecycle management.
   await ensureTelegramBotPolling(runtime);
 
+  // Bridge Eliza Cloud auth transitions → n8n sidecar lifecycle so signing
+  // in releases the local sidecar (saves port 5678 + ~200MB) and signing
+  // out proactively re-spawns it (when localEnabled and not mobile).
+  await ensureN8nAuthBridge(runtime);
+
+  // Kick the local n8n sidecar off at boot so the first Workflows-tab open
+  // (or a scheduled job dispatch) doesn't pay the ~10-20s `bunx n8n` cold
+  // start. Runs after the auth bridge so the bridge owns dispose-on-signin.
+  await ensureN8nAutoStart(runtime);
+
+  // Register the N8N_DISPATCH service so trigger dispatchers carrying
+  // `kind: "workflow"` can call runtime.getService("N8N_DISPATCH").execute(id).
+  // Mode selection (cloud / local / disabled) is deferred to each dispatch
+  // call via resolveN8nMode, so this does not depend on autostart readiness.
+  await ensureN8nDispatchService(runtime);
+
   return runtime;
+}
+
+// Module-level handle for the n8n auth bridge, reset across hot-reloads so
+// the previous poller does not race the fresh runtime's CLOUD_AUTH service.
+let _n8nAuthBridge: { stop: () => void } | null = null;
+
+// Module-level handle for the boot-time n8n autostart. Like the auth
+// bridge this is reset across hot-reloads so we never leave two timers
+// racing the singleton.
+let _n8nAutoStart: {
+  stop: () => Promise<void>;
+  poke: () => Promise<void>;
+} | null = null;
+
+// Module-level handle for the N8N_DISPATCH service instance. Kept across
+// hot-reloads so we can clear the runtime.services slot on shutdown without
+// leaking closures that hold a stale runtime reference.
+let _n8nDispatch: { execute: (workflowId: string) => Promise<unknown> } | null =
+  null;
+
+async function ensureN8nAuthBridge(runtime: AgentRuntime): Promise<void> {
+  if (_n8nAuthBridge) {
+    try {
+      _n8nAuthBridge.stop();
+    } catch {
+      /* ignore */
+    }
+    _n8nAuthBridge = null;
+  }
+  try {
+    const [{ startN8nAuthBridge }, config] = await Promise.all([
+      import("../services/n8n-auth-bridge.js"),
+      Promise.resolve(loadElizaConfig()),
+    ]);
+    _n8nAuthBridge = startN8nAuthBridge(runtime, config, {
+      getConfig: () => loadElizaConfig(),
+    });
+    logger.info("[eliza] n8n auth bridge armed");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to start n8n auth bridge: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function ensureN8nAutoStart(runtime: AgentRuntime): Promise<void> {
+  if (_n8nAutoStart) {
+    try {
+      await _n8nAutoStart.stop();
+    } catch {
+      /* ignore */
+    }
+    _n8nAutoStart = null;
+  }
+  try {
+    const [{ startN8nAutoStart }, config] = await Promise.all([
+      import("../services/n8n-autostart.js"),
+      Promise.resolve(loadElizaConfig()),
+    ]);
+    _n8nAutoStart = startN8nAutoStart(runtime, config, {
+      getConfig: () => loadElizaConfig(),
+    });
+    logger.info("[eliza] n8n autostart armed");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to start n8n autostart: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function ensureN8nDispatchService(runtime: AgentRuntime): Promise<void> {
+  // Clear any prior instance so a hot-reloaded runtime never holds a stale
+  // closure binding to a discarded AgentRuntime.
+  if (_n8nDispatch) {
+    try {
+      runtime.services.delete("N8N_DISPATCH" as never);
+    } catch {
+      /* ignore */
+    }
+    _n8nDispatch = null;
+  }
+  try {
+    const { createN8nDispatchService } = await import(
+      "../services/n8n-dispatch.js"
+    );
+    const dispatchInstance = createN8nDispatchService({
+      runtime,
+      getConfig: () => loadElizaConfig(),
+    });
+    _n8nDispatch = dispatchInstance;
+    // Register directly into the runtime services map. `registerService`
+    // expects a Service class with a static `start()`, which is a poor fit
+    // for a pre-constructed function-based service. The map-set pattern
+    // mirrors `runtime/plugin-lifecycle.ts` and `test/scripts/*.ts`.
+    const serviceEntry = {
+      execute: dispatchInstance.execute,
+      // Minimum Service surface so downstream code that does instanceof or
+      // reads `.stop()` does not throw. Dispatch has no external state to
+      // tear down; stop is a no-op.
+      stop: async () => {},
+      capabilityDescription: "Executes n8n workflows by id.",
+    };
+    runtime.services.set("N8N_DISPATCH" as never, [serviceEntry as never]);
+    logger.info("[eliza] n8n dispatch service registered");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to register n8n dispatch service: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
 }
 
 // Module-level Telegraf bot reference for lifecycle management across restarts.
@@ -537,7 +791,7 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
       );
 
     _telegramBot = bot;
-    // Telegram bot cleanup is handled by the unified signal handler in
+    // Telegram bot cleanup is handled by the central signal handler in
     // startEliza() via _telegramBot — no separate registration needed.
 
     await new Promise((r) => setTimeout(r, 500));
@@ -1039,6 +1293,43 @@ export async function startEliza(
         }
         if (currentRuntime) {
           await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");
+        }
+        // Clear the n8n dispatch service slot. The service owns no external
+        // state (no timers, no sockets), so just drop the reference so a
+        // subsequent boot registers a fresh closure on the new runtime.
+        if (_n8nDispatch) {
+          _n8nDispatch = null;
+        }
+        // Stop the boot-time autostart first so its pending evaluate()
+        // cannot construct a new sidecar while we tear down.
+        if (_n8nAutoStart) {
+          try {
+            await _n8nAutoStart.stop();
+          } catch {
+            /* ignore */
+          }
+          _n8nAutoStart = null;
+        }
+        // Stop the n8n auth bridge next so the poller does not try to
+        // spawn a fresh sidecar while we are tearing down.
+        if (_n8nAuthBridge) {
+          try {
+            _n8nAuthBridge.stop();
+          } catch {
+            /* ignore */
+          }
+          _n8nAuthBridge = null;
+        }
+        // Stop the n8n sidecar if it was started during this session. The
+        // singleton is lazily constructed, so this is a no-op when n8n was
+        // never used.
+        try {
+          const { disposeN8nSidecar } = await import(
+            "../services/n8n-sidecar.js"
+          );
+          await disposeN8nSidecar();
+        } catch {
+          /* non-critical — best effort */
         }
         process.exit(0);
       };

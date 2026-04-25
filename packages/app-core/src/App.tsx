@@ -3,71 +3,321 @@
  */
 
 import { Keyboard } from "@capacitor/keyboard";
-
-import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
-import { isIOS, isNative } from "./platform/init";
 import {
+  ArrowDownLeft,
+  ArrowLeftRight,
+  Layers3,
+  ListTodo,
+  MessagesSquare,
+  PanelLeft,
+} from "lucide-react";
+
+import "./components/chat/chat-source-registration";
+import { Button, ErrorBoundary } from "@elizaos/ui";
+import {
+  type ComponentType,
+  type LazyExoticComponent,
+  lazy,
   type ReactNode,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
-import { AppsPageView } from "./components/pages/AppsPageView";
-import { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
-import { BugReportModal } from "./components/shell/BugReportModal";
-import { CharacterEditor } from "./components/character/CharacterEditor";
-import { ChatView } from "./components/pages/ChatView";
-import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
-import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
+import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
+import { GameViewOverlay } from "./components/apps/GameViewOverlay";
+import { getOverlayApp } from "./components/apps/overlay-app-registry";
+import { SaveCommandModal } from "./components/chat/SaveCommandModal";
+import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
+import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
 import { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
 import { CustomActionEditor } from "./components/custom-actions/CustomActionEditor";
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
-import { DatabasePageView } from "./components/pages/DatabasePageView";
-import { ConnectorsPageView } from "./components/pages/ConnectorsPageView";
-import { DesktopWorkspaceSection } from "./components/settings/DesktopWorkspaceSection";
-import { FineTuningView } from "@elizaos/app-training/ui/FineTuningView";
-import { GameViewOverlay } from "./components/apps/GameViewOverlay";
+import { ChatView } from "./components/pages/ChatView";
+import type { PageScope } from "./components/pages/page-scoped-conversations";
+import { BugReportModal } from "./components/shell/BugReportModal";
+import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
+import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { Header } from "./components/shell/Header";
-import { AutomationsView } from "./components/pages/AutomationsView";
-import { HeartbeatsDesktopShell } from "./components/pages/HeartbeatsView";
-import { HeartbeatsView } from "./components/pages/HeartbeatsView";
-import { InventoryView } from "./components/pages/InventoryView";
-import { LogsPageView } from "./components/pages/LogsPageView";
-import { MemoryViewerView } from "./components/pages/MemoryViewerView";
-import { PluginsPageView } from "./components/pages/PluginsPageView";
-import { RelationshipsView } from "./components/pages/RelationshipsView";
-import { RuntimeView } from "./components/pages/RuntimeView";
-import { SaveCommandModal } from "./components/chat/SaveCommandModal";
-import { SettingsView } from "./components/pages/SettingsView";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
-import { SkillsView } from "./components/pages/SkillsView";
 import { StartupShell } from "./components/shell/StartupShell";
-import { StreamView } from "./components/pages/StreamView";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
-import { TasksPageView } from "./components/pages/TasksPageView";
-import { TrajectoriesView } from "./components/pages/TrajectoriesView";
-import { getOverlayApp } from "./components/apps/overlay-app-registry";
-import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
-import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
+import {
+  AppWorkspaceChrome,
+  type AppWorkspaceChromeProps,
+} from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config";
-import { MusicPlayerGlobal } from "./components/music/MusicPlayerGlobal";
 import {
   BugReportProvider,
   useBugReportState,
   useContextMenu,
-  useLifeOpsActivitySignals,
   useStreamPopoutNavigation,
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
-import { APPS_ENABLED, isAppsToolTab } from "./navigation";
+import {
+  APPS_ENABLED,
+  isAndroidPhoneSurfaceEnabled,
+  isAppsToolTab,
+} from "./navigation";
+import { isIOS, isNative } from "./platform/init";
 import { useApp } from "./state";
 import type { FlaminaGuideTopic } from "./state/types";
-import { Button, DrawerSheet, DrawerSheetContent, DrawerSheetHeader, DrawerSheetTitle, ErrorBoundary } from "@elizaos/ui";
 
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
-const CHAT_DESKTOP_COMPOSER_UNDERLAY_CLASS =
-  "pointer-events-none absolute inset-x-0 bottom-0 h-[5.75rem]";
+const WALLET_CHAT_PREFILL_EVENT = "milady:chat:prefill";
+type MobileChatSurface = "left" | "center" | "right";
+
+type ExtractComponent<TValue> =
+  TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
+
+function lazyNamedView<
+  TModule extends Record<string, unknown>,
+  TKey extends keyof TModule,
+>(
+  load: () => Promise<TModule>,
+  exportName: TKey,
+): LazyExoticComponent<ExtractComponent<TModule[TKey]>> {
+  return lazy(async () => {
+    const module = await load();
+    const component = module[exportName];
+    if (typeof component !== "function") {
+      throw new Error(`Missing component export: ${String(exportName)}`);
+    }
+    return {
+      default: component as ExtractComponent<TModule[TKey]>,
+    };
+  });
+}
+
+const CharacterEditor = lazyNamedView(
+  () => import("./components/character/CharacterEditor"),
+  "CharacterEditor",
+);
+const AppsPageView = lazyNamedView(
+  () => import("./components/pages/AppsPageView"),
+  "AppsPageView",
+);
+const AutomationsDesktopShell = lazyNamedView(
+  () => import("./components/pages/AutomationsView"),
+  "AutomationsDesktopShell",
+);
+const BrowserWorkspaceView = lazyNamedView(
+  () => import("./components/pages/BrowserWorkspaceView"),
+  "BrowserWorkspaceView",
+);
+const ConnectorsPageView = lazyNamedView(
+  () => import("./components/pages/ConnectorsPageView"),
+  "ConnectorsPageView",
+);
+const ContactsPageView = lazyNamedView(
+  () => import("./components/pages/MiladyOsAppsView"),
+  "ContactsPageView",
+);
+const DatabasePageView = lazyNamedView(
+  () => import("./components/pages/DatabasePageView"),
+  "DatabasePageView",
+);
+const DesktopWorkspaceSection = lazyNamedView(
+  () => import("./components/settings/DesktopWorkspaceSection"),
+  "DesktopWorkspaceSection",
+);
+const FineTuningView = lazyNamedView(
+  () => import("./components/training/injected"),
+  "FineTuningView",
+);
+const InventoryView = lazyNamedView(
+  () => import("./components/pages/InventoryView"),
+  "InventoryView",
+);
+const LogsPageView = lazyNamedView(
+  () => import("./components/pages/LogsPageView"),
+  "LogsPageView",
+);
+const MemoryViewerView = lazyNamedView(
+  () => import("./components/pages/MemoryViewerView"),
+  "MemoryViewerView",
+);
+const MessagesPageView = lazyNamedView(
+  () => import("./components/pages/MiladyOsAppsView"),
+  "MessagesPageView",
+);
+const PhonePageView = lazyNamedView(
+  () => import("./components/pages/MiladyOsAppsView"),
+  "PhonePageView",
+);
+const PluginsPageView = lazyNamedView(
+  () => import("./components/pages/PluginsPageView"),
+  "PluginsPageView",
+);
+const RelationshipsView = lazyNamedView(
+  () => import("./components/pages/RelationshipsView"),
+  "RelationshipsView",
+);
+const RuntimeView = lazyNamedView(
+  () => import("./components/pages/RuntimeView"),
+  "RuntimeView",
+);
+const SettingsView = lazyNamedView(
+  () => import("./components/pages/SettingsView"),
+  "SettingsView",
+);
+const SkillsView = lazyNamedView(
+  () => import("./components/pages/SkillsView"),
+  "SkillsView",
+);
+const StreamView = lazyNamedView(
+  () => import("./components/pages/StreamView"),
+  "StreamView",
+);
+const TasksPageView = lazyNamedView(
+  () => import("./components/pages/TasksPageView"),
+  "TasksPageView",
+);
+const TrajectoriesView = lazyNamedView(
+  () => import("./components/pages/TrajectoriesView"),
+  "TrajectoriesView",
+);
+
+function LazyViewBoundary({ children }: { children: ReactNode }) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 min-h-0 min-w-0 items-center justify-center text-sm text-muted">
+          Loading…
+        </div>
+      }
+    >
+      {children}
+    </Suspense>
+  );
+}
+
+function prefillWalletChat(text: string): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent(WALLET_CHAT_PREFILL_EVENT, {
+      detail: { text, select: true },
+    }),
+  );
+}
+
+function WalletChatGuideBody() {
+  const items = [
+    {
+      icon: ArrowLeftRight,
+      label: "Swap, bridge, send, or receive",
+    },
+    {
+      icon: Layers3,
+      label: "Inspect tokens, NFTs, LPs, and activity",
+    },
+    {
+      icon: MessagesSquare,
+      label: "Ask how the agent can use this wallet",
+    },
+  ];
+
+  return (
+    <div className="grid gap-2">
+      {items.map((item) => (
+        <div
+          key={item.label}
+          className="flex items-center gap-2 text-xs-tight text-muted"
+        >
+          <item.icon className="h-3.5 w-3.5 shrink-0 text-accent" />
+          <span>{item.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function WalletChatGuideActions() {
+  const actions = [
+    {
+      label: "Swap",
+      prompt:
+        "Prepare a wallet swap. Ask me for source token, destination token, amount, slippage, and route before any transaction.",
+      icon: ArrowLeftRight,
+    },
+    {
+      label: "Bridge",
+      prompt:
+        "Prepare a bridge. Ask me for token, amount, destination address, destination network requirements, and route before any transaction.",
+      icon: Layers3,
+    },
+    {
+      label: "Receive",
+      prompt:
+        "Show the EVM and Solana receive addresses available in this wallet and ask which address I want to use.",
+      icon: ArrowDownLeft,
+    },
+  ];
+
+  return (
+    <>
+      {actions.map((action) => (
+        <Button
+          key={action.label}
+          variant="outline"
+          size="sm"
+          className="rounded-full"
+          onClick={() => prefillWalletChat(action.prompt)}
+        >
+          <action.icon className="mr-1.5 h-3.5 w-3.5" />
+          {action.label}
+        </Button>
+      ))}
+    </>
+  );
+}
+
+interface MobileChatSurfaceButtonProps {
+  active: boolean;
+  icon: typeof PanelLeft;
+  label: string;
+  onClick: () => void;
+  surface: MobileChatSurface;
+}
+
+function MobileChatSurfaceButton({
+  active,
+  icon: Icon,
+  label,
+  onClick,
+  surface,
+}: MobileChatSurfaceButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      title={label}
+      data-testid={`chat-mobile-surface-${surface}`}
+      onClick={onClick}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/55 text-muted shadow-sm transition-colors hover:text-txt ${
+        active ? "border-accent/70 bg-accent text-accent-fg" : ""
+      }`}
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+    </button>
+  );
+}
+
+function buildWalletPageScopedChatPaneProps(): NonNullable<
+  AppWorkspaceChromeProps["pageScopedChatPaneProps"]
+> {
+  return {
+    persistentIntro: true,
+    placeholderOverride: "Ask about how the agent can use a wallet",
+    introOverride: {
+      title: "Wallet agent",
+      body: <WalletChatGuideBody />,
+      actions: <WalletChatGuideActions />,
+    },
+  };
+}
 
 /** Check if we're in pop-out mode (StreamView only, no chrome). */
 function useIsPopout(): boolean {
@@ -84,25 +334,60 @@ function useIsPopout(): boolean {
 function TabScrollView({
   children,
   className = "",
+  chat,
+  chatScope,
+  pageScopedChatPaneProps,
 }: {
   children: ReactNode;
   className?: string;
+  chat?: ReactNode;
+  chatScope?: PageScope;
+  pageScopedChatPaneProps?: AppWorkspaceChromeProps["pageScopedChatPaneProps"];
 }) {
   return (
-    <div
-      data-shell-scroll-region="true"
-      className={`flex-1 min-h-0 min-w-0 w-full overflow-y-auto ${className}`}
-    >
-      {children}
-    </div>
+    <AppWorkspaceChrome
+      testId="tab-scroll-view"
+      chat={chat}
+      chatScope={chat ? undefined : chatScope}
+      pageScopedChatPaneProps={chat ? undefined : pageScopedChatPaneProps}
+      main={
+        <div
+          data-shell-scroll-region="true"
+          className={`flex-1 min-h-0 min-w-0 w-full overflow-y-auto ${className}`}
+        >
+          {children}
+        </div>
+      }
+    />
   );
 }
 
-function TabContentView({ children }: { children: ReactNode }) {
+function TabContentView({
+  children,
+  chatScope,
+  chatDisabled = false,
+}: {
+  children: ReactNode;
+  chatScope?: PageScope;
+  chatDisabled?: boolean;
+}) {
+  const { activeGameRunId, appsSubTab } = useApp();
+  const gameOwnsChat =
+    chatScope === "page-apps" &&
+    appsSubTab === "games" &&
+    activeGameRunId.trim().length > 0;
+
   return (
-    <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden">
-      {children}
-    </div>
+    <AppWorkspaceChrome
+      testId="tab-content-view"
+      chatScope={chatScope}
+      chatDisabled={chatDisabled || gameOwnsChat}
+      main={
+        <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden">
+          {children}
+        </div>
+      }
+    />
   );
 }
 
@@ -113,24 +398,43 @@ function ViewRouter({
 }) {
   const { tab } = useApp();
   const { lifeOpsPageView: LifeOpsPageView } = useBootConfig();
+  const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const view = (() => {
     switch (tab) {
       case "chat":
         return <ChatView />;
-      case "lifeops":
-        return LifeOpsPageView ? (
-          <TabScrollView>
-            <LifeOpsPageView />
-          </TabScrollView>
+      case "phone":
+        return androidPhoneSurfaceEnabled ? (
+          <TabContentView chatScope="page-phone">
+            <PhonePageView />
+          </TabContentView>
         ) : (
           <ChatView />
         );
-      case "browser":
-        return (
-          <TabContentView>
-            <BrowserWorkspaceView />
+      case "messages":
+        return androidPhoneSurfaceEnabled ? (
+          <TabContentView chatScope="page-phone">
+            <MessagesPageView />
           </TabContentView>
+        ) : (
+          <ChatView />
         );
+      case "contacts":
+        return androidPhoneSurfaceEnabled ? (
+          <TabContentView chatScope="page-phone">
+            <ContactsPageView />
+          </TabContentView>
+        ) : (
+          <ChatView />
+        );
+      case "lifeops":
+        // LifeOpsPageView owns its own AppWorkspaceChrome (nav rail + main
+        // + right chat), so don't double-wrap.
+        return LifeOpsPageView ? <LifeOpsPageView /> : <ChatView />;
+      case "browser":
+        // BrowserWorkspaceView owns its own AppWorkspaceChrome, so don't
+        // double-wrap.
+        return <BrowserWorkspaceView />;
       case "companion":
         // Companion is now an app — redirect /companion URL to chat
         return <ChatView />;
@@ -139,23 +443,23 @@ function ViewRouter({
       case "apps":
         // Apps disabled in production builds; fall through to chat
         return APPS_ENABLED ? (
-          <TabScrollView>
+          <TabContentView chatScope="page-apps">
             <AppsPageView />
-          </TabScrollView>
+          </TabContentView>
         ) : (
           <ChatView />
         );
       case "tasks":
         return (
           <TabContentView>
-            <AutomationsView />
+            <TasksPageView />
           </TabContentView>
         );
       case "character":
       case "character-select":
       case "knowledge":
         return (
-          <TabContentView>
+          <TabContentView chatScope="page-character">
             <CharacterEditor
               onHeaderActionsChange={onCharacterHeaderActionsChange}
             />
@@ -163,7 +467,10 @@ function ViewRouter({
         );
       case "inventory":
         return (
-          <TabScrollView>
+          <TabScrollView
+            chatScope="page-wallet"
+            pageScopedChatPaneProps={buildWalletPageScopedChatPaneProps()}
+          >
             <InventoryView />
           </TabScrollView>
         );
@@ -175,20 +482,16 @@ function ViewRouter({
         );
       case "automations":
       case "triggers":
-        return (
-          <TabContentView>
-            <AutomationsView />
-          </TabContentView>
-        );
+        return <AutomationsDesktopShell />;
       case "voice":
         return (
           <TabContentView>
-            <SettingsView key="settings-media" initialSection="media" />
+            <SettingsView key="settings-identity" initialSection="identity" />
           </TabContentView>
         );
       case "settings":
         return (
-          <TabContentView>
+          <TabContentView chatDisabled>
             <SettingsView key="settings-root" />
           </TabContentView>
         );
@@ -258,7 +561,11 @@ function ViewRouter({
     }
   })();
 
-  return <ErrorBoundary>{view}</ErrorBoundary>;
+  return (
+    <ErrorBoundary>
+      <LazyViewBoundary>{view}</LazyViewBoundary>
+    </ErrorBoundary>
+  );
 }
 
 export function App() {
@@ -271,9 +578,7 @@ export function App() {
     actionNotice,
     activeOverlayApp,
     uiTheme,
-    agentStatus,
     backendConnection,
-    unreadConversations,
     activeGameViewerUrl,
     gameOverlayEnabled,
     uiShellMode,
@@ -292,14 +597,9 @@ export function App() {
     overlayAppActive && activeOverlayApp
       ? getOverlayApp(activeOverlayApp)
       : undefined;
-  const lifeOpsSignalsEnabled =
-    startupCoordinator.phase === "ready" &&
-    agentStatus?.state === "running" &&
-    backendConnection?.state === "connected";
   const contextMenu = useContextMenu();
 
   useStreamPopoutNavigation(setTab);
-  useLifeOpsActivitySignals(lifeOpsSignalsEnabled);
 
   useEffect(() => {
     if (startupCoordinator.phase !== "ready") return;
@@ -334,7 +634,27 @@ export function App() {
   const [settingsInitialSection, setSettingsInitialSection] = useState<
     string | null
   >(null);
-  const [tasksEventsPanelOpen, setTasksEventsPanelOpen] = useState(false);
+  const [widgetsPanelCollapsed, setWidgetsPanelCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return (
+        window.localStorage.getItem("elizaos:chat:widgets-collapsed") === "true"
+      );
+    } catch {
+      return false;
+    }
+  });
+  const handleToggleWidgetsCollapsed = useCallback((next: boolean) => {
+    setWidgetsPanelCollapsed(next);
+    try {
+      window.localStorage.setItem(
+        "elizaos:chat:widgets-collapsed",
+        String(next),
+      );
+    } catch {
+      // localStorage unavailable in sandboxed environments — non-fatal.
+    }
+  }, []);
   const { events: activityEvents, clearEvents: clearActivityEvents } =
     useActivityEvents();
   const [editingAction, setEditingAction] = useState<
@@ -345,7 +665,8 @@ export function App() {
       ? window.innerWidth < CHAT_MOBILE_BREAKPOINT_PX
       : false,
   );
-  const [mobileConversationsOpen, setMobileConversationsOpen] = useState(false);
+  const [mobileChatSurface, setMobileChatSurface] =
+    useState<MobileChatSurface>("center");
   const [desktopShuttingDown, setDesktopShuttingDown] = useState(false);
   const [characterHeaderActions, setCharacterHeaderActions] =
     useState<ReactNode | null>(null);
@@ -361,49 +682,41 @@ export function App() {
   const isSettingsPage = tab === "settings" || tab === "voice";
   const isAppsToolPage = isAppsToolTab(tab);
   const isDesktopWorkspacePage = tab === "desktop";
-  const unreadCount = unreadConversations?.size ?? 0;
-  const mobileChatControls = useMemo(
-    () =>
-      isChatMobileLayout ? (
-        <div className="flex items-center gap-2 w-max">
-          <Button
-            variant="outline"
-            size="sm"
-            className={`inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
-              mobileConversationsOpen
-                ? "border-accent bg-accent-subtle text-txt"
-                : "border-border bg-card text-txt hover:border-accent hover:text-txt"
-            }`}
-            onClick={() => {
-              setMobileConversationsOpen(true);
-            }}
-            aria-label={t("aria.openChatsPanel")}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <title>{t("conversations.chats")}</title>
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            {t("conversations.chats")}
-            {unreadCount > 0 && (
-              <span className="inline-flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-accent text-accent-fg text-2xs font-bold px-1">
-                {unreadCount > 99 ? "99+" : unreadCount}
-              </span>
-            )}
-          </Button>
-        </div>
-      ) : undefined,
-    [isChatMobileLayout, mobileConversationsOpen, unreadCount, t],
-  );
+  const mobileChatControls = useMemo(() => {
+    if (!isChatMobileLayout) return null;
+
+    return {
+      center: (
+        <MobileChatSurfaceButton
+          active={mobileChatSurface === "center"}
+          icon={MessagesSquare}
+          label={t("nav.chat", { defaultValue: "Chat" })}
+          onClick={() => setMobileChatSurface("center")}
+          surface="center"
+        />
+      ),
+      left: (
+        <MobileChatSurfaceButton
+          active={mobileChatSurface === "left"}
+          icon={PanelLeft}
+          label={t("conversations.chats", { defaultValue: "Chats" })}
+          onClick={() => setMobileChatSurface("left")}
+          surface="left"
+        />
+      ),
+      right: isChat ? (
+        <MobileChatSurfaceButton
+          active={mobileChatSurface === "right"}
+          icon={ListTodo}
+          label={t("taskseventspanel.Title", {
+            defaultValue: "Tasks & Events",
+          })}
+          onClick={() => setMobileChatSurface("right")}
+          surface="right"
+        />
+      ) : null,
+    };
+  }, [isChat, isChatMobileLayout, mobileChatSurface, t]);
 
   // Keep hook order stable across onboarding/auth state transitions.
   // Otherwise React can throw when onboarding completes and the main shell mounts.
@@ -450,19 +763,18 @@ export function App() {
 
   useEffect(() => {
     if (!isChatMobileLayout) {
-      setMobileConversationsOpen(false);
-      setTasksEventsPanelOpen(false);
+      setMobileChatSurface("center");
     }
   }, [isChatMobileLayout]);
 
   useEffect(() => {
     if (!isChatWorkspace) {
-      setMobileConversationsOpen(false);
+      setMobileChatSurface("center");
     }
-    if (!isChat) {
-      setTasksEventsPanelOpen(false);
+    if (!isChat && mobileChatSurface === "right") {
+      setMobileChatSurface("center");
     }
-  }, [isChat, isChatWorkspace]);
+  }, [isChat, isChatWorkspace, mobileChatSurface]);
 
   useEffect(() => {
     if (isSettingsPage || settingsInitialSection === null) {
@@ -549,7 +861,9 @@ export function App() {
         >
           <Header />
           <main className="flex-1 min-h-0 overflow-hidden">
-            <StreamView />
+            <LazyViewBoundary>
+              <StreamView />
+            </LazyViewBoundary>
           </main>
         </div>
       ) : isChatWorkspace ? (
@@ -558,90 +872,51 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header
-            mobileLeft={mobileChatControls}
-            tasksEventsPanelOpen={
-              isChat && (isChatMobileLayout ? tasksEventsPanelOpen : true)
-            }
-            onToggleTasksPanel={
-              isChat && isChatMobileLayout
-                ? () => setTasksEventsPanelOpen((o) => !o)
-                : undefined
-            }
+            mobileCenter={mobileChatControls?.center}
+            mobileLeft={mobileChatControls?.left}
+            pageRightExtras={mobileChatControls?.right}
+            tasksEventsPanelOpen={isChat && !isChatMobileLayout}
           />
           <div className="flex flex-1 min-h-0 relative">
             {!isChatMobileLayout && isChat ? (
               <div
-                className={CHAT_DESKTOP_COMPOSER_UNDERLAY_CLASS}
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-[5.75rem]"
                 data-chat-shell-composer-underlay
               />
             ) : null}
             {isChatMobileLayout ? (
-              <>
-                <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden pt-2 px-2">
-                  {isChat ? (
-                    <>
-                      <DeferredSetupChecklist
-                        className="mb-3"
-                        onOpenTask={handleDeferredTaskOpen}
-                      />
-                      <ChatView />
-                    </>
-                  ) : (
+              <div
+                className={`flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden ${
+                  mobileChatSurface === "center" ? "px-2 pt-2" : ""
+                }`}
+              >
+                {mobileChatSurface === "left" ? (
+                  <ConversationsSidebar
+                    key="chat-sidebar-mobile"
+                    mobile
+                    onClose={() => setMobileChatSurface("center")}
+                  />
+                ) : mobileChatSurface === "right" && isChat ? (
+                  <TasksEventsPanel
+                    open
+                    events={activityEvents}
+                    clearEvents={clearActivityEvents}
+                    mobile
+                  />
+                ) : isChat ? (
+                  <>
+                    <DeferredSetupChecklist
+                      className="mb-3"
+                      onOpenTask={handleDeferredTaskOpen}
+                    />
+                    <ChatView />
+                  </>
+                ) : (
+                  <LazyViewBoundary>
                     <ConnectorsPageView />
-                  )}
-                </div>
-
-                {mobileConversationsOpen && (
-                  <DrawerSheet
-                    open={mobileConversationsOpen}
-                    onOpenChange={setMobileConversationsOpen}
-                  >
-                    <DrawerSheetContent
-                      aria-describedby={undefined}
-                      className="h-[min(calc(100dvh-1rem-var(--safe-area-top,0px)-var(--safe-area-bottom,0px)),46rem)] p-0"
-                      showCloseButton
-                    >
-                      <DrawerSheetHeader className="sr-only">
-                        <DrawerSheetTitle>
-                          {t("conversations.chats")}
-                        </DrawerSheetTitle>
-                      </DrawerSheetHeader>
-                      <ConversationsSidebar
-                        key="chat-sidebar-mobile"
-                        mobile
-                        onClose={() => setMobileConversationsOpen(false)}
-                      />
-                    </DrawerSheetContent>
-                  </DrawerSheet>
+                  </LazyViewBoundary>
                 )}
-
-                {isChat && tasksEventsPanelOpen && (
-                  <DrawerSheet
-                    open={tasksEventsPanelOpen}
-                    onOpenChange={setTasksEventsPanelOpen}
-                  >
-                    <DrawerSheetContent
-                      aria-describedby={undefined}
-                      className="h-[min(calc(100dvh-1rem-var(--safe-area-top,0px)-var(--safe-area-bottom,0px)),46rem)] p-0"
-                      showCloseButton={false}
-                    >
-                      <DrawerSheetHeader className="sr-only">
-                        <DrawerSheetTitle>
-                          {t("taskseventspanel.Title", {
-                            defaultValue: "Chat widgets",
-                          })}
-                        </DrawerSheetTitle>
-                      </DrawerSheetHeader>
-                      <TasksEventsPanel
-                        open
-                        events={activityEvents}
-                        clearEvents={clearActivityEvents}
-                        mobile
-                      />
-                    </DrawerSheetContent>
-                  </DrawerSheet>
-                )}
-              </>
+              </div>
             ) : (
               <>
                 <ConversationsSidebar key="chat-sidebar-desktop" />
@@ -655,7 +930,9 @@ export function App() {
                       <ChatView key="chat-view-desktop" />
                     </>
                   ) : (
-                    <ConnectorsPageView />
+                    <LazyViewBoundary>
+                      <ConnectorsPageView />
+                    </LazyViewBoundary>
                   )}
                 </div>
                 {isChat ? (
@@ -663,6 +940,8 @@ export function App() {
                     open
                     events={activityEvents}
                     clearEvents={clearActivityEvents}
+                    collapsed={widgetsPanelCollapsed}
+                    onToggleCollapsed={handleToggleWidgetsCollapsed}
                   />
                 ) : null}
               </>
@@ -683,9 +962,9 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-            <AutomationsView key="automations-view-desktop" />
-          </div>
+          <LazyViewBoundary>
+            <AutomationsDesktopShell key="automations-view-desktop" />
+          </LazyViewBoundary>
         </div>
       ) : isSettingsPage ? (
         <div
@@ -693,24 +972,33 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-            <SettingsView
-              key={
-                tab === "voice"
-                  ? "settings-media"
-                  : tab === "connectors"
-                    ? "settings-connectors"
-                    : "settings-root"
-              }
-              initialSection={
-                tab === "voice"
-                  ? "media"
-                  : tab === "connectors"
-                    ? "connectors"
-                    : (settingsInitialSection ?? undefined)
-              }
-            />
-          </div>
+          <AppWorkspaceChrome
+            testId="settings-workspace"
+            chatScope="page-settings"
+            chatDisabled
+            main={
+              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                <LazyViewBoundary>
+                  <SettingsView
+                    key={
+                      tab === "voice"
+                        ? "settings-identity"
+                        : tab === "connectors"
+                          ? "settings-connectors"
+                          : "settings-root"
+                    }
+                    initialSection={
+                      tab === "voice"
+                        ? "identity"
+                        : tab === "connectors"
+                          ? "connectors"
+                          : (settingsInitialSection ?? undefined)
+                    }
+                  />
+                </LazyViewBoundary>
+              </div>
+            }
+          />
         </div>
       ) : isWallets ? (
         <div
@@ -718,9 +1006,18 @@ export function App() {
           className="flex flex-col flex-1 min-h-0 w-full font-body text-txt bg-bg"
         >
           <Header />
-          <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-            <InventoryView />
-          </div>
+          <AppWorkspaceChrome
+            testId="wallets-workspace"
+            chatScope="page-wallet"
+            pageScopedChatPaneProps={buildWalletPageScopedChatPaneProps()}
+            main={
+              <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
+                <LazyViewBoundary>
+                  <InventoryView />
+                </LazyViewBoundary>
+              </div>
+            }
+          />
         </div>
       ) : isCharacterPage ? (
         <div
@@ -751,7 +1048,9 @@ export function App() {
         >
           <Header />
           <div className="flex flex-1 min-h-0 min-w-0">
-            <DesktopWorkspaceSection />
+            <LazyViewBoundary>
+              <DesktopWorkspaceSection />
+            </LazyViewBoundary>
           </div>
         </div>
       ) : (
@@ -762,7 +1061,13 @@ export function App() {
           <Header
             pageRightExtras={isCharacterPage ? characterHeaderActions : null}
           />
-          <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden px-3 xl:px-5 py-4 xl:py-6">
+          <main
+            className={`flex flex-1 min-h-0 min-w-0 overflow-hidden ${
+              tab === "browser" || tab === "apps"
+                ? ""
+                : "px-3 xl:px-5 py-4 xl:py-6"
+            }`}
+          >
             <ViewRouter
               onCharacterHeaderActionsChange={setCharacterHeaderActions}
             />
@@ -777,7 +1082,6 @@ export function App() {
       actionNotice,
       isChat,
       isChatWorkspace,
-      isConnectors,
       isCharacterPage,
       isHeartbeats,
       isSettingsPage,
@@ -785,17 +1089,16 @@ export function App() {
       isAppsToolPage,
       isDesktopWorkspacePage,
       isChatMobileLayout,
-      mobileConversationsOpen,
+      mobileChatSurface,
       mobileChatControls,
       characterHeaderActions,
-      tasksEventsPanelOpen,
       handleDeferredTaskOpen,
       activityEvents,
       clearActivityEvents,
       customActionsPanelOpen,
-      setCharacterHeaderActions,
+      handleToggleWidgetsCollapsed,
       settingsInitialSection,
-      t,
+      widgetsPanelCollapsed,
     ],
   );
 
@@ -804,7 +1107,9 @@ export function App() {
   if (isPopout) {
     return (
       <div className="flex flex-col h-screen w-screen font-body text-txt bg-bg overflow-hidden">
-        <StreamView />
+        <LazyViewBoundary>
+          <StreamView />
+        </LazyViewBoundary>
       </div>
     );
   }
@@ -842,7 +1147,6 @@ export function App() {
           t={t}
         />
       )}
-      <MusicPlayerGlobal />
 
       {/* Persistent game overlay — stays visible across all tabs */}
       {activeGameViewerUrl && gameOverlayEnabled && tab !== "apps" && (

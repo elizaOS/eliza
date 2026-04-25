@@ -17,16 +17,15 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { asUUID, ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
-
-interface ScheduleFollowUpXmlResult {
-	contactName?: string;
-	entityId?: string;
-	scheduledAt?: string;
-	reason?: string;
-	priority?: string;
-	message?: string;
-}
+import {
+	composePromptFromState,
+	parseJSONObjectFromText,
+	parseKeyValueXml,
+} from "../../../utils.ts";
+import {
+	extractScheduleFollowUpResponseFromText,
+	type ParsedScheduleFollowUpResponse,
+} from "../../shared/schedule-follow-up-response.ts";
 
 const FOLLOW_UP_KEYWORDS = getValidationKeywordTerms(
 	"action.scheduleFollowUp.request",
@@ -138,6 +137,16 @@ export const scheduleFollowUpAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
+		if (
+			runtime.actions.some(
+				(action) =>
+					action.name === "OWNER_RELATIONSHIP" ||
+					action.name === "RELATIONSHIP",
+			)
+		) {
+			return false;
+		}
+
 		const relationshipsService = runtime.getService(
 			"relationships",
 		) as RelationshipsService;
@@ -199,7 +208,11 @@ export const scheduleFollowUpAction: Action = {
 		});
 
 		const parsedResponse =
-			parseKeyValueXml<ScheduleFollowUpXmlResult>(response);
+			parseKeyValueXml<ParsedScheduleFollowUpResponse>(response) ??
+			(parseJSONObjectFromText(
+				response,
+			) as ParsedScheduleFollowUpResponse | null) ??
+			extractScheduleFollowUpResponseFromText(response);
 		if (
 			!parsedResponse ||
 			(!parsedResponse.contactName && !parsedResponse.entityId)

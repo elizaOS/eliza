@@ -221,7 +221,6 @@ The benchmark compares results against published scores from the official leader
 | Model | Retail Pass^1 | Airline Pass^1 |
 |-------|---------------|----------------|
 | Gemini 3 Pro | 90.7% | 89.2% |
-| Claude 3.7 Sonnet | 81.2% | 79.8% |
 | Kimi K2 | 74.3% | 72.1% |
 | o3 | 73.9% | 71.5% |
 | o4-mini | 71.8% | 69.5% |

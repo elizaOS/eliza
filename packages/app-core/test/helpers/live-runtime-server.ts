@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createLiveRuntimeChildEnv } from "./live-child-env.ts";
-import type { RuntimeHarness } from "../live-agent/helpers/runtime-harness.ts";
 
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
@@ -23,6 +22,12 @@ export type StartLiveRuntimeServerOptions = {
   pluginsAllow?: string[];
   startupTimeoutMs?: number;
   tempPrefix: string;
+};
+
+export type RuntimeHarness = {
+  close: () => Promise<void>;
+  logs: () => string;
+  port: number;
 };
 
 async function getFreePort(): Promise<number> {
@@ -84,9 +89,7 @@ export async function startLiveRuntimeServer(
   child.stderr.on("data", (chunk: string) => logBuf.push(chunk));
   child.once("exit", (code, signal) => {
     childExitReason =
-      signal !== null
-        ? `signal ${signal}`
-        : `exit code ${code ?? "unknown"}`;
+      signal !== null ? `signal ${signal}` : `exit code ${code ?? "unknown"}`;
   });
 
   const deadline =

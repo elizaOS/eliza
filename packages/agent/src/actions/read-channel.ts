@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionExample,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -268,4 +269,34 @@ export const readChannelAction: Action = {
       schema: { type: "number" as const },
     },
   ],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "What's been going on in the #dev-ops Discord channel lately?",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Channel: dev-ops (discord) | 20 messages\n  1 | 2026-04-18 alice: rolling out the new deploy pipeline tomorrow",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Pull messages from the general chat between April 10 and April 15.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Channel: general (slack) | 42 messages",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

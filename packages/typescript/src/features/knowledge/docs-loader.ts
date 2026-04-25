@@ -4,7 +4,7 @@ import { logger } from "../../logger";
 import type { UUID } from "../../types";
 import type { KnowledgeService } from "./service.ts";
 import type { AddKnowledgeOptions } from "./types.ts";
-import { isBinaryContentType } from "./utils.ts";
+import { isTextBackedKnowledgeContent } from "./utils.ts";
 
 export function getKnowledgePath(runtimePath?: string): string {
 	const knowledgePath =
@@ -40,6 +40,11 @@ export async function loadDocsFromPath(
 	agentId: UUID,
 	worldId?: UUID,
 	knowledgePath?: string,
+	options?: {
+		roomId?: UUID;
+		entityId?: UUID;
+		metadata?: Record<string, unknown>;
+	},
 ): Promise<{ total: number; successful: number; failed: number }> {
 	const docsPath = getKnowledgePath(knowledgePath);
 
@@ -65,37 +70,20 @@ export async function loadDocsFromPath(
 	for (const filePath of files) {
 		try {
 			const fileName = path.basename(filePath);
-			const fileExt = path.extname(filePath).toLowerCase();
 
 			if (fileName.startsWith(".")) {
 				continue;
 			}
-
-			const contentType = getContentType(fileExt);
-
-			if (!contentType) {
-				logger.debug(`Skipping unsupported file type: ${filePath}`);
-				continue;
-			}
-
-			const fileBuffer = fs.readFileSync(filePath);
-			const isBinary = isBinaryContentType(contentType, fileName);
-			const content = isBinary
-				? fileBuffer.toString("base64")
-				: fileBuffer.toString("utf-8");
-
-			const knowledgeOptions: AddKnowledgeOptions = {
-				clientDocumentId: "" as UUID,
-				contentType,
-				originalFilename: fileName,
-				worldId: worldId || agentId,
-				content,
-				roomId: agentId,
-				entityId: agentId,
-			};
-
 			logger.debug(`Processing document: ${fileName}`);
-			const result = await service.addKnowledge(knowledgeOptions);
+			const result = await addKnowledgeFromFilePath({
+				service,
+				agentId,
+				worldId,
+				roomId: options?.roomId,
+				entityId: options?.entityId,
+				filePath,
+				metadata: options?.metadata,
+			});
 
 			logger.info(
 				`✅ "${fileName}": ${result.fragmentCount} fragments created`,
@@ -116,6 +104,67 @@ export async function loadDocsFromPath(
 		successful,
 		failed,
 	};
+}
+
+export async function addKnowledgeFromFilePath({
+	service,
+	agentId,
+	worldId,
+	roomId,
+	entityId,
+	filePath,
+	metadata,
+}: {
+	service: KnowledgeService;
+	agentId: UUID;
+	worldId?: UUID;
+	roomId?: UUID;
+	entityId?: UUID;
+	filePath: string;
+	metadata?: Record<string, unknown>;
+}): Promise<{
+	clientDocumentId: string;
+	storedDocumentMemoryId: UUID;
+	fragmentCount: number;
+}> {
+	const fileName = path.basename(filePath);
+	const fileExt = path.extname(filePath).toLowerCase();
+	const contentType = getKnowledgeFileContentType(fileExt);
+
+	if (!contentType) {
+		throw new Error(`Unsupported knowledge file type: ${filePath}`);
+	}
+
+	const fileBuffer = fs.readFileSync(filePath);
+	const isTextBacked = isTextBackedKnowledgeContent(contentType, fileName);
+	const content = isTextBacked
+		? fileBuffer.toString("utf-8")
+		: fileBuffer.toString("base64");
+
+	const knowledgeOptions: AddKnowledgeOptions = {
+		agentId,
+		clientDocumentId: "" as UUID,
+		contentType,
+		originalFilename: fileName,
+		worldId: worldId || agentId,
+		content,
+		roomId: roomId || agentId,
+		entityId: entityId || agentId,
+		metadata: {
+			...metadata,
+			path: filePath,
+			filename: fileName,
+			originalFilename: fileName,
+			title: path.parse(fileName).name || fileName,
+			fileExt: fileExt.replace(/^\./, ""),
+			fileType: contentType,
+			contentType,
+			fileSize: fileBuffer.length,
+			textBacked: isTextBacked,
+		},
+	};
+
+	return service.addKnowledge(knowledgeOptions);
 }
 
 function getAllFiles(dirPath: string, files: string[] = []): string[] {
@@ -144,7 +193,7 @@ function getAllFiles(dirPath: string, files: string[] = []): string[] {
 	return files;
 }
 
-function getContentType(extension: string): string | null {
+export function getKnowledgeFileContentType(extension: string): string | null {
 	const contentTypes: Record<string, string> = {
 		".txt": "text/plain",
 		".md": "text/markdown",

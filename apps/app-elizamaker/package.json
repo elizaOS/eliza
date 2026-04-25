@@ -1,0 +1,33 @@
+{
+  "name": "@elizaos/app-elizamaker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ElizaMaker: ERC-8041 NFT drop/mint/whitelist routes, Twitter-verified Merkle proofs, and OG code tracking.",
+  "main": "./src/index.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": "./src/index.ts",
+    "./routes/drop-routes": "./src/drop-routes.ts",
+    "./drop-service": "./src/drop-service.ts",
+    "./nft-verify": "./src/nft-verify.ts",
+    "./twitter-verify": "./src/twitter-verify.ts",
+    "./merkle-tree": "./src/merkle-tree.ts",
+    "./og-tracker": "./src/og-tracker.ts"
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-steward": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "ethers": "^6.15.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
+  }
+}

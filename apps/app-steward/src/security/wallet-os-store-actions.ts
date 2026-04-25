@@ -1,9 +1,9 @@
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 import {
   createNodePlatformSecureStore,
-  deriveAgentVaultId,
-  type SecureStoreSecretKind,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/security/platform-secure-store-node";
+import type { SecureStoreSecretKind } from "@elizaos/app-core/security/platform-secure-store";
 
 const WALLET_PAIRS: [string, SecureStoreSecretKind][] = [
   ["EVM_PRIVATE_KEY", "wallet.evm_private_key"],

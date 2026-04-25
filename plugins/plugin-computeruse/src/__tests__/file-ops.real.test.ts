@@ -2,19 +2,19 @@
  * Real integration tests for file operations.
  * Uses temp directories — no mocks needed.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { rmSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  readFile,
-  writeFile,
-  editFile,
   appendFile,
   deleteFile,
+  editFile,
   fileExists,
   listDirectory,
+  readFile,
+  writeFile,
 } from "../platform/file-ops.js";
 
 describe("file operations (real)", () => {

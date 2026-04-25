@@ -4,7 +4,7 @@ import type {
   HumanDelayConfig,
   TypingMode,
 } from "@elizaos/core";
-import type { InboxTriageConfig } from "@elizaos/shared/config";
+import type { InboxTriageConfig } from "@elizaos/shared/contracts";
 import type { MemorySearchConfig } from "./types.tools.js";
 
 // --- Sandbox types (merged from types.sandbox.ts) ---

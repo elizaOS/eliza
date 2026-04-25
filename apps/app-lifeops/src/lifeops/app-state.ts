@@ -15,6 +15,15 @@ const DEFAULT_LIFEOPS_APP_STATE: LifeOpsAppState = {
   enabled: true,
 };
 
+function isLifeOpsAppState(value: unknown): value is LifeOpsAppState {
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as Partial<LifeOpsAppState>).enabled === "boolean"
+  );
+}
+
 export async function loadLifeOpsAppState(
   runtime: RuntimeCacheLike | null,
 ): Promise<LifeOpsAppState> {
@@ -22,22 +31,16 @@ export async function loadLifeOpsAppState(
     return DEFAULT_LIFEOPS_APP_STATE;
   }
 
-  try {
-    const cached = await runtime.getCache<Partial<LifeOpsAppState>>(
-      LIFEOPS_APP_STATE_CACHE_KEY,
-    );
-    if (cached == null) {
-      return DEFAULT_LIFEOPS_APP_STATE;
-    }
-    return {
-      enabled: cached.enabled !== false,
-    };
-  } catch (error) {
-    logger.debug(
-      `[lifeops] Failed to load app state: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  const cached = await runtime.getCache<unknown>(LIFEOPS_APP_STATE_CACHE_KEY);
+  if (cached == null) {
     return DEFAULT_LIFEOPS_APP_STATE;
   }
+  if (!isLifeOpsAppState(cached)) {
+    throw new Error(
+      "[lifeops] invalid cached app state: expected { enabled: boolean }",
+    );
+  }
+  return cached;
 }
 
 export async function saveLifeOpsAppState(
@@ -51,9 +54,10 @@ export async function saveLifeOpsAppState(
   try {
     await runtime.setCache(LIFEOPS_APP_STATE_CACHE_KEY, nextState);
   } catch (error) {
-    logger.debug(
-      `[lifeops] Failed to save app state: ${error instanceof Error ? error.message : String(error)}`,
+    logger.warn(
+      `[lifeops] Failed to persist app state (enabled=${nextState.enabled}): ${error instanceof Error ? error.message : String(error)}`,
     );
+    throw error;
   }
 
   return nextState;

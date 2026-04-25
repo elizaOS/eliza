@@ -451,7 +451,7 @@ clawbench/
 | `OPENAI_API_KEY` | Yes* | — | OpenAI API key |
 | `OPENCLAW_GATEWAY_TOKEN` | No | `sandbox-token-12345` | Gateway auth token |
 | `OPENCLAW_PORT` | No | `18790` | Host port for OpenClaw |
-| `CLAWBENCH_MODEL` | No | `anthropic/claude-sonnet-4-5-20250929` | LLM model (`provider/model`) |
+| `CLAWBENCH_MODEL` | No | `anthropic/claude-sonnet-4.6` | LLM model (`provider/model`) |
 | `SCENARIO` | No | `client_escalation` | Scenario to run |
 | `VARIANT` | No | `optimized` | AGENTS.md variant (`baseline` or `optimized`) |
 
@@ -481,7 +481,7 @@ All ClawBench scripts read the `CLAWBENCH_MODEL` env var. Set it once, everythin
 
 ```bash
 # .env
-CLAWBENCH_MODEL=anthropic/claude-sonnet-4-5-20250929
+CLAWBENCH_MODEL=anthropic/claude-sonnet-4.6
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
@@ -513,11 +513,11 @@ docker compose up --build
 
 | Provider | `CLAWBENCH_MODEL` | API key env var |
 |----------|-------------------|-----------------|
-| Anthropic | `anthropic/claude-sonnet-4-5-20250929` | `ANTHROPIC_API_KEY` |
+| Anthropic | `anthropic/claude-sonnet-4.6` | `ANTHROPIC_API_KEY` |
 | OpenAI | `openai/gpt-4o` | `OPENAI_API_KEY` |
 | Ollama (local) | `ollama/llama3.3` | `OLLAMA_API_KEY=ollama-local` |
 | vLLM (local) | `vllm/deepseek-r1` | `VLLM_API_KEY=vllm-local` |
-| LiteLLM | `litellm/claude-opus-4-6` | `LITELLM_API_KEY` |
+| LiteLLM | `litellm/claude-opus-4-7` | `LITELLM_API_KEY` |
 
 The model is set in two places automatically:
 1. **API payload** — Python scripts read `CLAWBENCH_MODEL` and send it in `/v1/chat/completions` requests

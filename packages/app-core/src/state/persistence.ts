@@ -1,4 +1,5 @@
 import type { ConversationMode } from "../api/client";
+import { getBootConfig } from "../config/boot-config-store";
 import {
   DEFAULT_UI_LANGUAGE,
   normalizeLanguage,
@@ -27,6 +28,10 @@ function tryLocalStorage<T>(fn: () => T, fallback: T): T {
     console.warn("[persistence] localStorage operation failed:", err);
     return fallback;
   }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /* ── Theme persistence ────────────────────────────────────────────────── */
@@ -174,21 +179,24 @@ export function saveCompanionAnimateWhenHidden(enabled: boolean): void {
 
 const COMPANION_HALF_FRAMERATE_STORAGE_KEY = "eliza:companion-half-framerate";
 
-const COMPANION_HALF_FRAMERATE_VALUES = new Set<CompanionHalfFramerateMode>([
+const COMPANION_HALF_FRAMERATE_VALUES = new Set<string>([
   "off",
   "when_saving_power",
   "always",
 ]);
 
+function isCompanionHalfFramerateMode(
+  value: unknown,
+): value is CompanionHalfFramerateMode {
+  return (
+    typeof value === "string" && COMPANION_HALF_FRAMERATE_VALUES.has(value)
+  );
+}
+
 export function normalizeCompanionHalfFramerateMode(
   raw: string | null | undefined,
 ): CompanionHalfFramerateMode {
-  if (
-    raw &&
-    COMPANION_HALF_FRAMERATE_VALUES.has(raw as CompanionHalfFramerateMode)
-  ) {
-    return raw as CompanionHalfFramerateMode;
-  }
+  if (isCompanionHalfFramerateMode(raw)) return raw;
   return "when_saving_power";
 }
 
@@ -513,24 +521,74 @@ export function clearAvatarIndex(): void {
 /* ── Favorite apps persistence ────────────────────────────────────────── */
 const FAVORITE_APPS_KEY = "eliza:favorite-apps";
 
+function sanitizeFavoriteApps(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const apps: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string" || item.length === 0 || seen.has(item)) {
+      continue;
+    }
+    seen.add(item);
+    apps.push(item);
+  }
+  return apps;
+}
+
+function getDefaultFavoriteApps(): string[] {
+  return sanitizeFavoriteApps(getBootConfig().defaultApps);
+}
+
 export function loadFavoriteApps(): string[] {
+  const defaultApps = getDefaultFavoriteApps();
   return tryLocalStorage(() => {
     const stored = localStorage.getItem(FAVORITE_APPS_KEY);
+    if (stored === null) return defaultApps;
+    try {
+      const parsed = JSON.parse(stored);
+      return sanitizeFavoriteApps(parsed);
+    } catch {
+      return defaultApps;
+    }
+  }, defaultApps);
+}
+
+export function saveFavoriteApps(apps: string[]): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(
+      FAVORITE_APPS_KEY,
+      JSON.stringify(sanitizeFavoriteApps(apps)),
+    );
+  }, undefined);
+}
+
+/* ── Recent apps persistence ──────────────────────────────────────────── */
+const RECENT_APPS_KEY = "eliza:recent-apps";
+/** Cap on persisted recency list. Older entries are evicted. */
+export const RECENT_APPS_MAX = 10;
+
+export function loadRecentApps(): string[] {
+  return tryLocalStorage(() => {
+    const stored = localStorage.getItem(RECENT_APPS_KEY);
     if (!stored) return [];
     try {
       const parsed = JSON.parse(stored);
-      return Array.isArray(parsed)
-        ? parsed.filter((item): item is string => typeof item === "string")
-        : [];
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter((item): item is string => typeof item === "string")
+        .slice(0, RECENT_APPS_MAX);
     } catch {
       return [];
     }
   }, []);
 }
 
-export function saveFavoriteApps(apps: string[]): void {
+export function saveRecentApps(apps: string[]): void {
   tryLocalStorage(() => {
-    localStorage.setItem(FAVORITE_APPS_KEY, JSON.stringify(apps));
+    localStorage.setItem(
+      RECENT_APPS_KEY,
+      JSON.stringify(apps.slice(0, RECENT_APPS_MAX)),
+    );
   }, undefined);
 }
 
@@ -740,19 +798,16 @@ export function createPersistedActiveServer(args: {
 function normalizePersistedActiveServer(
   value: unknown,
 ): PersistedActiveServer | null {
-  if (typeof value !== "object" || value === null) {
+  if (!isPlainObject(value)) {
     return null;
   }
 
-  const parsed = value as Record<string, unknown>;
   const kind =
-    parsed.kind === "local" ||
-    parsed.kind === "cloud" ||
-    parsed.kind === "remote"
-      ? parsed.kind
+    value.kind === "local" || value.kind === "cloud" || value.kind === "remote"
+      ? value.kind
       : null;
-  const id = trimPersistedValue(parsed.id);
-  const label = trimPersistedValue(parsed.label);
+  const id = trimPersistedValue(value.id);
+  const label = trimPersistedValue(value.label);
   if (!kind || !id || !label) {
     return null;
   }
@@ -761,11 +816,11 @@ function normalizePersistedActiveServer(
     id,
     kind,
     label,
-    ...(normalizeApiBase(parsed.apiBase)
-      ? { apiBase: normalizeApiBase(parsed.apiBase) }
+    ...(normalizeApiBase(value.apiBase)
+      ? { apiBase: normalizeApiBase(value.apiBase) }
       : {}),
-    ...(trimPersistedValue(parsed.accessToken)
-      ? { accessToken: trimPersistedValue(parsed.accessToken) }
+    ...(trimPersistedValue(value.accessToken)
+      ? { accessToken: trimPersistedValue(value.accessToken) }
       : {}),
   };
 }

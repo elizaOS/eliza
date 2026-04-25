@@ -16,6 +16,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
+import type { Trajectory } from "@elizaos/agent/types/trajectory";
 import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
@@ -316,7 +317,7 @@ export function createAnthropicTeacher(
   runtime?: IAgentRuntime,
 ): TeacherModel {
   return {
-    name: "anthropic/claude-sonnet-4",
+    name: "anthropic/claude-sonnet-4.6",
     async generate(systemPrompt: string, userPrompt: string): Promise<string> {
       return await withStandaloneTrajectory(
         runtime,
@@ -324,7 +325,7 @@ export function createAnthropicTeacher(
           source: "training",
           metadata: {
             provider: "anthropic",
-            model: "claude-sonnet-4-20250514",
+            model: "claude-sonnet-4-6",
             purpose: "teacher",
           },
         },
@@ -340,7 +341,7 @@ export function createAnthropicTeacher(
                 "anthropic-version": "2023-06-01",
               },
               body: JSON.stringify({
-                model: "claude-sonnet-4-20250514",
+                model: "claude-sonnet-4-6",
                 max_tokens: 4096,
                 temperature: 1,
                 system: systemPrompt,
@@ -363,8 +364,8 @@ export function createAnthropicTeacher(
           const text = data.content[0]?.text ?? "";
           logTeacherCall({
             runtime,
-            model: "anthropic/claude-sonnet-4",
-            modelVersion: "claude-sonnet-4-20250514",
+            model: "anthropic/claude-sonnet-4.6",
+            modelVersion: "claude-sonnet-4-6",
             systemPrompt,
             userPrompt,
             response: text,
@@ -1005,26 +1006,15 @@ export async function exportToGeminiJSONL(
  * Converts real trajectory data into the same JSONL format.
  */
 export async function exportTrajectoriesAsTraining(
-  trajectories: Array<{
-    steps: Array<{
-      llmCalls: Array<{
-        purpose?: string;
-        systemPrompt?: string;
-        userPrompt?: string;
-        response?: string;
-        model?: string;
-      }>;
-    }>;
-    metadata?: Record<string, unknown>;
-  }>,
+  trajectories: Trajectory[],
   agentName: string,
   outputPath: string,
 ): Promise<number> {
   const examples: GeminiTuningExample[] = [];
 
   for (const trajectory of trajectories) {
-    for (const step of trajectory.steps) {
-      for (const call of step.llmCalls) {
+    for (const step of trajectory.steps ?? []) {
+      for (const call of step.llmCalls ?? []) {
         if (
           call.purpose === "should_respond" &&
           call.systemPrompt &&

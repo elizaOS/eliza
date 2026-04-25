@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-import sys
 import time
 from collections.abc import Callable
 
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[4] / "plugins" / "plugin-experience" / "python"))
-
-from elizaos_plugin_experience.service import ExperienceService
-from elizaos_plugin_experience.types import ExperienceQuery
-
 from elizaos_experience_bench.generator import GeneratedExperience, LearningScenario
+from elizaos_experience_bench.service import ExperienceQuery, ExperienceService
 from elizaos_experience_bench.types import LearningCycleMetrics
 
 ServiceFactory = Callable[[], ExperienceService]

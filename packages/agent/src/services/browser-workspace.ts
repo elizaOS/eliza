@@ -49,6 +49,7 @@ export type {
   BrowserWorkspaceSubaction,
   BrowserWorkspaceTab,
   BrowserWorkspaceTabAction,
+  BrowserWorkspaceTabKind,
   BrowserWorkspaceTraceAction,
   BrowserWorkspaceWaitState,
   BrowserWorkspaceWindowAction,
@@ -63,6 +64,7 @@ import type {
   BrowserWorkspaceMode,
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
+  BrowserWorkspaceTabKind,
   EvaluateBrowserWorkspaceTabRequest,
   NavigateBrowserWorkspaceTabRequest,
   OpenBrowserWorkspaceTabRequest,
@@ -141,6 +143,8 @@ import {
   getWebBrowserWorkspaceTabState,
 } from "./browser-workspace-web.js";
 
+const AGENT_BROWSER_WORKSPACE_PARTITION = "persist:eliza-browser-agent";
+
 // ────────────────────────────────────────────────────────────────────
 // Public API functions
 // ────────────────────────────────────────────────────────────────────
@@ -169,6 +173,7 @@ export async function listBrowserWorkspaceTabs(
       title: tab.title,
       url: tab.url,
       partition: tab.partition,
+      kind: tab.kind,
       visible: tab.visible,
       createdAt: tab.createdAt,
       updatedAt: tab.updatedAt,
@@ -188,6 +193,8 @@ export async function openBrowserWorkspaceTab(
 ): Promise<BrowserWorkspaceTab> {
   if (!isBrowserWorkspaceBridgeConfigured(env)) {
     return withWebStateLock(() => {
+      const kind: BrowserWorkspaceTabKind =
+        request.kind === "internal" ? "internal" : "standard";
       const now = getBrowserWorkspaceTimestamp();
       const url = assertBrowserWorkspaceUrl(
         request.url?.trim() || "about:blank",
@@ -201,6 +208,7 @@ export async function openBrowserWorkspaceTab(
         title: request.title?.trim() || inferBrowserWorkspaceTitle(url),
         url,
         partition: request.partition?.trim() || DEFAULT_WEB_PARTITION,
+        kind,
         visible,
         createdAt: now,
         updatedAt: now,
@@ -420,7 +428,7 @@ export async function executeBrowserWorkspaceCommand(
     case "open": {
       const tab = await openBrowserWorkspaceTab(
         {
-          partition: command.partition,
+          partition: command.partition ?? AGENT_BROWSER_WORKSPACE_PARTITION,
           show: command.show,
           title: command.title,
           url: command.url,
@@ -745,7 +753,7 @@ export async function executeBrowserWorkspaceCommand(
           subaction: command.subaction,
           tab: await openBrowserWorkspaceTab(
             {
-              partition: command.partition,
+              partition: command.partition ?? AGENT_BROWSER_WORKSPACE_PARTITION,
               show: command.show ?? true,
               title: command.title,
               url: command.url,
@@ -794,7 +802,7 @@ export async function executeBrowserWorkspaceCommand(
         subaction: command.subaction,
         tab: await openBrowserWorkspaceTab(
           {
-            partition: command.partition,
+            partition: command.partition ?? AGENT_BROWSER_WORKSPACE_PARTITION,
             show: true,
             title: command.title,
             url: command.url,

@@ -441,19 +441,33 @@ export const messageHandlerTemplate = `task: Generate dialog and actions for {{a
 context:
 {{providers}}
 
-rules[11]:
+rules[21]:
 - think briefly, then respond
 - always include a <thought> field, even for direct replies
 - actions execute in listed order
 - if replying without another grounded state/action query, REPLY goes first
+- REPLY means a direct chat reply in the current conversation only; it is not an email reply, inbox workflow, or external-channel send
+- set simple=true only when the planner's text should be sent directly as the final reply without running REPLY again
+- if actions are REPLY-only and you want the REPLY action to generate the final user-facing message, set simple=false
 - use IGNORE or STOP only by themselves
 - include providers only when needed
+- use only action and provider names that appear in the listed runtime surface; never invent new action names, provider names, benchmark ids, or paraphrased tool labels
+- when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
+- when the user refers to "the uploaded file", "the document I uploaded", or a prior upload without naming it, treat that as a provider lookup request first; only ask which file after grounded document/knowledge lookup still leaves multiple plausible answers
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them inside that action's <params> block
 - if a required param is unknown, ask for clarification in text
 - for live status questions or remaining-work queries, do not answer from recent conversation alone; call the relevant action/provider to refresh state, and do not pair it with a speculative REPLY that guesses the result
 - when an action will fetch the state and produce the final grounded answer, do not add REPLY just to say "checking", "let me look", or similar filler; use the action alone and leave text empty
-- for LifeOps create requests with a clear defaultable habit or natural window, such as drinking water, stretch breaks during the day, weekday-after-lunch Invisalign checks, or brushing when waking up and before bed, call LIFE instead of asking for exact clock times unless the user explicitly asks for precise scheduling
+- when the user asks you to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy, choose the matching action instead of handling it in prose only
+- for standing or future-condition requests like "if/when X, do Y", still choose the action that records, queues, or routes that behavior on the first turn
+- if a matching action can own the task and ask the missing follow-up itself, still select that action and put the clarification in text; do not reply in prose alone
+- when the user defines a durable preference, recurring block, escalation policy, upload policy, approval-gated workflow, or multi-device reminder rule, select the owning action even if some implementation details are still missing
+	- do not wait for portal names, deck attachments, updated-id uploads, exact flight times, reservation ids, fee-risk item names, priority labels, event IDs, exact travel preferences, or the definition of "important" before selecting the owning action; let the action gather those details
+	- future portal uploads, updated-id interventions, and cancellation-fee warning policies are operational workflows, not prose acknowledgements; choose LIFEOPS_COMPUTER_USE or PUBLISH_DEVICE_INTENT first and let those actions ask the missing follow-up
+	- for LifeOps create requests with a clear defaultable habit or natural window, such as drinking water, stretch breaks during the day, weekday-after-lunch Invisalign checks, or brushing when waking up and before bed, call LIFE instead of asking for exact clock times unless the user explicitly asks for precise scheduling
+- only choose actions that directly satisfy the user's request or an explicit live-state question; do not opportunistically triage inboxes, summarize calendars, propose meetings, or call adjacent tools just because provider context makes them available
+- when the user is venting, reflecting, stating an opinion, or asking for generic advice about a domain, stay in REPLY or NONE unless they explicitly ask you to inspect state, change state, send something, schedule something, or perform a real operation
 
 control_actions:
 - STOP means the task is done and the agent should end the run without executing more actions
@@ -464,7 +478,7 @@ fields[5]{name,meaning}:
 - actions | ordered <action> entries inside <actions>
 - providers | array of provider names, or empty
 - text | next message for {{agentName}}
-- simple | true or false
+- simple | true only when text itself should be sent directly as the final reply; false when actions should run, including REPLY-driven finalization
 
 formatting:
 - wrap multi-line code in fenced code blocks
@@ -501,6 +515,8 @@ In each step, decide:
 3. Decide whether the task is complete. If so, set \`isFinish: true\`. Do not select the \`REPLY\` action; replies are handled separately after task completion.
 
 You can select **multiple providers** and at most **one action** per step.
+
+Use only action and provider names that appear in the listed runtime surface. Never invent new action names, provider names, benchmark ids, or paraphrased tool labels.
 
 If the task is fully resolved and no further steps are needed, mark the step as \`isFinish: true\`.
 
@@ -602,12 +618,14 @@ recent action results:
 latest reflection task status:
 {{taskCompletionStatus}}
 
-rules[10]:
+rules[11]:
 - think briefly, then continue the task from the latest action results
 - actions execute in listed order
 - if replying, REPLY goes first
 - use IGNORE or STOP only by themselves
 - include providers only when needed
+- when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
+- when the user refers to "the uploaded file", "the document I uploaded", or a prior upload without naming it, treat that as a provider lookup request first; only ask which file after grounded document/knowledge lookup still leaves multiple plausible answers
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them under params keyed by action name
 - if a required param is unknown, ask for clarification in text
@@ -666,8 +684,6 @@ export const POST_CREATION_TEMPLATE = postCreationTemplate;
 
 export const reflectionEvaluatorTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
 
-{{providers}}
-
 # Examples:
 {{evaluationExamples}}
 
@@ -701,6 +717,7 @@ Message Sender: {{senderName}} (ID: {{senderId}})
   - The sourceEntityId is the UUID of the entity initiating the interaction.
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
+  - Use exact UUIDs from the entities-in-room list only. Never invent placeholders, names, handles, or email addresses in sourceEntityId or targetEntityId.
 4. It is normal to return no facts when nothing durable was learned.
 5. Always decide whether the user's task or request is actually complete right now.
   - Set \`task_completed: true\` only if the user no longer needs additional action or follow-up from you in this turn.

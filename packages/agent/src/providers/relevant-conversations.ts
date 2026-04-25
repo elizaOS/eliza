@@ -10,6 +10,10 @@ import type {
 import { logger, ModelType } from "@elizaos/core";
 import { getValidationKeywordTerms } from "@elizaos/shared/validation-keywords";
 import {
+  extractConversationMetadataFromRoom,
+  isAutomationConversationMetadata,
+} from "../api/conversation-metadata.js";
+import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
   roomSourceTag,
@@ -42,6 +46,15 @@ export const relevantConversationsProvider: Provider = {
     }
 
     try {
+      const currentRoom = await runtime.getRoom(message.roomId);
+      if (
+        isAutomationConversationMetadata(
+          extractConversationMetadataFromRoom(currentRoom),
+        )
+      ) {
+        return { text: "", values: {}, data: {} };
+      }
+
       // Embed the current message for semantic search
       const embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
         text,

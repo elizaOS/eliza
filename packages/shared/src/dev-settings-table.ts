@@ -57,7 +57,9 @@ export function wrapToWidth(text: string, width: number): string[] {
     if (breakAt <= 0) breakAt = width;
     const chunk = remaining.slice(0, breakAt).trimEnd();
     lines.push(chunk.length > 0 ? chunk : remaining.slice(0, width));
-    remaining = remaining.slice(breakAt === width ? width : breakAt).trimStart();
+    remaining = remaining
+      .slice(breakAt === width ? width : breakAt)
+      .trimStart();
   }
   return lines;
 }
@@ -113,9 +115,7 @@ function boxRow(line: string, outer: number): string {
   const inner = outer - 2;
   const maxMid = Math.max(0, inner - 4);
   const vis =
-    line.length > maxMid
-      ? `${line.slice(0, Math.max(0, maxMid - 1))}…`
-      : line;
+    line.length > maxMid ? `${line.slice(0, Math.max(0, maxMid - 1))}…` : line;
   const pad = maxMid - vis.length;
   return `│ ${vis}${" ".repeat(pad)} │`;
 }

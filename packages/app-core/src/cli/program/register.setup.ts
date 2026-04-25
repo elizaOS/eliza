@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { resolveConfigPath } from "@elizaos/agent/config/paths";
 import type { Command } from "commander";
 import JSON5 from "json5";
-import { resolveConfigPath } from "@elizaos/agent/config/paths";
 import { formatDocsLink } from "../../terminal/links";
 import { theme } from "../../terminal/theme";
 import { runCommandWithRuntime } from "../cli-utils";

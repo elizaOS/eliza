@@ -23,7 +23,7 @@ console = Console()
 SANDBOX_DIR = Path(__file__).resolve().parent.parent
 SCENARIOS_DIR = SANDBOX_DIR / "scenarios"
 FIXTURES_DIR = SANDBOX_DIR / "fixtures"
-CLAWBENCH_MODEL = os.getenv("CLAWBENCH_MODEL", "anthropic/claude-sonnet-4-5-20250929")
+CLAWBENCH_MODEL = os.getenv("CLAWBENCH_MODEL", "anthropic/claude-sonnet-4.6")
 
 
 def _load_scenario(name_or_path: str) -> dict:

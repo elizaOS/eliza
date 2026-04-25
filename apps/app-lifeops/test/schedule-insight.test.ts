@@ -1,0 +1,354 @@
+import type { LifeOpsActivitySignal } from "@elizaos/shared/contracts/lifeops";
+import { describe, expect, it } from "vitest";
+import {
+  __internal,
+  inferLifeOpsScheduleInsight,
+} from "../src/lifeops/schedule-insight.js";
+
+describe("lifeops schedule insight inference", () => {
+  it("detects a completed overnight sleep interval from activity gaps", () => {
+    const timezone = "UTC";
+    const nowMs = Date.parse("2026-04-19T13:00:00.000Z");
+    const insight = inferLifeOpsScheduleInsight({
+      nowMs,
+      timezone,
+      windows: [
+        {
+          startMs: Date.parse("2026-04-18T18:00:00.000Z"),
+          endMs: Date.parse("2026-04-18T23:30:00.000Z"),
+          source: "app",
+        },
+        {
+          startMs: Date.parse("2026-04-19T07:30:00.000Z"),
+          endMs: Date.parse("2026-04-19T09:00:00.000Z"),
+          source: "app",
+        },
+        {
+          startMs: Date.parse("2026-04-19T09:40:00.000Z"),
+          endMs: Date.parse("2026-04-19T12:15:00.000Z"),
+          source: "website",
+        },
+      ],
+      signals: [
+        {
+          id: "signal-1",
+          agentId: "agent-1",
+          source: "mobile_device",
+          platform: "mobile_app",
+          state: "locked",
+          observedAt: "2026-04-18T23:35:00.000Z",
+          idleState: "locked",
+          idleTimeSeconds: 0,
+          onBattery: false,
+          health: null,
+          metadata: {},
+          createdAt: "2026-04-18T23:35:00.000Z",
+        } satisfies LifeOpsActivitySignal,
+      ],
+    });
+
+    expect(insight.sleepStatus).toBe("slept");
+    expect(insight.circadianState).not.toBe("sleeping");
+    expect(insight.circadianState).not.toBe("napping");
+    expect(insight.lastSleepDurationMinutes).toBeGreaterThanOrEqual(450);
+    expect(insight.wakeAt).toBe("2026-04-19T07:30:00.000Z");
+    expect(insight.relativeTime.minutesSinceWake).toBe(330);
+    expect(insight.regularity.regularityClass).toBe("insufficient_data");
+    expect(insight.relativeTime.bedtimeTargetAt).toBe(
+      "2026-04-19T23:30:00.000Z",
+    );
+    expect(insight.relativeTime.minutesUntilBedtimeTarget).toBe(630);
+    expect(insight.relativeTime.minutesSinceBedtimeTarget).toBeNull();
+    expect(insight.nextMealLabel).toBe("lunch");
+  });
+
+  it("prefers HealthKit current sleep when it is available", () => {
+    const timezone = "UTC";
+    const nowMs = Date.parse("2026-04-19T05:00:00.000Z");
+    const insight = inferLifeOpsScheduleInsight({
+      nowMs,
+      timezone,
+      windows: [
+        {
+          startMs: Date.parse("2026-04-18T18:00:00.000Z"),
+          endMs: Date.parse("2026-04-18T23:00:00.000Z"),
+          source: "app",
+        },
+      ],
+      signals: [
+        {
+          id: "health-1",
+          agentId: "agent-1",
+          source: "mobile_health",
+          platform: "mobile_app",
+          state: "sleeping",
+          observedAt: "2026-04-19T04:30:00.000Z",
+          idleState: "locked",
+          idleTimeSeconds: null,
+          onBattery: false,
+          health: {
+            source: "healthkit",
+            permissions: { sleep: true, biometrics: false },
+            sleep: {
+              available: true,
+              isSleeping: true,
+              asleepAt: "2026-04-19T02:15:00.000Z",
+              awakeAt: null,
+              durationMinutes: 135,
+              stage: null,
+            },
+            biometrics: {
+              sampleAt: null,
+              heartRateBpm: null,
+              restingHeartRateBpm: null,
+              heartRateVariabilityMs: null,
+              respiratoryRate: null,
+              bloodOxygenPercent: null,
+            },
+            warnings: [],
+          },
+          metadata: {},
+          createdAt: "2026-04-19T04:30:00.000Z",
+        } satisfies LifeOpsActivitySignal,
+      ],
+    });
+
+    expect(insight.sleepStatus).toBe("sleeping_now");
+    expect(insight.circadianState).toBe("sleeping");
+    expect(insight.currentSleepStartedAt).toBe("2026-04-19T02:15:00.000Z");
+    expect(insight.sleepConfidence).toBeGreaterThanOrEqual(0.9);
+    expect(insight.relativeTime.bedtimeTargetAt).toBe(
+      "2026-04-19T02:15:00.000Z",
+    );
+    expect(insight.relativeTime.minutesUntilBedtimeTarget).toBeNull();
+    expect(insight.relativeTime.minutesSinceBedtimeTarget).toBe(165);
+  });
+
+  it("reports the first post-wake window as firstActiveAt, not a pre-sleep window", () => {
+    const timezone = "UTC";
+    const nowMs = Date.parse("2026-04-19T13:00:00.000Z");
+    // An activate event late last night is followed by another activate 9
+    // hours later — before the fix, `window.endMs > wakeAtMs` made the
+    // lingering pre-sleep window spuriously count as "first active after
+    // wake". After the fix we either skip it or anchor on wake itself.
+    const insight = inferLifeOpsScheduleInsight({
+      nowMs,
+      timezone,
+      windows: [
+        {
+          startMs: Date.parse("2026-04-18T22:45:00.000Z"),
+          endMs: Date.parse("2026-04-19T07:40:00.000Z"),
+          source: "app",
+        },
+        {
+          startMs: Date.parse("2026-04-19T07:45:00.000Z"),
+          endMs: Date.parse("2026-04-19T08:30:00.000Z"),
+          source: "app",
+        },
+      ],
+      signals: [
+        {
+          id: "health-overnight",
+          agentId: "agent-1",
+          source: "mobile_health",
+          platform: "mobile_app",
+          state: "idle",
+          observedAt: "2026-04-19T07:35:00.000Z",
+          idleState: "locked",
+          idleTimeSeconds: null,
+          onBattery: false,
+          health: {
+            source: "healthkit",
+            permissions: { sleep: true, biometrics: false },
+            sleep: {
+              available: true,
+              isSleeping: false,
+              asleepAt: "2026-04-18T23:15:00.000Z",
+              awakeAt: "2026-04-19T07:30:00.000Z",
+              durationMinutes: 495,
+              stage: null,
+            },
+            biometrics: {
+              sampleAt: null,
+              heartRateBpm: null,
+              restingHeartRateBpm: null,
+              heartRateVariabilityMs: null,
+              respiratoryRate: null,
+              bloodOxygenPercent: null,
+            },
+            warnings: [],
+          },
+          metadata: {},
+          createdAt: "2026-04-19T07:35:00.000Z",
+        } satisfies LifeOpsActivitySignal,
+      ],
+    });
+
+    expect(insight.wakeAt).toBe("2026-04-19T07:30:00.000Z");
+    const firstActive = insight.firstActiveAt;
+    expect(firstActive).not.toBeNull();
+    expect(Date.parse(firstActive as string)).toBeGreaterThanOrEqual(
+      Date.parse("2026-04-19T07:30:00.000Z"),
+    );
+  });
+});
+
+describe("lifeops schedule insight activity-event windows", () => {
+  it("caps a lingering activate with no follow-up so sleep is not hidden", () => {
+    const { windowsFromActivityEvents, ACTIVITY_EVENT_MAX_WINDOW_MS } =
+      __internal;
+    const startMs = Date.parse("2026-04-18T22:30:00.000Z");
+    const nowMs = Date.parse("2026-04-19T08:00:00.000Z");
+    const windows = windowsFromActivityEvents(
+      [
+        {
+          id: "event-1",
+          agentId: "agent-1",
+          observedAt: new Date(startMs).toISOString(),
+          eventKind: "activate",
+          bundleId: "com.example.editor",
+          appName: "Editor",
+          windowTitle: null,
+        },
+      ],
+      nowMs,
+    );
+
+    expect(windows).toHaveLength(1);
+    const [window] = windows;
+    if (!window) {
+      throw new Error("Expected one activity window");
+    }
+    expect(window.endMs).toBe(startMs + ACTIVITY_EVENT_MAX_WINDOW_MS);
+    expect(window.endMs).toBeLessThan(Date.parse("2026-04-18T23:30:00.000Z"));
+  });
+
+  it("honours a real follow-up event when it is earlier than the cap", () => {
+    const { windowsFromActivityEvents } = __internal;
+    const startMs = Date.parse("2026-04-19T10:00:00.000Z");
+    const followUpMs = Date.parse("2026-04-19T10:05:00.000Z");
+    const windows = windowsFromActivityEvents(
+      [
+        {
+          id: "event-1",
+          agentId: "agent-1",
+          observedAt: new Date(startMs).toISOString(),
+          eventKind: "activate",
+          bundleId: "com.example.editor",
+          appName: "Editor",
+          windowTitle: null,
+        },
+        {
+          id: "event-2",
+          agentId: "agent-1",
+          observedAt: new Date(followUpMs).toISOString(),
+          eventKind: "deactivate",
+          bundleId: "com.example.editor",
+          appName: "Editor",
+          windowTitle: null,
+          createdAt: new Date(followUpMs).toISOString(),
+        },
+      ],
+      followUpMs + 60 * 60 * 1000,
+    );
+
+    expect(windows[0]?.endMs).toBe(followUpMs);
+  });
+
+  it("does not count OS login surfaces as active windows", () => {
+    const { windowsFromActivityEvents } = __internal;
+    const startMs = Date.parse("2026-04-19T10:00:00.000Z");
+    const lockMs = Date.parse("2026-04-19T10:10:00.000Z");
+    const resumeMs = Date.parse("2026-04-19T10:40:00.000Z");
+    const windows = windowsFromActivityEvents(
+      [
+        {
+          id: "event-1",
+          agentId: "agent-1",
+          observedAt: new Date(startMs).toISOString(),
+          eventKind: "activate",
+          bundleId: "com.example.editor",
+          appName: "Editor",
+          windowTitle: null,
+        },
+        {
+          id: "event-2",
+          agentId: "agent-1",
+          observedAt: new Date(lockMs).toISOString(),
+          eventKind: "activate",
+          bundleId: "com.apple.loginwindow",
+          appName: "loginwindow",
+          windowTitle: "Login Window",
+        },
+        {
+          id: "event-3",
+          agentId: "agent-1",
+          observedAt: new Date(resumeMs).toISOString(),
+          eventKind: "activate",
+          bundleId: "com.example.editor",
+          appName: "Editor",
+          windowTitle: null,
+        },
+      ],
+      resumeMs + 5 * 60 * 1000,
+    );
+
+    expect(windows).toHaveLength(2);
+    expect(windows[0]?.endMs).toBe(lockMs);
+    expect(windows[1]?.startMs).toBe(resumeMs);
+  });
+});
+
+describe("lifeops schedule insight firstActiveAfterWake", () => {
+  const { firstActiveAfterWake } = __internal;
+
+  it("returns the first window starting at or after the wake time", () => {
+    const wakeAt = Date.parse("2026-04-19T07:30:00.000Z");
+    const result = firstActiveAfterWake(
+      [
+        {
+          startMs: Date.parse("2026-04-18T22:00:00.000Z"),
+          endMs: Date.parse("2026-04-19T07:45:00.000Z"),
+          source: "app",
+        },
+        {
+          startMs: Date.parse("2026-04-19T07:40:00.000Z"),
+          endMs: Date.parse("2026-04-19T09:00:00.000Z"),
+          source: "app",
+        },
+      ],
+      wakeAt,
+    );
+    expect(result).toBe(Date.parse("2026-04-19T07:40:00.000Z"));
+  });
+
+  it("anchors on wake time when only spanning pre-sleep windows exist", () => {
+    const wakeAt = Date.parse("2026-04-19T07:30:00.000Z");
+    const result = firstActiveAfterWake(
+      [
+        {
+          startMs: Date.parse("2026-04-18T22:00:00.000Z"),
+          endMs: Date.parse("2026-04-19T07:45:00.000Z"),
+          source: "app",
+        },
+      ],
+      wakeAt,
+    );
+    expect(result).toBe(wakeAt);
+  });
+
+  it("returns null when nothing overlaps or follows the wake time", () => {
+    const wakeAt = Date.parse("2026-04-19T07:30:00.000Z");
+    const result = firstActiveAfterWake(
+      [
+        {
+          startMs: Date.parse("2026-04-18T22:00:00.000Z"),
+          endMs: Date.parse("2026-04-19T00:30:00.000Z"),
+          source: "app",
+        },
+      ],
+      wakeAt,
+    );
+    expect(result).toBeNull();
+  });
+});

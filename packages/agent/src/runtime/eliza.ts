@@ -34,6 +34,12 @@ export {
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.js";
+
+import {
+  applyAdvancedCapabilitySettings,
+  resolveAdvancedCapabilitiesEnabled,
+} from "./advanced-capabilities-config.js";
+
 export {
   CUSTOM_PLUGINS_DIRNAME,
   EJECTED_PLUGINS_DIRNAME,
@@ -77,6 +83,7 @@ import {
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginAnthropic from "@elizaos/plugin-anthropic";
+import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge/plugin";
 import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
@@ -125,6 +132,7 @@ import {
 import {
   ensureAgentWorkspace,
   resolveDefaultAgentWorkspaceDir,
+  shouldBootstrapWorkspaceInitFiles,
 } from "../providers/workspace.js";
 import { SandboxAuditLog } from "../security/audit-log.js";
 import {
@@ -321,6 +329,7 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
   // trust: now built-in core capability (ENABLE_TRUST)
   "@elizaos/app-lifeops": pluginAppLifeops,
   "@elizaos/app-companion": pluginAppCompanion,
+  "@elizaos/plugin-browser-bridge": pluginBrowserBridge,
   "@elizaos/plugin-discord-local": discordLocalPlugin,
   // personality: now built-in advanced capability (advancedCapabilities: true)
 });
@@ -504,13 +513,13 @@ export function configureLocalEmbeddingPlugin(
     "GROQ_SMALL_MODEL",
     currentSharedSmallModel && !isLikelyOpenAiTextModel(currentSharedSmallModel)
       ? currentSharedSmallModel
-      : "llama-3.1-8b-instant",
+      : "openai/gpt-oss-20b",
   );
   setEnvIfMissing(
     "GROQ_LARGE_MODEL",
     currentSharedLargeModel && !isLikelyOpenAiTextModel(currentSharedLargeModel)
       ? currentSharedLargeModel
-      : "qwen/qwen3-32b",
+      : "openai/gpt-oss-120b",
   );
 
   logger.info(
@@ -858,6 +867,14 @@ function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
     return svc as AutonomyServiceLike;
   }
   return null;
+}
+
+async function startAndRegisterAutonomyService(
+  runtime: AgentRuntime,
+): Promise<AutonomyServiceLike> {
+  const service = await AutonomyService.start(runtime);
+  runtime.services.set("AUTONOMY" as never, [service as never]);
+  return service as AutonomyServiceLike;
 }
 
 type TrajectoryLoggerRuntimeLike = {
@@ -1516,6 +1533,62 @@ export function applyX402ConfigToEnv(config: ElizaConfig): void {
     process.env.X402_API_KEY = x402.apiKey;
   if (x402.baseUrl && !process.env.X402_BASE_URL)
     process.env.X402_BASE_URL = x402.baseUrl;
+}
+
+/**
+ * Resolve N8N_HOST + N8N_API_KEY for @elizaos/plugin-n8n-workflow.
+ *
+ * Precedence:
+ *   1. Existing process.env values (user override) — respected as-is.
+ *   2. Eliza Cloud authenticated (cloud.apiKey present AND cloud.enabled !== false):
+ *      N8N_HOST = `${cloudBaseUrl}/api/v1/agents/${agentId}/n8n`
+ *      N8N_API_KEY = cloud.apiKey
+ *   3. Local sidecar — the sidecar lifecycle writes `config.n8n.host` and
+ *      `config.n8n.apiKey` when it reaches "ready". We pump those into
+ *      process.env here when cloud did not fire. The authoritative shape is
+ *      `N8nConfig` in types.eliza.ts.
+ *   4. Otherwise: leave unset. The plugin's init() no-ops without credentials.
+ *
+ * Called from startEliza() after applyCloudConfigToEnv so cloud settings are
+ * already reflected in process.env.
+ *
+ * @internal Exported for testing.
+ */
+export function applyN8nConfigToEnv(
+  config: ElizaConfig,
+  agentId: string,
+): void {
+  // 1. Respect existing process.env overrides.
+  if (process.env.N8N_HOST && process.env.N8N_API_KEY) return;
+
+  // Master gate — when config.n8n.enabled is false, do not pump anything.
+  if (config.n8n?.enabled === false) return;
+
+  const cloud = config.cloud;
+  const cloudAuthed = Boolean(cloud?.apiKey) && cloud?.enabled !== false;
+  if (cloudAuthed && cloud?.apiKey) {
+    const rawBase = cloud.baseUrl ?? "https://www.elizacloud.ai";
+    // Strip trailing /api/v1 (or /api/v1/) plus any trailing slashes so we can
+    // build `${siteUrl}/api/v1/agents/${agentId}/n8n` without duplication.
+    const siteUrl = rawBase.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
+    const gateway = `${siteUrl}/api/v1/agents/${agentId}/n8n`;
+    if (!process.env.N8N_HOST) process.env.N8N_HOST = gateway;
+    if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = cloud.apiKey;
+    return;
+  }
+
+  // 2. Local sidecar path — the sidecar populates `config.n8n.host` and
+  //    `config.n8n.apiKey` (authoritative N8nConfig shape) when it reaches
+  //    "ready". Surface those to process.env for the plugin.
+  const n8n = config.n8n;
+  if (n8n?.host && n8n?.apiKey) {
+    if (!process.env.N8N_HOST) process.env.N8N_HOST = n8n.host;
+    if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = n8n.apiKey;
+    return;
+  }
+
+  // 3. Fallback — leave unset. Legacy `config.env.vars` entries (N8N_HOST /
+  //    N8N_API_KEY) still flow through the generic env-var pump in startEliza.
 }
 
 function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
@@ -2418,12 +2491,17 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     agentEntry?.advancedMemory ??
     config.agents?.defaults?.advancedMemory ??
     true;
-  const settings = {
-    MEMORY_SUMMARY_MODEL_TYPE:
-      process.env.MEMORY_SUMMARY_MODEL_TYPE?.trim() || "TEXT_SMALL",
-    MEMORY_REFLECTION_MODEL_TYPE:
-      process.env.MEMORY_REFLECTION_MODEL_TYPE?.trim() || "TEXT_LARGE",
-  };
+  const advancedCapabilitiesEnabled =
+    resolveAdvancedCapabilitiesEnabled(config);
+  const settings = applyAdvancedCapabilitySettings(
+    {
+      MEMORY_SUMMARY_MODEL_TYPE:
+        process.env.MEMORY_SUMMARY_MODEL_TYPE?.trim() || "TEXT_SMALL",
+      MEMORY_REFLECTION_MODEL_TYPE:
+        process.env.MEMORY_REFLECTION_MODEL_TYPE?.trim() || "TEXT_LARGE",
+    },
+    advancedCapabilitiesEnabled,
+  );
 
   // Collect secrets from process.env (API keys the plugins need)
   const secretKeys = [
@@ -2491,6 +2569,9 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "X402_MAX_TOTAL_USD",
     "X402_ENABLED",
     "X402_DB_PATH",
+    // n8n workflow plugin (resolved by applyN8nConfigToEnv)
+    "N8N_HOST",
+    "N8N_API_KEY",
     // GitHub access for coding agent plugin
     "GITHUB_TOKEN",
     "GITHUB_OAUTH_CLIENT_ID",
@@ -2533,11 +2614,37 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     };
   });
 
+  // Capability hints — append short descriptions of features the runtime has
+  // auto-enabled so the model knows about new actions/tools without requiring
+  // the user to hand-edit the system prompt. Kept terse (one sentence per
+  // capability) to stay out of the way of the preset's voice.
+  const capabilityHints: string[] = [];
+  const n8nMasterEnabled = config.n8n?.enabled !== false;
+  const n8nExplicitlyDisabled =
+    config.plugins?.entries?.["n8n-workflow"]?.enabled === false;
+  const n8nCloudAuthed = Boolean(
+    config.cloud?.apiKey && config.cloud?.enabled !== false,
+  );
+  const n8nLocalEnabled = config.n8n?.localEnabled !== false;
+  if (
+    n8nMasterEnabled &&
+    !n8nExplicitlyDisabled &&
+    (n8nCloudAuthed || n8nLocalEnabled)
+  ) {
+    capabilityHints.push(
+      "You can create, activate, deactivate, and delete n8n workflows via natural language using the n8n workflow actions.",
+    );
+  }
+  const effectiveSystemPrompt =
+    capabilityHints.length > 0
+      ? `${systemPrompt}\n\n${capabilityHints.join("\n")}`
+      : systemPrompt;
+
   return mergeCharacterDefaults({
     name,
     ...(agentEntry?.username ? { username: agentEntry.username } : {}),
     bio,
-    system: systemPrompt,
+    system: effectiveSystemPrompt,
     ...(topics ? { topics } : {}),
     ...(style ? { style } : {}),
     ...(adjectives ? { adjectives } : {}),
@@ -2909,7 +3016,7 @@ export async function startEliza(
 
   // 2d-iii. OG tracking code initialization
   try {
-    const { initializeOGCode } = await import("../api/og-tracker.js");
+    const { initializeOGCode } = await import("@elizaos/app-elizamaker");
     initializeOGCode();
   } catch {
     // Silent — OG tracking is non-critical
@@ -2989,7 +3096,10 @@ export async function startEliza(
   // 4. Ensure workspace exists with required files
   const workspaceDir =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
-  await ensureAgentWorkspace({ dir: workspaceDir, ensureInitFiles: true });
+  await ensureAgentWorkspace({
+    dir: workspaceDir,
+    ensureInitFiles: shouldBootstrapWorkspaceInitFiles(workspaceDir),
+  });
 
   // 4b. Ensure custom plugins directory exists for drop-in plugins
   await fs.mkdir(path.join(resolveStateDir(), CUSTOM_RUNTIME_PLUGINS_DIRNAME), {
@@ -3001,6 +3111,13 @@ export async function startEliza(
 
   // 5a. If cloud is configured and no local GitHub token, try fetching from cloud
   await autoFetchCloudGithubToken(config.cloud?.agentId?.trim() || agentId);
+
+  // 5b. Pump N8N_HOST + N8N_API_KEY into process.env for
+  //     @elizaos/plugin-n8n-workflow. Must run AFTER applyCloudConfigToEnv
+  //     (2b above) and AFTER agentId is derived — the cloud gateway URL
+  //     embeds the agent id. Prefer the persisted cloud-agent id when set;
+  //     fall back to the derived local agent slug.
+  applyN8nConfigToEnv(config, config.cloud?.agentId?.trim() || agentId);
 
   const elizaPlugin = createElizaPlugin({
     workspaceDir,
@@ -3221,7 +3338,7 @@ export async function startEliza(
   //
   // We keep:
   //   - agent_skills_overview  (lightweight stats, ~50 tokens)
-  //   - all actions (GET_SKILL_GUIDANCE, SEARCH_SKILLS, INSTALL_SKILL, …)
+  //   - all actions (USE_SKILL, SEARCH_SKILLS, INSTALL_SKILL, …)
   //   - the AGENT_SKILLS_SERVICE itself
   {
     const UPSTREAM_SKILL_PROVIDERS_TO_STRIP = new Set([
@@ -3650,7 +3767,7 @@ export async function startEliza(
 
     if (autonomyEnabled && !runtime.getService("AUTONOMY")) {
       try {
-        await AutonomyService.start(runtime);
+        await startAndRegisterAutonomyService(runtime);
         logger.info("[eliza] AutonomyService started for trigger dispatch");
       } catch (err) {
         logger.warn(
@@ -3785,9 +3902,38 @@ export async function startEliza(
         logger.info("[eliza] Hot-reload: Restarting runtime...");
         try {
           // Stop the old runtime to release resources (DB connections, timers, etc.)
-
+          //
+          // WHY the 2s timeout: some services — notably PTYService —
+          // shut down gracefully by awaiting each active session with a
+          // per-session timeout (up to ~5s). runtime.stop() awaits every
+          // service.stop() sequentially, so a single idle PTY session
+          // turns a provider switch into a multi-second block. During
+          // that window server.ts's providerSwitchInProgress flag +
+          // agentState === "restarting" guard reject further clicks,
+          // which is why flipping through providers rapidly feels stuck.
+          //
+          // Cap the shutdown window at 2s; if it doesn't finish, log and
+          // bring the new runtime up anyway. Services that miss the
+          // window get GC'd when the process unwinds. This is fine for a
+          // user-initiated restart — the user asked for a new runtime;
+          // in-flight work on the old one is already obsolete.
           try {
-            await shutdownRuntime(runtime, "hot-reload cleanup");
+            const SHUTDOWN_TIMEOUT_MS = 2000;
+            let shutdownTimedOut = false;
+            await Promise.race([
+              shutdownRuntime(runtime, "hot-reload cleanup"),
+              new Promise<void>((resolve) =>
+                setTimeout(() => {
+                  shutdownTimedOut = true;
+                  resolve();
+                }, SHUTDOWN_TIMEOUT_MS),
+              ),
+            ]);
+            if (shutdownTimedOut) {
+              logger.warn(
+                `[eliza] Hot-reload: old runtime shutdown exceeded ${SHUTDOWN_TIMEOUT_MS}ms; proceeding with new runtime`,
+              );
+            }
           } catch (stopErr) {
             logger.warn(
               `[eliza] Hot-reload: old runtime stop failed: ${formatError(stopErr)}`,
@@ -3807,6 +3953,10 @@ export async function startEliza(
           applyCloudConfigToEnv(freshConfig);
           applyX402ConfigToEnv(freshConfig);
           applyDatabaseConfigToEnv(freshConfig);
+          applyN8nConfigToEnv(
+            freshConfig,
+            freshConfig.cloud?.agentId?.trim() || agentId,
+          );
           await autoFetchCloudGithubToken(
             freshConfig.cloud?.agentId?.trim() || agentId,
           );
@@ -3973,7 +4123,7 @@ export async function startEliza(
 
           if (hotReloadAutonomyEnabled && !newRuntime.getService("AUTONOMY")) {
             try {
-              await AutonomyService.start(newRuntime);
+              await startAndRegisterAutonomyService(newRuntime);
             } catch (err) {
               logger.warn(
                 `[eliza] AutonomyService failed to start after hot-reload: ${formatError(err)}`,

@@ -1,5 +1,6 @@
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -11,6 +12,7 @@ import {
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
+  type IMessageService,
   type Media,
   type Memory,
   type Room,
@@ -20,13 +22,7 @@ import {
 } from "@elizaos/core";
 import { signalCheck } from "./rpc";
 
-type MessageService = {
-  handleMessage: (
-    runtime: IAgentRuntime,
-    message: Memory,
-    callback: HandlerCallback
-  ) => Promise<void>;
-};
+type MessageService = Pick<IMessageService, "handleMessage">;
 
 const getMessageService = (runtime: IAgentRuntime): MessageService | null => {
   if ("messageService" in runtime) {
@@ -53,15 +49,32 @@ import {
   type SignalMessageSendOptions,
   type SignalQuote,
   type SignalReactionInfo,
+  type SignalRecentMessage,
   type SignalSettings,
 } from "./types";
 
 const execFileAsync = promisify(execFile);
-const DEFAULT_SIGNAL_HTTP_HOST = "127.0.0.1";
-const DEFAULT_SIGNAL_HTTP_PORT = 8080;
+export const DEFAULT_SIGNAL_HTTP_HOST = "127.0.0.1";
+export const DEFAULT_SIGNAL_HTTP_PORT = 8080;
 const DEFAULT_SIGNAL_DAEMON_STARTUP_TIMEOUT_MS = 30_000;
-const DEFAULT_SIGNAL_CLI_PATH = "signal-cli";
+export const DEFAULT_SIGNAL_CLI_PATH = "signal-cli";
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
+const COMMON_SIGNAL_CLI_PATHS = ["/opt/homebrew/bin/signal-cli", "/usr/local/bin/signal-cli"];
+
+/**
+ * signal-cli uses `$HOME/.local/share/signal-cli` as its default data
+ * directory on every platform (the XDG path is hardcoded in signal-cli —
+ * it does not honour `Library/Application Support` on macOS). Matching
+ * that default here means a locally-installed signal-cli + a user who
+ * ran `signal-cli -a +1555… link` once will "just work" — no config
+ * needed beyond `SIGNAL_ACCOUNT_NUMBER`.
+ *
+ * Override with `SIGNAL_AUTH_DIR` to point at a custom install.
+ */
+export function defaultSignalAuthDir(): string {
+  const home = os.homedir();
+  return path.join(home, ".local", "share", "signal-cli");
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -86,6 +99,16 @@ async function resolveSignalCliPath(cliPath: string): Promise<string | null> {
     const resolved = stdout.trim();
     return resolved.length > 0 ? resolved : null;
   } catch {
+    if (trimmed !== DEFAULT_SIGNAL_CLI_PATH) {
+      return null;
+    }
+
+    for (const candidate of COMMON_SIGNAL_CLI_PATHS) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
     return null;
   }
 }
@@ -201,13 +224,18 @@ class SignalApiClient {
     targetAuthor: string,
     remove = false
   ): Promise<void> {
-    await this.request("POST", `/v1/reactions/${this.accountNumber}`, {
-      recipient,
-      reaction: emoji,
-      target_author: targetAuthor,
-      timestamp: targetTimestamp,
-      remove,
-    }, true);
+    await this.request(
+      "POST",
+      `/v1/reactions/${this.accountNumber}`,
+      {
+        recipient,
+        reaction: emoji,
+        target_author: targetAuthor,
+        timestamp: targetTimestamp,
+        remove,
+      },
+      true
+    );
   }
 
   async getContacts(): Promise<SignalContact[]> {
@@ -234,17 +262,27 @@ class SignalApiClient {
   }
 
   async sendTyping(recipient: string, stop = false): Promise<void> {
-    await this.request("PUT", `/v1/typing-indicator/${this.accountNumber}`, {
-      recipient,
-      stop,
-    }, true);
+    await this.request(
+      "PUT",
+      `/v1/typing-indicator/${this.accountNumber}`,
+      {
+        recipient,
+        stop,
+      },
+      true
+    );
   }
 
   async setProfile(name: string, about?: string): Promise<void> {
-    await this.request("PUT", `/v1/profiles/${this.accountNumber}`, {
-      name,
-      about: about || "",
-    }, true);
+    await this.request(
+      "PUT",
+      `/v1/profiles/${this.accountNumber}`,
+      {
+        name,
+        about: about || "",
+      },
+      true
+    );
   }
 
   async getIdentities(): Promise<
@@ -260,9 +298,14 @@ class SignalApiClient {
     number: string,
     trustLevel: "TRUSTED_VERIFIED" | "TRUSTED_UNVERIFIED" | "UNTRUSTED"
   ): Promise<void> {
-    await this.request("PUT", `/v1/identities/${this.accountNumber}/trust/${number}`, {
-      trust_level: trustLevel,
-    }, true);
+    await this.request(
+      "PUT",
+      `/v1/identities/${this.accountNumber}/trust/${number}`,
+      {
+        trust_level: trustLevel,
+      },
+      true
+    );
   }
 }
 
@@ -319,16 +362,19 @@ export class SignalService extends Service implements ISignalService {
 
     const accountNumber = runtime.getSetting("SIGNAL_ACCOUNT_NUMBER") as string;
     const httpUrl = runtime.getSetting("SIGNAL_HTTP_URL") as string;
-    const authDir = runtime.getSetting("SIGNAL_AUTH_DIR") as string | undefined;
+    const rawAuthDir = runtime.getSetting("SIGNAL_AUTH_DIR") as string | undefined;
+    const authDir =
+      typeof rawAuthDir === "string" && rawAuthDir.trim().length > 0
+        ? rawAuthDir.trim()
+        : defaultSignalAuthDir();
     const configuredCliPath =
-      (runtime.getSetting("SIGNAL_CLI_PATH") as string | undefined) ||
-      DEFAULT_SIGNAL_CLI_PATH;
+      (runtime.getSetting("SIGNAL_CLI_PATH") as string | undefined) || DEFAULT_SIGNAL_CLI_PATH;
     const httpHost =
       (runtime.getSetting("SIGNAL_HTTP_HOST") as string | undefined)?.trim() ||
       DEFAULT_SIGNAL_HTTP_HOST;
     const parsedHttpPort = Number.parseInt(
       String(runtime.getSetting("SIGNAL_HTTP_PORT") ?? ""),
-      10,
+      10
     );
     const httpPort =
       Number.isFinite(parsedHttpPort) && parsedHttpPort > 0
@@ -336,7 +382,7 @@ export class SignalService extends Service implements ISignalService {
         : DEFAULT_SIGNAL_HTTP_PORT;
     const parsedStartupTimeout = Number.parseInt(
       String(runtime.getSetting("SIGNAL_STARTUP_TIMEOUT_MS") ?? ""),
-      10,
+      10
     );
     const startupTimeoutMs =
       Number.isFinite(parsedStartupTimeout) && parsedStartupTimeout > 0
@@ -362,26 +408,27 @@ export class SignalService extends Service implements ISignalService {
 
     service.accountNumber = normalizedNumber;
 
-    const baseUrl = httpUrl?.trim()
-      ? normalizeBaseUrl(httpUrl)
-      : `http://${httpHost}:${httpPort}`;
+    const baseUrl = httpUrl?.trim() ? normalizeBaseUrl(httpUrl) : `http://${httpHost}:${httpPort}`;
 
     if (!httpUrl) {
-      if (!authDir || authDir.trim().length === 0) {
+      // authDir is now guaranteed non-empty (falls back to defaultSignalAuthDir()).
+      // If the directory does not exist, signal-cli would fail on startup with
+      // a confusing "No linked devices" error — pre-empt that with a clearer
+      // warning that points at the user's next action.
+      if (!fs.existsSync(authDir)) {
         runtime.logger.warn(
-          { src: "plugin:signal", agentId: runtime.agentId },
-          "SIGNAL_AUTH_DIR not provided, Signal service will not be able to communicate"
+          {
+            src: "plugin:signal",
+            agentId: runtime.agentId,
+            authDir,
+          },
+          "Signal auth directory does not exist yet — run `signal-cli -a <number> link` (or set SIGNAL_AUTH_DIR to a pre-existing install) before starting the plugin"
         );
         return service;
       }
 
       try {
-        await service.ensureDaemonRunning(
-          configuredCliPath,
-          authDir.trim(),
-          baseUrl,
-          startupTimeoutMs,
-        );
+        await service.ensureDaemonRunning(configuredCliPath, authDir, baseUrl, startupTimeoutMs);
       } catch (error) {
         runtime.logger.error(
           {
@@ -415,10 +462,7 @@ export class SignalService extends Service implements ISignalService {
     return service;
   }
 
-  static registerSendHandlers(
-    runtime: IAgentRuntime,
-    service: SignalService
-  ): void {
+  static registerSendHandlers(runtime: IAgentRuntime, service: SignalService): void {
     runtime.registerSendHandler("signal", async (_runtime, target, content) => {
       const text = typeof content.text === "string" ? content.text.trim() : "";
       if (!text) {
@@ -515,7 +559,7 @@ export class SignalService extends Service implements ISignalService {
     cliPath: string,
     authDir: string,
     baseUrl: string,
-    startupTimeoutMs: number,
+    startupTimeoutMs: number
   ): Promise<void> {
     const current = await signalCheck(baseUrl, 1_500);
     if (current.ok) {
@@ -583,9 +627,7 @@ export class SignalService extends Service implements ISignalService {
     const startedAt = Date.now();
     while (Date.now() - startedAt < startupTimeoutMs) {
       if (child.exitCode !== null) {
-        throw new Error(
-          `signal-cli daemon exited before becoming ready (code ${child.exitCode})`
-        );
+        throw new Error(`signal-cli daemon exited before becoming ready (code ${child.exitCode})`);
       }
 
       const ready = await signalCheck(baseUrl, 1_500);
@@ -800,7 +842,11 @@ export class SignalService extends Service implements ISignalService {
 
     const messageService = getMessageService(this.runtime);
     if (messageService) {
-      await messageService.handleMessage(this.runtime, memory, callback);
+      await messageService.handleMessage(this.runtime, memory, callback, {
+        onBeforeActionExecution: async () => {
+          await this.sendTypingBeforeActions(sender, groupId);
+        },
+      });
     }
   }
 
@@ -894,9 +940,7 @@ export class SignalService extends Service implements ISignalService {
 
     // signal-cli may identify senders by UUID instead of phone number.
     // Accept both UUID and E.164 formats.
-    const normalizedRecipient = isValidUuid(recipient)
-      ? recipient
-      : normalizeE164(recipient);
+    const normalizedRecipient = isValidUuid(recipient) ? recipient : normalizeE164(recipient);
     if (!normalizedRecipient) {
       throw new Error(`Invalid recipient number: ${recipient}`);
     }
@@ -994,6 +1038,72 @@ export class SignalService extends Service implements ISignalService {
     return groups;
   }
 
+  async getRecentMessages(limit: number = 20): Promise<SignalRecentMessage[]> {
+    if (
+      typeof this.runtime.getRoomsForParticipant !== "function" ||
+      typeof this.runtime.getMemoriesByRoomIds !== "function"
+    ) {
+      return [];
+    }
+
+    const requestedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 100)) : 20;
+    const participantRoomIds = await this.runtime.getRoomsForParticipant(this.runtime.agentId);
+
+    const signalRooms: Room[] = [];
+    for (const roomId of participantRoomIds) {
+      const room = await this.runtime.getRoom(roomId);
+      if (room?.source === "signal") {
+        signalRooms.push(room);
+      }
+    }
+
+    if (signalRooms.length === 0) {
+      return [];
+    }
+
+    const roomIds = signalRooms.map((room) => room.id);
+    const roomsById = new Map(signalRooms.map((room) => [room.id, room]));
+    const memories = await this.runtime.getMemoriesByRoomIds({
+      tableName: "messages",
+      roomIds,
+      limit: requestedLimit * 4,
+    });
+
+    return memories
+      .filter((memory) => memory.content?.source === "signal")
+      .filter(
+        (memory) =>
+          typeof memory.content?.text === "string" && memory.content.text.trim().length > 0
+      )
+      .sort((left, right) => Number(right.createdAt ?? 0) - Number(left.createdAt ?? 0))
+      .slice(0, requestedLimit)
+      .map((memory) => {
+        const room = roomsById.get(memory.roomId);
+        const isGroup =
+          room?.type === ChannelType.GROUP ||
+          Boolean((room?.metadata as Record<string, unknown> | undefined)?.isGroup);
+        const text = String(memory.content.text ?? "").trim();
+        const speakerName =
+          memory.entityId === this.runtime.agentId
+            ? this.character?.name || "Agent"
+            : typeof memory.content.name === "string" && memory.content.name.trim().length > 0
+              ? memory.content.name.trim()
+              : room?.name || room?.channelId || "Unknown";
+
+        return {
+          id: String(memory.id),
+          roomId: String(memory.roomId),
+          channelId: String(room?.channelId ?? ""),
+          roomName: room?.name || room?.channelId || "Signal",
+          speakerName,
+          text,
+          createdAt: Number(memory.createdAt ?? Date.now()),
+          isFromAgent: memory.entityId === this.runtime.agentId,
+          isGroup,
+        } satisfies SignalRecentMessage;
+      });
+  }
+
   async getGroup(groupId: string): Promise<SignalGroup | null> {
     if (!this.client) {
       throw new Error("Signal client not initialized");
@@ -1010,6 +1120,16 @@ export class SignalService extends Service implements ISignalService {
   async sendTypingIndicator(recipient: string): Promise<void> {
     if (!this.client) return;
     await this.client.sendTyping(recipient);
+  }
+
+  /**
+   * Typing after planning when the pipeline will run actions (not a simple reply).
+   * Uses the same addressing scheme as send (E.164 / UUID for DM, `group.{id}` for groups).
+   */
+  async sendTypingBeforeActions(sender: string, groupId?: string): Promise<void> {
+    if (!this.client) return;
+    const target = groupId ? `group.${groupId}` : sender;
+    await this.client.sendTyping(target);
   }
 
   async stopTypingIndicator(recipient: string): Promise<void> {

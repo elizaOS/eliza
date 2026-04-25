@@ -1,13 +1,24 @@
-
-
+import {
+  Button,
+  ConfirmDelete,
+  Input,
+  PageLayout,
+  PagePanel,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  SkillSidebarItem,
+  StatusBadge,
+  Switch,
+} from "@elizaos/ui";
 import { RefreshCw } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-
 import type { SkillInfo } from "../../api";
 import { useApp } from "../../state";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { EditSkillModal, SkillsModalView } from "./skill-detail-panel";
 import { InstallModal } from "./skill-marketplace";
-import { PagePanel, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, SkillSidebarItem, Button, ConfirmDelete, Input, StatusBadge, Switch, PageLayout } from "@elizaos/ui";
 
 /* ── Main Skills View ───────────────────────────────────────────────── */
 
@@ -52,6 +63,9 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     installSkillFromMarketplace,
     uninstallMarketplaceSkill,
     installSkillFromGithubUrl,
+    enableMarketplaceSkill,
+    disableMarketplaceSkill,
+    copyMarketplaceSkillSource,
     setState,
     t,
   } = useApp();
@@ -128,10 +142,30 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
     selectedSkill?.scanStatus === "blocked";
 
   const skillsSidebar = (
-    <Sidebar
+    <AppPageSidebar
       testId="skills-sidebar"
+      collapsible
+      contentIdentity="skills"
       aria-label={t("skillsview.filterSkills", {
         defaultValue: "Skills list",
+      })}
+      collapsedRailItems={filteredSkills.map((skill) => {
+        const selected = selectedSkillId === skill.id;
+        return (
+          <SidebarContent.RailItem
+            key={skill.id}
+            aria-label={skill.name}
+            title={skill.name}
+            active={selected}
+            indicatorTone={skill.enabled ? "accent" : undefined}
+            onClick={() => {
+              setSelectedId(skill.id);
+              setState("skillCreateFormOpen", false);
+            }}
+          >
+            {skill.name.charAt(0).toUpperCase()}
+          </SidebarContent.RailItem>
+        );
       })}
     >
       <SidebarHeader
@@ -266,7 +300,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (
@@ -570,7 +604,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                         </div>
                         {skillReviewReport.findings.length > 0 && (
                           <div className="custom-scrollbar max-h-64 overflow-y-auto rounded-2xl border border-border/35 bg-card/30">
-                            {skillReviewReport.findings.map((finding, idx) => (
+                            {skillReviewReport.findings.map((finding, _idx) => (
                               <div
                                 key={`${finding.file}:${finding.line}:${finding.message}`}
                                 className={`flex items-start gap-2 px-3 py-2 text-xs-tight`}
@@ -672,6 +706,13 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
           installSkillFromMarketplace={installSkillFromMarketplace}
           uninstallMarketplaceSkill={uninstallMarketplaceSkill}
           installSkillFromGithubUrl={installSkillFromGithubUrl}
+          enableSkill={enableMarketplaceSkill}
+          disableSkill={disableMarketplaceSkill}
+          copySkillSource={copyMarketplaceSkillSource}
+          showSkillDetails={(skillId) => {
+            setSelectedId(skillId);
+            setInstallModalOpen(false);
+          }}
           setState={setState}
           onClose={() => setInstallModalOpen(false)}
         />

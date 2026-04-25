@@ -31,7 +31,9 @@ describe("validateInt", () => {
 
   it("rejects NaN and Infinity", () => {
     expect(() => validateInt(Number.NaN)).toThrow("Invalid numeric value");
-    expect(() => validateInt(Number.POSITIVE_INFINITY)).toThrow("Invalid numeric value");
+    expect(() => validateInt(Number.POSITIVE_INFINITY)).toThrow(
+      "Invalid numeric value",
+    );
     expect(() => validateInt("hello")).toThrow("Invalid numeric value");
   });
 
@@ -69,7 +71,9 @@ describe("validateText", () => {
   });
 
   it("rejects non-string", () => {
-    expect(() => validateText(42 as unknown as string)).toThrow("Text must be a string");
+    expect(() => validateText(42 as unknown as string)).toThrow(
+      "Text must be a string",
+    );
   });
 });
 
@@ -84,7 +88,9 @@ describe("validateKeypress", () => {
   });
 
   it("rejects invalid characters", () => {
-    expect(() => validateKeypress("key;rm -rf /")).toThrow("invalid characters");
+    expect(() => validateKeypress("key;rm -rf /")).toThrow(
+      "invalid characters",
+    );
     expect(() => validateKeypress("$(whoami)")).toThrow("invalid characters");
   });
 });

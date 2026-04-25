@@ -1,5 +1,5 @@
 import { useApp, type CodingAgentSession } from "@elizaos/app-core";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { PtyTerminalPane } from "./PtyTerminalPane";
 import { PULSE_STATUSES, STATUS_DOT } from "./pty-status-dots";
@@ -8,26 +8,8 @@ export interface PtyConsoleBaseProps {
   activeSessionId: string;
   sessions: CodingAgentSession[];
   onClose: () => void;
-  variant: "drawer" | "side-panel";
+  variant: "drawer" | "side-panel" | "full";
 }
-
-/** Chevron-down icon for drawer close button. */
-const DrawerCloseIcon = (
-  <svg
-    aria-hidden="true"
-    focusable="false"
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M7 13l5 5 5-5M7 6l5 5 5-5" />
-  </svg>
-);
 
 /** X icon for side-panel close button. */
 const SidePanelCloseIcon = (
@@ -61,6 +43,13 @@ export function PtyConsoleBase({
   const { t } = useApp();
   const [selectedId, setSelectedId] = useState(activeSessionId);
 
+  // Resync internal selection when the controlling parent changes it.
+  // The drawer variant doesn't render its own tab bar, so this prop is the
+  // sole source of truth for which pane is visible.
+  useEffect(() => {
+    setSelectedId(activeSessionId);
+  }, [activeSessionId]);
+
   const resolvedId =
     sessions.find((s) => s.sessionId === selectedId)?.sessionId ??
     sessions[0]?.sessionId;
@@ -72,73 +61,53 @@ export function PtyConsoleBase({
   if (!sessions.length) return null;
 
   const isSidePanel = variant === "side-panel";
-  const closeIcon = isSidePanel ? SidePanelCloseIcon : DrawerCloseIcon;
-  const closeLabel = isSidePanel
-    ? t("aria.closeConsolePanel")
-    : t("aria.closeConsole");
 
   return (
     <>
-      {/* Side-panel has a separate header row */}
+      {/* Side-panel has its own header + tab bar. The drawer variant owns its
+          own tab bar externally (PtyConsoleDrawer), so we only render terminal
+          panes here in that case. */}
       {isSidePanel && (
-        <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
-          <span className="text-xs font-semibold text-txt">
-            {t("ptyconsolebase.AgentConsoles")}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 text-muted hover:text-txt transition-colors cursor-pointer rounded hover:bg-bg-hover"
-            aria-label={closeLabel}
-          >
-            {closeIcon}
-          </button>
-        </div>
-      )}
-
-      {/* Tab bar */}
-      <div
-        className={`flex items-center gap-0 border-b border-border px-2 shrink-0${isSidePanel ? " overflow-x-auto" : ""}`}
-      >
-        {sessions.map((s) => {
-          const isActive = s.sessionId === resolvedId;
-          return (
+        <>
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0">
+            <span className="text-xs font-semibold text-txt">
+              {t("ptyconsolebase.AgentConsoles")}
+            </span>
             <button
-              key={s.sessionId}
               type="button"
-              onClick={() => handleTabClick(s.sessionId)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border-b-2 transition-colors cursor-pointer${isSidePanel ? " whitespace-nowrap" : ""} ${
-                isActive
-                  ? "border-accent text-txt"
-                  : "border-transparent text-muted hover:text-txt"
-              }`}
+              onClick={onClose}
+              className="p-1 text-muted hover:text-txt transition-colors cursor-pointer rounded hover:bg-bg-hover"
+              aria-label={t("aria.closeConsolePanel")}
             >
-              <span
-                className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
-                  STATUS_DOT[s.status] ?? "bg-muted"
-                }${PULSE_STATUSES.has(s.status) ? " animate-pulse" : ""}`}
-              />
-              <span
-                className={`truncate ${isSidePanel ? "max-w-[120px]" : "max-w-[100px]"}`}
-              >
-                {s.label}
-              </span>
+              {SidePanelCloseIcon}
             </button>
-          );
-        })}
-
-        {/* Drawer puts the close button inline in the tab bar */}
-        {!isSidePanel && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto p-1 text-muted hover:text-txt transition-colors cursor-pointer"
-            aria-label={closeLabel}
-          >
-            {closeIcon}
-          </button>
-        )}
-      </div>
+          </div>
+          <div className="flex items-center gap-0 border-b border-border px-2 shrink-0 overflow-x-auto">
+            {sessions.map((s) => {
+              const isActive = s.sessionId === resolvedId;
+              return (
+                <button
+                  key={s.sessionId}
+                  type="button"
+                  onClick={() => handleTabClick(s.sessionId)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
+                    isActive
+                      ? "border-accent text-txt"
+                      : "border-transparent text-muted hover:text-txt"
+                  }`}
+                >
+                  <span
+                    className={`inline-block w-1.5 h-1.5 rounded-full shrink-0 ${
+                      STATUS_DOT[s.status] ?? "bg-muted"
+                    }${PULSE_STATUSES.has(s.status) ? " animate-pulse" : ""}`}
+                  />
+                  <span className="truncate max-w-[120px]">{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* Terminal panes */}
       <div className="flex-1 min-h-0 overflow-hidden">

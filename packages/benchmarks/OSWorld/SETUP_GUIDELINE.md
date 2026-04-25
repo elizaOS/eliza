@@ -391,7 +391,7 @@ python scripts/python/run_multienv_claude.py \
     --headless \
     --observation_type screenshot \
     --action_space claude_computer_use \
-    --model claude-4-sonnet-20250514 \
+    --model claude-sonnet-4-6 \
     --result_dir ./results_claude \
     --test_all_meta_path evaluation_examples/test_all.json \
     --max_steps 50 \

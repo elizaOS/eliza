@@ -5,6 +5,7 @@ import { extractParam, extractParamInt } from "./param-parser.js";
 export const sellToShop: Action = {
   name: "SELL_TO_SHOP",
   description: "Sell an item to the currently open shop, optionally specifying a count (defaults to 1)",
+  descriptionCompressed: "Sell item to open shop.",
   similes: ["SELL_ITEM"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

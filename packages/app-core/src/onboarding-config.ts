@@ -14,7 +14,10 @@ import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
 } from "@elizaos/shared/contracts/service-routing";
-import type { OnboardingServerTarget } from "./onboarding/server-target";
+import {
+  isElizaCloudOnboardingTarget,
+  type OnboardingServerTarget,
+} from "./onboarding/server-target";
 
 export interface BuildOnboardingConnectionArgs {
   onboardingServerTarget?: OnboardingServerTarget;
@@ -103,6 +106,9 @@ export function buildOnboardingRuntimeConfig(
   args: BuildOnboardingConnectionArgs,
 ): BuildOnboardingRuntimeConfigResult {
   const serverTarget = resolveArgsServerTarget(args);
+  const persistRuntimeOnConnectedRemote =
+    serverTarget === "remote" && args.onboardingRemoteConnected;
+  const useElizaCloudRuntime = isElizaCloudOnboardingTarget(serverTarget);
   const nanoModel = trimToUndefined(args.onboardingNanoModel);
   const smallModel = trimToUndefined(args.onboardingSmallModel);
   const mediumModel = trimToUndefined(args.onboardingMediumModel);
@@ -135,21 +141,27 @@ export function buildOnboardingRuntimeConfig(
   }
 
   const deploymentTarget: DeploymentTargetConfig =
-    serverTarget === "remote"
-      ? {
-          runtime: "remote",
-          provider: "remote",
-          remoteApiBase: trimToUndefined(args.onboardingRemoteApiBase) ?? "",
-          ...(trimToUndefined(args.onboardingRemoteToken)
-            ? { remoteAccessToken: trimToUndefined(args.onboardingRemoteToken) }
-            : {}),
-        }
-      : serverTarget === "elizacloud" && !args.onboardingRemoteConnected
+    persistRuntimeOnConnectedRemote
+      ? { runtime: "local" }
+      : serverTarget === "remote"
         ? {
-            runtime: "cloud",
-            provider: "elizacloud",
+            runtime: "remote",
+            provider: "remote",
+            remoteApiBase: trimToUndefined(args.onboardingRemoteApiBase) ?? "",
+            ...(trimToUndefined(args.onboardingRemoteToken)
+              ? {
+                  remoteAccessToken: trimToUndefined(
+                    args.onboardingRemoteToken,
+                  ),
+                }
+              : {}),
           }
-        : { runtime: "local" };
+        : useElizaCloudRuntime && !args.onboardingRemoteConnected
+          ? {
+              runtime: "cloud",
+              provider: "elizacloud",
+            }
+          : { runtime: "local" };
 
   const serviceRouting: ServiceRoutingConfig = {};
   let llmTextRoute: ServiceRouteConfig | undefined;
@@ -177,7 +189,7 @@ export function buildOnboardingRuntimeConfig(
       onboardingOpenRouterModel: args.onboardingOpenRouterModel,
     });
     llmTextRoute =
-      serverTarget === "remote"
+      serverTarget === "remote" && !persistRuntimeOnConnectedRemote
         ? {
             backend: localProviderId,
             transport: "remote",

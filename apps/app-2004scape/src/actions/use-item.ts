@@ -5,6 +5,7 @@ import { extractParam } from "./param-parser.js";
 export const useItem: Action = {
   name: "USE_ITEM",
   description: "Use an item from inventory by name",
+  descriptionCompressed: "Use inventory item.",
   similes: ["ACTIVATE_ITEM"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

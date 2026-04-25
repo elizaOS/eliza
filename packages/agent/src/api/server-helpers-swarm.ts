@@ -8,7 +8,6 @@ import type {
   TaskCompletionSummary,
   TaskContext,
 } from "@elizaos/app-task-coordinator/api/coordinator-types";
-import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 import {
   type AgentRuntime,
   ChannelType,
@@ -18,6 +17,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { generateChatResponse as generateChatResponseFromChatRoutes } from "./chat-routes.js";
+import { resolveClientChatAdminEntityId } from "./client-chat-admin.js";
 import type {
   CoordinationLLMResponse,
   PTYService,
@@ -28,6 +28,7 @@ import {
 } from "./parse-action-block.js";
 import { resolveAppUserName } from "./server-helpers.js";
 import type { ConversationMeta, ServerState } from "./server-types.js";
+import { routeTaskAgentTextToConnector } from "./task-agent-message-routing.js";
 
 // ---------------------------------------------------------------------------
 // Autonomy -> User message routing
@@ -358,9 +359,7 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
             ? await runtime.getRoom(st.chatRoomId).catch(() => null)
             : null;
           if (!st.chatUserId || !st.chatRoomId || !existingLegacyChatRoom) {
-            const adminId =
-              st.adminEntityId ??
-              (stringToUuid(`${st.agentName}-admin-entity`) as UUID);
+            const adminId = resolveClientChatAdminEntityId(st);
             st.adminEntityId = adminId;
             st.chatUserId = adminId;
             st.chatRoomId =

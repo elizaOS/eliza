@@ -5,6 +5,7 @@
 		"outDir": "./dist",
 		"rootDir": "../../",
 		"baseUrl": "../../",
+		"ignoreDeprecations": "6.0",
 		"typeRoots": [
 			"../../../node_modules/@types",
 			"../../../node_modules/.bun/node_modules/@types",
@@ -15,15 +16,17 @@
 			"../../node_modules",
 			"../../node_modules/.bun/node_modules"
 		],
-		"types": ["node", "bun-types"],
+		"types": ["node", "bun"],
 		"noEmit": true,
 		"composite": false,
 		"declaration": false,
 		"declarationMap": false,
 		"skipLibCheck": true,
 		"paths": {
-			"@elizaos/core": ["./packages/typescript/src/index.node.ts"],
-			"@elizaos/core/*": ["./packages/typescript/src/*"]
+			"@elizaos/core": ["./src/index.node.ts"],
+			"@elizaos/core/*": ["./src/*"],
+			"@elizaos/shared": ["../shared/src/index.ts"],
+			"@elizaos/shared/*": ["../shared/src/*"]
 		}
 	},
 	"include": ["src/**/*.ts", "../@schemas/**/*.ts"],

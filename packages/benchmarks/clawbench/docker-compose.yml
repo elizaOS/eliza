@@ -27,7 +27,7 @@ services:
     environment:
       - SCENARIO=${SCENARIO:-client_escalation}
       - VARIANT=${VARIANT:-optimized}
-      - CLAWBENCH_MODEL=${CLAWBENCH_MODEL:-anthropic/claude-sonnet-4-5-20250929}
+      - CLAWBENCH_MODEL=${CLAWBENCH_MODEL:-anthropic/claude-sonnet-4.6}
 
   # ==========================================================================
   # Mock Tools Server
@@ -80,7 +80,7 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-sandbox-token-12345}
-      - CLAWBENCH_MODEL=${CLAWBENCH_MODEL:-anthropic/claude-sonnet-4-5-20250929}
+      - CLAWBENCH_MODEL=${CLAWBENCH_MODEL:-anthropic/claude-sonnet-4.6}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

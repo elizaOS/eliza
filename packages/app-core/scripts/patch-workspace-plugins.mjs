@@ -63,12 +63,8 @@ function applyPatch(patchPath, pluginDir) {
     return "skipped";
   }
 
-  // Check if patch is already applied
   try {
     exec("git", ["apply", "--check", "--reverse", patchPath], pluginDir);
-    console.log(
-      `[patch-workspace-plugins] ${patchName}: already applied, skipping`,
-    );
     return "already-applied";
   } catch {
     // Not yet applied — proceed
@@ -147,10 +143,6 @@ function run() {
       `[patch-workspace-plugins] ${applied} applied, ${skipped} skipped, ${failed} FAILED`,
     );
     process.exit(1);
-  } else {
-    console.log(
-      `[patch-workspace-plugins] ${applied} applied, ${skipped} skipped`,
-    );
   }
 }
 

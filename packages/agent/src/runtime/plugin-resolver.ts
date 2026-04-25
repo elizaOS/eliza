@@ -85,6 +85,179 @@ function sanitizePluginCacheSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "_");
 }
 
+type PluginPackageManifest = {
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>;
+};
+
+type DeclaredPluginDependency = {
+  name: string;
+  optional: boolean;
+};
+
+function packageNodeModulesEntryPath(
+  nodeModulesDir: string,
+  packageName: string,
+): string {
+  return path.join(nodeModulesDir, ...packageName.split("/"));
+}
+
+async function pathEntryExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.lstat(targetPath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function readPluginPackageManifest(
+  packageRoot: string,
+): Promise<PluginPackageManifest | null> {
+  try {
+    return JSON.parse(
+      await fs.readFile(path.join(packageRoot, "package.json"), "utf8"),
+    ) as PluginPackageManifest;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function collectDeclaredPluginDependencies(
+  manifest: PluginPackageManifest,
+): DeclaredPluginDependency[] {
+  const collected = new Map<string, DeclaredPluginDependency>();
+
+  for (const name of Object.keys(manifest.dependencies ?? {})) {
+    collected.set(name, { name, optional: false });
+  }
+
+  for (const name of Object.keys(manifest.optionalDependencies ?? {})) {
+    if (!collected.has(name)) {
+      collected.set(name, { name, optional: true });
+    }
+  }
+
+  for (const name of Object.keys(manifest.peerDependencies ?? {})) {
+    if (collected.has(name)) {
+      continue;
+    }
+
+    const optional = manifest.peerDependenciesMeta?.[name]?.optional === true;
+    collected.set(name, { name, optional });
+  }
+
+  return [...collected.values()].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
+}
+
+async function stageDependencyIntoNodeModules(params: {
+  dependencyName: string;
+  sourceNodeModulesDir: string;
+  targetNodeModulesDir: string;
+}): Promise<boolean> {
+  const sourcePath = packageNodeModulesEntryPath(
+    params.sourceNodeModulesDir,
+    params.dependencyName,
+  );
+  if (!(await pathEntryExists(sourcePath))) {
+    return false;
+  }
+
+  const targetPath = packageNodeModulesEntryPath(
+    params.targetNodeModulesDir,
+    params.dependencyName,
+  );
+  if (await pathEntryExists(targetPath)) {
+    return true;
+  }
+
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  const stat = await fs.lstat(sourcePath);
+  if (stat.isSymbolicLink()) {
+    await fs.symlink(await fs.realpath(sourcePath), targetPath);
+    return true;
+  }
+  if (!stat.isDirectory()) {
+    return false;
+  }
+
+  await fs.cp(sourcePath, targetPath, {
+    recursive: true,
+    force: true,
+    dereference: true,
+  });
+  return true;
+}
+
+async function ensureStagedPackageDependencies(params: {
+  installRoot: string;
+  packageName: string;
+  packageRoot: string;
+  stagedPackageRoot: string;
+}): Promise<void> {
+  const stagedNodeModulesPath = path.join(
+    params.stagedPackageRoot,
+    "node_modules",
+  );
+  if (!(await pathEntryExists(stagedNodeModulesPath))) {
+    return;
+  }
+
+  const manifest = await readPluginPackageManifest(params.packageRoot);
+  if (!manifest) {
+    return;
+  }
+
+  const dependencies = collectDeclaredPluginDependencies(manifest);
+  if (dependencies.length === 0) {
+    return;
+  }
+
+  const sourceNodeModulesDirs = uniquePaths([
+    path.join(params.packageRoot, "node_modules"),
+    path.join(params.installRoot, "node_modules"),
+    ...(await findAncestorNodeModulesDirs(params.packageRoot)),
+  ]);
+
+  for (const dependency of dependencies) {
+    const stagedDependencyPath = packageNodeModulesEntryPath(
+      stagedNodeModulesPath,
+      dependency.name,
+    );
+    if (await pathEntryExists(stagedDependencyPath)) {
+      continue;
+    }
+
+    let staged = false;
+    for (const sourceNodeModulesDir of sourceNodeModulesDirs) {
+      staged = await stageDependencyIntoNodeModules({
+        dependencyName: dependency.name,
+        sourceNodeModulesDir,
+        targetNodeModulesDir: stagedNodeModulesPath,
+      });
+      if (staged) {
+        break;
+      }
+    }
+
+    if (!staged && !dependency.optional) {
+      logger.warn(
+        `[eliza] Staged plugin ${params.packageName} is missing declared dependency ${dependency.name}`,
+      );
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Workspace plugin overrides
 // ---------------------------------------------------------------------------
@@ -638,6 +811,12 @@ async function stagePluginImportRoot(params: {
   });
   await linkHoistedNodeModulesPackages({
     installRoot: params.installRoot,
+    packageRoot: params.packageRoot,
+    stagedPackageRoot,
+  });
+  await ensureStagedPackageDependencies({
+    installRoot: params.installRoot,
+    packageName: params.packageName,
     packageRoot: params.packageRoot,
     stagedPackageRoot,
   });

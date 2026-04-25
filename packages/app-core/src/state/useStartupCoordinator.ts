@@ -15,42 +15,42 @@
  */
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { isElectrobunRuntime } from "../bridge";
+import { isNative } from "../platform";
 import { loadPersistedOnboardingComplete } from "./persistence";
 import {
-  INITIAL_STARTUP_STATE,
   createDesktopPolicy,
   createMobilePolicy,
   createWebPolicy,
+  INITIAL_STARTUP_STATE,
   isStartupLoading,
   isStartupTerminal,
-  startupReducer,
-  toLegacyStartupPhase,
   type PlatformPolicy,
   type RuntimeTarget,
   type StartupEvent,
   type StartupState,
+  startupReducer,
+  toLegacyStartupPhase,
 } from "./startup-coordinator";
-import { isElectrobunRuntime } from "../bridge";
-import { isNative } from "../platform";
 import {
-  runRestoringSession,
+  bindReadyPhase,
+  type HydratingDeps,
+  type ReadyPhaseDeps,
+  runHydrating,
+} from "./startup-phase-hydrate";
+import {
+  type PollingBackendDeps,
+  runPollingBackend,
+} from "./startup-phase-poll";
+import {
   type RestoringSessionCtx,
   type RestoringSessionDeps,
+  runRestoringSession,
 } from "./startup-phase-restore";
-import {
-  runPollingBackend,
-  type PollingBackendDeps,
-} from "./startup-phase-poll";
 import {
   runStartingRuntime,
   type StartingRuntimeDeps,
 } from "./startup-phase-runtime";
-import {
-  runHydrating,
-  bindReadyPhase,
-  type HydratingDeps,
-  type ReadyPhaseDeps,
-} from "./startup-phase-hydrate";
 
 // ── Deps interface ──────────────────────────────────────────────────
 // Composed from per-phase slices defined in each startup-phase-*.ts module.
@@ -114,7 +114,7 @@ export function useStartupCoordinator(
   const legacyPhase = toLegacyStartupPhase(state);
   useEffect(() => {
     if (!depsReady) return;
-    depsRef.current!.setStartupPhase(legacyPhase);
+    depsRef.current?.setStartupPhase(legacyPhase);
   }, [legacyPhase, depsReady]);
 
   // ── Phase: splash — auto-skip for returning users, mark loaded for new users
@@ -133,7 +133,8 @@ export function useStartupCoordinator(
   // ── Phase: restoring-session ────────────────────────────────────
   useEffect(() => {
     if (state.phase !== "restoring-session" || !depsReady) return;
-    const d = depsRef.current!;
+    const d = depsRef.current;
+    if (!d) return;
     effectRunRef.current += 1;
     const cancelled = { current: false };
 
@@ -144,7 +145,6 @@ export function useStartupCoordinator(
     return () => {
       cancelled.current = true;
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: deps via ref
   }, [state.phase, depsReady]);
 
   // ── Phase: resolving-target (auto-advance) ──────────────────────
@@ -156,13 +156,15 @@ export function useStartupCoordinator(
   // ── Phase: polling-backend ──────────────────────────────────────
   useEffect(() => {
     if (state.phase !== "polling-backend" || !depsReady) return;
+    const currentDeps = depsRef.current;
+    if (!currentDeps) return;
     effectRunRef.current += 1;
     const runId = effectRunRef.current;
     const cancelled = { current: false };
     const tidRef = { current: null as ReturnType<typeof setTimeout> | null };
 
     runPollingBackend(
-      depsRef.current!,
+      currentDeps,
       dispatch,
       policy,
       _ctx.current,
@@ -178,19 +180,20 @@ export function useStartupCoordinator(
       cancelled.current = true;
       if (tidRef.current) clearTimeout(tidRef.current);
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: deps via ref
-  }, [state.phase, policy.backendTimeoutMs, depsReady]);
+  }, [state.phase, policy.backendTimeoutMs, depsReady, policy]);
 
   // ── Phase: starting-runtime ─────────────────────────────────────
   useEffect(() => {
     if (state.phase !== "starting-runtime" || !depsReady) return;
+    const currentDeps = depsRef.current;
+    if (!currentDeps) return;
     effectRunRef.current += 1;
     const runId = effectRunRef.current;
     const cancelled = { current: false };
     const tidRef = { current: null as ReturnType<typeof setTimeout> | null };
 
     runStartingRuntime(
-      depsRef.current!,
+      currentDeps,
       dispatch,
       runId,
       effectRunRef,
@@ -204,22 +207,22 @@ export function useStartupCoordinator(
       cancelled.current = true;
       if (tidRef.current) clearTimeout(tidRef.current);
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: deps via ref
   }, [state.phase, depsReady]);
 
   // ── Phase: hydrating — one-time data load, then HYDRATION_COMPLETE ─
   useEffect(() => {
     if (state.phase !== "hydrating" || !depsReady) return;
+    const currentDeps = depsRef.current;
+    if (!currentDeps) return;
     const cancelled = { current: false };
 
-    runHydrating(depsRef.current!, dispatch, cancelled).catch((err) => {
+    runHydrating(currentDeps, dispatch, cancelled).catch((err) => {
       console.error("[eliza][startup:hydrate] Unexpected error:", err);
     });
 
     return () => {
       cancelled.current = true;
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: deps via ref
   }, [state.phase, depsReady]);
 
   // ── Ready phase — persistent WS bindings + nav listener ─────────
@@ -241,7 +244,6 @@ export function useStartupCoordinator(
       wsBindingsActiveRef.current = false;
       cleanup();
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: runs once on ready, deps via ref
   }, [readyPhaseReached, depsReady]);
 
   // ── Public interface ─────────────────────────────────────────────

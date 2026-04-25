@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import fs from "node:fs";
+
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import {
@@ -19,6 +21,73 @@ type Mode = "sequential" | "web";
 
 const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
 
+function codexHasStoredAuth(): boolean {
+  if (process.env.OPENAI_API_KEY?.trim()) {
+    return true;
+  }
+
+  try {
+    const authPath = path.join(os.homedir(), ".codex", "auth.json");
+    const raw = fs.readFileSync(authPath, "utf8");
+    const parsed = JSON.parse(raw) as { OPENAI_API_KEY?: string };
+    return (
+      typeof parsed.OPENAI_API_KEY === "string" &&
+      parsed.OPENAI_API_KEY.trim().length > 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+function claudeHasDeterministicAuth(): boolean {
+  if (process.env.ANTHROPIC_API_KEY?.trim()) {
+    return true;
+  }
+
+  return fs.existsSync(path.join(os.homedir(), ".claude", ".credentials.json"));
+}
+
+function isFrameworkAuthenticated(framework: Framework): boolean {
+  if (framework === "claude" && !claudeHasDeterministicAuth()) {
+    return false;
+  }
+
+  try {
+    if (framework === "claude") {
+      const output = execFileSync("claude", ["auth", "status"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 5_000,
+      });
+      return /"loggedIn"\s*:\s*true|\blogged in\b/i.test(output);
+    }
+
+    if (codexHasStoredAuth()) {
+      return true;
+    }
+
+    const output = execFileSync("codex", ["login", "status"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 5_000,
+    });
+    return /\blogged in\b/i.test(output);
+  } catch (error) {
+    const detail =
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "";
+
+    return (
+      !/\bnot logged in\b|\bno stored credentials\b|\bunauthenticated\b/i.test(detail) &&
+      framework === "codex" &&
+      codexHasStoredAuth()
+    );
+  }
+}
+
 async function createRuntime(settings: Record<string, unknown> = {}): Promise<{
   runtime: AgentRuntime;
   cleanup: () => Promise<void>;
@@ -28,7 +97,9 @@ async function createRuntime(settings: Record<string, unknown> = {}): Promise<{
   });
   const originalGetSetting = runtime.getSetting.bind(runtime);
   runtime.getSetting = ((key: string) =>
-    settings[key] ?? originalGetSetting(key) ?? process.env[key]) as typeof runtime.getSetting;
+    settings[key] ??
+    originalGetSetting(key) ??
+    process.env[key]) as typeof runtime.getSetting;
   return { runtime, cleanup };
 }
 
@@ -80,10 +151,7 @@ function ensureLiveBaseDir(): string {
 
 function createWorkdir(agentType: Framework, label: string): string {
   return fs.mkdtempSync(
-    path.join(
-      ensureLiveBaseDir(),
-      `agent-orchestrator-${agentType}-${label}-`,
-    ),
+    path.join(ensureLiveBaseDir(), `agent-orchestrator-${agentType}-${label}-`),
   );
 }
 
@@ -129,7 +197,9 @@ function sawTaskCompletion(
 ): boolean {
   return events
     .slice(startIndex)
-    .some((entry) => entry.event === "task_complete" || entry.event === "completed");
+    .some(
+      (entry) => entry.event === "task_complete" || entry.event === "completed",
+    );
 }
 
 async function waitForTrackedSession(
@@ -140,28 +210,33 @@ async function waitForTrackedSession(
   let listResult:
     | Awaited<ReturnType<typeof listAgentsAction.handler>>
     | undefined;
-  await waitFor(async () => {
-    listResult = await listAgentsAction.handler(
-      runtime as unknown as IAgentRuntime,
-      createMessage({}) as never,
-    );
-    if (!listResult?.success) {
-      return false;
-    }
-    const sessions = Array.isArray(listResult.data?.sessions)
-      ? listResult.data.sessions
-      : [];
-    const tasks = Array.isArray(listResult.data?.tasks)
-      ? listResult.data.tasks
-      : [];
-    return (
-      sessions.some((entry) => entry.id === sessionId) &&
-      tasks.some(
-        (entry) =>
-          entry.sessionId === sessionId && entry.agentType === expectedAgentType,
-      )
-    );
-  }, 45_000, 1_000);
+  await waitFor(
+    async () => {
+      listResult = await listAgentsAction.handler(
+        runtime as unknown as IAgentRuntime,
+        createMessage({}) as never,
+      );
+      if (!listResult?.success) {
+        return false;
+      }
+      const sessions = Array.isArray(listResult.data?.sessions)
+        ? listResult.data.sessions
+        : [];
+      const tasks = Array.isArray(listResult.data?.tasks)
+        ? listResult.data.tasks
+        : [];
+      return (
+        sessions.some((entry) => entry.id === sessionId) &&
+        tasks.some(
+          (entry) =>
+            entry.sessionId === sessionId &&
+            entry.agentType === expectedAgentType,
+        )
+      );
+    },
+    45_000,
+    1_000,
+  );
 
   assert.ok(listResult?.text.includes(sessionId));
   assert.ok(listResult?.text.includes(expectedAgentType));
@@ -209,30 +284,44 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
     await waitForTrackedSession(runtime, sessionId, agentType);
     const firstTaskEventStart = events.length;
 
-    await waitFor(async () => {
-      const sessionInfo = service.getSession(sessionId);
-      if (!sessionInfo) {
-        throw new Error("session disappeared before completing the first task");
-      }
-      const recentLoginRequired = events.findLast(
-        (entry) => entry.event === "login_required",
-      );
-      if (recentLoginRequired) {
-        const details = recentLoginRequired.data as { instructions?: string };
-        throw new Error(details.instructions || "framework authentication is required");
-      }
-      if (sessionInfo.status === "stopped" || sessionInfo.status === "error") {
-        const output = await service.getSessionOutput(sessionId, 200);
-        throw new Error(
-          `session ended early with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
+    await waitFor(
+      async () => {
+        const sessionInfo = service.getSession(sessionId);
+        if (!sessionInfo) {
+          throw new Error(
+            "session disappeared before completing the first task",
+          );
+        }
+        const recentLoginRequired = events.findLast(
+          (entry) => entry.event === "login_required",
         );
-      }
-      if (!fs.existsSync(firstFilePath)) return false;
-      const fileText = fs.readFileSync(firstFilePath, "utf8").trim();
-      if (fileText !== `${agentType}-first`) return false;
-      const output = cleanForChat(await service.getSessionOutput(sessionId));
-      return output.includes(firstSentinel) || sawTaskCompletion(events, firstTaskEventStart);
-    }, 6 * 60 * 1000, 3000);
+        if (recentLoginRequired) {
+          const details = recentLoginRequired.data as { instructions?: string };
+          throw new Error(
+            details.instructions || "framework authentication is required",
+          );
+        }
+        if (
+          sessionInfo.status === "stopped" ||
+          sessionInfo.status === "error"
+        ) {
+          const output = await service.getSessionOutput(sessionId, 200);
+          throw new Error(
+            `session ended early with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
+          );
+        }
+        if (!fs.existsSync(firstFilePath)) return false;
+        const fileText = fs.readFileSync(firstFilePath, "utf8").trim();
+        if (fileText !== `${agentType}-first`) return false;
+        const output = cleanForChat(await service.getSessionOutput(sessionId));
+        return (
+          output.includes(firstSentinel) ||
+          sawTaskCompletion(events, firstTaskEventStart)
+        );
+      },
+      6 * 60 * 1000,
+      3000,
+    );
 
     const secondTaskEventStart = events.length;
     const sendResult = await sendToAgentAction.handler(
@@ -249,13 +338,20 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
     );
     assert.equal(sendResult?.success, true);
 
-    await waitFor(async () => {
-      if (!fs.existsSync(secondFilePath)) return false;
-      const fileText = fs.readFileSync(secondFilePath, "utf8").trim();
-      if (fileText !== `${agentType}-second`) return false;
-      const output = cleanForChat(await service.getSessionOutput(sessionId));
-      return output.includes(secondSentinel) || sawTaskCompletion(events, secondTaskEventStart);
-    }, 6 * 60 * 1000, 3000);
+    await waitFor(
+      async () => {
+        if (!fs.existsSync(secondFilePath)) return false;
+        const fileText = fs.readFileSync(secondFilePath, "utf8").trim();
+        if (fileText !== `${agentType}-second`) return false;
+        const output = cleanForChat(await service.getSessionOutput(sessionId));
+        return (
+          output.includes(secondSentinel) ||
+          sawTaskCompletion(events, secondTaskEventStart)
+        );
+      },
+      6 * 60 * 1000,
+      3000,
+    );
 
     const finalList = await listAgentsAction.handler(
       runtime as unknown as IAgentRuntime,
@@ -323,33 +419,46 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
     await waitForTrackedSession(runtime, sessionId, agentType);
     const webTaskEventStart = events.length;
 
-    await waitFor(async () => {
-      const sessionInfo = service.getSession(sessionId);
-      if (!sessionInfo) {
-        throw new Error("session disappeared before completing the web task");
-      }
-      const recentLoginRequired = events.findLast(
-        (entry) => entry.event === "login_required",
-      );
-      if (recentLoginRequired) {
-        const details = recentLoginRequired.data as { instructions?: string };
-        throw new Error(details.instructions || "framework authentication is required");
-      }
-      if (sessionInfo.status === "stopped" || sessionInfo.status === "error") {
-        const output = await service.getSessionOutput(sessionId, 200);
-        throw new Error(
-          `web task ended early with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
+    await waitFor(
+      async () => {
+        const sessionInfo = service.getSession(sessionId);
+        if (!sessionInfo) {
+          throw new Error("session disappeared before completing the web task");
+        }
+        const recentLoginRequired = events.findLast(
+          (entry) => entry.event === "login_required",
         );
-      }
-      const html = await fetchTextIfAvailable(`http://127.0.0.1:${agentPort}/index.html`);
-      if (!html) return false;
-      return (
-        html.includes("Milady Benchmark Ready") &&
-        html.includes("Task agents stay reusable.") &&
-        (cleanForChat(await service.getSessionOutput(sessionId)).includes(serveSentinel) ||
-          sawTaskCompletion(events, webTaskEventStart))
-      );
-    }, 6 * 60 * 1000, 3000);
+        if (recentLoginRequired) {
+          const details = recentLoginRequired.data as { instructions?: string };
+          throw new Error(
+            details.instructions || "framework authentication is required",
+          );
+        }
+        if (
+          sessionInfo.status === "stopped" ||
+          sessionInfo.status === "error"
+        ) {
+          const output = await service.getSessionOutput(sessionId, 200);
+          throw new Error(
+            `web task ended early with status ${sessionInfo.status}. Output: ${output.slice(-600)}`,
+          );
+        }
+        const html = await fetchTextIfAvailable(
+          `http://127.0.0.1:${agentPort}/index.html`,
+        );
+        if (!html) return false;
+        return (
+          html.includes("Milady Benchmark Ready") &&
+          html.includes("Task agents stay reusable.") &&
+          (cleanForChat(await service.getSessionOutput(sessionId)).includes(
+            serveSentinel,
+          ) ||
+            sawTaskCompletion(events, webTaskEventStart))
+        );
+      },
+      6 * 60 * 1000,
+      3000,
+    );
 
     const finalList = await listAgentsAction.handler(
       runtime as unknown as IAgentRuntime,
@@ -359,7 +468,9 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
     assert.ok(finalList?.text.includes(sessionId));
   } finally {
     unsubscribe();
-    await new Promise<void>((resolve) => reference.server.close(() => resolve()));
+    await new Promise<void>((resolve) =>
+      reference.server.close(() => resolve()),
+    );
     await service.stop();
     await cleanup();
     if (!KEEP_ARTIFACTS) {
@@ -372,7 +483,9 @@ async function main(): Promise<void> {
   const frameworkIndex = process.argv.indexOf("--framework");
   const modeIndex = process.argv.indexOf("--mode");
   const framework =
-    frameworkIndex !== -1 ? (process.argv[frameworkIndex + 1] as Framework) : null;
+    frameworkIndex !== -1
+      ? (process.argv[frameworkIndex + 1] as Framework)
+      : null;
   const mode = modeIndex !== -1 ? (process.argv[modeIndex + 1] as Mode) : null;
 
   if (
@@ -382,6 +495,18 @@ async function main(): Promise<void> {
     throw new Error(
       "Usage: task-agent-live-smoke.ts --framework <claude|codex> --mode <sequential|web>",
     );
+  }
+
+  if (!isFrameworkAuthenticated(framework)) {
+    console.log(
+      "[task-agent-live-smoke] SKIP",
+      JSON.stringify({
+        framework,
+        mode,
+        reason: `${framework} is not authenticated on this machine`,
+      }),
+    );
+    return;
   }
 
   if (mode === "sequential") {

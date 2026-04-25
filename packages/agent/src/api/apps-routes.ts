@@ -1,12 +1,21 @@
+import type { Dirent } from "node:fs";
+import { promises as fs } from "node:fs";
+import type http from "node:http";
+import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { createGeneratedAppHeroSvg } from "@elizaos/shared/app-hero-art";
 import {
   type AppRunActionResult,
   type AppRunSummary,
   type AppSessionActionResult,
   hasAppInterface,
+  packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
 } from "../contracts/apps.js";
-import { importAppRouteModule } from "../services/app-package-modules.js";
+import {
+  importAppRouteModule,
+  resolveWorkspacePackageDir,
+} from "../services/app-package-modules.js";
 import { setOverlayAppPresence } from "../services/overlay-app-presence.js";
 import type {
   InstallProgressLike,
@@ -19,6 +28,268 @@ import {
   toSearchResults,
 } from "../services/registry-client-queries.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
+
+const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
+  ".webp": "image/webp",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".avif": "image/avif",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+};
+
+const DEFAULT_HERO_IMAGE_CANDIDATES = [
+  "assets/hero.png",
+  "assets/hero.webp",
+  "assets/hero.jpg",
+  "assets/hero.jpeg",
+  "assets/hero.avif",
+  "assets/hero.gif",
+  "assets/hero.svg",
+] as const;
+
+interface LocalAppPackageJson {
+  elizaos?: {
+    app?: {
+      heroImage?: unknown;
+    };
+  };
+}
+
+async function streamAppHero(
+  res: http.ServerResponse,
+  absolutePath: string,
+  contentType: string,
+  error: (
+    response: http.ServerResponse,
+    message: string,
+    status?: number,
+  ) => void,
+): Promise<void> {
+  let data: Buffer;
+  try {
+    data = await fs.readFile(absolutePath);
+  } catch {
+    error(res, "Hero image not found", 404);
+    return;
+  }
+  const response = res as {
+    writeHead?: (
+      status: number,
+      headers: Record<string, string | number>,
+    ) => void;
+    setHeader?: (name: string, value: string | number) => void;
+    end?: (chunk?: unknown) => void;
+  };
+  if (typeof response.writeHead === "function") {
+    response.writeHead(200, {
+      "Content-Type": contentType,
+      "Content-Length": data.byteLength,
+      "Cache-Control": "public, max-age=300",
+    });
+  } else if (typeof response.setHeader === "function") {
+    response.setHeader("Content-Type", contentType);
+    response.setHeader("Content-Length", data.byteLength);
+    response.setHeader("Cache-Control", "public, max-age=300");
+  }
+  response.end?.(data);
+}
+
+function sendGeneratedAppHero(res: http.ServerResponse, svg: string): void {
+  const data = Buffer.from(svg, "utf8");
+  const response = res as {
+    writeHead?: (
+      status: number,
+      headers: Record<string, string | number>,
+    ) => void;
+    setHeader?: (name: string, value: string | number) => void;
+    end?: (chunk?: unknown) => void;
+  };
+  if (typeof response.writeHead === "function") {
+    response.writeHead(200, {
+      "Content-Type": "image/svg+xml",
+      "Content-Length": data.byteLength,
+      "Cache-Control": "public, max-age=300",
+    });
+  } else if (typeof response.setHeader === "function") {
+    response.setHeader("Content-Type", "image/svg+xml");
+    response.setHeader("Content-Length", data.byteLength);
+    response.setHeader("Cache-Control", "public, max-age=300");
+  }
+  response.end?.(data);
+}
+
+async function pathExists(absolutePath: string): Promise<boolean> {
+  try {
+    await fs.access(absolutePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isRelativeHeroPath(heroImage: string): boolean {
+  return !/^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/)/i.test(
+    heroImage,
+  );
+}
+
+async function readPackageHeroImage(
+  packageDir: string,
+): Promise<string | null> {
+  try {
+    const packageJson = JSON.parse(
+      await fs.readFile(path.join(packageDir, "package.json"), "utf8"),
+    ) as LocalAppPackageJson;
+    const heroImage = packageJson.elizaos?.app?.heroImage;
+    return typeof heroImage === "string" ? heroImage : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveWorkspaceAppDirBySlug(
+  slug: string,
+): Promise<string | null> {
+  const cwd = process.cwd();
+  const roots = Array.from(
+    new Set([
+      path.resolve(cwd),
+      path.resolve(cwd, ".."),
+      path.resolve(cwd, "..", ".."),
+    ]),
+  );
+  const candidateDirs: string[] = [];
+
+  for (const root of roots) {
+    candidateDirs.push(
+      path.join(root, "apps", `app-${slug}`),
+      path.join(root, "packages", `app-${slug}`),
+    );
+
+    let entries: Dirent[] = [];
+    try {
+      entries = await fs.readdir(root, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith(".")) {
+        continue;
+      }
+      candidateDirs.push(
+        path.join(root, entry.name, "apps", `app-${slug}`),
+        path.join(root, entry.name, "packages", `app-${slug}`),
+      );
+    }
+  }
+
+  for (const candidateDir of new Set(
+    candidateDirs.map((dir) => path.resolve(dir)),
+  )) {
+    if (await pathExists(path.join(candidateDir, "package.json"))) {
+      return candidateDir;
+    }
+  }
+
+  return null;
+}
+
+async function resolveHeroPathFromPackageDir(
+  packageDir: string,
+  declaredHeroImage: string | null,
+): Promise<{ absolutePath: string; contentType: string } | null> {
+  const packageHeroImage = await readPackageHeroImage(packageDir);
+  const heroCandidates = Array.from(
+    new Set(
+      [
+        declaredHeroImage,
+        packageHeroImage,
+        ...DEFAULT_HERO_IMAGE_CANDIDATES,
+      ].filter(
+        (value): value is string =>
+          typeof value === "string" && value.trim().length > 0,
+      ),
+    ),
+  );
+
+  for (const heroImage of heroCandidates) {
+    if (!isRelativeHeroPath(heroImage)) continue;
+    const extension = path.extname(heroImage).toLowerCase();
+    const contentType = HERO_IMAGE_CONTENT_TYPES[extension];
+    if (!contentType) continue;
+    const absolutePath = path.resolve(packageDir, heroImage);
+    const packageRoot = `${path.resolve(packageDir)}${path.sep}`;
+    if (!absolutePath.startsWith(packageRoot)) continue;
+    if (!(await pathExists(absolutePath))) continue;
+    return { absolutePath, contentType };
+  }
+
+  return null;
+}
+
+/**
+ * Resolve the absolute on-disk path for an app's declared hero image.
+ * Returns null if the slug doesn't match a known app or none of the
+ * candidate local package directories contain a valid hero image.
+ */
+type ResolvedAppHero =
+  | { kind: "file"; absolutePath: string; contentType: string }
+  | { kind: "generated"; svg: string };
+
+async function resolveAppHero(
+  pluginManager: PluginManagerLike,
+  slug: string,
+): Promise<ResolvedAppHero | null> {
+  const registry = await pluginManager.refreshRegistry();
+  for (const entry of registry.values()) {
+    const entrySlugs = new Set<string>();
+    const nameSlug = packageNameToAppRouteSlug(entry.name);
+    const npmSlug = packageNameToAppRouteSlug(entry.npm.package);
+    if (nameSlug) entrySlugs.add(nameSlug);
+    if (npmSlug) entrySlugs.add(npmSlug);
+    if (!entrySlugs.has(slug)) continue;
+
+    const packageDirs = new Set<string>();
+    if (entry.localPath) {
+      packageDirs.add(path.resolve(entry.localPath));
+    }
+    const workspacePackageDir = await resolveWorkspacePackageDir(
+      entry.npm.package,
+    );
+    if (workspacePackageDir) {
+      packageDirs.add(path.resolve(workspacePackageDir));
+    }
+    const workspaceSlugDir = await resolveWorkspaceAppDirBySlug(slug);
+    if (workspaceSlugDir) {
+      packageDirs.add(path.resolve(workspaceSlugDir));
+    }
+
+    for (const packageDir of packageDirs) {
+      const resolved = await resolveHeroPathFromPackageDir(
+        packageDir,
+        entry.appMeta?.heroImage ?? null,
+      );
+      if (resolved) {
+        return { kind: "file", ...resolved };
+      }
+    }
+
+    return {
+      kind: "generated",
+      svg: createGeneratedAppHeroSvg({
+        name: entry.name,
+        displayName:
+          entry.appMeta?.displayName ?? packageNameToAppDisplayName(entry.name),
+        category: entry.appMeta?.category ?? "app",
+        description: entry.description,
+      }),
+    };
+  }
+  return null;
+}
 
 export interface AppManagerLike {
   listAvailable: (pluginManager: PluginManagerLike) => Promise<unknown>;
@@ -45,7 +316,9 @@ export interface AppManagerLike {
     pluginManager: PluginManagerLike,
     name: string,
     runId?: string,
+    runtime?: IAgentRuntime | null,
   ) => Promise<unknown>;
+  recordHeartbeat: (runId: string) => unknown;
   getInfo: (pluginManager: PluginManagerLike, name: string) => Promise<unknown>;
 }
 
@@ -93,8 +366,8 @@ function actionResultStatus(result: unknown): number {
   if (
     result &&
     typeof result === "object" &&
-    "success" in (result as Record<string, unknown>) &&
-    (result as Record<string, unknown>).success === false
+    "success" in result &&
+    result.success === false
   ) {
     return 404;
   }
@@ -164,7 +437,7 @@ function parseCapturedBody(body: string): Record<string, unknown> | null {
   try {
     const parsed = JSON.parse(trimmed);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
+      ? parsed
       : null;
   } catch {
     return null;
@@ -324,7 +597,7 @@ async function proxyRunSteeringRequest(
     url: syntheticUrl,
     res: captured,
     readJsonBody: async <T extends object>() => body as T | null,
-    json: (response: CapturedResponse, data: object, status = 200): void => {
+    json: (response: CapturedResponse, data: unknown, status = 200): void => {
       response.writeHead(status, { "Content-Type": "application/json" });
       response.end(JSON.stringify(data));
     },
@@ -425,7 +698,34 @@ export async function handleAppsRoutes(
   if (method === "GET" && pathname === "/api/apps") {
     const pluginManager = getPluginManager();
     const apps = await appManager.listAvailable(pluginManager);
-    json(res, apps as object);
+    json(res, apps);
+    return true;
+  }
+
+  if (method === "GET" && pathname.startsWith("/api/apps/hero/")) {
+    const slug = decodeURIComponent(
+      pathname.slice("/api/apps/hero/".length),
+    ).trim();
+    if (!slug) {
+      error(res, "app slug is required", 400);
+      return true;
+    }
+    const pluginManager = getPluginManager();
+    const resolved = await resolveAppHero(pluginManager, slug);
+    if (!resolved) {
+      error(res, `Hero image for "${slug}" is not available`, 404);
+      return true;
+    }
+    if (resolved.kind === "file") {
+      await streamAppHero(
+        res,
+        resolved.absolutePath,
+        resolved.contentType,
+        error as (response: unknown, message: string, status?: number) => void,
+      );
+    } else {
+      sendGeneratedAppHero(res, resolved.svg);
+    }
     return true;
   }
 
@@ -438,20 +738,20 @@ export async function handleAppsRoutes(
     const limit = parseBoundedLimit(url.searchParams.get("limit"));
     const pluginManager = getPluginManager();
     const results = await appManager.search(pluginManager, query, limit);
-    json(res, results as object);
+    json(res, results);
     return true;
   }
 
   if (method === "GET" && pathname === "/api/apps/installed") {
     const pluginManager = getPluginManager();
     const installed = await appManager.listInstalled(pluginManager);
-    json(res, installed as object);
+    json(res, installed);
     return true;
   }
 
   if (method === "GET" && pathname === "/api/apps/runs") {
     const runs = await appManager.listRuns(runtime as IAgentRuntime | null);
-    json(res, runs as object);
+    json(res, runs);
     return true;
   }
 
@@ -485,7 +785,7 @@ export async function handleAppsRoutes(
         error(res, `App run "${runId}" not found`, 404);
         return true;
       }
-      json(res, run as object);
+      json(res, run);
       return true;
     }
 
@@ -498,11 +798,8 @@ export async function handleAppsRoutes(
         error(res, `App run "${runId}" not found`, 404);
         return true;
       }
-      const health =
-        "health" in (run as Record<string, unknown>)
-          ? (run as Record<string, unknown>).health
-          : null;
-      json(res, health as object);
+      const health = "health" in run ? run.health : null;
+      json(res, health);
       return true;
     }
   }
@@ -521,7 +818,7 @@ export async function handleAppsRoutes(
         runId,
         runtime as IAgentRuntime | null,
       );
-      json(res, result as object, actionResultStatus(result));
+      json(res, result as Record<string, unknown>, actionResultStatus(result));
       return true;
     }
 
@@ -544,10 +841,10 @@ export async function handleAppsRoutes(
       const normalizedBody =
         subroute === "message"
           ? {
-              content: readSteeringContent(body as Record<string, unknown>),
+              content: readSteeringContent(body),
             }
           : {
-              action: readSteeringAction(body as Record<string, unknown>),
+              action: readSteeringAction(body),
             };
       if (
         (subroute === "message" && !normalizedBody.content) ||
@@ -573,20 +870,39 @@ export async function handleAppsRoutes(
         error(res, "Run steering failed", 500);
         return true;
       }
-      json(res, result as object, result.status);
+      json(res, result, result.status);
       return true;
     }
 
     if (subroute === "detach") {
       const result = await appManager.detachRun(runId);
-      json(res, result as object, actionResultStatus(result));
+      json(res, result as Record<string, unknown>, actionResultStatus(result));
       return true;
     }
 
     if (subroute === "stop") {
       const pluginManager = getPluginManager();
-      const result = await appManager.stop(pluginManager, "", runId);
-      json(res, result as object);
+      const result = await appManager.stop(pluginManager, "", runId, null);
+      json(res, result);
+      return true;
+    }
+
+    if (subroute === "heartbeat") {
+      // Cheap liveness ping from the UI — does not invoke any plugin route
+      // or talk to the upstream game API. The stale-run sweeper relies on
+      // this so the moment a tab closes the heartbeat dries up and the
+      // run gets reaped via the same `stopRun` hook the Stop button uses.
+      //
+      // Returns 200 + the refreshed run so the client can also use this as
+      // a low-cost confirmation that the run still exists; returns 404 if
+      // the run has already been stopped (so the UI can detect a Stop
+      // initiated from another window or by the sweeper).
+      const refreshed = appManager.recordHeartbeat(runId);
+      if (!refreshed) {
+        error(res, `App run "${runId}" not found`, 404);
+        return true;
+      }
+      json(res, { ok: true, run: refreshed } as object);
       return true;
     }
   }
@@ -606,9 +922,87 @@ export async function handleAppsRoutes(
         (_progress: InstallProgressLike) => {},
         runtime,
       );
-      json(res, result as object);
-    } catch (e) {
+      json(res, result);
+    } catch (e: unknown) {
       error(res, e instanceof Error ? e.message : "Failed to launch app", 500);
+    }
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/apps/install") {
+    try {
+      const body = await readJsonBody<{ name?: string; version?: string }>(
+        req,
+        res,
+      );
+      if (!body) return true;
+      const name = body.name?.trim();
+      if (!name) {
+        error(res, "name is required");
+        return true;
+      }
+      const progressEvents: InstallProgressLike[] = [];
+      const recordProgress = (progress: InstallProgressLike) => {
+        progressEvents.push(progress);
+      };
+      const pluginManager = getPluginManager();
+      let result = await pluginManager
+        .installPlugin(
+          name,
+          recordProgress,
+          body.version ? { version: body.version } : undefined,
+        )
+        .catch((err: unknown) => ({
+          success: false as const,
+          pluginName: name,
+          version: "",
+          installPath: "",
+          requiresRestart: false,
+          error: err instanceof Error ? err.message : String(err),
+        }));
+      if (
+        !result.success &&
+        result.error?.includes("requires a running agent runtime")
+      ) {
+        // Fall back to the app-core installer which writes directly to
+        // ~/.eliza/plugins/installed without depending on a plugin-manager
+        // service. The runtime plugin resolver already searches that dir.
+        const { installPlugin: installPluginDirect } = (await import(
+          /* webpackIgnore: true */ "@elizaos/app-core/services/plugin-installer"
+        )) as {
+          installPlugin: (
+            name: string,
+            onProgress?: (progress: InstallProgressLike) => void,
+            version?: string,
+          ) => Promise<{
+            success: boolean;
+            pluginName: string;
+            version: string;
+            installPath: string;
+            requiresRestart: boolean;
+            error?: string;
+          }>;
+        };
+        result = await installPluginDirect(name, recordProgress, body.version);
+      }
+      if (!result.success) {
+        json(
+          res,
+          { success: false, error: result.error, progress: progressEvents },
+          422,
+        );
+        return true;
+      }
+      json(res, {
+        success: true,
+        pluginName: result.pluginName ?? name,
+        version: result.version,
+        installPath: result.installPath,
+        requiresRestart: result.requiresRestart,
+        progress: progressEvents,
+      });
+    } catch (e) {
+      error(res, e instanceof Error ? e.message : "Failed to install app", 500);
     }
     return true;
   }
@@ -627,7 +1021,7 @@ export async function handleAppsRoutes(
     const runId = body.runId?.trim();
     const pluginManager = getPluginManager();
     const result = await appManager.stop(pluginManager, appName, runId);
-    json(res, result as object);
+    json(res, result);
     return true;
   }
 
@@ -645,7 +1039,7 @@ export async function handleAppsRoutes(
       error(res, `App "${appName}" not found in registry`, 404);
       return true;
     }
-    json(res, info as object);
+    json(res, info);
     return true;
   }
 

@@ -1,7 +1,7 @@
 # UiPath Screen Agent
 
 ### 23 Dec 2025
-- Updated the planner model to [Claude 4.5 Opus](https://www.anthropic.com/news/claude-opus-4-5)
+- Updated the planner model to [Claude Opus 4.7](https://www.anthropic.com/news/claude-opus-4-7)
 - Updated the grounder model to an internally finetuned version of [Qwen3-VL](https://github.com/QwenLM/Qwen3-VL) and allowing it to predict "refusal" (similar to OSWorld-G) for elements that do not exist 
 - Added memory for storing relevant information across steps
 - Improved utilization of the UI element detector for fine grained details (such as cell corners)

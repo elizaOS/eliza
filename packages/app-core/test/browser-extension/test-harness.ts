@@ -372,7 +372,7 @@ class ExtensionTestHarness {
       if (response.ok) {
         throw new Error("Expected promise rejection to fail");
       }
-      if (!response.error || !response.error.includes("test rejection")) {
+      if (!response.error?.includes("test rejection")) {
         throw new Error(`Expected rejection error, got: ${response.error}`);
       }
     });

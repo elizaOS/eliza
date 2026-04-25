@@ -1,15 +1,15 @@
 import {
+  type CodingAgentSession,
+  type CodingAgentTaskThread,
+  type CodingAgentTaskThreadDetail,
   client,
   EmptyWidgetState,
   PULSE_STATUSES,
   STATUS_DOT,
   TERMINAL_STATUSES,
-  WidgetSection,
-  usePtySessions,
   useApp,
-  type CodingAgentSession,
-  type CodingAgentTaskThread,
-  type CodingAgentTaskThreadDetail,
+  usePtySessions,
+  WidgetSection,
 } from "@elizaos/app-core";
 import { Badge, Button } from "@elizaos/ui";
 import { Activity, SquareArrowOutUpRight } from "lucide-react";
@@ -31,40 +31,91 @@ const ANSI_ESCAPE_PATTERN = new RegExp(
 
 const fallbackTranslate = (
   key: string,
-  vars?: { defaultValue?: string },
-): string => vars?.defaultValue ?? key;
+  vars?: Record<string, unknown>,
+): string => String(vars?.defaultValue ?? key);
 
-function deriveSessionActivity(session: CodingAgentSession): string {
+function deriveSessionActivity(
+  session: CodingAgentSession,
+  t: typeof fallbackTranslate,
+): string {
   if (session.status === "tool_running" && session.toolDescription) {
-    return `Running ${session.toolDescription}`.slice(0, 60);
+    return t("codingagenttaskspanel.runningTool", {
+      defaultValue: "Running {{tool}}",
+      tool: session.toolDescription,
+    }).slice(0, 60);
   }
-  if (session.status === "blocked") return "Waiting for input";
-  return "Running";
+  if (session.status === "blocked") {
+    return t("codingagenttaskspanel.waitingForInput", {
+      defaultValue: "Waiting for input",
+    });
+  }
+  return t("codingagenttaskspanel.running", {
+    defaultValue: "Running",
+  });
 }
 
-function relativeTime(ts: number): string {
+function formatRelativeTime(ts: number, locale?: string): string {
   const delta = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (delta < 5) return "just now";
-  if (delta < 60) return `${delta}s ago`;
-  const mins = Math.floor(delta / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  return `${hrs}h ago`;
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  if (delta < 5) return formatter.format(0, "second");
+  if (delta < 60) return formatter.format(-delta, "second");
+  const minutes = Math.floor(delta / 60);
+  if (minutes < 60) return formatter.format(-minutes, "minute");
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return formatter.format(-hours, "hour");
+  return formatter.format(-Math.floor(hours / 24), "day");
 }
 
 function stripAnsi(str: string): string {
   return str.replace(ANSI_ESCAPE_PATTERN, "").trim();
 }
 
-function formatIsoTime(value?: string | null): string {
-  if (!value) return "unknown";
+function formatIsoTime(
+  value: string | null | undefined,
+  locale: string | undefined,
+  t: typeof fallbackTranslate,
+): string {
+  if (!value) {
+    return t("codingagenttaskspanel.unknown", {
+      defaultValue: "Unknown",
+    });
+  }
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "unknown";
-  return relativeTime(date.getTime());
+  if (Number.isNaN(date.getTime())) {
+    return t("codingagenttaskspanel.unknown", {
+      defaultValue: "Unknown",
+    });
+  }
+  return formatRelativeTime(date.getTime(), locale);
 }
 
-function formatThreadStatus(status: string): string {
-  return status.replace(/_/g, " ");
+function formatThreadStatus(
+  status: string,
+  t: typeof fallbackTranslate,
+): string {
+  const mapped: Record<string, string> = {
+    open: "codingagenttaskspanel.status.open",
+    active: "codingagenttaskspanel.status.active",
+    waiting_on_user: "codingagenttaskspanel.status.waitingOnUser",
+    blocked: "codingagenttaskspanel.status.blocked",
+    validating: "codingagenttaskspanel.status.validating",
+    done: "codingagenttaskspanel.status.done",
+    failed: "codingagenttaskspanel.status.failed",
+    archived: "codingagenttaskspanel.status.archived",
+    interrupted: "codingagenttaskspanel.status.interrupted",
+  };
+  return t(mapped[status] ?? "codingagenttaskspanel.status.unknown", {
+    defaultValue: status.replace(/_/g, " "),
+  });
+}
+
+function formatThreadKind(kind: string, t: typeof fallbackTranslate): string {
+  const mapped: Record<string, string> = {
+    coding: "codingagenttaskspanel.kind.coding",
+  };
+  return t(mapped[kind] ?? "codingagenttaskspanel.kind.unknown", {
+    defaultValue: kind,
+  });
 }
 
 function getWorkspaceChangesSummary(
@@ -112,8 +163,14 @@ function getClientErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function TaskCard({ session }: { session: CodingAgentSession }) {
-  const activity = session.lastActivity ?? deriveSessionActivity(session);
+function TaskCard({
+  session,
+  t,
+}: {
+  session: CodingAgentSession;
+  t: typeof fallbackTranslate;
+}) {
+  const activity = session.lastActivity ?? deriveSessionActivity(session, t);
 
   return (
     <div className="rounded-lg border border-border/50 bg-bg-accent/30 p-3 text-left">
@@ -128,12 +185,12 @@ function TaskCard({ session }: { session: CodingAgentSession }) {
         </span>
       </div>
       {session.originalTask ? (
-        <p className="mb-1 line-clamp-2 text-xs-tight text-muted">
+        <p className="mb-1 line-clamp-2 text-xs text-muted">
           {session.originalTask}
         </p>
       ) : null}
       <p
-        className={`truncate text-xs-tight ${
+        className={`truncate text-[11px] ${
           session.status === "blocked" ? "text-warn" : "text-muted"
         }`}
       >
@@ -143,12 +200,20 @@ function TaskCard({ session }: { session: CodingAgentSession }) {
   );
 }
 
-function TaskItemsContent({ sessions }: { sessions: CodingAgentSession[] }) {
+function TaskItemsContent({
+  sessions,
+  t,
+}: {
+  sessions: CodingAgentSession[];
+  t: typeof fallbackTranslate;
+}) {
   if (sessions.length === 0) {
     return (
       <EmptyWidgetState
         icon={<Activity className="h-8 w-8" />}
-        title="No orchestrator work running"
+        title={t("codingagenttaskspanel.noWorkRunning", {
+          defaultValue: "No orchestrator work running",
+        })}
       />
     );
   }
@@ -156,7 +221,7 @@ function TaskItemsContent({ sessions }: { sessions: CodingAgentSession[] }) {
   return (
     <div className="flex flex-col gap-2">
       {sessions.map((session) => (
-        <TaskCard key={session.sessionId} session={session} />
+        <TaskCard key={session.sessionId} session={session} t={t} />
       ))}
     </div>
   );
@@ -184,14 +249,20 @@ function ThreadDetailContent({
   busy,
   onDelete,
   onReopen,
+  t,
+  locale,
 }: {
   detail: CodingAgentTaskThreadDetail;
   busy: boolean;
   onDelete: () => void;
   onReopen: () => void;
+  t: typeof fallbackTranslate;
+  locale?: string;
 }) {
   const latestTranscripts = (detail.transcripts ?? [])
-    .filter((entry) => entry.direction === "stdin" || entry.direction === "system")
+    .filter(
+      (entry) => entry.direction === "stdin" || entry.direction === "system",
+    )
     .slice(-8)
     .reverse();
   const latestEvents = (detail.events ?? []).slice(-6).reverse();
@@ -202,15 +273,32 @@ function ThreadDetailContent({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-3 text-2xs text-muted">
-        <span>{(detail.sessions ?? []).length} sessions</span>
-        <span>{(detail.artifacts ?? []).length} artifacts</span>
-        <span>{(detail.transcripts ?? []).length} transcript entries</span>
+        <span>
+          {t("codingagenttaskspanel.sessionsCount", {
+            defaultValue: "{{count}} sessions",
+            count: (detail.sessions ?? []).length,
+          })}
+        </span>
+        <span>
+          {t("codingagenttaskspanel.artifactsCount", {
+            defaultValue: "{{count}} artifacts",
+            count: (detail.artifacts ?? []).length,
+          })}
+        </span>
+        <span>
+          {t("codingagenttaskspanel.transcriptEntriesCount", {
+            defaultValue: "{{count}} transcript entries",
+            count: (detail.transcripts ?? []).length,
+          })}
+        </span>
       </div>
 
       {detail.acceptanceCriteria && detail.acceptanceCriteria.length > 0 ? (
         <div>
           <div className="mb-1 text-2xs font-semibold uppercase tracking-[0.08em] text-muted">
-            Acceptance
+            {t("codingagenttaskspanel.acceptance", {
+              defaultValue: "Acceptance",
+            })}
           </div>
           <div className="space-y-0.5">
             {detail.acceptanceCriteria.map((criterion) => (
@@ -225,9 +313,17 @@ function ThreadDetailContent({
         </div>
       ) : null}
 
-      <DetailList title="Sessions">
+      <DetailList
+        title={t("codingagenttaskspanel.sessions", {
+          defaultValue: "Sessions",
+        })}
+      >
         {(detail.sessions ?? []).length === 0 ? (
-          <div className="text-xs-tight text-muted">No sessions recorded.</div>
+          <div className="text-xs-tight text-muted">
+            {t("codingagenttaskspanel.noSessionsRecorded", {
+              defaultValue: "No sessions recorded.",
+            })}
+          </div>
         ) : (
           <div className="space-y-1.5">
             {(detail.sessions ?? [])
@@ -242,8 +338,12 @@ function ThreadDetailContent({
                       ? ` (${session.providerSource})`
                       : ""}
                     {" · "}
-                    {session.status} ·{" "}
-                    {session.workdir || session.repo || "no workspace"}
+                    {formatThreadStatus(session.status, t)} ·{" "}
+                    {session.workdir ||
+                      session.repo ||
+                      t("codingagenttaskspanel.noWorkspace", {
+                        defaultValue: "No workspace",
+                      })}
                   </div>
                   {getWorkspaceChangesSummary(session.metadata) ? (
                     <div className="text-muted">
@@ -254,8 +354,19 @@ function ThreadDetailContent({
                         if (!summary) return null;
                         const preview = summary.files.slice(0, 3).join(", ");
                         return summary.total > 3
-                          ? `${summary.total} changed files: ${preview}, +${summary.total - 3} more`
-                          : `${summary.total} changed files: ${preview}`;
+                          ? t("codingagenttaskspanel.changedFilesMore", {
+                              defaultValue:
+                                "{{count}} changed files: {{preview}}, +{{remaining}} more",
+                              count: summary.total,
+                              preview,
+                              remaining: summary.total - 3,
+                            })
+                          : t("codingagenttaskspanel.changedFiles", {
+                              defaultValue:
+                                "{{count}} changed files: {{preview}}",
+                              count: summary.total,
+                              preview,
+                            });
                       })()}
                     </div>
                   ) : null}
@@ -266,7 +377,11 @@ function ThreadDetailContent({
       </DetailList>
 
       {pendingDecisions.length > 0 ? (
-        <DetailList title="Pending User Input">
+        <DetailList
+          title={t("codingagenttaskspanel.pendingUserInput", {
+            defaultValue: "Pending User Input",
+          })}
+        >
           <div className="space-y-1.5">
             {pendingDecisions.map((decision) => (
               <div
@@ -278,7 +393,10 @@ function ThreadDetailContent({
                   {typeof decision.llmDecision.reasoning === "string"
                     ? decision.llmDecision.reasoning
                     : decision.recentOutput ||
-                      "Coordinator is waiting for the next user response."}
+                      t("codingagenttaskspanel.waitingForNextUserResponse", {
+                        defaultValue:
+                          "Coordinator is waiting for the next user response.",
+                      })}
                 </div>
               </div>
             ))}
@@ -287,14 +405,22 @@ function ThreadDetailContent({
       ) : null}
 
       {latestArtifacts.length > 0 ? (
-        <DetailList title="Artifacts">
+        <DetailList
+          title={t("codingagenttaskspanel.artifacts", {
+            defaultValue: "Artifacts",
+          })}
+        >
           <div className="space-y-1.5">
             {latestArtifacts.map((artifact) => (
               <div key={artifact.id} className="text-xs-tight text-txt">
                 <div className="font-medium">{artifact.title}</div>
                 <div className="break-all text-muted">
                   {artifact.artifactType} ·{" "}
-                  {artifact.path ?? artifact.uri ?? "inline"}
+                  {artifact.path ??
+                    artifact.uri ??
+                    t("codingagenttaskspanel.inline", {
+                      defaultValue: "inline",
+                    })}
                 </div>
               </div>
             ))}
@@ -303,12 +429,17 @@ function ThreadDetailContent({
       ) : null}
 
       {latestDecisions.length > 0 ? (
-        <DetailList title="Coordinator Decisions">
+        <DetailList
+          title={t("codingagenttaskspanel.coordinatorDecisions", {
+            defaultValue: "Coordinator Decisions",
+          })}
+        >
           <div className="space-y-1.5">
             {latestDecisions.map((decision) => (
               <div key={decision.id} className="text-xs-tight text-txt">
                 <div className="font-medium">
-                  {decision.decision} · {relativeTime(decision.timestamp)}
+                  {decision.decision} ·{" "}
+                  {formatRelativeTime(decision.timestamp, locale)}
                 </div>
                 <div className="line-clamp-3 text-muted">
                   {decision.reasoning}
@@ -320,13 +451,17 @@ function ThreadDetailContent({
       ) : null}
 
       {latestEvents.length > 0 ? (
-        <DetailList title="Events">
+        <DetailList
+          title={t("codingagenttaskspanel.events", {
+            defaultValue: "Events",
+          })}
+        >
           <div className="space-y-1.5">
             {latestEvents.map((event) => (
               <div key={event.id} className="text-xs-tight text-txt">
                 <div className="font-medium">
                   {event.eventType.replace(/_/g, " ")} ·{" "}
-                  {relativeTime(event.timestamp)}
+                  {formatRelativeTime(event.timestamp, locale)}
                 </div>
                 <div className="line-clamp-2 text-muted">{event.summary}</div>
               </div>
@@ -336,7 +471,11 @@ function ThreadDetailContent({
       ) : null}
 
       {latestTranscripts.length > 0 ? (
-        <DetailList title="Messages">
+        <DetailList
+          title={t("codingagenttaskspanel.messages", {
+            defaultValue: "Messages",
+          })}
+        >
           <div className="max-h-40 space-y-2 overflow-y-auto pr-1">
             {latestTranscripts.map((entry) => {
               const text = stripAnsi(entry.content);
@@ -347,8 +486,14 @@ function ThreadDetailContent({
                   className="rounded border border-border/40 bg-bg-hover/40 p-2"
                 >
                   <div className="mb-1 text-2xs uppercase tracking-[0.08em] text-muted">
-                    {entry.direction === "stdin" ? "prompt" : "system"} ·{" "}
-                    {relativeTime(entry.timestamp)}
+                    {entry.direction === "stdin"
+                      ? t("codingagenttaskspanel.prompt", {
+                          defaultValue: "prompt",
+                        })
+                      : t("codingagenttaskspanel.system", {
+                          defaultValue: "system",
+                        })}{" "}
+                    · {formatRelativeTime(entry.timestamp, locale)}
                   </div>
                   <pre className="whitespace-pre-wrap break-words font-mono text-2xs text-txt">
                     {text}
@@ -369,7 +514,9 @@ function ThreadDetailContent({
             onClick={onReopen}
             className="h-7 px-2 text-xs-tight"
           >
-            Reopen
+            {t("codingagenttaskspanel.reopen", {
+              defaultValue: "Reopen",
+            })}
           </Button>
         ) : (
           <Button
@@ -379,7 +526,9 @@ function ThreadDetailContent({
             onClick={onDelete}
             className="h-7 px-2 text-xs-tight text-danger hover:bg-danger/10"
           >
-            Delete
+            {t("codingagenttaskspanel.delete", {
+              defaultValue: "Delete",
+            })}
           </Button>
         )}
       </div>
@@ -396,6 +545,8 @@ function TaskThreadCard({
   busy,
   onDelete,
   onReopen,
+  t,
+  locale,
 }: {
   thread: CodingAgentTaskThread;
   selected: boolean;
@@ -405,6 +556,8 @@ function TaskThreadCard({
   busy?: boolean;
   onDelete?: () => void;
   onReopen?: () => void;
+  t: typeof fallbackTranslate;
+  locale?: string;
 }) {
   return (
     <div
@@ -434,14 +587,24 @@ function TaskThreadCard({
               THREAD_STATUS_BADGE[thread.status] ?? "bg-muted/20 text-muted"
             }`}
           >
-            {formatThreadStatus(thread.status)}
+            {formatThreadStatus(thread.status, t)}
           </Badge>
         </div>
         <div className="flex items-center gap-3 text-2xs text-muted">
-          <span>{thread.kind}</span>
-          <span>{thread.sessionCount} sessions</span>
-          <span>{thread.decisionCount} decisions</span>
-          <span>{formatIsoTime(thread.updatedAt)}</span>
+          <span>{formatThreadKind(thread.kind, t)}</span>
+          <span>
+            {t("codingagenttaskspanel.sessionsCount", {
+              defaultValue: "{{count}} sessions",
+              count: thread.sessionCount,
+            })}
+          </span>
+          <span>
+            {t("codingagenttaskspanel.decisionsCount", {
+              defaultValue: "{{count}} decisions",
+              count: thread.decisionCount,
+            })}
+          </span>
+          <span>{formatIsoTime(thread.updatedAt, locale, t)}</span>
         </div>
         {thread.summary ? (
           <div className="line-clamp-2 text-xs-tight text-txt">
@@ -453,13 +616,17 @@ function TaskThreadCard({
       {selected ? (
         <div className="px-3 pb-3 pt-2.5">
           {!detail && detailLoading ? (
-            <div className="text-xs-tight text-muted">Loading...</div>
+            <div className="text-xs-tight text-muted">
+              {t("common.loading", { defaultValue: "Loading…" })}
+            </div>
           ) : detail ? (
             <ThreadDetailContent
               detail={detail}
               busy={busy ?? false}
               onDelete={onDelete ?? (() => {})}
               onReopen={onReopen ?? (() => {})}
+              t={t}
+              locale={locale}
             />
           ) : null}
         </div>
@@ -475,6 +642,8 @@ export function CodingAgentTasksPanel({
 } = {}) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
   const t = app?.t ?? fallbackTranslate;
+  const uiLanguage =
+    typeof app?.uiLanguage === "string" ? app.uiLanguage : undefined;
   const setTab = app?.setTab ?? (() => undefined);
   const { ptySessions } = usePtySessions();
   const activeSessions = useMemo(
@@ -529,7 +698,12 @@ export function CodingAgentTasksPanel({
         if (cancelled) return;
         if (!silent) {
           setLoadError(
-            getClientErrorMessage(error, "Failed to load task threads."),
+            getClientErrorMessage(
+              error,
+              t("codingagenttaskspanel.unknown", {
+                defaultValue: "Unknown",
+              }),
+            ),
           );
         }
         if (!silent) {
@@ -554,7 +728,7 @@ export function CodingAgentTasksPanel({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [deferredSearch, showArchived]);
+  }, [deferredSearch, showArchived, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -585,7 +759,12 @@ export function CodingAgentTasksPanel({
       } catch (error) {
         if (cancelled) return;
         setDetailError(
-          getClientErrorMessage(error, "Failed to load task detail."),
+          getClientErrorMessage(
+            error,
+            t("codingagenttaskspanel.unknown", {
+              defaultValue: "Unknown",
+            }),
+          ),
         );
         setSelectedThread(null);
       }
@@ -595,7 +774,7 @@ export function CodingAgentTasksPanel({
     return () => {
       cancelled = true;
     };
-  }, [selectedThreadId, selectedThreadSummary?.updatedAt]);
+  }, [selectedThreadId, selectedThreadSummary?.updatedAt, t]);
 
   const handleDelete = async () => {
     if (!selectedThread) return;
@@ -615,9 +794,13 @@ export function CodingAgentTasksPanel({
       setSelectedThreadId(nextThreads[0]?.id ?? null);
     } catch (error) {
       setMutationError(
-        error instanceof Error
-          ? `Failed to delete task: ${error.message}`
-          : "Failed to delete task.",
+        t("codingagenttaskspanel.deleteFailed", {
+          defaultValue:
+            error instanceof Error
+              ? "Failed to delete task: {{error}}"
+              : "Failed to delete task.",
+          error: error instanceof Error ? error.message : undefined,
+        }),
       );
     } finally {
       setMutating(false);
@@ -643,9 +826,13 @@ export function CodingAgentTasksPanel({
       setSelectedThreadId(nextThreads[0]?.id ?? null);
     } catch (error) {
       setMutationError(
-        error instanceof Error
-          ? `Failed to reopen task: ${error.message}`
-          : "Failed to reopen task.",
+        t("codingagenttaskspanel.reopenFailed", {
+          defaultValue:
+            error instanceof Error
+              ? "Failed to reopen task: {{error}}"
+              : "Failed to reopen task.",
+          error: error instanceof Error ? error.message : undefined,
+        }),
       );
     } finally {
       setMutating(false);
@@ -661,11 +848,13 @@ export function CodingAgentTasksPanel({
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 gap-1 px-2 text-2xs"
+            className="h-6 w-6 p-0"
             onClick={() => setTab("tasks")}
+            aria-label={t("taskseventspanel.OpenView", {
+              defaultValue: "Open Tasks view",
+            })}
           >
-            <SquareArrowOutUpRight className="h-3 w-3" />
-            Open View
+            <SquareArrowOutUpRight className="h-3.5 w-3.5" />
           </Button>
         ) : null
       }
@@ -675,25 +864,33 @@ export function CodingAgentTasksPanel({
         <input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Search tasks"
-          className="h-8 w-full rounded-md border border-border/50 bg-bg px-2 text-xs-tight text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
+          placeholder={t("codingagenttaskspanel.searchPlaceholder", {
+            defaultValue: "Search tasks",
+          })}
+          className="h-8 w-full rounded-md border border-border/50 bg-bg px-2 text-xs text-txt outline-none transition-colors placeholder:text-muted focus:border-accent/50"
         />
       </div>
       {loadError ? (
-        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger">
-          Failed to load task threads: {loadError}
+        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+          {t("codingagenttaskspanel.loadThreadsFailed", {
+            defaultValue: "Failed to load task threads: {{error}}",
+            error: loadError,
+          })}
         </div>
       ) : null}
       {mutationError ? (
-        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger">
+        <div className="mb-2 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
           {mutationError}
         </div>
       ) : null}
       {threads.length > 0 ? (
         <div className="flex flex-col gap-2.5">
           {detailError ? (
-            <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs-tight text-danger">
-              Failed to load task detail: {detailError}
+            <div className="rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-xs text-danger">
+              {t("codingagenttaskspanel.loadTaskDetailFailed", {
+                defaultValue: "Failed to load task detail: {{error}}",
+                error: detailError,
+              })}
             </div>
           ) : null}
           <div className="flex flex-col gap-2">
@@ -710,15 +907,21 @@ export function CodingAgentTasksPanel({
                 busy={mutating}
                 onDelete={handleDelete}
                 onReopen={handleReopen}
+                t={t}
+                locale={uiLanguage}
               />
             ))}
           </div>
         </div>
       ) : loading ? (
-        <div className="text-xs-tight text-muted">Loading tasks...</div>
+        <div className="text-xs text-muted">
+          {t("codingagenttaskspanel.loadingTasks", {
+            defaultValue: "Loading tasks…",
+          })}
+        </div>
       ) : (
         <div className="flex flex-col gap-2.5">
-          <TaskItemsContent sessions={activeSessions} />
+          <TaskItemsContent sessions={activeSessions} t={t} />
         </div>
       )}
     </WidgetSection>

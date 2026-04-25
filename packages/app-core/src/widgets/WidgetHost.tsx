@@ -14,7 +14,7 @@ import { Component, type ErrorInfo, type ReactNode, useMemo } from "react";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 import { useApp } from "../state";
 import { resolveWidgetsForSlot } from "./registry";
-import type { WidgetProps, WidgetSlot } from "./types";
+import type { PluginWidgetDeclaration, WidgetProps, WidgetSlot } from "./types";
 
 // -- Error boundary ----------------------------------------------------------
 
@@ -73,6 +73,11 @@ export interface WidgetHostProps {
   className?: string;
   /** When true, render nothing if no widgets resolve (default: true). */
   hideWhenEmpty?: boolean;
+  /**
+   * Optional post-resolution filter. Useful for layering user-controlled
+   * visibility overrides on top of the registry's plugin-enabled gate.
+   */
+  filter?: (declaration: PluginWidgetDeclaration) => boolean;
 }
 
 export function WidgetHost({
@@ -81,13 +86,14 @@ export function WidgetHost({
   clearEvents,
   className,
   hideWhenEmpty = true,
+  filter,
 }: WidgetHostProps) {
   const { plugins } = useApp();
 
-  const resolved = useMemo(
-    () => resolveWidgetsForSlot(slot, plugins ?? []),
-    [slot, plugins],
-  );
+  const resolved = useMemo(() => {
+    const all = resolveWidgetsForSlot(slot, plugins ?? []);
+    return filter ? all.filter((entry) => filter(entry.declaration)) : all;
+  }, [slot, plugins, filter]);
 
   if (resolved.length === 0 && hideWhenEmpty) return null;
 

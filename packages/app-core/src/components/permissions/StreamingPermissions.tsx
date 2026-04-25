@@ -1,21 +1,21 @@
-
-
-import { Check, Cloud } from "lucide-react";
+import { Button, StatusBadge } from "@elizaos/ui";
+import { Check, Cloud, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../../state";
 import { PermissionIcon } from "./PermissionIcon";
-import { Button, StatusBadge } from "@elizaos/ui";
 
 type MediaPermissionState = "granted" | "denied" | "prompt" | "unknown";
 type StreamingPermissionMode = "mobile" | "web";
+type MediaPermissionId = "camera" | "microphone" | "screen";
 
 interface MediaPermissionDef {
-  id: string;
+  id: MediaPermissionId;
   name: string;
   nameKey: string;
   description: string;
   descriptionKey: string;
   icon: string;
+  modes?: readonly StreamingPermissionMode[];
 }
 
 interface CameraPermissionPlugin {
@@ -45,6 +45,15 @@ const MEDIA_PERMISSIONS: MediaPermissionDef[] = [
     description: "Stream audio for voice interaction with your agent",
     descriptionKey: "permissionssection.streaming.microphone.description",
     icon: "mic",
+  },
+  {
+    id: "screen",
+    name: "Screen",
+    nameKey: "permissionssection.streaming.screen.name",
+    description: "Share your screen with your agent",
+    descriptionKey: "permissionssection.streaming.screen.description",
+    icon: "monitor",
+    modes: ["web"],
   },
 ];
 
@@ -89,6 +98,11 @@ async function checkWebPermissions(): Promise<
   Record<string, MediaPermissionState>
 > {
   const states: Record<string, MediaPermissionState> = {};
+  states.screen =
+    typeof navigator !== "undefined" &&
+    typeof navigator.mediaDevices?.getDisplayMedia === "function"
+      ? "prompt"
+      : "unknown";
 
   try {
     if (navigator.permissions) {
@@ -108,10 +122,40 @@ async function checkWebPermissions(): Promise<
   return states;
 }
 
+function webPermissionErrorMessage(
+  id: MediaPermissionId,
+  err: unknown,
+): string {
+  const label =
+    id === "camera" ? "Camera" : id === "microphone" ? "Microphone" : "Screen";
+  const device = label.toLowerCase();
+  const name = err instanceof DOMException ? err.name : "";
+
+  if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+    return `${label} is blocked for this site. Allow it in browser site settings, then try again.`;
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return `No ${device} source was found.`;
+  }
+  if (id === "screen" && name === "NotSupportedError") {
+    return "Screen sharing is not available in this browser.";
+  }
+  if (err instanceof Error && err.message.trim().length > 0) {
+    return err.message.trim();
+  }
+  return `Could not request ${device} permission.`;
+}
+
 function useStreamingPermissions(mode: StreamingPermissionMode) {
   const [permStates, setPermStates] = useState<
     Record<string, MediaPermissionState>
   >({});
+  const [permissionErrors, setPermissionErrors] = useState<
+    Partial<Record<MediaPermissionId, string>>
+  >({});
+  const [requestingId, setRequestingId] = useState<MediaPermissionId | null>(
+    null,
+  );
   const [checking, setChecking] = useState(true);
 
   const checkPermissions = useCallback(async () => {
@@ -139,7 +183,13 @@ function useStreamingPermissions(mode: StreamingPermissionMode) {
   }, [checkPermissions]);
 
   const requestPermission = useCallback(
-    async (id: string) => {
+    async (id: MediaPermissionId) => {
+      setRequestingId(id);
+      setPermissionErrors((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
       if (mode === "mobile") {
         try {
           const plugin = getCameraPermissionPlugin();
@@ -152,11 +202,20 @@ function useStreamingPermissions(mode: StreamingPermissionMode) {
           }));
         } catch (err) {
           console.error("Failed to request mobile permission:", err);
+          setPermissionErrors((prev) => ({
+            ...prev,
+            [id]: "Could not request device permissions.",
+          }));
+        } finally {
+          setRequestingId(null);
         }
         return;
       }
 
       try {
+        if (!navigator.mediaDevices) {
+          throw new Error("Media devices are not available in this browser.");
+        }
         if (id === "camera") {
           const stream = await navigator.mediaDevices.getUserMedia({
             video: true,
@@ -175,16 +234,44 @@ function useStreamingPermissions(mode: StreamingPermissionMode) {
             track.stop();
           });
           setPermStates((prev) => ({ ...prev, microphone: "granted" }));
+          return;
+        }
+        if (id === "screen") {
+          if (typeof navigator.mediaDevices.getDisplayMedia !== "function") {
+            throw new DOMException(
+              "Screen sharing is not available.",
+              "NotSupportedError",
+            );
+          }
+          const stream = await navigator.mediaDevices.getDisplayMedia({
+            video: true,
+          });
+          stream.getTracks().forEach((track) => {
+            track.stop();
+          });
+          setPermStates((prev) => ({ ...prev, screen: "granted" }));
         }
       } catch (err) {
         console.error(`Failed to request browser ${id} permission:`, err);
         setPermStates((prev) => ({ ...prev, [id]: "denied" }));
+        setPermissionErrors((prev) => ({
+          ...prev,
+          [id]: webPermissionErrorMessage(id, err),
+        }));
+      } finally {
+        setRequestingId(null);
       }
     },
     [mode],
   );
 
-  return { checking, permStates, requestPermission };
+  return {
+    checking,
+    permissionErrors,
+    permStates,
+    requestPermission,
+    requestingId,
+  };
 }
 
 function getBadgeTone(
@@ -215,8 +302,13 @@ export function StreamingPermissionsSettingsView({
   title,
 }: StreamingPermissionsSettingsViewProps) {
   const { t } = useApp();
-  const { checking, permStates, requestPermission } =
-    useStreamingPermissions(mode);
+  const {
+    checking,
+    permissionErrors,
+    permStates,
+    requestPermission,
+    requestingId,
+  } = useStreamingPermissions(mode);
 
   if (checking) {
     return (
@@ -239,10 +331,18 @@ export function StreamingPermissionsSettingsView({
         </div>
         <div className="text-xs-tight text-muted mb-3">{description}</div>
         <div className="border border-border bg-card">
-          {MEDIA_PERMISSIONS.map((def) => {
+          {MEDIA_PERMISSIONS.filter(
+            (def) => !def.modes || def.modes.includes(mode),
+          ).map((def) => {
             const status = permStates[def.id] ?? "unknown";
             const isGranted = status === "granted";
+            const isRequesting = requestingId === def.id;
             const name = translateWithFallback(t, def.nameKey, def.name);
+            const error =
+              permissionErrors[def.id] ??
+              (status === "denied"
+                ? `${name} is blocked for this site. Allow it in browser site settings, then try again.`
+                : null);
             const description = translateWithFallback(
               t,
               def.descriptionKey,
@@ -277,20 +377,35 @@ export function StreamingPermissionsSettingsView({
                   <div className="text-xs-tight text-muted mt-0.5 truncate">
                     {description}
                   </div>
+                  {error ? (
+                    <div className="mt-1 text-xs-tight text-danger">
+                      {error}
+                    </div>
+                  ) : null}
                 </div>
                 {!isGranted ? (
                   <Button
                     variant="default"
                     size="sm"
                     className="h-auto text-xs-tight py-1 px-2.5"
+                    disabled={isRequesting}
                     onClick={() => void requestPermission(def.id)}
                     aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${name}`}
                   >
-                    {translateWithFallback(
-                      t,
-                      "permissionssection.Grant",
-                      "Grant",
-                    )}
+                    {isRequesting ? (
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                    ) : null}
+                    {isRequesting
+                      ? translateWithFallback(
+                          t,
+                          "permissionssection.Requesting",
+                          "Requesting",
+                        )
+                      : translateWithFallback(
+                          t,
+                          "permissionssection.Grant",
+                          "Grant",
+                        )}
                   </Button>
                 ) : (
                   <Check className="w-4 h-4 text-ok" />
@@ -322,7 +437,7 @@ export function StreamingPermissionsOnboardingView({
   title,
 }: StreamingPermissionsOnboardingViewProps) {
   const { t } = useApp();
-  const { checking, permStates, requestPermission } =
+  const { checking, permStates, requestPermission, requestingId } =
     useStreamingPermissions(mode);
 
   if (checking) {
@@ -351,8 +466,11 @@ export function StreamingPermissionsOnboardingView({
       </div>
 
       <div className="mb-6 space-y-2.5">
-        {MEDIA_PERMISSIONS.map((def) => {
+        {MEDIA_PERMISSIONS.filter(
+          (def) => !def.modes || def.modes.includes(mode),
+        ).map((def) => {
           const isGranted = permStates[def.id] === "granted";
+          const isRequesting = requestingId === def.id;
           const name = translateWithFallback(t, def.nameKey, def.name);
           const description = translateWithFallback(
             t,
@@ -386,14 +504,21 @@ export function StreamingPermissionsOnboardingView({
                   variant="default"
                   size="sm"
                   className="h-auto text-xs py-1.5 px-3"
+                  disabled={isRequesting}
                   onClick={() => void requestPermission(def.id)}
                   aria-label={`${translateWithFallback(t, "permissionssection.Grant", "Grant")} ${name}`}
                 >
-                  {translateWithFallback(
-                    t,
-                    "permissionssection.Grant",
-                    "Grant",
-                  )}
+                  {isRequesting
+                    ? translateWithFallback(
+                        t,
+                        "permissionssection.Requesting",
+                        "Requesting",
+                      )
+                    : translateWithFallback(
+                        t,
+                        "permissionssection.Grant",
+                        "Grant",
+                      )}
                 </Button>
               )}
             </div>

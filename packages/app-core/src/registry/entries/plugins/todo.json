@@ -1,0 +1,47 @@
+{
+  "id": "todo",
+  "name": "Todo",
+  "description": "A todo list. For humans and agents.",
+  "npmName": "@elizaos/plugin-todo",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": ["todo", "task-management", "multi-language"],
+  "config": {
+    "ENABLE_REMINDERS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "true",
+      "label": "Reminders",
+      "help": "Enable reminder notifications for todos",
+      "advanced": false
+    },
+    "REMINDER_INTERVAL_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "30000",
+      "label": "Interval Ms",
+      "help": "Interval in milliseconds between reminder checks",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ClipboardList",
+    "group": "automation",
+    "groupOrder": 9,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-todo#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-todo"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "automation"
+}

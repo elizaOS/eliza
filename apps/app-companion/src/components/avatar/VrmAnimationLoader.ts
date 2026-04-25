@@ -2,6 +2,8 @@ import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { retargetMixamoFbxToVrm } from "./retargetMixamoFbxToVrm";
+import { retargetMixamoGltfToVrm } from "./retargetMixamoGltfToVrm";
 
 /**
  * Context needed by the animation loader to check whether the owning engine
@@ -66,7 +68,6 @@ export async function loadIdleClip(
   idleGlbUrl: string,
   ctx: AnimationLoaderContext,
 ): Promise<THREE.AnimationClip | null> {
-  const { retargetMixamoGltfToVrm } = await import("./retargetMixamoGltfToVrm");
   if (ctx.isAborted() || !ctx.isCurrentVrm(vrm)) return null;
 
   const gltfLoader = new GLTFLoader();
@@ -110,9 +111,6 @@ export async function loadEmoteClip(
     const isFbx = isFbxAsset(path);
 
     if (isFbx) {
-      const { retargetMixamoFbxToVrm } = await import(
-        "./retargetMixamoFbxToVrm"
-      );
       const fbxLoader = new FBXLoader();
       const fbx = fbxLoader.parse(
         await fetchAnimationBuffer(path),
@@ -129,9 +127,6 @@ export async function loadEmoteClip(
       return retargeted;
     }
 
-    const { retargetMixamoGltfToVrm } = await import(
-      "./retargetMixamoGltfToVrm"
-    );
     const loader = new GLTFLoader();
     const gltf = await loader.parseAsync(
       await fetchAnimationBuffer(path),

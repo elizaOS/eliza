@@ -1,0 +1,32 @@
+{
+  "id": "vincent",
+  "name": "Vincent",
+  "description": "Connect Vincent to trade on Hyperliquid and Polymarket through Vincent's agent.",
+  "npmName": "@elizaos/app-vincent",
+  "source": "bundled",
+  "tags": ["trading", "hyperliquid", "polymarket", "prediction-markets"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "hero-card",
+    "icon": "Wallet",
+    "group": "Curated",
+    "groupOrder": 6,
+    "actions": ["launch", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "trading",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": [
+      "hyperliquid",
+      "polymarket",
+      "trading",
+      "prediction-markets"
+    ],
+    "curatedSlug": "vincent"
+  }
+}

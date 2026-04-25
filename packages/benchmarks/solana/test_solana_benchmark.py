@@ -534,7 +534,7 @@ class TestElizaExplorerConstruction:
         from benchmarks.solana.eliza_explorer import ElizaExplorer
         explorer = ElizaExplorer(max_messages=3)
         assert explorer.max_messages == 3
-        assert explorer.model_name == "anthropic/claude-sonnet-4"
+        assert explorer.model_name == "anthropic/claude-sonnet-4.6"
         assert explorer.env_config is None
         assert explorer.run_id.startswith("eliza_")
         assert len(explorer.metrics["messages"]) == 0
@@ -578,7 +578,7 @@ class TestElizaExplorerConstruction:
         explorer = ElizaExplorer(max_messages=1, run_index=42)
         m = explorer.metrics
         assert m["run_index"] == 42
-        assert m["model"] == "anthropic/claude-sonnet-4"
+        assert m["model"] == "anthropic/claude-sonnet-4.6"
         assert isinstance(m["messages"], list)
         assert isinstance(m["errors"], list)
         assert isinstance(m["programs_discovered"], dict)

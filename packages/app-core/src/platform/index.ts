@@ -6,6 +6,8 @@ import type {
   SystemPermissionId,
 } from "../api/client";
 
+export type * from "./types";
+
 // ── Onboarding permissions ──────────────────────────────────────────────
 
 export const REQUIRED_ONBOARDING_PERMISSION_IDS: ReadonlyArray<SystemPermissionId> =
@@ -34,14 +36,12 @@ export function hasRequiredOnboardingPermissions(
 
 // ── Platform init ───────────────────────────────────────────────────────
 
-export { applyLaunchConnectionFromUrl } from "./browser-launch";
+export {
+  applyLaunchConnection,
+  applyLaunchConnectionFromUrl,
+} from "./browser-launch";
 export * from "./cloud-preference-patch";
 export * from "./desktop-permissions-client";
-export type {
-  CloudPreferenceClientLike,
-  OnboardingClientLike,
-  PermissionsClientLike,
-} from "./types";
 export {
   type DeepLinkHandlers,
   dispatchShareTarget,
@@ -58,6 +58,10 @@ export {
   type ShareTargetPayload,
   setupPlatformStyles,
 } from "./init";
-export * from "./lifeops-github";
 export * from "./onboarding-reset";
+export type {
+  CloudPreferenceClientLike,
+  OnboardingClientLike,
+  PermissionsClientLike,
+} from "./types";
 export * from "./window-shell";

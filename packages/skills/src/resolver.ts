@@ -1,6 +1,13 @@
-import { existsSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  statSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveStateDir } from "@elizaos/core";
 
 /**
  * Cached skills directory path
@@ -102,4 +109,62 @@ export function getSkillsDir(): string {
  */
 export function clearSkillsDirCache(): void {
   cachedSkillsDir = undefined;
+}
+
+/**
+ * Default base directory for the curated learning loop. Lives alongside the
+ * Milady state dir (`~/.milady/`) and holds two sibling namespaces:
+ *
+ *   curated/active/    — auto-promoted or human-promoted skills (loaded)
+ *   curated/proposed/  — staged drafts awaiting human review (NOT loaded)
+ *
+ * Honors `MILADY_STATE_DIR` and `ELIZA_STATE_DIR` (in that order); falls back
+ * to `~/.milady`.
+ */
+function resolveCuratedBaseDir(): string {
+  return join(resolveStateDir(), "skills", "curated");
+}
+
+/**
+ * Absolute path to the curated **active** skills directory. Skills here are
+ * loaded into the runtime alongside bundled and managed skills.
+ */
+export function getCuratedActiveDir(): string {
+  return join(resolveCuratedBaseDir(), "active");
+}
+
+/**
+ * Absolute path to the curated **proposed** skills directory. Skills here are
+ * NEVER loaded into the runtime — they are staged for human review via the
+ * Settings → Learned Skills UI.
+ */
+export function getProposedSkillsDir(): string {
+  return join(resolveCuratedBaseDir(), "proposed");
+}
+
+/**
+ * Promote a proposed skill to active by moving its directory atomically.
+ * Returns the destination path. Throws if the source does not exist or the
+ * destination already exists.
+ */
+export function promoteSkill(name: string): string {
+  if (!/^[a-z0-9-]+$/.test(name)) {
+    throw new Error(
+      `Invalid skill name "${name}" — must be lowercase a-z, 0-9, hyphens only`,
+    );
+  }
+  const proposedDir = join(getProposedSkillsDir(), name);
+  if (!existsSync(proposedDir) || !statSync(proposedDir).isDirectory()) {
+    throw new Error(`Proposed skill "${name}" not found at ${proposedDir}`);
+  }
+  const activeRoot = getCuratedActiveDir();
+  if (!existsSync(activeRoot)) {
+    mkdirSync(activeRoot, { recursive: true });
+  }
+  const activeDir = join(activeRoot, name);
+  if (existsSync(activeDir)) {
+    throw new Error(`Active skill "${name}" already exists at ${activeDir}`);
+  }
+  renameSync(proposedDir, activeDir);
+  return activeDir;
 }

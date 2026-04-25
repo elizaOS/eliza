@@ -1,10 +1,21 @@
-
-
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+  SettingsControls,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+  Switch,
+} from "@elizaos/ui";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode, RefCallback } from "react";
 import type { PluginInfo } from "../../api";
-import { SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Select, SelectContent, SelectItem, SelectValue, SettingsControls } from "@elizaos/ui";
-import { connectorDisplayName } from "./plugin-list-utils";
+import { getBrandIcon } from "../conversations/brand-icons";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import type {
   PluginsViewMode,
   SubgroupTag,
@@ -24,7 +35,6 @@ interface ConnectorDesktopSidebarProps {
   expandLabel: string;
   hasPluginToggleInFlight: boolean;
   mode: PluginsViewMode;
-  pluginDescriptionFallback: string;
   pluginSearch: string;
   registerConnectorRailItem: (pluginId: string) => RefCallback<HTMLElement>;
   registerConnectorSidebarItem: (pluginId: string) => RefCallback<HTMLElement>;
@@ -55,7 +65,6 @@ export function ConnectorSidebar({
   expandLabel,
   hasPluginToggleInFlight,
   mode,
-  pluginDescriptionFallback,
   pluginSearch,
   registerConnectorRailItem,
   registerConnectorSidebarItem,
@@ -84,7 +93,7 @@ export function ConnectorSidebar({
     pluginSearch.trim().length > 0 || subgroupFilter !== "all";
 
   return (
-    <Sidebar
+    <AppPageSidebar
       ref={registerConnectorSidebarViewport}
       testId="connectors-settings-sidebar"
       collapsible
@@ -102,18 +111,23 @@ export function ConnectorSidebar({
       }
       collapsedRailItems={visiblePlugins.map((plugin) => {
         const isSelected = connectorSelectedId === plugin.id;
+        const RailBrandIcon = getBrandIcon(plugin.id);
         return (
           <SidebarContent.RailItem
             key={plugin.id}
             ref={registerConnectorRailItem(plugin.id)}
-            aria-label={connectorDisplayName(plugin)}
-            title={connectorDisplayName(plugin)}
+            aria-label={plugin.name}
+            title={plugin.name}
             active={isSelected}
             indicatorTone={plugin.enabled ? "accent" : undefined}
             onClick={() => onConnectorSelect(plugin.id)}
           >
             <SidebarContent.RailMedia>
-              {renderResolvedIcon(plugin)}
+              {RailBrandIcon ? (
+                <RailBrandIcon className="h-5 w-5 shrink-0" />
+              ) : (
+                renderResolvedIcon(plugin)
+              )}
             </SidebarContent.RailMedia>
           </SidebarContent.RailItem>
         );
@@ -159,6 +173,7 @@ export function ConnectorSidebar({
               const isToggleBusy = togglingPlugins.has(plugin.id);
               const toggleDisabled =
                 isToggleBusy || (hasPluginToggleInFlight && !isToggleBusy);
+              const SidebarBrandIcon = getBrandIcon(plugin.id);
 
               return (
                 <SidebarContent.Item
@@ -179,47 +194,38 @@ export function ConnectorSidebar({
                       active={isSelected}
                       className="mt-0 h-8 w-8 shrink-0 p-1.5"
                     >
-                      {renderResolvedIcon(plugin, {
-                        className: "h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain",
-                        emojiClassName: "text-sm",
-                      })}
+                      {SidebarBrandIcon ? (
+                        <SidebarBrandIcon className="h-4 w-4 shrink-0" />
+                      ) : (
+                        renderResolvedIcon(plugin, {
+                          className:
+                            "h-4 w-4 shrink-0 rounded-[var(--radius-sm)] object-contain",
+                          emojiClassName: "text-sm",
+                        })
+                      )}
                     </SidebarContent.ItemIcon>
                     <SidebarContent.ItemBody>
                       <span className="block truncate text-sm font-semibold leading-5 text-txt">
-                        {connectorDisplayName(plugin)}
+                        {plugin.name}
                       </span>
                     </SidebarContent.ItemBody>
                   </SidebarContent.ItemButton>
                   <div className="flex shrink-0 flex-row items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`h-7 min-h-0 min-w-[3.5rem] shrink-0 rounded-[var(--radius-sm)] border px-2.5 py-0 text-2xs font-bold leading-none tracking-[0.16em] transition-colors ${
-                        plugin.enabled
-                          ? "border-accent bg-accent text-accent-fg"
-                          : "border-border bg-transparent text-muted hover:border-accent/40 hover:text-txt"
-                      } ${
-                        toggleDisabled
-                          ? "cursor-not-allowed opacity-60"
-                          : "cursor-pointer"
-                      }`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void onTogglePlugin(plugin.id, !plugin.enabled);
-                      }}
+                    <Switch
+                      checked={plugin.enabled}
                       disabled={toggleDisabled}
-                    >
-                      {isToggleBusy
-                        ? "..."
-                        : plugin.enabled
-                          ? t("common.on")
-                          : t("common.off")}
-                    </Button>
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      onCheckedChange={(checked) => {
+                        void onTogglePlugin(plugin.id, checked);
+                      }}
+                      aria-label={`${plugin.enabled ? t("common.off") : t("common.on")} ${plugin.name}`}
+                    />
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 shrink-0 rounded-[var(--radius-sm)] text-muted hover:text-txt"
-                      aria-label={`${isExpanded ? collapseLabel : expandLabel} ${connectorDisplayName(plugin)} in sidebar`}
+                      className="h-8 w-8 shrink-0 rounded-none border-0 bg-transparent text-muted transition-colors hover:bg-transparent hover:text-txt"
+                      aria-label={`${isExpanded ? collapseLabel : expandLabel} ${plugin.name} in sidebar`}
                       onClick={(event) => {
                         event.stopPropagation();
                         onConnectorSectionToggle(plugin.id);
@@ -238,6 +244,6 @@ export function ConnectorSidebar({
           )}
         </SidebarPanel>
       </SidebarScrollRegion>
-    </Sidebar>
+    </AppPageSidebar>
   );
 }

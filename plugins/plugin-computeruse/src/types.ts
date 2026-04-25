@@ -33,9 +33,11 @@ export interface DesktopActionParams {
   action: DesktopActionType;
   coordinate?: [number, number];
   startCoordinate?: [number, number];
+  /** Modifier keys to hold during click_with_modifiers */
+  modifiers?: string[];
+  /** Text to type (for "type" action) */
   text?: string;
   key?: string;
-  modifiers?: string[];
   hold_keys?: string[];
   button?: "left" | "middle" | "right";
   clicks?: number;
@@ -69,6 +71,7 @@ export type BrowserActionType =
   | "state"
   | "info"
   | "context"
+  | "get_context"
   | "wait"
   | "list_tabs"
   | "open_tab"
@@ -82,11 +85,19 @@ export interface BrowserActionParams {
   coordinate?: [number, number];
   text?: string;
   code?: string;
+  /** Text to wait for or click by text content */
+  waitForText?: string;
+  /** Text to wait to disappear */
+  waitForTextGone?: string;
+  /** Scroll direction */
   direction?: "up" | "down";
   amount?: number;
   tabId?: string;
-  tab_index?: string | number;
-  index?: string | number;
+  /** Numeric tab index alias from upstream callers */
+  index?: number;
+  /** Snake-case alias for tab index */
+  tab_index?: number;
+  /** Wait timeout in ms */
   timeout?: number;
 }
 
@@ -106,15 +117,63 @@ export type WindowActionType =
 export interface WindowActionParams {
   action: WindowActionType;
   windowId?: string;
+  /** Window title match for switch action */
   windowTitle?: string;
-  window?: string;
+  /** App name match for switch action */
+  appName?: string;
+  /** Upstream title alias */
   title?: string;
+  /** Upstream window alias */
+  window?: string;
+  /** Upstream arrangement hint for arrange action */
   arrangement?: string;
+  /** Upstream coordinates for move action */
   x?: number;
   y?: number;
 }
 
 // ── File Actions ──────────────────────────────────────────────────────────
+
+export interface ComputerUseResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  permissionDenied?: boolean;
+  permissionType?: PermissionType;
+  approvalRequired?: boolean;
+  approvalId?: string;
+}
+
+export interface ComputerActionResult extends ComputerUseResult {
+  /** Base64-encoded PNG screenshot taken after the action */
+  screenshot?: string;
+  /** Structured data payload (e.g. OCR/detect results) */
+  data?: unknown;
+}
+
+export interface BrowserActionResult extends ComputerUseResult {
+  /** Base64-encoded PNG for screenshot action */
+  screenshot?: string;
+  /** Front-end proxy screenshot variant */
+  frontendScreenshot?: string;
+  /** Text content for dom, state, clickables, execute results */
+  content?: string;
+  /** Structured data (e.g. tab list, clickable elements) */
+  data?: unknown;
+  url?: string;
+  title?: string;
+  isOpen?: boolean;
+  is_open?: boolean;
+  tabs?: BrowserTab[];
+  elements?: ClickableElement[];
+  count?: number;
+}
+
+export interface WindowActionResult extends ComputerUseResult {
+  /** Window list for "list" action */
+  windows?: WindowInfo[];
+  count?: number;
+}
 
 export type FileActionType =
   | "read"
@@ -124,6 +183,7 @@ export type FileActionType =
   | "delete"
   | "exists"
   | "list"
+  | "list_directory"
   | "delete_directory"
   | "upload"
   | "download"
@@ -135,16 +195,33 @@ export interface FileActionParams {
   filepath?: string;
   dirpath?: string;
   content?: string;
-  encoding?: BufferEncoding | string;
   oldText?: string;
   newText?: string;
   old_text?: string;
   new_text?: string;
   find?: string;
   replace?: string;
+  encoding?: BufferEncoding;
 }
 
-// ── Terminal Actions ──────────────────────────────────────────────────────
+export interface FileEntry {
+  name: string;
+  type: "file" | "directory";
+  path: string;
+}
+
+export interface FileActionResult extends ComputerUseResult {
+  path?: string;
+  content?: string;
+  exists?: boolean;
+  isFile?: boolean;
+  isDirectory?: boolean;
+  is_file?: boolean;
+  is_directory?: boolean;
+  size?: number;
+  count?: number;
+  items?: FileEntry[];
+}
 
 export type TerminalActionType =
   | "connect"
@@ -158,78 +235,22 @@ export type TerminalActionType =
 export interface TerminalActionParams {
   action: TerminalActionType;
   command?: string;
+  cwd?: string;
   timeout?: number;
   timeoutSeconds?: number;
   sessionId?: string;
   session_id?: string;
-  cwd?: string;
   text?: string;
 }
 
-// ── Shared Results ────────────────────────────────────────────────────────
-
-export interface BaseActionResult {
-  success: boolean;
-  error?: string;
-  message?: string;
-  approvalRequired?: boolean;
-  approvalId?: string;
-  permissionDenied?: boolean;
-  permissionType?: PermissionType;
-}
-
-export interface ComputerActionResult extends BaseActionResult {
-  screenshot?: string;
-  data?: unknown;
-}
-
-export interface BrowserActionResult extends BaseActionResult {
-  screenshot?: string;
-  frontendScreenshot?: string;
-  content?: string;
-  data?: unknown;
-  url?: string;
-  title?: string;
-  isOpen?: boolean;
-  is_open?: boolean;
-  tabs?: BrowserTab[];
-  elements?: ClickableElement[];
-  count?: number;
-}
-
-export interface WindowActionResult extends BaseActionResult {
-  windows?: WindowInfo[];
-  count?: number;
-}
-
-export interface FileActionResult extends BaseActionResult {
-  path?: string;
-  content?: string;
-  exists?: boolean;
-  isFile?: boolean;
-  isDirectory?: boolean;
-  is_file?: boolean;
-  is_directory?: boolean;
-  size?: number;
-  items?: FileEntry[];
-  count?: number;
-}
-
-export interface TerminalActionResult extends BaseActionResult {
-  output?: string;
-  exitCode?: number;
-  exit_code?: number;
+export interface TerminalActionResult extends ComputerUseResult {
   sessionId?: string;
   session_id?: string;
   cwd?: string;
+  output?: string;
+  exitCode?: number;
+  exit_code?: number;
 }
-
-export type ComputerUseResult =
-  | ComputerActionResult
-  | BrowserActionResult
-  | WindowActionResult
-  | FileActionResult
-  | TerminalActionResult;
 
 // ── Shared Models ─────────────────────────────────────────────────────────
 
@@ -237,12 +258,6 @@ export interface WindowInfo {
   id: string;
   title: string;
   app: string;
-}
-
-export interface FileEntry {
-  name: string;
-  type: "file" | "directory";
-  path: string;
 }
 
 export interface ScreenRegion {
@@ -263,12 +278,12 @@ export interface PlatformCapability {
 }
 
 export interface PlatformCapabilities {
-  screenshot: PlatformCapability;
-  computerUse: PlatformCapability;
-  windowList: PlatformCapability;
-  browser: PlatformCapability;
-  terminal: PlatformCapability;
-  fileSystem: PlatformCapability;
+  screenshot: { available: boolean; tool: string };
+  computerUse: { available: boolean; tool: string };
+  windowList: { available: boolean; tool: string };
+  browser: { available: boolean; tool: string };
+  terminal: { available: boolean; tool: string };
+  fileSystem: { available: boolean; tool: string };
 }
 
 export interface ActionHistoryEntry {
@@ -309,10 +324,15 @@ export interface ApprovalResolution {
 }
 
 export interface ComputerUseConfig {
+  /** Auto-capture screenshot after each desktop mutation (default: true) */
   screenshotAfterAction: boolean;
+  /** Action execution timeout in ms (default: 10000) */
   actionTimeoutMs: number;
+  /** Max recent actions to keep for provider context (default: 10) */
   maxRecentActions: number;
+  /** Approval mode for side-effecting commands */
   approvalMode: ApprovalMode;
+  /** Launch puppeteer-core in headless mode (default: false) */
   browserHeadless?: boolean;
 }
 
@@ -328,6 +348,9 @@ export interface BrowserState {
 export interface BrowserInfo extends BrowserState {
   success: boolean;
   error?: string;
+  userAgent?: string;
+  viewport?: { width: number; height: number } | null;
+  tabs?: number;
 }
 
 export interface ClickableElement {

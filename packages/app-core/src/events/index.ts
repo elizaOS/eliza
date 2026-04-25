@@ -1,8 +1,3 @@
-import type {
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared/contracts/lifeops";
-
 /**
  * Typed constants for eliza:* custom events dispatched across the app.
  *
@@ -26,6 +21,8 @@ export const TRAY_ACTION_EVENT = "eliza:tray-action" as const;
 export const APP_RESUME_EVENT = "eliza:app-resume" as const;
 export const APP_PAUSE_EVENT = "eliza:app-pause" as const;
 export const CONNECT_EVENT = "eliza:connect" as const;
+export const MOBILE_RUNTIME_MODE_CHANGED_EVENT =
+  "eliza:mobile-runtime-mode-changed" as const;
 
 // ── Voice / config ───────────────────────────────────────────────────────
 export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
@@ -34,11 +31,6 @@ export const APP_EMOTE_EVENT = "eliza:app-emote" as const;
 /** After `/api/cloud/status` — chat voice reloads config so cloud-backed TTS mode matches the server snapshot. */
 export const ELIZA_CLOUD_STATUS_UPDATED_EVENT =
   "eliza:cloud-status-updated" as const;
-export const LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT =
-  "eliza:lifeops-google-connector-refresh" as const;
-export const LIFEOPS_GITHUB_CALLBACK_EVENT =
-  "eliza:lifeops-github-callback" as const;
-
 export interface ElizaCloudStatusUpdatedDetail {
   /** Same as cloud status `connected` (auth or API key on server). */
   connected: boolean;
@@ -48,32 +40,6 @@ export interface ElizaCloudStatusUpdatedDetail {
   hasPersistedApiKey: boolean;
   /** True only when cloud voice/chat routing should actively use the proxy. */
   cloudVoiceProxyAvailable: boolean;
-}
-
-export interface LifeOpsGoogleConnectorRefreshDetail {
-  origin?: string;
-  side?: LifeOpsConnectorSide;
-  mode?: LifeOpsConnectorMode;
-  source?:
-    | "callback"
-    | "connect"
-    | "disconnect"
-    | "mode_change"
-    | "refresh"
-    | "focus"
-    | "visibility"
-    | "resume";
-}
-
-export interface LifeOpsGithubCallbackDetail {
-  target: "owner" | "agent";
-  status: "connected" | "error";
-  connectionId?: string | null;
-  agentId?: string | null;
-  githubUsername?: string | null;
-  bindingMode?: "cloud-managed" | "shared-owner" | null;
-  message?: string | null;
-  restarted?: boolean;
 }
 
 // ── Avatar / VRM ─────────────────────────────────────────────────────────
@@ -109,15 +75,14 @@ export type ElizaDocumentEventName =
   | typeof TRAY_ACTION_EVENT
   | typeof APP_RESUME_EVENT
   | typeof APP_PAUSE_EVENT
-  | typeof CONNECT_EVENT;
+  | typeof CONNECT_EVENT
+  | typeof MOBILE_RUNTIME_MODE_CHANGED_EVENT;
 
 export type ElizaWindowEventName =
   | typeof VOICE_CONFIG_UPDATED_EVENT
   | typeof CHAT_AVATAR_VOICE_EVENT
   | typeof APP_EMOTE_EVENT
   | typeof ELIZA_CLOUD_STATUS_UPDATED_EVENT
-  | typeof LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT
-  | typeof LIFEOPS_GITHUB_CALLBACK_EVENT
   | typeof VRM_TELEPORT_COMPLETE_EVENT
   | typeof ONBOARDING_VOICE_PREVIEW_AWAIT_TELEPORT_EVENT
   | typeof SELF_STATUS_SYNC_EVENT;
@@ -152,18 +117,6 @@ export function dispatchElizaCloudStatusUpdated(
   detail: ElizaCloudStatusUpdatedDetail,
 ): void {
   dispatchWindowEvent(ELIZA_CLOUD_STATUS_UPDATED_EVENT, detail);
-}
-
-export function dispatchLifeOpsGoogleConnectorRefresh(
-  detail?: LifeOpsGoogleConnectorRefreshDetail,
-): void {
-  dispatchWindowEvent(LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT, detail);
-}
-
-export function dispatchLifeOpsGithubCallback(
-  detail: LifeOpsGithubCallbackDetail,
-): void {
-  dispatchWindowEvent(LIFEOPS_GITHUB_CALLBACK_EVENT, detail);
 }
 
 // ── Generic app aliases (preferred) ──────────────────────────────────────

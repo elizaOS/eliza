@@ -15,7 +15,11 @@ function base58Encode(data: Buffer | Uint8Array): string {
   let num = BigInt(`0x${Buffer.from(data).toString("hex")}`);
   const chars: string[] = [];
   while (num > 0n) {
-    chars.unshift(B58[Number(num % 58n)]);
+    const digit = B58[Number(num % 58n)];
+    if (!digit) {
+      throw new Error("Invalid base58 digit");
+    }
+    chars.unshift(digit);
     num /= 58n;
   }
   for (const byte of data) {

@@ -1,7 +1,7 @@
 /**
  * Shared helper for auto-populating owner contacts when a connector
- * successfully pairs. Called by signal-routes, whatsapp-routes,
- * telegram-setup-routes, discord-local-routes, etc.
+ * successfully pairs. Called by the per-platform setup routes
+ * (signal-routes, whatsapp-routes, telegram-setup-routes, etc.).
  *
  * Writes to `config.agents.defaults.ownerContacts[source]` so LifeOps
  * reminder delivery can immediately find the owner on the newly

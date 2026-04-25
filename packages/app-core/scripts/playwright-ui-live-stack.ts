@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { WebSocket, WebSocketServer } from "ws";
+import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 import { buildOnboardingRuntimeConfig } from "../src/onboarding-config";
 import { selectLiveProvider } from "../test/helpers/live-provider";
 
@@ -242,6 +243,12 @@ async function startUiProxyServer(args: {
         response,
       });
     } catch (error) {
+      if (response.headersSent || response.writableEnded) {
+        if (!response.writableEnded) {
+          response.end();
+        }
+        return;
+      }
       response.writeHead(500, {
         "Content-Type": "application/json; charset=utf-8",
       });
@@ -372,11 +379,20 @@ async function waitForJsonPredicate<T>(
 
 async function ensureUiDistReady(): Promise<void> {
   const distIndex = path.join(APP_DIST_DIR, "index.html");
+  let needsBuild = false;
+
   try {
     await access(distIndex);
-    return;
+    needsBuild = viteRendererBuildNeeded(
+      path.join(REPO_ROOT, "apps", "app"),
+      REPO_ROOT,
+    );
   } catch {
-    // Build when this checkout does not already have a renderer bundle.
+    needsBuild = true;
+  }
+
+  if (!needsBuild) {
+    return;
   }
 
   const logs: string[] = [];

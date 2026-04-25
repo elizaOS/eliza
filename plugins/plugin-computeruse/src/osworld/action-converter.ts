@@ -47,7 +47,8 @@ export function fromOSWorldAction(
       return {
         action: "scroll",
         coordinate: [action.x ?? 0, action.y ?? 0],
-        scrollDirection: action.direction ?? (action.dy && action.dy < 0 ? "up" : "down"),
+        scrollDirection:
+          action.direction ?? (action.dy && action.dy < 0 ? "up" : "down"),
         scrollAmount: Math.abs(action.amount ?? action.dy ?? 3),
       };
 
@@ -119,9 +120,7 @@ export function fromOSWorldAction(
 /**
  * Convert a DesktopActionParams to an OSWorld computer_13 action.
  */
-export function toOSWorldAction(
-  params: DesktopActionParams,
-): OSWorldAction {
+export function toOSWorldAction(params: DesktopActionParams): OSWorldAction {
   switch (params.action) {
     case "click":
       return {
@@ -225,25 +224,38 @@ export function fromPyAutoGUI(code: string): DesktopActionParams | null {
   if (clickMatch) {
     return {
       action: "click",
-      coordinate: [Number.parseInt(clickMatch[1]!, 10), Number.parseInt(clickMatch[2]!, 10)],
+      coordinate: [
+        Number.parseInt(clickMatch[1]!, 10),
+        Number.parseInt(clickMatch[2]!, 10),
+      ],
     };
   }
 
   // pyautogui.doubleClick(x, y)
-  const dblClickMatch = trimmed.match(/pyautogui\.doubleClick\((\d+),\s*(\d+)\)/);
+  const dblClickMatch = trimmed.match(
+    /pyautogui\.doubleClick\((\d+),\s*(\d+)\)/,
+  );
   if (dblClickMatch) {
     return {
       action: "double_click",
-      coordinate: [Number.parseInt(dblClickMatch[1]!, 10), Number.parseInt(dblClickMatch[2]!, 10)],
+      coordinate: [
+        Number.parseInt(dblClickMatch[1]!, 10),
+        Number.parseInt(dblClickMatch[2]!, 10),
+      ],
     };
   }
 
   // pyautogui.rightClick(x, y)
-  const rightClickMatch = trimmed.match(/pyautogui\.rightClick\((\d+),\s*(\d+)\)/);
+  const rightClickMatch = trimmed.match(
+    /pyautogui\.rightClick\((\d+),\s*(\d+)\)/,
+  );
   if (rightClickMatch) {
     return {
       action: "right_click",
-      coordinate: [Number.parseInt(rightClickMatch[1]!, 10), Number.parseInt(rightClickMatch[2]!, 10)],
+      coordinate: [
+        Number.parseInt(rightClickMatch[1]!, 10),
+        Number.parseInt(rightClickMatch[2]!, 10),
+      ],
     };
   }
 
@@ -252,12 +264,17 @@ export function fromPyAutoGUI(code: string): DesktopActionParams | null {
   if (moveMatch) {
     return {
       action: "mouse_move",
-      coordinate: [Number.parseInt(moveMatch[1]!, 10), Number.parseInt(moveMatch[2]!, 10)],
+      coordinate: [
+        Number.parseInt(moveMatch[1]!, 10),
+        Number.parseInt(moveMatch[2]!, 10),
+      ],
     };
   }
 
   // pyautogui.typewrite('text') or pyautogui.write('text')
-  const typeMatch = trimmed.match(/pyautogui\.(?:typewrite|write)\(['"](.+?)['"]\)/);
+  const typeMatch = trimmed.match(
+    /pyautogui\.(?:typewrite|write)\(['"](.+?)['"]\)/,
+  );
   if (typeMatch) {
     return { action: "type", text: typeMatch[1] };
   }
@@ -278,7 +295,9 @@ export function fromPyAutoGUI(code: string): DesktopActionParams | null {
   }
 
   // pyautogui.scroll(amount, x=X, y=Y) or pyautogui.scroll(amount)
-  const scrollMatch = trimmed.match(/pyautogui\.scroll\((-?\d+)(?:,\s*x=(\d+),\s*y=(\d+))?\)/);
+  const scrollMatch = trimmed.match(
+    /pyautogui\.scroll\((-?\d+)(?:,\s*x=(\d+),\s*y=(\d+))?\)/,
+  );
   if (scrollMatch) {
     const amount = Number.parseInt(scrollMatch[1]!, 10);
     const x = scrollMatch[2] ? Number.parseInt(scrollMatch[2], 10) : 0;

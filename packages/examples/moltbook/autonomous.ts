@@ -126,7 +126,7 @@ function getConfig(): Config {
       process.env.OPENROUTER_API_KEY ||
       process.env.OPENAI_API_KEY,
     llmBaseUrl: process.env.LLM_BASE_URL || "https://openrouter.ai/api/v1",
-    model: process.env.MODEL || "anthropic/claude-sonnet-4-20250514",
+    model: process.env.MODEL || "anthropic/claude-sonnet-4.6",
 
     // Moltbook
     moltbookToken: process.env.MOLTBOOK_TOKEN,

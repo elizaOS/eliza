@@ -4,8 +4,8 @@
  */
 export {
   createDesktopStewardSidecar,
-  StewardSidecar,
   type StewardCredentials,
+  StewardSidecar,
   type StewardSidecarConfig,
   type StewardSidecarStatus,
   type StewardWalletInfo,

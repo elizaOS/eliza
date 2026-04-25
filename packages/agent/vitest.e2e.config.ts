@@ -1,30 +1,12 @@
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(packageRoot, "..", "..");
-// See `test/vitest/default.config.ts` (via root vitest.config.ts) for the
-// monorepo rationale. Prefer the local
-// eliza source; fall back to the committed shim when the checkout is
-// disabled (CI published-only mode).
-const elizaCoreRolesSource = path.join(
-  repoRoot,
-  "eliza",
-  "packages",
-  "typescript",
-  "src",
-  "roles.ts",
-);
-const elizaCoreRolesAlias = fs.existsSync(elizaCoreRolesSource)
-  ? elizaCoreRolesSource
-  : path.join(repoRoot, "scripts", "lib", "elizaos-core-roles-shim.js");
-
 export default defineConfig({
   resolve: {
     alias: {
-      "@elizaos/core/roles": elizaCoreRolesAlias,
       "@elizaos/core": path.join(
         packageRoot,
         "..",
@@ -33,7 +15,6 @@ export default defineConfig({
         "node",
         "index.node.js",
       ),
-
     },
   },
   test: {

@@ -149,7 +149,7 @@ export async function handleSignalRoute(
       accountId,
       cliPath: configuredCliPath,
       onEvent: (event) => {
-        state.broadcastWs?.(event);
+        state.broadcastWs?.({ ...event });
         signalPairingSnapshots.set(accountId, session.getSnapshot());
 
         if (event.status === "connected") {

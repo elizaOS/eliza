@@ -1,22 +1,19 @@
-/**
- * ProviderSwitcher — Provider grid, cloud settings, and switching logic.
- *
- * Extracted from SettingsView.tsx for decomposition (P2 §10).
- * Composes SubscriptionStatus and ApiKeyConfig sub-components.
- */
-
 import { resolveServiceRoutingInConfig } from "@elizaos/shared/contracts/onboarding";
 import { buildElizaCloudServiceRoute } from "@elizaos/shared/contracts/service-routing";
-
+import {
+  Button,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  useTimeout,
+} from "@elizaos/ui";
+import { CheckCircle2, Cloud, Loader2, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, type OnboardingOptions, type PluginParamDef } from "../../api";
-import {
-  ConfigRenderer,
-  defaultRegistry,
-  type JsonSchemaObject,
-} from "../../config";
-import { useBranding } from "../../config/branding";
-import { useTimeout } from "@elizaos/ui";
+import { ConfigRenderer, defaultRegistry } from "../../config";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import {
   getOnboardingProviderOption,
   isSubscriptionProviderSelectionId,
@@ -25,10 +22,15 @@ import {
 } from "../../providers";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
-import { openExternalUrl } from "../../utils";
+import { CloudDashboard } from "../pages/ElizaCloudDashboard";
 import { ApiKeyConfig } from "./ApiKeyConfig";
+import {
+  buildCloudModelSchema,
+  DEFAULT_ACTION_PLANNER_MODEL,
+  DEFAULT_RESPONSE_HANDLER_MODEL,
+} from "./cloud-model-schema";
 import { SubscriptionStatus } from "./SubscriptionStatus";
-import { Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
+import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 
 const SUBSCRIPTION_PROVIDER_LABEL_FALLBACKS: Record<
   SubscriptionProviderSelectionId,
@@ -37,9 +39,6 @@ const SUBSCRIPTION_PROVIDER_LABEL_FALLBACKS: Record<
   "anthropic-subscription": "Claude Subscription",
   "openai-subscription": "ChatGPT Subscription",
 };
-
-const DEFAULT_RESPONSE_HANDLER_MODEL = "__DEFAULT_RESPONSE_HANDLER__";
-const DEFAULT_ACTION_PLANNER_MODEL = "__DEFAULT_ACTION_PLANNER__";
 
 interface PluginInfo {
   id: string;
@@ -59,43 +58,23 @@ function normalizeAiProviderPluginId(value: string): string {
 }
 
 interface ProviderSwitcherProps {
-  elizaCloudEnabled?: boolean;
   elizaCloudConnected?: boolean;
-  elizaCloudCredits?: number | null;
-  elizaCloudCreditsLow?: boolean;
-  elizaCloudCreditsCritical?: boolean;
-  elizaCloudTopUpUrl?: string;
-  elizaCloudUserId?: string | null;
-  elizaCloudLoginBusy?: boolean;
-  elizaCloudLoginError?: string | null;
-  cloudDisconnecting?: boolean;
   plugins?: PluginInfo[];
   pluginSaving?: Set<string>;
   pluginSaveSuccess?: Set<string>;
   loadPlugins?: () => Promise<void>;
-  handlePluginToggle?: (pluginId: string, enabled: boolean) => Promise<void>;
   handlePluginConfigSave?: (
     pluginId: string,
     values: Record<string, unknown>,
   ) => void | Promise<void>;
-  handleCloudLogin?: () => Promise<void>;
-  handleCloudDisconnect?: () => Promise<void>;
-  setState?: (key: string, value: unknown) => void;
-  setTab?: (tab: string) => void;
 }
 
 function getSubscriptionProviderLabel(
-  provider: {
-    id: SubscriptionProviderSelectionId;
-    labelKey: string;
-  },
+  provider: { id: SubscriptionProviderSelectionId; labelKey: string },
   t: (key: string) => string,
 ): string {
   const translated = t(provider.labelKey);
-  if (translated !== provider.labelKey) {
-    return translated;
-  }
-
+  if (translated !== provider.labelKey) return translated;
   return SUBSCRIPTION_PROVIDER_LABEL_FALLBACKS[provider.id] ?? provider.id;
 }
 
@@ -106,23 +85,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const t = app.t;
   const elizaCloudConnected =
     props.elizaCloudConnected ?? Boolean(app.elizaCloudConnected);
-  const elizaCloudCredits = props.elizaCloudCredits ?? app.elizaCloudCredits;
-  const elizaCloudCreditsLow =
-    props.elizaCloudCreditsLow ?? Boolean(app.elizaCloudCreditsLow);
-  const elizaCloudCreditsCritical =
-    props.elizaCloudCreditsCritical ?? Boolean(app.elizaCloudCreditsCritical);
-  const elizaCloudUserId =
-    props.elizaCloudUserId ??
-    (typeof app.elizaCloudUserId === "string" ? app.elizaCloudUserId : null);
-  const elizaCloudLoginBusy =
-    props.elizaCloudLoginBusy ?? Boolean(app.elizaCloudLoginBusy);
-  const elizaCloudLoginError =
-    props.elizaCloudLoginError ??
-    (typeof app.elizaCloudLoginError === "string"
-      ? app.elizaCloudLoginError
-      : null);
-  const cloudDisconnecting =
-    props.cloudDisconnecting ?? Boolean(app.elizaCloudDisconnecting);
   const plugins = Array.isArray(props.plugins)
     ? props.plugins
     : Array.isArray(app.plugins)
@@ -139,13 +101,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const loadPlugins = props.loadPlugins ?? app.loadPlugins;
   const handlePluginConfigSave =
     props.handlePluginConfigSave ?? app.handlePluginConfigSave;
-  const handleCloudLogin = props.handleCloudLogin ?? app.handleCloudLogin;
-  const handleCloudDisconnect =
-    props.handleCloudDisconnect ?? app.handleCloudDisconnect;
-  const setState = props.setState ?? app.setState;
-  const setTab = props.setTab ?? app.setTab;
   const setActionNotice = app.setActionNotice;
-  /* ── Model selection state ─────────────────────────────────────── */
+
   const [modelOptions, setModelOptions] = useState<
     OnboardingOptions["models"] | null
   >(null);
@@ -161,8 +118,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   );
   const [modelSaving, setModelSaving] = useState(false);
   const [modelSaveSuccess, setModelSaveSuccess] = useState(false);
+  const [cloudCallsDisabled, setCloudCallsDisabled] = useState(false);
+  const [routingModeSaving, setRoutingModeSaving] = useState(false);
 
-  /* ── Subscription state ────────────────────────────────────────── */
   const [subscriptionStatus, setSubscriptionStatus] = useState<
     Array<{
       provider: string;
@@ -173,6 +131,32 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   >([]);
   const [anthropicConnected, setAnthropicConnected] = useState(false);
   const [openaiConnected, setOpenaiConnected] = useState(false);
+
+  const hasManualSelection = useRef(false);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
+    null,
+  );
+
+  const readCloudCallsDisabled = useCallback(
+    (cfg: Record<string, unknown>): boolean => {
+      const cloud =
+        cfg.cloud && typeof cfg.cloud === "object" && !Array.isArray(cfg.cloud)
+          ? (cfg.cloud as Record<string, unknown>)
+          : null;
+      const services =
+        cloud?.services &&
+        typeof cloud.services === "object" &&
+        !Array.isArray(cloud.services)
+          ? (cloud.services as Record<string, unknown>)
+          : null;
+      return Boolean(
+        cloud?.enabled === false ||
+          cloud?.inferenceMode === "local" ||
+          services?.inference === false,
+      );
+    },
+    [],
+  );
 
   const syncSelectionFromConfig = useCallback(
     (cfg: Record<string, unknown>) => {
@@ -200,8 +184,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       if (!hasManualSelection.current) {
         setSelectedProviderId(nextSelectedId);
       }
+      setCloudCallsDisabled(readCloudCallsDisabled(cfg));
     },
-    [],
+    [readCloudCallsDisabled],
   );
 
   const loadSubscriptionStatus = useCallback(async () => {
@@ -237,58 +222,50 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         const providerId = getOnboardingProviderOption(llmText?.backend)?.id;
         const elizaCloudEnabledCfg =
           llmText?.transport === "cloud-proxy" && providerId === "elizacloud";
-        const defaultNano = "openai/gpt-5.4-nano";
-        const defaultSmall = "minimax/minimax-m2.7";
-        const defaultMedium = "anthropic/claude-sonnet-4.6";
-        const defaultLarge = "moonshotai/kimi-k2.5";
-        const defaultMega = "anthropic/claude-sonnet-4.6";
+        const defaults = {
+          nano: "openai/gpt-5.4-nano",
+          small: "minimax/minimax-m2.7",
+          medium: "anthropic/claude-sonnet-4.6",
+          large: "moonshotai/kimi-k2.5",
+          mega: "anthropic/claude-sonnet-4.6",
+        };
 
-        // Environment variables — needed for model fallback
-        const env = cfg.env as Record<string, unknown> | undefined;
-        const vars = (env?.vars as Record<string, unknown> | undefined) ?? {};
+        const vars =
+          ((cfg.env as Record<string, unknown> | undefined)?.vars as
+            | Record<string, unknown>
+            | undefined) ?? {};
+        const envFor = (key: string) =>
+          typeof vars[key] === "string" ? (vars[key] as string) : "";
 
-        // Fall back to SMALL_MODEL / LARGE_MODEL env vars when cfg.models
-        // is empty.  Local providers (e.g. Ollama) store the active model
-        // names as env vars rather than in cfg.models.
-        const envNano =
-          typeof vars.NANO_MODEL === "string" ? vars.NANO_MODEL : "";
-        const envSmall =
-          typeof vars.SMALL_MODEL === "string" ? vars.SMALL_MODEL : "";
-        const envMedium =
-          typeof vars.MEDIUM_MODEL === "string" ? vars.MEDIUM_MODEL : "";
-        const envLarge =
-          typeof vars.LARGE_MODEL === "string" ? vars.LARGE_MODEL : "";
-        const envMega =
-          typeof vars.MEGA_MODEL === "string" ? vars.MEGA_MODEL : "";
         setCurrentNanoModel(
           models?.nano ||
             llmText?.nanoModel ||
-            envNano ||
-            (elizaCloudEnabledCfg ? defaultNano : ""),
+            envFor("NANO_MODEL") ||
+            (elizaCloudEnabledCfg ? defaults.nano : ""),
         );
         setCurrentSmallModel(
           models?.small ||
             llmText?.smallModel ||
-            envSmall ||
-            (elizaCloudEnabledCfg ? defaultSmall : ""),
+            envFor("SMALL_MODEL") ||
+            (elizaCloudEnabledCfg ? defaults.small : ""),
         );
         setCurrentMediumModel(
           models?.medium ||
             llmText?.mediumModel ||
-            envMedium ||
-            (elizaCloudEnabledCfg ? defaultMedium : ""),
+            envFor("MEDIUM_MODEL") ||
+            (elizaCloudEnabledCfg ? defaults.medium : ""),
         );
         setCurrentLargeModel(
           models?.large ||
             llmText?.largeModel ||
-            envLarge ||
-            (elizaCloudEnabledCfg ? defaultLarge : ""),
+            envFor("LARGE_MODEL") ||
+            (elizaCloudEnabledCfg ? defaults.large : ""),
         );
         setCurrentMegaModel(
           models?.mega ||
             llmText?.megaModel ||
-            envMega ||
-            (elizaCloudEnabledCfg ? defaultMega : ""),
+            envFor("MEGA_MODEL") ||
+            (elizaCloudEnabledCfg ? defaults.mega : ""),
         );
         setCurrentResponseHandlerModel(
           llmText?.responseHandlerModel || DEFAULT_RESPONSE_HANDLER_MODEL,
@@ -315,7 +292,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     setOpenaiConnected(Boolean(oaiStatus?.configured && oaiStatus?.valid));
   }, [subscriptionStatus]);
 
-  /* ── Derived ──────────────────────────────────────────────────── */
   const allAiProviders = useMemo(
     () =>
       [...plugins.filter((p) => p.category === "ai-provider")].sort(
@@ -339,20 +315,17 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const availableProviderIds = useMemo(
     () =>
       new Set(
-        allAiProviders.map(
-          (provider) =>
-            getOnboardingProviderOption(
-              normalizeAiProviderPluginId(provider.id),
-            )?.id ?? normalizeAiProviderPluginId(provider.id),
-        ),
+        allAiProviders
+          .map(
+            (provider) =>
+              getOnboardingProviderOption(
+                normalizeAiProviderPluginId(provider.id),
+              )?.id,
+          )
+          .filter((id): id is NonNullable<typeof id> => id != null),
       ),
     [allAiProviders],
   );
-
-  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
-    null,
-  );
-  const hasManualSelection = useRef(false);
 
   const resolvedSelectedId = useMemo(
     () =>
@@ -374,7 +347,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     ) {
       return null;
     }
-
     return (
       allAiProviders.find(
         (provider) =>
@@ -404,7 +376,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     [setActionNotice],
   );
 
-  /* ── Handlers ─────────────────────────────────────────────────── */
   const handleSwitchProvider = useCallback(
     async (newId: string) => {
       const previousSelectedId = resolvedSelectedId;
@@ -443,15 +414,12 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       providerId: SubscriptionProviderSelectionId,
       activate: boolean = true,
     ) => {
+      if (!cloudCallsDisabled && resolvedSelectedId === providerId) return;
       const previousSelectedId = resolvedSelectedId;
       const previousManualSelection = hasManualSelection.current;
       hasManualSelection.current = true;
       setSelectedProviderId(providerId);
-
-      if (!activate) {
-        return;
-      }
-
+      if (!activate) return;
       try {
         await client.switchProvider(providerId);
       } catch (err) {
@@ -459,24 +427,87 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         notifySelectionFailure("Failed to update subscription provider", err);
       }
     },
-    [notifySelectionFailure, resolvedSelectedId, restoreSelection],
+    [
+      cloudCallsDisabled,
+      notifySelectionFailure,
+      resolvedSelectedId,
+      restoreSelection,
+    ],
   );
 
   const handleSelectCloud = useCallback(async () => {
+    if (!cloudCallsDisabled && resolvedSelectedId === "__cloud__") return;
     const previousSelectedId = resolvedSelectedId;
     const previousManualSelection = hasManualSelection.current;
+    const previousCloudCallsDisabled = cloudCallsDisabled;
     hasManualSelection.current = true;
     setSelectedProviderId("__cloud__");
+    setCloudCallsDisabled(false);
+    setRoutingModeSaving(true);
     try {
       await client.switchProvider("elizacloud");
     } catch (err) {
       restoreSelection(previousSelectedId, previousManualSelection);
+      setCloudCallsDisabled(previousCloudCallsDisabled);
       notifySelectionFailure("Failed to select Eliza Cloud", err);
+    } finally {
+      setRoutingModeSaving(false);
     }
-  }, [notifySelectionFailure, resolvedSelectedId, restoreSelection]);
+  }, [
+    cloudCallsDisabled,
+    notifySelectionFailure,
+    resolvedSelectedId,
+    restoreSelection,
+  ]);
 
-  /* ── Render ───────────────────────────────────────────────────── */
-  const isCloudSelected = resolvedSelectedId === "__cloud__";
+  const handleSelectLocalOnly = useCallback(async () => {
+    const previousSelectedId = resolvedSelectedId;
+    const previousManualSelection = hasManualSelection.current;
+    const previousCloudCallsDisabled = cloudCallsDisabled;
+    hasManualSelection.current = true;
+    setCloudCallsDisabled(true);
+    setRoutingModeSaving(true);
+    try {
+      const cfg = (await client.getConfig()) as Record<string, unknown>;
+      const cloud =
+        cfg.cloud && typeof cfg.cloud === "object" && !Array.isArray(cfg.cloud)
+          ? (cfg.cloud as Record<string, unknown>)
+          : {};
+      await client.updateConfig({
+        deploymentTarget: { runtime: "local" },
+        cloud: {
+          ...cloud,
+          enabled: false,
+          inferenceMode: "local",
+          services: {
+            inference: false,
+            media: false,
+            tts: false,
+            embeddings: false,
+            rpc: false,
+          },
+        },
+        serviceRouting: null,
+      });
+      void client.restartAgent().catch((err) => {
+        notifySelectionFailure("Local-only mode saved; restart failed", err);
+      });
+    } catch (err) {
+      restoreSelection(previousSelectedId, previousManualSelection);
+      setCloudCallsDisabled(previousCloudCallsDisabled);
+      notifySelectionFailure("Failed to enable local-only mode", err);
+    } finally {
+      setRoutingModeSaving(false);
+    }
+  }, [
+    cloudCallsDisabled,
+    notifySelectionFailure,
+    resolvedSelectedId,
+    restoreSelection,
+  ]);
+
+  const isCloudSelected =
+    resolvedSelectedId === "__cloud__" || resolvedSelectedId === null;
   const isSubscriptionSelected =
     isSubscriptionProviderSelectionId(resolvedSelectedId);
   const providerChoices = [
@@ -490,502 +521,339 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       label: getSubscriptionProviderLabel(provider, t),
       disabled: false,
     })),
-    ...allAiProviders.map((provider) => ({
-      id:
-        getOnboardingProviderOption(normalizeAiProviderPluginId(provider.id))
-          ?.id ?? normalizeAiProviderPluginId(provider.id),
-      label:
-        getOnboardingProviderOption(normalizeAiProviderPluginId(provider.id))
-          ?.name ?? provider.name,
-      disabled: false,
-    })),
+    // Only surface providers the backend's /api/provider/switch endpoint
+    // actually accepts (i.e. entries in ONBOARDING_PROVIDER_CATALOG). Plugins
+    // without a catalog entry — e.g. `local-ai`, which is configured via the
+    // dedicated "Local Models" settings section, not this dropdown — are
+    // filtered out, otherwise selecting them returns "Invalid provider".
+    ...allAiProviders
+      .map((provider) => {
+        const option = getOnboardingProviderOption(
+          normalizeAiProviderPluginId(provider.id),
+        );
+        return option
+          ? {
+              id: option.id,
+              label: option.name,
+              disabled: false,
+            }
+          : null;
+      })
+      .filter(
+        (choice): choice is NonNullable<typeof choice> => choice !== null,
+      ),
   ];
 
+  const cloudModelSchema = useMemo(
+    () => (modelOptions ? buildCloudModelSchema(modelOptions) : null),
+    [modelOptions],
+  );
+  const largeModelOptions = modelOptions?.large ?? [];
+
+  const modelValues = useMemo(() => {
+    const values: Record<string, unknown> = {};
+    const setKeys = new Set<string>();
+    const put = (key: string, value: string) => {
+      if (value) {
+        values[key] = value;
+        setKeys.add(key);
+      }
+    };
+    put("nano", currentNanoModel);
+    put("small", currentSmallModel);
+    put("medium", currentMediumModel);
+    put("large", currentLargeModel);
+    put("mega", currentMegaModel);
+    put("responseHandler", currentResponseHandlerModel);
+    put("actionPlanner", currentActionPlannerModel);
+    return { values, setKeys };
+  }, [
+    currentActionPlannerModel,
+    currentLargeModel,
+    currentMediumModel,
+    currentMegaModel,
+    currentNanoModel,
+    currentResponseHandlerModel,
+    currentSmallModel,
+  ]);
+
+  const handleModelFieldChange = useCallback(
+    (key: string, value: unknown) => {
+      const val = String(value);
+      const next = {
+        nano: key === "nano" ? val : currentNanoModel,
+        small: key === "small" ? val : currentSmallModel,
+        medium: key === "medium" ? val : currentMediumModel,
+        large: key === "large" ? val : currentLargeModel,
+        mega: key === "mega" ? val : currentMegaModel,
+        responseHandler:
+          key === "responseHandler" ? val : currentResponseHandlerModel,
+        actionPlanner:
+          key === "actionPlanner" ? val : currentActionPlannerModel,
+      };
+
+      if (key === "nano") setCurrentNanoModel(val);
+      if (key === "small") setCurrentSmallModel(val);
+      if (key === "medium") setCurrentMediumModel(val);
+      if (key === "large") setCurrentLargeModel(val);
+      if (key === "mega") setCurrentMegaModel(val);
+      if (key === "responseHandler") setCurrentResponseHandlerModel(val);
+      if (key === "actionPlanner") setCurrentActionPlannerModel(val);
+
+      void (async () => {
+        setModelSaving(true);
+        try {
+          const cfg = (await client.getConfig()) as Record<string, unknown>;
+          const existingRouting = resolveServiceRoutingInConfig(cfg)?.llmText;
+          const llmText = buildElizaCloudServiceRoute({
+            nanoModel: next.nano,
+            smallModel: next.small,
+            mediumModel: next.medium,
+            largeModel: next.large,
+            megaModel: next.mega,
+            ...(next.responseHandler !== DEFAULT_RESPONSE_HANDLER_MODEL
+              ? { responseHandlerModel: next.responseHandler }
+              : {}),
+            ...(next.actionPlanner !== DEFAULT_ACTION_PLANNER_MODEL
+              ? { actionPlannerModel: next.actionPlanner }
+              : {}),
+            ...(existingRouting?.shouldRespondModel
+              ? { shouldRespondModel: existingRouting.shouldRespondModel }
+              : {}),
+            ...(existingRouting?.plannerModel
+              ? { plannerModel: existingRouting.plannerModel }
+              : {}),
+            ...(existingRouting?.responseModel
+              ? { responseModel: existingRouting.responseModel }
+              : {}),
+            ...(existingRouting?.mediaDescriptionModel
+              ? {
+                  mediaDescriptionModel: existingRouting.mediaDescriptionModel,
+                }
+              : {}),
+          });
+          await client.updateConfig({
+            models: {
+              nano: next.nano,
+              small: next.small,
+              medium: next.medium,
+              large: next.large,
+              mega: next.mega,
+            },
+            serviceRouting: {
+              ...(((cfg.serviceRouting as Record<string, unknown> | null) ??
+                {}) as Record<string, unknown>),
+              llmText,
+            },
+          });
+          setModelSaveSuccess(true);
+          setTimeout(() => setModelSaveSuccess(false), 2000);
+          await client.restartAgent();
+        } catch (err) {
+          notifySelectionFailure("Failed to save cloud model config", err);
+        }
+        setModelSaving(false);
+      })();
+    },
+    [
+      currentActionPlannerModel,
+      currentLargeModel,
+      currentMediumModel,
+      currentMegaModel,
+      currentNanoModel,
+      currentResponseHandlerModel,
+      currentSmallModel,
+      notifySelectionFailure,
+      setTimeout,
+    ],
+  );
+
   return (
-    <>
-      {/* Provider dropdown - works for all screen sizes */}
-      <div className="mb-3">
-        <label
-          htmlFor="provider-switcher-select"
-          className="block text-xs font-semibold mb-1.5 text-muted"
-        >
-          {t("providerswitcher.selectAIProvider")}
-        </label>
-        <Select
-          value={resolvedSelectedId ?? "__cloud__"}
-          onValueChange={(nextId: string) => {
-            if (nextId === "__cloud__") {
-              void handleSelectCloud();
-              return;
+    <div className="space-y-5">
+      <div>
+        <div className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted">
+          Cloud access
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Button
+            type="button"
+            variant={
+              !cloudCallsDisabled && isCloudSelected ? "default" : "outline"
             }
-            if (isSubscriptionProviderSelectionId(nextId)) {
-              if (
-                nextId === "anthropic-subscription" ||
-                (nextId === "openai-subscription" && !openaiConnected)
-              ) {
-                void handleSelectSubscription(nextId, false);
-                return;
-              }
-              void handleSelectSubscription(nextId);
-              return;
-            }
-            void handleSwitchProvider(nextId);
-          }}
-        >
-          <SelectTrigger
-            id="provider-switcher-select"
-            className="w-full px-3 py-2.5 border border-border bg-card text-sm rounded-lg transition-all duration-200 focus:border-accent focus:ring-2 focus:ring-accent/20 focus:outline-none hover:border-border-hover"
+            className="h-auto justify-start rounded-xl px-3 py-2 text-left"
+            disabled={routingModeSaving}
+            onClick={() => void handleSelectCloud()}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {providerChoices.map((choice) => (
-              <SelectItem
-                key={choice.id}
-                value={choice.id}
-                disabled={choice.disabled}
-              >
-                {choice.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs-tight text-muted mt-1.5">
-          {t("providerswitcher.chooseYourPreferredProvider")}
-        </p>
-        <p className="text-xs-tight text-muted mt-1">
-          {t("providerswitcher.cloudInferenceToggleHint")}
-        </p>
+            <Cloud className="h-4 w-4 text-current" aria-hidden />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-semibold">Cloud allowed</span>
+              <span className="text-xs font-normal opacity-75">
+                Use connected providers and cloud fallback.
+              </span>
+            </span>
+          </Button>
+          <Button
+            type="button"
+            variant={cloudCallsDisabled ? "default" : "outline"}
+            className="h-auto justify-start rounded-xl px-3 py-2 text-left"
+            disabled={routingModeSaving}
+            onClick={() => void handleSelectLocalOnly()}
+          >
+            <ShieldCheck className="h-4 w-4 text-current" aria-hidden />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-semibold">Local only</span>
+              <span className="text-xs font-normal opacity-75">
+                No cloud calls anywhere.
+              </span>
+            </span>
+          </Button>
+        </div>
       </div>
 
-      {/* Cloud settings */}
-      {isCloudSelected && (
-        <div className="mt-4 pt-4">
-          {elizaCloudConnected ? (
-            <div>
-              <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-2 h-2 rounded-full bg-ok" />
-                  <span className="text-xs font-semibold">
-                    {t("providerswitcher.loggedIntoElizaCloud")}
-                  </span>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="!mt-0"
-                  onClick={() => void handleCloudDisconnect()}
-                  disabled={cloudDisconnecting}
+      {!cloudCallsDisabled && (
+        <div>
+          <label
+            htmlFor="provider-switcher-select"
+            className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
+          >
+            {t("providerswitcher.selectProvider", {
+              defaultValue: "Provider",
+            })}
+          </label>
+          <Select
+            value={resolvedSelectedId ?? "__cloud__"}
+            onValueChange={(nextId: string) => {
+              if (nextId === "__cloud__") {
+                void handleSelectCloud();
+                return;
+              }
+              if (isSubscriptionProviderSelectionId(nextId)) {
+                if (
+                  nextId === "anthropic-subscription" ||
+                  (nextId === "openai-subscription" && !openaiConnected)
+                ) {
+                  void handleSelectSubscription(nextId, false);
+                  return;
+                }
+                void handleSelectSubscription(nextId);
+                return;
+              }
+              void handleSwitchProvider(nextId);
+            }}
+          >
+            <SelectTrigger
+              id="provider-switcher-select"
+              aria-label={t("providerswitcher.selectProvider", {
+                defaultValue: "Provider",
+              })}
+              className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="max-h-64">
+              {providerChoices.map((choice) => (
+                <SelectItem
+                  key={choice.id}
+                  value={choice.id}
+                  disabled={choice.disabled}
                 >
-                  {cloudDisconnecting
-                    ? t("providerswitcher.disconnecting")
-                    : t("providerswitcher.disconnect")}
-                </Button>
-              </div>
-
-              <div className="text-xs mb-4">
-                {elizaCloudUserId && (
-                  <span className="text-muted mr-3">
-                    <code className="font-[var(--mono)] text-xs-tight">
-                      {elizaCloudUserId}
-                    </code>
-                  </span>
-                )}
-                {elizaCloudCredits !== null && (
-                  <span>
-                    <span className="text-muted">
-                      {t("configpageview.Credits")}
-                    </span>{" "}
-                    <span
-                      className={
-                        elizaCloudCreditsCritical
-                          ? "text-danger font-bold"
-                          : elizaCloudCreditsLow
-                            ? "rounded-md bg-warn-subtle px-1.5 py-0.5 text-txt font-bold"
-                            : ""
-                      }
-                    >
-                      ${elizaCloudCredits.toFixed(2)}
-                    </span>
-                    <Button
-                      variant="link"
-                      size="sm"
-                      type="button"
-                      onClick={() => {
-                        setState("cloudDashboardView", "billing");
-                        setTab("settings");
-                      }}
-                      className="ml-2 bg-transparent border-0 p-0 cursor-pointer text-xs-tight text-txt underline decoration-accent underline-offset-2 hover:opacity-80 h-auto min-h-0"
-                    >
-                      {t("configpageview.TopUp")}
-                    </Button>
-                  </span>
-                )}
-              </div>
-
-              {modelOptions &&
-                (() => {
-                  const nanoOptions = modelOptions.nano ?? [];
-                  const smallOptions = modelOptions.small ?? [];
-                  const mediumOptions = modelOptions.medium ?? [];
-                  const largeOptions = modelOptions.large ?? [];
-                  const megaOptions = modelOptions.mega ?? [];
-                  const allModelChoices = Array.from(
-                    new Map(
-                      [
-                        ...nanoOptions,
-                        ...smallOptions,
-                        ...mediumOptions,
-                        ...largeOptions,
-                        ...megaOptions,
-                      ].map((model) => [model.id, model]),
-                    ).values(),
-                  );
-                  const modelSchema = {
-                    type: "object" as const,
-                    properties: {
-                      nano: {
-                        type: "string",
-                        enum: nanoOptions.map((m) => m.id),
-                        description: "Fastest, cheapest text tier.",
-                      },
-                      small: {
-                        type: "string",
-                        enum: smallOptions.map((m) => m.id),
-                        description: "Default lightweight text tier.",
-                      },
-                      medium: {
-                        type: "string",
-                        enum: mediumOptions.map((m) => m.id),
-                        description: "Planning tier. Falls back to small.",
-                      },
-                      large: {
-                        type: "string",
-                        enum: largeOptions.map((m) => m.id),
-                        description: "Primary high-capability text tier.",
-                      },
-                      mega: {
-                        type: "string",
-                        enum: megaOptions.map((m) => m.id),
-                        description: "Future top tier. Falls back to large.",
-                      },
-                      responseHandler: {
-                        type: "string",
-                        enum: [
-                          DEFAULT_RESPONSE_HANDLER_MODEL,
-                          ...allModelChoices.map((m) => m.id),
-                        ],
-                        description:
-                          "Should-respond / response-handler override. Defaults to nano.",
-                      },
-                      actionPlanner: {
-                        type: "string",
-                        enum: [
-                          DEFAULT_ACTION_PLANNER_MODEL,
-                          ...allModelChoices.map((m) => m.id),
-                        ],
-                        description: "Planning override. Defaults to medium.",
-                      },
-                    },
-                    required: [] as string[],
-                  };
-                  const modelHints: Record<string, ConfigUiHint> = {
-                    nano: {
-                      label: "Nano Model",
-                      width: "half",
-                      options: nanoOptions.map((m) => ({
-                        value: m.id,
-                        label: m.name,
-                        description: `${m.provider} — ${m.description}`,
-                      })),
-                    },
-                    small: {
-                      label: "Small Model",
-                      width: "half",
-                      options: smallOptions.map((m) => ({
-                        value: m.id,
-                        label: m.name,
-                        description: `${m.provider} — ${m.description}`,
-                      })),
-                    },
-                    medium: {
-                      label: "Medium Model",
-                      width: "half",
-                      options: mediumOptions.map((m) => ({
-                        value: m.id,
-                        label: m.name,
-                        description: `${m.provider} — ${m.description}`,
-                      })),
-                    },
-                    large: {
-                      label: "Large Model",
-                      width: "half",
-                      options: largeOptions.map((m) => ({
-                        value: m.id,
-                        label: m.name,
-                        description: `${m.provider} — ${m.description}`,
-                      })),
-                    },
-                    mega: {
-                      label: "Mega Model",
-                      width: "half",
-                      options: megaOptions.map((m) => ({
-                        value: m.id,
-                        label: m.name,
-                        description: `${m.provider} — ${m.description}`,
-                      })),
-                    },
-                    responseHandler: {
-                      label: "Response Handler",
-                      width: "half",
-                      options: [
-                        {
-                          value: DEFAULT_RESPONSE_HANDLER_MODEL,
-                          label: "Default (Nano)",
-                          description:
-                            "Use the nano tier unless explicitly overridden.",
-                        },
-                        ...allModelChoices.map((m) => ({
-                          value: m.id,
-                          label: m.name,
-                          description: `${m.provider} — ${m.description}`,
-                        })),
-                      ],
-                    },
-                    actionPlanner: {
-                      label: "Action Planner",
-                      width: "half",
-                      options: [
-                        {
-                          value: DEFAULT_ACTION_PLANNER_MODEL,
-                          label: "Default (Medium)",
-                          description:
-                            "Use the medium tier unless explicitly overridden.",
-                        },
-                        ...allModelChoices.map((m) => ({
-                          value: m.id,
-                          label: m.name,
-                          description: `${m.provider} — ${m.description}`,
-                        })),
-                      ],
-                    },
-                  };
-                  const modelValues: Record<string, unknown> = {};
-                  const modelSetKeys = new Set<string>();
-                  if (currentNanoModel) {
-                    modelValues.nano = currentNanoModel;
-                    modelSetKeys.add("nano");
-                  }
-                  if (currentSmallModel) {
-                    modelValues.small = currentSmallModel;
-                    modelSetKeys.add("small");
-                  }
-                  if (currentMediumModel) {
-                    modelValues.medium = currentMediumModel;
-                    modelSetKeys.add("medium");
-                  }
-                  if (currentLargeModel) {
-                    modelValues.large = currentLargeModel;
-                    modelSetKeys.add("large");
-                  }
-                  if (currentMegaModel) {
-                    modelValues.mega = currentMegaModel;
-                    modelSetKeys.add("mega");
-                  }
-                  if (currentResponseHandlerModel) {
-                    modelValues.responseHandler = currentResponseHandlerModel;
-                    modelSetKeys.add("responseHandler");
-                  }
-                  if (currentActionPlannerModel) {
-                    modelValues.actionPlanner = currentActionPlannerModel;
-                    modelSetKeys.add("actionPlanner");
-                  }
-
-                  return (
-                    <ConfigRenderer
-                      schema={modelSchema as JsonSchemaObject}
-                      hints={modelHints}
-                      values={modelValues}
-                      setKeys={modelSetKeys}
-                      registry={defaultRegistry}
-                      onChange={(key, value) => {
-                        const val = String(value);
-                        const nextNano =
-                          key === "nano" ? val : currentNanoModel;
-                        const nextSmall =
-                          key === "small" ? val : currentSmallModel;
-                        const nextMedium =
-                          key === "medium" ? val : currentMediumModel;
-                        const nextLarge =
-                          key === "large" ? val : currentLargeModel;
-                        const nextMega =
-                          key === "mega" ? val : currentMegaModel;
-                        const nextResponseHandler =
-                          key === "responseHandler"
-                            ? val
-                            : currentResponseHandlerModel;
-                        const nextActionPlanner =
-                          key === "actionPlanner"
-                            ? val
-                            : currentActionPlannerModel;
-                        if (key === "nano") setCurrentNanoModel(val);
-                        if (key === "small") setCurrentSmallModel(val);
-                        if (key === "medium") setCurrentMediumModel(val);
-                        if (key === "large") setCurrentLargeModel(val);
-                        if (key === "mega") setCurrentMegaModel(val);
-                        if (key === "responseHandler")
-                          setCurrentResponseHandlerModel(val);
-                        if (key === "actionPlanner")
-                          setCurrentActionPlannerModel(val);
-                        void (async () => {
-                          setModelSaving(true);
-                          try {
-                            const cfg = (await client.getConfig()) as Record<
-                              string,
-                              unknown
-                            >;
-                            const existingRouting =
-                              resolveServiceRoutingInConfig(cfg)?.llmText;
-                            const models = {
-                              nano: nextNano,
-                              small: nextSmall,
-                              medium: nextMedium,
-                              large: nextLarge,
-                              mega: nextMega,
-                            };
-                            const llmText = buildElizaCloudServiceRoute({
-                              nanoModel: nextNano,
-                              smallModel: nextSmall,
-                              mediumModel: nextMedium,
-                              largeModel: nextLarge,
-                              megaModel: nextMega,
-                              ...(nextResponseHandler !==
-                              DEFAULT_RESPONSE_HANDLER_MODEL
-                                ? {
-                                    responseHandlerModel: nextResponseHandler,
-                                  }
-                                : {}),
-                              ...(nextActionPlanner !==
-                              DEFAULT_ACTION_PLANNER_MODEL
-                                ? {
-                                    actionPlannerModel: nextActionPlanner,
-                                  }
-                                : {}),
-                              ...(existingRouting?.shouldRespondModel
-                                ? {
-                                    shouldRespondModel:
-                                      existingRouting.shouldRespondModel,
-                                  }
-                                : {}),
-                              ...(existingRouting?.plannerModel
-                                ? {
-                                    plannerModel: existingRouting.plannerModel,
-                                  }
-                                : {}),
-                              ...(existingRouting?.responseModel
-                                ? {
-                                    responseModel:
-                                      existingRouting.responseModel,
-                                  }
-                                : {}),
-                              ...(existingRouting?.mediaDescriptionModel
-                                ? {
-                                    mediaDescriptionModel:
-                                      existingRouting.mediaDescriptionModel,
-                                  }
-                                : {}),
-                            });
-                            await client.updateConfig({
-                              models,
-                              serviceRouting: {
-                                ...(((cfg.serviceRouting as Record<
-                                  string,
-                                  unknown
-                                > | null) ?? {}) as Record<string, unknown>),
-                                llmText,
-                              },
-                            });
-                            setModelSaveSuccess(true);
-                            setTimeout(() => setModelSaveSuccess(false), 2000);
-                            await client.restartAgent();
-                          } catch (err) {
-                            console.warn(
-                              "[eliza] Failed to save cloud model config",
-                              err,
-                            );
-                            notifySelectionFailure(
-                              "Failed to save cloud model config",
-                              err,
-                            );
-                          }
-                          setModelSaving(false);
-                        })();
-                      }}
-                    />
-                  );
-                })()}
-
-              <div className="flex items-center justify-end gap-2 mt-3">
-                {modelSaving && (
-                  <span className="text-xs-tight text-muted">
-                    {t("providerswitcher.savingRestarting")}
-                  </span>
-                )}
-                {modelSaveSuccess && (
-                  <span className="text-xs-tight text-ok">
-                    {t("providerswitcher.savedRestartingAgent")}
-                  </span>
-                )}
-              </div>
-              <p className="mt-2 text-xs-tight text-muted">
-                {t("providerswitcher.restartRequiredHint")}
-              </p>
-            </div>
-          ) : (
-            <div>
-              {elizaCloudLoginBusy ? (
-                <div className="text-xs text-muted">
-                  {t("providerswitcher.waitingForBrowser")}
-                </div>
-              ) : (
-                <>
-                  {elizaCloudLoginError && (
-                    <div className="text-xs text-danger mb-2">
-                      {elizaCloudLoginError}
-                    </div>
-                  )}
-                  {elizaCloudLoginError && (
-                    <Button
-                      variant="link"
-                      size="sm"
-                      type="button"
-                      className="!mt-0 !px-0 text-xs-tight"
-                      onClick={() => openExternalUrl(branding.bugReportUrl)}
-                    >
-                      {t("providerswitcher.reportIssueWithTemplate")}
-                    </Button>
-                  )}
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="!mt-0 font-bold"
-                    onClick={() => void handleCloudLogin()}
-                  >
-                    {t("providerswitcher.logInToElizaCloud")}
-                  </Button>
-                  <div className="text-xs-tight text-muted mt-1.5">
-                    {t("providerswitcher.opensABrowserWindow")}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+                  {choice.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
-      {/* Subscription provider settings */}
-      {isSubscriptionSelected && (
+      {!cloudCallsDisabled && isCloudSelected && (
+        <div className="overflow-hidden rounded-xl border border-border/40 bg-card/40">
+          <CloudDashboard />
+          {elizaCloudConnected &&
+          (largeModelOptions.length > 0 || cloudModelSchema) ? (
+            <div className="border-t border-border/40 px-4 py-4 sm:px-5">
+              {largeModelOptions.length > 0 ? (
+                <div>
+                  <label
+                    htmlFor="provider-switcher-primary-model"
+                    className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
+                  >
+                    {t("providerswitcher.model", { defaultValue: "Model" })}
+                  </label>
+                  <Select
+                    value={currentLargeModel || ""}
+                    onValueChange={(v) => handleModelFieldChange("large", v)}
+                  >
+                    <SelectTrigger
+                      id="provider-switcher-primary-model"
+                      className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
+                    >
+                      <SelectValue
+                        placeholder={t("providerswitcher.chooseModel", {
+                          defaultValue: "Choose a model",
+                        })}
+                      />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {largeModelOptions.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          {model.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {cloudModelSchema ? (
+                <AdvancedSettingsDisclosure
+                  title="Model overrides"
+                  className="mt-4"
+                >
+                  <ConfigRenderer
+                    schema={cloudModelSchema.schema}
+                    hints={cloudModelSchema.hints}
+                    values={modelValues.values}
+                    setKeys={modelValues.setKeys}
+                    registry={defaultRegistry}
+                    onChange={handleModelFieldChange}
+                  />
+                </AdvancedSettingsDisclosure>
+              ) : null}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-xs-tight text-muted">
+                  {t(
+                    "providerswitcher.restartRequiredHint",
+                    appNameInterpolationVars(branding),
+                  )}
+                </p>
+                <div className="flex items-center gap-2">
+                  {modelSaving && (
+                    <span
+                      className="inline-flex items-center text-muted"
+                      title={t("providerswitcher.savingRestarting")}
+                      role="status"
+                      aria-label={t("providerswitcher.savingRestarting")}
+                    >
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    </span>
+                  )}
+                  {modelSaveSuccess && (
+                    <span
+                      className="inline-flex items-center text-ok"
+                      title={t("providerswitcher.savedRestartingAgent")}
+                      role="status"
+                      aria-label={t("providerswitcher.savedRestartingAgent")}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {!cloudCallsDisabled && isSubscriptionSelected && (
         <SubscriptionStatus
           resolvedSelectedId={resolvedSelectedId}
           subscriptionStatus={subscriptionStatus}
@@ -998,8 +866,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         />
       )}
 
-      {/* Local provider settings (API keys) */}
-      {!isCloudSelected && (
+      {!cloudCallsDisabled && !isCloudSelected && !isSubscriptionSelected && (
         <ApiKeyConfig
           selectedProvider={selectedProvider}
           pluginSaving={pluginSaving}
@@ -1008,6 +875,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           loadPlugins={loadPlugins}
         />
       )}
-    </>
+    </div>
   );
 }

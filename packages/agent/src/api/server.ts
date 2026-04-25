@@ -7,14 +7,10 @@
  */
 
 import crypto from "node:crypto";
+// dns/promises moved to server-helpers-mcp.ts
 import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
-
-type StreamableServerResponse = Pick<
-  http.ServerResponse,
-  "write" | "once" | "off" | "removeListener" | "writableEnded" | "destroyed"
->;
 
 function tokenMatches(expected: string, provided: string): boolean {
   const expectedBuf = Buffer.from(expected);
@@ -29,13 +25,14 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
 import os from "node:os";
 import path from "node:path";
+// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
+import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
-import { handleWebsiteBlockerRoutes } from "@elizaos/app-lifeops/routes/website-blocker-routes";
-import type {
-  SwarmEvent,
-  TaskCompletionSummary,
-  TaskContext,
-} from "@elizaos/app-task-coordinator/api/coordinator-types";
+import {
+  normalizeJsonRpcUrl,
+  probeJsonRpcEndpoint,
+  TxService,
+} from "@elizaos/app-steward/api/tx-service";
 import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 import { routeTaskAgentTextToConnector } from "@elizaos/app-task-coordinator/api/task-agent-message-routing";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
@@ -50,8 +47,6 @@ import { handleTrainingRoutes } from "@elizaos/app-training/routes/training";
 import { handleTrajectoryRoute } from "@elizaos/app-training/routes/trajectory";
 import {
   type AgentRuntime,
-  ChannelType,
-  createMessageMemory,
   type IAgentRuntime,
   logger,
   type Route,
@@ -64,7 +59,6 @@ import {
 } from "@elizaos/shared/runtime-env";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
-import { CharacterSchema } from "../config/character-schema.js";
 import {
   type ElizaConfig,
   loadElizaConfig,
@@ -72,6 +66,8 @@ import {
 } from "../config/config.js";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
 import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.js";
+import { CharacterSchema } from "../config/zod-schema.js";
+// ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
 import { validateX402Startup } from "../middleware/x402/startup-validator.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
@@ -153,31 +149,30 @@ import {
   resolveBlueBubblesWebhookPath,
 } from "./bluebubbles-routes.js";
 import { handleBrowserWorkspaceRoutes } from "./browser-workspace-routes.js";
-// BSC trade helpers moved to @elizaos/app-steward. Kept for re-export only.
-// import { buildBscApproveUnsignedTx, ... } from "./bsc-trade.js";
 import { handleBugReportRoutes } from "./bug-report-routes.js";
 import { handleCharacterRoutes } from "./character-routes.js";
 import {
-  generateChatResponse as generateChatResponseFromChatRoutes,
   handleChatRoutes,
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.js";
 import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
 import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
+import { handleCloudFeaturesRoute } from "./cloud-features-routes.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
 import { handleCloudStatusRoutes } from "./cloud-status-routes.js";
+import { handleCodingAgentsFallback } from "./coding-agents-fallback-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
+import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
+import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.js";
-// Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { handleDropRoutes } from "./drop-routes.js";
-import { DropService } from "./drop-service.js";
+import { handleExperienceRoutes } from "./experience-routes.js";
 import { handleHealthRoutes } from "./health-routes.js";
 import {
   readJsonBody as parseJsonBody,
@@ -196,10 +191,7 @@ import { handleMiscRoutes } from "./misc-routes.js";
 import { handleModelsRoutes } from "./models-routes.js";
 import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallback.js";
 import { handleOnboardingRoutes } from "./onboarding-routes.js";
-import type {
-  CoordinationLLMResponse,
-  PTYService,
-} from "./parse-action-block.js";
+import type { PTYService } from "./parse-action-block.js";
 import { handlePermissionRoutes } from "./permissions-routes.js";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.js";
 import { handlePluginRoutes } from "./plugin-routes.js";
@@ -216,7 +208,6 @@ import {
   hasPersistedOnboardingState,
   isUuidLike,
   patchTouchesProviderSelection,
-  resolveAppUserName,
 } from "./server-helpers.js";
 // signal-routes: handleSignalRoute dispatch extracted to @elizaos/plugin-signal (setup-routes.ts)
 import { applySignalQrOverride } from "./signal-routes.js";
@@ -224,11 +215,16 @@ import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
+import { handleTravelProviderRelayRoute } from "./travel-provider-relay-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
-import { TxService } from "./tx-service.js";
 import { handleUpdateRoutes } from "./update-routes.js";
-import { getWalletAddresses, initStewardWalletCache } from "./wallet.js";
+import {
+  // Balance/import/generate helpers moved to @elizaos/app-steward plugin routes.
+  // generateWalletKeys, setSolanaWalletEnv moved to server-helpers-config.ts
+  getWalletAddresses,
+  initStewardWalletCache,
+} from "./wallet.js";
 // Wallet dispatch moved to @elizaos/app-steward plugin routes.
 // import { handleWalletBscRoutes } from "./wallet-bsc-routes.js";
 import {
@@ -242,6 +238,7 @@ import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
 // applyWhatsAppQrOverride is still used by plugin-status routes.
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
+import { handleXRelayRoute } from "./x-relay-routes.js";
 
 export {
   executeFallbackParsedActions,
@@ -521,7 +518,12 @@ function initializeOGCodeInState(): void {
   });
 }
 
-// Canonical server surface types (single source in server-types.ts).
+// resolveAppUserName, patchTouchesProviderSelection, resolveConversationGreetingText
+// moved to server-helpers.ts; imported in the consolidated import at the top
+
+// AgentStartupDiagnostics, ConversationMeta, ServerState, ShareIngestItem,
+// SkillEntry, LogEntry, StreamEventType, StreamEventEnvelope re-exported from
+// server-types.ts
 export type {
   AgentStartupDiagnostics,
   ConversationMeta,
@@ -535,7 +537,6 @@ export type {
 
 import type {
   AgentStartupDiagnostics,
-  ConversationMeta,
   ServerState,
   StreamEventEnvelope,
 } from "./server-types.js";
@@ -546,192 +547,21 @@ import type {
 
 // findOwnPackageRoot moved to server-helpers.ts; re-exported in the batch above
 
-function removeResponseListener(
-  res: StreamableServerResponse,
-  event: "drain" | "error",
-  handler: (...args: unknown[]) => void,
-): void {
-  if (typeof res.off === "function") {
-    res.off(event, handler);
-    return;
-  }
-  if (typeof res.removeListener === "function") {
-    res.removeListener(event, handler);
-  }
-}
+// Fetch/streaming helpers extracted to server-helpers-fetch.ts
+import {
+  fetchWithTimeoutGuard as _fetchWithTimeoutGuard,
+  streamResponseBodyWithByteLimit as _streamResponseBodyWithByteLimit,
+  isAbortError,
+  responseContentLength,
+} from "./server-helpers-fetch.js";
 
-function responseContentLength(headers: Pick<Headers, "get">): number | null {
-  const raw = headers.get("content-length");
-  if (!raw) return null;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return parsed;
-}
+export {
+  fetchWithTimeoutGuard,
+  streamResponseBodyWithByteLimit,
+} from "./server-helpers-fetch.js";
 
-function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException
-    ? error.name === "AbortError" || error.name === "TimeoutError"
-    : error instanceof Error &&
-        (error.name === "AbortError" || error.name === "TimeoutError");
-}
-
-function createTimeoutError(message: string): Error {
-  const timeoutError = new Error(message);
-  timeoutError.name = "TimeoutError";
-  return timeoutError;
-}
-
-export async function fetchWithTimeoutGuard(
-  input: string | URL,
-  init: RequestInit,
-  timeoutMs: number,
-): Promise<Response> {
-  const controller = new AbortController();
-  const upstreamSignal = init.signal;
-  let timedOut = false;
-
-  const onAbort = () => {
-    controller.abort();
-  };
-
-  if (upstreamSignal) {
-    if (upstreamSignal.aborted) {
-      controller.abort();
-    } else {
-      upstreamSignal.addEventListener("abort", onAbort, { once: true });
-    }
-  }
-
-  const timeoutHandle = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-
-  try {
-    return await fetch(input, {
-      ...init,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    if (timedOut && isAbortError(err)) {
-      throw createTimeoutError(
-        `Upstream request timed out after ${timeoutMs}ms`,
-      );
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutHandle);
-    if (upstreamSignal) {
-      upstreamSignal.removeEventListener("abort", onAbort);
-    }
-  }
-}
-
-async function waitForDrain(res: StreamableServerResponse): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    const onDrain = () => {
-      cleanup();
-      resolve();
-    };
-    const onError = (err: unknown) => {
-      cleanup();
-      reject(err instanceof Error ? err : new Error(String(err)));
-    };
-    const cleanup = () => {
-      removeResponseListener(
-        res,
-        "drain",
-        onDrain as (...args: unknown[]) => void,
-      );
-      removeResponseListener(
-        res,
-        "error",
-        onError as (...args: unknown[]) => void,
-      );
-    };
-
-    res.once("drain", onDrain);
-    res.once("error", onError);
-  });
-}
-
-/**
- * Stream a web Response body to an HTTP response while enforcing a strict byte cap.
- * Returns the number of bytes forwarded.
- */
-export async function streamResponseBodyWithByteLimit(
-  upstream: Response,
-  res: StreamableServerResponse,
-  maxBytes: number,
-  timeoutMs?: number,
-): Promise<number> {
-  const declaredLength = responseContentLength(upstream.headers);
-  if (declaredLength !== null && declaredLength > maxBytes) {
-    throw new Error(
-      `Upstream response exceeds maximum size of ${maxBytes} bytes`,
-    );
-  }
-
-  if (!upstream.body) {
-    throw new Error("Upstream response did not include a body stream");
-  }
-
-  const reader = upstream.body.getReader();
-  let totalBytes = 0;
-  let streamTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
-  const streamTimeoutPromise =
-    typeof timeoutMs === "number" && timeoutMs > 0
-      ? new Promise<never>((_resolve, reject) => {
-          streamTimeoutHandle = setTimeout(() => {
-            reject(
-              createTimeoutError(
-                `Upstream response body timed out after ${timeoutMs}ms`,
-              ),
-            );
-          }, timeoutMs);
-        })
-      : null;
-
-  try {
-    while (true) {
-      const { done, value } = streamTimeoutPromise
-        ? await Promise.race([reader.read(), streamTimeoutPromise])
-        : await reader.read();
-      if (done) break;
-      if (!value || value.byteLength === 0) continue;
-
-      totalBytes += value.byteLength;
-      if (totalBytes > maxBytes) {
-        throw new Error(
-          `Upstream response exceeds maximum size of ${maxBytes} bytes`,
-        );
-      }
-
-      if (res.writableEnded || res.destroyed) {
-        throw new Error("Client connection closed while streaming response");
-      }
-
-      const canContinue = res.write(Buffer.from(value));
-      if (!canContinue) {
-        await waitForDrain(res);
-      }
-    }
-  } catch (err) {
-    try {
-      await reader.cancel(err);
-    } catch {
-      // Best effort cleanup; keep original error.
-    }
-    throw err;
-  } finally {
-    if (streamTimeoutHandle !== null) {
-      clearTimeout(streamTimeoutHandle);
-    }
-    reader.releaseLock();
-  }
-
-  return totalBytes;
-}
+const fetchWithTimeoutGuard = _fetchWithTimeoutGuard;
+const streamResponseBodyWithByteLimit = _streamResponseBodyWithByteLimit;
 
 /**
  * Read and parse a JSON request body with size limits and error handling.
@@ -768,7 +598,11 @@ function isModuleResolutionFailure(err: unknown): boolean {
     return false;
   }
   const code = "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
-  if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
+  if (
+    code === "MODULE_NOT_FOUND" ||
+    code === "ERR_MODULE_NOT_FOUND" ||
+    code === "ERR_PACKAGE_PATH_NOT_EXPORTED"
+  ) {
     return true;
   }
   if (!("message" in err) || typeof err.message !== "string") {
@@ -777,7 +611,8 @@ function isModuleResolutionFailure(err: unknown): boolean {
   return (
     err.message.includes("Cannot find module") ||
     err.message.includes("Cannot find package") ||
-    err.message.includes("ERR_MODULE_NOT_FOUND")
+    err.message.includes("ERR_MODULE_NOT_FOUND") ||
+    err.message.includes('is not defined by "exports"')
   );
 }
 
@@ -846,10 +681,14 @@ function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
 const isBlockedObjectKey = isBlockedObjectKeyFromConfig;
 
 // MCP validation helpers extracted to server-helpers-mcp.ts
-import { resolveMcpServersRejection as _resolveMcpServersRejection } from "./server-helpers-mcp.js";
+import {
+  resolveMcpServersRejection as _resolveMcpServersRejection,
+  resolveMcpTerminalAuthorizationRejection as _resolveMcpTerminalAuthorizationRejection,
+} from "./server-helpers-mcp.js";
 
 export {
   resolveMcpServersRejection,
+  resolveMcpTerminalAuthorizationRejection,
   validateMcpServerConfig,
 } from "./server-helpers-mcp.js";
 
@@ -1070,17 +909,18 @@ interface RequestContext {
   onRuntimeSwapped?: () => void;
 }
 
-import type { TrainingServiceLike } from "./server-types.js";
+import type { TrainingServiceWithRuntime } from "./server-types.js";
 
 type TrainingServiceCtor = new (options: {
   getRuntime: () => AgentRuntime | null;
   getConfig: () => ElizaConfig;
   setConfig: (nextConfig: ElizaConfig) => void;
-}) => TrainingServiceLike;
+}) => TrainingServiceWithRuntime;
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   const candidates = [
     "../services/training-service",
+    "@elizaos/app-training",
     "@elizaos/plugin-training",
   ] as const;
 
@@ -1102,29 +942,9 @@ async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null>
   return null;
 }
 
-function mcpServersIncludeStdio(servers: Record<string, unknown>): boolean {
-  return Object.values(servers).some((serverConfig) => {
-    if (
-      !serverConfig ||
-      typeof serverConfig !== "object" ||
-      Array.isArray(serverConfig)
-    ) {
-      return false;
-    }
-    return (serverConfig as Record<string, unknown>).type === "stdio";
-  });
-}
-
-export function resolveMcpTerminalAuthorizationRejection(
-  req: Pick<http.IncomingMessage, "headers">,
-  servers: Record<string, unknown>,
-  body: { terminalToken?: string },
-): TerminalRunRejection | null {
-  if (!mcpServersIncludeStdio(servers)) {
-    return null;
-  }
-  return resolveTerminalRunRejection(req as http.IncomingMessage, body);
-}
+// mcpServersIncludeStdio, resolveMcpTerminalAuthorizationRejection extracted to server-helpers-mcp.ts
+const resolveMcpTerminalAuthorizationRejection =
+  _resolveMcpTerminalAuthorizationRejection;
 
 // Auth, CORS, pairing, terminal, WebSocket auth helpers extracted to server-helpers-auth.ts
 import {
@@ -1146,7 +966,6 @@ import {
   resolveTerminalRunClientId as _resolveTerminalRunClientId,
   resolveTerminalRunRejection as _resolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as _resolveWebSocketUpgradeRejection,
-  type TerminalRunRejection,
 } from "./server-helpers-auth.js";
 
 export {
@@ -1213,1243 +1032,22 @@ const _WORKBENCH_TODO_TAG = WORKBENCH_TODO_TAG;
 // (workbench helpers moved to workbench-helpers.ts)
 
 // ── Autonomy / swarm / coding-agent helpers — extracted to server-helpers-swarm.ts ──
-
-import { routeAutonomyTextToUser as _routeAutonomyTextToUser } from "./server-helpers-swarm.js";
-
-export { routeAutonomyTextToUser } from "./server-helpers-swarm.js";
-
-const routeAutonomyTextToUser = _routeAutonomyTextToUser;
-
-// The full autonomy/swarm/coordinator/PTY bridge implementations are now in
-// server-helpers-swarm.ts. Only a compat stub remains for type checking.
-const CHAT_SUPPRESSED_AUTONOMY_SOURCES = new Set([
-  "lifeops-reminder",
-  "lifeops-workflow",
-  "proactive-gm",
-  "proactive-gn",
-  "proactive-nudge",
-]);
-
-async function _routeAutonomyTextToUserCompat(
-  state: ServerState,
-  responseText: string,
-  source = "autonomy",
-): Promise<void> {
-  const runtime = state.runtime;
-  if (!runtime) return;
-
-  const normalizedText = responseText.trim();
-  if (!normalizedText) return;
-
-  // Find target conversation (active, or most recent)
-  let conv: ConversationMeta | undefined;
-  if (state.activeConversationId) {
-    conv = state.conversations.get(state.activeConversationId);
-  }
-  if (!conv) {
-    // Fall back to most recently updated conversation
-    const sorted = Array.from(state.conversations.values()).sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
-    );
-    conv = sorted[0];
-  }
-  if (!conv) return; // No conversations exist yet
-
-  if (CHAT_SUPPRESSED_AUTONOMY_SOURCES.has(source)) {
-    return;
-  }
-
-  // Ephemeral sources: broadcast to UI but don't persist to DB.
-  // Coding-agent status updates and coordinator decisions are transient —
-  // they bloat the database without adding long-term value.
-  const ephemeralSources = new Set(["coding-agent", "coordinator", "action"]);
-
-  const messageId = crypto.randomUUID() as UUID;
-
-  if (!ephemeralSources.has(source)) {
-    const agentMessage = createMessageMemory({
-      id: messageId,
-      entityId: runtime.agentId,
-      roomId: conv.roomId,
-      content: {
-        text: normalizedText,
-        source,
-      },
-    });
-    await runtime.createMemory(agentMessage, "messages");
-  }
-  conv.updatedAt = new Date().toISOString();
-
-  // Broadcast to all WS clients (always, even for ephemeral sources)
-  state.broadcastWs?.({
-    type: "proactive-message",
-    conversationId: conv.id,
-    message: {
-      id: messageId,
-      role: "assistant",
-      text: normalizedText,
-      timestamp: Date.now(),
-      source,
-    },
-  });
-}
-
-// ── Coding Agent Chat Bridge ──────────────────────────────────────────
-
-/**
- * Get the SwarmCoordinator from the runtime services (if available).
- * Discovers via runtime.getService("SWARM_COORDINATOR") — the coordinator
- * registers itself during PTYService.start().
- */
-function getCoordinatorFromRuntime(runtime: AgentRuntime): {
-  setChatCallback?: (
-    cb: (
-      text: string,
-      source?: string,
-      routing?: {
-        sessionId?: string;
-        threadId?: string;
-        roomId?: string | null;
-      },
-    ) => Promise<void>,
-  ) => void;
-  setWsBroadcast?: (cb: (event: SwarmEvent) => void) => void;
-  setAgentDecisionCallback?: (
-    cb: (
-      eventDescription: string,
-      sessionId: string,
-      taskContext: TaskContext,
-    ) => Promise<CoordinationLLMResponse | null>,
-  ) => void;
-  setSwarmCompleteCallback?: (
-    cb: (payload: {
-      tasks: TaskCompletionSummary[];
-      total: number;
-      completed: number;
-      stopped: number;
-      errored: number;
-    }) => Promise<void>,
-  ) => void;
-  getTaskThread?: (
-    threadId: string,
-  ) => Promise<{ roomId?: string | null } | null>;
-} | null {
-  const coordinator = runtime.getService("SWARM_COORDINATOR");
-  if (coordinator) {
-    return coordinator as ReturnType<typeof getCoordinatorFromRuntime>;
-  }
-  const ptyService = runtime.getService("PTY_SERVICE") as
-    | (PTYService & { coordinator?: unknown })
-    | null;
-  if (ptyService?.coordinator) {
-    return ptyService.coordinator as ReturnType<
-      typeof getCoordinatorFromRuntime
-    >;
-  }
-  return null;
-}
-
-function wireCodingAgentBridgesNow(st: ServerState): void {
-  wireCodingAgentChatBridge(st);
-  wireCodingAgentWsBridge(st);
-  wireCoordinatorEventRouting(st);
-  wireCodingAgentSwarmSynthesis(st);
-}
-
-/**
- * Wire the SwarmCoordinator's chatCallback so coordinator messages
- * appear in the user's chat UI via the existing proactive-message flow.
- * Returns true if successfully wired.
- */
-function wireCodingAgentChatBridge(st: ServerState): boolean {
-  if (!st.runtime) return false;
-  const coordinator = getCoordinatorFromRuntime(st.runtime);
-  if (!coordinator?.setChatCallback) return false;
-  const hasPtyService = Boolean(st.runtime.getService("PTY_SERVICE"));
-  if (hasPtyService) {
-    // In the real task-agent stack the PTY progress streamer + jsonl watcher
-    // already deliver the success path. Keep generic coordinator chatter
-    // suppressed, but still route task-specific issue messages when the
-    // coordinator includes per-task routing metadata or when the text itself
-    // identifies a unique task thread.
-    coordinator.setChatCallback(async (text, source, routing) => {
-      const delivered = await routeTaskAgentTextToConnector(
-        st.runtime,
-        text,
-        source ?? "coding-agent",
-        routing,
-      );
-      if (!delivered) {
-        await routeAutonomyTextToUser(st, text, source ?? "coding-agent");
-      }
-    });
-    return true;
-  }
-
-  // Minimal runtimes used by tests and lightweight embeddings do not install
-  // the PTY progress bridge, so the coordinator callback is the only path
-  // that can surface coding-agent updates back into chat.
-  coordinator.setChatCallback(async (text: string, source?: string) => {
-    await routeAutonomyTextToUser(st, text, source ?? "coding-agent");
-  });
-  return true;
-}
-
-/**
- * Wire the SwarmCoordinator's wsBroadcast callback so coordinator events
- * are relayed to all WebSocket clients as "pty-session-event" messages.
- * Returns true if successfully wired.
- */
-function wireCodingAgentWsBridge(st: ServerState): boolean {
-  if (!st.runtime) return false;
-  const coordinator = getCoordinatorFromRuntime(st.runtime);
-  if (!coordinator?.setWsBroadcast) return false;
-  coordinator.setWsBroadcast((event: SwarmEvent) => {
-    // Preserve the coordinator's event type (task_registered, task_complete, etc.)
-    // as `eventType` so it doesn't overwrite the WS message dispatch type.
-    const { type: eventType, ...rest } = event;
-    st.broadcastWs?.({ type: "pty-session-event", eventType, ...rest });
-  });
-  return true;
-}
-
-/**
- * Wire the SwarmCoordinator's swarmCompleteCallback so that when all agents
- * finish, we synthesize a summary via the agent's LLM and post it as a
- * persisted message in the conversation.
- */
-function wireCodingAgentSwarmSynthesis(st: ServerState): boolean {
-  // The task-progress-streamer was removed from this tree but the callback
-  // was left as a no-op, so subagent completions never reached the user.
-  // Invoke handleSwarmSynthesis directly so the synthesis LLM routes the
-  // final answer back to the conversation. The task jsonl is already the
-  // source of truth for per-task completionSummary.
-  if (!st.runtime) return false;
-  const coordinator = getCoordinatorFromRuntime(st.runtime);
-  if (!coordinator?.setSwarmCompleteCallback) return false;
-  coordinator.setSwarmCompleteCallback(async (payload) => {
-    await handleSwarmSynthesis(st, payload);
-  });
-  // Same wiring path — install the task heartbeat so sessions running past
-  // 45s emit periodic "still working" pings that report the subagent's
-  // current tool activity. Synthesis delivers the final answer; heartbeat
-  // just tells the user the task is alive and moving.
-  const ptyService = st.runtime.getService("PTY_SERVICE");
-  if (ptyService) {
-    installTaskHeartbeat(st.runtime, ptyService);
-    logger.info("[task-heartbeat] installed");
-  }
-  return true;
-}
-
-/**
- * Handle swarm completion by synthesizing a summary via the LLM.
- * Extracted from wireCodingAgentSwarmSynthesis for testability.
- *
- * Paths: (A) LLM returns synthesis → route to user,
- *        (B) LLM returns empty → warn,
- *        (C) LLM throws → fallback generic message.
- */
-export async function handleSwarmSynthesis(
-  st: { runtime: AgentRuntime | null },
-  payload: {
-    tasks: Array<{
-      sessionId: string;
-      label: string;
-      agentType: string;
-      originalTask: string;
-      status: string;
-      completionSummary: string;
-      workdir?: string;
-      roomId?: string;
-    }>;
-    total: number;
-    completed: number;
-    stopped: number;
-    errored: number;
-  },
-  routeMessage: (text: string, source: string) => Promise<void> = (
-    text,
-    source,
-  ) => routeAutonomyTextToUser(st as ServerState, text, source),
-): Promise<void> {
-  const runtime = st.runtime;
-  if (!runtime) {
-    logger.warn("[swarm-synthesis] No runtime available — skipping synthesis");
-    return;
-  }
-
-  logger.info(
-    `[swarm-synthesis] Generating synthesis for ${payload.total} tasks (${payload.completed} completed, ${payload.stopped} stopped, ${payload.errored} errored)`,
-  );
-
-  const resultText = await buildSynthesisResultText(payload, runtime);
-  logger.info(
-    `[swarm-synthesis] Synthesis generated (${resultText.length} chars), routing to user — preview: ${resultText.slice(0, 200).replace(/\n/g, " | ")}`,
-  );
-  // Route back to the originating chat channel via the roomId captured on
-  // the incoming user message (propagated through the task payload).
-  const roomId = payload.tasks.find((t) => t.roomId)?.roomId ?? null;
-  // Discord's per-message limit is 2000 chars. Deliver long answers as
-  // sequential chunks so the subagent's full output reaches the user.
-  for (const chunk of chunkForDiscord(resultText, 1900)) {
-    await routeMessage(chunk, "swarm_synthesis");
-    await routeSynthesisToConnector(runtime, chunk, roomId);
-  }
-}
-
-/**
- * Build the user-facing result message from swarm task data.
- * For port-bound tasks, verifies the server is actually listening.
- * No LLM call required — task data already has what we need.
- */
-type SynthesisTask = {
-  sessionId: string;
-  originalTask: string;
-  completionSummary: string;
-  status: string;
-  workdir?: string;
-};
-
-async function buildSynthesisResultText(
-  payload: { tasks: SynthesisTask[]; total: number },
-  runtime: AgentRuntime,
-): Promise<string> {
-  const parts = await Promise.all(
-    payload.tasks.map((task) => buildTaskLine(task, runtime)),
-  );
-  if (parts.length === 1) return parts[0];
-  return `done — ${parts.length} tasks:\n${parts.map((p) => `• ${p}`).join("\n")}`;
-}
-
-/**
- * Deliver the subagent's actual final answer — the last end_turn assistant
- * text from its session jsonl. Trust the agent to already have produced
- * a coherent response; synthesis does not rewrite or trim it. Falls back
- * to completionSummary, then a port-status check, then the original
- * prompt text when no jsonl is available.
- */
-async function buildTaskLine(
-  task: SynthesisTask,
-  runtime: AgentRuntime,
-): Promise<string> {
-  const workdir =
-    task.workdir ?? resolveSessionWorkdir(runtime, task.sessionId);
-  if (workdir) {
-    const assistantText = await readLastAssistantTextFromJsonl(workdir);
-    if (assistantText) return assistantText;
-  }
-  if (task.completionSummary) return task.completionSummary;
-  const portMatch = task.originalTask.match(/port\s+(\d+)/i);
-  const port = portMatch?.[1];
-  if (!port) return task.originalTask;
-  if (await isPortServing(port)) {
-    const host = process.env.ELIZA_PUBLIC_HOST ?? "localhost";
-    return `built and serving at http://${host}:${port}`;
-  }
-  return `built the files but server isn't running on port ${port} yet`;
-}
-
-function resolveSessionWorkdir(
-  runtime: AgentRuntime,
-  sessionId: string,
-): string | null {
-  const ptyService = runtime.getService("PTY_SERVICE") as {
-    getSession?: (id: string) => { workdir?: string } | undefined;
-  } | null;
-  return ptyService?.getSession?.(sessionId)?.workdir ?? null;
-}
-
-async function isPortServing(port: string): Promise<boolean> {
-  try {
-    const res = await fetch(`http://localhost:${port}/`, {
-      signal: AbortSignal.timeout(2000),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Route the synthesis text to the user's platform (Discord, Telegram, etc.)
- * via the runtime's registered send handler. Uses the source room ID stored
- * on the coordinator when the task was created.
- */
-async function routeSynthesisToConnector(
-  runtime: AgentRuntime,
-  resultText: string,
-  roomId: string | null,
-): Promise<void> {
-  if (!roomId) {
-    logger.debug(
-      "[swarm-synthesis] No roomId available — cannot route to connector",
-    );
-    return;
-  }
-  try {
-    const room = await runtime.getRoom(roomId as UUID);
-    if (!room?.source) {
-      logger.debug(
-        `[swarm-synthesis] Room ${roomId} has no source connector — cannot route`,
-      );
-      return;
-    }
-    await runtime.sendMessageToTarget(
-      {
-        source: room.source,
-        roomId: room.id,
-        channelId: room.channelId ?? room.id,
-        serverId: room.serverId,
-      } as Parameters<typeof runtime.sendMessageToTarget>[0],
-      { text: resultText, source: "swarm_synthesis" },
-    );
-    logger.info(
-      `[swarm-synthesis] Routed result to ${room.source} room ${room.id}`,
-    );
-  } catch (err) {
-    logger.warn(`[swarm-synthesis] Connector routing failed: ${err}`);
-  }
-}
-
 import {
-  chunkForDiscord,
-  readLastAssistantTextFromJsonl,
-} from "../runtime/subagent-output.js";
-import { installTaskHeartbeat } from "../runtime/task-heartbeat.js";
-// ── Parse Action Block from Eliza's Response ─────────────────────────
-import {
-  parseActionBlock,
-  stripActionBlockFromDisplay,
-} from "./parse-action-block.js";
+  getCoordinatorFromRuntime,
+  getPtyConsoleBridge,
+  routeAutonomyTextToUser,
+  wireCodingAgentBridgesNow,
+  wireCodingAgentChatBridge,
+  wireCodingAgentSwarmSynthesis,
+  wireCodingAgentWsBridge,
+  wireCoordinatorEventRouting,
+} from "./server-helpers-swarm.js";
 
-// ── Coordinator Event Routing ───────────────────────────────────────────
+export {
+  handleSwarmSynthesis,
+  routeAutonomyTextToUser,
+} from "./server-helpers-swarm.js";
 
-/**
- * Wire the SwarmCoordinator's agentDecisionCallback so coordinator events
- * (blocked prompts, turn completions) route through Eliza's full
- * elizaOS pipeline (memory, personality, actions) so she has conversation
- * context to make informed decisions. The pipeline's model size is
- * The pipeline's model size is temporarily overridden to TEXT_SMALL
- * via the private `runtime.llmModeOption` (no public setter exists).
- * This is intentional — coordinator decisions must be fast to avoid
- * stalling CLI agents waiting for input.
- *
- * Events are serialized (one at a time) to prevent context confusion.
- * Eliza's response appears in chat via WS broadcast, and the embedded
- * JSON action block is parsed and returned to the coordinator for execution.
- *
- * If the callback fails or Eliza's response has no action block,
- * returns null → coordinator falls back to the small LLM.
- */
-function wireCoordinatorEventRouting(st: ServerState): boolean {
-  if (!st.runtime) return false;
-  const coordinator = getCoordinatorFromRuntime(st.runtime);
-  if (!coordinator?.setAgentDecisionCallback) return false;
-
-  // Serialization queue — one coordinator event at a time
-  let eventQueue: Promise<void> = Promise.resolve();
-
-  coordinator.setAgentDecisionCallback(
-    async (
-      eventDescription: string,
-      _sessionId: string,
-      _taskCtx: TaskContext,
-    ): Promise<CoordinationLLMResponse | null> => {
-      let resolveOuter!: (v: CoordinationLLMResponse | null) => void;
-      const resultPromise = new Promise<CoordinationLLMResponse | null>((r) => {
-        resolveOuter = r;
-      });
-
-      eventQueue = eventQueue.then(async () => {
-        try {
-          const runtime = st.runtime;
-          if (!runtime) {
-            resolveOuter(null);
-            return;
-          }
-
-          // Ensure the legacy chat connection exists (creates room/world if needed).
-          // We inline the setup here because ensureLegacyChatConnection is
-          // closure-scoped in the route handler and not accessible at module level.
-          const agentName = runtime.character.name ?? "Eliza";
-          const existingLegacyChatRoom = st.chatRoomId
-            ? await runtime.getRoom(st.chatRoomId).catch(() => null)
-            : null;
-          if (!st.chatUserId || !st.chatRoomId || !existingLegacyChatRoom) {
-            const adminId =
-              st.adminEntityId ??
-              (stringToUuid(`${st.agentName}-admin-entity`) as UUID);
-            st.adminEntityId = adminId;
-            st.chatUserId = adminId;
-            st.chatRoomId =
-              st.chatRoomId ??
-              (stringToUuid(`${agentName}-web-chat-room`) as UUID);
-            const worldId = stringToUuid(`${agentName}-web-chat-world`) as UUID;
-            const messageServerId = stringToUuid(
-              `${agentName}-web-server`,
-            ) as UUID;
-            await runtime.ensureConnection({
-              entityId: adminId,
-              roomId: st.chatRoomId,
-              worldId,
-              userName: resolveAppUserName(st.config),
-              source: "client_chat",
-              channelId: `${agentName}-web-chat`,
-              type: ChannelType.DM,
-              messageServerId,
-              metadata: { ownership: { ownerId: adminId } },
-            });
-          }
-          if (!st.chatUserId || !st.chatRoomId) {
-            resolveOuter(null);
-            return;
-          }
-
-          // Create a message memory so the event enters Eliza's conversation history.
-          const message = createMessageMemory({
-            id: crypto.randomUUID() as UUID,
-            entityId: st.chatUserId,
-            agentId: runtime.agentId,
-            roomId: st.chatRoomId,
-            content: {
-              text: eventDescription,
-              source: "coordinator",
-              channelType: "DM",
-            },
-          });
-
-          // Temporarily force TEXT_SMALL — coordinator events are time-sensitive
-          // and TEXT_LARGE can timeout while CLI agents stall waiting for input.
-          // llmModeOption is private with no public setter; cast is intentional.
-          const rt = runtime as unknown as Record<string, unknown>;
-          const prevLlmMode = rt.llmModeOption;
-          rt.llmModeOption = "SMALL";
-          let result: { text: string; agentName?: string };
-          try {
-            result = await generateChatResponseFromChatRoutes(
-              runtime,
-              message,
-              agentName,
-              {
-                resolveNoResponseText: () => "I'll look into that.",
-              },
-            );
-          } finally {
-            rt.llmModeOption = prevLlmMode;
-          }
-
-          // WS broadcast the natural language portion (strip JSON action block).
-          // Both fenced (```json ... ```) and bare JSON must be removed since
-          // the LLM may return either format.
-          if (result.text && result.text !== "(no response)") {
-            const displayText = stripActionBlockFromDisplay(result.text);
-            if (displayText && displayText.length > 2) {
-              const conv = st.activeConversationId
-                ? st.conversations.get(st.activeConversationId)
-                : Array.from(st.conversations.values()).sort(
-                    (a, b) =>
-                      new Date(b.updatedAt).getTime() -
-                      new Date(a.updatedAt).getTime(),
-                  )[0];
-              if (conv) {
-                st.broadcastWs?.({
-                  type: "proactive-message",
-                  conversationId: conv.id,
-                  message: {
-                    id: `coordinator-${Date.now()}`,
-                    role: "assistant",
-                    text: displayText,
-                    timestamp: Date.now(),
-                    source: "coordinator",
-                  },
-                });
-              }
-            }
-          }
-
-          resolveOuter(parseActionBlock(result.text ?? ""));
-        } catch (err) {
-          logger.error(
-            `Coordinator event routing failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          resolveOuter(null);
-        }
-      });
-
-      return resultPromise;
-    },
-  );
-
-  return true;
-}
-
-/**
- * Fallback handler for /api/coding-agents/* routes when the plugin
- * doesn't export createCodingAgentRouteHandler.
- * Uses the orchestrator plugin's CODE_TASK compatibility service to
- * provide task data.
- */
-async function handleCodingAgentsFallback(
-  runtime: AgentRuntime,
-  pathname: string,
-  method: string,
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-): Promise<boolean> {
-  type ScratchStatus = "pending_decision" | "kept" | "promoted";
-  type ScratchTerminalEvent = "stopped" | "task_complete" | "error";
-  type ScratchRecord = {
-    sessionId: string;
-    label: string;
-    path: string;
-    status: ScratchStatus;
-    createdAt: number;
-    terminalAt: number;
-    terminalEvent: ScratchTerminalEvent;
-    expiresAt?: number;
-  };
-  type AgentPreflightRecord = {
-    adapter?: string;
-    installed?: boolean;
-    installCommand?: string;
-    docsUrl?: string;
-    auth?: import("@elizaos/app-task-coordinator/api/coding-agents-preflight-normalize").NormalizedPreflightAuth;
-  };
-  /** CLI login hook on adapter instances — union `.d.ts` omits it even when runtime provides it. */
-  type CodingAgentAdapterAuthHook = {
-    triggerAuth?: () => Promise<
-      | boolean
-      | null
-      | undefined
-      | {
-          launched?: boolean;
-          url?: string;
-          deviceCode?: string;
-          instructions?: string;
-        }
-    >;
-  };
-  type CodeTaskService = {
-    getTasks?: () => Promise<
-      Array<{
-        id?: string;
-        name?: string;
-        description?: string;
-        metadata?: {
-          status?: string;
-          providerId?: string;
-          providerLabel?: string;
-          workingDirectory?: string;
-          progress?: number;
-          steps?: Array<{ status?: string }>;
-        };
-      }>
-    >;
-    getAgentPreflight?: () => Promise<unknown>;
-    listAgentPreflight?: () => Promise<unknown>;
-    preflightCodingAgents?: () => Promise<unknown>;
-    preflight?: () => Promise<unknown>;
-    listScratchWorkspaces?: () => Promise<unknown>;
-    getScratchWorkspaces?: () => Promise<unknown>;
-    listScratch?: () => Promise<unknown>;
-    keepScratchWorkspace?: (sessionId: string) => Promise<unknown>;
-    keepScratch?: (sessionId: string) => Promise<unknown>;
-    deleteScratchWorkspace?: (sessionId: string) => Promise<unknown>;
-    deleteScratch?: (sessionId: string) => Promise<unknown>;
-    promoteScratchWorkspace?: (
-      sessionId: string,
-      name?: string,
-    ) => Promise<unknown>;
-    promoteScratch?: (sessionId: string, name?: string) => Promise<unknown>;
-  };
-
-  const codeTaskService = runtime.getService(
-    "CODE_TASK",
-  ) as CodeTaskService | null;
-
-  const buildEmptyCoordinatorStatus = () => ({
-    supervisionLevel: "autonomous",
-    taskCount: 0,
-    tasks: [] as Array<Record<string, unknown>>,
-    recentTasks: [] as Array<Record<string, unknown>>,
-    taskThreadCount: 0,
-    taskThreads: [] as Array<Record<string, unknown>>,
-    pendingConfirmations: 0,
-    frameworks: [] as Array<Record<string, unknown>>,
-  });
-
-  const toNumber = (value: unknown, fallback = 0): number => {
-    const parsed =
-      typeof value === "number"
-        ? value
-        : typeof value === "string"
-          ? Number(value)
-          : Number.NaN;
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
-  const toScratchStatus = (value: unknown): ScratchStatus => {
-    if (value === "kept" || value === "promoted") return value;
-    return "pending_decision";
-  };
-  const toTerminalEvent = (value: unknown): ScratchTerminalEvent => {
-    if (value === "stopped" || value === "error") return value;
-    return "task_complete";
-  };
-  const normalizeScratchRecord = (value: unknown): ScratchRecord | null => {
-    if (!value || typeof value !== "object") return null;
-    const raw = value as Record<string, unknown>;
-    const sessionId =
-      typeof raw.sessionId === "string" ? raw.sessionId.trim() : "";
-    const pathValue = typeof raw.path === "string" ? raw.path.trim() : "";
-    if (!sessionId || !pathValue) return null;
-    const createdAt = toNumber(raw.createdAt, Date.now());
-    const terminalAt = toNumber(raw.terminalAt, createdAt);
-    const expiresAt = toNumber(raw.expiresAt, 0);
-    return {
-      sessionId,
-      label:
-        typeof raw.label === "string" && raw.label.trim().length > 0
-          ? raw.label
-          : sessionId,
-      path: pathValue,
-      status: toScratchStatus(raw.status),
-      createdAt,
-      terminalAt,
-      terminalEvent: toTerminalEvent(raw.terminalEvent),
-      ...(expiresAt > 0 ? { expiresAt } : {}),
-    };
-  };
-  const parseSessionId = (raw: string): string | null => {
-    let sessionId = "";
-    try {
-      sessionId = decodeURIComponent(raw);
-    } catch {
-      return null;
-    }
-    if (!sessionId || sessionId.includes("/") || sessionId.includes("..")) {
-      return null;
-    }
-    return sessionId;
-  };
-  const parseTaskId = (raw: string): string | null => {
-    let taskId = "";
-    try {
-      taskId = decodeURIComponent(raw);
-    } catch {
-      return null;
-    }
-    if (!taskId || taskId.includes("/") || taskId.includes("..")) {
-      return null;
-    }
-    return taskId;
-  };
-  const ptyListService = runtime.getService("PTY_SERVICE") as
-    | (PTYService & {
-        listSessions?: () => Promise<unknown[]>;
-      })
-    | null;
-
-  // GET /api/coding-agents/tasks
-  if (method === "GET" && pathname === "/api/coding-agents/tasks") {
-    if (!codeTaskService?.getTasks) {
-      error(res, "Coding agent task service unavailable", 503);
-      return true;
-    }
-    try {
-      const url = new URL(req.url ?? pathname, "http://localhost");
-      const requestedStatus = url.searchParams.get("status");
-      const requestedLimit = Number(url.searchParams.get("limit"));
-      let tasks = (await codeTaskService.getTasks()) ?? [];
-      if (!Array.isArray(tasks)) {
-        tasks = [];
-      }
-      if (requestedStatus) {
-        tasks = tasks.filter(
-          (task) => task.metadata?.status === requestedStatus,
-        );
-      }
-      if (Number.isFinite(requestedLimit) && requestedLimit > 0) {
-        tasks = tasks.slice(0, requestedLimit);
-      }
-      json(res, { tasks });
-      return true;
-    } catch (e) {
-      error(res, `Failed to list coding agent tasks: ${e}`, 500);
-      return true;
-    }
-  }
-
-  const taskMatch = pathname.match(/^\/api\/coding-agents\/tasks\/([^/]+)$/);
-  if (method === "GET" && taskMatch) {
-    const taskId = parseTaskId(taskMatch[1]);
-    if (!taskId) {
-      error(res, "Invalid task ID", 400);
-      return true;
-    }
-    if (!codeTaskService?.getTasks) {
-      error(res, "Coding agent task service unavailable", 503);
-      return true;
-    }
-    try {
-      const tasks = (await codeTaskService.getTasks()) ?? [];
-      const task = Array.isArray(tasks)
-        ? tasks.find((entry) => entry.id === taskId)
-        : undefined;
-      if (!task) {
-        error(res, "Task not found", 404);
-        return true;
-      }
-      json(res, { task });
-      return true;
-    } catch (e) {
-      error(res, `Failed to get coding agent task: ${e}`, 500);
-      return true;
-    }
-  }
-
-  // GET /api/coding-agents/sessions
-  if (method === "GET" && pathname === "/api/coding-agents/sessions") {
-    if (!ptyListService?.listSessions) {
-      error(res, "Coding agent session service unavailable", 503);
-      return true;
-    }
-    try {
-      const sessions = (await ptyListService.listSessions()) ?? [];
-      json(res, { sessions: Array.isArray(sessions) ? sessions : [] });
-      return true;
-    } catch (e) {
-      error(res, `Failed to list coding agent sessions: ${e}`, 500);
-      return true;
-    }
-  }
-
-  const sessionMatch = pathname.match(
-    /^\/api\/coding-agents\/sessions\/([^/]+)$/,
-  );
-  if (method === "GET" && sessionMatch) {
-    const sessionId = parseSessionId(sessionMatch[1]);
-    if (!sessionId) {
-      error(res, "Invalid session ID", 400);
-      return true;
-    }
-    if (!ptyListService?.listSessions) {
-      error(res, "Coding agent session service unavailable", 503);
-      return true;
-    }
-    try {
-      const sessions = (await ptyListService.listSessions()) ?? [];
-      const session = Array.isArray(sessions)
-        ? sessions.find((entry) => {
-            if (!entry || typeof entry !== "object") return false;
-            const raw = entry as Record<string, unknown>;
-            return (
-              raw.id === sessionId ||
-              raw.sessionId === sessionId ||
-              raw.roomId === sessionId
-            );
-          })
-        : undefined;
-      if (!session) {
-        error(res, "Session not found", 404);
-        return true;
-      }
-      json(res, { session });
-      return true;
-    } catch (e) {
-      error(res, `Failed to get coding agent session: ${e}`, 500);
-      return true;
-    }
-  }
-
-  // GET /api/coding-agents/preflight
-  if (method === "GET" && pathname === "/api/coding-agents/preflight") {
-    const loaders: Array<(() => Promise<unknown>) | undefined> = [
-      codeTaskService?.getAgentPreflight,
-      codeTaskService?.listAgentPreflight,
-      codeTaskService?.preflightCodingAgents,
-      codeTaskService?.preflight,
-    ];
-    if (!loaders.some(Boolean)) {
-      error(res, "Coding agent preflight unavailable", 503);
-      return true;
-    }
-    try {
-      let rows: unknown[] = [];
-      for (const loader of loaders) {
-        if (!loader) continue;
-        const maybeRows = await loader.call(codeTaskService);
-        if (Array.isArray(maybeRows)) {
-          rows = maybeRows;
-          break;
-        }
-      }
-      const { normalizePreflightAuth } = await import(
-        "@elizaos/app-task-coordinator/api/coding-agents-preflight-normalize"
-      );
-      const normalized = rows.flatMap((item): AgentPreflightRecord[] => {
-        if (!item || typeof item !== "object") return [];
-        const raw = item as Record<string, unknown>;
-        const adapter =
-          typeof raw.adapter === "string" ? raw.adapter.trim() : "";
-        if (!adapter) return [];
-        const auth = normalizePreflightAuth(raw.auth);
-        return [
-          {
-            adapter,
-            installed: Boolean(raw.installed),
-            installCommand:
-              typeof raw.installCommand === "string"
-                ? raw.installCommand
-                : undefined,
-            docsUrl: typeof raw.docsUrl === "string" ? raw.docsUrl : undefined,
-            ...(auth ? { auth } : {}),
-          },
-        ];
-      });
-      json(res, normalized);
-      return true;
-    } catch (e) {
-      error(res, `Failed to get coding agent preflight: ${e}`, 500);
-      return true;
-    }
-  }
-
-  // GET /api/coding-agents/coordinator/status
-  if (
-    method === "GET" &&
-    pathname === "/api/coding-agents/coordinator/status"
-  ) {
-    if (!codeTaskService?.getTasks) {
-      error(res, "Coding agent coordinator unavailable", 503);
-      return true;
-    }
-
-    try {
-      const tasks = await codeTaskService.getTasks();
-
-      // Map tasks to the CodingAgentSession format expected by frontend
-      const mappedTasks = tasks.map((task) => {
-        const meta = task.metadata ?? {};
-        // Map orchestrator status to frontend status
-        let status: string = "active";
-        switch (meta.status) {
-          case "completed":
-            status = "completed";
-            break;
-          case "failed":
-          case "error":
-            status = "error";
-            break;
-          case "cancelled":
-            status = "stopped";
-            break;
-          case "paused":
-            status = "blocked";
-            break;
-          case "running":
-            status = "active";
-            break;
-          case "pending":
-            status = "active";
-            break;
-          default:
-            status = "active";
-        }
-
-        return {
-          sessionId: task.id ?? "",
-          agentType: meta.providerId ?? "eliza",
-          label: meta.providerLabel ?? task.name ?? "Task",
-          originalTask: task.description ?? task.name ?? "",
-          workdir: meta.workingDirectory ?? process.cwd(),
-          status,
-          decisionCount: meta.steps?.length ?? 0,
-          autoResolvedCount:
-            meta.steps?.filter((s) => s.status === "completed").length ?? 0,
-        };
-      });
-
-      json(res, {
-        ...buildEmptyCoordinatorStatus(),
-        taskCount: mappedTasks.length,
-        tasks: mappedTasks,
-        recentTasks: mappedTasks,
-        pendingConfirmations: 0,
-      });
-      return true;
-    } catch (e) {
-      error(res, `Failed to get coding agent status: ${e}`, 500);
-      return true;
-    }
-  }
-
-  // POST /api/coding-agents/:sessionId/stop - Stop a coding agent task
-  const stopMatch = pathname.match(/^\/api\/coding-agents\/([^/]+)\/stop$/);
-  if (method === "POST" && stopMatch) {
-    const sessionId = parseSessionId(stopMatch[1]);
-    if (!sessionId) {
-      error(res, "Invalid session ID", 400);
-      return true;
-    }
-    const ptyService = runtime.getService("PTY_SERVICE") as PTYService | null;
-
-    if (!ptyService?.stopSession) {
-      error(res, "PTY Service not available", 503);
-      return true;
-    }
-
-    try {
-      await ptyService.stopSession(sessionId);
-      json(res, { ok: true });
-      return true;
-    } catch (e) {
-      error(res, `Failed to stop session: ${e}`, 500);
-      return true;
-    }
-  }
-
-  // GET /api/coding-agents/scratch
-  if (method === "GET" && pathname === "/api/coding-agents/scratch") {
-    const loaders: Array<(() => Promise<unknown>) | undefined> = [
-      codeTaskService?.listScratchWorkspaces,
-      codeTaskService?.getScratchWorkspaces,
-      codeTaskService?.listScratch,
-    ];
-    if (!loaders.some(Boolean)) {
-      error(res, "Coding agent scratch workspace service unavailable", 503);
-      return true;
-    }
-    try {
-      let rows: unknown[] = [];
-      for (const loader of loaders) {
-        if (!loader) continue;
-        const maybeRows = await loader.call(codeTaskService);
-        if (Array.isArray(maybeRows)) {
-          rows = maybeRows;
-          break;
-        }
-      }
-      const normalized = rows
-        .map((item) => normalizeScratchRecord(item))
-        .filter((item): item is ScratchRecord => item !== null);
-      json(res, normalized);
-      return true;
-    } catch (e) {
-      error(res, `Failed to list scratch workspaces: ${e}`, 500);
-      return true;
-    }
-  }
-
-  const keepMatch = pathname.match(
-    /^\/api\/coding-agents\/([^/]+)\/scratch\/keep$/,
-  );
-  if (method === "POST" && keepMatch) {
-    const sessionId = parseSessionId(keepMatch[1]);
-    if (!sessionId) {
-      error(res, "Invalid session ID", 400);
-      return true;
-    }
-    const keeper =
-      codeTaskService?.keepScratchWorkspace ?? codeTaskService?.keepScratch;
-    if (!keeper) {
-      error(res, "Scratch keep is not available", 503);
-      return true;
-    }
-    try {
-      await keeper.call(codeTaskService, sessionId);
-      json(res, { ok: true });
-      return true;
-    } catch (e) {
-      error(res, `Failed to keep scratch workspace: ${e}`, 500);
-      return true;
-    }
-  }
-
-  const deleteMatch = pathname.match(
-    /^\/api\/coding-agents\/([^/]+)\/scratch\/delete$/,
-  );
-  if (method === "POST" && deleteMatch) {
-    const sessionId = parseSessionId(deleteMatch[1]);
-    if (!sessionId) {
-      error(res, "Invalid session ID", 400);
-      return true;
-    }
-    const deleter =
-      codeTaskService?.deleteScratchWorkspace ?? codeTaskService?.deleteScratch;
-    if (!deleter) {
-      error(res, "Scratch delete is not available", 503);
-      return true;
-    }
-    try {
-      await deleter.call(codeTaskService, sessionId);
-      json(res, { ok: true });
-      return true;
-    } catch (e) {
-      error(res, `Failed to delete scratch workspace: ${e}`, 500);
-      return true;
-    }
-  }
-
-  const promoteMatch = pathname.match(
-    /^\/api\/coding-agents\/([^/]+)\/scratch\/promote$/,
-  );
-  if (method === "POST" && promoteMatch) {
-    const sessionId = parseSessionId(promoteMatch[1]);
-    if (!sessionId) {
-      error(res, "Invalid session ID", 400);
-      return true;
-    }
-    const promoter =
-      codeTaskService?.promoteScratchWorkspace ??
-      codeTaskService?.promoteScratch;
-    if (!promoter) {
-      error(res, "Scratch promote is not available", 503);
-      return true;
-    }
-    const body = await readJsonBody<{ name?: string }>(req, res);
-    if (body === null) return true;
-    const name =
-      typeof body.name === "string" && body.name.trim().length > 0
-        ? body.name.trim()
-        : undefined;
-    try {
-      const promoted = await promoter.call(codeTaskService, sessionId, name);
-      const scratch = normalizeScratchRecord(promoted);
-      json(res, { success: true, ...(scratch ? { scratch } : {}) });
-      return true;
-    } catch (e) {
-      error(res, `Failed to promote scratch workspace: ${e}`, 500);
-      return true;
-    }
-  }
-
-  // GET /api/coding-agents — list active PTY sessions (used by getCodingAgentStatus fallback)
-  if (method === "GET" && pathname === "/api/coding-agents") {
-    if (!codeTaskService?.getTasks) {
-      error(res, "Coding agent task service unavailable", 503);
-      return true;
-    }
-    try {
-      const tasks = await codeTaskService.getTasks();
-      json(res, Array.isArray(tasks) ? tasks : []);
-      return true;
-    } catch (e) {
-      error(res, `Failed to list coding agents: ${e}`, 500);
-      return true;
-    }
-  }
-
-  // POST /api/coding-agents/auth/:agent — trigger CLI auth flow
-  const authMatch = pathname.match(/^\/api\/coding-agents\/auth\/(\w+)$/);
-  if (method === "POST" && authMatch) {
-    const agentType = authMatch[1];
-    // Allowlist the adapter type. The `\w+` regex on the route pattern
-    // stops path traversal but still accepts arbitrary identifiers
-    // like `__proto__`, `constructor`, or any future adapter name the
-    // package happens to export. `createAdapter` takes an unvalidated
-    // string and we don't want it to resolve a prototype-pollution
-    // sentinel or an adapter we haven't audited, so gate on the four
-    // shapes the UI actually ships today.
-    const ALLOWED_AGENT_TYPES = new Set(["claude", "codex", "gemini", "aider"]);
-    if (!ALLOWED_AGENT_TYPES.has(agentType)) {
-      error(res, `Unsupported agent type: ${agentType}`, 400);
-      return true;
-    }
-    try {
-      const ptyService = runtime.getService("PTY_SERVICE") as {
-        triggerAgentAuth?: (
-          agent: import("coding-agent-adapters").AdapterType,
-        ) => Promise<unknown>;
-      } | null;
-      const triggerAuthFn =
-        typeof ptyService?.triggerAgentAuth === "function"
-          ? () =>
-              ptyService.triggerAgentAuth?.(
-                agentType as import("coding-agent-adapters").AdapterType,
-              )
-          : null;
-      if (!triggerAuthFn) {
-        const { createAdapter } = await import("coding-agent-adapters");
-        const adapter = createAdapter(
-          agentType as import("coding-agent-adapters").AdapterType,
-        );
-        const authAdapter = adapter as unknown as CodingAgentAdapterAuthHook;
-        if (typeof authAdapter.triggerAuth !== "function") {
-          error(res, `Auth trigger is unavailable for ${agentType}`, 501);
-          return true;
-        }
-      }
-      // Server-side timeout: some CLI auth flows spawn an interactive
-      // subprocess that can hang indefinitely in headless / Docker
-      // environments. Cap the wait so we don't pin an async for
-      // longer than the client is willing to poll.
-      const AUTH_TIMEOUT_MS = 15_000;
-      const timeoutError = new Error("auth trigger timeout");
-      const triggered = await Promise.race([
-        triggerAuthFn
-          ? triggerAuthFn()
-          : (
-              (await import("coding-agent-adapters")).createAdapter(
-                agentType as import("coding-agent-adapters").AdapterType,
-              ) as unknown as CodingAgentAdapterAuthHook
-            ).triggerAuth?.(),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(timeoutError), AUTH_TIMEOUT_MS),
-        ),
-      ]).catch((e) => {
-        if (e === timeoutError) return "__timeout__" as const;
-        throw e;
-      });
-      if (triggered === "__timeout__") {
-        error(res, `Auth trigger timed out for ${agentType}`, 504);
-      } else if (!triggered) {
-        // 4xx — otherwise the client's `res.ok` check passes and it
-        // kicks off a 2-minute spurious polling loop even though no
-        // auth flow was ever initiated.
-        error(res, `No auth flow available for ${agentType}`, 400);
-      } else {
-        // Whitelist + URL-scheme-validate before forwarding to the
-        // browser. See `coding-agents-auth-sanitize.ts` for rationale.
-        const { sanitizeAuthResult } = await import(
-          "@elizaos/app-task-coordinator/api/coding-agents-auth-sanitize"
-        );
-        json(res, sanitizeAuthResult(triggered));
-      }
-    } catch (e) {
-      // Log the full error server-side for debugging (including stack
-      // trace) but return a generic message to the client so we don't
-      // leak internal adapter error strings through the HTTP surface.
-      logger.error(
-        `[coding-agents/auth] triggerAuth failed for ${agentType}: ${
-          e instanceof Error ? (e.stack ?? e.message) : String(e)
-        }`,
-      );
-      error(res, `Auth trigger failed for ${agentType}`, 500);
-    }
-    return true;
-  }
-
-  // Not handled by fallback
-  return false;
-}
-
-/**
- * Get the PTYConsoleBridge from the PTYService (if available).
- * Used by the WS PTY handlers to subscribe to output and forward input.
- */
-function getPtyConsoleBridge(st: ServerState) {
-  if (!st.runtime) return null;
-  const ptyService = st.runtime.getService("PTY_SERVICE") as PTYService | null;
-  return ptyService?.consoleBridge ?? null;
-}
-
-/**
- * Route non-conversation agent events into the active user chat.
- * This avoids monkey-patching the message service and relies on explicit
- * event stream plumbing from AGENT_EVENT.
- */
 async function maybeRouteAutonomyEventToConversation(
   state: ServerState,
   event: AgentEventPayloadLike,
@@ -2633,22 +1231,11 @@ async function handleRequest(
     if (serveStaticUi(req, res, pathname)) return;
   }
 
-  if (
-    isCloudProvisioned &&
-    method !== "OPTIONS" &&
-    isAuthProtectedPath &&
-    !isAuthEndpoint &&
-    !isHealthEndpoint &&
-    !isCloudOnboardingStatusEndpoint &&
-    !isWhatsAppWebhookEndpoint &&
-    !isBlueBubblesWebhookEndpoint &&
-    !pathname.startsWith("/api/lifeops/browser/companions/") &&
-    !isAuthorized(req)
-  ) {
-    json(res, { error: "Unauthorized" }, 401);
-    return;
-  }
-
+  // Single auth gate. The previous two-block arrangement (a cloud-provisioned
+  // copy followed by an unconditional copy) was redundant: the unconditional
+  // block already applied to cloud-provisioned requests because
+  // `isAuthorized` consults `isCloudProvisionedContainer()` when no token is
+  // configured.
   if (
     method !== "OPTIONS" &&
     isAuthProtectedPath &&
@@ -2657,7 +1244,7 @@ async function handleRequest(
     !isCloudOnboardingStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
-    !pathname.startsWith("/api/lifeops/browser/companions/") &&
+    !pathname.startsWith("/api/browser-bridge/companions/") &&
     !isAuthorized(req)
   ) {
     json(res, { error: "Unauthorized" }, 401);
@@ -2982,6 +1569,22 @@ async function handleRequest(
     return;
   }
 
+  if (
+    await handleExperienceRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime,
+      url,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
   // Compatibility route used by legacy health probes and desktop name lookup.
   if (method === "GET" && pathname === "/api/agents") {
     const runtimeAgentId =
@@ -3103,7 +1706,25 @@ async function handleRequest(
 
   // ═══════════════════════════════════════════════════════════════════════
   // Skills routes (extracted to skills-routes.ts)
+  // Curated-skills routes live at /api/skills/curated/* and must be dispatched
+  // before the generic skills routes (which reject "/" in skill IDs).
   // ═══════════════════════════════════════════════════════════════════════
+  if (pathname.startsWith("/api/skills/curated")) {
+    if (
+      await handleCuratedSkillsRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        url,
+        json,
+        error,
+        readJsonBody,
+      })
+    ) {
+      return;
+    }
+  }
   if (pathname.startsWith("/api/skills")) {
     if (
       await handleSkillsRoutes({
@@ -3216,7 +1837,13 @@ async function handleRequest(
     }
     if (stewardWalletCoreRoutes) {
       try {
-        if (await stewardWalletCoreRoutes(req, res, state)) {
+        if (
+          await stewardWalletCoreRoutes(req, res, {
+            runtime: state.runtime ?? null,
+            restartRuntime,
+            scheduleRuntimeRestart,
+          })
+        ) {
           return;
         }
       } catch (err) {
@@ -3356,7 +1983,7 @@ async function handleRequest(
   // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
   // Moved to @elizaos/plugin-whatsapp setup-routes.ts (registered via Plugin.routes).
 
-  // ── Unified inbox routes (/api/inbox/*) ───────────────────────────────
+  // ── Inbox routes (/api/inbox/*) ───────────────────────────────
   // Cross-channel read-only feed that merges connector messages
   // (imessage, telegram, discord, whatsapp, etc.) into a single
   // time-ordered view. See api/inbox-routes.ts for details.
@@ -3605,21 +2232,6 @@ async function handleRequest(
   }
 
   if (
-    await handleWebsiteBlockerRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      runtime: state.runtime ?? undefined,
-      readJsonBody,
-      json,
-      error,
-    })
-  ) {
-    return;
-  }
-
-  if (
     await handleBrowserWorkspaceRoutes({
       req,
       res,
@@ -3652,6 +2264,35 @@ async function handleRequest(
 
   // ── Cloud routes (/api/cloud/*) ─────────────────────────────────────────
   if (pathname.startsWith("/api/cloud/")) {
+    // Cloud-managed feature flag sync — must run before the generic
+    // cloud passthrough so /api/cloud/features hits the local upserter.
+    const featuresHandled = await handleCloudFeaturesRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { config: state.config, runtime: state.runtime },
+    );
+    if (featuresHandled) return;
+
+    // Travel-provider relay — must run before the generic cloud
+    // passthrough so provider-specific billing paths are hit instead of
+    // the bare Cloud proxy.
+    const travelProviderHandled = await handleTravelProviderRelayRoute(
+      req,
+      res,
+      pathname,
+      method,
+      { config: state.config, runtime: state.runtime },
+    );
+    if (travelProviderHandled) return;
+
+    const xRelayHandled = await handleXRelayRoute(req, res, pathname, method, {
+      config: state.config,
+      runtime: state.runtime,
+    });
+    if (xRelayHandled) return;
+
     const billingHandled = await handleCloudBillingRoute(
       req,
       res,
@@ -3957,8 +2598,16 @@ async function handleRequest(
               ? (runtime as IAgentRuntime)
               : null,
           ),
-        stop: (pluginManager, name, runId) =>
-          state.appManager.stop(pluginManager, name, runId),
+        stop: (pluginManager, name, runId, runtime) =>
+          state.appManager.stop(
+            pluginManager,
+            name,
+            runId,
+            runtime && typeof runtime === "object"
+              ? (runtime as IAgentRuntime)
+              : null,
+          ),
+        recordHeartbeat: (runId) => state.appManager.recordHeartbeat(runId),
         getInfo: (pluginManager, name) =>
           state.appManager.getInfo(pluginManager, name),
       },
@@ -4347,6 +2996,14 @@ export async function startApiServer(opts?: {
     // AppManager doesn't need a runtime reference — it just installs plugins
   }
 
+  // Start the periodic stale-run sweeper that stops app runs whose UI
+  // heartbeat has gone silent (e.g. the user closed the tab without
+  // pressing Stop). Without this, plugins that own a setInterval — like
+  // the Defense-of-the-Agents game loop — would tick forever after the
+  // browser disappeared. The sweeper invokes the same `stopRun` route
+  // hook the Stop button uses so plugins have one shutdown path.
+  state.appManager.startStaleRunSweeper(() => state.runtime);
+
   const addLog = (
     level: string,
     message: string,
@@ -4529,7 +3186,7 @@ export async function startApiServer(opts?: {
   });
   console.log(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
-  const broadcastWs = (payload: object): void => {
+  const broadcastWs = (payload: unknown): void => {
     const message = JSON.stringify(payload);
     for (const client of wsClients) {
       if (client.readyState === 1) {
@@ -4688,7 +3345,25 @@ export async function startApiServer(opts?: {
       }
 
       try {
-        const txService = new TxService(registryConfig.mainnetRpc, evmKey);
+        const registryRpcUrl = normalizeJsonRpcUrl(registryConfig.mainnetRpc);
+        const registryRpcProbe = await probeJsonRpcEndpoint(registryRpcUrl);
+        if (!registryRpcProbe.ok) {
+          addLog(
+            "warn",
+            `ERC-8004 registry service disabled: RPC unavailable (${registryRpcProbe.reason ?? "unknown error"})`,
+            "system",
+            ["system"],
+          );
+          logger.warn(
+            {
+              reason: registryRpcProbe.reason,
+            },
+            "ERC-8004 registry service disabled because mainnetRpc is unavailable",
+          );
+          return;
+        }
+
+        const txService = new TxService(registryRpcUrl, evmKey);
         state.registryService = new RegistryService(
           txService,
           registryConfig.registryAddress,
@@ -5319,10 +3994,16 @@ export async function startApiServer(opts?: {
           // non-fatal — use current time
         }
 
+        const conversationMetadata = extractConversationMetadataFromRoom(
+          room,
+          convId,
+        );
+
         state.conversations.set(convId, {
           id: convId,
           title: room.name || "Chat",
           roomId: room.id as UUID,
+          ...(conversationMetadata ? { metadata: conversationMetadata } : {}),
           createdAt: updatedAt,
           updatedAt,
         });

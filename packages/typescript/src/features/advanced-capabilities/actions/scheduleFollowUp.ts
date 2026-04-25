@@ -19,7 +19,15 @@ import type {
 	State,
 } from "../../../types/index.ts";
 import { asUUID, ModelType } from "../../../types/index.ts";
-import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
+import {
+	composePromptFromState,
+	parseJSONObjectFromText,
+	parseKeyValueXml,
+} from "../../../utils.ts";
+import {
+	extractScheduleFollowUpResponseFromText,
+	type ParsedScheduleFollowUpResponse,
+} from "../../shared/schedule-follow-up-response.ts";
 
 // Get text content from centralized specs
 const spec = requireActionSpec("SCHEDULE_FOLLOW_UP");
@@ -29,15 +37,6 @@ const FOLLOW_UP_KEYWORDS = getValidationKeywordTerms(
 		includeAllLocales: true,
 	},
 );
-
-interface ScheduleFollowUpXmlResult {
-	contactName?: string;
-	entityId?: string;
-	scheduledAt?: string;
-	reason?: string;
-	priority?: string;
-	message?: string;
-}
 
 export const scheduleFollowUpAction: Action = {
 	name: spec.name,
@@ -50,6 +49,16 @@ export const scheduleFollowUpAction: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<boolean> => {
+		if (
+			runtime.actions.some(
+				(action) =>
+					action.name === "OWNER_RELATIONSHIP" ||
+					action.name === "RELATIONSHIP",
+			)
+		) {
+			return false;
+		}
+
 		const relationshipsService = runtime.getService(
 			"relationships",
 		) as RelationshipsService;
@@ -108,7 +117,11 @@ export const scheduleFollowUpAction: Action = {
 		});
 
 		const parsedResponse =
-			parseKeyValueXml<ScheduleFollowUpXmlResult>(response);
+			parseKeyValueXml<ParsedScheduleFollowUpResponse>(response) ??
+			(parseJSONObjectFromText(
+				response,
+			) as ParsedScheduleFollowUpResponse | null) ??
+			extractScheduleFollowUpResponseFromText(response);
 		const contactName = parsedResponse?.contactName?.trim();
 		if (!parsedResponse || (!contactName && !parsedResponse.entityId)) {
 			logger.warn(

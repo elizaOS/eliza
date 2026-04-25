@@ -19,7 +19,7 @@ import {
   type PluginParamInfo,
   validatePluginConfig,
 } from "./plugin-validation.js";
-import { findOwnPackageRoot } from "./server.js";
+import { findOwnPackageRoot } from "./server-helpers.js";
 import { applySignalQrOverride } from "./signal-routes.js";
 import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
 
@@ -83,7 +83,7 @@ export interface StreamEventEnvelope {
   sessionKey?: string;
   agentId?: string;
   roomId?: UUID;
-  payload: object;
+  payload: unknown;
 }
 
 export function getReleaseBundledPluginIds(): Set<string> {
@@ -109,9 +109,9 @@ export function getReleaseBundledPluginIds(): Set<string> {
 
 export interface PluginIndexEntry {
   id: string;
-  dirName: string;
+  dirName?: string;
   name: string;
-  npmName: string;
+  npmName?: string;
   description: string;
   tags?: string[];
   category:
@@ -290,7 +290,7 @@ function normalizeConfigUiHints(
 
 function extractPluginPackageMetadata(
   pkg: PackageJsonLike,
-  keyFallback: { dirName: string; npmName?: string },
+  keyFallback: { dirName?: string; npmName?: string },
 ): PluginPackageMetadata {
   const pluginParameters = normalizePluginParameters(
     pkg.agentConfig?.pluginParameters,
@@ -1304,14 +1304,22 @@ export function formatPluginName(id: string): string {
 
 export function readBundledPluginPackageMetadata(
   packageRoot: string,
-  dirName: string,
+  dirName: string | undefined,
   npmName?: string,
 ): PluginPackageMetadata {
-  const candidates = [
-    path.join(packageRoot, "packages", dirName, "package.json"),
-    path.join(packageRoot, "plugins", dirName, "typescript", "package.json"),
-    path.join(packageRoot, "plugins", dirName, "package.json"),
-  ];
+  const candidates = dirName
+    ? [
+        path.join(packageRoot, "packages", dirName, "package.json"),
+        path.join(
+          packageRoot,
+          "plugins",
+          dirName,
+          "typescript",
+          "package.json",
+        ),
+        path.join(packageRoot, "plugins", dirName, "package.json"),
+      ]
+    : [];
 
   if (npmName) {
     try {

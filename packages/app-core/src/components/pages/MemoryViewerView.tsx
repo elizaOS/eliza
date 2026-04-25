@@ -1,12 +1,14 @@
-import { client } from "../../api/client";
-import type {
-  MemoryBrowseItem,
-  MemoryBrowseResponse,
-  MemoryFeedResponse,
-  MemoryStatsResponse,
-} from "../../api/client-types-chat";
-import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
-
+import {
+  Button,
+  MetaPill,
+  PageLayout,
+  PagePanel,
+  SegmentedControl,
+  SidebarContent,
+  SidebarHeader,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import { RefreshCw, Search } from "lucide-react";
 import {
   type ReactNode,
@@ -16,9 +18,17 @@ import {
   useRef,
   useState,
 } from "react";
+import { client } from "../../api/client";
+import type {
+  MemoryBrowseItem,
+  MemoryBrowseResponse,
+  MemoryFeedResponse,
+  MemoryStatsResponse,
+} from "../../api/client-types-chat";
+import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
-import { PagePanel, MetaPill, SidebarContent, SidebarHeader, SidebarPanel, Sidebar, SidebarScrollRegion, Button, SegmentedControl, PageLayout } from "@elizaos/ui";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -467,7 +477,11 @@ export function MemoryViewerView({
   };
 
   const sidebar = (
-    <Sidebar testId="memory-viewer-sidebar">
+    <AppPageSidebar
+      testId="memory-viewer-sidebar"
+      collapsible
+      contentIdentity="memory-viewer"
+    >
       <SidebarHeader
         search={{
           value: search,
@@ -625,7 +639,7 @@ export function MemoryViewerView({
           </div>
         </SidebarScrollRegion>
       </SidebarPanel>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

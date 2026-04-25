@@ -11,7 +11,6 @@ import {
   type IAgentRuntime,
   Service,
 } from "@elizaos/core";
-
 import type {
   Trajectory,
   TrajectoryExportOptions,
@@ -20,11 +19,12 @@ import type {
   TrajectoryListOptions,
   TrajectoryListResult,
   TrajectoryStatus,
+  TrajectoryStepKind,
 } from "../types/trajectory.js";
-
 import {
   asRecord,
   type CompleteStepOptions,
+  capScriptForPersistence,
   computeBySource,
   createBaseTrajectory,
   enqueueStepWrite,
@@ -212,6 +212,53 @@ async function appendProviderAccess(
   trajectory.updatedAt = new Date(now).toISOString();
 
   await saveTrajectory(runtime, trajectory);
+}
+
+// ---------------------------------------------------------------------------
+// Auto-train trigger notification
+// ---------------------------------------------------------------------------
+
+interface TrainingTriggerEntry {
+  notifyTrajectoryCompleted: (trajectoryId: string) => Promise<void>;
+}
+
+/**
+ * Fire-and-forget notification to the optional TrainingTriggerService.
+ *
+ * Registered by `@elizaos/app-core` when `@elizaos/app-training` is installed
+ * (see `runtime/eliza.ts` → `registerTrackCTrainingCrons`). Slim installs
+ * never register the service and this resolves to a no-op.
+ *
+ * Errors are logged at debug level only — auto-train counter increments
+ * must never block or break trajectory persistence.
+ */
+function notifyTrainingTrigger(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+): void {
+  const services = (
+    runtime as unknown as {
+      services?: Map<string, unknown[]>;
+    }
+  ).services;
+  if (!services) return;
+  const entries = services.get("TRAINING_TRIGGER_SERVICE");
+  if (!Array.isArray(entries) || entries.length === 0) return;
+  const entry = entries[0];
+  if (
+    !entry ||
+    typeof entry !== "object" ||
+    typeof (entry as { notifyTrajectoryCompleted?: unknown })
+      .notifyTrajectoryCompleted !== "function"
+  ) {
+    return;
+  }
+  const trigger = entry as TrainingTriggerEntry;
+  void trigger.notifyTrajectoryCompleted(trajectoryId).catch((err: unknown) => {
+    coreLogger.debug?.(
+      `[trajectory-storage] training trigger notify failed for ${trajectoryId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -550,6 +597,13 @@ export async function installDatabaseTrajectoryLogger(
           stepId: stepIdOrTrajectoryId,
           status: status as TrajectoryStatus,
         });
+
+        // Notify the auto-train trigger service (registered by app-core when
+        // app-training is installed). Optional — the chain is a no-op if the
+        // service was never registered, which is the case for slim installs.
+        if (status === "completed") {
+          notifyTrainingTrigger(runtime, stepIdOrTrajectoryId);
+        }
       },
     );
 
@@ -626,6 +680,17 @@ export async function installDatabaseTrajectoryLogger(
         timestamp: step.timestamp,
         llmCalls: step.llmCalls.map((call) => enrichTrajectoryLlmCall(call)),
         providerAccesses: step.providerAccesses,
+        ...(step.kind !== undefined ? { kind: step.kind } : {}),
+        ...(step.childSteps !== undefined
+          ? { childSteps: step.childSteps }
+          : {}),
+        ...(step.script !== undefined ? { script: step.script } : {}),
+        ...(step.scriptHash !== undefined
+          ? { scriptHash: step.scriptHash }
+          : {}),
+        ...(step.usedSkills !== undefined
+          ? { usedSkills: step.usedSkills }
+          : {}),
       })),
       metrics: { finalStatus: persisted.status },
       metadata: persisted.metadata,
@@ -836,6 +901,84 @@ export async function startTrajectoryStepInDatabase({
   return true;
 }
 
+/**
+ * Annotate an existing trajectory step with the structural metadata Track A
+ * relies on (kind discriminator, executeCode script, child step IDs, used
+ * skills). Safe to call for any of the new trajectory step fields; passing
+ * `undefined` for a field leaves the existing value alone, while passing an
+ * explicit value overwrites.
+ */
+export async function annotateTrajectoryStep({
+  runtime,
+  stepId,
+  kind,
+  script,
+  childSteps,
+  appendChildSteps,
+  usedSkills,
+}: {
+  runtime: IAgentRuntime;
+  stepId: string;
+  kind?: TrajectoryStepKind;
+  script?: string;
+  /** Replace child steps wholesale. */
+  childSteps?: string[];
+  /** Append the given child step IDs (deduped, order preserved). */
+  appendChildSteps?: string[];
+  usedSkills?: string[];
+}): Promise<boolean> {
+  if (!hasRuntimeDb(runtime)) return false;
+  const normalizedStepId = normalizeStepId(stepId);
+  if (!normalizedStepId) return false;
+
+  const tableReady = await ensureTrajectoriesTable(runtime);
+  if (!tableReady) return false;
+
+  await enqueueStepWrite(runtime, normalizedStepId, async () => {
+    const now = Date.now();
+    const trajectory =
+      (await loadTrajectoryById(runtime, normalizedStepId)) ??
+      createBaseTrajectory(normalizedStepId, now);
+    const step = ensureStep(trajectory, normalizedStepId, now);
+
+    if (kind !== undefined) {
+      step.kind = kind;
+    }
+    if (script !== undefined) {
+      const capped = capScriptForPersistence(script);
+      step.script = capped.script;
+      if (capped.scriptHash !== undefined) {
+        step.scriptHash = capped.scriptHash;
+      } else {
+        step.scriptHash = undefined;
+      }
+    }
+    if (childSteps !== undefined) {
+      step.childSteps = [...childSteps];
+    }
+    if (appendChildSteps && appendChildSteps.length > 0) {
+      const seen = new Set<string>(step.childSteps ?? []);
+      const merged = step.childSteps ? [...step.childSteps] : [];
+      for (const child of appendChildSteps) {
+        const trimmed = typeof child === "string" ? child.trim() : "";
+        if (!trimmed || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        merged.push(trimmed);
+      }
+      step.childSteps = merged;
+    }
+    if (usedSkills !== undefined) {
+      step.usedSkills = [...usedSkills];
+    }
+
+    trajectory.endTime = Math.max(trajectory.endTime ?? now, now);
+    trajectory.updatedAt = new Date(now).toISOString();
+    await saveTrajectory(runtime, trajectory);
+  });
+
+  return true;
+}
+
 export async function completeTrajectoryStepInDatabase({
   runtime,
   stepId,
@@ -1031,6 +1174,21 @@ export class DatabaseTrajectoryLogger extends Service {
     return trajectoryId;
   }
 
+  async annotateStep(params: {
+    stepId: string;
+    kind?: TrajectoryStepKind;
+    script?: string;
+    childSteps?: string[];
+    appendChildSteps?: string[];
+    usedSkills?: string[];
+  }): Promise<void> {
+    if (!this.enabled) return;
+    await annotateTrajectoryStep({
+      runtime: this.runtime,
+      ...params,
+    });
+  }
+
   async endTrajectory(
     stepIdOrTrajectoryId: string,
     status: TrajectoryStatus = "completed",
@@ -1170,6 +1328,17 @@ export class DatabaseTrajectoryLogger extends Service {
         timestamp: step.timestamp,
         llmCalls: step.llmCalls.map((call) => enrichTrajectoryLlmCall(call)),
         providerAccesses: step.providerAccesses,
+        ...(step.kind !== undefined ? { kind: step.kind } : {}),
+        ...(step.childSteps !== undefined
+          ? { childSteps: step.childSteps }
+          : {}),
+        ...(step.script !== undefined ? { script: step.script } : {}),
+        ...(step.scriptHash !== undefined
+          ? { scriptHash: step.scriptHash }
+          : {}),
+        ...(step.usedSkills !== undefined
+          ? { usedSkills: step.usedSkills }
+          : {}),
       })),
       metrics: { finalStatus: persisted.status },
       metadata: persisted.metadata,

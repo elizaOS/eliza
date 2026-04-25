@@ -1,0 +1,73 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"useDefineForClassFields": true,
+		"lib": [
+			"DOM",
+			"DOM.Iterable",
+			"ESNext"
+		],
+		"allowJs": false,
+		"jsx": "react-jsx",
+		"skipLibCheck": true,
+		"ignoreDeprecations": "6.0",
+		"allowSyntheticDefaultImports": true,
+		"strict": false,
+		"useUnknownInCatchVariables": false,
+		"forceConsistentCasingInFileNames": true,
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"allowImportingTsExtensions": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"noEmit": true,
+		"types": [
+			"node",
+			"bun-types"
+		],
+		"typeRoots": [
+			"../app-core/node_modules/@types",
+			"../../node_modules/@types",
+			"../../node_modules/.bun/node_modules/@types",
+			"../../../node_modules/@types",
+			"../../../node_modules/.bun/node_modules/@types",
+			"../../node_modules",
+			"../../node_modules/.bun/node_modules",
+			"../../../node_modules",
+			"../../../node_modules/.bun/node_modules"
+		],
+		"paths": {
+			"@elizaos/plugin-browser-bridge": [
+				"./src/index.ts"
+			],
+			"@elizaos/plugin-browser-bridge/*": [
+				"./src/*"
+			],
+			"@elizaos/agent": [
+				"../agent/src/index.ts"
+			],
+			"@elizaos/agent/*": [
+				"../agent/src/*"
+			],
+			"@elizaos/core": [
+				"../typescript/src/index.node.ts"
+			],
+			"@elizaos/core/*": [
+				"../typescript/src/*"
+			],
+			"@elizaos/shared": [
+				"../shared/src/index.ts"
+			],
+			"@elizaos/shared/*": [
+				"../shared/src/*"
+			]
+		}
+	},
+	"exclude": [
+		"src/**/*.test.ts"
+	],
+	"include": [
+		"src"
+	],
+	"references": []
+}

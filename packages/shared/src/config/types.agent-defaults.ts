@@ -4,6 +4,10 @@ import type {
   HumanDelayConfig,
   TypingMode,
 } from "@elizaos/core";
+import type { InboxTriageConfig } from "../contracts/inbox.js";
+
+export type { InboxTriageConfig } from "../contracts/inbox.js";
+
 import type { MemorySearchConfig } from "./types.tools.js";
 
 // --- Sandbox types (merged from types.sandbox.ts) ---
@@ -206,30 +210,6 @@ export type InboxTriageRules = {
   alwaysIgnore?: string[];
   /** Patterns that always classify as notify. */
   alwaysNotify?: string[];
-};
-
-export type InboxTriageConfig = {
-  enabled?: boolean;
-  /** Cron expression for periodic triage (default: "0 * * * *" = hourly). */
-  triageCron?: string;
-  /** Cron expression for daily digest (default: "0 8 * * *" = 8am). */
-  digestCron?: string;
-  /** Timezone for cron expressions. */
-  digestTimezone?: string;
-  /** Which channels to triage. Default: all connected. */
-  channels?: string[];
-  /** Senders that should be treated as high priority. */
-  prioritySenders?: string[];
-  /** Channels that should be treated as high priority. */
-  priorityChannels?: string[];
-  /** Auto-reply configuration. */
-  autoReply?: InboxAutoReplyConfig;
-  /** Rule-based triage overrides. */
-  triageRules?: InboxTriageRules;
-  /** Channel to deliver daily digest to. Default: "client_chat". */
-  digestDeliveryChannel?: string;
-  /** Days to retain triage entries before cleanup. Default: 30. */
-  retentionDays?: number;
 };
 
 export type AgentDefaultsConfig = {

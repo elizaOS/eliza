@@ -112,6 +112,7 @@
 
   /* Touch target minimum (Apple HIG 44px) */
   --min-touch-target: 2.75rem;
+  --eliza-mobile-nav-offset: 0px;
 
   /* Plugin UI Design Tokens */
   --plugin-field-gap: 1rem;
@@ -129,6 +130,10 @@
   --plugin-max-field-width: 32rem;
 
   color-scheme: light;
+}
+
+:root.eliza-mobile-bottom-nav {
+  --eliza-mobile-nav-offset: 3.75rem;
 }
 
 [data-theme="dark"],

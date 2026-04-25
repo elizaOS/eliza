@@ -4,6 +4,7 @@ import { WebSocketServer } from "ws";
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 let browserWorkspaceCounter = 0;
 let browserWorkspaceTabs = [];
+let lifeOpsAppEnabled = true;
 
 const stubPlugins = [
   {
@@ -55,6 +56,131 @@ const stubPlugins = [
   },
 ];
 
+function stubCatalogApp({
+  name,
+  displayName,
+  description,
+  category = "utility",
+  capabilities = [],
+  heroImage = null,
+}) {
+  return {
+    name,
+    displayName,
+    description,
+    category,
+    launchType: "local",
+    launchUrl: null,
+    icon: null,
+    heroImage,
+    capabilities,
+    stars: 0,
+    repository: "",
+    latestVersion: null,
+    supports: { v0: false, v1: false, v2: true },
+    npm: {
+      package: name,
+      v0Version: null,
+      v1Version: null,
+      v2Version: null,
+    },
+  };
+}
+
+const stubCatalogApps = [
+  stubCatalogApp({
+    name: "@elizaos/app-lifeops",
+    displayName: "LifeOps",
+    description:
+      "Run tasks, reminders, calendar, inbox, and connected workflows.",
+    capabilities: ["lifeops", "tasks", "calendar", "gmail"],
+    heroImage: "/app-heroes/lifeops.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-plugin-viewer",
+    displayName: "Plugin Viewer",
+    description:
+      "Inspect installed plugins, connectors, and runtime feature flags.",
+    capabilities: ["plugins", "connectors", "viewer"],
+    heroImage: "/app-heroes/plugin-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-skills-viewer",
+    displayName: "Skills Viewer",
+    description: "Create, enable, review, and install custom agent skills.",
+    capabilities: ["skills", "viewer"],
+    heroImage: "/app-heroes/skills-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-training",
+    displayName: "Fine Tuning",
+    description:
+      "Build datasets, inspect trajectories, and activate tuned models.",
+    capabilities: ["training", "fine-tuning", "datasets", "models"],
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-trajectory-viewer",
+    displayName: "Trajectory Viewer",
+    description: "Inspect LLM call history, prompts, and execution traces.",
+    capabilities: ["trajectories", "debug", "viewer"],
+    heroImage: "/app-heroes/trajectory-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-relationship-viewer",
+    displayName: "Relationship Viewer",
+    description: "Explore people, identities, and relationship graphs.",
+    capabilities: ["relationships", "graph", "viewer"],
+    heroImage: "/app-heroes/relationship-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-memory-viewer",
+    displayName: "Memory Viewer",
+    description: "Browse memory, fact, and extraction activity.",
+    capabilities: ["memory", "facts", "viewer"],
+    heroImage: "/app-heroes/memory-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-runtime-debugger",
+    displayName: "Runtime Debugger",
+    description:
+      "Inspect runtime objects, plugin order, providers, and services.",
+    capabilities: ["runtime", "debug", "viewer"],
+    heroImage: "/app-heroes/runtime-debugger.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-database-viewer",
+    displayName: "Database Viewer",
+    description: "Inspect tables, media, vectors, and ad-hoc SQL.",
+    capabilities: ["database", "sql", "viewer"],
+    heroImage: "/app-heroes/database-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-log-viewer",
+    displayName: "Log Viewer",
+    description: "Search runtime and service logs.",
+    capabilities: ["logs", "debug", "viewer"],
+    heroImage: "/app-heroes/log-viewer.png",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-companion",
+    displayName: "Companion",
+    description: "The companion overlay shell for ambient agent presence.",
+    category: "social",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-shopify",
+    displayName: "Shopify",
+    description: "Manage Shopify store operations from the agent workspace.",
+    category: "platform",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-vincent",
+    displayName: "Vincent",
+    description: "Manage Vincent DeFi account access and trading context.",
+    category: "platform",
+  }),
+];
+
 const stubMemoryStats = {
   total: 0,
   byType: {},
@@ -79,6 +205,160 @@ const stubMemoryBrowseResponse = {
   total: 0,
   limit: 50,
   offset: 0,
+};
+
+const emptyComputerUseApprovalSnapshot = {
+  mode: "full_control",
+  pendingCount: 0,
+  pendingApprovals: [],
+};
+
+const emptySkillsResponse = {
+  skills: [],
+};
+
+const emptyLocalInferenceActive = {
+  modelId: null,
+  loadedAt: null,
+  status: "idle",
+};
+
+const emptyLocalInferenceHardware = {
+  totalRamGb: 16,
+  freeRamGb: 8,
+  gpu: null,
+  cpuCores: 8,
+  platform: process.platform,
+  arch: process.arch,
+  appleSilicon: process.platform === "darwin" && process.arch === "arm64",
+  recommendedBucket: "small",
+  source: "os-fallback",
+};
+
+const emptyLocalInferenceHub = {
+  catalog: [],
+  installed: [],
+  active: emptyLocalInferenceActive,
+  downloads: [],
+  hardware: emptyLocalInferenceHardware,
+};
+
+const emptyWalletConfig = {
+  evmAddress: null,
+  solanaAddress: null,
+  selectedRpcProviders: {
+    evm: "eliza-cloud",
+    bsc: "eliza-cloud",
+    solana: "eliza-cloud",
+  },
+  legacyCustomChains: [],
+  alchemyKeySet: false,
+  infuraKeySet: false,
+  ankrKeySet: false,
+  nodeRealBscRpcSet: false,
+  quickNodeBscRpcSet: false,
+  managedBscRpcReady: false,
+  cloudManagedAccess: false,
+  evmBalanceReady: false,
+  ethereumBalanceReady: false,
+  baseBalanceReady: false,
+  bscBalanceReady: false,
+  avalancheBalanceReady: false,
+  solanaBalanceReady: false,
+  heliusKeySet: false,
+  birdeyeKeySet: false,
+  evmChains: [],
+  walletSource: "none",
+  pluginEvmLoaded: false,
+  pluginEvmRequired: false,
+  executionReady: false,
+  executionBlockedReason: null,
+  evmSigningCapability: "none",
+  solanaSigningAvailable: false,
+  wallets: [],
+  primary: {
+    evm: "local",
+    solana: "local",
+  },
+};
+
+const emptyWalletBalances = {
+  evm: null,
+  solana: null,
+};
+
+const emptyWalletNfts = {
+  evm: [],
+  solana: null,
+};
+
+const emptyWalletTradingProfile = {
+  window: "30d",
+  source: "all",
+  generatedAt: new Date(0).toISOString(),
+  summary: {
+    totalSwaps: 0,
+    buyCount: 0,
+    sellCount: 0,
+    settledCount: 0,
+    successCount: 0,
+    revertedCount: 0,
+    tradeWinRate: null,
+    txSuccessRate: null,
+    winningTrades: 0,
+    evaluatedTrades: 0,
+    realizedPnlBnb: "0",
+    volumeBnb: "0",
+  },
+  pnlSeries: [],
+  tokenBreakdown: [],
+  recentSwaps: [],
+};
+
+const emptyWalletMarketSource = {
+  providerId: "coingecko",
+  providerName: "CoinGecko",
+  providerUrl: "https://www.coingecko.com",
+  available: false,
+  stale: false,
+  error: null,
+};
+
+const emptyWalletMarketOverview = {
+  generatedAt: new Date(0).toISOString(),
+  cacheTtlSeconds: 300,
+  stale: false,
+  sources: {
+    prices: emptyWalletMarketSource,
+    movers: emptyWalletMarketSource,
+    predictions: {
+      providerId: "polymarket",
+      providerName: "Polymarket",
+      providerUrl: "https://polymarket.com",
+      available: false,
+      stale: false,
+      error: null,
+    },
+  },
+  prices: [],
+  movers: [],
+  predictions: [],
+};
+
+const stubCharacter = {
+  name: "Chen",
+  username: "chen",
+  bio: ["A concise local assistant for UI smoke tests."],
+  system: "You are Chen, a concise assistant for UI smoke tests.",
+  adjectives: ["focused", "direct"],
+  topics: [],
+  style: {
+    all: [],
+    chat: [],
+    post: [],
+  },
+  messageExamples: [],
+  postExamples: [],
 };
 
 function parsePositiveInt(value, fallback) {
@@ -302,6 +582,20 @@ function sendEmpty(req, res, status) {
   res.end();
 }
 
+function sendSseHeaders(req, res) {
+  applyCors(req, res);
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+}
+
+function writeSseEvent(res, payload) {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
 async function readJsonBody(req) {
   const chunks = [];
   for await (const chunk of req) {
@@ -376,6 +670,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/onboarding/options") {
+    sendJson(req, res, 200, {
+      names: [],
+      styles: [],
+      providers: [],
+      cloudProviders: [],
+      models: {
+        nano: [],
+        small: [],
+        medium: [],
+        large: [],
+        mega: [],
+      },
+      inventoryProviders: [],
+      sharedStyleRules: "",
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/auth/status") {
     sendJson(req, res, 200, {
       required: false,
@@ -412,12 +725,21 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/vincent/status") {
-    sendJson(req, res, 200, { connected: false, connectedAt: null });
+    sendJson(req, res, 200, {
+      connected: false,
+      connectedAt: null,
+      tradingVenues: ["hyperliquid", "polymarket"],
+    });
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/conversations") {
     sendJson(req, res, 200, { conversations: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/agents") {
+    sendJson(req, res, 200, { agents: [] });
     return;
   }
 
@@ -576,12 +898,62 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/character") {
-    sendJson(req, res, 200, { character: {}, agentName: "Chen" });
+    sendJson(req, res, 200, { character: stubCharacter, agentName: "Chen" });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/character/history") {
+    sendJson(req, res, 200, { history: [], total: 0 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/character/experiences") {
+    sendJson(req, res, 200, { data: [], total: 0 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/relationships/activity") {
+    sendJson(req, res, 200, { activity: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/knowledge/documents") {
+    sendJson(req, res, 200, {
+      documents: [],
+      total: 0,
+      limit: parsePositiveInt(url.searchParams.get("limit"), 100),
+      offset: parsePositiveInt(url.searchParams.get("offset"), 0),
+    });
     return;
   }
 
   if (req.method === "GET" && url.pathname === "/api/wallet/addresses") {
     sendJson(req, res, 200, { evmAddress: null, solanaAddress: null });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/config") {
+    sendJson(req, res, 200, emptyWalletConfig);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/balances") {
+    sendJson(req, res, 200, emptyWalletBalances);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/nfts") {
+    sendJson(req, res, 200, emptyWalletNfts);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/trading/profile") {
+    sendJson(req, res, 200, emptyWalletTradingProfile);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/wallet/market-overview") {
+    sendJson(req, res, 200, emptyWalletMarketOverview);
     return;
   }
 
@@ -633,6 +1005,51 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/computer-use/approvals/stream"
+  ) {
+    sendSseHeaders(req, res);
+    writeSseEvent(res, {
+      type: "snapshot",
+      snapshot: emptyComputerUseApprovalSnapshot,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/computer-use/approvals") {
+    sendJson(req, res, 200, emptyComputerUseApprovalSnapshot);
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/computer-use/approval-mode"
+  ) {
+    sendJson(req, res, 200, {
+      mode: emptyComputerUseApprovalSnapshot.mode,
+    });
+    return;
+  }
+
+  const computerUseApprovalMatch =
+    /^\/api\/computer-use\/approvals\/([^/]+)$/.exec(url.pathname);
+  if (req.method === "POST" && computerUseApprovalMatch) {
+    const approvalId = decodeURIComponent(computerUseApprovalMatch[1]);
+    const body = (await readJsonBody(req)) || {};
+    sendJson(req, res, 200, {
+      id: approvalId,
+      command: "computer-use-command",
+      approved: body.approved === true,
+      cancelled: body.approved !== true,
+      mode: emptyComputerUseApprovalSnapshot.mode,
+      requestedAt: nowIso(),
+      resolvedAt: nowIso(),
+      ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/drop/status") {
     sendJson(req, res, 200, {
       dropEnabled: false,
@@ -654,6 +1071,132 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/registry/status") {
     sendJson(req, res, 200, { connected: false, online: false });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/downloads/stream"
+  ) {
+    sendSseHeaders(req, res);
+    writeSseEvent(res, {
+      type: "snapshot",
+      downloads: emptyLocalInferenceHub.downloads,
+      active: emptyLocalInferenceHub.active,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/local-inference/hub") {
+    sendJson(req, res, 200, emptyLocalInferenceHub);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/hardware"
+  ) {
+    sendJson(req, res, 200, emptyLocalInferenceHardware);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/local-inference/catalog") {
+    sendJson(req, res, 200, { models: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/local-inference/routing") {
+    sendJson(req, res, 200, {
+      registrations: [],
+      preferences: {
+        preferredProvider: {},
+        policy: {},
+      },
+    });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/installed"
+  ) {
+    sendJson(req, res, 200, { models: [] });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/local-inference/hf-search"
+  ) {
+    sendJson(req, res, 200, { models: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/local-inference/active") {
+    sendJson(req, res, 200, emptyLocalInferenceActive);
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/local-inference/downloads"
+  ) {
+    const body = (await readJsonBody(req)) || {};
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim().length > 0
+        ? body.modelId.trim()
+        : typeof body.spec?.id === "string" && body.spec.id.trim().length > 0
+          ? body.spec.id.trim()
+          : "local-inference-model";
+    sendJson(req, res, 200, {
+      job: {
+        jobId: `job-${modelId}`,
+        modelId,
+        state: "queued",
+        received: 0,
+        total: 0,
+        bytesPerSec: 0,
+        etaMs: null,
+        startedAt: nowIso(),
+        updatedAt: nowIso(),
+      },
+    });
+    return;
+  }
+
+  const localInferenceDownloadMatch =
+    /^\/api\/local-inference\/downloads\/([^/]+)$/.exec(url.pathname);
+  if (req.method === "DELETE" && localInferenceDownloadMatch) {
+    sendJson(req, res, 200, { cancelled: true });
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/local-inference/active") {
+    const body = (await readJsonBody(req)) || {};
+    const modelId =
+      typeof body.modelId === "string" && body.modelId.trim().length > 0
+        ? body.modelId.trim()
+        : null;
+    sendJson(req, res, 200, {
+      modelId,
+      loadedAt: modelId ? nowIso() : null,
+      status: modelId ? "ready" : "idle",
+    });
+    return;
+  }
+
+  if (
+    req.method === "DELETE" &&
+    url.pathname === "/api/local-inference/active"
+  ) {
+    sendJson(req, res, 200, emptyLocalInferenceActive);
+    return;
+  }
+
+  const localInferenceInstalledMatch =
+    /^\/api\/local-inference\/installed\/([^/]+)$/.exec(url.pathname);
+  if (req.method === "DELETE" && localInferenceInstalledMatch) {
+    sendJson(req, res, 200, { removed: true });
     return;
   }
 
@@ -717,6 +1260,27 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (
+    req.method === "GET" &&
+    (url.pathname === "/api/browser-bridge/companions" ||
+      url.pathname === "/api/browser-bridge/packages")
+  ) {
+    sendJson(req, res, 404, { error: "Not found" });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/lifeops/app-state") {
+    sendJson(req, res, 200, { enabled: lifeOpsAppEnabled });
+    return;
+  }
+
+  if (req.method === "PUT" && url.pathname === "/api/lifeops/app-state") {
+    const body = (await readJsonBody(req)) || {};
+    lifeOpsAppEnabled = body.enabled === true;
+    sendJson(req, res, 200, { enabled: lifeOpsAppEnabled });
+    return;
+  }
+
+  if (
     req.method === "POST" &&
     url.pathname === "/api/lifeops/activity-signals"
   ) {
@@ -724,8 +1288,56 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/catalog/apps") {
+    sendJson(req, res, 200, stubCatalogApps);
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/apps") {
     sendJson(req, res, 200, []);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/skills") {
+    sendJson(req, res, 200, emptySkillsResponse);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/skills/refresh") {
+    sendJson(req, res, 200, { ok: true, ...emptySkillsResponse });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/skills/marketplace/search"
+  ) {
+    sendJson(req, res, 200, { results: [] });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/skills/marketplace/config"
+  ) {
+    sendJson(req, res, 200, { keySet: false });
+    return;
+  }
+
+  if (
+    req.method === "PUT" &&
+    url.pathname === "/api/skills/marketplace/config"
+  ) {
+    sendJson(req, res, 200, { keySet: true });
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    (url.pathname === "/api/skills/marketplace/install" ||
+      url.pathname === "/api/skills/marketplace/uninstall")
+  ) {
+    sendJson(req, res, 200, { ok: true });
     return;
   }
 
@@ -745,7 +1357,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname.startsWith("/api/apps/search")) {
-    sendJson(req, res, 200, []);
+    const query = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+    const results = query
+      ? stubCatalogApps.filter((app) =>
+          [app.name, app.displayName, app.description, app.category]
+            .join(" ")
+            .toLowerCase()
+            .includes(query),
+        )
+      : stubCatalogApps;
+    sendJson(req, res, 200, results);
     return;
   }
 

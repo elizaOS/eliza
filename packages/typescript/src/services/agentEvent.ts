@@ -86,7 +86,7 @@ export function resolveHeartbeatIndicator(
 }
 
 /**
- * AgentEventService provides a unified interface for agent event streaming.
+ * AgentEventService provides a interface for agent event streaming.
  * It manages event emission, subscription, and run context tracking.
  */
 export class AgentEventService extends Service {

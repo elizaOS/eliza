@@ -2,7 +2,7 @@
  * ApprovalService
  *
  * A robust abstraction for task-based approvals in Eliza.
- * Provides a unified interface for requesting approvals, handling choices,
+ * Provides a interface for requesting approvals, handling choices,
  * and managing approval workflows.
  *
  * Patterns supported:
@@ -131,7 +131,7 @@ export const STANDARD_OPTIONS = {
 } as const;
 
 /**
- * ApprovalService provides a unified interface for task-based approvals.
+ * ApprovalService provides a interface for task-based approvals.
  */
 export class ApprovalService extends Service {
 	static serviceType: string = ServiceType.APPROVAL;

@@ -1,11 +1,11 @@
 import os from "node:os";
 import nodePath from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
 import {
-  InstallProgressLike,
+  type InstallProgressLike,
   isPluginManagerLike,
-  PluginManagerLike,
+  type PluginManagerLike,
 } from "@elizaos/agent/services/plugin-manager-types";
+import type { IAgentRuntime } from "@elizaos/core";
 import chalk from "chalk";
 import type { Command } from "commander";
 import { parseClampedInteger } from "../utils/number-parsing";

@@ -5,6 +5,7 @@ import { extractParam } from "./param-parser.js";
 export const chopTree: Action = {
   name: "CHOP_TREE",
   description: "Chop a nearby tree, optionally specifying the tree type (oak, willow, etc.)",
+  descriptionCompressed: "Chop nearby tree, opt. specify type.",
   similes: ["CUT_TREE", "WOODCUT"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

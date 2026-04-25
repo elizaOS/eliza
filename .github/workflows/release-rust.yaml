@@ -104,7 +104,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -119,7 +119,7 @@ jobs:
 
       - name: Cache cargo registry
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -187,7 +187,7 @@ jobs:
 
       - name: Upload WASM artifacts
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: elizaos-wasm
           path: packages/rust/artifacts/
@@ -195,7 +195,7 @@ jobs:
 
       - name: Upload WASM to release
         if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release' && github.event.inputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             packages/rust/artifacts/elizaos-wasm-web.tar.gz
@@ -257,7 +257,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -272,7 +272,7 @@ jobs:
 
       - name: Cache cargo registry
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -348,7 +348,7 @@ jobs:
 
       - name: Upload WASM artifacts
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: elizaos-plugin-sql-wasm
           path: plugins/plugin-sql/rust/artifacts/
@@ -356,7 +356,7 @@ jobs:
 
       - name: Upload WASM to release
         if: steps.check.outputs.should_publish == 'true' && github.event_name == 'release' && github.event.inputs.dry_run != 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             plugins/plugin-sql/rust/artifacts/elizaos-plugin-sql-wasm-web.tar.gz
@@ -427,7 +427,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -437,7 +437,7 @@ jobs:
 
       - name: Cache cargo registry
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -612,7 +612,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust toolchain
         if: steps.check.outputs.should_publish == 'true'
@@ -622,7 +622,7 @@ jobs:
 
       - name: Cache cargo registry
         if: steps.check.outputs.should_publish == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry

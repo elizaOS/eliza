@@ -1,19 +1,24 @@
-
-
+import {
+  Button,
+  ConfirmDialog,
+  Input,
+  Label,
+  Slider,
+  Spinner,
+  Switch,
+} from "@elizaos/ui";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import type {
   ApprovedAddressesConfig,
-  AutoApproveConfig,
   PolicyRule,
   PolicyType,
-  RateLimitConfig,
-  SpendingLimitConfig,
   TimeWindowConfig,
 } from "../policy-controls";
 import {
+  approvedAddressValue,
   chainTypeLabel,
   DAY_NAMES,
   DEFAULT_APPROVED_ADDRESSES,
@@ -26,8 +31,7 @@ import {
   isValidAddress,
   TIMEZONES,
 } from "../policy-controls";
-import { StewardLogo } from "@elizaos/app-steward/StewardLogo";
-import { Button, ConfirmDialog, Input, Label, Slider, Spinner, Switch } from "@elizaos/ui";
+import { StewardLogo } from "../steward/injected";
 
 const asRecord = (v: unknown): Record<string, unknown> =>
   typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
@@ -156,30 +160,38 @@ export function PolicyControlsView() {
 
   // Extract configs (must be before early returns so hooks are unconditional)
   const autoApprovePolicy = getPolicy("auto-approve-threshold");
-  const autoApproveConfig = getPolicyConfig<"auto-approve-threshold">(autoApprovePolicy, DEFAULT_AUTO_APPROVE);
+  const autoApproveConfig = getPolicyConfig<"auto-approve-threshold">(
+    autoApprovePolicy,
+    DEFAULT_AUTO_APPROVE,
+  );
 
   const spendingPolicy = getPolicy("spending-limit");
-  const spendingConfig = getPolicyConfig<"spending-limit">(spendingPolicy, DEFAULT_SPENDING);
+  const spendingConfig = getPolicyConfig<"spending-limit">(
+    spendingPolicy,
+    DEFAULT_SPENDING,
+  );
 
   const addressPolicy = getPolicy("approved-addresses");
-  const addressConfig = getPolicyConfig<"approved-addresses">(addressPolicy, DEFAULT_APPROVED_ADDRESSES);
+  const addressConfig = getPolicyConfig<"approved-addresses">(
+    addressPolicy,
+    DEFAULT_APPROVED_ADDRESSES,
+  );
 
   const rateLimitPolicy = getPolicy("rate-limit");
-  const rateLimitConfig = getPolicyConfig<"rate-limit">(rateLimitPolicy, DEFAULT_RATE_LIMIT);
+  const rateLimitConfig = getPolicyConfig<"rate-limit">(
+    rateLimitPolicy,
+    DEFAULT_RATE_LIMIT,
+  );
 
   const timeWindowPolicy = getPolicy("time-window");
-  const timeWindowConfig = getPolicyConfig<"time-window">(timeWindowPolicy, DEFAULT_TIME_WINDOW);
+  const timeWindowConfig = getPolicyConfig<"time-window">(
+    timeWindowPolicy,
+    DEFAULT_TIME_WINDOW,
+  );
 
   const normalizedAddresses = useMemo(
     () =>
-      (addressConfig.addresses ?? []).map((addr) => {
-        const addressEntry =
-          typeof addr === "object" && addr !== null ? addr : null;
-        if (addressEntry && "address" in addressEntry) {
-          return String((addressEntry as Record<string, unknown>).address);
-        }
-        return String(addr);
-      }),
+      (addressConfig.addresses ?? []).map((addr) => approvedAddressValue(addr)),
     [addressConfig.addresses],
   );
 
@@ -547,7 +559,9 @@ function AddressSection({
       setAddrError("Invalid address (EVM 0x... or Solana base58)");
       return;
     }
-    if (config.addresses.includes(trimmed)) {
+    if (
+      config.addresses.some((entry) => approvedAddressValue(entry) === trimmed)
+    ) {
       setAddrError("Already in list");
       return;
     }
@@ -561,7 +575,9 @@ function AddressSection({
     delete labels[addr];
     onUpdate({
       ...config,
-      addresses: config.addresses.filter((a) => String(a) !== addr),
+      addresses: config.addresses.filter(
+        (entry) => approvedAddressValue(entry) !== addr,
+      ),
       labels,
     });
   };

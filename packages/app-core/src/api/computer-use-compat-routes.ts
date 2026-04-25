@@ -1,4 +1,4 @@
-import http from "node:http";
+import type http from "node:http";
 import {
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
@@ -6,10 +6,13 @@ import {
   getProvidedApiToken,
   tokenMatches,
 } from "./auth";
-import { type CompatRuntimeState, readCompatJsonBody } from "./compat-route-shared";
 import {
-  sendJson as sendJsonResponse,
+  type CompatRuntimeState,
+  readCompatJsonBody,
+} from "./compat-route-shared";
+import {
   sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
 } from "./response";
 
 type ComputerUseApprovalMode =
@@ -259,8 +262,14 @@ export async function handleComputerUseCompatRoutes(
       return true;
     }
 
+    const approvalId = match[1];
+    if (approvalId === undefined) {
+      sendJsonErrorResponse(res, 400, "Missing approval id");
+      return true;
+    }
+
     const resolution = service.resolveApproval(
-      decodeURIComponent(match[1]!),
+      decodeURIComponent(approvalId),
       body.approved,
       typeof body.reason === "string" ? body.reason : undefined,
     );

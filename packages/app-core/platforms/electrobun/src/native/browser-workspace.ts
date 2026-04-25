@@ -13,12 +13,14 @@ const DEFAULT_TAB_BOUNDS = {
 } as const;
 const HIDDEN_WINDOW_POSITION = -99_999;
 const DEFAULT_PARTITION = getBrandConfig().browserWorkspacePartition;
+type BrowserWorkspaceTabKind = "internal" | "standard";
 
 export interface BrowserWorkspaceTabSnapshot {
   id: string;
   title: string;
   url: string;
   partition: string;
+  kind: BrowserWorkspaceTabKind;
   visible: boolean;
   createdAt: string;
   updatedAt: string;
@@ -35,6 +37,7 @@ export interface OpenBrowserWorkspaceTabOptions {
   title?: string;
   show?: boolean;
   partition?: string;
+  kind?: BrowserWorkspaceTabKind;
   width?: number;
   height?: number;
 }
@@ -91,6 +94,7 @@ export class BrowserWorkspaceManager {
       title: tab.title,
       url: tab.url,
       partition: tab.partition,
+      kind: tab.kind,
       visible: tab.visible,
       createdAt: tab.createdAt,
       updatedAt: tab.updatedAt,
@@ -127,6 +131,8 @@ export class BrowserWorkspaceManager {
     const url = assertBrowserWorkspaceUrl(options.url ?? "about:blank");
     const title = options.title?.trim() || `${getBrandConfig().appName} Browser`;
     const partition = options.partition?.trim() || DEFAULT_PARTITION;
+    const kind: BrowserWorkspaceTabKind =
+      options.kind === "internal" ? "internal" : "standard";
     const id = `btab_${++browserWorkspaceCounter}`;
     const createdAt = toIsoNow();
     const width = options.width ?? DEFAULT_TAB_BOUNDS.width;
@@ -155,6 +161,7 @@ export class BrowserWorkspaceManager {
       title,
       url,
       partition,
+      kind,
       visible,
       createdAt,
       updatedAt: createdAt,

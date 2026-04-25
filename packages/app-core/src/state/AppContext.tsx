@@ -4,8 +4,6 @@
  * Children access state and actions through the useApp() hook.
  */
 
-import { useVincentState } from "@elizaos/app-vincent/useVincentState";
-import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
 import {
   ConfirmDialog,
   PromptDialog,
@@ -20,142 +18,39 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  type AgentStartupDiagnostics,
-  type AgentStatus,
-  type CatalogSkill,
-  type CharacterData,
-  type CodingAgentSession,
-  type Conversation,
-  type ConversationChannelType,
-  type ConversationMessage,
-  type ConversationMode,
-  type CreateTriggerRequest,
-  type CustomActionDef,
-  client,
-  type ImageAttachment,
-  type McpMarketplaceResult,
-  type McpRegistryServerDetail,
-  type McpServerConfig,
-  type McpServerStatus,
-  type OnboardingOptions,
-  type PluginInfo,
-  type RegistryPlugin,
-  type SkillInfo,
-  type SkillMarketplaceResult,
-  type SkillScanReportSummary,
-  type StreamEventEnvelope,
-  type TriggerHealthSnapshot,
-  type TriggerRunRecord,
-  type TriggerSummary,
-  type UpdateTriggerRequest,
-} from "../api";
-import {
-  getBackendStartupTimeoutMs,
-  inspectExistingElizaInstall,
-  invokeDesktopBridgeRequest,
-  invokeDesktopBridgeRequestWithTimeout,
-  isElectrobunRuntime,
-} from "../bridge";
-import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
+import { client } from "../api";
 import { AppBootContext } from "../config/boot-config-react";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
-import {
-  dispatchAppEmoteEvent,
-  dispatchElizaCloudStatusUpdated,
-} from "../events";
 import type { UiLanguage } from "../i18n";
 import {
-  COMPANION_ENABLED,
+  canonicalPathForPath,
   isRouteRootPath,
   resolveInitialTabForPath,
   type Tab,
   tabFromPath,
 } from "../navigation";
-import {
-  alertDesktopMessage,
-  confirmDesktopAction,
-  copyTextToClipboard,
-  openExternalUrl,
-  resolveApiUrl,
-  yieldHttpAfterNativeMessageBox,
-} from "../utils";
+import { copyTextToClipboard } from "../utils";
 import {
   getActiveProfile,
   loadAgentProfileRegistry,
   setActiveProfileId,
 } from "./agent-profiles";
-import {
-  computeAgentDeadlineExtensions,
-  getAgentReadyTimeoutMs,
-} from "./agent-startup-timing";
 import { ChatComposerCtx, ChatInputRefCtx } from "./ChatComposerContext";
 import { CompanionSceneConfigCtx } from "./CompanionSceneConfigContext";
-import {
-  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
-  AppContext,
-  type AppContextValue,
-  type AppState,
-  applyUiTheme,
-  asApiLikeError,
-  type CompanionHalfFramerateMode,
-  type CompanionVrmPowerMode,
-  clearAvatarIndex,
-  formatSearchBullet,
-  formatStartupErrorDetail,
-  type GamePostMessageAuthPayload,
-  inferOnboardingResumeStep,
-  LIFECYCLE_MESSAGES,
-  type LoadConversationMessagesResult,
-  loadActiveConversationId,
-  loadAvatarIndex,
-  loadCompanionAnimateWhenHidden,
-  loadCompanionHalfFramerateMode,
-  loadCompanionVrmPowerMode,
-  loadPersistedOnboardingComplete,
-  loadPersistedOnboardingStep,
-  loadUiTheme,
-  mergeStreamingText,
-  normalizeAvatarIndex,
-  normalizeCompanionHalfFramerateMode,
-  normalizeCompanionVrmPowerMode,
-  normalizeCustomActionName,
-  normalizeUiShellMode,
-  normalizeUiTheme,
-  type OnboardingNextOptions,
-  type OnboardingStep,
-  parseAgentStatusEvent,
-  parseAgentStatusFromMainMenuResetPayload,
-  parseCustomActionParams,
-  parseProactiveMessageEvent,
-  parseSlashCommandInput,
-  parseStreamEventEnvelopeEvent,
-  type ShellView,
-  type StartupErrorState,
-  saveAvatarIndex,
-  saveCompanionAnimateWhenHidden,
-  saveCompanionHalfFramerateMode,
-  saveCompanionVrmPowerMode,
-  saveUiShellMode,
-  saveUiTheme,
-  shouldApplyFinalStreamText,
-  type TabCommittedDetail,
-  type UiShellMode,
-  type UiTheme,
-} from "./internal";
-import { detectExistingOnboardingConnection } from "./onboarding-bootstrap";
+import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext";
 import {
   createPersistedActiveServer,
   loadFavoriteApps,
+  loadRecentApps,
   saveFavoriteApps,
   savePersistedActiveServer,
+  saveRecentApps,
 } from "./persistence";
 import { deriveUiShellModeForTab } from "./shell-routing";
 import type { RuntimeTarget } from "./startup-coordinator";
 import { TranslationProvider, useTranslation } from "./TranslationContext";
-import type { InventoryChainFilters } from "./types";
 import { useCharacterState } from "./useCharacterState";
 import { useChatCallbacks } from "./useChatCallbacks";
 import { useChatState } from "./useChatState";
@@ -174,6 +69,7 @@ import { usePairingState } from "./usePairingState";
 import { usePluginsSkillsState } from "./usePluginsSkillsState";
 import { useStartupCoordinator } from "./useStartupCoordinator";
 import { useTriggersState } from "./useTriggersState";
+import { useVincentState } from "./useVincentState";
 import { useWalletState } from "./useWalletState";
 
 export {
@@ -257,7 +153,8 @@ export {
 } from "./internal";
 export { AGENT_READY_TIMEOUT_MS } from "./types";
 
-const DEFAULT_LANDING_TAB: Tab = COMPANION_ENABLED ? "companion" : "chat";
+/** RuntimeGate and bare `completeOnboarding()` land on chat; the wizard opens the companion overlay separately. */
+const DEFAULT_LANDING_TAB: Tab = "chat";
 
 function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
   try {
@@ -351,7 +248,6 @@ function AppProviderInner({
       onboardingLoading,
       startupPhase,
       startupError,
-      startupRetryNonce,
       authRequired,
       actionNotice,
       lifecycleBusy,
@@ -441,7 +337,7 @@ function AppProviderInner({
     lifecycle.retryStartup();
     coordinatorRetryRef.current?.();
   }, [lifecycle.retryStartup]);
-  const resetToSplash = useCallback(() => {
+  const _resetToSplash = useCallback(() => {
     lifecycle.retryStartup();
     coordinatorResetRef.current?.();
   }, [lifecycle.retryStartup]);
@@ -527,7 +423,7 @@ function AppProviderInner({
     autonomousReplayInFlightRef,
     addUnread,
   } = chatState;
-  const chatComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const _chatComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   // addUnread / removeUnread wrappers for old setUnreadConversations patterns.
   // Read current unreadConversations through a ref so this callback stays
   // stable across renders — otherwise it cascades into handleChatClear /
@@ -592,9 +488,7 @@ function AppProviderInner({
     pluginAdvancedOpen,
     setPluginAdvancedOpen,
     pluginSaving,
-    setPluginSaving,
     pluginSaveSuccess,
-    setPluginSaveSuccess,
     loadPlugins,
     ensurePluginsLoaded,
     handlePluginToggle,
@@ -610,25 +504,18 @@ function AppProviderInner({
     skillCreateDescription,
     setSkillCreateDescription,
     skillCreating,
-    setSkillCreating,
     skillReviewReport,
     setSkillReviewReport,
     skillReviewId,
     setSkillReviewId,
     skillReviewLoading,
-    setSkillReviewLoading,
     skillToggleAction,
-    setSkillToggleAction,
     skillsMarketplaceQuery,
     setSkillsMarketplaceQuery,
     skillsMarketplaceResults,
-    setSkillsMarketplaceResults,
     skillsMarketplaceError,
-    setSkillsMarketplaceError,
     skillsMarketplaceLoading,
-    setSkillsMarketplaceLoading,
     skillsMarketplaceAction,
-    setSkillsMarketplaceAction,
     skillsMarketplaceManualGithubUrl,
     setSkillsMarketplaceManualGithubUrl,
     loadSkills,
@@ -643,6 +530,9 @@ function AppProviderInner({
     installSkillFromMarketplace,
     installSkillFromGithubUrl,
     uninstallMarketplaceSkill,
+    enableMarketplaceSkill,
+    disableMarketplaceSkill,
+    copyMarketplaceSkillSource,
     storePlugins,
     setStorePlugins,
     storeSearch,
@@ -723,10 +613,6 @@ function AppProviderInner({
       activePackId,
       customWorldUrl,
     },
-    setCharacterData,
-    setCharacterDraft,
-    setCharacterSaveSuccess,
-    setCharacterSaveError,
     setSelectedVrmIndex,
     setCustomVrmUrl,
     setCustomVrmPreviewUrl,
@@ -746,9 +632,9 @@ function AppProviderInner({
   // elizaCloud* state, refs, and callbacks are now provided by useCloudState (cloudHook above).
 
   const [ownerName, setOwnerNameState] = useState<string | null>(null);
-  const [ownerNameHydrated, setOwnerNameHydrated] = useState(false);
-  const [pendingOwnerNamePrompt, setPendingOwnerNamePrompt] = useState(false);
-  const [showOwnerNamePrompt, setShowOwnerNamePrompt] = useState(false);
+  const [_ownerNameHydrated, _setOwnerNameHydrated] = useState(false);
+  const [_pendingOwnerNamePrompt, _setPendingOwnerNamePrompt] = useState(false);
+  const [_showOwnerNamePrompt, _setShowOwnerNamePrompt] = useState(false);
 
   // Updates, Extension, and Workbench state are now in useDataLoaders (dataLoaders).
 
@@ -924,8 +810,10 @@ function AppProviderInner({
       companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
+      activeTerminalSessionId,
     },
     setActiveInboxChat,
+    setActiveTerminalSessionId,
     setCommandQuery,
     setCommandActiveIndex,
     setEmotePickerOpen,
@@ -992,6 +880,15 @@ function AppProviderInner({
     saveFavoriteApps(apps);
   }, []);
 
+  // --- Recently launched apps ---
+  const [recentApps, setRecentAppsRaw] = useState<string[]>(() =>
+    loadRecentApps(),
+  );
+  const setRecentApps = useCallback((apps: string[]) => {
+    setRecentAppsRaw(apps);
+    saveRecentApps(apps);
+  }, []);
+
   // --- Config ---
   const [configRaw, setConfigRaw] = useState<Record<string, unknown>>({});
   const [configText, setConfigText] = useState("");
@@ -1003,8 +900,8 @@ function AppProviderInner({
   // elizaCloudPreferDisconnectedUntilLoginRef, lastElizaCloudPollConnectedRef,
   // elizaCloudLoginPollTimer are now in useCloudState (cloudHook)
   const prevAgentStateRef = useRef<string | null>(null);
-  const restartNotificationSignatureRef = useRef<string | null>(null);
-  const heartbeatNotificationKeyRef = useRef<string | null>(null);
+  const _restartNotificationSignatureRef = useRef<string | null>(null);
+  const _heartbeatNotificationKeyRef = useRef<string | null>(null);
   // Onboarding refs now come from useOnboardingState
   const onboardingCompletionCommittedRef =
     onboardingCompletionCommittedRefFromHook;
@@ -1071,10 +968,6 @@ function AppProviderInner({
     setInventorySort,
     setInventorySortDirection,
     setInventoryChainFilters,
-    setWalletError,
-    setRegistryError,
-    setMintResult,
-    setMintError,
     loadWalletConfig,
     loadBalances,
     loadNfts,
@@ -1142,7 +1035,6 @@ function AppProviderInner({
     pollCloudCredits,
     handleCloudLogin,
     handleCloudDisconnect,
-    handleCloudLoginRef,
   } = cloudHook;
 
   // ── Clipboard ──────────────────────────────────────────────────────
@@ -1162,7 +1054,6 @@ function AppProviderInner({
     setAppsSubTab,
   });
   const {
-    lastNativeTab,
     setTab,
     setUiShellMode,
     switchUiShellMode,
@@ -1176,6 +1067,18 @@ function AppProviderInner({
       return;
     }
     const routeTab = tabFromPath(navPath);
+    const canonicalPath = canonicalPathForPath(navPath);
+    if (canonicalPath && typeof window !== "undefined") {
+      if (window.location.protocol === "file:") {
+        window.location.hash = canonicalPath;
+      } else {
+        window.history.replaceState(
+          null,
+          "",
+          `${canonicalPath}${window.location.search}${window.location.hash}`,
+        );
+      }
+    }
     if (routeTab && routeTab !== tab) {
       setTabRaw(routeTab);
     }
@@ -1367,7 +1270,6 @@ function AppProviderInner({
     retryBackendConnection,
     restartBackend,
     relaunchDesktop,
-    showDesktopNotification,
     notifyAssistantEvent,
     notifyHeartbeatEvent,
     handleResetAppliedFromMain,
@@ -1399,6 +1301,7 @@ function AppProviderInner({
   // ── Onboarding callbacks (extracted to useOnboardingCallbacks) ──────
   const onboardingCallbacks = useOnboardingCallbacks({
     onboarding,
+    setActiveOverlayApp,
     setOnboardingStep,
     setOnboardingMode,
     setOnboardingActiveGuide,
@@ -1442,6 +1345,7 @@ function AppProviderInner({
     handleOnboardingUseLocalBackend,
     handleCloudOnboardingFinish,
     applyDetectedProviders,
+    completeOnboarding,
   } = onboardingCallbacks;
 
   // handleAgentExport and handleAgentImport are now in useExportImportState (exportImportHook)
@@ -1455,7 +1359,7 @@ function AppProviderInner({
       const setterMap: Partial<{
         [S in keyof AppState]: (v: AppState[S]) => void;
       }> = {
-        tab: setTabRaw,
+        tab: setTab,
         onboardingStep: setOnboardingStep,
         chatInput: setChatInput,
         chatAvatarVisible: setChatAvatarVisible,
@@ -1569,6 +1473,7 @@ function AppProviderInner({
           setActiveOverlayApp(v ? "@elizaos/app-companion" : null),
         activeOverlayApp: setActiveOverlayApp,
         activeInboxChat: setActiveInboxChat,
+        activeTerminalSessionId: setActiveTerminalSessionId,
         storePlugins: setStorePlugins,
         storeLoading: setStoreLoading,
         storeInstalling: setStoreInstalling,
@@ -1600,6 +1505,7 @@ function AppProviderInner({
         pluginsSubTab: setPluginsSubTab,
         databaseSubTab: setDatabaseSubTab,
         favoriteApps: setFavoriteApps,
+        recentApps: setRecentApps,
         configRaw: setConfigRaw,
         configText: setConfigText,
         onboardingComplete: setOnboardingComplete,
@@ -1655,7 +1561,102 @@ function AppProviderInner({
       setOnboardingComplete,
       setStartupError,
       setFavoriteApps,
-      setTabRaw,
+      setTab,
+      setStoreUninstalling,
+      setStoreSubTab,
+      setCatalogSort,
+      setCatalogTotal,
+      setActiveOverlayApp,
+      setCatalogUninstalling,
+      setCloudDashboardView,
+      setCommandActiveIndex,
+      setCommandQuery,
+      setComputerUseEnabled,
+      setCustomBackgroundUrl,
+      setCustomCatchphrase,
+      setCustomVoicePresetId,
+      setCustomVrmPreviewUrl,
+      setCustomVrmUrl,
+      setCustomWorldUrl,
+      setDroppedFiles,
+      setElizaCloudEnabled,
+      setElizaCloudVoiceProxyAvailable,
+      setEmotePickerOpen,
+      setExportError,
+      setExportIncludeLogs,
+      setExportPassword,
+      setExportSuccess,
+      setGameOverlayEnabled,
+      setImportError,
+      setImportFile,
+      setImportPassword,
+      setImportSuccess,
+      setInventoryChainFilters,
+      setInventorySort,
+      setInventorySortDirection,
+      setInventoryView,
+      setLogLevelFilter,
+      setLogSourceFilter,
+      setLogTagFilter,
+      setMcpAction,
+      setMcpAddingResult,
+      setMcpAddingServer,
+      setMcpConfiguredServers,
+      setMcpEnvInputs,
+      setMcpHeaderInputs,
+      setMcpMarketplaceLoading,
+      setMcpMarketplaceQuery,
+      setMcpMarketplaceResults,
+      setMcpServerStatuses,
+      setOnboardingCloudApiKey,
+      setOnboardingFeatureBrowser,
+      setOnboardingFeatureComputerUse,
+      setOnboardingFeatureCrypto,
+      setOnboardingFeatureDiscord,
+      setOnboardingFeatureOAuthPending,
+      setOnboardingFeaturePhone,
+      setOnboardingFeatureTelegram,
+      setOnboardingVoiceApiKey,
+      setOnboardingVoiceProvider,
+      setPairingCodeInput,
+      setPluginAdvancedOpen,
+      setPluginFilter,
+      setPluginSearch,
+      setPluginSettingsOpen,
+      setPluginStatusFilter,
+      setShareIngestNotice,
+      setSkillCreateDescription,
+      setSkillCreateFormOpen,
+      setSkillCreateName,
+      setSkillReviewId,
+      setSkillReviewReport,
+      setSkillsMarketplaceManualGithubUrl,
+      setSkillsMarketplaceQuery,
+      setSkillsSubTab,
+      setStoreDetailPlugin,
+      setStoreError,
+      setStoreFilter,
+      setStoreInstalling,
+      setStoreLoading,
+      setStorePlugins,
+      setStoreSearch,
+      setCatalogTotalPages,
+      setWalletEnabled,
+      setCatalogSkills,
+      setCatalogSearch,
+      setCatalogPage,
+      setCatalogLoading,
+      setCatalogInstalling,
+      setBrowserEnabled,
+      setCatalogError,
+      setAppsSubTab,
+      setActiveInboxChat,
+      setCatalogDetailSkill,
+      setAppRuns,
+      setActivePackId,
+      setActiveGameRunId,
+      setActiveTerminalSessionId,
+      setRecentApps,
     ],
   );
 
@@ -1850,6 +1851,8 @@ function AppProviderInner({
     conversationMessages.length,
     chatSending,
     fetchGreeting,
+    greetingInFlightConversationRef.current,
+    greetingFiredRef.current,
   ]);
 
   // Empty thread + running agent: ensure a first assistant message is requested
@@ -1888,6 +1891,10 @@ function AppProviderInner({
     chatSending,
     conversationMessages.length,
     fetchGreeting,
+    activeConversationIdRef.current,
+    greetingFiredRef.current,
+    greetingInFlightConversationRef.current,
+    conversationMessagesRef.current.length,
   ]);
 
   // ── Context value ──────────────────────────────────────────────────
@@ -2229,11 +2236,13 @@ function AppProviderInner({
       companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
+      activeTerminalSessionId,
       appsSubTab,
       agentSubTab,
       pluginsSubTab,
       databaseSubTab,
       favoriteApps,
+      recentApps,
       configRaw,
       configText,
       activeGamePostMessagePayload,
@@ -2305,8 +2314,12 @@ function AppProviderInner({
       installSkillFromMarketplace,
       uninstallMarketplaceSkill,
       installSkillFromGithubUrl,
+      enableMarketplaceSkill,
+      disableMarketplaceSkill,
+      copyMarketplaceSkillSource,
       loadLogs,
       loadInventory,
+      loadWalletConfig,
       loadBalances,
       loadNfts,
       executeBscTrade,
@@ -2344,6 +2357,7 @@ function AppProviderInner({
       goToOnboardingStep,
       handleOnboardingRemoteConnect,
       handleOnboardingUseLocalBackend,
+      completeOnboarding,
       handleCloudLogin,
       handleCloudDisconnect,
       switchAgentProfile,
@@ -2365,7 +2379,6 @@ function AppProviderInner({
       setState,
       copyToClipboard,
     }),
-    // biome-ignore lint/correctness/useExhaustiveDependencies: several fields are intentionally excluded from deps — see comments in the dep array below. chatInput/chatSending/chatPendingImages are provided fresh via ChatComposerCtx; ptySessions via PtySessionsCtx.
     // prettier-ignore
     [
       t,
@@ -2637,11 +2650,13 @@ function AppProviderInner({
       companionAppRunning,
       activeOverlayApp,
       activeInboxChat,
+      activeTerminalSessionId,
       appsSubTab,
       agentSubTab,
       pluginsSubTab,
       databaseSubTab,
       favoriteApps,
+      recentApps,
       configRaw,
       configText,
       activeGamePostMessagePayload,
@@ -2709,8 +2724,12 @@ function AppProviderInner({
       installSkillFromMarketplace,
       uninstallMarketplaceSkill,
       installSkillFromGithubUrl,
+      enableMarketplaceSkill,
+      disableMarketplaceSkill,
+      copyMarketplaceSkillSource,
       loadLogs,
       loadInventory,
+      loadWalletConfig,
       loadBalances,
       loadNfts,
       executeBscTrade,
@@ -2748,6 +2767,7 @@ function AppProviderInner({
       goToOnboardingStep,
       handleOnboardingRemoteConnect,
       handleOnboardingUseLocalBackend,
+      completeOnboarding,
       handleCloudLogin,
       handleCloudDisconnect,
       switchAgentProfile,
@@ -2768,6 +2788,11 @@ function AppProviderInner({
       setActionNotice,
       setState,
       copyToClipboard,
+      chatPendingImages,
+      setChatPendingImages,
+      chatSending,
+      ptySessions, // chatInput/chatSending/chatPendingImages are stale here — read via useChatComposer()
+      chatInput,
     ],
   );
 

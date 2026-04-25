@@ -817,17 +817,16 @@ export interface FormSubmission {
 }
 
 // ============================================================================
-// TYPE HANDLER - Custom type validation & formatting (Legacy)
+// TYPE HANDLER - Custom type validation & formatting
 // ============================================================================
 
 /**
- * TypeHandler - Custom type behavior (Legacy interface)
- *
- * @deprecated Use ControlType instead for new code. TypeHandler is maintained
- * for backwards compatibility but ControlType offers more features.
+ * TypeHandler - Custom type behavior.
  *
  * Allows registering custom field types with their own validation,
- * parsing, formatting, and extraction hints.
+ * parsing, formatting, and extraction hints. Used by the validation
+ * pipeline for simple single-value types. For composite or external
+ * types, use ControlType instead.
  */
 export interface TypeHandler {
   /** Validate a value. Return { valid: true } or { valid: false, error: '...' } */
@@ -847,7 +846,7 @@ export interface TypeHandler {
 }
 
 // ============================================================================
-// CONTROL TYPE - Unified widget/type registry
+// CONTROL TYPE - widget/type registry
 // ============================================================================
 
 /**
@@ -939,7 +938,7 @@ export interface ExternalFieldState {
 }
 
 /**
- * ControlType - Unified widget/type registry entry
+ * ControlType - widget/type registry entry
  *
  * This is the evolution of TypeHandler into a full widget system.
  * ControlType handles three patterns:
@@ -958,7 +957,7 @@ export interface ExternalFieldState {
  *    - Have activate() for starting async process
  *    - Confirmation comes from external event
  *
- * WHY unified interface:
+ * WHY shared interface:
  * - Plugins register one type of thing (ControlType)
  * - FormService treats all types uniformly
  * - Progressive complexity: simple types just use validate()

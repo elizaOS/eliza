@@ -8,17 +8,18 @@
  * React context lives in `boot-config-react.tsx` so Bun/Node can import this
  * module without loading `react` runtime (avoids Bun parsing @types/react).
  */
-import type { ComponentType, ReactNode } from "react";
+
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/app-lifeops/types";
-import type { CodingAgentSession } from "../api/client-types-cloud";
 import type {
   StewardApprovalActionResponse,
   StewardPendingApproval,
   StewardTxRecord,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/app-steward/types/steward";
+import type { ComponentType, ReactNode } from "react";
+import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { Tab } from "../navigation";
 import type { ActionNotice } from "../state/action-notice";
 import type { BrandingConfig } from "./branding";
@@ -111,8 +112,10 @@ export interface CodingAgentTasksPanelProps {
 }
 
 export interface PtyConsoleDrawerProps {
-  activeSessionId: string;
+  activeSessionId: string | null;
   sessions: CodingAgentSession[];
+  onSessionClick: (sessionId: string) => void;
+  onNewSession: () => void;
   onClose: () => void;
 }
 
@@ -148,9 +151,7 @@ export interface StewardApprovalQueueProps {
   embedded?: boolean;
   refreshKey?: number | string;
   getStewardPending: () => Promise<StewardPendingApproval[]>;
-  approveStewardTx: (
-    txId: string,
-  ) => Promise<StewardApprovalActionResponse>;
+  approveStewardTx: (txId: string) => Promise<StewardApprovalActionResponse>;
   rejectStewardTx: (
     txId: string,
     reason?: string,
@@ -189,6 +190,8 @@ export interface AppBootConfig {
   branding: Partial<BrandingConfig>;
   /** Static asset base URL for CDN-backed runtime assets. */
   assetBaseUrl?: string;
+  /** Apps starred and pinned by default when no user preference is saved. */
+  defaultApps?: readonly string[];
   /** API base URL — replaces window.__ELIZAOS_API_BASE__. */
   apiBase?: string;
   /** API auth token — replaces window.__ELIZAOS_API_TOKEN__. */
@@ -232,9 +235,7 @@ export interface AppBootConfig {
   /** Fine-tuning view provided by the host app. */
   fineTuningView?: ComponentType<FineTuningViewProps>;
   /** Vincent UI state hook provided by the host app. */
-  useVincentState?: (
-    args: VincentStateHookArgs,
-  ) => VincentStateHookResult;
+  useVincentState?: (args: VincentStateHookArgs) => VincentStateHookResult;
   /** LifeOps page implementation provided by the host app. */
   lifeOpsPageView?: ComponentType<Record<string, never>>;
   /** LifeOps browser setup panel provided by the host app. */
@@ -393,7 +394,6 @@ export function resolveCharacterCatalog(catalog: CharacterCatalogData): {
 const mirroredBrandKeys = new Set<string>();
 const mirroredElizaKeys = new Set<string>();
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getProcessEnv = (): Record<string, string | undefined> | null => {
   try {
     // In Node/Bun, process.env is available. In browsers it isn't.

@@ -28,8 +28,12 @@ interface TriggerMetricsState {
 }
 
 export interface TriggerExecutionOptions {
-  source: "scheduler" | "manual";
+  source: "scheduler" | "manual" | "event";
   force?: boolean;
+  event?: {
+    kind: string;
+    payload?: Record<string, unknown>;
+  };
 }
 
 export interface TriggerExecutionResult {
@@ -38,6 +42,9 @@ export interface TriggerExecutionResult {
   taskDeleted: boolean;
   runRecord?: TriggerRunRecord;
   trigger?: TriggerSummary | null;
+  // Present when a workflow-kind trigger dispatches to N8N_DISPATCH and
+  // the service returns an execution id.
+  executionId?: string;
 }
 
 const metricsByAgent = new Map<UUID, TriggerMetricsState>();
@@ -156,6 +163,7 @@ async function dispatchInstruction(
   runtime: IAgentRuntime,
   taskId: UUID,
   trigger: TriggerConfig,
+  event?: TriggerExecutionOptions["event"],
 ): Promise<void> {
   // Resolve the autonomy service to find the target room.
   // Retry up to 5 times (500ms, 1s, 1.5s, 2s backoff) because the
@@ -201,7 +209,10 @@ async function dispatchInstruction(
 
   // Create a memory in the autonomy room with the trigger instruction.
   // The AutonomyService loop picks this up as an autonomous action.
-  const instructionText = `[Heartbeat: ${trigger.displayName}]\n${trigger.instructions}`;
+  const eventText = event
+    ? `\n\nEvent: ${event.kind}\nPayload: ${JSON.stringify(event.payload ?? {})}`
+    : "";
+  const instructionText = `[Heartbeat: ${trigger.displayName}]\n${trigger.instructions}${eventText}`;
 
   await runtime.createMemory(
     {
@@ -227,6 +238,46 @@ async function dispatchInstruction(
   // the single execution path for all autonomous instructions.
 }
 
+interface N8nDispatchServiceLike {
+  execute(
+    workflowId: string,
+    payload?: Record<string, unknown>,
+  ): Promise<{ ok: boolean; error?: string; executionId?: string }>;
+}
+
+async function dispatchWorkflow(
+  runtime: IAgentRuntime,
+  trigger: TriggerConfig,
+  event?: TriggerExecutionOptions["event"],
+): Promise<{ ok: true; executionId?: string } | { ok: false; error: string }> {
+  if (!trigger.workflowId) {
+    return { ok: false, error: "workflow trigger missing workflowId" };
+  }
+  const svc = runtime.getService<Service & N8nDispatchServiceLike>(
+    "N8N_DISPATCH",
+  ) as (Service & N8nDispatchServiceLike) | null;
+  if (!svc) {
+    runtime.logger.warn?.(
+      {
+        src: "trigger-runtime",
+        triggerId: trigger.triggerId,
+        workflowId: trigger.workflowId,
+      },
+      "[triggers] workflow dispatch requested but N8N_DISPATCH service not registered",
+    );
+    return { ok: false, error: "N8N_DISPATCH service not registered" };
+  }
+  const result = event
+    ? await svc.execute(trigger.workflowId, {
+        eventKind: event.kind,
+        eventPayload: event.payload ?? {},
+      })
+    : await svc.execute(trigger.workflowId);
+  return result.ok
+    ? { ok: true, executionId: result.executionId }
+    : { ok: false, error: result.error ?? "workflow execution failed" };
+}
+
 export async function executeTriggerTask(
   runtime: IAgentRuntime,
   task: Task,
@@ -248,6 +299,25 @@ export async function executeTriggerTask(
   }
 
   if (
+    options.source === "event" &&
+    trigger.triggerType !== "event" &&
+    !options.force
+  ) {
+    recordExecutionMetric(runtime.agentId, "skipped", Date.now());
+    return { status: "skipped", taskDeleted: false };
+  }
+
+  if (
+    options.source === "event" &&
+    trigger.triggerType === "event" &&
+    trigger.eventKind !== options.event?.kind &&
+    !options.force
+  ) {
+    recordExecutionMetric(runtime.agentId, "skipped", Date.now());
+    return { status: "skipped", taskDeleted: false };
+  }
+
+  if (
     typeof trigger.maxRuns === "number" &&
     trigger.maxRuns > 0 &&
     trigger.runCount >= trigger.maxRuns
@@ -261,7 +331,12 @@ export async function executeTriggerTask(
     };
   }
 
+  const isWorkflowKind = trigger.kind === "workflow";
+
+  // Workflow-kind triggers dispatch to an external service; they don't
+  // require the autonomy room to be ready.
   if (
+    !isWorkflowKind &&
     !(await isAutonomyServiceAvailable(runtime)) &&
     options.source !== "manual"
   ) {
@@ -280,22 +355,44 @@ export async function executeTriggerTask(
   const startedAt = Date.now();
   let status: TriggerExecutionResult["status"] = "success";
   let errorMessage = "";
+  let workflowExecutionId: string | undefined;
 
-  try {
-    await dispatchInstruction(runtime, task.id, trigger);
-  } catch (error) {
-    status = "error";
-    errorMessage = String(error);
-    runtime.logger.error(
-      {
-        src: "trigger-runtime",
-        agentId: runtime.agentId,
-        taskId: task.id,
-        triggerId: trigger.triggerId,
-        error: errorMessage,
-      },
-      "Trigger execution failed",
-    );
+  if (isWorkflowKind) {
+    const result = await dispatchWorkflow(runtime, trigger, options.event);
+    if (result.ok === true) {
+      workflowExecutionId = result.executionId;
+    } else {
+      status = "error";
+      errorMessage = result.error;
+      runtime.logger.error(
+        {
+          src: "trigger-runtime",
+          agentId: runtime.agentId,
+          taskId: task.id,
+          triggerId: trigger.triggerId,
+          workflowId: trigger.workflowId,
+          error: errorMessage,
+        },
+        "Workflow trigger dispatch failed",
+      );
+    }
+  } else {
+    try {
+      await dispatchInstruction(runtime, task.id, trigger, options.event);
+    } catch (error) {
+      status = "error";
+      errorMessage = String(error);
+      runtime.logger.error(
+        {
+          src: "trigger-runtime",
+          agentId: runtime.agentId,
+          taskId: task.id,
+          triggerId: trigger.triggerId,
+          error: errorMessage,
+        },
+        "Trigger execution failed",
+      );
+    }
   }
 
   if (status === "success") {
@@ -323,6 +420,7 @@ export async function executeTriggerTask(
     error: errorMessage || undefined,
     latencyMs: finishedAt - startedAt,
     source: options.source,
+    eventKind: options.event?.kind,
   };
 
   const updatedTrigger: TriggerConfig = {
@@ -389,6 +487,7 @@ export async function executeTriggerTask(
       runRecord,
       taskDeleted: true,
       trigger: triggerSummary,
+      executionId: workflowExecutionId,
     };
   }
 
@@ -399,6 +498,7 @@ export async function executeTriggerTask(
     runRecord,
     taskDeleted: false,
     trigger: triggerSummary,
+    executionId: workflowExecutionId,
   };
 }
 
@@ -530,6 +630,7 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
       intervalMs: trigger.intervalMs,
       scheduledAtIso: trigger.scheduledAtIso,
       cronExpression: trigger.cronExpression,
+      eventKind: trigger.eventKind,
       maxRuns: trigger.maxRuns,
       runCount: trigger.runCount,
       nextRunAtMs: trigger.nextRunAtMs,
@@ -538,6 +639,9 @@ export function taskToTriggerSummary(task: Task): TriggerSummary | null {
       lastError: trigger.lastError,
       updatedAt: metadata.updatedAt,
       updateInterval: metadata.updateInterval,
+      kind: trigger.kind,
+      workflowId: trigger.workflowId,
+      workflowName: trigger.workflowName,
     };
   }
 

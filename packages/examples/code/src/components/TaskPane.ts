@@ -1,5 +1,6 @@
 import type { AgentRuntime } from "@elizaos/core";
-import type { AgentOrchestratorService as CodeTaskService } from "@elizaos/plugin-agent-orchestrator";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CodeTaskService = any;
 import { type Component, Editor, type Focusable, type TUI } from "@elizaos/tui";
 import chalk from "chalk";
 import { useStore } from "../lib/store.js";

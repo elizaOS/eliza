@@ -69,7 +69,7 @@ You can override the default models for each provider. See `.env.example` for al
 OPENAI_LARGE_MODEL=gpt-5
 
 # Use Claude Opus
-ANTHROPIC_LARGE_MODEL=claude-3-opus-20240229
+ANTHROPIC_LARGE_MODEL=claude-opus-4-7
 
 # Use Llama 70B on Groq
 GROQ_LARGE_MODEL=llama-3.3-70b-versatile

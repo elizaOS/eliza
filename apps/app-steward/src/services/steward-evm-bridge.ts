@@ -17,6 +17,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   initStewardEvmAccount,
   isStewardCloudProvisioned,
+  isStewardSigningReady,
 } from "./steward-evm-account";
 
 // A dummy private key that satisfies validation but won't be used for actual signing.
@@ -35,11 +36,15 @@ let _initialized = false;
  * doesn't auto-generate and persist a random key.
  */
 export async function stewardEvmPreBoot(runtime: IAgentRuntime): Promise<void> {
-  if (!isStewardCloudProvisioned()) {
+  if (!isStewardSigningReady()) {
     return;
   }
 
-  console.log("[StewardEvmBridge] Cloud-provisioned mode detected");
+  console.log(
+    isStewardCloudProvisioned()
+      ? "[StewardEvmBridge] Cloud-provisioned Steward detected"
+      : "[StewardEvmBridge] Self-hosted Steward detected",
+  );
 
   try {
     _stewardAccount = await initStewardEvmAccount();

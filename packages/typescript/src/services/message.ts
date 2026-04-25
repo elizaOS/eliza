@@ -1,11 +1,17 @@
 import { v4 } from "uuid";
-import { parseActionParams } from "../actions";
+import {
+	formatActionNames,
+	formatActions,
+	parseActionParams,
+	validateActionParams,
+} from "../actions";
 import { createUniqueUuid } from "../entities";
 import {
 	formatTaskCompletionStatus,
 	getTaskCompletionCacheKey,
 	type TaskCompletionAssessment,
 } from "../features/advanced-capabilities/evaluators/task-completion";
+import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
 import {
 	imageDescriptionTemplate,
@@ -26,6 +32,7 @@ import {
 } from "../trajectory-context";
 import type {
 	Action,
+	ActionParameters,
 	ActionResult,
 	HandlerCallback,
 	StreamChunkCallback,
@@ -68,18 +75,26 @@ import {
 	composePromptFromState,
 	getLocalServerUrl,
 	parseBooleanFromText,
+	parseJSONObjectFromText,
 	parseKeyValueXml,
 	truncateToCompleteSentence,
 } from "../utils";
+import {
+	collectActionResultSizeWarnings,
+	formatActionResultsForPrompt,
+	trimActionResultForPromptState,
+} from "../utils/action-results";
 import {
 	AVAILABLE_CONTEXTS_STATE_KEY,
 	attachAvailableContexts,
 	CONTEXT_ROUTING_STATE_KEY,
 	type ContextRoutingDecision,
+	getActiveRoutingContexts,
 	mergeContextRouting,
 	parseContextRoutingMetadata,
 	setContextRoutingMetadata,
 } from "../utils/context-routing";
+import { getUserMessageText } from "../utils/message-text";
 import {
 	createStreamingContext,
 	MarkableExtractor,
@@ -89,6 +104,11 @@ import {
 	extractFirstSentence,
 	hasFirstSentence,
 } from "../utils/text-splitting";
+import {
+	OPTIMIZED_PROMPT_SERVICE,
+	type OptimizedPromptService,
+} from "./optimized-prompt";
+import { resolveOptimizedPrompt } from "./optimized-prompt-resolver";
 
 /**
  * Reserved XML response keys that are NOT action names.
@@ -101,6 +121,10 @@ export const RESERVED_XML_KEYS = new Set([
 	"simple",
 	"providers",
 ]);
+
+const PLANNER_CONTROL_ACTIONS = new Set(
+	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
+);
 
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -263,29 +287,30 @@ export function extractStandaloneActionParams(
 	return fragments.join("\n");
 }
 
-function normalizePlannerActions(
+export function extractPlannerActionNames(
 	parsedXml: Record<string, unknown>,
-	runtime: IAgentRuntime,
 ): string[] {
-	const normalizedActions = (() => {
+	return (() => {
 		if (typeof parsedXml.actions === "string") {
 			const actionsXml = parsedXml.actions;
-			if (actionsXml.includes("<action>") || actionsXml.includes("<action ")) {
+			if (/<action\b[^>]*>/i.test(actionsXml)) {
 				const actionEntries: Array<{
 					name: string;
 					paramsXml?: string;
 				}> = [];
 				for (const match of actionsXml.matchAll(
-					/<action>([\s\S]*?)<\/action>/g,
+					/<action\b[^>]*>([\s\S]*?)<\/action>/gi,
 				)) {
 					const inner = match[1];
-					const nameMatch = inner.match(/<name>([\s\S]*?)<\/name>/);
-					const paramsMatch = inner.match(/<params>([\s\S]*?)<\/params>/);
-					if (nameMatch) {
-						const name = nameMatch[1].trim();
-						const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
-						if (name) actionEntries.push({ name, paramsXml });
-					}
+					const nameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+					const paramsMatch = inner.match(
+						/<params\b[^>]*>([\s\S]*?)<\/params>/i,
+					);
+					const name = unwrapPlannerIdentifier(
+						nameMatch ? nameMatch[1] : match[0],
+					);
+					const paramsXml = paramsMatch ? paramsMatch[1].trim() : undefined;
+					if (name) actionEntries.push({ name, paramsXml });
 				}
 
 				if (actionEntries.length > 0) {
@@ -309,7 +334,7 @@ function normalizePlannerActions(
 
 			const commaSplitActions = actionsXml
 				.split(",")
-				.map((action) => String(action).trim())
+				.map((action) => unwrapPlannerIdentifier(String(action)))
 				.filter((action) => action.length > 0);
 
 			if (!parsedXml.params || parsedXml.params === "") {
@@ -326,24 +351,530 @@ function normalizePlannerActions(
 		}
 		if (Array.isArray(parsedXml.actions)) {
 			return parsedXml.actions
-				.map((action) => String(action).trim())
+				.map((action) => unwrapPlannerIdentifier(String(action)))
 				.filter((action) => action.length > 0);
 		}
 		return [];
 	})();
+}
+
+function normalizePlannerActions(
+	parsedXml: Record<string, unknown>,
+	runtime: IAgentRuntime,
+): string[] {
+	const normalizedActions = extractPlannerActionNames(parsedXml);
 
 	const finalActions =
 		!runtime.isActionPlanningEnabled() && normalizedActions.length > 1
 			? [normalizedActions[0]]
 			: normalizedActions;
 
-	if (finalActions.length > 0) {
-		return finalActions;
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const validActions = finalActions.flatMap((actionName) => {
+		const normalized = normalizeActionIdentifier(actionName);
+		if (!normalized) {
+			return [];
+		}
+
+		if (PLANNER_CONTROL_ACTIONS.has(normalized)) {
+			return [actionName];
+		}
+
+		const resolvedAction = resolveRuntimeAction(actionLookup, actionName);
+		if (resolvedAction) {
+			return [resolvedAction.name];
+		}
+
+		const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
+		if (aliasedActionName) {
+			const resolvedAlias = resolveRuntimeAction(
+				actionLookup,
+				aliasedActionName,
+			);
+			if (resolvedAlias) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						actionName,
+						aliasedActionName: resolvedAlias.name,
+					},
+					"Repaired planner action alias",
+				);
+				return [resolvedAlias.name];
+			}
+		}
+
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				actionName,
+			},
+			"Dropping unknown planner action",
+		);
+		return [];
+	});
+
+	if (validActions.length > 0) {
+		return validActions;
 	}
 
 	const replyText =
 		typeof parsedXml.text === "string" ? parsedXml.text.trim() : "";
-	return replyText.length > 0 ? ["REPLY"] : ["IGNORE"];
+	if (replyText.length > 0) return ["REPLY"];
+
+	// Fallthrough: no valid action, no text. By the time the planner ran,
+	// the shouldRespond gate already decided the bot needed to respond, so
+	// landing on IGNORE here means the user sees silence even though the
+	// framework chose to engage. That reads as "the bot is broken" to the
+	// operator. Coerce to REPLY so the agent's reply handler emits at
+	// least a short clarifying message (e.g. "not sure what you want — can
+	// you be more specific?"). The only downside is an extra reply turn
+	// on rare cases where the LLM emitted a totally empty response; that's
+	// a better failure mode than dead silence.
+	return ["REPLY"];
+}
+
+export function resolvePlannerActionName(
+	runtime: Pick<IAgentRuntime, "actions" | "logger">,
+	actionLookup: Map<string, Action> | undefined,
+	actionName: string,
+): string[] {
+	const normalized = normalizeActionIdentifier(actionName);
+	if (!normalized) {
+		return [];
+	}
+
+	if (PLANNER_CONTROL_ACTIONS.has(normalized)) {
+		return [actionName];
+	}
+
+	const lookup =
+		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
+	const resolvedAction = resolveRuntimeAction(lookup, actionName);
+	if (resolvedAction) {
+		return [resolvedAction.name];
+	}
+
+	const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
+	if (aliasedActionName) {
+		const resolvedAlias = resolveRuntimeAction(lookup, aliasedActionName);
+		if (resolvedAlias) {
+			runtime.logger.info(
+				{
+					src: "service:message",
+					actionName,
+					aliasedActionName: resolvedAlias.name,
+				},
+				"Repaired planner action alias",
+			);
+			return [resolvedAlias.name];
+		}
+	}
+
+	runtime.logger.warn(
+		{
+			src: "service:message",
+			actionName,
+		},
+		"Dropping unknown planner action",
+	);
+	return [];
+}
+
+function normalizePlannerProviders(
+	parsedXml: Record<string, unknown>,
+	runtime?: IAgentRuntime,
+): string[] {
+	const providerNames = extractPlannerProviderNames(parsedXml);
+
+	if (!runtime) {
+		return providerNames;
+	}
+
+	const providerLookup = new Map<string, string>();
+	for (const provider of runtime.providers ?? []) {
+		const normalized = normalizeActionIdentifier(provider.name);
+		if (!normalized || providerLookup.has(normalized)) {
+			continue;
+		}
+		providerLookup.set(normalized, provider.name);
+	}
+	const normalizedProviders = providerNames
+		.map((providerName) => {
+			const normalizedProviderName = normalizeActionIdentifier(providerName);
+			const canonicalProvider =
+				providerLookup.get(normalizedProviderName) ??
+				(() => {
+					const aliasedProvider = PLANNER_PROVIDER_ALIASES.get(
+						normalizedProviderName,
+					);
+					if (!aliasedProvider) {
+						return undefined;
+					}
+					return providerLookup.get(normalizeActionIdentifier(aliasedProvider));
+				})();
+			if (canonicalProvider) {
+				return canonicalProvider;
+			}
+			runtime.logger.warn(
+				{
+					src: "service:message",
+					providerName,
+				},
+				"Dropping unknown planner provider",
+			);
+			return "";
+		})
+		.filter((providerName) => providerName.length > 0);
+
+	if (normalizedProviders.length === 0) {
+		return normalizedProviders;
+	}
+
+	const providerDefinitions = new Map(
+		(runtime.providers ?? []).map((provider) => [
+			normalizeActionIdentifier(provider.name),
+			provider,
+		]),
+	);
+	const expandedProviders = [...normalizedProviders];
+	const seenProviders = new Set(
+		expandedProviders.map((providerName) =>
+			normalizeActionIdentifier(providerName),
+		),
+	);
+
+	for (let index = 0; index < expandedProviders.length; index += 1) {
+		const providerName = expandedProviders[index];
+		const providerDefinition = providerDefinitions.get(
+			normalizeActionIdentifier(providerName),
+		);
+		const companionProviders = providerDefinition?.companionProviders ?? [];
+		for (const companionProvider of companionProviders) {
+			const canonicalCompanion = providerLookup.get(
+				normalizeActionIdentifier(companionProvider),
+			);
+			if (!canonicalCompanion) {
+				runtime.logger.warn(
+					{
+						src: "service:message",
+						providerName,
+						companionProvider,
+					},
+					"Dropping unknown companion provider",
+				);
+				continue;
+			}
+			const normalizedCompanion = normalizeActionIdentifier(canonicalCompanion);
+			if (seenProviders.has(normalizedCompanion)) {
+				continue;
+			}
+			seenProviders.add(normalizedCompanion);
+			expandedProviders.push(canonicalCompanion);
+		}
+	}
+
+	return expandedProviders;
+}
+
+function isStructuredPlannerIdentifier(value: string): boolean {
+	const unwrapped = unwrapPlannerIdentifier(value).trim();
+	return /^[A-Za-z][A-Za-z0-9_:-]*$/u.test(unwrapped);
+}
+
+function extractProviderNamesFromXml(rawProviders: string): string[] {
+	const providersFromProviderTags = Array.from(
+		rawProviders.matchAll(/<provider\b[^>]*>([\s\S]*?)<\/provider>/gi),
+	)
+		.map((match) => {
+			const inner = match[1]?.trim() ?? "";
+			if (!inner) {
+				return "";
+			}
+			const nameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+			return unwrapPlannerIdentifier(nameMatch ? nameMatch[1] : inner).trim();
+		})
+		.filter(
+			(providerName): providerName is string =>
+				providerName.length > 0 && isStructuredPlannerIdentifier(providerName),
+		);
+	if (providersFromProviderTags.length > 0) {
+		return providersFromProviderTags;
+	}
+
+	const providersFromNameTags = Array.from(
+		rawProviders.matchAll(/<name\b[^>]*>([\s\S]*?)<\/name>/gi),
+	)
+		.map((match) => unwrapPlannerIdentifier(match[1] ?? "").trim())
+		.filter(
+			(providerName): providerName is string =>
+				providerName.length > 0 && isStructuredPlannerIdentifier(providerName),
+		);
+	if (providersFromNameTags.length > 0) {
+		return providersFromNameTags;
+	}
+
+	return [];
+}
+
+function extractStructuredProviderList(rawProviders: string): string[] {
+	const tokens = rawProviders
+		.split(/[\n,;]/)
+		.map((providerName) =>
+			providerName.replace(/^[\s"'[\](){}]+|[\s"'[\](){}]+$/g, ""),
+		)
+		.map((providerName) => unwrapPlannerIdentifier(providerName).trim())
+		.filter((providerName) => providerName.length > 0);
+	if (tokens.length === 0 || !tokens.every(isStructuredPlannerIdentifier)) {
+		return [];
+	}
+	return tokens;
+}
+
+export function extractPlannerProviderNames(
+	parsedXml: Record<string, unknown>,
+): string[] {
+	const rawProviders = parsedXml.providers;
+	if (typeof rawProviders === "string") {
+		const trimmedProviders = rawProviders.trim();
+		if (!trimmedProviders) {
+			return [];
+		}
+		if (
+			(trimmedProviders.startsWith("[") && trimmedProviders.endsWith("]")) ||
+			(trimmedProviders.startsWith("{") && trimmedProviders.endsWith("}"))
+		) {
+			try {
+				const parsedJson = JSON.parse(trimmedProviders) as unknown;
+				if (Array.isArray(parsedJson)) {
+					return parsedJson
+						.map((providerName) => String(providerName).trim())
+						.filter(
+							(providerName): providerName is string =>
+								providerName.length > 0 &&
+								isStructuredPlannerIdentifier(providerName),
+						);
+				}
+				if (
+					typeof parsedJson === "object" &&
+					parsedJson !== null &&
+					Array.isArray((parsedJson as { providers?: unknown }).providers)
+				) {
+					return (parsedJson as { providers: unknown[] }).providers
+						.map((providerName) => String(providerName).trim())
+						.filter(
+							(providerName): providerName is string =>
+								providerName.length > 0 &&
+								isStructuredPlannerIdentifier(providerName),
+						);
+				}
+			} catch {
+				// Fall through to XML / delimiter parsing below.
+			}
+		}
+
+		if (trimmedProviders.includes("<")) {
+			const providersFromXml = extractProviderNamesFromXml(trimmedProviders);
+			if (providersFromXml.length > 0) {
+				return providersFromXml;
+			}
+			return [];
+		}
+
+		return extractStructuredProviderList(trimmedProviders);
+	}
+
+	if (Array.isArray(rawProviders)) {
+		return rawProviders.flatMap((providerName) => {
+			if (typeof providerName !== "string") {
+				const normalized = String(providerName).trim();
+				return normalized.length > 0 &&
+					isStructuredPlannerIdentifier(normalized)
+					? [normalized]
+					: [];
+			}
+
+			const trimmedProvider = providerName.trim();
+			if (!trimmedProvider) {
+				return [];
+			}
+			if (
+				(trimmedProvider.startsWith("[") && trimmedProvider.endsWith("]")) ||
+				(trimmedProvider.startsWith("{") && trimmedProvider.endsWith("}"))
+			) {
+				try {
+					const parsedJson = JSON.parse(trimmedProvider) as unknown;
+					if (Array.isArray(parsedJson)) {
+						return parsedJson
+							.map((entry) => String(entry).trim())
+							.filter(
+								(entry): entry is string =>
+									entry.length > 0 && isStructuredPlannerIdentifier(entry),
+							);
+					}
+				} catch {
+					// Fall through to structured token parsing below.
+				}
+			}
+
+			return extractStructuredProviderList(trimmedProvider);
+		});
+	}
+
+	return [];
+}
+
+const CORE_RESPONSE_STATE_PROVIDERS = [
+	"ENTITIES",
+	"CHARACTER",
+	"RECENT_MESSAGES",
+	"ACTIONS",
+	"PROVIDERS",
+];
+
+const STRUCTURED_RESPONSE_STATE_PROVIDERS = ["ACTIONS", "PROVIDERS"];
+const FOCUSED_PROVIDER_REPLY_STATE_PROVIDERS = ["CHARACTER", "RECENT_MESSAGES"];
+
+function composeResponseState(
+	runtime: IAgentRuntime,
+	message: Memory,
+	skipCache = false,
+): Promise<State> {
+	return runtime.composeState(
+		message,
+		CORE_RESPONSE_STATE_PROVIDERS,
+		true,
+		skipCache,
+	);
+}
+
+function composeStructuredResponseState(
+	runtime: IAgentRuntime,
+	message: Memory,
+	skipCache = false,
+): Promise<State> {
+	return runtime.composeState(
+		message,
+		STRUCTURED_RESPONSE_STATE_PROVIDERS,
+		false,
+		skipCache,
+	);
+}
+
+function composeProviderGroundedResponseState(
+	runtime: IAgentRuntime,
+	message: Memory,
+	providers: string[],
+	skipCache = false,
+): Promise<State> {
+	return runtime.composeState(
+		message,
+		[...CORE_RESPONSE_STATE_PROVIDERS, ...providers],
+		false,
+		skipCache,
+	);
+}
+
+function composeFocusedProviderReplyState(
+	runtime: IAgentRuntime,
+	message: Memory,
+	providers: string[],
+	skipCache = false,
+): Promise<State> {
+	return runtime.composeState(
+		message,
+		[...FOCUSED_PROVIDER_REPLY_STATE_PROVIDERS, ...providers],
+		true,
+		skipCache,
+	);
+}
+
+function ensureActionStateValues(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+): State {
+	const currentActionNames =
+		typeof state.values?.actionNames === "string" &&
+		state.values.actionNames.trim().length > 0
+			? state.values.actionNames
+			: null;
+	const currentDescriptions =
+		typeof state.values?.actionsWithDescriptions === "string" &&
+		state.values.actionsWithDescriptions.trim().length > 0
+			? state.values.actionsWithDescriptions
+			: null;
+
+	if (currentActionNames && currentDescriptions) {
+		return state;
+	}
+
+	const actionProviderEntry =
+		state.data?.providers &&
+		typeof state.data.providers === "object" &&
+		state.data.providers !== null &&
+		"ACTIONS" in state.data.providers
+			? (state.data.providers.ACTIONS as {
+					values?: Record<string, unknown>;
+					data?: Record<string, unknown>;
+				})
+			: null;
+	const providerValues =
+		actionProviderEntry?.values &&
+		typeof actionProviderEntry.values === "object" &&
+		actionProviderEntry.values !== null
+			? actionProviderEntry.values
+			: null;
+
+	let actionNames = currentActionNames;
+	if (
+		!actionNames &&
+		typeof providerValues?.actionNames === "string" &&
+		providerValues.actionNames.trim().length > 0
+	) {
+		actionNames = providerValues.actionNames;
+	}
+
+	let actionsWithDescriptions = currentDescriptions;
+	if (
+		!actionsWithDescriptions &&
+		typeof providerValues?.actionsWithDescriptions === "string" &&
+		providerValues.actionsWithDescriptions.trim().length > 0
+	) {
+		actionsWithDescriptions = providerValues.actionsWithDescriptions;
+	}
+
+	const actionsData =
+		actionProviderEntry?.data &&
+		typeof actionProviderEntry.data === "object" &&
+		actionProviderEntry.data !== null &&
+		"actionsData" in actionProviderEntry.data &&
+		Array.isArray(actionProviderEntry.data.actionsData)
+			? (actionProviderEntry.data.actionsData as Action[])
+			: runtime.actions;
+
+	if ((!actionNames || !actionsWithDescriptions) && actionsData.length > 0) {
+		const actionSeed = `${runtime.agentId}:${message.roomId}:ACTIONS`;
+		if (!actionNames) {
+			actionNames = `Possible response actions: ${formatActionNames(actionsData, actionSeed)}`;
+		}
+		if (!actionsWithDescriptions) {
+			actionsWithDescriptions = `# Available Actions\n${formatActions(actionsData, actionSeed)}`;
+		}
+	}
+
+	if (!actionNames && !actionsWithDescriptions) {
+		return state;
+	}
+
+	return {
+		...state,
+		values: {
+			...(state.values ?? {}),
+			...(actionNames ? { actionNames } : {}),
+			...(actionsWithDescriptions ? { actionsWithDescriptions } : {}),
+		},
+	};
 }
 
 /**
@@ -447,7 +978,18 @@ type ResolvedMessageOptions = {
 	keepExistingResponses: boolean;
 	onStreamChunk?: StreamChunkCallback;
 	shouldRespondModel: ShouldRespondModelType;
+	onBeforeActionExecution?: MessageProcessingOptions["onBeforeActionExecution"];
 };
+
+async function invokeOnBeforeActionExecution(
+	opts: ResolvedMessageOptions,
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<void> {
+	if (opts.onBeforeActionExecution) {
+		await opts.onBeforeActionExecution({ runtime, message });
+	}
+}
 
 function normalizeShouldRespondModelType(
 	value: unknown,
@@ -527,6 +1069,27 @@ interface StrategyResult {
 }
 
 /**
+ * True when a plugin registered at least one core text delegate (chat / planning).
+ * Embeddings-only (local-ai) and TTS do not count — without a matching delegate,
+ * `dynamicPromptExecFromState` can fail with "No handler found for delegate type".
+ */
+export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
+	const keys: Array<keyof typeof ModelType | string> = [
+		ModelType.TEXT_LARGE,
+		ModelType.TEXT_SMALL,
+		ModelType.TEXT_MEDIUM,
+		ModelType.TEXT_NANO,
+		ModelType.TEXT_MEGA,
+		ModelType.ACTION_PLANNER,
+		ModelType.RESPONSE_HANDLER,
+	];
+	for (const k of keys) {
+		if (runtime.getModel(String(k))) return true;
+	}
+	return false;
+}
+
+/**
  * Tracks the latest response ID per agent+room to handle message superseding
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
@@ -562,6 +1125,29 @@ export function isSimpleReplyResponse(
 	);
 }
 
+export function resolveStrategyMode(
+	responseContent:
+		| Pick<Content, "actions" | "text" | "simple">
+		| null
+		| undefined,
+): StrategyMode {
+	if (isStopResponse(responseContent)) {
+		return "none";
+	}
+
+	if (!isSimpleReplyResponse(responseContent)) {
+		return "actions";
+	}
+
+	const hasPlannerText =
+		typeof responseContent?.text === "string" &&
+		responseContent.text.trim().length > 0;
+
+	return responseContent?.simple === true && hasPlannerText
+		? "simple"
+		: "actions";
+}
+
 function isStopResponse(
 	responseContent: Pick<Content, "actions"> | null | undefined,
 ): boolean {
@@ -574,10 +1160,1075 @@ function isStopResponse(
 }
 
 function normalizeActionIdentifier(actionName: string): string {
-	return actionName.trim().toUpperCase().replace(/_/g, "");
+	return unwrapPlannerIdentifier(actionName).toUpperCase().replace(/_/g, "");
 }
 
-function buildRuntimeActionLookup(runtime: IAgentRuntime): Map<string, Action> {
+function unwrapPlannerIdentifier(value: string): string {
+	const trimmed = value.trim().replace(/^["'`]+|["'`]+$/g, "");
+	if (!trimmed) {
+		return "";
+	}
+
+	const nameMatch = trimmed.match(/^<name\b[^>]*>([\s\S]*?)<\/name>$/i);
+	if (nameMatch) {
+		return nameMatch[1].trim();
+	}
+
+	const actionMatch = trimmed.match(/^<action\b[^>]*>([\s\S]*?)<\/action>$/i);
+	if (!actionMatch) {
+		return trimmed;
+	}
+
+	const inner = actionMatch[1].trim();
+	if (!inner) {
+		return "";
+	}
+
+	const nestedNameMatch = inner.match(/<name\b[^>]*>([\s\S]*?)<\/name>/i);
+	if (nestedNameMatch) {
+		return nestedNameMatch[1].trim();
+	}
+
+	return /<[A-Za-z][^>]*>/.test(inner) ? trimmed : inner;
+}
+
+const PLANNER_ACTION_ALIASES = new Map(
+	[
+		["BULK_RESCHEDULE", "OWNER_CALENDAR"],
+		["BULK_RESCHEDULE_MEETINGS", "OWNER_CALENDAR"],
+		["SCHEDULE_MEETING", "OWNER_CALENDAR"],
+		["RESCHEDULE_MEETINGS", "OWNER_CALENDAR"],
+		["GET_AVAILABILITY", "OWNER_CALENDAR"],
+		["CREATE_EVENT", "OWNER_CALENDAR"],
+		["CREATE_RECURRING_EVENT", "OWNER_CALENDAR"],
+		["CALENDAR_CREATE_RECURRING_EVENT", "OWNER_CALENDAR"],
+		["SCHEDULE_RECURRING_EVENT", "OWNER_CALENDAR"],
+		["SCHEDULE_RECURRING_MEETING", "OWNER_CALENDAR"],
+		["SCHEDULE_RECURRING", "OWNER_CALENDAR"],
+		["BOOK_TRAVEL_ACTION", "CALL_EXTERNAL"],
+		["CAPTURE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["CAPTURE_BOOKING_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["CREATE_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["SET_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["SET_TRAVEL_PREFERENCES", "UPDATE_OWNER_PROFILE"],
+		["CREATE_FOLLOWUP", "OWNER_RELATIONSHIP"],
+		["GET_PENDING_ASSETS", "OWNER_INBOX"],
+		["GET_PENDING_ITEMS", "OWNER_INBOX"],
+		["EVENT_ASSET_CHECKLIST", "OWNER_INBOX"],
+		["OUTSTANDING_EVENT_ASSETS", "OWNER_INBOX"],
+		["PORTAL_ASSET_CHECKLIST", "OWNER_INBOX"],
+		["PROPOSE_GROUP_CHAT_HANDOFF", "OWNER_INBOX"],
+		["GROUP_CHAT_HANDOFF_POLICY", "OWNER_INBOX"],
+		["SET_GROUP_CHAT_HANDOFF_POLICY", "OWNER_INBOX"],
+		["CREATE_GROUP_CHAT", "OWNER_INBOX"],
+		["BUMP_WITH_CONTEXT", "OWNER_INBOX"],
+		["CONTEXTUAL_BUMP", "OWNER_INBOX"],
+		["BUMP_UNANSWERED_DECISION", "OWNER_INBOX"],
+		["UPDATE_MORNING_BRIEF", "RUN_MORNING_CHECKIN"],
+		["GET_PENDING_DRAFTS", "OWNER_INBOX"],
+		["ADD_MORNING_BRIEF_SECTION", "RUN_MORNING_CHECKIN"],
+		["CREATE_REMINDER", "LIFE"],
+		["SET_REMINDER_RULE", "LIFE"],
+		["CREATE_REMINDER_RULE", "PUBLISH_DEVICE_INTENT"],
+		["CREATE_DEVICE_WARNING", "PUBLISH_DEVICE_INTENT"],
+		["REQUEST_UPDATED_ID", "PUBLISH_DEVICE_INTENT"],
+		["CREATE_PREFERENCE_PROFILE", "UPDATE_OWNER_PROFILE"],
+		["FLAG_CONFLICT", "OWNER_CALENDAR"],
+		["CHECK_FLIGHT_CONFLICT", "OWNER_CALENDAR"],
+		["FLIGHT_CONFLICT_REBOOKING", "OWNER_CALENDAR"],
+		["REBOOK_CONFLICTING_EVENT", "OWNER_CALENDAR"],
+		["SET_MULTI_DEVICE_MEETING_REMINDER", "PUBLISH_DEVICE_INTENT"],
+		["SET_MULTI_DEVICE_REMINDER", "PUBLISH_DEVICE_INTENT"],
+		["HANDLE_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
+		["CANCELLATION_FEE_WARNING", "PUBLISH_DEVICE_INTENT"],
+		["WARN_CANCELLATION_FEE", "PUBLISH_DEVICE_INTENT"],
+		["GET_ID_STATUS", "PUBLISH_DEVICE_INTENT"],
+		["REQUEST_UPDATED_ID_COPY", "PUBLISH_DEVICE_INTENT"],
+		["UPDATED_ID_COPY", "PUBLISH_DEVICE_INTENT"],
+		["UPDATED_ID_INTERVENTION", "PUBLISH_DEVICE_INTENT"],
+		["REQUEST_UPLOAD", "LIFEOPS_COMPUTER_USE"],
+		["UPLOAD_PORTAL", "LIFEOPS_COMPUTER_USE"],
+	].map(([from, to]) => [
+		normalizeActionIdentifier(from),
+		normalizeActionIdentifier(to),
+	]),
+);
+
+const PLANNER_PROVIDER_ALIASES = new Map(
+	[
+		["DOCUMENT_LOOKUP", "ATTACHMENTS"],
+		["INBOX_TRIAGE", "inboxTriage"],
+		["PENDING_DRAFTS_PROVIDER", "inboxTriage"],
+		["PENDING_DRAFTS", "inboxTriage"],
+		["DRAFTS", "inboxTriage"],
+	].map(([from, to]) => [normalizeActionIdentifier(from), to]),
+);
+
+const PROVIDER_FOLLOWUP_PASSIVE_ACTIONS = new Set(
+	["REPLY", "RESPOND", "NONE"].map(normalizeActionIdentifier),
+);
+
+const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
+	["REPLY", "RESPOND", "NONE", "IGNORE"].map(normalizeActionIdentifier),
+);
+
+// Actions the planner selects as explicit delegation / orchestration intent.
+// These cannot be evaluated by keyword-overlap against the user's message
+// (e.g. "build me an app" does not contain "spawn" or "agent"), so the
+// metadata-based corrector must not override them with a keyword-matched
+// alternative like a cross-channel send action.
+const EXPLICIT_INTENT_ACTIONS = new Set(
+	["SPAWN_AGENT"].map(normalizeActionIdentifier),
+);
+
+function shouldAttemptCanonicalActionRepair(
+	rawPlannerActions: string[],
+	normalizedActions: string[],
+): boolean {
+	const hasUnknownOperationalAction = rawPlannerActions.some((actionName) => {
+		const normalized = normalizeActionIdentifier(actionName);
+		return (
+			normalized.length > 0 &&
+			!ACTION_REPAIR_PASSIVE_ACTIONS.has(normalized) &&
+			!PLANNER_CONTROL_ACTIONS.has(normalized)
+		);
+	});
+
+	if (!hasUnknownOperationalAction) {
+		return false;
+	}
+
+	return (
+		normalizedActions.length === 0 ||
+		normalizedActions.every((actionName) =>
+			ACTION_REPAIR_PASSIVE_ACTIONS.has(normalizeActionIdentifier(actionName)),
+		)
+	);
+}
+
+function buildCanonicalActionRepairPrompt(args: {
+	userText: string;
+	rawPlannerActions: string[];
+	rawPlannerProviders: string[];
+	plannerReplyText: string;
+	availableActionNames: string[];
+}): string {
+	const plannerReplyText =
+		args.plannerReplyText.trim().length > 0
+			? args.plannerReplyText.trim()
+			: "(empty)";
+
+	return [
+		"You are repairing an action-planner output that used a non-canonical action name.",
+		"Choose ONLY from the available runtime actions below.",
+		"If the user explicitly asked for an operational artifact or workflow, select the responsible action instead of replying inline.",
+		"If the subject is already present, do not ask a clarifying question just because the original planner used a generic lookup verb.",
+		"Map generic planner labels like LOOKUP, SEARCH, FETCH, GET, RETRIEVE, BRIEF, or BACKGROUND to the best canonical runtime action.",
+		"Return ONLY XML with top-level fields from this schema: <response><actions>...</actions><providers>...</providers><params>...</params></response>.",
+		"Do not include <text> unless there is truly no matching runtime action.",
+		"",
+		`user_message:\n${args.userText}`,
+		"",
+		`planner_actions_raw:\n${JSON.stringify(args.rawPlannerActions, null, 2)}`,
+		"",
+		`planner_providers_raw:\n${JSON.stringify(args.rawPlannerProviders, null, 2)}`,
+		"",
+		`planner_reply_text:\n${plannerReplyText}`,
+		"",
+		`available_runtime_actions:\n${args.availableActionNames.join(", ")}`,
+		"",
+		"Example:",
+		'user_message: "Pull up a dossier on Satya Nadella."',
+		'planner_actions_raw: ["LOOKUP"]',
+		"output: <response><actions><action>DOSSIER</action></actions><params><DOSSIER><subject>Satya Nadella</subject></DOSSIER></params></response>",
+	].join("\n");
+}
+
+async function repairCanonicalPlannerActions(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	rawPlannerActions: string[];
+	rawPlannerProviders: string[];
+	plannerReplyText: string;
+}): Promise<Record<string, unknown> | null> {
+	const availableActionNames = Array.from(
+		new Set(
+			(args.runtime.actions ?? [])
+				.map((action) => action.name?.trim())
+				.filter((name): name is string => Boolean(name)),
+		),
+	).sort();
+
+	if (availableActionNames.length === 0) {
+		return null;
+	}
+
+	const repairPrompt = buildCanonicalActionRepairPrompt({
+		userText: String(args.message.content.text ?? ""),
+		rawPlannerActions: args.rawPlannerActions,
+		rawPlannerProviders: args.rawPlannerProviders,
+		plannerReplyText: args.plannerReplyText,
+		availableActionNames,
+	});
+
+	const repairResponse = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+		prompt: repairPrompt,
+	});
+
+	return parseKeyValueXml<Record<string, unknown>>(repairResponse);
+}
+
+function shouldRunProviderFollowup(
+	responseContent: Pick<Content, "actions" | "providers"> | null | undefined,
+): boolean {
+	if (!responseContent?.providers?.length) {
+		return false;
+	}
+
+	const normalizedActions = (responseContent.actions ?? [])
+		.map((actionName) =>
+			typeof actionName === "string"
+				? normalizeActionIdentifier(actionName)
+				: "",
+		)
+		.filter((actionName) => actionName.length > 0);
+
+	if (normalizedActions.length === 0) {
+		return true;
+	}
+
+	return normalizedActions.every((actionName) =>
+		PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(actionName),
+	);
+}
+
+function buildProviderFollowupPrompt(basePrompt: string): string {
+	return `${basePrompt}
+
+[PROVIDER FOLLOW-UP]
+The requested providers have already been executed, and their grounded results are now present in context above.
+Use those provider results to produce the final reply and/or action plan for this turn.
+Do not ask for the same providers again.
+If the provider results fully answer the user, reply directly.
+If KNOWLEDGE contains a direct answer, prefer that grounded answer even when AVAILABLE_DOCUMENTS lists multiple files.
+Do not ask "which file?" when the grounded KNOWLEDGE result already resolves the request.`;
+}
+
+function buildActionRescuePrompt(
+	basePrompt: string,
+	draftReply: string,
+): string {
+	const trimmedDraftReply = draftReply.trim();
+	const draftSection =
+		trimmedDraftReply.length > 0
+			? `\n[PREVIOUS DRAFT REPLY]\n${trimmedDraftReply.replace(/<\/response>/gi, "<\\/response>")}\n`
+			: "";
+
+	return `${basePrompt}
+
+	[ACTION RESCUE]
+	The previous draft stayed in prose-only mode or selected only passive reply actions.
+	Re-evaluate the turn using the same available actions and providers already in context above.
+	If a listed non-REPLY action owns the user's request, choose it now even when the text still needs to ask a follow-up question.
+	Prefer the owning action for requests to create, store, remember, schedule, remind, upload, follow up, route, escalate, set a standing policy, delegate a future workflow, bulk-reschedule a cohort, run a morning brief, or call the owner when blocked.
+	Missing details like the exact time, participant list, channel, platform, portal login, file arrival, itinerary specifics, or which item is at risk are not a reason to fall back to REPLY when a listed action can own the follow-up.
+	When the user is defining a durable policy or future-condition workflow such as missed-call repair, contextual bumping, group-chat handoff, travel booking after approval, flight-conflict rebooking, portal upload after file arrival, updated-ID collection, multi-device meeting ladders, cancellation-fee warnings, outstanding event-asset checklists, or calling the owner if the agent gets stuck, picking only REPLY is wrong if a listed action can store or queue that behavior.
+	For live checklist questions like what slides, bio, title, portal assets, drafts, or pending items the owner still owes, choose the owning inbox/calendar/computer-use action instead of answering from memory or treating it like a generic LifeOps reminder.
+	If the draft reply merely acknowledges the task or asks for details before selecting an owning action, treat that draft as incomplete and repair it.
+	Keep REPLY/NONE only when no listed action actually owns the request.${draftSection}`;
+}
+
+function buildActionOnlyRescuePrompt(draftReply: string): string {
+	const trimmedDraftReply = draftReply.trim();
+	const draftSection =
+		trimmedDraftReply.length > 0
+			? `Draft reply:\n${trimmedDraftReply}\n\n`
+			: "";
+
+	return `Select the single best action for this turn using only the available actions already in context above.
+
+	Rules:
+	- Choose a listed non-REPLY action when the user is asking to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy.
+	- If the request delegates a future workflow or approval-gated workflow, still choose the owning action even before every detail is present.
+	- If the right action still needs clarification, choose that action anyway.
+	- A reply that only says "tell me more", "which one?", "send it over", "I can do that", or "let me know the details" is wrong when an owning action can store or queue the workflow.
+	- Durable requests like missed-call repair, contextual bump rules, group-chat handoff, travel booking after approval, flight-conflict rebooking, portal upload after file arrival, updated-ID collection, device reminder ladders, cancellation-fee warnings, event-asset checklists, and call-me-if-stuck escalations must choose the owning action on this turn.
+	- Choose REPLY only when no listed action owns the request.
+	- Do not invent action names.
+
+Examples:
+- "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> OWNER_CALENDAR
+- "I'm in Tokyo for limited time so let's schedule PendingReality and Ryan at the same time if possible" -> OWNER_CALENDAR
+- "repair that missed call and hold the note for approval" -> OWNER_INBOX
+- "if I still haven't answered about those three events, bump me again with context instead of starting over" -> OWNER_INBOX
+	- "if direct relaying gets messy, suggest a group chat handoff" -> OWNER_INBOX
+	- "tell me what slides, bio, title, or portal assets I still owe before the event" -> OWNER_INBOX
+	- "in the morning brief, add a Pending Drafts section that lists what still needs my sign-off" -> OWNER_INBOX
+	- "we're gonna cancel some stuff and push everything back until next month, all partnership meetings" -> OWNER_CALENDAR
+	- "capture my reusable flight and hotel preferences" -> UPDATE_OWNER_PROFILE
+	- "flag the conflict before my flight later and, if needed, help rebook the other thing" -> OWNER_CALENDAR
+	- "I can go ahead and start booking the flights and hotel today if that's good with you" -> BOOK_TRAVEL
+	- "when I'm done with the PPT, upload it to the speaker portal for me" -> LIFEOPS_COMPUTER_USE
+	- "if the only ID on file is expired, ask me for an updated copy" -> PUBLISH_DEVICE_INTENT
+	- "for important meetings, remind me an hour before, ten minutes before, and at start on my Mac and phone" -> PUBLISH_DEVICE_INTENT
+	- "if missing this could trigger a cancellation fee, warn me clearly and offer to handle it now" -> PUBLISH_DEVICE_INTENT
+	- "if you get stuck in the browser or on my computer, call me" -> CALL_USER
+
+${draftSection}Return XML only:
+<response>
+  <thought>short reasoning</thought>
+  <actions>
+    <action>
+      <name>ACTION_NAME</name>
+    </action>
+  </actions>
+</response>`;
+}
+
+const ROUTING_REASSESS_ACTIONS = new Set(
+	[
+		"LIFE",
+		"PUBLISH_DEVICE_INTENT",
+		"LIFEOPS_COMPUTER_USE",
+		"SUBSCRIPTIONS",
+	].map(normalizeActionIdentifier),
+);
+
+const ACTION_OWNERSHIP_STOPWORDS = new Set([
+	"a",
+	"an",
+	"and",
+	"are",
+	"as",
+	"at",
+	"be",
+	"because",
+	"can",
+	"could",
+	"do",
+	"for",
+	"from",
+	"get",
+	"go",
+	"here",
+	"i",
+	"if",
+	"in",
+	"into",
+	"is",
+	"it",
+	"just",
+	"let",
+	"me",
+	"my",
+	"now",
+	"of",
+	"on",
+	"or",
+	"our",
+	"please",
+	"so",
+	"that",
+	"the",
+	"them",
+	"this",
+	"to",
+	"up",
+	"we",
+	"when",
+	"with",
+	"you",
+	"your",
+]);
+
+const ACTION_OWNERSHIP_TRIGGER_PATTERNS = [
+	/\b(?:if|when)\b/iu,
+	/\b(?:upload|send over|send|attach)\b/iu,
+	/\b(?:remind|warning|warn|nudge|alert)\b/iu,
+	/\b(?:book|schedule|reschedule|follow up|bump|handoff|route|escalat|calls?)\b/iu,
+	/\b(?:cancel|push|move|meeting|meetings|partnership|next month)\b/iu,
+	/\b(?:remember|store|save|keep track|set (?:up|a|an)|policy|workflow)\b/iu,
+	/\b(?:asset|assets|checklist|owe|owed|deadline|slides|bio|portal)\b/iu,
+	/\b(?:sign|signature|appointment|clinic|docs?)\b/iu,
+];
+
+const ACTION_METADATA_FUTURE_HINTS =
+	/\b(?:standing|future|workflow|policy|approval|delegate|gated|queued?|queue|intervention|nudge|warning|upload|portal|browser|device|follow[- ]?up)\b/iu;
+
+type ActionOwnershipSuggestion = {
+	actionName: string;
+	score: number;
+	secondBestScore: number;
+	reasons: string[];
+};
+
+type ActionOwnershipCandidate = {
+	actionName: string;
+	score: number;
+	reasons: string[];
+};
+
+function tokenizeOwnershipText(text: string): string[] {
+	return text
+		.toLowerCase()
+		.split(/[^a-z0-9]+/u)
+		.map((token) => token.trim())
+		.filter(
+			(token) => token.length >= 2 && !ACTION_OWNERSHIP_STOPWORDS.has(token),
+		);
+}
+
+function buildTokenSet(text: string): Set<string> {
+	return new Set(tokenizeOwnershipText(text));
+}
+
+function exampleContentText(action: Action): string[] {
+	return (action.examples ?? []).flatMap((example) =>
+		example.flatMap((turn) => {
+			const text =
+				typeof turn.content?.text === "string" ? turn.content.text.trim() : "";
+			return text.length > 0 ? [text] : [];
+		}),
+	);
+}
+
+function splitActionMetadataText(value: string): string[] {
+	const trimmed = value.trim();
+	if (trimmed.length === 0) {
+		return [];
+	}
+	return trimmed
+		.split(/(?:[\r\n]+|(?<=[.!?;])\s+)/u)
+		.map((chunk) => chunk.trim())
+		.filter((chunk) => chunk.length > 0);
+}
+
+function actionMetadataTexts(action: Action): string[] {
+	return [
+		action.name,
+		action.description,
+		action.descriptionCompressed,
+		...(action.tags ?? []),
+		...(action.similes ?? []),
+		...exampleContentText(action),
+	]
+		.filter(
+			(value): value is string =>
+				typeof value === "string" && value.trim().length > 0,
+		)
+		.flatMap((value) => splitActionMetadataText(value));
+}
+
+function scoreActionOwnershipMatch(
+	messageText: string,
+	action: Action,
+): { score: number; reasons: string[] } {
+	const messageTokens = buildTokenSet(messageText);
+	if (messageTokens.size === 0) {
+		return { score: 0, reasons: [] };
+	}
+
+	let score = 0;
+	const reasons: string[] = [];
+	let bestExampleScore = 0;
+	const normalizedMessage = messageText.toLowerCase();
+	const actionMetadataBlob = actionMetadataTexts(action)
+		.join(" ")
+		.toLowerCase();
+
+	for (const chunk of actionMetadataTexts(action)) {
+		const chunkTokens = buildTokenSet(chunk);
+		if (chunkTokens.size === 0) {
+			continue;
+		}
+		const overlap = [...messageTokens].filter((token) =>
+			chunkTokens.has(token),
+		);
+		if (overlap.length === 0) {
+			continue;
+		}
+		const normalizedChunk = chunk.toLowerCase();
+		const overlapRatio = overlap.length / Math.max(3, chunkTokens.size);
+		if (
+			/\b(?:do not use this for|don't use this for|not for|belongs? to)\b/iu.test(
+				normalizedChunk,
+			)
+		) {
+			score -= overlap.length * 1.25 + overlapRatio;
+			if (overlap.length >= 2) {
+				reasons.push(`negative:${overlap.slice(0, 4).join(",")}`);
+			}
+			continue;
+		}
+		score += overlap.length * 1.25 + overlapRatio;
+		if (overlap.length >= 2) {
+			reasons.push(`overlap:${overlap.slice(0, 4).join(",")}`);
+		}
+
+		if (
+			normalizedChunk.length > 12 &&
+			(normalizedMessage.includes(normalizedChunk) ||
+				normalizedChunk.includes(normalizedMessage))
+		) {
+			score += 3;
+			reasons.push("phrase");
+		}
+
+		const exampleTokens = tokenizeOwnershipText(chunk);
+		if (exampleTokens.length >= 3) {
+			const exampleOverlap = overlap.length / exampleTokens.length;
+			if (exampleOverlap > bestExampleScore) {
+				bestExampleScore = exampleOverlap;
+			}
+		}
+	}
+
+	if (bestExampleScore >= 0.6) {
+		score += 4;
+		reasons.push("example");
+	}
+
+	if (
+		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
+			messageText,
+		) &&
+		/\b(?:sleep window|no-call|blackout|preferred hours?|meeting preferences|scheduling rules)\b/iu.test(
+			actionMetadataBlob,
+		)
+	) {
+		score += 4;
+		reasons.push("schedule-policy");
+	}
+
+	if (
+		ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
+			pattern.test(messageText),
+		) &&
+		ACTION_METADATA_FUTURE_HINTS.test(
+			[action.description, ...(action.tags ?? []), ...(action.similes ?? [])]
+				.filter(Boolean)
+				.join(" "),
+		)
+	) {
+		score += 2;
+		reasons.push("workflow");
+	}
+
+	return { score, reasons };
+}
+
+function findDirectOwnedActionSuggestion(
+	runtime: Pick<IAgentRuntime, "actions">,
+	messageText: string,
+): ActionOwnershipSuggestion | null {
+	if (
+		/\b(?:no calls? between|sleep window|blackout|preferred hours?|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
+			messageText,
+		)
+	) {
+		const ownerCalendarAction = (runtime.actions ?? []).find((action) => {
+			const normalizedName = normalizeActionIdentifier(action.name);
+			if (normalizedName === normalizeActionIdentifier("OWNER_CALENDAR")) {
+				return true;
+			}
+			return (action.similes ?? []).some(
+				(simile) =>
+					normalizeActionIdentifier(simile) ===
+						normalizeActionIdentifier("UPDATE_MEETING_PREFERENCES") ||
+					normalizeActionIdentifier(simile) ===
+						normalizeActionIdentifier("NO_CALL_HOURS") ||
+					normalizeActionIdentifier(simile) ===
+						normalizeActionIdentifier("PROTECT_SLEEP"),
+			);
+		});
+		if (ownerCalendarAction) {
+			return {
+				actionName: ownerCalendarAction.name,
+				score: 100,
+				secondBestScore: 0,
+				reasons: ["direct:schedule-policy"],
+			};
+		}
+	}
+
+	return null;
+}
+
+export function suggestOwnedActionFromMetadata(
+	runtime: Pick<IAgentRuntime, "actions">,
+	message: Pick<Memory, "content">,
+): ActionOwnershipSuggestion | null {
+	const messageText = getUserMessageText(message);
+	if (
+		messageText.length === 0 ||
+		!ACTION_OWNERSHIP_TRIGGER_PATTERNS.some((pattern) =>
+			pattern.test(messageText),
+		)
+	) {
+		return null;
+	}
+
+	const directSuggestion = findDirectOwnedActionSuggestion(
+		runtime,
+		messageText,
+	);
+	if (directSuggestion) {
+		return directSuggestion;
+	}
+
+	const ranked: ActionOwnershipCandidate[] = (runtime.actions ?? [])
+		.filter((action) => {
+			const normalized = normalizeActionIdentifier(action.name);
+			return (
+				normalized.length > 0 &&
+				!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(normalized) &&
+				normalized !== normalizeActionIdentifier("IGNORE") &&
+				normalized !== normalizeActionIdentifier("STOP")
+			);
+		})
+		.map((action) => ({
+			actionName: action.name,
+			...scoreActionOwnershipMatch(messageText, action),
+		}))
+		.filter((candidate) => candidate.score > 0)
+		.sort((left, right) => right.score - left.score);
+
+	if (ranked.length === 0) {
+		return null;
+	}
+
+	const best = ranked[0];
+	const secondBestScore = ranked[1]?.score ?? 0;
+	if (best.score < 8 || best.score - secondBestScore < 1.5) {
+		return null;
+	}
+
+	return {
+		actionName: best.actionName,
+		score: best.score,
+		secondBestScore,
+		reasons: best.reasons,
+	};
+}
+
+export function findOwnedActionCorrectionFromMetadata(
+	runtime: Pick<IAgentRuntime, "actions">,
+	message: Pick<Memory, "content">,
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): ActionOwnershipSuggestion | null {
+	const hasExplicitIntent = (responseContent?.actions ?? []).some(
+		(actionName) =>
+			typeof actionName === "string" &&
+			EXPLICIT_INTENT_ACTIONS.has(normalizeActionIdentifier(actionName)),
+	);
+	if (hasExplicitIntent) {
+		return null;
+	}
+
+	const currentAction = responseContent?.actions?.find(
+		(actionName) =>
+			typeof actionName === "string" &&
+			!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
+				normalizeActionIdentifier(actionName),
+			) &&
+			normalizeActionIdentifier(actionName) !==
+				normalizeActionIdentifier("IGNORE") &&
+			normalizeActionIdentifier(actionName) !==
+				normalizeActionIdentifier("STOP"),
+	);
+	if (!currentAction) {
+		return null;
+	}
+
+	const suggestion = suggestOwnedActionFromMetadata(runtime, message);
+	if (!suggestion) {
+		return null;
+	}
+
+	if (
+		normalizeActionIdentifier(suggestion.actionName) ===
+		normalizeActionIdentifier(currentAction)
+	) {
+		return null;
+	}
+
+	const currentActionDef = (runtime.actions ?? []).find(
+		(action) =>
+			normalizeActionIdentifier(action.name) ===
+			normalizeActionIdentifier(currentAction),
+	);
+	const currentScore = currentActionDef
+		? scoreActionOwnershipMatch(
+				typeof message.content?.text === "string" ? message.content.text : "",
+				currentActionDef,
+			).score
+		: 0;
+	if (suggestion.score - currentScore < 4) {
+		return null;
+	}
+
+	return suggestion;
+}
+
+function hasNonPassiveAction(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	return (
+		responseContent?.actions?.some(
+			(actionName) =>
+				typeof actionName === "string" &&
+				!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
+					normalizeActionIdentifier(actionName),
+				) &&
+				normalizeActionIdentifier(actionName) !==
+					normalizeActionIdentifier("IGNORE") &&
+				normalizeActionIdentifier(actionName) !==
+					normalizeActionIdentifier("STOP"),
+		) ?? false
+	);
+}
+
+function shouldAttemptActionRescue(
+	runtime: Pick<IAgentRuntime, "actions">,
+	message: Memory,
+	state: State,
+	responseContent:
+		| Pick<Content, "actions" | "providers" | "text">
+		| null
+		| undefined,
+): boolean {
+	if (!responseContent) {
+		return false;
+	}
+
+	if (hasNonPassiveAction(responseContent)) {
+		return false;
+	}
+
+	if (looksLikeNonActionableChatter(message)) {
+		return false;
+	}
+
+	const availableActionNames =
+		typeof state.values?.actionNames === "string"
+			? state.values.actionNames
+			: "";
+	if (
+		availableActionNames.trim().length === 0 &&
+		(runtime.actions?.length ?? 0) === 0
+	) {
+		return false;
+	}
+
+	return true;
+}
+
+function getMessageText(message: Memory): string {
+	return getUserMessageText(message);
+}
+
+function looksLikeOwnershipSensitiveRequest(message: Memory): boolean {
+	const text = getMessageText(message).toLowerCase();
+	if (!text) {
+		return false;
+	}
+
+	return [
+		/\bif\b/,
+		/\bwhen\b/,
+		/\bwhenever\b/,
+		/\bapproval\b/,
+		/\bapprove\b/,
+		/\bgood with you\b/,
+		/\bif needed\b/,
+		/\brebook\b/,
+		/\bgroup chat\b/,
+		/\bhandoff\b/,
+		/\bbump me again\b/,
+		/\bwith context\b/,
+		/\bwhat .* still owe\b/,
+		/\bslides\b/,
+		/\bportal assets?\b/,
+		/\bupdated copy\b/,
+		/\bexpired\b/,
+		/\bcancellation fee\b/,
+		/\bimportant meetings?\b/,
+		/\bstuck\b/,
+		/\bupload it to the portal\b/,
+	].some((pattern) => pattern.test(text));
+}
+
+function shouldAttemptOwnershipRepair(
+	runtime: Pick<IAgentRuntime, "actions">,
+	message: Memory,
+	state: State,
+	responseContent:
+		| Pick<Content, "actions" | "providers" | "text">
+		| null
+		| undefined,
+): boolean {
+	if (!responseContent || !hasNonPassiveAction(responseContent)) {
+		return false;
+	}
+
+	if (looksLikeNonActionableChatter(message)) {
+		return false;
+	}
+
+	const availableActionNames =
+		typeof state.values?.actionNames === "string"
+			? state.values.actionNames
+			: "";
+	if (
+		availableActionNames.trim().length === 0 &&
+		(runtime.actions?.length ?? 0) === 0
+	) {
+		return false;
+	}
+
+	const normalizedActions = (responseContent.actions ?? [])
+		.map((actionName) =>
+			typeof actionName === "string"
+				? normalizeActionIdentifier(actionName)
+				: "",
+		)
+		.filter((actionName) => actionName.length > 0);
+	if (normalizedActions.length !== 1) {
+		return false;
+	}
+
+	return (
+		ROUTING_REASSESS_ACTIONS.has(normalizedActions[0]) &&
+		looksLikeOwnershipSensitiveRequest(message)
+	);
+}
+
+function buildOwnershipRepairPrompt(
+	basePrompt: string,
+	selectedActionName: string,
+	draftReply: string,
+): string {
+	const trimmedDraftReply = draftReply.trim();
+	const draftSection =
+		trimmedDraftReply.length > 0
+			? `\n[PREVIOUS DRAFT REPLY]\n${trimmedDraftReply.replace(/<\/response>/gi, "<\\/response>")}\n`
+			: "";
+
+	return `${basePrompt}
+
+[OWNERSHIP REPAIR]
+The previous plan selected ${selectedActionName}, but that action may be too broad or the wrong surface.
+Re-evaluate the request and choose the single best owning action from the listed actions above.
+Prefer the most specific owning action for inbox coordination, calendar conflict/rebooking, approval-gated travel booking, browser/portal workflows, device-warning policies, or owner-escalation workflows.
+Generic contextual bump rules about unanswered events belong to OWNER_INBOX or LIFE, not PUBLISH_DEVICE_INTENT, unless the owner explicitly asks for device-wide phone/desktop/mobile delivery.
+Missing-ID or blocked-workflow prompts belong to PUBLISH_DEVICE_INTENT, CALL_USER, CROSS_CHANNEL_SEND, or OWNER_INBOX, not LIFEOPS_COMPUTER_USE, unless the assistant is actually operating a browser, portal, or file surface on the owner's machine.
+Outstanding slides, bios, titles, portal assets, drafts, and other "what do I still owe?" questions belong to the owning inbox/calendar/browser action, not to LIFE unless the request is explicitly about personal todo/habit state.
+Cancellation-fee warnings and "warn me and offer to handle it now" policies belong to device-intent, calendar, or call escalation actions, not to SUBSCRIPTIONS unless the user explicitly asks to audit, cancel, or status-check a named subscription.
+Flight-conflict rebooking belongs to OWNER_CALENDAR even when the exact flight time or event ID still needs a follow-up.
+If the current action is already the most specific owner, keep it.${draftSection}`;
+}
+
+function shouldAttemptProviderRescue(
+	responseContent: Pick<Content, "actions" | "providers"> | null | undefined,
+): boolean {
+	if (!responseContent) {
+		return false;
+	}
+
+	if ((responseContent.providers?.length ?? 0) > 0) {
+		return false;
+	}
+
+	const normalizedActions = (responseContent.actions ?? [])
+		.map((actionName) =>
+			typeof actionName === "string"
+				? normalizeActionIdentifier(actionName)
+				: "",
+		)
+		.filter((actionName) => actionName.length > 0);
+
+	if (normalizedActions.length === 0) {
+		return true;
+	}
+
+	return normalizedActions.every((actionName) =>
+		PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(actionName),
+	);
+}
+
+function buildProviderSelectionPrompt(draftReply?: string): string {
+	const trimmedDraftReply = draftReply?.trim() ?? "";
+	const draftReplySection =
+		trimmedDraftReply.length > 0
+			? `draft_reply:\n${trimmedDraftReply.replace(/<\/response>/gi, "<\\/response>")}\n\n`
+			: "";
+	const draftReplyRules =
+		trimmedDraftReply.length > 0
+			? [
+					"- if the draft reply asks the user to resend, restate, or clarify information that may already exist in provider context, choose the relevant providers instead of sending the draft reply as-is",
+					'- when the recent conversation already identifies a prior upload or knowledge-base question, prefer grounded provider lookup over asking "which file?" again',
+				]
+			: [];
+	return `task: Decide whether any providers should be called before sending the assistant's reply.
+
+recent conversation:
+{{recentMessages}}
+
+${draftReplySection}rules[${4 + draftReplyRules.length}]:
+- choose providers only when they can supply grounded information needed before the assistant replies
+- uploaded files, documents, prior uploads, and knowledge-base questions should use the relevant providers before asking the user to resend the material
+- if the user asks about an uploaded file or document and AVAILABLE_DOCUMENTS is available, prefer AVAILABLE_DOCUMENTS together with KNOWLEDGE before sending any clarification reply
+- return an empty providers field when no provider lookup is needed
+- do not include actions, text, or thought in the output
+${draftReplyRules.join("\n")}
+
+output:
+Return JSON or XML containing only provider names. No prose before or after it. No <think>.
+
+Examples:
+- user asks: "what is the qa codeword from the uploaded file?"
+  draft reply: "Which file are you referring to?"
+  output: {"providers":["AVAILABLE_DOCUMENTS","KNOWLEDGE"]}
+- user asks: "what is the qa codeword from the uploaded file?"
+  draft reply: "I don't have the file in my context. Which file contains the QA codeword?"
+  output: {"providers":["AVAILABLE_DOCUMENTS","KNOWLEDGE"]}
+- user asks: "thanks, that's all"
+  draft reply: "Glad to help."
+  output: {"providers":[]}`;
+}
+
+async function recoverProvidersForTurn(args: {
+	runtime: IAgentRuntime;
+	state: State;
+	draftReply?: string;
+	attachments?: GenerateTextAttachment[];
+}): Promise<string[]> {
+	const prompt = composePromptFromState({
+		state: args.state,
+		template: buildProviderSelectionPrompt(args.draftReply),
+	});
+
+	try {
+		const result = await args.runtime.useModel(ModelType.TEXT_LARGE, {
+			prompt,
+			...(args.attachments ? { attachments: args.attachments } : {}),
+		});
+		const rawResponse = typeof result === "string" ? result : "";
+		const parsed =
+			parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+			parseJSONObjectFromText(rawResponse);
+		const normalizedProviders = normalizePlannerProviders(
+			parsed ?? { providers: rawResponse },
+			args.runtime,
+		);
+		if (normalizedProviders.length > 0) {
+			return normalizedProviders;
+		}
+		const shouldUseKnowledge = await shouldUseKnowledgeProviders(
+			args.runtime,
+			args.state,
+			args.attachments,
+		);
+		return shouldUseKnowledge ? ["AVAILABLE_DOCUMENTS", "KNOWLEDGE"] : [];
+	} catch (error) {
+		args.runtime.logger.warn(
+			{
+				src: "service:message",
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Provider rescue model call failed",
+		);
+		return [];
+	}
+}
+
+function buildGroundedFallbackReplyPrompt(): string {
+	return `task: Write the next assistant reply using grounded context.
+
+grounded context:
+{{providers}}
+
+recent conversation:
+{{recentMessages}}
+
+rules[5]:
+- answer directly from grounded context when it fully answers the user
+- do not ask the user to resend, rename, or specify a file if grounded document or knowledge context already answers the request
+- do not say you cannot access the file when grounded context is already present above
+- if KNOWLEDGE contains a direct answer, prefer that grounded answer even when AVAILABLE_DOCUMENTS lists multiple files
+- if grounded context is still insufficient, say exactly what is missing
+- return only the reply text
+
+output:
+Plain text only. No XML, JSON, TOON, bullets, or <think>.`;
+}
+
+function buildKnowledgeProviderDecisionPrompt(): string {
+	return `task: Decide whether the assistant should consult uploaded-document or knowledge providers before replying.
+
+recent conversation:
+{{recentMessages}}
+
+rules[5]:
+- return true when the user is asking about an uploaded file, document, prior upload, or knowledge-base content
+- return true when the answer is likely already stored in uploaded documents or semantic knowledge search
+- when AVAILABLE_DOCUMENTS or KNOWLEDGE is available and the user refers to an uploaded file or prior upload, return true
+- return false for generic chat, thanks, or requests that clearly do not depend on uploaded or knowledge-base content
+- return only the structured output, with no prose
+
+output:
+Return JSON or XML only.
+
+Examples:
+- user asks: "what is the qa codeword from the uploaded file?" -> {"useKnowledgeProviders":true}
+- user asks: "thanks, that's all" -> {"useKnowledgeProviders":false}`;
+}
+
+async function shouldUseKnowledgeProviders(
+	runtime: IAgentRuntime,
+	state: State,
+	attachments?: GenerateTextAttachment[],
+): Promise<boolean> {
+	const prompt = composePromptFromState({
+		state,
+		template: buildKnowledgeProviderDecisionPrompt(),
+	});
+
+	try {
+		const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+			prompt,
+			...(attachments ? { attachments } : {}),
+		});
+		const rawResponse = typeof result === "string" ? result : "";
+		const parsed =
+			parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
+			parseJSONObjectFromText(rawResponse);
+		const value =
+			parsed?.useKnowledgeProviders ??
+			parsed?.use_knowledge_providers ??
+			rawResponse;
+		if (typeof value === "boolean") {
+			return value;
+		}
+		if (typeof value === "string") {
+			return value.trim().toLowerCase() === "true";
+		}
+		return false;
+	} catch (error) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Knowledge provider decision model call failed",
+		);
+		return false;
+	}
+}
+
+function buildRuntimeActionLookup(
+	runtime: Pick<IAgentRuntime, "actions">,
+): Map<string, Action> {
 	const actionMap = new Map<string, Action>();
 
 	for (const action of runtime.actions ?? []) {
@@ -659,34 +2310,90 @@ function suppressesPostActionContinuation(
 	});
 }
 
-function stripPlannerReplyForSuppressiveActions(
+/**
+ * True when the planner's `text` field should be surfaced to the user as a
+ * preamble before action handlers run in actions-mode dispatch. The goal:
+ * the user sees "checking your inbox" rather than silence while INBOX/GMAIL
+ * do their work.
+ *
+ * Skipped when the first action is REPLY (the REPLY handler generates its own
+ * text), IGNORE (no user-visible response), or STOP (terminal). Also skipped
+ * when `text` is empty.
+ */
+export function shouldEmitPlannerPreamble(
 	runtime: IAgentRuntime,
-	responseContent: Content | null | undefined,
-): void {
-	if (!responseContent?.actions?.length) {
-		return;
+	responseContent: Pick<Content, "text" | "actions"> | null | undefined,
+): boolean {
+	if (!responseContent) return false;
+	const text =
+		typeof responseContent.text === "string" ? responseContent.text.trim() : "";
+	if (text.length === 0) return false;
+
+	const firstAction =
+		typeof responseContent.actions?.[0] === "string"
+			? responseContent.actions[0]
+			: "";
+	if (firstAction.length === 0) return false;
+
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const resolvedAction = resolveRuntimeAction(actionLookup, firstAction);
+	if (resolvedAction?.suppressPostActionContinuation) {
+		return false;
 	}
-	if (!suppressesPostActionContinuation(runtime, responseContent)) {
-		return;
+
+	const normalizedFirstAction = normalizeActionIdentifier(firstAction);
+
+	return (
+		normalizedFirstAction !== normalizeActionIdentifier("REPLY") &&
+		normalizedFirstAction !== normalizeActionIdentifier("IGNORE") &&
+		normalizedFirstAction !== normalizeActionIdentifier("STOP")
+	);
+}
+
+export function stripReplyWhenActionOwnsTurn(
+	runtime: Pick<IAgentRuntime, "actions" | "logger">,
+	actions: readonly string[] | null | undefined,
+): string[] {
+	if (!actions || actions.length <= 1) {
+		return Array.isArray(actions) ? [...actions] : [];
+	}
+
+	const normalizedReply = normalizeActionIdentifier("REPLY");
+	const hasReply = actions.some(
+		(action) => normalizeActionIdentifier(action) === normalizedReply,
+	);
+	if (!hasReply) {
+		return [...actions];
 	}
 
 	const actionLookup = buildRuntimeActionLookup(runtime);
-	const filteredActions = responseContent.actions.filter((action) => {
-		if (typeof action !== "string") return true;
-		const canonicalAction =
-			resolveRuntimeAction(actionLookup, action)?.name ?? action;
+	const ownedActions = actions.filter((action) => {
+		const normalized = normalizeActionIdentifier(action);
+		if (!normalized || normalized === normalizedReply) {
+			return false;
+		}
 		return (
-			normalizeActionIdentifier(canonicalAction) !==
-			normalizeActionIdentifier("REPLY")
+			resolveRuntimeAction(actionLookup, action)
+				?.suppressPostActionContinuation === true
 		);
 	});
-	if (filteredActions.length > 0) {
-		responseContent.actions = filteredActions;
+	if (ownedActions.length === 0) {
+		return [...actions];
 	}
 
-	if (typeof responseContent.text === "string" && responseContent.text.trim()) {
-		responseContent.text = "";
-	}
+	const filtered = actions.filter(
+		(action) => normalizeActionIdentifier(action) !== normalizedReply,
+	);
+	runtime.logger.info(
+		{
+			src: "service:message",
+			originalActions: actions,
+			filteredActions: filtered,
+			replySuppressedBy: ownedActions,
+		},
+		"Dropped REPLY because another selected action already owns the turn",
+	);
+	return filtered.length > 0 ? filtered : ["REPLY"];
 }
 
 function callbackTextPreview(content: Content | null | undefined): string {
@@ -700,6 +2407,18 @@ function callbackTextPreview(content: Content | null | undefined): string {
 	}
 
 	return text.replace(/\s+/g, " ").slice(0, 200);
+}
+
+function callbackHasVisibleOutput(
+	content: Content | null | undefined,
+): boolean {
+	if (!content || typeof content !== "object") {
+		return false;
+	}
+	if (typeof content.text === "string" && content.text.trim().length > 0) {
+		return true;
+	}
+	return Array.isArray(content.attachments) && content.attachments.length > 0;
 }
 
 function summarizeAttachmentKeyPart(url: string): string {
@@ -756,6 +2475,93 @@ function callbackDeliveryKey(content: Content | null | undefined): string {
 		text,
 		attachments: attachmentKeys,
 	});
+}
+
+export function wrapSingleTurnVisibleCallback(
+	runtime: Pick<IAgentRuntime, "agentId" | "logger">,
+	message: Pick<Memory, "id" | "roomId">,
+	callback?: HandlerCallback,
+): HandlerCallback | undefined {
+	if (!callback) {
+		return undefined;
+	}
+
+	let visibleCallbackCount = 0;
+	let firstVisibleCallbackPreview = "";
+	const deliveredCallbackKeys = new Set<string>();
+
+	return async (content, actionName) => {
+		const deliveryKey = callbackDeliveryKey(content);
+		const preview = callbackTextPreview(content);
+		const hasVisibleOutput = callbackHasVisibleOutput(content);
+
+		if (deliveryKey && deliveredCallbackKeys.has(deliveryKey)) {
+			runtime.logger.warn(
+				{
+					src: "service:message",
+					agentId: runtime.agentId,
+					messageId: message.id,
+					roomId: message.roomId,
+					action:
+						typeof (content as Record<string, unknown>)?.action === "string"
+							? String((content as Record<string, unknown>).action)
+							: actionName,
+					source:
+						typeof content.source === "string" ? content.source : undefined,
+					preview:
+						preview ||
+						(Array.isArray(content.attachments) &&
+						content.attachments.length > 0
+							? `[attachments:${content.attachments.length}]`
+							: ""),
+				},
+				"Suppressing duplicate visible callback reply emitted for a single turn",
+			);
+			return [];
+		}
+		if (hasVisibleOutput && visibleCallbackCount >= 1) {
+			runtime.logger.warn(
+				{
+					src: "service:message",
+					agentId: runtime.agentId,
+					messageId: message.id,
+					roomId: message.roomId,
+					callbackCount: visibleCallbackCount + 1,
+					action:
+						typeof (content as Record<string, unknown>)?.action === "string"
+							? String((content as Record<string, unknown>).action)
+							: actionName,
+					source:
+						typeof content.source === "string" ? content.source : undefined,
+					firstPreview: firstVisibleCallbackPreview,
+					currentPreview:
+						preview ||
+						(Array.isArray(content.attachments) &&
+						content.attachments.length > 0
+							? `[attachments:${content.attachments.length}]`
+							: ""),
+				},
+				"Suppressing additional visible callback reply emitted for a single turn",
+			);
+			return [];
+		}
+
+		if (deliveryKey) {
+			deliveredCallbackKeys.add(deliveryKey);
+		}
+		if (hasVisibleOutput) {
+			visibleCallbackCount += 1;
+			firstVisibleCallbackPreview =
+				preview ||
+				(Array.isArray(content.attachments) && content.attachments.length > 0
+					? `[attachments:${content.attachments.length}]`
+					: "");
+		}
+
+		return actionName === undefined
+			? callback(content)
+			: callback(content, actionName);
+	};
 }
 
 function getLatestVisibleReplyText(
@@ -827,38 +2633,10 @@ function shouldWaitForUserAfterIncompleteReflection(
 	});
 }
 
-function formatActionResultsForPrompt(actionResults: ActionResult[]): string {
-	if (actionResults.length === 0) {
-		return "No action results available.";
-	}
-
-	return [
-		"# Action Results",
-		...actionResults.map((result, index) => {
-			const actionNameValue = result.data?.actionName;
-			const actionName =
-				typeof actionNameValue === "string"
-					? actionNameValue
-					: "Unknown Action";
-			const lines = [
-				`${index + 1}. ${actionName} - ${result.success === false ? "failed" : "succeeded"}`,
-			];
-			if (typeof result.text === "string" && result.text.trim()) {
-				lines.push(`Output: ${result.text.trim().slice(0, 2000)}`);
-			}
-			if (result.error) {
-				const errorText =
-					result.error instanceof Error
-						? result.error.message
-						: String(result.error);
-				lines.push(`Error: ${errorText.slice(0, 1000)}`);
-			}
-			return lines.join("\n");
-		}),
-	].join("\n\n");
-}
-
-function withActionResults(state: State, actionResults: ActionResult[]): State {
+export function withActionResultsForPrompt(
+	state: State,
+	actionResults: ActionResult[],
+): State {
 	return {
 		...state,
 		values: {
@@ -870,6 +2648,33 @@ function withActionResults(state: State, actionResults: ActionResult[]): State {
 			actionResults,
 		},
 	};
+}
+
+const withActionResults = withActionResultsForPrompt;
+
+function preparePromptActionResult<T extends ActionResult>(
+	runtime: IAgentRuntime,
+	message: Memory,
+	result: T,
+): T {
+	for (const warning of collectActionResultSizeWarnings(result)) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				agentId: runtime.agentId,
+				messageId: message.id,
+				roomId: message.roomId,
+				action: warning.actionName,
+				field: warning.field,
+				rawCharLength: warning.rawCharLength,
+				estimatedTokens: warning.estimatedTokens,
+				thresholdTokens: warning.thresholdTokens,
+			},
+			"Action result exceeds prompt-size warning threshold",
+		);
+	}
+
+	return trimActionResultForPromptState(result);
 }
 
 function withTaskCompletion(
@@ -1132,6 +2937,19 @@ function prepareShouldRespondState(state: State): State {
 	};
 }
 
+function isBenchmarkMode(state: Pick<State, "values">): boolean {
+	const benchmarkFlag = state.values?.benchmark_has_context;
+	if (typeof benchmarkFlag === "boolean") {
+		return benchmarkFlag;
+	}
+
+	if (typeof benchmarkFlag === "string") {
+		return parseBooleanFromText(benchmarkFlag);
+	}
+
+	return false;
+}
+
 /**
  * Default implementation of the MessageService interface.
  * This service handles the complete message processing pipeline including:
@@ -1391,79 +3209,14 @@ export class DefaultMessageService implements IMessageService {
 							String(runtime.getSetting("BASIC_CAPABILITIES_KEEP_RESP") ?? ""),
 						),
 					shouldRespondModel: resolvedShouldRespondModel,
+					onBeforeActionExecution: options?.onBeforeActionExecution,
 				};
 
-				let visibleCallbackCount = 0;
-				let firstVisibleCallbackPreview = "";
-				const deliveredCallbackKeys = new Set<string>();
-				const instrumentedCallback: HandlerCallback | undefined = callback
-					? async (content, actionName) => {
-							const deliveryKey = callbackDeliveryKey(content);
-							const preview = callbackTextPreview(content);
-							if (deliveryKey && deliveredCallbackKeys.has(deliveryKey)) {
-								runtime.logger.warn(
-									{
-										src: "service:message",
-										agentId: runtime.agentId,
-										messageId: message.id,
-										roomId: message.roomId,
-										action:
-											typeof (content as Record<string, unknown>)?.action ===
-											"string"
-												? String((content as Record<string, unknown>).action)
-												: actionName,
-										source:
-											typeof content.source === "string"
-												? content.source
-												: undefined,
-										preview:
-											preview ||
-											(Array.isArray(content.attachments) &&
-											content.attachments.length > 0
-												? `[attachments:${content.attachments.length}]`
-												: ""),
-									},
-									"Suppressing duplicate visible callback reply emitted for a single turn",
-								);
-								return [];
-							}
-							if (deliveryKey) {
-								deliveredCallbackKeys.add(deliveryKey);
-							}
-							if (preview) {
-								visibleCallbackCount += 1;
-								if (visibleCallbackCount === 1) {
-									firstVisibleCallbackPreview = preview;
-								} else {
-									runtime.logger.warn(
-										{
-											src: "service:message",
-											agentId: runtime.agentId,
-											messageId: message.id,
-											roomId: message.roomId,
-											callbackCount: visibleCallbackCount,
-											action:
-												typeof (content as Record<string, unknown>)?.action ===
-												"string"
-													? String((content as Record<string, unknown>).action)
-													: actionName,
-											source:
-												typeof content.source === "string"
-													? content.source
-													: undefined,
-											firstPreview: firstVisibleCallbackPreview,
-											currentPreview: preview,
-										},
-										"Multiple visible callback replies emitted for a single turn",
-									);
-								}
-							}
-
-							return actionName === undefined
-								? callback(content)
-								: callback(content, actionName);
-						}
-					: undefined;
+				const instrumentedCallback = wrapSingleTurnVisibleCallback(
+					runtime,
+					message,
+					callback,
+				);
 
 				// Set up timeout monitoring
 				let timeoutId: NodeJS.Timeout | undefined;
@@ -1765,6 +3518,9 @@ export class DefaultMessageService implements IMessageService {
 					// Ensure latestResponseIds is cleaned up even if processMessage
 					// threw before reaching its own cleanup at the end of the method.
 					clearLatestResponseId(runtime.agentId, message.roomId, responseId);
+					if (message.id) {
+						runtime.stateCache.delete(`${message.id}_action_results`);
+					}
 				}
 			},
 		);
@@ -1950,12 +3706,7 @@ export class DefaultMessageService implements IMessageService {
 		);
 
 		// Compose initial state (after incoming hooks so providers/actions text matches this turn)
-		let state = await runtime.composeState(
-			message,
-			["ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
-			true,
-			false,
-		);
+		let state = await composeResponseState(runtime, message);
 		state = attachAvailableContexts(state, runtime);
 
 		const metadata =
@@ -2010,6 +3761,46 @@ export class DefaultMessageService implements IMessageService {
 				"parallel_with_should_respond",
 				parallelHookCtx,
 			);
+		} else if (!hasTextGenerationHandler(runtime)) {
+			await runtime.applyPipelineHooks(
+				"parallel_with_should_respond",
+				parallelHookCtx,
+			);
+			// Skip LLM should-respond classification when no text delegate is
+			// registered — `dynamicPromptExecFromState` would throw "No handler found".
+			// Still apply the same non-LLM gates as `runNonAutonomousShouldRespondClassify`:
+			// only respond for DM / mention / reply / whitelisted source / etc. Ambiguous
+			// group traffic that would need the classifier must not auto-reply with
+			// NO_LLM_PROVIDER_REPLY (channel flood).
+			const checkShouldRespondEnabled = runtime.isCheckShouldRespondEnabled();
+			const responseDecision = this.shouldRespond(
+				runtime,
+				message,
+				room ?? undefined,
+				mentionContext,
+			);
+			if (!checkShouldRespondEnabled) {
+				shouldRespondToMessage = true;
+			} else if (responseDecision.skipEvaluation) {
+				routedDecision = parseContextRoutingMetadata(
+					responseDecision as unknown as Record<string, unknown>,
+				);
+				setContextRoutingMetadata(message, routedDecision);
+				shouldRespondToMessage = responseDecision.shouldRespond;
+			} else {
+				runtime.logger.debug(
+					{
+						src: "service:message",
+						agentId: runtime.agentId,
+						reason: responseDecision.reason,
+					},
+					"No text-generation handler: skipping message that requires LLM should-respond",
+				);
+				shouldRespondToMessage = false;
+			}
+			terminalDecision = null;
+			dualPressureLog = null;
+			shouldRespondClassifierAction = null;
 		} else {
 			const [classifyOutcome] = await Promise.all([
 				this.runNonAutonomousShouldRespondClassify(
@@ -2058,12 +3849,7 @@ export class DefaultMessageService implements IMessageService {
 				runtime.stateCache.delete(message.id);
 				runtime.stateCache.delete(`${message.id}_action_results`);
 			}
-			state = await runtime.composeState(
-				message,
-				["ENTITIES", "CHARACTER", "RECENT_MESSAGES", "ACTIONS"],
-				true,
-				false,
-			);
+			state = await composeResponseState(runtime, message);
 			state = attachAvailableContexts(state, runtime);
 		}
 
@@ -2081,8 +3867,10 @@ export class DefaultMessageService implements IMessageService {
 
 		if (shouldRespondToMessage) {
 			const resolvedRouting = mergeContextRouting(state, message);
+			const hasResolvedRouting =
+				getActiveRoutingContexts(resolvedRouting).length > 0;
 			let executionState = state;
-			if (routedDecision) {
+			if (hasResolvedRouting) {
 				executionState = withContextRoutingValues(
 					await runtime.composeState(
 						message,
@@ -2152,13 +3940,91 @@ export class DefaultMessageService implements IMessageService {
 				responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
 			}
 
+			const providerStateValues = {
+				[AVAILABLE_CONTEXTS_STATE_KEY]:
+					state.values?.[AVAILABLE_CONTEXTS_STATE_KEY],
+				[CONTEXT_ROUTING_STATE_KEY]: state.values?.[CONTEXT_ROUTING_STATE_KEY],
+			};
+
 			if (responseContent?.providers && responseContent.providers.length > 0) {
-				state = await runtime.composeState(
-					message,
-					responseContent.providers,
-					false,
-					false,
+				state = withContextRoutingValues(
+					await composeProviderGroundedResponseState(
+						runtime,
+						message,
+						responseContent.providers,
+					),
+					providerStateValues,
 				);
+			}
+
+			if (responseContent && shouldRunProviderFollowup(responseContent)) {
+				const providerFollowupState =
+					responseContent.providers && responseContent.providers.length > 0
+						? withContextRoutingValues(
+								await composeFocusedProviderReplyState(
+									runtime,
+									message,
+									responseContent.providers,
+								),
+								providerStateValues,
+							)
+						: state;
+				runtime.logger.info(
+					{
+						src: "service:message",
+						providers: responseContent.providers ?? [],
+						actions: responseContent.actions ?? [],
+					},
+					"Running provider follow-up pass",
+				);
+				const providerContinuation = await this.runSingleShotCore(
+					runtime,
+					message,
+					providerFollowupState,
+					opts,
+					responseId,
+					promptAttachments,
+					{
+						precomposedState: providerFollowupState,
+						failureStage: "answering from requested provider results",
+						providerFollowup: true,
+					},
+				);
+				responseContent = providerContinuation.responseContent;
+				responseMessages = providerContinuation.responseMessages;
+				state = providerContinuation.state;
+				mode = providerContinuation.mode;
+
+				if (responseContent && message.id) {
+					responseContent.inReplyTo = createUniqueUuid(runtime, message.id);
+				}
+
+				runtime.logger.info(
+					{
+						src: "service:message",
+						finalActions: responseContent?.actions ?? [],
+						finalProviders: responseContent?.providers ?? [],
+						hasText:
+							typeof responseContent?.text === "string" &&
+							responseContent.text.length > 0,
+					},
+					"Provider follow-up pass completed",
+				);
+
+				if (
+					responseContent?.providers &&
+					responseContent.providers.length > 0
+				) {
+					state = withContextRoutingValues(
+						await runtime.composeState(
+							message,
+							responseContent.providers,
+							false,
+							false,
+						),
+						providerStateValues,
+					);
+				}
 			}
 
 			// Save response memory to database.
@@ -2241,6 +4107,7 @@ export class DefaultMessageService implements IMessageService {
 					}
 					pendingSimpleEmit = responseContent;
 				} else if (mode === "actions") {
+					await invokeOnBeforeActionExecution(opts, runtime, message);
 					// Pass onStreamChunk to processActions so each action can manage its own streaming context
 					await runtime.processActions(
 						message,
@@ -2422,7 +4289,7 @@ export class DefaultMessageService implements IMessageService {
 
 		await runEvaluate();
 
-		if (opts.continueAfterActions && message.id) {
+		if (opts.continueAfterActions && message.id && !isBenchmarkMode(state)) {
 			const taskCompletion = await runtime.getCache<TaskCompletionAssessment>(
 				getTaskCompletionCacheKey(message.id),
 			);
@@ -2679,11 +4546,21 @@ export class DefaultMessageService implements IMessageService {
 			};
 			const shouldRespondState = prepareShouldRespondState(workingState);
 
+			const optimizedPromptService = runtime.getService<OptimizedPromptService>(
+				OPTIMIZED_PROMPT_SERVICE,
+			);
+			const baselineShouldRespond =
+				runtime.character.templates?.shouldRespondTemplate ||
+				shouldRespondTemplate;
+			const resolvedShouldRespondTemplate = resolveOptimizedPrompt(
+				optimizedPromptService,
+				"should_respond",
+				baselineShouldRespond,
+			);
+
 			const _shouldRespondPrompt = composePromptFromState({
 				state: shouldRespondState,
-				template:
-					runtime.character.templates?.shouldRespondTemplate ||
-					shouldRespondTemplate,
+				template: resolvedShouldRespondTemplate,
 			});
 
 			runtime.logger.debug(
@@ -2700,9 +4577,7 @@ export class DefaultMessageService implements IMessageService {
 			const responseObject = await runtime.dynamicPromptExecFromState({
 				state: shouldRespondState,
 				params: {
-					prompt:
-						runtime.character.templates?.shouldRespondTemplate ||
-						shouldRespondTemplate,
+					prompt: resolvedShouldRespondTemplate,
 					...(promptAttachments ? { attachments: promptAttachments } : {}),
 				},
 				schema: [
@@ -2838,7 +4713,6 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespond: false,
 				skipEvaluation: true,
 				reason: "no room context",
-				primaryContext: "general",
 			};
 		}
 
@@ -2899,7 +4773,6 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespond: true,
 				skipEvaluation: true,
 				reason: `private channel: ${roomType}`,
-				primaryContext: "general",
 			};
 		}
 
@@ -2909,7 +4782,6 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespond: true,
 				skipEvaluation: true,
 				reason: `whitelisted source: ${sourceStr}`,
-				primaryContext: "general",
 			};
 		}
 
@@ -2923,7 +4795,6 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespond: true,
 				skipEvaluation: true,
 				reason: `platform ${mentionType}`,
-				primaryContext: "general",
 			};
 		}
 
@@ -2934,7 +4805,6 @@ export class DefaultMessageService implements IMessageService {
 				shouldRespond: true,
 				skipEvaluation: true,
 				reason: "text address with tagged participants",
-				primaryContext: "general",
 			};
 		}
 
@@ -3031,8 +4901,17 @@ export class DefaultMessageService implements IMessageService {
 						imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
 					}
 
+					const optimizedMediaService =
+						runtime.getService<OptimizedPromptService>(
+							OPTIMIZED_PROMPT_SERVICE,
+						);
+					const resolvedImagePrompt = resolveOptimizedPrompt(
+						optimizedMediaService,
+						"media_description",
+						imageDescriptionTemplate,
+					);
 					const response = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, {
-						prompt: imageDescriptionTemplate,
+						prompt: resolvedImagePrompt,
 						imageUrl,
 					});
 
@@ -3343,11 +5222,10 @@ export class DefaultMessageService implements IMessageService {
 			if (responseContent.providers && responseContent.providers.length > 0) {
 				accumulatedState = withActionResults(
 					withContextRoutingValues(
-						await runtime.composeState(
+						await composeProviderGroundedResponseState(
+							runtime,
 							message,
 							responseContent.providers,
-							false,
-							false,
 						),
 						contextRoutingStateValues,
 					),
@@ -3411,6 +5289,7 @@ export class DefaultMessageService implements IMessageService {
 				break;
 			}
 
+			await invokeOnBeforeActionExecution(opts, runtime, message);
 			await runtime.processActions(
 				message,
 				continuation.responseMessages,
@@ -3524,11 +5403,10 @@ export class DefaultMessageService implements IMessageService {
 			accumulatedState = withTaskCompletion(
 				withActionResults(
 					withContextRoutingValues(
-						await runtime.composeState(
+						await composeProviderGroundedResponseState(
+							runtime,
 							message,
 							responseContent.providers,
-							false,
-							false,
 						),
 						contextRoutingStateValues,
 					),
@@ -3603,6 +5481,7 @@ export class DefaultMessageService implements IMessageService {
 			};
 		}
 
+		await invokeOnBeforeActionExecution(opts, runtime, message);
 		await runtime.processActions(
 			message,
 			continuation.responseMessages,
@@ -3672,11 +5551,13 @@ export class DefaultMessageService implements IMessageService {
 			prompt?: string;
 			precomposedState?: State;
 			failureStage?: string;
+			providerFollowup?: boolean;
 		},
 	): Promise<StrategyResult> {
 		state =
 			overrides?.precomposedState ??
-			(await runtime.composeState(message, ["ACTIONS"], false, false));
+			(await composeStructuredResponseState(runtime, message));
+		state = ensureActionStateValues(runtime, message, state);
 
 		if (!state.values?.actionNames) {
 			runtime.logger.warn(
@@ -3702,10 +5583,22 @@ export class DefaultMessageService implements IMessageService {
 
 		// Resolve the template prompt once so it's available for both the primary
 		// call and any follow-up repair prompts (e.g. parameter repair).
-		const prompt =
-			overrides?.prompt ||
+		const optimizedResponseService = runtime.getService<OptimizedPromptService>(
+			OPTIMIZED_PROMPT_SERVICE,
+		);
+		const baselineResponseTemplate =
 			runtime.character.templates?.messageHandlerTemplate ||
 			messageHandlerTemplate;
+		let prompt =
+			overrides?.prompt ||
+			resolveOptimizedPrompt(
+				optimizedResponseService,
+				"response",
+				baselineResponseTemplate,
+			);
+		if (overrides?.providerFollowup) {
+			prompt = buildProviderFollowupPrompt(prompt);
+		}
 
 		// Use dynamicPromptExecFromState for structured output with validation
 		setTrajectoryPurpose("response");
@@ -3731,6 +5624,14 @@ export class DefaultMessageService implements IMessageService {
 					field: "actions",
 					description:
 						"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+					required: false,
+					validateField: false,
+					streamField: false,
+				},
+				{
+					field: "providers",
+					description:
+						"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
 					required: false,
 					validateField: false,
 					streamField: false,
@@ -3766,16 +5667,55 @@ export class DefaultMessageService implements IMessageService {
 		if (parsedXml) {
 			// Mark streaming as complete now that we have a valid response
 			streamingExtractor?.markComplete();
-			const finalActions = normalizePlannerActions(
+			const rawPlannerActions = extractPlannerActionNames(
+				parsedXml as Record<string, unknown>,
+			);
+			let finalActions = normalizePlannerActions(
 				parsedXml as Record<string, unknown>,
 				runtime,
 			);
+			let normalizedProviders = normalizePlannerProviders(
+				parsedXml as Record<string, unknown>,
+				runtime,
+			);
+
+			if (shouldAttemptCanonicalActionRepair(rawPlannerActions, finalActions)) {
+				const repairedPlannerOutput = await repairCanonicalPlannerActions({
+					runtime,
+					message,
+					rawPlannerActions,
+					rawPlannerProviders: normalizedProviders,
+					plannerReplyText: String(parsedXml.text || ""),
+				});
+				if (repairedPlannerOutput) {
+					const repairedActions = normalizePlannerActions(
+						repairedPlannerOutput,
+						runtime,
+					);
+					const hasRecoveredOperationalAction = repairedActions.some(
+						(actionName) =>
+							!ACTION_REPAIR_PASSIVE_ACTIONS.has(
+								normalizeActionIdentifier(actionName),
+							),
+					);
+					if (hasRecoveredOperationalAction) {
+						finalActions = repairedActions;
+						normalizedProviders = normalizePlannerProviders(
+							repairedPlannerOutput,
+							runtime,
+						);
+						if (repairedPlannerOutput.params) {
+							parsedXml.params = repairedPlannerOutput.params;
+						}
+					}
+				}
+			}
 
 			responseContent = {
 				...parsedXml,
 				thought: String(parsedXml.thought || ""),
 				actions: finalActions,
-				providers: [],
+				providers: normalizedProviders,
 				text: String(parsedXml.text || ""),
 				simple: parsedXml.simple === true || parsedXml.simple === "true",
 			};
@@ -3863,6 +5803,16 @@ Output ONLY the continuation, starting immediately after the last character abov
 					{ src: "service:message" },
 					"dynamicPromptExecFromState returned null",
 				);
+				const groundedFallback = await this.tryGroundedFallbackReply(
+					runtime,
+					message,
+					state,
+					responseId,
+					promptAttachments,
+				);
+				if (groundedFallback) {
+					return groundedFallback;
+				}
 				return await this.buildStructuredFailureReply(
 					runtime,
 					message,
@@ -3882,10 +5832,314 @@ Output ONLY the continuation, starting immediately after the last character abov
 			};
 		}
 
+		if (
+			!overrides?.providerFollowup &&
+			shouldAttemptProviderRescue(responseContent)
+		) {
+			const rescuedProviders = await recoverProvidersForTurn({
+				runtime,
+				state,
+				draftReply: String(responseContent.text || ""),
+				attachments: promptAttachments,
+			});
+			if (rescuedProviders.length > 0) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						rescuedProviders,
+						originalActions: responseContent.actions ?? [],
+					},
+					"Selected providers during reply rescue pass",
+				);
+				responseContent.providers = rescuedProviders;
+			}
+		}
+
+		if (
+			!overrides?.providerFollowup &&
+			shouldAttemptActionRescue(runtime, message, state, responseContent)
+		) {
+			const actionRescuePrompt = buildActionRescuePrompt(
+				prompt,
+				String(responseContent.text || ""),
+			);
+			const rescuedActionXml = await runtime.dynamicPromptExecFromState({
+				state,
+				params: {
+					prompt: actionRescuePrompt,
+					...(promptAttachments ? { attachments: promptAttachments } : {}),
+				},
+				schema: [
+					{
+						field: "thought",
+						description:
+							"Short reasoning about whether a grounded action should own the turn",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "actions",
+						description:
+							"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "providers",
+						description:
+							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "text",
+						description: "The text response to send to the user",
+						streamField: false,
+					},
+					{
+						field: "simple",
+						description: "Whether this is a simple response (true/false)",
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.ACTION_PLANNER,
+					preferredEncapsulation: "xml",
+					maxRetries: 1,
+				},
+			});
+
+			if (rescuedActionXml) {
+				const rescuedContent: Content = {
+					...rescuedActionXml,
+					thought: String(rescuedActionXml.thought || ""),
+					actions: normalizePlannerActions(
+						rescuedActionXml as Record<string, unknown>,
+						runtime,
+					),
+					providers: normalizePlannerProviders(
+						rescuedActionXml as Record<string, unknown>,
+						runtime,
+					),
+					text:
+						typeof rescuedActionXml.text === "string" &&
+						rescuedActionXml.text.trim().length > 0
+							? String(rescuedActionXml.text)
+							: responseContent.text,
+					simple:
+						rescuedActionXml.simple === true ||
+						rescuedActionXml.simple === "true",
+				};
+
+				if (
+					hasNonPassiveAction(rescuedContent) ||
+					(rescuedContent.providers?.length ?? 0) >
+						(responseContent.providers?.length ?? 0)
+				) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							originalActions: responseContent.actions ?? [],
+							rescuedActions: rescuedContent.actions ?? [],
+							rescuedProviders: rescuedContent.providers ?? [],
+						},
+						"Recovered grounded action plan after passive reply draft",
+					);
+					responseContent = rescuedContent;
+				}
+			}
+		}
+
+		if (
+			!overrides?.providerFollowup &&
+			shouldAttemptOwnershipRepair(runtime, message, state, responseContent)
+		) {
+			const selectedActionName =
+				(typeof responseContent.actions?.[0] === "string" &&
+					responseContent.actions[0]) ||
+				"UNKNOWN_ACTION";
+			const ownershipRepairPrompt = buildOwnershipRepairPrompt(
+				prompt,
+				selectedActionName,
+				String(responseContent.text || ""),
+			);
+			const repairedOwnershipXml = await runtime.dynamicPromptExecFromState({
+				state,
+				params: {
+					prompt: ownershipRepairPrompt,
+					...(promptAttachments ? { attachments: promptAttachments } : {}),
+				},
+				schema: [
+					{
+						field: "thought",
+						description:
+							"Short reasoning about whether a more specific owning action should replace the current one",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "actions",
+						description:
+							"Ordered action entries. For XML, use one or more <action><name>ACTION_NAME</name><params>...</params></action> blocks inside <actions>.",
+						required: true,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "providers",
+						description:
+							"Optional provider names to call before the final reply or action. Use an empty field when no provider lookup is needed.",
+						required: false,
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "text",
+						description: "The text response to send to the user",
+						streamField: false,
+					},
+					{
+						field: "simple",
+						description: "Whether this is a simple response (true/false)",
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.ACTION_PLANNER,
+					preferredEncapsulation: "xml",
+					maxRetries: 1,
+				},
+			});
+
+			if (repairedOwnershipXml) {
+				const repairedOwnershipContent: Content = {
+					...repairedOwnershipXml,
+					thought: String(repairedOwnershipXml.thought || ""),
+					actions: normalizePlannerActions(
+						repairedOwnershipXml as Record<string, unknown>,
+						runtime,
+					),
+					providers: normalizePlannerProviders(
+						repairedOwnershipXml as Record<string, unknown>,
+						runtime,
+					),
+					text:
+						typeof repairedOwnershipXml.text === "string" &&
+						repairedOwnershipXml.text.trim().length > 0
+							? String(repairedOwnershipXml.text)
+							: responseContent.text,
+					simple:
+						repairedOwnershipXml.simple === true ||
+						repairedOwnershipXml.simple === "true",
+				};
+
+				if (
+					hasNonPassiveAction(repairedOwnershipContent) &&
+					JSON.stringify(repairedOwnershipContent.actions ?? []) !==
+						JSON.stringify(responseContent.actions ?? [])
+				) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							originalActions: responseContent.actions ?? [],
+							repairedActions: repairedOwnershipContent.actions ?? [],
+							repairedProviders: repairedOwnershipContent.providers ?? [],
+						},
+						"Replaced broad routing action with a more specific owning action",
+					);
+					responseContent = repairedOwnershipContent;
+				}
+			}
+		}
+
+		if (
+			!overrides?.providerFollowup &&
+			shouldAttemptActionRescue(runtime, message, state, responseContent)
+		) {
+			const actionOnlyRescue = await runtime.dynamicPromptExecFromState({
+				state,
+				params: {
+					prompt: buildActionOnlyRescuePrompt(
+						String(responseContent.text || ""),
+					),
+				},
+				schema: [
+					{
+						field: "thought",
+						description:
+							"Short reasoning about the single best grounded action",
+						validateField: false,
+						streamField: false,
+					},
+					{
+						field: "actions",
+						description: "Exactly one action entry inside <actions>.",
+						required: true,
+						validateField: false,
+						streamField: false,
+					},
+				],
+				options: {
+					modelType: ModelType.ACTION_PLANNER,
+					preferredEncapsulation: "xml",
+					maxRetries: 1,
+				},
+			});
+
+			if (actionOnlyRescue) {
+				const rescuedActions = normalizePlannerActions(
+					actionOnlyRescue as Record<string, unknown>,
+					runtime,
+				);
+				if (
+					rescuedActions.some(
+						(actionName) =>
+							!PROVIDER_FOLLOWUP_PASSIVE_ACTIONS.has(
+								normalizeActionIdentifier(actionName),
+							),
+					)
+				) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							originalActions: responseContent.actions ?? [],
+							rescuedActions,
+						},
+						"Recovered primary action after passive reply draft",
+					);
+					responseContent.actions = rescuedActions;
+				}
+			}
+		}
+
+		if (!hasNonPassiveAction(responseContent)) {
+			const metadataSuggestion = suggestOwnedActionFromMetadata(
+				runtime,
+				message,
+			);
+			if (metadataSuggestion) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						originalActions: responseContent.actions ?? [],
+						suggestedAction: metadataSuggestion.actionName,
+						score: metadataSuggestion.score,
+						secondBestScore: metadataSuggestion.secondBestScore,
+						reasons: metadataSuggestion.reasons,
+					},
+					"Recovered primary action from action metadata after passive reply draft",
+				);
+				responseContent.actions = [metadataSuggestion.actionName];
+			}
+		}
+
 		// Action parameter repair (Python parity):
-		// If the model selected actions with required parameters but omitted <params>,
-		// do a second pass asking for ONLY a <params> block.
-		const requiredByAction = new Map<string, string[]>();
+		// If the model selected actions with missing or invalid params, do a
+		// second pass asking for ONLY a corrected <params> block.
 		const actionByName = new Map<string, Action>();
 		for (const action of runtime.actions) {
 			const normalizedName = action.name.trim().toUpperCase();
@@ -3893,41 +6147,97 @@ Output ONLY the continuation, starting immediately after the last character abov
 				actionByName.set(normalizedName, action);
 			}
 		}
-		for (const a of responseContent.actions ?? []) {
-			const actionName = typeof a === "string" ? a.trim().toUpperCase() : "";
-			if (!actionName) continue;
-			const actionDef = actionByName.get(actionName);
-			const required =
-				actionDef?.parameters?.filter((p) => p.required).map((p) => p.name) ??
-				[];
-			if (required.length > 0) {
-				requiredByAction.set(actionName, required);
-			}
+
+		const metadataCorrection = findOwnedActionCorrectionFromMetadata(
+			runtime,
+			message,
+			responseContent,
+		);
+		if (metadataCorrection) {
+			runtime.logger.info(
+				{
+					src: "service:message",
+					originalActions: responseContent.actions ?? [],
+					suggestedAction: metadataCorrection.actionName,
+					score: metadataCorrection.score,
+					secondBestScore: metadataCorrection.secondBestScore,
+					reasons: metadataCorrection.reasons,
+				},
+				"Corrected routed action from action metadata",
+			);
+			responseContent.actions = [metadataCorrection.actionName];
 		}
 
-		const existingParams = parseActionParams(responseContent.params);
-
-		const missingRequiredParams = (): boolean => {
-			for (const [actionName, required] of requiredByAction) {
-				const params = existingParams.get(actionName);
-				if (!params) return true;
-				for (const key of required) {
-					if (!(key in params)) return true;
+		const collectParameterValidationIssues = (
+			paramsByAction: Map<string, ActionParameters>,
+		): Array<{
+			actionName: string;
+			required: string[];
+			errors: string[];
+		}> => {
+			const issues: Array<{
+				actionName: string;
+				required: string[];
+				errors: string[];
+			}> = [];
+			for (const selectedAction of responseContent.actions ?? []) {
+				const actionName =
+					typeof selectedAction === "string"
+						? selectedAction.trim().toUpperCase()
+						: "";
+				if (!actionName) {
+					continue;
 				}
+				const actionDef = actionByName.get(actionName);
+				if (!actionDef?.parameters?.length) {
+					continue;
+				}
+				const validation = validateActionParams(
+					actionDef,
+					paramsByAction.get(actionName),
+				);
+				if (validation.valid) {
+					continue;
+				}
+				issues.push({
+					actionName,
+					required: actionDef.parameters
+						.filter((parameter) => parameter.required)
+						.map((parameter) => parameter.name),
+					errors: validation.errors,
+				});
 			}
-			return false;
+			return issues;
 		};
 
-		if (requiredByAction.size > 0 && missingRequiredParams()) {
-			const requirementLines = Array.from(requiredByAction.entries())
-				.map(([a, req]) => `- ${a}: ${req.join(", ")}`)
+		let existingParams = parseActionParams(responseContent.params);
+		let parameterValidationIssues =
+			collectParameterValidationIssues(existingParams);
+
+		if (parameterValidationIssues.length > 0) {
+			const requirementLines = parameterValidationIssues
+				.map(({ actionName, required, errors }) =>
+					[
+						`- ${actionName}`,
+						required.length > 0
+							? `  required: ${required.join(", ")}`
+							: "  required: (none)",
+						...errors.map((error) => `  error: ${error}`),
+					].join("\n"),
+				)
 				.join("\n");
+			const existingParamBlock =
+				typeof responseContent.params === "string" &&
+				responseContent.params.trim().length > 0
+					? responseContent.params.trim()
+					: "(none)";
 			const repairPrompt = [
 				prompt,
 				"",
 				"# Parameter Repair",
-				"You selected actions that require parameters but did not include a complete params object.",
-				"Return ONLY XML with a top-level <params> field.",
+				"You selected actions whose params are missing or invalid.",
+				"Return ONLY XML with a top-level <params> field that fixes those actions.",
+				"Do not change the selected actions.",
 				"Example:",
 				"<response>",
 				"  <params>",
@@ -3938,7 +6248,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 				"  </params>",
 				"</response>",
 				"",
-				"Required parameters by action:",
+				"Current params:",
+				existingParamBlock,
+				"",
+				"Issues by action:",
 				requirementLines,
 				"",
 				"Do not include thought, actions, providers, text, or any other fields.",
@@ -3951,11 +6264,25 @@ Output ONLY the continuation, starting immediately after the last character abov
 				parseKeyValueXml<Record<string, unknown>>(repairResponse);
 			if (repairParsed?.params) {
 				responseContent.params = repairParsed.params as Content["params"];
+				existingParams = parseActionParams(responseContent.params);
+				parameterValidationIssues =
+					collectParameterValidationIssues(existingParams);
 			}
 		}
 
+		if (parameterValidationIssues.length > 0) {
+			runtime.logger.warn(
+				{
+					src: "service:message",
+					issues: parameterValidationIssues,
+				},
+				"Planner response still has invalid action params after repair pass",
+			);
+		}
+
+		const benchmarkMode = isBenchmarkMode(state);
+
 		// Benchmark mode (Python parity): force action-based loop when benchmark context is present.
-		const benchmarkMode = state.values.benchmark_has_context === true;
 		if (benchmarkMode) {
 			if (!responseContent.actions || responseContent.actions.length === 0) {
 				responseContent.actions = ["REPLY"];
@@ -3966,6 +6293,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 			) {
 				responseContent.providers = ["CONTEXT_BENCH"];
 			}
+			responseContent.actions = stripReplyWhenActionOwnsTurn(
+				runtime,
+				responseContent.actions,
+			);
 			// Suppress any direct planner answer; the REPLY action should generate final output.
 			if (responseContent.actions.some((a) => a.toUpperCase() === "REPLY")) {
 				responseContent.text = "";
@@ -3974,6 +6305,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 		// LLM terminal-control ambiguity handling
 		if (responseContent.actions && responseContent.actions.length > 1) {
+			responseContent.actions = stripReplyWhenActionOwnsTurn(
+				runtime,
+				responseContent.actions,
+			);
 			const isIgnore = (a: unknown) =>
 				typeof a === "string" && a.toUpperCase() === "IGNORE";
 			const isStop = (a: unknown) =>
@@ -3996,16 +6331,8 @@ Output ONLY the continuation, starting immediately after the last character abov
 			}
 		}
 
-		// Some actions are intended to provide the only grounded user-facing answer.
-		// If the planner emits both REPLY/text and one of those actions, drop the
-		// speculative planner text before persisting/sending the initial assistant turn.
-		stripPlannerReplyForSuppressiveActions(runtime, responseContent);
-
-		// Automatically determine if response is simple
-		const isSimple = isSimpleReplyResponse(responseContent);
-		const isStop = isStopResponse(responseContent);
-
-		responseContent.simple = isSimple;
+		const mode = resolveStrategyMode(responseContent);
+		responseContent.simple = mode === "simple";
 		// Include message ID for streaming coordination (so broadcast uses same ID)
 		responseContent.responseId = responseId;
 
@@ -4024,12 +6351,85 @@ Output ONLY the continuation, starting immediately after the last character abov
 			responseContent,
 			responseMessages,
 			state,
-			mode: isStop
-				? "none"
-				: isSimple && responseContent.text
-					? "simple"
-					: "actions",
+			mode,
 		};
+	}
+
+	private async tryGroundedFallbackReply(
+		runtime: IAgentRuntime,
+		message: Memory,
+		state: State,
+		responseId: UUID,
+		promptAttachments?: GenerateTextAttachment[],
+	): Promise<StrategyResult | null> {
+		let groundedState = state;
+		const selectedProviders = await recoverProvidersForTurn({
+			runtime,
+			state,
+			attachments: promptAttachments,
+		});
+
+		if (selectedProviders.length > 0) {
+			groundedState = await composeFocusedProviderReplyState(
+				runtime,
+				message,
+				selectedProviders,
+			);
+		}
+
+		const prompt = composePromptFromState({
+			state: groundedState,
+			template: buildGroundedFallbackReplyPrompt(),
+		});
+
+		try {
+			const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+				prompt,
+				...(promptAttachments ? { attachments: promptAttachments } : {}),
+			});
+			const text = typeof result === "string" ? result.trim() : "";
+			if (!text) {
+				return null;
+			}
+
+			const responseContent: Content = {
+				thought:
+					selectedProviders.length > 0
+						? "Grounded fallback reply from selected providers"
+						: "Grounded fallback reply",
+				actions: ["REPLY"],
+				providers: selectedProviders,
+				text,
+				simple: true,
+				responseId,
+			};
+			const responseMessages: Memory[] = [
+				{
+					id: responseId,
+					entityId: runtime.agentId,
+					agentId: runtime.agentId,
+					content: responseContent,
+					roomId: message.roomId,
+					createdAt: Date.now(),
+				},
+			];
+
+			return {
+				responseContent,
+				responseMessages,
+				state: groundedState,
+				mode: "simple",
+			};
+		} catch (error) {
+			runtime.logger.warn(
+				{
+					src: "service:message",
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Grounded fallback reply generation failed",
+			);
+			return null;
+		}
 	}
 
 	private async buildStructuredFailureReply(
@@ -4217,15 +6617,26 @@ Output ONLY the continuation, starting immediately after the last character abov
 				)) as MultiStepState,
 				contextRoutingStateValues,
 			) as MultiStepState;
-			accumulatedState.data.actionResults = traceActionResult;
+			accumulatedState = withActionResults(
+				accumulatedState,
+				traceActionResult,
+			) as MultiStepState;
 
 			// Use dynamicPromptExecFromState for structured decision output
+			const optimizedPlannerService =
+				runtime.getService<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE);
+			const baselinePlannerTemplate =
+				runtime.character.templates?.multiStepDecisionTemplate ||
+				multiStepDecisionTemplate;
+			const resolvedPlannerTemplate = resolveOptimizedPrompt(
+				optimizedPlannerService,
+				"action_planner",
+				baselinePlannerTemplate,
+			);
 			const parsedStep = await runtime.dynamicPromptExecFromState({
 				state: accumulatedState,
 				params: {
-					prompt:
-						runtime.character.templates?.multiStepDecisionTemplate ||
-						multiStepDecisionTemplate,
+					prompt: resolvedPlannerTemplate,
 					...(promptAttachments ? { attachments: promptAttachments } : {}),
 				},
 				schema: [
@@ -4491,12 +6902,14 @@ Output ONLY the continuation, starting immediately after the last character abov
 			for (const result of providerResults) {
 				if (result.status === "fulfilled") {
 					const { providerName, success, text, error } = result.value;
-					traceActionResult.push({
-						data: { actionName: providerName },
-						success,
-						text,
-						error,
-					});
+					traceActionResult.push(
+						preparePromptActionResult(runtime, message, {
+							data: { actionName: providerName },
+							success,
+							text,
+							error,
+						}),
+					);
 
 					if (callback) {
 						await callback({
@@ -4526,6 +6939,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 					actionContent.params = parsedStep.params;
 				}
 
+				await invokeOnBeforeActionExecution(opts, runtime, message);
 				await runtime.processActions(
 					message,
 					[
@@ -4594,6 +7008,10 @@ Output ONLY the continuation, starting immediately after the last character abov
 				false,
 			)) as MultiStepState,
 			contextRoutingStateValues,
+		) as MultiStepState;
+		accumulatedState = withActionResults(
+			accumulatedState,
+			traceActionResult,
 		) as MultiStepState;
 
 		// Use dynamicPromptExecFromState for final summary generation

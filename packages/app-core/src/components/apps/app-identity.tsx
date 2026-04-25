@@ -1,20 +1,31 @@
-import type { CSSProperties } from "react";
+import {
+  createGeneratedAppHeroDataUrl,
+  getAppHeroMonogram,
+  getAppHeroThemeKey,
+} from "@elizaos/shared/app-hero-art";
 import {
   Bot,
   Briefcase,
   Gamepad2,
   Globe2,
+  type LucideIcon,
   Sparkles,
   Wallet,
   Wrench,
-  type LucideIcon,
 } from "lucide-react";
+import { type CSSProperties, useState } from "react";
 
 export interface AppIdentitySource {
   name: string;
   displayName?: string | null;
   category?: string | null;
   icon?: string | null;
+  /**
+   * URL to a full-card hero image for this app. Declared by the app
+   * itself in `package.json` → `elizaos.app.heroImage` and surfaced via
+   * `RegistryAppInfo.heroImage`; falls back to generated hero art when absent.
+   */
+  heroImage?: string | null;
   description?: string | null;
 }
 
@@ -53,54 +64,96 @@ export function iconImageSource(
 }
 
 function getAppMonogram(app: AppIdentitySource): string {
-  const label = (app.displayName ?? app.name)
-    .replace(/^@[^/]+\//, "")
-    .replace(/^(app|plugin)-/i, "");
-  const words = label.split(/[\s._/-]+/).filter(Boolean);
-  const initials = words
-    .slice(0, 2)
-    .map((word) => word[0]?.toUpperCase() ?? "")
-    .join("");
-  return (initials || label.slice(0, 2).toUpperCase() || "?").slice(0, 2);
+  return getAppHeroMonogram(app);
 }
 
 function getAppPalette(name: string): readonly [string, string] {
   return APP_TILE_PALETTES[hashString(name) % APP_TILE_PALETTES.length];
 }
 
-function getAppCategoryIcon(app: AppIdentitySource): LucideIcon {
-  const blob = [
+export function getAppCategoryIcon(app: AppIdentitySource): LucideIcon {
+  switch (getAppHeroThemeKey(app)) {
+    case "play":
+      return Gamepad2;
+    case "chat":
+      return Bot;
+    case "money":
+      return Wallet;
+    case "tools":
+      return Wrench;
+    case "world":
+      return Globe2;
+    case "ops":
+      return Briefcase;
+    default:
+      return Sparkles;
+  }
+}
+
+function useResolvedAppImageSource(app: AppIdentitySource): {
+  imageSrc: string | null;
+  handleImageError: () => void;
+} {
+  const heroSrc = app.heroImage?.trim() || null;
+  const iconSrc = iconImageSource(app.icon);
+  const generatedSrc = createGeneratedAppHeroDataUrl(app);
+  const sourceKey = [
     app.name,
     app.displayName ?? "",
     app.category ?? "",
     app.description ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
+    heroSrc ?? "",
+    iconSrc ?? "",
+  ].join("\u0000");
+  const [failureState, setFailureState] = useState(() => ({
+    sourceKey,
+    failedHeroSrc: null as string | null,
+    failedIconSrc: null as string | null,
+    generatedFailed: false,
+  }));
+  const currentFailureState =
+    failureState.sourceKey === sourceKey
+      ? failureState
+      : {
+          sourceKey,
+          failedHeroSrc: null,
+          failedIconSrc: null,
+          generatedFailed: false,
+        };
 
-  if (/game|play|arcade|quest|adventure|battle|rpg/.test(blob)) {
-    return Gamepad2;
-  }
-  if (/companion|chat|social|friend|community|message|dm/.test(blob)) {
-    return Bot;
-  }
-  if (/finance|wallet|shop|commerce|trade|market|billing|invoice/.test(blob)) {
-    return Wallet;
-  }
-  if (
-    /utility|debug|runtime|viewer|plugin|memory|log|database|settings/.test(
-      blob,
-    )
-  ) {
-    return Wrench;
-  }
-  if (/world|browser|web|network|global|platform/.test(blob)) {
-    return Globe2;
-  }
-  if (/ops|business|team|work|project|task|calendar|life/.test(blob)) {
-    return Briefcase;
-  }
-  return Sparkles;
+  const imageSrc =
+    heroSrc && heroSrc !== currentFailureState.failedHeroSrc
+      ? heroSrc
+      : iconSrc && iconSrc !== currentFailureState.failedIconSrc
+        ? iconSrc
+        : !currentFailureState.generatedFailed
+          ? generatedSrc
+          : null;
+
+  const handleImageError = () => {
+    if (imageSrc === heroSrc && heroSrc) {
+      setFailureState({
+        ...currentFailureState,
+        failedHeroSrc: heroSrc,
+      });
+      return;
+    }
+    if (imageSrc === iconSrc && iconSrc) {
+      setFailureState({
+        ...currentFailureState,
+        failedIconSrc: iconSrc,
+      });
+      return;
+    }
+    if (imageSrc === generatedSrc) {
+      setFailureState({
+        ...currentFailureState,
+        generatedFailed: true,
+      });
+    }
+  };
+
+  return { imageSrc, handleImageError };
 }
 
 export function AppIdentityTile({
@@ -108,14 +161,16 @@ export function AppIdentityTile({
   active = false,
   className = "",
   size = "md",
+  imageOnly = false,
 }: {
   app: AppIdentitySource;
   active?: boolean;
   className?: string;
   size?: "sm" | "md";
+  imageOnly?: boolean;
 }) {
   const palette = getAppPalette(app.name);
-  const iconSrc = iconImageSource(app.icon);
+  const { imageSrc, handleImageError } = useResolvedAppImageSource(app);
   const Icon = getAppCategoryIcon(app);
   const monogram = getAppMonogram(app);
   const outerSize =
@@ -134,15 +189,20 @@ export function AppIdentityTile({
       }
       aria-hidden
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(255,255,255,0.32),transparent_30%),radial-gradient(circle_at_82%_20%,rgba(255,255,255,0.18),transparent_26%),radial-gradient(circle_at_50%_100%,rgba(0,0,0,0.16),transparent_35%)]" />
-      {iconSrc ? (
+      {!imageOnly ? (
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(255,255,255,0.32),transparent_30%),radial-gradient(circle_at_82%_20%,rgba(255,255,255,0.18),transparent_26%),radial-gradient(circle_at_50%_100%,rgba(0,0,0,0.16),transparent_35%)]" />
+      ) : null}
+      {imageSrc ? (
         <>
           <img
-            src={iconSrc}
+            src={imageSrc}
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
+            loading="lazy"
+            decoding="async"
+            onError={handleImageError}
           />
-          <div className="absolute inset-0 bg-black/10" />
+          {!imageOnly ? <div className="absolute inset-0 bg-black/10" /> : null}
         </>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-white">
@@ -154,16 +214,143 @@ export function AppIdentityTile({
           </span>
         </div>
       )}
-      {active ? (
+      {active && !imageOnly ? (
         <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full border border-card bg-ok shadow-sm" />
       ) : null}
-      <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/12 to-transparent" />
-      {iconSrc ? (
+      {!imageOnly ? (
+        <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/12 to-transparent" />
+      ) : null}
+      {imageSrc && !imageOnly ? (
         <div
           className={`absolute left-1.5 top-1.5 inline-flex items-center rounded-full border border-white/20 bg-black/10 px-1.5 py-0.5 font-semibold uppercase tracking-[0.18em] text-white ${badgeSize}`}
         >
           {monogram}
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface HeroBlob {
+  cx: number;
+  cy: number;
+  r: number;
+  opacity: number;
+}
+
+function getHeroBlobs(seed: number): HeroBlob[] {
+  const pick = (shift: number, mod: number) => (seed >> shift) % mod;
+  return [
+    {
+      cx: 18 + pick(1, 32),
+      cy: 22 + pick(3, 28),
+      r: 34 + pick(5, 22),
+      opacity: 0.32,
+    },
+    {
+      cx: 72 - pick(7, 26),
+      cy: 68 - pick(9, 32),
+      r: 38 + pick(11, 26),
+      opacity: 0.24,
+    },
+    {
+      cx: 45 + pick(13, 24),
+      cy: 40 + pick(15, 24),
+      r: 24 + pick(17, 18),
+      opacity: 0.18,
+    },
+  ];
+}
+
+/**
+ * Full-card hero visual for an app. Prefers an app-declared hero image
+ * (see `AppIdentitySource.heroImage`, sourced from the app's own
+ * package.json and served via `/api/apps/hero/<slug>`), then a
+ * caller-provided icon URL, then a generated hero image data URL seeded
+ * from the app name so each app still gets dedicated art when no asset ships.
+ */
+export function AppHero({
+  app,
+  className = "",
+  imageOnly = false,
+}: {
+  app: AppIdentitySource;
+  className?: string;
+  imageOnly?: boolean;
+}) {
+  const palette = getAppPalette(app.name);
+  const { imageSrc, handleImageError } = useResolvedAppImageSource(app);
+  const Icon = getAppCategoryIcon(app);
+  const monogram = getAppMonogram(app);
+  const blobs = getHeroBlobs(hashString(app.name));
+  const iconRotation = hashString(app.name) % 24;
+
+  const useImage = Boolean(imageSrc);
+
+  return (
+    <div
+      className={`relative w-full overflow-hidden ${className}`}
+      style={
+        {
+          backgroundImage: `linear-gradient(135deg, ${palette[0]} 0%, ${palette[1]} 100%)`,
+        } as CSSProperties
+      }
+      aria-hidden
+    >
+      {useImage && imageSrc ? (
+        <img
+          src={imageSrc}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={handleImageError}
+        />
+      ) : (
+        <>
+          <svg
+            className="absolute inset-0 h-full w-full"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            <title>Hero backdrop</title>
+            {blobs.map((blob) => (
+              <circle
+                key={`${blob.cx}-${blob.cy}-${blob.r}`}
+                cx={blob.cx}
+                cy={blob.cy}
+                r={blob.r}
+                fill="white"
+                opacity={blob.opacity}
+                style={{ mixBlendMode: "soft-light" }}
+              />
+            ))}
+          </svg>
+          <div
+            className="absolute inset-0 opacity-[0.14]"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle, rgba(255,255,255,0.85) 1px, transparent 1px)",
+              backgroundSize: "14px 14px",
+            }}
+          />
+          <div
+            className="pointer-events-none absolute -right-6 -bottom-8 h-[68%] w-[68%] text-white/[0.22]"
+            style={{ transform: `rotate(${iconRotation - 12}deg)` }}
+          >
+            <Icon className="h-full w-full" strokeWidth={1.25} />
+          </div>
+        </>
+      )}
+      {!imageOnly ? (
+        <>
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(255,255,255,0.22),transparent_55%)]" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+          <div className="absolute left-3 top-3 inline-flex items-center rounded-full border border-white/25 bg-white/15 px-2 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.22em] text-white backdrop-blur-sm">
+            {monogram}
+          </div>
+        </>
       ) : null}
     </div>
   );

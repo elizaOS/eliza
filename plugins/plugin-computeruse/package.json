@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-computeruse",
   "version": "0.6.2-alpha.0",
-  "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
+  "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, terminal access, file operations, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -32,8 +32,8 @@
   "devDependencies": {
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.2.3",
-    "typescript": "^5.9.3",
-    "vitest": "3.2.4"
+    "typescript": "^6.0.0",
+    "vitest": "4.1.5"
   },
   "dependencies": {
     "puppeteer-core": "^24.9.0"
@@ -65,15 +65,20 @@
       },
       "COMPUTER_USE_APPROVAL_MODE": {
         "type": "string",
-        "description": "Approval mode for local computer actions: full_control, smart_approve, approve_all, or off",
+        "description": "Approval mode for computer-use commands: full_control auto-approves everything, smart_approve auto-approves safe read-only commands, approve_all requires approval for every command, off denies all commands.",
         "required": false,
         "default": "full_control",
-        "enum": ["full_control", "smart_approve", "approve_all", "off"],
+        "enum": [
+          "full_control",
+          "smart_approve",
+          "approve_all",
+          "off"
+        ],
         "sensitive": false
       },
       "COMPUTER_USE_BROWSER_HEADLESS": {
         "type": "boolean",
-        "description": "Launch browser automation in headless mode when the environment does not allow visible windows",
+        "description": "Run browser automation headlessly. Useful for CI and test environments without a visible desktop session.",
         "required": false,
         "default": false,
         "sensitive": false

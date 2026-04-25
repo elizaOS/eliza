@@ -1,9 +1,10 @@
+import { asRecord } from "@elizaos/shared/type-guards";
 import type {
   BabylonActivityItem,
   BabylonAgentStatus,
   BabylonChatMessage,
   BabylonTeamAgent,
-} from "../../api";
+} from "../../api/client-types-babylon";
 
 export interface BabylonTeamSummaryTotals {
   walletBalance: number;
@@ -64,12 +65,6 @@ function formatCurrency(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 export function summarizeBabylonActivity(item: BabylonActivityItem): string {
   if (item.summary) return item.summary;
 
@@ -121,7 +116,9 @@ export function extractAgentSummary(
 ): BabylonAgentSummaryEnvelope {
   const data = asRecord(value);
   return {
-    agent: asRecord(data?.agent) as unknown as BabylonAgentSummaryEnvelope["agent"],
+    agent: asRecord(
+      data?.agent,
+    ) as unknown as BabylonAgentSummaryEnvelope["agent"],
     portfolio: asRecord(
       data?.portfolio,
     ) as unknown as BabylonAgentSummaryEnvelope["portfolio"],

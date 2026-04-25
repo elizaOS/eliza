@@ -6,6 +6,11 @@
 import type { DropStatus, MintResult } from "@elizaos/agent/contracts/drop";
 import type { VerificationResult } from "@elizaos/agent/contracts/verification";
 import type {
+  BrowserWorkspaceSolanaMessageSignatureResult,
+  BrowserWorkspaceWalletMessageSignatureResult,
+  BrowserWorkspaceWalletTransactionResult,
+} from "@elizaos/app-steward/browser-workspace-wallet";
+import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -18,29 +23,25 @@ import type {
   StewardBalanceResponse,
   StewardHistoryResponse,
   StewardPendingResponse,
+  StewardSignRequest,
+  StewardSignResponse,
   StewardStatusResponse,
   StewardTokenBalancesResponse,
   StewardWalletAddressesResponse,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
+} from "@elizaos/app-steward/types";
+import type {
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletConfigUpdateRequest,
+  WalletMarketOverviewResponse,
   WalletNftsResponse,
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/agent/contracts/wallet";
-import type {
-  StewardSignRequest,
-  StewardSignResponse,
-} from "@elizaos/shared/contracts/wallet";
-import type {
-  BrowserWorkspaceSolanaMessageSignatureResult,
-  BrowserWorkspaceWalletMessageSignatureResult,
-  BrowserWorkspaceWalletTransactionResult,
-} from "../browser-workspace-wallet";
+} from "@elizaos/shared/contracts";
 import { ElizaClient } from "./client-base";
 import type {
   ApplyProductionWalletDefaultsResponse,
@@ -147,6 +148,7 @@ declare module "./client-base" {
     sendBrowserWalletTransaction(
       request: StewardSignRequest,
     ): Promise<BrowserWorkspaceWalletTransactionResult>;
+    getWalletMarketOverview(): Promise<WalletMarketOverviewResponse>;
     getWalletTradingProfile(
       window?: WalletTradingProfileWindow,
       source?: WalletTradingProfileSourceFilter,
@@ -427,6 +429,12 @@ ElizaClient.prototype.signBrowserSolanaMessage = async function (
     method: "POST",
     body: JSON.stringify(request),
   });
+};
+
+ElizaClient.prototype.getWalletMarketOverview = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/wallet/market-overview");
 };
 
 ElizaClient.prototype.getWalletTradingProfile = async function (

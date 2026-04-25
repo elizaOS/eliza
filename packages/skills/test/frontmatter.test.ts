@@ -1,10 +1,10 @@
-import { describe, it } from "node:test";
 import assert from "node:assert";
+import { describe, it } from "node:test";
 import {
   parseFrontmatter,
-  stripFrontmatter,
-  resolveSkillMetadata,
   resolveSkillInvocationPolicy,
+  resolveSkillMetadata,
+  stripFrontmatter,
 } from "../src/frontmatter.js";
 import type { SkillFrontmatter } from "../src/types.js";
 

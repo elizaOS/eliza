@@ -6,7 +6,7 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
   StartLifeOpsGoogleConnectorResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import {
   googleCapabilitiesToScopes,
@@ -14,6 +14,7 @@ import {
   normalizeGoogleCapabilities,
   unionGoogleCapabilities,
 } from "./google-scopes.js";
+import { rewriteGoogleUrlForMock } from "./google-fetch.js";
 
 const GOOGLE_AUTHORIZATION_ENDPOINT =
   "https://accounts.google.com/o/oauth2/v2/auth";
@@ -266,10 +267,103 @@ function createState(): string {
   return crypto.randomBytes(32).toString("hex");
 }
 
-function cleanupExpiredGoogleOAuthSessions(now = Date.now()): void {
+function pendingGoogleOAuthSessionDir(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(resolveOAuthDir(env), "lifeops", "google", "pending-sessions");
+}
+
+function pendingGoogleOAuthSessionPath(
+  state: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return path.join(
+    pendingGoogleOAuthSessionDir(env),
+    `${sanitizePathSegment(state)}.json`,
+  );
+}
+
+function writePendingGoogleOAuthSession(
+  session: PendingGoogleOAuthSession,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const filePath = pendingGoogleOAuthSessionPath(session.state, env);
+  ensureTokenStorageDir(path.dirname(filePath));
+  fs.writeFileSync(filePath, JSON.stringify(session, null, 2), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+}
+
+function readPendingGoogleOAuthSession(
+  state: string,
+  env: NodeJS.ProcessEnv = process.env,
+): PendingGoogleOAuthSession | null {
+  const filePath = pendingGoogleOAuthSessionPath(state, env);
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(filePath, "utf8"),
+    ) as PendingGoogleOAuthSession;
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      parsed.state === state &&
+      typeof parsed.agentId === "string" &&
+      typeof parsed.clientId === "string" &&
+      typeof parsed.redirectUri === "string" &&
+      typeof parsed.codeVerifier === "string" &&
+      typeof parsed.createdAt === "number"
+    ) {
+      return parsed;
+    }
+  } catch {
+    // Invalid pending-session state is treated as absent and will be overwritten
+    // by a fresh auth flow.
+  }
+  fs.rmSync(filePath, { force: true });
+  return null;
+}
+
+function deletePendingGoogleOAuthSession(
+  state: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  fs.rmSync(pendingGoogleOAuthSessionPath(state, env), { force: true });
+}
+
+function cleanupExpiredGoogleOAuthSessions(
+  now = Date.now(),
+  env: NodeJS.ProcessEnv = process.env,
+): void {
   for (const [state, session] of pendingGoogleOAuthSessions.entries()) {
     if (now - session.createdAt > GOOGLE_OAUTH_SESSION_TTL_MS) {
       pendingGoogleOAuthSessions.delete(state);
+    }
+  }
+
+  const dir = pendingGoogleOAuthSessionDir(env);
+  if (!fs.existsSync(dir)) {
+    return;
+  }
+  for (const entry of fs.readdirSync(dir)) {
+    const filePath = path.join(dir, entry);
+    try {
+      const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+        state?: string;
+        createdAt?: number;
+      };
+      if (
+        typeof raw.state !== "string" ||
+        typeof raw.createdAt !== "number" ||
+        now - raw.createdAt > GOOGLE_OAUTH_SESSION_TTL_MS
+      ) {
+        fs.rmSync(filePath, { force: true });
+      }
+    } catch {
+      fs.rmSync(filePath, { force: true });
     }
   }
 }
@@ -278,6 +372,7 @@ function clearPendingSessionsForAgent(
   agentId: string,
   side: LifeOpsConnectorSide,
   mode: LifeOpsConnectorMode,
+  env: NodeJS.ProcessEnv = process.env,
 ): void {
   for (const [state, session] of pendingGoogleOAuthSessions.entries()) {
     if (
@@ -286,6 +381,28 @@ function clearPendingSessionsForAgent(
       session.mode === mode
     ) {
       pendingGoogleOAuthSessions.delete(state);
+      deletePendingGoogleOAuthSession(state, env);
+    }
+  }
+
+  const dir = pendingGoogleOAuthSessionDir(env);
+  if (!fs.existsSync(dir)) {
+    return;
+  }
+  for (const entry of fs.readdirSync(dir)) {
+    const filePath = path.join(dir, entry);
+    try {
+      const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as {
+        state?: string;
+        agentId?: string;
+        side?: LifeOpsConnectorSide;
+        mode?: LifeOpsConnectorMode;
+      };
+      if (raw.agentId === agentId && raw.side === side && raw.mode === mode) {
+        fs.rmSync(filePath, { force: true });
+      }
+    } catch {
+      fs.rmSync(filePath, { force: true });
     }
   }
 }
@@ -442,24 +559,53 @@ function parseIdTokenClaims(
 async function fetchGoogleUserInfo(
   accessToken: string,
 ): Promise<Record<string, unknown>> {
-  const response = await fetch(GOOGLE_USERINFO_ENDPOINT, {
+  const response = await fetch(rewriteGoogleUrlForMock(GOOGLE_USERINFO_ENDPOINT), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
     },
   });
   if (!response.ok) {
-    return {};
+    throw new GoogleOAuthError(502, await readGoogleErrorMessage(response));
   }
   const parsed = (await response.json()) as unknown;
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-    ? (parsed as Record<string, unknown>)
-    : {};
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new GoogleOAuthError(
+      502,
+      "Google userinfo returned an invalid payload.",
+    );
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function readGoogleIdentityEmail(identity: Record<string, unknown>): string | null {
+  const value = identity.email ?? identity.emailAddress ?? identity.primaryEmail;
+  if (typeof value !== "string") {
+    return null;
+  }
+  const email = value.trim();
+  return email.length > 0 ? email : null;
+}
+
+function requireGoogleIdentity(
+  identity: Record<string, unknown>,
+): Record<string, unknown> {
+  const email = readGoogleIdentityEmail(identity);
+  if (!email) {
+    throw new GoogleOAuthError(
+      502,
+      "Google identity payload did not include an email address.",
+    );
+  }
+  return {
+    ...identity,
+    email,
+  };
 }
 
 async function exchangeGoogleToken(
   params: URLSearchParams,
 ): Promise<GoogleTokenResponse> {
-  const response = await fetch(GOOGLE_TOKEN_ENDPOINT, {
+  const response = await fetch(rewriteGoogleUrlForMock(GOOGLE_TOKEN_ENDPOINT), {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -523,12 +669,12 @@ export function startGoogleConnectorOAuth(args: {
   grantId?: string;
   env?: NodeJS.ProcessEnv;
 }): StartLifeOpsGoogleConnectorResponse {
-  cleanupExpiredGoogleOAuthSessions();
+  cleanupExpiredGoogleOAuthSessions(Date.now(), args.env);
 
   const config = resolveGoogleOAuthConfig(args.requestUrl, args.mode, args.env);
   requireGoogleOAuthConfig(config, args.requestUrl);
   const side = args.side ?? "owner";
-  clearPendingSessionsForAgent(args.agentId, side, config.mode);
+  clearPendingSessionsForAgent(args.agentId, side, config.mode, args.env);
 
   const requestedCapabilities = unionGoogleCapabilities(
     args.existingCapabilities,
@@ -541,7 +687,7 @@ export function startGoogleConnectorOAuth(args: {
   const codeVerifier = createCodeVerifier();
   const codeChallenge = createCodeChallenge(codeVerifier);
 
-  pendingGoogleOAuthSessions.set(state, {
+  const pendingSession: PendingGoogleOAuthSession = {
     state,
     agentId: args.agentId,
     side,
@@ -553,7 +699,9 @@ export function startGoogleConnectorOAuth(args: {
     codeVerifier,
     createdAt: Date.now(),
     grantId: args.grantId,
-  });
+  };
+  pendingGoogleOAuthSessions.set(state, pendingSession);
+  writePendingGoogleOAuthSession(pendingSession, args.env);
 
   const params = new URLSearchParams({
     client_id: config.clientId,
@@ -582,21 +730,25 @@ export async function completeGoogleConnectorOAuth(args: {
   callbackUrl: URL;
   env?: NodeJS.ProcessEnv;
 }): Promise<GoogleConnectorCallbackResult> {
-  cleanupExpiredGoogleOAuthSessions();
+  cleanupExpiredGoogleOAuthSessions(Date.now(), args.env);
 
   const state = args.callbackUrl.searchParams.get("state")?.trim();
   if (!state) {
     throw new GoogleOAuthError(400, "Google callback is missing state.");
   }
 
-  const session = pendingGoogleOAuthSessions.get(state);
+  const session =
+    pendingGoogleOAuthSessions.get(state) ??
+    readPendingGoogleOAuthSession(state, args.env);
   if (!session) {
     throw new GoogleOAuthError(
       400,
       "Google callback does not match an active login session.",
     );
   }
+  pendingGoogleOAuthSessions.set(state, session);
   pendingGoogleOAuthSessions.delete(state);
+  deletePendingGoogleOAuthSession(state, args.env);
 
   if (Date.now() - session.createdAt > GOOGLE_OAUTH_SESSION_TTL_MS) {
     throw new GoogleOAuthError(
@@ -647,6 +799,7 @@ export async function completeGoogleConnectorOAuth(args: {
   if (Object.keys(identity).length === 0) {
     identity = await fetchGoogleUserInfo(token.access_token);
   }
+  identity = requireGoogleIdentity(identity);
 
   const tokenRef = buildGoogleTokenRef(
     session.agentId,

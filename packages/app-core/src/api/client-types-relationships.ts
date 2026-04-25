@@ -3,12 +3,15 @@ export interface RelationshipsGraphQuery {
   platform?: string;
   limit?: number;
   offset?: number;
+  scope?: "all" | "relevant";
 }
 
 export interface RelationshipsIdentityHandle {
   entityId: string;
   platform: string;
   handle: string;
+  status?: string | null;
+  verified?: boolean | null;
 }
 
 export interface RelationshipsIdentitySummary {
@@ -58,6 +61,37 @@ export interface RelationshipsPersonFact {
   scope?: string;
   confidence?: number;
   updatedAt?: string;
+  /** ISO8601 timestamp from FactRefinementEvaluator metadata. */
+  lastReinforced?: string;
+  /** Message IDs that contributed evidence to this fact. */
+  evidenceMessageIds?: string[];
+  provenance?: RelationshipsFactProvenance;
+  extractedInformation?: RelationshipsFactExtractedInformation;
+}
+
+export interface RelationshipsFactProvenance {
+  source?: string;
+  evaluatorName?: string;
+  sourceTrajectoryId?: string;
+  lastReinforced?: string;
+  evidenceMessageIds: string[];
+}
+
+export interface RelationshipsFactExtractedInformation {
+  scope?: string;
+  raw?: Record<string, unknown>;
+}
+
+export interface RelationshipsRelevantMemory {
+  id: string;
+  sourceType: "message";
+  entityId?: string;
+  roomId?: string;
+  roomName: string | null;
+  speaker: string;
+  text: string;
+  createdAt?: string;
+  source?: string | null;
 }
 
 export interface RelationshipsConversationMessage {
@@ -100,8 +134,20 @@ export interface RelationshipsIdentityEdge {
 export interface RelationshipsPersonDetail extends RelationshipsPersonSummary {
   facts: RelationshipsPersonFact[];
   recentConversations: RelationshipsConversationSnippet[];
+  relevantMemories: RelationshipsRelevantMemory[];
   relationships: RelationshipsGraphEdge[];
   identityEdges: RelationshipsIdentityEdge[];
+  userPersonalityPreferences: RelationshipsUserPersonalityPreference[];
+}
+
+export interface RelationshipsUserPersonalityPreference {
+  id: string;
+  entityId: string;
+  text: string;
+  category?: string;
+  originalRequest?: string;
+  source?: string | null;
+  createdAt?: string;
 }
 
 export interface RelationshipsGraphStats {
@@ -110,10 +156,29 @@ export interface RelationshipsGraphStats {
   totalIdentities: number;
 }
 
+export interface RelationshipsMergeCandidateEvidence {
+  platform?: string;
+  handle?: string;
+  notes?: string;
+  identityIds?: string[];
+}
+
+export interface RelationshipsMergeCandidate {
+  id: string;
+  entityA: string;
+  entityB: string;
+  confidence: number;
+  evidence: RelationshipsMergeCandidateEvidence;
+  status: "pending" | "accepted" | "rejected";
+  proposedAt: string;
+  resolvedAt?: string;
+}
+
 export interface RelationshipsGraphSnapshot {
   people: RelationshipsPersonSummary[];
   relationships: RelationshipsGraphEdge[];
   stats: RelationshipsGraphStats;
+  candidateMerges: RelationshipsMergeCandidate[];
 }
 
 export interface RelationshipsActivityItem {
@@ -127,5 +192,9 @@ export interface RelationshipsActivityItem {
 
 export interface RelationshipsActivityResponse {
   activity: RelationshipsActivityItem[];
+  total: number;
   count: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
 }

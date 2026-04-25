@@ -14,8 +14,7 @@ import random
 import re
 import time
 
-from elizaos_plugin_experience.service import ExperienceService
-from elizaos_plugin_experience.types import Experience
+from elizaos_experience_bench.service import Experience, ExperienceService
 
 
 class PerfectExperienceService(ExperienceService):

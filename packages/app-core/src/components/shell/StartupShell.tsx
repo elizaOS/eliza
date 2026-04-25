@@ -9,13 +9,16 @@
  * Non-loading phases (error, pairing, onboarding) delegate to their views.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { client } from "../../api";
+import { CONNECT_EVENT } from "../../events";
+import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
+import { applyLaunchConnection } from "../../platform";
 import { useApp } from "../../state";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";
-import { OnboardingWizard } from "../onboarding/OnboardingWizard";
 import { PairingView } from "./PairingView";
+import { RuntimeGate } from "./RuntimeGate";
 import { StartupFailureView } from "./StartupFailureView";
 
 const FONT = "'Courier New', 'Courier', 'Monaco', monospace";
@@ -48,8 +51,14 @@ function phaseToStatusKey(phase: string): string {
 }
 
 export function StartupShell() {
-  const { startupCoordinator, startupError, retryStartup, setState, t } =
-    useApp();
+  const {
+    startupCoordinator,
+    startupError,
+    retryStartup,
+    setActionNotice,
+    setState,
+    t,
+  } = useApp();
   const phase = startupCoordinator.phase;
   const cloudSkipProbeStartedRef = useRef(false);
   const isSplash = phase === "splash";
@@ -64,12 +73,53 @@ export function StartupShell() {
   //
   // IMPORTANT: deps must NOT include the unstable `startupCoordinator` object
   // reference. Including it caused the probe to be cancelled on every re-render
-  // (OnboardingWizard triggers many state updates), killing the in-flight fetch.
-  // We use a ref to access the coordinator's dispatch function instead.
+  // (RuntimeGate triggers state updates when the cloud login resolves), killing
+  // the in-flight fetch. We use a ref to access the coordinator's dispatch
+  // function instead.
   const coordinatorDispatchRef = useRef(startupCoordinator.dispatch);
   coordinatorDispatchRef.current = startupCoordinator.dispatch;
   const coordinatorStateRef = useRef(startupCoordinator.state);
   coordinatorStateRef.current = startupCoordinator.state;
+
+  useEffect(() => {
+    const handleConnect = (event: Event): void => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      const payload =
+        detail && typeof detail === "object" && !Array.isArray(detail)
+          ? (detail as { gatewayUrl?: unknown; token?: unknown })
+          : null;
+      if (typeof payload?.gatewayUrl !== "string") {
+        return;
+      }
+
+      try {
+        const connection = applyLaunchConnection({
+          kind: "remote",
+          apiBase: payload.gatewayUrl,
+          token: typeof payload.token === "string" ? payload.token : null,
+        });
+        persistMobileRuntimeModeForServerTarget("remote");
+        setState("onboardingServerTarget", "remote");
+        setState("onboardingRemoteApiBase", connection.apiBase);
+        setState("onboardingRemoteToken", connection.token ?? "");
+        setState("onboardingRemoteConnected", true);
+        setState("onboardingRemoteError", null);
+        setActionNotice("Connected to remote backend.", "success", 4200);
+        retryStartup();
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error
+            ? err.message
+            : "Failed to connect remote backend.",
+          "error",
+          8000,
+        );
+      }
+    };
+
+    document.addEventListener(CONNECT_EVENT, handleConnect);
+    return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
+  }, [retryStartup, setActionNotice, setState]);
 
   useEffect(() => {
     if (phase !== "onboarding-required") {
@@ -111,8 +161,9 @@ export function StartupShell() {
   }, [phase, setState]);
 
   // ── Auto-continue splash ──────────────────────────────────────
-  // The deployment chooser now lives inside OnboardingWizard (DeploymentStep).
-  // The splash phase becomes a pure loading screen that auto-advances.
+  // The deployment chooser now lives inside RuntimeGate. The splash phase
+  // is a pure loading screen that auto-advances to onboarding-required,
+  // which renders RuntimeGate when the user hasn't been onboarded yet.
   useEffect(() => {
     if (isSplash && splashLoaded) {
       startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
@@ -146,9 +197,10 @@ export function StartupShell() {
     return <PairingView />;
   }
 
-  // Onboarding — delegate
+  // Onboarding — minimal runtime gate: pick local / cloud / remote.
+  // Further setup (LLM provider, subscriptions, connectors) happens in chat.
   if (phase === "onboarding-required") {
-    return <OnboardingWizard />;
+    return <RuntimeGate />;
   }
 
   // Ready — let the app through
@@ -157,7 +209,11 @@ export function StartupShell() {
   }
 
   return (
-    <div data-testid="startup-shell-loading" data-startup-phase={phase} className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden">
+    <div
+      data-testid="startup-shell-loading"
+      data-startup-phase={phase}
+      className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden"
+    >
       <img
         src={resolveAppAssetUrl("splash-bg.jpg")}
         alt=""

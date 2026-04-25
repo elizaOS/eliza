@@ -12,14 +12,16 @@ import type {
   TriggerWakeMode,
   UpdateTriggerRequest,
 } from "../../api/client";
+
+export type TriggerKind = "text" | "workflow";
+
+import { CronExpressionParser } from "cron-parser";
+import type { TranslateFn as AppTranslateFn } from "../../types";
 import { formatDurationMs } from "../../utils/format";
 
 // ── Translation helper type ────────────────────────────────────────
 
-export type TranslateFn = (
-  key: string,
-  vars?: Record<string, string | number | boolean | null | undefined>,
-) => string;
+export type TranslateFn = AppTranslateFn;
 
 // ── Duration units ─────────────────────────────────────────────────
 
@@ -73,7 +75,11 @@ export function durationUnitLabel(unit: DurationUnit, t: TranslateFn): string {
 export interface TriggerFormState {
   displayName: string;
   instructions: string;
+  kind: TriggerKind;
+  workflowId: string;
+  workflowName: string;
   triggerType: TriggerType;
+  eventKind: string;
   wakeMode: TriggerWakeMode;
   scheduledAtIso: string;
   cronExpression: string;
@@ -86,7 +92,11 @@ export interface TriggerFormState {
 export const emptyForm: TriggerFormState = {
   displayName: "",
   instructions: "",
+  kind: "text",
+  workflowId: "",
+  workflowName: "",
   triggerType: "interval",
+  eventKind: "message.received",
   wakeMode: "inject_now",
   scheduledAtIso: "",
   cronExpression: "0 * * * *",
@@ -229,7 +239,20 @@ export function scheduleLabel(
   if (trigger.triggerType === "cron") {
     return `${t("heartbeatsview.cronPrefix")} ${trigger.cronExpression ?? "\u2014"}`;
   }
+  if (trigger.triggerType === "event") {
+    return `On ${humanizeEventKind(trigger.eventKind ?? "event")}`;
+  }
   return trigger.triggerType;
+}
+
+export function humanizeEventKind(value: string): string {
+  return value
+    .trim()
+    .replace(/[_-]+/g, ".")
+    .split(".")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
@@ -238,7 +261,11 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
   return {
     displayName: trigger.displayName,
     instructions: trigger.instructions,
+    kind: trigger.kind ?? "text",
+    workflowId: trigger.workflowId ?? "",
+    workflowName: trigger.workflowName ?? "",
     triggerType: trigger.triggerType,
+    eventKind: trigger.eventKind ?? "message.received",
     wakeMode: trigger.wakeMode,
     scheduledAtIso: trigger.scheduledAtIso ?? "",
     cronExpression: trigger.cronExpression ?? "0 * * * *",
@@ -255,7 +282,11 @@ export function buildCreateRequest(
   const maxRuns = parsePositiveInteger(form.maxRuns);
   return {
     displayName: form.displayName.trim(),
-    instructions: form.instructions.trim(),
+    instructions: form.kind === "text" ? form.instructions.trim() : undefined,
+    kind: form.kind,
+    workflowId: form.kind === "workflow" ? form.workflowId : undefined,
+    workflowName:
+      form.kind === "workflow" ? form.workflowName || undefined : undefined,
     triggerType: form.triggerType,
     wakeMode: form.wakeMode,
     enabled: form.enabled,
@@ -267,6 +298,7 @@ export function buildCreateRequest(
       form.triggerType === "once" ? form.scheduledAtIso.trim() : undefined,
     cronExpression:
       form.triggerType === "cron" ? form.cronExpression.trim() : undefined,
+    eventKind: form.triggerType === "event" ? form.eventKind.trim() : undefined,
     maxRuns,
   };
 }
@@ -277,6 +309,94 @@ export function buildUpdateRequest(
   return { ...buildCreateRequest(form) };
 }
 
+// ── Cron validation ────────────────────────────────────────────────
+
+/**
+ * Validate a 5-field cron expression using cron-parser.
+ * Returns `{ ok: true, message: null }` on success or
+ * `{ ok: false, message: string }` with the parser error message on failure.
+ */
+export function validateCronExpression(
+  expr: string,
+): { ok: true; message: null } | { ok: false; message: string } {
+  const trimmed = expr.trim();
+  if (!trimmed) return { ok: false, message: "Expression is empty" };
+  try {
+    CronExpressionParser.parse(trimmed);
+    return { ok: true, message: null };
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ── Schedule preview ───────────────────────────────────────────────
+
+/**
+ * Compute the next N fire dates for an interval trigger (ms between fires).
+ * Returns an empty array when intervalMs is not positive.
+ */
+export function nextRunsForInterval(
+  intervalMs: number,
+  count: number,
+  from = new Date(),
+): Date[] {
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) return [];
+  const results: Date[] = [];
+  for (let i = 1; i <= count; i++) {
+    results.push(new Date(from.getTime() + intervalMs * i));
+  }
+  return results;
+}
+
+/**
+ * Compute the next N fire dates for a cron expression.
+ * Returns an empty array when parsing fails.
+ */
+export function nextRunsForCron(
+  expr: string,
+  count: number,
+  from = new Date(),
+): Date[] {
+  const trimmed = expr.trim();
+  if (!trimmed) return [];
+  try {
+    const schedule = CronExpressionParser.parse(trimmed, {
+      currentDate: from,
+    });
+    const results: Date[] = [];
+    for (let i = 0; i < count; i++) {
+      results.push(schedule.next().toDate());
+    }
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Validates the kind-specific payload fields only (no schedule validation).
+ * Returns an error message when invalid, null when valid.
+ */
+export function validateTriggerKind(
+  form: TriggerFormState,
+  t: TranslateFn,
+): string | null {
+  if (form.kind === "workflow") {
+    if (!form.workflowId) {
+      return t("triggers.workflowPlaceholder");
+    }
+    return null;
+  }
+  // kind === "text"
+  if (!form.instructions.trim()) {
+    return t("heartbeatsview.validationInstructionsRequired");
+  }
+  return null;
+}
+
 export function validateForm(
   form: TriggerFormState,
   t: TranslateFn,
@@ -284,9 +404,8 @@ export function validateForm(
   if (!form.displayName.trim()) {
     return t("heartbeatsview.validationDisplayNameRequired");
   }
-  if (!form.instructions.trim()) {
-    return t("heartbeatsview.validationInstructionsRequired");
-  }
+  const kindError = validateTriggerKind(form, t);
+  if (kindError) return kindError;
   if (form.triggerType === "interval") {
     const value = Number(form.durationValue);
     if (!Number.isFinite(value) || value <= 0) {
@@ -303,25 +422,13 @@ export function validateForm(
   if (form.triggerType === "cron") {
     const cronTrimmed = form.cronExpression.trim();
     if (!cronTrimmed) return t("heartbeatsview.validationCronRequired");
-    const cronParts = cronTrimmed.split(/\s+/);
-    if (cronParts.length !== 5) {
-      return t("heartbeatsview.validationCronFiveFields");
+    const cronResult = validateCronExpression(cronTrimmed);
+    if (!cronResult.ok) {
+      return `${t("triggers.cronError")} ${cronResult.message}`;
     }
-    const ranges = [
-      { name: t("heartbeatsview.cronFieldMinute") },
-      { name: t("heartbeatsview.cronFieldHour") },
-      { name: t("heartbeatsview.cronFieldDay") },
-      { name: t("heartbeatsview.cronFieldMonth") },
-      { name: t("heartbeatsview.cronFieldWeekday") },
-    ];
-    for (let index = 0; index < 5; index += 1) {
-      if (!/^[\d,\-*/]+$/.test(cronParts[index])) {
-        return t("heartbeatsview.validationCronInvalidField", {
-          field: ranges[index]?.name ?? "",
-          value: cronParts[index] ?? "",
-        });
-      }
-    }
+  }
+  if (form.triggerType === "event" && !form.eventKind.trim()) {
+    return "Event is required.";
   }
   if (form.maxRuns.trim() && !parsePositiveInteger(form.maxRuns)) {
     return t("heartbeatsview.validationMaxRunsPositive");

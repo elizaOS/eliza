@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterAll } from "bun:test";
+import { afterAll, describe, expect, test } from "vitest";
 import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 import { execSync } from "child_process";
 import * as path from "path";
@@ -15,7 +15,6 @@ describe("Base64 Transaction Serialization", () => {
     test("skill should return base64 serialized transaction", () => {
         // Create a skill that builds and serializes a transaction
         const txSkill = `
-import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 
 export async function executeSkill(env: any): Promise<[number, string, string | null]> {
     const wallet = env.getWallet();
@@ -61,7 +60,6 @@ export async function executeSkill(env: any): Promise<[number, string, string | 
 
     test("skill can build complex transaction with multiple instructions", () => {
         const complexSkill = `
-import { Transaction, SystemProgram, PublicKey } from '@solana/web3.js';
 
 export async function executeSkill(env: any): Promise<[number, string, string | null]> {
     const wallet = env.getWallet();

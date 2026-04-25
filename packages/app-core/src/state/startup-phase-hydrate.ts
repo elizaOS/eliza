@@ -5,15 +5,24 @@
  * "ready" phase (WebSocket bindings, nav listener).
  */
 
+import type { AgentStatus, WalletAddresses } from "../api";
 import {
   type CodingAgentSession,
   type Conversation,
   type ConversationMessage,
-  type StreamEventEnvelope,
   client,
+  type StreamEventEnvelope,
 } from "../api";
 import { mapServerTasksToSessions } from "../chat/coding-agent-session-state";
+import { prefetchVrmToCache } from "../components/companion/injected";
 import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
+import {
+  COMPANION_ENABLED,
+  isRouteRootPath,
+  type Tab,
+  tabFromPath,
+} from "../navigation";
+import { resolveApiUrl } from "../utils";
 import {
   loadAvatarIndex,
   normalizeAvatarIndex,
@@ -21,19 +30,10 @@ import {
   parseProactiveMessageEvent,
   parseStreamEventEnvelopeEvent,
 } from "./internal";
-import {
-  COMPANION_ENABLED,
-  isRouteRootPath,
-  tabFromPath,
-  type Tab,
-} from "../navigation";
 import { shouldStartAtCharacterSelectOnLaunch } from "./shell-routing";
-import { resolveApiUrl } from "../utils";
 import type { StartupEvent } from "./startup-coordinator";
-import type { AgentStatus, WalletAddresses } from "../api";
 import type { OnboardingMode } from "./types";
-import { getVrmUrl, getVrmCount, VRM_COUNT } from "./vrm";
-import { prefetchVrmToCache } from "@elizaos/app-companion/components/avatar/VrmEngine";
+import { getVrmCount, getVrmUrl, VRM_COUNT } from "./vrm";
 
 export interface HydratingDeps {
   setStartupError: (v: null) => void;
@@ -178,7 +178,7 @@ export async function runHydrating(
   // Wallet addresses
   try {
     deps.setWalletAddresses(await client.getWalletAddresses());
-  } catch (e) {
+  } catch (e: unknown) {
     warn("wallet addresses", e);
   }
 
@@ -198,7 +198,7 @@ export async function runHydrating(
         deps.setSelectedVrmIndex(resolvedIdx);
       }
     }
-  } catch (e) {
+  } catch (e: unknown) {
     warn("config avatar index", e);
   }
   try {
@@ -210,7 +210,7 @@ export async function runHydrating(
         deps.setSelectedVrmIndex(resolvedIdx);
       }
     }
-  } catch (e) {
+  } catch (e: unknown) {
     warn("stream settings avatar", e);
   }
   if (resolvedIdx === 0) {

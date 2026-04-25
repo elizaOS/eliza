@@ -8,6 +8,7 @@
  * - Provides API for UI viewing and export
  */
 
+import { sql } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../logger";
 import type { IAgentRuntime } from "../../types";
@@ -340,13 +341,8 @@ export class TrajectoriesService extends Service {
 	// Initialization
 	// ─────────────────────────────────────────────────────────────────────────
 
-	private async getSqlHelper(): Promise<{
-		raw: (query: string) => { queryChunks: object[] };
-	}> {
-		const drizzle = (await import("drizzle-orm")) as {
-			sql: { raw: (query: string) => { queryChunks: object[] } };
-		};
-		return drizzle.sql;
+	private getSqlHelper(): typeof sql {
+		return sql;
 	}
 
 	private async executeRawSql(
@@ -359,9 +355,9 @@ export class TrajectoriesService extends Service {
 			throw new Error("Database adapter not available");
 		}
 
-		const sqlHelper = await this.getSqlHelper();
+		const sqlHelper = this.getSqlHelper();
 		const db = runtime.adapter.db as {
-			execute(query: { queryChunks: object[] }): Promise<SqlExecuteResult>;
+			execute(query: ReturnType<typeof sql.raw>): Promise<SqlExecuteResult>;
 		};
 		const query = sqlHelper.raw(sqlText);
 		const result = await db.execute(query);
@@ -396,6 +392,15 @@ export class TrajectoriesService extends Service {
 
 		this.initialized = true;
 		logger.info("[trajectories] Trajectories service initialized");
+	}
+
+	private async ensureStorageReady(): Promise<void> {
+		if (!this.initialized) {
+			await this.initialize();
+			return;
+		}
+
+		await this.ensureTablesExist();
 	}
 
 	private async getTableColumnNames(tableName: string): Promise<Set<string>> {
@@ -437,7 +442,7 @@ export class TrajectoriesService extends Service {
 	}
 
 	private async ensureTrajectoryColumnsExist(): Promise<void> {
-		const columns = await this.getTableColumnNames("trajectories");
+		let columns = await this.getTableColumnNames("trajectories");
 		const requiredColumns: Array<[name: string, definition: string]> = [
 			["scenario_id", "TEXT"],
 			["episode_id", "TEXT"],
@@ -455,8 +460,18 @@ export class TrajectoriesService extends Service {
 
 		for (const [columnName, definition] of requiredColumns) {
 			if (columns.has(columnName)) continue;
+			await this.executeRawSql(
+				`ALTER TABLE trajectories ADD COLUMN ${columnName} ${definition}`,
+			);
+			columns = await this.getTableColumnNames("trajectories");
+			if (columns.has(columnName)) {
+				logger.info(
+					`[trajectory-logger] Added missing trajectories.${columnName} column`,
+				);
+				continue;
+			}
 			throw new Error(
-				`[trajectory-logger] Missing required trajectories.${columnName} column (${definition}). Run schema migrations before starting the runtime.`,
+				`[trajectory-logger] Missing required trajectories.${columnName} column (${definition}). Automatic migration did not apply cleanly.`,
 			);
 		}
 
@@ -571,16 +586,12 @@ export class TrajectoriesService extends Service {
 	// ─────────────────────────────────────────────────────────────────────────
 
 	private normalizePurpose(value: string): LLMCall["purpose"] {
-		switch (value) {
-			case "action":
-			case "reasoning":
-			case "evaluation":
-			case "response":
-			case "other":
-				return value;
-			default:
-				return "other";
+		if (typeof value !== "string" || value.trim() === "") {
+			throw new Error(
+				`[TrajectoriesService] trajectory purpose must be a non-empty string; got ${JSON.stringify(value)}`,
+			);
 		}
+		return value.trim();
 	}
 
 	private defaultEnvironmentState(timestamp = Date.now()): EnvironmentState {
@@ -1480,6 +1491,7 @@ export class TrajectoriesService extends Service {
 		if (!runtime?.adapter) {
 			return { trajectories: [], total: 0, offset: 0, limit: 50 };
 		}
+		await this.ensureStorageReady();
 
 		const offset = Math.max(0, options.offset ?? 0);
 		const limit = Math.min(500, Math.max(1, options.limit ?? 50));
@@ -1572,6 +1584,7 @@ export class TrajectoriesService extends Service {
 	async getTrajectoryDetail(trajectoryId: string): Promise<Trajectory | null> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
 		if (!runtime?.adapter) return null;
+		await this.ensureStorageReady();
 
 		const safeId = trajectoryId.replace(/'/g, "''");
 		const result = await this.executeRawSql(
@@ -1601,6 +1614,7 @@ export class TrajectoriesService extends Service {
 				byScenario: {},
 			};
 		}
+		await this.ensureStorageReady();
 
 		const statsResult = await this.executeRawSql(`
       SELECT
@@ -1675,6 +1689,7 @@ export class TrajectoriesService extends Service {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
 		if (!runtime?.adapter) return 0;
 		if (trajectoryIds.length === 0) return 0;
+		await this.ensureStorageReady();
 
 		const ids = trajectoryIds.map(sqlLiteral).join(", ");
 		const result = await this.executeRawSql(
@@ -1686,6 +1701,7 @@ export class TrajectoriesService extends Service {
 	async clearAllTrajectories(): Promise<number> {
 		const runtime = this.runtime as IAgentRuntime & { adapter?: unknown };
 		if (!runtime?.adapter) return 0;
+		await this.ensureStorageReady();
 
 		const countResult = await this.executeRawSql(
 			`SELECT count(*)::int AS cnt FROM trajectories`,
@@ -1887,6 +1903,7 @@ export class TrajectoriesService extends Service {
 		if (!runtime?.adapter) {
 			throw new Error("Database not available");
 		}
+		await this.ensureStorageReady();
 
 		const whereClauses: string[] = [];
 		if (options.trajectoryIds && options.trajectoryIds.length > 0) {

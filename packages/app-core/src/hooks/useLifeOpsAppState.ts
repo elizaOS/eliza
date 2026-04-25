@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api";
 
-function errorMessage(cause: unknown): string {
+function formatLifeOpsAppStateError(cause: unknown): string {
   return cause instanceof Error && cause.message.trim().length > 0
     ? cause.message.trim()
     : "LifeOps app state failed to load.";
@@ -17,11 +17,11 @@ export function useLifeOpsAppState() {
     setLoading(true);
     try {
       const state = await client.getLifeOpsAppState();
-      setEnabled(state.enabled === true);
+      setEnabled(state.enabled);
       setError(null);
       return state;
     } catch (cause) {
-      setError(errorMessage(cause));
+      setError(formatLifeOpsAppStateError(cause));
       throw cause;
     } finally {
       setLoading(false);
@@ -29,31 +29,28 @@ export function useLifeOpsAppState() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
+    let active = true;
     void (async () => {
-      setLoading(true);
       try {
         const state = await client.getLifeOpsAppState();
-        if (cancelled) {
+        if (!active) {
           return;
         }
-        setEnabled(state.enabled === true);
+        setEnabled(state.enabled);
         setError(null);
       } catch (cause) {
-        if (cancelled) {
-          return;
+        if (active) {
+          setError(formatLifeOpsAppStateError(cause));
         }
-        setError(errorMessage(cause));
       } finally {
-        if (!cancelled) {
+        if (active) {
           setLoading(false);
         }
       }
     })();
 
     return () => {
-      cancelled = true;
+      active = false;
     };
   }, []);
 
@@ -63,11 +60,11 @@ export function useLifeOpsAppState() {
       const state = await client.updateLifeOpsAppState({
         enabled: nextEnabled,
       });
-      setEnabled(state.enabled === true);
+      setEnabled(state.enabled);
       setError(null);
       return state;
     } catch (cause) {
-      setError(errorMessage(cause));
+      setError(formatLifeOpsAppStateError(cause));
       throw cause;
     } finally {
       setSaving(false);

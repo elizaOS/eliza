@@ -22,12 +22,12 @@
     "@elizaos/plugin-openai": "alpha",
     "@elizaos/plugin-openrouter": "alpha",
     "electron": "^41.2.0",
-    "uuid": "^13.0.0"
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.0",
     "vitest": "^4.0.17"
   }
 }

@@ -137,11 +137,15 @@ else
 fi
 cleanup() {
   set +e
-  if "$DOCKER_BIN" ps -a --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
-    "$DOCKER_BIN" inspect "$CONTAINER_NAME" >"$SMOKE_ARTIFACT_DIR/container-inspect.json" 2>&1 || true
-    "$DOCKER_BIN" logs "$CONTAINER_NAME" >"$SMOKE_ARTIFACT_DIR/container.log" 2>&1 || true
-    "$DOCKER_BIN" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
+  local containers_file
+  containers_file="$(mktemp 2>/dev/null || printf '%s\n' "$SMOKE_ARTIFACT_DIR/docker-containers.txt")"
+  timeout 10 "$DOCKER_BIN" ps -a --format '{{.Names}}' >"$containers_file" 2>&1 || true
+  if grep -Fxq "$CONTAINER_NAME" "$containers_file" 2>/dev/null; then
+    timeout 15 "$DOCKER_BIN" inspect "$CONTAINER_NAME" >"$SMOKE_ARTIFACT_DIR/container-inspect.json" 2>&1 || true
+    timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" >"$SMOKE_ARTIFACT_DIR/container.log" 2>&1 || true
+    timeout 10 "$DOCKER_BIN" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   fi
+  rm -f "$containers_file" >/dev/null 2>&1 || true
   if [[ -f "$DOCKERIGNORE_BACKUP" ]]; then
     if [[ "$HAD_ROOT_DOCKERIGNORE" == "1" ]]; then
       cp "$DOCKERIGNORE_BACKUP" .dockerignore >/dev/null 2>&1 || true
@@ -169,6 +173,13 @@ bash "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh"
 
 log "Running repository postinstall"
 SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 node eliza/packages/app-core/scripts/run-repo-setup.mjs
+
+if [[ ! -f eliza/packages/typescript/src/types/generated/eliza/v1/agent_pb.ts ]]; then
+  log "Generating core protobuf sources"
+  pushd eliza/packages/schemas >/dev/null
+  bunx --package @bufbuild/buf@1.68.3 buf generate
+  popd >/dev/null
+fi
 
 log "Building Capacitor plugins"
 pushd apps/app >/dev/null
@@ -242,7 +253,18 @@ log "Starting container smoke boot"
 "$DOCKER_BIN" run -d \
   --name "$CONTAINER_NAME" \
   -e PORT="$CONTAINER_PORT" \
+  -e APP_PORT="$CONTAINER_PORT" \
+  -e MILADY_API_PORT="$CONTAINER_PORT" \
+  -e ELIZA_API_PORT="$CONTAINER_PORT" \
+  -e ELIZA_PORT="$CONTAINER_PORT" \
   -e APP_API_BIND=0.0.0.0 \
+  -e MILADY_STATE_DIR=/tmp/milady-smoke/state \
+  -e ELIZA_STATE_DIR=/tmp/milady-smoke/state \
+  -e MILADY_CONFIG_DIR=/tmp/milady-smoke/config \
+  -e ELIZA_CONFIG_DIR=/tmp/milady-smoke/config \
+  -e MILADY_WORKSPACE_DIR=/tmp/milady-smoke/workspace \
+  -e ELIZA_WORKSPACE_DIR=/tmp/milady-smoke/workspace \
+  -e PGLITE_DATA_DIR=/tmp/milady-smoke/pglite \
   -e ELIZA_DISABLE_LOCAL_EMBEDDINGS=1 \
   -e ELIZA_API_BIND=0.0.0.0 \
   -p "${SMOKE_PORT}:${CONTAINER_PORT}" \
@@ -270,11 +292,22 @@ probe_ok() {
 }
 
 deadline=$((SECONDS + SMOKE_TIMEOUT_SEC))
+last_log_dump=0
 while (( SECONDS < deadline )); do
-  if ! "$DOCKER_BIN" ps --format '{{.Names}}' | grep -Fxq "$CONTAINER_NAME"; then
-    "$DOCKER_BIN" logs "$CONTAINER_NAME" || true
+  running_containers_file="$(mktemp 2>/dev/null || printf '%s\n' "$SMOKE_ARTIFACT_DIR/docker-running-containers.txt")"
+  timeout 10 "$DOCKER_BIN" ps --format '{{.Names}}' >"$running_containers_file" 2>&1 || true
+  if ! grep -Fxq "$CONTAINER_NAME" "$running_containers_file" 2>/dev/null; then
+    rm -f "$running_containers_file" >/dev/null 2>&1 || true
+    timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" || true
     log "Preserved failure artifacts in $SMOKE_ARTIFACT_DIR"
     fail "Container exited before smoke probe succeeded"
+  fi
+  rm -f "$running_containers_file" >/dev/null 2>&1 || true
+
+  if (( SECONDS - last_log_dump >= 30 )); then
+    last_log_dump=$SECONDS
+    log "Container still booting; recent logs follow"
+    timeout 10 "$DOCKER_BIN" logs --tail 80 "$CONTAINER_NAME" || true
   fi
 
   if probe_ok "$health_url" /tmp/milady-docker-health.txt; then
@@ -292,6 +325,6 @@ while (( SECONDS < deadline )); do
   sleep 5
 done
 
-"$DOCKER_BIN" logs "$CONTAINER_NAME" || true
+timeout 30 "$DOCKER_BIN" logs "$CONTAINER_NAME" || true
 log "Preserved timeout artifacts in $SMOKE_ARTIFACT_DIR"
 fail "Timed out waiting for container smoke probe (${SMOKE_TIMEOUT_SEC}s)"

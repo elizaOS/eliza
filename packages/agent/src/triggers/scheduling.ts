@@ -3,6 +3,7 @@ import {
   type NormalizedTriggerDraft,
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
+  type TriggerKind,
   type TriggerTaskMetadata,
   type TriggerType,
   type TriggerWakeMode,
@@ -30,7 +31,13 @@ interface CronSchedule {
   dayOfWeek: Set<number>;
 }
 
-const CRON_RANGES: readonly CronRange[] = [
+const CRON_RANGES: readonly [
+  CronRange,
+  CronRange,
+  CronRange,
+  CronRange,
+  CronRange,
+] = [
   { min: 0, max: 59 },
   { min: 0, max: 23 },
   { min: 1, max: 31 },
@@ -55,7 +62,11 @@ interface DraftInput {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
+  kind?: TriggerKind;
+  workflowId?: string;
+  workflowName?: string;
 }
 
 function parseInteger(raw: string): number | null {
@@ -83,12 +94,12 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
     const chunk = chunkRaw.trim();
     if (!chunk) return null;
 
-    const stepParts = chunk.split("/");
-    if (stepParts.length > 2) return null;
-    const step = stepParts.length === 2 ? parseInteger(stepParts[1].trim()) : 1;
+    const [baseRaw, stepRaw, extraStep] = chunk.split("/");
+    if (baseRaw === undefined || extraStep !== undefined) return null;
+    const step = stepRaw === undefined ? 1 : parseInteger(stepRaw.trim());
     if (step === null || step <= 0) return null;
 
-    const base = stepParts[0].trim();
+    const base = baseRaw.trim();
     if (base === "*") {
       for (let value = range.min; value <= range.max; value += step) {
         output.add(value);
@@ -96,18 +107,18 @@ function parseCronPart(part: string, range: CronRange): Set<number> | null {
       continue;
     }
 
-    const rangeParts = base.split("-");
-    if (rangeParts.length === 1) {
-      const single = parseInteger(rangeParts[0].trim());
+    const [rangeStartRaw, rangeEndRaw, extraRange] = base.split("-");
+    if (rangeStartRaw === undefined || extraRange !== undefined) return null;
+    if (rangeEndRaw === undefined) {
+      const single = parseInteger(rangeStartRaw.trim());
       if (single === null) return null;
       if (single < range.min || single > range.max) return null;
       output.add(single);
       continue;
     }
 
-    if (rangeParts.length !== 2) return null;
-    const start = parseInteger(rangeParts[0].trim());
-    const end = parseInteger(rangeParts[1].trim());
+    const start = parseInteger(rangeStartRaw.trim());
+    const end = parseInteger(rangeEndRaw.trim());
     if (start === null || end === null) return null;
     if (start > end) return null;
     if (start < range.min || end > range.max) return null;
@@ -125,11 +136,23 @@ export function parseCronExpression(expression: string): CronSchedule | null {
   const parts = trimmed.split(/\s+/);
   if (parts.length !== CRON_FIELDS) return null;
 
-  const minute = parseCronPart(parts[0], CRON_RANGES[0]);
-  const hour = parseCronPart(parts[1], CRON_RANGES[1]);
-  const dayOfMonth = parseCronPart(parts[2], CRON_RANGES[2]);
-  const month = parseCronPart(parts[3], CRON_RANGES[3]);
-  const dayOfWeek = parseCronPart(parts[4], CRON_RANGES[4]);
+  const [minuteExpr, hourExpr, dayOfMonthExpr, monthExpr, dayOfWeekExpr] =
+    parts;
+  if (
+    minuteExpr === undefined ||
+    hourExpr === undefined ||
+    dayOfMonthExpr === undefined ||
+    monthExpr === undefined ||
+    dayOfWeekExpr === undefined
+  ) {
+    return null;
+  }
+
+  const minute = parseCronPart(minuteExpr, CRON_RANGES[0]);
+  const hour = parseCronPart(hourExpr, CRON_RANGES[1]);
+  const dayOfMonth = parseCronPart(dayOfMonthExpr, CRON_RANGES[2]);
+  const month = parseCronPart(monthExpr, CRON_RANGES[3]);
+  const dayOfWeek = parseCronPart(dayOfWeekExpr, CRON_RANGES[4]);
 
   if (!minute || !hour || !dayOfMonth || !month || !dayOfWeek) {
     return null;
@@ -265,6 +288,14 @@ export function resolveTriggerTiming(
     };
   }
 
+  if (trigger.triggerType === "event") {
+    return {
+      updatedAt: nowMs,
+      updateIntervalMs: DISABLED_TRIGGER_INTERVAL_MS,
+      nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS,
+    };
+  }
+
   const nextRunAtMs = trigger.cronExpression
     ? computeNextCronRunAtMs(trigger.cronExpression, nowMs, trigger.timezone)
     : null;
@@ -302,16 +333,25 @@ export function buildTriggerDedupeKey(parts: {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   wakeMode: TriggerWakeMode;
+  kind?: TriggerKind;
+  workflowId?: string;
 }): string {
-  const normalized = [
+  const effectiveKind: TriggerKind = parts.kind ?? "text";
+  const normalizedParts = [
     parts.triggerType,
     normalizeText(parts.instructions).toLowerCase(),
     String(parts.intervalMs ?? ""),
     parts.scheduledAtIso ?? "",
     parts.cronExpression ?? "",
+    parts.eventKind ?? "",
     parts.wakeMode,
-  ].join("|");
+  ];
+  if (effectiveKind === "workflow") {
+    normalizedParts.push(effectiveKind, parts.workflowId ?? "");
+  }
+  const normalized = normalizedParts.join("|");
   let hash = 5381;
   for (const char of normalized) {
     hash = (hash * 33) ^ char.charCodeAt(0);
@@ -347,6 +387,10 @@ export function buildTriggerConfig(params: {
       params.draft.triggerType === "cron"
         ? params.draft.cronExpression
         : undefined,
+    eventKind:
+      params.draft.triggerType === "event"
+        ? params.draft.eventKind
+        : undefined,
     maxRuns: params.draft.maxRuns,
     runCount: previous?.runCount ?? 0,
     dedupeKey: buildTriggerDedupeKey({
@@ -355,12 +399,18 @@ export function buildTriggerConfig(params: {
       intervalMs: params.draft.intervalMs,
       scheduledAtIso: params.draft.scheduledAtIso,
       cronExpression: params.draft.cronExpression,
+      eventKind: params.draft.eventKind,
       wakeMode: params.draft.wakeMode,
+      kind: params.draft.kind,
+      workflowId: params.draft.workflowId,
     }),
     nextRunAtMs: previous?.nextRunAtMs,
     lastRunAtIso: previous?.lastRunAtIso,
     lastStatus: previous?.lastStatus,
     lastError: previous?.lastError,
+    kind: params.draft.kind,
+    workflowId: params.draft.workflowId,
+    workflowName: params.draft.workflowName,
   };
 }
 
@@ -375,12 +425,32 @@ export function normalizeTriggerDraft(params: {
     createdBy: string;
   };
 }): { draft?: NormalizedTriggerDraft; error?: string } {
+  const kind: TriggerKind | undefined = params.input.kind;
+  const workflowId = params.input.workflowId?.trim();
+  const workflowName = params.input.workflowName?.trim();
+
   const displayName =
     normalizeText(params.input.displayName ?? "") ||
     normalizeText(params.fallback.displayName);
-  const instructions =
-    normalizeText(params.input.instructions ?? "") ||
-    normalizeText(params.fallback.instructions);
+
+  // Workflow-kind triggers don't require user-provided instructions; we
+  // synthesize them so display/dedupe logic downstream keeps working.
+  let instructions: string;
+  if (kind === "workflow") {
+    if (!workflowId) {
+      return { error: "workflowId is required for workflow triggers" };
+    }
+    const synthesized = `Run workflow ${workflowName ?? workflowId}`;
+    instructions =
+      normalizeText(params.input.instructions ?? "") ||
+      normalizeText(params.fallback.instructions) ||
+      normalizeText(synthesized);
+  } else {
+    instructions =
+      normalizeText(params.input.instructions ?? "") ||
+      normalizeText(params.fallback.instructions);
+  }
+
   if (!displayName) {
     return { error: "displayName is required" };
   }
@@ -400,6 +470,7 @@ export function normalizeTriggerDraft(params: {
       : undefined;
   const scheduledAtIso = params.input.scheduledAtIso?.trim();
   const cronExpression = params.input.cronExpression?.trim();
+  const eventKind = params.input.eventKind?.trim();
   const maxRuns =
     typeof params.input.maxRuns === "number"
       ? Math.floor(params.input.maxRuns)
@@ -429,6 +500,9 @@ export function normalizeTriggerDraft(params: {
         timezone,
         intervalMs,
         maxRuns,
+        kind,
+        workflowId,
+        workflowName,
       },
     };
   }
@@ -448,6 +522,31 @@ export function normalizeTriggerDraft(params: {
         timezone,
         scheduledAtIso,
         maxRuns,
+        kind,
+        workflowId,
+        workflowName,
+      },
+    };
+  }
+
+  if (triggerType === "event") {
+    if (!eventKind) {
+      return { error: "eventKind is required for event triggers" };
+    }
+    return {
+      draft: {
+        displayName,
+        instructions,
+        triggerType,
+        wakeMode,
+        enabled,
+        createdBy,
+        timezone,
+        eventKind,
+        maxRuns,
+        kind,
+        workflowId,
+        workflowName,
       },
     };
   }
@@ -467,6 +566,9 @@ export function normalizeTriggerDraft(params: {
       timezone,
       cronExpression,
       maxRuns,
+      kind,
+      workflowId,
+      workflowName,
     },
   };
 }

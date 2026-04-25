@@ -22,6 +22,12 @@ interface LocalPackageAppMeta {
   launchType?: string;
   launchUrl?: string | null;
   icon?: string | null;
+  /**
+   * Package-relative path (e.g. `"assets/hero.png"`) or absolute URL to
+   * a full-card hero image. The registry resolves relative paths to a
+   * served URL (`/api/apps/hero/<slug>`) so clients get a plain URL.
+   */
+  heroImage?: string | null;
   capabilities?: string[];
   minPlayers?: number | null;
   maxPlayers?: number | null;
@@ -214,6 +220,7 @@ function toLocalAppMeta(
     launchType,
     launchUrl: app?.launchUrl ?? null,
     icon: app?.icon ?? null,
+    heroImage: app?.heroImage ?? null,
     capabilities: app?.capabilities ?? [],
     minPlayers: app?.minPlayers ?? null,
     maxPlayers: app?.maxPlayers ?? null,

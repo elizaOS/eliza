@@ -1,9 +1,11 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import type {
   CreateLifeOpsGoalRequest,
-  LifeOpsActiveReminderView,
   LifeOpsChannelPolicy,
   LifeOpsGoalDefinition,
+  LifeOpsGoalExperienceLoop,
+  LifeOpsGoalExperienceLoopMatch,
+  LifeOpsGoalExperienceLoopSuggestion,
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
   LifeOpsGoalSupportSuggestion,
@@ -15,13 +17,14 @@ import type {
   LifeOpsReminderPreference,
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
+  LifeOpsWeeklyGoalReview,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_GOAL_STATUSES,
   LIFEOPS_GOAL_SUGGESTION_KINDS,
   LIFEOPS_REVIEW_STATES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsGoalDefinition,
@@ -48,7 +51,6 @@ import {
   shouldDeliverReminderForIntensity,
 } from "./service-helpers-reminder.js";
 import {
-  computeDefinitionPerformance,
   summarizeOverviewSection,
 } from "./service-helpers-occurrence.js";
 import {
@@ -67,11 +69,82 @@ import {
   MAX_OVERVIEW_REMINDERS,
   OVERVIEW_HORIZON_MINUTES,
 } from "./service-constants.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 
-/** @internal */
-export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  class LifeOpsGoalsServiceMixin extends Base {
+export interface LifeOpsGoalService {
+  deleteGoal(goalId: string): Promise<void>;
+  listGoals(): Promise<LifeOpsGoalRecord[]>;
+  getGoal(goalId: string): Promise<LifeOpsGoalRecord>;
+  createGoal(request: CreateLifeOpsGoalRequest): Promise<LifeOpsGoalRecord>;
+  updateGoal(
+    goalId: string,
+    request: UpdateLifeOpsGoalRequest,
+  ): Promise<LifeOpsGoalRecord>;
+  reviewGoal(goalId: string, now?: Date): Promise<LifeOpsGoalReview>;
+  explainOccurrence(
+    occurrenceId: string,
+  ): Promise<LifeOpsOccurrenceExplanation>;
+  getOverview(now?: Date): Promise<LifeOpsOverview>;
+  listChannelPolicies(): Promise<LifeOpsChannelPolicy[]>;
+  buildGoalExperienceLoop(
+    reference: {
+      goalId?: string | null;
+      title: string;
+      description?: string | null;
+      successCriteria?: Record<string, unknown> | null;
+    },
+    now?: Date,
+  ): Promise<LifeOpsGoalExperienceLoop>;
+  reviewGoalsForWeek(now?: Date): Promise<LifeOpsWeeklyGoalReview>;
+}
+
+const GOAL_SIMILARITY_STOP_WORDS = new Set([
+  "and",
+  "the",
+  "for",
+  "with",
+  "that",
+  "this",
+  "from",
+  "before",
+  "after",
+  "goal",
+  "goals",
+]);
+
+function tokenizeGoalText(text: string | null | undefined): string[] {
+  const raw = typeof text === "string" ? text : "";
+  return raw
+    .toLowerCase()
+    .split(/[^a-z0-9]+/u)
+    .filter(
+      (token) => token.length >= 3 && !GOAL_SIMILARITY_STOP_WORDS.has(token),
+    );
+}
+
+function buildGoalSimilarityTokens(args: {
+  title: string;
+  description?: string | null;
+  successCriteria?: Record<string, unknown> | null;
+}): string[] {
+  const tokens = [
+    ...tokenizeGoalText(args.title),
+    ...tokenizeGoalText(args.description),
+    ...tokenizeGoalText(
+      args.successCriteria ? JSON.stringify(args.successCriteria) : "",
+    ),
+  ];
+  return [...new Set(tokens)];
+}
+
+export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+): MixinClass<TBase, LifeOpsGoalService> {
+  return class extends Base {
     async deleteGoal(goalId: string): Promise<void> {
       const goal = await this.repository.getGoal(this.agentId(), goalId);
       if (!goal) {
@@ -440,6 +513,88 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return suggestions.slice(0, 3);
     }
 
+    public scoreGoalSimilarity(args: {
+      reference: {
+        title: string;
+        description?: string | null;
+        successCriteria?: Record<string, unknown> | null;
+      };
+      candidate: LifeOpsGoalDefinition;
+    }): number {
+      const referenceTokens = buildGoalSimilarityTokens({
+        title: args.reference.title,
+        description: args.reference.description,
+        successCriteria: args.reference.successCriteria,
+      });
+      if (referenceTokens.length === 0) {
+        return 0;
+      }
+      const candidateTokens = new Set(
+        buildGoalSimilarityTokens({
+          title: args.candidate.title,
+          description: args.candidate.description,
+          successCriteria: normalizeOptionalRecord(
+            args.candidate.successCriteria,
+            "successCriteria",
+          ),
+        }),
+      );
+      const overlap = referenceTokens.filter((token) =>
+        candidateTokens.has(token),
+      ).length;
+      if (overlap === 0) {
+        return 0;
+      }
+      const referenceTitleTokens = tokenizeGoalText(args.reference.title);
+      const candidateTitleTokens = new Set(tokenizeGoalText(args.candidate.title));
+      const titleOverlap = referenceTitleTokens.filter((token) =>
+        candidateTitleTokens.has(token),
+      ).length;
+      const baseScore = overlap / referenceTokens.length;
+      const titleBonus =
+        referenceTitleTokens.length > 0
+          ? (titleOverlap / referenceTitleTokens.length) * 0.35
+          : 0;
+      return Math.max(0, Math.min(1, baseScore * 0.75 + titleBonus));
+    }
+
+    public buildExperienceLoopSuggestions(args: {
+      goal: LifeOpsGoalDefinition;
+      linkedDefinitions: LifeOpsTaskDefinition[];
+      recentCompletions: LifeOpsOccurrenceView[];
+    }): LifeOpsGoalExperienceLoopSuggestion[] {
+      const suggestions: LifeOpsGoalExperienceLoopSuggestion[] = [];
+      const seen = new Set<string>();
+      const pushSuggestion = (suggestion: LifeOpsGoalExperienceLoopSuggestion) => {
+        const key = `${suggestion.definitionId ?? "none"}:${suggestion.title.toLowerCase()}`;
+        if (seen.has(key)) {
+          return;
+        }
+        seen.add(key);
+        suggestions.push(suggestion);
+      };
+
+      for (const completion of args.recentCompletions.slice(0, 2)) {
+        pushSuggestion({
+          sourceGoalId: args.goal.id,
+          definitionId: completion.definitionId,
+          title: completion.title,
+          detail: `Carry forward "${completion.title}" because it was one of the support steps you actually completed when "${args.goal.title}" stayed on track.`,
+        });
+      }
+
+      for (const definition of args.linkedDefinitions.slice(0, 3)) {
+        pushSuggestion({
+          sourceGoalId: args.goal.id,
+          definitionId: definition.id,
+          title: definition.title,
+          detail: `Re-use "${definition.title}" if the new goal needs the same support structure that helped "${args.goal.title}".`,
+        });
+      }
+
+      return suggestions.slice(0, 3);
+    }
+
     public formatLocalHourMinute(
       isoValue: string | null,
       timeZone: string,
@@ -754,14 +909,15 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
           })
         : null;
       const semanticReview =
-        options.allowSemanticEvaluation && semanticEvidence
+        cachedSemanticReview ??
+        (options.allowSemanticEvaluation && semanticEvidence
           ? await evaluateGoalProgressWithLlm({
               runtime: this.runtime,
               evidence: semanticEvidence,
               goal: goalRecord.goal,
               nowIso: now.toISOString(),
             })
-          : cachedSemanticReview;
+          : null);
       const effectiveReviewState =
         semanticReview?.reviewState ?? derivedReviewState;
       const effectiveSummary: LifeOpsGoalReview["summary"] = {
@@ -831,6 +987,135 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
       return this.buildGoalReview(goalRecord, now, {
         allowSemanticEvaluation: true,
       });
+    }
+
+    async buildGoalExperienceLoop(
+      reference: {
+        goalId?: string | null;
+        title: string;
+        description?: string | null;
+        successCriteria?: Record<string, unknown> | null;
+      },
+      now = new Date(),
+    ): Promise<LifeOpsGoalExperienceLoop> {
+      const goalRecords = await this.listGoals();
+      const matches: Array<
+        LifeOpsGoalExperienceLoopMatch & { readonly scoreSort: number }
+      > = [];
+      for (const record of goalRecords) {
+        if (record.goal.id === reference.goalId) {
+          continue;
+        }
+        if (record.goal.status !== "satisfied") {
+          continue;
+        }
+        const score = this.scoreGoalSimilarity({
+          reference,
+          candidate: record.goal,
+        });
+        if (score < 0.34) {
+          continue;
+        }
+        const review = await this.buildGoalReview(record, now, {
+          allowSemanticEvaluation: false,
+        });
+        matches.push({
+          goalId: review.goal.id,
+          title: review.goal.title,
+          description: review.goal.description,
+          score: Number(score.toFixed(3)),
+          scoreSort: score,
+          status: review.goal.status,
+          reviewState: review.summary.reviewState,
+          linkedDefinitionCount: review.summary.linkedDefinitionCount,
+          completedLast7Days: review.summary.completedLast7Days,
+          lastActivityAt: review.summary.lastActivityAt,
+          explanation: review.summary.explanation,
+          carryForwardSuggestions: this.buildExperienceLoopSuggestions({
+            goal: review.goal,
+            linkedDefinitions: review.linkedDefinitions,
+            recentCompletions: review.recentCompletions,
+          }),
+        });
+      }
+
+      matches.sort((left, right) => right.scoreSort - left.scoreSort);
+      const similarGoals = matches
+        .slice(0, 3)
+        .map(({ scoreSort: _scoreSort, ...match }) => match);
+      const carryForwardSeen = new Set<string>();
+      const suggestedCarryForward: LifeOpsGoalExperienceLoopSuggestion[] = [];
+      for (const match of similarGoals) {
+        for (const suggestion of match.carryForwardSuggestions) {
+          const key = `${suggestion.sourceGoalId}:${suggestion.definitionId ?? "none"}:${suggestion.title.toLowerCase()}`;
+          if (carryForwardSeen.has(key)) {
+            continue;
+          }
+          carryForwardSeen.add(key);
+          suggestedCarryForward.push(suggestion);
+        }
+      }
+      const topMatch = similarGoals[0] ?? null;
+
+      return {
+        referenceGoalId: reference.goalId ?? null,
+        referenceTitle: reference.title,
+        similarGoals,
+        suggestedCarryForward: suggestedCarryForward.slice(0, 4),
+        summary: topMatch
+          ? `A similar completed goal, "${topMatch.title}", is the best carry-forward reference for "${reference.title}".`
+          : null,
+      };
+    }
+
+    async reviewGoalsForWeek(now = new Date()): Promise<LifeOpsWeeklyGoalReview> {
+      const goals = (await this.repository.listGoals(this.agentId())).filter(
+        (goal) => goal.status === "active",
+      );
+      const reviews: LifeOpsGoalReview[] = [];
+      for (const goal of goals) {
+        reviews.push(
+          await this.buildGoalReview(
+            {
+              goal,
+              links: await this.repository.listGoalLinksForGoal(
+                this.agentId(),
+                goal.id,
+              ),
+            },
+            now,
+            { allowSemanticEvaluation: false },
+          ),
+        );
+      }
+      const onTrack = reviews.filter(
+        (review) => review.summary.reviewState === "on_track",
+      );
+      const atRisk = reviews.filter(
+        (review) => review.summary.reviewState === "at_risk",
+      );
+      const needsAttention = reviews.filter(
+        (review) => review.summary.reviewState === "needs_attention",
+      );
+      const idle = reviews.filter(
+        (review) => review.summary.reviewState === "idle",
+      );
+
+      return {
+        generatedAt: now.toISOString(),
+        reviewWindow: "this_week",
+        summary: {
+          totalGoals: reviews.length,
+          onTrackCount: onTrack.length,
+          atRiskCount: atRisk.length,
+          needsAttentionCount: needsAttention.length,
+          idleCount: idle.length,
+        },
+        onTrack,
+        atRisk,
+        needsAttention,
+        idle,
+      };
     }
 
     async explainOccurrence(
@@ -913,6 +1198,10 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
     }
 
     async getOverview(now = new Date()): Promise<LifeOpsOverview> {
+      const schedule = await this.refreshEffectiveScheduleState({
+        timezone: resolveDefaultTimeZone(),
+        now,
+      });
       const definitions = await this.repository.listActiveDefinitions(
         this.agentId(),
       );
@@ -1061,13 +1350,12 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(Base: T
         summary: owner.summary,
         owner,
         agentOps,
+        schedule,
       };
     }
 
     async listChannelPolicies(): Promise<LifeOpsChannelPolicy[]> {
       return this.repository.listChannelPolicies(this.agentId());
     }
-  }
-
-  return LifeOpsGoalsServiceMixin;
+  } as MixinClass<TBase, LifeOpsGoalService>;
 }

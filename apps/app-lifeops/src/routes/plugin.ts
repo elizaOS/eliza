@@ -1,51 +1,48 @@
-/**
- * LifeOps plugin — registers LifeOps and website-blocker routes with the
- * elizaOS runtime plugin route system.
- *
- * Unlike Vincent/Shopify/Steward (which have a handful of routes each),
- * LifeOps has 60+ routes with many dynamic segments. Rather than
- * duplicating every path pattern, we register a small set of catch-all
- * entries per HTTP method and delegate to the existing monolithic
- * `handleLifeOpsRoutes` / `handleWebsiteBlockerRoutes` handlers.
- *
- * The plugin route bridge in runtime-plugin-routes.ts matches exact path
- * segments, so we register one route per (method × prefix) combination.
- * Each handler builds the LifeOpsRouteContext or WebsiteBlockerRouteContext
- * that the underlying handlers expect, then delegates.
- */
-
 import type http from "node:http";
-import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import { TLSSocket } from "node:tls";
 import {
+  readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-  readJsonBody as httpReadJsonBody,
 } from "@elizaos/agent/api/http-helpers";
 import { decodePathComponent as httpDecodePathComponent } from "@elizaos/agent/api/server-helpers";
-import { handleLifeOpsRoutes } from "./lifeops-routes.js";
+import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
-import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
+import { handleLifeOpsRoutes } from "./lifeops-routes.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
+import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
 
-// ---------------------------------------------------------------------------
-// Context builders — bridge plugin route (req, res, runtime) to the context
-// objects the LifeOps handlers expect.
-// ---------------------------------------------------------------------------
-
-function json(
-  res: http.ServerResponse,
-  data: unknown,
-  status = 200,
-): void {
+function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
 }
 
-function error(
-  res: http.ServerResponse,
-  message: string,
-  status = 400,
-): void {
+function error(res: http.ServerResponse, message: string, status = 400): void {
   httpSendJsonError(res, message, status);
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) {
+    return firstHeaderValue(value[0]);
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.split(",")[0]?.trim();
+  return normalized ? normalized : null;
+}
+
+function requestBaseUrl(req: http.IncomingMessage): string {
+  const headers = req.headers ?? {};
+  const protocol =
+    firstHeaderValue(headers["x-forwarded-proto"]) ??
+    (req.socket instanceof TLSSocket && req.socket.encrypted
+      ? "https"
+      : "http");
+  const host =
+    firstHeaderValue(headers["x-forwarded-host"]) ??
+    firstHeaderValue(headers.host) ??
+    "localhost";
+  return `${protocol}://${host}`;
 }
 
 function buildLifeOpsContext(
@@ -54,7 +51,7 @@ function buildLifeOpsContext(
   runtime: AgentRuntime | null,
 ): LifeOpsRouteContext {
   const method = (req.method ?? "GET").toUpperCase();
-  const url = new URL(req.url ?? "/", "http://localhost");
+  const url = new URL(req.url ?? "/", requestBaseUrl(req));
   return {
     req,
     res,
@@ -78,7 +75,7 @@ function buildWebsiteBlockerContext(
   runtime: AgentRuntime | null,
 ): WebsiteBlockerRouteContext {
   const method = (req.method ?? "GET").toUpperCase();
-  const url = new URL(req.url ?? "/", "http://localhost");
+  const url = new URL(req.url ?? "/", requestBaseUrl(req));
   return {
     req,
     res,
@@ -95,34 +92,83 @@ function buildWebsiteBlockerContext(
 // All static LifeOps routes (exact-path matches)
 // ---------------------------------------------------------------------------
 
-const LIFEOPS_STATIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> = [
+const LIFEOPS_STATIC_ROUTES: Array<{
+  type: string;
+  path: string;
+  public?: boolean;
+}> = [
   { type: "GET", path: "/api/lifeops/app-state" },
   { type: "PUT", path: "/api/lifeops/app-state" },
+  { type: "GET", path: "/api/lifeops/capabilities" },
   { type: "GET", path: "/api/lifeops/calendar/feed" },
+  { type: "GET", path: "/api/lifeops/calendar/calendars" },
+  { type: "PUT", path: "/api/lifeops/calendar/calendars/:id/include" },
   { type: "GET", path: "/api/lifeops/calendar/next-context" },
   { type: "GET", path: "/api/lifeops/gmail/triage" },
   { type: "GET", path: "/api/lifeops/gmail/search" },
   { type: "GET", path: "/api/lifeops/gmail/needs-response" },
+  { type: "GET", path: "/api/lifeops/gmail/recommendations" },
+  { type: "GET", path: "/api/lifeops/gmail/spam-review" },
+  { type: "GET", path: "/api/lifeops/gmail/unresponded" },
   { type: "POST", path: "/api/lifeops/calendar/events" },
+  { type: "GET", path: "/api/lifeops/inbox" },
   { type: "POST", path: "/api/lifeops/gmail/reply-drafts" },
+  { type: "POST", path: "/api/lifeops/gmail/batch-reply-drafts" },
   { type: "POST", path: "/api/lifeops/gmail/reply-send" },
   { type: "POST", path: "/api/lifeops/gmail/message-send" },
   { type: "POST", path: "/api/lifeops/gmail/batch-reply-send" },
+  { type: "POST", path: "/api/lifeops/gmail/manage" },
+  { type: "POST", path: "/api/lifeops/gmail/events/ingest" },
   { type: "GET", path: "/api/lifeops/connectors/google/status" },
   { type: "POST", path: "/api/lifeops/connectors/google/start" },
   { type: "POST", path: "/api/lifeops/connectors/google/preference" },
-  { type: "GET", path: "/api/lifeops/connectors/google/callback", public: true },
+  {
+    type: "GET",
+    path: "/api/lifeops/connectors/google/callback",
+    public: true,
+  },
   { type: "GET", path: "/api/lifeops/connectors/google/success", public: true },
   { type: "GET", path: "/api/lifeops/connectors/google/accounts" },
   { type: "POST", path: "/api/lifeops/connectors/google/disconnect" },
   { type: "GET", path: "/api/lifeops/connectors/x/status" },
+  { type: "POST", path: "/api/lifeops/connectors/x/start" },
+  { type: "GET", path: "/api/lifeops/connectors/x/success", public: true },
+  { type: "POST", path: "/api/lifeops/connectors/x/disconnect" },
   { type: "POST", path: "/api/lifeops/connectors/x" },
   { type: "POST", path: "/api/lifeops/x/posts" },
+  { type: "GET", path: "/api/lifeops/x/dms/digest" },
+  { type: "POST", path: "/api/lifeops/x/dms/curate" },
+  { type: "POST", path: "/api/lifeops/x/dms/send" },
+  // iMessage
+  { type: "GET", path: "/api/lifeops/connectors/imessage/status" },
+  { type: "GET", path: "/api/lifeops/connectors/imessage/chats" },
+  { type: "GET", path: "/api/lifeops/connectors/imessage/messages" },
+  { type: "POST", path: "/api/lifeops/connectors/imessage/send" },
+  // Telegram
+  { type: "GET", path: "/api/lifeops/connectors/telegram/status" },
+  { type: "POST", path: "/api/lifeops/connectors/telegram/start" },
+  { type: "POST", path: "/api/lifeops/connectors/telegram/submit" },
+  { type: "POST", path: "/api/lifeops/connectors/telegram/cancel" },
+  { type: "POST", path: "/api/lifeops/connectors/telegram/disconnect" },
+  { type: "POST", path: "/api/lifeops/connectors/telegram/verify" },
+  // Signal
+  { type: "GET", path: "/api/lifeops/connectors/signal/status" },
+  { type: "POST", path: "/api/lifeops/connectors/signal/pair" },
+  { type: "GET", path: "/api/lifeops/connectors/signal/pairing-status" },
+  { type: "POST", path: "/api/lifeops/connectors/signal/stop" },
+  { type: "POST", path: "/api/lifeops/connectors/signal/disconnect" },
+  // Discord
+  { type: "GET", path: "/api/lifeops/connectors/discord/status" },
+  { type: "POST", path: "/api/lifeops/connectors/discord/connect" },
+  { type: "POST", path: "/api/lifeops/connectors/discord/disconnect" },
+  // WhatsApp
+  { type: "GET", path: "/api/lifeops/connectors/whatsapp/status" },
   { type: "GET", path: "/api/lifeops/channel-policies" },
   { type: "POST", path: "/api/lifeops/channel-policies" },
   { type: "POST", path: "/api/lifeops/channels/phone-consent" },
   { type: "GET", path: "/api/lifeops/activity-signals" },
   { type: "POST", path: "/api/lifeops/activity-signals" },
+  { type: "POST", path: "/api/lifeops/manual-override" },
   { type: "POST", path: "/api/lifeops/reminders/process" },
   { type: "GET", path: "/api/lifeops/reminder-preferences" },
   { type: "POST", path: "/api/lifeops/reminder-preferences" },
@@ -131,22 +177,32 @@ const LIFEOPS_STATIC_ROUTES: Array<{ type: string; path: string; public?: boolea
   { type: "GET", path: "/api/lifeops/reminders/inspection" },
   { type: "GET", path: "/api/lifeops/workflows" },
   { type: "POST", path: "/api/lifeops/workflows" },
-  { type: "GET", path: "/api/lifeops/browser/sessions" },
-  { type: "GET", path: "/api/lifeops/browser/settings" },
-  { type: "POST", path: "/api/lifeops/browser/settings" },
-  { type: "GET", path: "/api/lifeops/browser/companions" },
-  { type: "GET", path: "/api/lifeops/browser/packages" },
-  { type: "GET", path: "/api/lifeops/browser/tabs" },
-  { type: "GET", path: "/api/lifeops/browser/current-page" },
-  { type: "POST", path: "/api/lifeops/browser/sync" },
-  { type: "POST", path: "/api/lifeops/browser/sessions" },
+  // Browser companion + package routes moved to
+  // `@elizaos/plugin-browser-bridge/plugin` (under `/api/browser-bridge/*`).
+  { type: "POST", path: "/api/lifeops/schedule/observations" },
+  { type: "GET", path: "/api/lifeops/schedule/merged-state" },
+  { type: "GET", path: "/api/lifeops/schedule/inspection" },
+  { type: "GET", path: "/api/lifeops/schedule/summary" },
+  { type: "GET", path: "/api/lifeops/permissions/full-disk-access" },
+  { type: "GET", path: "/api/lifeops/screen-time/summary" },
+  { type: "GET", path: "/api/lifeops/screen-time/breakdown" },
+  { type: "GET", path: "/api/lifeops/social/summary" },
   { type: "GET", path: "/api/lifeops/overview" },
+  { type: "GET", path: "/api/lifeops/payments/dashboard" },
+  { type: "GET", path: "/api/lifeops/payments/sources" },
+  { type: "POST", path: "/api/lifeops/payments/sources" },
+  { type: "POST", path: "/api/lifeops/payments/import-csv" },
+  { type: "GET", path: "/api/lifeops/payments/transactions" },
+  { type: "GET", path: "/api/lifeops/payments/recurring" },
+  { type: "POST", path: "/api/lifeops/email-unsubscribe/scan" },
+  { type: "POST", path: "/api/lifeops/email-unsubscribe/unsubscribe" },
   { type: "GET", path: "/api/lifeops/seed-templates" },
   { type: "POST", path: "/api/lifeops/seed" },
   { type: "GET", path: "/api/lifeops/definitions" },
   { type: "POST", path: "/api/lifeops/definitions" },
   { type: "GET", path: "/api/lifeops/goals" },
   { type: "POST", path: "/api/lifeops/goals" },
+  { type: "POST", path: "/api/lifeops/features/toggle" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -154,6 +210,13 @@ const LIFEOPS_STATIC_ROUTES: Array<{ type: string; path: string; public?: boolea
 // ---------------------------------------------------------------------------
 
 const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
+  // /api/lifeops/payments/sources/:sourceId
+  { type: "DELETE", path: "/api/lifeops/payments/sources/:sourceId" },
+  // /api/lifeops/calendar/events/:eventId
+  { type: "PATCH", path: "/api/lifeops/calendar/events/:eventId" },
+  { type: "DELETE", path: "/api/lifeops/calendar/events/:eventId" },
+  // /api/lifeops/gmail/spam-review/:itemId
+  { type: "PATCH", path: "/api/lifeops/gmail/spam-review/:itemId" },
   // /api/lifeops/definitions/:id
   { type: "GET", path: "/api/lifeops/definitions/:id" },
   { type: "PUT", path: "/api/lifeops/definitions/:id" },
@@ -169,20 +232,8 @@ const LIFEOPS_DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
   { type: "PUT", path: "/api/lifeops/workflows/:id" },
   // /api/lifeops/workflows/:id/run
   { type: "POST", path: "/api/lifeops/workflows/:id/run" },
-  // /api/lifeops/browser/sessions/:id
-  { type: "GET", path: "/api/lifeops/browser/sessions/:id" },
-  // /api/lifeops/browser/sessions/:id/confirm
-  { type: "POST", path: "/api/lifeops/browser/sessions/:id/confirm" },
-  // /api/lifeops/browser/sessions/:id/complete
-  { type: "POST", path: "/api/lifeops/browser/sessions/:id/complete" },
-  // /api/lifeops/browser/companions/sessions/:id/progress
-  { type: "POST", path: "/api/lifeops/browser/companions/sessions/:id/progress" },
-  // /api/lifeops/browser/companions/sessions/:id/complete
-  { type: "POST", path: "/api/lifeops/browser/companions/sessions/:id/complete" },
-  // /api/lifeops/browser/packages/:browser/build
-  { type: "POST", path: "/api/lifeops/browser/packages/:browser/build" },
-  // /api/lifeops/browser/packages/:browser/download
-  { type: "GET", path: "/api/lifeops/browser/packages/:browser/download" },
+  // Browser session + package dynamic routes moved to
+  // `@elizaos/plugin-browser-bridge/plugin` (under `/api/browser-bridge/*`).
   // /api/lifeops/occurrences/:id/explanation
   { type: "GET", path: "/api/lifeops/occurrences/:id/explanation" },
   // /api/lifeops/occurrences/:id/complete
@@ -211,8 +262,14 @@ const WEBSITE_BLOCKER_ROUTES: Array<{ type: string; path: string }> = [
 // Build Plugin Route arrays
 // ---------------------------------------------------------------------------
 
-function lifeOpsRouteHandler(): Route["handler"] {
-  return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
+type PluginRouteHandler = NonNullable<Route["handler"]>;
+
+function lifeOpsRouteHandler(): PluginRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const ctx = buildLifeOpsContext(
@@ -224,8 +281,12 @@ function lifeOpsRouteHandler(): Route["handler"] {
   };
 }
 
-function websiteBlockerRouteHandler(): Route["handler"] {
-  return async (req: unknown, res: unknown, runtime: unknown): Promise<void> => {
+function websiteBlockerRouteHandler(): PluginRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
     const ctx = buildWebsiteBlockerContext(
@@ -240,31 +301,34 @@ function websiteBlockerRouteHandler(): Route["handler"] {
 const lifeOpsPluginRoutes: Route[] = [
   // Static LifeOps routes
   ...LIFEOPS_STATIC_ROUTES.map(
-    (r) => ({
-      type: r.type as Route["type"],
-      path: r.path,
-      rawPath: true as const,
-      ...(r.public ? ({ public: true } as const) : {}),
-      handler: lifeOpsRouteHandler()!,
-    } as Route),
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        ...(r.public ? ({ public: true } as const) : {}),
+        handler: lifeOpsRouteHandler(),
+      }) as Route,
   ),
   // Dynamic LifeOps routes
   ...LIFEOPS_DYNAMIC_ROUTES.map(
-    (r) => ({
-      type: r.type as Route["type"],
-      path: r.path,
-      rawPath: true as const,
-      handler: lifeOpsRouteHandler()!,
-    } as Route),
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: lifeOpsRouteHandler(),
+      }) as Route,
   ),
   // Website blocker routes
   ...WEBSITE_BLOCKER_ROUTES.map(
-    (r) => ({
-      type: r.type as Route["type"],
-      path: r.path,
-      rawPath: true as const,
-      handler: websiteBlockerRouteHandler()!,
-    } as Route),
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: websiteBlockerRouteHandler(),
+      }) as Route,
   ),
 ];
 
@@ -275,6 +339,6 @@ const lifeOpsPluginRoutes: Route[] = [
 export const lifeopsPlugin: Plugin = {
   name: "@elizaos/app-lifeops-routes",
   description:
-    "LifeOps dashboard, Google Workspace, browser companion, website blocker, and scheduling routes",
+    "LifeOps dashboard, Google Workspace, website blocker, and scheduling routes",
   routes: lifeOpsPluginRoutes,
 };

@@ -37,18 +37,28 @@ if (os === "darwin") {
   // macOS: install cliclick for fast, reliable mouse/keyboard control
   if (!commandExists("cliclick")) {
     if (commandExists("brew")) {
-      console.log("[computeruse] Installing cliclick via Homebrew (fast mouse/keyboard control)...");
+      console.log(
+        "[computeruse] Installing cliclick via Homebrew (fast mouse/keyboard control)...",
+      );
       if (run("brew install cliclick")) {
         console.log("[computeruse] cliclick installed successfully.");
       } else {
-        console.log("[computeruse] cliclick install failed — falling back to AppleScript (slower).");
+        console.log(
+          "[computeruse] cliclick install failed — falling back to AppleScript (slower).",
+        );
         console.log("[computeruse] To install manually: brew install cliclick");
       }
     } else {
-      console.log("[computeruse] Homebrew not found. For best performance, install cliclick:");
-      console.log("[computeruse]   /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"");
+      console.log(
+        "[computeruse] Homebrew not found. For best performance, install cliclick:",
+      );
+      console.log(
+        '[computeruse]   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+      );
       console.log("[computeruse]   brew install cliclick");
-      console.log("[computeruse] Falling back to AppleScript for mouse/keyboard control.");
+      console.log(
+        "[computeruse] Falling back to AppleScript for mouse/keyboard control.",
+      );
     }
   } else {
     console.log("[computeruse] cliclick already installed.");
@@ -56,19 +66,29 @@ if (os === "darwin") {
 } else if (os === "linux") {
   // Linux: check for xdotool
   if (!commandExists("xdotool")) {
-    console.log("[computeruse] xdotool not found — required for mouse/keyboard control on Linux.");
+    console.log(
+      "[computeruse] xdotool not found — required for mouse/keyboard control on Linux.",
+    );
     console.log("[computeruse] Install via: sudo apt install xdotool");
     console.log("[computeruse] Or: sudo dnf install xdotool");
     console.log("[computeruse] Or: sudo pacman -S xdotool");
   }
 
   // Check for screenshot tool
-  if (!commandExists("import") && !commandExists("scrot") && !commandExists("gnome-screenshot")) {
+  if (
+    !commandExists("import") &&
+    !commandExists("scrot") &&
+    !commandExists("gnome-screenshot")
+  ) {
     console.log("[computeruse] No screenshot tool found. Install one of:");
-    console.log("[computeruse]   sudo apt install imagemagick   (provides 'import')");
+    console.log(
+      "[computeruse]   sudo apt install imagemagick   (provides 'import')",
+    );
     console.log("[computeruse]   sudo apt install scrot");
     console.log("[computeruse]   sudo apt install gnome-screenshot");
   }
 } else if (os === "win32") {
-  console.log("[computeruse] Windows detected — using built-in PowerShell for automation.");
+  console.log(
+    "[computeruse] Windows detected — using built-in PowerShell for automation.",
+  );
 }

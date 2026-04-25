@@ -1,7 +1,5 @@
-
-
-import type { GatewayDiscoveryEndpoint } from "../../bridge/gateway-discovery";
 import { Button, Card, CardContent } from "@elizaos/ui";
+import type { GatewayDiscoveryEndpoint } from "../../bridge/gateway-discovery";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
@@ -26,7 +24,6 @@ function gatewayLabel(
 }
 
 export function SplashServerChooser({
-  discoveryLoading,
   gateways,
   showCreateLocal,
   t,

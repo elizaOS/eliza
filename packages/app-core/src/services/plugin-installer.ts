@@ -28,13 +28,13 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { logger } from "@elizaos/core";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import { requestRestart } from "@elizaos/agent/runtime";
 import {
   getPluginInfo,
   type RegistryPluginInfo,
 } from "@elizaos/agent/services/registry-client";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import { logger } from "@elizaos/core";
 import { createSerialise } from "../utils/serialise";
 
 const execFileAsync = promisify(execFile);
@@ -454,7 +454,7 @@ async function _uninstallPlugin(pluginName: string): Promise<UninstallResult> {
   const config = loadElizaConfig();
   const installs = config.plugins?.installs;
 
-  if (!installs || !installs[pluginName]) {
+  if (!installs?.[pluginName]) {
     return {
       success: false,
       pluginName,

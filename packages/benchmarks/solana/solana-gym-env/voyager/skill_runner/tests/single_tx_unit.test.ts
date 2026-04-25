@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from "bun:test";
+import { beforeEach, describe, expect, test } from "vitest";
 
 // Mock the surfpoolEnv to test transaction counting
 describe("Single Transaction Unit Tests", () => {

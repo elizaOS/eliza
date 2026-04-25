@@ -1,5 +1,3 @@
-
-
 import { getStylePresets } from "@elizaos/shared/onboarding-presets";
 import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";
@@ -12,18 +10,17 @@ import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
 import { useApp } from "../../state/useApp";
 import { normalizeCharacterMessageExamples } from "../../utils/character-message-examples";
 import {
-  EDGE_BACKUP_VOICES,
   hasConfiguredApiKey,
   PREMADE_VOICES,
   sanitizeApiKey,
 } from "../../voice/types";
-import { WidgetHost } from "../../widgets";
 import { KnowledgeView } from "../pages/KnowledgeView";
 import {
   CharacterExamplesPanel,
   CharacterIdentityPanel,
   CharacterStylePanel,
 } from "./CharacterEditorPanels";
+import { CharacterHubView } from "./CharacterHubView";
 import {
   CharacterRoster,
   type CharacterRosterEntry,
@@ -41,8 +38,6 @@ import {
   buildVoiceConfigForCharacterEntry,
   type CharacterEditorVoiceConfig,
   DEFAULT_ELEVEN_FAST_MODEL,
-  EDGE_VOICE_GROUPS,
-  ELEVENLABS_VOICE_GROUPS,
 } from "./character-voice-config";
 
 /* Inline SVG icon helpers – avoids adding lucide-react as a dependency. */
@@ -70,13 +65,6 @@ const DownloadIcon = ({ className }: { className?: string }) => (
   />
 );
 
-const SparklesIcon = ({ className }: { className?: string }) => (
-  <Icon
-    className={className}
-    d="M12 2l1.7 5.1L19 9l-5.3 1.9L12 16l-1.7-5.1L5 9l5.3-1.9L12 2zm7 11l.9 2.7L22 17l-2.1.3L19 20l-.9-2.7L16 17l2.1-.3L19 13zm-14 0l.9 2.7L8 17l-2.1.3L5 20l-.9-2.7L2 17l2.1-.3L5 13z"
-  />
-);
-
 const UploadIcon = ({ className }: { className?: string }) => (
   <Icon
     className={className}
@@ -84,7 +72,15 @@ const UploadIcon = ({ className }: { className?: string }) => (
   />
 );
 
-import { SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, PageLayout } from "@elizaos/ui";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@elizaos/ui";
 import {
   type ChangeEvent,
   type ReactNode,
@@ -124,6 +120,33 @@ const CHARACTER_EDITOR_PAGES = [
   "examples",
   "knowledge",
 ] as const;
+type CharacterEditorPage = (typeof CHARACTER_EDITOR_PAGES)[number];
+
+/**
+ * Cheap structural check — returns true when value already has the
+ * { examples: { name, content: { text } }[] }[] shape the UI expects.
+ * Used to skip `normalizeCharacterMessageExamples`, which strips empty
+ * turns that the user is actively composing.
+ */
+function hasValidMessageExamplesShape(value: unknown): boolean {
+  if (!Array.isArray(value)) return false;
+  return value.every((convo) => {
+    if (!convo || typeof convo !== "object") return false;
+    const examples = (convo as { examples?: unknown }).examples;
+    if (!Array.isArray(examples)) return false;
+    return examples.every((msg) => {
+      if (!msg || typeof msg !== "object") return false;
+      const name = (msg as { name?: unknown }).name;
+      const content = (msg as { content?: unknown }).content;
+      return (
+        typeof name === "string" &&
+        !!content &&
+        typeof content === "object" &&
+        typeof (content as { text?: unknown }).text === "string"
+      );
+    });
+  });
+}
 
 /* ── Component ─────────────────────────────────────────────────────── */
 
@@ -147,7 +170,6 @@ export function CharacterEditor({
     chatAgentVoiceMuted: _chatAgentVoiceMuted,
     characterSaveError,
     handleCharacterFieldInput,
-    handleCharacterArrayInput,
     handleCharacterStyleInput,
     handleSaveCharacter,
     loadCharacter,
@@ -177,14 +199,6 @@ export function CharacterEditor({
 
   /** ElevenLabs voices are available only when direct key or cloud voice routing is active. */
   const useElevenLabs = elizaCloudConnected || elizaCloudVoiceProxyAvailable;
-  const elevenLabsVoiceGroups = ELEVENLABS_VOICE_GROUPS.map((group) => ({
-    label: t(group.labelKey, { defaultValue: group.defaultLabel }),
-    items: group.items,
-  }));
-  const edgeVoiceGroups = EDGE_VOICE_GROUPS.map((group) => ({
-    label: t(group.labelKey, { defaultValue: group.defaultLabel }),
-    items: group.items,
-  }));
 
   useEffect(() => {
     void loadCharacter();
@@ -211,21 +225,17 @@ export function CharacterEditor({
     [handleCharacterStyleInput],
   );
 
-  /* ── Generation ─────────────────────────────────────────────────── */
-  const [generating, setGenerating] = useState<string | null>(null);
-  const [generateError, setGenerateError] = useState<string | null>(null);
-  const [activePage, setActivePage] = useState<
-    "personality" | "style" | "examples" | "knowledge"
-  >(tab === "knowledge" ? "knowledge" : "personality");
+  const [activePage, setActivePage] = useState<CharacterEditorPage>(
+    tab === "knowledge" ? "knowledge" : "personality",
+  );
   const [rightTab, setRightTab] = useState<"style" | "examples">("style");
   const [customizing, setCustomizing] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<
-    | { kind: "page"; page: (typeof CHARACTER_EDITOR_PAGES)[number] }
+    | { kind: "page"; page: CharacterEditorPage }
     | { kind: "character"; entry: CharacterRosterEntry }
     | null
   >(null);
-  const leftPanelRef = useRef<HTMLDivElement>(null);
-  const rightPanelRef = useRef<HTMLDivElement>(null);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   // Sync rightTab with activePage (for overlay mode's right panel toggle)
   useEffect(() => {
@@ -298,16 +308,10 @@ export function CharacterEditor({
     usingAudioAnalysis: voice.usingAudioAnalysis,
     onSpeakingChange: handleChatAvatarSpeakingChange,
   });
-  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [, setVoiceLoading] = useState(false);
   const [voiceSaving, setVoiceSaving] = useState(false);
   const [voiceSaveError, setVoiceSaveError] = useState<string | null>(null);
-  const [voiceTesting, setVoiceTesting] = useState(false);
-  const [voiceTestAudio, setVoiceTestAudio] = useState<HTMLAudioElement | null>(
-    null,
-  );
-  const [selectedVoicePresetId, setSelectedVoicePresetId] = useState<
-    string | null
-  >(null);
+  const [, setSelectedVoicePresetId] = useState<string | null>(null);
   const [voiceSelectionLocked] = useState(false);
   const activeCharacterIdRef = useRef<string | null>(null);
 
@@ -389,10 +393,14 @@ export function CharacterEditor({
     (typeof characterData?.name === "string" && characterData.name.trim()) ||
     "Agent";
   const normalizedMessageExamples = Array.isArray(d.messageExamples)
-    ? normalizeCharacterMessageExamples(
-        d.messageExamples,
-        fallbackCharacterName,
-      )
+    ? hasValidMessageExamplesShape(d.messageExamples)
+      ? (d.messageExamples as ReturnType<
+          typeof normalizeCharacterMessageExamples
+        >)
+      : normalizeCharacterMessageExamples(
+          d.messageExamples,
+          fallbackCharacterName,
+        )
     : [];
   const bioText =
     typeof d.bio === "string"
@@ -450,9 +458,24 @@ export function CharacterEditor({
     (selectedCharacterId !== null && selectedCharacterId !== savedCharacterId);
 
   useEffect(() => {
+    if (!hasPendingChanges) return;
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasPendingChanges]);
+
+  useEffect(() => {
     if (!Array.isArray(d.messageExamples) || d.messageExamples.length === 0) {
       return;
     }
+
+    // Skip normalization when the draft already has the expected shape —
+    // otherwise empty turns the user just added (blank text) get stripped
+    // out before they can type into them.
+    if (hasValidMessageExamplesShape(d.messageExamples)) return;
 
     const normalized = normalizeCharacterMessageExamples(
       d.messageExamples,
@@ -525,34 +548,6 @@ export function CharacterEditor({
   }, []);
 
   /* ── Voice helpers ──────────────────────────────────────────────── */
-  const handleSelectPreset = useCallback(
-    (preset: (typeof PREMADE_VOICES)[0] | (typeof EDGE_BACKUP_VOICES)[0]) => {
-      setSelectedVoicePresetId(preset.id);
-      const isEdgeVoice = EDGE_BACKUP_VOICES.some((v) => v.id === preset.id);
-      setVoiceConfig((prev) => {
-        if (isEdgeVoice) {
-          const existingEdge = (prev.edge ?? {}) as Record<
-            string,
-            string | undefined
-          >;
-          return {
-            ...prev,
-            provider: "edge" as const,
-            edge: { ...existingEdge, voice: preset.voiceId },
-          };
-        }
-        const existing =
-          typeof prev.elevenlabs === "object" ? prev.elevenlabs : {};
-        return {
-          ...prev,
-          provider: "elevenlabs" as const,
-          elevenlabs: { ...existing, voiceId: preset.voiceId },
-        };
-      });
-    },
-    [],
-  );
-
   const applyVoicePresetForEntry = useCallback(
     (entry: CharacterRosterEntry) => {
       setVoiceSaveError(null);
@@ -613,13 +608,6 @@ export function CharacterEditor({
       if (isNewCharacter && entry.catchphrase) {
         // Immediate cleanup of old character's speech
         voice.stopSpeaking();
-        if (voiceTesting) {
-          if (voiceTestAudio) {
-            voiceTestAudio.pause();
-            voiceTestAudio.currentTime = 0;
-          }
-          setVoiceTesting(false);
-        }
 
         // Queue greeting animation to play after the VRM teleport-in dissolve finishes
         pendingGreetingRef.current = {
@@ -640,13 +628,11 @@ export function CharacterEditor({
       setState,
       voiceSelectionLocked,
       voice,
-      voiceTestAudio,
-      voiceTesting,
     ],
   );
 
   const requestPageChange = useCallback(
-    (page: (typeof CHARACTER_EDITOR_PAGES)[number]) => {
+    (page: CharacterEditorPage) => {
       if (page === activePage) return;
       if (hasPendingChanges) {
         setPendingNavigation({ kind: "page", page });
@@ -820,14 +806,6 @@ export function CharacterEditor({
 
   /* ── Voice test ─────────────────────────────────────────────────── */
 
-  const handleStopTest = useCallback(() => {
-    if (voiceTestAudio) {
-      voiceTestAudio.pause();
-      voiceTestAudio.currentTime = 0;
-    }
-    setVoiceTesting(false);
-  }, [voiceTestAudio]);
-
   /* ── Persist voice config ───────────────────────────────────────── */
   const persistVoiceConfig = useCallback(async () => {
     setVoiceSaveError(null);
@@ -966,27 +944,6 @@ export function CharacterEditor({
     };
   }, [onHeaderActionsChange]);
 
-  const renderSaveFeedback = () =>
-    hasStandaloneHeaderFeedback ? (
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {characterSaveSuccess && (
-          <span className="rounded-lg border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
-            {characterSaveSuccess}
-          </span>
-        )}
-        {combinedSaveError && (
-          <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-            {combinedSaveError}
-          </span>
-        )}
-        {generateError && (
-          <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-            {generateError}
-          </span>
-        )}
-      </div>
-    ) : null;
-
   const renderContentActionButtons = (uploadInputId: string) => (
     <div className="flex flex-wrap items-center justify-end gap-2">
       <Button
@@ -1052,103 +1009,6 @@ export function CharacterEditor({
     </div>
   );
 
-  /* ── Generate field ─────────────────────────────────────────────── */
-  const getCharContext = useCallback(
-    () => ({
-      name: d.name ?? "",
-      system: d.system ?? "",
-      bio: bioText,
-      style: d.style ?? { all: [], chat: [], post: [] },
-      postExamples: d.postExamples ?? [],
-    }),
-    [d, bioText],
-  );
-
-  const handleGenerate = useCallback(
-    async (field: string, mode: "replace" | "append" = "replace") => {
-      setGenerating(field);
-      setGenerateError(null);
-      try {
-        const { generated } = await client.generateCharacterField(
-          field,
-          getCharContext(),
-          mode,
-        );
-        if (field === "bio") {
-          handleFieldEdit("bio", generated.trim());
-        } else if (field === "system") {
-          handleFieldEdit("system", generated.trim());
-        } else if (field === "style") {
-          try {
-            const parsed = JSON.parse(generated);
-            if (mode === "append") {
-              handleStyleEdit(
-                "all",
-                [...(d.style?.all ?? []), ...(parsed.all ?? [])].join("\n"),
-              );
-              handleStyleEdit(
-                "chat",
-                [...(d.style?.chat ?? []), ...(parsed.chat ?? [])].join("\n"),
-              );
-              handleStyleEdit(
-                "post",
-                [...(d.style?.post ?? []), ...(parsed.post ?? [])].join("\n"),
-              );
-            } else {
-              if (parsed.all) handleStyleEdit("all", parsed.all.join("\n"));
-              if (parsed.chat) handleStyleEdit("chat", parsed.chat.join("\n"));
-              if (parsed.post) handleStyleEdit("post", parsed.post.join("\n"));
-            }
-          } catch (err) {
-            console.warn(
-              "[CharacterEditor] Failed to parse AI-generated style JSON:",
-              err,
-            );
-          }
-        } else if (field === "chatExamples") {
-          const formatted = normalizeCharacterMessageExamples(
-            generated,
-            fallbackCharacterName,
-          );
-          if (formatted.length > 0) {
-            handleFieldEdit("messageExamples", formatted);
-          }
-        } else if (field === "postExamples") {
-          try {
-            const parsed = JSON.parse(generated);
-            if (Array.isArray(parsed)) {
-              if (mode === "append") {
-                handleCharacterArrayInput(
-                  "postExamples",
-                  [...(d.postExamples ?? []), ...parsed].join("\n"),
-                );
-              } else {
-                handleCharacterArrayInput("postExamples", parsed.join("\n"));
-              }
-            }
-          } catch (err) {
-            console.warn(
-              "[CharacterEditor] Failed to parse AI-generated postExamples JSON:",
-              err,
-            );
-          }
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Generation failed";
-        setGenerateError(msg);
-      }
-      setGenerating(null);
-    },
-    [
-      fallbackCharacterName,
-      getCharContext,
-      d,
-      handleFieldEdit,
-      handleStyleEdit,
-      handleCharacterArrayInput,
-    ],
-  );
-
   /* ── Style entry handlers ───────────────────────────────────────── */
   const handlePendingStyleEntryChange = useCallback(
     (key: string, value: string) => {
@@ -1180,6 +1040,13 @@ export function CharacterEditor({
     [d.style, handleStyleEdit],
   );
 
+  const handleReorderStyleEntries = useCallback(
+    (key: string, items: string[]) => {
+      handleStyleEdit(key as "all" | "chat" | "post", items.join("\n"));
+    },
+    [handleStyleEdit],
+  );
+
   const handleStyleEntryDraftChange = useCallback(
     (key: string, index: number, value: string) => {
       setStyleEntryDrafts((prev) => {
@@ -1206,20 +1073,7 @@ export function CharacterEditor({
   );
 
   /* ── Derived ────────────────────────────────────────────────────── */
-  const activeVoicePreset =
-    PREMADE_VOICES.find((p) => p.id === selectedVoicePresetId) ?? null;
-  const voiceSelectValue = selectedVoicePresetId ?? null;
   const combinedSaveError = voiceSaveError ?? characterSaveError;
-  const hasStandaloneHeaderFeedback = Boolean(
-    characterSaveSuccess || combinedSaveError || generateError,
-  );
-  const standaloneContentHeader =
-    activePage === "knowledge" ? null : (
-      <div className="flex flex-col items-end gap-2">
-        {renderContentActionButtons("ce-vrm-upload-standalone")}
-        {renderSaveFeedback()}
-      </div>
-    );
 
   /* ── Loading state ──────────────────────────────────────────────── */
   if (characterLoading && !characterData) {
@@ -1246,7 +1100,7 @@ export function CharacterEditor({
       className={
         sceneOverlay
           ? "absolute inset-0 z-10 flex flex-col pointer-events-none pt-[4.5rem] px-6 pb-3 max-md:px-3 max-md:pb-2 max-md:pt-[4.5rem] [&>*]:pointer-events-auto"
-          : "flex flex-col w-full flex-1 gap-4"
+          : "flex flex-col w-full flex-1 min-h-0 gap-4"
       }
       data-no-camera-zoom={sceneOverlay ? "true" : undefined}
       data-no-camera-drag={sceneOverlay ? "true" : undefined}
@@ -1370,31 +1224,15 @@ export function CharacterEditor({
               className="flex flex-col flex-1 min-h-0 overflow-hidden"
             >
               <div
-                ref={leftPanelRef}
                 className={`custom-scrollbar flex flex-col flex-1 gap-3 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]${activePage !== "personality" ? " hidden" : ""}`}
               >
                 <CharacterIdentityPanel
-                  d={d}
                   bioText={bioText}
-                  generating={generating}
-                  voiceSelectValue={voiceSelectValue}
-                  activeVoicePreset={activeVoicePreset}
-                  voiceTesting={voiceTesting}
-                  voiceLoading={voiceLoading}
-                  useElevenLabs={useElevenLabs}
-                  elevenLabsVoiceGroups={elevenLabsVoiceGroups}
-                  edgeVoiceGroups={edgeVoiceGroups}
                   handleFieldEdit={handleFieldEdit}
-                  handleGenerate={handleGenerate}
-                  handleSelectPreset={handleSelectPreset}
-                  handleStopTest={handleStopTest}
-                  setVoiceTesting={setVoiceTesting}
-                  setVoiceTestAudio={setVoiceTestAudio}
                   t={t}
                 />
               </div>
               <div
-                ref={rightPanelRef}
                 className={`custom-scrollbar flex flex-col flex-1 gap-3 min-h-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]${activePage !== "style" && activePage !== "examples" ? " hidden" : ""}`}
               >
                 <div
@@ -1402,10 +1240,8 @@ export function CharacterEditor({
                 >
                   <CharacterStylePanel
                     d={d}
-                    generating={generating}
                     pendingStyleEntries={pendingStyleEntries}
                     styleEntryDrafts={styleEntryDrafts}
-                    handleGenerate={handleGenerate}
                     handlePendingStyleEntryChange={
                       handlePendingStyleEntryChange
                     }
@@ -1413,6 +1249,7 @@ export function CharacterEditor({
                     handleRemoveStyleEntry={handleRemoveStyleEntry}
                     handleStyleEntryDraftChange={handleStyleEntryDraftChange}
                     handleCommitStyleEntry={handleCommitStyleEntry}
+                    handleReorderStyleEntries={handleReorderStyleEntries}
                     t={t}
                   />
                 </div>
@@ -1424,9 +1261,7 @@ export function CharacterEditor({
                   <CharacterExamplesPanel
                     d={d}
                     normalizedMessageExamples={normalizedMessageExamples}
-                    generating={generating}
                     handleFieldEdit={handleFieldEdit}
-                    handleGenerate={handleGenerate}
                     t={t}
                   />
                 </div>
@@ -1440,173 +1275,37 @@ export function CharacterEditor({
           </div>
         )}
 
-        {/* ── Standalone page: standard PageLayout + Sidebar */}
+        {/* ── Standalone page: character hub */}
         {!sceneOverlay && (
-          <PageLayout
-            className="h-full"
-            contentInnerClassName="mx-auto flex w-full max-w-8xl min-h-0 flex-1 flex-col"
-            contentHeader={standaloneContentHeader}
-            footer={<WidgetHost slot="character" className="pt-4" />}
-            footerClassName="lg:px-8"
-            sidebar={
-              <Sidebar
-                testId="character-editor-sidebar"
-                collapsible
-                contentIdentity="character-editor"
-                collapseButtonTestId="character-editor-sidebar-collapse-toggle"
-                expandButtonTestId="character-editor-sidebar-expand-toggle"
-                collapseButtonAriaLabel="Collapse character editor"
-                expandButtonAriaLabel="Expand character editor"
-              >
-                <SidebarScrollRegion>
-                  <SidebarPanel className="space-y-6">
-                    <nav
-                      className="space-y-1"
-                      aria-label="Character editor sections"
-                    >
-                      {CHARACTER_EDITOR_PAGES.map((page) => {
-                        const label =
-                          page === "personality"
-                            ? t("charactereditor.TabPersonality", {
-                                defaultValue: "Personality",
-                              })
-                            : page === "style"
-                              ? t("charactereditor.TabStyles", {
-                                  defaultValue: "Style",
-                                })
-                              : page === "examples"
-                                ? t("charactereditor.TabExamples", {
-                                    defaultValue: "Examples",
-                                  })
-                                : t("charactereditor.TabKnowledge", {
-                                    defaultValue: "Knowledge",
-                                  });
-                        return (
-                          <SidebarContent.Item
-                            key={page}
-                            active={activePage === page}
-                            onClick={() => requestPageChange(page)}
-                            aria-current={
-                              activePage === page ? "page" : undefined
-                            }
-                          >
-                            <SidebarContent.ItemTitle
-                              className={
-                                activePage === page
-                                  ? "font-semibold"
-                                  : "font-medium"
-                              }
-                            >
-                              {label}
-                            </SidebarContent.ItemTitle>
-                          </SidebarContent.Item>
-                        );
-                      })}
-                    </nav>
-                  </SidebarPanel>
-                </SidebarScrollRegion>
-              </Sidebar>
-            }
-            mobileSidebarLabel={
-              activePage === "personality"
-                ? t("charactereditor.TabPersonality", {
-                    defaultValue: "Personality",
-                  })
-                : activePage === "style"
-                  ? t("charactereditor.TabStyles", { defaultValue: "Style" })
-                  : activePage === "examples"
-                    ? t("charactereditor.TabExamples", {
-                        defaultValue: "Examples",
-                      })
-                    : t("charactereditor.TabKnowledge", {
-                        defaultValue: "Knowledge",
-                      })
-            }
-            data-testid="character-editor-view"
-          >
-            <input
-              type="file"
-              id="ce-vrm-upload-standalone"
-              accept=".vrm"
-              className="hidden"
-              style={{ display: "none" }}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  setState("selectedVrmIndex", 0);
-                }
-                e.target.value = "";
-              }}
-            />
-            <div className="flex min-h-0 flex-1 min-w-0 flex-col">
-              {activePage === "personality" && (
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <CharacterIdentityPanel
-                    d={d}
-                    bioText={bioText}
-                    generating={generating}
-                    voiceSelectValue={voiceSelectValue}
-                    activeVoicePreset={activeVoicePreset}
-                    voiceTesting={voiceTesting}
-                    voiceLoading={voiceLoading}
-                    useElevenLabs={useElevenLabs}
-                    elevenLabsVoiceGroups={elevenLabsVoiceGroups}
-                    edgeVoiceGroups={edgeVoiceGroups}
-                    handleFieldEdit={handleFieldEdit}
-                    handleGenerate={handleGenerate}
-                    handleSelectPreset={handleSelectPreset}
-                    handleStopTest={handleStopTest}
-                    setVoiceTesting={setVoiceTesting}
-                    setVoiceTestAudio={setVoiceTestAudio}
-                    t={t}
-                  />
-                </div>
-              )}
-              {activePage === "style" && (
-                <div className="flex flex-col gap-5">
-                  <CharacterStylePanel
-                    d={d}
-                    generating={generating}
-                    pendingStyleEntries={pendingStyleEntries}
-                    styleEntryDrafts={styleEntryDrafts}
-                    handleGenerate={handleGenerate}
-                    handlePendingStyleEntryChange={
-                      handlePendingStyleEntryChange
-                    }
-                    handleAddStyleEntry={handleAddStyleEntry}
-                    handleRemoveStyleEntry={handleRemoveStyleEntry}
-                    handleStyleEntryDraftChange={handleStyleEntryDraftChange}
-                    handleCommitStyleEntry={handleCommitStyleEntry}
-                    t={t}
-                  />
-                </div>
-              )}
-              {activePage === "examples" && (
-                <div className="flex flex-col gap-5">
-                  <CharacterExamplesPanel
-                    d={d}
-                    normalizedMessageExamples={normalizedMessageExamples}
-                    generating={generating}
-                    handleFieldEdit={handleFieldEdit}
-                    handleGenerate={handleGenerate}
-                    t={t}
-                  />
-                </div>
-              )}
-              {activePage === "knowledge" && (
-                <div className="flex flex-col flex-1 min-h-[60vh]">
-                  <KnowledgeView embedded />
-                </div>
-              )}
-            </div>
-          </PageLayout>
+          <CharacterHubView
+            d={d}
+            bioText={bioText}
+            normalizedMessageExamples={normalizedMessageExamples}
+            pendingStyleEntries={pendingStyleEntries}
+            styleEntryDrafts={styleEntryDrafts}
+            handleFieldEdit={handleFieldEdit}
+            applyFieldEdit={(field, value) => {
+              handleCharacterFieldInput(
+                field as keyof CharacterData,
+                value as CharacterData[keyof CharacterData],
+              );
+            }}
+            handlePendingStyleEntryChange={handlePendingStyleEntryChange}
+            applyStyleEdit={handleCharacterStyleInput}
+            handleStyleEntryDraftChange={handleStyleEntryDraftChange}
+            characterSaving={characterSaving}
+            characterSaveSuccess={characterSaveSuccess}
+            characterSaveError={characterSaveError}
+            hasPendingChanges={hasPendingChanges}
+            onSave={handleSaveCharacter}
+          />
         )}
       </div>
 
       {/* ── Footer (companion overlay only) ────────────────────────── */}
       {sceneOverlay && (
         <div className="flex flex-col gap-2 pt-2 shrink-0 pointer-events-auto">
-          {(characterSaveSuccess || combinedSaveError || generateError) && (
+          {(characterSaveSuccess || combinedSaveError) && (
             <div className="flex flex-wrap items-center justify-center gap-2">
               {characterSaveSuccess && (
                 <span className="rounded-lg border border-status-success/20 bg-status-success-bg px-3 py-1 text-xs font-bold text-status-success">
@@ -1616,11 +1315,6 @@ export function CharacterEditor({
               {combinedSaveError && (
                 <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
                   {combinedSaveError}
-                </span>
-              )}
-              {generateError && (
-                <span className="rounded-lg border border-status-danger/20 bg-status-danger-bg px-3 py-1 text-xs font-medium text-status-danger">
-                  {generateError}
                 </span>
               )}
             </div>
@@ -1675,50 +1369,43 @@ export function CharacterEditor({
       >
         <DialogContent className="max-w-md rounded-2xl border-border/60 bg-bg shadow-[var(--shadow-lg)] backdrop-blur-xl">
           <DialogHeader className="gap-3">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-accent/30 bg-accent/10 text-accent">
-                <SparklesIcon className="h-4 w-4" />
-              </div>
-              <div>
-                <DialogTitle>
-                  {t("charactereditor.UnsavedChangesTitle", {
-                    defaultValue: "Unsaved changes",
-                  })}
-                </DialogTitle>
-                <DialogDescription className="mt-1 whitespace-pre-line text-muted-strong">
-                  {t("charactereditor.UnsavedChangesBody", {
-                    defaultValue:
-                      "You have unsaved changes. Save before switching?",
-                  })}
-                  {pendingNavigation?.kind === "character"
-                    ? `\n${t("charactereditor.SwitchCharacterPrompt", {
-                        defaultValue: "Switch to {{name}}?",
-                        name: pendingNavigation.entry.name,
-                      })}`
-                    : pendingNavigation?.kind === "page"
-                      ? `\n${t("charactereditor.SwitchSectionPrompt", {
-                          defaultValue: "Switch to {{name}}?",
-                          name:
-                            pendingNavigation.page === "personality"
-                              ? t("charactereditor.TabPersonality", {
-                                  defaultValue: "Personality",
+            <DialogTitle>
+              {t("charactereditor.UnsavedChangesTitle", {
+                defaultValue: "Unsaved changes",
+              })}
+            </DialogTitle>
+            <DialogDescription className="whitespace-pre-line text-muted-strong">
+              {t("charactereditor.UnsavedChangesBody", {
+                defaultValue:
+                  "You have unsaved changes. Save before switching?",
+              })}
+              {pendingNavigation?.kind === "character"
+                ? `\n${t("charactereditor.SwitchCharacterPrompt", {
+                    defaultValue: "Switch to {{name}}?",
+                    name: pendingNavigation.entry.name,
+                  })}`
+                : pendingNavigation?.kind === "page"
+                  ? `\n${t("charactereditor.SwitchSectionPrompt", {
+                      defaultValue: "Switch to {{name}}?",
+                      name:
+                        pendingNavigation.page === "personality"
+                          ? t("charactereditor.TabPersonality", {
+                              defaultValue: "Personality",
+                            })
+                          : pendingNavigation.page === "style"
+                            ? t("charactereditor.TabStyles", {
+                                defaultValue: "Style",
+                              })
+                            : pendingNavigation.page === "examples"
+                              ? t("charactereditor.TabExamples", {
+                                  defaultValue: "Examples",
                                 })
-                              : pendingNavigation.page === "style"
-                                ? t("charactereditor.TabStyles", {
-                                    defaultValue: "Style",
-                                  })
-                                : pendingNavigation.page === "examples"
-                                  ? t("charactereditor.TabExamples", {
-                                      defaultValue: "Examples",
-                                    })
-                                  : t("charactereditor.TabKnowledge", {
-                                      defaultValue: "Knowledge",
-                                    }),
-                        })}`
-                      : ""}
-                </DialogDescription>
-              </div>
-            </div>
+                              : t("charactereditor.TabKnowledge", {
+                                  defaultValue: "Knowledge",
+                                }),
+                    })}`
+                  : ""}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
@@ -1742,6 +1429,48 @@ export function CharacterEditor({
               type="button"
               variant="outline"
               onClick={() => setPendingNavigation(null)}
+            >
+              {t("common.cancel")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={resetConfirmOpen}
+        onOpenChange={(open: boolean) => {
+          if (!open) setResetConfirmOpen(false);
+        }}
+      >
+        <DialogContent className="max-w-md rounded-2xl border-border/60 bg-bg shadow-[var(--shadow-lg)] backdrop-blur-xl">
+          <DialogHeader className="gap-3">
+            <DialogTitle>
+              {t("charactereditor.ResetToDefaults", {
+                defaultValue: "Reset to defaults?",
+              })}
+            </DialogTitle>
+            <DialogDescription className="text-muted-strong">
+              {t("charactereditor.ResetConfirmBody", {
+                defaultValue:
+                  "This will discard all unsaved changes and restore this character to its default values.",
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                handleResetToDefaults();
+                setResetConfirmOpen(false);
+              }}
+            >
+              {t("charactereditor.Reset", { defaultValue: "Reset" })}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setResetConfirmOpen(false)}
             >
               {t("common.cancel")}
             </Button>

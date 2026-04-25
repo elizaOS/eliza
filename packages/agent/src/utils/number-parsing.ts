@@ -41,10 +41,8 @@ export function parseClampedInteger(
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed)) return normalizeFallback(options.fallback);
 
-  const min = options.min;
+  const { min, max } = options;
   if (min !== undefined && parsed < min) return min;
-
-  const max = options.max;
   if (max !== undefined && parsed > max) return max;
 
   return parsed;

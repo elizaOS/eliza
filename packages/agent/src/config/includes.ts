@@ -36,7 +36,7 @@ export class CircularIncludeError extends ConfigIncludeError {
   constructor(public readonly chain: string[]) {
     super(
       `Circular include detected: ${chain.join(" -> ")}`,
-      chain[chain.length - 1],
+      chain[chain.length - 1] ?? "",
     );
     this.name = "CircularIncludeError";
   }

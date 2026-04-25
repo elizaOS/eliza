@@ -6,6 +6,8 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
+import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { asRecord } from "@elizaos/shared/type-guards";
 import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.js";
 
 type GroundedReplyDomain = "lifeops" | "gmail" | "calendar";
@@ -28,13 +30,6 @@ type ActionHistoryItem = {
   text: string;
   success: boolean;
 };
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  return value as Record<string, unknown>;
-}
 
 function truncateText(value: string, maxLength: number): string {
   if (value.length <= maxLength) {
@@ -140,31 +135,8 @@ export function extractActionResultsFromState(
 
 export function extractRecentMessageEntriesFromState(
   state: State | undefined,
-): Record<string, unknown>[] {
-  if (!state || typeof state !== "object") {
-    return [];
-  }
-
-  const stateRecord = state as Record<string, unknown>;
-  const data = asRecord(stateRecord.data);
-  const providerResults = asRecord(data?.providers);
-  const providerRecentMessages = asRecord(providerResults?.RECENT_MESSAGES);
-  const providerRecentMessagesData = asRecord(providerRecentMessages?.data);
-
-  const recentMessagesData = [
-    stateRecord.recentMessagesData,
-    stateRecord.recentMessages,
-    providerRecentMessagesData?.recentMessages,
-  ].find(Array.isArray);
-
-  if (!Array.isArray(recentMessagesData)) {
-    return [];
-  }
-
-  return recentMessagesData.filter(
-    (item): item is Record<string, unknown> =>
-      Boolean(item) && typeof item === "object",
-  );
+): Memory[] {
+  return getRecentMessagesData(state);
 }
 
 export function extractStateDataRecords(

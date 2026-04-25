@@ -4,11 +4,17 @@
  * These tests exercise the real authenticated flow end-to-end:
  * auth -> onboarding -> agent start -> chat -> wallet operations -> agent stop.
  */
+
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { config as loadDotenv } from "dotenv";
+import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import {
+  buildIsolatedLiveProviderEnv,
   isLiveTestEnabled,
+  LIVE_PROVIDER_ENV_KEYS,
   selectLiveProvider,
 } from "../helpers/live-provider";
 import { createRealTestRuntime } from "../helpers/real-runtime";
@@ -18,15 +24,9 @@ import {
   postConversationMessage,
   req,
 } from "../helpers/http";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
-try {
-  const { config } = await import("dotenv");
-  config({ path: envPath });
-} catch {
-  // dotenv may not be available; keys must already be in process.env.
-}
+loadDotenv({ path: envPath });
 
 const LIVE_PROVIDER = selectLiveProvider("openai") ?? selectLiveProvider();
 const CAN_RUN = isLiveTestEnabled() && Boolean(LIVE_PROVIDER);
@@ -35,6 +35,134 @@ type StartedLiveServer = {
   close: () => Promise<void>;
   port: number;
 };
+
+type WalletExportResponse = {
+  evm: {
+    address: string | null;
+    privateKey: string;
+  } | null;
+  solana: {
+    address: string | null;
+    privateKey: string;
+  } | null;
+};
+
+function readExportNonce(errorMessage: unknown): {
+  delaySeconds: number;
+  nonce: string;
+} {
+  if (typeof errorMessage !== "string" || errorMessage.length === 0) {
+    throw new Error(
+      "Wallet export nonce request did not return an error payload",
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(errorMessage);
+  } catch (error) {
+    throw new Error(
+      `Wallet export nonce response was not valid JSON: ${errorMessage}`,
+      { cause: error },
+    );
+  }
+
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    typeof parsed.nonce !== "string" ||
+    typeof parsed.delaySeconds !== "number"
+  ) {
+    throw new Error(
+      `Wallet export nonce response was malformed: ${errorMessage}`,
+    );
+  }
+
+  return {
+    nonce: parsed.nonce,
+    delaySeconds: parsed.delaySeconds,
+  };
+}
+
+async function exportWallet(
+  port: number,
+  exportToken: string,
+  headers: Record<string, string>,
+): Promise<WalletExportResponse> {
+  const { status: nonceStatus, data: nonceData } = await req(
+    port,
+    "POST",
+    "/api/wallet/export",
+    { confirm: true, exportToken, requestNonce: true },
+    headers,
+  );
+  expect(nonceStatus).toBe(403);
+
+  const { delaySeconds, nonce } = readExportNonce(nonceData.error);
+  await sleep((delaySeconds + 1) * 1_000);
+
+  const { status: exportStatus, data: exportData } = await req(
+    port,
+    "POST",
+    "/api/wallet/export",
+    { confirm: true, exportToken, exportNonce: nonce },
+    headers,
+  );
+  expect(exportStatus).toBe(200);
+
+  return exportData as WalletExportResponse;
+}
+
+async function postConversationMessageWithRetry(
+  port: number,
+  conversationId: string,
+  body: { text: string },
+  headers: Record<string, string>,
+  options?: { timeoutMs?: number },
+): Promise<{ status: number; data: Record<string, unknown> }> {
+  const deadline = Date.now() + (options?.timeoutMs ?? 20_000);
+  let lastResult: { status: number; data: Record<string, unknown> } | null =
+    null;
+
+  do {
+    const result = (await postConversationMessage(
+      port,
+      conversationId,
+      body,
+      headers,
+      options,
+    )) as {
+      status: number;
+      data: Record<string, unknown>;
+    };
+    lastResult = result;
+
+    const text = String(result.data?.text ?? result.data?.response ?? "").trim();
+    if (
+      result.status === 200 &&
+      text.length > 0 &&
+      !isProviderIssueResponse(text)
+    ) {
+      return result;
+    }
+
+    if (Date.now() >= deadline) {
+      break;
+    }
+    await sleep(1_000);
+  } while (Date.now() < deadline);
+
+  if (!lastResult) {
+    throw new Error("Authenticated chat did not return a response payload");
+  }
+
+  return lastResult;
+}
+
+function isProviderIssueResponse(text: string): boolean {
+  return /provider issue/i.test(text);
+}
 
 async function ensureWalletKeys(): Promise<void> {
   if (!process.env.SOLANA_PRIVATE_KEY && process.env.SOLANA_API_KEY) {
@@ -48,7 +176,7 @@ async function ensureWalletKeys(): Promise<void> {
   }
 
   const { deriveEvmAddress, deriveSolanaAddress, generateWalletKeys } =
-    await import("../src/api/wallet");
+    await import("@elizaos/agent/api/wallet");
 
   let generatedKeys: {
     evmPrivateKey: string;
@@ -83,7 +211,7 @@ async function startLiveServer(args: {
   exportToken?: string;
 }): Promise<{ restore: () => Promise<void>; server: StartedLiveServer }> {
   const envBackup = saveEnv(
-    ...Object.keys(LIVE_PROVIDER?.env ?? {}),
+    ...LIVE_PROVIDER_ENV_KEYS,
     "ELIZA_API_TOKEN",
     "ELIZA_WALLET_EXPORT_TOKEN",
     "ELIZA_PAIRING_DISABLED",
@@ -94,8 +222,12 @@ async function startLiveServer(args: {
     "PGLITE_DATA_DIR",
   );
 
-  for (const [key, value] of Object.entries(LIVE_PROVIDER?.env ?? {})) {
-    process.env[key] = value;
+  const isolatedProviderEnv = buildIsolatedLiveProviderEnv(
+    process.env,
+    LIVE_PROVIDER,
+  );
+  for (const key of LIVE_PROVIDER_ENV_KEYS) {
+    process.env[key] = isolatedProviderEnv[key] ?? "";
   }
   process.env.ELIZA_API_TOKEN = args.apiToken;
   if (args.exportToken) {
@@ -112,7 +244,11 @@ async function startLiveServer(args: {
     preferredProvider: LIVE_PROVIDER?.name,
     plugins: [createElizaPlugin({ agentId: "main" })],
   });
-  const { startApiServer } = await import("../src/api/server");
+  const { startApiServer } = await import("../../src/api/server");
+  const { _resetForTesting } = await import(
+    "@elizaos/app-steward/routes/wallet-export-guard"
+  );
+  _resetForTesting();
   const server = await startApiServer({
     port: 0,
     runtime: runtimeResult.runtime,
@@ -260,7 +396,7 @@ describeIf(CAN_RUN)(
       );
       expect(noAuth).toBe(401);
 
-      const { status, data } = await postConversationMessage(
+      const { status, data } = await postConversationMessageWithRetry(
         server?.port ?? 0,
         conversationId,
         { text: "Say auth-ok and nothing else." },
@@ -302,17 +438,13 @@ describeIf(CAN_RUN)(
         wallets[0].address.toLowerCase(),
       );
 
-      const { data: exported } = await req(
+      const exported = await exportWallet(
         server?.port ?? 0,
-        "POST",
-        "/api/wallet/export",
-        { confirm: true, exportToken: EXPORT_TOKEN },
+        EXPORT_TOKEN,
         authHeaders,
       );
-      const evm = exported.evm as {
-        address: string | null;
-        privateKey: string;
-      };
+      const evm = exported.evm;
+      expect(evm).not.toBeNull();
       expect(evm.address?.toLowerCase()).toBe(wallets[0].address.toLowerCase());
       expect(evm.privateKey.startsWith("0x")).toBe(true);
     });
@@ -373,7 +505,7 @@ describeIf(CAN_RUN)("Live: Token header variants with LLM", () => {
     );
     expect(noAuth).toBe(401);
 
-    const { status, data } = await postConversationMessage(
+    const { status, data } = await postConversationMessageWithRetry(
       server?.port ?? 0,
       conversationId,
       { text: "Say hello" },
@@ -482,17 +614,9 @@ describeIf(CAN_RUN)("Live: Auth + CORS + wallet combined", () => {
     expect(importStatus).toBe(200);
     expect(importData.ok).toBe(true);
 
-    const { data: exported } = await req(
-      server?.port ?? 0,
-      "POST",
-      "/api/wallet/export",
-      { confirm: true, exportToken: EXPORT_TOKEN },
-      auth,
-    );
-    const evm = exported.evm as {
-      address: string | null;
-      privateKey: string;
-    };
+    const exported = await exportWallet(server?.port ?? 0, EXPORT_TOKEN, auth);
+    const evm = exported.evm;
+    expect(evm).not.toBeNull();
     expect(evm.privateKey).toBe(importedKey);
     expect(evm.address).toBe(importData.address);
   });

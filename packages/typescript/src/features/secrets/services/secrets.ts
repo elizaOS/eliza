@@ -2,7 +2,7 @@
  * Secrets Service
  *
  * Core service for multi-level secret management in ElizaOS.
- * Provides unified API for accessing global, world, and user secrets
+ * Provides an API for accessing global, world, and user secrets
  * with encryption, access control, and change notification support.
  */
 
@@ -55,7 +55,7 @@ const DEFAULT_CONFIG: SecretsServiceConfig = {
 /**
  * Secrets Service
  *
- * Unified service for managing secrets at all levels:
+ * service for managing secrets at all levels:
  * - Global: Stored in character settings (agent-wide config, API keys)
  * - World: Stored in world metadata (server/channel-specific)
  * - User: Stored as components (per-user secrets)

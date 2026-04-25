@@ -130,11 +130,10 @@ import type {
   FormSubmission,
   MissingFieldSummary,
   PendingExternalFieldSummary,
-  TypeHandler,
   UncertainFieldSummary,
 } from "./types";
 import { FORM_CONTROL_DEFAULTS, FORM_DEFINITION_DEFAULTS } from "./types";
-import { formatValue, getTypeHandler, registerTypeHandler, validateField } from "./validation";
+import { formatValue, validateField } from "./validation";
 
 // ============================================================================
 // FORM SERVICE
@@ -172,11 +171,6 @@ export class FormService extends Service {
 
   /**
    * Control type registry.
-   *
-   * WHY separate from TypeHandler:
-   * - ControlType is the new unified interface
-   * - Supports simple, composite, and external types
-   * - TypeHandler is legacy but still supported
    *
    * Built-in types are registered on start.
    * Plugins can register custom types.
@@ -245,27 +239,6 @@ export class FormService extends Service {
    */
   listForms(): FormDefinition[] {
     return Array.from(this.forms.values());
-  }
-
-  // ============================================================================
-  // TYPE HANDLER REGISTRY (Legacy)
-  // ============================================================================
-
-  /**
-   * Register a custom type handler (legacy API)
-   * @deprecated Use registerControlType instead
-   */
-  registerType(type: string, handler: TypeHandler): void {
-    registerTypeHandler(type, handler);
-    logger.debug(`[FormService] Registered type handler: ${type}`);
-  }
-
-  /**
-   * Get a type handler (legacy API)
-   * @deprecated Use getControlType instead
-   */
-  getTypeHandler(type: string): TypeHandler | undefined {
-    return getTypeHandler(type);
   }
 
   // ============================================================================

@@ -26,11 +26,11 @@
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger, type Plugin } from "@elizaos/core";
 import {
   extractPlugin,
   resolveLensPluginImportSpecifier,
 } from "@elizaos/app-core";
+import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { ethers } from "ethers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -242,7 +242,7 @@ async function lensGetAccount(
 }
 
 /** Fetch accounts available for a wallet. */
-async function lensGetAccountsForWallet(
+async function _lensGetAccountsForWallet(
   wallet: string,
 ): Promise<Array<{ address: string; username: string | null }>> {
   const result = await lensGraphQL(
@@ -520,7 +520,7 @@ describeIfPluginAvailable("Lens Connector - Setup & Authentication", () => {
       const p = plugin as Plugin & { clients?: unknown[] };
       expect(p.clients).toBeDefined();
       expect(Array.isArray(p.clients)).toBe(true);
-      expect(p.clients!.length).toBeGreaterThan(0);
+      expect(p.clients?.length).toBeGreaterThan(0);
     },
     TEST_TIMEOUT,
   );
@@ -556,7 +556,7 @@ describeIfPluginAvailable("Lens Connector - Setup & Authentication", () => {
       async () => {
         const result = await lensGraphQL(`query { nonExistentField }`);
         expect(result.errors).toBeDefined();
-        expect(result.errors!.length).toBeGreaterThan(0);
+        expect(result.errors?.length).toBeGreaterThan(0);
       },
       TEST_TIMEOUT,
     );
@@ -912,7 +912,6 @@ describeIfLiveWrite("Lens Connector - Media & Attachments", () => {
     },
     LIVE_WRITE_TIMEOUT,
   );
-
 });
 
 // ---------------------------------------------------------------------------
@@ -926,7 +925,7 @@ describeIfLive("Lens Connector - Error Handling", () => {
       const result = await lensGraphQL(`query { thisFieldDoesNotExist }`);
       expect(result).toBeDefined();
       expect(result.errors).toBeDefined();
-      expect(result.errors!.length).toBeGreaterThan(0);
+      expect(result.errors?.length).toBeGreaterThan(0);
     },
     TEST_TIMEOUT,
   );
@@ -946,7 +945,6 @@ describeIfLive("Lens Connector - Error Handling", () => {
     },
     TEST_TIMEOUT,
   );
-
 });
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,22 @@
-
-
+import {
+  createVectorBrowserRenderer,
+  THREE,
+} from "@elizaos/app-companion/components/avatar/vector-browser-three";
+import {
+  Button,
+  Input,
+  MetaPill,
+  PageLayout,
+  PagePanel,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SidebarContent,
+  SidebarPanel,
+  SidebarScrollRegion,
+} from "@elizaos/ui";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -11,12 +28,8 @@ import {
 } from "react";
 import { client, type QueryResult, type TableInfo } from "../../api";
 import { useApp } from "../../state";
-import {
-  createVectorBrowserRenderer,
-  THREE,
-} from "@elizaos/app-companion/components/avatar/vector-browser-three";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
-import { PagePanel, MetaPill, SidebarContent, SidebarPanel, Sidebar, SidebarScrollRegion, Button, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, PageLayout } from "@elizaos/ui";
 import {
   buildVectorGraph2DLayout,
   DIM_COLUMNS,
@@ -1078,7 +1091,25 @@ export function VectorBrowserView({
   const isConnectionError = error?.includes("agent is running");
 
   const vectorSidebar = (
-    <Sidebar testId="vector-sidebar">
+    <AppPageSidebar
+      testId="vector-sidebar"
+      collapsible
+      contentIdentity="vector-browser"
+      collapsedRailItems={memories.map((mem) => {
+        const isActive = selectedMemory?.id === mem.id;
+        return (
+          <SidebarContent.RailItem
+            key={mem.id || `${mem.content.slice(0, 30)}-${mem.createdAt}`}
+            aria-label={mem.content || "Memory"}
+            title={mem.content || "Memory"}
+            active={isActive}
+            onClick={() => setSelectedMemory(mem)}
+          >
+            {mem.type && mem.type !== "undefined" ? mem.type.slice(0, 1) : "M"}
+          </SidebarContent.RailItem>
+        );
+      })}
+    >
       <SidebarPanel>
         <div className="space-y-3 pt-4">
           {leftNav}
@@ -1305,7 +1336,7 @@ export function VectorBrowserView({
           </div>
         ) : null}
       </SidebarPanel>
-    </Sidebar>
+    </AppPageSidebar>
   );
 
   return (

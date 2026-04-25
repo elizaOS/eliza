@@ -22,7 +22,7 @@ export const noneAction: Action = {
 		_message: Memory,
 	): Promise<ActionResult> => {
 		return {
-			text: "No additional action taken",
+			text: "",
 			values: {
 				success: true,
 				actionType: "NONE",

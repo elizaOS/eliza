@@ -422,7 +422,7 @@ kill_stale_processes() {
       kill "$pid" >/dev/null 2>&1 || true
     fi
   done < <(
-    pgrep -f '/(Applications|tmp|private/tmp|Volumes)/.*Milady[^/]*\.app/Contents/MacOS/launcher|milady-dist/entry\.js' || true
+    pgrep -f '/(Applications|tmp|private/tmp|Volumes)/.*Milady[^/]*\.app/Contents/MacOS/launcher|eliza-dist/entry\.js' || true
   )
 
   pid="$(lsof -nP -tiTCP:2138 -sTCP:LISTEN 2>/dev/null | head -1 || true)"
@@ -584,7 +584,7 @@ find_live_packaged_pid() {
 
   local bundle_regex=""
   bundle_regex="$(escape_regex "$LAUNCH_APP_BUNDLE")"
-  pgrep -f "${bundle_regex}/Contents/MacOS/launcher|${bundle_regex}/Contents/MacOS/bun|${bundle_regex}/Contents/Resources/main\\.js|${bundle_regex}/Contents/Resources/app/bun/index\\.js|${bundle_regex}/Contents/Resources/app/milady-dist/entry\\.js" | head -1 || true
+  pgrep -f "${bundle_regex}/Contents/MacOS/launcher|${bundle_regex}/Contents/MacOS/bun|${bundle_regex}/Contents/Resources/main\\.js|${bundle_regex}/Contents/Resources/app/bun/index\\.js|${bundle_regex}/Contents/Resources/app/eliza-dist/entry\\.js" | head -1 || true
 }
 
 assert_packaged_asset() {
@@ -821,7 +821,7 @@ echo "Size : $(du -sh "$APP_BUNDLE" | cut -f1)"
 
 RUNTIME_ARCHIVE="$(find "$APP_BUNDLE/Contents/Resources" -maxdepth 1 -name "*.tar.zst" -type f -print -quit 2>/dev/null || true)"
 DIRECT_WGPU_DYLIB="$APP_BUNDLE/Contents/MacOS/libwebgpu_dawn.dylib"
-DIRECT_RUNTIME_DIR="$APP_BUNDLE/Contents/Resources/app/milady-dist"
+DIRECT_RUNTIME_DIR="$APP_BUNDLE/Contents/Resources/app/eliza-dist"
 if [[ -n "$RUNTIME_ARCHIVE" ]]; then
   if ! tar --zstd -tf "$RUNTIME_ARCHIVE" | grep -q "Contents/MacOS/libwebgpu_dawn\\.dylib$"; then
     echo "ERROR: Bundled Dawn runtime not found inside $RUNTIME_ARCHIVE"

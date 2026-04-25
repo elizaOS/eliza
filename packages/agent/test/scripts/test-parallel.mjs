@@ -95,12 +95,7 @@ const runOnce = (entry, extraArgs = []) =>
     const vitestExtras = entry.vitest
       ? [
           ...(entry.reportFile
-            ? [
-                "--reporter",
-                "json",
-                "--outputFile",
-                entry.reportFile,
-              ]
+            ? ["--reporter", "json", "--outputFile", entry.reportFile]
             : []),
           ...(entryWorkers ? ["--maxWorkers", String(entryWorkers)] : []),
           ...ciWorkerArgs,

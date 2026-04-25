@@ -5,6 +5,7 @@ import { extractParam, extractParamInt } from "./param-parser.js";
 export const castSpell: Action = {
   name: "CAST_SPELL",
   description: "Cast a spell by ID, optionally targeting an NPC",
+  descriptionCompressed: "Cast spell by ID, opt. target NPC.",
   similes: ["USE_MAGIC", "CAST"],
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {

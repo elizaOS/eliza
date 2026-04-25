@@ -1,6 +1,7 @@
 export * from "@elizaos/app-lifeops/providers/lifeops";
 export * from "./admin-panel.js";
 export * from "./admin-trust.js";
+export * from "./automation-terminal-bridge.js";
 export * from "./escalation-trigger.js";
 export * from "./local-models.js";
 export * from "./media-provider.js";

@@ -1,26 +1,23 @@
 #!/usr/bin/env node
 /**
- * Post-install patches for remaining third-party/runtime packaging issues.
+ * Post-install patches for third-party/runtime packaging issues.
  *
- * First-party @elizaos and @elizaos source fixes should land in their own
- * packages and releases instead of being maintained here.
+ * First-party @elizaos fixes should land in the @elizaos package source
+ * and ship via a release — not be maintained here. Every patch below
+ * carries a header stating (a) what's wrong, (b) what version fixes it
+ * upstream, (c) when it can be removed.
  *
  * Current responsibilities:
- * 1) Bun/runtime packaging compatibility (broken export maps, stale cache
- *    repairs, nested package skew, platform shims).
- * 2) Dependency compatibility fixes (@noble/*, cssstyle, @ai-sdk/groq,
- *    proper-lockfile, pty-manager).
- * 3) Startup noise / native loader suppression (bigint-buffer, sharp, jsdom).
+ *   1. Bun/runtime packaging compatibility (broken export maps, stale
+ *      cache repairs, nested package skew, platform shims).
+ *   2. Dependency compatibility fixes (@noble/*, cssstyle, @ai-sdk/groq,
+ *      proper-lockfile, pty-manager).
+ *   3. Startup noise / native loader suppression (bigint-buffer, sharp,
+ *      jsdom).
  *
- * Many former patches have been retired because the upstream submodule source
- * (workspace:*) now includes the fixes. The following patches were removed
- * because the workspace source already resolves them:
- *   - patchElizaCoreMemoryStorageStub (requireStorage refactored out)
- *   - patchElizaCoreStreamingTtsHandlerGuard (already guarded in source)
- *   - patchElizaCoreStreamingRetryPlaceholder (removed from source)
- *   - patchPluginSqlCountMemoriesSignature (countMemories supports both forms)
- *   - patchGroqSdkVersion (plugin-groq uses workspace:*)
- *   - patchElizaCoreNodeTypes (workspace builds include types)
+ * History of retired patches lives in
+ * docs/retired-patches.md — do not add new memorial comments in this
+ * file.
  */
 import {
   existsSync,
@@ -43,6 +40,7 @@ import {
   patchNobleHashesCompat,
   patchPtyManagerCursorPositionCompat,
   patchPtyManagerEsmDirnameCompat,
+  patchTsTsxJsGlobs,
   pruneNestedElizaPluginCoreCopies,
   warnStaleBunCache,
 } from "./lib/patch-bun-exports.mjs";
@@ -105,6 +103,13 @@ patchBrokenElizaCoreRuntimeDists(root);
 patchElizaCoreRolesSubpath(root);
 patchPtyManagerEsmDirnameCompat(root);
 patchPtyManagerCursorPositionCompat(root);
+// @elizaos/agent and @elizaos/ui ship exports maps where glob targets still
+// carry the source extension (e.g. "./packages/agent/src/runtime/*.ts.js").
+// Bun fails to resolve those because the actual emitted dist files are *.js.
+// Rewrite the broken globs until eliza/scripts/prepare-package-dist.mjs is fixed
+// upstream and we bump the @elizaos/agent and @elizaos/ui tarballs.
+patchTsTsxJsGlobs(root, "@elizaos/agent");
+patchTsTsxJsGlobs(root, "@elizaos/ui");
 pruneNestedElizaPluginCoreCopies(root);
 try {
   patchAutonomousElizaOnboardingPresets(root);
@@ -422,95 +427,55 @@ for (const viteCacheDir of [
   console.log(`[patch-deps] Cleared Vite optimize cache: ${viteCacheDir}`);
 }
 
-function addUniquePath(targets, seenRealpaths, path) {
-  if (!existsSync(path)) return;
-  try {
-    const rp = realpathSync(path);
-    if (seenRealpaths.has(rp)) return;
-    seenRealpaths.add(rp);
-    targets.push(path);
-  } catch {
-    if (!targets.includes(path)) targets.push(path);
-  }
-}
-
 /**
- * Patch @pixiv/three-vrm node-material helpers for Three r168+.
+ * Patch llama-cpp-capacitor Gradle syntax for Gradle 9 / AGP 9 compatibility.
  *
- * The published nodes bundle still references THREE_WEBGPU.tslFn in the
- * compatibility helper. Three r182 no longer exports tslFn from three/webgpu,
- * so Vite/Rollup emits a noisy missing-export warning even though the runtime
- * branch would use THREE_TSL.Fn instead. We patch the helper to the modern
- * path directly because this repo pins Three r182.
+ * The published 0.1.5 package still uses Groovy's deprecated space-assignment
+ * form (`namespace "..."`, `abortOnError false`, etc.). Newer Gradle keeps
+ * warning about it and Bun's patchfile parser is stricter than git's, so we
+ * normalize the installed package directly after install.
  */
-function findAllThreeVrmNodeFiles() {
-  const targets = [];
-  const seenRealpaths = new Set();
-  const relPaths = ["lib/nodes/index.module.js", "lib/nodes/index.cjs"];
-  const searchRoots = [root, resolve(root, "apps/app")];
+function patchLlamaCppCapacitorGradle() {
+  const relPath = "android/build.gradle";
+  const replacements = [
+    ['namespace "ai.annadata.plugin.capacitor"', 'namespace = "ai.annadata.plugin.capacitor"'],
+    ['version "3.22.1"', 'version = "3.22.1"'],
+    ['ndkVersion "29.0.13113456"', 'ndkVersion = "29.0.13113456"'],
+    ['abortOnError false', 'abortOnError = false'],
+    ["getDefaultProguardFile('proguard-android.txt')", "getDefaultProguardFile('proguard-android-optimize.txt')"],
+  ];
+  const searchDirs = collectInstalledPackageDirs("llama-cpp-capacitor", {
+    includeGlobalBunCache: true,
+  });
 
-  for (const searchRoot of searchRoots) {
-    for (const relPath of relPaths) {
-      addUniquePath(
-        targets,
-        seenRealpaths,
-        resolve(searchRoot, `node_modules/@pixiv/three-vrm/${relPath}`),
-      );
-    }
+  let patched = 0;
+  for (const dir of searchDirs) {
+    const target = resolve(dir, relPath);
+    if (!existsSync(target)) continue;
 
-    const bunCacheDir = resolve(searchRoot, "node_modules/.bun");
-    if (existsSync(bunCacheDir)) {
-      try {
-        const entries = readdirSync(bunCacheDir);
-        for (const entry of entries) {
-          if (entry.startsWith("@pixiv+three-vrm@")) {
-            for (const relPath of relPaths) {
-              addUniquePath(
-                targets,
-                seenRealpaths,
-                resolve(
-                  bunCacheDir,
-                  entry,
-                  `node_modules/@pixiv/three-vrm/${relPath}`,
-                ),
-              );
-            }
-          }
-        }
-      } catch {
-        // Ignore bun cache traversal errors.
-      }
-    }
-  }
-
-  return targets;
-}
-
-const threeVrmNodeTargets = findAllThreeVrmNodeFiles();
-const threeVrmFnCompatBuggy = `return THREE_WEBGPU.tslFn(jsFunc);`;
-const threeVrmFnCompatFixed = `return THREE_TSL.Fn(jsFunc);`;
-
-let threeVrmPatched = 0;
-if (threeVrmNodeTargets.length === 0) {
-  console.log("[patch-deps] three-vrm nodes bundle not found, skipping patch.");
-} else {
-  for (const target of threeVrmNodeTargets) {
     let src = readFileSync(target, "utf8");
+    let changed = false;
+    for (const [before, after] of replacements) {
+      if (!src.includes(before)) continue;
+      src = src.replaceAll(before, after);
+      changed = true;
+    }
 
-    if (!src.includes(threeVrmFnCompatBuggy)) continue;
-
-    src = src.replaceAll(threeVrmFnCompatBuggy, threeVrmFnCompatFixed);
+    if (!changed) continue;
     writeFileSync(target, src, "utf8");
-    threeVrmPatched++;
-    console.log(`[patch-deps] Applied three-vrm FnCompat patch: ${target}`);
+    patched++;
+    console.log(
+      `[patch-deps] Applied llama-cpp-capacitor Gradle compatibility patch: ${target}`,
+    );
   }
-  console.log(
-    `[patch-deps] three-vrm: checked ${threeVrmNodeTargets.length} file(s), applied ${threeVrmPatched} patch(es).`,
-  );
-}
 
-// Action parsing patch removed — fix shipped in @elizaos/core@2.0.0-alpha.106
-// (PR #6661: parseKeyValueXml preserves raw XML string for <actions> content).
+  if (patched > 0) {
+    console.log(
+      `[patch-deps] llama-cpp-capacitor: patched ${patched} Gradle file(s).`,
+    );
+  }
+}
+patchLlamaCppCapacitorGradle();
 
 /**
  * Patch cssstyle's CommonJS parser bundle to use a CJS-compatible css-color.
@@ -562,18 +527,3 @@ function patchCssstyleColorCompat() {
   }
 }
 patchCssstyleColorCompat();
-
-// ---------------------------------------------------------------------------
-// RETIRED FORK PATCHES
-//
-// The following patches have been retired because the workspace submodule
-// source (@elizaos/core, @elizaos/plugin-sql) already includes these fixes
-// and they resolve via workspace:* rather than npm tarballs:
-//
-// - patchPluginSqlCountMemoriesSignature (plugin-sql supports both signatures)
-// - patchElizaCoreMemoryStorageStub (requireStorage refactored out of core)
-// - patchElizaCoreStreamingTtsHandlerGuard (TTS guard already in source)
-// - patchElizaCoreStreamingRetryPlaceholder (retry placeholder removed)
-// - patchElizaCoreNodeTypes (workspace builds include types)
-// - patchGroqSdkVersion (plugin-groq uses workspace:*, no nested @ai-sdk/groq)
-// ---------------------------------------------------------------------------

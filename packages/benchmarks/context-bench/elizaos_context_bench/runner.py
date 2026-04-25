@@ -375,7 +375,7 @@ class ContextBenchRunner:
                     )
 
         # Comparison to best models
-        best_comparison = comparison.get("claude-3-opus", {})
+        best_comparison = comparison.get("claude-opus-4-7", {})
         overall_diff = best_comparison.get("overall_diff", 0)
         if overall_diff >= 0:
             findings.append(

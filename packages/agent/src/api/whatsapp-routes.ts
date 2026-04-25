@@ -160,7 +160,7 @@ export async function handleWhatsAppRoute(
       authDir,
       accountId,
       onEvent: (event) => {
-        state.broadcastWs?.(event);
+        state.broadcastWs?.({ ...event });
 
         if (event.status === "connected") {
           if (!state.config.connectors) state.config.connectors = {};

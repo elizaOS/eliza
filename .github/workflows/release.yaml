@@ -60,7 +60,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -84,7 +84,7 @@ jobs:
           sudo apt-get install -y libpq-dev postgresql-client protobuf-compiler libwayland-dev libpipewire-0.3-dev libegl-dev libgbm-dev libxcb1-dev libssl-dev
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "24.x"
           registry-url: "https://registry.npmjs.org"
@@ -92,7 +92,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.4"
+          bun-version: "1.3.13"
 
       - name: Install dependencies
         run: |
@@ -506,7 +506,7 @@ jobs:
         run: cargo install wasm-pack --locked
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -551,6 +551,7 @@ jobs:
             --filter=@elizaos/app-core
             --filter=elizaos
             --filter=@elizaos/interop
+            --filter=@elizaos/plugin-pdf
             --filter=@elizaos/prompts
             --filter=@elizaos/shared
             --filter=@elizaos/skills
@@ -740,7 +741,7 @@ jobs:
       # Create GitHub Release for alpha/beta (not for production, as it already exists)
       - name: Create GitHub release
         if: github.event_name != 'release' && steps.release_type.outputs.type != 'latest' && steps.tag.outputs.tag_created == 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -978,85 +979,3 @@ jobs:
           else
             echo "✅ Main base version (${MAIN_BASE}) already matches develop base (${NEW_DEVELOP_BASE})"
           fi
-
-      # Handle failure - create issue if the workflow failed
-      - name: Create issue content file
-        if: failure() && steps.version.outputs.version
-        run: |
-          cat > /tmp/issue-content.md << 'EOF'
-          The release workflow failed for version v${{ steps.version.outputs.version }}.
-
-          **Details:**
-          - Release Type: ${{ steps.release_type.outputs.type }}
-          - Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          - Triggered By: ${{ github.event_name }}
-          - Git Changes Committed: ${{ steps.commit.outputs.has_changes || 'false' }}
-          - Git Tag Created: ${{ steps.tag.outputs.tag_created || 'false' }}
-
-          **Recovery Steps:**
-
-          If git operations succeeded but NPM publish failed:
-          - The version is already in git
-          - Fix the NPM issue and run `npm run release:${{ steps.release_type.outputs.dist_tag }}` locally
-          - Or re-run this workflow (it will skip git operations if no changes)
-
-          If git operations failed:
-          - No packages were published to NPM (safe state)
-          - Fix the git issue (permissions, network, etc.)
-          - Re-run the workflow
-
-          **Action Required:**
-          - Check the workflow logs for the specific failure point
-          - Follow the appropriate recovery steps above
-          EOF
-
-      - name: Check for existing failure issue
-        if: failure() && steps.version.outputs.version
-        id: existing_failure_issue
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          if [[ "$(gh api repos/${{ github.repository }} --jq '.has_issues')" != "true" ]]; then
-            echo "Repository issues are disabled; skipping failure issue automation"
-            echo "should_create=false" >> "$GITHUB_OUTPUT"
-            echo "issue_number=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          EXISTING_ISSUE="$(
-            gh issue list \
-              --repo "${{ github.repository }}" \
-              --search "is:issue is:open in:title \"Release Failed: v${VERSION}\"" \
-              --json number \
-              --jq '.[0].number // ""'
-          )"
-
-          if [[ -n "${EXISTING_ISSUE}" ]]; then
-            echo "Found existing failure issue #${EXISTING_ISSUE} for v${VERSION}"
-            echo "should_create=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "No open failure issue exists for v${VERSION}"
-            echo "should_create=true" >> "$GITHUB_OUTPUT"
-          fi
-
-          echo "issue_number=${EXISTING_ISSUE}" >> "$GITHUB_OUTPUT"
-
-      - name: Create failure issue
-        if: failure() && steps.version.outputs.version && steps.existing_failure_issue.outputs.should_create == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh issue create \
-            --repo "${{ github.repository }}" \
-            --title "Release Failed: v${{ steps.version.outputs.version }}" \
-            --body-file /tmp/issue-content.md \
-            --label bug \
-            --label release \
-            --label "automated issue"
-
-      - name: Reuse existing failure issue
-        if: failure() && steps.version.outputs.version && steps.existing_failure_issue.outputs.should_create != 'true'
-        run: |
-          echo "Reusing existing failure issue #${{ steps.existing_failure_issue.outputs.issue_number }}"

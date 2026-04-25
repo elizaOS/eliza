@@ -4,7 +4,6 @@ import type { RelationshipsService } from "../../../services/relationships.ts";
 import type {
 	ActionResult,
 	Entity,
-	EvaluationExample,
 	Evaluator,
 	IAgentRuntime,
 	Memory,
@@ -12,6 +11,7 @@ import type {
 	UUID,
 } from "../../../types/index.ts";
 import { stringToUuid } from "../../../utils.ts";
+import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 
 // Get text content from centralized specs
 const spec = requireEvaluatorSpec("RELATIONSHIP_EXTRACTION");
@@ -57,7 +57,7 @@ export const relationshipExtractionEvaluator: Evaluator = {
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	alwaysRun: spec.alwaysRun ?? false,
-	examples: (spec.examples ?? []) as EvaluationExample[],
+	examples: toEvaluationExamples(spec.examples),
 
 	validate: async (
 		_runtime: IAgentRuntime,
@@ -99,6 +99,12 @@ export const relationshipExtractionEvaluator: Evaluator = {
 		const identities = extractPlatformIdentities(message.content.text);
 		if (identities.length > 0) {
 			await storePlatformIdentities(runtime, message.entityId, identities);
+			await upsertEntityIdentities(
+				relationshipsService,
+				message.entityId,
+				identities,
+				message.id ? [message.id] : [],
+			);
 		}
 
 		// Check for disputes or corrections
@@ -864,6 +870,36 @@ async function handleAdminUpdates(
 				"Admin updated entity metadata",
 			);
 		}
+	}
+}
+
+/**
+ * Persist extracted platform identities to the strengthened
+ * `entity_identities` table via RelationshipsService. Each call records
+ * provenance (the message id that triggered the observation) so we can rebuild
+ * an evidence trail later.
+ */
+async function upsertEntityIdentities(
+	relationshipsService: RelationshipsService,
+	entityId: UUID,
+	identities: PlatformIdentity[],
+	evidenceMessageIds: UUID[],
+): Promise<void> {
+	if (typeof relationshipsService.upsertIdentity !== "function") {
+		return;
+	}
+	for (const identity of identities) {
+		await relationshipsService.upsertIdentity(
+			entityId,
+			{
+				platform: identity.platform,
+				handle: identity.handle,
+				verified: identity.verified,
+				confidence: identity.confidence,
+				source: "relationship_extraction",
+			},
+			evidenceMessageIds,
+		);
 	}
 }
 

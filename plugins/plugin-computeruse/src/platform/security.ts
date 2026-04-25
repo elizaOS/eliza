@@ -23,26 +23,47 @@ interface DangerousPattern {
 }
 
 const CREDENTIAL_PATTERNS: LabelledPattern[] = [
-  { pattern: /^\/\.ssh\/(?:id_|.*\.pem$|authorized_keys$|config$)/i, label: "SSH key/config" },
+  {
+    pattern: /^\/\.ssh\/(?:id_|.*\.pem$|authorized_keys$|config$)/i,
+    label: "SSH key/config",
+  },
   { pattern: /^\/\.gnupg\//i, label: "GPG keyring" },
   { pattern: /^\/\.aws\/credentials$/i, label: "AWS credentials" },
-  { pattern: /^\/\.config\/gcloud\/application_default_credentials\.json$/i, label: "GCP credentials" },
+  {
+    pattern: /^\/\.config\/gcloud\/application_default_credentials\.json$/i,
+    label: "GCP credentials",
+  },
   { pattern: /^\/\.docker\/config\.json$/i, label: "Docker credentials" },
   { pattern: /^\/\.kube\/config$/i, label: "Kubernetes config" },
   { pattern: /^\/\.netrc$/i, label: "netrc credentials" },
   { pattern: /^\/\.npmrc$/i, label: "npm credentials" },
   { pattern: /^\/\.git-credentials$/i, label: "Git stored credentials" },
   { pattern: /^\/Library\/Keychains\//i, label: "macOS Keychain" },
-  { pattern: /\/(?:Google\/Chrome|Microsoft\/Edge|BraveSoftware\/Brave-Browser)\/.*\/Login Data$/i, label: "browser password database" },
-  { pattern: /\/(?:Google\/Chrome|Microsoft\/Edge|BraveSoftware\/Brave-Browser)\/.*\/Cookies$/i, label: "browser cookie database" },
-  { pattern: /\/\.mozilla\/firefox\/.*\/(?:logins\.json|key[34]\.db|cookies\.sqlite)$/i, label: "Firefox credential/cookie store" },
+  {
+    pattern:
+      /\/(?:Google\/Chrome|Microsoft\/Edge|BraveSoftware\/Brave-Browser)\/.*\/Login Data$/i,
+    label: "browser password database",
+  },
+  {
+    pattern:
+      /\/(?:Google\/Chrome|Microsoft\/Edge|BraveSoftware\/Brave-Browser)\/.*\/Cookies$/i,
+    label: "browser cookie database",
+  },
+  {
+    pattern:
+      /\/\.mozilla\/firefox\/.*\/(?:logins\.json|key[34]\.db|cookies\.sqlite)$/i,
+    label: "Firefox credential/cookie store",
+  },
 ];
 
 const SYSTEM_DIR_PATTERNS_WIN32: LabelledPattern[] = [
   { pattern: /^[A-Z]:\/Windows\//i, label: "Windows system directory" },
   { pattern: /^[A-Z]:\/Program Files/i, label: "Program Files directory" },
   { pattern: /^[A-Z]:\/ProgramData\//i, label: "ProgramData directory" },
-  { pattern: /^[A-Z]:\/PROGRA~[1-4]\//i, label: "Program Files (8.3 short name)" },
+  {
+    pattern: /^[A-Z]:\/PROGRA~[1-4]\//i,
+    label: "Program Files (8.3 short name)",
+  },
 ];
 
 const SYSTEM_DIR_PATTERNS_UNIX: LabelledPattern[] = [
@@ -50,9 +71,15 @@ const SYSTEM_DIR_PATTERNS_UNIX: LabelledPattern[] = [
   { pattern: /^\/sbin\//i, label: "system binary directory" },
   { pattern: /^\/usr\/sbin\//i, label: "system admin binary directory" },
   { pattern: /^\/usr\/lib\//i, label: "system library directory" },
-  { pattern: /^\/etc\/(?:shadow|sudoers|pam\.d|master\.passwd)/i, label: "system auth config" },
+  {
+    pattern: /^\/etc\/(?:shadow|sudoers|pam\.d|master\.passwd)/i,
+    label: "system auth config",
+  },
   { pattern: /^\/System\//i, label: "macOS System directory" },
-  { pattern: /^\/private\/var\/db\/dslocal/i, label: "macOS Directory Services" },
+  {
+    pattern: /^\/private\/var\/db\/dslocal/i,
+    label: "macOS Directory Services",
+  },
   { pattern: /^\/dev\//i, label: "device node" },
   { pattern: /^\/proc\//i, label: "proc filesystem" },
   { pattern: /^\/sys\//i, label: "sys filesystem" },
@@ -79,27 +106,30 @@ const STRIP_PATTERN_ENV: RegExp[] = [
 
 const DANGEROUS_COMMAND_PATTERNS: DangerousPattern[] = [
   {
-    pattern: /\brm\s+-[^\n;|&]*r[^\n;|&]*\s+\/(\s*$|\s*;|\s*&|\s*\|)/mi,
+    pattern: /\brm\s+-[^\n;|&]*r[^\n;|&]*\s+\/(\s*$|\s*;|\s*&|\s*\|)/im,
     reason: "Recursive deletion of the root filesystem (rm -rf /).",
   },
   {
-    pattern: /\brm\s+-[^\n;|&]*r[^\n;|&]*\s+\/\*/mi,
+    pattern: /\brm\s+-[^\n;|&]*r[^\n;|&]*\s+\/\*/im,
     reason: "Recursive deletion of all root contents (rm -rf /*).",
   },
   {
-    pattern: /\brm\s+-[^\n;|&]*r[^\n;|&]*\s+~\/?(\s|$|;|&|\|)/mi,
+    pattern: /\brm\s+-[^\n;|&]*r[^\n;|&]*\s+~\/?(\s|$|;|&|\|)/im,
     reason: "Recursive deletion of the entire home directory.",
   },
   {
-    pattern: /\bRemove-Item\b(?=[^;|&]*-Recurse)(?=[^;|&]*[\s'"][A-Z]:[\\\/](?=[^a-zA-Z0-9]|$))/im,
+    pattern:
+      /\bRemove-Item\b(?=[^;|&]*-Recurse)(?=[^;|&]*[\s'"][A-Z]:[\\/](?=[^a-zA-Z0-9]|$))/im,
     reason: "PowerShell recursive deletion of drive root.",
   },
   {
-    pattern: /\bRemove-Item\b(?=[^;|&]*-Recurse)(?=[^;|&]*[\s'"]\/{1,2}['"\s])/im,
+    pattern:
+      /\bRemove-Item\b(?=[^;|&]*-Recurse)(?=[^;|&]*[\s'"]\/{1,2}['"\s])/im,
     reason: "PowerShell recursive deletion of filesystem root.",
   },
   {
-    pattern: /\b(?:powershell|pwsh)(?:\.exe)?\b[^|]*-(?:enc|encodedcommand)\b/im,
+    pattern:
+      /\b(?:powershell|pwsh)(?:\.exe)?\b[^|]*-(?:enc|encodedcommand)\b/im,
     reason: "Encoded PowerShell command.",
   },
   {

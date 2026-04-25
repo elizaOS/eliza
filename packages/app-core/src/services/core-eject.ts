@@ -3,9 +3,9 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { promisify } from "node:util";
-import { logger } from "@elizaos/core";
 import { resolveStateDir } from "@elizaos/agent/config/paths";
 import { getPluginInfo } from "@elizaos/agent/services/registry-client";
+import { logger } from "@elizaos/core";
 import { createSerialise } from "../utils/serialise";
 import {
   assertValidGitUrl,

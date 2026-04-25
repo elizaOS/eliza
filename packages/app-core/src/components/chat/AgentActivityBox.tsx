@@ -1,6 +1,9 @@
 import type { CodingAgentSession } from "../../api/client-types-cloud";
+import {
+  PULSE_STATUSES,
+  STATUS_DOT,
+} from "../../chat/coding-agent-session-state";
 import { useApp } from "../../state";
-import { PULSE_STATUSES, STATUS_DOT } from "../../chat/coding-agent-session-state";
 
 /** Derive activity text for sessions hydrated from the server (no lastActivity yet). */
 function deriveActivity(
@@ -72,6 +75,8 @@ export function AgentActivityBox({
             height="12"
             viewBox="0 0 24 24"
             fill="none"
+            aria-hidden="true"
+            focusable="false"
             stroke="currentColor"
             strokeWidth="2"
             strokeLinecap="round"

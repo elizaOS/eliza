@@ -1,17 +1,16 @@
+import { Button } from "@elizaos/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { client } from "../../api/client";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
-import { client } from "../../api/client";
-import { paramsToSchema } from "../pages/plugin-list-utils";
-import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
-import { UiRenderer } from "../config-ui/ui-renderer";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { PatchOp, UiSpec } from "../../config/ui-spec";
 import { useApp } from "../../state/useApp";
 import type { ConfigUiHint } from "../../types";
 import { stripAssistantStageDirections } from "../../utils/assistant-text";
-
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@elizaos/ui";
+import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
+import { UiRenderer } from "../config-ui/ui-renderer";
+import { paramsToSchema } from "../pages/plugin-list-utils";
 
 /** Reject prototype-pollution keys that should never be traversed or rendered. */
 const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);
@@ -324,7 +323,7 @@ function parseSegments(text: string): Segment[] {
   const cleaned = normalizeDisplayText(text);
   if (!cleaned) return [{ kind: "text", text: "" }];
 
-  // Build a unified list of match regions sorted by position
+  // Build a list of match regions sorted by position
   const regions: Array<{ start: number; end: number; segment: Segment }> = [];
 
   // 1. Find [CONFIG:pluginId] markers
@@ -535,7 +534,7 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
       await client.updatePlugin(pluginId, { config: patch });
       if (mountedRef.current) setSaved(true);
       await fetchPlugin();
-    } catch (e) {
+    } catch (e: unknown) {
       if (mountedRef.current) {
         setError(
           e instanceof Error
@@ -595,7 +594,7 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
         }
         // Wait for agent restart then refresh (with cleanup on unmount)
         refreshTimerRef.current = setTimeout(() => void fetchPlugin(), 3000);
-      } catch (e) {
+      } catch (e: unknown) {
         if (mountedRef.current) {
           setError(
             e instanceof Error

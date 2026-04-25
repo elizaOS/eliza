@@ -11,10 +11,10 @@ import type {
   LifeOpsWindowPolicy,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_REMINDER_CHANNELS,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   requireNonEmptyString,
   normalizeOptionalString,
@@ -257,7 +257,7 @@ export function resolveUpcomingWindowStart(
   return buildWindowStartDate(
     timeZone,
     addDaysToLocalDate(baseDate, 1),
-    candidateMinutes[0],
+    candidateMinutes[0] ?? fallbackMinute,
   );
 }
 

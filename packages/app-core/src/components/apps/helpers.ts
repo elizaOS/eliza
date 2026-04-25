@@ -5,6 +5,7 @@ import {
   packageNameToAppRouteSlug,
 } from "@elizaos/shared/contracts/apps";
 import type { RegistryAppInfo } from "../../api";
+import { getBootConfig } from "../../config/boot-config-store";
 import {
   getInternalToolAppCatalogOrder,
   isInternalToolApp,
@@ -22,34 +23,77 @@ export const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export type AppCatalogSectionKey =
+  | "featured"
   | "favorites"
   | "games"
   | "developerUtilities"
-  | "companions"
   | "finance"
-  | "lifeManagement"
   | "other";
 
 export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
   {
-    favorites: "Favorites",
-    games: "Games",
+    featured: "Featured",
+    favorites: "Starred",
+    games: "Games & Entertainment",
     developerUtilities: "Developer Utilities",
-    companions: "Companions",
     finance: "Finance",
-    lifeManagement: "Life Management",
     other: "Other",
   };
 
+export const APPS_VIEW_HIDDEN_APP_NAMES = [
+  "@elizaos/app",
+  "@elizaos/app-browser",
+  "@elizaos/app-form",
+  "@elizaos/app-knowledge",
+  "@elizaos/app-task-coordinator",
+] as const;
+
+const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
+  APPS_VIEW_HIDDEN_APP_NAMES,
+);
+
+const FEATURED_APP_NAMES = new Set<string>([
+  "@elizaos/app-lifeops",
+  "@elizaos/app-companion",
+  "@elizaos/app-defense-of-the-agents",
+  "@clawville/app-clawville",
+]);
+
+const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
+  "@elizaos/app-companion",
+  "@elizaos/app-defense-of-the-agents",
+  "@clawville/app-clawville",
+]);
+
+const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
+  "@elizaos/app-elizamaker",
+  "@elizaos/app-shopify",
+  "@elizaos/app-steward",
+  "@elizaos/app-vincent",
+]);
+
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
+  "featured",
   "favorites",
-  "companions",
-  "finance",
-  "lifeManagement",
   "games",
+  "finance",
   "developerUtilities",
   "other",
 ];
+
+function getConfiguredDefaultAppNames(): ReadonlySet<string> {
+  return new Set(
+    (getBootConfig().defaultApps ?? []).filter(
+      (name): name is string => typeof name === "string" && name.length > 0,
+    ),
+  );
+}
+
+function isFeaturedAppName(name: string): boolean {
+  return (
+    FEATURED_APP_NAMES.has(name) || getConfiguredDefaultAppNames().has(name)
+  );
+}
 
 export interface AppCatalogSection {
   key: AppCatalogSectionKey;
@@ -73,7 +117,31 @@ interface AppsCatalogFilterOptions {
   activeAppNames?: ReadonlySet<string>;
   isProd?: boolean;
   searchQuery?: string;
+  showAllApps?: boolean;
   showActiveOnly?: boolean;
+}
+
+function parseBooleanEnvValue(value: unknown): boolean {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
+}
+
+function shouldShowAllApps(showAllApps?: boolean): boolean {
+  if (typeof showAllApps === "boolean") {
+    return showAllApps;
+  }
+  return parseBooleanEnvValue(import.meta.env.VITE_PUBLIC_SHOW_ALL_APPS);
+}
+
+export function isHiddenFromAppsView(appName: string): boolean {
+  return APPS_VIEW_HIDDEN_APP_NAME_SET.has(appName);
 }
 
 export function isCuratedGameApp(
@@ -85,12 +153,61 @@ export function isCuratedGameApp(
 
 export function shouldShowAppInAppsView(
   app: Pick<RegistryAppInfo, "category" | "name">,
-  isProd: boolean = typeof import.meta.env.PROD === "boolean"
-    ? import.meta.env.PROD
-    : Boolean(import.meta.env.PROD),
+  options: {
+    isProd?: boolean;
+    showAllApps?: boolean;
+  } = {},
 ): boolean {
+  const {
+    isProd = typeof import.meta.env.PROD === "boolean"
+      ? import.meta.env.PROD
+      : Boolean(import.meta.env.PROD),
+    showAllApps,
+  } = options;
   void isProd;
-  return isInternalToolApp(app.name) || isCuratedGameApp(app);
+  if (isHiddenFromAppsView(app.name)) {
+    return false;
+  }
+  const configuredDefaultAppNames = getConfiguredDefaultAppNames();
+  if (
+    !configuredDefaultAppNames.has(app.name) &&
+    !isInternalToolApp(app.name) &&
+    !isCuratedGameApp(app)
+  ) {
+    return false;
+  }
+
+  if (shouldShowAllApps(showAllApps)) {
+    return true;
+  }
+
+  const canonicalName = isInternalToolApp(app.name)
+    ? app.name
+    : (normalizeElizaCuratedAppName(app.name) ?? app.name);
+  const sectionKey = getAppCatalogSectionKey({
+    name: app.name,
+    category: app.category,
+    displayName: "",
+    description: "",
+  });
+
+  if (
+    DEFAULT_HIDDEN_APP_NAMES.has(canonicalName) &&
+    !configuredDefaultAppNames.has(app.name) &&
+    !configuredDefaultAppNames.has(canonicalName)
+  ) {
+    return false;
+  }
+
+  if (sectionKey === "games") {
+    return (
+      DEFAULT_VISIBLE_GAME_APP_NAMES.has(canonicalName) ||
+      configuredDefaultAppNames.has(app.name) ||
+      configuredDefaultAppNames.has(canonicalName)
+    );
+  }
+
+  return true;
 }
 
 export function filterAppsForCatalog(
@@ -99,6 +216,7 @@ export function filterAppsForCatalog(
     activeAppNames = new Set<string>(),
     isProd,
     searchQuery = "",
+    showAllApps,
     showActiveOnly = false,
   }: AppsCatalogFilterOptions = {},
 ): RegistryAppInfo[] {
@@ -131,7 +249,7 @@ export function filterAppsForCatalog(
   });
 
   return sortedApps.filter((app) => {
-    if (!shouldShowAppInAppsView(app, isProd)) {
+    if (!shouldShowAppInAppsView(app, { isProd, showAllApps })) {
       return false;
     }
     const sectionLabel = getAppCatalogSectionLabel(app).toLowerCase();
@@ -161,13 +279,14 @@ export function filterAppsForCatalog(
 
 export function getDefaultAppsCatalogSelection(
   apps: RegistryAppInfo[],
-  isProd: boolean = typeof import.meta.env.PROD === "boolean"
-    ? import.meta.env.PROD
-    : Boolean(import.meta.env.PROD),
+  options: {
+    isProd?: boolean;
+    showAllApps?: boolean;
+  } = {},
 ): string | null {
   return (
     filterAppsForCatalog(apps, {
-      isProd,
+      ...options,
     })[0]?.name ?? null
   );
 }
@@ -178,8 +297,15 @@ export function getAppCatalogSectionKey(
     "name" | "displayName" | "description" | "category"
   >,
 ): AppCatalogSectionKey {
-  if (app.name === "@elizaos/app-lifeops") {
-    return "lifeManagement";
+  if (isFeaturedAppName(app.name)) {
+    return "featured";
+  }
+
+  if (
+    app.name === "@elizaos/app-steward" ||
+    app.name === "@elizaos/app-elizamaker"
+  ) {
+    return "finance";
   }
 
   if (isInternalToolApp(app.name)) {
@@ -189,7 +315,7 @@ export function getAppCatalogSectionKey(
   const canonicalName = normalizeElizaCuratedAppName(app.name) ?? app.name;
   switch (canonicalName) {
     case "@elizaos/app-companion":
-      return "companions";
+      return "games";
     case "@elizaos/app-vincent":
     case "@elizaos/app-shopify":
       return "finance";
@@ -211,7 +337,7 @@ export function getAppCatalogSectionKey(
     return "developerUtilities";
   }
   if (normalizedCategory === "social" || normalizedCategory === "world") {
-    return "companions";
+    return "games";
   }
   if (normalizedCategory === "platform") {
     return "finance";
@@ -226,15 +352,8 @@ export function getAppCatalogSectionKey(
     .join(" ")
     .toLowerCase();
 
-  if (
-    /calendar|task|inbox|lifeops|reminder|routine|planning|productivity/.test(
-      searchBlob,
-    )
-  ) {
-    return "lifeManagement";
-  }
   if (/companion|avatar|assistant|friend|chat|social/.test(searchBlob)) {
-    return "companions";
+    return "games";
   }
   if (
     /commerce|shop|store|finance|wallet|market|trade|sales|business|team/.test(
@@ -265,15 +384,45 @@ export function getAppCatalogSectionLabel(
 
 export function groupAppsForCatalog(
   apps: RegistryAppInfo[],
-  favoriteAppNames: ReadonlySet<string> = new Set(),
+  {
+    favoriteAppNames = new Set<string>(),
+  }: {
+    favoriteAppNames?: ReadonlySet<string>;
+  } = {},
 ): AppCatalogSection[] {
+  const sections: AppCatalogSection[] = [];
   const groupedApps = new Map<AppCatalogSectionKey, RegistryAppInfo[]>();
+  const surfacedAppNames = new Set<string>();
+
+  const favoriteApps = apps.filter((app) => favoriteAppNames.has(app.name));
+  if (favoriteApps.length > 0) {
+    sections.push({
+      key: "favorites",
+      label: APP_CATALOG_SECTION_LABELS.favorites,
+      apps: favoriteApps,
+    });
+    for (const app of favoriteApps) {
+      surfacedAppNames.add(app.name);
+    }
+  }
+
+  const featuredApps = apps.filter(
+    (app) => isFeaturedAppName(app.name) && !favoriteAppNames.has(app.name),
+  );
+  if (featuredApps.length > 0) {
+    sections.push({
+      key: "featured",
+      label: APP_CATALOG_SECTION_LABELS.featured,
+      apps: featuredApps,
+    });
+    for (const app of featuredApps) {
+      surfacedAppNames.add(app.name);
+    }
+  }
 
   for (const app of apps) {
-    if (favoriteAppNames.has(app.name)) {
-      const favApps = groupedApps.get("favorites") ?? [];
-      favApps.push(app);
-      groupedApps.set("favorites", favApps);
+    if (surfacedAppNames.has(app.name)) {
+      continue;
     }
     const sectionKey = getAppCatalogSectionKey(app);
     const sectionApps = groupedApps.get(sectionKey) ?? [];
@@ -281,20 +430,26 @@ export function groupAppsForCatalog(
     groupedApps.set(sectionKey, sectionApps);
   }
 
-  return APP_CATALOG_SECTION_ORDER.flatMap((key) => {
-    const sectionApps = groupedApps.get(key) ?? [];
-    if (sectionApps.length === 0) {
-      return [];
-    }
+  return [
+    ...sections,
+    ...APP_CATALOG_SECTION_ORDER.flatMap((key) => {
+      if (key === "featured" || key === "favorites") {
+        return [];
+      }
+      const sectionApps = groupedApps.get(key) ?? [];
+      if (sectionApps.length === 0) {
+        return [];
+      }
 
-    return [
-      {
-        key,
-        label: APP_CATALOG_SECTION_LABELS[key],
-        apps: sectionApps,
-      } satisfies AppCatalogSection,
-    ];
-  });
+      return [
+        {
+          key,
+          label: APP_CATALOG_SECTION_LABELS[key],
+          apps: sectionApps,
+        } satisfies AppCatalogSection,
+      ];
+    }),
+  ];
 }
 
 export function getAppShortName(app: RegistryAppInfo): string {
@@ -305,11 +460,10 @@ export function getAppShortName(app: RegistryAppInfo): string {
 
 export function getAppEmoji(app: RegistryAppInfo): string {
   const sectionKey = getAppCatalogSectionKey(app);
+  if (sectionKey === "featured") return "⭐";
   if (sectionKey === "games") return "🎮";
   if (sectionKey === "developerUtilities") return "🛠️";
-  if (sectionKey === "companions") return "💬";
   if (sectionKey === "finance") return "💰";
-  if (sectionKey === "lifeManagement") return "🗓️";
   return "📦";
 }
 

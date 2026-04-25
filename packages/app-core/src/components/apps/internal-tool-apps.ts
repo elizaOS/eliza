@@ -5,6 +5,7 @@ interface InternalToolAppDefinition {
   capabilities: string[];
   description: string;
   displayName: string;
+  heroImage?: string | null;
   name: string;
   order: number;
   targetTab: Tab;
@@ -16,6 +17,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     displayName: "LifeOps",
     description:
       "Run tasks, reminders, calendar, inbox, and connected operational workflows.",
+    heroImage: "/app-heroes/lifeops.png",
     targetTab: "lifeops",
     capabilities: ["lifeops", "tasks", "calendar", "gmail"],
     order: 0,
@@ -25,6 +27,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     displayName: "Plugin Viewer",
     description:
       "Inspect installed plugins, connectors, and runtime feature flags.",
+    heroImage: "/app-heroes/plugin-viewer.png",
     targetTab: "plugins",
     capabilities: ["plugins", "connectors", "viewer"],
     order: 1,
@@ -33,59 +36,96 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     name: "@elizaos/app-skills-viewer",
     displayName: "Skills Viewer",
     description: "Create, enable, review, and install custom agent skills.",
+    heroImage: "/app-heroes/skills-viewer.png",
     targetTab: "skills",
     capabilities: ["skills", "viewer"],
     order: 2,
   },
   {
+    name: "@elizaos/app-training",
+    displayName: "Fine Tuning",
+    description:
+      "Build datasets, inspect trajectories, run training jobs, and activate tuned models.",
+    heroImage: "/app-heroes/fine-tuning.png",
+    targetTab: "fine-tuning",
+    capabilities: ["training", "fine-tuning", "datasets", "models"],
+    order: 3,
+  },
+  {
     name: "@elizaos/app-trajectory-viewer",
     displayName: "Trajectory Viewer",
     description: "Inspect LLM call history, prompts, and execution traces.",
+    heroImage: "/app-heroes/trajectory-viewer.png",
     targetTab: "trajectories",
     capabilities: ["trajectories", "debug", "viewer"],
-    order: 3,
+    order: 4,
   },
   {
     name: "@elizaos/app-relationship-viewer",
     displayName: "Relationship Viewer",
     description:
       "Explore cross-channel people, identities, and relationship graphs.",
+    heroImage: "/app-heroes/relationship-viewer.png",
     targetTab: "relationships",
     capabilities: ["relationships", "graph", "viewer"],
-    order: 4,
+    order: 5,
   },
   {
     name: "@elizaos/app-memory-viewer",
     displayName: "Memory Viewer",
     description: "Browse memory, fact, and extraction activity.",
+    heroImage: "/app-heroes/memory-viewer.png",
     targetTab: "memories",
     capabilities: ["memory", "facts", "viewer"],
-    order: 5,
+    order: 6,
+  },
+  {
+    name: "@elizaos/app-steward",
+    displayName: "Steward",
+    description:
+      "Review wallet approvals, transaction history, and signing execution status.",
+    heroImage: "/api/apps/hero/steward",
+    targetTab: "inventory",
+    capabilities: ["wallet", "transactions", "approvals", "trading"],
+    order: 7,
   },
   {
     name: "@elizaos/app-runtime-debugger",
     displayName: "Runtime Debugger",
     description:
       "Inspect runtime objects, plugin order, providers, and services.",
+    heroImage: "/app-heroes/runtime-debugger.png",
     targetTab: "runtime",
     capabilities: ["runtime", "debug", "viewer"],
-    order: 6,
+    order: 8,
   },
   {
     name: "@elizaos/app-database-viewer",
     displayName: "Database Viewer",
     description: "Inspect tables, media, vectors, and ad-hoc SQL.",
+    heroImage: "/app-heroes/database-viewer.png",
     targetTab: "database",
     capabilities: ["database", "sql", "viewer"],
-    order: 7,
+    order: 9,
+  },
+  {
+    name: "@elizaos/app-elizamaker",
+    displayName: "ElizaMaker",
+    description:
+      "Run drop, mint, whitelist, and verification workflows through the agent surfaces.",
+    heroImage: "/api/apps/hero/elizamaker",
+    targetTab: "chat",
+    capabilities: ["drops", "minting", "whitelist", "verification"],
+    order: 10,
   },
   {
     name: "@elizaos/app-log-viewer",
     displayName: "Log Viewer",
     description: "Search runtime and service logs.",
+    heroImage: "/app-heroes/log-viewer.png",
     targetTab: "logs",
     capabilities: ["logs", "debug", "viewer"],
-    order: 8,
+    order: 11,
   },
 ] as const;
 
@@ -102,6 +142,7 @@ export function getInternalToolApps(): RegistryAppInfo[] {
     launchType: "local",
     launchUrl: null,
     icon: null,
+    heroImage: app.heroImage ?? null,
     capabilities: app.capabilities,
     stars: 0,
     repository: "",

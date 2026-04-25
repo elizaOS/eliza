@@ -1,15 +1,13 @@
-import type {
-  ConversationMessage,
-  ImageAttachment,
-} from "../../api/client-types-chat";
-import { client } from "../../api/client";
-import { isRoutineCodingAgentMessage } from "../../chat";
-import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
-import { useChatComposer } from "../../state/ChatComposerContext";
-import { usePtySessions } from "../../state/PtySessionsContext";
-import { useApp } from "../../state/useApp";
-import { getVrmPreviewUrl } from "../../state/vrm";
-
+import {
+  ChatAttachmentStrip,
+  ChatComposer,
+  ChatComposerShell,
+  ChatSourceIcon,
+  ChatThreadLayout,
+  ChatTranscript,
+  TypingIndicator,
+  useIntervalWhenDocumentVisible,
+} from "@elizaos/ui";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -21,11 +19,24 @@ import {
   useRef,
   useState,
 } from "react";
+import { type CodingAgentSession, client } from "../../api/client";
+import type {
+  ConversationMessage,
+  ImageAttachment,
+} from "../../api/client-types-chat";
+import {
+  CodingAgentControlChip,
+  PtyConsoleBase,
+} from "../../app-shell/task-coordinator-slots.js";
+import { isRoutineCodingAgentMessage } from "../../chat";
+import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
+import { useChatComposer } from "../../state/ChatComposerContext";
+import { usePtySessions } from "../../state/PtySessionsContext";
+import { useApp } from "../../state/useApp";
+import { getVrmPreviewUrl } from "../../state/vrm";
+import type { TranslateFn } from "../../types";
 import { AgentActivityBox } from "../chat/AgentActivityBox";
 import { MessageContent } from "../chat/MessageContent";
-import { CodingAgentControlChip } from "@elizaos/app-task-coordinator";
-import { PtyConsoleDrawer } from "@elizaos/app-task-coordinator";
-import { ChatAttachmentStrip, ChatComposer, ChatComposerShell, ChatSourceIcon, ChatThreadLayout, ChatTranscript, TypingIndicator } from "@elizaos/ui";
 import {
   useChatVoiceController,
   useGameModalMessages,
@@ -35,6 +46,9 @@ export { __resetCompanionSpeechMemoryForTests } from "./chat-view-hooks";
 
 const CHAT_INPUT_MIN_HEIGHT_PX = 46;
 const CHAT_INPUT_MAX_HEIGHT_PX = 200;
+const fallbackTranslate: TranslateFn = (key, options) =>
+  typeof options?.defaultValue === "string" ? options.defaultValue : key;
+
 type ChatViewVariant = "default" | "game-modal";
 type InboxChatSelection = {
   avatarUrl?: string;
@@ -96,16 +110,14 @@ export function ChatView({
   variant = "default",
   onPtySessionClick,
 }: ChatViewProps) {
-  const app = useApp() as ReturnType<typeof useApp> | undefined;
-  if (!app) {
-    return null;
-  }
+  const app = useApp();
   const isGameModal = variant === "game-modal";
   const showComposerVoiceToggle = false;
   const {
     agentStatus,
     activeConversationId,
     activeInboxChat,
+    activeTerminalSessionId,
     characterData,
     chatFirstTokenReceived,
     companionMessageCutoffTs,
@@ -168,9 +180,25 @@ export function ChatView({
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const [imageDragOver, setImageDragOver] = useState(false);
-  const [ptyDrawerSessionId, setPtyDrawerSessionId] = useState<string | null>(
-    null,
+
+  const focusTerminalSession = useCallback(
+    (sessionId: string) => {
+      setState("activeInboxChat", null);
+      setState("activeTerminalSessionId", sessionId);
+    },
+    [setState],
   );
+
+  // Route a problem session into the Terminal channel so the user sees it.
+  useEffect(() => {
+    if (activeTerminalSessionId) return;
+    const problemSession = ptySessions.find(
+      (s) => s.status === "error" || s.status === "blocked",
+    );
+    if (problemSession) {
+      focusTerminalSession(problemSession.sessionId);
+    }
+  }, [ptySessions, activeTerminalSessionId, focusTerminalSession]);
 
   // ── Coding agent preflight ──────────────────────────────────────
   const [codingAgentsAvailable, setCodingAgentsAvailable] = useState(false);
@@ -204,12 +232,26 @@ export function ChatView({
     agentStatus?.state === "starting" || agentStatus?.state === "restarting";
   const hasCompletedLifecycleActivity =
     !chatSending &&
+    Array.isArray(conversationMessages) &&
     conversationMessages.some(
       (message) =>
         message.role === "user" ||
         (message.role === "assistant" && message.text.trim().length > 0),
     );
-  const isComposerLocked = isAgentStarting && !hasCompletedLifecycleActivity;
+  // The agent is up but has no inference model wired — no point letting the
+  // user hit send. Surfaced as a composer lock + a pointer to Settings.
+  const agentModel =
+    typeof agentStatus?.model === "string" ? agentStatus.model.trim() : "";
+  const isMissingInferenceProvider =
+    agentStatus?.state === "running" && agentModel.length === 0;
+  const isComposerLocked =
+    (isAgentStarting && !hasCompletedLifecycleActivity) ||
+    isMissingInferenceProvider;
+  const composerPlaceholderOverride = isMissingInferenceProvider
+    ? t("chat.setupProviderToChat", {
+        defaultValue: "Set up an LLM provider in Settings to start chatting",
+      })
+    : undefined;
   const {
     beginVoiceCapture,
     endVoiceCapture,
@@ -253,8 +295,11 @@ export function ChatView({
     [setState],
   );
 
-  const agentName = characterData?.name || agentStatus?.agentName || "Agent";
-  const msgs = conversationMessages;
+  const agentName =
+    characterData?.name ||
+    agentStatus?.agentName ||
+    t("chat.agentType", { defaultValue: "Agent" });
+  const msgs = Array.isArray(conversationMessages) ? conversationMessages : [];
   const visibleMsgs = useMemo(
     () =>
       msgs
@@ -329,6 +374,7 @@ export function ChatView({
 
   // Auto-resize textarea
   useEffect(() => {
+    if (!isGameModal) return;
     const ta = textareaRef.current;
     if (!ta) return;
 
@@ -345,7 +391,7 @@ export function ChatView({
     ta.style.height = `${h}px`;
     ta.style.overflowY =
       ta.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
-  }, [chatInput]);
+  }, [chatInput, isGameModal]);
 
   // Track composer height so the message layer bottom adjusts dynamically
   useEffect(() => {
@@ -481,33 +527,6 @@ export function ChatView({
       />
     );
 
-  const activityNode = isGameModal ? (
-    <div className="pointer-events-auto">
-      <AgentActivityBox
-        sessions={ptySessions}
-        onSessionClick={(id) =>
-          setPtyDrawerSessionId((prev) => (prev === id ? null : id))
-        }
-      />
-    </div>
-  ) : (
-    <AgentActivityBox
-      sessions={ptySessions}
-      onSessionClick={(id) =>
-        setPtyDrawerSessionId((prev) => (prev === id ? null : id))
-      }
-    />
-  );
-
-  const drawerNode =
-    ptyDrawerSessionId && ptySessions.length > 0 ? (
-      <PtyConsoleDrawer
-        activeSessionId={ptyDrawerSessionId}
-        sessions={ptySessions}
-        onClose={() => setPtyDrawerSessionId(null)}
-      />
-    ) : null;
-
   const auxiliaryNode = (
     <>
       {shareIngestNotice ? (
@@ -536,7 +555,12 @@ export function ChatView({
           name: img.name,
           src: `data:${img.mimeType};base64,${img.data}`,
         }))}
-        removeLabel={(item) => `Remove image ${item.name}`}
+        removeLabel={(item) =>
+          t("chat.removeImage", {
+            defaultValue: "Remove image {{name}}",
+            name: item.name,
+          })
+        }
         onRemove={(id) => removeImage(Number(id))}
       />
       {voiceLatency ? (
@@ -552,8 +576,8 @@ export function ChatView({
           {voiceLatency.firstSegmentCached == null
             ? "—"
             : voiceLatency.firstSegmentCached
-              ? "cached"
-              : "uncached"}
+              ? t("chat.cached", { defaultValue: "cached" })
+              : t("chat.uncached", { defaultValue: "uncached" })}
         </div>
       ) : null}
       <input
@@ -567,6 +591,14 @@ export function ChatView({
     </>
   );
 
+  const defaultComposerLaneClassName =
+    "mx-auto w-full max-w-[96rem] px-4 sm:px-6 lg:px-8 xl:px-10";
+  const defaultComposerShellClassName = `${defaultComposerLaneClassName} pt-1.5`;
+  const defaultComposerShellStyle = {
+    paddingBottom:
+      "calc(var(--safe-area-bottom, 0px) + var(--eliza-mobile-nav-offset, 0px) + 0.375rem)",
+  } as const;
+
   const composerNode = isGameModal ? (
     <ChatComposerShell
       variant="game-modal"
@@ -576,11 +608,7 @@ export function ChatView({
           <CodingAgentControlChip />
           <AgentActivityBox
             sessions={ptySessions}
-            onSessionClick={
-              onPtySessionClick ??
-              ((id) =>
-                setPtyDrawerSessionId((prev) => (prev === id ? null : id)))
-            }
+            onSessionClick={onPtySessionClick ?? focusTerminalSession}
           />
         </>
       }
@@ -592,6 +620,7 @@ export function ChatView({
         chatPendingImagesCount={chatPendingImages.length}
         isComposerLocked={isComposerLocked}
         isAgentStarting={isAgentStarting}
+        placeholder={composerPlaceholderOverride}
         chatSending={chatSending}
         voice={{
           supported: voice.supported,
@@ -621,14 +650,21 @@ export function ChatView({
       />
     </ChatComposerShell>
   ) : (
-    <ChatComposerShell variant="default" before={<CodingAgentControlChip />}>
+    <ChatComposerShell
+      variant="default"
+      className={defaultComposerShellClassName}
+      style={defaultComposerShellStyle}
+      before={<CodingAgentControlChip />}
+    >
       <ChatComposer
         variant="default"
+        layout="inline"
         textareaRef={textareaRef}
         chatInput={chatInput}
         chatPendingImagesCount={chatPendingImages.length}
         isComposerLocked={isComposerLocked}
         isAgentStarting={isAgentStarting}
+        placeholder={composerPlaceholderOverride}
         chatSending={chatSending}
         voice={{
           supported: voice.supported,
@@ -659,6 +695,20 @@ export function ChatView({
     </ChatComposerShell>
   );
 
+  // ── Terminal-channel branch ──────────────────────────────────────
+  if (activeTerminalSessionId) {
+    return (
+      <TerminalChannelPanel
+        activeSessionId={activeTerminalSessionId}
+        sessions={ptySessions}
+        onClose={() => setState("activeTerminalSessionId", null)}
+        loadingLabel={t("terminal.starting", {
+          defaultValue: "Starting terminal\u2026",
+        })}
+      />
+    );
+  }
+
   // ── Inbox-chat branch ────────────────────────────────────────────
   if (inboxChat) {
     return (
@@ -678,11 +728,7 @@ export function ChatView({
       imageDragOver={imageDragOver}
       messagesRef={messagesRef}
       footerStack={
-        <>
-          {activityNode}
-          {drawerNode}
-          {auxiliaryNode}
-        </>
+        <div className={defaultComposerLaneClassName}>{auxiliaryNode}</div>
       }
       composer={composerNode}
       onDragOver={(event) => {
@@ -698,7 +744,56 @@ export function ChatView({
 }
 
 /**
- * Connector chat panel shown when the unified messages sidebar has a
+ * Full-window terminal view rendered when the Terminal channel is
+ * active. Keeps every PTY session pane mounted under the hood so
+ * tabbing between sessions preserves their buffers/state. Spawning is
+ * owned by the sidebar — this component only displays what the
+ * orchestrator has already registered, and waits for the live session
+ * list to catch up when activeSessionId is set but not yet present.
+ */
+export function TerminalChannelPanel({
+  activeSessionId,
+  sessions,
+  onClose,
+  loadingLabel,
+}: {
+  activeSessionId: string;
+  sessions: CodingAgentSession[];
+  onClose: () => void;
+  loadingLabel: string;
+}) {
+  const hasActiveSession = sessions.some(
+    (s) => s.sessionId === activeSessionId,
+  );
+
+  if (!hasActiveSession) {
+    return (
+      <div
+        data-testid="terminal-channel-loading"
+        className="flex flex-1 items-center justify-center text-xs text-muted"
+      >
+        {loadingLabel}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      data-testid="terminal-channel-panel"
+      className="flex flex-1 min-h-0 min-w-0 flex-col"
+    >
+      <PtyConsoleBase
+        activeSessionId={activeSessionId}
+        sessions={sessions}
+        onClose={onClose}
+        variant="full"
+      />
+    </div>
+  );
+}
+
+/**
+ * Connector chat panel shown when the messages sidebar has a
  * room selected. Polls `/api/inbox/messages?roomId=...`, renders the
  * transcript through the same ChatTranscript component the dashboard
  * uses, and routes outbound replies back through the runtime's
@@ -721,46 +816,52 @@ function InboxChatPanel({
   variant: ChatViewVariant;
 }) {
   const app = useApp() as ReturnType<typeof useApp> | undefined;
-  const t = app?.t ?? ((key: string) => key);
+  const t = app?.t ?? fallbackTranslate;
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState("");
   const [replyError, setReplyError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inboxTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const lastRenderedMessageKeyRef = useRef<string | null>(null);
   const transportSource =
     activeInboxChat.transportSource ?? activeInboxChat.source;
 
+  const loadInboxMessages = useCallback(async () => {
+    try {
+      const response = await client.getInboxMessages({
+        limit: 200,
+        roomId: activeInboxChat.id,
+        roomSource: transportSource,
+      });
+      // Server returns newest first; ChatTranscript expects
+      // oldest→newest (conversation layout) so reverse.
+      const next = [...response.messages]
+        .reverse()
+        .map((m): ConversationMessage => m);
+      setMessages(next);
+    } catch {
+      // Transient errors keep the last snapshot; next poll retries.
+    } finally {
+      setLoading(false);
+    }
+  }, [activeInboxChat.id, transportSource]);
+
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      try {
-        const response = await client.getInboxMessages({
-          limit: 200,
-          roomId: activeInboxChat.id,
-          roomSource: transportSource,
-        });
-        if (cancelled) return;
-        // Server returns newest first; ChatTranscript expects
-        // oldest→newest (conversation layout) so reverse.
-        const next = [...response.messages]
-          .reverse()
-          .map((m): ConversationMessage => m);
-        setMessages(next);
-      } catch {
-        // Transient errors keep the last snapshot; next poll retries.
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void load();
-    const timer = window.setInterval(load, 5_000);
+    (async () => {
+      await loadInboxMessages();
+      if (cancelled) return;
+    })();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
-  }, [activeInboxChat.id, transportSource]);
+  }, [loadInboxMessages]);
+
+  useIntervalWhenDocumentVisible(() => {
+    void loadInboxMessages();
+  }, 15_000);
 
   useLayoutEffect(() => {
     if (messages.length === 0) return;
@@ -788,7 +889,7 @@ function InboxChatPanel({
   const sourceLabel = activeInboxChat.source
     ? activeInboxChat.source.charAt(0).toUpperCase() +
       activeInboxChat.source.slice(1)
-    : "Channel";
+    : t("inboxview.channel", { defaultValue: "Channel" });
 
   const handleReplySend = useCallback(async () => {
     const text = replyText.trim();
@@ -845,10 +946,7 @@ function InboxChatPanel({
   );
 
   return (
-    <div
-      className="flex flex-1 min-h-0 min-w-0 flex-col"
-      aria-label={t("inboxview.Title", { defaultValue: "Inbox" })}
-    >
+    <div className="flex flex-1 min-h-0 min-w-0 flex-col">
       <div className="flex items-center justify-between px-5 py-3">
         <div className="min-w-0">
           <div className="text-sm font-bold text-txt truncate">
@@ -867,7 +965,10 @@ function InboxChatPanel({
         ) : activeInboxChat.avatarUrl ? (
           <img
             src={activeInboxChat.avatarUrl}
-            alt={`${activeInboxChat.title} avatar`}
+            alt={t("inboxview.avatarAlt", {
+              defaultValue: "{{title}} avatar",
+              title: activeInboxChat.title,
+            })}
             className="h-8 w-8 shrink-0 rounded-full border border-border/35 object-cover shadow-[0_10px_18px_-16px_rgba(15,23,42,0.45)]"
           />
         ) : null}
@@ -898,53 +999,67 @@ function InboxChatPanel({
           />
         )}
       </div>
-      <div className="bg-bg-hover/40 px-5 py-3">
-        {activeInboxChat.canSend === false ? (
-          <div className="text-xs-tight leading-5 text-muted">
-            {t("inboxview.ReadOnlyReplyHint", {
+      {activeInboxChat.canSend === false ? (
+        <div className="bg-bg-hover/40 px-5 py-3 text-xs-tight leading-5 text-muted">
+          {t("inboxview.ReadOnlyReplyHint", {
+            defaultValue:
+              "This {{source}} chat is readable, but outbound replies are not available for this connector yet.",
+            source: sourceLabel,
+          })}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 px-3 pb-3">
+          <div className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-2xs leading-snug text-warn">
+            {t("inboxview.AgentSendWarning", {
               defaultValue:
-                "This {{source}} chat is readable, but outbound replies are not available for this connector yet.",
+                "This message will be sent as your agent in {{source}}.",
               source: sourceLabel,
             })}
           </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <textarea
-              value={replyText}
-              onChange={(event) => setReplyText(event.target.value)}
-              onKeyDown={handleReplyKeyDown}
+          <ChatComposerShell variant="default">
+            <ChatComposer
+              variant="default"
+              textareaRef={inboxTextareaRef}
+              chatInput={replyText}
+              chatPendingImagesCount={0}
+              isComposerLocked={sending}
+              isAgentStarting={false}
+              chatSending={sending}
+              voice={inertVoiceState}
+              agentVoiceEnabled={false}
+              showAgentVoiceToggle={false}
+              t={t}
+              hideAttachButton
               placeholder={t("inboxview.ReplyPlaceholder", {
                 defaultValue: "Reply in {{source}}",
                 source: sourceLabel,
               })}
-              disabled={sending}
-              rows={2}
-              className="min-h-[72px] w-full resize-y rounded-xl border border-border/50 bg-bg px-3 py-2 text-sm text-txt outline-none transition focus:border-accent/55"
+              onAttachImage={() => {}}
+              onChatInputChange={setReplyText}
+              onKeyDown={handleReplyKeyDown}
+              onSend={() => void handleReplySend()}
+              onStop={() => {}}
+              onStopSpeaking={() => {}}
+              onToggleAgentVoice={() => {}}
             />
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs-tight text-muted">
-                {replyError
-                  ? replyError
-                  : t("inboxview.ReplyHint", {
-                      defaultValue:
-                        "Sent through the connected {{source}} account on this device.",
-                      source: sourceLabel,
-                    })}
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleReplySend()}
-                disabled={sending || replyText.trim().length === 0}
-                className="inline-flex shrink-0 items-center justify-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {sending
-                  ? t("inboxview.Sending", { defaultValue: "Sending…" })
-                  : t("inboxview.Send", { defaultValue: "Send" })}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+          </ChatComposerShell>
+          {replyError ? (
+            <div className="px-1 text-xs-tight text-danger">{replyError}</div>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
+
+const inertVoiceState = {
+  assistantTtsQuality: undefined,
+  captureMode: "idle" as const,
+  interimTranscript: "",
+  isListening: false,
+  isSpeaking: false,
+  startListening: () => {},
+  stopListening: () => {},
+  supported: false,
+  toggleListening: () => {},
+};

@@ -1,9 +1,3 @@
-/**
- * @deprecated This file is maintained for backward compatibility.
- * The canonical source has moved to `@elizaos/app-steward/services/privy-wallets`.
- * New development should target the app-steward package.
- */
-
 import { logger } from "@elizaos/core";
 
 export type PrivyWalletChain = "ethereum" | "solana";

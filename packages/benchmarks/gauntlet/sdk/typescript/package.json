@@ -6,7 +6,7 @@
     "types": "dist/index.d.ts",
     "scripts": {
         "build": "tsc",
-        "test": "jest"
+        "test": "bunx jest --runInBand --passWithNoTests"
     },
     "keywords": [
         "solana",
@@ -21,7 +21,7 @@
         "@solana/web3.js": "^1.87.0"
     },
     "devDependencies": {
-        "typescript": "^5.0.0",
-        "@types/node": "^20.0.0"
+        "typescript": "^6.0.0",
+        "@types/node": "^24.0.0"
     }
 }

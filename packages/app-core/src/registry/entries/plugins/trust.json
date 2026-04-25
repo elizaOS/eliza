@@ -1,0 +1,40 @@
+{
+  "id": "trust",
+  "name": "Trust",
+  "description": "Primitives for agents to trust humans and each other",
+  "npmName": "@elizaos/plugin-trust",
+  "version": "2.0.0-alpha.4",
+  "source": "bundled",
+  "tags": ["trust", "permissions", "security", "rbac"],
+  "config": {
+    "OWNER_ENTITY_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Entity Id",
+      "help": "Entity identifier",
+      "advanced": false
+    },
+    "WORLD_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Id",
+      "help": "World identifier",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Handshake",
+    "group": "blockchain",
+    "groupOrder": 4,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "blockchain"
+}

@@ -1,7 +1,6 @@
 import { requireEvaluatorSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import {
-	type EvaluationExample,
 	type Evaluator,
 	type IAgentRuntime,
 	type Memory,
@@ -13,6 +12,7 @@ import {
 	isTransientModelError,
 } from "../../../utils/model-errors.ts";
 import { composePromptFromState, parseKeyValueXml } from "../../../utils.ts";
+import { toEvaluationExamples } from "../../evaluator-doc-examples.ts";
 import { longTermExtractionTemplate } from "../prompts.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
@@ -101,7 +101,7 @@ export const longTermExtractionEvaluator: Evaluator = {
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	alwaysRun: spec.alwaysRun ?? true,
-	examples: (spec.examples ?? []) as EvaluationExample[],
+	examples: toEvaluationExamples(spec.examples),
 
 	validate: async (
 		runtime: IAgentRuntime,

@@ -16,10 +16,7 @@
  *   } satisfies AppConfig;
  */
 
-import {
-  DEFAULT_BRANDING,
-  type BrandingConfig,
-} from "./branding";
+import { type BrandingConfig, DEFAULT_BRANDING } from "./branding";
 
 export interface AppDesktopConfig {
   /** Reverse-domain bundle identifier (e.g. "com.miladyai.milady") */
@@ -64,6 +61,17 @@ export interface AppPackagingConfig {
   };
 }
 
+export interface AppWebConfig {
+  /** Short display name for install surfaces like the PWA manifest */
+  shortName?: string;
+  /** Browser/PWA theme color */
+  themeColor?: string;
+  /** Browser/PWA background color */
+  backgroundColor?: string;
+  /** Social share image path, relative to the app origin */
+  shareImagePath?: string;
+}
+
 export interface AppConfig {
   /** Display name shown in UI, desktop title bars, etc. */
   appName: string;
@@ -106,8 +114,14 @@ export interface AppConfig {
   /** Plugins to auto-enable by default */
   defaultPlugins?: string[];
 
+  /** Apps starred and pinned by default on a fresh client profile. */
+  defaultApps?: string[];
+
   /** Desktop-specific configuration */
   desktop?: AppDesktopConfig;
+
+  /** Web app manifest and share metadata overrides. */
+  web?: AppWebConfig;
 
   /** Package manager configurations */
   packaging?: AppPackagingConfig;

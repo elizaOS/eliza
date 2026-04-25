@@ -16,27 +16,27 @@
  * - `confirmAction`   — confirmDesktopAction utility, used by handleExportKeys
  */
 
-import { useCallback, useRef, useState } from "react";
 import type {
+  WalletAddresses,
+  WalletBalancesResponse,
   WalletChainKind,
+  WalletConfigStatus,
+  WalletConfigUpdateRequest,
   WalletEntry,
+  WalletNftsResponse,
   WalletPrimaryMap,
   WalletSource,
 } from "@elizaos/shared/contracts/wallet";
+import type { PromptOptions } from "@elizaos/ui";
+import { useCallback, useRef, useState } from "react";
 import {
+  client,
   type DropStatus,
   type MintResult,
   type RegistryStatus,
-  type WalletAddresses,
-  type WalletBalancesResponse,
-  type WalletConfigStatus,
-  type WalletConfigUpdateRequest,
   type WalletExportResult,
-  type WalletNftsResponse,
   type WhitelistStatus,
-  client,
 } from "../api";
-
 import { confirmDesktopAction } from "../utils";
 import {
   loadBrowserEnabled,
@@ -47,7 +47,6 @@ import {
   saveWalletEnabled,
 } from "./persistence";
 import type { InventoryChainFilters } from "./types";
-import { type PromptOptions } from "@elizaos/ui";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -88,7 +87,9 @@ export function useWalletState({
     saveBrowserEnabled(v);
   }, []);
 
-  const [computerUseEnabled, setComputerUseEnabledRaw] = useState(loadComputerUseEnabled);
+  const [computerUseEnabled, setComputerUseEnabledRaw] = useState(
+    loadComputerUseEnabled,
+  );
   const setComputerUseEnabled = useCallback((v: boolean) => {
     setComputerUseEnabledRaw(v);
     saveComputerUseEnabled(v);

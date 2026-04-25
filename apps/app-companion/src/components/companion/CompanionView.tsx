@@ -1,10 +1,10 @@
-import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 import {
   ChatModalView,
   useApp,
   usePtySessions,
   useRenderGuard,
 } from "@elizaos/app-core";
+import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 import {
   lazy,
   memo,
@@ -22,9 +22,11 @@ import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
 
 const CharacterEditor = lazy(() =>
-  import("@elizaos/app-core").then((m) => ({
-    default: m.CharacterEditor,
-  })),
+  import("@elizaos/app-core/components/character/CharacterEditor").then(
+    (m) => ({
+      default: m.CharacterEditor,
+    }),
+  ),
 );
 
 const COMPANION_UI_REVEAL_FALLBACK_MS = 1400;

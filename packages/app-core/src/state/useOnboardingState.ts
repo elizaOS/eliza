@@ -9,11 +9,12 @@
 import { getDefaultStylePreset } from "@elizaos/shared/onboarding-presets";
 import { useCallback, useReducer, useRef } from "react";
 import type { OnboardingOptions } from "../api";
+import { isElectrobunRuntime } from "../bridge";
+import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
 import {
   activeServerKindToOnboardingServerTarget,
   type OnboardingServerTarget,
 } from "../onboarding/server-target";
-import { isElectrobunRuntime } from "../bridge";
 import { canRunLocal } from "../platform/init";
 import {
   loadPersistedActiveServer,
@@ -165,8 +166,12 @@ function loadInitialServerSelection(): Pick<
   }
 
   if (activeServer.kind === "cloud") {
+    const serverTarget =
+      readPersistedMobileRuntimeMode() === "cloud-hybrid"
+        ? "elizacloud-hybrid"
+        : activeServerKindToOnboardingServerTarget(activeServer.kind);
     return {
-      serverTarget: activeServerKindToOnboardingServerTarget(activeServer.kind),
+      serverTarget,
       remote: {
         status: "idle",
         error: null,
@@ -192,11 +197,13 @@ function createInitialState(cloudOnly?: boolean): OnboardingState {
   const defaultStyle = getDefaultStylePreset();
   const initialServer = loadInitialServerSelection();
   const initialServerTarget = cloudOnly
-    ? "elizacloud"
+    ? readPersistedMobileRuntimeMode() === "cloud-hybrid"
+      ? "elizacloud-hybrid"
+      : "elizacloud"
     : initialServer.serverTarget;
 
   const persistedStep = loadPersistedOnboardingStep();
-  const isDesktop = isElectrobunRuntime();
+  const _isDesktop = isElectrobunRuntime();
   const skipDeployment = canRunLocal();
 
   // Desktop / dev mode defaults to local agent, bypassing the deployment chooser step.
@@ -206,7 +213,8 @@ function createInitialState(cloudOnly?: boolean): OnboardingState {
   }
 
   const serverTarget =
-    initialServerTarget || (skipDeployment && step === "providers" ? "local" : "");
+    initialServerTarget ||
+    (skipDeployment && step === "providers" ? "local" : "");
 
   return {
     step,

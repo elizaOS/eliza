@@ -40,6 +40,7 @@ import { ConfigPageView } from "./ConfigPageView";
 
 function buildAppState(
   handleWalletApiKeySave: ReturnType<typeof vi.fn>,
+  overrides?: Record<string, unknown>,
 ): Record<string, unknown> {
   return {
     t: (key: string, options?: { defaultValue?: string }) =>
@@ -55,6 +56,7 @@ function buildAppState(
     walletApiKeySaving: false,
     handleWalletApiKeySave,
     handleCloudLogin: vi.fn(),
+    ...overrides,
   };
 }
 
@@ -111,5 +113,38 @@ describe("ConfigPageView", () => {
       expect(handleWalletApiKeySave).toHaveBeenCalledTimes(1);
     });
     expect(onWalletSaveSuccess).not.toHaveBeenCalled();
+  });
+
+  it("preserves custom rpc selections from a custom wallet config", async () => {
+    const handleWalletApiKeySave = vi.fn().mockResolvedValue(true);
+    useAppMock.mockReturnValue(
+      buildAppState(handleWalletApiKeySave, {
+        walletConfig: {
+          selectedRpcProviders: {
+            evm: "alchemy",
+            bsc: "alchemy",
+            solana: "helius-birdeye",
+          },
+          walletNetwork: "mainnet",
+        },
+      }),
+    );
+
+    render(<ConfigPageView embedded />);
+
+    fireEvent.click(screen.getByRole("button", { name: "apikeyconfig.save" }));
+
+    await waitFor(() => {
+      expect(handleWalletApiKeySave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          selections: {
+            evm: "alchemy",
+            bsc: "alchemy",
+            solana: "helius-birdeye",
+          },
+          walletNetwork: "mainnet",
+        }),
+      );
+    });
   });
 });

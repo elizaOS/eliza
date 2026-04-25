@@ -1,17 +1,5 @@
-/**
- * Reusable chain icon component with official SVG brand marks.
- *
- * Usage:
- *   <ChainIcon chain="ethereum" size="md" />
- *   <ChainIcon chain="bsc" size="lg" />
- *
- * Sizes:
- *   sm  = 16px — inline badges (tables, lists)
- *   md  = 20px — general use (default)
- *   lg  = 24px — prominent displays (chain selectors)
- */
-
 import type * as React from "react";
+import { resolveChainKey } from "./chainConfig";
 
 export type ChainIconSize = "sm" | "md" | "lg";
 
@@ -67,10 +55,6 @@ const CHAIN_SVGS: Record<string, ChainSvgDef> = {
     viewBox: "0 0 24 24",
     paths: ["M12 3L2 21h6l4-7 4 7h6L12 3z"],
   },
-  avalanche: {
-    viewBox: "0 0 24 24",
-    paths: ["M12 3L2 21h6l4-7 4 7h6L12 3z"],
-  },
   solana: {
     viewBox: "0 0 397.7 311.7",
     paths: [
@@ -81,20 +65,13 @@ const CHAIN_SVGS: Record<string, ChainSvgDef> = {
   },
 };
 
-function resolveChainKey(chain: string): string {
-  const c = chain.toLowerCase();
-  if (c === "mainnet") return "ethereum";
-  if (c === "bnb chain" || c === "bnb smart chain") return "bsc";
-  if (c === "c-chain") return "avax";
-  return c;
-}
-
 export function ChainIcon({
   chain,
   size = "md",
   className = "",
 }: ChainIconProps): React.ReactElement | null {
   const key = resolveChainKey(chain);
+  if (!key) return null;
   const def = CHAIN_SVGS[key];
   if (!def) return null;
 

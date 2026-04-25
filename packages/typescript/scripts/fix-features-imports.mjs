@@ -79,7 +79,7 @@ for (const prefix of MOVED_PREFIXES) {
 	for (const f of globSync(pattern, { windowsPathsNoEscape: true })) {
 		if (fixFile(f)) {
 			changed++;
-			console.log("fixed", f.replace(srcRoot + "/", ""));
+			console.log("fixed", f.replace(`${srcRoot}/`, ""));
 		}
 	}
 }

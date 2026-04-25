@@ -243,7 +243,7 @@ export type ModelsConfig = {
   bedrockDiscovery?: BedrockDiscoveryConfig;
   /** Selected small model ID for fast tasks (e.g. "claude-haiku"). Set during onboarding. */
   small?: string;
-  /** Selected large model ID for complex reasoning (e.g. "claude-sonnet-4-5"). Set during onboarding. */
+  /** Selected large model ID for complex reasoning (e.g. "claude-sonnet-4-6"). Set during onboarding. */
   large?: string;
 };
 
@@ -576,6 +576,39 @@ export type CloudConfig = {
   container?: CloudContainerDefaults;
 };
 
+/**
+ * n8n workflow integration configuration.
+ *
+ * Two paths populate N8N_HOST + N8N_API_KEY for `@elizaos/plugin-n8n-workflow`:
+ *   1. Eliza Cloud gateway — when `cloud.apiKey` is set and `cloud.enabled` is
+ *      not false, the cloud gateway handles the n8n instance. The runtime
+ *      pumps `${cloud.baseUrl}/api/v1/agents/${agentId}/n8n` into N8N_HOST and
+ *      `cloud.apiKey` into N8N_API_KEY.
+ *   2. Local sidecar — when `localEnabled !== false` (the default) and the
+ *      Milady n8n sidecar is running, the sidecar lifecycle writes `host`
+ *      and `apiKey` fields below when it reaches the "ready" status. The
+ *      runtime pumps those into the plugin.
+ *
+ * `enabled` acts as a master gate (default true). Setting it to false disables
+ * auto-enable of the plugin regardless of cloud or sidecar state.
+ */
+export type N8nConfig = {
+  /** Master gate. Default: true. When false, plugin auto-enable is skipped. */
+  enabled?: boolean;
+  /** Allow the local n8n sidecar to populate host/apiKey. Default: true. */
+  localEnabled?: boolean;
+  /** Sidecar-populated n8n host URL (set once the sidecar is ready). */
+  host?: string;
+  /** Sidecar-populated n8n API key. */
+  apiKey?: string;
+  /** Sidecar lifecycle status. */
+  status?: "stopped" | "starting" | "ready" | "error";
+  /** Pinned n8n version for the sidecar. */
+  version?: string;
+  /** First port in the allocation range the sidecar picks from. */
+  startPort?: number;
+};
+
 /** CUA (Computer Use Agent) configuration. Supports local (Lume VM) and cloud modes. */
 export type CuaConfig = {
   /** Enable the CUA plugin. Default: false. */
@@ -764,6 +797,8 @@ export type ElizaConfig = {
   database?: DatabaseConfig;
   /** Eliza Cloud integration for remote agent provisioning and inference. */
   cloud?: CloudConfig;
+  /** n8n workflow integration (cloud gateway or local sidecar). */
+  n8n?: N8nConfig;
   /** Wallet source selection and cached cloud wallet descriptors. */
   wallet?: {
     primary?: Partial<Record<"evm" | "solana", "local" | "cloud">>;

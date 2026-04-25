@@ -8,11 +8,11 @@ import type {
   LifeOpsTaskDefinition,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/app-lifeops/contracts";
 import { createLifeOpsTaskDefinition } from "./repository.js";
 import {
   fail,
@@ -41,15 +41,67 @@ import {
   computeDefinitionPerformance,
 } from "./service-helpers-occurrence.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
+
 import {
   ROUTINE_SEED_TEMPLATES,
   type RoutineSeedTemplate,
 } from "./seed-routines.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 
-/** @internal */
-export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
-  class LifeOpsDefinitionsServiceMixin extends Base {
+const ROUTINE_SEED_METADATA_PREFIX = "load-test-user-profile";
+
+function resolveRoutineSeedKey(
+  metadata: Record<string, unknown> | null | undefined,
+): string | null {
+  const seedKey = metadata?.seedKey;
+  return typeof seedKey === "string" && seedKey.length > 0 ? seedKey : null;
+}
+
+function buildRoutineSeedKey(templateKey: string): string {
+  return `${ROUTINE_SEED_METADATA_PREFIX}:${templateKey}`;
+}
+
+export interface LifeOpsDefinitionService {
+  listDefinitions(): Promise<LifeOpsDefinitionRecord[]>;
+  getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord>;
+  createDefinition(
+    request: CreateLifeOpsDefinitionRequest,
+  ): Promise<LifeOpsDefinitionRecord>;
+  checkAndOfferSeeding(): Promise<{
+    needsSeeding: boolean;
+    availableTemplates: RoutineSeedTemplate[];
+  }>;
+  markSeedingOffered(): Promise<void>;
+  applySeedRoutines(keys: string[], timezone?: string): Promise<string[]>;
+  updateDefinition(
+    definitionId: string,
+    request: UpdateLifeOpsDefinitionRequest,
+  ): Promise<LifeOpsDefinitionRecord>;
+  deleteDefinition(definitionId: string): Promise<void>;
+  completeOccurrence(
+    occurrenceId: string,
+    request: CompleteLifeOpsOccurrenceRequest,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+  skipOccurrence(
+    occurrenceId: string,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+  snoozeOccurrence(
+    occurrenceId: string,
+    request: SnoozeLifeOpsOccurrenceRequest,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+}
+
+export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+): MixinClass<TBase, LifeOpsDefinitionService> {
+  return class extends Base {
     async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
       const definitions = await this.repository.listDefinitions(this.agentId());
       const plans = await this.repository.listReminderPlansForOwners(
@@ -83,7 +135,9 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
       }));
     }
 
-    async getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord> {
+    async getDefinition(
+      definitionId: string,
+    ): Promise<LifeOpsDefinitionRecord> {
       return this.getDefinitionRecord(definitionId);
     }
 
@@ -131,8 +185,10 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
         windowPolicy,
         progressionRule,
         websiteAccess:
-          normalizeWebsiteAccessPolicy(request.websiteAccess, "websiteAccess") ??
-          null,
+          normalizeWebsiteAccessPolicy(
+            request.websiteAccess,
+            "websiteAccess",
+          ) ?? null,
         reminderPlanId: null,
         goalId,
         source: normalizeOptionalString(request.source) ?? "manual",
@@ -241,29 +297,50 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
         fail(400, "no valid seed template keys provided");
       }
 
+      const existingDefinitions = await this.repository.listDefinitions(
+        this.agentId(),
+      );
+      const existingBySeedKey = new Map(
+        existingDefinitions
+          .map((record) => {
+            const seedKey = resolveRoutineSeedKey(record.definition.metadata);
+            return seedKey ? [seedKey, record.definition.id] : null;
+          })
+          .filter((entry): entry is [string, string] => entry !== null),
+      );
+
       const createdIds: string[] = [];
       for (const template of templates) {
+        const seedKey = buildRoutineSeedKey(template.key);
+        const existingId = existingBySeedKey.get(seedKey);
+        if (existingId) {
+          continue;
+        }
         const result = await this.createDefinition({
           ...template.request,
           timezone: effectiveTimezone,
           source: "seed",
+          metadata: {
+            seedKey,
+          },
         });
         createdIds.push(result.definition.id);
       }
 
-      // Record that seeding was offered so we don't re-offer
-      await this.recordAudit(
-        "seeding_offered",
-        "definition",
-        `seeding:${this.agentId()}`,
-        "seed routines applied",
-        { keys },
-        {
-          appliedKeys: keys,
-          timezone: effectiveTimezone,
-          createdIds,
-        },
-      );
+      if (createdIds.length > 0) {
+        await this.recordAudit(
+          "seeding_offered",
+          "definition",
+          `seeding:${this.agentId()}`,
+          "seed routines applied",
+          { keys },
+          {
+            appliedKeys: keys,
+            timezone: effectiveTimezone,
+            createdIds,
+          },
+        );
+      }
 
       return createdIds;
     }
@@ -512,7 +589,10 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
         return current;
       }
       if (["completed", "expired", "muted"].includes(occurrence.state)) {
-        fail(409, `occurrence cannot be skipped from state ${occurrence.state}`);
+        fail(
+          409,
+          `occurrence cannot be skipped from state ${occurrence.state}`,
+        );
       }
       const updatedOccurrence: LifeOpsOccurrence = {
         ...occurrence,
@@ -565,7 +645,10 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
       if (
         ["completed", "skipped", "expired", "muted"].includes(occurrence.state)
       ) {
-        fail(409, `occurrence cannot be snoozed from state ${occurrence.state}`);
+        fail(
+          409,
+          `occurrence cannot be snoozed from state ${occurrence.state}`,
+        );
       }
       const snoozedUntil = computeSnoozedUntil(definition, request, now);
       if (snoozedUntil.getTime() <= now.getTime()) {
@@ -610,7 +693,5 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(B
       }
       return view;
     }
-  }
-
-  return LifeOpsDefinitionsServiceMixin;
+  } as MixinClass<TBase, LifeOpsDefinitionService>;
 }

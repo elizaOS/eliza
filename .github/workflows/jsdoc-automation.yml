@@ -56,7 +56,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -73,21 +73,21 @@ jobs:
 
       - name: Setup Node.js
         if: steps.check-autodoc.outputs.exists == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "23"
 
       - name: Setup Python
         if: steps.check-autodoc.outputs.exists == 'true'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Setup Bun
         if: steps.check-autodoc.outputs.exists == 'true'
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.4"
+          bun-version: "1.3.13"
 
       - name: Install dependencies
         if: steps.check-autodoc.outputs.exists == 'true'

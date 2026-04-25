@@ -17,8 +17,7 @@ import {
 } from "../../ui/tooltip";
 import type { SidebarFilterBarProps } from "./sidebar-types";
 
-const sidebarFilterBarClassName =
-  "flex w-full min-w-0 items-center gap-2";
+const sidebarFilterBarClassName = "flex w-full min-w-0 items-center gap-2";
 
 const sidebarFilterPrimaryClassName = "min-w-0 flex-1";
 
