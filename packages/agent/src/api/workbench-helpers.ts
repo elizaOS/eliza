@@ -107,6 +107,12 @@ export function isWorkbenchTodoTask(task: Task): boolean {
 }
 
 export function toWorkbenchTask(task: Task): WorkbenchTaskView | null {
+  // Only surface tasks that were explicitly created as workbench items.
+  // The runtime's batch-queue util (EMBEDDING_DRAIN, PROACTIVE_AGENT,
+  // LIFEOPS_SCHEDULER, heartbeat, ...) registers system ticks in the same
+  // task table; without this tag check those system tasks leaked into
+  // the user-facing task list and (worse) into LIST_TASKS replies.
+  if (!task.tags?.includes(WORKBENCH_TASK_TAG)) return null;
   if (readTriggerConfig(task) || isWorkbenchTodoTask(task)) return null;
   const id = normalizeTaskId(task);
   if (!id) return null;
