@@ -2,6 +2,11 @@
 import crypto from "node:crypto";
 import { findLifeOpsSubscriptionPlaybook } from "./subscriptions-playbooks.js";
 import {
+  PlaidManagedClient,
+  PlaidManagedClientError,
+  type PlaidTransactionDto,
+} from "./plaid-managed-client.js";
+import {
   parseTransactionsCsv,
   type ParsedCsvTransaction,
 } from "./payment-csv-import.js";
