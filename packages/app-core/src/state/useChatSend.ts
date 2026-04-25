@@ -962,7 +962,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               trimmed.length > 50 ? `${trimmed.slice(0, 47)}...` : trimmed;
             const { conversation: rawConversation } =
               await client.createConversation(
-                actionTitle || t("companion.newChat"),
+                actionTitle || t("common.newChat"),
               );
             if (!isConversationRecord(rawConversation)) {
               throw new Error(

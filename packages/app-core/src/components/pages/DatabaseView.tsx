@@ -255,7 +255,7 @@ export function DatabaseView({
               : "bg-danger"
           }`}
         />
-        <span>{dbStatus?.provider ?? t("onboarding.connecting")}</span>
+        <span>{dbStatus?.provider ?? t("game.connecting")}</span>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/75">
         <MetaPill>
@@ -353,7 +353,7 @@ export function DatabaseView({
                     variant="inset"
                     className="rounded-2xl px-3 py-4 text-center text-xs text-muted"
                   >
-                    {t("databaseview.Loading")}
+                    {t("appsview.Loading")}
                   </PagePanel>
                 ) : (
                   filteredTables.map((table) => (
@@ -443,7 +443,7 @@ export function DatabaseView({
                 className="px-5 py-5 sm:px-6"
               >
                 <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                  {t("databaseview.Database")}
+                  {t("common.database")}
                 </div>
                 <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
                   {t("databaseview.TableBrowser")}
@@ -467,7 +467,7 @@ export function DatabaseView({
                     className="px-5 py-5 sm:px-6"
                   >
                     <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                      {t("databaseview.Database")}
+                      {t("common.database")}
                     </div>
                     <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
                       {t("databaseview.TableBrowser")}
@@ -486,7 +486,7 @@ export function DatabaseView({
                   variant="surface"
                   className="flex flex-1 items-center justify-center px-6 py-10 text-sm font-medium italic text-muted"
                 >
-                  {t("databaseview.Loading")}
+                  {t("appsview.Loading")}
                 </PagePanel>
               ) : tableData ? (
                 <>
@@ -498,7 +498,7 @@ export function DatabaseView({
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                          {t("databaseview.Database")}
+                          {t("common.database")}
                         </div>
                         <h1 className="mt-1 text-2xl font-semibold text-txt-strong">
                           {selectedTable}
@@ -512,7 +512,7 @@ export function DatabaseView({
                         )}
                         <MetaPill>
                           {tableData.total.toLocaleString()}{" "}
-                          {t("databaseview.Rows")}
+                          {t("common.rows")}
                         </MetaPill>
                       </div>
                     </div>
@@ -586,7 +586,7 @@ export function DatabaseView({
                 </span>
               </>
             ) : (
-              <span>{t("onboarding.connecting")}</span>
+              <span>{t("game.connecting")}</span>
             )}
           </div>
 
@@ -689,7 +689,7 @@ export function DatabaseView({
                 </div>
                 {loading && tables.length === 0 ? (
                   <div className="text-xs text-muted px-2 py-4 italic text-center opacity-70">
-                    {t("databaseview.Loading")}
+                    {t("appsview.Loading")}
                   </div>
                 ) : (
                   <SidebarScrollRegion
@@ -762,7 +762,7 @@ export function DatabaseView({
                   className="px-5 py-5 sm:px-6"
                 >
                   <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                    {t("databaseview.Database")}
+                    {t("common.database")}
                   </div>
                   <div className="mt-1 text-2xl font-semibold text-txt-strong">
                     {t("databaseview.TableBrowser")}
@@ -781,7 +781,7 @@ export function DatabaseView({
                 variant="surface"
                 className="flex flex-1 items-center justify-center px-6 py-10 text-sm font-medium italic text-muted"
               >
-                {t("databaseview.Loading")}
+                {t("appsview.Loading")}
               </PagePanel>
             ) : tableData ? (
               <>
@@ -793,7 +793,7 @@ export function DatabaseView({
                   <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                        {t("databaseview.Database")}
+                        {t("common.database")}
                       </div>
                       <div className="mt-1 text-2xl font-semibold text-txt-strong">
                         {selectedTable}
@@ -912,7 +912,7 @@ export function DatabaseView({
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted">
-                    {t("databaseview.Database")}
+                    {t("common.database")}
                   </div>
                   <div className="mt-1 text-2xl font-semibold text-txt-strong">
                     {t("databaseview.SQLWorkspace", {

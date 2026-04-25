@@ -184,12 +184,12 @@ function inferBrowserWorkspaceTitle(url: string, t: TranslateFn): string {
   try {
     return (
       new URL(url).hostname.replace(/^www\./, "") ||
-      t("browserworkspace.Browser", {
+      t("nav.browser", {
         defaultValue: "Browser",
       })
     );
   } catch {
-    return t("browserworkspace.Browser", {
+    return t("nav.browser", {
       defaultValue: "Browser",
     });
   }
@@ -1572,7 +1572,7 @@ export function BrowserWorkspaceView(): JSX.Element {
             </span>
             {selectedTab?.provider ? (
               <span>
-                {t("browserworkspace.Provider", {
+                {t("common.provider", {
                   defaultValue: "Provider",
                 })}
                 {`: ${selectedTab.provider}`}
@@ -1580,7 +1580,7 @@ export function BrowserWorkspaceView(): JSX.Element {
             ) : null}
             {selectedTab?.status ? (
               <span>
-                {t("browserworkspace.Status", {
+                {t("common.status", {
                   defaultValue: "Status",
                 })}
                 {`: ${selectedTab.status}`}

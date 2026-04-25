@@ -133,8 +133,8 @@ function SubscriptionProviderPanel({
             className="!mt-0 h-8 w-8 rounded-lg"
             onClick={onDisconnect}
             disabled={disconnecting}
-            aria-label={t("providerswitcher.disconnect")}
-            title={t("providerswitcher.disconnect")}
+            aria-label={t("common.disconnect")}
+            title={t("common.disconnect")}
           >
             {disconnecting ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
@@ -341,10 +341,10 @@ export function SubscriptionStatus({
         setAnthropicOAuthStarted(true);
         return;
       }
-      setAnthropicError(t("subscriptionstatus.FailedToGetAuthUrl"));
+      setAnthropicError(t("onboarding.failedToGetAuthUrl"));
     } catch (err) {
       setAnthropicError(
-        t("subscriptionstatus.FailedToStartLogin", {
+        t("onboarding.failedToStartLogin", {
           message: formatSubscriptionRequestError(err),
         }),
       );
@@ -367,10 +367,10 @@ export function SubscriptionStatus({
         await client.restartAgent();
         return;
       }
-      setAnthropicError(result.error ?? t("subscriptionstatus.ExchangeFailed"));
+      setAnthropicError(result.error ?? t("onboarding.exchangeFailed"));
     } catch (err) {
       setAnthropicError(
-        t("subscriptionstatus.ExchangeFailedError", {
+        t("onboarding.exchangeFailedWithMessage", {
           message: formatSubscriptionRequestError(err),
         }),
       );
@@ -396,10 +396,10 @@ export function SubscriptionStatus({
         setOpenaiOAuthStarted(true);
         return;
       }
-      setOpenaiError(t("subscriptionstatus.NoAuthUrlReturned"));
+      setOpenaiError(t("onboarding.noAuthUrlReturned"));
     } catch (err) {
       setOpenaiError(
-        t("subscriptionstatus.FailedToStartLogin", {
+        t("onboarding.failedToStartLogin", {
           message: formatSubscriptionRequestError(err),
         }),
       );
@@ -427,7 +427,7 @@ export function SubscriptionStatus({
         await client.restartAgent();
         return;
       }
-      const msg = data.error ?? t("subscriptionstatus.ExchangeFailed");
+      const msg = data.error ?? t("onboarding.exchangeFailed");
       setOpenaiError(
         msg.includes("No active flow")
           ? t("onboarding.loginSessionExpired")
@@ -435,7 +435,7 @@ export function SubscriptionStatus({
       );
     } catch (err) {
       setOpenaiError(
-        t("subscriptionstatus.ExchangeFailedError", {
+        t("onboarding.exchangeFailedWithMessage", {
           message: formatSubscriptionRequestError(err),
         }),
       );
@@ -487,7 +487,7 @@ export function SubscriptionStatus({
           onClick={() => void handleSaveSetupToken()}
         >
           {setupTokenSaving
-            ? t("apikeyconfig.saving")
+            ? t("common.saving")
             : t("subscriptionstatus.SaveToken")}
         </Button>
         <div className="flex items-center gap-2">
@@ -498,7 +498,7 @@ export function SubscriptionStatus({
           )}
           {setupTokenSuccess && (
             <span className="text-xs-tight text-ok">
-              {t("apikeyconfig.saved")}
+              {t("common.saved")}
             </span>
           )}
         </div>
@@ -582,8 +582,8 @@ export function SubscriptionStatus({
           oauthStarted={anthropicOAuthStarted}
           oauthError={anthropicError}
           oauthExchangeBusy={anthropicExchangeBusy}
-          exchangeButtonLabel={t("onboarding.connect")}
-          exchangeBusyLabel={t("onboarding.connecting")}
+          exchangeButtonLabel={t("common.connect")}
+          exchangeBusyLabel={t("game.connecting")}
           disconnecting={subscriptionDisconnecting === "anthropic-subscription"}
           onStartOauth={() => void handleAnthropicStart()}
           onExchange={() => void handleAnthropicExchange()}

@@ -875,7 +875,7 @@ export function VectorBrowserView({
         );
       } else {
         setError(
-          t("vectorbrowserview.FailedToLoadTables", {
+          t("databaseview.FailedToLoadTables", {
             message: msg,
             defaultValue: "Failed to load tables: {{message}}",
           }),
@@ -1116,7 +1116,7 @@ export function VectorBrowserView({
           <PagePanel.SummaryCard>
             <div className="text-sm font-semibold text-txt">
               {selectedTable ||
-                t("vectorbrowserview.Vectors", {
+                t("common.vectors", {
                   defaultValue: "Vectors",
                 })}
             </div>
@@ -1222,7 +1222,7 @@ export function VectorBrowserView({
                   className="flex-1 h-10 rounded-xl border border-border/60 bg-card/50 px-3 py-2 text-sm shadow-sm placeholder:text-muted/65 transition-[border-color,box-shadow,background-color] focus-visible:border-accent focus-visible:ring-1 focus-visible:ring-accent"
                 />
                 <Button variant="default" size="sm" onClick={handleSearch}>
-                  {t("vectorbrowserview.Search")}
+                  {t("common.search")}
                 </Button>
               </div>
             ) : null}
@@ -1320,7 +1320,7 @@ export function VectorBrowserView({
               disabled={page === 0}
               onClick={() => setPage((p) => p - 1)}
             >
-              {t("vectorbrowserview.Prev")}
+              {t("common.prev")}
             </Button>
             <span className="text-xs-tight text-muted">
               {t("vectorbrowserview.Page")} {page + 1} / {totalPages}
@@ -1331,7 +1331,7 @@ export function VectorBrowserView({
               disabled={page >= totalPages - 1}
               onClick={() => setPage((p) => p + 1)}
             >
-              {t("vectorbrowserview.Next")}
+              {t("common.next")}
             </Button>
           </div>
         ) : null}

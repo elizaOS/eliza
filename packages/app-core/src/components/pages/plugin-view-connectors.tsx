@@ -420,7 +420,7 @@ function ConnectorPluginCard({
         </span>
         {hasParams ? (
           <span className="text-xs-tight font-medium text-muted">
-            {setCount}/{totalCount} {t("pluginsview.configured")}
+            {setCount}/{totalCount} {t("common.configured")}
           </span>
         ) : (
           <span className="text-xs-tight font-medium text-muted">
@@ -724,7 +724,7 @@ function ConnectorPluginCard({
                 className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold text-muted hover:text-txt"
                 onClick={() => handleConfigReset(plugin.id)}
               >
-                {t("pluginsview.Reset")}
+                {t("common.reset")}
               </Button>
               <Button
                 variant={saveSuccess ? "default" : "secondary"}

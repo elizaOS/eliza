@@ -162,7 +162,7 @@ export function PairingView() {
                 >
                   {pairingBusy
                     ? t("pairingview.PairingInProgress")
-                    : t("pairingview.Submit")}
+                    : t("common.submit")}
                 </Button>
               </div>
             </form>

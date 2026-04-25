@@ -709,7 +709,7 @@ export function DesktopWorkspaceSection({
                 }
                 disabled={busyAction === "desktop-show-window"}
               >
-                {t("desktopworkspacesection.ShowWindow")}
+                {t("gameview.ShowWindow")}
               </Button>
               <Button
                 variant="outline"
@@ -725,7 +725,7 @@ export function DesktopWorkspaceSection({
                 }
                 disabled={busyAction === "desktop-hide-window"}
               >
-                {t("desktopworkspacesection.HideWindow")}
+                {t("gameview.HideWindow")}
               </Button>
               <Button
                 variant="outline"
@@ -741,7 +741,7 @@ export function DesktopWorkspaceSection({
                 }
                 disabled={busyAction === "desktop-focus-window"}
               >
-                {t("desktopworkspacesection.FocusWindow")}
+                {t("gameview.FocusWindow")}
               </Button>
               <Button
                 variant="outline"
@@ -818,7 +818,7 @@ export function DesktopWorkspaceSection({
                         rpcMethod: "desktopShowNotification",
                         ipcChannel: "desktop:showNotification",
                         params: {
-                          title: t("desktopworkspacesection.NotificationTitle"),
+                          title: t("common.desktop"),
                           body: t("desktopworkspacesection.NotificationBody"),
                           urgency: "normal",
                         },
@@ -845,7 +845,7 @@ export function DesktopWorkspaceSection({
                 }
                 disabled={busyAction === "desktop-restart-agent"}
               >
-                {t("desktopworkspacesection.RestartAgent")}
+                {t("finetuningview.RestartAgentTitle")}
               </Button>
               <Button
                 variant="outline"

@@ -41,19 +41,19 @@ const SECTION_TAB_KEYS: Array<{
   },
   {
     key: "runtime",
-    i18nKey: "runtimeview.tabRuntime",
+    i18nKey: "common.runtime",
   },
   {
     key: "actions",
-    i18nKey: "runtimeview.tabActions",
+    i18nKey: "common.actions",
   },
   {
     key: "providers",
-    i18nKey: "runtimeview.tabProviders",
+    i18nKey: "common.providers",
   },
   {
     key: "plugins",
-    i18nKey: "runtimeview.tabPlugins",
+    i18nKey: "common.plugins",
   },
   {
     key: "services",
@@ -61,7 +61,7 @@ const SECTION_TAB_KEYS: Array<{
   },
   {
     key: "evaluators",
-    i18nKey: "runtimeview.tabEvaluators",
+    i18nKey: "common.evaluators",
   },
 ];
 
@@ -179,7 +179,7 @@ function TreeNode(props: {
             type="button"
             onClick={() => onToggle(path)}
             className="h-5 w-5 shrink-0 rounded-md p-0 text-left text-muted hover:bg-bg-hover hover:text-txt"
-            title={open ? t("runtimeview.Collapse") : t("runtimeview.Expand")}
+            title={open ? t("common.collapse") : t("common.expand")}
           >
             {open ? "▾" : "▸"}
           </Button>
@@ -302,7 +302,7 @@ function RuntimeSummaryCard(props: {
       label: t("runtimeview.runtime"),
       value: snapshot.runtimeAvailable
         ? t("runtimeview.available")
-        : t("runtimeview.offline"),
+        : t("common.offline"),
     },
     { label: t("runtimeview.agent"), value: snapshot.meta.agentName },
     { label: t("runtimeview.state"), value: snapshot.meta.agentState },
@@ -344,7 +344,7 @@ function RuntimeSummaryCard(props: {
         >
           {snapshot.runtimeAvailable
             ? t("runtimeview.available")
-            : t("runtimeview.offline")}
+            : t("common.offline")}
         </div>
       </div>
       <div className="grid gap-2 text-xs tabular-nums">
@@ -550,7 +550,7 @@ export function RuntimeView({
                   : "h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
               }
             >
-              {loading ? t("runtimeview.Refreshing") : t("common.refresh")}
+              {loading ? t("common.refreshing") : t("common.refresh")}
             </Button>
             <Button
               variant="outline"
@@ -640,19 +640,19 @@ export function RuntimeView({
         ) : activeSection === "summary" ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <OrderCard
-              title={t("runtimeview.Plugins")}
+              title={t("common.plugins")}
               entries={snapshot.order.plugins}
             />
             <OrderCard
-              title={t("runtimeview.Actions")}
+              title={t("common.actions")}
               entries={snapshot.order.actions}
             />
             <OrderCard
-              title={t("runtimeview.Providers")}
+              title={t("common.providers")}
               entries={snapshot.order.providers}
             />
             <OrderCard
-              title={t("runtimeview.Evaluators")}
+              title={t("common.evaluators")}
               entries={snapshot.order.evaluators}
             />
             <ServicesOrderCard entries={snapshot.order.services} />
@@ -685,7 +685,7 @@ export function RuntimeView({
                     onClick={() => setExpandedPaths(new Set([rootPath]))}
                     className="h-8 rounded-full px-3.5 text-2xs font-semibold tracking-[0.12em] border border-border/32 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] text-muted-strong shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_20px_-18px_rgba(15,23,42,0.14)] backdrop-blur-md transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-border/46 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_90%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_16px_22px_-18px_rgba(15,23,42,0.16)] active:scale-95 disabled:hover:border-border/32 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_84%,transparent),color-mix(in_srgb,var(--bg)_95%,transparent))] disabled:hover:text-muted-strong dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_16px_24px_-20px_rgba(0,0,0,0.24)]"
                   >
-                    {t("runtimeview.Collapse")}
+                    {t("common.collapse")}
                   </Button>
                   <Button
                     variant="outline"

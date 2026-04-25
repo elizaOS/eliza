@@ -964,7 +964,7 @@ function useAutomationsViewController() {
     const confirmed = await confirmDesktopAction({
       title: t("heartbeatsview.deleteTitle"),
       message: t("heartbeatsview.deleteMessage", { name: form.displayName }),
-      confirmLabel: t("triggersview.Delete"),
+      confirmLabel: t("common.delete"),
       cancelLabel: t("common.cancel"),
       type: "warning",
     });
@@ -989,7 +989,7 @@ function useAutomationsViewController() {
       message: t("automations.taskDeleteMessage", {
         defaultValue: "Are you sure you want to delete this task?",
       }),
-      confirmLabel: t("triggersview.Delete"),
+      confirmLabel: t("common.delete"),
       cancelLabel: t("common.cancel"),
       type: "warning",
     });
@@ -1611,7 +1611,7 @@ function TaskForm() {
             className="border-danger/30 text-danger hover:bg-danger/10"
             onClick={() => void onDeleteTask(editingTaskId)}
           >
-            {t("triggersview.Delete")}
+            {t("common.delete")}
           </Button>
         )}
       </div>
@@ -1940,12 +1940,12 @@ function TaskAutomationDetailPane({
                 icon={<GitBranch className="h-3.5 w-3.5" />}
               />
               <IconAction
-                label={t("triggersview.Edit")}
+                label={t("common.edit")}
                 onClick={() => openEditTask(task)}
                 icon={<EditIcon className="h-3.5 w-3.5" />}
               />
               <IconAction
-                label={t("triggersview.Delete")}
+                label={t("common.delete")}
                 onClick={() => void onDeleteTask(task.id)}
                 icon={<Trash2 className="h-3.5 w-3.5" />}
                 tone="danger"
@@ -3252,7 +3252,7 @@ function TriggerAutomationDetailPane({
               icon={<Zap className="h-3.5 w-3.5" />}
             />
             <IconAction
-              label={t("triggersview.Edit")}
+              label={t("common.edit")}
               onClick={() => openEditTrigger(trigger)}
               icon={<EditIcon className="h-3.5 w-3.5" />}
             />
@@ -3349,7 +3349,7 @@ function TriggerAutomationDetailPane({
           {!hasLoadedRuns ? (
             <div className="flex items-center gap-2 px-3 py-2 text-xs-tight text-muted/70">
               <div className="h-3 w-3 animate-spin rounded-full border-2 border-muted/30 border-t-muted/80" />
-              {t("databaseview.Loading")}
+              {t("appsview.Loading")}
             </div>
           ) : selectedRuns.length === 0 ? (
             <div className="px-3 py-3 text-xs-tight text-muted/60">
@@ -3603,7 +3603,7 @@ function WorkflowAutomationDetailPane({
               <IconAction
                 label={
                   busy
-                    ? t("automations.n8n.updating", {
+                    ? t("common.updating", {
                         defaultValue: "Updating...",
                       })
                     : workflowIsActive
@@ -3641,7 +3641,7 @@ function WorkflowAutomationDetailPane({
               <IconAction
                 label={
                   busy
-                    ? t("automations.n8n.updating", {
+                    ? t("common.updating", {
                         defaultValue: "Updating...",
                       })
                     : t("automations.n8n.deleteWorkflow", {

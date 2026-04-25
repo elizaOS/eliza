@@ -85,7 +85,7 @@ export function resolveCloudStatusBadgeState(
   if (authRejected) {
     return {
       kind: "error",
-      text: t("logsview.Error"),
+      text: t("common.error"),
       title: t("header.elizaCloudAuthRejected"),
     };
   }

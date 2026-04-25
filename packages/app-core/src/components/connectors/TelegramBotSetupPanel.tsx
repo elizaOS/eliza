@@ -107,7 +107,7 @@ export function TelegramBotSetupPanel() {
 
         <ol className="list-inside list-decimal space-y-1 text-muted">
           <li>
-            {t("pluginsview.TelegramStep1", {
+            {t("common.open", {
               defaultValue: "Open ",
             })}
             <a

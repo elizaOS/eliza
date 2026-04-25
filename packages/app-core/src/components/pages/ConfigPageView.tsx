@@ -161,7 +161,7 @@ export function ConfigPageView({
     alchemy: [
       {
         configKey: "ALCHEMY_API_KEY",
-        label: t("configpageview.AlchemyApiKey", {
+        label: t("onboarding.rpcAlchemyKey", {
           defaultValue: "Alchemy API Key",
         }),
         isSet: walletConfig?.alchemyKeySet ?? false,
@@ -191,7 +191,7 @@ export function ConfigPageView({
     alchemy: [
       {
         configKey: "ALCHEMY_API_KEY",
-        label: t("configpageview.AlchemyApiKey", {
+        label: t("onboarding.rpcAlchemyKey", {
           defaultValue: "Alchemy API Key",
         }),
         isSet: walletConfig?.alchemyKeySet ?? false,
@@ -312,7 +312,7 @@ export function ConfigPageView({
               <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z" />
             </svg>
             <span className="text-sm font-bold">
-              {t("configpageview.CloudModeTitle", {
+              {t("common.elizaCloud", {
                 defaultValue: "Eliza Cloud",
               })}
             </span>
@@ -414,7 +414,7 @@ export function ConfigPageView({
                       {chain.desc}
                     </span>
                     <span className="text-2xs text-accent ml-auto font-medium">
-                      {t("configpageview.CloudModeTitle", {
+                      {t("common.elizaCloud", {
                         defaultValue: "Eliza Cloud",
                       })}
                     </span>
@@ -459,7 +459,7 @@ export function ConfigPageView({
                 disabled={elizaCloudLoginBusy}
               >
                 {elizaCloudLoginBusy
-                  ? t("configpageview.Connecting", {
+                  ? t("game.connecting", {
                       defaultValue: "Connecting...",
                     })
                   : t("elizaclouddashboard.ConnectElizaCloud", {
@@ -480,8 +480,8 @@ export function ConfigPageView({
               disabled={walletApiKeySaving}
             >
               {walletApiKeySaving
-                ? t("apikeyconfig.saving")
-                : t("apikeyconfig.save")}
+                ? t("common.saving")
+                : t("common.save")}
             </Button>
           </div>
         </div>
@@ -605,8 +605,8 @@ export function ConfigPageView({
               disabled={walletApiKeySaving}
             >
               {walletApiKeySaving
-                ? t("apikeyconfig.saving")
-                : t("apikeyconfig.save")}
+                ? t("common.saving")
+                : t("common.save")}
             </Button>
           </div>
         </div>

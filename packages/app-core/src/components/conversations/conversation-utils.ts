@@ -14,7 +14,7 @@ export function getLocalizedConversationTitle(
     trimmed === "companion.newChat" ||
     trimmed.toLowerCase() === "default"
   ) {
-    const localized = t("companion.newChat");
+    const localized = t("common.newChat");
     return localized === "companion.newChat" ? "New Chat" : localized;
   }
   return trimmed;

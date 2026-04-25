@@ -1096,7 +1096,7 @@ export function GameView() {
         title:
           activeGameDisplayName ||
           activeGameApp ||
-          t("gameview.Game", { defaultValue: "Game" }),
+          t("common.game", { defaultValue: "Game" }),
       },
     })
       .then((result) => {
@@ -1230,7 +1230,7 @@ export function GameView() {
       }
     } catch {
       setActionNotice(
-        t("gameview.PopupBlocked", {
+        t("appsview.PopupBlocked", {
           defaultValue: "Popup blocked. Allow popups and try again.",
         }),
         "error",
@@ -1571,7 +1571,7 @@ export function GameView() {
       ) : null}
       {logLoadError ? (
         <div className="border-b border-danger/25 bg-danger/8 px-2 py-1.5 text-2xs text-danger">
-          {t("gameview.LogLoadFailed", {
+          {t("logsview.LoadFailed", {
             defaultValue: "Failed to load logs: {{message}}",
             message: logLoadError,
           })}
@@ -1850,7 +1850,7 @@ export function GameView() {
               </span>
             </>
           ) : (
-            <span className="text-xs italic">{t("game.launching")}</span>
+            <span className="text-xs italic">{t("common.launching")}</span>
           )}
         </div>
       );
@@ -1866,7 +1866,7 @@ export function GameView() {
         data-testid="game-view-iframe"
         className="w-full h-full border-none"
         title={
-          activeGameDisplayName || t("gameview.Game", { defaultValue: "Game" })
+          activeGameDisplayName || t("common.game", { defaultValue: "Game" })
         }
       />
     );
@@ -1906,8 +1906,8 @@ export function GameView() {
                   defaultValue: "Updating…",
                 })
               : sessionControlAction === "pause"
-                ? t("gameview.Pause", { defaultValue: "Pause" })
-                : t("gameview.Resume", { defaultValue: "Resume" })}
+                ? t("common.pause", { defaultValue: "Pause" })
+                : t("common.resume", { defaultValue: "Resume" })}
           </Button>
         ) : null}
         {dashboardPanelEnabled && !isCompactLayout ? (
@@ -1977,7 +1977,7 @@ export function GameView() {
           disabled={stopping}
           onClick={handleStop}
         >
-          {stopping ? t("game.stopping") : t("game.stop")}
+          {stopping ? t("game.stopping") : t("common.stop")}
         </Button>
         <Button
           variant="default"
@@ -2023,7 +2023,7 @@ export function GameView() {
             className="h-8 text-xs shadow-sm"
             onClick={() => setMobileSurface("game")}
           >
-            {t("gameview.MobileSurfaceGame", {
+            {t("common.game", {
               defaultValue: "Game",
             })}
           </Button>
@@ -2034,7 +2034,7 @@ export function GameView() {
             className="h-8 text-xs shadow-sm"
             onClick={() => setMobileSurface("dashboard")}
           >
-            {t("gameview.MobileSurfaceDashboard", {
+            {t("common.actions", {
               defaultValue: "Actions",
             })}
           </Button>
@@ -2045,7 +2045,7 @@ export function GameView() {
             className="h-8 text-xs shadow-sm"
             onClick={() => setMobileSurface("chat")}
           >
-            {t("gameview.MobileSurfaceChat", {
+            {t("nav.chat", {
               defaultValue: "Chat",
             })}
           </Button>

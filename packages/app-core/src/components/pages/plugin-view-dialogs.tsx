@@ -256,7 +256,7 @@ export function PluginSettingsDialog({
               className="h-8 px-4 text-xs font-bold text-muted hover:text-txt transition-all"
               onClick={() => onConfigReset(plugin.id)}
             >
-              {t("pluginsview.Reset")}
+              {t("common.reset")}
             </Button>
             <Button
               variant={saveSuccess ? "default" : "secondary"}

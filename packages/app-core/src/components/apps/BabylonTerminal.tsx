@@ -12,6 +12,7 @@ import type {
   BabylonWallet,
 } from "../../api/client-types-babylon";
 import { useBabylonSSE } from "../../hooks/useBabylonSSE";
+import { useTranslation } from "../../state/TranslationContext";
 import { formatTime } from "../../utils/format";
 import {
   type BabylonAgentSummaryEnvelope,
@@ -791,6 +792,7 @@ export interface BabylonTerminalProps {
 }
 
 export function BabylonTerminal({ appName: _appName }: BabylonTerminalProps) {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [agentStatus, setAgentStatus] = useState<BabylonAgentStatus | null>(
     null,
@@ -1187,7 +1189,7 @@ export function BabylonTerminal({ appName: _appName }: BabylonTerminalProps) {
                 void handleSendChat();
               }
             }}
-            placeholder="Tell the agent what to do, what to avoid, or what to explain."
+            placeholder={t("babylon.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain")}
             className="h-9 flex-1 text-xs"
           />
           <Button

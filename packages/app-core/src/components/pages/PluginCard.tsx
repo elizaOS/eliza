@@ -308,7 +308,7 @@ export function PluginCard({
               }`}
             />
             <span className="text-xs-tight font-bold tracking-wide text-muted">
-              {setCount}/{totalCount} {t("pluginsview.configured")}
+              {setCount}/{totalCount} {t("common.configured")}
             </span>
           </>
         ) : !hasParams && !isShowcase ? (
@@ -386,7 +386,7 @@ export function PluginCard({
             }}
           >
             {isUpdating
-              ? t("pluginsview.Updating", { defaultValue: "Updating..." })
+              ? t("common.updating", { defaultValue: "Updating..." })
               : t("pluginsview.Update", { defaultValue: "Update" })}
           </Button>
         )}
@@ -405,7 +405,7 @@ export function PluginCard({
               ? t("pluginsview.Uninstalling", {
                   defaultValue: "Uninstalling...",
                 })
-              : t("pluginsview.Uninstall", {
+              : t("common.uninstall", {
                   defaultValue: "Uninstall",
                 })}
           </Button>
@@ -423,7 +423,7 @@ export function PluginCard({
               e.stopPropagation();
               onToggleSettings(p.id);
             }}
-            title={t("pluginsview.Settings")}
+            title={t("nav.settings")}
           >
             <span className="text-sm leading-none">&#9881;</span>
             <span

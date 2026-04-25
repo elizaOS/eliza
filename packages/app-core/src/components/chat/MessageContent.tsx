@@ -677,10 +677,10 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
             className={`text-2xs font-medium ${isEnabled ? "text-ok" : "text-muted"}`}
           >
             {isEnabled
-              ? t("messagecontent.Active", {
+              ? t("common.active", {
                   defaultValue: "Active",
                 })
-              : t("messagecontent.Inactive", {
+              : t("common.inactive", {
                   defaultValue: "Inactive",
                 })}
           </span>
@@ -717,7 +717,7 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
             disabled={saving || enabling || Object.keys(values).length === 0}
           >
             {saving
-              ? t("messagecontent.Saving", {
+              ? t("common.saving", {
                   defaultValue: "Saving...",
                 })
               : t("common.save")}
@@ -752,14 +752,14 @@ function InlinePluginConfig({ pluginId: rawPluginId }: { pluginId: string }) {
               ? t("messagecontent.Disabling", {
                   defaultValue: "Turning off...",
                 })
-              : t("messagecontent.DisablePlugin", {
+              : t("common.disable", {
                   defaultValue: "Disable",
                 })}
           </Button>
         )}
 
         {saved && (
-          <span className="text-xs text-ok">{t("apikeyconfig.saved")}</span>
+          <span className="text-xs text-ok">{t("common.saved")}</span>
         )}
         {error && <span className="text-xs text-danger">{error}</span>}
       </div>

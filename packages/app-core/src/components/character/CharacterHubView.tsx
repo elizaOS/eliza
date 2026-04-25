@@ -545,7 +545,9 @@ export function CharacterHubView({
             ? `${customKnowledgeDocuments.length} doc${
                 customKnowledgeDocuments.length === 1 ? "" : "s"
               }`
-            : null,
+            : knowledgeDocuments.length > 0
+              ? "Defaults"
+              : null,
         body:
           recentDocs.length > 0 ? (
             <ul className="flex flex-col gap-1 text-xs text-muted">
@@ -555,8 +557,13 @@ export function CharacterHubView({
                 </li>
               ))}
             </ul>
+          ) : knowledgeDocuments.length > 0 ? (
+            <p className="text-xs leading-relaxed text-muted">
+              Just the default knowledge so far. Upload notes, docs, or links to
+              teach me what matters to you.
+            </p>
           ) : null,
-        isEmpty: customKnowledgeDocuments.length === 0,
+        isEmpty: knowledgeDocuments.length === 0,
       },
       {
         section: "skills",
@@ -642,6 +649,7 @@ export function CharacterHubView({
     d.style,
     experienceRecords,
     historyEntries,
+    knowledgeDocuments.length,
     learnedSkills,
     normalizedMessageExamples.length,
     relationshipActivity,
@@ -821,7 +829,7 @@ export function CharacterHubView({
 
   const sectionNav = (
     <SidebarPanel className="min-h-0 gap-2 bg-transparent p-0 shadow-none">
-      <nav className="flex flex-col gap-0" aria-label="Character hub sections">
+      <nav className="flex flex-col gap-0" aria-label={t("character.characterHubSections")}>
         {CHARACTER_HUB_SECTIONS.map((section) =>
           (() => {
             const meta = CHARACTER_SECTION_META[section];
@@ -910,7 +918,7 @@ export function CharacterHubView({
               >
                 {characterSaving
                   ? t("charactereditor.Saving", { defaultValue: "saving..." })
-                  : t("charactereditor.Save", { defaultValue: "Save" })}
+                  : t("common.save", { defaultValue: "Save" })}
               </Button>
             </div>
           </section>

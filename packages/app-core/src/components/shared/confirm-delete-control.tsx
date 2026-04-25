@@ -37,15 +37,15 @@ export function ConfirmDeleteControl({
   const [confirming, setConfirming] = useState(false);
   const resolvedTriggerLabel =
     triggerLabel ??
-    t("confirmdeletecontrol.Delete", { defaultValue: "Delete" });
+    t("common.delete", { defaultValue: "Delete" });
   const resolvedConfirmLabel =
     confirmLabel ??
-    t("confirmdeletecontrol.Confirm", { defaultValue: "Confirm" });
+    t("common.confirm", { defaultValue: "Confirm" });
   const resolvedCancelLabel =
-    cancelLabel ?? t("confirmdeletecontrol.Cancel", { defaultValue: "Cancel" });
+    cancelLabel ?? t("common.cancel", { defaultValue: "Cancel" });
   const resolvedPromptText =
     promptText ??
-    t("confirmdeletecontrol.DeletePrompt", { defaultValue: "Delete?" });
+    t("conversations.deleteConfirm", { defaultValue: "Delete?" });
 
   if (!confirming) {
     return (

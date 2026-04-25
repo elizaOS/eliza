@@ -171,7 +171,7 @@ export function PluginGameModal({
                   className="plugins-game-back-btn"
                   onClick={onBack}
                 >
-                  {t("pluginsview.Back")}
+                  {t("common.back")}
                 </Button>
               )}
               <div className="plugins-game-detail-title-row">

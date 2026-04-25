@@ -247,7 +247,7 @@ function useHeartbeatsViewController() {
     const confirmed = await confirmDesktopAction({
       title: t("heartbeatsview.deleteTitle"),
       message: t("heartbeatsview.deleteMessage", { name: form.displayName }),
-      confirmLabel: t("triggersview.Delete"),
+      confirmLabel: t("common.delete"),
       cancelLabel: t("common.cancel"),
       type: "warning",
     });
@@ -281,7 +281,7 @@ function useHeartbeatsViewController() {
 
   const modalTitle = editingId
     ? t("heartbeatsview.editTitle", {
-        name: form.displayName.trim() || t("heartbeatsview.heartbeatSingular"),
+        name: form.displayName.trim() || t("common.heartbeat"),
       })
     : t("heartbeatsview.newHeartbeat");
   const editorEnabled =
@@ -559,8 +559,8 @@ function HeartbeatsLayout() {
                       <StatusBadge
                         label={
                           trigger.enabled
-                            ? t("appsview.Active")
-                            : t("heartbeatsview.statusPaused")
+                            ? t("common.active")
+                            : t("common.paused")
                         }
                         variant={trigger.enabled ? "success" : "muted"}
                         withDot
@@ -671,7 +671,7 @@ function HeartbeatsLayout() {
               setEditingId(null);
             }}
           >
-            {t("heartbeatsview.BackToList", {
+            {t("onboarding.back", {
               defaultValue: "\u2190 Back",
             })}
           </button>
@@ -707,13 +707,13 @@ function HeartbeatsLayout() {
               <div className="max-w-3xl space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <FieldLabel variant="kicker">
-                    {t("heartbeatsview.heartbeatSingular")}
+                    {t("common.heartbeat")}
                   </FieldLabel>
                   <StatusBadge
                     label={
                       selectedTrigger.enabled
-                        ? t("appsview.Active")
-                        : t("heartbeatsview.statusPaused")
+                        ? t("common.active")
+                        : t("common.paused")
                     }
                     variant={selectedTrigger.enabled ? "success" : "muted"}
                     withDot
@@ -739,8 +739,8 @@ function HeartbeatsLayout() {
                   }
                 >
                   {selectedTrigger.enabled
-                    ? t("heartbeatsview.pause")
-                    : t("heartbeatsview.resume")}
+                    ? t("common.pause")
+                    : t("common.resume")}
                 </Button>
                 <Button
                   variant="outline"
@@ -748,7 +748,7 @@ function HeartbeatsLayout() {
                   className="h-8 px-3 text-xs"
                   onClick={() => openEditEditor(selectedTrigger)}
                 >
-                  {t("triggersview.Edit")}
+                  {t("common.edit")}
                 </Button>
                 <Button
                   variant="outline"
@@ -780,7 +780,7 @@ function HeartbeatsLayout() {
             <dl className="mb-8 grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
               <PagePanel.SummaryCard className="px-4 py-4">
                 <dt className="text-xs-tight font-semibold uppercase tracking-wider text-muted">
-                  {t("heartbeatsview.schedule")}
+                  {t("common.schedule")}
                 </dt>
                 <dd className="mt-1 font-medium text-txt">
                   {scheduleLabel(selectedTrigger, t, uiLanguage)}
@@ -848,7 +848,7 @@ function HeartbeatsLayout() {
               {!hasLoadedSelectedRuns ? (
                 <div className="flex items-center gap-2 py-6 text-sm text-muted/70">
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted/30 border-t-muted/80" />
-                  {t("databaseview.Loading")}
+                  {t("appsview.Loading")}
                 </div>
               ) : selectedRuns.length === 0 ? (
                 <div className="py-8 text-center text-sm text-muted/60">

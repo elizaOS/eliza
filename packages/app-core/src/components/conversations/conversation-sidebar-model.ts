@@ -264,7 +264,7 @@ function buildWorldOptions(
   return [
     {
       count: matchingRows.length,
-      label: t("conversations.scopeAllWorlds", {
+      label: t("common.all", {
         defaultValue: "All",
       }),
       value: ALL_WORLDS_SCOPE,
@@ -327,7 +327,7 @@ function timeBucket(sortKey: number, now: Date, t: TranslateFn): TimeBucket {
   if (dayDelta <= 0) {
     return {
       key: "t:today",
-      label: t("conversations.bucketToday", { defaultValue: "Today" }),
+      label: t("common.today", { defaultValue: "Today" }),
       rank: MAX_DAY_BUCKET_RANK,
     };
   }

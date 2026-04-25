@@ -187,7 +187,7 @@ export function EditSkillModal({
             >
               {hasChanges
                 ? t("skillsview.discard", { defaultValue: "Discard" })
-                : t("bugreportmodal.Close")}
+                : t("common.close")}
             </Button>
             <Button
               variant="default"
@@ -201,10 +201,10 @@ export function EditSkillModal({
               disabled={saving || !hasChanges}
             >
               {saving
-                ? t("apikeyconfig.saving")
+                ? t("common.saving")
                 : saveSuccess
-                  ? t("apikeyconfig.saved")
-                  : t("apikeyconfig.save")}
+                  ? t("common.saved")
+                  : t("common.save")}
             </Button>
           </div>
         </div>
@@ -279,7 +279,7 @@ export function SkillsModalView() {
   const tabs: { key: typeof filterTab; label: string }[] = [
     {
       key: "all",
-      label: `${t("skillsview.all", { defaultValue: "All" })} (${skills.length})`,
+      label: `${t("common.all", { defaultValue: "All" })} (${skills.length})`,
     },
     {
       key: "on",
@@ -325,7 +325,7 @@ export function SkillsModalView() {
               onClick={() => setInstallModalOpen(true)}
             >
               <span className="plugins-game-add-symbol">+</span>{" "}
-              {t("skillsview.Install", { defaultValue: "Install" })}
+              {t("common.install", { defaultValue: "Install" })}
             </Button>
           </div>
         </div>
@@ -443,7 +443,7 @@ export function SkillsModalView() {
                 className="plugins-game-action-btn"
                 onClick={() => handleDeleteSkill(selected.id, selected.name)}
               >
-                {t("skillsview.Delete", { defaultValue: "Delete" })}
+                {t("common.delete", { defaultValue: "Delete" })}
               </Button>
             </div>
           </>

@@ -39,7 +39,7 @@ export function SignalQrOverlay({
         <div className="flex items-center gap-2">
           <span className="inline-block h-2 w-2 rounded-full bg-ok" />
           <span className="text-xs font-medium text-ok">
-            {t("onboarding.connected")}
+            {t("common.connected")}
             {phoneNumber ? ` (${phoneNumber})` : ""}
           </span>
         </div>
@@ -55,7 +55,7 @@ export function SignalQrOverlay({
             className="mt-2 text-2xs"
             onClick={() => void disconnect()}
           >
-            {t("providerswitcher.disconnect")}
+            {t("common.disconnect")}
           </Button>
         ) : null}
       </div>

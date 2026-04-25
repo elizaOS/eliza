@@ -23,7 +23,7 @@ export function getKnowledgeSourceLabel(
   if (source === "url") {
     return t("knowledgeview.FromUrl", { defaultValue: "From URL" });
   }
-  return t("knowledgeview.Upload", { defaultValue: "Upload" });
+  return t("aria.upload", { defaultValue: "Upload" });
 }
 
 export function getKnowledgeDocumentSummary(
@@ -167,7 +167,7 @@ export function DocumentViewer({
         {loading && (
           <div className="py-10 text-center font-bold tracking-wide text-muted animate-pulse">
             <span className="mr-3 inline-block h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent align-middle" />
-            {t("databaseview.Loading")}
+            {t("appsview.Loading")}
           </div>
         )}
 
@@ -260,7 +260,7 @@ export function DocumentViewer({
               className="p-4 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
             >
               <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                {t("knowledgeview.Preview", { defaultValue: "Preview" })}
+                {t("common.preview", { defaultValue: "Preview" })}
               </div>
               {editing ? (
                 <Textarea

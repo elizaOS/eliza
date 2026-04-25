@@ -424,7 +424,7 @@ export function KnowledgeView({
                   defaultValue:
                     "Uploading can take longer and may increase embedding or vision costs.",
                 }),
-                confirmLabel: t("onboarding.savedMyKeys", {
+                confirmLabel: t("common.continue", {
                   defaultValue: "Continue",
                 }),
                 cancelLabel: t("common.cancel", {

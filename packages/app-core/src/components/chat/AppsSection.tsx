@@ -147,7 +147,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
 
   return (
     <WidgetSection
-      title={t("chatsidebar.Apps", { defaultValue: "Apps" })}
+      title={t("nav.apps", { defaultValue: "Apps" })}
       icon={<LayoutGrid className="h-4 w-4" />}
       action={headerAction}
       testId="chat-widget-apps-section"

@@ -688,7 +688,7 @@ export function pluginResourceLinkLabel(t: TranslateFn, key: string): string {
   if (key === "official") {
     return t("pluginsview.Official", { defaultValue: "Official" });
   }
-  return t("pluginsview.Source", { defaultValue: "Source" });
+  return t("logsview.Source", { defaultValue: "Source" });
 }
 
 /* ── Sub-group Classification ──────────────────────────────────────── */

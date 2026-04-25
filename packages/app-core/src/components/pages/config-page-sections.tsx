@@ -71,7 +71,7 @@ export function CloudRpcStatus({
         disabled={loginBusy}
       >
         {loginBusy
-          ? t("configpageview.Connecting", { defaultValue: "Connecting..." })
+          ? t("game.connecting", { defaultValue: "Connecting..." })
           : t("elizaclouddashboard.ConnectElizaCloud", {
               defaultValue: "Connect to Eliza Cloud",
             })}
@@ -186,7 +186,7 @@ export function RpcConfigSection<T extends string>({
         (key: string) => {
           // hack to get t function without breaking hook rules
           return key === "providerswitcher.elizaCloud"
-            ? t("providerswitcher.elizaCloud", { defaultValue: "Eliza Cloud" })
+            ? t("common.cloud", { defaultValue: "Eliza Cloud" })
             : key;
         },
       )}

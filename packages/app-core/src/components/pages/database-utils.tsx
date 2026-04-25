@@ -259,7 +259,7 @@ export function PaginationBar({
           rowLabel:
             total === 1
               ? t("databaseview.row")
-              : t("databaseview.rows", { defaultValue: "rows" }),
+              : t("common.rows", { defaultValue: "rows" }),
           range:
             total > 0
               ? t("databaseview.ShowingRange", {
@@ -279,7 +279,7 @@ export function PaginationBar({
           disabled={!hasPrev}
           onClick={onPrev}
         >
-          {t("databaseview.Prev")}
+          {t("common.prev")}
         </Button>
         <Button
           variant="outline"
@@ -288,7 +288,7 @@ export function PaginationBar({
           disabled={!hasNext}
           onClick={onNext}
         >
-          {t("onboarding.next")}
+          {t("common.next")}
         </Button>
       </div>
     </div>

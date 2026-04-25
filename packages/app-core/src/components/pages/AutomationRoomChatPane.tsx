@@ -604,7 +604,7 @@ export function AutomationRoomChatPane({
                     <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
                       {message.role === "user"
                         ? t("automations.chat.roleUser")
-                        : t("automations.chat.roleAssistant")}
+                        : t("common.agent")}
                     </div>
                     <div className="whitespace-pre-wrap">{message.text}</div>
                   </li>
@@ -615,7 +615,7 @@ export function AutomationRoomChatPane({
               {sending && !firstTokenReceived && (
                 <div className="mr-8 rounded-lg bg-bg/50 px-3 py-2">
                   <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                    {t("automations.chat.roleAssistant")}
+                    {t("common.agent")}
                   </div>
                   <div className="flex items-center gap-1">
                     <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted/60 [animation-delay:0ms]" />
@@ -680,10 +680,10 @@ export function AutomationRoomChatPane({
             variant="destructive"
             className="h-[38px] shrink-0 gap-1.5 px-3 text-sm"
             onClick={handleStop}
-            title={t("automations.chat.stop")}
+            title={t("common.stop")}
           >
             <Square className="h-3 w-3 fill-current" />
-            <span>{t("automations.chat.stop")}</span>
+            <span>{t("common.stop")}</span>
           </Button>
         ) : (
           <Button
@@ -691,11 +691,11 @@ export function AutomationRoomChatPane({
             className="h-[38px] shrink-0 gap-1.5 px-4 text-sm"
             onClick={() => void handleSend()}
             disabled={!input.trim() || !conversationId || Boolean(loadError)}
-            aria-label={t("automations.chat.send")}
+            aria-label={t("common.send")}
           >
             <Send className="h-4 w-4" />
             <span className="hidden sm:inline">
-              {t("automations.chat.send")}
+              {t("common.send")}
             </span>
           </Button>
         )}

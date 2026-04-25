@@ -77,11 +77,11 @@ export function CloudConnectionStatus({
             : "border-warn/35 bg-warn-subtle text-warn"
         }`}
         title={
-          connected ? t("appsview.Active") : t("cloudsourcecontrols.Offline")
+          connected ? t("common.active") : t("cloudsourcecontrols.Offline")
         }
         role="img"
         aria-label={
-          connected ? t("appsview.Active") : t("cloudsourcecontrols.Offline")
+          connected ? t("common.active") : t("cloudsourcecontrols.Offline")
         }
       >
         {connected ? (

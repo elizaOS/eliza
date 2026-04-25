@@ -253,12 +253,12 @@ export function DesktopTalkModePanel() {
           <Card className="border-border/50 bg-bg-hover/60 shadow-none">
             <CardContent className="px-2.5 py-2 text-xs-tight">
               <div className="text-2xs text-muted">
-                {t("voiceconfigview.Enabled")}
+                {t("common.enabled")}
               </div>
               <div className="font-semibold text-txt">
                 {panelState.enabled
-                  ? t("voiceconfigview.Yes")
-                  : t("voiceconfigview.No")}
+                  ? t("common.yes")
+                  : t("common.no")}
               </div>
             </CardContent>
           </Card>
@@ -269,8 +269,8 @@ export function DesktopTalkModePanel() {
               </div>
               <div className="font-semibold text-txt">
                 {panelState.speaking
-                  ? t("voiceconfigview.Yes")
-                  : t("voiceconfigview.No")}
+                  ? t("common.yes")
+                  : t("common.no")}
               </div>
             </CardContent>
           </Card>
@@ -281,8 +281,8 @@ export function DesktopTalkModePanel() {
               </div>
               <div className="font-semibold text-txt">
                 {panelState.whisperAvailable
-                  ? panelState.whisperModel || t("voiceconfigview.Available")
-                  : t("voiceconfigview.Unavailable")}
+                  ? panelState.whisperModel || t("common.available")
+                  : t("common.unavailable")}
               </div>
             </CardContent>
           </Card>
@@ -526,8 +526,8 @@ function WakeWordSection({
         <div className="flex min-h-10 items-center gap-2 rounded-xl border border-border/50 bg-bg-hover px-3">
           <span className="text-xs-tight font-medium text-muted-strong">
             {enabled
-              ? t("voiceconfigview.Enabled", { defaultValue: "Enabled" })
-              : t("voiceconfigview.Disabled", { defaultValue: "Disabled" })}
+              ? t("common.enabled", { defaultValue: "Enabled" })
+              : t("common.disabled", { defaultValue: "Disabled" })}
           </span>
           <Switch
             checked={enabled}
@@ -815,7 +815,7 @@ export function VoiceConfigView() {
       setSaveError(
         err instanceof Error
           ? err.message
-          : t("voiceconfigview.FailedToSave", {
+          : t("skillsview.failedToSave", {
               defaultValue: "Failed to save",
             }),
       );
@@ -902,7 +902,7 @@ export function VoiceConfigView() {
           {currentMode === "own-key" && (
             <div className="flex flex-col gap-1.5">
               <span className="text-xs font-semibold">
-                {t("voiceconfigview.ElevenLabsAPIKey")}
+                {t("onboarding.elevenLabsApiKey")}
               </span>
               <Input
                 type="password"
@@ -933,7 +933,7 @@ export function VoiceConfigView() {
           )}
           <div className="flex flex-col gap-2">
             <div className="text-xs font-semibold">
-              {t("settings.sections.voice.label")}
+              {t("common.voice")}
             </div>
             <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
               {PREMADE_VOICES.map((preset) => {
@@ -991,7 +991,7 @@ export function VoiceConfigView() {
                     }
                   }}
                 >
-                  {t("game.stop")}
+                  {t("common.stop")}
                 </Button>
               )}
             </div>

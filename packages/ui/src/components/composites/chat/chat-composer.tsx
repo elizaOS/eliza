@@ -185,12 +185,12 @@ export function ChatComposer({
     : isGameModal || !voice.isSpeaking || hasDraft
       ? isAgentStarting
         ? t("chat.agentStarting")
-        : t("chat.send")
+        : t("common.send")
       : t("chat.stopSpeaking");
   const actionButtonLabel = isGameModal ? undefined : actionButtonTitle;
   const inputPlaceholder = isNarrow
-    ? t("chat.inputPlaceholderNarrow")
-    : t("chat.inputPlaceholder");
+    ? t("common.message")
+    : t("common.message");
   const voiceButtonTitle = isAgentStarting
     ? t("chat.agentStarting")
     : voice.isListening
@@ -390,7 +390,7 @@ export function ChatComposer({
           }`}
           onClick={onAttachImage}
           aria-label={t("aria.attachImage")}
-          title={t("chatview.AttachImage")}
+          title={t("aria.attachImage")}
           disabled={isComposerLocked}
         >
           <Plus className="h-5 w-5" />
@@ -585,7 +585,7 @@ export function ChatComposer({
           }
           onClick={onAttachImage}
           aria-label={t("aria.attachImage")}
-          title={t("chatview.AttachImage")}
+          title={t("aria.attachImage")}
           disabled={isComposerLocked}
         >
           {isInline ? (

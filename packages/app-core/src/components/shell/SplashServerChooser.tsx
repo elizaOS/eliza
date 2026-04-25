@@ -63,7 +63,7 @@ export function SplashServerChooser({
                   className="shrink-0 border-2 border-black bg-white text-black font-semibold hover:bg-black hover:text-[#ffe600]"
                   onClick={() => onConnectGateway(gateway)}
                 >
-                  {t("startupshell.Connect", { defaultValue: "Connect" })}
+                  {t("common.connect", { defaultValue: "Connect" })}
                 </Button>
               </CardContent>
             </Card>
@@ -107,7 +107,7 @@ export function SplashServerChooser({
             style={{ fontFamily: MONO_FONT }}
             className="text-3xs uppercase text-black/60"
           >
-            {t("startupshell.ElizaCloudAgent", {
+            {t("common.elizaCloud", {
               defaultValue: "Eliza Cloud",
             })}
           </span>

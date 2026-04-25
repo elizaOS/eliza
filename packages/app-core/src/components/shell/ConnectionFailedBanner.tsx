@@ -60,7 +60,7 @@ export function ConnectionFailedBanner() {
             onClick={dismissBackendDisconnectedBanner}
             className="rounded px-3 py-1 text-xs text-danger/20 hover:bg-danger hover:text-white"
           >
-            {t("skillsview.Dismiss")}
+            {t("common.dismiss")}
           </Button>
           <Button
             variant="secondary"

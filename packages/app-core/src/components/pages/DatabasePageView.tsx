@@ -22,7 +22,7 @@ export function DatabasePageView({
     },
     {
       id: "vectors" as const,
-      label: t("databasepageview.Vectors"),
+      label: t("common.vectors"),
     },
   ];
 

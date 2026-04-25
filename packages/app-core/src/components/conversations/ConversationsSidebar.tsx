@@ -745,7 +745,7 @@ export function ConversationsSidebar({
         }
         collapseButtonTestId="chat-sidebar-collapse-toggle"
         expandButtonTestId="chat-sidebar-expand-toggle"
-        collapseButtonAriaLabel={t("conversations.closePanel")}
+        collapseButtonAriaLabel={t("aria.closePanel")}
         expandButtonAriaLabel={t("aria.expandChatsPanel")}
         bottomAction={
           !mobile && !isGameModal ? manageConnectionsButton : undefined
@@ -788,7 +788,7 @@ export function ConversationsSidebar({
           </SidebarContent.RailItem>
         ))}
         onMobileClose={mobile ? onClose : undefined}
-        mobileCloseLabel={t("conversations.closePanel")}
+        mobileCloseLabel={t("aria.closePanel")}
         mobileTitle={
           mobile ? (
             <SidebarContent.SectionLabel>
@@ -949,7 +949,7 @@ export function ConversationsSidebar({
                     rows={section.rows}
                     collapsed={collapsedSections.has(section.key)}
                     onToggleCollapsed={toggleSectionCollapsed}
-                    emptyLabel={t("conversations.noneConnectors", {
+                    emptyLabel={t("conversations.none", {
                       defaultValue: "No chats in this view",
                     })}
                     activeListId={activeListId}
@@ -1090,8 +1090,8 @@ function CollapsibleChannelSection({
               }),
               delete: t("conversations.delete"),
               deleteConfirm: t("conversations.deleteConfirm"),
-              deleteNo: t("conversations.deleteNo"),
-              deleteYes: t("conversations.deleteYes"),
+              deleteNo: t("common.no"),
+              deleteYes: t("common.yes"),
               rename: t("conversations.rename"),
             }}
             mobile={mobile}

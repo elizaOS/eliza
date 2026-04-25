@@ -511,7 +511,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const providerChoices = [
     {
       id: "__cloud__",
-      label: t("providerswitcher.elizaCloud"),
+      label: t("common.cloud"),
       disabled: false,
     },
     ...SUBSCRIPTION_PROVIDER_SELECTIONS.map((provider) => ({
@@ -713,7 +713,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             htmlFor="provider-switcher-select"
             className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
           >
-            {t("providerswitcher.selectProvider", {
+            {t("common.provider", {
               defaultValue: "Provider",
             })}
           </label>
@@ -740,7 +740,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           >
             <SelectTrigger
               id="provider-switcher-select"
-              aria-label={t("providerswitcher.selectProvider", {
+              aria-label={t("common.provider", {
                 defaultValue: "Provider",
               })}
               className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"

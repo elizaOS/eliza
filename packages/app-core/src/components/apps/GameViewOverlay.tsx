@@ -195,7 +195,7 @@ export function GameViewOverlay() {
             onClick={handleExpand}
             title={t("gameviewoverlay.ExpandBackToApps")}
           >
-            {t("gameviewoverlay.Expand")}
+            {t("common.expand")}
           </Button>
           <Button
             variant="outline"
@@ -209,7 +209,7 @@ export function GameViewOverlay() {
             onClick={handleClose}
             title={t("gameviewoverlay.CloseOverlay")}
           >
-            {t("bugreportmodal.Close")}
+            {t("common.close")}
           </Button>
         </div>
         {/* Iframe */}
