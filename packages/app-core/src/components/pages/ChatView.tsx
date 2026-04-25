@@ -6,6 +6,7 @@ import {
   ChatThreadLayout,
   ChatTranscript,
   TypingIndicator,
+  useIntervalWhenDocumentVisible,
 } from "@elizaos/ui";
 import {
   type ChangeEvent,
@@ -373,6 +374,7 @@ export function ChatView({
 
   // Auto-resize textarea
   useEffect(() => {
+    if (!isGameModal) return;
     const ta = textareaRef.current;
     if (!ta) return;
 
@@ -389,7 +391,7 @@ export function ChatView({
     ta.style.height = `${h}px`;
     ta.style.overflowY =
       ta.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
-  }, [chatInput]);
+  }, [chatInput, isGameModal]);
 
   // Track composer height so the message layer bottom adjusts dynamically
   useEffect(() => {
@@ -826,35 +828,40 @@ function InboxChatPanel({
   const transportSource =
     activeInboxChat.transportSource ?? activeInboxChat.source;
 
+  const loadInboxMessages = useCallback(async () => {
+    try {
+      const response = await client.getInboxMessages({
+        limit: 200,
+        roomId: activeInboxChat.id,
+        roomSource: transportSource,
+      });
+      // Server returns newest first; ChatTranscript expects
+      // oldest→newest (conversation layout) so reverse.
+      const next = [...response.messages]
+        .reverse()
+        .map((m): ConversationMessage => m);
+      setMessages(next);
+    } catch {
+      // Transient errors keep the last snapshot; next poll retries.
+    } finally {
+      setLoading(false);
+    }
+  }, [activeInboxChat.id, transportSource]);
+
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
-      try {
-        const response = await client.getInboxMessages({
-          limit: 200,
-          roomId: activeInboxChat.id,
-          roomSource: transportSource,
-        });
-        if (cancelled) return;
-        // Server returns newest first; ChatTranscript expects
-        // oldest→newest (conversation layout) so reverse.
-        const next = [...response.messages]
-          .reverse()
-          .map((m): ConversationMessage => m);
-        setMessages(next);
-      } catch {
-        // Transient errors keep the last snapshot; next poll retries.
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    void load();
-    const timer = window.setInterval(load, 5_000);
+    (async () => {
+      await loadInboxMessages();
+      if (cancelled) return;
+    })();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
     };
-  }, [activeInboxChat.id, transportSource]);
+  }, [loadInboxMessages]);
+
+  useIntervalWhenDocumentVisible(() => {
+    void loadInboxMessages();
+  }, 15_000);
 
   useLayoutEffect(() => {
     if (messages.length === 0) return;

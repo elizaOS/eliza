@@ -172,6 +172,7 @@ describe("CheckinService", () => {
             sender: {
               id: "bob",
               displayName: "Bob",
+              email: null,
               avatarUrl: null,
             },
             subject: null,

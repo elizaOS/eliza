@@ -2121,8 +2121,6 @@
   "settings.sections.connectors.desc": "Setup ng connector, authentication, at mga integration ng serbisyo",
   "settings.sections.lifeops.desc": "Google Calendar at Gmail connection para sa aktibong agent.",
   "settings.sections.lifeops.label": "Life Ops",
-  "settings.sections.media.desc": "Mga provider ng larawan, video, at vision",
-  "settings.sections.media.label": "Media",
   "settings.sections.permissions.desc": "Mga kakayahan at access control",
   "settings.sections.permissions.label": "Mga Permiso",
   "settings.sections.updates.desc": "Mga setting ng software update",

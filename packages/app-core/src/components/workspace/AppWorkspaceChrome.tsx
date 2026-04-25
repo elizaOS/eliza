@@ -1,4 +1,14 @@
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import {
+  type WorkspaceMobileSidebarControl,
+  type WorkspaceMobileSidebarControls,
+  WorkspaceMobileSidebarControlsContext,
+} from "@elizaos/ui";
+import {
+  LayoutDashboard,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+} from "lucide-react";
 import type React from "react";
 import {
   createContext,
@@ -98,6 +108,90 @@ function AppWorkspaceChatDockToggleButton({
   );
 }
 
+function MobileWorkspacePaneSwitcher({
+  chatAvailable,
+  chatOpen,
+  sidebar,
+  onChat,
+  onMain,
+  onSidebar,
+}: {
+  chatAvailable: boolean;
+  chatOpen: boolean;
+  sidebar: WorkspaceMobileSidebarControl | null;
+  onChat: () => void;
+  onMain: () => void;
+  onSidebar: () => void;
+}): JSX.Element {
+  const sidebarOpen = sidebar?.open ?? false;
+  const mainOpen = !sidebarOpen && (!chatAvailable || !chatOpen);
+  const baseButtonClassName =
+    "inline-flex h-9 w-9 items-center justify-center rounded-md border border-border/40 bg-card/55 text-muted shadow-sm transition-colors hover:text-txt";
+  const activeButtonClassName =
+    "border-accent/70 bg-accent text-accent-fg hover:text-accent-fg";
+
+  return (
+    <div
+      className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center border-b border-border/35 bg-bg/92 px-2 py-1.5"
+      data-testid="app-workspace-mobile-pane-switcher"
+    >
+      <div className="flex min-w-0 justify-start">
+        {sidebar ? (
+          <button
+            type="button"
+            aria-label="Show left sidebar"
+            aria-current={sidebarOpen ? "page" : undefined}
+            title="Show left sidebar"
+            data-testid="app-workspace-mobile-pane-left"
+            onClick={onSidebar}
+            className={`${baseButtonClassName} ${
+              sidebarOpen ? activeButtonClassName : ""
+            }`}
+          >
+            <PanelLeftOpen className="h-4 w-4" aria-hidden />
+          </button>
+        ) : (
+          <span className="h-9 w-9" aria-hidden />
+        )}
+      </div>
+      <div className="flex min-w-0 justify-center">
+        <button
+          type="button"
+          aria-label="Show content"
+          aria-current={mainOpen ? "page" : undefined}
+          title="Show content"
+          data-testid="app-workspace-mobile-pane-main"
+          onClick={onMain}
+          className={`${baseButtonClassName} ${
+            mainOpen ? activeButtonClassName : ""
+          }`}
+        >
+          <LayoutDashboard className="h-4 w-4" aria-hidden />
+        </button>
+      </div>
+      <div className="flex min-w-0 justify-end">
+        {chatAvailable ? (
+          <button
+            type="button"
+            aria-label="Show page chat"
+            aria-current={chatOpen ? "page" : undefined}
+            title="Show page chat"
+            data-testid="app-workspace-mobile-pane-chat"
+            onClick={onChat}
+            className={`${baseButtonClassName} ${
+              chatOpen ? activeButtonClassName : ""
+            }`}
+          >
+            <PanelRightOpen className="h-4 w-4" aria-hidden />
+          </button>
+        ) : (
+          <span className="h-9 w-9" aria-hidden />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function clampWidth(value: number): number {
   return Math.min(Math.max(value, CHAT_MIN_WIDTH), CHAT_MAX_WIDTH);
 }
@@ -143,6 +237,8 @@ export interface AppWorkspaceChromeProps {
   chatDefaultCollapsed?: boolean;
   /** Hide the default bottom-right collapse control when chat content owns it. */
   hideCollapseButton?: boolean;
+  /** Disable the right chat rail for focused surfaces that own their own chat. */
+  chatDisabled?: boolean;
   /** data-testid applied to the root element. */
   testId?: string;
 }
@@ -181,11 +277,14 @@ export function AppWorkspaceChrome({
   onToggleChat,
   chatDefaultCollapsed = false,
   hideCollapseButton = false,
+  chatDisabled = false,
   testId = "app-workspace-chrome",
 }: AppWorkspaceChromeProps): JSX.Element {
   const isControlled = chatCollapsedProp !== undefined;
   const isMobileViewport = useMediaQuery(WORKSPACE_MOBILE_MEDIA_QUERY);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [mobileSidebarControl, setMobileSidebarControl] =
+    useState<WorkspaceMobileSidebarControl | null>(null);
 
   const [internalCollapsed, setInternalCollapsed] = useState<boolean>(() =>
     isControlled
@@ -205,12 +304,17 @@ export function AppWorkspaceChrome({
   const collapsed = isControlled
     ? (chatCollapsedProp ?? false)
     : internalCollapsed;
-  const effectiveCollapsed = isMobileViewport ? !mobileChatOpen : collapsed;
+  const effectiveCollapsed = chatDisabled
+    ? true
+    : isMobileViewport
+      ? !mobileChatOpen
+      : collapsed;
 
   const handleToggle = useCallback(
     (next: boolean) => {
       if (isMobileViewport) {
-        setMobileChatOpen(!next);
+        mobileSidebarControl?.setOpen(false);
+        setMobileChatOpen(chatDisabled ? false : !next);
         return;
       }
       if (isControlled) {
@@ -227,8 +331,43 @@ export function AppWorkspaceChrome({
         }
       }
     },
-    [isControlled, isMobileViewport, onToggleChat],
+    [
+      chatDisabled,
+      isControlled,
+      isMobileViewport,
+      mobileSidebarControl,
+      onToggleChat,
+    ],
   );
+
+  const registerMobileSidebar = useCallback<
+    WorkspaceMobileSidebarControls["register"]
+  >((control) => {
+    setMobileSidebarControl(control);
+    return () => {
+      setMobileSidebarControl((current) =>
+        current?.id === control.id ? null : current,
+      );
+    };
+  }, []);
+
+  const mobileSidebarControlsValue = useMemo<WorkspaceMobileSidebarControls>(
+    () => ({
+      register: registerMobileSidebar,
+    }),
+    [registerMobileSidebar],
+  );
+
+  const handleOpenMobileSidebar = useCallback(() => {
+    if (!mobileSidebarControl) return;
+    setMobileChatOpen(false);
+    mobileSidebarControl.setOpen(true);
+  }, [mobileSidebarControl]);
+
+  const handleOpenMobileMain = useCallback(() => {
+    mobileSidebarControl?.setOpen(false);
+    handleToggle(true);
+  }, [handleToggle, mobileSidebarControl]);
 
   useEffect(() => {
     if (!isMobileViewport) {
@@ -317,99 +456,99 @@ export function AppWorkspaceChrome({
     ));
 
   return (
-    <AppWorkspaceChatChromeContext.Provider value={chatChromeContextValue}>
-      <div
-        className="flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[var(--eliza-mobile-nav-offset,0px)]"
-        data-testid={testId}
-      >
-        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          {nav}
-          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-            {main}
-          </div>
-        </div>
+    <WorkspaceMobileSidebarControlsContext.Provider
+      value={mobileSidebarControlsValue}
+    >
+      <AppWorkspaceChatChromeContext.Provider value={chatChromeContextValue}>
+        <div
+          className={`flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[var(--eliza-mobile-nav-offset,0px)] ${
+            isMobileViewport ? "flex-col" : ""
+          }`}
+          data-testid={testId}
+        >
+          {isMobileViewport &&
+          (!chatDisabled || mobileSidebarControl !== null) ? (
+            <MobileWorkspacePaneSwitcher
+              chatAvailable={!chatDisabled}
+              chatOpen={!effectiveCollapsed}
+              sidebar={mobileSidebarControl}
+              onChat={() => handleToggle(false)}
+              onMain={handleOpenMobileMain}
+              onSidebar={handleOpenMobileSidebar}
+            />
+          ) : null}
 
-        {/* Collapsible right-side chat sidebar */}
-        {effectiveCollapsed ? (
-          <aside
-            className="w-0 min-w-0 shrink-0"
-            data-testid={`${testId}-chat-sidebar`}
-            data-collapsed
+          <div
+            className={`relative min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${
+              isMobileViewport && !effectiveCollapsed ? "hidden" : "flex"
+            }`}
           >
-            {isMobileViewport ? (
-              <button
-                type="button"
-                data-testid={`${testId}-chat-expand`}
-                className="fixed right-2 top-[var(--safe-area-top,0px)] z-50 inline-flex h-[2.375rem] w-[2.375rem] items-center justify-center rounded-md border border-transparent bg-transparent text-muted transition-colors hover:text-txt"
-                aria-label="Open page chat"
-                onClick={() => handleToggle(false)}
-              >
-                <PanelRightOpen className="h-4 w-4" />
-              </button>
-            ) : (
-              <AppWorkspaceChatDockToggleButton
-                collapsed
-                testId={`${testId}-chat-expand`}
-              />
-            )}
-          </aside>
-        ) : (
-          <>
-            {isMobileViewport ? (
-              <button
-                type="button"
-                className="fixed inset-x-0 z-40 bg-bg/65 backdrop-blur-[2px]"
-                style={{
-                  top: "calc(var(--safe-area-top, 0px) + 2.375rem)",
-                  bottom: "calc(3.625rem + var(--safe-area-bottom, 0px))",
-                }}
-                aria-label="Close page chat"
-                onClick={() => handleToggle(true)}
-                data-testid={`${testId}-chat-backdrop`}
-              />
-            ) : null}
+            {nav}
+            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+              {main}
+            </div>
+          </div>
+
+          {chatDisabled ? null : effectiveCollapsed ? (
             <aside
-              className={
-                isMobileViewport
-                  ? "fixed right-0 z-50 flex w-[min(24rem,92vw)] max-w-[calc(100vw-1rem)] flex-col overflow-hidden bg-bg shadow-2xl"
-                  : "relative flex shrink-0 flex-col overflow-hidden bg-bg"
-              }
-              style={
-                isMobileViewport
-                  ? {
-                      top: "calc(var(--safe-area-top, 0px) + 2.375rem)",
-                      bottom: "calc(3.625rem + var(--safe-area-bottom, 0px))",
-                    }
-                  : { width: `${chatWidth}px`, minWidth: `${chatWidth}px` }
-              }
+              className="w-0 min-w-0 shrink-0"
               data-testid={`${testId}-chat-sidebar`}
+              data-collapsed
             >
               {isMobileViewport ? null : (
-                <hr
-                  aria-label="Resize chat"
-                  aria-orientation="vertical"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={50}
-                  tabIndex={0}
-                  data-testid={`${testId}-chat-resize-handle`}
-                  onPointerDown={handleResizePointerDown}
-                  className="absolute inset-y-0 left-0 z-20 m-0 h-full w-3 -translate-x-1/2 cursor-col-resize touch-none select-none border-0 bg-transparent transition-colors hover:bg-accent/20"
+                <AppWorkspaceChatDockToggleButton
+                  collapsed
+                  testId={`${testId}-chat-expand`}
                 />
               )}
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                {chatContent}
-              </div>
             </aside>
-            {!isMobileViewport && !hideCollapseButton ? (
-              <AppWorkspaceChatDockToggleButton
-                collapsed={false}
-                testId={`${testId}-chat-collapse`}
-              />
-            ) : null}
-          </>
-        )}
-      </div>
-    </AppWorkspaceChatChromeContext.Provider>
+          ) : (
+            <>
+              {isMobileViewport ? (
+                <aside
+                  className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-bg"
+                  data-testid={`${testId}-chat-sidebar`}
+                >
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    {chatContent}
+                  </div>
+                </aside>
+              ) : null}
+              {!isMobileViewport ? (
+                <aside
+                  className="relative flex shrink-0 flex-col overflow-hidden bg-bg"
+                  style={{
+                    width: `${chatWidth}px`,
+                    minWidth: `${chatWidth}px`,
+                  }}
+                  data-testid={`${testId}-chat-sidebar`}
+                >
+                  <hr
+                    aria-label="Resize chat"
+                    aria-orientation="vertical"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={50}
+                    tabIndex={0}
+                    data-testid={`${testId}-chat-resize-handle`}
+                    onPointerDown={handleResizePointerDown}
+                    className="absolute inset-y-0 left-0 z-20 m-0 h-full w-3 -translate-x-1/2 cursor-col-resize touch-none select-none border-0 bg-transparent transition-colors hover:bg-accent/20"
+                  />
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    {chatContent}
+                  </div>
+                </aside>
+              ) : null}
+              {!isMobileViewport && !hideCollapseButton ? (
+                <AppWorkspaceChatDockToggleButton
+                  collapsed={false}
+                  testId={`${testId}-chat-collapse`}
+                />
+              ) : null}
+            </>
+          )}
+        </div>
+      </AppWorkspaceChatChromeContext.Provider>
+    </WorkspaceMobileSidebarControlsContext.Provider>
   );
 }

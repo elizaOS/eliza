@@ -5,6 +5,7 @@ import {
   packageNameToAppRouteSlug,
 } from "@elizaos/shared/contracts/apps";
 import type { RegistryAppInfo } from "../../api";
+import { getBootConfig } from "../../config/boot-config-store";
 import {
   getInternalToolAppCatalogOrder,
   isInternalToolApp,
@@ -40,6 +41,7 @@ export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
   };
 
 export const APPS_VIEW_HIDDEN_APP_NAMES = [
+  "@elizaos/app",
   "@elizaos/app-browser",
   "@elizaos/app-form",
   "@elizaos/app-knowledge",
@@ -78,6 +80,20 @@ const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
   "developerUtilities",
   "other",
 ];
+
+function getConfiguredDefaultAppNames(): ReadonlySet<string> {
+  return new Set(
+    (getBootConfig().defaultApps ?? []).filter(
+      (name): name is string => typeof name === "string" && name.length > 0,
+    ),
+  );
+}
+
+function isFeaturedAppName(name: string): boolean {
+  return (
+    FEATURED_APP_NAMES.has(name) || getConfiguredDefaultAppNames().has(name)
+  );
+}
 
 export interface AppCatalogSection {
   key: AppCatalogSectionKey;
@@ -152,7 +168,12 @@ export function shouldShowAppInAppsView(
   if (isHiddenFromAppsView(app.name)) {
     return false;
   }
-  if (!isInternalToolApp(app.name) && !isCuratedGameApp(app)) {
+  const configuredDefaultAppNames = getConfiguredDefaultAppNames();
+  if (
+    !configuredDefaultAppNames.has(app.name) &&
+    !isInternalToolApp(app.name) &&
+    !isCuratedGameApp(app)
+  ) {
     return false;
   }
 
@@ -170,12 +191,20 @@ export function shouldShowAppInAppsView(
     description: "",
   });
 
-  if (DEFAULT_HIDDEN_APP_NAMES.has(canonicalName)) {
+  if (
+    DEFAULT_HIDDEN_APP_NAMES.has(canonicalName) &&
+    !configuredDefaultAppNames.has(app.name) &&
+    !configuredDefaultAppNames.has(canonicalName)
+  ) {
     return false;
   }
 
   if (sectionKey === "games") {
-    return DEFAULT_VISIBLE_GAME_APP_NAMES.has(canonicalName);
+    return (
+      DEFAULT_VISIBLE_GAME_APP_NAMES.has(canonicalName) ||
+      configuredDefaultAppNames.has(app.name) ||
+      configuredDefaultAppNames.has(canonicalName)
+    );
   }
 
   return true;
@@ -268,7 +297,7 @@ export function getAppCatalogSectionKey(
     "name" | "displayName" | "description" | "category"
   >,
 ): AppCatalogSectionKey {
-  if (FEATURED_APP_NAMES.has(app.name)) {
+  if (isFeaturedAppName(app.name)) {
     return "featured";
   }
 
@@ -378,8 +407,7 @@ export function groupAppsForCatalog(
   }
 
   const featuredApps = apps.filter(
-    (app) =>
-      FEATURED_APP_NAMES.has(app.name) && !favoriteAppNames.has(app.name),
+    (app) => isFeaturedAppName(app.name) && !favoriteAppNames.has(app.name),
   );
   if (featuredApps.length > 0) {
     sections.push({

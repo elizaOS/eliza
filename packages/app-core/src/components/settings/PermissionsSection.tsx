@@ -26,6 +26,10 @@ import {
   SYSTEM_PERMISSIONS,
 } from "./permission-types";
 
+type WebsiteBlockerSettingsCardComponent = NonNullable<
+  ReturnType<typeof useBootConfig>["websiteBlockerSettingsCard"]
+>;
+
 /* ── Platform copy keys ─────────────────────────────────────────── */
 //
 // Each platform has its own description / note string. Encoding them as a
@@ -177,9 +181,54 @@ function WebPermissionsView() {
         })}
       />
       {WebsiteBlockerSettingsCard ? (
-        <WebsiteBlockerSettingsCard mode="web" />
+        isLocalBrowserRuntime() ? (
+          <LocalWebsiteBlockingCard
+            WebsiteBlockerSettingsCard={WebsiteBlockerSettingsCard}
+          />
+        ) : (
+          <WebsiteBlockerSettingsCard mode="web" />
+        )
       ) : null}
     </div>
+  );
+}
+
+function isLocalBrowserRuntime(): boolean {
+  if (typeof window === "undefined") return false;
+  const hostname = window.location.hostname.toLowerCase();
+  return (
+    hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+  );
+}
+
+function LocalWebsiteBlockingCard({
+  WebsiteBlockerSettingsCard,
+}: {
+  WebsiteBlockerSettingsCard: WebsiteBlockerSettingsCardComponent;
+}) {
+  const { handleOpenSettings, handleRequest, loading, permissions, platform } =
+    useDesktopPermissionsState();
+
+  if (loading) {
+    return (
+      <p className="py-4 text-center text-xs text-muted">
+        Loading website blocking...
+      </p>
+    );
+  }
+
+  if (!permissions) {
+    return <WebsiteBlockerSettingsCard mode="web" />;
+  }
+
+  return (
+    <WebsiteBlockerSettingsCard
+      mode="desktop"
+      permission={permissions["website-blocking"]}
+      platform={platform}
+      onRequestPermission={() => handleRequest("website-blocking")}
+      onOpenPermissionSettings={() => handleOpenSettings("website-blocking")}
+    />
   );
 }
 

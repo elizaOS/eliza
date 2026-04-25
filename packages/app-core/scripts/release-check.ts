@@ -450,7 +450,8 @@ function runBunPackDry(): PackResult[] {
     });
     return parseBunPackDryRunOutput(raw);
   } catch (bunError) {
-    const bunOutput = `${(bunError as { stdout?: string }).stdout ?? ""}\n${      (bunError as { stderr?: string }).stderr ?? ""
+    const bunOutput = `${(bunError as { stdout?: string }).stdout ?? ""}\n${
+      (bunError as { stderr?: string }).stderr ?? ""
     }`;
     if (
       bunOutput.includes("Duplicate package path") ||
@@ -567,6 +568,22 @@ export function findFloatingDependencySpecs(
   return dependencyNames.flatMap((name) => {
     const specifier = dependencies[name];
     if (!isExactVersionSpecifier(specifier)) {
+      return [{ name, specifier: specifier ?? "<missing>" }];
+    }
+
+    return [];
+  });
+}
+
+export function findNonWorkspaceDependencySpecs(
+  pkg: RootPackageJson,
+  dependencyNames: readonly string[],
+): Array<{ name: string; specifier: string }> {
+  const dependencies = pkg.dependencies ?? {};
+
+  return dependencyNames.flatMap((name) => {
+    const specifier = dependencies[name];
+    if (specifier !== "workspace:*") {
       return [{ name, specifier: specifier ?? "<missing>" }];
     }
 
@@ -749,23 +766,23 @@ function assertOrchestratorVersionPinned() {
   }
 }
 
-function assertCloudAgentTemplateDependenciesPinned() {
+function assertCloudAgentTemplateDependenciesUseWorkspace() {
   const cloudAgentPackage = JSON.parse(
     readFileSync(
       "eliza/packages/app-core/deploy/cloud-agent-template/package.json",
       "utf8",
     ),
   ) as RootPackageJson;
-  const floating = findFloatingDependencySpecs(
+  const nonWorkspace = findNonWorkspaceDependencySpecs(
     cloudAgentPackage,
     cloudAgentTemplateReleaseDependencies,
   );
 
-  if (floating.length > 0) {
+  if (nonWorkspace.length > 0) {
     console.error(
-      "release-check: eliza/packages/app-core/deploy/cloud-agent-template/package.json must pin release dependencies to exact versions.",
+      "release-check: eliza/packages/app-core/deploy/cloud-agent-template/package.json must use workspace:* for repo-local elizaOS dependencies. Materialize exact npm versions only at the deploy/publish boundary.",
     );
-    for (const dependency of floating) {
+    for (const dependency of nonWorkspace) {
       console.error(`  - ${dependency.name}: ${dependency.specifier}`);
     }
     process.exit(1);
@@ -901,7 +918,10 @@ function assertElectrobunConfigHasPostWrapSigner() {
 }
 
 function assertMacArtifactStagerLooksCorrect() {
-  const script = readElectrobunFile("scripts", "stage-macos-release-artifacts.sh");
+  const script = readElectrobunFile(
+    "scripts",
+    "stage-macos-release-artifacts.sh",
+  );
   const requiredSnippets = [
     'find -L "$ARTIFACTS_DIR" -maxdepth 1 -type f -name "*-macos-*.app.tar.zst"',
     "no macOS updater tarball found",
@@ -1305,7 +1325,7 @@ function main() {
   maybeValidateCdnAssets();
   assertBundledAgentOrchestratorInstallFix();
   assertOrchestratorVersionPinned();
-  assertCloudAgentTemplateDependenciesPinned();
+  assertCloudAgentTemplateDependenciesUseWorkspace();
   assertAgentDependenciesAlignedWithRootPins();
   const localHotspots = findLocalPackHotspots();
   if (shouldSkipExactPackDryRun(localHotspots)) {

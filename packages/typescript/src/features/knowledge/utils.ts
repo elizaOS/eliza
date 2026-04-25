@@ -324,9 +324,10 @@ export function createKnowledgeNoteFilename(
 	title: string,
 	extension = "txt",
 ): string {
-	const normalizedTitle = title
-		.normalize("NFKD")
-		.replace(/[^\x00-\x7F]/g, "")
+	const asciiTitle = Array.from(title.normalize("NFKD"))
+		.filter((character) => character.charCodeAt(0) <= 0x7f)
+		.join("");
+	const normalizedTitle = asciiTitle
 		.toLowerCase()
 		.replace(/[^a-z0-9]+/g, "-")
 		.replace(/^-+|-+$/g, "")

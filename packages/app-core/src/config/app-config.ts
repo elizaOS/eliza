@@ -114,6 +114,9 @@ export interface AppConfig {
   /** Plugins to auto-enable by default */
   defaultPlugins?: string[];
 
+  /** Apps starred and pinned by default on a fresh client profile. */
+  defaultApps?: string[];
+
   /** Desktop-specific configuration */
   desktop?: AppDesktopConfig;
 

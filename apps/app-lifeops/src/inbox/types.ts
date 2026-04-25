@@ -38,6 +38,8 @@ export interface InboundMessage {
   xParticipantId?: string;
   /** Human-readable sender name. */
   senderName: string;
+  /** Sender email when the source provides one. */
+  senderEmail?: string;
   /** Human-readable channel/conversation name. */
   channelName: string;
   /** Whether this is a DM or a group chat. */

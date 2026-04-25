@@ -1,12 +1,3 @@
-/**
- * ProviderSwitcher — provider picker + model-tier config for the "AI Model"
- * settings section. Composes SubscriptionStatus + ApiKeyConfig.
- *
- * Cloud account details (credits, user id, top-up) intentionally live in
- * the separate "Cloud" settings section — this section is focused on model
- * routing, not billing.
- */
-
 import { resolveServiceRoutingInConfig } from "@elizaos/shared/contracts/onboarding";
 import { buildElizaCloudServiceRoute } from "@elizaos/shared/contracts/service-routing";
 import {
@@ -18,10 +9,11 @@ import {
   SelectValue,
   useTimeout,
 } from "@elizaos/ui";
+import { CheckCircle2, Cloud, Loader2, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, type OnboardingOptions, type PluginParamDef } from "../../api";
 import { ConfigRenderer, defaultRegistry } from "../../config";
-import { useBranding } from "../../config/branding";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import {
   getOnboardingProviderOption,
   isSubscriptionProviderSelectionId,
@@ -30,7 +22,7 @@ import {
 } from "../../providers";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
-import { openExternalUrl } from "../../utils";
+import { CloudDashboard } from "../pages/ElizaCloudDashboard";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import {
   buildCloudModelSchema,
@@ -38,6 +30,7 @@ import {
   DEFAULT_RESPONSE_HANDLER_MODEL,
 } from "./cloud-model-schema";
 import { SubscriptionStatus } from "./SubscriptionStatus";
+import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 
 const SUBSCRIPTION_PROVIDER_LABEL_FALLBACKS: Record<
   SubscriptionProviderSelectionId,
@@ -66,8 +59,6 @@ function normalizeAiProviderPluginId(value: string): string {
 
 interface ProviderSwitcherProps {
   elizaCloudConnected?: boolean;
-  elizaCloudLoginBusy?: boolean;
-  elizaCloudLoginError?: string | null;
   plugins?: PluginInfo[];
   pluginSaving?: Set<string>;
   pluginSaveSuccess?: Set<string>;
@@ -76,12 +67,6 @@ interface ProviderSwitcherProps {
     pluginId: string,
     values: Record<string, unknown>,
   ) => void | Promise<void>;
-  handleCloudLogin?: () => Promise<void>;
-  /**
-   * When true, render the full 7-dropdown model-tier override grid. In simple
-   * mode only the provider picker + API key / login action are shown.
-   */
-  showAdvanced?: boolean;
 }
 
 function getSubscriptionProviderLabel(
@@ -100,13 +85,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const t = app.t;
   const elizaCloudConnected =
     props.elizaCloudConnected ?? Boolean(app.elizaCloudConnected);
-  const elizaCloudLoginBusy =
-    props.elizaCloudLoginBusy ?? Boolean(app.elizaCloudLoginBusy);
-  const elizaCloudLoginError =
-    props.elizaCloudLoginError ??
-    (typeof app.elizaCloudLoginError === "string"
-      ? app.elizaCloudLoginError
-      : null);
   const plugins = Array.isArray(props.plugins)
     ? props.plugins
     : Array.isArray(app.plugins)
@@ -123,10 +101,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const loadPlugins = props.loadPlugins ?? app.loadPlugins;
   const handlePluginConfigSave =
     props.handlePluginConfigSave ?? app.handlePluginConfigSave;
-  const handleCloudLogin = props.handleCloudLogin ?? app.handleCloudLogin;
   const setActionNotice = app.setActionNotice;
 
-  /* ── Model selection state ─────────────────────────────────────── */
   const [modelOptions, setModelOptions] = useState<
     OnboardingOptions["models"] | null
   >(null);
@@ -142,8 +118,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   );
   const [modelSaving, setModelSaving] = useState(false);
   const [modelSaveSuccess, setModelSaveSuccess] = useState(false);
+  const [cloudCallsDisabled, setCloudCallsDisabled] = useState(false);
+  const [routingModeSaving, setRoutingModeSaving] = useState(false);
 
-  /* ── Subscription state ────────────────────────────────────────── */
   const [subscriptionStatus, setSubscriptionStatus] = useState<
     Array<{
       provider: string;
@@ -158,6 +135,27 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const hasManualSelection = useRef(false);
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     null,
+  );
+
+  const readCloudCallsDisabled = useCallback(
+    (cfg: Record<string, unknown>): boolean => {
+      const cloud =
+        cfg.cloud && typeof cfg.cloud === "object" && !Array.isArray(cfg.cloud)
+          ? (cfg.cloud as Record<string, unknown>)
+          : null;
+      const services =
+        cloud?.services &&
+        typeof cloud.services === "object" &&
+        !Array.isArray(cloud.services)
+          ? (cloud.services as Record<string, unknown>)
+          : null;
+      return Boolean(
+        cloud?.enabled === false ||
+          cloud?.inferenceMode === "local" ||
+          services?.inference === false,
+      );
+    },
+    [],
   );
 
   const syncSelectionFromConfig = useCallback(
@@ -186,8 +184,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       if (!hasManualSelection.current) {
         setSelectedProviderId(nextSelectedId);
       }
+      setCloudCallsDisabled(readCloudCallsDisabled(cfg));
     },
-    [],
+    [readCloudCallsDisabled],
   );
 
   const loadSubscriptionStatus = useCallback(async () => {
@@ -293,7 +292,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     setOpenaiConnected(Boolean(oaiStatus?.configured && oaiStatus?.valid));
   }, [subscriptionStatus]);
 
-  /* ── Derived ──────────────────────────────────────────────────── */
   const allAiProviders = useMemo(
     () =>
       [...plugins.filter((p) => p.category === "ai-provider")].sort(
@@ -378,7 +376,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     [setActionNotice],
   );
 
-  /* ── Handlers ─────────────────────────────────────────────────── */
   const handleSwitchProvider = useCallback(
     async (newId: string) => {
       const previousSelectedId = resolvedSelectedId;
@@ -417,6 +414,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       providerId: SubscriptionProviderSelectionId,
       activate: boolean = true,
     ) => {
+      if (!cloudCallsDisabled && resolvedSelectedId === providerId) return;
       const previousSelectedId = resolvedSelectedId;
       const previousManualSelection = hasManualSelection.current;
       hasManualSelection.current = true;
@@ -429,23 +427,85 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         notifySelectionFailure("Failed to update subscription provider", err);
       }
     },
-    [notifySelectionFailure, resolvedSelectedId, restoreSelection],
+    [
+      cloudCallsDisabled,
+      notifySelectionFailure,
+      resolvedSelectedId,
+      restoreSelection,
+    ],
   );
 
   const handleSelectCloud = useCallback(async () => {
+    if (!cloudCallsDisabled && resolvedSelectedId === "__cloud__") return;
     const previousSelectedId = resolvedSelectedId;
     const previousManualSelection = hasManualSelection.current;
+    const previousCloudCallsDisabled = cloudCallsDisabled;
     hasManualSelection.current = true;
     setSelectedProviderId("__cloud__");
+    setCloudCallsDisabled(false);
+    setRoutingModeSaving(true);
     try {
       await client.switchProvider("elizacloud");
     } catch (err) {
       restoreSelection(previousSelectedId, previousManualSelection);
+      setCloudCallsDisabled(previousCloudCallsDisabled);
       notifySelectionFailure("Failed to select Eliza Cloud", err);
+    } finally {
+      setRoutingModeSaving(false);
     }
-  }, [notifySelectionFailure, resolvedSelectedId, restoreSelection]);
+  }, [
+    cloudCallsDisabled,
+    notifySelectionFailure,
+    resolvedSelectedId,
+    restoreSelection,
+  ]);
 
-  /* ── Derived render state ─────────────────────────────────────── */
+  const handleSelectLocalOnly = useCallback(async () => {
+    const previousSelectedId = resolvedSelectedId;
+    const previousManualSelection = hasManualSelection.current;
+    const previousCloudCallsDisabled = cloudCallsDisabled;
+    hasManualSelection.current = true;
+    setCloudCallsDisabled(true);
+    setRoutingModeSaving(true);
+    try {
+      const cfg = (await client.getConfig()) as Record<string, unknown>;
+      const cloud =
+        cfg.cloud && typeof cfg.cloud === "object" && !Array.isArray(cfg.cloud)
+          ? (cfg.cloud as Record<string, unknown>)
+          : {};
+      await client.updateConfig({
+        deploymentTarget: { runtime: "local" },
+        cloud: {
+          ...cloud,
+          enabled: false,
+          inferenceMode: "local",
+          services: {
+            inference: false,
+            media: false,
+            tts: false,
+            embeddings: false,
+            rpc: false,
+          },
+        },
+        serviceRouting: null,
+      });
+      void client.restartAgent().catch((err) => {
+        notifySelectionFailure("Local-only mode saved; restart failed", err);
+      });
+    } catch (err) {
+      restoreSelection(previousSelectedId, previousManualSelection);
+      setCloudCallsDisabled(previousCloudCallsDisabled);
+      notifySelectionFailure("Failed to enable local-only mode", err);
+    } finally {
+      setRoutingModeSaving(false);
+    }
+  }, [
+    cloudCallsDisabled,
+    notifySelectionFailure,
+    resolvedSelectedId,
+    restoreSelection,
+  ]);
+
   const isCloudSelected =
     resolvedSelectedId === "__cloud__" || resolvedSelectedId === null;
   const isSubscriptionSelected =
@@ -484,7 +544,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       ),
   ];
 
-  /* ── Cloud-model schema ───────────────────────────────────────── */
   const cloudModelSchema = useMemo(
     () => (modelOptions ? buildCloudModelSchema(modelOptions) : null),
     [modelOptions],
@@ -609,179 +668,192 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     ],
   );
 
-  /* ── Render ───────────────────────────────────────────────────── */
   return (
     <div className="space-y-5">
-      {/* Provider dropdown */}
       <div>
-        <label
-          htmlFor="provider-switcher-select"
-          className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
-        >
-          {t("providerswitcher.selectAIProvider")}
-        </label>
-        <Select
-          value={resolvedSelectedId ?? "__cloud__"}
-          onValueChange={(nextId: string) => {
-            if (nextId === "__cloud__") {
-              void handleSelectCloud();
-              return;
+        <div className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted">
+          Cloud access
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <Button
+            type="button"
+            variant={
+              !cloudCallsDisabled && isCloudSelected ? "default" : "outline"
             }
-            if (isSubscriptionProviderSelectionId(nextId)) {
-              if (
-                nextId === "anthropic-subscription" ||
-                (nextId === "openai-subscription" && !openaiConnected)
-              ) {
-                void handleSelectSubscription(nextId, false);
-                return;
-              }
-              void handleSelectSubscription(nextId);
-              return;
-            }
-            void handleSwitchProvider(nextId);
-          }}
-        >
-          <SelectTrigger
-            id="provider-switcher-select"
-            className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
+            className="h-auto justify-start rounded-xl px-3 py-2 text-left"
+            disabled={routingModeSaving}
+            onClick={() => void handleSelectCloud()}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent className="max-h-64">
-            {providerChoices.map((choice) => (
-              <SelectItem
-                key={choice.id}
-                value={choice.id}
-                disabled={choice.disabled}
-              >
-                {choice.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            <Cloud className="h-4 w-4 text-current" aria-hidden />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-semibold">Cloud allowed</span>
+              <span className="text-xs font-normal opacity-75">
+                Use connected providers and cloud fallback.
+              </span>
+            </span>
+          </Button>
+          <Button
+            type="button"
+            variant={cloudCallsDisabled ? "default" : "outline"}
+            className="h-auto justify-start rounded-xl px-3 py-2 text-left"
+            disabled={routingModeSaving}
+            onClick={() => void handleSelectLocalOnly()}
+          >
+            <ShieldCheck className="h-4 w-4 text-current" aria-hidden />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-semibold">Local only</span>
+              <span className="text-xs font-normal opacity-75">
+                No cloud calls anywhere.
+              </span>
+            </span>
+          </Button>
+        </div>
       </div>
 
-      {isCloudSelected &&
-        (!elizaCloudConnected ? (
-          <div className="border-t border-border/40 pt-4">
-            {elizaCloudLoginBusy ? (
-              <div className="text-xs text-muted">
-                {t("providerswitcher.waitingForBrowser")}
-              </div>
-            ) : (
-              <>
-                {elizaCloudLoginError && (
-                  <div className="mb-2 text-xs text-danger">
-                    {elizaCloudLoginError}
-                  </div>
-                )}
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="rounded-lg font-semibold"
-                    onClick={() => void handleCloudLogin()}
+      {!cloudCallsDisabled && (
+        <div>
+          <label
+            htmlFor="provider-switcher-select"
+            className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
+          >
+            {t("providerswitcher.selectProvider", {
+              defaultValue: "Provider",
+            })}
+          </label>
+          <Select
+            value={resolvedSelectedId ?? "__cloud__"}
+            onValueChange={(nextId: string) => {
+              if (nextId === "__cloud__") {
+                void handleSelectCloud();
+                return;
+              }
+              if (isSubscriptionProviderSelectionId(nextId)) {
+                if (
+                  nextId === "anthropic-subscription" ||
+                  (nextId === "openai-subscription" && !openaiConnected)
+                ) {
+                  void handleSelectSubscription(nextId, false);
+                  return;
+                }
+                void handleSelectSubscription(nextId);
+                return;
+              }
+              void handleSwitchProvider(nextId);
+            }}
+          >
+            <SelectTrigger
+              id="provider-switcher-select"
+              aria-label={t("providerswitcher.selectProvider", {
+                defaultValue: "Provider",
+              })}
+              className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="max-h-64">
+              {providerChoices.map((choice) => (
+                <SelectItem
+                  key={choice.id}
+                  value={choice.id}
+                  disabled={choice.disabled}
+                >
+                  {choice.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {!cloudCallsDisabled && isCloudSelected && (
+        <div className="overflow-hidden rounded-xl border border-border/40 bg-card/40">
+          <CloudDashboard />
+          {elizaCloudConnected &&
+          (largeModelOptions.length > 0 || cloudModelSchema) ? (
+            <div className="border-t border-border/40 px-4 py-4 sm:px-5">
+              {largeModelOptions.length > 0 ? (
+                <div>
+                  <label
+                    htmlFor="provider-switcher-primary-model"
+                    className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
                   >
-                    {t("providerswitcher.logInToElizaCloud")}
-                  </Button>
-                  {elizaCloudLoginError && (
-                    <Button
-                      variant="link"
-                      size="sm"
-                      type="button"
-                      className="h-auto p-0 text-xs-tight"
-                      onClick={() => openExternalUrl(branding.bugReportUrl)}
+                    {t("providerswitcher.model", { defaultValue: "Model" })}
+                  </label>
+                  <Select
+                    value={currentLargeModel || ""}
+                    onValueChange={(v) => handleModelFieldChange("large", v)}
+                  >
+                    <SelectTrigger
+                      id="provider-switcher-primary-model"
+                      className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
                     >
-                      {t("providerswitcher.reportIssueWithTemplate")}
-                    </Button>
+                      <SelectValue
+                        placeholder={t("providerswitcher.chooseModel", {
+                          defaultValue: "Choose a model",
+                        })}
+                      />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-64">
+                      {largeModelOptions.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          {model.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {cloudModelSchema ? (
+                <AdvancedSettingsDisclosure
+                  title="Model overrides"
+                  className="mt-4"
+                >
+                  <ConfigRenderer
+                    schema={cloudModelSchema.schema}
+                    hints={cloudModelSchema.hints}
+                    values={modelValues.values}
+                    setKeys={modelValues.setKeys}
+                    registry={defaultRegistry}
+                    onChange={handleModelFieldChange}
+                  />
+                </AdvancedSettingsDisclosure>
+              ) : null}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-xs-tight text-muted">
+                  {t(
+                    "providerswitcher.restartRequiredHint",
+                    appNameInterpolationVars(branding),
+                  )}
+                </p>
+                <div className="flex items-center gap-2">
+                  {modelSaving && (
+                    <span
+                      className="inline-flex items-center text-muted"
+                      title={t("providerswitcher.savingRestarting")}
+                      role="status"
+                      aria-label={t("providerswitcher.savingRestarting")}
+                    >
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    </span>
+                  )}
+                  {modelSaveSuccess && (
+                    <span
+                      className="inline-flex items-center text-ok"
+                      title={t("providerswitcher.savedRestartingAgent")}
+                      role="status"
+                      aria-label={t("providerswitcher.savedRestartingAgent")}
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                    </span>
                   )}
                 </div>
-                <div className="mt-1.5 text-xs-tight text-muted">
-                  {t("providerswitcher.opensABrowserWindow")}
-                </div>
-              </>
-            )}
-          </div>
-        ) : cloudModelSchema && props.showAdvanced ? (
-          <div className="border-t border-border/40 pt-4">
-            <ConfigRenderer
-              schema={cloudModelSchema.schema}
-              hints={cloudModelSchema.hints}
-              values={modelValues.values}
-              setKeys={modelValues.setKeys}
-              registry={defaultRegistry}
-              onChange={handleModelFieldChange}
-            />
-            <div className="mt-3 flex items-center justify-between gap-2">
-              <p className="text-xs-tight text-muted">
-                {t("providerswitcher.restartRequiredHint")}
-              </p>
-              <div className="flex items-center gap-2">
-                {modelSaving && (
-                  <span className="text-xs-tight text-muted">
-                    {t("providerswitcher.savingRestarting")}
-                  </span>
-                )}
-                {modelSaveSuccess && (
-                  <span className="text-xs-tight text-ok">
-                    {t("providerswitcher.savedRestartingAgent")}
-                  </span>
-                )}
               </div>
             </div>
-          </div>
-        ) : largeModelOptions.length > 0 ? (
-          <div className="border-t border-border/40 pt-4">
-            <label
-              htmlFor="provider-switcher-primary-model"
-              className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
-            >
-              {t("providerswitcher.model", { defaultValue: "Model" })}
-            </label>
-            <Select
-              value={currentLargeModel || ""}
-              onValueChange={(v) => handleModelFieldChange("large", v)}
-            >
-              <SelectTrigger
-                id="provider-switcher-primary-model"
-                className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
-              >
-                <SelectValue
-                  placeholder={t("providerswitcher.chooseModel", {
-                    defaultValue: "Choose a model",
-                  })}
-                />
-              </SelectTrigger>
-              <SelectContent className="max-h-64">
-                {largeModelOptions.map((model) => (
-                  <SelectItem key={model.id} value={model.id}>
-                    {model.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="mt-2 flex items-center justify-between gap-2">
-              <p className="text-xs-tight text-muted">
-                {t("providerswitcher.restartRequiredHint")}
-              </p>
-              <div className="flex items-center gap-2">
-                {modelSaving && (
-                  <span className="text-xs-tight text-muted">
-                    {t("providerswitcher.savingRestarting")}
-                  </span>
-                )}
-                {modelSaveSuccess && (
-                  <span className="text-xs-tight text-ok">
-                    {t("providerswitcher.savedRestartingAgent")}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : null)}
+          ) : null}
+        </div>
+      )}
 
-      {/* Subscription provider settings */}
-      {isSubscriptionSelected && (
+      {!cloudCallsDisabled && isSubscriptionSelected && (
         <SubscriptionStatus
           resolvedSelectedId={resolvedSelectedId}
           subscriptionStatus={subscriptionStatus}
@@ -794,8 +866,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         />
       )}
 
-      {/* Local provider settings (API keys) */}
-      {!isCloudSelected && !isSubscriptionSelected && (
+      {!cloudCallsDisabled && !isCloudSelected && !isSubscriptionSelected && (
         <ApiKeyConfig
           selectedProvider={selectedProvider}
           pluginSaving={pluginSaving}

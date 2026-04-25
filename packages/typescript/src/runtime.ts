@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { v4 as uuidv4 } from "uuid";
 
 interface WorkingMemoryEntry {
@@ -150,11 +152,26 @@ import {
 	parseKeyValueXml,
 	stringToUuid,
 } from "./utils";
+import {
+	collectActionResultSizeWarnings,
+	getActionResultActionName,
+	getActionResultReference,
+	MAX_ACTION_RESULT_ERROR_CHARS,
+	MAX_ACTION_RESULT_TEXT_CHARS,
+	stringifyActionResultError,
+	trimActionResultForPromptState,
+} from "./utils/action-results";
 import { parseBooleanValue } from "./utils/boolean";
 import { BufferUtils } from "./utils/buffer";
+import { resolveProviderContexts } from "./utils/context-catalog";
+import {
+	getActiveRoutingContextsForTurn,
+	shouldIncludeByContext,
+} from "./utils/context-routing";
 import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
+import { resolveStateDir } from "./utils/state-dir";
 import {
 	ActionStreamFilter,
 	ValidationStreamExtractor,
@@ -283,6 +300,12 @@ function callbackContentHasVisibleOutput(content: Content): boolean {
 		return true;
 	}
 	return Array.isArray(content.attachments) && content.attachments.length > 0;
+}
+
+function safeActionResultFilePart(value: string | undefined): string {
+	const normalized =
+		value?.trim().replace(/[^a-zA-Z0-9._-]/g, "_") || "unknown";
+	return normalized.slice(0, 80) || "unknown";
 }
 
 export class AgentRuntime implements IAgentRuntime {
@@ -2203,6 +2226,104 @@ export class AgentRuntime implements IAgentRuntime {
 		};
 	}
 
+	private async writeActionResultSnapshot(params: {
+		message: Memory;
+		actionId: UUID;
+		actionName: string;
+		field: "text" | "error";
+		content: string;
+	}): Promise<string | undefined> {
+		try {
+			const directory = join(
+				resolveStateDir(),
+				"action-results",
+				safeActionResultFilePart(params.message.roomId),
+				safeActionResultFilePart(params.message.id),
+			);
+			await mkdir(directory, { recursive: true });
+			const filePath = join(
+				directory,
+				`${Date.now()}-${safeActionResultFilePart(
+					params.actionName,
+				)}-${safeActionResultFilePart(params.actionId)}-${params.field}.txt`,
+			);
+			await writeFile(filePath, params.content, "utf8");
+			return filePath;
+		} catch (error) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					action: params.actionName,
+					actionId: params.actionId,
+					field: params.field,
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"Failed to persist oversized action result snapshot",
+			);
+			return undefined;
+		}
+	}
+
+	private async prepareActionResultForPromptState(
+		actionResult: ActionResult,
+		message: Memory,
+		actionId: UUID,
+	): Promise<ActionResult> {
+		const actionName = getActionResultActionName(actionResult);
+		for (const warning of collectActionResultSizeWarnings(actionResult)) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					messageId: message.id,
+					roomId: message.roomId,
+					action: warning.actionName,
+					actionId,
+					field: warning.field,
+					rawCharLength: warning.rawCharLength,
+					estimatedTokens: warning.estimatedTokens,
+					thresholdTokens: warning.thresholdTokens,
+				},
+				"Action result exceeds prompt-size warning threshold",
+			);
+		}
+
+		const references: { text?: string; error?: string } = {};
+		if (
+			typeof actionResult.text === "string" &&
+			actionResult.text.trim().length > MAX_ACTION_RESULT_TEXT_CHARS
+		) {
+			references.text =
+				getActionResultReference(actionResult, "text") ??
+				(await this.writeActionResultSnapshot({
+					message,
+					actionId,
+					actionName,
+					field: "text",
+					content: actionResult.text,
+				}));
+		}
+
+		const errorText = stringifyActionResultError(actionResult.error);
+		if (
+			typeof errorText === "string" &&
+			errorText.trim().length > MAX_ACTION_RESULT_ERROR_CHARS
+		) {
+			references.error =
+				getActionResultReference(actionResult, "error") ??
+				(await this.writeActionResultSnapshot({
+					message,
+					actionId,
+					actionName,
+					field: "error",
+					content: errorText,
+				}));
+		}
+
+		return trimActionResultForPromptState(actionResult, references);
+	}
+
 	async processActions(
 		message: Memory,
 		responses: Memory[],
@@ -2752,6 +2873,11 @@ export class AgentRuntime implements IAgentRuntime {
 						};
 					}
 
+					actionResult = await this.prepareActionResultForPromptState(
+						actionResult,
+						message,
+						actionId,
+					);
 					actionResults.push(actionResult);
 
 					// Merge returned values into state
@@ -3413,6 +3539,10 @@ export class AgentRuntime implements IAgentRuntime {
 			skipCache || !message.id
 				? emptyObj
 				: (await this.stateCache.get(message.id)) || emptyObj;
+		const activeContexts = getActiveRoutingContextsForTurn(
+			cachedState,
+			message,
+		);
 		const providerNames = new Set<string>();
 		if (filterList && filterList.length > 0) {
 			for (const name of filterList) {
@@ -3420,6 +3550,12 @@ export class AgentRuntime implements IAgentRuntime {
 			}
 		} else {
 			for (const p of this.providers.filter((p) => !p.private && !p.dynamic)) {
+				if (
+					activeContexts.length > 0 &&
+					!shouldIncludeByContext(resolveProviderContexts(p), activeContexts)
+				) {
+					continue;
+				}
 				providerNames.add(p.name);
 			}
 		}

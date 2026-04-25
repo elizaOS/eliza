@@ -9,9 +9,9 @@ export interface CharacterHubActivityItem {
   kind: CharacterHubActivityKind;
   title: string;
   description: string;
-  timestamp?: string | null;
   badge?: string | null;
   meta?: string | null;
+  timestamp?: string | null;
 }
 
 export type CharacterPersonalityHistoryScope = "auto" | "global" | "user";

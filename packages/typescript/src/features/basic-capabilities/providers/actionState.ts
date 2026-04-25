@@ -6,17 +6,19 @@ import type {
 	Provider,
 	State,
 } from "../../../types/index.ts";
+import {
+	formatActionResultsForPrompt,
+	MAX_ACTION_RESULT_TEXT_CHARS,
+	truncateMiddle,
+} from "../../../utils/action-results.js";
 import { sliceToFitBudget } from "../../../utils/slice-to-fit-budget.js";
 import { addHeader } from "../../../utils.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTION_STATE");
-// ~10k tokens combined budget for action state context
-const ACTION_RESULTS_TARGET_CHARS = 20000;
 const ACTION_HISTORY_TARGET_CHARS = 20000;
 const MAX_RUNS = 3;
 const MAX_THOUGHT_CHARS = 2000;
-const MAX_RESULT_TEXT_CHARS = 4000;
 
 type WorkingMemoryEntry = {
 	actionName: string;
@@ -76,7 +78,10 @@ export const actionStateProvider: Provider = {
 							stepText += `\n   Error: ${step.error}`;
 						}
 						if (step.result?.text) {
-							stepText += `\n   Result: ${step.result.text}`;
+							stepText += `\n   Result: ${truncateMiddle(
+								step.result.text,
+								MAX_ACTION_RESULT_TEXT_CHARS,
+							)}`;
 						}
 
 						return stepText;
@@ -89,62 +94,9 @@ export const actionStateProvider: Provider = {
 		// Format previous action results
 		let resultsText = "";
 		if (actionResults.length > 0) {
-			const selectedResults = sliceToFitBudget(
-				actionResults,
-				(result) =>
-					String(result.text || "").length +
-					String(result.error || "").length +
-					(() => {
-						try {
-							return JSON.stringify(result.values || {}).length;
-						} catch {
-							return 0;
-						}
-					})() +
-					80,
-				ACTION_RESULTS_TARGET_CHARS,
-			);
-
-			const formattedResults = selectedResults
-				.map((result, index) => {
-					const actionNameValue = result.data?.actionName;
-					const actionName =
-						typeof actionNameValue === "string"
-							? actionNameValue
-							: "Unknown Action";
-					const success = result.success;
-					const status = success ? "Success" : "Failed";
-
-					let resultText = `**${index + 1}. ${actionName}** - ${status}`;
-
-					if (result.text) {
-						const truncated =
-							result.text.length > MAX_RESULT_TEXT_CHARS
-								? `${result.text.slice(0, MAX_RESULT_TEXT_CHARS)}…`
-								: result.text;
-						resultText += `\n   Output: ${truncated}`;
-					}
-
-					if (result.error) {
-						const errorMsg =
-							result.error instanceof Error
-								? result.error.message
-								: result.error;
-						resultText += `\n   Error: ${errorMsg}`;
-					}
-
-					if (result.values && Object.keys(result.values).length > 0) {
-						const values = Object.entries(result.values)
-							.map(([key, value]) => `   - ${key}: ${JSON.stringify(value)}`)
-							.join("\n");
-						resultText += `\n   Values:\n${values}`;
-					}
-
-					return resultText;
-				})
-				.join("\n\n");
-
-			resultsText = addHeader("# Previous Action Results", formattedResults);
+			resultsText = formatActionResultsForPrompt(actionResults, {
+				header: "# Current Chain Action Results",
+			});
 		} else {
 			resultsText = "";
 		}
@@ -172,7 +124,7 @@ export const actionStateProvider: Provider = {
 					const result: ActionResult = entry.result;
 					const resultText =
 						typeof result.text === "string" && result.text.trim().length > 0
-							? result.text
+							? truncateMiddle(result.text, MAX_ACTION_RESULT_TEXT_CHARS)
 							: result.data
 								? JSON.stringify(result.data)
 								: "(no output)";
@@ -229,7 +181,7 @@ export const actionStateProvider: Provider = {
 							String(content?.planStep || "").length +
 							Math.min(
 								String(content?.text || "").length,
-								MAX_RESULT_TEXT_CHARS,
+								MAX_ACTION_RESULT_TEXT_CHARS,
 							)
 						);
 					}, 0);
@@ -252,10 +204,10 @@ export const actionStateProvider: Provider = {
 							const status = memContent?.actionStatus || "unknown";
 							const planStep = memContent?.planStep || "";
 							const rawText = memContent?.text || "";
-							const text =
-								rawText.length > MAX_RESULT_TEXT_CHARS
-									? `${rawText.slice(0, MAX_RESULT_TEXT_CHARS)}…`
-									: rawText;
+							const text = truncateMiddle(
+								rawText,
+								MAX_ACTION_RESULT_TEXT_CHARS,
+							);
 
 							let memText = `  - ${actionName} (${status})`;
 							if (planStep) {

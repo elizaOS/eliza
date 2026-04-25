@@ -62,6 +62,7 @@ interface DraftInput {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   maxRuns?: number;
   kind?: TriggerKind;
   workflowId?: string;
@@ -287,6 +288,14 @@ export function resolveTriggerTiming(
     };
   }
 
+  if (trigger.triggerType === "event") {
+    return {
+      updatedAt: nowMs,
+      updateIntervalMs: DISABLED_TRIGGER_INTERVAL_MS,
+      nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS,
+    };
+  }
+
   const nextRunAtMs = trigger.cronExpression
     ? computeNextCronRunAtMs(trigger.cronExpression, nowMs, trigger.timezone)
     : null;
@@ -324,6 +333,7 @@ export function buildTriggerDedupeKey(parts: {
   intervalMs?: number;
   scheduledAtIso?: string;
   cronExpression?: string;
+  eventKind?: string;
   wakeMode: TriggerWakeMode;
   kind?: TriggerKind;
   workflowId?: string;
@@ -335,6 +345,7 @@ export function buildTriggerDedupeKey(parts: {
     String(parts.intervalMs ?? ""),
     parts.scheduledAtIso ?? "",
     parts.cronExpression ?? "",
+    parts.eventKind ?? "",
     parts.wakeMode,
   ];
   if (effectiveKind === "workflow") {
@@ -376,6 +387,10 @@ export function buildTriggerConfig(params: {
       params.draft.triggerType === "cron"
         ? params.draft.cronExpression
         : undefined,
+    eventKind:
+      params.draft.triggerType === "event"
+        ? params.draft.eventKind
+        : undefined,
     maxRuns: params.draft.maxRuns,
     runCount: previous?.runCount ?? 0,
     dedupeKey: buildTriggerDedupeKey({
@@ -384,6 +399,7 @@ export function buildTriggerConfig(params: {
       intervalMs: params.draft.intervalMs,
       scheduledAtIso: params.draft.scheduledAtIso,
       cronExpression: params.draft.cronExpression,
+      eventKind: params.draft.eventKind,
       wakeMode: params.draft.wakeMode,
       kind: params.draft.kind,
       workflowId: params.draft.workflowId,
@@ -454,6 +470,7 @@ export function normalizeTriggerDraft(params: {
       : undefined;
   const scheduledAtIso = params.input.scheduledAtIso?.trim();
   const cronExpression = params.input.cronExpression?.trim();
+  const eventKind = params.input.eventKind?.trim();
   const maxRuns =
     typeof params.input.maxRuns === "number"
       ? Math.floor(params.input.maxRuns)
@@ -504,6 +521,28 @@ export function normalizeTriggerDraft(params: {
         createdBy,
         timezone,
         scheduledAtIso,
+        maxRuns,
+        kind,
+        workflowId,
+        workflowName,
+      },
+    };
+  }
+
+  if (triggerType === "event") {
+    if (!eventKind) {
+      return { error: "eventKind is required for event triggers" };
+    }
+    return {
+      draft: {
+        displayName,
+        instructions,
+        triggerType,
+        wakeMode,
+        enabled,
+        createdBy,
+        timezone,
+        eventKind,
         maxRuns,
         kind,
         workflowId,

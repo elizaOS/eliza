@@ -42,8 +42,13 @@ function markerStyle(
   return { left: `${Math.min(100, Math.max(0, (minutes / 1440) * 100))}%` };
 }
 
-function sleepDurationSeconds(schedule: LifeOpsScheduleInsight | null): number {
-  return Math.max(0, (schedule?.lastSleepDurationMinutes ?? 0) * 60);
+function sleepDurationSeconds(
+  schedule: LifeOpsScheduleInsight | null,
+): number | null {
+  if (typeof schedule?.lastSleepDurationMinutes !== "number") {
+    return null;
+  }
+  return Math.max(0, schedule.lastSleepDurationMinutes * 60);
 }
 
 export function LifeOpsSleepSection() {
@@ -120,7 +125,7 @@ export function LifeOpsSleepSection() {
         />
         <MetricTile
           icon={<Moon />}
-          value={formatDurationSeconds(durationSeconds)}
+          value={formatDurationSeconds(durationSeconds) || "-"}
           label="Last Sleep"
         />
         <MetricTile

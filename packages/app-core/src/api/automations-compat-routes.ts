@@ -336,7 +336,7 @@ function buildWorkflowDraftItem(room: AutomationRoomRecord): AutomationItem {
     type: "n8n_workflow",
     source: "workflow_draft",
     title,
-    description: "Workflow draft under construction in its dedicated room.",
+    description: "",
     status: "draft",
     enabled: true,
     system: false,
@@ -383,17 +383,21 @@ function buildWorkflowItem(
     trigger?: TriggerSummary;
   },
 ): AutomationItem {
+  const missingBackingWorkflow = !workflow && !fallback.trigger;
   const title =
     workflow?.name?.trim() ||
     room?.metadata.workflowName?.trim() ||
     fallback.workflowName?.trim() ||
     fallback.workflowId;
-  const enabled = workflow?.active ?? fallback.trigger?.enabled ?? false;
+  const enabled =
+    missingBackingWorkflow === true
+      ? false
+      : (workflow?.active ?? fallback.trigger?.enabled ?? false);
   const description =
     workflow?.description?.trim() ||
     (fallback.trigger
       ? `Scheduled workflow automation for ${title}.`
-      : "Workflow automation.");
+      : "");
 
   return {
     id: `workflow:${fallback.workflowId}`,
@@ -401,10 +405,10 @@ function buildWorkflowItem(
     source: workflow ? "n8n_workflow" : "workflow_shadow",
     title,
     description,
-    status: enabled ? "active" : "paused",
+    status: missingBackingWorkflow ? "draft" : enabled ? "active" : "paused",
     enabled,
     system: false,
-    isDraft: false,
+    isDraft: missingBackingWorkflow,
     hasBackingWorkflow: Boolean(workflow),
     updatedAt:
       room?.updatedAt ??

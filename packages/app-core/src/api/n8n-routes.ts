@@ -5,6 +5,9 @@
  *   GET    /api/n8n/status                          — mode + sidecar state
  *   POST   /api/n8n/sidecar/start                   — fire-and-forget sidecar boot
  *   GET    /api/n8n/workflows                       — list workflows
+ *   POST   /api/n8n/workflows                       — create workflow
+ *   POST   /api/n8n/workflows/generate              — generate + create/update workflow
+ *   PUT    /api/n8n/workflows/{id}                  — update workflow
  *   POST   /api/n8n/workflows/{id}/activate         — activate workflow
  *   POST   /api/n8n/workflows/{id}/deactivate       — deactivate workflow
  *   DELETE /api/n8n/workflows/{id}                  — delete workflow
@@ -31,6 +34,7 @@ import { logger } from "@elizaos/core";
 import { isNativeServerPlatform } from "../platform/is-native-server";
 import { type N8nMode, resolveN8nMode } from "../services/n8n-mode";
 import type { N8nSidecar, N8nSidecarStatus } from "../services/n8n-sidecar";
+import { readCompatJsonBody } from "./compat-route-shared";
 
 export type { N8nMode } from "../services/n8n-mode";
 
@@ -76,8 +80,11 @@ export interface N8nWorkflowNodeLike {
   id?: string;
   name?: string;
   type?: string;
+  typeVersion?: number;
   position?: [number, number];
   parameters?: Record<string, unknown>;
+  notes?: string;
+  notesInFlow?: boolean;
 }
 
 export interface N8nWorkflow {
@@ -92,6 +99,36 @@ export interface N8nWorkflow {
     string,
     { main?: Array<Array<{ node: string; type: "main"; index: number }>> }
   >;
+}
+
+type N8nWorkflowConnections = NonNullable<N8nWorkflow["connections"]>;
+
+interface N8nWorkflowWriteNode {
+  id?: string;
+  name: string;
+  type: string;
+  typeVersion: number;
+  position: [number, number];
+  parameters: Record<string, unknown>;
+  credentials?: Record<string, { id: string; name: string }>;
+  disabled?: boolean;
+  notes?: string;
+  notesInFlow?: boolean;
+  color?: string;
+  continueOnFail?: boolean;
+  executeOnce?: boolean;
+  alwaysOutputData?: boolean;
+  retryOnFail?: boolean;
+  maxTries?: number;
+  waitBetweenTries?: number;
+  onError?: "continueErrorOutput" | "continueRegularOutput" | "stopWorkflow";
+}
+
+interface N8nWorkflowWritePayload {
+  name: string;
+  nodes: N8nWorkflowWriteNode[];
+  connections: N8nWorkflowConnections;
+  settings: Record<string, unknown>;
 }
 
 /**
@@ -275,6 +312,9 @@ function sanitizeNode(n: unknown): N8nWorkflowNodeLike {
     ...(typeof obj.id === "string" ? { id: obj.id } : {}),
     ...(typeof obj.name === "string" ? { name: obj.name } : {}),
     ...(typeof obj.type === "string" ? { type: obj.type } : {}),
+    ...(typeof obj.typeVersion === "number"
+      ? { typeVersion: obj.typeVersion }
+      : {}),
   };
 }
 
@@ -307,6 +347,10 @@ function sanitizeNodeFull(n: unknown): N8nWorkflowNodeLike {
     ...base,
     ...(position !== undefined ? { position } : {}),
     ...(parameters !== undefined ? { parameters } : {}),
+    ...(typeof obj.notes === "string" ? { notes: obj.notes } : {}),
+    ...(typeof obj.notesInFlow === "boolean"
+      ? { notesInFlow: obj.notesInFlow }
+      : {}),
   };
 }
 
@@ -537,6 +581,299 @@ function extractWorkflowSingle(body: unknown): unknown {
   return body;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readOptionalString(
+  obj: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = obj[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function readOptionalBoolean(
+  obj: Record<string, unknown>,
+  key: string,
+): boolean | undefined {
+  const value = obj[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function readOptionalNumber(
+  obj: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = obj[key];
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function readPosition(value: unknown): [number, number] | null {
+  return Array.isArray(value) &&
+    value.length >= 2 &&
+    typeof value[0] === "number" &&
+    typeof value[1] === "number"
+    ? [value[0], value[1]]
+    : null;
+}
+
+function readCredentials(
+  value: unknown,
+): Record<string, { id: string; name: string }> | undefined {
+  const raw = asRecord(value);
+  if (!raw) return undefined;
+
+  const credentials: Record<string, { id: string; name: string }> = {};
+  for (const [key, credentialValue] of Object.entries(raw)) {
+    const credential = asRecord(credentialValue);
+    if (!credential) continue;
+    const id = readOptionalString(credential, "id");
+    const name = readOptionalString(credential, "name");
+    if (!id || !name) continue;
+    credentials[key] = { id, name };
+  }
+  return Object.keys(credentials).length > 0 ? credentials : undefined;
+}
+
+function normalizeWorkflowWriteNode(
+  value: unknown,
+  index: number,
+): N8nWorkflowWriteNode | null {
+  const obj = asRecord(value);
+  if (!obj) return null;
+
+  const name = readOptionalString(obj, "name");
+  const type = readOptionalString(obj, "type");
+  if (!name || !type) return null;
+
+  const position = readPosition(obj.position) ?? [index * 260, 0];
+  const parameters = asRecord(obj.parameters) ?? {};
+  const typeVersion = readOptionalNumber(obj, "typeVersion") ?? 1;
+  const credentials = readCredentials(obj.credentials);
+
+  return {
+    ...(readOptionalString(obj, "id")
+      ? { id: readOptionalString(obj, "id") }
+      : {}),
+    name,
+    type,
+    typeVersion,
+    position,
+    parameters,
+    ...(credentials ? { credentials } : {}),
+    ...(readOptionalBoolean(obj, "disabled") !== undefined
+      ? { disabled: readOptionalBoolean(obj, "disabled") }
+      : {}),
+    ...(readOptionalString(obj, "notes")
+      ? { notes: readOptionalString(obj, "notes") }
+      : {}),
+    ...(readOptionalBoolean(obj, "notesInFlow") !== undefined
+      ? { notesInFlow: readOptionalBoolean(obj, "notesInFlow") }
+      : {}),
+    ...(readOptionalString(obj, "color")
+      ? { color: readOptionalString(obj, "color") }
+      : {}),
+    ...(readOptionalBoolean(obj, "continueOnFail") !== undefined
+      ? { continueOnFail: readOptionalBoolean(obj, "continueOnFail") }
+      : {}),
+    ...(readOptionalBoolean(obj, "executeOnce") !== undefined
+      ? { executeOnce: readOptionalBoolean(obj, "executeOnce") }
+      : {}),
+    ...(readOptionalBoolean(obj, "alwaysOutputData") !== undefined
+      ? { alwaysOutputData: readOptionalBoolean(obj, "alwaysOutputData") }
+      : {}),
+    ...(readOptionalBoolean(obj, "retryOnFail") !== undefined
+      ? { retryOnFail: readOptionalBoolean(obj, "retryOnFail") }
+      : {}),
+    ...(readOptionalNumber(obj, "maxTries") !== undefined
+      ? { maxTries: readOptionalNumber(obj, "maxTries") }
+      : {}),
+    ...(readOptionalNumber(obj, "waitBetweenTries") !== undefined
+      ? { waitBetweenTries: readOptionalNumber(obj, "waitBetweenTries") }
+      : {}),
+    ...(obj.onError === "continueErrorOutput" ||
+    obj.onError === "continueRegularOutput" ||
+    obj.onError === "stopWorkflow"
+      ? { onError: obj.onError }
+      : {}),
+  };
+}
+
+function normalizeWorkflowConnections(value: unknown): N8nWorkflowConnections {
+  const raw = asRecord(value);
+  if (!raw) return {};
+
+  const connections: N8nWorkflowConnections = {};
+  for (const [sourceName, outputValue] of Object.entries(raw)) {
+    const outputMap = asRecord(outputValue);
+    if (!outputMap) continue;
+    const mainRaw = outputMap.main;
+    if (!Array.isArray(mainRaw)) continue;
+    const main = mainRaw.map((group) =>
+      Array.isArray(group)
+        ? group
+            .map((connection) => {
+              const obj = asRecord(connection);
+              const node = obj ? readOptionalString(obj, "node") : undefined;
+              if (!obj || !node) return null;
+              const index = readOptionalNumber(obj, "index") ?? 0;
+              return { node, type: "main" as const, index };
+            })
+            .filter(
+              (
+                connection,
+              ): connection is { node: string; type: "main"; index: number } =>
+                connection !== null,
+            )
+        : [],
+    );
+    connections[sourceName] = { main };
+  }
+  return connections;
+}
+
+function normalizeWorkflowWritePayload(body: Record<string, unknown>): {
+  payload?: N8nWorkflowWritePayload;
+  error?: string;
+} {
+  const name = readOptionalString(body, "name");
+  if (!name) {
+    return { error: "workflow name required" };
+  }
+
+  const nodesRaw = Array.isArray(body.nodes) ? body.nodes : [];
+  const nodes = nodesRaw
+    .map((node, index) => normalizeWorkflowWriteNode(node, index))
+    .filter((node): node is N8nWorkflowWriteNode => node !== null);
+  if (nodes.length === 0) {
+    return { error: "workflow must include at least one valid node" };
+  }
+
+  return {
+    payload: {
+      name,
+      nodes,
+      connections: normalizeWorkflowConnections(body.connections),
+      settings: asRecord(body.settings) ?? {},
+    },
+  };
+}
+
+function inferWorkflowName(prompt: string, requestedName?: string): string {
+  if (requestedName?.trim()) {
+    return requestedName.trim().slice(0, 80);
+  }
+  const compact = prompt.replace(/\s+/g, " ").trim();
+  const withoutSchedule = compact.replace(
+    /^(when|whenever|every|daily|weekly|hourly|on)\b[:,\s-]*/i,
+    "",
+  );
+  const title = withoutSchedule.slice(0, 58).trim() || "Generated workflow";
+  return title[0] ? `${title[0].toUpperCase()}${title.slice(1)}` : title;
+}
+
+function labelFromStep(step: string, index: number): string {
+  const cleaned = step
+    .replace(/\s+/g, " ")
+    .replace(/^(then|and|after that|next)\b[:,\s-]*/i, "")
+    .trim();
+  if (!cleaned) return `Step ${index + 1}`;
+  const label = cleaned
+    .split(" ")
+    .slice(0, 6)
+    .join(" ")
+    .replace(/[.?!,;:]$/g, "");
+  return label[0]?.toUpperCase()
+    ? `${label[0].toUpperCase()}${label.slice(1)}`
+    : label;
+}
+
+function promptToWorkflowSteps(prompt: string): string[] {
+  const parts = prompt
+    .replace(/\s+/g, " ")
+    .split(/\b(?:then|after that|next)\b|[.;]\s*/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length > 1) return parts.slice(0, 6);
+
+  const byAnd = prompt
+    .replace(/\s+/g, " ")
+    .split(/\s+\band\b\s+/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return (byAnd.length > 1 ? byAnd : [prompt.trim()]).slice(0, 6);
+}
+
+function buildFallbackWorkflowFromPrompt(
+  prompt: string,
+  requestedName?: string,
+): N8nWorkflowWritePayload {
+  const steps = promptToWorkflowSteps(prompt);
+  const nodes: N8nWorkflowWriteNode[] = [
+    {
+      name: "Start",
+      type: "n8n-nodes-base.manualTrigger",
+      typeVersion: 1,
+      position: [0, 0],
+      parameters: {},
+    },
+    ...steps.map((step, index) => ({
+      name: labelFromStep(step, index),
+      type: "n8n-nodes-base.noOp",
+      typeVersion: 1,
+      position: [260 * (index + 1), 0] as [number, number],
+      parameters: {},
+      notes: step,
+      notesInFlow: true,
+    })),
+  ];
+
+  const connections: N8nWorkflowConnections = {};
+  for (let index = 0; index < nodes.length - 1; index++) {
+    connections[nodes[index].name] = {
+      main: [[{ node: nodes[index + 1].name, type: "main", index: 0 }]],
+    };
+  }
+
+  return {
+    name: inferWorkflowName(prompt, requestedName),
+    nodes,
+    connections,
+    settings: {},
+  };
+}
+
+async function generateWorkflowPayload(
+  ctx: N8nRouteContext,
+  prompt: string,
+  name?: string,
+): Promise<N8nWorkflowWritePayload> {
+  const service = ctx.runtime?.getService?.("n8n_workflow") as
+    | { generateWorkflowDraft?: (prompt: string) => Promise<unknown> }
+    | undefined;
+  if (typeof service?.generateWorkflowDraft === "function") {
+    const generated = await service.generateWorkflowDraft(prompt);
+    const normalized = normalizeWorkflowWritePayload({
+      ...(asRecord(generated) ?? {}),
+      ...(name?.trim() ? { name: name.trim() } : {}),
+    });
+    if (normalized.payload) return normalized.payload;
+    logger.warn(
+      { error: normalized.error },
+      "[n8n-routes] generated workflow payload was invalid; using fallback builder",
+    );
+  }
+
+  return buildFallbackWorkflowFromPrompt(prompt, name);
+}
+
 function propagateError(
   ctx: N8nRouteContext,
   upstream: { status: number; body: unknown },
@@ -640,6 +977,17 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
     return handleListWorkflows(ctx, sidecar, native);
   }
 
+  // --- Workflow generation / creation --------------------------------------
+  if (method === "POST" && pathname === "/api/n8n/workflows/generate") {
+    const sidecar = await resolveSidecarForRequest(ctx, native);
+    return handleGenerateWorkflow(ctx, sidecar, native);
+  }
+
+  if (method === "POST" && pathname === "/api/n8n/workflows") {
+    const sidecar = await resolveSidecarForRequest(ctx, native);
+    return handleCreateWorkflow(ctx, sidecar, native);
+  }
+
   // --- Workflow CRUD --------------------------------------------------------
   const parsed = parseWorkflowPath(pathname);
   if (parsed) {
@@ -654,6 +1002,10 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
     if (method === "GET" && parsed.action === "get") {
       const sidecar = await resolveSidecarForRequest(ctx, native);
       return handleGetWorkflow(ctx, parsed.id, sidecar, native);
+    }
+    if (method === "PUT" && parsed.action === "get") {
+      const sidecar = await resolveSidecarForRequest(ctx, native);
+      return handleUpdateWorkflow(ctx, parsed.id, sidecar, native);
     }
     if (method === "DELETE" && parsed.action === "get") {
       const sidecar = await resolveSidecarForRequest(ctx, native);
@@ -799,6 +1151,119 @@ async function handleGetWorkflow(
   }
   sendJson(ctx, 200, normalized);
   return true;
+}
+
+async function writeWorkflow(
+  ctx: N8nRouteContext,
+  method: "POST" | "PUT",
+  subpath: string,
+  payload: N8nWorkflowWritePayload,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  const resolved = resolveProxyTarget(ctx, subpath, sidecar, native);
+  if (!resolved.target) {
+    sendJson(ctx, 503, {
+      error: resolved.reason?.message ?? "n8n not ready",
+      status: resolved.reason?.status ?? "stopped",
+    });
+    return true;
+  }
+
+  const upstream = await fetchTargetAsJson(ctx, resolved.target, {
+    method,
+    body: JSON.stringify(payload),
+  });
+  if (!upstream.ok) {
+    propagateError(ctx, upstream);
+    return true;
+  }
+
+  const single = extractWorkflowSingle(upstream.body);
+  const normalized = normalizeWorkflowFull(single);
+  if (!normalized) {
+    sendJson(ctx, 502, { error: "unexpected upstream shape" });
+    return true;
+  }
+  sendJson(ctx, 200, normalized);
+  return true;
+}
+
+async function handleCreateWorkflow(
+  ctx: N8nRouteContext,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  const body = await readCompatJsonBody(ctx.req, ctx.res);
+  if (!body) return true;
+
+  const { payload, error } = normalizeWorkflowWritePayload(body);
+  if (!payload) {
+    sendJson(ctx, 400, { error: error ?? "invalid workflow payload" });
+    return true;
+  }
+
+  return writeWorkflow(ctx, "POST", "", payload, sidecar, native);
+}
+
+async function handleUpdateWorkflow(
+  ctx: N8nRouteContext,
+  id: string,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  if (!id) {
+    sendJson(ctx, 400, { error: "workflow id required" });
+    return true;
+  }
+
+  const body = await readCompatJsonBody(ctx.req, ctx.res);
+  if (!body) return true;
+
+  const { payload, error } = normalizeWorkflowWritePayload(body);
+  if (!payload) {
+    sendJson(ctx, 400, { error: error ?? "invalid workflow payload" });
+    return true;
+  }
+
+  return writeWorkflow(
+    ctx,
+    "PUT",
+    `/${encodeURIComponent(id)}`,
+    payload,
+    sidecar,
+    native,
+  );
+}
+
+async function handleGenerateWorkflow(
+  ctx: N8nRouteContext,
+  sidecar: N8nSidecar | null,
+  native: boolean,
+): Promise<boolean> {
+  const body = await readCompatJsonBody(ctx.req, ctx.res);
+  if (!body) return true;
+
+  const prompt = readOptionalString(body, "prompt");
+  if (!prompt) {
+    sendJson(ctx, 400, { error: "prompt required" });
+    return true;
+  }
+
+  const name = readOptionalString(body, "name");
+  const workflowId = readOptionalString(body, "workflowId");
+  const payload = await generateWorkflowPayload(ctx, prompt, name);
+  if (workflowId) {
+    return writeWorkflow(
+      ctx,
+      "PUT",
+      `/${encodeURIComponent(workflowId)}`,
+      payload,
+      sidecar,
+      native,
+    );
+  }
+  return writeWorkflow(ctx, "POST", "", payload, sidecar, native);
 }
 
 async function handleToggleWorkflow(

@@ -16,11 +16,11 @@ import {
 import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getPrimedLifeOpsEvent } from "../lifeops-route.js";
 import {
   type CalendarViewMode,
   useCalendarWeek,
 } from "../hooks/useCalendarWeek.js";
+import { getPrimedLifeOpsEvent } from "../lifeops-route.js";
 import { EventEditorDrawer } from "./EventEditorDrawer.js";
 import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 import {
@@ -205,7 +205,14 @@ function formatAgendaEventMeta(event: LifeOpsCalendarEvent): string {
     : [formatTimeOfDay(event.startAt), formatTimeOfDay(event.endAt)]
         .filter(Boolean)
         .join(" - ");
-  return event.location ? `${timeLabel} · ${event.location}` : timeLabel;
+  const originLabel =
+    typeof event.calendarSummary === "string" && event.calendarSummary.trim()
+      ? event.calendarSummary.trim()
+      : null;
+  const details = [timeLabel, event.location || null, originLabel].filter(
+    (value): value is string => Boolean(value),
+  );
+  return details.join(" · ");
 }
 
 interface EventPosition {
@@ -249,16 +256,16 @@ function eventWindowMs(event: LifeOpsCalendarEvent): {
  * width is then divided by the max concurrent lane count within each
  * cluster of connected events.
  */
-function layoutDayEvents(
-  events: LifeOpsCalendarEvent[],
-): PositionedEvent[] {
+function layoutDayEvents(events: LifeOpsCalendarEvent[]): PositionedEvent[] {
   const windows = events
     .map((event) => {
       const window = eventWindowMs(event);
       return window ? { event, ...window } : null;
     })
     .filter(
-      (entry): entry is { event: LifeOpsCalendarEvent; start: number; end: number } =>
+      (
+        entry,
+      ): entry is { event: LifeOpsCalendarEvent; start: number; end: number } =>
         entry !== null,
     )
     .sort((a, b) => a.start - b.start);
@@ -380,8 +387,8 @@ function AllDayBandCell({
   onSelectEvent: (event: LifeOpsCalendarEvent) => void;
 }) {
   return (
-    <div
-      className={`space-y-0.5 px-1 py-1 ${isFirst ? "" : "border-l border-border/12"}`}
+    <fieldset
+      className={`m-0 min-w-0 space-y-0.5 border-0 px-1 py-1 ${isFirst ? "" : "border-l border-border/12"}`}
       aria-label={`All-day events for ${day.toISOString()}`}
     >
       {events.map((event) => {
@@ -391,6 +398,10 @@ function AllDayBandCell({
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
+            onContextMenu={(mouseEvent) => {
+              mouseEvent.preventDefault();
+              onSelectEvent(event);
+            }}
             className={`block w-full truncate rounded-md ${color.softBg} ${color.softText} px-1.5 py-0.5 text-left text-[10px] font-medium hover:${color.bg} hover:${color.text}`}
             aria-pressed={event.id === selectedEventId}
           >
@@ -398,7 +409,7 @@ function AllDayBandCell({
           </button>
         );
       })}
-    </div>
+    </fieldset>
   );
 }
 
@@ -448,13 +459,15 @@ function DayColumnGrid({
       style={{ height: `${gridHeight}px` }}
     >
       {/* hour lines */}
-      {Array.from({ length: totalHours }, (_, i) => (
-        <div
-          key={i}
-          className="pointer-events-none absolute inset-x-0 border-t border-border/6"
-          style={{ top: `${i * HOUR_HEIGHT_PX}px` }}
-        />
-      ))}
+      {Array.from({ length: totalHours }, (_, i) => DAY_START_HOUR + i).map(
+        (hour) => (
+          <div
+            key={hour}
+            className="pointer-events-none absolute inset-x-0 border-t border-border/6"
+            style={{ top: `${(hour - DAY_START_HOUR) * HOUR_HEIGHT_PX}px` }}
+          />
+        ),
+      )}
 
       {/* now indicator */}
       {nowTopPx !== null ? (
@@ -479,6 +492,10 @@ function DayColumnGrid({
             key={event.id}
             type="button"
             onClick={() => onSelectEvent(event)}
+            onContextMenu={(mouseEvent) => {
+              mouseEvent.preventDefault();
+              onSelectEvent(event);
+            }}
             aria-pressed={isSelected}
             className={`group absolute overflow-hidden rounded-md border px-1.5 py-1 text-left shadow-sm transition-transform ${color.bg} ${color.border} ${color.text} ${isSelected ? "ring-2 ring-white/50 z-10" : "hover:translate-y-[-1px]"}`}
             style={{
@@ -526,14 +543,15 @@ function TimeGrid({
     [days, eventsByDay],
   );
 
-  const hourLabels = useMemo(() => {
-    const out: string[] = [];
+  const hours = useMemo(() => {
+    const out: Array<{ hour: number; label: string }> = [];
     for (let hour = DAY_START_HOUR; hour < DAY_END_HOUR; hour++) {
-      out.push(
-        new Intl.DateTimeFormat(undefined, { hour: "numeric" }).format(
+      out.push({
+        hour,
+        label: new Intl.DateTimeFormat(undefined, { hour: "numeric" }).format(
           new Date(2024, 0, 1, hour, 0),
         ),
-      );
+      });
     }
     return out;
   }, []);
@@ -550,10 +568,7 @@ function TimeGrid({
         className="grid border-b border-border/12"
         style={{ gridTemplateColumns }}
       >
-        <div
-          aria-hidden
-          style={{ height: `${HEADER_ROW_HEIGHT_REM}rem` }}
-        />
+        <div aria-hidden style={{ height: `${HEADER_ROW_HEIGHT_REM}rem` }} />
         {days.map((day, index) => (
           <DayColumnHeader
             key={toLocalDayKey(day)}
@@ -593,12 +608,12 @@ function TimeGrid({
       {/* Hour rail + day columns — all share one row so lines align */}
       <div className="grid" style={{ gridTemplateColumns }}>
         <div className="relative" style={{ height: `${gridHeight}px` }}>
-          {hourLabels.map((label, index) => (
+          {hours.map(({ hour, label }) => (
             <div
-              key={label + index}
+              key={hour}
               className="absolute right-2 text-[10px] font-medium uppercase tracking-wide text-muted/70"
               style={{
-                top: `${index * HOUR_HEIGHT_PX - 6}px`,
+                top: `${(hour - DAY_START_HOUR) * HOUR_HEIGHT_PX - 6}px`,
               }}
             >
               {label}
@@ -670,8 +685,8 @@ function MonthGrid({
   return (
     <div className="overflow-hidden rounded-2xl border border-border/12 bg-bg/20">
       <div className="grid grid-cols-7 border-b border-border/12 bg-bg-muted/20 text-[10px] font-semibold uppercase tracking-wide text-muted">
-        {weekdayLabels.map((label, index) => (
-          <div key={label + index} className="px-2 py-1.5 text-center">
+        {weekdayLabels.map((label) => (
+          <div key={label} className="px-2 py-1.5 text-center">
             {label}
           </div>
         ))}
@@ -709,6 +724,10 @@ function MonthGrid({
                       key={event.id}
                       type="button"
                       onClick={() => onSelectEvent(event)}
+                      onContextMenu={(mouseEvent) => {
+                        mouseEvent.preventDefault();
+                        onSelectEvent(event);
+                      }}
                       className={`flex min-w-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-left text-[10px] font-medium ${
                         isSelected
                           ? `${color.bg} ${color.text}`
@@ -796,6 +815,10 @@ function AgendaView({
                   key={event.id}
                   type="button"
                   onClick={() => onSelectEvent(event)}
+                  onContextMenu={(mouseEvent) => {
+                    mouseEvent.preventDefault();
+                    onSelectEvent(event);
+                  }}
                   aria-pressed={isSelected}
                   className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors ${
                     isSelected ? "bg-white/5" : "hover:bg-white/3"
@@ -871,6 +894,11 @@ export function LifeOpsCalendarSection(
     },
     [onSelect],
   );
+
+  const handleCloseEditor = useCallback(() => {
+    setDrawerEvent(null);
+    onSelect({ eventId: null });
+  }, [onSelect]);
 
   // When an external caller (widget row, deep link) selects an event, the
   // grid's local `drawerEvent` state is still null. Look up the id first in
@@ -1011,7 +1039,7 @@ export function LifeOpsCalendarSection(
         open={drawerEvent !== null}
         event={drawerEvent}
         onChat={chatAboutEvent}
-        onClose={() => setDrawerEvent(null)}
+        onClose={handleCloseEditor}
         onSaved={(updatedEvent) => {
           void calendar.refresh();
           setDrawerEvent(updatedEvent);

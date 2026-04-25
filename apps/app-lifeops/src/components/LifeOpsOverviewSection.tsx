@@ -1,19 +1,19 @@
 import { client, useApp } from "@elizaos/app-core";
 import type {
   LifeOpsActiveReminderView,
-  LifeOpsCapabilitiesStatus,
   LifeOpsCalendarEvent,
+  LifeOpsCapabilitiesStatus,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
   LifeOpsInboxChannel,
-  LifeOpsScheduleInsight,
   LifeOpsInboxMessage,
   LifeOpsOverview,
+  LifeOpsScheduleInsight,
   LifeOpsXConnectorStatus,
 } from "@elizaos/shared/contracts/lifeops";
 import {
-  AtSign,
   ArrowRight,
+  AtSign,
   CalendarDays,
   Flame,
   Loader2,
@@ -45,10 +45,10 @@ import type {
 } from "../api/client-lifeops.js";
 import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
+import { useInbox } from "../hooks/useInbox.js";
 import { useLifeOpsCapabilitiesStatus } from "../hooks/useLifeOpsCapabilitiesStatus.js";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import { useLifeOpsXConnector } from "../hooks/useLifeOpsXConnector.js";
-import { useInbox } from "../hooks/useInbox.js";
 import {
   LIFEOPS_MAIL_CHANNELS,
   LIFEOPS_MESSAGE_CHANNELS,
@@ -397,7 +397,9 @@ function hasCapabilityAccess(
   status: LifeOpsCapabilitiesStatus | null,
   capabilityId: string,
 ): boolean {
-  const capability = status?.capabilities.find((item) => item.id === capabilityId);
+  const capability = status?.capabilities.find(
+    (item) => item.id === capabilityId,
+  );
   return capability?.state === "working" || capability?.state === "degraded";
 }
 
@@ -845,18 +847,6 @@ export function LifeOpsOverviewSection({
 
   const briefingLines = useMemo(() => {
     const lines: string[] = [];
-    if (nextEvent) {
-      lines.push(
-        `Next: ${nextEvent.title} at ${formatClockTime(nextEvent.startAt)}`,
-      );
-    }
-    if (activeReminders[0]) {
-      lines.push(
-        `Reminder: ${activeReminders[0].title} ${formatRelative(
-          activeReminders[0].scheduledFor,
-        )}`,
-      );
-    }
     if (hasUnread) {
       lines.push("Messages need triage");
     }
@@ -868,7 +858,7 @@ export function LifeOpsOverviewSection({
       );
     }
     return lines.slice(0, 5);
-  }, [activeReminders, hasUnread, nextEvent, schedule]);
+  }, [hasUnread, schedule]);
 
   const refresh = useCallback(() => {
     void loadOverview();
@@ -1052,21 +1042,19 @@ export function LifeOpsOverviewSection({
 
       {!showNoAccessState ? (
         <div className="grid items-start gap-4 xl:grid-cols-12">
-          <DashboardPanel
-            title="Briefing"
-            icon={<Flame className="h-4 w-4" aria-hidden />}
-            className="xl:col-span-3"
-          >
-            <div className="space-y-3">
-              {briefingLines.length === 0 ? (
-                <EmptyState>No urgent signal.</EmptyState>
-              ) : (
-                briefingLines.map((line) => (
+          {briefingLines.length > 0 ? (
+            <DashboardPanel
+              title="Now"
+              icon={<Flame className="h-4 w-4" aria-hidden />}
+              className="xl:col-span-3"
+            >
+              <div className="space-y-3">
+                {briefingLines.map((line) => (
                   <TinyStatus key={line} color="bg-accent" label={line} />
-                ))
-              )}
-            </div>
-          </DashboardPanel>
+                ))}
+              </div>
+            </DashboardPanel>
+          ) : null}
 
           {sleepAccess ? (
             <DashboardPanel
@@ -1327,13 +1315,15 @@ export function LifeOpsOverviewSection({
                 {activeReminders.length === 0 ? (
                   <EmptyState>No active reminders.</EmptyState>
                 ) : (
-                  activeReminders.slice(0, 4).map((reminder) => (
-                    <ReminderAgendaRow
-                      key={`${reminder.ownerId}:${reminder.stepIndex}`}
-                      reminder={reminder}
-                      onClick={() => openReminder(reminder)}
-                    />
-                  ))
+                  activeReminders
+                    .slice(0, 4)
+                    .map((reminder) => (
+                      <ReminderAgendaRow
+                        key={`${reminder.ownerId}:${reminder.stepIndex}`}
+                        reminder={reminder}
+                        onClick={() => openReminder(reminder)}
+                      />
+                    ))
                 )}
               </div>
             </DashboardPanel>

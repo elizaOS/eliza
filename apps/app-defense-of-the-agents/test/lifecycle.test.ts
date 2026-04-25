@@ -7,10 +7,11 @@
  * runtimes sharing a character name do not cross-pollute their cache slots.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   activeLoops,
   clearAgentRunState,
+  handleAppRoutes,
   recentActivity,
   resetInMemoryStateForTests,
   resolveSessionContext,
@@ -46,6 +47,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   resetInMemoryStateForTests();
 });
 
@@ -153,5 +155,43 @@ describe("clearAgentRunState", () => {
     expect(recentActivity.has(ctxB.agentId ?? "")).toBe(true);
     expect(sessionStateCache.has(sessionCacheKey(ctxA))).toBe(false);
     expect(sessionStateCache.has(sessionCacheKey(ctxB))).toBe(true);
+  });
+});
+
+describe("message commands", () => {
+  it("records strategy notes without deploying a default hero", async () => {
+    const runtime = makeRuntime("agent-strategy", "ElizaStrategy");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const captured: { status: number; body: unknown } = {
+      status: 0,
+      body: null,
+    };
+
+    await handleAppRoutes({
+      method: "POST",
+      pathname: "/api/apps/defense-of-the-agents/session/session-1/message",
+      runtime,
+      res: {},
+      readJsonBody: async () => ({
+        content: "Play defensively and rotate to the weakest lane.",
+      }),
+      json: (_response: unknown, data: unknown, status = 200) => {
+        captured.status = status;
+        captured.body = data;
+      },
+      error: (_response: unknown, message: string, status = 500) => {
+        captured.status = status;
+        captured.body = { error: message };
+      },
+    });
+
+    expect(captured.status).toBe(200);
+    expect(captured.body).toMatchObject({
+      success: true,
+      message:
+        "Strategy note recorded. Use lane, recall, ability, or autoplay commands for direct control.",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

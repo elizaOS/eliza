@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import type { AgentRuntime } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { N8nSidecar, N8nSidecarState } from "../services/n8n-sidecar";
@@ -70,6 +71,7 @@ interface InvokeArgs {
   agentId?: string;
   isNativePlatform?: boolean;
   cloudHealthOverride?: N8nCloudHealth;
+  body?: Record<string, unknown>;
 }
 
 interface InvokeResult {
@@ -81,8 +83,10 @@ interface InvokeResult {
 async function invoke(args: InvokeArgs): Promise<InvokeResult> {
   let payload: unknown = null;
   let status = 200;
+  const reqBody =
+    args.body === undefined ? [] : [Buffer.from(JSON.stringify(args.body))];
   const handled = await handleN8nRoutes({
-    req: {} as never,
+    req: Readable.from(reqBody) as never,
     res: {} as never,
     method: args.method ?? "GET",
     pathname: args.pathname ?? "/api/n8n/status",
@@ -687,6 +691,152 @@ describe("n8n get single workflow", () => {
       sidecar,
     });
     expect(status).toBe(503);
+  });
+});
+
+// ── Create / Update / Generate ──────────────────────────────────────────────
+
+describe("n8n write workflows", () => {
+  const workflowBody = {
+    name: "QA workflow",
+    nodes: [
+      {
+        name: "Start",
+        type: "n8n-nodes-base.manualTrigger",
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      },
+      {
+        name: "Step",
+        type: "n8n-nodes-base.noOp",
+        typeVersion: 1,
+        position: [260, 0],
+        parameters: {},
+        notes: "Do the work",
+        notesInFlow: true,
+      },
+    ],
+    connections: {
+      Start: { main: [[{ node: "Step", type: "main", index: 0 }]] },
+    },
+    settings: {},
+  };
+
+  it("creates via POST /workflows and strips unsafe fields", async () => {
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({
+        body: { id: "created", active: false, ...workflowBody },
+      }),
+    ) as unknown as typeof fetch;
+    const sidecar = makeSidecarStub(
+      { status: "ready", host: "http://127.0.0.1:5678" },
+      "k",
+    );
+
+    const { status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows",
+      config: { n8n: { localEnabled: true } },
+      sidecar,
+      fetchImpl,
+      body: {
+        ...workflowBody,
+        id: "should-not-forward",
+        nodes: [
+          {
+            ...(workflowBody.nodes[0] as Record<string, unknown>),
+            credentials: { api: { id: "cred-id", name: "Cred" } },
+            extra: "drop me",
+          },
+          workflowBody.nodes[1],
+        ],
+      },
+    });
+
+    expect(status).toBe(200);
+    expect(payload).toMatchObject({ id: "created", nodeCount: 2 });
+
+    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls;
+    const [calledUrl, init] = calls[0] as [string, RequestInit];
+    expect(calledUrl).toBe("http://127.0.0.1:5678/api/v1/workflows");
+    expect(init.method).toBe("POST");
+    const forwarded = JSON.parse(String(init.body)) as Record<string, unknown>;
+    expect(forwarded.id).toBeUndefined();
+    const forwardedNodes = forwarded.nodes as Array<Record<string, unknown>>;
+    expect(forwardedNodes[0]?.extra).toBeUndefined();
+    expect(forwardedNodes[0]?.credentials).toEqual({
+      api: { id: "cred-id", name: "Cred" },
+    });
+  });
+
+  it("updates via PUT /workflows/{id}", async () => {
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({
+        body: { id: "w-update", active: false, ...workflowBody },
+      }),
+    ) as unknown as typeof fetch;
+    const sidecar = makeSidecarStub(
+      { status: "ready", host: "http://127.0.0.1:5678" },
+      "k",
+    );
+
+    const { status } = await invoke({
+      method: "PUT",
+      pathname: "/api/n8n/workflows/w-update",
+      config: { n8n: { localEnabled: true } },
+      sidecar,
+      fetchImpl,
+      body: workflowBody,
+    });
+    expect(status).toBe(200);
+
+    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls;
+    const [calledUrl, init] = calls[0] as [string, RequestInit];
+    expect(calledUrl).toBe("http://127.0.0.1:5678/api/v1/workflows/w-update");
+    expect(init.method).toBe("PUT");
+  });
+
+  it("generates a runnable fallback graph when no plugin service is registered", async () => {
+    const fetchImpl = vi.fn(async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return mockResponse({
+        body: { id: "generated", active: false, ...body },
+      });
+    }) as unknown as typeof fetch;
+    const sidecar = makeSidecarStub(
+      { status: "ready", host: "http://127.0.0.1:5678" },
+      "k",
+    );
+
+    const { status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/generate",
+      config: { n8n: { localEnabled: true } },
+      sidecar,
+      fetchImpl,
+      body: {
+        prompt: "When a message arrives, summarize it then post a reply",
+      },
+    });
+
+    expect(status).toBe(200);
+    expect(payload).toMatchObject({ id: "generated" });
+
+    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls;
+    const [, init] = calls[0] as [string, RequestInit];
+    const forwarded = JSON.parse(String(init.body)) as {
+      nodes: Array<{ type: string; name: string }>;
+      connections: Record<string, unknown>;
+    };
+    expect(forwarded.nodes[0]?.type).toBe("n8n-nodes-base.manualTrigger");
+    expect(
+      forwarded.nodes.some((node) => node.type === "n8n-nodes-base.noOp"),
+    ).toBe(true);
+    expect(Object.keys(forwarded.connections).length).toBeGreaterThan(0);
   });
 });
 

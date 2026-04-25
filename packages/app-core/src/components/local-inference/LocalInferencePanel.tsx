@@ -1,4 +1,5 @@
 import { Button } from "@elizaos/ui";
+import { CheckCircle2, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -12,6 +13,7 @@ import type {
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
+import { AdvancedSettingsDisclosure } from "../settings/settings-control-primitives";
 import { ActiveModelBar } from "./ActiveModelBar";
 import { DeviceBridgeStatusBar } from "./DeviceBridgeStatus";
 import { DevicesPanel } from "./DevicesPanel";
@@ -24,11 +26,6 @@ import { ProvidersList } from "./ProvidersList";
 import { RoutingMatrix } from "./RoutingMatrix";
 import { SlotAssignments } from "./SlotAssignments";
 
-/**
- * Settings page entry for local inference. Owns the hub snapshot state,
- * subscribes to the download SSE stream, and dispatches mutations back
- * through the typed client helpers.
- */
 type HubTab = "curated" | "search" | "downloads";
 
 export function LocalInferencePanel() {
@@ -277,18 +274,6 @@ export function LocalInferencePanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-col gap-1">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Local models
-        </h3>
-        <p className="text-xs text-muted-foreground">
-          Run llama.cpp on this machine, this mobile device, or on a paired
-          device. Enable alongside cloud providers — the agent will prefer
-          whichever handler has the highest priority for each ModelType. Use the
-          slot assignments below to pin a specific local model to a slot, or
-          leave them unset to let cloud take priority when configured.
-        </p>
-      </header>
       <HardwareBadge hardware={hub.hardware} />
       <DeviceBridgeStatusBar />
       <FirstRunOffer
@@ -308,11 +293,8 @@ export function LocalInferencePanel() {
         {(
           [
             ["curated", "Curated"],
-            ["search", "Search HuggingFace"],
-            [
-              "downloads",
-              `Downloads${hub.downloads.length > 0 ? ` (${hub.downloads.length})` : ""}`,
-            ],
+            ["search", "Search"],
+            ["downloads", "Downloads"],
           ] as const
         ).map(([id, label]) => {
           const active = tab === id;
@@ -327,7 +309,14 @@ export function LocalInferencePanel() {
                   : "border-transparent text-muted hover:text-txt"
               }`}
             >
-              {label}
+              <span className="inline-flex items-center gap-1.5">
+                {label}
+                {id === "downloads" && hub.downloads.length > 0 ? (
+                  <span className="rounded-full border border-border/50 bg-card px-1.5 py-0.5 text-[10px] leading-none text-muted">
+                    {hub.downloads.length}
+                  </span>
+                ) : null}
+              </span>
             </button>
           );
         })}
@@ -372,21 +361,24 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <ProvidersList />
-      <RoutingMatrix />
-      <SlotAssignments
-        installed={hub.installed}
-        assignments={hub.assignments}
-        onChange={handleAssignmentsChange}
-      />
-      <DevicesPanel />
-      <ExternalInstalledSummary
-        installed={hub.installed}
-        onActivate={handleActivate}
-        onUninstall={handleUninstall}
-        active={hub.active}
-        busy={busy}
-      />
+      <AdvancedSettingsDisclosure title="Local routing">
+        <div className="flex flex-col gap-4">
+          <ProvidersList />
+          <RoutingMatrix />
+          <SlotAssignments
+            installed={hub.installed}
+            assignments={hub.assignments}
+            onChange={handleAssignmentsChange}
+          />
+          <DevicesPanel />
+          <ExternalInstalledSummary
+            installed={hub.installed}
+            onActivate={handleActivate}
+            active={hub.active}
+            busy={busy}
+          />
+        </div>
+      </AdvancedSettingsDisclosure>
     </div>
   );
 }
@@ -399,7 +391,6 @@ function ExternalInstalledSummary({
 }: {
   installed: InstalledModel[];
   onActivate: (id: string) => void;
-  onUninstall: (id: string) => void;
   active: ActiveModelState;
   busy: boolean;
 }) {
@@ -434,14 +425,14 @@ function ExternalInstalledSummary({
                 </div>
               </div>
               {isActive ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-8 rounded-lg"
-                  disabled
+                <span
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-ok/35 bg-ok/10 text-ok"
+                  title="Active"
+                  role="img"
+                  aria-label="Active"
                 >
-                  Active
-                </Button>
+                  <CheckCircle2 className="h-4 w-4" aria-hidden />
+                </span>
               ) : (
                 <Button
                   size="sm"
@@ -449,6 +440,7 @@ function ExternalInstalledSummary({
                   onClick={() => onActivate(m.id)}
                   disabled={busy}
                 >
+                  <Play className="h-3.5 w-3.5" aria-hidden />
                   Activate
                 </Button>
               )}
@@ -474,9 +466,6 @@ function appendTokenParam(url: string): string {
   return `${url}${hasQuery ? "&" : "?"}token=${encodeURIComponent(token)}`;
 }
 
-/**
- * Drop-in exports for prop-less consumption by the settings panel.
- */
 export default LocalInferencePanel;
 
 // Avoid "unused" lints for re-exports that consumers may want.

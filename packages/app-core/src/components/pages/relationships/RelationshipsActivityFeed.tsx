@@ -1,31 +1,89 @@
-import { useEffect, useState } from "react";
+import { Button } from "@elizaos/ui";
+import { Fingerprint, Link2, Tags } from "lucide-react";
+import { type ComponentType, useEffect, useState } from "react";
 import { client } from "../../../api/client";
 import type { RelationshipsActivityItem } from "../../../api/client-types-relationships";
 import { formatDateTime } from "../../../utils/format";
 
-const ACTIVITY_TYPE_COLORS: Record<string, { bg: string; fg: string }> = {
-  relationship: { bg: "rgba(99, 102, 241, 0.15)", fg: "rgb(99, 102, 241)" },
-  fact: { bg: "rgba(34, 197, 94, 0.15)", fg: "rgb(34, 197, 94)" },
-  identity: { bg: "rgba(168, 85, 247, 0.15)", fg: "rgb(168, 85, 247)" },
+type ActivityType = RelationshipsActivityItem["type"];
+
+const ACTIVITY_TYPE_STYLES: Record<
+  ActivityType,
+  { bg: string; fg: string; icon: ComponentType<{ className?: string }> }
+> = {
+  relationship: {
+    bg: "rgba(99, 102, 241, 0.15)",
+    fg: "rgb(99, 102, 241)",
+    icon: Link2,
+  },
+  fact: {
+    bg: "rgba(34, 197, 94, 0.15)",
+    fg: "rgb(34, 197, 94)",
+    icon: Tags,
+  },
+  identity: {
+    bg: "rgba(168, 85, 247, 0.15)",
+    fg: "rgb(168, 85, 247)",
+    icon: Fingerprint,
+  },
 };
+
+const ACTIVITY_PAGE_SIZE = 25;
 
 export function RelationshipsActivityFeed() {
   const [activity, setActivity] = useState<RelationshipsActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
+    setError(null);
     void client
-      .getRelationshipsActivity(50)
-      .then((response) => setActivity(response.activity))
+      .getRelationshipsActivity(ACTIVITY_PAGE_SIZE, 0)
+      .then((response) => {
+        if (!cancelled) {
+          setActivity(response.activity);
+          setHasMore(response.hasMore);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load activity feed.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const loadMore = () => {
+    setLoadingMore(true);
+    setError(null);
+    void client
+      .getRelationshipsActivity(ACTIVITY_PAGE_SIZE, activity.length)
+      .then((response) => {
+        setActivity((current) => [...current, ...response.activity]);
+        setHasMore(response.hasMore);
+      })
       .catch((err) =>
         setError(
           err instanceof Error ? err.message : "Failed to load activity feed.",
         ),
       )
-      .finally(() => setLoading(false));
-  }, []);
+      .finally(() => setLoadingMore(false));
+  };
 
   if (loading) {
     return (
@@ -42,19 +100,14 @@ export function RelationshipsActivityFeed() {
   }
 
   if (activity.length === 0) {
-    return (
-      <p className="px-4 py-3 text-sm text-muted">
-        No relationship activity yet. Events will appear as the agent extracts
-        relationships, identities, and facts from conversations.
-      </p>
-    );
+    return <p className="px-4 py-3 text-sm text-muted">No activity.</p>;
   }
 
   return (
     <div className="space-y-2">
       {activity.map((item) => {
-        const color =
-          ACTIVITY_TYPE_COLORS[item.type] ?? ACTIVITY_TYPE_COLORS.relationship;
+        const style = ACTIVITY_TYPE_STYLES[item.type];
+        const ActivityIcon = style.icon;
         return (
           <div
             key={`${item.personId}-${item.type}-${item.timestamp ?? "none"}-${item.summary}`}
@@ -62,9 +115,10 @@ export function RelationshipsActivityFeed() {
           >
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className="inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.12em]"
-                style={{ backgroundColor: color.bg, color: color.fg }}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.12em]"
+                style={{ backgroundColor: style.bg, color: style.fg }}
               >
+                <ActivityIcon className="h-3 w-3" />
                 {item.type}
               </span>
               {item.timestamp ? (
@@ -82,6 +136,18 @@ export function RelationshipsActivityFeed() {
           </div>
         );
       })}
+      {hasMore ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-8 rounded-lg px-3"
+          disabled={loadingMore}
+          onClick={loadMore}
+        >
+          {loadingMore ? "Loading..." : "Load more"}
+        </Button>
+      ) : null}
     </div>
   );
 }

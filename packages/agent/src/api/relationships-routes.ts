@@ -94,6 +94,26 @@ function asEvidenceRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+function parseActivityInteger(
+  value: string | null,
+  fallback: number,
+  options: { min: number; max?: number },
+): number | null {
+  if (value === null) {
+    return fallback;
+  }
+  if (!/^\d+$/.test(value)) {
+    return null;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < options.min) {
+    return null;
+  }
+  return typeof options.max === "number"
+    ? Math.min(parsed, options.max)
+    : parsed;
+}
+
 export async function handleRelationshipsRoutes(
   ctx: RelationshipsRouteContext,
 ): Promise<boolean> {
@@ -335,14 +355,20 @@ export async function handleRelationshipsRoutes(
       req.url ?? "/api/relationships/activity",
       "http://localhost",
     );
-    const limitParam = activityUrl.searchParams.get("limit");
-    const limit = limitParam
-      ? Math.min(Number.parseInt(limitParam, 10), 100)
-      : 50;
-    const offsetParam = activityUrl.searchParams.get("offset");
-    const offset = offsetParam
-      ? Math.max(0, Number.parseInt(offsetParam, 10))
-      : 0;
+    const limit = parseActivityInteger(
+      activityUrl.searchParams.get("limit"),
+      50,
+      { min: 1, max: 100 },
+    );
+    const offset = parseActivityInteger(
+      activityUrl.searchParams.get("offset"),
+      0,
+      { min: 0 },
+    );
+    if (limit === null || offset === null) {
+      error(res, "Invalid relationships activity pagination.", 400);
+      return true;
+    }
 
     json(
       res,

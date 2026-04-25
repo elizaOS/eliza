@@ -59,6 +59,18 @@ export interface ManagedGoogleCalendarFeedResponse {
   syncedAt: string;
 }
 
+export interface ManagedGoogleCalendarSummaryResponse {
+  calendarId: string;
+  summary: string;
+  description: string | null;
+  primary: boolean;
+  accessRole: string;
+  backgroundColor: string | null;
+  foregroundColor: string | null;
+  timeZone: string | null;
+  selected: boolean;
+}
+
 export interface ManagedGoogleCalendarEventResponse {
   event: SyncedGoogleCalendarEvent;
 }
@@ -419,6 +431,22 @@ export class GoogleManagedClient {
     if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleCalendarFeedResponse>(
       `milady/google/calendar/feed?${query.toString()}`,
+      {
+        method: "GET",
+      },
+    );
+  }
+
+  async listCalendars(args: {
+    side: LifeOpsConnectorSide;
+    grantId?: string;
+  }): Promise<ManagedGoogleCalendarSummaryResponse[]> {
+    const query = new URLSearchParams({
+      side: args.side,
+    });
+    if (args.grantId) query.set("grantId", args.grantId);
+    return this.request<ManagedGoogleCalendarSummaryResponse[]>(
+      `milady/google/calendar/calendars?${query.toString()}`,
       {
         method: "GET",
       },

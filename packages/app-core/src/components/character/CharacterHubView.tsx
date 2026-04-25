@@ -7,6 +7,15 @@ import {
   SidebarScrollRegion,
 } from "@elizaos/ui";
 import {
+  BookOpen,
+  Brain,
+  LayoutDashboard,
+  type LucideIcon,
+  Network,
+  PencilLine,
+  Sparkles,
+} from "lucide-react";
+import {
   type ReactNode,
   useCallback,
   useEffect,
@@ -23,6 +32,7 @@ import type {
   RelationshipsActivityItem,
 } from "../../api/client-types";
 import { useApp } from "../../state/useApp";
+import { WidgetHost } from "../../widgets";
 import { KnowledgeView } from "../pages/KnowledgeView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
@@ -32,6 +42,7 @@ import {
   CharacterStylePanel,
 } from "./CharacterEditorPanels";
 import { CharacterExperienceWorkspace } from "./CharacterExperienceWorkspace";
+import { CharacterLearnedSkillsSection } from "./CharacterLearnedSkillsSection";
 import { CharacterOverviewSection } from "./CharacterOverviewSection";
 import { CharacterPersonalityTimeline } from "./CharacterPersonalityTimeline";
 import { CharacterRelationshipsSection } from "./CharacterRelationshipsSection";
@@ -45,6 +56,84 @@ import {
 } from "./character-hub-helpers";
 
 type CharacterStyleSection = "all" | "chat" | "post";
+
+const CHARACTER_SECTION_PATHS: Record<CharacterHubSection, string> = {
+  overview: "/character",
+  personality: "/character/personality",
+  knowledge: "/character/knowledge",
+  skills: "/character/skills",
+  experience: "/character/experience",
+  relationships: "/character/relationships",
+};
+
+const CHARACTER_SECTION_META: Record<
+  CharacterHubSection,
+  {
+    icon: LucideIcon;
+  }
+> = {
+  overview: {
+    icon: LayoutDashboard,
+  },
+  personality: {
+    icon: PencilLine,
+  },
+  knowledge: {
+    icon: BookOpen,
+  },
+  skills: {
+    icon: Sparkles,
+  },
+  experience: {
+    icon: Brain,
+  },
+  relationships: {
+    icon: Network,
+  },
+};
+
+function getSectionFromLocation(tab: string): CharacterHubSection {
+  if (typeof window === "undefined") return "overview";
+  const pathname = window.location.pathname.toLowerCase();
+  if (pathname.endsWith("/personality")) return "personality";
+  if (pathname.endsWith("/knowledge")) return "knowledge";
+  if (pathname.endsWith("/skills")) return "skills";
+  if (pathname.endsWith("/experience")) return "experience";
+  if (pathname.endsWith("/relationships")) return "relationships";
+  if (tab === "knowledge") return "knowledge";
+  return "overview";
+}
+
+function updateCharacterSectionPath(
+  section: CharacterHubSection,
+  mode: "push" | "replace" = "push",
+): void {
+  if (typeof window === "undefined") return;
+  const path = CHARACTER_SECTION_PATHS[section];
+  if (!path || window.location.pathname === path) return;
+  window.history[mode === "replace" ? "replaceState" : "pushState"](
+    null,
+    "",
+    path,
+  );
+}
+
+const DEFAULT_KNOWLEDGE_FILENAMES = new Set([
+  "eliza-overview.txt",
+  "eliza-history.txt",
+  "eliza-cloud-basics.txt",
+]);
+
+function isDefaultKnowledgeDocument(document: KnowledgeDocument): boolean {
+  const normalizedFilename = document.filename.trim().toLowerCase();
+  return (
+    document.source === "bundled" ||
+    document.source === "character" ||
+    document.provenance.kind === "bundled" ||
+    document.provenance.kind === "character" ||
+    DEFAULT_KNOWLEDGE_FILENAMES.has(normalizedFilename)
+  );
+}
 
 function mergeCharacterPatch(
   base: CharacterData,
@@ -73,8 +162,6 @@ export function CharacterHubView({
   characterSaveError,
   hasPendingChanges,
   onSave,
-  onReset,
-  canReset,
 }: {
   d: CharacterData;
   bioText: string;
@@ -95,12 +182,10 @@ export function CharacterHubView({
   characterSaveError: string | null;
   hasPendingChanges: boolean;
   onSave: () => Promise<unknown>;
-  onReset: () => void;
-  canReset: boolean;
 }) {
   const { setActionNotice, setTab, tab, t } = useApp();
-  const [activeSection, setActiveSection] = useState<CharacterHubSection>(
-    tab === "knowledge" ? "knowledge" : "overview",
+  const [activeSection, setActiveSection] = useState<CharacterHubSection>(() =>
+    getSectionFromLocation(tab),
   );
   const [knowledgeDocuments, setKnowledgeDocuments] = useState<
     KnowledgeDocument[]
@@ -135,22 +220,6 @@ export function CharacterHubView({
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
   const autoSaveTimerRef = useRef<number | null>(null);
   const pendingAutoSavePatchRef = useRef<CharacterData>({});
-  const personalitySectionRefs = useRef<
-    Record<"bio" | "style" | "examples" | "evolution", HTMLElement | null>
-  >({
-    bio: null,
-    style: null,
-    examples: null,
-    evolution: null,
-  });
-
-  const clearPendingAutoSave = useCallback(() => {
-    if (autoSaveTimerRef.current !== null) {
-      window.clearTimeout(autoSaveTimerRef.current);
-      autoSaveTimerRef.current = null;
-    }
-    pendingAutoSavePatchRef.current = {};
-  }, []);
 
   const flushPendingAutoSave = useCallback(async () => {
     if (autoSaveTimerRef.current !== null) {
@@ -202,14 +271,16 @@ export function CharacterHubView({
   }, [flushPendingAutoSave]);
 
   useEffect(() => {
-    if (tab === "knowledge") {
-      setActiveSection("knowledge");
-    }
+    setActiveSection(getSectionFromLocation(tab));
   }, [tab]);
 
   useEffect(() => {
-    setTab(activeSection === "knowledge" ? "knowledge" : "character");
-  }, [activeSection, setTab]);
+    const handlePopState = () => {
+      setActiveSection(getSectionFromLocation(tab));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [tab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -325,21 +396,50 @@ export function CharacterHubView({
     };
   }, []);
 
+  const customKnowledgeDocuments = useMemo(
+    () =>
+      knowledgeDocuments.filter(
+        (document) => !isDefaultKnowledgeDocument(document),
+      ),
+    [knowledgeDocuments],
+  );
+
   const overviewItems = useMemo(
     () =>
       buildCharacterOverviewItems({
         history: historyEntries,
-        documents: knowledgeDocuments,
+        documents: customKnowledgeDocuments,
         experiences: experienceRecords,
         relationshipActivity,
       }),
     [
+      customKnowledgeDocuments,
       experienceRecords,
       historyEntries,
-      knowledgeDocuments,
       relationshipActivity,
     ],
   );
+  const balancedOverviewItems = useMemo(() => {
+    const byKind = new Map<string, typeof overviewItems>();
+    for (const item of overviewItems) {
+      const bucket = byKind.get(item.kind) ?? [];
+      if (bucket.length < 4) {
+        bucket.push(item);
+        byKind.set(item.kind, bucket);
+      }
+    }
+    return Array.from(byKind.values())
+      .flat()
+      .sort((left, right) => {
+        const leftTime = left.timestamp
+          ? new Date(left.timestamp).getTime()
+          : 0;
+        const rightTime = right.timestamp
+          ? new Date(right.timestamp).getTime()
+          : 0;
+        return rightTime - leftTime;
+      });
+  }, [overviewItems]);
 
   const timelineItems = useMemo(
     () => historyEntries.map(mapHistoryEntryToTimelineItem),
@@ -352,44 +452,40 @@ export function CharacterHubView({
 
   const activeSectionLabel = getCharacterHubSectionLabel(activeSection);
 
-  const scrollPersonalitySectionIntoView = (
-    section: "bio" | "style" | "examples" | "evolution",
-  ) => {
-    if (activeSection !== "personality") {
-      setActiveSection("personality");
-      requestAnimationFrame(() => {
-        personalitySectionRefs.current[section]?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      });
-      return;
-    }
-
-    personalitySectionRefs.current[section]?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  };
+  const navigateToSection = useCallback(
+    (section: CharacterHubSection) => {
+      setActiveSection(section);
+      if (section === "knowledge") {
+        if (tab !== "knowledge") {
+          setTab("knowledge");
+        } else {
+          updateCharacterSectionPath(section);
+        }
+        return;
+      }
+      updateCharacterSectionPath(section);
+    },
+    [setTab, tab],
+  );
 
   const handleOverviewOpen = (
     item: ReturnType<typeof buildCharacterOverviewItems>[number],
   ) => {
     if (item.kind === "knowledge") {
       setSelectedKnowledgeDocumentId(item.id.replace("knowledge:", ""));
-      setActiveSection("knowledge");
+      navigateToSection("knowledge");
       return;
     }
     if (item.kind === "experience") {
       setSelectedExperienceId(item.id.replace("experience:", ""));
-      setActiveSection("experience");
+      navigateToSection("experience");
       return;
     }
     if (item.kind === "relationship") {
-      setActiveSection("relationships");
+      navigateToSection("relationships");
       return;
     }
-    setActiveSection("personality");
+    navigateToSection("personality");
   };
 
   const handleSaveExperience = async (
@@ -531,119 +627,52 @@ export function CharacterHubView({
     }
   }, [flushPendingAutoSave, onSave]);
 
-  const handleReset = useCallback(() => {
-    clearPendingAutoSave();
-    onReset();
-  }, [clearPendingAutoSave, onReset]);
-
   const sectionNav = (
-    <SidebarPanel className="gap-3 bg-transparent p-0 shadow-none">
-      <nav className="flex flex-col gap-1" aria-label="Character hub sections">
-        {CHARACTER_HUB_SECTIONS.map((section) => (
-          <SidebarContent.Item
-            key={section}
-            active={activeSection === section}
-            onClick={() => setActiveSection(section)}
-            aria-current={activeSection === section ? "page" : undefined}
-            className="items-center gap-2 px-2.5 py-2"
-          >
-            <SidebarContent.ItemTitle
-              className={
-                activeSection === section ? "font-semibold" : "font-medium"
-              }
-            >
-              {getCharacterHubSectionLabel(section)}
-            </SidebarContent.ItemTitle>
-          </SidebarContent.Item>
-        ))}
+    <SidebarPanel className="min-h-0 gap-2 bg-transparent p-0 shadow-none">
+      <nav className="flex flex-col gap-0" aria-label="Character hub sections">
+        {CHARACTER_HUB_SECTIONS.map((section) =>
+          (() => {
+            const meta = CHARACTER_SECTION_META[section];
+            const Icon = meta.icon;
+            const active = activeSection === section;
+            return (
+              <SidebarContent.Item
+                key={section}
+                active={active}
+                onClick={() => navigateToSection(section)}
+                aria-current={active ? "page" : undefined}
+                className="items-center gap-2 rounded-none px-5 py-2"
+              >
+                <SidebarContent.ItemIcon
+                  active={active}
+                  className={`mt-0 h-8 w-8 bg-transparent p-0 group-hover:bg-transparent ${
+                    active ? "text-accent" : "text-muted"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" aria-hidden />
+                </SidebarContent.ItemIcon>
+                <SidebarContent.ItemBody>
+                  <SidebarContent.ItemTitle
+                    className={`truncate text-sm leading-5 ${
+                      active ? "font-semibold" : "font-medium"
+                    }`}
+                  >
+                    {getCharacterHubSectionLabel(section)}
+                  </SidebarContent.ItemTitle>
+                </SidebarContent.ItemBody>
+              </SidebarContent.Item>
+            );
+          })(),
+        )}
       </nav>
     </SidebarPanel>
   );
-
-  const contextualSidebar =
-    activeSection === "personality" ? (
-      <SidebarPanel className="gap-2 bg-transparent p-0 shadow-none">
-        <div className="px-2.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted/70">
-          Personality
-        </div>
-        <div className="flex flex-col gap-1">
-          {(
-            [
-              ["bio", "Bio"],
-              ["style", "Style Rules"],
-              ["examples", "Examples"],
-              ["evolution", "Evolution"],
-            ] as const
-          ).map(([id, label]) => (
-            <SidebarContent.Item
-              key={id}
-              onClick={() => scrollPersonalitySectionIntoView(id)}
-              className="items-center gap-2 px-2.5 py-2"
-            >
-              <SidebarContent.ItemTitle className="font-medium">
-                {label}
-              </SidebarContent.ItemTitle>
-            </SidebarContent.Item>
-          ))}
-        </div>
-      </SidebarPanel>
-    ) : activeSection === "knowledge" ? (
-      <SidebarPanel className="gap-2 bg-transparent p-0 shadow-none">
-        <div className="flex items-center justify-between gap-2 px-2.5">
-          <div className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-muted/70">
-            Documents
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 rounded-sm text-muted hover:bg-bg-muted/60 hover:text-txt"
-            onClick={() =>
-              document.getElementById("character-hub-knowledge-upload")?.click()
-            }
-            title={t("knowledgeview.ChooseFiles", {
-              defaultValue: "Choose files",
-            })}
-            aria-label={t("knowledgeview.ChooseFiles", {
-              defaultValue: "Choose files",
-            })}
-          >
-            +
-          </Button>
-        </div>
-        <div className="ml-2 flex flex-col gap-0.5 border-l border-border/25 pl-2">
-          {knowledgeDocuments.length > 0 ? (
-            knowledgeDocuments.map((document) => (
-              <SidebarContent.Item
-                key={document.id}
-                active={selectedKnowledgeDocumentId === document.id}
-                onClick={() => setSelectedKnowledgeDocumentId(document.id)}
-                aria-current={
-                  selectedKnowledgeDocumentId === document.id
-                    ? "page"
-                    : undefined
-                }
-                className="items-center gap-2 py-1.5 pl-2 pr-2"
-              >
-                <SidebarContent.ItemTitle className="truncate text-xs-tight font-medium">
-                  {document.filename}
-                </SidebarContent.ItemTitle>
-              </SidebarContent.Item>
-            ))
-          ) : (
-            <div className="px-2 py-2 text-xs-tight text-muted">
-              No knowledge documents yet.
-            </div>
-          )}
-        </div>
-      </SidebarPanel>
-    ) : null;
 
   const renderSection = (): ReactNode => {
     if (activeSection === "overview") {
       return (
         <CharacterOverviewSection
-          items={overviewItems}
+          items={balancedOverviewItems}
           onOpenItem={handleOverviewOpen}
         />
       );
@@ -652,29 +681,13 @@ export function CharacterHubView({
     if (activeSection === "personality") {
       return (
         <div className="flex min-w-0 flex-col gap-8">
-          <section
-            ref={(node) => {
-              personalitySectionRefs.current.bio = node;
-            }}
-            className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4"
-          >
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-txt">Personality</h2>
-                <p className="text-sm text-muted">
-                  Save your bio manually. Style rules and examples autosave as
-                  you edit them.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="rounded-lg"
-                onClick={() => setTab("settings")}
-              >
-                Open identity settings
-              </Button>
+          <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
+            <div className="mb-4">
+              <h2 className="text-lg font-semibold text-txt">Personality</h2>
+              <p className="text-sm text-muted">
+                Save your bio manually. Style rules and examples autosave as you
+                edit them.
+              </p>
             </div>
             <CharacterIdentityPanel
               bioText={bioText}
@@ -709,12 +722,7 @@ export function CharacterHubView({
             </div>
           </section>
 
-          <section
-            ref={(node) => {
-              personalitySectionRefs.current.style = node;
-            }}
-            className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4"
-          >
+          <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
             <CharacterStylePanel
               d={d}
               pendingStyleEntries={pendingStyleEntries}
@@ -729,12 +737,7 @@ export function CharacterHubView({
             />
           </section>
 
-          <section
-            ref={(node) => {
-              personalitySectionRefs.current.examples = node;
-            }}
-            className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4"
-          >
+          <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
             <CharacterExamplesPanel
               d={d}
               normalizedMessageExamples={normalizedMessageExamples}
@@ -743,12 +746,7 @@ export function CharacterHubView({
             />
           </section>
 
-          <section
-            ref={(node) => {
-              personalitySectionRefs.current.evolution = node;
-            }}
-            className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4"
-          >
+          <section className="rounded-2xl border border-border/40 bg-bg/70 px-4 py-4">
             {historyError ? (
               <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
                 {historyError}
@@ -779,6 +777,10 @@ export function CharacterHubView({
           />
         </section>
       );
+    }
+
+    if (activeSection === "skills") {
+      return <CharacterLearnedSkillsSection />;
     }
 
     if (activeSection === "experience") {
@@ -825,8 +827,9 @@ export function CharacterHubView({
             {relationshipActivityError}
           </div>
         ) : null}
-        <div className="min-h-[56rem]">
+        <div className="min-h-[40rem]">
           <RelationshipsWorkspaceView
+            embedded
             onViewMemories={() => {
               setTab("memories");
             }}
@@ -846,22 +849,9 @@ export function CharacterHubView({
           testId="character-editor-sidebar"
           collapsible
           contentIdentity="character-hub"
-          bottomAction={
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-8 rounded-sm px-2 text-xs font-semibold uppercase tracking-[0.14em]"
-              onClick={handleReset}
-              disabled={!canReset}
-            >
-              RESET
-            </Button>
-          }
         >
-          <SidebarScrollRegion className="scrollbar-hide px-1 pb-3 pt-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <SidebarScrollRegion className="scrollbar-hide !px-0 pb-3 pt-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {sectionNav}
-            {contextualSidebar}
           </SidebarScrollRegion>
         </AppPageSidebar>
       }
@@ -872,6 +862,7 @@ export function CharacterHubView({
         ref={contentScrollRef}
         className="custom-scrollbar flex min-h-0 flex-1 min-w-0 flex-col overflow-y-auto overflow-x-hidden"
       >
+        <WidgetHost slot="character" className="mb-4" />
         {renderSection()}
       </div>
     </PageLayout>

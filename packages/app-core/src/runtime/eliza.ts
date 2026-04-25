@@ -180,6 +180,14 @@ function getAutonomyService(runtime: AgentRuntime): AutonomyServiceLike | null {
   return null;
 }
 
+async function startAndRegisterAutonomyService(
+  runtime: AgentRuntime,
+): Promise<AutonomyServiceLike> {
+  const service = await AutonomyService.start(runtime);
+  runtime.services.set("AUTONOMY" as never, [service as never]);
+  return service;
+}
+
 function syncBrandEnvAliases(): void {
   syncElizaEnvAliases();
   syncAppEnvToEliza();
@@ -443,7 +451,7 @@ async function repairRuntimeAfterBoot(
 
   if (!runtime.getService("AUTONOMY")) {
     try {
-      await AutonomyService.start(runtime);
+      await startAndRegisterAutonomyService(runtime);
       logger.info(
         "[eliza] AutonomyService started after SQL compatibility repair",
       );

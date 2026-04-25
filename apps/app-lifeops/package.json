@@ -55,7 +55,7 @@
     "drizzle-orm": "^0.45.1",
     "lucide-react": "^1.0.0",
     "sharp": "^0.34.5",
-    "telegram": "2.17.4"
+    "telegram": "2.26.22"
   },
   "peerDependencies": {
     "react": "*"

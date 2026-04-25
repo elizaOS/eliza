@@ -81,6 +81,33 @@ const conversation = {
   updatedAt: "2026-04-22T00:00:00.000Z",
 };
 
+let restoreTextareaScrollHeight: (() => void) | null = null;
+
+function mockTextareaScrollHeight(getScrollHeight: () => number): void {
+  const originalScrollHeight = Object.getOwnPropertyDescriptor(
+    HTMLTextAreaElement.prototype,
+    "scrollHeight",
+  );
+
+  restoreTextareaScrollHeight = () => {
+    if (originalScrollHeight) {
+      Object.defineProperty(
+        HTMLTextAreaElement.prototype,
+        "scrollHeight",
+        originalScrollHeight,
+      );
+    } else {
+      delete (HTMLTextAreaElement.prototype as { scrollHeight?: number })
+        .scrollHeight;
+    }
+  };
+
+  Object.defineProperty(HTMLTextAreaElement.prototype, "scrollHeight", {
+    configurable: true,
+    get: getScrollHeight,
+  });
+}
+
 describe("PageScopedChatPane", () => {
   beforeEach(() => {
     clientMock.createConversation.mockReset();
@@ -118,6 +145,8 @@ describe("PageScopedChatPane", () => {
   });
 
   afterEach(() => {
+    restoreTextareaScrollHeight?.();
+    restoreTextareaScrollHeight = null;
     cleanup();
   });
 
@@ -188,23 +217,21 @@ describe("PageScopedChatPane", () => {
     expect(intro.textContent).toContain("Overview");
     expect(intro.textContent).toContain("Personality");
     expect(intro.textContent).toContain("Knowledge");
+    expect(intro.textContent).toContain("Skills");
     expect(intro.textContent).toContain("Experience");
     expect(intro.textContent).toContain("Relationships");
   });
 
   it("stacks multiline inline drafts above the footer controls", async () => {
+    let scrollHeight = 32;
+    mockTextareaScrollHeight(() => scrollHeight);
+
     render(<PageScopedChatPane scope="page-apps" />);
 
     await screen.findByTestId("page-scoped-chat-intro-page-apps");
 
     const composer = screen.getByTestId("page-scoped-chat-composer-page-apps");
     const textarea = screen.getByRole("textbox", { name: /apps/i });
-    let scrollHeight = 32;
-
-    Object.defineProperty(textarea, "scrollHeight", {
-      configurable: true,
-      get: () => scrollHeight,
-    });
 
     scrollHeight = 72;
     fireEvent.change(textarea, {
@@ -223,6 +250,42 @@ describe("PageScopedChatPane", () => {
     expect(
       screen.getByRole("button", { name: "Start voice input" }),
     ).toBeTruthy();
+  });
+
+  it("returns inline drafts to a single-line composer when the text fits", async () => {
+    let scrollHeight = 72;
+    mockTextareaScrollHeight(() => scrollHeight);
+
+    render(<PageScopedChatPane scope="page-apps" />);
+
+    await screen.findByTestId("page-scoped-chat-intro-page-apps");
+
+    const composer = screen.getByTestId("page-scoped-chat-composer-page-apps");
+    const textarea = screen.getByRole("textbox", { name: /apps/i });
+
+    fireEvent.change(textarea, {
+      target: {
+        value:
+          "PieChartPieChartPieChartPieChartPieChartPieChartPieChartPieChart",
+      },
+    });
+
+    await waitFor(() =>
+      expect(
+        composer.firstElementChild?.getAttribute("data-inline-layout"),
+      ).toBe("stacked"),
+    );
+
+    scrollHeight = 34;
+    fireEvent.change(textarea, {
+      target: { value: "can you block new s.google.com" },
+    });
+
+    await waitFor(() =>
+      expect(
+        composer.firstElementChild?.getAttribute("data-inline-layout"),
+      ).toBe("single-line"),
+    );
   });
 
   it("sends text and voice turns with page routing metadata", async () => {

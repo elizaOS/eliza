@@ -1398,8 +1398,11 @@ export {
 	type ContextRoutingDecision,
 	deriveAvailableContexts,
 	getActiveRoutingContexts,
+	getActiveRoutingContextsForTurn,
 	getContextRoutingFromMessage,
 	getContextRoutingFromState,
+	inferContextRoutingFromMessage,
+	inferContextRoutingFromText,
 	mergeContextRouting,
 	parseContextList,
 	parseContextRoutingMetadata,
@@ -1407,6 +1410,11 @@ export {
 	shouldIncludeByContext,
 } from "./utils/context-routing";
 export { extractAndParseJSONObjectFromText } from "./utils/json-llm";
+export {
+	extractUserText,
+	getUserMessageText,
+	normalizeUserMessageText,
+} from "./utils/message-text";
 // `export * from "./utils"` (in index.node.ts etc.) resolves to this file, not
 // to a `./utils/index.ts`. Any helper in the `utils/` directory that needs to be
 // reachable from `@elizaos/core` must be re-exported here.

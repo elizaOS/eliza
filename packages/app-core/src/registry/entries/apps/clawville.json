@@ -1,7 +1,7 @@
 {
   "id": "clawville",
-  "name": "Clawville",
-  "description": "Claw-machine-themed multiplayer arcade.",
+  "name": "ClawVille",
+  "description": "Sea-themed agent world with skill-learning buildings, NPC chat, and Solana wallet identity.",
   "npmName": "@clawville/app-clawville",
   "source": "bundled",
   "tags": [],

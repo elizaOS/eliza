@@ -6,6 +6,7 @@ import {
 	resolveActionContexts,
 	resolveProviderContexts,
 } from "./context-catalog";
+import { normalizeUserMessageText } from "./message-text";
 
 export const AVAILABLE_CONTEXTS_STATE_KEY = "availableContexts";
 export const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
@@ -155,6 +156,13 @@ export function getActiveRoutingContexts(
 	return Array.from(contextSet) as AgentContext[];
 }
 
+export function getActiveRoutingContextsForTurn(
+	state: State | null | undefined,
+	message: Memory,
+): AgentContext[] {
+	return getActiveRoutingContexts(mergeContextRouting(state, message));
+}
+
 export function shouldIncludeByContext(
 	declaredContexts: AgentContext[] | undefined,
 	activeContexts: AgentContext[] | undefined,
@@ -218,6 +226,111 @@ export function deriveAvailableContexts(
 		}
 	}
 	return Array.from(contextSet).sort((a, b) => `${a}`.localeCompare(`${b}`));
+}
+
+type ContextSignal = {
+	context: AgentContext;
+	patterns: RegExp[];
+};
+
+const CONTEXT_SIGNALS: ContextSignal[] = [
+	{
+		context: "code",
+		patterns: [
+			/\b(repo|repository|codebase|branch|commit|pull request|pr|diff|workspace|file|directory)\b/u,
+			/\b(code|coding|implement|debug|fix|refactor|patch|test|typecheck|lint|build|component|api|server|client)\b/u,
+			/\b(task agents?|sub-?agents?|coding agents?|codex|claude code|spawn an? agent|agent running|what are you working on)\b/u,
+		],
+	},
+	{
+		context: "automation",
+		patterns: [
+			/\b(schedule|remind|reminder|cron|workflow|automate|automation|run this|execute|deploy|release|monitor)\b/u,
+			/\b(task agents?|sub-?agents?|agent running|pause that|resume that|stop that|continue that|what are you working on)\b/u,
+		],
+	},
+	{
+		context: "knowledge",
+		patterns: [
+			/\b(uploaded|document|file|pdf|knowledge|remember|recall|search|lookup|find|summari[sz]e|analy[sz]e|research)\b/u,
+			/\b(what is|what was|where is|tell me about|explain)\b/u,
+		],
+	},
+	{
+		context: "browser",
+		patterns: [
+			/\b(browser|browse|website|web page|url|click|type into|screenshot|navigate|extract page)\b/u,
+		],
+	},
+	{
+		context: "media",
+		patterns: [
+			/\b(image|picture|photo|video|audio|voice|transcribe|screenshot|draw|generate an image)\b/u,
+		],
+	},
+	{
+		context: "wallet",
+		patterns: [
+			/\b(wallet|token|swap|bridge|stake|unstake|balance|portfolio|transaction|sign message|contract)\b/u,
+		],
+	},
+	{
+		context: "social",
+		patterns: [
+			/\b(message|dm|email|inbox|contact|relationship|follow up|calendar|meeting|call|send .* to)\b/u,
+		],
+	},
+	{
+		context: "system",
+		patterns: [
+			/\b(settings?|configure|configuration|plugin|secret|api key|model provider|oauth|login|auth)\b/u,
+		],
+	},
+];
+
+export function inferContextRoutingFromText(
+	text: string | null | undefined,
+): ContextRoutingDecision {
+	const normalized = normalizeUserMessageText({
+		content: { text: text ?? "" },
+	} as Pick<Memory, "content">);
+	if (!normalized) {
+		return { primaryContext: "general", secondaryContexts: [] };
+	}
+
+	const scored = CONTEXT_SIGNALS.map((signal) => ({
+		context: signal.context,
+		score: signal.patterns.reduce(
+			(score, pattern) => score + (pattern.test(normalized) ? 1 : 0),
+			0,
+		),
+	}))
+		.filter((entry) => entry.score > 0)
+		.sort((left, right) => right.score - left.score);
+
+	if (scored.length === 0) {
+		return { primaryContext: "general", secondaryContexts: [] };
+	}
+
+	const primaryContext = scored[0].context;
+	const secondaryContexts = scored
+		.slice(1)
+		.filter((entry) => entry.score >= Math.max(1, scored[0].score - 1))
+		.map((entry) => entry.context);
+
+	return { primaryContext, secondaryContexts };
+}
+
+export function inferContextRoutingFromMessage(
+	message: Pick<Memory, "content">,
+): ContextRoutingDecision {
+	return inferContextRoutingFromText(
+		typeof message.content === "string"
+			? message.content
+			: typeof message.content?.text === "string"
+				? message.content.text
+				: "",
+	);
 }
 
 export function attachAvailableContexts(

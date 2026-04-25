@@ -977,65 +977,71 @@ export async function handleConversationRoutes(
             return;
           }
 
-          const storedSenderProfile = await resolveStoredDiscordEntityProfile(
-            runtime,
-            message.senderEntityId,
-          );
-          if (!message.from && storedSenderProfile?.displayName) {
-            message.from = storedSenderProfile.displayName;
-          }
-          if (!message.fromUserName && storedSenderProfile?.username) {
-            message.fromUserName = storedSenderProfile.username;
-          }
-          if (!message.avatarUrl && storedSenderProfile?.avatarUrl) {
-            message.avatarUrl = storedSenderProfile.avatarUrl;
-          }
-
-          const messageAuthorProfile =
-            message.rawDiscordChannelId && message.rawDiscordMessageId
-              ? await resolveDiscordMessageAuthorProfile(
-                  runtime,
-                  message.rawDiscordChannelId,
-                  message.rawDiscordMessageId,
-                )
-              : null;
-          if (!message.from && messageAuthorProfile?.displayName) {
-            message.from = messageAuthorProfile.displayName;
-          }
-          if (!message.fromUserName && messageAuthorProfile?.username) {
-            message.fromUserName = messageAuthorProfile.username;
-          }
-          if (!message.avatarUrl && messageAuthorProfile?.avatarUrl) {
-            message.avatarUrl = messageAuthorProfile.avatarUrl;
-          }
-
-          const rawSenderId =
-            message.rawSenderId ??
-            storedSenderProfile?.rawUserId ??
-            messageAuthorProfile?.rawUserId;
-          if (rawSenderId) {
-            const profile = await resolveDiscordUserProfile(
+          try {
+            const storedSenderProfile = await resolveStoredDiscordEntityProfile(
               runtime,
-              rawSenderId,
+              message.senderEntityId,
             );
-            if (profile) {
-              if (profile.displayName) {
-                message.from = profile.displayName;
-              }
-              if (profile.username) {
-                message.fromUserName = profile.username;
-              }
-              if (profile.avatarUrl) {
-                message.avatarUrl = profile.avatarUrl;
+            if (!message.from && storedSenderProfile?.displayName) {
+              message.from = storedSenderProfile.displayName;
+            }
+            if (!message.fromUserName && storedSenderProfile?.username) {
+              message.fromUserName = storedSenderProfile.username;
+            }
+            if (!message.avatarUrl && storedSenderProfile?.avatarUrl) {
+              message.avatarUrl = storedSenderProfile.avatarUrl;
+            }
+
+            const messageAuthorProfile =
+              message.rawDiscordChannelId && message.rawDiscordMessageId
+                ? await resolveDiscordMessageAuthorProfile(
+                    runtime,
+                    message.rawDiscordChannelId,
+                    message.rawDiscordMessageId,
+                  )
+                : null;
+            if (!message.from && messageAuthorProfile?.displayName) {
+              message.from = messageAuthorProfile.displayName;
+            }
+            if (!message.fromUserName && messageAuthorProfile?.username) {
+              message.fromUserName = messageAuthorProfile.username;
+            }
+            if (!message.avatarUrl && messageAuthorProfile?.avatarUrl) {
+              message.avatarUrl = messageAuthorProfile.avatarUrl;
+            }
+
+            const rawSenderId =
+              message.rawSenderId ??
+              storedSenderProfile?.rawUserId ??
+              messageAuthorProfile?.rawUserId;
+            if (rawSenderId) {
+              const profile = await resolveDiscordUserProfile(
+                runtime,
+                rawSenderId,
+              );
+              if (profile) {
+                if (profile.displayName) {
+                  message.from = profile.displayName;
+                }
+                if (profile.username) {
+                  message.fromUserName = profile.username;
+                }
+                if (profile.avatarUrl) {
+                  message.avatarUrl = profile.avatarUrl;
+                }
               }
             }
-          }
 
-          message.avatarUrl = await cacheDiscordAvatarForRuntime(
-            runtime,
-            message.avatarUrl,
-            rawSenderId,
-          );
+            message.avatarUrl = await cacheDiscordAvatarForRuntime(
+              runtime,
+              message.avatarUrl,
+              rawSenderId,
+            );
+          } catch (err) {
+            logger.debug(
+              `[conversations] Failed to enrich Discord message metadata: ${getErrorMessage(err)}`,
+            );
+          }
         }),
       );
       json(res, {

@@ -344,12 +344,6 @@ function formatMarketEndsAt(value: string | null): string | null {
   });
 }
 
-function formatMarketGeneratedAt(value: string): string | null {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) return null;
-  return formatRelativeTimestamp(timestamp);
-}
-
 function tradingProfileWindow(
   window: DashboardWindow,
 ): WalletTradingProfileWindow {
@@ -863,12 +857,6 @@ function MarketAvatar({
 }
 
 function MarketSourceBadge({ source }: { source: WalletMarketOverviewSource }) {
-  const statusLabel = source.available
-    ? source.stale
-      ? "Cached"
-      : "Live"
-    : "Unavailable";
-
   return (
     <a
       href={source.providerUrl}
@@ -876,21 +864,8 @@ function MarketSourceBadge({ source }: { source: WalletMarketOverviewSource }) {
       rel="noreferrer"
       className="transition-opacity hover:opacity-80"
     >
-      <span className="inline-flex items-center gap-2 rounded-full border border-border/35 bg-bg/45 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
-        <span className="normal-case tracking-normal text-txt">
-          {source.providerName}
-        </span>
-        <span
-          className={cn(
-            source.available
-              ? source.stale
-                ? "text-warn"
-                : "text-ok"
-              : "text-danger",
-          )}
-        >
-          {statusLabel}
-        </span>
+      <span className="inline-flex items-center rounded-full border border-border/35 bg-bg/45 px-2.5 py-1 text-[0.68rem] font-semibold text-txt">
+        {source.providerName}
       </span>
     </a>
   );
@@ -937,7 +912,7 @@ function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
   const isPositive = snapshot.change24hPct >= 0;
 
   return (
-    <div className="rounded-[26px] border border-border/30 bg-bg/40 p-4">
+    <div className="min-w-0 rounded-[26px] border border-border/30 bg-bg/40 p-4">
       <div className="flex items-center gap-3">
         <MarketAvatar imageUrl={snapshot.imageUrl} label={snapshot.symbol} />
         <div className="min-w-0">
@@ -949,13 +924,13 @@ function MajorPriceCard({ snapshot }: { snapshot: WalletMarketPriceSnapshot }) {
           </div>
         </div>
       </div>
-      <div className="mt-4 flex items-end justify-between gap-3">
-        <div className="font-mono text-xl font-semibold text-txt">
+      <div className="mt-4 flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+        <div className="min-w-0 font-mono text-lg font-semibold text-txt sm:text-xl">
           {formatMarketUsd(snapshot.priceUsd)}
         </div>
         <div
           className={cn(
-            "text-sm font-semibold",
+            "shrink-0 text-sm font-semibold",
             isPositive ? "text-ok" : "text-danger",
           )}
         >
@@ -982,7 +957,7 @@ function MarketPriceGrid({
   }
 
   return (
-    <div className="grid gap-3 md:grid-cols-3">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
       {prices.map((snapshot) => (
         <MajorPriceCard key={snapshot.id} snapshot={snapshot} />
       ))}
@@ -1120,10 +1095,6 @@ function MarketPulseHero({
   loading: boolean;
   error: string | null;
 }) {
-  const updatedAtLabel = overview
-    ? formatMarketGeneratedAt(overview.generatedAt)
-    : null;
-
   return (
     <section className="space-y-6">
       <div className="max-w-2xl">
@@ -1135,21 +1106,6 @@ function MarketPulseHero({
             ? "Here's the latest cached market snapshot."
             : "Here's what the market looks like right now."}
         </p>
-        {overview ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted">
-            <span
-              className={cn(
-                "rounded-full border px-2.5 py-1",
-                overview.stale
-                  ? "border-warn/30 bg-warn/10 text-warn"
-                  : "border-ok/30 bg-ok/10 text-ok",
-              )}
-            >
-              {overview.stale ? "Cached snapshot" : "Live feeds"}
-            </span>
-            {updatedAtLabel ? <span>Updated {updatedAtLabel}</span> : null}
-          </div>
-        ) : null}
       </div>
 
       {overview ? (
@@ -1193,7 +1149,7 @@ function MarketPulseHero({
           </div>
         </div>
       ) : loading ? (
-        <div className="mt-6 grid gap-3 md:grid-cols-3">
+        <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(min(100%,13.5rem),1fr))] gap-3">
           {["btc", "eth", "sol"].map((placeholderId) => (
             <div
               key={placeholderId}

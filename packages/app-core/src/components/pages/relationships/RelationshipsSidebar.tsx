@@ -1,42 +1,27 @@
 import {
-  Button,
-  MetaPill,
-  PagePanel,
   SidebarContent,
   SidebarHeader,
   SidebarPanel,
   SidebarScrollRegion,
 } from "@elizaos/ui";
+import { Crown, Fingerprint, Link2 } from "lucide-react";
 import type { RelationshipsGraphSnapshot } from "../../../api/client-types-relationships";
 import { AppPageSidebar } from "../../shared/AppPageSidebar";
-import {
-  RELATIONSHIPS_TOOLBAR_BUTTON_CLASS,
-  summarizeHandles,
-} from "./relationships-utils";
+import { summarizeHandles } from "./relationships-utils";
 
 export function RelationshipsSidebar({
   search,
-  platform,
-  platforms,
   graph,
-  graphLoading,
   selectedPersonId,
   onSearchChange,
   onSearchClear,
-  onPlatformChange,
-  onRefreshGraph,
   onSelectPersonId,
 }: {
   search: string;
-  platform: string;
-  platforms: string[];
   graph: RelationshipsGraphSnapshot | null;
-  graphLoading: boolean;
   selectedPersonId: string | null;
   onSearchChange: (value: string) => void;
   onSearchClear: () => void;
-  onPlatformChange: (platform: string) => void;
-  onRefreshGraph: () => void;
   onSelectPersonId: (personId: string) => void;
 }) {
   return (
@@ -55,76 +40,8 @@ export function RelationshipsSidebar({
         }}
       />
       <SidebarPanel>
-        <PagePanel.SummaryCard compact className="mt-2 space-y-3">
-          <div className="grid grid-cols-3 gap-2">
-            <div className="rounded-xl border border-border/24 bg-card/35 px-2.5 py-2">
-              <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                People
-              </div>
-              <div className="mt-1 text-sm font-semibold text-txt">
-                {graph?.stats.totalPeople ?? 0}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/24 bg-card/35 px-2.5 py-2">
-              <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                Links
-              </div>
-              <div className="mt-1 text-sm font-semibold text-txt">
-                {graph?.stats.totalRelationships ?? 0}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/24 bg-card/35 px-2.5 py-2">
-              <div className="text-2xs uppercase tracking-[0.12em] text-muted/70">
-                IDs
-              </div>
-              <div className="mt-1 text-sm font-semibold text-txt">
-                {graph?.stats.totalIdentities ?? 0}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-              Platform filter
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className={`${RELATIONSHIPS_TOOLBAR_BUTTON_CLASS} ${platform === "all" ? "border-accent/40 bg-accent/14 text-txt" : ""}`}
-                onClick={() => onPlatformChange("all")}
-              >
-                All
-              </Button>
-              {platforms.map((entry) => (
-                <Button
-                  key={entry}
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className={`${RELATIONSHIPS_TOOLBAR_BUTTON_CLASS} ${platform === entry ? "border-accent/40 bg-accent/14 text-txt" : ""}`}
-                  onClick={() => onPlatformChange(entry)}
-                >
-                  {entry}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className={RELATIONSHIPS_TOOLBAR_BUTTON_CLASS}
-            onClick={onRefreshGraph}
-          >
-            {graphLoading ? "Refreshing…" : "Refresh graph"}
-          </Button>
-        </PagePanel.SummaryCard>
-
-        <SidebarContent.SectionLabel className="mt-3">
-          People
+        <SidebarContent.SectionLabel className="mt-2">
+          People {graph ? `(${graph.people.length})` : ""}
         </SidebarContent.SectionLabel>
         <SidebarScrollRegion className="mt-2">
           <div className="space-y-1.5">
@@ -141,18 +58,32 @@ export function RelationshipsSidebar({
                     {person.displayName.charAt(0).toUpperCase()}
                   </SidebarContent.ItemIcon>
                   <span className="min-w-0 flex-1 text-left">
-                    <SidebarContent.ItemTitle>
-                      {person.displayName}
-                    </SidebarContent.ItemTitle>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <SidebarContent.ItemTitle>
+                        {person.displayName}
+                      </SidebarContent.ItemTitle>
+                      {person.isOwner ? (
+                        <Crown className="h-3.5 w-3.5 shrink-0 text-accent" />
+                      ) : null}
+                    </span>
                     <SidebarContent.ItemDescription>
                       {person.isOwner
-                        ? `Owner · ${summarizeHandles(person) || person.platforms.join(" • ") || "Canonical profile"}`
+                        ? `Owner · ${summarizeHandles(person) || person.platforms.join(" • ") || "Primary profile"}`
                         : summarizeHandles(person) ||
                           person.platforms.join(" • ") ||
-                          "No handles yet"}
+                          "No linked handles"}
                     </SidebarContent.ItemDescription>
                   </span>
-                  <MetaPill compact>{person.memberEntityIds.length}</MetaPill>
+                  <span className="flex shrink-0 flex-col items-end gap-1 text-2xs font-semibold text-muted">
+                    <span className="inline-flex items-center gap-1">
+                      <Fingerprint className="h-3 w-3 text-accent" />
+                      {person.memberEntityIds.length}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <Link2 className="h-3 w-3 text-muted" />
+                      {person.relationshipCount}
+                    </span>
+                  </span>
                 </SidebarContent.Item>
               );
             })}

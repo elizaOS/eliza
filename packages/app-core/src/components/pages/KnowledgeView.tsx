@@ -21,7 +21,11 @@ import {
   maybeCompressKnowledgeUploadImage,
 } from "../../utils/knowledge-upload-image";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
-import { DocumentViewer } from "./knowledge-detail";
+import {
+  DocumentViewer,
+  getKnowledgeDocumentSummary,
+  getKnowledgeTypeLabel,
+} from "./knowledge-detail";
 import {
   BULK_UPLOAD_TARGET_BYTES,
   getKnowledgeUploadFilename,
@@ -132,8 +136,26 @@ function DocumentListItem({
             {doc.filename}
           </div>
           <div className="mt-1 truncate text-xs text-muted">
-            {doc.provenance.label}
-            {doc.canEditText ? " • editable" : ""}
+            {getKnowledgeDocumentSummary(doc, t)}
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-2xs text-muted/70">
+            <span>{getKnowledgeTypeLabel(doc.contentType)}</span>
+            {doc.canEditText ? (
+              <>
+                <span>•</span>
+                <span>
+                  {t("knowledgeview.Editable", { defaultValue: "editable" })}
+                </span>
+              </>
+            ) : null}
+            {!doc.canDelete ? (
+              <>
+                <span>•</span>
+                <span>
+                  {t("knowledgeview.Locked", { defaultValue: "locked" })}
+                </span>
+              </>
+            ) : null}
           </div>
         </div>
       </button>
@@ -204,7 +226,8 @@ export function KnowledgeView({
     },
     [onSelectedDocumentIdChange, selectedDocumentId],
   );
-  const shouldShowSelectorRail = showSelectorRail ?? !embedded;
+  const shouldRenderSelectorRail = showSelectorRail !== false || embedded;
+  const useCompactSelectorRail = embedded;
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -850,10 +873,16 @@ export function KnowledgeView({
   );
 
   const selectorRail = (
-    <div className="order-1 flex w-full shrink-0 flex-col gap-3 lg:order-2 lg:w-[22rem] xl:w-[24rem]">
+    <div
+      className={`order-1 flex w-full shrink-0 flex-col gap-3 lg:order-2 ${
+        useCompactSelectorRail
+          ? "lg:w-[18.5rem] xl:w-[20rem]"
+          : "lg:w-[22rem] xl:w-[24rem]"
+      }`}
+    >
       <PagePanel
         variant="inset"
-        className="p-3 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+        className={`${useCompactSelectorRail ? "p-2" : "p-3"} !rounded-none !border-0 !bg-transparent !shadow-none !ring-0`}
       >
         <UploadZone
           fileInputId={fileInputId}
@@ -866,8 +895,29 @@ export function KnowledgeView({
 
       <PagePanel
         variant="inset"
-        className="flex min-h-[18rem] flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
+        className={`flex flex-1 flex-col overflow-hidden p-2.5 !rounded-none !border-0 !bg-transparent !shadow-none !ring-0 ${
+          useCompactSelectorRail ? "min-h-[14rem]" : "min-h-[18rem]"
+        }`}
       >
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <div className="min-w-0 text-xs font-semibold uppercase tracking-[0.12em] text-muted/70">
+            {isShowingSearchResults
+              ? t("knowledgeview.SearchResults", {
+                  defaultValue: "Search results",
+                })
+              : t("knowledgeview.Documents", { defaultValue: "Documents" })}
+          </div>
+          <div className="shrink-0 text-2xs text-muted">
+            {documents.length === 1
+              ? t("knowledgeview.DocumentCountOne", {
+                  defaultValue: "1 doc",
+                })
+              : t("knowledgeview.DocumentCountMany", {
+                  defaultValue: "{{count}} docs",
+                  count: documents.length,
+                })}
+          </div>
+        </div>
         {searchInput}
 
         <div className="custom-scrollbar mt-2 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto px-0.5 py-0.5">
@@ -948,7 +998,7 @@ export function KnowledgeView({
       className={`flex flex-1 min-h-0 flex-col gap-4 ${inModal ? "min-h-0" : ""}`}
       data-testid="knowledge-view"
     >
-      {!shouldShowSelectorRail && fileInputId ? (
+      {!shouldRenderSelectorRail && fileInputId ? (
         <input
           id={fileInputId}
           type="file"
@@ -989,7 +1039,7 @@ export function KnowledgeView({
 
       <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
         {documentContent}
-        {shouldShowSelectorRail ? selectorRail : null}
+        {shouldRenderSelectorRail ? selectorRail : null}
       </div>
     </div>
   );
