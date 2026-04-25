@@ -131,7 +131,8 @@ export async function tryHandleRuntimePluginRoute(options: {
   for (const route of runtime.routes as Route[]) {
     if (route.type === "STATIC") continue;
     if (route.type !== method) continue;
-    if (!route.handler) continue;
+    const handler = route.handler;
+    if (!handler) continue;
 
     const params = matchPluginRoutePath(route.path, pathname);
     if (params === null) continue;
@@ -151,7 +152,7 @@ export async function tryHandleRuntimePluginRoute(options: {
     const effectiveHandler =
       route.x402 != null && !isRoutePaymentWrapped(route)
         ? createPaymentAwareHandler(route as PaymentEnabledRoute)
-        : route.handler;
+        : handler;
 
     try {
       await effectiveHandler(req as never, res as never, runtime);

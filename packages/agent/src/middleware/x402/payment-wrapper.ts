@@ -1351,7 +1351,7 @@ async function verifyEip712Authorization(
  */
 export function createPaymentAwareHandler(
   route: PaymentEnabledRoute,
-): Route["handler"] {
+): NonNullable<Route["handler"]> {
   const originalHandler = route.handler;
 
   return async (
