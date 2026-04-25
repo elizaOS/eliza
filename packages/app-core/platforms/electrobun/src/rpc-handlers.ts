@@ -53,6 +53,14 @@ import {
 import { isDetachedSurface } from "./surface-windows";
 import type { SendToWebview } from "./types.js";
 
+function normalizeRendererRoutePath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
+    throw new Error("desktopOpenAppWindow path must be a renderer route.");
+  }
+  return trimmed;
+}
+
 /** Push current OS permission states to the agent REST API in-process. */
 async function syncPermissionsToRestApi(
   portOverride?: number | null,
@@ -382,15 +390,33 @@ export function registerRpcHandlers(
         | "connectors"
         | "cloud";
       browse?: string;
+      alwaysOnTop?: boolean;
     }) => {
       if (!isDetachedSurface(params.surface)) {
-        return;
+        return null;
       }
-      desktop.openSurfaceWindow(
+      return desktop.openSurfaceWindow(
         params.surface,
         params.surface === "browser" ? params.browse : undefined,
+        params.alwaysOnTop === true,
       );
     },
+    desktopOpenAppWindow: async (params: {
+      title: string;
+      path: string;
+      alwaysOnTop?: boolean;
+    }) =>
+      desktop.openAppWindow({
+        title: params.title.trim() || getBrandConfig().appName,
+        path: normalizeRendererRoutePath(params.path),
+        alwaysOnTop: params.alwaysOnTop === true,
+      }),
+    desktopSetManagedWindowAlwaysOnTop: async (params: {
+      id: string;
+      flag: boolean;
+    }) => ({
+      success: desktop.setManagedWindowAlwaysOnTop(params.id, params.flag),
+    }),
 
     // ---- Browser Workspace ----
     browserWorkspaceGetSnapshot: async () => ({
@@ -677,6 +703,9 @@ export function registerRpcHandlers(
       canvas.getBounds(params),
     canvasSetBounds: async (params: Parameters<typeof canvas.setBounds>[0]) =>
       canvas.setBounds(params),
+    canvasSetAlwaysOnTop: async (
+      params: Parameters<typeof canvas.setAlwaysOnTop>[0],
+    ) => canvas.setAlwaysOnTop(params),
     canvasListWindows: async () => canvas.listWindows(),
 
     // ---- Game ----

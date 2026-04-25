@@ -4,6 +4,10 @@
 
 import type React from "react";
 import { useEffect } from "react";
+import {
+  getWindowNavigationPath,
+  shouldUseHashNavigation,
+} from "../../navigation";
 import { useApp } from "../../state";
 import { GameView } from "../apps/GameView";
 import { getAppSlug } from "../apps/helpers";
@@ -33,13 +37,10 @@ export function AppsPageView({
     if (appsSubTab !== "games" || !activeGameRun) return;
     const slug = getAppSlug(activeGameRun.appName);
     try {
-      const currentPath =
-        window.location.protocol === "file:"
-          ? window.location.hash.replace(/^#/, "") || "/"
-          : window.location.pathname;
+      const currentPath = getWindowNavigationPath();
       const expected = `/apps/${slug}`;
       if (currentPath !== expected) {
-        if (window.location.protocol === "file:") {
+        if (shouldUseHashNavigation()) {
           window.location.hash = expected;
         } else {
           window.history.replaceState(null, "", expected);
