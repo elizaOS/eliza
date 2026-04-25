@@ -65,12 +65,7 @@ import {
 import type { Content, Media, MentionContext, UUID } from "../types/primitives";
 import { asUUID, ChannelType, ContentType } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
-import type {
-	ProviderCacheEntry,
-	State,
-	StateValue,
-	StructuredOutputFailure,
-} from "../types/state";
+import type { ProviderCacheEntry, State, StateValue } from "../types/state";
 import {
 	composePromptFromState,
 	getLocalServerUrl,
@@ -2722,66 +2717,6 @@ function withTaskCompletion(
 			taskCompletion,
 		},
 	};
-}
-
-function getStructuredOutputFailure(
-	state: State,
-): StructuredOutputFailure | null {
-	const candidate = state.data?.structuredOutputFailure;
-	if (!candidate || typeof candidate !== "object") {
-		return null;
-	}
-
-	return candidate as StructuredOutputFailure;
-}
-
-function summarizeStructuredOutputFailure(
-	failure: StructuredOutputFailure | null,
-): string {
-	if (!failure) {
-		return "Structured output parsing failed, but no additional diagnostics were recorded.";
-	}
-
-	const parts = [
-		`Kind: ${failure.kind}`,
-		`Model: ${failure.model}`,
-		`Format: ${failure.format}`,
-		`Attempts: ${failure.attempts}/${failure.maxRetries + 1}`,
-	];
-
-	if (failure.key) {
-		parts.push(`Key: ${failure.key}`);
-	}
-	if (failure.parseError) {
-		parts.push(`Error: ${failure.parseError}`);
-	}
-	if (failure.issues && failure.issues.length > 0) {
-		parts.push(`Issues: ${failure.issues.join(" | ")}`);
-	}
-	if (failure.responsePreview) {
-		parts.push(`Response Preview:\n${failure.responsePreview}`);
-	}
-
-	return parts.join("\n");
-}
-
-function summarizeActionResultsForUser(actionResults: ActionResult[]): string {
-	if (actionResults.length === 0) {
-		return "";
-	}
-
-	const summary = actionResults
-		.slice(-3)
-		.map((result) => {
-			const actionName =
-				typeof result.data?.actionName === "string"
-					? result.data.actionName
-					: "unknown action";
-			return `${actionName} (${result.success === false ? "failed" : "succeeded"})`;
-		})
-		.join(", ");
-
-	return `Completed action state before the error: ${summary}.`;
 }
 
 type ContextRoutingStateValues = {
