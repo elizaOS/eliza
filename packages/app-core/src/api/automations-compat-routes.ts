@@ -395,9 +395,7 @@ function buildWorkflowItem(
       : (workflow?.active ?? fallback.trigger?.enabled ?? false);
   const description =
     workflow?.description?.trim() ||
-    (fallback.trigger
-      ? `Scheduled workflow automation for ${title}.`
-      : "");
+    (fallback.trigger ? `Scheduled workflow automation for ${title}.` : "");
 
   return {
     id: `workflow:${fallback.workflowId}`,

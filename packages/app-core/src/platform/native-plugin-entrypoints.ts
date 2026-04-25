@@ -1,3 +1,5 @@
+/// <reference path="./capacitor-plugin-modules.d.ts" />
+
 import "@elizaos/capacitor-camera";
 import "@elizaos/capacitor-canvas";
 import "@elizaos/capacitor-contacts";

@@ -35,10 +35,7 @@ const _require = createRequire(import.meta.url);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
-const nativePluginsRoot = path.join(
-  elizaRoot,
-  "packages/native-plugins",
-);
+const nativePluginsRoot = path.join(elizaRoot, "packages/native-plugins");
 const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
 const appCoreNativePluginEntrypoints = path.join(
   appCoreSrcRoot,
@@ -1210,10 +1207,7 @@ function watchWorkspacePackagesPlugin(): Plugin {
  * middleware; in build the files are copied into the output.
  */
 function companionAssetsPlugin(): Plugin {
-  const companionPublic = path.resolve(
-    elizaRoot,
-    "apps/app-companion/public",
-  );
+  const companionPublic = path.resolve(elizaRoot, "apps/app-companion/public");
   return {
     name: "companion-assets",
     configureServer(server) {
@@ -1529,10 +1523,7 @@ export default defineConfig({
           }
         }
 
-        const uiSource = path.resolve(
-          elizaRoot,
-          "packages/app-core/src/ui",
-        );
+        const uiSource = path.resolve(elizaRoot, "packages/app-core/src/ui");
 
         return [
           ...generatedAliases,
@@ -1569,10 +1560,7 @@ export default defineConfig({
           // resolve sub-paths directly from the local agent source tree.
           {
             find: /^@elizaos\/agent\/(.+)$/,
-            replacement: path.resolve(
-              elizaRoot,
-              "packages/agent/src/$1",
-            ),
+            replacement: path.resolve(elizaRoot, "packages/agent/src/$1"),
           },
           // @elizaos/core — force ALL copies (including nested ones in plugins
           // like plugin-secrets-manager that ship their own older core) to the

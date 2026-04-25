@@ -123,9 +123,10 @@ describe("extractPlannerActionNames — tolerant of malformed action XML", () =>
 
 	it("treats unmatched non-action text as a literal identifier", () => {
 		// Plain comma-separated list still works
-		expect(
-			extractPlannerActionNames({ actions: "REPLY,STOP" }),
-		).toEqual(["REPLY", "STOP"]);
+		expect(extractPlannerActionNames({ actions: "REPLY,STOP" })).toEqual([
+			"REPLY",
+			"STOP",
+		]);
 	});
 
 	it("handles multiple well-formed action blocks", () => {
