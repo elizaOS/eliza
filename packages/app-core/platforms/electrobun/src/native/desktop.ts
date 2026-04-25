@@ -38,11 +38,13 @@ import Electrobun, {
   Updater,
   Utils,
 } from "electrobun/bun";
+import { getBrandConfig } from "../brand-config";
 import type {
   ClipboardReadResult,
   ClipboardWriteOptions,
   CursorPosition,
   DesktopBuildInfo,
+  DesktopManagedWindowSnapshot,
   DesktopReleaseNotesWindowInfo,
   DesktopSessionSnapshot,
   DesktopSessionStorageType,
@@ -61,7 +63,6 @@ import type {
   WindowBounds,
   WindowOptions,
 } from "../rpc-schema";
-import { getBrandConfig } from "../brand-config";
 import type { SendToWebview } from "../types.js";
 import {
   createBugReportBundle,
@@ -209,7 +210,7 @@ async function readLinuxLockedHint(): Promise<boolean | null> {
 
 const WINDOWS_IDLE_POWERSHELL_SCRIPT = [
   "Add-Type -Namespace W -Name U32 -MemberDefinition @'",
-  "  [DllImport(\"user32.dll\")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);",
+  '  [DllImport("user32.dll")] public static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);',
   "  [StructLayout(LayoutKind.Sequential)] public struct LASTINPUTINFO {",
   "    public uint cbSize; public uint dwTime;",
   "  }",
@@ -258,7 +259,20 @@ export class DesktopManager {
           | "connectors"
           | "cloud",
         browse?: string,
-      ) => void)
+        alwaysOnTop?: boolean,
+      ) => Promise<DesktopManagedWindowSnapshot> | DesktopManagedWindowSnapshot)
+    | null = null;
+  private openAppWindowCallback:
+    | ((options: {
+        title: string;
+        path: string;
+        alwaysOnTop?: boolean;
+      }) =>
+        | Promise<DesktopManagedWindowSnapshot>
+        | DesktopManagedWindowSnapshot)
+    | null = null;
+  private managedWindowAlwaysOnTopCallback:
+    | ((id: string, flag: boolean) => boolean)
     | null = null;
   private openExternalHandler:
     | ((url: string) => boolean | Promise<boolean>)
@@ -337,9 +351,30 @@ export class DesktopManager {
         | "connectors"
         | "cloud",
       browse?: string,
-    ) => void,
+      alwaysOnTop?: boolean,
+    ) => Promise<DesktopManagedWindowSnapshot> | DesktopManagedWindowSnapshot,
   ): void {
     this.openSurfaceWindowCallback = cb;
+  }
+
+  setOpenAppWindowCallback(
+    cb:
+      | ((options: {
+          title: string;
+          path: string;
+          alwaysOnTop?: boolean;
+        }) =>
+          | Promise<DesktopManagedWindowSnapshot>
+          | DesktopManagedWindowSnapshot)
+      | null,
+  ): void {
+    this.openAppWindowCallback = cb;
+  }
+
+  setManagedWindowAlwaysOnTopCallback(
+    cb: ((id: string, flag: boolean) => boolean) | null,
+  ): void {
+    this.managedWindowAlwaysOnTopCallback = cb;
   }
 
   /**
@@ -386,8 +421,23 @@ export class DesktopManager {
       | "connectors"
       | "cloud",
     browse?: string,
-  ): void {
-    this.openSurfaceWindowCallback?.(surface, browse);
+    alwaysOnTop?: boolean,
+  ): Promise<DesktopManagedWindowSnapshot | null> {
+    return Promise.resolve(
+      this.openSurfaceWindowCallback?.(surface, browse, alwaysOnTop) ?? null,
+    );
+  }
+
+  async openAppWindow(options: {
+    title: string;
+    path: string;
+    alwaysOnTop?: boolean;
+  }): Promise<DesktopManagedWindowSnapshot | null> {
+    return this.openAppWindowCallback?.(options) ?? null;
+  }
+
+  setManagedWindowAlwaysOnTop(id: string, flag: boolean): boolean {
+    return this.managedWindowAlwaysOnTopCallback?.(id, flag) ?? false;
   }
 
   private getWindow(): BrowserWindow | null {
@@ -1461,7 +1511,10 @@ X-GNOME-Autostart-enabled=true
       const result = await Updater.checkForUpdate();
       if (result?.updateAvailable) {
         void this.downloadUpdateWithRetry().catch((error: unknown) => {
-          console.warn("[Desktop] Update download failed after retries:", error);
+          console.warn(
+            "[Desktop] Update download failed after retries:",
+            error,
+          );
         });
       }
       return await this.getUpdaterState();
@@ -2063,8 +2116,7 @@ X-GNOME-Autostart-enabled=true
       return {
         appBundlePath: null,
         canAutoUpdate: false,
-        autoUpdateDisabledReason:
-          `${getBrandConfig().appName} must run from an installed .app bundle to enable in-place updates.`,
+        autoUpdateDisabledReason: `${getBrandConfig().appName} must run from an installed .app bundle to enable in-place updates.`,
       };
     }
 

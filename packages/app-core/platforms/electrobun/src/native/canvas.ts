@@ -86,6 +86,9 @@ export class CanvasManager {
       // @ts-expect-error — partition is a valid Electrobun option not yet typed
       partition: "canvas-isolated",
     });
+    if (options.alwaysOnTop === true) {
+      win.setAlwaysOnTop(true);
+    }
 
     const canvas: CanvasWindow = {
       id,
@@ -354,6 +357,16 @@ $bmp.Dispose()`;
     win.setSize(options.width, options.height);
   }
 
+  async setAlwaysOnTop(options: {
+    id: string;
+    flag: boolean;
+  }): Promise<{ success: boolean }> {
+    const canvas = this.windows.get(options.id);
+    if (!canvas) return { success: false };
+    canvas.window.setAlwaysOnTop(options.flag);
+    return { success: true };
+  }
+
   /**
    * Opens a game client URL in a dedicated isolated BrowserWindow.
    *
@@ -371,6 +384,7 @@ $bmp.Dispose()`;
   async openGameWindow(options: {
     url: string;
     title?: string;
+    alwaysOnTop?: boolean;
   }): Promise<{ id: string }> {
     // Validate protocol before passing the URL to the native layer.
     // file: would grant access to local filesystem; javascript:/data: could inject code.
@@ -419,6 +433,9 @@ $bmp.Dispose()`;
       ...(useNativeRenderer ? { renderer: "native" as const } : {}),
       // No navigationRules restriction — game sites navigate externally.
     });
+    if (options.alwaysOnTop === true) {
+      win.setAlwaysOnTop(true);
+    }
 
     const canvas: CanvasWindow = {
       id,
@@ -458,6 +475,7 @@ $bmp.Dispose()`;
         url: canvas.url,
         bounds: { x: pos.x, y: pos.y, width: size.width, height: size.height },
         title: canvas.title,
+        alwaysOnTop: canvas.window.isAlwaysOnTop(),
       });
     }
     return { windows: result };
