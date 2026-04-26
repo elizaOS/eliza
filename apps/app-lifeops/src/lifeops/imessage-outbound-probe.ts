@@ -1,7 +1,7 @@
 import {
   DEFAULT_CHAT_DB_PATH,
   openChatDb,
-} from "../../../../plugins/plugin-imessage/typescript/src/index.js";
+} from "@elizaos/plugin-imessage";
 import {
   createLifeOpsActivitySignal,
   type LifeOpsRepository,
