@@ -63,17 +63,20 @@ describe("lifeAction.validate — scope gating", () => {
     expect(result).toBe(false);
   });
 
-  // `page-settings` is omitted deliberately — it is absent from the server-side
-  // `VALID_SCOPES` allowlist in `@elizaos/agent/api/conversation-metadata`, so
-  // the server sanitizes the scope out of room metadata before it reaches any
-  // action `validate()`. LIFE cannot reject a scope the server has already
-  // dropped; that inconsistency is a separate cleanup (parking-lot item in the
-  // workflows-automations plan).
+  // Cover every page-* scope in the server-side `VALID_SCOPES` allowlist
+  // (`@elizaos/agent/api/conversation-metadata`) other than `page-lifeops`
+  // itself. `isForeignPageScope` must reject all of these so the planner
+  // sees a clean candidate set on each non-LifeOps surface.
+  // (`page-automations` has its own explicit test above with the same
+  // assertion shape; not duplicated here.)
   it.each([
-    "page-browser",
     "page-apps",
+    "page-browser",
     "page-character",
+    "page-connectors",
     "page-phone",
+    "page-plugins",
+    "page-settings",
     "page-wallet",
   ])("rejects on foreign page scope %s", async (scope) => {
     const { runtime } = buildRuntime(scope);
