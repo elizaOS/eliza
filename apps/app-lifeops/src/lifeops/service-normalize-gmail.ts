@@ -908,7 +908,6 @@ function gmailPolicySignalsForMessage(
 
 function buildGmailRecommendationContextReadiness(args: {
   kind: LifeOpsGmailRecommendation["kind"];
-  operation: LifeOpsGmailRecommendation["operation"];
   messages: LifeOpsGmailMessageSummary[];
 }): GmailRecommendationContextReadiness {
   const bodyAvailableCount = args.messages.filter(
@@ -954,7 +953,6 @@ function buildGmailRecommendationContextReadiness(args: {
       requiresBodyReadBeforeDraft && replyHeaderAvailableCount === 0
         ? "reply_headers"
         : null,
-      args.operation === null ? "executable_bulk_operation" : null,
     ]),
   };
 }
@@ -1008,7 +1006,6 @@ function buildRecommendation(args: {
     },
     contextReadiness: buildGmailRecommendationContextReadiness({
       kind: args.kind,
-      operation: args.operation,
       messages: args.messages,
     }),
   };
