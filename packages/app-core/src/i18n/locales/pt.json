@@ -2499,6 +2499,7 @@
   "settings.appearance.load": "Carregar",
   "settings.appearance.loadFromFolder": "Carregar da pasta",
   "settings.appearance.loadedPacks": "Pacotes de conteúdo carregados",
+  "settings.appearance.companionPerformance": "Desempenho do companheiro",
   "settings.appearance.mode": "Mode",
   "settings.appearance.packUrlPlaceholder": "https://example.com/packs/my-pack/",
   "settings.appearance.theme": "Tema",

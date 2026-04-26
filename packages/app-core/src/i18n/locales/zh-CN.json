@@ -2499,6 +2499,7 @@
   "settings.appearance.load": "加载",
   "settings.appearance.loadFromFolder": "从文件夹加载",
   "settings.appearance.loadedPacks": "已加载的内容包",
+  "settings.appearance.companionPerformance": "同伴性能",
   "settings.appearance.mode": "Mode",
   "settings.appearance.packUrlPlaceholder": "https://example.com/packs/my-pack/",
   "settings.appearance.theme": "主题",
