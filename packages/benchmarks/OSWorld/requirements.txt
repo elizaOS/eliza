@@ -71,4 +71,4 @@ alibabacloud_tea_util
 json_minify
 json_repair
 volcengine-python-sdk[ark]
-ui-tars>=0.4.2.2
+ui-tars>=0.5.1
