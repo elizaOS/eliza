@@ -8,7 +8,7 @@
  * or eslint install in the verification target.
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -32,8 +32,12 @@ function writePackage(
 	);
 }
 
+let shimCounter = 0;
 function makeNodeShim(dir: string, exitCode: number, stdout: string): string {
-	const file = path.join(dir, "shim.mjs");
+	// Each shim gets a unique filename so multiple shims can coexist in the
+	// same workdir (e.g. distinct typecheck vs lint scripts).
+	shimCounter += 1;
+	const file = path.join(dir, `shim-${shimCounter}.mjs`);
 	writeFileSync(
 		file,
 		[
