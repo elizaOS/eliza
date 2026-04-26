@@ -402,11 +402,16 @@ export function registerRpcHandlers(
       );
     },
     desktopOpenAppWindow: async (params: {
+      slug?: string;
       title: string;
       path: string;
       alwaysOnTop?: boolean;
     }) =>
       desktop.openAppWindow({
+        slug:
+          typeof params.slug === "string" && params.slug.length > 0
+            ? params.slug
+            : undefined,
         title: params.title.trim() || getBrandConfig().appName,
         path: normalizeRendererRoutePath(params.path),
         alwaysOnTop: params.alwaysOnTop === true,
