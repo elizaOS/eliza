@@ -6,7 +6,7 @@
  * `subaction` parameter. Routes to the existing handlers in website-blocker.ts.
  */
 
-import { extractActionParamsViaLlm } from "@elizaos/agent";
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionExample,

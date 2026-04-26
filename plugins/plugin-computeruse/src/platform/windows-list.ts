@@ -444,6 +444,26 @@ export function getScreenSize(): ScreenSize {
   if (os === "darwin") {
     try {
       const output = execSync(
+        `osascript -l JavaScript -e 'ObjC.import("CoreGraphics"); const bounds = $.CGDisplayBounds($.CGMainDisplayID()); String(Math.round(bounds.size.width)) + "," + String(Math.round(bounds.size.height));'`,
+        { encoding: "utf-8", timeout: 3000 },
+      );
+      const [width, height] = output
+        .trim()
+        .split(",")
+        .map((part) => Number.parseInt(part.trim(), 10));
+      if (
+        Number.isFinite(width) &&
+        Number.isFinite(height) &&
+        width > 0 &&
+        height > 0
+      ) {
+        return { width, height };
+      }
+    } catch {
+      /* fallback */
+    }
+    try {
+      const output = execSync(
         `osascript -e 'tell application "Finder" to get bounds of window of desktop'`,
         { encoding: "utf-8", timeout: 5000 },
       );

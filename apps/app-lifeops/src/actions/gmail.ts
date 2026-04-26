@@ -1,21 +1,12 @@
+import { hasContextSignalForKey } from "@elizaos/agent/actions/context-signal";
 import {
   extractActionResultsFromState,
   extractRecentMessageEntriesFromState,
   extractStateDataRecords,
-  hasContextSignalForKey,
   renderGroundedActionReply,
   summarizeActiveTrajectory,
   summarizeRecentActionHistory,
-} from "@elizaos/agent";
-import type {
-  CreateLifeOpsGmailBatchReplyDraftsRequest,
-  CreateLifeOpsGmailReplyDraftRequest,
-  LifeOpsGmailBatchReplySendItem,
-  LifeOpsGmailBulkOperation,
-  ManageLifeOpsGmailMessagesRequest,
-  SendLifeOpsGmailBatchReplyRequest,
-  SendLifeOpsGmailReplyRequest,
-} from "../contracts/index.js";
+} from "@elizaos/agent/actions/grounded-action-reply";
 import type {
   Action,
   ActionExample,
@@ -31,6 +22,15 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
+import type {
+  CreateLifeOpsGmailBatchReplyDraftsRequest,
+  CreateLifeOpsGmailReplyDraftRequest,
+  LifeOpsGmailBatchReplySendItem,
+  LifeOpsGmailBulkOperation,
+  ManageLifeOpsGmailMessagesRequest,
+  SendLifeOpsGmailBatchReplyRequest,
+  SendLifeOpsGmailReplyRequest,
+} from "../contracts/index.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
@@ -481,7 +481,12 @@ function normalizeQueryStringArray(value: unknown): string[] | undefined {
     );
   }
   if (typeof value === "string") {
-    return dedupeQueries(value.slice(0, 10_000).split(/\s{0,256}\|\|\s{0,256}/).map((item) => item.trim()));
+    return dedupeQueries(
+      value
+        .slice(0, 10_000)
+        .split(/\s{0,256}\|\|\s{0,256}/)
+        .map((item) => item.trim()),
+    );
   }
   return undefined;
 }

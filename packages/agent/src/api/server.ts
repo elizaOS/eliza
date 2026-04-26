@@ -30,13 +30,15 @@ import { DropService } from "@elizaos/app-elizamaker/drop-service";
 import { setElizaMakerDropService } from "@elizaos/app-elizamaker/drop-service-registry";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge";
 import {
-  ensurePrivyWalletsForCustomUser,
-  isPrivyWalletProvisioningEnabled,
   normalizeJsonRpcUrl,
   probeJsonRpcEndpoint,
   TxService,
-} from "@elizaos/app-steward";
-import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator";
+} from "@elizaos/app-steward/api/tx-service";
+import {
+  ensurePrivyWalletsForCustomUser,
+  isPrivyWalletProvisioningEnabled,
+} from "@elizaos/app-steward/services/privy-wallets";
+import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {

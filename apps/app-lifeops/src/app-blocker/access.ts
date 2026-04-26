@@ -1,5 +1,5 @@
-import { logger, type IAgentRuntime, type Memory } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
 import { checkSenderRole } from "../website-blocker/roles.ts";
 
 export const APP_BLOCKER_ACCESS_ERROR =

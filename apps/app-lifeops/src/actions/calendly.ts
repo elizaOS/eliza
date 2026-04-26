@@ -1,23 +1,24 @@
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import {
-  logger,
   type Action,
   type ActionExample,
   type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
 } from "@elizaos/core";
-import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
 import {
+  type CalendlyAvailability,
   CalendlyError,
+  type CalendlyEventType,
+  type CalendlyScheduledEvent,
   createCalendlySingleUseLink,
   getCalendlyAvailability,
   listCalendlyEventTypes,
   listCalendlyScheduledEvents,
   readCalendlyCredentialsFromEnv,
-  type CalendlyAvailability,
-  type CalendlyEventType,
-  type CalendlyScheduledEvent,
 } from "../lifeops/calendly-client.js";
 
 const ACTION_NAME = "CALENDLY";
@@ -103,10 +104,7 @@ function failure(
   };
 }
 
-function success(
-  text: string,
-  data: Record<string, unknown>,
-): ActionResult {
+function success(text: string, data: Record<string, unknown>): ActionResult {
   return {
     text,
     success: true,
@@ -217,7 +215,9 @@ export const calendlyAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Generate a one-time Calendly link for my intro call" },
+        content: {
+          text: "Generate a one-time Calendly link for my intro call",
+        },
       },
       {
         name: "{{agentName}}",
@@ -250,7 +250,8 @@ export const calendlyAction: Action = {
     }
 
     const rawParameters = (options as HandlerOptions | undefined)?.parameters;
-    const rawParams = ((typeof rawParameters === "object" && rawParameters !== null
+    const rawParams = ((typeof rawParameters === "object" &&
+    rawParameters !== null
       ? (rawParameters as CalendlyParameters)
       : {}) ?? {}) as CalendlyParameters;
     const params = (await extractActionParamsViaLlm<CalendlyParameters>({

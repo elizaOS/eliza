@@ -54,8 +54,8 @@ import {
   PhoneCompanionApp,
   resolveWindowShellRoute,
   SHARE_TARGET_EVENT,
-  setBootConfig,
   type ShareTargetPayload,
+  setBootConfig,
   shouldInstallMainWindowOnboardingPatches,
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
@@ -79,14 +79,14 @@ import "@elizaos/app-scape/ui";
 import "@elizaos/app-hyperscape/ui";
 import "@elizaos/app-2004scape/ui";
 import "@elizaos/app-defense-of-the-agents/ui";
+import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops";
 import {
   AppBlockerSettingsCard,
-  dispatchQueuedLifeOpsGithubCallbackFromUrl,
-  LifeOpsActivitySignalsEffect,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
+  LifeOpsActivitySignalsEffect,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
-} from "@elizaos/app-lifeops";
+} from "@elizaos/app-lifeops/ui";
 import {
   ApprovalQueue,
   StewardLogo,
@@ -98,7 +98,7 @@ import {
   CodingAgentTasksPanel,
   PtyConsoleDrawer,
 } from "@elizaos/app-task-coordinator";
-import { FineTuningView } from "@elizaos/app-training";
+import { FineTuningView } from "@elizaos/app-training/ui";
 import "@elizaos/app-shopify/register";
 import "@elizaos/app-vincent/client";
 import { useVincentState } from "@elizaos/app-vincent";

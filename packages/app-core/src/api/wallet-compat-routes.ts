@@ -18,7 +18,7 @@ import {
 import {
   getStewardBridgeStatus,
   isStewardConfigured,
-} from "@elizaos/app-steward";
+} from "@elizaos/app-steward/routes/steward-bridge";
 import { logger } from "@elizaos/core";
 import { deriveAgentVaultId } from "../security/agent-vault-id";
 import {

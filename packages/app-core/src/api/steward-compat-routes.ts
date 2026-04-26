@@ -7,7 +7,7 @@ import {
   ensureStewardAgent,
   getRecentWebhookEvents,
   getStewardBalance,
-  getStewardBridgePendingApprovals,
+  getStewardPendingApprovals as getStewardBridgePendingApprovals,
   getStewardBridgeStatus,
   getStewardHistory,
   getStewardTokenBalances,
@@ -17,7 +17,7 @@ import {
   resolveStewardAgentId,
   type StewardWebhookEventType,
   signViaSteward,
-} from "@elizaos/app-steward";
+} from "@elizaos/app-steward/routes/steward-bridge";
 import { logger } from "@elizaos/core";
 import type { PolicyRule as StewardPolicyRule } from "@stwd/sdk";
 import { ensureRouteAuthorized } from "./auth";

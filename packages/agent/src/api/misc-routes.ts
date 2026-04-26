@@ -1,13 +1,10 @@
 import crypto from "node:crypto";
 import type http from "node:http";
-import {
-  EMOTE_BY_ID,
-  EMOTE_CATALOG,
-} from "@elizaos/app-companion";
+import { EMOTE_BY_ID, EMOTE_CATALOG } from "@elizaos/app-companion/emotes";
 import {
   ensurePrivyWalletsForCustomUser,
   isPrivyWalletProvisioningEnabled,
-} from "@elizaos/app-steward";
+} from "@elizaos/app-steward/services/privy-wallets";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";

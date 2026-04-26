@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { isPrivyWalletProvisioningEnabled } from "@elizaos/app-steward";
+import { isPrivyWalletProvisioningEnabled } from "@elizaos/app-steward/services/privy-wallets";
 import {
   type AgentRuntime,
   type ChannelType,
