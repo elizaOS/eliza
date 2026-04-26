@@ -398,9 +398,7 @@ describe("factExtractorEvaluator", () => {
 
 		const facts = await listFacts(fx);
 		expect(facts.length).toBe(2);
-		const categories = facts.map(
-			(f) => (f.metadata as FactMetadata).category,
-		);
+		const categories = facts.map((f) => (f.metadata as FactMetadata).category);
 		expect(categories).toEqual(
 			expect.arrayContaining(["life_event", "business_role"]),
 		);

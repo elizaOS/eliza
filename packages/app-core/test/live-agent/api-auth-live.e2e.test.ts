@@ -218,6 +218,7 @@ async function startLiveServer(args: {
     "ELIZA_WALLET_EXPORT_TOKEN",
     "ELIZA_PAIRING_DISABLED",
     "ELIZA_API_BIND",
+    "ELIZA_CLOUD_PROVISIONED",
     "EVM_PRIVATE_KEY",
     "SOLANA_PRIVATE_KEY",
     "SOLANA_API_KEY",
@@ -238,6 +239,7 @@ async function startLiveServer(args: {
     delete process.env.ELIZA_WALLET_EXPORT_TOKEN;
   }
   delete process.env.ELIZA_PAIRING_DISABLED;
+  process.env.ELIZA_CLOUD_PROVISIONED = "1";
 
   await ensureWalletKeys();
 

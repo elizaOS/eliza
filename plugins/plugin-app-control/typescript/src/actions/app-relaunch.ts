@@ -111,7 +111,7 @@ export async function runRelaunch({
 		const workdir = readStringOption(options, "workdir");
 		if (!workdir) {
 			verifySection =
-				"\n(Skipping verify: no workdir was supplied; pass { workdir: \"/abs/path\" }.)";
+				'\n(Skipping verify: no workdir was supplied; pass { workdir: "/abs/path" }.)';
 		} else {
 			const service = runtime.getService(
 				"app-verification",

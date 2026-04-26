@@ -17,9 +17,9 @@ import {
   applyLaunchConnectionFromUrl,
   type BrandingConfig,
   CharacterEditor,
-  client,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
+  client,
   dispatchAppEvent,
   getBootConfig,
   initializeCapacitorBridge,
@@ -30,16 +30,18 @@ import {
   isDetachedWindowShell,
   isElectrobunRuntime,
   resolveWindowShellRoute,
-  setBootConfig,
   SHARE_TARGET_EVENT,
+  setBootConfig,
   shouldInstallMainWindowOnboardingPatches,
   shouldUseCloudOnlyBranding,
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/app-core";
-import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops";
-import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops";
+import {
+  dispatchQueuedLifeOpsGithubCallbackFromUrl,
+  LifeOpsActivitySignalsEffect,
+} from "@elizaos/app-lifeops/ui";
 // Side-effect: register LifeOps sidebar widgets into the app-core widget registry.
 import "@elizaos/app-lifeops/widgets";
 // Side-effect: register coding-agent (task-coordinator) slots so app-core

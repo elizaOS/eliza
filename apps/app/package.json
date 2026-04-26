@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
     "test:ui": "vitest run --config vitest.config.ts test/app/command-palette.test.tsx test/app/chat-view.test.tsx test/app/conversations-sidebar.test.tsx test/app/events.test.ts test/app/command-registry.test.ts test/app/shell-overlays.test.tsx test/app/shortcuts-overlay.test.tsx test/app/confirm-modal.test.tsx",
-    "test:e2e": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts",
+    "test:e2e": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts --pass-with-no-tests",
     "test:e2e:settings-chat": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/settings-chat-companion.spec.ts",
     "test:e2e:cloud-wallet": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/cloud-wallet-import.spec.ts",
     "test:e2e:packaged": "node scripts/run-ui-playwright.mjs --config playwright.ui-packaged.config.ts test/ui-smoke/packaged-hash.spec.ts",

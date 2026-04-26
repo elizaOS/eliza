@@ -11,7 +11,7 @@
  * `retryablePromptForChild` message, or escalates to the user.
  */
 
-import { execFile, type ExecFileOptions } from "node:child_process";
+import { type ExecFileOptions, execFile } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -24,9 +24,9 @@ import {
 import type { AppRunSummary } from "../types.js";
 import {
 	captureScreenshotViaDevApi,
+	type Diagnostic,
 	describeScreenshotWithVision,
 	detectPackageManager,
-	type Diagnostic,
 	ensureVerificationDir,
 	type PackageManager,
 	parseEslintOutput,
@@ -66,7 +66,12 @@ export type VerificationCheck =
 	| { kind: "test"; filter?: string }
 	| { kind: "build" }
 	| { kind: "launch"; appName: string }
-	| { kind: "browser"; routes?: string[]; requireDom?: string; timeoutMs?: number };
+	| {
+			kind: "browser";
+			routes?: string[];
+			requireDom?: string;
+			timeoutMs?: number;
+	  };
 
 export type CheckResult = {
 	kind: VerificationCheckKind;
@@ -121,7 +126,10 @@ type PageLike = {
 		options?: { waitUntil?: string; timeout?: number },
 	) => Promise<unknown>;
 	$: (selector: string) => Promise<unknown>;
-	screenshot: (options: { path: string; fullPage?: boolean }) => Promise<unknown>;
+	screenshot: (options: {
+		path: string;
+		fullPage?: boolean;
+	}) => Promise<unknown>;
 	close: () => Promise<void>;
 };
 
@@ -489,7 +497,8 @@ async function runBrowserCheck(
 		};
 	}
 
-	const routes = options.routes && options.routes.length > 0 ? options.routes : [""];
+	const routes =
+		options.routes && options.routes.length > 0 ? options.routes : [""];
 	const consoleErrors: string[] = [];
 	const navLog: string[] = [];
 	let browser: BrowserLike | null = null;
@@ -505,8 +514,14 @@ async function runBrowserCheck(
 		openBrowsers.add(browser);
 		const page = await browser.newPage();
 		page.on("console", (...args: unknown[]) => {
-			const msg = args[0] as { type?: () => string; text?: () => string } | undefined;
-			if (msg && typeof msg.type === "function" && typeof msg.text === "function") {
+			const msg = args[0] as
+				| { type?: () => string; text?: () => string }
+				| undefined;
+			if (
+				msg &&
+				typeof msg.type === "function" &&
+				typeof msg.text === "function"
+			) {
 				if (msg.type() === "error") {
 					consoleErrors.push(msg.text());
 				}
@@ -520,7 +535,10 @@ async function runBrowserCheck(
 		for (const route of routes) {
 			const target = route ? new URL(route, baseUrl).toString() : baseUrl;
 			navLog.push(`navigate ${target}`);
-			await page.goto(target, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+			await page.goto(target, {
+				waitUntil: "domcontentloaded",
+				timeout: timeoutMs,
+			});
 			if (options.requireDom) {
 				const handle = await page.$(options.requireDom);
 				if (!handle) {
@@ -555,7 +573,9 @@ async function runBrowserCheck(
 	const sections: string[] = [];
 	sections.push(`Routes:\n  ${navLog.join("\n  ")}`);
 	if (consoleErrors.length > 0) {
-		sections.push(`Console errors (${consoleErrors.length}):\n  ${consoleErrors.join("\n  ")}`);
+		sections.push(
+			`Console errors (${consoleErrors.length}):\n  ${consoleErrors.join("\n  ")}`,
+		);
 	}
 	if (screenshotPath) {
 		sections.push(`Screenshot: ${screenshotPath}`);
@@ -616,7 +636,9 @@ function buildRetryPrompt(checks: CheckResult[]): string {
 		}
 		const errors = diags.filter((d) => d.severity === "error");
 		const counted = errors.length > 0 ? errors : diags;
-		lines.push(`  - ${check.kind}: ${counted.length} ${counted.length === 1 ? "issue" : "issues"}`);
+		lines.push(
+			`  - ${check.kind}: ${counted.length} ${counted.length === 1 ? "issue" : "issues"}`,
+		);
 		const shown = counted.slice(0, 10);
 		for (const diag of shown) {
 			lines.push(`      ${summarizeDiagnostic(diag)}`);
@@ -675,7 +697,9 @@ export class AppVerificationService extends Service {
 		let screenshot: VerificationResult["screenshot"] | undefined;
 		let stop = false;
 
-		const client: AppControlClient | null = checks.some((c) => c.kind === "launch")
+		const client: AppControlClient | null = checks.some(
+			(c) => c.kind === "launch",
+		)
 			? createAppControlClient()
 			: null;
 

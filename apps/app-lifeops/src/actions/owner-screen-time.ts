@@ -237,14 +237,14 @@ export const ownerScreenTimeAction: Action = {
 
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerScreenTimeParameters;
-    const params = (await extractActionParamsViaLlm<OwnerScreenTimeParameters>({
+    const params = (await extractActionParamsViaLlm<OwnerScreenTimeParameters & Record<string, unknown>>({
       runtime,
       message,
       state,
       actionName: ACTION_NAME,
       actionDescription: ownerScreenTimeAction.description ?? "",
       paramSchema: ownerScreenTimeAction.parameters ?? [],
-      existingParams: rawParams,
+      existingParams: rawParams as Record<string, unknown>,
       requiredFields: ["subaction"],
     })) as OwnerScreenTimeParameters;
     const subaction = coerceSubaction(params.subaction);

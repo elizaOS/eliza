@@ -1,4 +1,4 @@
-import { ElizaClient } from "@elizaos/app-core";
+import { ElizaClient } from "@elizaos/app-core/api/client-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../src/api/client-lifeops.js";
 

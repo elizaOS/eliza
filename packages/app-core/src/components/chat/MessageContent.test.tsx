@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  findChoiceRegions,
-  parseChoiceBody,
-} from "./message-choice-parser";
+import { findChoiceRegions, parseChoiceBody } from "./message-choice-parser";
 
 describe("parseChoiceBody", () => {
   it("parses key = label lines and ignores blank lines", () => {

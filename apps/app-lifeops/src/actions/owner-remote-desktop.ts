@@ -169,14 +169,14 @@ export const ownerRemoteDesktopAction: Action = {
 
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerRemoteDesktopParameters;
-    const params = (await extractActionParamsViaLlm<OwnerRemoteDesktopParameters>({
+    const params = (await extractActionParamsViaLlm<OwnerRemoteDesktopParameters & Record<string, unknown>>({
       runtime,
       message,
       state,
       actionName: ACTION_NAME,
       actionDescription: ownerRemoteDesktopAction.description ?? "",
       paramSchema: ownerRemoteDesktopAction.parameters ?? [],
-      existingParams: rawParams,
+      existingParams: rawParams as Record<string, unknown>,
       requiredFields: ["subaction"],
     })) as OwnerRemoteDesktopParameters;
     const subaction = coerceSubaction(params.subaction);

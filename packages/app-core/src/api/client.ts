@@ -11,30 +11,8 @@
  */
 
 import type {
-  AllPermissionsState,
-  AudioGenConfig,
-  AudioGenProvider,
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  DropStatus,
-  ImageConfig,
-  ImageProvider,
-  MediaConfig,
-  MediaMode,
-  MintResult,
-  PermissionState,
-  PermissionStatus,
-  ReleaseChannel,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-  VerificationResult,
-  VideoConfig,
-  VideoProvider,
-  VisionConfig,
-  VisionProvider,
 } from "@elizaos/agent";
 import type {
   StewardApprovalActionResponse,
@@ -56,6 +34,9 @@ import type {
   StewardWebhookEventType,
 } from "@elizaos/app-steward";
 import type {
+  AllPermissionsState,
+  AudioGenConfig,
+  AudioGenProvider,
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -64,11 +45,44 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
+  CloudProviderOption,
+  OnboardingConnectorConfig as ConnectorConfig,
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  DropStatus,
   EvmChainBalance,
   EvmNft,
   EvmTokenBalance,
+  ImageConfig,
+  ImageProvider,
+  InventoryProviderOption,
+  MediaConfig,
+  MediaMode,
+  MessageExample,
+  MessageExampleContent,
+  MintResult,
+  ModelOption,
+  OnboardingConnection,
+  OnboardingOptions,
+  OpenRouterModelOption,
+  PermissionState,
+  PermissionStatus,
+  ProviderOption,
+  ReleaseChannel,
+  RpcProviderOption,
   SolanaNft,
   SolanaTokenBalance,
+  StylePreset,
+  SubscriptionProviderStatus,
+  SubscriptionStatusResponse,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+  VerificationResult,
+  VideoConfig,
+  VideoProvider,
+  VisionConfig,
+  VisionProvider,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -86,22 +100,6 @@ import {
   normalizeWalletRpcProviderId,
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/shared";
-import type {
-  CloudProviderOption,
-  OnboardingConnectorConfig as ConnectorConfig,
-  InventoryProviderOption,
-  MessageExample,
-  MessageExampleContent,
-  ModelOption,
-  OnboardingConnection,
-  OnboardingOptions,
-  OpenRouterModelOption,
-  ProviderOption,
-  RpcProviderOption,
-  StylePreset,
-  SubscriptionProviderStatus,
-  SubscriptionStatusResponse,
 } from "@elizaos/shared";
 
 // Re-export the class from client-base (no circular dependency issues)
@@ -227,7 +225,7 @@ import "./client-browser-workspace";
 import "./client-chat";
 import "./client-cloud";
 import "./client-computeruse";
-import "./client-lifeops";
+import "@elizaos/app-lifeops/api/client-lifeops";
 import "./client-imessage";
 import "./client-local-inference";
 import "./client-n8n";

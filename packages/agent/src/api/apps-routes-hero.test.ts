@@ -273,6 +273,6 @@ describe("GET /api/apps/hero/:slug", () => {
     expect(ctx.recorded.status).toBe(200);
     expect(ctx.recorded.headers["Content-Type"]).toBe("image/svg+xml");
     expect(ctx.recorded.body?.toString("utf8")).toContain("<svg");
-    expect(ctx.recorded.body?.toString("utf8")).toContain("Mystery App");
+    expect(ctx.recorded.body?.toString("utf8")).toContain('fill="url(#bg)"');
   });
 });

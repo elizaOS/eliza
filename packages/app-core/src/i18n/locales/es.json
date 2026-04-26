@@ -2494,7 +2494,6 @@
   "secretsview.YourVaultIsEmpty": "Tu bóveda está vacía. Haga clic en \"Agregar secreto\" para elegir qué claves API desea\n          gestionar aquí.",
   "settings.advancedKeyWarning": "No se necesita con Steward. Usar con precaución.",
   "settings.appearance.active": "ACTIVO",
-  "settings.appearance.companionPerformance": "Rendimiento del acompañante",
   "settings.appearance.dark": "Dark",
   "settings.appearance.deactivate": "Desactivar paquete actual",
   "settings.appearance.light": "Light",

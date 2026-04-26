@@ -1,11 +1,11 @@
 import {
   type BrowserWorkspaceWalletState,
   buildBrowserWorkspaceWalletState,
-} from "@elizaos/app-steward";
+} from "@elizaos/app-steward/browser-workspace-wallet";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser-bridge/contracts";
 import {
   Button,
   Input,

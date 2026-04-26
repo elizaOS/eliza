@@ -17,9 +17,9 @@ import type {
 import { logger } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import {
+	APP_REGISTRY_SERVICE_TYPE,
 	type AppRegistryEntry,
 	type AppRegistryService,
-	APP_REGISTRY_SERVICE_TYPE,
 } from "../services/app-registry-service.js";
 
 interface DiscoveredApp {

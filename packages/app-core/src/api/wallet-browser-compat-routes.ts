@@ -19,10 +19,7 @@ export function safeParseBigInt(value: string): bigint {
   }
 }
 
-import {
-  isStewardConfigured,
-  signViaSteward,
-} from "@elizaos/app-steward";
+import { isStewardConfigured, signViaSteward } from "@elizaos/app-steward";
 import { ensureRouteAuthorized } from "./auth";
 import {
   type CompatRuntimeState,

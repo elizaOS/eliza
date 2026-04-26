@@ -1223,9 +1223,7 @@ export async function handleAppsRoutes(
         null;
       if (body.verify === true) {
         const runtimeWithServices = runtime as {
-          getService?: (
-            type: string,
-          ) => {
+          getService?: (type: string) => {
             verifyApp?: (opts: {
               workdir: string;
               appName?: string;
@@ -1279,18 +1277,16 @@ export async function handleAppsRoutes(
       getService?: (type: string) => {
         register?: (
           entry: Record<string, unknown>,
-          ctx?: { requesterEntityId?: string | null; requesterRoomId?: string | null },
+          ctx?: {
+            requesterEntityId?: string | null;
+            requesterRoomId?: string | null;
+          },
         ) => Promise<void>;
       } | null;
     } | null;
-    const registry =
-      runtimeWithServices?.getService?.("app-registry") ?? null;
+    const registry = runtimeWithServices?.getService?.("app-registry") ?? null;
     if (!registry?.register) {
-      error(
-        res,
-        "AppRegistryService is not registered on the runtime",
-        503,
-      );
+      error(res, "AppRegistryService is not registered on the runtime", 503);
       return true;
     }
 

@@ -14,7 +14,7 @@ import {
   buildExtractionPrompt,
   extractTaskCreatePlanWithLlm,
   extractTaskParamsWithLlm,
-} from "@elizaos/app-lifeops";
+} from "@elizaos/app-lifeops/actions/life-param-extractor";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { selectLiveProvider } from "../../../../../test/helpers/live-provider";

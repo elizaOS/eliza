@@ -1,16 +1,49 @@
-export * from "@elizaos/shared";
-export * from "./actions/index.js";
 export {
   type ExtractActionParamsArgs,
   extractActionParamsViaLlm,
   type ParamSchemaDescriptor,
 } from "./actions/extract-params.js";
+export * from "./actions/index.js";
+export type { CloudConfigLike } from "./api/cloud-status-routes.js";
+export * from "./api/config-env.js";
+export * from "./api/conversation-metadata.js";
 export * from "./api/index.js";
 export {
   findPrimaryEnvKey,
   readBundledPluginPackageMetadata,
 } from "./api/plugin-discovery-helpers.js";
 export * from "./api/plugin-runtime-apply.js";
+export {
+  AGENT_EVENT_ALLOWED_STREAMS,
+  CONFIG_WRITE_ALLOWED_TOP_KEYS,
+  type ConversationMeta,
+  type captureEarlyLogs,
+  cloneWithoutBlockedObjectKeys,
+  decodePathComponent,
+  discoverInstalledPlugins,
+  discoverPluginsFromManifest,
+  ensureApiTokenForBindHost,
+  extractAuthToken,
+  fetchWithTimeoutGuard,
+  injectApiBaseIntoHtml,
+  isAllowedHost,
+  isAuthorized,
+  isSafeResetStateDir,
+  normalizeWsClientId,
+  persistConversationRoomTitle,
+  resolveCorsOrigin,
+  resolveMcpServersRejection,
+  resolveMcpTerminalAuthorizationRejection,
+  resolvePluginConfigMutationRejections,
+  resolveTerminalRunClientId,
+  resolveTerminalRunRejection,
+  resolveWalletExportRejection,
+  resolveWebSocketUpgradeRejection,
+  routeAutonomyTextToUser,
+  startApiServer,
+  streamResponseBodyWithByteLimit,
+  validateMcpServerConfig,
+} from "./api/server.js";
 // Re-export non-colliding helpers from `./api/server-auth.js`. Names that
 // `./api/server.js` already re-exports are intentionally omitted here so the
 // canonical `server.js` definitions remain authoritative.
@@ -51,45 +84,10 @@ export type {
   StreamEventType,
   TradePermissionMode,
 } from "./api/server-types.js";
-export {
-  AGENT_EVENT_ALLOWED_STREAMS,
-  CONFIG_WRITE_ALLOWED_TOP_KEYS,
-  type ConversationMeta,
-  type captureEarlyLogs,
-  cloneWithoutBlockedObjectKeys,
-  decodePathComponent,
-  discoverInstalledPlugins,
-  discoverPluginsFromManifest,
-  ensureApiTokenForBindHost,
-  extractAuthToken,
-  fetchWithTimeoutGuard,
-  injectApiBaseIntoHtml,
-  isAllowedHost,
-  isAuthorized,
-  isSafeResetStateDir,
-  normalizeWsClientId,
-  persistConversationRoomTitle,
-  resolveCorsOrigin,
-  resolveMcpServersRejection,
-  resolveMcpTerminalAuthorizationRejection,
-  resolvePluginConfigMutationRejections,
-  resolveTerminalRunClientId,
-  resolveTerminalRunRejection,
-  resolveWalletExportRejection,
-  resolveWebSocketUpgradeRejection,
-  routeAutonomyTextToUser,
-  startApiServer,
-  streamResponseBodyWithByteLimit,
-  validateMcpServerConfig,
-} from "./api/server.js";
-export * from "./api/config-env.js";
-export * from "./api/conversation-metadata.js";
-export type { CloudConfigLike } from "./api/cloud-status-routes.js";
 export * from "./api/wallet-capability.js";
 export * from "./api/workbench-helpers.js";
 export * from "./auth/index.js";
 export * from "./awareness/index.js";
-export * from "./cloud/index.js";
 export type { RolesConfig } from "./config/index.js";
 export * from "./config/index.js";
 // `contracts/awareness.js` and `contracts/config.js` add the local-only

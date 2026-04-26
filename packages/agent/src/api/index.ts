@@ -1,5 +1,3 @@
-export * from "@elizaos/app-lifeops";
-export * from "@elizaos/app-task-coordinator";
 export * from "./agent-admin-routes.js";
 export * from "./agent-lifecycle-routes.js";
 export * from "./agent-model.js";

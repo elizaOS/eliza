@@ -16,8 +16,8 @@ import {
   authOwnerBindingTable,
   authOwnerLoginTokenTable,
   authSessionTable,
-  type DrizzleDatabase,
-} from "@elizaos/plugin-sql";
+} from "@elizaos/plugin-sql/schema";
+import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
 import { and, desc, eq, isNull, lte, ne } from "drizzle-orm";
 
 export interface AuthIdentityRow {

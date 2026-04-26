@@ -41,7 +41,9 @@ describe("life-ops runtime", () => {
     } as unknown as IAgentRuntime;
 
     const taskIdPromise = ensureLifeOpsSchedulerTask(runtime);
-    await vi.runAllTimersAsync();
+    for (let attempt = 0; attempt < 9; attempt++) {
+      await vi.advanceTimersByTimeAsync(500);
+    }
 
     await expect(taskIdPromise).resolves.toBe(createdTaskId);
     expect(runtime.getTasks).toHaveBeenCalledTimes(13);

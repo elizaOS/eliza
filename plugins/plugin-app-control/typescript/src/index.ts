@@ -35,10 +35,17 @@ import { AppRegistryService } from "./services/app-registry-service.js";
 // === appended by Agent B (AppVerificationService) ===
 // Agent C: do not remove; reorder freely
 import { AppVerificationService } from "./services/app-verification.js";
+
 // === end Agent B block ===
 
+export type { AppMode } from "./actions/app.js";
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
+export {
+	APP_REGISTRY_SERVICE_TYPE,
+	type AppRegistryEntry,
+	AppRegistryService,
+} from "./services/app-registry-service.js";
 export {
 	AppVerificationService,
 	type CheckResult,
@@ -48,11 +55,6 @@ export {
 	type VerificationResult,
 	type VerifyOptions,
 } from "./services/index.js";
-export {
-	AppRegistryService,
-	APP_REGISTRY_SERVICE_TYPE,
-	type AppRegistryEntry,
-} from "./services/app-registry-service.js";
 export type {
 	AppLaunchResult,
 	AppRunSummary,
@@ -61,16 +63,15 @@ export type {
 } from "./types.js";
 export {
 	appAction,
-	createAppAction,
+	availableAppsProvider,
 	closeAppAction,
+	createAppAction,
 	createCloseAppAction,
 	createLaunchAppAction,
 	createListRunningAppsAction,
 	launchAppAction,
 	listRunningAppsAction,
 };
-export { availableAppsProvider };
-export type { AppMode } from "./actions/app.js";
 
 export const appControlPlugin: Plugin = {
 	name: "app-control",

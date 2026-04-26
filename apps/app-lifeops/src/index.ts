@@ -27,13 +27,10 @@ export type {
 // Re-export the full plugin from plugin.ts
 export {
   appLifeOpsPlugin,
-  calendarAction,
   ensureLifeOpsSchedulerTask,
   executeLifeOpsSchedulerTask,
-  gmailAction,
   handleLifeOpsRoutes,
   handleWebsiteBlockerRoutes,
-  inboxAction,
   inboxTriageProvider,
   LIFEOPS_TASK_INTERVAL_MS,
   LIFEOPS_TASK_JITTER_MS,
@@ -48,6 +45,9 @@ export {
   resolveLifeOpsTaskIntervalMs,
   updateOwnerProfileAction,
 } from "./plugin.ts";
+export { calendarAction } from "./actions/calendar.ts";
+export { gmailAction } from "./actions/gmail.ts";
+export { inboxAction } from "./actions/inbox.ts";
 export { lifeopsPlugin } from "./routes/plugin.ts";
 export type {
   AppBlockerSettingsCardProps,
@@ -55,4 +55,3 @@ export type {
   WebsiteBlockerSettingsCardProps,
   WebsiteBlockerSettingsMode,
 } from "./types/index.ts";
-export * from "./website-blocker/public.ts";

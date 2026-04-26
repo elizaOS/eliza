@@ -2494,7 +2494,6 @@
   "secretsview.YourVaultIsEmpty": "Seu cofre está vazio. Clique em \"Adicionar segredo\" para escolher quais chaves de API serão\n          gerenciar aqui.",
   "settings.advancedKeyWarning": "Não é necessário com Steward. Use com cautela.",
   "settings.appearance.active": "ATIVO",
-  "settings.appearance.companionPerformance": "Desempenho do companheiro",
   "settings.appearance.dark": "Dark",
   "settings.appearance.deactivate": "Desativar pacote atual",
   "settings.appearance.light": "Light",

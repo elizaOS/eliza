@@ -263,8 +263,7 @@ export function AppsManagementSection() {
         if (!mountedRef.current) return;
         setCreateStatus({
           state: "error",
-          message:
-            err instanceof Error ? err.message : "Failed to create app.",
+          message: err instanceof Error ? err.message : "Failed to create app.",
         });
       }
     },
@@ -343,7 +342,7 @@ export function AppsManagementSection() {
           })}
         </Button>
         <div className="flex-1" />
-        <label className="inline-flex items-center gap-1.5 text-2xs text-muted">
+        <div className="inline-flex items-center gap-1.5 text-2xs text-muted">
           <Checkbox
             checked={verifyOnRelaunch}
             onCheckedChange={(checked: boolean | "indeterminate") =>
@@ -358,7 +357,7 @@ export function AppsManagementSection() {
               defaultValue: "Verify on relaunch",
             })}
           </span>
-        </label>
+        </div>
       </div>
 
       {showCreate ? (
@@ -498,7 +497,9 @@ export function AppsManagementSection() {
               {isLoading ? (
                 <span className="inline-flex items-center gap-1">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                  <span>{t("common.loading", { defaultValue: "Loading…" })}</span>
+                  <span>
+                    {t("common.loading", { defaultValue: "Loading…" })}
+                  </span>
                 </span>
               ) : (
                 t("settings.sections.apps.loadButton", {

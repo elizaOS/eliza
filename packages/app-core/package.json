@@ -86,6 +86,7 @@
     "./components/inventory/chainConfig": "./src/components/inventory/chainConfig.ts",
     "./components/inventory/constants": "./src/components/inventory/constants.ts",
     "./components/pages/ChatModalView": "./src/components/pages/ChatModalView.tsx",
+    "./components/pages/PageScopedChatPane": "./src/components/pages/PageScopedChatPane.tsx",
     "./components/shared/LanguageDropdown": "./src/components/shared/LanguageDropdown.tsx",
     "./components/shared/ThemeToggle": "./src/components/shared/ThemeToggle.tsx",
     "./components/workspace/AppWorkspaceChrome": "./src/components/workspace/AppWorkspaceChrome.tsx",

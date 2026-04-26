@@ -87,6 +87,9 @@ function createGenerateWalletResponse(
 const { clientMock, confirmDesktopActionMock, persistenceMock } = vi.hoisted(
   () => ({
     clientMock: {
+      getConfig: vi.fn<() => Promise<Record<string, unknown>>>(
+        async () => ({}),
+      ),
       updateWalletConfig: vi.fn<() => Promise<{ ok: boolean }>>(async () => ({
         ok: true,
       })),
@@ -151,6 +154,7 @@ describe("useWalletState cloud wallet import", () => {
     );
     clientMock.generateWallet.mockResolvedValue(createGenerateWalletResponse());
     clientMock.setWalletPrimary.mockResolvedValue({ ok: true });
+    clientMock.getConfig.mockResolvedValue({});
     clientMock.getWalletConfig.mockResolvedValue(createWalletConfig());
     clientMock.getWalletBalances.mockResolvedValue(createWalletBalances());
   });

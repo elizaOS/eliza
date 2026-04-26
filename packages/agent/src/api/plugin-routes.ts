@@ -934,8 +934,13 @@ export async function handlePluginRoutes(
     try {
       // Find the plugin in the runtime
       const allPlugins = state.runtime?.plugins ?? [];
-      const normalizePluginId = (value: string): string =>
-        value.replace(/^@[^/]+\//, "").replace(/^plugin-/, "");
+      const normalizePluginId = (value: string): string => {
+        const scopedPackage = value.match(/^@[^/]+\/plugin-(.+)$/);
+        if (scopedPackage) {
+          return scopedPackage[1] ?? value;
+        }
+        return value.replace(/^@[^/]+\//, "").replace(/^plugin-/, "");
+      };
 
       const normalizedPluginId = normalizePluginId(pluginId);
 

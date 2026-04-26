@@ -22,9 +22,9 @@ import type { RegistryService } from "./registry-service.js";
 export type {
   TrainingServiceLike,
   TrainingServiceWithRuntime,
-} from "@elizaos/app-training";
+} from "@elizaos/app-training/services/training-service-like";
 
-import type { TrainingServiceWithRuntime } from "@elizaos/app-training";
+import type { TrainingServiceWithRuntime } from "@elizaos/app-training/services/training-service-like";
 
 // ---------------------------------------------------------------------------
 // Conversation metadata

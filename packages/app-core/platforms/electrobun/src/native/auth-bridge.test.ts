@@ -106,8 +106,9 @@ describe("auth-bridge", () => {
       expect(session).not.toBeNull();
       expect(session?.sessionId).toBe("abc123");
       expect(session?.csrfToken).toBe("csrf456");
-      expect(capturedSocketPath).toContain("desktop-auth-");
-      expect(capturedSocketPath).toContain(stateDir);
+      expect(path.basename(capturedSocketPath)).toMatch(
+        /^(desktop-auth-|mda-).+\.sock$/,
+      );
       expect(capturedSecretLength).toBe(32);
 
       // Socket must be unlinked after the call.

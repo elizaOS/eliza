@@ -53,9 +53,8 @@ export function ChoiceWidget({
   if (options.length === 0) return null;
 
   return (
-    <div
-      className="my-2 flex flex-wrap items-center gap-2"
-      role="group"
+    <fieldset
+      className="my-2 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0"
       aria-label={`Choose ${scope}`}
       data-choice-id={id}
       data-choice-scope={scope}
@@ -97,6 +96,6 @@ export function ChoiceWidget({
           Selected: {selected.label}
         </span>
       ) : null}
-    </div>
+    </fieldset>
   );
 }

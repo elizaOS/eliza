@@ -207,14 +207,14 @@ export const requestFieldFillAction: Action = {
       ((options as HandlerOptions | undefined)?.parameters as
         | RequestFieldFillParameters
         | undefined) ?? {};
-    const params = (await extractActionParamsViaLlm<RequestFieldFillParameters>({
+    const params = (await extractActionParamsViaLlm<RequestFieldFillParameters & Record<string, unknown>>({
       runtime,
       message,
       state,
       actionName: "REQUEST_FIELD_FILL",
       actionDescription: requestFieldFillAction.description ?? "",
       paramSchema: requestFieldFillAction.parameters ?? [],
-      existingParams: rawParams,
+      existingParams: rawParams as Record<string, unknown>,
       requiredFields: ["tabUrl", "fieldPurpose"],
     })) as RequestFieldFillParameters;
 
@@ -389,14 +389,14 @@ export const addAutofillWhitelistAction: Action = {
       ((options as HandlerOptions | undefined)?.parameters as
         | AddAutofillWhitelistParameters
         | undefined) ?? {};
-    const params = (await extractActionParamsViaLlm<AddAutofillWhitelistParameters>({
+    const params = (await extractActionParamsViaLlm<AddAutofillWhitelistParameters & Record<string, unknown>>({
       runtime,
       message,
       state,
       actionName: "ADD_AUTOFILL_WHITELIST",
       actionDescription: addAutofillWhitelistAction.description ?? "",
       paramSchema: addAutofillWhitelistAction.parameters ?? [],
-      existingParams: rawParams,
+      existingParams: rawParams as Record<string, unknown>,
       requiredFields: ["domain"],
     })) as AddAutofillWhitelistParameters;
     const rawDomain = (params.domain ?? "").toString().trim();

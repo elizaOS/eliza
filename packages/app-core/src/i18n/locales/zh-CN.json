@@ -2494,7 +2494,6 @@
   "secretsview.YourVaultIsEmpty": "你的金库是空的。单击“添加密钥”以选择要添加的 API 密钥\n          管理这里。",
   "settings.advancedKeyWarning": "使用 Steward 时不需要。请谨慎使用。",
   "settings.appearance.active": "活动",
-  "settings.appearance.companionPerformance": "伴侣性能",
   "settings.appearance.dark": "Dark",
   "settings.appearance.deactivate": "停用当前包",
   "settings.appearance.light": "Light",

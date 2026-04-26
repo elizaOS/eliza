@@ -121,10 +121,7 @@ describe("APP action validate (multi-turn)", () => {
 			repoRoot: "/tmp/repo",
 		});
 		const runtime = makeRuntime({ tasks: [] });
-		const result = await action.validate(
-			runtime,
-			makeMessage("new", "room-1"),
-		);
+		const result = await action.validate(runtime, makeMessage("new", "room-1"));
 		expect(result).toBe(false);
 	});
 
@@ -160,10 +157,7 @@ describe("APP action validate (multi-turn)", () => {
 			repoRoot: "/tmp/repo",
 		});
 		const runtime = makeRuntime({ tasks: [intentTask("room-1")] });
-		const result = await action.validate(
-			runtime,
-			makeMessage("new", "room-2"),
-		);
+		const result = await action.validate(runtime, makeMessage("new", "room-2"));
 		expect(result).toBe(false);
 	});
 

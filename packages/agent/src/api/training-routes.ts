@@ -2,4 +2,4 @@
 export {
   handleTrainingRoutes,
   type TrainingRouteHelpers,
-} from "@elizaos/app-training";
+} from "@elizaos/app-training/routes/training";

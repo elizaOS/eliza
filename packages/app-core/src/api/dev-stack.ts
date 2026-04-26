@@ -12,10 +12,7 @@
  * desktop dev; embedded Electrobun also syncs env after bind.
  */
 
-import {
-  resolveDesktopApiPort,
-  resolveDesktopUiPort,
-} from "@elizaos/shared";
+import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/shared";
 
 export const ELIZA_DEV_STACK_SCHEMA = "elizaos.dev.stack/v1" as const;
 

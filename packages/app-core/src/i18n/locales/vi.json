@@ -2494,7 +2494,6 @@
   "secretsview.YourVaultIsEmpty": "Kho trống. Bấm \"Thêm Secret\" để chọn API keys quản lý.",
   "settings.advancedKeyWarning": "Không cần thiết với Steward. Dùng cẩn thận.",
   "settings.appearance.active": "ĐANG HOẠT ĐỘNG",
-  "settings.appearance.companionPerformance": "Hiệu năng companion",
   "settings.appearance.dark": "Dark",
   "settings.appearance.deactivate": "Hủy kích hoạt gói hiện tại",
   "settings.appearance.light": "Light",

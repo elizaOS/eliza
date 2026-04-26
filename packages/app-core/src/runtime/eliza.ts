@@ -5,22 +5,31 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { resolveUserPath } from "@elizaos/agent/config/paths";
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
 import {
   type BootElizaRuntimeOptions,
-  getLastFailedPluginNames,
-  loadElizaConfig,
-  resolveDefaultAgentWorkspaceDir,
-  resolveUserPath,
   type StartElizaOptions,
   applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
   applyN8nConfigToEnv as upstreamApplyN8nConfigToEnv,
   bootElizaRuntime as upstreamBootElizaRuntime,
-  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
-  collectPluginNames as upstreamCollectPluginNames,
   configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
-} from "@elizaos/agent";
+} from "@elizaos/agent/runtime/eliza";
+import {
+  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
+  collectPluginNames as upstreamCollectPluginNames,
+} from "@elizaos/agent/runtime/plugin-collector";
+import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
+
+export {
+  CUSTOM_PLUGINS_DIRNAME,
+  resolvePackageEntry,
+  scanDropInPlugins,
+} from "@elizaos/agent/runtime/plugin-types";
+
 import {
   type AgentRuntime,
   AutonomyService,
@@ -31,16 +40,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 
-export {
-  CUSTOM_PLUGINS_DIRNAME,
-  resolvePackageEntry,
-  scanDropInPlugins,
-} from "@elizaos/agent";
-
-import {
-  resolveServerOnlyPort,
-  syncResolvedApiPort,
-} from "@elizaos/shared";
+import { resolveServerOnlyPort, syncResolvedApiPort } from "@elizaos/shared";
 import { isNativeServerPlatform } from "../platform/is-native-server.js";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";

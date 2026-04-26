@@ -253,14 +253,14 @@ export const calendlyAction: Action = {
     const rawParams = ((typeof rawParameters === "object" && rawParameters !== null
       ? (rawParameters as CalendlyParameters)
       : {}) ?? {}) as CalendlyParameters;
-    const params = (await extractActionParamsViaLlm<CalendlyParameters>({
+    const params = (await extractActionParamsViaLlm<CalendlyParameters & Record<string, unknown>>({
       runtime,
       message,
       state,
       actionName: "CALENDLY",
       actionDescription: calendlyAction.description ?? "",
       paramSchema: calendlyAction.parameters ?? [],
-      existingParams: rawParams,
+      existingParams: rawParams as Record<string, unknown>,
       requiredFields: ["subaction"],
     })) as CalendlyParameters;
     const subaction = parseSubaction(params.subaction);

@@ -12,10 +12,7 @@ import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { paramsToSchema } from "../pages/plugin-list-utils";
 import { findChoiceRegions } from "./message-choice-parser";
-import {
-  ChoiceWidget,
-  type ChoiceOption,
-} from "./widgets/ChoiceWidget";
+import { type ChoiceOption, ChoiceWidget } from "./widgets/ChoiceWidget";
 
 /** Reject prototype-pollution keys that should never be traversed or rendered. */
 const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);

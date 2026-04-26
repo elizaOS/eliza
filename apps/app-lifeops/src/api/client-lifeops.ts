@@ -32,7 +32,7 @@ import type {
   OpenBrowserBridgeCompanionPackagePathResponse,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser-bridge/contracts";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   CaptureLifeOpsManualOverrideRequest,
@@ -83,6 +83,7 @@ import type {
   LifeOpsIMessageChat,
   LifeOpsIMessageConnectorStatus,
   LifeOpsIMessageMessage,
+  LifeOpsInbox,
   LifeOpsManualOverrideResult,
   LifeOpsNextCalendarEventContext,
   LifeOpsOccurrenceActionResult,
@@ -96,10 +97,9 @@ import type {
   LifeOpsSleepRegularityResponse,
   LifeOpsTelegramConnectorStatus,
   LifeOpsWhatsAppConnectorStatus,
-  LifeOpsInbox,
   LifeOpsXConnectorStatus,
-  ManageLifeOpsGmailMessagesRequest,
   ListLifeOpsCalendarsRequest,
+  ManageLifeOpsGmailMessagesRequest,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SendLifeOpsIMessageRequest,
@@ -276,9 +276,9 @@ declare module "@elizaos/app-core/api/client-base" {
       priorityScoring?: LifeOpsPriorityScoringStateDto | null;
     }): Promise<LifeOpsAppStateDto>;
     getLifeOpsOverview(): Promise<LifeOpsOverview>;
-    getLifeOpsPaymentsDashboard(
-      data?: { windowDays?: number | null },
-    ): Promise<import("../lifeops/payment-types.js").LifeOpsPaymentsDashboard>;
+    getLifeOpsPaymentsDashboard(data?: {
+      windowDays?: number | null;
+    }): Promise<import("../lifeops/payment-types.js").LifeOpsPaymentsDashboard>;
     listLifeOpsPaymentSources(): Promise<{
       sources: import("../lifeops/payment-types.js").LifeOpsPaymentSource[];
     }>;
@@ -290,7 +290,9 @@ declare module "@elizaos/app-core/api/client-base" {
     deleteLifeOpsPaymentSource(sourceId: string): Promise<{ ok: true }>;
     importLifeOpsPaymentCsv(
       data: import("../lifeops/payment-types.js").ImportTransactionsCsvRequest,
-    ): Promise<import("../lifeops/payment-types.js").ImportTransactionsCsvResult>;
+    ): Promise<
+      import("../lifeops/payment-types.js").ImportTransactionsCsvResult
+    >;
     listLifeOpsPaymentTransactions(data?: {
       sourceId?: string | null;
       limit?: number | null;
@@ -334,10 +336,7 @@ declare module "@elizaos/app-core/api/client-base" {
         key: string;
         serviceName: string;
         managementUrl: string;
-        executorPreference:
-          | "user_browser"
-          | "agent_browser"
-          | "desktop_native";
+        executorPreference: "user_browser" | "agent_browser" | "desktop_native";
       } | null;
     }>;
     listLifeOpsSubscriptionPlaybooks(): Promise<{
@@ -346,21 +345,14 @@ declare module "@elizaos/app-core/api/client-base" {
         serviceName: string;
         aliases: string[];
         managementUrl: string;
-        executorPreference:
-          | "user_browser"
-          | "agent_browser"
-          | "desktop_native";
+        executorPreference: "user_browser" | "agent_browser" | "desktop_native";
       }>;
     }>;
     cancelLifeOpsSubscription(data: {
       serviceName?: string | null;
       serviceSlug?: string | null;
       candidateId?: string | null;
-      executor?:
-        | "user_browser"
-        | "agent_browser"
-        | "desktop_native"
-        | null;
+      executor?: "user_browser" | "agent_browser" | "desktop_native" | null;
       confirmed?: boolean;
     }): Promise<unknown>;
     createLifeOpsPlaidLinkToken(): Promise<{
@@ -557,9 +549,7 @@ declare module "@elizaos/app-core/api/client-base" {
         "calendarId" | "grantId" | "side"
       >,
     ): Promise<{ deleted: true }>;
-    getLifeOpsInbox(
-      options?: GetLifeOpsInboxRequest,
-    ): Promise<LifeOpsInbox>;
+    getLifeOpsInbox(options?: GetLifeOpsInboxRequest): Promise<LifeOpsInbox>;
     createLifeOpsGmailReplyDraft(
       data: CreateLifeOpsGmailReplyDraftRequest,
     ): Promise<{ draft: LifeOpsGmailReplyDraft }>;
@@ -727,14 +717,14 @@ declare module "@elizaos/app-core/api/client-base" {
 }
 
 ElizaClient.prototype.getLifeOpsAppState = async function (this: ElizaClient) {
-  return this.fetch("/api/lifeops/app-state");
+  return this.fetch<LifeOpsAppStateDto>("/api/lifeops/app-state");
 };
 
 ElizaClient.prototype.updateLifeOpsAppState = async function (
   this: ElizaClient,
   data,
 ) {
-  return this.fetch("/api/lifeops/app-state", {
+  return this.fetch<LifeOpsAppStateDto>("/api/lifeops/app-state", {
     method: "PUT",
     body: JSON.stringify(data),
   });
@@ -753,9 +743,7 @@ ElizaClient.prototype.getLifeOpsPaymentsDashboard = async function (
     params.set("windowDays", String(data.windowDays));
   }
   const query = params.toString();
-  return this.fetch(
-    `/api/lifeops/money/dashboard${query ? `?${query}` : ""}`,
-  );
+  return this.fetch(`/api/lifeops/money/dashboard${query ? `?${query}` : ""}`);
 };
 
 ElizaClient.prototype.listLifeOpsPaymentSources = async function (
@@ -803,7 +791,8 @@ ElizaClient.prototype.listLifeOpsPaymentTransactions = async function (
   if (data.limit !== null && data.limit !== undefined) {
     params.set("limit", String(data.limit));
   }
-  if (data.merchantContains) params.set("merchantContains", data.merchantContains);
+  if (data.merchantContains)
+    params.set("merchantContains", data.merchantContains);
   if (data.onlyDebits) params.set("onlyDebits", "true");
   const query = params.toString();
   return this.fetch(
@@ -821,9 +810,7 @@ ElizaClient.prototype.listLifeOpsRecurringCharges = async function (
     params.set("sinceDays", String(data.sinceDays));
   }
   const query = params.toString();
-  return this.fetch(
-    `/api/lifeops/money/recurring${query ? `?${query}` : ""}`,
-  );
+  return this.fetch(`/api/lifeops/money/recurring${query ? `?${query}` : ""}`);
 };
 
 ElizaClient.prototype.scanLifeOpsEmailSubscriptions = async function (
@@ -1344,7 +1331,7 @@ ElizaClient.prototype.getLifeOpsFullDiskAccessStatus = async function (
 
 ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   this: ElizaClient,
-  options = {},
+  options: GetLifeOpsCalendarFeedRequest = {},
 ) {
   const params = new URLSearchParams();
   if (options.mode) {
@@ -1375,12 +1362,14 @@ ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
     params.set("forceSync", String(options.forceSync));
   }
   const query = params.toString();
-  return this.fetch(`/api/lifeops/calendar/feed${query ? `?${query}` : ""}`);
+  return this.fetch<LifeOpsCalendarFeed>(
+    `/api/lifeops/calendar/feed${query ? `?${query}` : ""}`,
+  );
 };
 
 ElizaClient.prototype.getLifeOpsCalendars = async function (
   this: ElizaClient,
-  options = {},
+  options: ListLifeOpsCalendarsRequest = {},
 ) {
   const params = new URLSearchParams();
   if (options.mode) {
@@ -1393,16 +1382,16 @@ ElizaClient.prototype.getLifeOpsCalendars = async function (
     params.set("grantId", options.grantId);
   }
   const query = params.toString();
-  return this.fetch(
+  return this.fetch<{ calendars: LifeOpsCalendarSummary[] }>(
     `/api/lifeops/calendar/calendars${query ? `?${query}` : ""}`,
   );
 };
 
 ElizaClient.prototype.setLifeOpsCalendarIncluded = async function (
   this: ElizaClient,
-  data,
+  data: SetLifeOpsCalendarIncludedRequest,
 ) {
-  return this.fetch(
+  return this.fetch<{ calendar: LifeOpsCalendarSummary }>(
     `/api/lifeops/calendar/calendars/${encodeURIComponent(data.calendarId)}/include`,
     {
       method: "PUT",
@@ -1413,7 +1402,7 @@ ElizaClient.prototype.setLifeOpsCalendarIncluded = async function (
 
 ElizaClient.prototype.getLifeOpsGmailTriage = async function (
   this: ElizaClient,
-  options = {},
+  options: GetLifeOpsGmailTriageRequest = {},
 ) {
   const params = new URLSearchParams();
   if (options.mode) {
@@ -1432,12 +1421,14 @@ ElizaClient.prototype.getLifeOpsGmailTriage = async function (
     params.set("maxResults", String(options.maxResults));
   }
   const query = params.toString();
-  return this.fetch(`/api/lifeops/gmail/triage${query ? `?${query}` : ""}`);
+  return this.fetch<LifeOpsGmailTriageFeed>(
+    `/api/lifeops/gmail/triage${query ? `?${query}` : ""}`,
+  );
 };
 
 ElizaClient.prototype.getLifeOpsGmailSearch = async function (
   this: ElizaClient,
-  options,
+  options: GetLifeOpsGmailSearchRequest,
 ) {
   const params = new URLSearchParams();
   if (options.mode) {
@@ -1463,12 +1454,14 @@ ElizaClient.prototype.getLifeOpsGmailSearch = async function (
   }
   params.set("query", options.query);
   const query = params.toString();
-  return this.fetch(`/api/lifeops/gmail/search${query ? `?${query}` : ""}`);
+  return this.fetch<LifeOpsGmailSearchFeed>(
+    `/api/lifeops/gmail/search${query ? `?${query}` : ""}`,
+  );
 };
 
 ElizaClient.prototype.getLifeOpsGmailNeedsResponse = async function (
   this: ElizaClient,
-  options = {},
+  options: GetLifeOpsGmailTriageRequest = {},
 ) {
   const params = new URLSearchParams();
   if (options.mode) {
@@ -1487,14 +1480,14 @@ ElizaClient.prototype.getLifeOpsGmailNeedsResponse = async function (
     params.set("maxResults", String(options.maxResults));
   }
   const query = params.toString();
-  return this.fetch(
+  return this.fetch<LifeOpsGmailNeedsResponseFeed>(
     `/api/lifeops/gmail/needs-response${query ? `?${query}` : ""}`,
   );
 };
 
 ElizaClient.prototype.getLifeOpsGmailRecommendations = async function (
   this: ElizaClient,
-  options = {},
+  options: GetLifeOpsGmailRecommendationsRequest = {},
 ) {
   const params = new URLSearchParams();
   if (options.mode) {
@@ -1522,7 +1515,7 @@ ElizaClient.prototype.getLifeOpsGmailRecommendations = async function (
     params.set("includeSpamTrash", String(options.includeSpamTrash));
   }
   const query = params.toString();
-  return this.fetch(
+  return this.fetch<LifeOpsGmailRecommendationsFeed>(
     `/api/lifeops/gmail/recommendations${query ? `?${query}` : ""}`,
   );
 };
@@ -1569,7 +1562,7 @@ ElizaClient.prototype.updateLifeOpsGmailSpamReviewItem = async function (
 
 ElizaClient.prototype.getLifeOpsGmailUnresponded = async function (
   this: ElizaClient,
-  options = {},
+  options: GetLifeOpsGmailUnrespondedRequest = {},
 ) {
   const params = new URLSearchParams();
   if (options.mode) {
@@ -1588,7 +1581,7 @@ ElizaClient.prototype.getLifeOpsGmailUnresponded = async function (
     params.set("olderThanDays", String(options.olderThanDays));
   }
   const query = params.toString();
-  return this.fetch(
+  return this.fetch<LifeOpsGmailUnrespondedFeed>(
     `/api/lifeops/gmail/unresponded${query ? `?${query}` : ""}`,
   );
 };
@@ -1719,9 +1712,9 @@ ElizaClient.prototype.sendLifeOpsGmailReply = async function (
 
 ElizaClient.prototype.manageLifeOpsGmailMessages = async function (
   this: ElizaClient,
-  data,
+  data: ManageLifeOpsGmailMessagesRequest,
 ) {
-  return this.fetch("/api/lifeops/gmail/manage", {
+  return this.fetch<LifeOpsGmailManageResult>("/api/lifeops/gmail/manage", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -1879,8 +1872,8 @@ ElizaClient.prototype.inspectLifeOpsReminder = async function (
 
 ElizaClient.prototype.getGoogleLifeOpsConnectorStatus = async function (
   this: ElizaClient,
-  mode,
-  side,
+  mode?: LifeOpsConnectorMode,
+  side?: LifeOpsConnectorSide,
 ) {
   const params = new URLSearchParams();
   if (mode) {
@@ -1890,7 +1883,9 @@ ElizaClient.prototype.getGoogleLifeOpsConnectorStatus = async function (
     params.set("side", side);
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
-  return this.fetch(`/api/lifeops/connectors/google/status${query}`);
+  return this.fetch<LifeOpsGoogleConnectorStatus>(
+    `/api/lifeops/connectors/google/status${query}`,
+  );
 };
 
 ElizaClient.prototype.selectGoogleLifeOpsConnectorMode = async function (
@@ -1925,8 +1920,8 @@ ElizaClient.prototype.disconnectGoogleLifeOpsConnector = async function (
 
 ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
   this: ElizaClient,
-  mode,
-  side,
+  mode?: LifeOpsConnectorMode,
+  side?: LifeOpsConnectorSide,
 ) {
   const params = new URLSearchParams();
   if (mode) {
@@ -1936,7 +1931,9 @@ ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
     params.set("side", side);
   }
   const query = params.size > 0 ? `?${params.toString()}` : "";
-  return this.fetch(`/api/lifeops/connectors/google/accounts${query}`);
+  return this.fetch<LifeOpsGoogleConnectorStatus[]>(
+    `/api/lifeops/connectors/google/accounts${query}`,
+  );
 };
 
 ElizaClient.prototype.getXLifeOpsConnectorStatus = async function (

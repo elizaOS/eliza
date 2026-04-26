@@ -54,8 +54,8 @@ import type {
 import { EventType, MemoryType, ModelType } from "../../../types/index.ts";
 import { asUUID } from "../../../types/primitives.ts";
 import { stringToUuid } from "../../../utils.ts";
-import { factExtractorEvaluator } from "./factExtractor.ts";
 import { factsProvider } from "../providers/facts.ts";
+import { factExtractorEvaluator } from "./factExtractor.ts";
 
 const EMBED_DIM = 384;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -772,7 +772,10 @@ describe("fact-memory scenarios", () => {
 			// must dedup against it.
 			fx.embeddingMap.set("anxious this morning", sharedEmbedding);
 			fx.embeddingMap.set("feeling anxious today", sharedEmbedding);
-			fx.embeddingMap.set("I'm anxious this morning, feeling anxious today", sharedEmbedding);
+			fx.embeddingMap.set(
+				"I'm anxious this morning, feeling anxious today",
+				sharedEmbedding,
+			);
 
 			fx.queueModelResponse(
 				JSON.stringify({
@@ -947,11 +950,7 @@ describe("fact-memory scenarios", () => {
 				fx,
 				"my cortisol curve is still flat per the latest test",
 			);
-			await factExtractorEvaluator.handler(
-				fx.runtime,
-				message,
-				emptyState,
-			);
+			await factExtractorEvaluator.handler(fx.runtime, message, emptyState);
 
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
@@ -1094,10 +1093,7 @@ describe("fact-memory scenarios", () => {
 			);
 			await factExtractorEvaluator.handler(
 				fx.runtime,
-				makeMessage(
-					fx,
-					"I have a flat cortisol curve confirmed via lab",
-				),
+				makeMessage(fx, "I have a flat cortisol curve confirmed via lab"),
 				emptyState,
 			);
 
@@ -1152,14 +1148,18 @@ describe("fact-memory scenarios", () => {
 			const durableHeaderIdx = text.indexOf(
 				"Things ScenarioAgent knows about Sam:",
 			);
-			const currentHeaderIdx = text.indexOf("What's currently happening for Sam:");
+			const currentHeaderIdx = text.indexOf(
+				"What's currently happening for Sam:",
+			);
 			expect(durableHeaderIdx).toBeGreaterThanOrEqual(0);
 			expect(currentHeaderIdx).toBeGreaterThan(durableHeaderIdx);
 
 			expect(text).toMatch(
 				/\[durable\.health conf=0\.\d{2}\] flat cortisol curve/,
 			);
-			expect(text).toMatch(/\[durable\.identity conf=0\.\d{2}\] lives in Berlin/);
+			expect(text).toMatch(
+				/\[durable\.identity conf=0\.\d{2}\] lives in Berlin/,
+			);
 			expect(text).toMatch(
 				/\[current\.feeling since \d{4}-\d{2}-\d{2} conf=0\.\d{2}\] anxious this morning/,
 			);

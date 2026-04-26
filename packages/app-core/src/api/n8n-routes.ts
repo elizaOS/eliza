@@ -28,10 +28,7 @@
  * services/n8n-sidecar.ts rather than being threaded through state.
  */
 
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/agent";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { isNativeServerPlatform } from "../platform/is-native-server";

@@ -5,10 +5,7 @@
  * content pack with their VRM, background, and personality.
  */
 
-import type {
-  ContentPackManifest,
-  ResolvedContentPack,
-} from "@elizaos/shared";
+import type { ContentPackManifest, ResolvedContentPack } from "@elizaos/shared";
 
 interface BundledPackDef {
   id: string;
