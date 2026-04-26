@@ -109,8 +109,8 @@ export const ownerScreenTimeAction: Action = {
     {
       name: "subaction",
       description:
-        "Required. One of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site.",
-      required: true,
+        "One of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {

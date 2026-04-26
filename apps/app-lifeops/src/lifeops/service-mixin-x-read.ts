@@ -4,7 +4,7 @@ import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import { readXPosterCredentialsFromEnv } from "./x-poster.js";

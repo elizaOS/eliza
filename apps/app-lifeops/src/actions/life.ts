@@ -7,7 +7,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { getRecentMessagesData } from "@elizaos/shared";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
@@ -38,7 +38,9 @@ import {
   getZonedDateParts,
 } from "../lifeops/time.js";
 import { gmailAction } from "./gmail.js";
-import { renderGroundedActionReply } from "@elizaos/agent/actions";
+import {
+  renderGroundedActionReply,
+} from "@elizaos/agent";
 import {
   type ExtractedLifeMissingField,
   type ExtractedLifeOperation,

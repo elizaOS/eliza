@@ -16,7 +16,16 @@ import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
 import { saveEnv, sleep, withTimeout } from "../../../../test/helpers/test-utils";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import {
+  buildCharacterFromConfig,
+  configureLocalEmbeddingPlugin,
+  createElizaPlugin,
+  extractPlugin,
+  listTriggerTasks,
+  type PluginModuleShape,
+  readTriggerConfig,
+  resolveOAuthDir,
+} from "@elizaos/agent";
 import {
   LIVE_PROVIDER_ENV_KEYS,
   LIVE_TESTS_ENABLED,
@@ -29,14 +38,6 @@ import {
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
-import { buildCharacterFromConfig } from "@elizaos/agent/runtime/eliza";
-import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
-import {
-  extractPlugin,
-  type PluginModuleShape,
-} from "@elizaos/agent/test-support/test-helpers";
-import { listTriggerTasks, readTriggerConfig } from "@elizaos/agent/triggers/runtime";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

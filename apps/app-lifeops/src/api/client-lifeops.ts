@@ -11,7 +11,7 @@
  * The `@elizaos/app-lifeops/widgets` entry point imports this transitively.
  */
 
-import { ElizaClient } from "@elizaos/app-core/api/client-base";
+import { ElizaClient } from "@elizaos/app-core";
 import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPackageStatus,
@@ -28,7 +28,7 @@ import type {
   OpenBrowserBridgeCompanionPackagePathResponse,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   CaptureLifeOpsManualOverrideRequest,
@@ -117,7 +117,7 @@ import type {
   UpdateLifeOpsGoalRequest,
   VerifyLifeOpsTelegramConnectorRequest,
   VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
 import type {
   LifeOpsScheduleInspection,

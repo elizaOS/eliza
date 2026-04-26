@@ -6,7 +6,7 @@ import {
   renderGroundedActionReply,
   summarizeActiveTrajectory,
   summarizeRecentActionHistory,
-} from "@elizaos/agent/actions";
+} from "@elizaos/agent";
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,

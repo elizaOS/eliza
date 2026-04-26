@@ -4,9 +4,9 @@ import {
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
+  registerEscalationChannel,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent/config";
-import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
+} from "@elizaos/agent";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,

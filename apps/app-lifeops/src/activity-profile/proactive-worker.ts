@@ -6,9 +6,10 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import {
+  getAgentEventService,
   loadOwnerContactsConfig,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent/config";
+} from "@elizaos/agent";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
 import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
@@ -19,7 +20,6 @@ import {
   type BackgroundJobContext,
 } from "../lifeops/background-planner.js";
 import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
-import { getAgentEventService } from "@elizaos/agent/runtime";
 import { resolveEffectiveDayKey } from "./analyzer.js";
 import {
   type CalendarEventSlim,

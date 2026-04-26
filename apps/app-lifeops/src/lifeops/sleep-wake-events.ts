@@ -4,7 +4,7 @@ import type {
   LifeOpsRegularityClass,
   LifeOpsScheduleSleepStatus,
   LifeOpsUnclearReason,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
 import { parseIsoMs } from "./time-util.js";
 

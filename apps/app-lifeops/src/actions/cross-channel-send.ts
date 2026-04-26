@@ -821,8 +821,8 @@ export const crossChannelSendAction: Action & {
   parameters: [
     {
       name: "channel",
-      description: `Channel to send on. Use canonical values ${CROSS_CHANNEL_SEND_CHANNELS.join(", ")}. Alias inputs like twilio_sms, gmail, push, ntfy, and twitter_dm are also accepted and normalized.`,
-      required: true,
+      description: `Channel to send on. Use canonical values ${CROSS_CHANNEL_SEND_CHANNELS.join(", ")}. Alias inputs like twilio_sms, gmail, push, ntfy, and twitter_dm are also accepted and normalized. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.`,
+      required: false,
       schema: {
         type: "string" as const,
         enum: [
@@ -839,15 +839,16 @@ export const crossChannelSendAction: Action & {
     {
       name: "target",
       description:
-        "Recipient identifier. Email address for email, E.164 phone for sms/twilio_voice, handle/user ID for chat channels, numeric X user ID or comma-separated numeric X user IDs for x_dm, Ntfy topic name for notifications.",
-      required: true,
+        "Recipient identifier. Email address for email, E.164 phone for sms/twilio_voice, handle/user ID for chat channels, numeric X user ID or comma-separated numeric X user IDs for x_dm, Ntfy topic name for notifications. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
       examples: ["+15555550101", "owner@example.test", "team-ops"],
     },
     {
       name: "message",
-      description: "Message body (plaintext).",
-      required: true,
+      description:
+        "Message body (plaintext). Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {

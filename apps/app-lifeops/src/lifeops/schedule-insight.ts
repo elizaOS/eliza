@@ -9,7 +9,7 @@ import {
   type LifeOpsScheduleMealLabel,
   type LifeOpsSleepCycle,
   type LifeOpsUnclearReason,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { listActivityEvents } from "../activity-profile/activity-tracker-repo.js";
 import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
 import { computeAwakeProbability } from "./awake-probability.js";

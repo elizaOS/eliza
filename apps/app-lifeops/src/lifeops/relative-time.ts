@@ -7,7 +7,7 @@ import type {
   LifeOpsRelativeTimeAnchorSource,
   LifeOpsScheduleInsight,
   LifeOpsScheduleRegularity,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,

@@ -1,4 +1,4 @@
-import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import type {
   DuffelOffer,
   DuffelOrder,

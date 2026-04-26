@@ -1,11 +1,10 @@
-import { client } from "@elizaos/app-core/api";
-import { openExternalUrl } from "@elizaos/app-core/utils";
+import { client, openExternalUrl } from "@elizaos/app-core";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsXConnectorStatus,
   LifeOpsXPostResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 
 function formatError(cause: unknown, fallback: string): string {

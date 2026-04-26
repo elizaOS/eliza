@@ -70,8 +70,9 @@ export const ownerRemoteDesktopAction: Action = {
   parameters: [
     {
       name: "subaction",
-      description: "Required. One of: start, end, status, list, revoke.",
-      required: true,
+      description:
+        "One of: start, end, status, list, revoke. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {

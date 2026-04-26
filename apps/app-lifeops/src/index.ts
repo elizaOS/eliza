@@ -12,6 +12,14 @@ export * from "./components/LifeOpsWorkspaceView.tsx";
 export * from "./components/WebsiteBlockerSettingsCard.tsx";
 export * from "./contracts/index.ts";
 export * from "./platform/index.ts";
+export {
+  type CloudFeaturesRouteState,
+  handleCloudFeaturesRoute,
+} from "./routes/cloud-features-routes.ts";
+export {
+  handleTravelProviderRelayRoute,
+  type TravelProviderRelayRouteState,
+} from "./routes/travel-provider-relay-routes.ts";
 export type {
   LifeOpsRouteContext,
   WebsiteBlockerRouteContext,
