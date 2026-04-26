@@ -4850,6 +4850,16 @@ function AutomationsLayout() {
           setSelectedItemId(null);
           setSelectedItemKind(null);
         }
+        // Mirror handleDeleteDraft: also clear the active workflow
+        // conversation if it's the one tied to the deleted workflow.
+        // Without this, refreshAutomationsWithDraftBinding keeps receiving
+        // a stale conversation reference on subsequent refreshes.
+        if (
+          conversationId &&
+          activeWorkflowConversation?.id === conversationId
+        ) {
+          setActiveWorkflowConversation(null);
+        }
         await ctx.refreshAutomations();
       } catch (error) {
         setPageNotice(
@@ -4863,7 +4873,15 @@ function AutomationsLayout() {
         setWorkflowBusyId(null);
       }
     },
-    [ctx, selectedItemId, setSelectedItemId, setSelectedItemKind, t],
+    [
+      activeWorkflowConversation?.id,
+      ctx,
+      selectedItemId,
+      setActiveWorkflowConversation,
+      setSelectedItemId,
+      setSelectedItemKind,
+      t,
+    ],
   );
 
   const handleDuplicateWorkflow = useCallback(
