@@ -55,6 +55,10 @@ export * from "./utils/buffer";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 
+export function resolveStateDir(): string {
+	return "/.milady";
+}
+
 // Browser-specific exports or stubs for Node-only features
 export const isBrowser = true;
 export const isNode = false;
