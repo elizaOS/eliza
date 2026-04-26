@@ -14,6 +14,7 @@ import {
   authBootstrapJtiSeenTable,
   authIdentityTable,
   authOwnerBindingTable,
+  authOwnerLoginTokenTable,
   authSessionTable,
 } from "@elizaos/plugin-sql/schema";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
@@ -41,6 +42,27 @@ export interface AuthSessionRow {
   userAgent: string | null;
   scopes: string[];
   revokedAt: number | null;
+}
+
+export interface AuthOwnerBindingRow {
+  id: string;
+  identityId: string;
+  connector: string;
+  externalId: string;
+  displayHandle: string;
+  instanceId: string;
+  verifiedAt: number;
+  pendingCodeHash: string | null;
+  pendingExpiresAt: number | null;
+}
+
+export interface AuthOwnerLoginTokenRow {
+  tokenHash: string;
+  identityId: string;
+  bindingId: string;
+  issuedAt: number;
+  expiresAt: number;
+  consumedAt: number | null;
 }
 
 export interface AuthAuditEventRow {
@@ -185,6 +207,16 @@ export class AuthStore {
       .limit(1);
     const row = rows[0];
     return row ? rowToIdentity(row) : null;
+  }
+
+  async updateIdentityPassword(
+    id: string,
+    passwordHash: string,
+  ): Promise<void> {
+    await this.db
+      .update(authIdentityTable)
+      .set({ passwordHash })
+      .where(eq(authIdentityTable.id, id));
   }
 
   async listIdentitiesByKind(
@@ -425,6 +457,8 @@ export class AuthStore {
     displayHandle: string;
     instanceId: string;
     verifiedAt: number;
+    pendingCodeHash?: string | null;
+    pendingExpiresAt?: number | null;
   }): Promise<void> {
     await this.db.insert(authOwnerBindingTable).values({
       id: input.id,
@@ -434,6 +468,189 @@ export class AuthStore {
       displayHandle: input.displayHandle,
       instanceId: input.instanceId,
       verifiedAt: input.verifiedAt,
+      pendingCodeHash: nullableString(input.pendingCodeHash),
+      pendingExpiresAt:
+        input.pendingExpiresAt === null || input.pendingExpiresAt === undefined
+          ? null
+          : input.pendingExpiresAt,
     });
   }
+
+  async findOwnerBinding(id: string): Promise<AuthOwnerBindingRow | null> {
+    const rows = await this.db
+      .select()
+      .from(authOwnerBindingTable)
+      .where(eq(authOwnerBindingTable.id, id))
+      .limit(1);
+    const row = rows[0];
+    return row ? rowToOwnerBinding(row) : null;
+  }
+
+  async findOwnerBindingByPendingCodeHash(
+    pendingCodeHash: string,
+    instanceId: string,
+  ): Promise<AuthOwnerBindingRow | null> {
+    const rows = await this.db
+      .select()
+      .from(authOwnerBindingTable)
+      .where(
+        and(
+          eq(authOwnerBindingTable.pendingCodeHash, pendingCodeHash),
+          eq(authOwnerBindingTable.instanceId, instanceId),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row ? rowToOwnerBinding(row) : null;
+  }
+
+  async findOwnerBindingByConnectorPair(input: {
+    connector: string;
+    externalId: string;
+    instanceId: string;
+  }): Promise<AuthOwnerBindingRow | null> {
+    const rows = await this.db
+      .select()
+      .from(authOwnerBindingTable)
+      .where(
+        and(
+          eq(authOwnerBindingTable.connector, input.connector),
+          eq(authOwnerBindingTable.externalId, input.externalId),
+          eq(authOwnerBindingTable.instanceId, input.instanceId),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    return row ? rowToOwnerBinding(row) : null;
+  }
+
+  async listOwnerBindingsForIdentity(
+    identityId: string,
+  ): Promise<AuthOwnerBindingRow[]> {
+    const rows = await this.db
+      .select()
+      .from(authOwnerBindingTable)
+      .where(eq(authOwnerBindingTable.identityId, identityId))
+      .orderBy(desc(authOwnerBindingTable.verifiedAt));
+    return rows.map(rowToOwnerBinding);
+  }
+
+  async updateOwnerBindingPending(
+    id: string,
+    pendingCodeHash: string | null,
+    pendingExpiresAt: number | null,
+  ): Promise<void> {
+    await this.db
+      .update(authOwnerBindingTable)
+      .set({ pendingCodeHash, pendingExpiresAt })
+      .where(eq(authOwnerBindingTable.id, id));
+  }
+
+  async markOwnerBindingVerified(
+    id: string,
+    verifiedAt: number,
+    displayHandle: string,
+  ): Promise<void> {
+    await this.db
+      .update(authOwnerBindingTable)
+      .set({
+        verifiedAt,
+        displayHandle,
+        pendingCodeHash: null,
+        pendingExpiresAt: null,
+      })
+      .where(eq(authOwnerBindingTable.id, id));
+  }
+
+  async deleteOwnerBinding(id: string): Promise<boolean> {
+    const result = (await this.db
+      .delete(authOwnerBindingTable)
+      .where(eq(authOwnerBindingTable.id, id))) as unknown as DrizzleRunResult;
+    return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
+  }
+
+  async createOwnerLoginToken(input: {
+    tokenHash: string;
+    identityId: string;
+    bindingId: string;
+    issuedAt: number;
+    expiresAt: number;
+  }): Promise<void> {
+    await this.db.insert(authOwnerLoginTokenTable).values({
+      tokenHash: input.tokenHash,
+      identityId: input.identityId,
+      bindingId: input.bindingId,
+      issuedAt: input.issuedAt,
+      expiresAt: input.expiresAt,
+    });
+  }
+
+  async findOwnerLoginToken(
+    tokenHash: string,
+  ): Promise<AuthOwnerLoginTokenRow | null> {
+    const rows = await this.db
+      .select()
+      .from(authOwnerLoginTokenTable)
+      .where(eq(authOwnerLoginTokenTable.tokenHash, tokenHash))
+      .limit(1);
+    const row = rows[0];
+    return row ? rowToOwnerLoginToken(row) : null;
+  }
+
+  /**
+   * Atomically mark the token as consumed. Returns true when the consume
+   * succeeded (token existed, was unconsumed, was unexpired). Returns
+   * false otherwise — the caller MUST treat false as "auth failure" and
+   * never as "transient error".
+   */
+  async consumeOwnerLoginToken(
+    tokenHash: string,
+    now: number,
+  ): Promise<boolean> {
+    const result = (await this.db
+      .update(authOwnerLoginTokenTable)
+      .set({ consumedAt: now })
+      .where(
+        and(
+          eq(authOwnerLoginTokenTable.tokenHash, tokenHash),
+          isNull(authOwnerLoginTokenTable.consumedAt),
+        ),
+      )) as unknown as DrizzleRunResult;
+    return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
+  }
+}
+
+function rowToOwnerBinding(
+  row: typeof authOwnerBindingTable.$inferSelect,
+): AuthOwnerBindingRow {
+  return {
+    id: row.id,
+    identityId: row.identityId,
+    connector: row.connector,
+    externalId: row.externalId,
+    displayHandle: row.displayHandle,
+    instanceId: row.instanceId,
+    verifiedAt: Number(row.verifiedAt),
+    pendingCodeHash: row.pendingCodeHash ?? null,
+    pendingExpiresAt:
+      row.pendingExpiresAt === null || row.pendingExpiresAt === undefined
+        ? null
+        : Number(row.pendingExpiresAt),
+  };
+}
+
+function rowToOwnerLoginToken(
+  row: typeof authOwnerLoginTokenTable.$inferSelect,
+): AuthOwnerLoginTokenRow {
+  return {
+    tokenHash: row.tokenHash,
+    identityId: row.identityId,
+    bindingId: row.bindingId,
+    issuedAt: Number(row.issuedAt),
+    expiresAt: Number(row.expiresAt),
+    consumedAt:
+      row.consumedAt === null || row.consumedAt === undefined
+        ? null
+        : Number(row.consumedAt),
+  };
 }

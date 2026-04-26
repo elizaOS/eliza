@@ -19,7 +19,13 @@ import {
 	relationshipsProvider,
 } from "../features/advanced-capabilities/providers/index";
 import {
+	__setKnowledgeUrlFetchImplForTests,
 	createKnowledgePlugin,
+	type FetchedKnowledgeUrl,
+	type FetchedKnowledgeUrlKind,
+	type FetchKnowledgeFromUrlOptions,
+	fetchKnowledgeFromUrl,
+	isYouTubeUrl,
 	KnowledgeService,
 	knowledgePlugin,
 	knowledgePluginCore,
@@ -107,9 +113,17 @@ export function resolveNativeRuntimeFeatureFromPluginName(
 	return null;
 }
 
+export type {
+	FetchedKnowledgeUrl,
+	FetchedKnowledgeUrlKind,
+	FetchKnowledgeFromUrlOptions,
+};
 export {
+	__setKnowledgeUrlFetchImplForTests,
 	createKnowledgePlugin,
 	FollowUpService,
+	fetchKnowledgeFromUrl,
+	isYouTubeUrl,
 	KnowledgeService,
 	knowledgePlugin,
 	knowledgePluginCore,

@@ -62,7 +62,8 @@ interface LifeOpsSetupGateProps {
 }
 
 export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
-  const { t } = useApp();
+  const { elizaCloudConnected, elizaCloudLoginBusy, handleCloudLogin, t } =
+    useApp();
   const ownerConnector = useGoogleLifeOpsConnector({
     includeAccounts: false,
     side: "owner",
@@ -88,8 +89,12 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
   }, [ownerConnector]);
 
   const handleConnectX = useCallback(() => {
+    if (!elizaCloudConnected) {
+      void handleCloudLogin();
+      return;
+    }
     void xConnector.connect("cloud_managed");
-  }, [xConnector]);
+  }, [elizaCloudConnected, handleCloudLogin, xConnector]);
 
   const handleSkip = useCallback(() => {
     setSkipped(true);
@@ -191,7 +196,7 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
             <button
               type="button"
               onClick={handleConnectX}
-              disabled={xConnector.actionPending}
+              disabled={xConnector.actionPending || elizaCloudLoginBusy}
               className={[
                 "flex items-start gap-3 rounded-2xl border px-4 py-3 text-left transition-colors",
                 xConnected
@@ -211,9 +216,13 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
                     ? t("lifeopssetup.connected", {
                         defaultValue: "Connected",
                       })
-                    : t("lifeopssetup.messagingHint", {
-                        defaultValue: "Read and reply to incoming DMs",
-                      })}
+                    : !elizaCloudConnected
+                      ? t("lifeopssetup.cloudRequired", {
+                          defaultValue: "Connect Eliza Cloud first",
+                        })
+                      : t("lifeopssetup.messagingHint", {
+                          defaultValue: "Read and reply to incoming DMs",
+                        })}
                 </div>
               </div>
             </button>

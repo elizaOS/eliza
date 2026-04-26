@@ -132,18 +132,16 @@ const EXECUTIVE_ASSISTANT_SCENARIO_DIR = path.join(
   "executive-assistant",
 );
 const EXECUTIVE_ASSISTANT_CATALOG_PATH = path.join(
-  REPO_ROOT,
-  "test",
+  import.meta.dirname,
+  "..",
   "scenarios",
-  "lifeops",
   "_catalogs",
   "ice-bambam-executive-assistant.json",
 );
 const SELF_CARE_SCENARIO_DIR = path.join(
-  REPO_ROOT,
-  "test",
+  import.meta.dirname,
+  "..",
   "scenarios",
-  "lifeops",
 );
 const SELF_CARE_HABIT_SCENARIO_DIR = path.join(
   REPO_ROOT,

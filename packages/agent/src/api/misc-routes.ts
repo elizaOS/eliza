@@ -4,6 +4,10 @@ import {
   EMOTE_BY_ID,
   EMOTE_CATALOG,
 } from "@elizaos/app-companion/emotes/catalog";
+import {
+  ensurePrivyWalletsForCustomUser,
+  isPrivyWalletProvisioningEnabled,
+} from "@elizaos/app-steward/services/privy-wallets";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared/type-guards";
 import type { ElizaConfig } from "../config/config.js";
@@ -16,10 +20,6 @@ import {
   buildTestHandler,
   registerCustomActionLive,
 } from "../runtime/custom-actions.js";
-import {
-  ensurePrivyWalletsForCustomUser,
-  isPrivyWalletProvisioningEnabled,
-} from "../services/privy-wallets.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.js";
 

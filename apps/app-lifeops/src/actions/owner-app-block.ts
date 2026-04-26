@@ -14,6 +14,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   APP_BLOCKER_ACCESS_ERROR,
   getAppBlockerAccess,
@@ -162,8 +163,18 @@ export const ownerAppBlockAction: Action & {
       } as ActionResult;
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerAppBlockParameters;
+    const params = (await extractActionParamsViaLlm<OwnerAppBlockParameters>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerAppBlockAction.description ?? "",
+      paramSchema: ownerAppBlockAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as OwnerAppBlockParameters;
     const subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       return {

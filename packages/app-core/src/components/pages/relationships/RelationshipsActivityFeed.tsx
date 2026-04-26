@@ -3,7 +3,7 @@ import { Fingerprint, Link2, Tags } from "lucide-react";
 import { type ComponentType, useEffect, useState } from "react";
 import { client } from "../../../api/client";
 import type { RelationshipsActivityItem } from "../../../api/client-types-relationships";
-import { formatDateTime } from "../../../utils/format";
+import { formatDateTime, formatShortDate } from "../../../utils/format";
 
 type ActivityType = RelationshipsActivityItem["type"];
 
@@ -104,36 +104,39 @@ export function RelationshipsActivityFeed() {
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       {activity.map((item) => {
         const style = ACTIVITY_TYPE_STYLES[item.type];
         const ActivityIcon = style.icon;
         return (
           <div
             key={`${item.personId}-${item.type}-${item.timestamp ?? "none"}-${item.summary}`}
-            className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
+            className="flex items-center gap-2 rounded-lg border border-border/24 bg-card/28 px-2.5 py-2"
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                role="img"
-                aria-label={`${item.type} event`}
-                title={item.type}
-                className="inline-flex h-5 w-5 items-center justify-center rounded-full"
-                style={{ backgroundColor: style.bg, color: style.fg }}
-              >
-                <ActivityIcon className="h-3 w-3" />
-              </span>
-              {item.timestamp ? (
-                <span className="ml-auto text-xs-tight text-muted">
-                  {formatDateTime(item.timestamp, { fallback: "" })}
-                </span>
+            <span
+              role="img"
+              aria-label={`${item.type} event`}
+              title={item.type}
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full"
+              style={{ backgroundColor: style.bg, color: style.fg }}
+            >
+              <ActivityIcon className="h-3 w-3" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-txt">
+                {item.summary}
+              </div>
+              {item.detail ? (
+                <div className="truncate text-xs text-muted">{item.detail}</div>
               ) : null}
             </div>
-            <div className="mt-1.5 text-sm font-semibold text-txt">
-              {item.summary}
-            </div>
-            {item.detail ? (
-              <div className="mt-0.5 text-xs text-muted">{item.detail}</div>
+            {item.timestamp ? (
+              <span
+                className="shrink-0 text-2xs text-muted"
+                title={formatDateTime(item.timestamp, { fallback: "" })}
+              >
+                {formatShortDate(item.timestamp, { fallback: "" })}
+              </span>
             ) : null}
           </div>
         );

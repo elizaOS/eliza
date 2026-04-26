@@ -58,6 +58,41 @@ function publishElizaCloudVoiceSnapshot(
   });
 }
 
+function isSameOriginLocalHttpBackend(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const { hostname, protocol } = window.location;
+  if (protocol !== "http:" && protocol !== "https:") {
+    return false;
+  }
+
+  return (
+    hostname === "localhost" ||
+    hostname === "::1" ||
+    hostname.endsWith(".local") ||
+    /^127\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  );
+}
+
+function hasCloudLoginBackend(): boolean {
+  const explicitBase =
+    typeof client.getBaseUrl === "function" ? client.getBaseUrl().trim() : "";
+  return Boolean(explicitBase) || isSameOriginLocalHttpBackend();
+}
+
+function formatCloudLoginPersistError(cause: unknown): string {
+  const detail =
+    cause instanceof Error && cause.message.trim().length > 0
+      ? ` ${cause.message.trim()}`
+      : "";
+  return `Eliza Cloud login completed, but Milady could not save the cloud session locally.${detail}`;
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface CloudStateParams {
@@ -267,7 +302,7 @@ export function useCloudState({
 
     // Determine if we should use direct cloud auth (no local backend) or
     // go through the local agent's proxy.
-    const hasBackend = Boolean(client.getBaseUrl());
+    const hasBackend = hasCloudLoginBackend();
     const cloudApiBase =
       getBootConfig().cloudApiBase ?? "https://www.elizacloud.ai";
     const useDirectAuth = !hasBackend;
@@ -362,14 +397,6 @@ export function useCloudState({
 
           consecutivePollErrors = 0;
           if (poll.status === "authenticated") {
-            stopCloudLoginPolling();
-            setElizaCloudConnected(true);
-            setElizaCloudLoginError(null);
-            if (poll.userId) {
-              setElizaCloudUserId(poll.userId);
-            }
-
-            // Store the cloud auth token for provisioning
             if (poll.token && typeof window !== "undefined") {
               (
                 globalThis as Record<string, unknown>
@@ -379,23 +406,33 @@ export function useCloudState({
               setBootConfig({ ...cfg, cloudApiBase });
             }
 
+            if (useDirectAuth) {
+              if (!poll.token) {
+                stopCloudLoginPolling(
+                  "Eliza Cloud login completed, but the cloud session did not return an API key.",
+                );
+                return;
+              }
+              try {
+                await client.cloudLoginPersist(poll.token);
+              } catch (cause) {
+                stopCloudLoginPolling(formatCloudLoginPersistError(cause));
+                return;
+              }
+            }
+
+            stopCloudLoginPolling();
+            setElizaCloudConnected(true);
+            setElizaCloudLoginError(null);
+            if (poll.userId) {
+              setElizaCloudUserId(poll.userId);
+            }
+
             setActionNotice(
               "Logged in to Eliza Cloud successfully.",
               "success",
               6000,
             );
-            if (useDirectAuth && poll.token) {
-              // Direct auth bypasses the backend's login/status handler, so
-              // the API key was never persisted server-side. Send it now so
-              // billing/compat routes can authenticate with Eliza Cloud.
-              void fetch("/api/cloud/login/persist", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ apiKey: poll.token }),
-              }).catch(() => {
-                // Non-fatal: credits/billing will fail but core chat works
-              });
-            }
 
             // The backend owns the cloud-wallet bind + runtime reload now.
             // Startup/ws recovery will rehydrate wallet + cloud state once the

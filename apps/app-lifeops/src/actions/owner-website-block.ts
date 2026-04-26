@@ -20,6 +20,7 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
@@ -468,8 +469,18 @@ export const ownerWebsiteBlockAction: Action & {
       } as ActionResult;
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerWebsiteBlockParameters;
+    const params = (await extractActionParamsViaLlm<OwnerWebsiteBlockParameters>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerWebsiteBlockAction.description ?? "",
+      paramSchema: ownerWebsiteBlockAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as OwnerWebsiteBlockParameters;
     let subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       const plan = await resolveOwnerWebsiteBlockPlanWithLlm({

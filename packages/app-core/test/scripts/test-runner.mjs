@@ -73,7 +73,17 @@ await runManagedTestCommand({
   lockName: "e2e",
   label: "e2e",
   command: bunCmd,
-  args: ["run", "test:e2e"],
+  args: ["run", "test:e2e:all"],
+  cwd: repoRoot,
+  env: buildTestEnv(repoRoot),
+});
+
+await runManagedTestCommand({
+  repoRoot,
+  lockName: "lifeops-scenarios",
+  label: "lifeops-scenarios",
+  command: bunCmd,
+  args: ["run", "scenarios:lifeops"],
   cwd: repoRoot,
   env: buildTestEnv(repoRoot),
 });

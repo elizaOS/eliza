@@ -185,12 +185,39 @@ function collectRecentConversation(
           ? (m.content as Record<string, unknown>)
           : null;
       const text = typeof content?.text === "string" ? content.text.trim() : "";
-      const messageName = (m as { name?: unknown }).name;
-      const speaker = typeof messageName === "string" ? messageName : "user";
+      const speaker = getMemorySpeakerName(m);
       return text ? `${speaker}: ${text}` : null;
     })
     .filter((line): line is string => line !== null)
     .join("\n");
+}
+
+function getMemorySpeakerName(memory: Memory): string {
+  const metadata = memory.metadata;
+  if (!metadata) return "user";
+
+  if (
+    "sender" in metadata &&
+    metadata.sender &&
+    typeof metadata.sender === "object" &&
+    "name" in metadata.sender &&
+    typeof metadata.sender.name === "string"
+  ) {
+    return metadata.sender.name;
+  }
+
+  if ("entityName" in metadata && typeof metadata.entityName === "string") {
+    return metadata.entityName;
+  }
+
+  if (
+    "entityUserName" in metadata &&
+    typeof metadata.entityUserName === "string"
+  ) {
+    return metadata.entityUserName;
+  }
+
+  return "user";
 }
 
 function buildExtractionPrompt(args: {

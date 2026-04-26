@@ -248,6 +248,10 @@ declare module "./client-base" {
     }>;
     getAuthStatus(): Promise<{
       required: boolean;
+      loginRequired?: boolean;
+      bootstrapRequired?: boolean;
+      localAccess?: boolean;
+      passwordConfigured?: boolean;
       pairingEnabled: boolean;
       expiresAt: number | null;
     }>;

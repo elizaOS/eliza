@@ -4,7 +4,6 @@
  */
 
 import { useApp } from "@elizaos/app-core";
-import type { StewardStatusResponse } from "./types/steward";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
 import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
@@ -15,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { StewardLogo } from "./StewardLogo";
 import { TransactionHistory } from "./TransactionHistory";
+import type { StewardStatusResponse } from "./types/steward";
 
 type StewardTab = "history" | "approvals";
 

@@ -555,7 +555,13 @@ export function LifeOpsSchedulePanel() {
 }
 
 export function LifeOpsXPanel() {
-  const { t } = useApp();
+  const {
+    elizaCloudConnected,
+    elizaCloudLoginBusy,
+    elizaCloudLoginError,
+    handleCloudLogin,
+    t,
+  } = useApp();
   const ownerX = useLifeOpsXConnector("owner");
   const agentX = useLifeOpsXConnector("agent");
   const status = ownerX.status;
@@ -565,7 +571,27 @@ export function LifeOpsXPanel() {
   const ownerIdentity = readXIdentity(status?.identity ?? null, "");
   const agentIdentity = readXIdentity(agentStatus?.identity ?? null, "");
   const mode = status?.mode ?? status?.defaultMode ?? "cloud_managed";
-  const actionPending = ownerX.actionPending || agentX.actionPending;
+  const ownerNeedsCloudLogin =
+    !elizaCloudConnected && status?.hasCredentials !== true;
+  const agentNeedsCloudLogin = !elizaCloudConnected;
+  const actionPending =
+    ownerX.actionPending || agentX.actionPending || elizaCloudLoginBusy;
+
+  const handleOwnerConnect = useCallback(() => {
+    if (ownerNeedsCloudLogin) {
+      void handleCloudLogin();
+      return;
+    }
+    void ownerX.connect(mode);
+  }, [handleCloudLogin, mode, ownerNeedsCloudLogin, ownerX.connect]);
+
+  const handleAgentConnect = useCallback(() => {
+    if (agentNeedsCloudLogin) {
+      void handleCloudLogin();
+      return;
+    }
+    void agentX.connect("cloud_managed");
+  }, [agentNeedsCloudLogin, agentX.connect, handleCloudLogin]);
 
   return (
     <PanelShell
@@ -655,16 +681,20 @@ export function LifeOpsXPanel() {
         <Button
           size="sm"
           className="h-8 rounded-xl px-3 text-xs font-semibold"
-          onClick={() => void ownerX.connect(mode)}
+          onClick={handleOwnerConnect}
           disabled={actionPending}
           title={
-            connected
-              ? t("lifeopspanels.reconnectOwnerX", {
-                  defaultValue: "Reconnect Owner X",
+            ownerNeedsCloudLogin
+              ? t("lifeopspanels.connectCloudFirst", {
+                  defaultValue: "Connect Eliza Cloud first",
                 })
-              : t("lifeopspanels.connectOwnerX", {
-                  defaultValue: "Connect Owner X",
-                })
+              : connected
+                ? t("lifeopspanels.reconnectOwnerX", {
+                    defaultValue: "Reconnect Owner X",
+                  })
+                : t("lifeopspanels.connectOwnerX", {
+                    defaultValue: "Connect Owner X",
+                  })
           }
         >
           {actionPending ? (
@@ -678,19 +708,27 @@ export function LifeOpsXPanel() {
           size="sm"
           variant="outline"
           className="h-8 rounded-xl px-3 text-xs font-semibold"
-          onClick={() => void agentX.connect("cloud_managed")}
+          onClick={handleAgentConnect}
           disabled={actionPending}
           title={
-            agentConnected
-              ? t("lifeopspanels.reconnectAgentX", {
-                  defaultValue: "Reconnect Agent X",
+            agentNeedsCloudLogin
+              ? t("lifeopspanels.connectCloudFirst", {
+                  defaultValue: "Connect Eliza Cloud first",
                 })
-              : t("lifeopspanels.connectAgentX", {
-                  defaultValue: "Connect Agent X",
-                })
+              : agentConnected
+                ? t("lifeopspanels.reconnectAgentX", {
+                    defaultValue: "Reconnect Agent X",
+                  })
+                : t("lifeopspanels.connectAgentX", {
+                    defaultValue: "Connect Agent X",
+                  })
           }
         >
-          <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+          {actionPending ? (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+          )}
           {t("chat.agentType", { defaultValue: "Agent" })}
         </Button>
         {connected ? (
@@ -722,9 +760,9 @@ export function LifeOpsXPanel() {
         </a>
       ) : null}
 
-      {ownerX.error || agentX.error ? (
+      {ownerX.error || agentX.error || elizaCloudLoginError ? (
         <div className="text-xs text-danger">
-          {ownerX.error ?? agentX.error}
+          {ownerX.error ?? agentX.error ?? elizaCloudLoginError}
         </div>
       ) : null}
     </PanelShell>

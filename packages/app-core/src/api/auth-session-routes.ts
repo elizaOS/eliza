@@ -42,6 +42,7 @@ import {
 import { findActiveSession } from "./auth/sessions";
 import {
   type CompatRuntimeState,
+  isTrustedLocalRequest,
   readCompatJsonBody,
 } from "./compat-route-shared";
 import {
@@ -155,6 +156,7 @@ export async function handleAuthSessionRoutes(
     if (
       url.pathname === "/api/auth/setup" ||
       url.pathname === "/api/auth/login/password" ||
+      url.pathname === "/api/auth/password/change" ||
       url.pathname === "/api/auth/logout" ||
       url.pathname === "/api/auth/me" ||
       url.pathname === "/api/auth/sessions" ||
@@ -180,6 +182,11 @@ export async function handleAuthSessionRoutes(
   // POST /api/auth/login/password
   if (method === "POST" && url.pathname === "/api/auth/login/password") {
     return await handleLoginPassword(req, res, store, { ip, userAgent });
+  }
+
+  // POST /api/auth/password/change
+  if (method === "POST" && url.pathname === "/api/auth/password/change") {
+    return await handleChangePassword(req, res, store, { ip, userAgent });
   }
 
   // POST /api/auth/logout
@@ -468,13 +475,52 @@ async function handleMe(
   res: http.ServerResponse,
   store: AuthStore,
 ): Promise<boolean> {
+  if (isTrustedLocalRequest(req)) {
+    const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
+    sendJsonResponse(res, 200, {
+      identity: owner
+        ? {
+            id: owner.id,
+            displayName: owner.displayName,
+            kind: owner.kind,
+          }
+        : {
+            id: "local-loopback",
+            displayName: "Local",
+            kind: "owner" as const,
+          },
+      session: {
+        id: "local-loopback",
+        kind: "local" as const,
+        expiresAt: null,
+      },
+      access: {
+        mode: "local" as const,
+        passwordConfigured: Boolean(owner?.passwordHash),
+        ownerConfigured: Boolean(owner),
+      },
+    });
+    return true;
+  }
+
   const ctx = await ensureSessionForRequest(req, res, {
     store,
     allowLegacyBearer: false,
     allowBootstrapBearer: false,
   });
   if (!ctx?.session || !ctx.identity) {
-    sendJsonErrorResponse(res, 401, "Unauthorized");
+    const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
+    sendJsonResponse(res, 401, {
+      error: "Unauthorized",
+      reason: owner?.passwordHash
+        ? "remote_auth_required"
+        : "remote_password_not_configured",
+      access: {
+        mode: "remote" as const,
+        passwordConfigured: Boolean(owner?.passwordHash),
+        ownerConfigured: Boolean(owner),
+      },
+    });
     return true;
   }
   sendJsonResponse(res, 200, {
@@ -488,7 +534,105 @@ async function handleMe(
       kind: ctx.session.kind,
       expiresAt: ctx.session.expiresAt,
     },
+    access: {
+      mode: "session" as const,
+      passwordConfigured: Boolean(ctx.identity.passwordHash),
+      ownerConfigured: true,
+    },
   });
+  return true;
+}
+
+// ── /api/auth/password/change ───────────────────────────────────────────────
+
+async function handleChangePassword(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  store: AuthStore,
+  meta: { ip: string | null; userAgent: string | null },
+): Promise<boolean> {
+  if (!consumeAuthBucket(meta.ip)) {
+    sendJsonErrorResponse(res, 429, "Too many requests");
+    return true;
+  }
+
+  const body = await readCompatJsonBody(req, res);
+  if (body == null) return true;
+
+  const currentPassword =
+    typeof body.currentPassword === "string" ? body.currentPassword : "";
+  const newPassword =
+    typeof body.newPassword === "string" ? body.newPassword : "";
+
+  try {
+    assertPasswordStrong(newPassword);
+  } catch (err) {
+    if (err instanceof WeakPasswordError) {
+      sendJsonResponse(res, 400, {
+        error: "weak_password",
+        reason: err.reason,
+      });
+      return true;
+    }
+    throw err;
+  }
+
+  const localAccess = isTrustedLocalRequest(req);
+  const ctx = localAccess
+    ? null
+    : await ensureSessionForRequest(req, res, {
+        store,
+        allowLegacyBearer: false,
+        allowBootstrapBearer: false,
+      });
+
+  const identity = localAccess
+    ? ((await store.listIdentitiesByKind("owner"))[0] ?? null)
+    : (ctx?.identity ?? null);
+
+  if (!identity) {
+    sendJsonErrorResponse(res, 404, "owner_not_found");
+    return true;
+  }
+
+  if (!localAccess) {
+    if (!identity.passwordHash || currentPassword.length === 0) {
+      sendJsonErrorResponse(res, 401, "invalid_credentials");
+      return true;
+    }
+    const ok = await verifyPassword(currentPassword, identity.passwordHash);
+    if (!ok) {
+      await appendAuditEvent(
+        {
+          actorIdentityId: identity.id,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          action: "auth.password.change",
+          outcome: "failure",
+          metadata: { reason: "bad_current_password" },
+        },
+        { store },
+      );
+      sendJsonErrorResponse(res, 401, "invalid_credentials");
+      return true;
+    }
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+  await store.updateIdentityPassword(identity.id, passwordHash);
+  await appendAuditEvent(
+    {
+      actorIdentityId: identity.id,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+      action: "auth.password.change",
+      outcome: "success",
+      metadata: { localAccess },
+    },
+    { store },
+  );
+
+  sendJsonResponse(res, 200, { ok: true });
   return true;
 }
 
@@ -499,6 +643,34 @@ async function handleListSessions(
   res: http.ServerResponse,
   store: AuthStore,
 ): Promise<boolean> {
+  if (isTrustedLocalRequest(req)) {
+    const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
+    const sessions = owner ? await store.listSessionsForIdentity(owner.id) : [];
+    sendJsonResponse(res, 200, {
+      sessions: [
+        {
+          id: "local-loopback",
+          kind: "local" as const,
+          ip: req.socket?.remoteAddress ?? "127.0.0.1",
+          userAgent: extractHeaderValue(req.headers["user-agent"]),
+          lastSeenAt: Date.now(),
+          expiresAt: null,
+          current: true,
+        },
+        ...sessions.map((s) => ({
+          id: s.id,
+          kind: s.kind,
+          ip: s.ip,
+          userAgent: s.userAgent,
+          lastSeenAt: s.lastSeenAt,
+          expiresAt: s.expiresAt,
+          current: false,
+        })),
+      ],
+    });
+    return true;
+  }
+
   const ctx = await ensureSessionForRequest(req, res, {
     store,
     allowLegacyBearer: false,

@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type { StewardSignRequest } from "../types/steward";
 import { ethers } from "ethers";
 import { deriveSolanaAddress } from "../api/wallet";
 import { resolveWalletRpcReadiness } from "../api/wallet-rpc";
+import type { StewardSignRequest } from "../types/steward";
 
 /** @internal Exported for testing. Parse a transaction value string to BigInt. */
 export function safeParseBigInt(value: string): bigint {
@@ -17,11 +17,11 @@ export function safeParseBigInt(value: string): bigint {
   }
 }
 
-import {
-  readCompatJsonBody,
-  type CompatRuntimeState,
-} from "@elizaos/app-core/api/compat-route-shared";
 import { ensureCompatApiAuthorized } from "@elizaos/app-core/api/auth";
+import {
+  type CompatRuntimeState,
+  readCompatJsonBody,
+} from "@elizaos/app-core/api/compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,

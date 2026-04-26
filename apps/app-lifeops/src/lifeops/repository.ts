@@ -2755,6 +2755,18 @@ export class LifeOpsRepository {
     );
   }
 
+  async deletePaymentTransactionById(
+    agentId: string,
+    transactionId: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM life_payment_transactions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(transactionId)}`,
+    );
+  }
+
   async insertPaymentTransaction(
     transaction: LifeOpsPaymentTransaction,
   ): Promise<boolean> {

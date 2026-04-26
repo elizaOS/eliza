@@ -187,7 +187,7 @@ export function RelationshipsWorkspaceView({
                   id="relationships-search"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search people, aliases, handles"
+                  placeholder="Search"
                   aria-label="Search people, aliases, handles"
                   className="h-9 w-full rounded-lg border border-border/35 bg-card/45 pl-9 pr-10 text-sm text-txt outline-none transition focus:border-accent/55"
                 />
@@ -217,7 +217,7 @@ export function RelationshipsWorkspaceView({
               aria-label="Platform filter"
               className="h-9 w-full rounded-lg border border-border/35 bg-card/45 pl-9 pr-8 text-sm text-txt outline-none transition focus:border-accent/55"
             >
-              <option value="all">All platforms</option>
+              <option value="all">All</option>
               {platforms.map((entry) => (
                 <option key={entry} value={entry}>
                   {entry}
@@ -230,13 +230,13 @@ export function RelationshipsWorkspaceView({
             type="button"
             size="sm"
             variant="outline"
-            className="h-9 shrink-0 gap-2 rounded-lg px-3"
+            className="h-9 w-9 shrink-0 rounded-lg p-0"
             onClick={refreshGraph}
+            aria-label="Refresh relationships"
           >
             <RefreshCw
               className={`h-4 w-4 ${graphLoading ? "animate-spin" : ""}`}
             />
-            {graphLoading ? "Refreshing..." : "Refresh"}
           </Button>
         </div>
       </div>
@@ -272,8 +272,8 @@ export function RelationshipsWorkspaceView({
           className={embedded ? "min-h-[18rem]" : "min-h-[24rem]"}
           description={
             search || platform !== "all"
-              ? "No people match the current relationship filters."
-              : "Connectors, relationships extraction, and confirmed identity links will populate this workspace."
+              ? "No people match these filters."
+              : "No relationship data yet."
           }
           title={
             search || platform !== "all"
@@ -316,12 +316,12 @@ export function RelationshipsWorkspaceView({
                 />
               </div>
             ) : detailLoading ? (
-              <PagePanel.Loading heading="Loading person detail..." />
+              <PagePanel.Loading heading="Loading person..." />
             ) : (
               <PagePanel.Empty
                 variant="panel"
                 title="Select a person"
-                description="Choose a person from the list or graph to inspect linked identities, facts, and conversation snippets."
+                description="Choose a person from the list or graph."
               />
             )}
           </div>
@@ -345,11 +345,13 @@ export function RelationshipsWorkspaceView({
                 onResolved={refreshGraph}
               />
 
-              <PagePanel variant="surface" className="px-3 py-3">
-                <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-                  Activity
-                </div>
-                <div className="mt-3 max-h-[24rem] overflow-auto pr-1">
+              <PagePanel
+                as="section"
+                variant="surface"
+                aria-label="Activity"
+                className="px-3 py-3"
+              >
+                <div className="max-h-[24rem] overflow-auto pr-1">
                   <RelationshipsActivityFeed />
                 </div>
               </PagePanel>

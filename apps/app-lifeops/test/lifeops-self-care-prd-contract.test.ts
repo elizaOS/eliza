@@ -59,7 +59,7 @@ const JSON_SCENARIO_DIR = path.join(
   "app-lifeops",
   "scenarios",
 );
-const TS_PRD_SCENARIO_DIR = path.join(REPO_ROOT, "test", "scenarios", "lifeops");
+const TS_PRD_SCENARIO_DIR = path.join(import.meta.dirname, "scenarios");
 const TS_HABIT_SCENARIO_DIR = path.join(
   REPO_ROOT,
   "test",

@@ -30,8 +30,8 @@ import {
   migrateWalletPrivateKeysToOsStore,
 } from "../security/wallet-os-store-actions";
 import {
-  ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
+  ensureRouteAuthorized,
   getCompatApiToken,
   isDevEnvironment,
 } from "./auth";
@@ -48,7 +48,7 @@ import {
 export async function handleWalletCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  _state: CompatRuntimeState,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -60,7 +60,7 @@ export async function handleWalletCompatRoutes(
 
   // ── GET /api/wallet/os-store ─────────────────────────────────────────
   if (method === "GET" && url.pathname === "/api/wallet/os-store") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -218,7 +218,7 @@ export async function handleWalletCompatRoutes(
 
   // ── GET /api/wallet/nfts ─────────────────────────────────────────────
   if (method === "GET" && url.pathname === "/api/wallet/nfts") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 

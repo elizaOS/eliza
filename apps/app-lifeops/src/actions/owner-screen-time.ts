@@ -14,6 +14,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import { screenTimeAction } from "./screen-time.js";
 import {
   getActivityReportAction,
@@ -234,8 +235,18 @@ export const ownerScreenTimeAction: Action = {
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerScreenTimeParameters;
+    const params = (await extractActionParamsViaLlm<OwnerScreenTimeParameters>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerScreenTimeAction.description ?? "",
+      paramSchema: ownerScreenTimeAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as OwnerScreenTimeParameters;
     const subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       const text =

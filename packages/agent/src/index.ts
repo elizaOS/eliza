@@ -1,4 +1,9 @@
 export * from "@elizaos/shared/spoken-text";
+export {
+  type ExtractActionParamsArgs,
+  extractActionParamsViaLlm,
+  type ParamSchemaDescriptor,
+} from "./actions/extract-params.js";
 export * from "./api/index.js";
 export {
   findPrimaryEnvKey,

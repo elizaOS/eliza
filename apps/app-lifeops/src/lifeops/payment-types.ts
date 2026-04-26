@@ -2,7 +2,8 @@ export type LifeOpsPaymentSourceKind =
   | "csv"
   | "plaid"
   | "manual"
-  | "paypal";
+  | "paypal"
+  | "email";
 
 export type LifeOpsPaymentSourceStatus =
   | "active"
@@ -100,6 +101,23 @@ export interface LifeOpsRecurringChargePlaybookHit {
   executorPreference: "user_browser" | "agent_browser" | "desktop_native";
 }
 
+/**
+ * A bill detected from email (or other source) and surfaced as an upcoming
+ * obligation on the Money dashboard. Backed by a `life_payment_transactions`
+ * row whose `source.kind === "email"` and whose `metadata.dueDate` /
+ * `metadata.sourceMessageId` fields carry the bill-specific data.
+ */
+export interface LifeOpsUpcomingBill {
+  id: string;
+  merchant: string;
+  amountUsd: number;
+  currency: string;
+  dueDate: string;
+  postedAt: string;
+  sourceMessageId: string | null;
+  confidence: number;
+}
+
 export interface LifeOpsPaymentsDashboard {
   sources: LifeOpsPaymentSource[];
   recurring: LifeOpsRecurringCharge[];
@@ -110,6 +128,11 @@ export interface LifeOpsPaymentsDashboard {
    */
   recurringPlaybookHits: LifeOpsRecurringChargePlaybookHit[];
   spending: LifeOpsSpendingSummary;
+  /**
+   * Bills extracted from email-classified messages with `dueDate >= now`.
+   * Sorted ascending by `dueDate`. Empty array when no bills are tracked.
+   */
+  upcomingBills: LifeOpsUpcomingBill[];
   gmailSubscriptionAuditId: string | null;
   generatedAt: string;
 }

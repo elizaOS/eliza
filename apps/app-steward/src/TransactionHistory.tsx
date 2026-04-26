@@ -2,10 +2,6 @@
  * Transaction history table — lists all transactions for the agent from Steward vault.
  */
 
-import type {
-  StewardTxRecord,
-  StewardTxStatus,
-} from "./types/steward";
 import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
@@ -22,6 +18,7 @@ import {
   getExplorerTxUrl,
   truncateAddress,
 } from "./chain-utils";
+import type { StewardTxRecord, StewardTxStatus } from "./types/steward";
 
 interface TransactionHistoryProps {
   getStewardHistory: (opts?: {
