@@ -112,7 +112,7 @@ export const manageStyleRulesAction: Action = {
 
 	handler: async (
 		runtime: IAgentRuntime,
-		message: Memory,
+		_message: Memory,
 		_state?: State,
 		options?: Record<string, unknown>,
 		callback?: HandlerCallback,

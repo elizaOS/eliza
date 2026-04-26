@@ -13,23 +13,8 @@ import {
   SelectValue,
   useTimeout,
 } from "@elizaos/ui";
-import {
-  CheckCircle2,
-  Cloud,
-  Cpu,
-  KeyRound,
-  Loader2,
-  ShieldCheck,
-} from "lucide-react";
-import {
-  type ComponentType,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { CheckCircle2, Cloud, Loader2, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, type OnboardingOptions, type PluginParamDef } from "../../api";
 import { ConfigRenderer, defaultRegistry } from "../../config";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
@@ -41,7 +26,6 @@ import {
 } from "../../providers";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
-import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { CloudDashboard } from "../pages/ElizaCloudDashboard";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import {
@@ -118,108 +102,6 @@ function readConfigString(
   return typeof value === "string" ? value : "";
 }
 
-type ProviderPanelId = "__cloud__" | "__local__" | string;
-type ProviderListItemTone = "ok" | "warn" | "muted";
-
-const PROVIDER_LIST_STATUS_CLASSES: Record<ProviderListItemTone, string> = {
-  ok: "border-ok/35 bg-ok/10 text-ok",
-  warn: "border-warn/35 bg-warn/10 text-warn",
-  muted: "border-border/60 bg-bg/60 text-muted",
-};
-
-function ProviderListItem({
-  id,
-  icon: Icon,
-  label,
-  description,
-  selected,
-  current,
-  status,
-  tone,
-  onSelect,
-}: {
-  id: ProviderPanelId;
-  icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-  label: string;
-  description: string;
-  selected: boolean;
-  current: boolean;
-  status: string;
-  tone: ProviderListItemTone;
-  onSelect: (id: ProviderPanelId) => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-current={selected ? "true" : undefined}
-      onClick={() => onSelect(id)}
-      className={`w-full rounded-xl border px-3 py-3 text-left transition-colors ${
-        selected
-          ? "border-accent/45 bg-accent/10"
-          : "border-border/45 bg-card/35 hover:border-border hover:bg-card/70"
-      }`}
-    >
-      <div className="flex items-start gap-3">
-        <span
-          className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
-            current
-              ? "border-accent/35 bg-accent/10 text-accent"
-              : "border-border/50 bg-bg/50 text-muted"
-          }`}
-        >
-          <Icon className="h-4 w-4" aria-hidden />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center justify-between gap-2">
-            <span className="truncate text-sm font-semibold text-txt">
-              {label}
-            </span>
-            <span
-              className={`shrink-0 rounded-full border px-2 py-0.5 text-2xs font-semibold ${
-                current
-                  ? "border-accent/35 bg-accent/10 text-accent"
-                  : PROVIDER_LIST_STATUS_CLASSES[tone]
-              }`}
-            >
-              {current ? "Active" : status}
-            </span>
-          </span>
-          <span className="mt-0.5 line-clamp-2 text-xs-tight text-muted">
-            {description}
-          </span>
-        </span>
-      </div>
-    </button>
-  );
-}
-
-function ProviderPanelHeader({
-  icon: Icon,
-  title,
-  description,
-  children,
-}: {
-  icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-  title: string;
-  description: string;
-  children?: ReactNode;
-}) {
-  return (
-    <header className="flex flex-col gap-3 border-border/40 border-b px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
-      <div className="flex min-w-0 gap-3">
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/50 bg-bg/50 text-muted">
-          <Icon className="h-4 w-4" aria-hidden />
-        </span>
-        <div className="min-w-0">
-          <h3 className="font-semibold text-base text-txt">{title}</h3>
-          <p className="mt-0.5 text-muted text-sm-tight">{description}</p>
-        </div>
-      </div>
-      {children ? <div className="shrink-0">{children}</div> : null}
-    </header>
-  );
-}
-
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const { setTimeout } = useTimeout();
   const app = useApp();
@@ -280,9 +162,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(
     null,
   );
-  const hasManualPanelSelection = useRef(false);
-  const [selectedProviderPanelId, setSelectedProviderPanelId] =
-    useState<ProviderPanelId | null>(null);
 
   const readCloudCallsDisabled = useCallback(
     (cfg: Record<string, unknown>): boolean => {

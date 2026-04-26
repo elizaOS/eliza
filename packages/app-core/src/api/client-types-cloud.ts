@@ -163,6 +163,11 @@ export interface CloudLoginPollResponse {
   error?: string;
 }
 
+export interface CloudLoginPersistResponse {
+  ok: boolean;
+  error?: string;
+}
+
 // Cloud Compat (Eliza Cloud v2 thin-client types)
 export interface CloudCompatAgent {
   agent_id: string;

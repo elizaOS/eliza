@@ -81,7 +81,9 @@ export const togglePluginAction: Action = {
         },
       );
 
-      const data = (await resp.json().catch(() => ({}))) as PluginMutationResponse;
+      const data = (await resp
+        .json()
+        .catch(() => ({}))) as PluginMutationResponse;
 
       if (!resp.ok || data.success === false || data.ok === false) {
         const errMsg =

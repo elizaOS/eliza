@@ -703,6 +703,65 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
   return config;
 }
 
+function buildCloudLoginSyncPatch(
+  config: ElizaConfig,
+): Record<string, unknown> | null {
+  const cloud =
+    config.cloud && typeof config.cloud === "object"
+      ? (config.cloud as Record<string, unknown>)
+      : undefined;
+  const apiKey = typeof cloud?.apiKey === "string" ? cloud.apiKey.trim() : "";
+  if (!apiKey) {
+    return null;
+  }
+
+  const nextCloud: Record<string, unknown> = { apiKey };
+  const baseUrl =
+    typeof cloud?.baseUrl === "string" ? cloud.baseUrl.trim() : "";
+  if (baseUrl) {
+    nextCloud.baseUrl = baseUrl;
+  }
+
+  return {
+    cloud: nextCloud,
+    linkedAccounts: {
+      elizacloud: { status: "linked", source: "api-key" },
+    },
+  };
+}
+
+async function syncCloudLoginToUpstreamConfigState(
+  req: Pick<http.IncomingMessage, "headers">,
+  config: ElizaConfig,
+): Promise<void> {
+  const cloudLoginPatch = buildCloudLoginSyncPatch(config);
+  if (!cloudLoginPatch) {
+    return;
+  }
+
+  if (isElizaSettingsDebugEnabled()) {
+    logger.debug(
+      `[eliza][settings][compat] cloud login → loopback PUT /api/config patch=${JSON.stringify(sanitizeForSettingsDebug(cloudLoginPatch))}`,
+    );
+  }
+
+  try {
+    await compatLoopbackRequest(req, "/api/config", {
+      method: "PUT",
+      body: JSON.stringify(cloudLoginPatch),
+    });
+    if (isElizaSettingsDebugEnabled()) {
+      logger.debug("[eliza][settings][compat] cloud login loopback sync OK");
+    }
+  } catch (err) {
+    logger.warn(
+      `[eliza][cloud/login] Failed to sync cloud login to upstream state: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
 async function handleCompatRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -839,6 +898,15 @@ async function handleCompatRoute(
       runtime: state.current,
       cloudManager: null,
     });
+
+    if (
+      handled &&
+      ((method === "POST" && url.pathname === "/api/cloud/login/persist") ||
+        (method === "GET" &&
+          url.pathname.startsWith("/api/cloud/login/status")))
+    ) {
+      await syncCloudLoginToUpstreamConfigState(req, config);
+    }
 
     // After disconnect, sync the cloud disable into the upstream's in-memory
     // state.config via a loopback PUT /api/config. Without this, the next

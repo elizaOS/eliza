@@ -86,7 +86,9 @@ function redactUserSegments(filepath: string): string {
   return filepath.replace(/\/(Users|home)\/[^/]+\//g, "/$1/<redacted>/");
 }
 
-export function resolveRuntimePluginImportSpecifier(pluginName: string): string {
+export function resolveRuntimePluginImportSpecifier(
+  pluginName: string,
+): string {
   const headlessEntrypoint = HEADLESS_PLUGIN_ENTRYPOINTS[pluginName];
   if (headlessEntrypoint) {
     return headlessEntrypoint;

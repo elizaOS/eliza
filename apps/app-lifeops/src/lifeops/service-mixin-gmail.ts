@@ -200,6 +200,10 @@ const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 const DEFAULT_GMAIL_SEARCH_SCAN_LIMIT = 50;
 const DEFAULT_GMAIL_SEARCH_CACHE_SCAN_LIMIT = 200;
 
+function managedGoogleGrantId(grant: LifeOpsConnectorGrant): string {
+  return grant.cloudConnectionId ?? grant.id;
+}
+
 export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsGmailService> {
@@ -257,7 +261,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
             ? (
                 await this.googleManagedClient.getGmailTriage({
                   side: grant.side,
-                  grantId: grant.id,
+                  grantId: managedGoogleGrantId(grant),
                   maxResults: args.maxResults,
                 })
               ).messages
@@ -579,7 +583,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         try {
           const managedSearch = await this.googleManagedClient.getGmailSearch({
             side: effectiveSide,
-            grantId: grant.id,
+            grantId: managedGoogleGrantId(grant),
             query,
             maxResults,
           });
@@ -804,7 +808,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           ? await this.googleManagedClient
               .readGmailMessage({
                 side: grant.side,
-                grantId: grant.id,
+                grantId: managedGoogleGrantId(grant),
                 messageId: targetMessageId,
               })
               .then(
@@ -1958,7 +1962,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         if (resolveGoogleExecutionTarget(args.grant) === "cloud") {
           await this.googleManagedClient.sendGmailReply({
             side: args.grant.side,
-            grantId: args.grant.id,
+            grantId: managedGoogleGrantId(args.grant),
             to,
             cc,
             subject,
@@ -2121,7 +2125,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         if (resolveGoogleExecutionTarget(grant) === "cloud") {
           await this.googleManagedClient.sendGmailMessage({
             side: grant.side,
-            grantId: grant.id,
+            grantId: managedGoogleGrantId(grant),
             to,
             cc,
             bcc,

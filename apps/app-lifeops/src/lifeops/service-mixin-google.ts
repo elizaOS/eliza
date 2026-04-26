@@ -321,9 +321,22 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         await this.repository.listConnectorGrants(this.agentId())
       ).filter((grant) => grant.provider === "google");
       const existingGrant =
+        (status.connectionId
+          ? currentGoogleGrants.find(
+              (grant) =>
+                grant.mode === "cloud_managed" &&
+                grant.cloudConnectionId === status.connectionId,
+            )
+          : null) ??
         currentGoogleGrants.find(
-          (grant) => grant.mode === "cloud_managed" && grant.side === side,
-        ) ?? null;
+          (grant) =>
+            grant.mode === "cloud_managed" &&
+            grant.side === side &&
+            (status.identity?.email
+              ? grant.identity.email === status.identity.email
+              : grant.cloudConnectionId === null),
+        ) ??
+        null;
       if (!existingGrant && !status.connected) {
         return null;
       }
@@ -576,7 +589,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       const grants = (
         await this.repository.listConnectorGrants(this.agentId())
       ).filter((candidate) => candidate.provider === "google");
-      const cloudConfig = resolveManagedGoogleCloudConfig();
+      const cloudConfig = resolveManagedGoogleCloudConfig(this.runtime);
       const modeAvailability = resolveGoogleAvailableModes({
         requestUrl,
         cloudConfigured: cloudConfig.configured,
@@ -652,7 +665,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         try {
           managedStatus = await this.googleManagedClient.getStatus(
             side,
-            grantId,
+            resolvedGrant?.cloudConnectionId ?? grantId,
           );
         } catch (error) {
           if (error instanceof ManagedGoogleClientError) {
@@ -845,14 +858,67 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       requestedSide?: LifeOpsConnectorSide,
     ): Promise<LifeOpsGoogleConnectorStatus[]> {
       const side = normalizeOptionalConnectorSide(requestedSide, "side");
+      const cloudConfig = resolveManagedGoogleCloudConfig(this.runtime);
+      const modeAvailability = resolveGoogleAvailableModes({
+        requestUrl,
+        cloudConfigured: cloudConfig.configured,
+      });
+      const results: LifeOpsGoogleConnectorStatus[] = [];
+      const seenGrantIds = new Set<string>();
+
+      if (cloudConfig.configured) {
+        try {
+          const managedAccounts =
+            await this.googleManagedClient.listAccounts(side);
+          for (const managedAccount of managedAccounts) {
+            const grant = await this.upsertManagedGoogleGrant(
+              managedAccount,
+              managedAccount.side,
+            );
+            if (grant) {
+              seenGrantIds.add(grant.id);
+            }
+            results.push({
+              provider: "google",
+              side: managedAccount.side,
+              mode: "cloud_managed",
+              defaultMode: modeAvailability.defaultMode,
+              availableModes: modeAvailability.availableModes,
+              executionTarget: "cloud",
+              sourceOfTruth: "cloud_connection",
+              configured: managedAccount.configured,
+              connected: managedAccount.connected,
+              reason: managedAccount.reason,
+              preferredByAgent: grant?.preferredByAgent ?? false,
+              cloudConnectionId: managedAccount.connectionId,
+              identity: managedAccount.identity,
+              grantedCapabilities: [...managedAccount.grantedCapabilities],
+              grantedScopes: [...managedAccount.grantedScopes],
+              expiresAt: managedAccount.expiresAt,
+              hasRefreshToken: managedAccount.hasRefreshToken,
+              grant,
+            });
+          }
+        } catch (error) {
+          if (error instanceof ManagedGoogleClientError) {
+            this.logLifeOpsWarn("google_connector_accounts", error.message, {
+              provider: "google",
+              mode: "cloud_managed",
+              statusCode: error.status,
+            });
+          } else {
+            throw error;
+          }
+        }
+      }
+
       const allGrants = (
         await this.repository.listConnectorGrants(this.agentId())
       ).filter((g) => g.provider === "google");
       const grants = resolveGoogleGrants({
         grants: allGrants,
         requestedSide: side,
-      });
-      const results: LifeOpsGoogleConnectorStatus[] = [];
+      }).filter((grant) => !seenGrantIds.has(grant.id));
       for (const grant of grants) {
         const status = await this.getGoogleConnectorStatus(
           requestUrl,
@@ -887,7 +953,8 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       ).filter((grant) => grant.provider === "google");
       const modeAvailability = resolveGoogleAvailableModes({
         requestUrl,
-        cloudConfigured: resolveManagedGoogleCloudConfig().configured,
+        cloudConfigured: resolveManagedGoogleCloudConfig(this.runtime)
+          .configured,
         grants,
       });
       if (!modeAvailability.availableModes.includes(preferredMode)) {
@@ -957,7 +1024,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       const requestedCapabilities = normalizeGoogleCapabilityRequest(
         request.capabilities,
       );
-      const cloudConfig = resolveManagedGoogleCloudConfig();
+      const cloudConfig = resolveManagedGoogleCloudConfig(this.runtime);
       const modeAvailability = resolveGoogleAvailableModes({
         requestUrl,
         cloudConfigured: cloudConfig.configured,
@@ -1152,7 +1219,8 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       ).filter((grant) => grant.provider === "google");
       const modeAvailability = resolveGoogleAvailableModes({
         requestUrl,
-        cloudConfigured: resolveManagedGoogleCloudConfig().configured,
+        cloudConfigured: resolveManagedGoogleCloudConfig(this.runtime)
+          .configured,
         grants,
       });
       const mode =

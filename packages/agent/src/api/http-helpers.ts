@@ -1,6 +1,15 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 
+const CACHED_REQUEST_BODY = Symbol.for("eliza.http.cachedRequestBody");
+const CACHED_JSON_BODY = Symbol.for("eliza.http.cachedJsonBody");
+
+type CachedRequest = http.IncomingMessage & {
+  [CACHED_REQUEST_BODY]?: Buffer;
+  [CACHED_JSON_BODY]?: unknown;
+  body?: unknown;
+};
+
 /**
  * Common request body size guard used across API/benchmark endpoints.
  */
@@ -35,6 +44,11 @@ export async function readRequestBodyBuffer(
     tooLargeMessage,
   }: RequestBodyOptions = {},
 ): Promise<Buffer | null> {
+  const cached = (req as CachedRequest)[CACHED_REQUEST_BODY];
+  if (cached) {
+    return cached;
+  }
+
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalBytes = 0;
@@ -97,7 +111,9 @@ export async function readRequestBodyBuffer(
         return;
       }
 
-      settle(Buffer.concat(chunks));
+      const body = Buffer.concat(chunks);
+      (req as CachedRequest)[CACHED_REQUEST_BODY] = body;
+      settle(body);
     };
 
     const onError = (err: Error) => {
@@ -223,6 +239,19 @@ export async function readJsonBody<T = Record<string, unknown>>(
     ...readOptions
   }: ReadJsonBodyOptions = {},
 ): Promise<T | null> {
+  const cachedRequest = req as CachedRequest;
+  if (CACHED_JSON_BODY in cachedRequest) {
+    const parsed = cachedRequest[CACHED_JSON_BODY];
+    if (
+      requireObject &&
+      (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
+    ) {
+      await writeJsonError(res, nonObjectMessage, nonObjectStatus);
+      return null;
+    }
+    return parsed as T;
+  }
+
   let raw: string;
   try {
     const body = await readRequestBody(req, readOptions);
@@ -247,6 +276,8 @@ export async function readJsonBody<T = Record<string, unknown>>(
       await writeJsonError(res, nonObjectMessage, nonObjectStatus);
       return null;
     }
+    cachedRequest[CACHED_JSON_BODY] = parsed;
+    cachedRequest.body = parsed;
     return parsed as T;
   } catch {
     await writeJsonError(res, parseErrorMessage, parseErrorStatus);

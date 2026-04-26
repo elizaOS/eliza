@@ -540,7 +540,9 @@ export const listAppsAction: Action = {
         const resp = await fetch(`${base}/api/apps/runs`, {
           signal: AbortSignal.timeout(15_000),
         });
-        const runs = (await resp.json().catch(() => [])) as AppRunSummaryShape[];
+        const runs = (await resp
+          .json()
+          .catch(() => [])) as AppRunSummaryShape[];
         if (!resp.ok) {
           return {
             success: false,

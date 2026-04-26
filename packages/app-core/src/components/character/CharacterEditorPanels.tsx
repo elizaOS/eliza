@@ -230,13 +230,16 @@ export function CharacterStylePanel({
               <div className="flex flex-col gap-1">
                 {items.length > 0 ? (
                   items.map((item, index) => {
+                    const occurrence = items
+                      .slice(0, index)
+                      .filter((candidate) => candidate === item).length;
                     const isDragging =
                       dragStyleIndex?.key === key &&
                       dragStyleIndex.index === index;
                     const isDuplicate = duplicateIndices.has(index);
                     return (
                       <fieldset
-                        key={`${key}:${index}`}
+                        key={`${key}:${item}:${occurrence}`}
                         draggable
                         onDragStart={(e: DragEvent<HTMLFieldSetElement>) => {
                           setDragStyleIndex({ key, index });

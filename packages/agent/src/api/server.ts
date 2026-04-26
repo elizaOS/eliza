@@ -114,6 +114,12 @@ import {
   telegramAccountAuthStateExists,
   telegramAccountSessionExists,
 } from "../services/telegram-account-auth.js";
+import {
+  sanitizeAccountId as sanitizeWhatsAppAccountId,
+  WhatsAppPairingSession,
+  whatsappAuthExists,
+  whatsappLogout,
+} from "../services/whatsapp-pairing.js";
 // Telegram account auth: moved to @elizaos/plugin-telegram (account-setup-routes + account-auth-service).
 // WhatsApp pairing: route handlers moved to @elizaos/plugin-whatsapp.
 import {
@@ -232,9 +238,10 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-// handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
-// applyWhatsAppQrOverride is still used by plugin-status routes.
-import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
+import {
+  applyWhatsAppQrOverride,
+  handleWhatsAppRoute,
+} from "./whatsapp-routes.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 import { handleXRelayRoute } from "./x-relay-routes.js";
 
@@ -2703,6 +2710,32 @@ async function handleRequest(
     return;
   }
 
+  if (
+    await handleWhatsAppRoute(
+      req,
+      res,
+      pathname,
+      method,
+      {
+        whatsappPairingSessions: state.whatsappPairingSessions ?? new Map(),
+        broadcastWs: state.broadcastWs ?? undefined,
+        config: state.config,
+        runtime: state.runtime ?? undefined,
+        saveConfig: () => saveElizaConfig(state.config),
+        workspaceDir: resolveDefaultAgentWorkspaceDir(),
+      },
+      {
+        sanitizeAccountId: sanitizeWhatsAppAccountId,
+        whatsappAuthExists,
+        whatsappLogout,
+        createWhatsAppPairingSession: (options) =>
+          new WhatsAppPairingSession(options),
+      },
+    )
+  ) {
+    return;
+  }
+
   // ── elizaOS plugin HTTP routes (runtime.routes, e.g. /music-player/*) ───
   if (
     await tryHandleRuntimePluginRoute({
@@ -2930,6 +2963,7 @@ export async function startApiServer(opts?: {
     pendingRestartReasons: [],
     connectorRouteHandlers: [],
     connectorHealthMonitor: null,
+    whatsappPairingSessions: new Map(),
   };
   const trainingServiceCtor = await resolveTrainingServiceCtor();
   const trainingServiceOptions = {

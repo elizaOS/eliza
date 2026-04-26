@@ -44,11 +44,11 @@
 
 import {
   type IAgentRuntime,
-  type Memory,
-  type State,
-  ModelType,
   logger,
+  type Memory,
+  ModelType,
   parseJSONObjectFromText,
+  type State,
 } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 
@@ -121,8 +121,13 @@ export async function extractActionParamsViaLlm<
   }
 
   const currentMessageText =
-    typeof message.content?.text === "string" ? message.content.text.trim() : "";
-  const recentConversation = collectRecentConversation(state, recentMessagesLimit);
+    typeof message.content?.text === "string"
+      ? message.content.text.trim()
+      : "";
+  const recentConversation = collectRecentConversation(
+    state,
+    recentMessagesLimit,
+  );
 
   const prompt = buildExtractionPrompt({
     actionName,
@@ -180,10 +185,8 @@ function collectRecentConversation(
           ? (m.content as Record<string, unknown>)
           : null;
       const text = typeof content?.text === "string" ? content.text.trim() : "";
-      const speaker =
-        typeof (m as { name?: unknown }).name === "string"
-          ? (m as { name: string }).name
-          : "user";
+      const messageName = (m as { name?: unknown }).name;
+      const speaker = typeof messageName === "string" ? messageName : "user";
       return text ? `${speaker}: ${text}` : null;
     })
     .filter((line): line is string => line !== null)
@@ -247,7 +250,7 @@ function buildExtractionPrompt(args: {
 }
 
 function parseExtraction(text: string): Record<string, unknown> | null {
-  if (!text || !text.trim()) return null;
+  if (!text.trim()) return null;
   try {
     const parsed = parseJSONObjectFromText(text);
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
