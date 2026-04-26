@@ -13,25 +13,14 @@ describe("CharacterOverviewSection", () => {
         onOpenSection={onOpenSection}
         widgets={[
           {
-            bars: [
-              { label: "Chunks", value: 0.7 },
-              { label: "Editable", value: 0.5 },
-            ],
-            caption: "Chunk map",
-            pie: [
-              { label: "Uploaded", value: 3 },
-              { label: "Learned", value: 1 },
-            ],
+            body: <p>Chunk map</p>,
+            isEmpty: false,
             section: "knowledge",
             title: "Knowledge",
           },
           {
-            bars: [
-              { label: "People", value: 0.6 },
-              { label: "Facts", value: 0.4 },
-            ],
-            caption: "People graph",
-            nodes: ["Ada Lovelace", "Grace Hopper"],
+            body: <p>People graph</p>,
+            isEmpty: false,
             section: "relationships",
             title: "Relationships",
           },

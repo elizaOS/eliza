@@ -170,7 +170,11 @@ describe("BrowserWorkspaceView", () => {
     const installButtons = await screen.findAllByRole("button", {
       name: "Install Agent Browser Bridge",
     });
-    fireEvent.click(installButtons[0]);
+    const installButton = installButtons.find(
+      (button) => !button.hasAttribute("disabled"),
+    );
+    expect(installButton).toBeDefined();
+    fireEvent.click(installButton as HTMLElement);
 
     await waitFor(() => {
       expect(mockClient.fetch).toHaveBeenCalledWith(
