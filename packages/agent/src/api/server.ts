@@ -26,8 +26,7 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 import os from "node:os";
 import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { DropService } from "@elizaos/app-elizamaker/drop-service";
-import { setElizaMakerDropService } from "@elizaos/app-elizamaker/drop-service-registry";
+import { DropService, setElizaMakerDropService } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
 import {
   normalizeJsonRpcUrl,
