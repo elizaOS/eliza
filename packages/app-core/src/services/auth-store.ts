@@ -9,7 +9,6 @@
  * path must NEVER swallow a DB error and pretend a request was authenticated.
  */
 
-import type { DrizzleDatabase } from "@elizaos/plugin-sql";
 import {
   authAuditEventTable,
   authBootstrapJtiSeenTable,
@@ -17,8 +16,8 @@ import {
   authOwnerBindingTable,
   authOwnerLoginTokenTable,
   authSessionTable,
+  type DrizzleDatabase,
 } from "@elizaos/plugin-sql";
-import type { DrizzleDatabase } from "@elizaos/plugin-sql";
 import { and, desc, eq, isNull, lte, ne } from "drizzle-orm";
 
 export interface AuthIdentityRow {
