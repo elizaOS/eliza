@@ -8,6 +8,7 @@
 
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
@@ -23,6 +24,22 @@ const COMMON_SIGNAL_CLI_PATHS = [
   "/opt/homebrew/bin/signal-cli",
   "/usr/local/bin/signal-cli",
 ];
+const COMMON_HOMEBREW_PATHS = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
+const SIGNAL_CLI_AUTO_INSTALL_ENV = "SIGNAL_CLI_AUTO_INSTALL";
+const MILADY_SIGNAL_CLI_AUTO_INSTALL_ENV = "MILADY_SIGNAL_CLI_AUTO_INSTALL";
+
+type ExecFileAsync = (
+  file: string,
+  args?: readonly string[],
+  options?: { env?: NodeJS.ProcessEnv },
+) => Promise<{ stdout: string; stderr: string }>;
+
+interface ExecutableResolutionDeps {
+  env: NodeJS.ProcessEnv;
+  execFile: ExecFileAsync;
+  existsSync: (path: string) => boolean;
+  platform: NodeJS.Platform;
+}
 
 type SignalNativeModule = {
   linkDevice: (authDir: string, deviceName: string) => Promise<string>;
@@ -127,18 +144,32 @@ export function parseSignalCliAccountsOutput(output: string): string | null {
   return null;
 }
 
-async function resolveExecutablePath(binary: string): Promise<string | null> {
+function createExecutableResolutionDeps(
+  env: NodeJS.ProcessEnv = process.env,
+): ExecutableResolutionDeps {
+  return {
+    env,
+    execFile: execFileAsync as ExecFileAsync,
+    existsSync: fs.existsSync,
+    platform: os.platform(),
+  };
+}
+
+async function resolveExecutablePath(
+  binary: string,
+  deps: ExecutableResolutionDeps = createExecutableResolutionDeps(),
+): Promise<string | null> {
   const trimmed = binary.trim();
   if (!trimmed) {
     return null;
   }
 
   if (trimmed.includes("/") || trimmed.startsWith(".")) {
-    return fs.existsSync(trimmed) ? trimmed : null;
+    return deps.existsSync(trimmed) ? trimmed : null;
   }
 
   try {
-    const { stdout } = await execFileAsync("/usr/bin/which", [trimmed]);
+    const { stdout } = await deps.execFile("/usr/bin/which", [trimmed]);
     const resolved = stdout.trim();
     return resolved.length > 0 ? resolved : null;
   } catch {
@@ -147,13 +178,116 @@ async function resolveExecutablePath(binary: string): Promise<string | null> {
     }
 
     for (const candidate of COMMON_SIGNAL_CLI_PATHS) {
-      if (fs.existsSync(candidate)) {
+      if (deps.existsSync(candidate)) {
         return candidate;
       }
     }
 
     return null;
   }
+}
+
+function autoInstallSignalCliEnabled(env: NodeJS.ProcessEnv): boolean {
+  const raw =
+    env[MILADY_SIGNAL_CLI_AUTO_INSTALL_ENV] ?? env[SIGNAL_CLI_AUTO_INSTALL_ENV];
+  if (typeof raw !== "string") {
+    return true;
+  }
+  return !["0", "false", "no", "off"].includes(raw.trim().toLowerCase());
+}
+
+async function resolveHomebrewPath(
+  deps: ExecutableResolutionDeps,
+): Promise<string | null> {
+  try {
+    const { stdout } = await deps.execFile("/usr/bin/which", ["brew"]);
+    const resolved = stdout.trim();
+    if (resolved.length > 0) {
+      return resolved;
+    }
+  } catch {
+    for (const candidate of COMMON_HOMEBREW_PATHS) {
+      if (deps.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+async function installSignalCliWithHomebrew(
+  deps: ExecutableResolutionDeps,
+): Promise<void> {
+  const brewPath = await resolveHomebrewPath(deps);
+  if (!brewPath) {
+    throw new Error(
+      "Homebrew is not installed. Install Homebrew or run `brew install signal-cli` manually, then retry.",
+    );
+  }
+
+  await deps.execFile(brewPath, ["install", "signal-cli"], { env: deps.env });
+}
+
+function isDefaultSignalCliRequest(
+  requestedBinary: string,
+  options: Pick<SignalPairingOptions, "cliPath">,
+  env: NodeJS.ProcessEnv,
+): boolean {
+  return (
+    requestedBinary === DEFAULT_SIGNAL_CLI_NAME &&
+    !options.cliPath?.trim() &&
+    !env.SIGNAL_CLI_PATH?.trim()
+  );
+}
+
+export async function resolveSignalCliExecutable(
+  options: {
+    cliPath?: string;
+    env?: NodeJS.ProcessEnv;
+    execFile?: ExecFileAsync;
+    existsSync?: (path: string) => boolean;
+    platform?: NodeJS.Platform;
+  } = {},
+): Promise<string | null> {
+  const deps: ExecutableResolutionDeps = {
+    ...createExecutableResolutionDeps(options.env),
+    ...(options.execFile ? { execFile: options.execFile } : {}),
+    ...(options.existsSync ? { existsSync: options.existsSync } : {}),
+    ...(options.platform ? { platform: options.platform } : {}),
+  };
+  const requestedBinary =
+    options.cliPath?.trim() ||
+    deps.env.SIGNAL_CLI_PATH?.trim() ||
+    DEFAULT_SIGNAL_CLI_NAME;
+
+  const existingPath = await resolveExecutablePath(requestedBinary, deps);
+  if (existingPath) {
+    return existingPath;
+  }
+
+  if (
+    deps.platform !== "darwin" ||
+    !isDefaultSignalCliRequest(requestedBinary, options, deps.env) ||
+    !autoInstallSignalCliEnabled(deps.env)
+  ) {
+    return null;
+  }
+
+  await installSignalCliWithHomebrew(deps);
+  return resolveExecutablePath(DEFAULT_SIGNAL_CLI_NAME, deps);
+}
+
+function missingSignalCliMessage(
+  cliPath: string | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const requestedBinary =
+    cliPath?.trim() || env.SIGNAL_CLI_PATH?.trim() || DEFAULT_SIGNAL_CLI_NAME;
+  const installHint =
+    requestedBinary === DEFAULT_SIGNAL_CLI_NAME
+      ? "Milady auto-installs the default Signal CLI on macOS when Homebrew is available; otherwise run `brew install signal-cli` and retry."
+      : "Install that binary or update SIGNAL_CLI_PATH to point at an existing signal-cli executable.";
+  return `Failed to load dependencies: Cannot find ${requestedBinary}. ${installHint}`;
 }
 
 function resolveSignalCliJavaHome(): string | null {
@@ -349,16 +483,13 @@ export class SignalPairingSession {
   }
 
   private async startWithSignalCli(qrCode: QrCodeModule): Promise<void> {
-    const cliPath = await resolveExecutablePath(
-      this.options.cliPath?.trim() ||
-        process.env.SIGNAL_CLI_PATH ||
-        DEFAULT_SIGNAL_CLI_NAME,
-    );
+    const cliPath = await resolveSignalCliExecutable({
+      cliPath: this.options.cliPath,
+      env: process.env,
+    });
 
     if (!cliPath) {
-      throw new Error(
-        `Failed to load dependencies: Cannot find ${this.options.cliPath?.trim() || DEFAULT_SIGNAL_CLI_NAME}`,
-      );
+      throw new Error(missingSignalCliMessage(this.options.cliPath));
     }
 
     console.info(`${LOG_PREFIX} Starting device linking with signal-cli...`);
