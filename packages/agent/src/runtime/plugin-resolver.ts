@@ -311,18 +311,22 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
     return null;
   }
 
-  const pluginSegmentMatch = pluginName.match(/^@[^/]+\/(plugin-[^/]+)$/);
-  const pluginSegment = pluginSegmentMatch?.[1];
-  if (!pluginSegment) return null;
+  const packageSegmentMatch = pluginName.match(
+    /^@[^/]+\/((?:app|plugin)-[^/]+)$/,
+  );
+  const packageSegment = packageSegmentMatch?.[1];
+  if (!packageSegment) return null;
 
   for (const workspaceRoot of resolveWorkspaceRoots()) {
     const candidates = uniquePaths([
-      path.join(workspaceRoot, "plugins", pluginSegment, "typescript"),
-      path.join(workspaceRoot, "plugins", pluginSegment),
-      path.join(workspaceRoot, "eliza", "plugins", pluginSegment, "typescript"),
-      path.join(workspaceRoot, "eliza", "plugins", pluginSegment),
-      path.join(workspaceRoot, "eliza", "packages", pluginSegment),
-      path.join(workspaceRoot, "packages", pluginSegment),
+      path.join(workspaceRoot, "plugins", packageSegment, "typescript"),
+      path.join(workspaceRoot, "plugins", packageSegment),
+      path.join(workspaceRoot, "apps", packageSegment),
+      path.join(workspaceRoot, "eliza", "plugins", packageSegment, "typescript"),
+      path.join(workspaceRoot, "eliza", "plugins", packageSegment),
+      path.join(workspaceRoot, "eliza", "apps", packageSegment),
+      path.join(workspaceRoot, "eliza", "packages", packageSegment),
+      path.join(workspaceRoot, "packages", packageSegment),
     ]);
 
     for (const candidate of candidates) {
@@ -569,7 +573,11 @@ async function linkAncestorNodeModulesIfNeeded(params: {
     return;
   }
 
-  await fs.symlink(ancestorNodeModules, stagedNodeModulesPath, "dir");
+  await fs.mkdir(stagedNodeModulesPath, { recursive: true });
+  await linkMissingPackagesFromNodeModules({
+    sourceNodeModulesDir: ancestorNodeModules,
+    targetNodeModulesDir: stagedNodeModulesPath,
+  });
 }
 
 async function linkMissingPackagesFromNodeModules(params: {
