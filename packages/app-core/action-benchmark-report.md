@@ -1,7 +1,7 @@
 # Action Selection Benchmark
 
 **Selection Accuracy:** 0.0% (0/78)
-**Latency:** avg 8ms · p50 6ms · p95 18ms
+**Latency:** avg 15ms · p50 12ms · p95 41ms
 **Planner Accuracy:** 0.0% (0/78)
 **Execution Accuracy:** 0.0% (0/78)
 

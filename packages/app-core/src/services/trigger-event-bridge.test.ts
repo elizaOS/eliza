@@ -107,7 +107,7 @@ function invokeHandler(
   expect(handlers).toBeDefined();
   expect(handlers?.length).toBe(1);
   const handler = handlers?.[0];
-  if (!handler) throw new Error("no handler registered for " + event);
+  if (!handler) throw new Error(`no handler registered for ${event}`);
   return handler({
     runtime: runtime as unknown as IAgentRuntime,
     source: "test",

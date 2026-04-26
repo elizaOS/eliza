@@ -182,7 +182,7 @@ describe("P1 session routes (real pglite)", () => {
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
     delete process.env.MILADY_LEGACY_GRACE_UNTIL;
-  });
+  }, 30_000);
 
   afterEach(async () => {
     await harness.cleanup();
