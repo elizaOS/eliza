@@ -3,6 +3,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 const FETCH_TIMEOUT_MS = 8_000;
 const DEFAULT_API_BASE_PROD = "https://staging.babylon.market";
 const DEFAULT_API_BASE_DEV = "http://localhost:3000";
+const BABYLON_AGENT_SESSION_TOKEN_KEY = "BABYLON_AGENT_SESSION_TOKEN";
+const BABYLON_AGENT_SESSION_EXPIRES_AT_KEY = "BABYLON_AGENT_SESSION_EXPIRES_AT";
 
 interface BabylonAuthToken {
   token: string;
@@ -66,6 +68,44 @@ export function resolveBabylonConfig(
   };
 }
 
+export function resolveBabylonClientUrl(
+  runtime: IAgentRuntime | RuntimeLike | null | undefined,
+): string {
+  return (
+    resolveSettingLike(runtime, "BABYLON_CLIENT_URL") ??
+    resolveSettingLike(runtime, "BABYLON_APP_URL") ??
+    resolveSettingLike(runtime, "BABYLON_API_URL") ??
+    (process.env.NODE_ENV === "production"
+      ? DEFAULT_API_BASE_PROD
+      : DEFAULT_API_BASE_DEV)
+  ).replace(/\/+$/, "");
+}
+
+export function persistBabylonCredential(
+  runtime: IAgentRuntime | RuntimeLike | null,
+  key: string,
+  value: string,
+  secret = false,
+): void {
+  process.env[key] = value;
+  runtime?.setSetting?.(key, value, secret);
+
+  const runtimeLike = asRuntimeLike(runtime);
+  const character = runtimeLike?.character;
+  if (!character) return;
+  if (!character.settings) {
+    character.settings = {};
+  }
+  if (!character.settings.secrets) {
+    character.settings.secrets = {};
+  }
+  character.settings.secrets[key] = value;
+  if (!character.secrets) {
+    character.secrets = {};
+  }
+  character.secrets[key] = value;
+}
+
 async function authenticate(config: BabylonConfig): Promise<string> {
   if (!config.agentId || !config.agentSecret) {
     throw new Error(
@@ -106,6 +146,18 @@ async function authenticate(config: BabylonConfig): Promise<string> {
     token,
     expiresAt: Date.now() + expiresIn * 1000,
   };
+  persistBabylonCredential(
+    config.runtime,
+    BABYLON_AGENT_SESSION_TOKEN_KEY,
+    token,
+    true,
+  );
+  persistBabylonCredential(
+    config.runtime,
+    BABYLON_AGENT_SESSION_EXPIRES_AT_KEY,
+    String(cachedToken.expiresAt),
+    true,
+  );
 
   return token;
 }

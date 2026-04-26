@@ -19,6 +19,12 @@ export {
   resolveAuditLogRotatedPath,
 } from "./audit";
 export {
+  type AuthContextSource,
+  type EnsureSessionOptions,
+  ensureSessionForRequest,
+  type ResolvedAuthContext,
+} from "./auth-context";
+export {
   BOOTSTRAP_TOKEN_ALG,
   BOOTSTRAP_TOKEN_SCOPE,
   type BootstrapTokenClaims,
@@ -27,8 +33,56 @@ export {
   verifyBootstrapToken,
 } from "./bootstrap-token";
 export {
+  _peekLegacyBearerDeadline,
+  _peekLegacyBearerInvalidated,
+  _resetLegacyBearerState,
+  decideLegacyBearer,
+  LEGACY_DEPRECATION_HEADER,
+  LEGACY_GRACE_WINDOW_MS,
+  LEGACY_INVALIDATE_AUDIT_ACTION,
+  LEGACY_REJECT_AUDIT_ACTION,
+  LEGACY_USE_AUDIT_ACTION,
+  type LegacyBearerDecision,
+  markLegacyBearerInvalidated,
+  recordLegacyBearerRejection,
+  recordLegacyBearerUse,
+} from "./legacy-bearer";
+export {
+  ARGON2_PARAMS,
+  assertPasswordStrong,
+  hashPassword,
+  PASSWORD_MIN_LENGTH,
+  type PasswordStrengthFailureReason,
+  verifyPassword,
+  WeakPasswordError,
+} from "./passwords";
+export {
   _resetSensitiveLimiters,
   bootstrapExchangeLimiter,
   SENSITIVE_RATE_LIMIT_MAX,
   SENSITIVE_RATE_LIMIT_WINDOW_MS,
 } from "./sensitive-rate-limit";
+export {
+  BROWSER_SESSION_REMEMBER_CAP_MS,
+  BROWSER_SESSION_TTL_MS,
+  type CreateBrowserSessionOptions,
+  type CreateMachineSessionOptions,
+  CSRF_COOKIE_NAME,
+  CSRF_HEADER_NAME,
+  createBrowserSession,
+  createMachineSession,
+  deriveCsrfToken,
+  findActiveSession,
+  MACHINE_SESSION_TTL_MS,
+  parseCookieHeader,
+  parseSessionCookie,
+  revokeAllSessionsForIdentity,
+  revokeSession,
+  SESSION_COOKIE_NAME,
+  type SessionWithCsrf,
+  serializeCsrfCookie,
+  serializeCsrfExpiryCookie,
+  serializeSessionCookie,
+  serializeSessionExpiryCookie,
+  verifyCsrfToken,
+} from "./sessions";

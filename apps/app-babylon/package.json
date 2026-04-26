@@ -9,7 +9,8 @@
     "./package.json": "./package.json",
     ".": "./src/index.ts",
     "./routes": "./src/routes.ts",
-    "./ui": "./src/ui/index.ts"
+    "./ui": "./src/ui/index.ts",
+    "./ui/babylon-data": "./src/ui/babylon-data.ts"
   },
   "repository": {
     "type": "git",

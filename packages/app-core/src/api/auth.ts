@@ -122,6 +122,11 @@ function recordFailedAuth(ip: string | null): void {
  * Gate a request behind the configured API token.
  * Returns `true` if the request is authorised (or no token is configured).
  * Sends a 401 and returns `false` otherwise.
+ *
+ * Note: this is the SYNC bearer-only gate. P1 introduces session cookies as
+ * an additional accepted credential — see `ensureCompatApiAuthorizedAsync`
+ * which performs the cookie lookup against `AuthStore`. Existing callers
+ * continue to use this synchronous form until they migrate.
  */
 export function ensureCompatApiAuthorized(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
@@ -138,6 +143,109 @@ export function ensureCompatApiAuthorized(
 
   const providedToken = getProvidedApiToken(req);
   if (providedToken && tokenMatches(expectedToken, providedToken)) return true;
+
+  recordFailedAuth(ip);
+  sendJsonError(res, 401, "Unauthorized");
+  return false;
+}
+
+/**
+ * Cookie-aware authorisation gate. Tries (in order):
+ *   1. valid `milady_session` cookie → session in DB → authorised.
+ *   2. configured static bearer (legacy) → 14-day grace window via
+ *      `decideLegacyBearer`; emits the deprecation header on success.
+ *   3. fallback to `ensureCompatApiAuthorized` for routes that don't
+ *      use sessions yet.
+ *
+ * Returns `true` when the request may proceed; `false` after sending a 401.
+ *
+ * Caller supplies an `AuthStore` because importing one here would create a
+ * cycle with `services/auth-store.ts`. Routes typically construct one
+ * once per handler.
+ */
+export async function ensureCompatApiAuthorizedAsync(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+  res: http.ServerResponse,
+  options: {
+    store: import("../services/auth-store").AuthStore;
+    now?: number;
+  },
+): Promise<boolean> {
+  const ip = req.socket?.remoteAddress ?? null;
+  if (isAuthRateLimited(ip)) {
+    sendJsonError(res, 429, "Too many authentication attempts");
+    return false;
+  }
+
+  // Cookie path
+  const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
+  if (sessionCookie) {
+    const { findActiveSession } = await import("./auth/sessions");
+    const session = await findActiveSession(
+      options.store,
+      sessionCookie,
+      options.now,
+    ).catch(() => null);
+    if (session) return true;
+  }
+
+  // Bearer path — session id, legacy static token, or bootstrap bearer.
+  const provided = getProvidedApiToken(req);
+  if (provided) {
+    const { findActiveSession } = await import("./auth/sessions");
+    const sessionFromBearer = await findActiveSession(
+      options.store,
+      provided,
+      options.now,
+    ).catch(() => null);
+    if (sessionFromBearer) return true;
+
+    const expectedToken = getCompatApiToken();
+    if (expectedToken && tokenMatches(expectedToken, provided)) {
+      const userAgent = extractHeaderValue(req.headers["user-agent"]);
+      const {
+        decideLegacyBearer,
+        recordLegacyBearerRejection,
+        recordLegacyBearerUse,
+        LEGACY_DEPRECATION_HEADER,
+      } = await import("./auth/legacy-bearer");
+      const decision = await decideLegacyBearer(
+        options.store,
+        process.env,
+        options.now,
+      );
+      if (decision.allowed) {
+        if (!res.headersSent) {
+          res.setHeader(LEGACY_DEPRECATION_HEADER, "1");
+        }
+        await recordLegacyBearerUse(options.store, {
+          ip,
+          userAgent,
+        }).catch((err) => {
+          console.error("[auth] legacy bearer audit failed:", err);
+        });
+        return true;
+      }
+      await recordLegacyBearerRejection(options.store, {
+        ip,
+        userAgent,
+        reason: decision.reason ?? "post_grace",
+      }).catch((err) => {
+        console.error("[auth] legacy bearer rejection audit failed:", err);
+      });
+      recordFailedAuth(ip);
+      sendJsonError(res, 401, "Unauthorized");
+      return false;
+    }
+  }
+
+  // No credential matched.
+  if (!getCompatApiToken()) {
+    // Open access mode (no token configured AND no session) — fall through
+    // to allow loopback-only flows. Higher-level routes still gate via
+    // `ensureCompatSensitiveRouteAuthorized` for write paths.
+    return true;
+  }
 
   recordFailedAuth(ip);
   sendJsonError(res, 401, "Unauthorized");

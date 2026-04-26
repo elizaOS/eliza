@@ -2284,6 +2284,8 @@ export interface LifeOpsInboxThreadGroup {
   participantCount?: number;
   /** Highest priority score across messages in the thread */
   maxPriorityScore?: number;
+  /** Messages in this visible thread window, newest first. */
+  messages: LifeOpsInboxMessage[];
 }
 
 export interface LifeOpsInbox {

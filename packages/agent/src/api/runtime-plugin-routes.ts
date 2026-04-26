@@ -20,12 +20,23 @@ export function matchPluginRoutePath(
   const norm = (p: string) => p.split("/").filter((s) => s.length > 0);
   const pSegs = norm(pattern);
   const pathSegs = norm(pathname);
-  if (pSegs.length !== pathSegs.length) return null;
   const params: Record<string, string> = {};
   for (let i = 0; i < pSegs.length; i++) {
     const p = pSegs[i];
     const c = pathSegs[i];
-    if (!p || c === undefined) return null;
+    if (!p) return null;
+    if (p.startsWith(":") && p.endsWith("*")) {
+      const key = p.slice(1, -1);
+      const tail = pathSegs.slice(i).join("/");
+      if (!tail) return null;
+      try {
+        params[key] = decodeURIComponent(tail);
+      } catch {
+        params[key] = tail;
+      }
+      return params;
+    }
+    if (c === undefined) return null;
     if (p.startsWith(":")) {
       try {
         params[p.slice(1)] = decodeURIComponent(c);
@@ -36,7 +47,7 @@ export function matchPluginRoutePath(
       return null;
     }
   }
-  return params;
+  return pSegs.length === pathSegs.length ? params : null;
 }
 
 function searchParamsToQuery(url: URL): Record<string, string | string[]> {

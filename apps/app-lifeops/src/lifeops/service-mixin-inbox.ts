@@ -280,6 +280,7 @@ function buildThreadGroups(
       unreadCount,
       participantCount,
       maxPriorityScore,
+      messages: [...members],
     });
   }
 

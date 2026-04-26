@@ -278,3 +278,325 @@ describe("buildInbox", () => {
     expect(inbox.messages).toHaveLength(0);
   });
 });
+
+describe("resolveInboxRequest — Wave 2F filters", () => {
+  it("passes through chatTypeFilter when valid", () => {
+    const resolved = resolveInboxRequest({
+      chatTypeFilter: ["dm", "group"],
+    });
+    expect(resolved.chatTypeFilter).toEqual(["dm", "group"]);
+  });
+
+  it("drops invalid chatTypeFilter entries", () => {
+    const resolved = resolveInboxRequest({
+      // @ts-expect-error — testing runtime sanitization of bad enum values
+      chatTypeFilter: ["dm", "bogus"],
+    });
+    expect(resolved.chatTypeFilter).toEqual(["dm"]);
+  });
+
+  it("returns undefined chatTypeFilter when omitted or empty", () => {
+    expect(resolveInboxRequest({}).chatTypeFilter).toBeUndefined();
+    expect(
+      resolveInboxRequest({ chatTypeFilter: [] }).chatTypeFilter,
+    ).toBeUndefined();
+  });
+
+  it("normalizes maxParticipants to a positive integer or undefined", () => {
+    expect(resolveInboxRequest({ maxParticipants: 15 }).maxParticipants).toBe(15);
+    expect(
+      resolveInboxRequest({ maxParticipants: 15.7 }).maxParticipants,
+    ).toBe(15);
+    expect(resolveInboxRequest({ maxParticipants: 0 }).maxParticipants).toBeUndefined();
+    expect(resolveInboxRequest({ maxParticipants: -3 }).maxParticipants).toBeUndefined();
+  });
+
+  it("trims and forwards a non-empty gmailAccountId", () => {
+    expect(
+      resolveInboxRequest({ gmailAccountId: " grant-1 " }).gmailAccountId,
+    ).toBe("grant-1");
+    expect(resolveInboxRequest({ gmailAccountId: "" }).gmailAccountId).toBeUndefined();
+  });
+
+  it("flips groupByThread on only when explicitly true", () => {
+    expect(resolveInboxRequest({}).groupByThread).toBe(false);
+    expect(resolveInboxRequest({ groupByThread: true }).groupByThread).toBe(true);
+  });
+});
+
+describe("buildInbox — Wave 2F filters and small-group heuristic", () => {
+  type AllowedSet = Set<
+    ReturnType<typeof resolveInboxRequest>["allowed"] extends Set<infer T>
+      ? T
+      : never
+  >;
+  const allChannels = (): AllowedSet =>
+    new Set([
+      "gmail",
+      "discord",
+      "telegram",
+      "signal",
+      "imessage",
+      "whatsapp",
+      "sms",
+      "x_dm",
+    ] as const) as unknown as AllowedSet;
+
+  it("filters out group messages above maxParticipants", () => {
+    const inbound: InboundMessage[] = [
+      {
+        id: "mem-dm",
+        source: "telegram",
+        roomId: "room-dm",
+        entityId: "u1",
+        senderName: "Alice",
+        channelName: "Alice",
+        channelType: "dm",
+        text: "hi",
+        snippet: "hi",
+        timestamp: Date.UTC(2025, 0, 1, 9),
+        chatType: "dm",
+      },
+      {
+        id: "mem-small",
+        source: "telegram",
+        roomId: "room-small",
+        entityId: "u2",
+        senderName: "Bob",
+        channelName: "Crew",
+        channelType: "group",
+        text: "hey",
+        snippet: "hey",
+        timestamp: Date.UTC(2025, 0, 1, 10),
+        chatType: "group",
+        participantCount: 6,
+      },
+      {
+        id: "mem-big",
+        source: "telegram",
+        roomId: "room-big",
+        entityId: "u3",
+        senderName: "Carol",
+        channelName: "Town hall",
+        channelType: "group",
+        text: "broadcast",
+        snippet: "broadcast",
+        timestamp: Date.UTC(2025, 0, 1, 11),
+        chatType: "group",
+        participantCount: 42,
+      },
+    ];
+    const inbox = buildInbox(inbound, {
+      limit: 50,
+      allowed: allChannels(),
+      maxParticipants: 15,
+    });
+    const ids = inbox.messages.map((m) => m.id);
+    expect(ids).toContain("telegram:mem-dm");
+    expect(ids).toContain("telegram:mem-small");
+    expect(ids).not.toContain("telegram:mem-big");
+  });
+
+  it("filters by chatType — Messages mode keeps DM + small group, drops channels", () => {
+    const inbound: InboundMessage[] = [
+      {
+        id: "mem-dm",
+        source: "discord",
+        roomId: "r1",
+        senderName: "Alice",
+        channelName: "Alice",
+        channelType: "dm",
+        text: "hi",
+        snippet: "hi",
+        timestamp: 1,
+        chatType: "dm",
+      },
+      {
+        id: "mem-group",
+        source: "discord",
+        roomId: "r2",
+        senderName: "Bob",
+        channelName: "Devs",
+        channelType: "group",
+        text: "ok",
+        snippet: "ok",
+        timestamp: 2,
+        chatType: "group",
+        participantCount: 4,
+      },
+      {
+        id: "mem-channel",
+        source: "discord",
+        roomId: "r3",
+        senderName: "Carol",
+        channelName: "#announcements",
+        channelType: "group",
+        text: "fyi",
+        snippet: "fyi",
+        timestamp: 3,
+        chatType: "channel",
+        participantCount: 999,
+      },
+    ];
+    const inbox = buildInbox(inbound, {
+      limit: 50,
+      allowed: allChannels(),
+      chatTypeFilter: ["dm", "group"],
+    });
+    const ids = inbox.messages.map((m) => m.id);
+    expect(ids.sort()).toEqual(["discord:mem-dm", "discord:mem-group"]);
+  });
+
+  it("filters Gmail by gmailAccountId", () => {
+    const inbound: InboundMessage[] = [
+      {
+        id: "g1",
+        source: "gmail",
+        senderName: "boss@personal.com",
+        channelName: "Email from boss@personal.com",
+        channelType: "dm",
+        text: "hi",
+        snippet: "hi",
+        timestamp: 1,
+        gmailMessageId: "g1-ext",
+        gmailAccountId: "grant-personal",
+        gmailAccountEmail: "me@personal.com",
+      },
+      {
+        id: "g2",
+        source: "gmail",
+        senderName: "boss@work.com",
+        channelName: "Email from boss@work.com",
+        channelType: "dm",
+        text: "hello",
+        snippet: "hello",
+        timestamp: 2,
+        gmailMessageId: "g2-ext",
+        gmailAccountId: "grant-work",
+        gmailAccountEmail: "me@work.com",
+      },
+    ];
+    const inbox = buildInbox(inbound, {
+      limit: 50,
+      allowed: allChannels(),
+      gmailAccountId: "grant-work",
+    });
+    expect(inbox.messages).toHaveLength(1);
+    expect(inbox.messages[0]?.gmailAccountId).toBe("grant-work");
+    expect(inbox.messages[0]?.gmailAccountEmail).toBe("me@work.com");
+  });
+
+  it("scores small-group threads via the v1 heuristic", () => {
+    const inbound: InboundMessage[] = [
+      {
+        id: "mem-1",
+        source: "telegram",
+        roomId: "room-plan",
+        entityId: "u-friend",
+        senderName: "Friend",
+        channelName: "Trip squad",
+        channelType: "group",
+        text: "can we meet tomorrow at 3pm Shaw?",
+        snippet: "can we meet tomorrow at 3pm Shaw?",
+        timestamp: Date.UTC(2025, 0, 5, 9),
+        chatType: "group",
+        participantCount: 4,
+      },
+      {
+        id: "mem-2",
+        source: "telegram",
+        roomId: "room-plan",
+        entityId: "u-other",
+        senderName: "Other",
+        channelName: "Trip squad",
+        channelType: "group",
+        text: "+1",
+        snippet: "+1",
+        timestamp: Date.UTC(2025, 0, 5, 8),
+        chatType: "group",
+        participantCount: 4,
+      },
+    ];
+    const inbox = buildInbox(inbound, {
+      limit: 50,
+      allowed: allChannels(),
+      groupByThread: true,
+      ownerName: "Shaw",
+    });
+    expect(inbox.threadGroups).toBeDefined();
+    const group = inbox.threadGroups?.[0];
+    expect(group?.chatType).toBe("group");
+    expect(group?.participantCount).toBe(4);
+    // mention (30) + question (20) + date-like (15) + most-recent group (10)
+    expect(group?.maxPriorityScore).toBe(75);
+    expect(group?.latestMessage.priorityScore).toBe(75);
+  });
+
+  it("does not score large groups (>15 participants)", () => {
+    const inbound: InboundMessage[] = [
+      {
+        id: "mem-large",
+        source: "telegram",
+        roomId: "room-big",
+        senderName: "Anyone",
+        channelName: "Megagroup",
+        channelType: "group",
+        text: "tomorrow at 3pm? Shaw",
+        snippet: "tomorrow at 3pm? Shaw",
+        timestamp: Date.UTC(2025, 0, 1, 9),
+        chatType: "group",
+        participantCount: 50,
+      },
+    ];
+    const inbox = buildInbox(inbound, {
+      limit: 50,
+      allowed: allChannels(),
+      groupByThread: true,
+      ownerName: "Shaw",
+    });
+    const group = inbox.threadGroups?.[0];
+    // No participantCount cap was applied, so the message is in the feed —
+    // but the heuristic must skip it because the group is too large.
+    expect(group?.maxPriorityScore).toBeUndefined();
+  });
+
+  it("populates thread groups with the visible message window (newest first)", () => {
+    const inbound: InboundMessage[] = [
+      {
+        id: "mem-old",
+        source: "telegram",
+        roomId: "room-1",
+        senderName: "Alice",
+        channelName: "Alice",
+        channelType: "dm",
+        text: "first",
+        snippet: "first",
+        timestamp: Date.UTC(2025, 0, 1, 9),
+        chatType: "dm",
+      },
+      {
+        id: "mem-new",
+        source: "telegram",
+        roomId: "room-1",
+        senderName: "Alice",
+        channelName: "Alice",
+        channelType: "dm",
+        text: "later",
+        snippet: "later",
+        timestamp: Date.UTC(2025, 0, 1, 10),
+        chatType: "dm",
+      },
+    ];
+    const inbox = buildInbox(inbound, {
+      limit: 50,
+      allowed: allChannels(),
+      groupByThread: true,
+    });
+    const group = inbox.threadGroups?.[0];
+    expect(group?.messages.map((m) => m.id)).toEqual([
+      "telegram:mem-new",
+      "telegram:mem-old",
+    ]);
+    expect(group?.totalCount).toBe(2);
+  });
+});

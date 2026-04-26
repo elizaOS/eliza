@@ -124,6 +124,7 @@ import {
 } from "../utils/sql-compat";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
+import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudRoute } from "./cloud-routes";
 import { handleCloudStatusRoutes } from "./cloud-status-routes";
@@ -742,6 +743,10 @@ async function handleCompatRoute(
   // legacy auth-pairing handler so the dedicated rate-limited route owns
   // `/api/auth/bootstrap/exchange`.
   if (await handleAuthBootstrapRoutes(req, res, state)) return true;
+
+  // P1 session routes: setup, login/password, logout, me, sessions list/revoke.
+  // These own cookie + CSRF lifecycle for the dashboard.
+  if (await handleAuthSessionRoutes(req, res, state)) return true;
 
   // Auth / pairing / onboarding status — extracted to auth-pairing-compat-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;

@@ -29,10 +29,10 @@ import {
 
 type SleepTab = "tonight" | "history" | "pattern";
 
-type WindowDays = 7 | 14 | 30;
+type WindowDays = 30 | 90 | 365;
 
-const HISTORY_WINDOWS: WindowDays[] = [7, 14, 30];
-const DEFAULT_WINDOW: WindowDays = 30;
+const HISTORY_WINDOWS: WindowDays[] = [30, 90, 365];
+const DEFAULT_WINDOW: WindowDays = 365;
 
 function sleepStatusLabel(schedule: LifeOpsScheduleInsight | null): string {
   if (!schedule) return "No signal";
@@ -97,6 +97,10 @@ export function formatLocalHour(h: number): string {
 function formatDurationMinutes(minutes: number | null | undefined): string {
   if (typeof minutes !== "number" || !Number.isFinite(minutes)) return "—";
   return formatDurationSeconds(minutes * 60) || "—";
+}
+
+function historyWindowLabel(days: WindowDays): string {
+  return days === 365 ? "All year" : `${days} days`;
 }
 
 function formatStddev(stddevMin: number | null | undefined): string {
@@ -381,6 +385,10 @@ function HistoryEpisodeRow({
   const durationLabel = formatDurationMinutes(episode.durationMin);
   const typeLabel = cycleTypeLabel(episode.cycleType);
   const typeBadge = cycleTypeBadgeClass(episode.cycleType);
+  const durationPct =
+    typeof episode.durationMin === "number" && Number.isFinite(episode.durationMin)
+      ? Math.min(100, Math.max(6, (episode.durationMin / 600) * 100))
+      : 0;
 
   return (
     <li
@@ -405,6 +413,21 @@ function HistoryEpisodeRow({
         <div className="mt-0.5 truncate text-[11px] text-muted">
           {startClock} → {endClock}
         </div>
+        {durationPct > 0 ? (
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-bg-muted/40">
+            <div
+              className={[
+                "h-full rounded-full",
+                episode.cycleType === "nap"
+                  ? "bg-amber-300/80"
+                  : episode.cycleType === "overnight"
+                    ? "bg-indigo-300/80"
+                    : "bg-muted/60",
+              ].join(" ")}
+              style={{ width: `${durationPct}%` }}
+            />
+          </div>
+        ) : null}
       </div>
       <div className="shrink-0 text-right">
         <div className="text-sm font-semibold tabular-nums text-txt">
@@ -419,6 +442,99 @@ function HistoryEpisodeRow({
         </div>
       </div>
     </li>
+  );
+}
+
+function HistorySummaryStrip({
+  episodes,
+}: {
+  episodes: readonly LifeOpsSleepHistoryEpisode[];
+}) {
+  const summary = useMemo(() => {
+    let totalDuration = 0;
+    let durationCount = 0;
+    let overnightCount = 0;
+    let napCount = 0;
+    let openCount = 0;
+    for (const episode of episodes) {
+      if (episode.cycleType === "overnight") overnightCount += 1;
+      if (episode.cycleType === "nap") napCount += 1;
+      if (!episode.endedAt) openCount += 1;
+      if (
+        typeof episode.durationMin === "number" &&
+        Number.isFinite(episode.durationMin)
+      ) {
+        totalDuration += episode.durationMin;
+        durationCount += 1;
+      }
+    }
+    return {
+      averageMin: durationCount > 0 ? totalDuration / durationCount : null,
+      overnightCount,
+      napCount,
+      openCount,
+    };
+  }, [episodes]);
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-4" data-testid="sleep-history-summary">
+      <MetricTile icon={<Moon />} value={String(episodes.length)} label="Cycles" />
+      <MetricTile
+        icon={<Moon />}
+        value={formatDurationMinutes(summary.averageMin)}
+        label="Avg"
+      />
+      <MetricTile
+        icon={<Activity />}
+        value={`${summary.overnightCount}/${summary.napCount}`}
+        label="Night/Nap"
+      />
+      <MetricTile
+        icon={<AlarmClock />}
+        value={String(summary.openCount)}
+        label="Open"
+      />
+    </div>
+  );
+}
+
+function HistoryCycleMap({
+  episodes,
+}: {
+  episodes: readonly LifeOpsSleepHistoryEpisode[];
+}) {
+  const visible = episodes.slice(0, 42).reverse();
+  if (visible.length === 0) return null;
+
+  return (
+    <div
+      className="grid min-h-16 grid-cols-[repeat(auto-fit,minmax(8px,1fr))] items-end gap-1 rounded-lg border border-border/12 bg-bg/24 px-3 py-3"
+      data-testid="sleep-history-cycle-map"
+    >
+      {visible.map((episode) => {
+        const height =
+          typeof episode.durationMin === "number" &&
+          Number.isFinite(episode.durationMin)
+            ? Math.min(100, Math.max(16, (episode.durationMin / 600) * 100))
+            : 16;
+        const tone =
+          episode.cycleType === "nap"
+            ? "bg-amber-300/75"
+            : episode.cycleType === "overnight"
+              ? "bg-indigo-300/80"
+              : "bg-muted/60";
+        return (
+          <span
+            key={episode.id}
+            className={`block rounded-sm ${tone}`}
+            style={{ height: `${height}%` }}
+            title={`${formatEpisodeDateLabel(episode.startedAt)} · ${formatDurationMinutes(
+              episode.durationMin,
+            )}`}
+          />
+        );
+      })}
+    </div>
   );
 }
 
@@ -462,7 +578,7 @@ function HistoryTab({
             ].join(" ")}
             aria-pressed={w === windowDays}
           >
-            {w} days
+            {historyWindowLabel(w)}
           </button>
         ))}
       </div>
@@ -488,11 +604,15 @@ function HistoryTab({
       ) : null}
 
       {sortedEpisodes.length > 0 ? (
-        <ul className="space-y-2" data-testid="sleep-history-list">
-          {sortedEpisodes.map((ep) => (
-            <HistoryEpisodeRow key={ep.id} episode={ep} />
-          ))}
-        </ul>
+        <>
+          <HistorySummaryStrip episodes={sortedEpisodes} />
+          <HistoryCycleMap episodes={sortedEpisodes} />
+          <ul className="space-y-2" data-testid="sleep-history-list">
+            {sortedEpisodes.map((ep) => (
+              <HistoryEpisodeRow key={ep.id} episode={ep} />
+            ))}
+          </ul>
+        </>
       ) : null}
     </div>
   );
