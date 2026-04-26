@@ -29,7 +29,6 @@ export * from "./components/apps/surfaces/registry.ts";
 export { CharacterEditor } from "./components/character/CharacterEditor.tsx";
 export * from "./components/character/character-greeting.ts";
 export * from "./components/chat/widgets/shared.tsx";
-export { WhatsAppQrOverlay } from "./components/connectors/WhatsAppQrOverlay.tsx";
 export { getExplorerTokenUrl } from "./components/inventory/chainConfig.ts";
 // Explicit named re-exports for the wallet helpers that renderer-side
 // modules (e.g. apps/app-companion/.../walletUtils.ts) reach for. The
