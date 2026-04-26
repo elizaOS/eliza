@@ -12,7 +12,6 @@ import {
   getWindowNavigationPath,
   isAppWindowRoute,
   shouldUseHashNavigation,
-  type Tab,
 } from "../../navigation";
 
 import { useApp } from "../../state";
@@ -27,6 +26,7 @@ import {
 import {
   getInternalToolApps,
   getInternalToolAppTargetTab,
+  getInternalToolAppWindowPath,
 } from "../apps/internal-tool-apps";
 import {
   getAllOverlayApps,
@@ -38,6 +38,7 @@ import {
   resolveEmbeddedViewerUrl,
   shouldUseEmbeddedAppViewer,
 } from "../apps/viewer-auth";
+import { AppDetailsView, appNeedsDetailsPage } from "./AppDetailsView";
 
 export { shouldShowAppInAppsView } from "../apps/helpers";
 
@@ -67,33 +68,6 @@ interface ManagedWindowSnapshot {
   surface: string;
   title: string;
   alwaysOnTop: boolean;
-}
-
-type NativeAppSurface =
-  | "chat"
-  | "browser"
-  | "release"
-  | "triggers"
-  | "plugins"
-  | "connectors"
-  | "cloud";
-
-function nativeSurfaceForInternalToolTab(
-  tab: Tab | null,
-): NativeAppSurface | null {
-  switch (tab) {
-    case "plugins":
-      return "plugins";
-    case "connectors":
-      return "connectors";
-    case "browser":
-      return "browser";
-    case "automations":
-    case "triggers":
-      return "triggers";
-    default:
-      return null;
-  }
 }
 
 function clampWidth(value: number): number {
@@ -146,6 +120,25 @@ function loadInitialAppWindowLaunchEnabled(): boolean {
 
 function getCurrentAppsPath(): string {
   return getWindowNavigationPath();
+}
+
+/**
+ * Parse the current apps sub-path into `{slug, action}`. Action recognizes
+ * `details` for `/apps/<slug>/details`. Anything else is treated as a
+ * direct app surface (`action: null`).
+ */
+function parseAppsRoute(path: string): {
+  slug: string | null;
+  action: "details" | null;
+} {
+  if (!path.startsWith("/apps/")) return { slug: null, action: null };
+  const after = path.slice("/apps/".length).replace(/[?#].*$/, "");
+  if (!after) return { slug: null, action: null };
+  const [slug, sub] = after.split("/");
+  return {
+    slug: slug || null,
+    action: sub === "details" ? "details" : null,
+  };
 }
 
 function resolveDesktopViewerUrl(viewerUrl: string): string | null {
@@ -223,7 +216,7 @@ export function AppsView() {
   const [appWindowLaunchEnabled, setAppWindowLaunchEnabled] = useState<boolean>(
     loadInitialAppWindowLaunchEnabled,
   );
-  const [appWindowAlwaysOnTop, setAppWindowAlwaysOnTop] = useState<boolean>(
+  const [appWindowAlwaysOnTop] = useState<boolean>(
     loadInitialAppWindowAlwaysOnTop,
   );
   const [isAppWindow] = useState<boolean>(isAppWindowRoute);
@@ -251,15 +244,9 @@ export function AppsView() {
     }
   }, []);
 
-  const handleAppWindowAlwaysOnTopChange = useCallback((next: boolean) => {
-    setAppWindowAlwaysOnTop(next);
-    try {
-      window.localStorage.setItem(APP_WINDOW_ALWAYS_ON_TOP_KEY, String(next));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
+  // Upstream re-added handleAppWindowAlwaysOnTopChange but we removed the
+  // global toggle UI on this branch — keep only the launch-enabled handler
+  // upstream added (which still has UI in the catalog grid header).
   const handleAppWindowLaunchEnabledChange = useCallback((next: boolean) => {
     setAppWindowLaunchEnabled(next);
     try {
@@ -334,19 +321,81 @@ export function AppsView() {
     currentGameViewerUrl.length > 0 &&
     activeGameRun?.viewerAttachment === "attached";
 
-  /** Push or replace the browser URL to reflect the active app (or browse). */
-  const pushAppsUrl = useCallback((slug?: string) => {
-    try {
-      const path = slug ? `/apps/${slug}` : "/apps";
-      if (shouldUseHashNavigation()) {
-        window.location.hash = path;
-      } else {
-        window.history.replaceState(null, "", path);
+  /**
+   * Push or replace the browser URL to reflect the active app (or browse).
+   * `subPath` is appended after the slug so `/apps/<slug>/details` shows
+   * the details page instead of launching directly.
+   */
+  const pushAppsUrl = useCallback(
+    (slug?: string, subPath?: "details") => {
+      try {
+        const path = slug
+          ? subPath
+            ? `/apps/${slug}/${subPath}`
+            : `/apps/${slug}`
+          : "/apps";
+        if (shouldUseHashNavigation()) {
+          window.location.hash = path;
+        } else {
+          window.history.replaceState(null, "", path);
+        }
+      } catch {
+        /* ignore — sandboxed iframe or SSR */
       }
-    } catch {
-      /* ignore — sandboxed iframe or SSR */
-    }
+    },
+    [],
+  );
+
+  // Track the current `/apps/<slug>/details` slug for the details-page
+  // routing. Listens to hashchange + popstate so back/forward navigation
+  // unmounts AppDetailsView correctly.
+  const [appsDetailsSlug, setAppsDetailsSlug] = useState<string | null>(() =>
+    parseAppsRoute(getCurrentAppsPath()).action === "details"
+      ? parseAppsRoute(getCurrentAppsPath()).slug
+      : null,
+  );
+  useEffect(() => {
+    const handle = () => {
+      const parsed = parseAppsRoute(getCurrentAppsPath());
+      setAppsDetailsSlug(
+        parsed.action === "details" ? parsed.slug : null,
+      );
+    };
+    window.addEventListener("hashchange", handle);
+    window.addEventListener("popstate", handle);
+    return () => {
+      window.removeEventListener("hashchange", handle);
+      window.removeEventListener("popstate", handle);
+    };
   }, []);
+
+  // Bun side fires this when a menu/tray click hits an app that declares
+  // `hasDetailsPage: true`. We switch to the apps tab and navigate the
+  // hash to /apps/<slug>/details so AppDetailsView mounts.
+  useEffect(() => {
+    return subscribeDesktopBridgeEvent({
+      rpcMessage: "desktopAppDetailsRequested",
+      ipcChannel: "desktop:appDetailsRequested",
+      listener: (payload) => {
+        if (
+          !payload ||
+          typeof payload !== "object" ||
+          typeof (payload as { slug?: unknown }).slug !== "string"
+        ) {
+          return;
+        }
+        const slug = (payload as { slug: string }).slug;
+        if (!slug) return;
+        setTab("apps");
+        setState("appsSubTab", "browse");
+        // Update state directly: pushAppsUrl uses replaceState in non-hash
+        // routing mode, which fires no event, so the hashchange/popstate
+        // listener wouldn't pick it up.
+        setAppsDetailsSlug(slug);
+        pushAppsUrl(slug, "details");
+      },
+    });
+  }, [pushAppsUrl, setState, setTab]);
 
   const sortedRuns = useMemo(
     () => [...appRuns].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
@@ -515,22 +564,34 @@ export function AppsView() {
 
   const openAppRouteWindow = useCallback(
     async (app: RegistryAppInfo): Promise<boolean> => {
+      // Upstream gate: opt-in toggle for the per-app native window
+      // experience (lives in the catalog grid header).
       if (!appWindowLaunchEnabled || isAppWindow || !isElectrobunRuntime()) {
         return false;
       }
-      const nativeSurface = nativeSurfaceForInternalToolTab(
-        getInternalToolAppTargetTab(app.name),
-      );
-      if (nativeSurface) {
-        const created =
-          await invokeDesktopBridgeRequest<ManagedWindowSnapshot | null>({
-            rpcMethod: "desktopOpenSurfaceWindow",
-            ipcChannel: "desktop:openSurfaceWindow",
-            params: {
-              surface: nativeSurface,
-              alwaysOnTop: appWindowAlwaysOnTop,
-            },
-          });
+
+      // Internal tools that have an explicit windowPath open as their own
+      // app window (Ghost-style). The renderer parses `appWindow=1` + the
+      // hash route and renders the matching tab. This supersedes upstream's
+      // `desktopOpenSurfaceWindow` + `nativeSurfaceForInternalToolTab` path
+      // (the surface-bridge approach was removed when AppWindowRenderer
+      // landed — see the apps-as-windows refactor).
+      const internalWindowPath = getInternalToolAppWindowPath(app.name);
+      if (internalWindowPath) {
+        const slug = getAppSlug(app.name);
+        const created = await invokeDesktopBridgeRequest<{
+          id: string;
+          alwaysOnTop: boolean;
+        }>({
+          rpcMethod: "desktopOpenAppWindow",
+          ipcChannel: "desktop:openAppWindow",
+          params: {
+            slug,
+            title: app.displayName ?? app.name,
+            path: internalWindowPath,
+            alwaysOnTop: appWindowAlwaysOnTop,
+          },
+        });
         if (!created?.id) return false;
         setAppWindows((current) => [
           {
@@ -545,7 +606,7 @@ export function AppsView() {
         ]);
         pushRecentApp(app.name);
         setState("appsSubTab", "browse");
-        pushAppsUrl(getAppSlug(app.name));
+        pushAppsUrl(slug);
         setActionNotice(
           t("appsview.OpenedInDesktopWindow", {
             defaultValue: `${app.displayName ?? app.name} opened in a desktop window.`,
@@ -565,6 +626,7 @@ export function AppsView() {
         rpcMethod: "desktopOpenAppWindow",
         ipcChannel: "desktop:openAppWindow",
         params: {
+          slug,
           title: app.displayName ?? app.name,
           path: `/apps/${encodeURIComponent(slug)}`,
           alwaysOnTop: appWindowAlwaysOnTop,
@@ -676,11 +738,39 @@ export function AppsView() {
   const handleLaunch = useCallback(
     async (app: RegistryAppInfo) => {
       slugAutoLaunchDone.current = true;
-      const openedRouteWindow = await openAppRouteWindow(app).catch(
-        () => false,
-      );
-      if (openedRouteWindow) return;
 
+      // Apps that declare config / runtime / widgets show a Details page
+      // first so the user can review settings before launching. The Launch
+      // button on AppDetailsView is what eventually calls the bridge or
+      // navigates inline. Skip when we're already inside an app window
+      // (the slug lives there, not in the main shell).
+      if (!isAppWindow && appNeedsDetailsPage(app.name)) {
+        const slug = getAppSlug(app.name);
+        pushRecentApp(app.name);
+        setState("appsSubTab", "browse");
+        pushAppsUrl(slug, "details");
+        return;
+      }
+
+      // In Electrobun, try to open the app's dedicated native window via
+      // `openAppRouteWindow` — slug-deduped + per-app bounds, Ghost-style.
+      // The helper itself respects the user's `appWindowLaunchEnabled`
+      // toggle: when off it returns false, and we fall through to the
+      // web-style launch path (catalog → client.launchApp + iframe-attach;
+      // internal tool → setTab; overlay → activeOverlayApp). That gives
+      // the toggle a real opt-out semantics instead of bricking launches.
+      if (isElectrobunRuntime()) {
+        const openedRouteWindow = await openAppRouteWindow(app).catch(
+          () => false,
+        );
+        if (openedRouteWindow) return;
+        // openAppRouteWindow returned false → either the toggle is off,
+        // we're already inside an app window, or the bridge declined.
+        // Continue to the web-fallback paths below so the click isn't a
+        // dead-end.
+      }
+
+      // Web fallback: internal tools switch tabs in the shell.
       const internalToolTab = getInternalToolAppTargetTab(app.name);
       if (internalToolTab) {
         pushRecentApp(app.name);
@@ -688,7 +778,7 @@ export function AppsView() {
         return;
       }
 
-      // Overlay apps (e.g. companion) are local-only — launch without server round-trip
+      // Web fallback: overlay apps (e.g. companion) mount inside the shell.
       if (isOverlayApp(app.name)) {
         pushRecentApp(app.name);
         setState("activeOverlayApp", app.name);
@@ -813,7 +903,12 @@ export function AppsView() {
   useEffect(() => {
     if (slugAutoLaunchDone.current || apps.length === 0) return;
 
-    const slug = getAppSlugFromPath(getCurrentAppsPath());
+    const parsed = parseAppsRoute(getCurrentAppsPath());
+    // /apps/<slug>/details is handled by the details renderer below; never
+    // auto-launch from it (would loop straight back to details).
+    if (parsed.action === "details") return;
+
+    const slug = parsed.slug ?? getAppSlugFromPath(getCurrentAppsPath());
     slugAutoLaunchDone.current = true;
     if (!slug) return;
 
@@ -1091,45 +1186,30 @@ export function AppsView() {
       contentClassName="![scrollbar-width:none] [&::-webkit-scrollbar]:!hidden"
     >
       <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
+        {/* Header keeps the upstream "Open apps in windows" launch-enabled
+            toggle but drops the per-launch "Keep new windows on top" one
+            (the per-window pin in the running-windows list below covers
+            that case without cluttering the header). */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/35 pb-3">
           <div className="min-w-0">
             <h2 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-accent">
               App Windows
             </h2>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground">
-              <input
-                type="checkbox"
-                aria-label="Open apps in windows"
-                className="h-3.5 w-3.5 accent-accent"
-                checked={appWindowLaunchEnabled}
-                onChange={(event) =>
-                  handleAppWindowLaunchEnabledChange(
-                    event.currentTarget.checked,
-                  )
-                }
-              />
-              <span>Open apps in windows</span>
-            </label>
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground">
-              <input
-                type="checkbox"
-                aria-label="Keep new windows on top"
-                className="h-3.5 w-3.5 accent-accent"
-                checked={appWindowAlwaysOnTop}
-                onChange={(event) =>
-                  handleAppWindowAlwaysOnTopChange(event.currentTarget.checked)
-                }
-              />
-              {appWindowAlwaysOnTop ? (
-                <Pin className="h-3.5 w-3.5" aria-hidden="true" />
-              ) : (
-                <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
-              )}
-              <span>Keep new windows on top</span>
-            </label>
-          </div>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground">
+            <input
+              type="checkbox"
+              aria-label="Open apps in windows"
+              className="h-3.5 w-3.5 accent-accent"
+              checked={appWindowLaunchEnabled}
+              onChange={(event) =>
+                handleAppWindowLaunchEnabledChange(
+                  event.currentTarget.checked,
+                )
+              }
+            />
+            <span>Open apps in windows</span>
+          </label>
         </div>
 
         {appWindows.length > 0 ? (
@@ -1185,25 +1265,34 @@ export function AppsView() {
           </div>
         ) : null}
 
-        <RunningAppsRow
-          runs={sortedRuns}
-          catalogApps={apps}
-          busyRunId={busyRunId}
-          onOpenRun={(run) => void handleOpenRun(run)}
-          onStopRun={(run) => void handleStopRun(run)}
-          stoppingRunId={stoppingRunId}
-        />
+        {appsDetailsSlug ? (
+          <AppDetailsView
+            slug={appsDetailsSlug}
+            onLaunched={() => pushAppsUrl()}
+          />
+        ) : (
+          <>
+            <RunningAppsRow
+              runs={sortedRuns}
+              catalogApps={apps}
+              busyRunId={busyRunId}
+              onOpenRun={(run) => void handleOpenRun(run)}
+              onStopRun={(run) => void handleStopRun(run)}
+              stoppingRunId={stoppingRunId}
+            />
 
-        <AppsCatalogGrid
-          activeAppNames={activeAppNames}
-          error={error}
-          favoriteAppNames={favoriteAppNames}
-          loading={loading}
-          searchQuery={searchQuery}
-          visibleApps={visibleApps}
-          onLaunch={(app) => void handleLaunch(app)}
-          onToggleFavorite={handleToggleFavorite}
-        />
+            <AppsCatalogGrid
+              activeAppNames={activeAppNames}
+              error={error}
+              favoriteAppNames={favoriteAppNames}
+              loading={loading}
+              searchQuery={searchQuery}
+              visibleApps={visibleApps}
+              onLaunch={(app) => void handleLaunch(app)}
+              onToggleFavorite={handleToggleFavorite}
+            />
+          </>
+        )}
       </div>
     </PageLayout>
   );

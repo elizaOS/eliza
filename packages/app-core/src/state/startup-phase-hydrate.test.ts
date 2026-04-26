@@ -42,6 +42,17 @@ vi.mock("../components/companion/injected", () => ({
   prefetchVrmToCache: vi.fn(async () => undefined),
 }));
 
+// `state/vrm` re-exports from `@elizaos/app-companion`, whose `vrm-assets.ts`
+// calls `getBootConfig()` at module-eval time. In the vitest sandbox the
+// symlinked re-export resolves before the boot-config store does, so the
+// import sees `undefined` and throws. Stubbing the bridge sidesteps the
+// load order entirely — runHydrating only needs the count + URL.
+vi.mock("./vrm", () => ({
+  VRM_COUNT: 0,
+  getVrmCount: () => 0,
+  getVrmUrl: () => "",
+}));
+
 import type { HydratingDeps, ReadyPhaseDeps } from "./startup-phase-hydrate";
 import { bindReadyPhase, runHydrating } from "./startup-phase-hydrate";
 
