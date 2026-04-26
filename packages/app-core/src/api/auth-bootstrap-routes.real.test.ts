@@ -1,9 +1,13 @@
 /**
  * Real-HTTP smoke test for the cloud-provisioned bootstrap exchange.
  *
- * This is the test counterpart to `scripts/security/auth-bootstrap-smoke`
- * referenced in `docs/security/remote-auth-hardening-plan.md` §12. It
- * verifies the P0 contract end-to-end without booting the full runtime:
+ * This is the CI gate referenced by the `Auth tests (P0 gate)` job in
+ * `.github/workflows/agent-review.yml` and the `smoke-auth` job in
+ * `.github/workflows/agent-release.yml`, per
+ * `docs/security/remote-auth-hardening-plan.md` §12.
+ *
+ * It verifies the P0 contract end-to-end without booting the full
+ * runtime:
  *
  *   - The audited bypass at `auth-pairing-compat-routes.ts:124,140` /
  *     `server-onboarding-compat.ts` is closed: `GET /api/onboarding/status`
