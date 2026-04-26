@@ -15,11 +15,11 @@ describe("ElizaClient scratchpad methods", () => {
 
   beforeEach(() => {
     fetchMock.mockReset();
-    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock);
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("calls the scratchpad topic and search routes with the expected payloads", async () => {
