@@ -20,6 +20,9 @@ import { extractHeaderValue } from "./auth";
 import {
   appendAuditEvent,
   bootstrapExchangeLimiter,
+  markLegacyBearerInvalidated,
+  serializeCsrfCookie,
+  serializeSessionCookie,
   verifyBootstrapToken,
 } from "./auth/index";
 import {
@@ -43,7 +46,7 @@ function getDrizzleDb(state: CompatRuntimeState): DrizzleDatabase | null {
   const runtime = state.current;
   if (!runtime) return null;
   const adapter = runtime.adapter as AdapterWithDb | undefined;
-  if (!adapter || !adapter.db) return null;
+  if (!adapter?.db) return null;
   return adapter.db as DrizzleDatabase;
 }
 
@@ -173,7 +176,7 @@ export async function handleAuthBootstrapRoutes(
   const sessionId = crypto.randomBytes(32).toString("hex");
   const csrfSecret = crypto.randomBytes(32).toString("hex");
   const expiresAt = now + BROWSER_SESSION_TTL_MS;
-  await store.createSession({
+  const session = await store.createSession({
     id: sessionId,
     identityId,
     kind: "browser",
@@ -185,6 +188,24 @@ export async function handleAuthBootstrapRoutes(
     ip,
     userAgent,
     scopes: [],
+  });
+
+  // P1: bootstrap exchange now also sets the cookie pair. The response body
+  // continues to include `sessionId` for P0 SPA compat (sessionStorage-based
+  // bearer fallback) but the canonical credential is the cookie.
+  res.setHeader("set-cookie", [
+    serializeSessionCookie(session),
+    serializeCsrfCookie(session),
+  ]);
+
+  // A real auth method just landed — the legacy static bearer is retired
+  // immediately for this installation per plan §9 step 3.
+  await markLegacyBearerInvalidated(store, {
+    actorIdentityId: identityId,
+    ip,
+    userAgent,
+  }).catch((err: unknown) => {
+    console.error("[auth] legacy invalidate audit failed:", err);
   });
 
   await appendAuditEvent(

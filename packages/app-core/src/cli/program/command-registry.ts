@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { registerAuthCommand } from "./register.auth";
 import { registerBenchmarkCommand } from "./register.benchmark";
 import { registerConfigCli } from "./register.config";
 import { registerConfigureCommand } from "./register.configure";
@@ -23,5 +24,6 @@ export function registerProgramCommands(
   registerConfigCli(program);
   registerDashboardCommand(program);
   registerUpdateCommand(program);
+  registerAuthCommand(program);
   registerSubCliCommands(program, argv);
 }
