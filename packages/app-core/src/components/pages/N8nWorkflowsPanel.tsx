@@ -354,11 +354,10 @@ function WorkflowDetailPane({
       <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted">
         <Workflow className="h-6 w-6 text-muted/40" />
         <div className="text-txt-strong font-semibold">
-          No workflow selected
+          {t("automations.n8n.detailEmptyHeading")}
         </div>
         <div className="text-xs text-muted/80 max-w-xs">
-          Select a workflow from the sidebar to view its details, or switch to
-          the dashboard to create a new one.
+          {t("automations.n8n.detailEmptyBody")}
         </div>
       </div>
     );
