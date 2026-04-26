@@ -508,7 +508,7 @@ export function AppWorkspaceChrome({
               data-testid={`${testId}-chat-sidebar`}
               data-collapsed
             >
-              {!isMobileViewport && !hideCollapseButton ? (
+              {!isMobileViewport ? (
                 <AppWorkspaceChatDockToggleButton
                   collapsed
                   testId={`${testId}-chat-expand`}
