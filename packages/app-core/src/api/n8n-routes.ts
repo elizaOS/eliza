@@ -1287,6 +1287,23 @@ async function handleGenerateWorkflow(
     typeof service?.deployWorkflow === "function" &&
     typeof service?.getWorkflow === "function"
   ) {
+    // Two-phase try blocks. The OUTER try wraps only operations that have NOT
+    // yet committed a side effect to n8n — generateWorkflowDraft (LLM call,
+    // pure) and deployWorkflow (the write). Failures here can safely fall
+    // through to the legacy proxy path because no workflow has been written
+    // yet. Once deployWorkflow returns successfully, the workflow IS in n8n
+    // and any further failure (e.g. the follow-up getWorkflow read) must NOT
+    // re-enter the legacy path — that path would re-invoke the LLM and POST
+    // a new workflow OR PUT-overwrite the just-deployed one with unresolved
+    // `{{CREDENTIAL_ID}}` placeholders.
+    let deployed:
+      | {
+          id: string;
+          name: string;
+          active: boolean;
+          missingCredentials: Array<{ credType: string; authUrl?: string }>;
+        }
+      | undefined;
     try {
       const draft = await service.generateWorkflowDraft(prompt);
       if (name?.trim()) {
@@ -1302,10 +1319,22 @@ async function handleGenerateWorkflow(
       // entity in Milady local and gives a stable per-agent tag for n8n
       // credential mapping.
       const userId = resolveAgentId(ctx);
-      const deployed = await service.deployWorkflow(
+      deployed = await service.deployWorkflow(
         draft as Record<string, unknown>,
         userId,
       );
+    } catch (err) {
+      logger.warn(
+        {
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[n8n-routes] generate/deploy path failed before commit; falling back to direct proxy",
+      );
+      // Pre-deploy failure — deploy never committed. Legacy proxy fallback
+      // is safe here.
+    }
+
+    if (deployed) {
       if (deployed.missingCredentials.length > 0) {
         sendJson(ctx, 200, {
           ...deployed,
@@ -1313,17 +1342,24 @@ async function handleGenerateWorkflow(
         });
         return true;
       }
-      const full = await service.getWorkflow(deployed.id);
-      sendJson(ctx, 200, full);
+      // Deploy succeeded — the workflow is committed in n8n. Try to enrich
+      // the response with the full workflow body, but on failure return the
+      // deploy summary instead of falling through (see comment above on why
+      // the legacy path would corrupt the just-deployed workflow).
+      let full: Record<string, unknown> | undefined;
+      try {
+        full = await service.getWorkflow(deployed.id);
+      } catch (readErr) {
+        logger.warn(
+          {
+            err: readErr instanceof Error ? readErr.message : String(readErr),
+            deployedId: deployed.id,
+          },
+          "[n8n-routes] follow-up getWorkflow failed after successful deploy; returning deploy summary",
+        );
+      }
+      sendJson(ctx, 200, full ?? deployed);
       return true;
-    } catch (err) {
-      logger.warn(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[n8n-routes] deployWorkflow path failed; falling back to direct proxy",
-      );
-      // fall through to legacy proxy path
     }
   }
 
