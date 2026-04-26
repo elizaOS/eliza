@@ -19,7 +19,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { getRecentMessagesData } from "@elizaos/shared";
 import { hasAdminAccess } from "../security/access.js";
 
 // ── Stopwords ────────────────────────────────────────────────────────────────

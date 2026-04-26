@@ -18,7 +18,7 @@
  */
 
 import type http from "node:http";
-import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
+import type { CompatRuntimeState } from "@elizaos/app-core";
 import type { Plugin, Route } from "@elizaos/core";
 import { checkBalanceAction } from "./actions/check-balance";
 import { executeTradeAction } from "./actions/execute-trade";

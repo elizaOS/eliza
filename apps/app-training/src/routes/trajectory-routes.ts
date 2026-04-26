@@ -14,31 +14,27 @@
 
 import type http from "node:http";
 import {
-  readJsonBody as parseJsonBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/agent/api/http-helpers";
-import { createZipArchive } from "@elizaos/agent/api/zip-utils";
-import {
+  createZipArchive,
   enrichTrajectoryLlmCall,
   executeRawSql,
   extractRows,
+  readJsonBody as parseJsonBody,
   type PersistedStep,
   type PersistedTrajectory,
   saveTrajectory,
-} from "@elizaos/agent/runtime/trajectory-internals";
-import type {
-  Trajectory,
-  TrajectoryExportFormat,
-  TrajectoryExportOptions,
-  TrajectoryExportResult,
-  TrajectoryListItem,
-  TrajectoryListOptions,
-  TrajectoryListResult,
-  TrajectoryLlmCall,
-  TrajectoryStatus,
-  TrajectoryStep,
-} from "@elizaos/agent/types";
+  sendJson,
+  sendJsonError,
+  type Trajectory,
+  type TrajectoryExportFormat,
+  type TrajectoryExportOptions,
+  type TrajectoryExportResult,
+  type TrajectoryListItem,
+  type TrajectoryListOptions,
+  type TrajectoryListResult,
+  type TrajectoryLlmCall,
+  type TrajectoryStatus,
+  type TrajectoryStep,
+} from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 
 export type { TrajectoryExportFormat };

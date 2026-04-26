@@ -723,8 +723,8 @@ export const lifeOpsConnectorAction: Action & {
     {
       name: "subaction",
       description:
-        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (health probe, Telegram only); status (per-connector status); list (cross-connector status when connector is omitted).",
-      required: true,
+        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (health probe, Telegram only); status (per-connector status); list (cross-connector status when connector is omitted). Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const, enum: [...VALID_SUBACTIONS] },
     },
     {

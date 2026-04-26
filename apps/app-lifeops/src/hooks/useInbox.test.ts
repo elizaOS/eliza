@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { LifeOpsInboxChannel } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsInboxChannel } from "@elizaos/shared";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type InboxChannel, useInbox } from "./useInbox";

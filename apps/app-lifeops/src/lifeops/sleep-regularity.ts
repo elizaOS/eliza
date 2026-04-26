@@ -2,7 +2,7 @@ import type {
   LifeOpsPersonalBaseline,
   LifeOpsScheduleRegularity,
   LifeOpsSleepCycleType,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { getZonedDateParts } from "./time.js";
 import { parseIsoMs } from "./time-util.js";
 

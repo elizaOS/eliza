@@ -1,4 +1,6 @@
-import { parseCronExpression } from "@elizaos/agent/triggers/scheduling";
+import {
+  parseCronExpression,
+} from "@elizaos/agent";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,

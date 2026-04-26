@@ -18,7 +18,7 @@ import {
   type IAgentRuntime,
   ModelType,
 } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared/type-guards";
+import { asRecord } from "@elizaos/shared";
 
 export { asRecord };
 

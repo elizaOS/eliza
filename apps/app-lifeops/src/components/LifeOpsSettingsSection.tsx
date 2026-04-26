@@ -1,6 +1,10 @@
-import { Button, SegmentedControl, useApp } from "@elizaos/app-core";
-import { client } from "@elizaos/app-core/api";
-import type { ModelOption } from "@elizaos/shared/contracts/onboarding";
+import {
+  Button,
+  client,
+  SegmentedControl,
+  useApp,
+} from "@elizaos/app-core";
+import type { ModelOption } from "@elizaos/shared";
 import type {
   LifeOpsCalendarSummary,
   LifeOpsConnectorMode,

@@ -1,4 +1,6 @@
-import type { CustomActionDef } from "@elizaos/agent/contracts/config";
+import type {
+  CustomActionDef,
+} from "@elizaos/agent";
 import { Button, Input, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api/client";

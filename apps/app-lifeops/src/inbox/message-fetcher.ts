@@ -1,15 +1,13 @@
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
 import {
   expandConnectorSourceFilter,
+  type GetLifeOpsGmailTriageRequest,
+  type LifeOpsGmailTriageFeed,
+  type LifeOpsGoogleConnectorStatus,
+  type LifeOpsXConnectorStatus,
+  type LifeOpsXDm,
   normalizeConnectorSource,
-} from "@elizaos/shared/connectors";
-import type {
-  GetLifeOpsGmailTriageRequest,
-  LifeOpsGmailTriageFeed,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsXConnectorStatus,
-  LifeOpsXDm,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { buildDeepLink, resolveChannelName } from "./channel-deep-links.js";
 import type { InboundMessage } from "./types.js";
 

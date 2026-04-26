@@ -1,5 +1,7 @@
-import { hasAdminAccess } from "@elizaos/agent";
-import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
+import {
+  hasAdminAccess,
+  resolveAdminEntityId,
+} from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -11,7 +13,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { getRecentMessagesData } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "../inbox/config.js";
 import { fetchAllMessages } from "../inbox/message-fetcher.js";
 import {

@@ -1,11 +1,13 @@
-import { Badge, Button, useApp } from "@elizaos/app-core";
-import { isElectrobunRuntime } from "@elizaos/app-core/bridge/electrobun-runtime";
 import {
+  Badge,
+  Button,
   getMobileSignalsPlugin,
+  isElectrobunRuntime,
+  isNative,
   type MobileSignalsPermissionStatus,
   type MobileSignalsSetupAction,
-} from "@elizaos/app-core/bridge/native-plugins";
-import { isNative } from "@elizaos/app-core/platform";
+  useApp,
+} from "@elizaos/app-core";
 import {
   Activity,
   Monitor,

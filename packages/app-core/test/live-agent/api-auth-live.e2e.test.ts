@@ -9,7 +9,9 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { config as loadDotenv } from "dotenv";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
+import {
+  createElizaPlugin,
+} from "@elizaos/agent";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import {
   buildIsolatedLiveProviderEnv,

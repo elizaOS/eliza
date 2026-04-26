@@ -25,7 +25,7 @@ import {
 import {
   resolveApiToken,
   resolveServerOnlyPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import { loadElizaConfig } from "../config/config.js";
 import type {
   CustomActionDef,

@@ -5,7 +5,7 @@ import {
   type UiTheme,
   useMediaQuery,
 } from "@elizaos/app-core";
-import { Button } from "@elizaos/ui/components/ui/button";
+import { Button } from "@elizaos/ui";
 import {
   MessageCirclePlus,
   Monitor,

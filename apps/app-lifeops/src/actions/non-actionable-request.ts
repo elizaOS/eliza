@@ -10,7 +10,7 @@
 import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
-} from "@elizaos/shared/validation-keywords";
+} from "@elizaos/shared";
 
 /**
  * Build-an-app / coding-task requests. LIFE shares verbs ("make", "create",

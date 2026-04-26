@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
-import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent/runtime";
+import {
+  CORE_PLUGINS,
+  createElizaPlugin,
+} from "@elizaos/agent";
 import {
   AgentRuntime,
   type Content,

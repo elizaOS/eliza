@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import type {
   LifeOpsScreenTimeDaily,
   LifeOpsScreenTimeSession,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { getActivityReportBetween } from "../activity-profile/activity-tracker-reporting.js";
 import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";

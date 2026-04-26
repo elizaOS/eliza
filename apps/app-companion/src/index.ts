@@ -1,3 +1,7 @@
+export * from "./character-catalog";
+export * from "./vrm-assets";
+export * from "./emotes";
+export * from "./components/avatar/vector-browser-utils";
 export * from "./components/avatar/MathEnvironment";
 export * from "./components/avatar/mixamoVRMRigMap";
 export * from "./components/avatar/retargetMixamoFbxToVrm";

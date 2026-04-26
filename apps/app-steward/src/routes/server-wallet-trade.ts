@@ -3,12 +3,14 @@
  * guards, and wallet export rejection wrappers.
  */
 import type http from "node:http";
-import { resolveWalletExportRejection as upstreamResolveWalletExportRejection } from "@elizaos/agent/api/server-auth";
-import { mirrorCompatHeaders } from "@elizaos/app-core/api/server-cloud-tts";
+import {
+  resolveWalletExportRejection as upstreamResolveWalletExportRejection,
+} from "@elizaos/agent";
+import { mirrorCompatHeaders } from "@elizaos/app-core";
 import {
   syncAppEnvToEliza,
   syncElizaEnvAliases,
-} from "@elizaos/app-core/utils/env";
+} from "@elizaos/app-core";
 import {
   type WalletExportRejection as CompatWalletExportRejection,
   createHardenedExportGuard,

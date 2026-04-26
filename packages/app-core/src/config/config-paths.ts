@@ -1,4 +1,6 @@
-import { isPlainObject } from "@elizaos/agent/config";
+import {
+  isPlainObject,
+} from "@elizaos/agent";
 
 type PathNode = Record<string, unknown>;
 

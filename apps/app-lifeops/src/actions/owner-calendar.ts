@@ -20,7 +20,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "../lifeops/time.js";

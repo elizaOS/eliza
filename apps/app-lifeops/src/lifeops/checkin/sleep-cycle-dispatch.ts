@@ -1,4 +1,4 @@
-import type { LifeOpsCircadianState } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsCircadianState } from "@elizaos/shared";
 import { parseIsoMs } from "../time-util.js";
 
 export const MORNING_CHECKIN_WINDOW_MINUTES = 6 * 60;

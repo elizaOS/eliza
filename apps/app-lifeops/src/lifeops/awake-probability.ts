@@ -3,7 +3,7 @@ import type {
   LifeOpsAwakeProbability,
   LifeOpsScheduleRegularity,
   LifeOpsSleepCycle,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import type { LifeOpsActivityWindow } from "./sleep-cycle.js";
 import { resolveActivitySignalReliability } from "./source-reliability.js";
 import { getZonedDateParts } from "./time.js";

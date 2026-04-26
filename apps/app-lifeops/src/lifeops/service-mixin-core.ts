@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
-import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
-import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
+import {
+  getAgentEventService,
+  resolveOwnerEntityId,
+} from "@elizaos/agent";
 import type {
   LifeOpsAuditEvent,
   LifeOpsAuditEventType,

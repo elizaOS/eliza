@@ -1,7 +1,5 @@
-import { client } from "@elizaos/app-core/api";
-import { isApiError } from "@elizaos/app-core/api/client-types-core";
-import { useApp } from "@elizaos/app-core/state";
-import type { LifeOpsOverview } from "@elizaos/shared/contracts/lifeops";
+import { client, isApiError, useApp } from "@elizaos/app-core";
+import type { LifeOpsOverview } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 import { useLifeOpsAppState } from "../../../../../hooks/useLifeOpsAppState.js";
 

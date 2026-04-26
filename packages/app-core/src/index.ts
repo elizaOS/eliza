@@ -6,13 +6,13 @@ export {
   DEFAULT_MAX_BODY_BYTES,
   readRequestBody,
   readRequestBodyBuffer,
-} from "@elizaos/agent/api/http-helpers";
-export type { RestartHandler } from "@elizaos/shared/restart";
+} from "@elizaos/agent";
+export type { RestartHandler } from "@elizaos/shared";
 export {
   RESTART_EXIT_CODE,
   requestRestart,
   setRestartHandler,
-} from "@elizaos/shared/restart";
+} from "@elizaos/shared";
 export * from "@elizaos/ui";
 export { App } from "./App.tsx";
 export * from "./api/auth";

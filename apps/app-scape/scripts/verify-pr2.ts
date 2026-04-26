@@ -23,15 +23,13 @@ import {
     getElizaCuratedAppDefinition,
     isElizaCuratedAppName,
     normalizeElizaCuratedAppName,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 import appScapePlugin, {
     createAppScapePlugin,
-} from "@elizaos/app-scape";
-import {
     handleAppRoutes,
     refreshRunSession,
     resolveLaunchSession,
-} from "@elizaos/app-scape/routes";
+} from "@elizaos/app-scape";
 
 interface MockResponse {
     statusCode: number;

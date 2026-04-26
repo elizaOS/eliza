@@ -2,7 +2,9 @@
  * Features contributor — reports enabled/disabled feature flags.
  */
 
-import type { AwarenessContributor } from "@elizaos/agent/contracts";
+import type {
+  AwarenessContributor,
+} from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const featuresContributor: AwarenessContributor = {

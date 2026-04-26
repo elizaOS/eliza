@@ -6,11 +6,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
-  resolveRelationshipsGraphService,
   type RelationshipsGraphService,
   type RelationshipsPersonDetail,
   type RelationshipsPersonSummary,
-} from "@elizaos/agent/services/relationships-graph";
+  resolveRelationshipsGraphService,
+} from "@elizaos/agent";
 
 type RelationshipsServiceLike = {
   addContact: (

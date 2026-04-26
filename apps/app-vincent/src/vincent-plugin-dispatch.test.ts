@@ -6,7 +6,9 @@
  * and the matchPluginRoutePath function from runtime-plugin-routes.
  */
 
-import { matchPluginRoutePath } from "@elizaos/agent/api/runtime-plugin-routes";
+import {
+  matchPluginRoutePath,
+} from "@elizaos/agent";
 import { describe, expect, it } from "vitest";
 import { vincentPlugin } from "./plugin";
 

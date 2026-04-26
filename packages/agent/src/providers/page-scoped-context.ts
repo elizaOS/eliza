@@ -8,19 +8,15 @@ import type {
 import { logger, stringToUuid } from "@elizaos/core";
 import type {
   AppRunSummary,
-  RegistryAppInfo,
-} from "@elizaos/shared/contracts/apps";
-import type {
   LifeOpsCapabilitiesStatus,
   LifeOpsInbox,
   LifeOpsOverview,
-} from "@elizaos/shared/contracts/lifeops";
-import type {
+  RegistryAppInfo,
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
   WalletTradingProfileResponse,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,

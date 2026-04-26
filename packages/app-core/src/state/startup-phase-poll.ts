@@ -6,7 +6,7 @@
  * or an appropriate error/auth event.
  */
 
-import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import { getStylePresets } from "@elizaos/shared";
 import type { OnboardingOptions } from "../api";
 import { client } from "../api";
 import {

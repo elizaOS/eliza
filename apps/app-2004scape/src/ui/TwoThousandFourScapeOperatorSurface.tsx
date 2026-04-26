@@ -1,22 +1,23 @@
 
 
-import { useCallback, useMemo, useState } from "react";
-import { type AppSessionJsonValue, client } from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
 import {
+  type AppOperatorSurfaceProps,
+  type AppSessionJsonValue,
+  client,
   formatDetailTimestamp,
+  selectLatestRunForApp,
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
   SurfaceSection,
-  selectLatestRunForApp,
   toneForHealthState,
   toneForStatusText,
   toneForViewerAttachment,
-} from "@elizaos/app-core/components/apps/extensions/surface";
-import type { AppOperatorSurfaceProps } from "@elizaos/app-core/components/apps/surfaces/types";
+  useApp,
+} from "@elizaos/app-core";
 import { Button, Input } from "@elizaos/ui";
+import { useCallback, useMemo, useState } from "react";
 
 interface RecentActivityEntry {
   id: string;

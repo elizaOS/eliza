@@ -20,7 +20,7 @@ import type {
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { LifeOpsService } from "./lifeops/service.js";
 
 export class BrowserBridgePluginService

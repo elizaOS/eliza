@@ -13,15 +13,13 @@
  * @module plugin-collector
  */
 import {
-  type ResolvedElizaCloudTopology,
-  resolveElizaCloudTopology,
-} from "@elizaos/shared/contracts";
-import {
   hasExplicitCanonicalRuntimeConfig,
   migrateLegacyRuntimeConfig,
+  type ResolvedElizaCloudTopology,
   resolveDeploymentTargetInConfig,
+  resolveElizaCloudTopology,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
 

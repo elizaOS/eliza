@@ -18,7 +18,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { RuntimeEnvRecord } from "@elizaos/shared/runtime-env";
+import type { RuntimeEnvRecord } from "@elizaos/shared";
 import type { AuthStore } from "../../services/auth-store";
 import { resolveMiladyStateDir } from "../../services/cloud-jwks-store";
 

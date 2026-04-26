@@ -2,11 +2,11 @@ import {
   defaultTelegramAccountDeviceModel,
   defaultTelegramAccountSystemVersion,
   loadTelegramAccountSessionString,
-} from "@elizaos/plugin-telegram/account-auth-service";
+} from "@elizaos/plugin-telegram";
 import type {
   LifeOpsTelegramDialogSummary,
   VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import type { StoredTelegramConnectorToken } from "./telegram-auth.js";

@@ -357,8 +357,8 @@ export const ownerWebsiteBlockAction: Action & {
     {
       name: "subaction",
       description:
-        "Required. One of: block, unblock, status, request_permission.",
-      required: true,
+        "One of: block, unblock, status, request_permission. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {

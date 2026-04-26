@@ -99,25 +99,21 @@ import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
 import {
-  isElizaSettingsDebugEnabled,
-  settingsDebugCloudSummary,
-} from "@elizaos/shared";
-import { resolveElizaCloudTopology } from "@elizaos/shared/contracts";
-import {
+  getDefaultStylePreset,
   getOnboardingProviderOption,
+  isElizaSettingsDebugEnabled,
   migrateLegacyRuntimeConfig,
+  normalizeCharacterLanguage,
   normalizeOnboardingProviderId,
   resolveDeploymentTargetInConfig,
+  resolveElizaCloudTopology,
+  resolveServerOnlyPort,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts/onboarding";
-import {
-  getDefaultStylePreset,
-  normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared/onboarding-presets";
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
+  settingsDebugCloudSummary,
+} from "@elizaos/shared";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,

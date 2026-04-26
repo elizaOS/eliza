@@ -26,7 +26,7 @@ import type {
   WalletNftsResponse,
   WalletPrimaryMap,
   WalletSource,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import type { PromptOptions } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {

@@ -1,9 +1,9 @@
-import { client } from "@elizaos/app-core/api";
+import { client } from "@elizaos/app-core";
 import type {
   LifeOpsConnectorSide,
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const PAIRING_POLL_INTERVAL_MS = 2_000;

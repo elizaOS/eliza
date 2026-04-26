@@ -11,7 +11,7 @@ import type {
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
   LifeOpsXDm,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 
 const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_ENV = { ...process.env };

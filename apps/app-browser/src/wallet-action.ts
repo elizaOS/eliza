@@ -3,8 +3,8 @@ import {
   getStewardWalletUnavailableMessage,
   rejectStewardWalletRequest,
   signWithStewardWallet,
-} from "@elizaos/app-steward/services/steward-wallet";
-import type { StewardSignResponse } from "@elizaos/app-steward/types/steward";
+  type StewardSignResponse,
+} from "@elizaos/app-steward";
 import type {
   Action,
   ActionExample,

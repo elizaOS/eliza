@@ -3,7 +3,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import type {
   Trajectory,
   TrajectoryListResult,
-} from "@elizaos/agent/types/trajectory";
+} from "@elizaos/agent";
 import type { TrainingServiceWithRuntime } from "./training-service-like.js";
 
 interface DatasetRecord {

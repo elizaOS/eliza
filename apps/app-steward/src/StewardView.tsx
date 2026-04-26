@@ -4,11 +4,13 @@
  */
 
 import { useApp } from "@elizaos/app-core";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { SidebarContent } from "@elizaos/ui/components/composites/sidebar/sidebar-content";
-import { SidebarPanel } from "@elizaos/ui/components/composites/sidebar/sidebar-panel";
-import { Sidebar } from "@elizaos/ui/components/composites/sidebar/sidebar-root";
-import { PageLayout } from "@elizaos/ui/layouts/page-layout/page-layout";
+import {
+  PageLayout,
+  PagePanel,
+  Sidebar,
+  SidebarContent,
+  SidebarPanel,
+} from "@elizaos/ui";
 import { FileText } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ApprovalQueue } from "./ApprovalQueue";

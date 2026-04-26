@@ -13,8 +13,12 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { ChannelType, stringToUuid, type UUID } from "@elizaos/core";
-import { sendJson, sendJsonError, readJsonBody } from "@elizaos/agent/api/http-helpers";
-import { decodePathComponent } from "@elizaos/agent/api/server-helpers";
+import {
+  decodePathComponent,
+  readJsonBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { itIf } from "../../../../test/helpers/conditional-tests.ts";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";

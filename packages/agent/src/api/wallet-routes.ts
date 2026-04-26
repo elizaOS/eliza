@@ -4,7 +4,7 @@ import { logger } from "@elizaos/core";
 import type {
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import {
   type CloudWalletDescriptor,

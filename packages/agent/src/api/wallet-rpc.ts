@@ -1,7 +1,7 @@
 import {
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,

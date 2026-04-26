@@ -1,4 +1,4 @@
-import { isTruthyEnvValue } from "@elizaos/shared/env-utils";
+import { isTruthyEnvValue } from "@elizaos/shared";
 import type { Command } from "commander";
 import { buildParseArgv, getPrimaryCommand, hasHelpOrVersion } from "../argv";
 

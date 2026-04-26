@@ -5,7 +5,7 @@ import {
   isAvaxChainName,
   isBscChainName,
 } from "@elizaos/app-core";
-import type { BscTradeTxStatusResponse } from "@elizaos/shared/contracts/wallet";
+import type { BscTradeTxStatusResponse } from "@elizaos/shared";
 
 export {
   BSC_GAS_READY_THRESHOLD,

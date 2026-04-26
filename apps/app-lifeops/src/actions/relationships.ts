@@ -19,11 +19,11 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import type {
-  LifeOpsFollowUpStatus,
-  LifeOpsMessageChannel,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_MESSAGE_CHANNELS } from "@elizaos/shared/contracts/lifeops";
+import {
+  LIFEOPS_MESSAGE_CHANNELS,
+  type LifeOpsFollowUpStatus,
+  type LifeOpsMessageChannel,
+} from "@elizaos/shared";
 import { LifeOpsService } from "../lifeops/service.js";
 import { extractActionParamsViaLlm } from "@elizaos/agent";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";

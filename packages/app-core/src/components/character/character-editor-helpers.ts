@@ -3,7 +3,7 @@
  * for testability and reuse.
  */
 
-import type { StylePreset } from "@elizaos/shared/contracts/onboarding";
+import type { StylePreset } from "@elizaos/shared";
 import type { CharacterRosterEntry } from "./CharacterRoster";
 
 export { replaceNameTokens } from "../../utils/name-tokens";

@@ -33,7 +33,7 @@ import {
   resolveDesktopApiPort,
   resolveDisableAutoApiToken,
   setApiToken,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 
 import { resolveDesktopRuntimeMode } from "../api-base";
 import { getBrandConfig } from "../brand-config";

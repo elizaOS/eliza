@@ -21,7 +21,7 @@ import { logger } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 
 export interface DossierAttendeeSummary {
   email: string | null;

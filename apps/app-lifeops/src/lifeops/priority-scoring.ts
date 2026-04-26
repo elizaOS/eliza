@@ -16,7 +16,7 @@
  */
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import type { LifeOpsInboxMessage } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsInboxMessage } from "@elizaos/shared";
 
 export type PriorityCategory = "important" | "planning" | "casual";
 

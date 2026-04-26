@@ -7,7 +7,7 @@ import type {
   AllPermissionsState,
   PermissionState,
   SystemPermissionId,
-} from "@elizaos/agent/contracts/permissions";
+} from "@elizaos/agent";
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
@@ -17,7 +17,7 @@ import type {
   OnboardingConnectorConfig as ConnectorConfig,
   OnboardingOptions,
   SubscriptionStatusResponse,
-} from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 import {
   type AppBlockerInstalledApp,
   type AppBlockerPermissionResult,

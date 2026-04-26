@@ -7,7 +7,7 @@ import type {
   LifeOpsReminderChannel,
   LifeOpsTaskDefinition,
   SnoozeLifeOpsOccurrenceRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   AlarmClock,
   Apple,

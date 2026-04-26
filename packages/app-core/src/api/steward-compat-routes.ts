@@ -1,5 +1,7 @@
 import type http from "node:http";
-import { getWalletAddresses } from "@elizaos/agent/api/wallet";
+import {
+  getWalletAddresses,
+} from "@elizaos/agent";
 import {
   approveStewardTransaction,
   createStewardClient,
@@ -17,7 +19,7 @@ import {
   resolveStewardAgentId,
   type StewardWebhookEventType,
   signViaSteward,
-} from "@elizaos/app-steward/routes/steward-bridge";
+} from "@elizaos/app-steward";
 import { logger } from "@elizaos/core";
 import type { PolicyRule as StewardPolicyRule } from "@stwd/sdk";
 import { ensureRouteAuthorized } from "./auth";

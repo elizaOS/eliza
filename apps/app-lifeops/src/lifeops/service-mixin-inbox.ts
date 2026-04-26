@@ -1,14 +1,14 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  GetLifeOpsInboxRequest,
-  LifeOpsInboxChannel,
-  LifeOpsInbox,
-  LifeOpsInboxChannelCount,
-  LifeOpsInboxMessage,
-  LifeOpsInboxThreadGroup,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_INBOX_CHANNELS } from "@elizaos/shared/contracts/lifeops";
+import {
+  type GetLifeOpsInboxRequest,
+  LIFEOPS_INBOX_CHANNELS,
+  type LifeOpsInbox,
+  type LifeOpsInboxChannel,
+  type LifeOpsInboxChannelCount,
+  type LifeOpsInboxMessage,
+  type LifeOpsInboxThreadGroup,
+} from "@elizaos/shared";
 import {
   fetchAllMessages,
   type GmailInboxSource,

@@ -8,7 +8,7 @@
  * - Connection status indicator
  */
 
-import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
+import { packageNameToAppRouteSlug } from "@elizaos/shared";
 import {
   Button,
   Input,

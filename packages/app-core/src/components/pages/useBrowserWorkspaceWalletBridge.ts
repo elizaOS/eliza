@@ -18,7 +18,7 @@ import {
   type BrowserWorkspaceWalletResponse,
   type BrowserWorkspaceWalletState,
   isBrowserWorkspaceWalletRequest,
-} from "@elizaos/app-steward/browser-workspace-wallet";
+} from "@elizaos/app-steward";
 import { type RefObject, useCallback, useEffect, useRef } from "react";
 import { type BrowserWorkspaceTab, client } from "../../api";
 

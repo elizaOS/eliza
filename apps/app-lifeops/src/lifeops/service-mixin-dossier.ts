@@ -1,7 +1,7 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
 import { ModelType } from "@elizaos/core";
-import type { LifeOpsDossier } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsDossier } from "@elizaos/shared";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 function isoNow(): string {

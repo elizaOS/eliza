@@ -1,5 +1,5 @@
-import { client } from "@elizaos/app-core/api";
-import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared/contracts/lifeops";
+import { client } from "@elizaos/app-core";
+import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 import type { FullDiskAccessProbeResult } from "../lifeops/fda-probe.js";
 

@@ -74,8 +74,9 @@ export const ownerAppBlockAction: Action & {
   parameters: [
     {
       name: "subaction",
-      description: "Required. One of: block, unblock, status.",
-      required: true,
+      description:
+        "One of: block, unblock, status. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {

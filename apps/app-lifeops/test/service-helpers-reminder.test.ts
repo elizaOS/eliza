@@ -3,7 +3,7 @@ import { shouldDeferReminderUntilComputerActive } from "../src/lifeops/service-h
 import type {
   LifeOpsReminderChannel,
   LifeOpsTaskDefinition,
-} from "@elizaos/app-lifeops/contracts";
+} from "@elizaos/app-lifeops";
 import type { ReminderActivityProfileSnapshot } from "../src/lifeops/service-types.js";
 
 function buildDefinition(

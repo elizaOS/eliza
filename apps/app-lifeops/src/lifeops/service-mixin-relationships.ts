@@ -6,7 +6,7 @@ import type {
   LifeOpsMessageChannel,
   LifeOpsRelationship,
   LifeOpsRelationshipInteraction,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 function isoNow(): string {

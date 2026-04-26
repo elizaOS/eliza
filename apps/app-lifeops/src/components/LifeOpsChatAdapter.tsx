@@ -3,7 +3,7 @@ import type {
   LifeOpsActiveReminderView,
   LifeOpsCalendarEvent,
   LifeOpsInboxMessage,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { type ReactNode, useCallback, useEffect } from "react";
 import {
   type LifeOpsSelection,

@@ -1,4 +1,6 @@
-import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
+import type {
+  RouteRequestContext,
+} from "@elizaos/agent";
 import type {
   LifeOpsOccurrence,
   LifeOpsTaskDefinition,

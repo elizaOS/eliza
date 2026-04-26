@@ -9,10 +9,10 @@
 
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import {
+  loadPersistedTrajectoryRows,
   loadTrajectoryById,
   type PersistedTrajectory,
-} from "@elizaos/agent/runtime/trajectory-internals";
-import { loadPersistedTrajectoryRows } from "@elizaos/agent/runtime/trajectory-query";
+} from "@elizaos/agent";
 import { expect } from "vitest";
 
 const SETTLE_DELAY_MS = 500;

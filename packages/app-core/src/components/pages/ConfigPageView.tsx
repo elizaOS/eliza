@@ -6,7 +6,7 @@
  *   2. Secrets (modal)
  */
 
-import type { WalletRpcSelections } from "@elizaos/shared/contracts/wallet";
+import type { WalletRpcSelections } from "@elizaos/shared";
 import {
   Button,
   Dialog,

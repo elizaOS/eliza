@@ -1,6 +1,8 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 
-import { computeNextCronRunAtMs } from "@elizaos/agent/triggers/scheduling";
+import {
+  computeNextCronRunAtMs,
+} from "@elizaos/agent";
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsBrowserSession,
