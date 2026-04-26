@@ -13,6 +13,12 @@ export interface AppMenuEntry {
   readonly name: string;
   readonly displayName: string;
   readonly windowPath: string;
+  /**
+   * When true, the renderer routes the menu/tray click to the App Details
+   * page (`/apps/<slug>/details`) instead of opening the app window
+   * directly. Mirror of `InternalToolAppDefinition.hasDetailsPage`.
+   */
+  readonly hasDetailsPage: boolean;
 }
 
 const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
@@ -21,72 +27,84 @@ const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
     name: "@elizaos/app-lifeops",
     displayName: "LifeOps",
     windowPath: "/apps/lifeops",
+    hasDetailsPage: true,
   },
   {
     slug: "plugin-viewer",
     name: "@elizaos/app-plugin-viewer",
     displayName: "Plugin Viewer",
     windowPath: "/apps/plugins",
+    hasDetailsPage: false,
   },
   {
     slug: "skills-viewer",
     name: "@elizaos/app-skills-viewer",
     displayName: "Skills Viewer",
     windowPath: "/apps/skills",
+    hasDetailsPage: false,
   },
   {
     slug: "training",
     name: "@elizaos/app-training",
     displayName: "Fine Tuning",
     windowPath: "/apps/fine-tuning",
+    hasDetailsPage: true,
   },
   {
     slug: "trajectory-viewer",
     name: "@elizaos/app-trajectory-viewer",
     displayName: "Trajectory Viewer",
     windowPath: "/apps/trajectories",
+    hasDetailsPage: false,
   },
   {
     slug: "relationship-viewer",
     name: "@elizaos/app-relationship-viewer",
     displayName: "Relationship Viewer",
     windowPath: "/apps/relationships",
+    hasDetailsPage: false,
   },
   {
     slug: "memory-viewer",
     name: "@elizaos/app-memory-viewer",
     displayName: "Memory Viewer",
     windowPath: "/apps/memories",
+    hasDetailsPage: false,
   },
   {
     slug: "steward",
     name: "@elizaos/app-steward",
     displayName: "Steward",
     windowPath: "/apps/inventory",
+    hasDetailsPage: true,
   },
   {
     slug: "runtime-debugger",
     name: "@elizaos/app-runtime-debugger",
     displayName: "Runtime Debugger",
     windowPath: "/apps/runtime",
+    hasDetailsPage: false,
   },
   {
     slug: "database-viewer",
     name: "@elizaos/app-database-viewer",
     displayName: "Database Viewer",
     windowPath: "/apps/database",
+    hasDetailsPage: false,
   },
   {
     slug: "elizamaker",
     name: "@elizaos/app-elizamaker",
     displayName: "ElizaMaker",
     windowPath: "/apps/elizamaker",
+    hasDetailsPage: true,
   },
   {
     slug: "log-viewer",
     name: "@elizaos/app-log-viewer",
     displayName: "Log Viewer",
     windowPath: "/apps/logs",
+    hasDetailsPage: false,
   },
 ] as const;
 

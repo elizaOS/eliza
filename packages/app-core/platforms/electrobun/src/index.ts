@@ -1696,21 +1696,35 @@ async function setupUpdater(): Promise<void> {
         action?.startsWith("apps:") ||
         action?.startsWith("tray-app-")
       ) {
-        // Both shapes resolve to the same flow: look up the app entry and
-        // open (or focus) its dedicated native window. WHY two prefixes:
-        // `apps:<slug>` is what `buildAppsMenu` emits for the OS menu bar,
-        // `tray-app-<slug>` is what the tray icons emit. Same destination.
+        // Both shapes resolve to the same flow:
+        //   1. Look up the app entry by slug.
+        //   2. If the app declares hasDetailsPage, focus the main window
+        //      and tell the renderer to navigate to /apps/<slug>/details
+        //      (where the user can review config + click Launch).
+        //   3. Otherwise, open or focus its dedicated native window
+        //      directly (zero-config viewers / overlays).
+        // WHY two prefixes: `apps:<slug>` is what `buildAppsMenu` emits
+        // for the OS menu bar; `tray-app-<slug>` is what the tray icons
+        // emit. Both arrive here.
         const slug = action.startsWith("apps:")
           ? action.slice("apps:".length)
           : action.slice("tray-app-".length);
         const entry = findAppMenuEntryBySlug(slug);
         if (entry) {
-          void getDesktopManager().openAppWindow({
-            slug: entry.slug,
-            title: entry.displayName,
-            path: entry.windowPath,
-            alwaysOnTop: false,
-          });
+          if (entry.hasDetailsPage) {
+            // Restore main window first so the renderer route is visible.
+            void restoreWindow();
+            sendToActiveRenderer("desktopAppDetailsRequested", {
+              slug: entry.slug,
+            });
+          } else {
+            void getDesktopManager().openAppWindow({
+              slug: entry.slug,
+              title: entry.displayName,
+              path: entry.windowPath,
+              alwaysOnTop: false,
+            });
+          }
         }
       } else if (action === "restart-agent") {
         getAgentManager()
