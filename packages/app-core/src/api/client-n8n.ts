@@ -94,10 +94,20 @@ ElizaClient.prototype.generateN8nWorkflow = async function (
   this: ElizaClient,
   request: N8nWorkflowGenerateRequest,
 ): Promise<N8nWorkflow> {
-  return this.fetch<N8nWorkflow>("/api/n8n/workflows/generate", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+  // LLM-driven workflow generation runs keyword extraction, node search,
+  // generation, multiple correction passes, and feasibility assessment
+  // sequentially — easily 30-90s on a cold cache. The 10s default fetch
+  // timeout is far too aggressive and surfaces as
+  // "Request timed out after 10000ms" in the Automations UI even when
+  // the backend would have succeeded a few seconds later.
+  return this.fetch<N8nWorkflow>(
+    "/api/n8n/workflows/generate",
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+    { timeoutMs: 120_000 },
+  );
 };
 
 ElizaClient.prototype.activateN8nWorkflow = async function (
