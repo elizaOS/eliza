@@ -321,6 +321,18 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
   return null;
 }
 
+function isElizaAppPackage(pluginName: string): boolean {
+  return /^@[^/]+\/app-[^/]+$/.test(pluginName);
+}
+
+function runtimePluginExportSubpath(pluginName: string): string {
+  return isElizaAppPackage(pluginName) ? "./plugin" : ".";
+}
+
+function runtimePluginImportSpecifier(pluginName: string): string {
+  return isElizaAppPackage(pluginName) ? `${pluginName}/plugin` : pluginName;
+}
+
 async function hasNonSymlinkWorkspaceNodeModulesPackage(
   pluginName: string,
 ): Promise<boolean> {
@@ -424,6 +436,7 @@ function wrapPluginWithErrorBoundary(
 export async function importPluginModuleFromPath(
   installPath: string,
   packageName: string,
+  exportSubpath = ".",
 ): Promise<PluginModuleShape> {
   const absPath = path.resolve(installPath);
 
@@ -456,7 +469,7 @@ export async function importPluginModuleFromPath(
   // Resolve entry point from a staged filesystem snapshot so reloads pick up
   // updated relative modules and bundled dependencies instead of reusing the
   // previous ESM module graph from the original path.
-  const entryPoint = await resolvePackageEntry(stagedPkgRoot);
+  const entryPoint = await resolvePackageEntry(stagedPkgRoot, exportSubpath);
   return (await import(pathToFileURL(entryPoint).href)) as PluginModuleShape;
 }
 
