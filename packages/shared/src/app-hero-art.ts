@@ -353,6 +353,19 @@ export function createGeneratedAppHeroSvg(app: AppHeroArtworkSource): string {
   const arcTilt = (seed % 24) - 12;
   const motif = renderThemeMotif(theme, seed, palette);
 
+  // Title text uses the trimmed display label so packages like
+  // "@elizaos/app-mystery" render as "Mystery". Falling back to `name`
+  // matches the heading already shown on the apps catalog tile, which
+  // keeps generated heroes legible without a bundled asset.
+  const heroTitle = trimPackagePrefix(app.displayName ?? app.name);
+  // Light XML escape — only the chars that would break attribute /
+  // text contexts. WHY not a full library: this code runs in the bun
+  // server hot path and the input is already package metadata.
+  const safeTitle = heroTitle
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
   return `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" fill="none">
       <defs>
@@ -383,6 +396,7 @@ export function createGeneratedAppHeroSvg(app: AppHeroArtworkSource): string {
         <path d="M-172 34C-82 -54 74 -70 176 -22" stroke="${palette.accentSoft}" stroke-width="10" stroke-linecap="round"/>
       </g>
       ${motif}
+      <text x="80" y="816" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif" font-size="92" font-weight="700" fill="white" fill-opacity="0.94" letter-spacing="-2">${safeTitle}</text>
     </svg>
   `.trim();
 }
