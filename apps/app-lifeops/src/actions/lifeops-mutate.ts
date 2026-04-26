@@ -7,7 +7,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { CreateLifeOpsCalendarEventRequest } from "@elizaos/app-lifeops/contracts";
+import type { CreateLifeOpsCalendarEventRequest } from "../contracts/index.js";
 import type {
   AddPaymentSourceRequest,
   LifeOpsPaymentSourceKind,

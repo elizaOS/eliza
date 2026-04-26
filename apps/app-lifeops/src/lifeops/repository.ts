@@ -48,16 +48,16 @@ import type {
   LifeOpsUnclearReason,
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  BrowserBridgeCompanionStatus,
-  BrowserBridgePageContext,
-  BrowserBridgePermissionState,
-  BrowserBridgeSettings,
-  BrowserBridgeTabSummary,
-} from "@elizaos/plugin-browser-bridge/contracts";
-import { browserBridgeSchema } from "@elizaos/plugin-browser-bridge/schema";
+import {
+  browserBridgeSchema,
+  type BrowserBridgeCompanionStatus,
+  type BrowserBridgePageContext,
+  type BrowserBridgePermissionState,
+  type BrowserBridgeSettings,
+  type BrowserBridgeTabSummary,
+} from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,

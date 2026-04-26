@@ -15,12 +15,12 @@ import type {
   LifeOpsGmailSpamReviewStatus,
   LifeOpsGmailTriageFeed,
   LifeOpsGmailUnrespondedFeed,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   LIFEOPS_GMAIL_BULK_OPERATIONS,
   LIFEOPS_GMAIL_DRAFT_TONES,
   LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import type { SyncedGoogleGmailMessageSummary } from "./google-gmail.js";
 import {
   GOOGLE_CALENDAR_CACHE_TTL_MS,

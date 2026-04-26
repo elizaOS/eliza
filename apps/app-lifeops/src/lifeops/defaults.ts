@@ -2,7 +2,7 @@ import type {
   LifeOpsReminderStep,
   LifeOpsTimeWindowDefinition,
   LifeOpsWindowPolicy,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import type { ActivityProfile } from "../activity-profile/types";
 
 export const DEFAULT_TIME_WINDOWS: LifeOpsTimeWindowDefinition[] = [

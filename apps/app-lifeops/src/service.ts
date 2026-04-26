@@ -1,22 +1,20 @@
 import { type IAgentRuntime, Service, type UUID } from "@elizaos/core";
-import type {
-  BrowserBridgeCompanionAutoPairResponse,
-  BrowserBridgeCompanionPairingResponse,
-  BrowserBridgeCompanionStatus,
-  BrowserBridgeCompanionSyncResponse,
-  BrowserBridgePageContext,
-  BrowserBridgeSettings,
-  BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionAutoPairRequest,
-  CreateBrowserBridgeCompanionPairingRequest,
-  SyncBrowserBridgeStateRequest,
-  UpdateBrowserBridgeSessionProgressRequest,
-  UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge/contracts";
 import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
+  type BrowserBridgeCompanionAutoPairResponse,
+  type BrowserBridgeCompanionPairingResponse,
+  type BrowserBridgeCompanionStatus,
+  type BrowserBridgeCompanionSyncResponse,
+  type BrowserBridgePageContext,
   type BrowserBridgeRouteService,
-} from "@elizaos/plugin-browser-bridge/service";
+  type BrowserBridgeSettings,
+  type BrowserBridgeTabSummary,
+  type CreateBrowserBridgeCompanionAutoPairRequest,
+  type CreateBrowserBridgeCompanionPairingRequest,
+  type SyncBrowserBridgeStateRequest,
+  type UpdateBrowserBridgeSessionProgressRequest,
+  type UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,

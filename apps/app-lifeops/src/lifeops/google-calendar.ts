@@ -1,4 +1,4 @@
-import type { LifeOpsCalendarEvent } from "@elizaos/app-lifeops/contracts";
+import type { LifeOpsCalendarEvent } from "../contracts/index.js";
 import { GoogleApiError } from "./google-api-error.js";
 import { googleApiFetch } from "./google-fetch.js";
 import {

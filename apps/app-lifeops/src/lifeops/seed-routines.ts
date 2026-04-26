@@ -7,7 +7,7 @@
  * adaptive timing, reminders, and escalation as user-created tasks.
  */
 
-import type { CreateLifeOpsDefinitionRequest } from "@elizaos/app-lifeops/contracts";
+import type { CreateLifeOpsDefinitionRequest } from "../contracts/index.js";
 
 export interface RoutineSeedTemplate {
   /** Stable key used to deduplicate across seeding offers. */

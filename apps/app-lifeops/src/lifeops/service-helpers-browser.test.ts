@@ -1,4 +1,4 @@
-import type { BrowserBridgeSettings } from "@elizaos/plugin-browser-bridge/contracts";
+import type { BrowserBridgeSettings } from "@elizaos/plugin-browser-bridge";
 import { describe, expect, it } from "vitest";
 import {
   browserUrlAllowedBySettings,

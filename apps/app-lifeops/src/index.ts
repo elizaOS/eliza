@@ -4,11 +4,14 @@ export {
   BrowserBridgeSetupPanel,
   BrowserBridgeSetupPanel as LifeOpsBrowserSetupPanel,
 } from "./components/BrowserBridgeSetupPanel.tsx";
+export { LifeOpsActivitySignalsEffect } from "./components/LifeOpsActivitySignalsEffect.tsx";
 export * from "./components/LifeOpsPageSections.tsx";
 export * from "./components/LifeOpsPageView.tsx";
 export * from "./components/LifeOpsSettingsSection.tsx";
 export * from "./components/LifeOpsWorkspaceView.tsx";
 export * from "./components/WebsiteBlockerSettingsCard.tsx";
+export * from "./contracts/index.ts";
+export * from "./platform/index.ts";
 export type {
   LifeOpsRouteContext,
   WebsiteBlockerRouteContext,

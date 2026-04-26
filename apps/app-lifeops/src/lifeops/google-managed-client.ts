@@ -11,7 +11,7 @@ import type {
   LifeOpsGoogleConnectorReason,
   SendLifeOpsGmailMessageRequest,
   StartLifeOpsGoogleConnectorResponse,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import type { GmailSubscriptionMessageHeaders } from "./email-unsubscribe-gmail.js";
 import type { SyncedGoogleCalendarEvent } from "./google-calendar.js";
 import type { SyncedGoogleGmailMessageSummary } from "./google-gmail.js";
