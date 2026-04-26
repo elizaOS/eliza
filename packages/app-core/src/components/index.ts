@@ -10,10 +10,16 @@ export {
 export * from "../utils/knowledge-upload-image";
 export * from "../utils/labels";
 export * from "../utils/trajectory-format";
+export * from "./apps/extensions/registry";
+export * from "./apps/extensions/surface";
+export * from "./apps/extensions/types";
 export * from "./apps/GameView";
 export * from "./apps/GameViewOverlay";
 export * from "./apps/overlay-app-api";
 export * from "./apps/overlay-app-registry";
+export * from "./apps/surfaces/GameOperatorShell";
+export * from "./apps/surfaces/registry";
+export * from "./apps/surfaces/types";
 export * from "./character/CharacterEditor";
 export * from "./character/CharacterRoster";
 export * from "./character/character-greeting";
@@ -22,6 +28,7 @@ export * from "./chat/MessageContent";
 export * from "./chat/SaveCommandModal";
 export * from "./chat/TasksEventsPanel";
 export * from "./chat/widgets/shared";
+export * from "./chat/widgets/types";
 export * from "./cloud/CloudSourceControls";
 
 export * from "./config-ui";

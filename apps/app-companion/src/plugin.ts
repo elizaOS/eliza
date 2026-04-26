@@ -2,9 +2,7 @@
  * elizaOS runtime plugin for the companion app (VRM emotes, etc.).
  */
 
-import {
-  gatePluginSessionForHostedApp,
-} from "@elizaos/agent";
+import { gatePluginSessionForHostedApp } from "@elizaos/agent";
 import type { Plugin } from "@elizaos/core";
 import { emoteAction } from "./actions/emote.js";
 

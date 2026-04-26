@@ -1,6 +1,4 @@
-import type {
-  ElizaConfig,
-} from "@elizaos/agent";
+import type { ElizaConfig } from "@elizaos/agent";
 import type { Command } from "commander";
 import { theme } from "../../terminal/theme";
 import { getLogPrefix } from "../../utils/log-prefix";

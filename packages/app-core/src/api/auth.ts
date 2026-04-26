@@ -8,8 +8,8 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { resolveApiToken } from "@elizaos/shared";
-import { isTrustedLocalRequest } from "./compat-route-shared";
 import { sendJsonError } from "./response";
+import { isTrustedLocalRequest } from "./trusted-local-request";
 
 /**
  * Normalise a potentially multi-valued HTTP header into a single string.

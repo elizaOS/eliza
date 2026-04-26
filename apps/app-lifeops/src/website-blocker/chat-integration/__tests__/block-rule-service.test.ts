@@ -1,5 +1,15 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UUID } from "@elizaos/core";
+
+vi.mock("../../../actions/website-blocker.js", () => ({
+  blockWebsitesAction: {
+    handler: vi.fn(async () => ({
+      success: true,
+      text: "Website block side effect mocked for block rule service tests.",
+    })),
+  },
+}));
+
 import { BlockRuleReader, BlockRuleWriter } from "../block-rule-service.js";
 import {
   createBlockRuleHarness,

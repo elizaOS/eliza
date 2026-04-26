@@ -226,10 +226,9 @@ async function getClipboardStoreFn(): Promise<ClipboardStoreFn | null> {
   }
 
   try {
-    // clipboard is now built into @elizaos/core advanced-capabilities
-    const mod = (await import(
-      "@elizaos/core/advanced-capabilities/clipboard/index"
-    )) as unknown as {
+    const clipboardModule =
+      "@elizaos/core/advanced-capabilities/clipboard/index";
+    const mod = (await import(/* @vite-ignore */ clipboardModule)) as {
       maybeStoreTaskClipboardItem?: ClipboardStoreFn;
     };
     cachedClipboardStoreFn =

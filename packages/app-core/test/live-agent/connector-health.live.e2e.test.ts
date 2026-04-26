@@ -29,6 +29,12 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
+
+try {
+  const { config } = await import("dotenv");
+  config({ path: path.join(REPO_ROOT, ".env") });
+} catch { /* dotenv optional */ }
+
 const CONNECTOR_CASES = [
   {
     name: "discord",
@@ -46,11 +52,6 @@ const CONFIGURED_CONNECTORS = CONNECTOR_CASES.filter((connector) =>
 );
 const LIVE_CONNECTOR_SUITE_ENABLED =
   LIVE && CONFIGURED_CONNECTORS.length > 0;
-
-try {
-  const { config } = await import("dotenv");
-  config({ path: path.join(REPO_ROOT, ".env") });
-} catch { /* dotenv optional */ }
 
 if (!LIVE_CONNECTOR_SUITE_ENABLED) {
   const warnings = [

@@ -162,10 +162,9 @@ export function parseFallbackActionBlocks(
     }
 
     for (const [, block = ""] of xmlActionMatches) {
-      const safeBlock = block.length > 100_000 ? block.slice(0, 100_000) : block;
-      const nameMatch = safeBlock.match(
-        /<name>\s*([A-Za-z0-9_]+)\s*<\/name>/i,
-      );
+      const safeBlock =
+        block.length > 100_000 ? block.slice(0, 100_000) : block;
+      const nameMatch = safeBlock.match(/<name>\s*([A-Za-z0-9_]+)\s*<\/name>/i);
       if (!nameMatch) continue;
       const params: Record<string, string> = {};
       const paramsMatch = safeBlock.match(/<params>([\s\S]*?)<\/params>/i);

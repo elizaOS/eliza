@@ -6,8 +6,8 @@ export * from "./browser-workspace.js";
 export { CodingTaskExecutor } from "./coding-task-executor.js";
 export {
   EscalationService,
-  registerEscalationChannel,
   type EscalationState,
+  registerEscalationChannel,
 } from "./escalation.js";
 export { createDefaultExecutorRegistry } from "./executor-registry.js";
 export * from "./overlay-app-presence.js";
@@ -19,8 +19,8 @@ export {
   type CoreManagerLike,
   type CoreStatusLike,
   type EjectResult,
-  type InstallProgressLike,
   type InstalledPluginInfo,
+  type InstallProgressLike,
   isCoreManagerLike,
   isPluginManagerLike,
   type PluginInstallOptionsLike,
@@ -52,14 +52,14 @@ export {
   classifySignalPairingErrorStatus,
   extractSignalCliProvisioningUrl,
   parseSignalCliAccountsOutput,
-  sanitizeAccountId as sanitizeSignalAccountId,
-  signalAuthExists,
-  signalLogout,
   type SignalPairingEvent,
   type SignalPairingOptions,
   SignalPairingSession,
   type SignalPairingSnapshot,
   type SignalPairingStatus,
+  sanitizeAccountId as sanitizeSignalAccountId,
+  signalAuthExists,
+  signalLogout,
 } from "./signal-pairing.js";
 export * from "./signing-policy.js";
 export * from "./skill-catalog-client.js";
@@ -71,10 +71,10 @@ export * from "./update-checker.js";
 export * from "./version-compat.js";
 export {
   sanitizeAccountId as sanitizeWhatsAppAccountId,
-  whatsappAuthExists,
-  whatsappLogout,
   type WhatsAppPairingEvent,
   type WhatsAppPairingOptions,
   WhatsAppPairingSession,
   type WhatsAppPairingStatus,
+  whatsappAuthExists,
+  whatsappLogout,
 } from "./whatsapp-pairing.js";

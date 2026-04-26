@@ -184,7 +184,7 @@ export const prepareSwapAction: Action = {
         fromAddress,
         toAddress,
       );
-      if (!pair.ok) {
+      if (pair.ok === false) {
         if (callback) {
           callback({ text: pair.reason, action: "PREPARE_SWAP_FAILED" });
         }

@@ -1,12 +1,11 @@
 import type http from "node:http";
 import {
   type CloudProxyConfigLike,
-  normalizeCloudSiteUrl,
   resolveCloudApiKey,
   sendJson,
   sendJsonError,
-  validateCloudBaseUrl,
 } from "@elizaos/agent";
+import { normalizeCloudSiteUrl, validateCloudBaseUrl } from "@elizaos/agent/cloud";
 import type { AgentRuntime, IAgentRuntime, Service } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";

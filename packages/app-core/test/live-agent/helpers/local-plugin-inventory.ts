@@ -51,14 +51,28 @@ export type LocalWorkspacePlugin = {
   requiredEnvKeys: string[];
 };
 
-const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-);
+function findWorkspaceRoot(startDir: string): string {
+  let current = path.resolve(startDir);
+  while (true) {
+    if (fs.existsSync(path.join(current, "plugins.json"))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return path.resolve(
+        startDir,
+        "..",
+        "..",
+        "..",
+        "..",
+        "..",
+      );
+    }
+    current = parent;
+  }
+}
+
+const REPO_ROOT = findWorkspaceRoot(import.meta.dirname);
 const PLUGIN_MANIFEST_PATH = path.join(REPO_ROOT, "plugins.json");
 
 let cachedPluginsPromise: Promise<LocalWorkspacePlugin[]> | null = null;

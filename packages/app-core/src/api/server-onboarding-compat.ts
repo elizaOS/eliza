@@ -10,22 +10,18 @@ import {
 } from "@elizaos/agent";
 import { logger, stringToUuid } from "@elizaos/core";
 import {
-  deriveOnboardingCredentialPersistencePlan,
-  migrateLegacyRuntimeConfig,
-  normalizeOnboardingCredentialInputs,
-} from "@elizaos/shared";
-import {
   type DeploymentTargetConfig,
-  type LinkedAccountsConfig,
-  normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountsConfig,
-  normalizeServiceRoutingConfig,
-  type ServiceRoutingConfig,
-} from "@elizaos/shared";
-import {
+  deriveOnboardingCredentialPersistencePlan,
   getDefaultStylePreset,
   getStylePresets,
+  type LinkedAccountsConfig,
+  migrateLegacyRuntimeConfig,
   normalizeCharacterLanguage,
+  normalizeDeploymentTargetConfig,
+  normalizeLinkedAccountsConfig,
+  normalizeOnboardingCredentialInputs,
+  normalizeServiceRoutingConfig,
+  type ServiceRoutingConfig,
 } from "@elizaos/shared";
 import { PREMADE_VOICES } from "../voice/types";
 import { resolveProviderCredential } from "./credential-resolver";

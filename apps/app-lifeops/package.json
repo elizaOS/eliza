@@ -20,6 +20,7 @@
     "./ui": "./src/ui.ts",
     "./agent-lifeops": "./src/agent-lifeops.ts",
     "./plugin": "./src/plugin.ts",
+    "./widgets": "./src/widgets/index.ts",
     "./selfcontrol": "./src/website-blocker/public.ts",
     "./selfcontrol/selfcontrol": "./src/website-blocker/engine.ts",
     "./website-blocker": "./src/website-blocker/public.ts",

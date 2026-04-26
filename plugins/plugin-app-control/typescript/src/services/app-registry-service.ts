@@ -41,7 +41,10 @@ interface PersistedShape {
 const STATE_DIR_KEYS = ["MILADY_STATE_DIR", "ELIZA_STATE_DIR"] as const;
 const NAMESPACE_KEYS = ["ELIZA_NAMESPACE"] as const;
 
-function readEnv(env: NodeJS.ProcessEnv, keys: readonly string[]): string | null {
+function readEnv(
+	env: NodeJS.ProcessEnv,
+	keys: readonly string[],
+): string | null {
 	for (const key of keys) {
 		const value = env[key]?.trim();
 		if (value) return value;

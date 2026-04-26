@@ -2494,7 +2494,6 @@
   "secretsview.YourVaultIsEmpty": "저장소가 비어 있습니다. \"비밀 추가\"를 클릭하여 어떤 API 키를 추가할지 선택하세요.\n          여기서 관리하세요.",
   "settings.advancedKeyWarning": "Steward에서는 필요 없습니다. 주의하여 사용하세요.",
   "settings.appearance.active": "활성",
-  "settings.appearance.companionPerformance": "동반자 성능",
   "settings.appearance.dark": "Dark",
   "settings.appearance.deactivate": "현재 팩 비활성화",
   "settings.appearance.light": "Light",

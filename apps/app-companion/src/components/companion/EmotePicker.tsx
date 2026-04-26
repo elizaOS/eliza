@@ -5,12 +5,7 @@ import {
   STOP_EMOTE_EVENT,
   useApp,
 } from "@elizaos/app-core";
-import {
-  Button,
-  Input,
-  useTimeout,
-  Z_SYSTEM_CRITICAL,
-} from "@elizaos/ui";
+import { Button, Input, useTimeout, Z_SYSTEM_CRITICAL } from "@elizaos/ui";
 import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 

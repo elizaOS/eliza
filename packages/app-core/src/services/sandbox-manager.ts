@@ -18,7 +18,6 @@ export type {
   SandboxState,
 } from "@elizaos/agent";
 
-
 export interface SandboxExecOptions {
   command: string;
   workdir?: string;

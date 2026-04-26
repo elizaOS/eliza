@@ -254,11 +254,11 @@ function normalizePluginCategory(value: string | undefined): PluginCategory {
 }
 
 function normalizePluginId(rawName: string): string {
-  return rawName
-    .replace(/^@[^/]+\/plugin-/, "")
-    .replace(/^@[^/]+\/app-/, "")
-    .replace(/^@[^/]+\//, "")
-    .replace(/^(plugin|app)-/, "");
+  const scopedPackage = rawName.match(/^@[^/]+\/(?:plugin|app)-(.+)$/);
+  if (scopedPackage) {
+    return scopedPackage[1] ?? rawName;
+  }
+  return rawName.replace(/^@[^/]+\//, "").replace(/^(plugin|app)-/, "");
 }
 
 function resolveCompatConfigKey(

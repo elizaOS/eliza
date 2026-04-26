@@ -24,13 +24,16 @@ import { AppVerificationService } from "../app-verification.js";
 
 const execFileAsync = promisify(execFile);
 
-async function commandAvailable(file: string, args: string[]): Promise<boolean> {
-  try {
-    await execFileAsync(file, args, { timeout: 5_000 });
-    return true;
-  } catch {
-    return false;
-  }
+async function commandAvailable(
+	file: string,
+	args: string[],
+): Promise<boolean> {
+	try {
+		await execFileAsync(file, args, { timeout: 5_000 });
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 const STATE_DIR = mkdtempSync(path.join(tmpdir(), "app-verify-int-state-"));
@@ -52,108 +55,109 @@ export const broken: number = ({ hello: "world" } as Greeting).foo;
 const PASS_SHIM_JS = `process.stdout.write("lint ok\\n"); process.exit(0);\n`;
 
 function writeMinimalTsProject(workdir: string, source: string): void {
-  writeFileSync(path.join(workdir, "src.ts"), source, "utf8");
-  writeFileSync(
-    path.join(workdir, "tsconfig.json"),
-    JSON.stringify(
-      {
-        compilerOptions: {
-          target: "es2022",
-          module: "esnext",
-          moduleResolution: "bundler",
-          strict: true,
-          noEmit: true,
-          skipLibCheck: true,
-          isolatedModules: true,
-        },
-        include: ["src.ts"],
-      },
-      null,
-      2,
-    ),
-    "utf8",
-  );
+	writeFileSync(path.join(workdir, "src.ts"), source, "utf8");
+	writeFileSync(
+		path.join(workdir, "tsconfig.json"),
+		JSON.stringify(
+			{
+				compilerOptions: {
+					target: "es2022",
+					module: "esnext",
+					moduleResolution: "bundler",
+					strict: true,
+					noEmit: true,
+					skipLibCheck: true,
+					isolatedModules: true,
+				},
+				include: ["src.ts"],
+			},
+			null,
+			2,
+		),
+		"utf8",
+	);
 
-  // Lint: a tiny shim so we don't depend on eslint being installed.
-  const lintShim = path.join(workdir, "lint-shim.mjs");
-  writeFileSync(lintShim, PASS_SHIM_JS, "utf8");
+	// Lint: a tiny shim so we don't depend on eslint being installed.
+	const lintShim = path.join(workdir, "lint-shim.mjs");
+	writeFileSync(lintShim, PASS_SHIM_JS, "utf8");
 
-  writeFileSync(
-    path.join(workdir, "package.json"),
-    JSON.stringify(
-      {
-        name: "verify-int-fixture",
-        version: "0.0.0",
-        private: true,
-        scripts: {
-          // typecheck: invoke the locally-resolvable tsc via npx. If typescript
-          // is not installed locally, npx will download it on the fly — slow
-          // but acceptable for this single-file integration check.
-          typecheck: "npx --yes -p typescript@5.6.2 tsc --noEmit -p tsconfig.json",
-          lint: `node ${JSON.stringify(lintShim).slice(1, -1)}`,
-        },
-      },
-      null,
-      2,
-    ),
-    "utf8",
-  );
+	writeFileSync(
+		path.join(workdir, "package.json"),
+		JSON.stringify(
+			{
+				name: "verify-int-fixture",
+				version: "0.0.0",
+				private: true,
+				scripts: {
+					// typecheck: invoke the locally-resolvable tsc via npx. If typescript
+					// is not installed locally, npx will download it on the fly — slow
+					// but acceptable for this single-file integration check.
+					typecheck:
+						"npx --yes -p typescript@5.6.2 tsc --noEmit -p tsconfig.json",
+					lint: `node ${JSON.stringify(lintShim).slice(1, -1)}`,
+				},
+			},
+			null,
+			2,
+		),
+		"utf8",
+	);
 }
 
 describe("AppVerificationService.verifyApp (integration)", () => {
-  let bunAvailable = false;
-  let npmAvailable = false;
-  const service = new AppVerificationService(noopRuntime);
+	let bunAvailable = false;
+	let npmAvailable = false;
+	const service = new AppVerificationService(noopRuntime);
 
-  beforeAll(async () => {
-    bunAvailable = await commandAvailable("bun", ["--version"]);
-    npmAvailable = await commandAvailable("npm", ["--version"]);
-  });
+	beforeAll(async () => {
+		bunAvailable = await commandAvailable("bun", ["--version"]);
+		npmAvailable = await commandAvailable("npm", ["--version"]);
+	});
 
-  afterAll(async () => {
-    await service.cleanup();
-  });
+	afterAll(async () => {
+		await service.cleanup();
+	});
 
-  it("returns verdict=pass for a real TS project that typechecks cleanly", async () => {
-    if (!bunAvailable && !npmAvailable) {
-      // Neither bun nor npm available — this environment cannot run the test.
-      // Skip is the right call per the test plan.
-      return;
-    }
-    const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-pass-"));
-    writeMinimalTsProject(workdir, PASS_TS);
+	it("returns verdict=pass for a real TS project that typechecks cleanly", async () => {
+		if (!bunAvailable && !npmAvailable) {
+			// Neither bun nor npm available — this environment cannot run the test.
+			// Skip is the right call per the test plan.
+			return;
+		}
+		const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-pass-"));
+		writeMinimalTsProject(workdir, PASS_TS);
 
-    const result = await service.verifyApp({
-      workdir,
-      profile: "fast",
-      runId: "int-pass",
-      packageManager: "npm",
-    });
+		const result = await service.verifyApp({
+			workdir,
+			profile: "fast",
+			runId: "int-pass",
+			packageManager: "npm",
+		});
 
-    expect(result.verdict).toBe("pass");
-    const typecheck = result.checks.find((c) => c.kind === "typecheck");
-    expect(typecheck?.passed).toBe(true);
-  }, 120_000);
+		expect(result.verdict).toBe("pass");
+		const typecheck = result.checks.find((c) => c.kind === "typecheck");
+		expect(typecheck?.passed).toBe(true);
+	}, 120_000);
 
-  it("returns verdict=fail with non-empty diagnostics when TS has a type error", async () => {
-    if (!bunAvailable && !npmAvailable) {
-      return;
-    }
-    const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-fail-"));
-    writeMinimalTsProject(workdir, FAIL_TS);
+	it("returns verdict=fail with non-empty diagnostics when TS has a type error", async () => {
+		if (!bunAvailable && !npmAvailable) {
+			return;
+		}
+		const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-fail-"));
+		writeMinimalTsProject(workdir, FAIL_TS);
 
-    const result = await service.verifyApp({
-      workdir,
-      profile: "fast",
-      runId: "int-fail",
-      packageManager: "npm",
-    });
+		const result = await service.verifyApp({
+			workdir,
+			profile: "fast",
+			runId: "int-fail",
+			packageManager: "npm",
+		});
 
-    expect(result.verdict).toBe("fail");
-    const typecheck = result.checks.find((c) => c.kind === "typecheck");
-    expect(typecheck).toBeDefined();
-    expect(typecheck?.passed).toBe(false);
-    expect((typecheck?.diagnostics ?? []).length).toBeGreaterThan(0);
-    expect(result.retryablePromptForChild.toLowerCase()).toContain("typecheck");
-  }, 120_000);
+		expect(result.verdict).toBe("fail");
+		const typecheck = result.checks.find((c) => c.kind === "typecheck");
+		expect(typecheck).toBeDefined();
+		expect(typecheck?.passed).toBe(false);
+		expect((typecheck?.diagnostics ?? []).length).toBeGreaterThan(0);
+		expect(result.retryablePromptForChild.toLowerCase()).toContain("typecheck");
+	}, 120_000);
 });

@@ -1,7 +1,4 @@
-import {
-  type ElizaConfig,
-  isPlainObject,
-} from "@elizaos/agent";
+import { type ElizaConfig, isPlainObject } from "@elizaos/agent";
 import {
   parseConfigPath,
   setConfigValueAtPath,

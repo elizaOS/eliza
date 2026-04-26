@@ -2494,7 +2494,6 @@
   "secretsview.YourVaultIsEmpty": "Your vault is empty. Click \"Add Secret\" to choose which API keys to\n          manage here.",
   "settings.advancedKeyWarning": "Local keys are not needed when Steward manages your wallet. Only use this if you know what you're doing.",
   "settings.appearance.active": "ACTIVE",
-  "settings.appearance.companionPerformance": "Companion performance",
   "settings.appearance.dark": "Dark",
   "settings.appearance.deactivate": "Deactivate current pack",
   "settings.appearance.light": "Light",

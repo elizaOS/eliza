@@ -3,7 +3,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { clientMock, reactModuleUrl } = vi.hoisted(() => {
+const { clientMock } = vi.hoisted(() => {
   return {
     clientMock: {
       getLifeOpsScheduleMergedState: vi.fn(async () => ({
@@ -253,12 +253,13 @@ const { clientMock, reactModuleUrl } = vi.hoisted(() => {
         category: "success",
       })),
     },
-    reactModuleUrl: `${process.cwd()}/node_modules/react/index.js`,
   };
 });
 
-vi.mock("@elizaos/app-core/api", () => ({ client: clientMock }));
-vi.mock("react", async () => import(reactModuleUrl));
+vi.mock("@elizaos/app-core", () => ({
+  client: clientMock,
+  openExternalUrl: vi.fn(),
+}));
 
 import { useLifeOpsCapabilitiesStatus } from "./useLifeOpsCapabilitiesStatus";
 import { useLifeOpsScheduleState } from "./useLifeOpsScheduleState";

@@ -2,7 +2,7 @@ import {
   getSelfControlPermissionState,
   openSelfControlPermissionLocation,
   requestSelfControlPermission,
-} from "@elizaos/app-lifeops";
+} from "@elizaos/app-lifeops/selfcontrol";
 import type { AgentRuntime } from "@elizaos/core";
 import type { PermissionState } from "@elizaos/shared";
 import type { AutonomousConfigLike } from "../types/config-like.js";

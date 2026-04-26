@@ -160,14 +160,14 @@ export const ownerAppBlockAction: Action & {
 
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerAppBlockParameters;
-    const params = (await extractActionParamsViaLlm<OwnerAppBlockParameters>({
+    const params = (await extractActionParamsViaLlm<OwnerAppBlockParameters & Record<string, unknown>>({
       runtime,
       message,
       state,
       actionName: ACTION_NAME,
       actionDescription: ownerAppBlockAction.description ?? "",
       paramSchema: ownerAppBlockAction.parameters ?? [],
-      existingParams: rawParams,
+      existingParams: rawParams as Record<string, unknown>,
       requiredFields: ["subaction"],
     })) as OwnerAppBlockParameters;
     const subaction = coerceSubaction(params.subaction);

@@ -33,7 +33,10 @@ import {
   useState,
 } from "react";
 import { client, type OnboardingOptions, type PluginParamDef } from "../../api";
-import { ConfigRenderer, defaultRegistry } from "../../config";
+import {
+  ConfigRenderer,
+  defaultRegistry,
+} from "../../components/config-ui/config-renderer";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import {
   getOnboardingProviderOption,

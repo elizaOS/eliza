@@ -7,71 +7,8 @@
 
 // Leaf modules (no internal collisions)
 export * from "./app-hero-art";
-export * from "./connectors";
-export * from "./env-utils";
-export * from "./runtime-env";
-export * from "./restart";
-export * from "./spoken-text";
-export * from "./type-guards";
-export * from "./recent-messages-state";
-export * from "./validation-keywords";
-export * from "./dev-settings-table";
-export * from "./dev-settings-banner-style";
-export * from "./onboarding-presets";
-export * from "./onboarding-presets.characters";
-
 // Awareness + themes barrels
 export * from "./awareness";
-export * from "./themes";
-
-// `eliza-core-roles` defines its own `RolesConfig` that overlaps with the
-// `RolesConfig` re-exported from `@elizaos/core` via `./config`. Skip the
-// duplicate name here — callers needing the vendored role helpers should use
-// the named exports below.
-export {
-  ROLE_RANK,
-  canModifyRole,
-  checkSenderPrivateAccess,
-  checkSenderRole,
-  findWorldsForOwner,
-  getConfiguredOwnerEntityIds,
-  getConnectorAdminWhitelist,
-  getEntityRole,
-  getLiveEntityMetadataFromMessage,
-  getUserServerRole,
-  hasConfiguredCanonicalOwner,
-  matchEntityToConnectorAdminWhitelist,
-  normalizeRole,
-  resolveCanonicalOwnerId,
-  resolveCanonicalOwnerIdForMessage,
-  resolveEntityRole,
-  resolveWorldForMessage,
-  setConnectorAdminWhitelist,
-  setEntityRole,
-} from "./eliza-core-roles";
-export type {
-  ConnectorAdminWhitelist,
-  RoleCheckResult,
-  RoleGrantSource,
-  RoleName,
-  RolesConfig as ElizaCoreRolesConfig,
-  RolesWorldMetadata,
-  ServerOwnershipState,
-} from "./eliza-core-roles";
-
-// Settings debug helpers
-export {
-  isElizaSettingsDebugEnabled,
-  sanitizeForSettingsDebug,
-  settingsDebugCloudSummary,
-} from "./settings-debug";
-
-// Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
-// drop/inbox/onboarding/permissions/service-routing/verification/wallet.
-// `contracts/theme` is intentionally NOT pulled in here; it reaches the public
-// surface through `./themes`, which already re-exports the same identifiers.
-export * from "./contracts";
-
 // Config barrel — collides with `contracts/inbox` on `InboxAutoReplyConfig`
 // and `InboxTriageRules`. Surface those config-level shapes under aliased
 // names; the canonical shapes remain in `./contracts`.
@@ -150,11 +87,11 @@ export type {
   HooksConfig,
   HooksGmailConfig,
   HooksGmailTailscaleMode,
+  InboundDebounceByProvider,
+  InboundDebounceConfig,
   // Aliased to avoid collision with the canonical contracts/inbox versions.
   InboxAutoReplyConfig as AgentDefaultsInboxAutoReplyConfig,
   InboxTriageRules as AgentDefaultsInboxTriageRules,
-  InboundDebounceByProvider,
-  InboundDebounceConfig,
   InternalHookHandlerConfig,
   InternalHooksConfig,
   KnowledgeConfig,
@@ -195,9 +132,9 @@ export type {
   PgliteConfig,
   PluginEntryConfig,
   PluginInstallRecord,
+  PluginSlotsConfig,
   PluginsConfig,
   PluginsLoadConfig,
-  PluginSlotsConfig,
   PostgresCredentials,
   QueueConfig,
   QueueDropPolicy,
@@ -223,3 +160,61 @@ export type {
   WebReconnectConfig,
   X402Config,
 } from "./config/types";
+export * from "./connectors";
+// Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
+// drop/inbox/onboarding/permissions/service-routing/verification/wallet.
+// `contracts/theme` is intentionally NOT pulled in here; it reaches the public
+// surface through `./themes`, which already re-exports the same identifiers.
+export * from "./contracts";
+export * from "./dev-settings-banner-style";
+export * from "./dev-settings-table";
+export type {
+  ConnectorAdminWhitelist,
+  RoleCheckResult,
+  RoleGrantSource,
+  RoleName,
+  RolesConfig as ElizaCoreRolesConfig,
+  RolesWorldMetadata,
+  ServerOwnershipState,
+} from "./eliza-core-roles";
+// `eliza-core-roles` defines its own `RolesConfig` that overlaps with the
+// `RolesConfig` re-exported from `@elizaos/core` via `./config`. Skip the
+// duplicate name here — callers needing the vendored role helpers should use
+// the named exports below.
+export {
+  canModifyRole,
+  checkSenderPrivateAccess,
+  checkSenderRole,
+  findWorldsForOwner,
+  getConfiguredOwnerEntityIds,
+  getConnectorAdminWhitelist,
+  getEntityRole,
+  getLiveEntityMetadataFromMessage,
+  getUserServerRole,
+  hasConfiguredCanonicalOwner,
+  matchEntityToConnectorAdminWhitelist,
+  normalizeRole,
+  ROLE_RANK,
+  resolveCanonicalOwnerId,
+  resolveCanonicalOwnerIdForMessage,
+  resolveEntityRole,
+  resolveWorldForMessage,
+  setConnectorAdminWhitelist,
+  setEntityRole,
+} from "./eliza-core-roles";
+export * from "./env-utils";
+export * from "./onboarding-presets";
+export * from "./onboarding-presets.characters";
+export * from "./recent-messages-state";
+export * from "./restart";
+export * from "./runtime-env";
+// Settings debug helpers
+export {
+  isElizaSettingsDebugEnabled,
+  sanitizeForSettingsDebug,
+  settingsDebugCloudSummary,
+} from "./settings-debug";
+export * from "./spoken-text";
+export * from "./themes";
+export * from "./type-guards";
+export * from "./validation-keywords";

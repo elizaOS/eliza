@@ -1,8 +1,8 @@
+import { loadElizaConfig } from "@elizaos/agent";
 import {
-  loadElizaConfig,
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
-} from "@elizaos/agent";
+} from "@elizaos/agent/cloud";
 import type {
   GetLifeOpsScheduleMergedStateResponse,
   SyncLifeOpsScheduleObservationsRequest,

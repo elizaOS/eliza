@@ -153,9 +153,7 @@ async function copyTemplate(
 	replacements: Record<string, string>,
 ): Promise<string[]> {
 	const written: string[] = [];
-	const stack: Array<{ from: string; to: string }> = [
-		{ from: src, to: dest },
-	];
+	const stack: Array<{ from: string; to: string }> = [{ from: src, to: dest }];
 
 	while (stack.length > 0) {
 		const { from, to } = stack.pop() as { from: string; to: string };
@@ -198,7 +196,12 @@ async function findFreeWorkdir(
 	let appDirName = `app-${baseName}`;
 	let candidate = path.join(baseDir, appDirName);
 	let suffix = 2;
-	while (await fs.stat(candidate).then(() => true, () => false)) {
+	while (
+		await fs.stat(candidate).then(
+			() => true,
+			() => false,
+		)
+	) {
 		appDirName = `app-${baseName}-${suffix}`;
 		candidate = path.join(baseDir, appDirName);
 		suffix += 1;
@@ -225,9 +228,7 @@ function fallbackNamesFromIntent(intent: string): ExtractedNames {
 	const displayName =
 		tokens.length === 0
 			? "Scratch App"
-			: tokens
-					.map((t) => t.charAt(0).toUpperCase() + t.slice(1))
-					.join(" ");
+			: tokens.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(" ");
 	return { name: safeSlug, displayName };
 }
 
@@ -321,7 +322,13 @@ async function dispatchCodingAgent({
 		},
 	} as unknown as HandlerOptions;
 
-	await createTask.handler(runtime, fakeMessage, undefined, handlerOptions, callback);
+	await createTask.handler(
+		runtime,
+		fakeMessage,
+		undefined,
+		handlerOptions,
+		callback,
+	);
 
 	return { dispatched: true };
 }
@@ -602,9 +609,9 @@ export function isChoiceReply(text: string): boolean {
 	return CHOICE_RE.test(text.trim());
 }
 
-export interface RecentIntentLookup {
-	(roomId: string): Promise<{ found: boolean }>;
-}
+export type RecentIntentLookup = (
+	roomId: string,
+) => Promise<{ found: boolean }>;
 
 /**
  * Public entry: routes the create flow based on whether an intent task
@@ -657,8 +664,8 @@ export async function runCreate({
 		// edit-N path
 		const idxMatch = normalized.match(/^edit-(\d+)$/);
 		const idx = idxMatch ? Number(idxMatch[1]) - 1 : -1;
-		const choice = existing.metadata.choices.filter(
-			(c) => c.key.startsWith("edit-"),
+		const choice = existing.metadata.choices.filter((c) =>
+			c.key.startsWith("edit-"),
 		)[idx];
 		if (!choice?.appName) {
 			const text = `I lost track of the edit target "${normalized}". Please re-state your request.`;

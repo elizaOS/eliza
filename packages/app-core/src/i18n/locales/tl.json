@@ -2494,7 +2494,6 @@
   "secretsview.YourVaultIsEmpty": "Walang laman ang iyong vault. I-click ang \"Magdagdag ng Secret\" para pumili kung aling mga API key ang\n          papamahalaan dito.",
   "settings.advancedKeyWarning": "Hindi kailangan gamit ang Steward. Gamitin nang may pag-iingat.",
   "settings.appearance.active": "AKTIBO",
-  "settings.appearance.companionPerformance": "Pagganap ng companion",
   "settings.appearance.dark": "Dark",
   "settings.appearance.deactivate": "I-deactivate ang kasalukuyang pack",
   "settings.appearance.light": "Light",

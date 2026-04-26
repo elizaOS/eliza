@@ -1,12 +1,11 @@
 import type http from "node:http";
 import {
   type CloudProxyConfigLike,
-  normalizeCloudSiteUrl,
   resolveCloudApiKey,
   sendJson,
   sendJsonError,
-  validateCloudBaseUrl,
 } from "@elizaos/agent";
+import { normalizeCloudSiteUrl, validateCloudBaseUrl } from "@elizaos/agent/cloud";
 import type { IAgentRuntime, Service } from "@elizaos/core";
 
 export interface TravelProviderRelayRouteState {

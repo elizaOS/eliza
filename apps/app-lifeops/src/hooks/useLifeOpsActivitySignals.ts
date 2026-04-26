@@ -7,14 +7,16 @@ import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   client,
-  getMobileSignalsPlugin,
   isApiError,
   isElectrobunRuntime,
   loadDesktopWorkspaceSnapshot,
+} from "@elizaos/app-core";
+import {
+  MobileSignals,
   type MobileSignalsHealthSnapshot,
   type MobileSignalsSignal,
   type MobileSignalsSnapshot,
-} from "@elizaos/app-core";
+} from "@elizaos/capacitor-mobile-signals";
 import { useEffect, useRef } from "react";
 import { dispatchLifeOpsActivitySignalsStatus } from "../events/index.js";
 
@@ -331,7 +333,7 @@ export function useLifeOpsActivitySignals(enabled = true): void {
 
     const mobileSignals =
       isNativeCapacitorRuntime() && !isElectrobunRuntime()
-        ? getMobileSignalsPlugin()
+        ? MobileSignals
         : null;
     let mobileSignalsHandle: { remove: () => Promise<void> } | null = null;
     let mobileSignalsStarted = false;
@@ -376,7 +378,7 @@ export function useLifeOpsActivitySignals(enabled = true): void {
 
       mobileSignalsHandle = await mobileSignals.addListener(
         "signal",
-        (signal) => {
+        (signal: MobileSignalsSignal) => {
           void sendSignal(mapMobileSignal(signal)).catch(reportCaptureError);
         },
       );

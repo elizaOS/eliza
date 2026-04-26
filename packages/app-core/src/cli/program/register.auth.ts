@@ -21,10 +21,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  isLoopbackBindHost,
-  resolveApiBindHost,
-} from "@elizaos/shared";
+import { isLoopbackBindHost, resolveApiBindHost } from "@elizaos/shared";
 import type { Command } from "commander";
 import { theme } from "../../terminal/theme";
 import { runCommandWithRuntime } from "../cli-utils";

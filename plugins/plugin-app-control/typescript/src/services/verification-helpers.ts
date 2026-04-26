@@ -63,16 +63,19 @@ export function parseTscOutput(output: string): Diagnostic[] {
 	const diagnostics: Diagnostic[] = [];
 	const re = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+TS\d+:\s+(.+)$/gm;
 	let match: RegExpExecArray | null;
-	while ((match = re.exec(output)) !== null) {
+	match = re.exec(output);
+	while (match !== null) {
 		const [, file, lineStr, colStr, severity, message] = match;
-		if (!file || !lineStr || !colStr || !severity || !message) continue;
-		diagnostics.push({
-			file,
-			line: Number.parseInt(lineStr, 10),
-			column: Number.parseInt(colStr, 10),
-			message: message.trim(),
-			severity: severity === "warning" ? "warning" : "error",
-		});
+		if (file && lineStr && colStr && severity && message) {
+			diagnostics.push({
+				file,
+				line: Number.parseInt(lineStr, 10),
+				column: Number.parseInt(colStr, 10),
+				message: message.trim(),
+				severity: severity === "warning" ? "warning" : "error",
+			});
+		}
+		match = re.exec(output);
 	}
 	return diagnostics;
 }
@@ -103,7 +106,9 @@ export function parseEslintOutput(output: string): Diagnostic[] {
 		// Absolute or repo-relative path on its own line.
 		if (
 			!line.startsWith(" ") &&
-			(line.startsWith("/") || /^[A-Za-z]:[\\/]/.test(line) || line.includes("/")) &&
+			(line.startsWith("/") ||
+				/^[A-Za-z]:[\\/]/.test(line) ||
+				line.includes("/")) &&
 			!issueRe.test(line)
 		) {
 			currentFile = line.trim();
@@ -142,7 +147,8 @@ export function parseVitestOutput(output: string): VitestSummary {
 	const summary: VitestSummary = { passed: 0, failed: 0, failures: [] };
 	if (!output) return summary;
 
-	const testsLine = /^\s*Tests\s+(?:(\d+)\s+failed)?[\s|]*?(?:(\d+)\s+passed)?/m;
+	const testsLine =
+		/^\s*Tests\s+(?:(\d+)\s+failed)?[\s|]*?(?:(\d+)\s+passed)?/m;
 	const match = testsLine.exec(output);
 	if (match) {
 		summary.failed = match[1] ? Number.parseInt(match[1], 10) : 0;
@@ -153,11 +159,14 @@ export function parseVitestOutput(output: string): VitestSummary {
 	const failureRe = /^\s*[×✗xX]\s+(.+?)(?:\s+\d+ms)?$/gm;
 	let failureMatch: RegExpExecArray | null;
 	const seen = new Set<string>();
-	while ((failureMatch = failureRe.exec(output)) !== null) {
+	failureMatch = failureRe.exec(output);
+	while (failureMatch !== null) {
 		const name = failureMatch[1]?.trim();
-		if (!name || seen.has(name)) continue;
-		seen.add(name);
-		summary.failures.push(name);
+		if (name && !seen.has(name)) {
+			seen.add(name);
+			summary.failures.push(name);
+		}
+		failureMatch = failureRe.exec(output);
 	}
 	if (summary.failed === 0 && summary.failures.length > 0) {
 		summary.failed = summary.failures.length;
@@ -170,8 +179,7 @@ export function parseVitestOutput(output: string): VitestSummary {
  */
 export function getStateDir(): string {
 	const fromEnv =
-		process.env.MILADY_STATE_DIR?.trim() ||
-		process.env.ELIZA_STATE_DIR?.trim();
+		process.env.MILADY_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
 	return fromEnv && fromEnv.length > 0
 		? fromEnv
 		: path.join(homedir(), ".milady");
@@ -229,9 +237,15 @@ export async function captureScreenshotViaDevApi(
 	return Buffer.from(bytes);
 }
 
-type ImageDescriptionResultLike = string | { description?: unknown } | null | undefined;
+type ImageDescriptionResultLike =
+	| string
+	| { description?: unknown }
+	| null
+	| undefined;
 
-function extractImageDescription(raw: ImageDescriptionResultLike): string | undefined {
+function extractImageDescription(
+	raw: ImageDescriptionResultLike,
+): string | undefined {
 	if (typeof raw === "string") {
 		const trimmed = raw.trim();
 		return trimmed.length > 0 ? trimmed : undefined;

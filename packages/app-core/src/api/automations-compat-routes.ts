@@ -6,11 +6,11 @@ import {
   isAutomationConversationMetadata,
   listTriggerTasks,
   loadElizaConfig,
+  type TriggerSummary,
   taskToTriggerSummary,
   toWorkbenchTask,
-  type TriggerSummary,
 } from "@elizaos/agent";
-import { LifeOpsService } from "@elizaos/app-lifeops";
+import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import {
   type AgentRuntime,
   logger,

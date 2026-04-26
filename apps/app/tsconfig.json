@@ -65,6 +65,12 @@
       "@elizaos/native-activity-tracker": [
         "./packages/native-plugins/activity-tracker/src/index.ts"
       ],
+      "@elizaos/capacitor-appblocker": [
+        "./packages/native-plugins/appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "./packages/native-plugins/mobile-signals/src/index.ts"
+      ],
       "@elizaos/ui": ["./packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["./packages/ui/src/*"],
       "react": ["./node_modules/@types/react/index.d.ts"],
@@ -83,6 +89,7 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "../../packages/app-core/src/ambient-modules.d.ts",
+    "../../packages/app-core/src/platform/capacitor-plugin-modules.d.ts",
     "../../packages/agent/src/external-modules.d.ts"
   ],
   "exclude": ["node_modules", "dist", "ios", "android", "electrobun"]

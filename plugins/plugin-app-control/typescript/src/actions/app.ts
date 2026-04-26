@@ -51,7 +51,8 @@ const MODES: readonly AppMode[] = [
 const LAUNCH_VERBS = /\b(launch|open|start|run|fire up|boot)\b/i;
 const RELAUNCH_VERBS = /\b(relaunch|restart|reboot|reload)\b/i;
 const STOP_VERBS = /\b(close|stop|exit|quit|kill|shut\s*down|terminate)\b/i;
-const LIST_VERBS = /\b(list|show|what['’]s open|running|whats? open|whats? running)\b/i;
+const LIST_VERBS =
+	/\b(list|show|what['’]s open|running|whats? open|whats? running)\b/i;
 const CREATE_VERBS =
 	/\b(create|build|make|new|scaffold|generate|spin up)\b.*?\b(app|application|game|tool|widget|dashboard)\b/i;
 const PLUGIN_ONLY = /\bplugin\b/i;
@@ -59,9 +60,10 @@ const APP_NOUN = /\b(app|application|mini)\b/i;
 const LOAD_FROM_DIR =
 	/\b(load|register|import|scan)\b.*\b(directory|folder|dir|path)\b/i;
 
-interface OwnerAccessFn {
-	(runtime: IAgentRuntime, message: Memory): Promise<boolean>;
-}
+type OwnerAccessFn = (
+	runtime: IAgentRuntime,
+	message: Memory,
+) => Promise<boolean>;
 
 interface AppActionDeps {
 	client?: AppControlClient;
@@ -78,7 +80,10 @@ function defaultRepoRoot(): string {
 	return process.cwd();
 }
 
-function inferMode(text: string, options?: Record<string, unknown>): AppMode | null {
+function inferMode(
+	text: string,
+	options?: Record<string, unknown>,
+): AppMode | null {
 	const explicit = readStringOption(options, "mode");
 	if (explicit && (MODES as readonly string[]).includes(explicit)) {
 		return explicit as AppMode;
@@ -221,8 +226,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			},
 			{
 				name: "directory",
-				description:
-					"Absolute directory to scan (load_from_directory mode).",
+				description: "Absolute directory to scan (load_from_directory mode).",
 				required: false,
 				schema: { type: "string" },
 			},
@@ -259,9 +263,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			// Multi-turn follow-up: short reply matches a pending intent task.
 			if (isChoiceReply(text)) {
 				const roomId =
-					typeof message.roomId === "string"
-						? message.roomId
-						: runtime.agentId;
+					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 				if (await hasPendingIntent(runtime, roomId)) return true;
 			}
 
@@ -282,9 +284,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			// Follow-up choice reply always routes to create.
 			if (isChoiceReply(text)) {
 				const roomId =
-					typeof message.roomId === "string"
-						? message.roomId
-						: runtime.agentId;
+					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 				if (await hasPendingIntent(runtime, roomId)) {
 					return runCreate({
 						runtime,

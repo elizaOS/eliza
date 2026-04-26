@@ -472,17 +472,36 @@ export const ownerWebsiteBlockAction: Action & {
 
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerWebsiteBlockParameters;
-    const params = (await extractActionParamsViaLlm<OwnerWebsiteBlockParameters>({
-      runtime,
-      message,
-      state,
-      actionName: ACTION_NAME,
-      actionDescription: ownerWebsiteBlockAction.description ?? "",
-      paramSchema: ownerWebsiteBlockAction.parameters ?? [],
-      existingParams: rawParams,
-      requiredFields: ["subaction"],
-    })) as OwnerWebsiteBlockParameters;
+    let params = rawParams;
     let subaction = coerceSubaction(params.subaction);
+    if (!subaction) {
+      const heuristicSubaction = inferRecentSubaction(
+        getMessageText(message),
+        await collectRecentConversationTexts({
+          runtime,
+          message,
+          state,
+          limit: 8,
+        }),
+      );
+      if (heuristicSubaction) {
+        params = { ...rawParams, subaction: heuristicSubaction };
+        subaction = heuristicSubaction;
+      }
+    }
+    if (!subaction) {
+      params = (await extractActionParamsViaLlm<OwnerWebsiteBlockParameters & Record<string, unknown>>({
+        runtime,
+        message,
+        state,
+        actionName: ACTION_NAME,
+        actionDescription: ownerWebsiteBlockAction.description ?? "",
+        paramSchema: ownerWebsiteBlockAction.parameters ?? [],
+        existingParams: rawParams as Record<string, unknown>,
+        requiredFields: ["subaction"],
+      })) as OwnerWebsiteBlockParameters;
+      subaction = coerceSubaction(params.subaction);
+    }
     if (!subaction) {
       const plan = await resolveOwnerWebsiteBlockPlanWithLlm({
         runtime,
