@@ -9,7 +9,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security";
+import { hasOwnerAccess } from "@elizaos/agent";
 import { getRemoteSessionService } from "../remote/remote-session-service.js";
 
 const ACTION_NAME = "LIST_REMOTE_SESSIONS";

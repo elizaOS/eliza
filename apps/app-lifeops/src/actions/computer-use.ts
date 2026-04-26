@@ -16,7 +16,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security";
+import { hasOwnerAccess } from "@elizaos/agent";
 
 const ACTION_NAME = "LIFEOPS_COMPUTER_USE";
 const ACTION_NAMES = {
@@ -36,17 +36,6 @@ interface LoadedComputerUseActions {
   file: Action | null;
   terminal: Action | null;
 }
-
-const DESKTOP_COMMAND_ALIASES = new Set([
-  "finder",
-  "open_finder",
-  "create_folder",
-  "new_folder",
-  "desktop_screenshot",
-  "take_screenshot",
-  "capture_screen",
-  "screenshot",
-]);
 
 function isComputerUseEnabled(): boolean {
   return process.env.ELIZA_LIFEOPS_COMPUTER_USE_ENABLED !== "0";
@@ -74,115 +63,23 @@ function resolveWrapperParams(
   return params;
 }
 
-function inferSurface(params: Record<string, unknown>): ComputerUseSurface {
-  const explicitSurface =
+function readSurface(
+  params: Record<string, unknown>,
+): ComputerUseSurface | null {
+  const value =
     typeof params.surface === "string"
       ? params.surface.trim().toLowerCase()
       : null;
   if (
-    explicitSurface === "desktop" ||
-    explicitSurface === "browser" ||
-    explicitSurface === "window" ||
-    explicitSurface === "file" ||
-    explicitSurface === "terminal"
+    value === "desktop" ||
+    value === "browser" ||
+    value === "window" ||
+    value === "file" ||
+    value === "terminal"
   ) {
-    return explicitSurface;
+    return value;
   }
-
-  const action =
-    typeof params.action === "string" ? params.action.trim().toLowerCase() : "";
-  const command =
-    typeof params.command === "string"
-      ? params.command.trim().toLowerCase()
-      : "";
-
-  if (DESKTOP_COMMAND_ALIASES.has(action) || DESKTOP_COMMAND_ALIASES.has(command)) {
-    return "desktop";
-  }
-
-  if (
-    params.path !== undefined ||
-    params.filepath !== undefined ||
-    params.dirpath !== undefined ||
-    params.oldText !== undefined ||
-    params.newText !== undefined ||
-    params.old_text !== undefined ||
-    params.new_text !== undefined ||
-    params.find !== undefined ||
-    params.replace !== undefined ||
-    action === "write" ||
-    action === "append" ||
-    action === "delete" ||
-    action === "exists" ||
-    action === "list" ||
-    action === "delete_directory" ||
-    action === "upload" ||
-    action === "download" ||
-    action === "list_downloads"
-  ) {
-    return "file";
-  }
-
-  if (
-    params.command !== undefined ||
-    params.sessionId !== undefined ||
-    params.session_id !== undefined ||
-    action === "execute" ||
-    action === "execute_command" ||
-    action === "read" ||
-    action === "clear"
-  ) {
-    return "terminal";
-  }
-
-  if (
-    params.windowId !== undefined ||
-    params.windowTitle !== undefined ||
-    params.window !== undefined ||
-    params.title !== undefined ||
-    params.arrangement !== undefined ||
-    action === "focus" ||
-    action === "switch" ||
-    action === "arrange" ||
-    action === "move" ||
-    action === "minimize" ||
-    action === "maximize" ||
-    action === "restore" ||
-    action === "close"
-  ) {
-    return "window";
-  }
-
-  if (
-    params.url !== undefined ||
-    params.selector !== undefined ||
-    params.tabId !== undefined ||
-    params.tab_index !== undefined ||
-    params.index !== undefined ||
-    params.code !== undefined ||
-    params.timeout !== undefined ||
-    params.direction !== undefined ||
-    action === "open" ||
-    action === "connect" ||
-    action === "navigate" ||
-    action === "dom" ||
-    action === "get_dom" ||
-    action === "clickables" ||
-    action === "get_clickables" ||
-    action === "execute" ||
-    action === "state" ||
-    action === "info" ||
-    action === "context" ||
-    action === "wait" ||
-    action === "list_tabs" ||
-    action === "open_tab" ||
-    action === "close_tab" ||
-    action === "switch_tab"
-  ) {
-    return "browser";
-  }
-
-  return "desktop";
+  return null;
 }
 
 async function loadComputerUseActions(): Promise<LoadedComputerUseActions | null> {
@@ -226,9 +123,11 @@ function selectDelegateAction(
   options?: HandlerOptions,
 ): Action | null {
   const params = resolveWrapperParams(message, options);
-  const preferredSurface = inferSurface(params);
+  const surface = readSurface(params);
+  if (surface) {
+    return actions[surface] ?? null;
+  }
   return (
-    actions[preferredSurface] ??
     actions.desktop ??
     actions.browser ??
     actions.window ??
@@ -430,15 +329,35 @@ export const lifeOpsComputerUseAction: Action & {
     }
 
     const actions = await getLoadedActions();
-    const base = actions
-      ? selectDelegateAction(actions, message, options)
-      : null;
-    if (!base) {
+    if (!actions) {
       return {
         text: "The @elizaos/plugin-computeruse package is not installed. Install it and restart the agent to enable desktop automation.",
         success: false,
         values: { success: false, error: "COMPUTER_USE_NOT_INSTALLED" },
         data: { actionName: ACTION_NAME },
+      };
+    }
+    const params = resolveWrapperParams(message, options);
+    const surface = readSurface(params);
+    if (!surface) {
+      return {
+        text: "Missing required parameter: surface. Use one of: desktop, browser, window, file, terminal.",
+        success: false,
+        values: { success: false, error: "MISSING_SURFACE" },
+        data: { actionName: ACTION_NAME, error: "MISSING_SURFACE" },
+      };
+    }
+    const base = actions[surface];
+    if (!base) {
+      return {
+        text: `The ${surface} computer-use delegate is not available.`,
+        success: false,
+        values: {
+          success: false,
+          error: "COMPUTER_USE_DELEGATE_UNAVAILABLE",
+          surface,
+        },
+        data: { actionName: ACTION_NAME, surface },
       };
     }
 

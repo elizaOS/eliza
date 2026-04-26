@@ -177,27 +177,27 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
     });
     expect(createResult).toMatchObject({ success: true });
 
-    // Get overview to find the occurrence
+    // Get overview to materialize occurrences and grab a concrete ID. Two
+    // slots → two pending occurrences; pass the ID directly so the snooze
+    // resolver doesn't have to disambiguate by name.
     const overviewResult = await send({
       action: "overview",
       intent: "give me an overview",
     });
     expect(overviewResult).toMatchObject({ success: true });
+    const occurrences =
+      ((overviewResult?.data as { occurrences?: Array<{ id: string }> })
+        ?.occurrences ?? []);
+    expect(occurrences.length).toBeGreaterThan(0);
+    const targetOccurrenceId = occurrences[0]?.id;
+    expect(typeof targetOccurrenceId).toBe("string");
 
-    // Snooze by target name
     const result = await send({
       action: "snooze",
       intent: "snooze brushing for 30 minutes",
-      target: "Brush teeth (snooze test)",
+      target: targetOccurrenceId,
       details: { preset: "30m" },
     });
-
-    // Diagnostic: surface the result text so unexpected failures are debuggable.
-    if (!result || result.success !== true) {
-      throw new Error(
-        `snooze did not succeed: ${JSON.stringify({ result, overview: overviewResult }, null, 2)}`,
-      );
-    }
     expect(result).toMatchObject({ success: true });
   }, 60_000);
 

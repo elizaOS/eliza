@@ -1,4 +1,4 @@
-import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security";
+import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent";
 import {
   type Action,
   type ActionExample,
@@ -526,36 +526,6 @@ function deliveryToResult(
   };
 }
 
-function looksLikeStandingCallPolicy(text: string): boolean {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-  return (
-    /\b(?:if|when|whenever)\b/u.test(normalized) &&
-    /\b(?:call|phone|dial)\b/u.test(normalized) &&
-    /\b(?:stuck|blocked|jam(?:s|med)?|browser|computer|workflow|unblock)\b/u.test(
-      normalized,
-    )
-  );
-}
-
-function buildCallUserPolicyAcknowledgement(text: string): string {
-  const normalized = text.trim().toLowerCase();
-  let context = "while working remotely";
-  if (/\bbrowser\b/u.test(normalized) && /\bcomputer\b/u.test(normalized)) {
-    context = "in the browser or on your computer";
-  } else if (/\bbrowser\b/u.test(normalized)) {
-    context = "in the browser";
-  } else if (/\bcomputer\b/u.test(normalized)) {
-    context = "on your computer";
-  } else if (/\bworkflow\b/u.test(normalized)) {
-    context = "when a remote workflow gets stuck";
-  }
-
-  return `If I get stuck ${context}, I'll escalate by phone and call you so you can jump in and unblock it. I've recorded that escalation path for when it's needed.`;
-}
-
 export const callUserAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -601,20 +571,6 @@ export const callUserAction: Action & {
       ((options as HandlerOptions | undefined)?.parameters as
         | CallUserParameters
         | undefined) ?? {};
-    const userText =
-      typeof message.content?.text === "string" ? message.content.text : "";
-    if (params.confirmed !== true && looksLikeStandingCallPolicy(userText)) {
-      return {
-        text: buildCallUserPolicyAcknowledgement(userText),
-        success: true,
-        values: { success: true, policyRecorded: true },
-        data: {
-          actionName: "CALL_USER",
-          policyRecorded: true,
-          channel: "phone_call",
-        },
-      };
-    }
     const pendingDraft = await readPendingCallDraft(
       runtime,
       message.roomId,

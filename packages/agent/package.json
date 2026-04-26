@@ -113,7 +113,6 @@
     "./providers/workspace": "./src/providers/workspace.ts",
     "./providers/workspace-provider": "./src/providers/workspace-provider.ts",
     "./api/bsc-trade": "./src/api/bsc-trade.ts",
-    "./api/server-auth": "./src/api/server-auth.ts",
     "./api/wallet": "./src/api/wallet.ts",
     "./api/wallet-evm-balance": "./src/api/wallet-evm-balance.ts",
     "./api/wallet-rpc": "./src/api/wallet-rpc.ts",

@@ -6,7 +6,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security";
+import { hasAdminAccess } from "@elizaos/agent";
 import {
   LIFE_INTENT_KINDS,
   LIFE_INTENT_PRIORITIES,
@@ -80,19 +80,6 @@ function isTarget(value: string): value is LifeOpsIntentTargetDevice {
 
 function isPriority(value: string): value is LifeOpsIntentPriority {
   return (LIFE_INTENT_PRIORITIES as readonly string[]).includes(value);
-}
-
-function looksLikeBroadcastPayload(params: NormalizedIntentSyncParameters): boolean {
-  return (
-    coerceString(params.kind) !== undefined ||
-    coerceString(params.title) !== undefined ||
-    coerceString(params.body) !== undefined ||
-    coerceString(params.target) !== undefined ||
-    coerceString(params.targetDeviceId) !== undefined ||
-    coerceString(params.priority) !== undefined ||
-    coerceString(params.actionUrl) !== undefined ||
-    coerceNumber(params.expiresInMinutes) !== undefined
-  );
 }
 
 function fail(
@@ -290,9 +277,6 @@ export const intentSyncAction: Action & {
       subactionRaw =
         coerceString((params as Record<string, unknown>).mode) ??
         coerceString((params as Record<string, unknown>).action);
-    }
-    if (!subactionRaw && looksLikeBroadcastPayload(params)) {
-      subactionRaw = "broadcast";
     }
     if (subactionRaw && !isSubaction(subactionRaw) && isKind(subactionRaw)) {
       kindRaw ??= subactionRaw;

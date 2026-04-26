@@ -7,6 +7,11 @@ import {
   type PlaidTransactionDto,
 } from "./plaid-managed-client.js";
 import {
+  PaypalManagedClient,
+  PaypalManagedClientError,
+  type PaypalTransactionDto,
+} from "./paypal-managed-client.js";
+import {
   parseTransactionsCsv,
   type ParsedCsvTransaction,
 } from "./payment-csv-import.js";
@@ -628,6 +633,316 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         skipped: cumulativeSkipped,
         nextCursor: pageCursor,
       };
+    }
+
+    // -----------------------------------------------------------------------
+    // PayPal bridge — uses Eliza Cloud as the OAuth + Reporting API proxy.
+    // Cloud routes live at /api/v1/milady/paypal/*.
+    //
+    // Personal-tier PayPal accounts CANNOT use the Reporting API. The cloud
+    // surfaces this as a 403 with `fallback: "csv_export"`; we propagate
+    // that to the caller via PaypalManagedClientError.fallback so the UI
+    // can route the user to CSV import.
+    // -----------------------------------------------------------------------
+
+    private getPaypalManagedClient(): PaypalManagedClient {
+      if (!this.paypalManagedClientCache) {
+        this.paypalManagedClientCache = new PaypalManagedClient();
+      }
+      return this.paypalManagedClientCache;
+    }
+
+    /** Returns a PayPal Login URL the frontend should open in a popup. */
+    async createPaypalAuthorizeUrl(args: {
+      state: string;
+    }): Promise<{
+      url: string;
+      scope: string;
+      environment: "live" | "sandbox";
+    }> {
+      const state = requireNonEmptyString(args.state, "state");
+      try {
+        return await this.getPaypalManagedClient().buildAuthorizeUrl({ state });
+      } catch (error) {
+        if (error instanceof PaypalManagedClientError) {
+          fail(error.status, error.message);
+        }
+        throw error;
+      }
+    }
+
+    /**
+     * Completes the PayPal OAuth flow by exchanging the authorization code
+     * for tokens, then creating a payment_source row keyed to the PayPal
+     * payer. The access_token + refresh_token are stored in source.metadata
+     * so the runtime can refresh on demand without re-prompting the user.
+     */
+    async completePaypalLink(args: {
+      code: string;
+      label?: string | null;
+    }): Promise<{
+      source: LifeOpsPaymentSource;
+      capability: { hasReporting: boolean; hasIdentity: boolean };
+    }> {
+      const code = requireNonEmptyString(args.code, "code");
+      let exchange;
+      try {
+        exchange = await this.getPaypalManagedClient().exchangeCode({ code });
+      } catch (error) {
+        if (error instanceof PaypalManagedClientError) {
+          fail(error.status, error.message);
+        }
+        throw error;
+      }
+      const display =
+        exchange.identity?.name ??
+        exchange.identity?.emails[0] ??
+        exchange.identity?.payerId ??
+        "PayPal";
+      const label =
+        normalizeOptionalString(args.label) ?? `PayPal · ${display}`;
+      const tokenExpiresAt = new Date(
+        Date.now() + Math.max(0, exchange.expiresIn - 60) * 1_000,
+      ).toISOString();
+      const now = new Date().toISOString();
+      const source: LifeOpsPaymentSource = {
+        id: crypto.randomUUID(),
+        agentId: this.agentId(),
+        kind: "paypal",
+        label: label.slice(0, 120),
+        institution: "PayPal",
+        accountMask: null,
+        // Personal-tier accounts can't sync, so we mark them as
+        // needs_attention to nudge the user toward CSV import.
+        status: exchange.capability.hasReporting ? "active" : "needs_attention",
+        lastSyncedAt: null,
+        transactionCount: 0,
+        metadata: {
+          paypal: {
+            accessToken: exchange.accessToken,
+            refreshToken: exchange.refreshToken,
+            tokenExpiresAt,
+            scope: exchange.scope,
+            capability: exchange.capability,
+            payerId: exchange.identity?.payerId ?? null,
+            payerEmails: exchange.identity?.emails ?? [],
+          },
+        },
+        createdAt: now,
+        updatedAt: now,
+      };
+      await this.repository.upsertPaymentSource(source);
+      return { source, capability: exchange.capability };
+    }
+
+    /**
+     * Pulls PayPal transactions for a date window via the Reporting API.
+     * Returns the imported count and an explicit `fallback: "csv_export"`
+     * flag when the account is personal-tier.
+     */
+    async syncPaypalTransactions(args: {
+      sourceId: string;
+      windowDays?: number | null;
+    }): Promise<{
+      inserted: number;
+      skipped: number;
+      fallback: "csv_export" | null;
+    }> {
+      const sourceId = requireNonEmptyString(args.sourceId, "sourceId");
+      const source = await this.repository.getPaymentSource(
+        this.agentId(),
+        sourceId,
+      );
+      if (!source) {
+        fail(404, `Payment source ${sourceId} not found.`);
+      }
+      if (source.kind !== "paypal") {
+        fail(409, `Source ${sourceId} is not a PayPal source.`);
+      }
+      const paypalMetadata =
+        (source.metadata?.paypal as
+          | {
+              accessToken?: string;
+              refreshToken?: string | null;
+              tokenExpiresAt?: string;
+              capability?: { hasReporting: boolean; hasIdentity: boolean };
+            }
+          | undefined) ?? null;
+      let accessToken = paypalMetadata?.accessToken;
+      if (typeof accessToken !== "string" || accessToken.length === 0) {
+        fail(409, "PayPal source is missing an access token. Re-link.");
+      }
+      // Refresh if we're within 60s of expiry — saves a round-trip 401.
+      const expiryMs = paypalMetadata?.tokenExpiresAt
+        ? Date.parse(paypalMetadata.tokenExpiresAt)
+        : 0;
+      if (Number.isFinite(expiryMs) && expiryMs <= Date.now() + 60_000) {
+        if (paypalMetadata?.refreshToken) {
+          try {
+            const refreshed = await this.getPaypalManagedClient().refreshAccessToken(
+              { refreshToken: paypalMetadata.refreshToken },
+            );
+            accessToken = refreshed.accessToken;
+            await this.repository.upsertPaymentSource({
+              ...source,
+              metadata: {
+                ...source.metadata,
+                paypal: {
+                  ...paypalMetadata,
+                  accessToken: refreshed.accessToken,
+                  refreshToken:
+                    refreshed.refreshToken ?? paypalMetadata.refreshToken,
+                  tokenExpiresAt: new Date(
+                    Date.now() + Math.max(0, refreshed.expiresIn - 60) * 1_000,
+                  ).toISOString(),
+                  scope: refreshed.scope,
+                },
+              },
+              updatedAt: new Date().toISOString(),
+            });
+          } catch (error) {
+            // Refresh failed — fall through with the stale token; the
+            // search call below will likely 401 and surface a clear error.
+            this.logLifeOpsWarn(
+              "paypal_refresh",
+              `PayPal refresh failed for ${sourceId}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }
+      }
+
+      const windowDays = Math.max(
+        7,
+        Math.min(
+          365,
+          typeof args.windowDays === "number" &&
+            Number.isFinite(args.windowDays)
+            ? Math.trunc(args.windowDays)
+            : 90,
+        ),
+      );
+      const now = new Date();
+      const startDate = new Date(
+        now.getTime() - windowDays * MS_PER_DAY,
+      ).toISOString();
+      const endDate = now.toISOString();
+
+      let inserted = 0;
+      let skipped = 0;
+      let page = 1;
+      let totalPages = 1;
+      try {
+        do {
+          const result = await this.getPaypalManagedClient().searchTransactions({
+            accessToken,
+            startDate,
+            endDate,
+            page,
+          });
+          totalPages = result.totalPages;
+          for (const transaction of result.transactions) {
+            const wasInserted = await this.upsertPaypalTransaction({
+              sourceId,
+              transaction,
+            });
+            if (wasInserted) {
+              inserted += 1;
+            } else {
+              skipped += 1;
+            }
+          }
+          page += 1;
+        } while (page <= totalPages && page <= 50);
+      } catch (error) {
+        if (
+          error instanceof PaypalManagedClientError &&
+          error.fallback === "csv_export"
+        ) {
+          // Personal-tier — mark the source so the UI nudges to CSV import.
+          await this.repository.upsertPaymentSource({
+            ...source,
+            status: "needs_attention",
+            metadata: {
+              ...source.metadata,
+              paypal: {
+                ...paypalMetadata,
+                capability: { hasReporting: false, hasIdentity: true },
+                lastFallbackError: error.message,
+              },
+            },
+            updatedAt: new Date().toISOString(),
+          });
+          return { inserted: 0, skipped: 0, fallback: "csv_export" };
+        }
+        if (error instanceof PaypalManagedClientError) {
+          fail(error.status, error.message);
+        }
+        throw error;
+      }
+
+      const newCount = await this.repository.countPaymentTransactionsForSource(
+        this.agentId(),
+        sourceId,
+      );
+      await this.repository.upsertPaymentSource({
+        ...source,
+        status: "active",
+        lastSyncedAt: new Date().toISOString(),
+        transactionCount: newCount,
+        updatedAt: new Date().toISOString(),
+      });
+      return { inserted, skipped, fallback: null };
+    }
+
+    private async upsertPaypalTransaction(args: {
+      sourceId: string;
+      transaction: PaypalTransactionDto;
+    }): Promise<boolean> {
+      const txn = args.transaction;
+      const amountValue = Number(txn.transaction_info.transaction_amount.value);
+      if (!Number.isFinite(amountValue)) {
+        return false;
+      }
+      // PayPal convention: positive = money IN (credit), negative = money OUT.
+      // Our schema uses the absolute value + a `direction` enum.
+      const direction = amountValue < 0 ? "debit" : "credit";
+      const merchantRaw = (
+        txn.payer_info?.payer_name?.alternate_full_name ??
+        txn.payer_info?.email_address ??
+        txn.shipping_info?.name ??
+        txn.transaction_info.transaction_subject ??
+        "PayPal payment"
+      ).trim();
+      const merchantNormalized = normalizeMerchant(merchantRaw);
+      const description =
+        txn.transaction_info.transaction_subject ??
+        txn.transaction_info.transaction_note ??
+        txn.cart_info?.item_details?.[0]?.item_name ??
+        null;
+      const record: LifeOpsPaymentTransaction = {
+        id: crypto.randomUUID(),
+        agentId: this.agentId(),
+        sourceId: args.sourceId,
+        externalId: txn.transaction_info.transaction_id,
+        postedAt: new Date(
+          txn.transaction_info.transaction_initiation_date,
+        ).toISOString(),
+        amountUsd: Number(Math.abs(amountValue).toFixed(2)),
+        direction,
+        merchantRaw,
+        merchantNormalized,
+        description,
+        category: null,
+        currency: txn.transaction_info.transaction_amount.currency_code,
+        metadata: {
+          paypalTransactionId: txn.transaction_info.transaction_id,
+          paypalStatus: txn.transaction_info.transaction_status,
+        },
+        createdAt: new Date().toISOString(),
+      };
+      return this.repository.insertPaymentTransaction(record);
     }
 
     private async upsertPlaidTransaction(args: {

@@ -21,6 +21,8 @@ import type {
   LifeOpsRecurringCharge,
 } from "../lifeops/payment-types.js";
 import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
+import { LifeOpsLinkBankButton } from "./LifeOpsLinkBankButton.js";
+import { LifeOpsLinkPaypalButton } from "./LifeOpsLinkPaypalButton.js";
 
 function formatUsd(value: number): string {
   return `$${value.toLocaleString("en-US", {
@@ -236,6 +238,55 @@ export function LifeOpsMoneySection(): JSX.Element | null {
     [refresh],
   );
 
+  const onSyncPlaid = useCallback(
+    async (source: LifeOpsPaymentSource) => {
+      setImportStatus(`Syncing ${source.label} via Plaid…`);
+      try {
+        const result = await client.syncLifeOpsPlaidTransactions({
+          sourceId: source.id,
+        });
+        setImportStatus(
+          `Plaid sync: ${result.inserted} new transaction${result.inserted === 1 ? "" : "s"} (${result.skipped} already on file).`,
+        );
+        await refresh();
+      } catch (err) {
+        setImportStatus(null);
+        window.alert(
+          `Plaid sync failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+    [refresh],
+  );
+
+  const onSyncPaypal = useCallback(
+    async (source: LifeOpsPaymentSource) => {
+      setImportStatus(`Syncing ${source.label} via PayPal…`);
+      try {
+        const result = await client.syncLifeOpsPaypalTransactions({
+          sourceId: source.id,
+          windowDays: 90,
+        });
+        if (result.fallback === "csv_export") {
+          setImportStatus(
+            "PayPal Reporting API isn't available for this account (typically personal-tier). Use the CSV export from paypal.com → Activity → Statements.",
+          );
+        } else {
+          setImportStatus(
+            `PayPal sync: ${result.inserted} new transaction${result.inserted === 1 ? "" : "s"} (${result.skipped} already on file).`,
+          );
+        }
+        await refresh();
+      } catch (err) {
+        setImportStatus(null);
+        window.alert(
+          `PayPal sync failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+    [refresh],
+  );
+
   const onScanGmail = useCallback(async () => {
     try {
       const result = await client.scanLifeOpsEmailSubscriptions();
@@ -440,15 +491,20 @@ export function LifeOpsMoneySection(): JSX.Element | null {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
-            <header className="mb-2 flex items-center justify-between">
+            <header className="mb-2 flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold">Sources</h2>
-              <button
-                type="button"
-                onClick={() => void onAddSource()}
-                className="inline-flex items-center gap-1 rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-xs font-medium hover:bg-bg-muted/60"
-              >
-                <FilePlus2 className="h-3 w-3" /> Add
-              </button>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <LifeOpsLinkBankButton onLinked={() => void refresh()} />
+                <LifeOpsLinkPaypalButton onLinked={() => void refresh()} />
+                <button
+                  type="button"
+                  onClick={() => void onAddSource()}
+                  className="inline-flex items-center gap-1 rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-xs font-medium hover:bg-bg-muted/60"
+                  title="Add a source manually (CSV / manual)"
+                >
+                  <FilePlus2 className="h-3 w-3" /> Add
+                </button>
+              </div>
             </header>
             {dash.sources.length === 0 ? (
               <p className="text-xs text-muted">No sources.</p>
@@ -482,6 +538,26 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                           className="rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
                         >
                           Import CSV
+                        </button>
+                      ) : null}
+                      {source.kind === "plaid" ? (
+                        <button
+                          type="button"
+                          onClick={() => void onSyncPlaid(source)}
+                          className="rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                          title="Pull the latest transactions from Plaid"
+                        >
+                          Sync
+                        </button>
+                      ) : null}
+                      {source.kind === "paypal" ? (
+                        <button
+                          type="button"
+                          onClick={() => void onSyncPaypal(source)}
+                          className="rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                          title="Pull recent PayPal transactions (Reporting API)"
+                        >
+                          Sync
                         </button>
                       ) : null}
                       <button

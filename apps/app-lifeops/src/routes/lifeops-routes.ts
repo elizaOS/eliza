@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
 import type {
@@ -2256,6 +2256,63 @@ export async function handleLifeOpsRoutes(
     return runRoute(ctx, async (service) => {
       const result = await service.syncPlaidTransactions({
         sourceId: body.sourceId,
+      });
+      json(res, result);
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/money/paypal/authorize-url"
+  ) {
+    const body = await readJsonBody<{ state: string }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const result = await service.createPaypalAuthorizeUrl({
+        state: body.state,
+      });
+      json(res, result);
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/money/paypal/complete") {
+    const body = await readJsonBody<{
+      code: string;
+      label?: string | null;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const { source, capability } = await service.completePaypalLink({
+        code: body.code,
+        label: body.label ?? null,
+      });
+      // Strip PayPal tokens before responding — never echo secrets to the
+      // browser. The runtime keeps them in source.metadata for sync.
+      const sanitizedMetadata: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(source.metadata)) {
+        if (key !== "paypal") sanitizedMetadata[key] = value;
+      }
+      json(
+        res,
+        {
+          source: { ...source, metadata: sanitizedMetadata },
+          capability,
+        },
+        201,
+      );
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/money/paypal/sync") {
+    const body = await readJsonBody<{
+      sourceId: string;
+      windowDays?: number | null;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const result = await service.syncPaypalTransactions({
+        sourceId: body.sourceId,
+        windowDays: body.windowDays ?? null,
       });
       json(res, result);
     });

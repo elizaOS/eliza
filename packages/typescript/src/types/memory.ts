@@ -515,6 +515,105 @@ export interface CustomMetadata
 	[key: string]: MetadataValue | MemoryTypeAlias | BaseMetadata | undefined;
 }
 
+/**
+ * Two-store fact memory model (see docs/architecture/fact-memory.md).
+ *
+ * `durable` facts are stable identity-level claims (where someone lives,
+ * persistent health conditions, long-term roles). They retrieve with no time
+ * decay.
+ *
+ * `current` facts are time-bound state ("anxious this morning", "debugging
+ * auth flow", "navigating divorce"). They retrieve with a curved decay
+ * weighting and naturally fade as `valid_at` ages.
+ */
+export type FactKind = "durable" | "current";
+
+/**
+ * Categories that durable facts belong to. The set is closed for write-time
+ * validation and matches the taxonomy in `factExtractor.schema.ts`.
+ */
+export type DurableFactCategory =
+	| "identity"
+	| "health"
+	| "relationship"
+	| "life_event"
+	| "business_role"
+	| "preference"
+	| "goal";
+
+/**
+ * Categories that current facts belong to. Closed set, matches the taxonomy
+ * in `factExtractor.schema.ts`.
+ */
+export type CurrentFactCategory =
+	| "feeling"
+	| "physical_state"
+	| "working_on"
+	| "going_through"
+	| "schedule_context";
+
+/**
+ * Verification provenance for a fact. `self_reported` is the default for
+ * anything the user said about themselves; `confirmed` is reserved for
+ * external corroboration (lab results, calendar entries, etc.); `contradicted`
+ * marks facts that have been challenged and are awaiting review.
+ */
+export type FactVerificationStatus =
+	| "self_reported"
+	| "confirmed"
+	| "contradicted";
+
+/**
+ * Metadata fields specific to fact memories. All fields are optional so
+ * existing facts written before the two-store model continue to work — they
+ * default to `kind=durable`, `category=uncategorized` at the read boundary
+ * (see lazy reclassification in fact-memory.md).
+ *
+ * The fact extractor (Phase 3) writes these fields on every new fact;
+ * `factRefinement.ts` legacy writes still produce facts without them.
+ */
+export interface FactMetadata {
+	/** Existing field — confidence in the claim, 0..1. */
+	confidence?: number;
+	/** Existing field — ISO timestamp of last reinforcement. */
+	lastReinforced?: string;
+	/** Existing field — message IDs that supplied evidence for this fact. */
+	evidenceMessageIds?: UUID[];
+	/** Existing field — trajectory that produced the fact, when known. */
+	sourceTrajectoryId?: UUID;
+
+	/** Two-store kind. `durable` for identity-level, `current` for time-bound. */
+	kind?: FactKind;
+	/**
+	 * Closed-set category. Narrowed by `kind`:
+	 *   - durable → DurableFactCategory
+	 *   - current → CurrentFactCategory
+	 * Stored as a plain string for JSON portability and lazy reclassification
+	 * (legacy facts may carry `"uncategorized"`).
+	 */
+	category?: DurableFactCategory | CurrentFactCategory | string;
+	/**
+	 * Structured fields extracted from the claim — e.g. for a current
+	 * `going_through` fact, this might be `{situation: "divorce"}`. Used both
+	 * for provider rendering and for embedding-free dedup heuristics.
+	 */
+	structuredFields?: Record<string, unknown>;
+	/**
+	 * For `current` facts only: ISO timestamp of when the state began. Defaults
+	 * to extraction time if the model does not supply one. Drives the
+	 * time-weighting curve in the read path.
+	 */
+	validAt?: string;
+	/**
+	 * ISO timestamp of the most recent message that confirmed the fact.
+	 * Distinct from `lastReinforced` (legacy refinement field) in that this
+	 * tracks confirmations from the new extractor's `strengthen` op.
+	 */
+	lastConfirmedAt?: string;
+	/** Provenance signal for the claim. */
+	verificationStatus?: FactVerificationStatus;
+}
+
 interface MemoryMetadataBase {
 	type?: MemoryTypeAlias;
 	source?: string;
