@@ -21,7 +21,6 @@ import {
   getTimeOnSiteAction,
 } from "./activity-report.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
-import { looksLikeScreenTimeReflection } from "./non-actionable-request.js";
 
 const ACTION_NAME = "OWNER_SCREEN_TIME";
 
@@ -73,10 +72,6 @@ function coerceSubaction(value: unknown): Subaction | undefined {
   return undefined;
 }
 
-function messageText(message: Memory): string {
-  return (message?.content?.text ?? "").toString().toLowerCase();
-}
-
 export const ownerScreenTimeAction: Action = {
   name: ACTION_NAME,
   similes: [
@@ -106,9 +101,6 @@ export const ownerScreenTimeAction: Action = {
     "Do NOT use it to block apps or websites (OWNER_APP_BLOCK / OWNER_WEBSITE_BLOCK) or to start remote sessions (OWNER_REMOTE_DESKTOP).",
 
   validate: async (runtime, message) => {
-    if (looksLikeScreenTimeReflection(messageText(message))) {
-      return false;
-    }
     return hasLifeOpsAccess(runtime, message);
   },
 
