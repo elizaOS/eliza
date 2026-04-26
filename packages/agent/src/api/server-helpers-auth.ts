@@ -5,6 +5,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";
+import { logger } from "@elizaos/core";
 import {
   isNullOriginAllowed,
   resolveAllowedHosts,
@@ -535,7 +536,7 @@ export function ensurePairingCode(): string | null {
   if (!pairingCode || now > pairingExpiresAt) {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
-    console.warn(
+    logger.warn(
       `[eliza-api] Pairing code: ${pairingCode} (valid for 10 minutes)`,
     );
   }
