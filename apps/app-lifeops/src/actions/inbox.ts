@@ -32,7 +32,6 @@ import type { ApprovalChannel } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { executeApprovedRequest } from "./approval.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
-import { looksLikeEmailVenting } from "./non-actionable-request.js";
 
 // ---------------------------------------------------------------------------
 // Subaction types & params
@@ -345,9 +344,6 @@ export const inboxAction: Action & {
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
-    if (looksLikeEmailVenting(extractText(message))) {
-      return false;
-    }
     return hasAdminAccess(runtime, message);
   },
 

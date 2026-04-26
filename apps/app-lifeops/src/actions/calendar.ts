@@ -52,7 +52,6 @@ import {
   messageText,
   toActionData,
 } from "./lifeops-google-helpers.js";
-import { looksLikeCalendarObservation } from "./non-actionable-request.js";
 
 type CalendarSubaction =
   | "feed"
@@ -3060,9 +3059,6 @@ export const calendarAction: Action & {
   descriptionCompressed: "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
-    if (looksLikeCalendarObservation(messageText(message))) {
-      return false;
-    }
     return hasLifeOpsAccess(runtime, message);
   },
   handler: async (
