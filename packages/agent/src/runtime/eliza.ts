@@ -3662,7 +3662,7 @@ export async function startEliza(
   const initializeRuntimeServices = async (): Promise<void> => {
     try {
       const { stewardEvmPreBoot } = await import(
-        "../services/steward-evm-bridge.js"
+        "@elizaos/app-steward/services/steward-evm-bridge"
       );
       await stewardEvmPreBoot(runtime);
     } catch (err) {
@@ -3749,7 +3749,7 @@ export async function startEliza(
 
     try {
       const { stewardEvmPostBoot } = await import(
-        "../services/steward-evm-bridge.js"
+        "@elizaos/app-steward/services/steward-evm-bridge"
       );
       await stewardEvmPostBoot(runtime);
     } catch (err) {
@@ -4106,7 +4106,7 @@ export async function startEliza(
           }
           try {
             const { stewardEvmPreBoot: preBootHR } = await import(
-              "../services/steward-evm-bridge.js"
+              "@elizaos/app-steward/services/steward-evm-bridge"
             );
             await preBootHR(newRuntime);
           } catch {
@@ -4121,7 +4121,7 @@ export async function startEliza(
 
           try {
             const { stewardEvmPostBoot: postBootHR } = await import(
-              "../services/steward-evm-bridge.js"
+              "@elizaos/app-steward/services/steward-evm-bridge"
             );
             await postBootHR(newRuntime);
           } catch {
