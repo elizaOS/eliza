@@ -113,6 +113,8 @@ export function startTriggerEventBridge(
   // TTL cache for trigger task list to reduce DB round-trips on high-frequency events
   let cachedTasks: Task[] | null = null;
   let cacheTimestamp = 0;
+  // Track which event types have at least one enabled event-kind trigger (from last cache refresh)
+  let eventTypesWithTriggers: Set<EventType> = new Set();
 
   const getCachedTriggers = async (): Promise<Task[]> => {
     const current = now();
@@ -122,17 +124,41 @@ export function startTriggerEventBridge(
     const tasks = await listTriggers(runtime);
     cachedTasks = tasks;
     cacheTimestamp = current;
+    // Rebuild the set of event types that have enabled triggers
+    const newEventTypes = new Set<EventType>();
+    for (const task of tasks) {
+      const trigger = readTriggerConfig(task);
+      if (trigger?.enabled && trigger.triggerType === "event" && trigger.eventKind) {
+        newEventTypes.add(trigger.eventKind as EventType);
+      }
+    }
+    eventTypesWithTriggers = newEventTypes;
     return tasks;
+  };
+
+  /** Check if there are any triggers for the given event type (uses cached knowledge). */
+  const hasTriggersForEvent = (eventType: EventType): boolean => {
+    // If cache is stale or empty, we must query — return true to allow the fetch
+    if (cachedTasks === null || now() - cacheTimestamp >= TRIGGER_CACHE_TTL_MS) {
+      return true;
+    }
+    return eventTypesWithTriggers.has(eventType);
   };
 
   const buildHandler = (eventType: EventType): BridgeHandler => {
     return async (payload: EventPayload) => {
       if (!triggersFeatureEnabled(runtime)) return;
 
+      // Short-circuit: skip DB query if we know (from cached data) there are no triggers for this event type
+      if (!hasTriggersForEvent(eventType)) {
+        return;
+      }
+
       let tasks: Task[];
       try {
         tasks = await getCachedTriggers();
       } catch (err) {
+</search>
         runtime.logger.error(
           {
             src: "trigger-event-bridge",
@@ -205,6 +231,7 @@ export function startTriggerEventBridge(
       lastDispatchMs.clear();
       cachedTasks = null;
       cacheTimestamp = 0;
+      eventTypesWithTriggers.clear();
     },
   };
 }
