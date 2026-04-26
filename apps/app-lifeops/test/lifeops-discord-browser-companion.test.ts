@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import {
+  createLifeOpsConnectorGrant,
+  LifeOpsRepository,
+} from "../src/lifeops/repository.js";
 import { LifeOpsService, LifeOpsServiceError } from "../src/lifeops/service.js";
+import { executeRawSql } from "../src/lifeops/sql.js";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 
 async function createDiscordBrowserService(
@@ -95,7 +99,80 @@ async function syncBrowserCompanionState(
   });
 }
 
+async function recreateConnectorGrantsWithoutLogicalUnique(
+  service: LifeOpsService,
+): Promise<void> {
+  await executeRawSql(service.runtime, "DROP TABLE life_connector_grants");
+  await executeRawSql(
+    service.runtime,
+    `CREATE TABLE life_connector_grants (
+      id TEXT PRIMARY KEY,
+      agent_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      side TEXT NOT NULL DEFAULT 'owner',
+      identity_json TEXT NOT NULL DEFAULT '{}',
+      identity_email TEXT,
+      granted_scopes_json TEXT NOT NULL DEFAULT '[]',
+      capabilities_json TEXT NOT NULL DEFAULT '[]',
+      token_ref TEXT,
+      mode TEXT NOT NULL DEFAULT 'oauth',
+      execution_target TEXT NOT NULL DEFAULT 'local',
+      source_of_truth TEXT NOT NULL DEFAULT 'local_storage',
+      preferred_by_agent INTEGER NOT NULL DEFAULT 0,
+      cloud_connection_id TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      last_refresh_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+  );
+}
+
 describe("LifeOps Discord owner connector via browser companion", () => {
+  test("upserts local connector grants on legacy tables without the logical unique constraint", async () => {
+    const service = await createDiscordBrowserService(
+      "lifeops-discord-browser-legacy-grants",
+    );
+    await recreateConnectorGrantsWithoutLogicalUnique(service);
+
+    const timestamp = new Date().toISOString();
+    const grant = createLifeOpsConnectorGrant({
+      agentId: service.runtime.agentId,
+      provider: "discord",
+      identity: {},
+      grantedScopes: [],
+      capabilities: [],
+      tokenRef: null,
+      mode: "local",
+      side: "owner",
+      metadata: {
+        sessionId: "session-1",
+      },
+      lastRefreshAt: timestamp,
+    });
+
+    await service.repository.upsertConnectorGrant(grant);
+    await service.repository.upsertConnectorGrant({
+      ...grant,
+      metadata: {
+        sessionId: "session-2",
+      },
+      updatedAt: new Date(Date.now() + 1_000).toISOString(),
+    });
+
+    const grants = await service.repository.listConnectorGrants(
+      service.runtime.agentId,
+    );
+    expect(grants).toHaveLength(1);
+    expect(grants[0]).toMatchObject({
+      provider: "discord",
+      mode: "local",
+      metadata: {
+        sessionId: "session-2",
+      },
+    });
+  });
+
   test("reports connected and DM-visible when the focused browser page is Discord DMs", async () => {
     const service = await createDiscordBrowserService(
       "lifeops-discord-browser-focused",

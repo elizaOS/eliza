@@ -484,7 +484,17 @@ export function DiscordConnectorCard() {
     browserAccess.find((access) => access.source === "desktop_browser") ?? null;
   const discordDesktopAccess =
     browserAccess.find((access) => access.source === "discord_desktop") ?? null;
+  const dmInboxVisible = discord.status?.dmInbox.visible === true;
+  const canRelaunchDiscord =
+    discordDesktopAccess?.nextAction === "relaunch_discord";
+  const preferredDiscordDesktopAccess =
+    !dmInboxVisible && canRelaunchDiscord
+      ? discordDesktopAccess
+      : discordDesktopAccess?.active
+        ? discordDesktopAccess
+        : null;
   const preferredAccess =
+    preferredDiscordDesktopAccess ??
     browserAccess.find((access) => access.active) ??
     browserAccess.find((access) => access.available) ??
     discordDesktopAccess ??
@@ -493,11 +503,8 @@ export function DiscordConnectorCard() {
   const available =
     discord.status?.available === true ||
     browserAccess.some((access) => access.available);
-  const canRelaunchDiscord =
-    discordDesktopAccess?.nextAction === "relaunch_discord";
-  const dmInboxVisible = discord.status?.dmInbox.visible === true;
   const visibleDmCount = discord.status?.dmInbox.count ?? 0;
-  const lastError = discord.status?.lastError;
+  const lastError = canRelaunchDiscord ? null : discord.status?.lastError;
   const visibleDmLabels =
     discord.status?.dmInbox.previews
       ?.map((preview) => preview.label)
