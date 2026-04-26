@@ -27,6 +27,7 @@ import {
   authRevokeSession,
   authSetup,
 } from "../../api/auth-client";
+import { useBootConfig } from "../../config/boot-config-react";
 
 function formatRelativeTime(ms: number | null): string {
   if (ms == null) return "local only";
@@ -51,7 +52,7 @@ function DeviceIcon({ userAgent }: { userAgent: string | null }) {
 }
 
 const SECTION_CLASS =
-  "rounded-2xl border border-border/50 bg-bg/40 p-5 shadow-sm space-y-4";
+  "rounded-lg border border-border/50 bg-bg/40 p-4 shadow-sm space-y-4 sm:p-5";
 const SECTION_TITLE_CLASS =
   "flex items-center gap-2 text-sm font-semibold text-foreground/90";
 const DIVIDER_CLASS = "border-t border-border/40";
@@ -91,7 +92,7 @@ type AccessState =
     }
   | { phase: "error"; message: string };
 
-async function loadAccessState(): Promise<AccessState> {
+async function fetchAccessState(): Promise<AccessState> {
   const result = await authMe();
   if (result.ok === true) {
     return {
@@ -117,21 +118,154 @@ async function loadAccessState(): Promise<AccessState> {
   };
 }
 
-function AccessModeSection() {
-  const [state, setState] = useState<AccessState>({ phase: "loading" });
+function parseAbsoluteUrl(value: string | null | undefined): URL | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    return new URL(trimmed);
+  } catch {
+    return null;
+  }
+}
 
-  const load = useCallback(async () => {
-    setState({ phase: "loading" });
-    setState(await loadAccessState());
-  }, []);
+function trimTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+function isLoopbackHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized === "[::1]" ||
+    normalized === "127.0.0.1" ||
+    normalized.startsWith("127.")
+  );
+}
+
+function isAllInterfacesHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized === "0.0.0.0" || normalized === "::" || normalized === "[::]"
+  );
+}
+
+function isPrivateHost(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized.startsWith("10.") ||
+    normalized.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized) ||
+    normalized.endsWith(".local")
+  );
+}
+
+function securitySettingsUrl(origin: string): string {
+  return `${trimTrailingSlash(origin)}/settings#security`;
+}
+
+function describeEndpoint(url: URL): { value: string; detail: string } {
+  if (isAllInterfacesHost(url.hostname)) {
+    return {
+      value: "All interfaces",
+      detail: `${url.host}; use this machine's LAN, tailnet, or tunnel hostname from another device.`,
+    };
+  }
+
+  if (isLoopbackHost(url.hostname)) {
+    return {
+      value: "Loopback only",
+      detail: `${url.host}; reachable from this machine only.`,
+    };
+  }
+
+  if (isPrivateHost(url.hostname)) {
+    return {
+      value: "LAN or tailnet",
+      detail: `${url.host}; reachable where this private network permits.`,
+    };
+  }
+
+  return {
+    value: "Remote URL",
+    detail: `${url.host}; remote browsers can use this address if firewall rules allow it.`,
+  };
+}
+
+function currentPageOrigin(): string | null {
+  if (typeof window === "undefined") return null;
+  const protocol = window.location.protocol;
+  if (protocol !== "http:" && protocol !== "https:") return null;
+  return window.location.origin;
+}
+
+function AccessInfoRow({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: ReactNode;
+  detail: string;
+}) {
+  return (
+    <div className="grid gap-1 border-t border-border/30 py-2.5 first:border-t-0 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-3">
+      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="min-w-0 space-y-0.5">
+        <div className="break-words text-sm font-medium text-foreground/90">
+          {value}
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({
+  children,
+  tone = "neutral",
+}: {
+  children: ReactNode;
+  tone?: "neutral" | "ok" | "warn" | "danger";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex w-fit shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium",
+        tone === "ok" &&
+          "border-[var(--ok-muted)] bg-[var(--ok-subtle)] text-ok",
+        tone === "warn" && "border-warning/40 bg-warning/10 text-warning",
+        tone === "danger" && "border-danger/40 bg-danger/10 text-danger",
+        tone === "neutral" && "border-border/60 bg-bg/70 text-muted-foreground",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function AccessModeSection({
+  state,
+  onRefresh,
+}: {
+  state: AccessState;
+  onRefresh: () => Promise<void>;
+}) {
+  const bootConfig = useBootConfig();
 
   let title = "Checking access";
   let detail = "Confirming how this browser is connected.";
   let status = "Checking";
+  let statusTone: "neutral" | "ok" | "warn" | "danger" = "neutral";
+  let currentBrowserValue: ReactNode = "Checking";
+  let currentBrowserDetail =
+    "Waiting for the auth endpoint to identify this browser.";
+  let remotePasswordValue = "Checking";
+  let remotePasswordDetail =
+    "Waiting for the auth endpoint to report remote password state.";
+  let remotePasswordTone: "neutral" | "ok" | "warn" | "danger" = "neutral";
 
   if (state.phase === "loaded") {
     if (state.access.mode === "local") {
@@ -141,12 +275,25 @@ function AccessModeSection() {
       status = state.access.passwordConfigured
         ? "Remote password set"
         : "Remote password not set";
+      statusTone = state.access.passwordConfigured ? "ok" : "warn";
+      currentBrowserValue = "Local host";
+      currentBrowserDetail =
+        "The current browser is trusted because it is running from localhost or the desktop renderer.";
     } else {
       title = "Remote session";
       detail =
         "This browser is signed in remotely. Localhost and Electrobun still use local access on the host machine.";
       status = "Signed in";
+      statusTone = "ok";
+      currentBrowserValue = "Remote browser";
+      currentBrowserDetail =
+        "This session is authenticated with the configured remote password.";
     }
+    remotePasswordValue = state.access.passwordConfigured ? "Set" : "Not set";
+    remotePasswordDetail = state.access.passwordConfigured
+      ? "Remote browsers can sign in with the configured password."
+      : "Remote browsers cannot sign in until a remote password is set.";
+    remotePasswordTone = state.access.passwordConfigured ? "ok" : "warn";
   } else if (state.phase === "locked") {
     title = "Remote access";
     detail =
@@ -154,16 +301,51 @@ function AccessModeSection() {
         ? "Remote access is disabled until this instance is opened on the host machine and a remote password is set."
         : "Remote access requires a password session.";
     status = state.access?.passwordConfigured ? "Password required" : "Not set";
+    statusTone = state.access?.passwordConfigured ? "warn" : "danger";
+    currentBrowserValue = "Remote browser";
+    currentBrowserDetail =
+      state.reason === "remote_password_not_configured"
+        ? "This browser is remote and no remote password is configured yet."
+        : "This browser is remote and needs a password session.";
+    remotePasswordValue = state.access?.passwordConfigured ? "Set" : "Not set";
+    remotePasswordDetail = state.access?.passwordConfigured
+      ? "Remote password exists; sign in to manage sessions and changes."
+      : "Remote access is disabled until the host machine sets a password.";
+    remotePasswordTone = state.access?.passwordConfigured ? "warn" : "danger";
   } else if (state.phase === "error") {
     title = "Access unavailable";
     detail = state.message;
     status = "Unavailable";
+    statusTone = "danger";
+    currentBrowserValue = "Unavailable";
+    currentBrowserDetail = state.message;
+    remotePasswordValue = "Unavailable";
+    remotePasswordDetail = "The auth endpoint did not return password state.";
+    remotePasswordTone = "danger";
   }
+
+  const pageOrigin = currentPageOrigin();
+  const pageUrl = pageOrigin ? securitySettingsUrl(pageOrigin) : null;
+  const pageEndpoint = parseAbsoluteUrl(pageOrigin);
+  const pageEndpointDescription = pageEndpoint
+    ? describeEndpoint(pageEndpoint)
+    : null;
+  const apiBase =
+    bootConfig.apiBase?.trim() ||
+    (pageOrigin ? trimTrailingSlash(pageOrigin) : null);
+  const apiEndpoint = parseAbsoluteUrl(apiBase);
+  const apiEndpointDescription = apiEndpoint
+    ? describeEndpoint(apiEndpoint)
+    : null;
+  const pageUrlLabel =
+    pageEndpoint && !isLoopbackHost(pageEndpoint.hostname)
+      ? "Remote URL"
+      : "Local URL";
 
   return (
     <SectionShell
       icon={<Shield className="h-4 w-4 opacity-60" />}
-      title="Access mode"
+      title="Access"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-1">
@@ -172,7 +354,7 @@ function AccessModeSection() {
             {detail}
           </p>
         </div>
-        <span className="inline-flex w-fit shrink-0 rounded-full border border-border/60 bg-bg/70 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+        <StatusBadge tone={statusTone}>
           {state.phase === "loading" ? (
             <span className="inline-flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -181,16 +363,53 @@ function AccessModeSection() {
           ) : (
             status
           )}
-        </span>
+        </StatusBadge>
       </div>
-      {state.phase === "loaded" && (
-        <p className="text-xs text-muted-foreground/70">
-          Current identity: {state.identity.displayName}
-        </p>
-      )}
+      <div className="rounded-md border border-border/40 bg-bg/35 px-3">
+        <AccessInfoRow
+          label="Current browser"
+          value={currentBrowserValue}
+          detail={currentBrowserDetail}
+        />
+        <AccessInfoRow
+          label="Local access"
+          value="Enabled"
+          detail="Host-machine localhost and desktop renderer sessions do not require the remote password."
+        />
+        <AccessInfoRow
+          label="Remote password"
+          value={
+            <StatusBadge tone={remotePasswordTone}>
+              {remotePasswordValue}
+            </StatusBadge>
+          }
+          detail={remotePasswordDetail}
+        />
+        {pageUrl && pageEndpointDescription && (
+          <AccessInfoRow
+            label={pageUrlLabel}
+            value={pageUrl}
+            detail={pageEndpointDescription.detail}
+          />
+        )}
+        {apiBase && apiEndpointDescription && (
+          <AccessInfoRow
+            label="API base"
+            value={trimTrailingSlash(apiBase)}
+            detail={`${apiEndpointDescription.value}: ${apiEndpointDescription.detail}`}
+          />
+        )}
+        {state.phase === "loaded" && (
+          <AccessInfoRow
+            label="Identity"
+            value={state.identity.displayName}
+            detail={`Signed in as ${state.identity.kind}.`}
+          />
+        )}
+      </div>
       <button
         type="button"
-        onClick={load}
+        onClick={() => void onRefresh()}
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
         <RefreshCw className="h-3 w-3" />
@@ -372,29 +591,23 @@ type PasswordState =
   | { phase: "success"; message: string }
   | { phase: "error"; message: string };
 
-function RemotePasswordSection() {
+function RemotePasswordSection({
+  accessState,
+  onAccessChanged,
+}: {
+  accessState: AccessState;
+  onAccessChanged: () => Promise<void>;
+}) {
   const displayNameId = useId().replace(/:/g, "");
   const currentPasswordId = useId().replace(/:/g, "");
   const newPasswordId = useId().replace(/:/g, "");
   const confirmPasswordId = useId().replace(/:/g, "");
 
-  const [accessState, setAccessState] = useState<AccessState>({
-    phase: "loading",
-  });
   const [displayName, setDisplayName] = useState("Owner");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [state, setState] = useState<PasswordState>({ phase: "idle" });
-
-  const load = useCallback(async () => {
-    setAccessState({ phase: "loading" });
-    setAccessState(await loadAccessState());
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const loaded = accessState.phase === "loaded" ? accessState : null;
   const setupMode =
@@ -439,20 +652,24 @@ function RemotePasswordSection() {
         return;
       }
 
-      setState({ phase: "success", message: "Remote password saved." });
+      setState({
+        phase: "success",
+        message:
+          "Remote access is enabled. Remote browsers can sign in with this password when they can reach this instance.",
+      });
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      await load();
+      await onAccessChanged();
     },
     [
       confirmPassword,
       currentPassword,
       currentPasswordRequired,
       displayName,
-      load,
       loaded,
       newPassword,
+      onAccessChanged,
       setupMode,
     ],
   );
@@ -614,42 +831,28 @@ function RemotePasswordSection() {
   );
 }
 
-function OwnerBindingsSection() {
-  return (
-    <SectionShell
-      icon={<Shield className="h-4 w-4 opacity-60" />}
-      title="Connector owner bindings"
-    >
-      <p className="text-sm text-muted-foreground">
-        No connector bindings configured. Set up a Discord or Telegram connector
-        in Settings to enable DM-link login.
-      </p>
-    </SectionShell>
-  );
-}
-
-function MachineTokensSection() {
-  return (
-    <SectionShell
-      icon={<KeyRound className="h-4 w-4 opacity-60" />}
-      title="Machine tokens"
-    >
-      <p className="text-sm text-muted-foreground">
-        Machine token management is coming in a future release. Existing
-        CI/pipeline bearer tokens continue to work during the migration window.
-      </p>
-    </SectionShell>
-  );
-}
-
 export function SecuritySettingsSection() {
+  const [accessState, setAccessState] = useState<AccessState>({
+    phase: "loading",
+  });
+
+  const refreshAccessState = useCallback(async () => {
+    setAccessState({ phase: "loading" });
+    setAccessState(await fetchAccessState());
+  }, []);
+
+  useEffect(() => {
+    void refreshAccessState();
+  }, [refreshAccessState]);
+
   return (
     <div className="space-y-4">
-      <AccessModeSection />
-      <RemotePasswordSection />
+      <AccessModeSection state={accessState} onRefresh={refreshAccessState} />
+      <RemotePasswordSection
+        accessState={accessState}
+        onAccessChanged={refreshAccessState}
+      />
       <SessionsSection />
-      <OwnerBindingsSection />
-      <MachineTokensSection />
     </div>
   );
 }
