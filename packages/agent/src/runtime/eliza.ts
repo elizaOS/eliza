@@ -1446,7 +1446,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
       llmText?.smallModel || models?.small || "minimax/minimax-m2.7";
     const medium = llmText?.mediumModel || models?.medium || small;
     const large =
-      llmText?.largeModel || models?.large || "anthropic/claude-sonnet-4.6";
+      llmText?.largeModel || models?.large || "anthropic/claude-opus-4-7";
     const mega = llmText?.megaModel || models?.mega || large;
     const responseHandlerModel =
       llmText?.responseHandlerModel || llmText?.shouldRespondModel;

@@ -405,7 +405,7 @@ const PROVIDER_DEFAULT_MODELS: Record<
     smallKey: "ANTHROPIC_SMALL_MODEL",
     smallVal: "claude-haiku-4-5-20251001",
     largeKey: "ANTHROPIC_LARGE_MODEL",
-    largeVal: "claude-sonnet-4-6",
+    largeVal: "claude-opus-4-7",
   },
   openai: {
     smallKey: "OPENAI_SMALL_MODEL",
