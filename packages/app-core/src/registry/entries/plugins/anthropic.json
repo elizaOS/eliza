@@ -29,7 +29,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "claude-sonnet-4-6",
+      "default": "claude-opus-4-7",
       "label": "Large Model",
       "help": "Override the default Anthropic large model identifier used by the plugin",
       "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
