@@ -36,6 +36,8 @@ import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalLink,
   LifeOpsHealthSignal,
+  LifeOpsInboxChannel,
+  LifeOpsInboxMessage,
   LifeOpsMessageChannel,
   LifeOpsNegotiationState,
   LifeOpsOccurrence,
@@ -173,6 +175,12 @@ export interface LifeOpsSleepEpisodeRecord {
   evidence: LifeOpsSleepCycleEvidence[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
+  cachedAt: string;
+  updatedAt: string;
+  priorityFlags: string[];
 }
 
 function isoNow(): string {
@@ -833,6 +841,69 @@ function parseGmailMessageSummary(
     metadata: parseJsonRecord(row.metadata_json),
     syncedAt: toText(row.synced_at),
     updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseCachedInboxMessage(
+  row: Record<string, unknown>,
+): LifeOpsCachedInboxMessage {
+  const channel = toText(row.channel) as LifeOpsInboxChannel;
+  const externalId = toText(row.external_id);
+  const priorityScore =
+    row.priority_score === null || row.priority_score === undefined
+      ? undefined
+      : toNumber(row.priority_score);
+  const priorityCategory =
+    row.priority_category === null || row.priority_category === undefined
+      ? undefined
+      : toText(row.priority_category);
+  const participantCount =
+    row.participant_count === null || row.participant_count === undefined
+      ? undefined
+      : toNumber(row.participant_count);
+  const sourceRef = parseJsonRecord(row.source_ref_json);
+  const flags = parseJsonArray<string>(row.priority_flags_json).filter(
+    (flag): flag is string => typeof flag === "string",
+  );
+  return {
+    id: toText(row.id),
+    channel,
+    sender: {
+      id: toText(row.sender_id),
+      displayName: toText(row.sender_display),
+      email: row.sender_email ? toText(row.sender_email) : null,
+      avatarUrl: null,
+    },
+    subject: row.subject ? toText(row.subject) : null,
+    snippet: toText(row.snippet),
+    receivedAt: toText(row.received_at),
+    unread: toBoolean(row.is_unread),
+    deepLink: row.deep_link ? toText(row.deep_link) : null,
+    sourceRef: {
+      channel:
+        typeof sourceRef.channel === "string"
+          ? (sourceRef.channel as LifeOpsInboxChannel)
+          : channel,
+      externalId:
+        typeof sourceRef.externalId === "string"
+          ? sourceRef.externalId
+          : externalId,
+    },
+    threadId: row.thread_id ? toText(row.thread_id) : undefined,
+    chatType: toText(row.chat_type, "dm") as LifeOpsInboxMessage["chatType"],
+    participantCount,
+    gmailAccountId: row.gmail_account_id
+      ? toText(row.gmail_account_id)
+      : undefined,
+    gmailAccountEmail: row.gmail_account_email
+      ? toText(row.gmail_account_email)
+      : undefined,
+    priorityScore,
+    priorityCategory:
+      priorityCategory as LifeOpsInboxMessage["priorityCategory"],
+    cachedAt: toText(row.cached_at),
+    updatedAt: toText(row.updated_at),
+    priorityFlags: flags,
   };
 }
 
@@ -3604,6 +3675,108 @@ export class LifeOpsRepository {
     );
     const row = rows[0];
     return row ? parseGmailMessageSummary(row) : null;
+  }
+
+  async upsertCachedInboxMessages(
+    agentId: string,
+    messages: readonly LifeOpsInboxMessage[],
+  ): Promise<void> {
+    if (messages.length === 0) return;
+    const now = isoNow();
+    for (const message of messages) {
+      await executeRawSql(
+        this.runtime,
+        `INSERT INTO life_inbox_messages (
+          id, agent_id, channel, external_id, thread_id, sender_id,
+          sender_display, sender_email, subject, snippet, received_at,
+          is_unread, deep_link, source_ref_json, chat_type, participant_count,
+          gmail_account_id, gmail_account_email, priority_score,
+          priority_category, priority_flags_json, cached_at, updated_at
+        ) VALUES (
+          ${sqlQuote(message.id)},
+          ${sqlQuote(agentId)},
+          ${sqlQuote(message.channel)},
+          ${sqlQuote(message.sourceRef.externalId)},
+          ${sqlText(message.threadId)},
+          ${sqlQuote(message.sender.id)},
+          ${sqlQuote(message.sender.displayName)},
+          ${sqlText(message.sender.email)},
+          ${sqlText(message.subject)},
+          ${sqlQuote(message.snippet)},
+          ${sqlQuote(message.receivedAt)},
+          ${sqlBoolean(message.unread)},
+          ${sqlText(message.deepLink)},
+          ${sqlJson(message.sourceRef)},
+          ${sqlQuote(message.chatType ?? "dm")},
+          ${sqlInteger(message.participantCount)},
+          ${sqlText(message.gmailAccountId)},
+          ${sqlText(message.gmailAccountEmail)},
+          ${sqlInteger(message.priorityScore)},
+          ${sqlText(message.priorityCategory)},
+          ${sqlJson([])},
+          ${sqlQuote(now)},
+          ${sqlQuote(now)}
+        )
+        ON CONFLICT(agent_id, channel, external_id) DO UPDATE SET
+          id = excluded.id,
+          thread_id = excluded.thread_id,
+          sender_id = excluded.sender_id,
+          sender_display = excluded.sender_display,
+          sender_email = excluded.sender_email,
+          subject = excluded.subject,
+          snippet = excluded.snippet,
+          received_at = excluded.received_at,
+          is_unread = excluded.is_unread,
+          deep_link = excluded.deep_link,
+          source_ref_json = excluded.source_ref_json,
+          chat_type = excluded.chat_type,
+          participant_count = excluded.participant_count,
+          gmail_account_id = excluded.gmail_account_id,
+          gmail_account_email = excluded.gmail_account_email,
+          priority_score = COALESCE(excluded.priority_score, life_inbox_messages.priority_score),
+          priority_category = COALESCE(excluded.priority_category, life_inbox_messages.priority_category),
+          priority_flags_json = CASE
+            WHEN excluded.priority_score IS NULL THEN life_inbox_messages.priority_flags_json
+            ELSE excluded.priority_flags_json
+          END,
+          cached_at = excluded.cached_at,
+          updated_at = excluded.updated_at`,
+      );
+    }
+  }
+
+  async listCachedInboxMessages(
+    agentId: string,
+    options?: {
+      channels?: readonly LifeOpsInboxChannel[];
+      maxResults?: number;
+      gmailAccountId?: string;
+    },
+  ): Promise<LifeOpsCachedInboxMessage[]> {
+    const channelClause =
+      options?.channels && options.channels.length > 0
+        ? `AND channel IN (${options.channels
+            .map((channel) => sqlQuote(channel))
+            .join(", ")})`
+        : "";
+    const gmailAccountClause = options?.gmailAccountId
+      ? `AND gmail_account_id = ${sqlQuote(options.gmailAccountId)}`
+      : "";
+    const limit =
+      options?.maxResults !== undefined && Number.isFinite(options.maxResults)
+        ? Math.max(1, Math.floor(options.maxResults))
+        : 500;
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_inbox_messages
+        WHERE agent_id = ${sqlQuote(agentId)}
+          ${channelClause}
+          ${gmailAccountClause}
+        ORDER BY received_at DESC
+        LIMIT ${sqlInteger(limit)}`,
+    );
+    return rows.map(parseCachedInboxMessage);
   }
 
   async deleteGmailMessages(

@@ -9,6 +9,8 @@
  * bounce through a second planner pass before reaching the owning behavior.
  */
 
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -19,24 +21,26 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { buildUtcDateFromLocalParts, getZonedDateParts } from "../lifeops/time.js";
+import {
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../lifeops/time.js";
+import { calendarAction } from "./calendar.js";
+import { calendlyAction } from "./calendly.js";
 import {
   formatCalendarEventDateTime,
   hasLifeOpsAccess,
   INTERNAL_URL,
 } from "./lifeops-google-helpers.js";
-import { calendarAction } from "./calendar.js";
 import {
   checkAvailabilityAction,
   proposeMeetingTimesAction,
   schedulingAction,
   updateMeetingPreferencesAction,
 } from "./scheduling.js";
-import { calendlyAction } from "./calendly.js";
 
 type OwnerCalendarSubaction =
   // Google Calendar
@@ -111,9 +115,11 @@ interface OwnerCalendarParameters {
   [key: string]: unknown;
 }
 
-function getParams(options: HandlerOptions | undefined): OwnerCalendarParameters {
-  return ((options?.parameters as OwnerCalendarParameters | undefined) ?? {}) as
-    OwnerCalendarParameters;
+function getParams(
+  options: HandlerOptions | undefined,
+): OwnerCalendarParameters {
+  return ((options?.parameters as OwnerCalendarParameters | undefined) ??
+    {}) as OwnerCalendarParameters;
 }
 
 /**
@@ -121,9 +127,7 @@ function getParams(options: HandlerOptions | undefined): OwnerCalendarParameters
  * action expects. We pass through the rest of `parameters` unchanged so every
  * handler reads its own inputs.
  */
-function translateSubaction(
-  subaction: OwnerCalendarSubaction,
-): {
+function translateSubaction(subaction: OwnerCalendarSubaction): {
   target:
     | "calendar"
     | "bulk_reschedule"
@@ -204,9 +208,7 @@ const VALID_SUBACTIONS: readonly OwnerCalendarSubaction[] = [
   "negotiate_cancel",
 ];
 
-function normalizeSubaction(
-  value: unknown,
-): OwnerCalendarSubaction | null {
+function normalizeSubaction(value: unknown): OwnerCalendarSubaction | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
   return (VALID_SUBACTIONS as readonly string[]).includes(normalized)
@@ -229,7 +231,10 @@ function extractBulkRescheduleCohortLabel(text: string): string | null {
   return raw.replace(/\s+/gu, " ").trim();
 }
 
-function buildBulkRescheduleLookupWindow(timeZone: string, text: string): {
+function buildBulkRescheduleLookupWindow(
+  timeZone: string,
+  text: string,
+): {
   timeMin: string;
   timeMax: string;
   scopeLabel: string;
@@ -263,7 +268,9 @@ function buildBulkRescheduleLookupWindow(timeZone: string, text: string): {
     };
   }
 
-  const fortyFiveDaysOut = new Date(startOfToday.getTime() + 45 * 24 * 60 * 60_000);
+  const fortyFiveDaysOut = new Date(
+    startOfToday.getTime() + 45 * 24 * 60 * 60_000,
+  );
   return {
     timeMin: startOfToday.toISOString(),
     timeMax: fortyFiveDaysOut.toISOString(),
@@ -414,8 +421,11 @@ async function route(
   const forwardedOptions: HandlerOptions = {
     ...(options ?? {}),
     parameters: innerSubaction
-      ? (({ ...params, subaction: innerSubaction } as unknown) as HandlerOptions["parameters"])
-      : ((params as unknown) as HandlerOptions["parameters"]),
+      ? ({
+          ...params,
+          subaction: innerSubaction,
+        } as unknown as HandlerOptions["parameters"])
+      : (params as unknown as HandlerOptions["parameters"]),
   };
 
   switch (target) {
@@ -594,7 +604,10 @@ export const ownerCalendarAction: Action & {
   descriptionCompressed:
     "Owner calendar umbrella: Google Calendar + Calendly + availability + meeting preferences + negotiation, routed via `subaction`.",
   suppressPostActionContinuation: true,
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     // Union of old validators: negotiation + calendly require admin, calendar +
     // scheduling-lite require lifeops access. The umbrella gates on either —
     // the per-target handler re-checks its own stricter access before acting.
@@ -694,13 +707,15 @@ export const ownerCalendarAction: Action & {
     },
     {
       name: "slotCount",
-      description: "Number of candidate slots for propose_times (defaults to 3).",
+      description:
+        "Number of candidate slots for propose_times (defaults to 3).",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "windowStart",
-      description: "ISO-8601 earliest start of the propose_times search window.",
+      description:
+        "ISO-8601 earliest start of the propose_times search window.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -788,7 +803,10 @@ export const ownerCalendarAction: Action & {
       name: "response",
       description: "Proposal response: accepted, declined, or expired.",
       required: false,
-      schema: { type: "string" as const, enum: ["accepted", "declined", "expired"] },
+      schema: {
+        type: "string" as const,
+        enum: ["accepted", "declined", "expired"],
+      },
     },
     {
       name: "confirmed",
@@ -882,7 +900,9 @@ export const ownerCalendarAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Propose three 30-minute slots for a sync with Marco next week." },
+        content: {
+          text: "Propose three 30-minute slots for a sync with Marco next week.",
+        },
       },
       {
         name: "{{agentName}}",

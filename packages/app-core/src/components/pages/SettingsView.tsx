@@ -23,6 +23,7 @@ import {
   Brain,
   Download,
   KeyRound,
+  LayoutGrid,
   type LucideIcon,
   Palette,
   RefreshCw,
@@ -43,6 +44,7 @@ import {
 } from "react";
 import { useApp } from "../../state";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
@@ -215,6 +217,27 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     ],
   },
   {
+    id: "apps",
+    label: "settings.sections.apps.label",
+    defaultLabel: "Apps",
+    icon: LayoutGrid,
+    description: "settings.sections.apps.desc",
+    defaultDescription:
+      "Installed apps, launching, relaunching, editing, and creating new ones.",
+    keywords: [
+      "apps",
+      "app",
+      "launch",
+      "relaunch",
+      "stop",
+      "edit",
+      "scaffold",
+      "create app",
+      "install",
+      "directory",
+    ],
+  },
+  {
     id: "wallet-rpc",
     label: "settings.sections.walletrpc.label",
     defaultLabel: "Wallet & RPC",
@@ -258,7 +281,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Security",
     icon: KeyRound,
     description: "settings.sections.security.desc",
-    defaultDescription: "Local access, remote password, sessions, and tokens.",
+    defaultDescription: "Local access, remote password, and sessions.",
     keywords: [
       "security",
       "auth",
@@ -266,7 +289,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "remote",
       "session",
       "login",
-      "token",
       "owner",
     ],
     keywordKeys: ["settings.keyword.security"],
@@ -1103,6 +1125,22 @@ export function SettingsView({
         </SettingsSection>
       )}
 
+      {visibleSectionIds.has("apps") && (
+        <SettingsSection
+          id="apps"
+          title={t("settings.sections.apps.label", {
+            defaultValue: "Apps",
+          })}
+          description={t("settings.sections.apps.desc", {
+            defaultValue:
+              "Installed apps, launching, relaunching, editing, and creating new ones.",
+          })}
+          ref={registerContentItem("apps")}
+        >
+          <AppsManagementSection />
+        </SettingsSection>
+      )}
+
       {visibleSectionIds.has("wallet-rpc") && (
         <SettingsSection
           id="wallet-rpc"
@@ -1141,8 +1179,7 @@ export function SettingsView({
             defaultValue: "Security",
           })}
           description={t("settings.sections.security.desc", {
-            defaultValue:
-              "Local access, remote password, sessions, and tokens.",
+            defaultValue: "Local access, remote password, and sessions.",
           })}
           ref={registerContentItem("security")}
         >

@@ -18,7 +18,7 @@ import type {
   MediaConfig,
   VideoConfig,
   VisionConfig,
-} from "@elizaos/agent";
+} from "../config/types.eliza.js";
 
 // ============================================================================
 // Fetch Utilities
@@ -1236,7 +1236,7 @@ export class AnthropicVisionProvider implements VisionAnalysisProvider {
       throw new Error(`${this.name} API key is required`);
     }
     this.apiKey = config.apiKey;
-    this.model = config.model ?? "claude-sonnet-4-6";
+    this.model = config.model ?? "claude-opus-4-7";
   }
 
   async analyze(

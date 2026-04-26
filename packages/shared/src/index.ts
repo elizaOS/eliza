@@ -7,43 +7,8 @@
 
 // Leaf modules (no internal collisions)
 export * from "./app-hero-art";
-export * from "./connectors";
-export * from "./env-utils";
-export * from "./runtime-env";
-export * from "./restart";
-export * from "./spoken-text";
-export * from "./type-guards";
-export * from "./recent-messages-state";
-export * from "./validation-keywords";
-export * from "./dev-settings-table";
-export * from "./dev-settings-banner-style";
-export * from "./onboarding-presets";
-export * from "./onboarding-presets.characters";
-
 // Awareness + themes barrels
 export * from "./awareness";
-export * from "./themes";
-
-// `eliza-core-roles` is intentionally NOT re-exported from this barrel.
-// It pulls runtime imports (`logger`, `createUniqueUuid`) from `@elizaos/core`,
-// which would drag the entire `@elizaos/core` source graph (plugin-sql,
-// transformers, onnxruntime) into every consumer of `@elizaos/shared`.
-// Callers that need the vendored role helpers must import them through the
-// dedicated subpath: `import { ROLE_RANK } from "@elizaos/shared/eliza-core-roles"`.
-
-// Settings debug helpers
-export {
-  isElizaSettingsDebugEnabled,
-  sanitizeForSettingsDebug,
-  settingsDebugCloudSummary,
-} from "./settings-debug";
-
-// Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
-// drop/inbox/onboarding/permissions/service-routing/verification/wallet.
-// `contracts/theme` is intentionally NOT pulled in here; it reaches the public
-// surface through `./themes`, which already re-exports the same identifiers.
-export * from "./contracts";
-
 // Config barrel — collides with `contracts/inbox` on `InboxAutoReplyConfig`
 // and `InboxTriageRules`. Surface those config-level shapes under aliased
 // names; the canonical shapes remain in `./contracts`.
@@ -122,11 +87,11 @@ export type {
   HooksConfig,
   HooksGmailConfig,
   HooksGmailTailscaleMode,
+  InboundDebounceByProvider,
+  InboundDebounceConfig,
   // Aliased to avoid collision with the canonical contracts/inbox versions.
   InboxAutoReplyConfig as AgentDefaultsInboxAutoReplyConfig,
   InboxTriageRules as AgentDefaultsInboxTriageRules,
-  InboundDebounceByProvider,
-  InboundDebounceConfig,
   InternalHookHandlerConfig,
   InternalHooksConfig,
   KnowledgeConfig,
@@ -167,9 +132,9 @@ export type {
   PgliteConfig,
   PluginEntryConfig,
   PluginInstallRecord,
+  PluginSlotsConfig,
   PluginsConfig,
   PluginsLoadConfig,
-  PluginSlotsConfig,
   PostgresCredentials,
   QueueConfig,
   QueueDropPolicy,
@@ -195,3 +160,33 @@ export type {
   WebReconnectConfig,
   X402Config,
 } from "./config/types";
+export * from "./connectors";
+// Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
+// drop/inbox/onboarding/permissions/service-routing/verification/wallet.
+// `contracts/theme` is intentionally NOT pulled in here; it reaches the public
+// surface through `./themes`, which already re-exports the same identifiers.
+export * from "./contracts";
+export * from "./dev-settings-banner-style";
+export * from "./dev-settings-table";
+// `eliza-core-roles` is intentionally NOT re-exported from this barrel.
+// It pulls runtime imports (`logger`, `createUniqueUuid`) from `@elizaos/core`,
+// which would drag the entire `@elizaos/core` source graph (plugin-sql,
+// transformers, onnxruntime) into every consumer of `@elizaos/shared`.
+// Callers that need the vendored role helpers must import them through the
+// dedicated subpath: `import { ROLE_RANK } from "@elizaos/shared/eliza-core-roles"`.
+export * from "./env-utils";
+export * from "./onboarding-presets";
+export * from "./onboarding-presets.characters";
+export * from "./recent-messages-state";
+export * from "./restart";
+export * from "./runtime-env";
+// Settings debug helpers
+export {
+  isElizaSettingsDebugEnabled,
+  sanitizeForSettingsDebug,
+  settingsDebugCloudSummary,
+} from "./settings-debug";
+export * from "./spoken-text";
+export * from "./themes";
+export * from "./type-guards";
+export * from "./validation-keywords";

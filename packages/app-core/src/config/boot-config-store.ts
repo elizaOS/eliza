@@ -12,7 +12,7 @@
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/app-lifeops";
+} from "@elizaos/app-lifeops/types";
 import type {
   StewardApprovalActionResponse,
   StewardPendingApproval,

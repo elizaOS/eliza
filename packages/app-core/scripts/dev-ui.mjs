@@ -14,21 +14,17 @@
  *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
  */
 import { execFileSync, execSync, spawn } from "node:child_process";
-import {
-  existsSync,
-  readFileSync,
-  realpathSync,
-} from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import * as JSON5Module from "json5";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
 } from "@elizaos/shared/runtime-env";
+import * as JSON5Module from "json5";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import { coerceBoolean } from "./lib/dev-ui-onchain.mjs";
@@ -112,7 +108,7 @@ const _capacitorPluginNamesPath = resolveCapacitorPluginNamesPath(
   process.cwd(),
 );
 const { CAPACITOR_PLUGIN_NAMES, NATIVE_PLUGINS_ROOT } = await import(
-  pathToFileURL(_capacitorPluginNamesPath).href,
+  pathToFileURL(_capacitorPluginNamesPath).href
 );
 
 syncElizaEnvAliases();
@@ -141,11 +137,7 @@ function getCliName() {
       if (pkg.name) {
         let name = pkg.name;
         if (name.startsWith("@")) name = name.split("/")[1];
-        if (
-          name === "elizaai" ||
-          name === "eliza-ai" ||
-          name.includes("eliza")
-        )
+        if (name === "elizaai" || name === "eliza-ai" || name.includes("eliza"))
           return "eliza";
         if (name === "elizaos" || name.includes("eliza")) return "eliza";
         return name;
@@ -711,12 +703,7 @@ try {
   });
 } catch (error) {
   process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
-  console.warn(
-    buildVisionDepsFailureMessage(
-      error,
-      visionDepsRetryCommand,
-    ),
-  );
+  console.warn(buildVisionDepsFailureMessage(error, visionDepsRetryCommand));
 }
 
 if (!uiOnly) {
@@ -839,8 +826,9 @@ function startVite() {
   viteProcess.stdout.on("data", (data) => {
     const text = data.toString();
     if (text.includes("ready")) {
+      const securitySettingsUrl = `http://localhost:${UI_PORT}/settings#security`;
       console.log(
-        `\n  ${green(logPrefix)} ${orange(`http://localhost:${UI_PORT}/`)}\n  ${green(logPrefix)} ${dim("Local access: no password required on this machine")}\n  ${green(logPrefix)} ${dim("Remote access: set a password in Settings > Security")}\n`,
+        `\n  ${green(logPrefix)} ${orange(`http://localhost:${UI_PORT}/`)}\n  ${green(logPrefix)} ${dim("Local access: no password required on this machine")}\n  ${green(logPrefix)} ${dim(`Security settings: ${securitySettingsUrl}`)}\n`,
       );
     }
   });

@@ -48,7 +48,7 @@ import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,
 } from "./components/workspace/AppWorkspaceChrome";
-import { useBootConfig } from "./config";
+import { useBootConfig } from "./config/boot-config-react";
 import {
   BugReportProvider,
   useBugReportState,

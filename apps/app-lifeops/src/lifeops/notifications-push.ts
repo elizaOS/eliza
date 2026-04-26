@@ -1,5 +1,5 @@
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -115,7 +115,11 @@ export async function sendPush(
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.error(
-      { boundary: "lifeops", integration: "ntfy", err: error instanceof Error ? error : undefined },
+      {
+        boundary: "lifeops",
+        integration: "ntfy",
+        err: error instanceof Error ? error : undefined,
+      },
       `[lifeops-push] Ntfy publish failed: ${msg}`,
     );
     span.failure({ error, errorKind: "network_error" });
@@ -137,9 +141,8 @@ export async function sendPush(
     id?: string;
     time?: number;
   };
-  const messageId = typeof data.id === "string" && data.id.length > 0
-    ? data.id
-    : null;
+  const messageId =
+    typeof data.id === "string" && data.id.length > 0 ? data.id : null;
   const deliveredAt = data.time
     ? new Date(data.time * 1000).toISOString()
     : new Date().toISOString();

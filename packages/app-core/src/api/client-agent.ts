@@ -5,18 +5,16 @@
 
 import type {
   AllPermissionsState,
+  OnboardingConnectorConfig as ConnectorConfig,
+  OnboardingOptions,
   PermissionState,
+  SubscriptionStatusResponse,
   SystemPermissionId,
-} from "@elizaos/agent";
+} from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
-} from "@elizaos/shared";
-import type {
-  OnboardingConnectorConfig as ConnectorConfig,
-  OnboardingOptions,
-  SubscriptionStatusResponse,
 } from "@elizaos/shared";
 import {
   type AppBlockerInstalledApp,

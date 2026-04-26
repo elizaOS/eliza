@@ -25,7 +25,7 @@ import {
   loadTrainingConfig,
   saveTrainingConfig,
   type TrainingConfig,
-} from "@elizaos/app-training";
+} from "@elizaos/app-training/core/training-config";
 import type {
   Action,
   ActionExample,

@@ -22,6 +22,7 @@ const { clientMock } = vi.hoisted(() => ({
 
 vi.mock("@elizaos/app-core", () => ({
   Button: "button",
+  client: clientMock,
   SegmentedControl: ({
     items,
     onValueChange,
@@ -48,10 +49,6 @@ vi.mock("@elizaos/app-core", () => ({
     t: (_key: string, opts?: { defaultValue?: string }) =>
       opts?.defaultValue ?? _key,
   }),
-}));
-
-vi.mock("@elizaos/app-core/api", () => ({
-  client: clientMock,
 }));
 
 vi.mock("../hooks/useGoogleLifeOpsConnector", () => ({

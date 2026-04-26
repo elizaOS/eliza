@@ -1,15 +1,3 @@
-export * from "./components/AppBlockerSettingsCard.tsx";
-// UI page views
-export {
-  BrowserBridgeSetupPanel,
-  BrowserBridgeSetupPanel as LifeOpsBrowserSetupPanel,
-} from "./components/BrowserBridgeSetupPanel.tsx";
-export { LifeOpsActivitySignalsEffect } from "./components/LifeOpsActivitySignalsEffect.tsx";
-export * from "./components/LifeOpsPageSections.tsx";
-export * from "./components/LifeOpsPageView.tsx";
-export * from "./components/LifeOpsSettingsSection.tsx";
-export * from "./components/LifeOpsWorkspaceView.tsx";
-export * from "./components/WebsiteBlockerSettingsCard.tsx";
 export * from "./contracts/index.ts";
 export { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.ts";
 export * from "./platform/index.ts";
@@ -22,13 +10,10 @@ export {
   appLifeOpsPlugin,
   BrowserBridgePluginService,
   browserBridgeProvider,
-  calendarAction,
   ensureLifeOpsSchedulerTask,
   executeLifeOpsSchedulerTask,
-  gmailAction,
   handleLifeOpsRoutes,
   handleWebsiteBlockerRoutes,
-  inboxAction,
   inboxTriageProvider,
   LIFEOPS_TASK_INTERVAL_MS,
   LIFEOPS_TASK_JITTER_MS,
@@ -45,6 +30,9 @@ export {
   type CloudFeaturesRouteState,
   handleCloudFeaturesRoute,
 } from "./routes/cloud-features-routes.ts";
+export { calendarAction } from "./actions/calendar.ts";
+export { gmailAction } from "./actions/gmail.ts";
+export { inboxAction } from "./actions/inbox.ts";
 export { lifeopsPlugin } from "./routes/plugin.ts";
 export {
   handleTravelProviderRelayRoute,

@@ -1,1 +1,1 @@
-export * from "@elizaos/app-lifeops";
+export * from "@elizaos/app-lifeops/contracts";

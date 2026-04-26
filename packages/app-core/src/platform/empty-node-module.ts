@@ -30,6 +30,11 @@ export const hasAdminAccess = async () => false;
 export const hasOwnerAccess = async () => false;
 export const hasPrivateAccess = async () => false;
 export const extractActionParamsViaLlm = async () => ({});
+export const loadElizaConfig = () => ({
+  agents: {},
+  meta: {},
+  ui: {},
+});
 
 export class TelegramClient {}
 export const Api = {};

@@ -7,6 +7,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { recordExperienceAction } from "../../../typescript/src/features/advanced-capabilities/experience/actions/record-experience.ts";
 import { experienceEvaluator } from "../../../typescript/src/features/advanced-capabilities/experience/evaluators/experienceEvaluator.ts";
 import { ExperienceService } from "../../../typescript/src/features/advanced-capabilities/experience/service.ts";
 import {
@@ -20,6 +21,7 @@ type Extraction = {
   learning: string;
   context: string;
   confidence: number;
+  reasoning?: string;
 };
 
 type RuntimeHarness = {
@@ -56,10 +58,18 @@ type ExpectedRecordedExperience = Partial<
     | "learning"
     | "outcome"
     | "result"
+    | "sourceRoomId"
+    | "sourceTriggerMessageId"
+    | "sourceTrajectoryId"
+    | "sourceTrajectoryStepId"
     | "tags"
     | "type"
   >
->;
+> & {
+  extractionMethod?: string;
+  extractionReason?: string;
+  sourceMessageCount?: number;
+};
 
 type ExtractionScenario = {
   name: string;
@@ -333,6 +343,27 @@ function expectExperienceToMatch(
   if (expected.result !== undefined) {
     expect(actual.result).toBe(expected.result);
   }
+  if (expected.extractionMethod !== undefined) {
+    expect(actual.extractionMethod).toBe(expected.extractionMethod);
+  }
+  if (expected.extractionReason !== undefined) {
+    expect(actual.extractionReason).toBe(expected.extractionReason);
+  }
+  if (expected.sourceMessageCount !== undefined) {
+    expect(actual.sourceMessageIds).toHaveLength(expected.sourceMessageCount);
+  }
+  if (expected.sourceRoomId !== undefined) {
+    expect(actual.sourceRoomId).toBe(expected.sourceRoomId);
+  }
+  if (expected.sourceTriggerMessageId !== undefined) {
+    expect(actual.sourceTriggerMessageId).toBe(expected.sourceTriggerMessageId);
+  }
+  if (expected.sourceTrajectoryId !== undefined) {
+    expect(actual.sourceTrajectoryId).toBe(expected.sourceTrajectoryId);
+  }
+  if (expected.sourceTrajectoryStepId !== undefined) {
+    expect(actual.sourceTrajectoryStepId).toBe(expected.sourceTrajectoryStepId);
+  }
   if (expected.tags !== undefined) {
     expect(actual.tags).toEqual(expected.tags);
   }
@@ -376,6 +407,8 @@ describe("Experience Capture E2E", () => {
               "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
             context: "Debugging a local Python script failure.",
             confidence: 0.92,
+            reasoning:
+              "The agent corrected a failed command by installing a missing dependency.",
           },
         ],
         expectedRecordedDelta: 1,
@@ -391,6 +424,10 @@ describe("Experience Capture E2E", () => {
             outcome: OutcomeType.POSITIVE,
             result:
               "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
+            extractionMethod: "experience_evaluator",
+            extractionReason:
+              "The agent corrected a failed command by installing a missing dependency.",
+            sourceMessageCount: 3,
             tags: ["extracted", "novel", ExperienceType.CORRECTION],
             type: ExperienceType.CORRECTION,
           },
@@ -656,5 +693,67 @@ describe("Experience Capture E2E", () => {
 
     expect(hits).toBe(3);
     expect(`${hits}/${retrievalCases.length}`).toBe("3/3");
+  });
+
+  it("sanitizes explicit record requests, records provenance, and dedupes repeats", async () => {
+    const harness = createExperienceRuntimeHarness();
+    const explicitRuntime = harness.runtime;
+    const explicitService = harness.service;
+    await flushServiceLoad();
+
+    try {
+      const roomId = nextUuid("explicit-experience-room");
+      const userId = nextUuid("explicit-experience-user");
+      const message = makeMessage(
+        roomId,
+        userId,
+        "Please record this experience: redact /Users/shawwalters/secrets.env and shaw@example.com before saving debug notes.",
+      );
+      message.metadata = {
+        ...(message.metadata ?? {}),
+        trajectoryStepId: "explicit-step-001",
+      };
+
+      const result = await recordExperienceAction.handler(
+        explicitRuntime as never,
+        message,
+        {
+          text: "Manual review from /Users/shawwalters/project",
+        } as never,
+      );
+      expect(result.success).toBe(true);
+
+      const recorded = await explicitService.listExperiences({ limit: 10 });
+      expect(recorded).toHaveLength(1);
+      expect(recorded[0]).toMatchObject({
+        action: "explicit_record_request",
+        context: "Manual review from /Users/[USER]/project",
+        extractionMethod: "record_experience_action",
+        learning:
+          "redact /Users/[USER]/secrets.env and [EMAIL] before saving debug notes.",
+        sourceRoomId: roomId,
+        sourceTriggerMessageId: message.id,
+        sourceTrajectoryStepId: "explicit-step-001",
+        tags: ["manual", "explicit"],
+      });
+      expect(recorded[0]?.sourceMessageIds).toEqual([message.id]);
+
+      const duplicate = makeMessage(
+        roomId,
+        userId,
+        "Record experience: redact /Users/shawwalters/secrets.env and shaw@example.com before saving debug notes.",
+      );
+      const duplicateResult = await recordExperienceAction.handler(
+        explicitRuntime as never,
+        duplicate,
+        { text: "Manual review" } as never,
+      );
+      expect(duplicateResult.data?.duplicate).toBe(true);
+      await expect(
+        explicitService.listExperiences({ limit: 10 }),
+      ).resolves.toHaveLength(1);
+    } finally {
+      await explicitService.stop();
+    }
   });
 });

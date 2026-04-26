@@ -5,6 +5,7 @@
  * delegates to {@link DossierService}. The action owns no business logic.
  */
 
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -14,13 +15,12 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
-  DossierService,
-  getRelationshipsServiceLike,
   type CalendarFeedProviderLike,
   type DossierResult,
+  DossierService,
+  getRelationshipsServiceLike,
 } from "./service.js";
 
 type GenerateDossierParams = {

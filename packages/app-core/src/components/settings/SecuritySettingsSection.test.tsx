@@ -1,9 +1,4 @@
 // @vitest-environment jsdom
-/**
- * Unit tests for SecuritySettingsSection — sessions list and revoke.
- *
- * Network calls are mocked via vi.mock so no backend is needed.
- */
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -25,6 +20,11 @@ import {
   authRevokeSession,
   authSetup,
 } from "../../api/auth-client";
+import {
+  type AppBootConfig,
+  DEFAULT_BOOT_CONFIG,
+} from "../../config/boot-config";
+import { AppBootContext } from "../../config/boot-config-react";
 import { SecuritySettingsSection } from "./SecuritySettingsSection";
 
 const mockAuthMe = authMe as ReturnType<typeof vi.fn>;
@@ -35,6 +35,23 @@ const mockRevoke = authRevokeSession as ReturnType<typeof vi.fn>;
 
 afterEach(cleanup);
 afterEach(() => vi.clearAllMocks());
+
+function renderSecuritySettings(bootConfig: Partial<AppBootConfig> = {}) {
+  return render(
+    <AppBootContext.Provider
+      value={{
+        ...DEFAULT_BOOT_CONFIG,
+        ...bootConfig,
+        branding: {
+          ...DEFAULT_BOOT_CONFIG.branding,
+          ...bootConfig.branding,
+        },
+      }}
+    >
+      <SecuritySettingsSection />
+    </AppBootContext.Provider>,
+  );
+}
 
 beforeEach(() => {
   mockAuthMe.mockResolvedValue({
@@ -79,7 +96,7 @@ const MOCK_SESSION_B = {
 describe("SecuritySettingsSection — sessions list", () => {
   it("shows loading state initially", () => {
     mockListSessions.mockReturnValue(new Promise(() => {})); // never resolves
-    render(<SecuritySettingsSection />);
+    renderSecuritySettings();
     expect(screen.getByText(/loading sessions/i)).toBeDefined();
   });
 
@@ -88,7 +105,7 @@ describe("SecuritySettingsSection — sessions list", () => {
       ok: true,
       sessions: [MOCK_SESSION_A, MOCK_SESSION_B],
     });
-    render(<SecuritySettingsSection />);
+    renderSecuritySettings();
     await waitFor(() =>
       expect(screen.queryByText(/loading sessions/i)).toBeNull(),
     );
@@ -106,16 +123,16 @@ describe("SecuritySettingsSection — sessions list", () => {
       ok: true,
       sessions: [MOCK_SESSION_A],
     });
-    render(<SecuritySettingsSection />);
+    renderSecuritySettings();
     await waitFor(() =>
       expect(screen.queryByText(/loading sessions/i)).toBeNull(),
     );
-    expect(screen.getByText(/this session/i)).toBeDefined();
+    expect(screen.getByText(/^this session$/i)).toBeDefined();
   });
 
   it("shows error message when list fails", async () => {
     mockListSessions.mockResolvedValue({ ok: false, status: 401 });
-    render(<SecuritySettingsSection />);
+    renderSecuritySettings();
     await waitFor(() =>
       expect(screen.getByText(/you must be signed in/i)).toBeDefined(),
     );
@@ -131,7 +148,7 @@ describe("SecuritySettingsSection — sessions list", () => {
     mockRevoke.mockResolvedValue({ ok: true });
 
     const user = userEvent.setup();
-    render(<SecuritySettingsSection />);
+    renderSecuritySettings();
 
     await waitFor(() =>
       expect(screen.queryByText(/loading sessions/i)).toBeNull(),
@@ -146,7 +163,7 @@ describe("SecuritySettingsSection — sessions list", () => {
 
   it("shows no sessions message when list is empty", async () => {
     mockListSessions.mockResolvedValue({ ok: true, sessions: [] });
-    render(<SecuritySettingsSection />);
+    renderSecuritySettings();
     await waitFor(() =>
       expect(screen.getByText(/no active sessions/i)).toBeDefined(),
     );
@@ -159,11 +176,11 @@ describe("SecuritySettingsSection — password change section", () => {
   });
 
   it("renders local remote-password setup without current password", async () => {
-    render(<SecuritySettingsSection />);
+    renderSecuritySettings();
     await waitFor(() =>
       expect(screen.queryByText(/loading sessions/i)).toBeNull(),
     );
-    expect(screen.getByText(/local access/i)).toBeDefined();
+    expect(screen.getAllByText(/local access/i).length).toBeGreaterThan(0);
     expect(screen.queryByLabelText(/current password/i)).toBeNull();
     expect(screen.getByLabelText(/display name/i)).toBeDefined();
     expect(screen.getByLabelText(/^new password$/i)).toBeDefined();
@@ -171,7 +188,7 @@ describe("SecuritySettingsSection — password change section", () => {
   });
 
   it("set button is disabled when fields are empty", async () => {
-    render(<SecuritySettingsSection />);
+    renderSecuritySettings();
     await waitFor(() =>
       expect(screen.queryByText(/loading sessions/i)).toBeNull(),
     );
@@ -186,7 +203,28 @@ describe("SecuritySettingsSection — password change section", () => {
 
   it("calls setup when no owner exists on local access", async () => {
     const user = userEvent.setup();
-    render(<SecuritySettingsSection />);
+    mockAuthMe
+      .mockResolvedValueOnce({
+        ok: true,
+        identity: { id: "owner-1", displayName: "Owner", kind: "owner" },
+        session: { id: "local-loopback", kind: "local", expiresAt: null },
+        access: {
+          mode: "local",
+          passwordConfigured: false,
+          ownerConfigured: false,
+        },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        identity: { id: "owner-1", displayName: "Admin", kind: "owner" },
+        session: { id: "local-loopback", kind: "local", expiresAt: null },
+        access: {
+          mode: "local",
+          passwordConfigured: true,
+          ownerConfigured: true,
+        },
+      });
+    renderSecuritySettings();
     await waitFor(() =>
       expect(screen.queryByText(/loading password settings/i)).toBeNull(),
     );
@@ -211,6 +249,9 @@ describe("SecuritySettingsSection — password change section", () => {
         password: "new secure password 1!",
       }),
     );
+    await waitFor(() =>
+      expect(screen.getByText(/remote access is enabled/i)).toBeDefined(),
+    );
   });
 
   it("requires current password for remote sessions", async () => {
@@ -229,10 +270,34 @@ describe("SecuritySettingsSection — password change section", () => {
       },
     });
 
-    render(<SecuritySettingsSection />);
+    renderSecuritySettings();
     await waitFor(() =>
       expect(screen.queryByText(/loading password settings/i)).toBeNull(),
     );
     expect(screen.getByLabelText(/current password/i)).toBeDefined();
+  });
+
+  it("shows concrete access and API base details", async () => {
+    renderSecuritySettings({ apiBase: "http://0.0.0.0:31337" });
+    await waitFor(() =>
+      expect(screen.queryByText(/loading password settings/i)).toBeNull(),
+    );
+
+    expect(screen.getByText("Current browser")).toBeDefined();
+    expect(screen.getByText("Local host")).toBeDefined();
+    expect(screen.getByText("Local URL")).toBeDefined();
+    expect(screen.getByText("http://0.0.0.0:31337")).toBeDefined();
+    expect(screen.getByText(/All interfaces: 0.0.0.0:31337/)).toBeDefined();
+  });
+
+  it("does not render unsupported placeholder panels", async () => {
+    renderSecuritySettings();
+    await waitFor(() =>
+      expect(screen.queryByText(/loading password settings/i)).toBeNull(),
+    );
+
+    expect(screen.queryByText(/machine tokens/i)).toBeNull();
+    expect(screen.queryByText(/connector owner bindings/i)).toBeNull();
+    expect(screen.queryByText(/coming in a future release/i)).toBeNull();
   });
 });

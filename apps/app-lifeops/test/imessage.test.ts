@@ -352,6 +352,24 @@ describe("withIMessage mixin", () => {
     await expect(
       svc.sendIMessage({ to: "+15551112222", text: "hi" }),
     ).resolves.toEqual({ ok: true, messageId: "native-message-1" });
+    await expect(
+      svc.searchIMessages({ query: "hello", limit: 1 }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "row-1",
+        text: "hello native",
+      }),
+    ]);
+    await expect(
+      svc.getIMessageDeliveryStatus(["native-message-1"]),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        messageId: "native-message-1",
+        status: "unknown",
+        isRead: null,
+        isDelivered: null,
+      }),
+    ]);
     expect(nativeService.sendMessage).toHaveBeenCalledWith(
       "+15551112222",
       "hi",

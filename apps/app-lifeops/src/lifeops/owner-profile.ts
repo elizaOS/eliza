@@ -1,7 +1,4 @@
-import {
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
 import {
   ensureLifeOpsSchedulerTask,

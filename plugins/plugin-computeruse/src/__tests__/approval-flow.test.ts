@@ -13,6 +13,19 @@ vi.mock("../platform/screenshot.js", () => ({
   captureScreenshot: vi.fn(() => Buffer.from("fake-png")),
 }));
 
+vi.mock("../platform/desktop.js", () => ({
+  desktopClick: vi.fn(),
+  desktopClickWithModifiers: vi.fn(),
+  desktopDoubleClick: vi.fn(),
+  desktopDrag: vi.fn(),
+  desktopKeyCombo: vi.fn(),
+  desktopKeyPress: vi.fn(),
+  desktopMouseMove: vi.fn(),
+  desktopRightClick: vi.fn(),
+  desktopScroll: vi.fn(),
+  desktopType: vi.fn(),
+}));
+
 vi.mock("../platform/windows-list.js", () => ({
   closeWindow: vi.fn(),
   focusWindow: vi.fn(),
@@ -95,19 +108,22 @@ describe("ComputerUseService approval flow", () => {
 
     const service = (await ComputerUseService.start({
       getSetting(key: string) {
-        return key === "COMPUTER_USE_APPROVAL_MODE" ? "approve_all" : undefined;
+        if (key === "COMPUTER_USE_APPROVAL_MODE") return "approve_all";
+        if (key === "COMPUTER_USE_SCREENSHOT_AFTER_ACTION") return "false";
+        return undefined;
       },
     } as never)) as ComputerUseService;
 
     const pendingExecution = service.executeDesktopAction({
-      action: "screenshot",
+      action: "mouse_move",
+      coordinate: [10, 20],
     });
     await Promise.resolve();
 
     const snapshot = service.getApprovalSnapshot();
     expect(snapshot.mode).toBe("approve_all");
     expect(snapshot.pendingCount).toBe(1);
-    expect(snapshot.pendingApprovals[0]?.command).toBe("screenshot");
+    expect(snapshot.pendingApprovals[0]?.command).toBe("mouse_move");
 
     const resolution = service.resolveApproval(
       snapshot.pendingApprovals[0]!.id,
@@ -115,10 +131,7 @@ describe("ComputerUseService approval flow", () => {
     );
     expect(resolution?.approved).toBe(true);
 
-    await expect(pendingExecution).resolves.toEqual({
-      success: true,
-      screenshot: Buffer.from("fake-png").toString("base64"),
-    });
+    await expect(pendingExecution).resolves.toEqual({ success: true });
 
     await service.stop();
   });
@@ -130,12 +143,15 @@ describe("ComputerUseService approval flow", () => {
 
     const service = (await ComputerUseService.start({
       getSetting(key: string) {
-        return key === "COMPUTER_USE_APPROVAL_MODE" ? "approve_all" : undefined;
+        if (key === "COMPUTER_USE_APPROVAL_MODE") return "approve_all";
+        if (key === "COMPUTER_USE_SCREENSHOT_AFTER_ACTION") return "false";
+        return undefined;
       },
     } as never)) as ComputerUseService;
 
     const pendingExecution = service.executeDesktopAction({
-      action: "screenshot",
+      action: "mouse_move",
+      coordinate: [10, 20],
     });
     await Promise.resolve();
 

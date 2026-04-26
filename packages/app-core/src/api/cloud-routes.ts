@@ -1,4 +1,5 @@
 import type http from "node:http";
+import type { ElizaConfig } from "@elizaos/agent";
 import {
   type CloudRouteState as AutonomousCloudRouteState,
   applyCanonicalOnboardingConfig,
@@ -6,9 +7,9 @@ import {
   createIntegrationTelemetrySpan,
   handleCloudRoute as handleAutonomousCloudRoute,
   normalizeCloudSiteUrl,
+  saveElizaConfig,
   validateCloudBaseUrl,
 } from "@elizaos/agent";
-import { type ElizaConfig, saveElizaConfig } from "@elizaos/agent/config";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,

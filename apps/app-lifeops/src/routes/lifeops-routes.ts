@@ -1,7 +1,10 @@
 import type http from "node:http";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
-import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
+import {
+  checkRateLimit,
+  type RateLimitConfig,
+} from "@elizaos/agent/api/rate-limiter";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,
@@ -61,6 +64,7 @@ import {
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
   LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
+  LIFEOPS_INBOX_CACHE_MODES,
   LIFEOPS_INBOX_CHANNELS,
   LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES,
   type LifeOpsGmailSpamReviewStatus,
@@ -1289,6 +1293,23 @@ export async function handleLifeOpsRoutes(
           : undefined;
       const missedOnly = url.searchParams.get("missedOnly") === "true";
       const sortByPriority = url.searchParams.get("sortByPriority") === "true";
+      const rawCacheMode = url.searchParams.get("cacheMode");
+      let cacheMode: GetLifeOpsInboxRequest["cacheMode"];
+      if (rawCacheMode !== null && rawCacheMode.trim().length > 0) {
+        const parsedCacheMode = rawCacheMode.trim().toLowerCase();
+        if (!isOneOf(parsedCacheMode, LIFEOPS_INBOX_CACHE_MODES)) {
+          throw new LifeOpsServiceError(
+            400,
+            `cacheMode must be one of: ${LIFEOPS_INBOX_CACHE_MODES.join(", ")}`,
+          );
+        }
+        cacheMode = parsedCacheMode;
+      }
+      const cacheLimit =
+        parsePositiveIntegerQuery(
+          url.searchParams.get("cacheLimit"),
+          "cacheLimit",
+        ) ?? undefined;
       const request: GetLifeOpsInboxRequest = {
         limit,
         channels,
@@ -1298,6 +1319,8 @@ export async function handleLifeOpsRoutes(
         gmailAccountId,
         missedOnly: missedOnly || undefined,
         sortByPriority: sortByPriority || undefined,
+        cacheMode,
+        cacheLimit,
       };
       json(res, await service.getInbox(request));
     });

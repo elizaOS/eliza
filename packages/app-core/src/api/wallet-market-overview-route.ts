@@ -1,7 +1,5 @@
 import type http from "node:http";
-import {
-  fetchWithTimeoutGuard,
-} from "@elizaos/agent";
+import { fetchWithTimeoutGuard } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import type {
   WalletMarketMover,

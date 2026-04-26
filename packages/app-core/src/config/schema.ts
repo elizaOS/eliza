@@ -1,8 +1,6 @@
 // Override CONNECTOR_IDS to include App-local connectors.
 // The wildcard re-export above is shadowed by this explicit named export.
-import {
-  CONNECTOR_IDS as _upstreamConnectorIds,
-} from "@elizaos/agent";
+import { CONNECTOR_IDS as _upstreamConnectorIds } from "@elizaos/agent";
 
 const ELIZA_COMPAT_CONNECTOR_IDS = ["telegramAccount"] as const;
 /** App-local connectors not present in upstream @elizaos/agent. */

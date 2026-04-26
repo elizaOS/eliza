@@ -9,6 +9,7 @@
  * and memory.
  */
 
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionResult,
@@ -18,12 +19,11 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
+import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import {
-  type CrossChannelSearchChannel,
   CROSS_CHANNEL_SEARCH_CHANNELS,
+  type CrossChannelSearchChannel,
   type CrossChannelSearchHit,
   type CrossChannelSearchPersonRef,
   type CrossChannelSearchQuery,
@@ -142,7 +142,7 @@ async function extractSearchPlan(
     "Plan a SEARCH_ACROSS_CHANNELS request.",
     "The user may speak in any language. Do NOT translate the search query — keep the user's wording.",
     "Return ONLY valid JSON with exactly these fields:",
-    '{"query":"string|null","person":"string|null","startIso":"ISO8601|null","endIso":"ISO8601|null","channels":["gmail"|"telegram"|"discord"|"imessage"|"whatsapp"|"signal"|"calendly"|"calendar"|"memory"]|null,"shouldAct":true|false,"clarification":"string|null"}',
+    '{"query":"string|null","person":"string|null","startIso":"ISO8601|null","endIso":"ISO8601|null","channels":["gmail"|"telegram"|"discord"|"imessage"|"whatsapp"|"signal"|"x"|"x-dm"|"calendly"|"calendar"|"memory"]|null,"shouldAct":true|false,"clarification":"string|null"}',
     "",
     "Rules:",
     "- query: the substantive search phrase (entity, topic, keywords). Strip filler like 'find', 'search for', 'show me'.",
@@ -160,9 +160,10 @@ async function extractSearchPlan(
 
   const raw = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
   const text = typeof raw === "string" ? raw : "";
-  const parsed = parseJSONObjectFromText(text) as
-    | Record<string, unknown>
-    | null;
+  const parsed = parseJSONObjectFromText(text) as Record<
+    string,
+    unknown
+  > | null;
 
   if (!parsed) {
     return {
@@ -220,7 +221,10 @@ async function extractSearchPlan(
 // Format
 // ---------------------------------------------------------------------------
 
-function formatHitForClipboard(hit: CrossChannelSearchHit, index: number): string {
+function formatHitForClipboard(
+  hit: CrossChannelSearchHit,
+  index: number,
+): string {
   const subjectPart = hit.subject ? ` ${hit.subject}` : "";
   const ts = hit.timestamp.slice(0, 19);
   const body = hit.text.replace(/\s+/g, " ").trim().slice(0, 240);
@@ -277,8 +281,7 @@ export const searchAcrossChannelsAction: Action = {
     "Returns merged hits with citations to source platform, room, and " +
     "timestamp. Connectors without native search emit typed unsupported " +
     "markers (no fabricated results). Admin/owner only.",
-  descriptionCompressed:
-    "Cross-channel search with citations. Admin only.",
+  descriptionCompressed: "Cross-channel search with citations. Admin only.",
 
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
 
@@ -441,7 +444,7 @@ export const searchAcrossChannelsAction: Action = {
     {
       name: "channels",
       description:
-        "Channel allowlist. Allowed values: gmail, memory, telegram, discord, imessage, whatsapp, signal, calendly, calendar.",
+        "Channel allowlist. Allowed values: gmail, memory, telegram, discord, imessage, whatsapp, signal, x, x-dm, calendly, calendar.",
       required: false,
       schema: {
         type: "array" as const,

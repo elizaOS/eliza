@@ -1,4 +1,5 @@
-import { extractActionParamsViaLlm, hasOwnerAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type Action,
   type ActionExample,
@@ -239,16 +240,17 @@ export const publishDeviceIntentAction: Action & {
       ((options as HandlerOptions | undefined)?.parameters as
         | PublishDeviceIntentParameters
         | undefined) ?? {};
-    const params = (await extractActionParamsViaLlm<PublishDeviceIntentParameters>({
-      runtime,
-      message,
-      state,
-      actionName: "PUBLISH_DEVICE_INTENT",
-      actionDescription: publishDeviceIntentAction.description ?? "",
-      paramSchema: publishDeviceIntentAction.parameters ?? [],
-      existingParams: rawParams,
-      requiredFields: ["kind"],
-    })) as PublishDeviceIntentParameters;
+    const params =
+      (await extractActionParamsViaLlm<PublishDeviceIntentParameters>({
+        runtime,
+        message,
+        state,
+        actionName: "PUBLISH_DEVICE_INTENT",
+        actionDescription: publishDeviceIntentAction.description ?? "",
+        paramSchema: publishDeviceIntentAction.parameters ?? [],
+        existingParams: rawParams,
+        requiredFields: ["kind"],
+      })) as PublishDeviceIntentParameters;
 
     const kind = normalizeKind(params.kind);
     if (!kind) {

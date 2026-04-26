@@ -6,6 +6,7 @@ import {
   summarizeGmailRecommendations,
   wrapUntrustedEmailContent,
 } from "./service-normalize-gmail.js";
+import { normalizeGmailTriageMaxResults } from "./service-normalize-calendar.js";
 
 describe("wrapUntrustedEmailContent", () => {
   it("encloses content in <untrusted_email_content> with a guard comment", () => {
@@ -22,6 +23,15 @@ describe("wrapUntrustedEmailContent", () => {
     const original = "Subject: hi\nBody: hello";
     const wrapped = wrapUntrustedEmailContent(original);
     expect(wrapped).toContain(original);
+  });
+});
+
+describe("normalizeGmailTriageMaxResults", () => {
+  it("allows bounded full-inbox cache warming windows", () => {
+    expect(normalizeGmailTriageMaxResults(5000)).toBe(5000);
+    expect(() => normalizeGmailTriageMaxResults(5001)).toThrow(
+      "maxResults must be between 1 and 5000",
+    );
   });
 });
 

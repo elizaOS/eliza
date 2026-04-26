@@ -6,7 +6,7 @@ import {
   navigateBrowserWorkspaceTab,
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
-} from "@elizaos/agent";
+} from "@elizaos/agent/services/browser-workspace";
 import type { BrowserBridgePageContext } from "@elizaos/plugin-browser-bridge";
 import type { LifeOpsConnectorSide } from "@elizaos/shared";
 

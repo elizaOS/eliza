@@ -7,6 +7,7 @@
  */
 
 import { getStylePresets } from "@elizaos/shared";
+import { logger } from "@elizaos/core";
 import type { OnboardingOptions } from "../api";
 import { client } from "../api";
 import {
@@ -201,10 +202,6 @@ export async function runPollingBackend(
       }
       const onboardingStatusRes = await client.getOnboardingStatus();
       const { complete, cloudProvisioned } = onboardingStatusRes;
-      console.log(
-        "[eliza][startup] onboarding status response:",
-        JSON.stringify(onboardingStatusRes),
-      );
       if (cancelled.current) return;
       deps.setOnboardingCloudProvisionedContainer(Boolean(cloudProvisioned));
       let sessionComplete =
@@ -236,21 +233,9 @@ export async function runPollingBackend(
         savePersistedActiveServer(ctx.restoredActiveServer);
       }
       if (!complete && ctx?.shouldPreserveCompletedOnboarding)
-        console.warn(
+        logger.warn(
           "[eliza][startup:init] Preserving completed onboarding despite incomplete backend onboarding status.",
         );
-      console.log(
-        "[eliza][startup] sessionComplete:",
-        sessionComplete,
-        "complete:",
-        complete,
-        "cloudProvisioned:",
-        cloudProvisioned,
-        "persistedConnection:",
-        !!ctx?.persistedActiveServer,
-        "hadPrior:",
-        !!ctx?.hadPriorOnboarding,
-      );
       deps.setOnboardingComplete(sessionComplete);
 
       if (!sessionComplete) {
@@ -335,9 +320,6 @@ export async function runPollingBackend(
         }
         return;
       }
-      console.log(
-        "[eliza][startup] dispatching BACKEND_REACHED onboardingComplete=true",
-      );
       dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
       return;
     } catch (err) {

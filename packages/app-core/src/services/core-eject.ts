@@ -3,10 +3,7 @@ import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { promisify } from "node:util";
-import {
-  getPluginInfo,
-  resolveStateDir,
-} from "@elizaos/agent";
+import { getPluginInfo, resolveStateDir } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import { createSerialise } from "../utils/serialise";
 import {

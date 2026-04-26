@@ -4,16 +4,9 @@
  */
 
 import type {
-  DropStatus,
-  MintResult,
-  VerificationResult,
-} from "@elizaos/agent";
-import type {
   BrowserWorkspaceSolanaMessageSignatureResult,
   BrowserWorkspaceWalletMessageSignatureResult,
   BrowserWorkspaceWalletTransactionResult,
-} from "@elizaos/app-steward";
-import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -35,6 +28,9 @@ import type {
   StewardWebhookEventType,
 } from "@elizaos/app-steward";
 import type {
+  DropStatus,
+  MintResult,
+  VerificationResult,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,

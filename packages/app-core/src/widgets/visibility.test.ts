@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   APPS_SECTION_VISIBILITY_KEY,

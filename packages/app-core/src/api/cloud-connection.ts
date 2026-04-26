@@ -1,9 +1,9 @@
 import {
   applyCanonicalOnboardingConfig,
+  type ElizaConfig,
   resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
   validateCloudBaseUrl,
 } from "@elizaos/agent";
-import type { ElizaConfig } from "@elizaos/agent/config";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -175,8 +175,9 @@ function getCloudAuth(runtime: AgentRuntime | null): CloudAuthLike | null {
 }
 
 export function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
-  return resolveCanonicalCloudApiBaseUrl(
-    rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL,
+  return (
+    resolveCanonicalCloudApiBaseUrl(rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL) ??
+    DEFAULT_CLOUD_API_BASE_URL
   );
 }
 

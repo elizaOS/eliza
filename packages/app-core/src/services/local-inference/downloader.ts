@@ -11,9 +11,8 @@
  * `subscribe()` to receive progress events; the service facade wires that
  * to SSE.
  *
- * We use `undici` which is already a dependency of plugin-local-ai and
- * ships first-class Range support. Node's built-in `fetch` lacks a clean
- * way to pipe a ReadableStream into a Node WriteStream.
+ * The runtime `fetch` follows HuggingFace redirects and still gives us a body
+ * stream that can be piped into a Node WriteStream.
  */
 
 import { randomUUID } from "node:crypto";
@@ -203,9 +202,7 @@ export class Downloader {
       this.updateState(record, "downloading");
       const url = buildHuggingFaceResolveUrl(catalogEntry);
 
-      // Dynamic import — undici is a runtime dep of plugin-local-ai, not
-      // app-core. We tolerate it being absent by falling back to global fetch.
-      const undici = await this.loadUndici();
+      const httpClient = await this.loadHttpClient();
       const startByte = record.job.received;
 
       const headers: Record<string, string> = {
@@ -215,11 +212,10 @@ export class Downloader {
         headers.range = `bytes=${startByte}-`;
       }
 
-      const response = await undici.request(url, {
+      const response = await httpClient.request(url, {
         method: "GET",
         headers,
         signal: record.abortController.signal,
-        maxRedirections: 5,
       });
 
       if (response.statusCode >= 400) {
@@ -309,14 +305,13 @@ export class Downloader {
     }
   }
 
-  private async loadUndici(): Promise<{
+  private async loadHttpClient(): Promise<{
     request: (
       url: string,
       options: {
         method: string;
         headers: Record<string, string>;
         signal: AbortSignal;
-        maxRedirections: number;
       },
     ) => Promise<{
       statusCode: number;
@@ -324,21 +319,26 @@ export class Downloader {
       body: AsyncIterable<Buffer>;
     }>;
   }> {
-    const mod = (await import("undici")) as unknown as {
-      request: (
-        url: string,
-        options: {
-          method: string;
-          headers: Record<string, string>;
-          signal: AbortSignal;
-          maxRedirections: number;
-        },
-      ) => Promise<{
-        statusCode: number;
-        headers: Record<string, string | string[] | undefined>;
-        body: AsyncIterable<Buffer>;
-      }>;
+    const fetchImpl = globalThis.fetch;
+    return {
+      request: async (url, options) => {
+        const response = await fetchImpl(url, {
+          method: options.method,
+          headers: options.headers,
+          signal: options.signal,
+          redirect: "follow",
+        });
+        if (!response.body) {
+          throw new Error(`Empty response body from ${url}`);
+        }
+        return {
+          statusCode: response.status,
+          headers: Object.fromEntries(response.headers.entries()),
+          body: Readable.fromWeb(
+            response.body as unknown as Parameters<typeof Readable.fromWeb>[0],
+          ),
+        };
+      },
     };
-    return mod;
   }
 }

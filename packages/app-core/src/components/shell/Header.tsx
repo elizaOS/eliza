@@ -4,6 +4,7 @@ import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useMemo } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useMediaQuery } from "../../hooks";
+import { type AuthStatusState, useAuthStatus } from "../../hooks/useAuthStatus";
 import {
   getTabGroups,
   isAppsToolTab,
@@ -68,6 +69,14 @@ const MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME =
   "group relative inline-flex h-11 w-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:top-0 after:h-[2px] after:rounded-b-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150";
 const MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME =
   "text-accent after:opacity-100";
+const ACCESS_BADGE_CLASSNAME =
+  "inline-flex h-[2.375rem] max-w-[15rem] shrink-0 items-center gap-1.5 rounded-md border border-border/45 bg-bg/45 px-2 text-[11px] font-medium leading-none text-muted shadow-none";
+
+interface AccessBadgeContent {
+  primary: "Local" | "Remote";
+  secondary?: "Remote password set" | "Remote password off";
+  title: string;
+}
 
 interface HeaderProps {
   mobileCenter?: ReactNode;
@@ -87,6 +96,33 @@ function shouldShowMacDesktopTitleBar(): boolean {
 
   const route = resolveWindowShellRoute();
   return !isDetachedWindowShell(route);
+}
+
+function resolveAccessBadgeContent(
+  state: AuthStatusState,
+): AccessBadgeContent | null {
+  const access =
+    state.phase === "authenticated" || state.phase === "unauthenticated"
+      ? state.access
+      : undefined;
+  if (!access) return null;
+
+  if (access.mode === "local") {
+    const secondary = access.passwordConfigured
+      ? "Remote password set"
+      : "Remote password off";
+    return {
+      primary: "Local",
+      secondary,
+      title: `Local access, ${secondary}`,
+    };
+  }
+
+  if (state.phase !== "authenticated") return null;
+  return {
+    primary: "Remote",
+    title: "Remote session",
+  };
 }
 
 export function Header({
@@ -124,6 +160,7 @@ export function Header({
     uiTheme,
     walletEnabled,
   } = useApp();
+  const { state: authStatusState } = useAuthStatus({ observeOnly: true });
 
   const isMobileViewport = useMediaQuery(MOBILE_HEADER_MEDIA_QUERY);
   const collapseDesktopNavLabels = useMediaQuery(
@@ -131,6 +168,10 @@ export function Header({
   );
   const showMacDesktopTitleBar = shouldShowMacDesktopTitleBar();
   const showCloudStatus = !hideCloudCredits && !isMobileViewport;
+  const accessBadgeContent = useMemo(
+    () => resolveAccessBadgeContent(authStatusState),
+    [authStatusState],
+  );
   const stopHeaderPointerPropagation = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -484,6 +525,26 @@ export function Header({
           onClick={openCloudBilling}
           dataTestId="header-cloud-status"
         />
+      ) : null}
+      {accessBadgeContent ? (
+        <div
+          className={ACCESS_BADGE_CLASSNAME}
+          title={accessBadgeContent.title}
+          data-testid="header-access-badge"
+        >
+          <span className="shrink-0 text-txt">
+            {accessBadgeContent.primary}
+          </span>
+          {accessBadgeContent.secondary ? (
+            <>
+              <span
+                className="h-1 w-1 shrink-0 rounded-full bg-muted/55"
+                aria-hidden="true"
+              />
+              <span className="truncate">{accessBadgeContent.secondary}</span>
+            </>
+          ) : null}
+        </div>
       ) : null}
       <div className="max-[639px]:hidden">
         <LanguageDropdown

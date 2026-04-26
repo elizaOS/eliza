@@ -121,6 +121,9 @@ async function appendLlmCall(
   const completionTokens = toOptionalNumber(params.completionTokens);
   if (promptTokens !== undefined) call.promptTokens = promptTokens;
   if (completionTokens !== undefined) call.completionTokens = completionTokens;
+  if (typeof params.tokenUsageEstimated === "boolean") {
+    call.tokenUsageEstimated = params.tokenUsageEstimated;
+  }
 
   step.llmCalls.push(call);
   trajectory.startTime = Math.min(trajectory.startTime, now);

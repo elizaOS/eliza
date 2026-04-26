@@ -213,7 +213,15 @@ function openBootstrapSocket(
   env: NodeJS.ProcessEnv,
   secret: Buffer,
 ): BootstrapSocket {
-  const socketDir = resolveSocketDir(env);
+  let socketDir = resolveSocketDir(env);
+  let socketName = `desktop-auth-${crypto.randomBytes(8).toString("hex")}.sock`;
+  if (
+    process.platform === "darwin" &&
+    path.join(socketDir, socketName).length > 100
+  ) {
+    socketDir = os.tmpdir();
+    socketName = `mda-${crypto.randomBytes(4).toString("hex")}.sock`;
+  }
   fs.mkdirSync(socketDir, { recursive: true, mode: 0o700 });
   try {
     fs.chmodSync(socketDir, 0o700);
@@ -221,7 +229,6 @@ function openBootstrapSocket(
     /* non-fatal */
   }
 
-  const socketName = `desktop-auth-${crypto.randomBytes(8).toString("hex")}.sock`;
   const socketPath = path.join(socketDir, socketName);
 
   // Stale socket from a previous crashed run — unlink before bind.

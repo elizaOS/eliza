@@ -51,7 +51,7 @@ export type {
   StartLifeOpsGoogleConnectorResponse,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/app-lifeops";
+} from "@elizaos/app-lifeops/contracts";
 export type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
@@ -60,7 +60,7 @@ export type {
   BrowserBridgeTabSummary,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge";
+} from "@elizaos/plugin-browser-bridge/contracts";
 
 export interface SecretInfo {
   key: string;

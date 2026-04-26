@@ -1,5 +1,5 @@
 import type React from "react";
-import { getBootConfig } from "../../config";
+import { getBootConfig } from "../../config/boot-config";
 import { BlueBubblesStatusPanel } from "./BlueBubblesStatusPanel";
 import { DiscordLocalConnectorPanel } from "./DiscordLocalConnectorPanel";
 import { IMessageStatusPanel } from "./IMessageStatusPanel";

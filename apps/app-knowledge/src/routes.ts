@@ -1,9 +1,11 @@
+import type {
+  RouteHelpers,
+  RouteRequestContext,
+} from "@elizaos/agent/api/route-helpers";
 import {
   parseClampedFloat,
   parsePositiveInteger,
-  type RouteHelpers,
-  type RouteRequestContext,
-} from "@elizaos/agent";
+} from "@elizaos/agent/utils/number-parsing";
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
   __setKnowledgeUrlFetchImplForTests,
@@ -17,6 +19,10 @@ import {
   getKnowledgeDocumentTitleFromMetadata,
   presentKnowledgeDocument,
 } from "./document-presenter.js";
+import {
+  handleScratchpadTopicRoutes,
+  ScratchpadTopicService,
+} from "./scratchpad-topics.js";
 import {
   getKnowledgeService,
   type KnowledgeServiceLike,
@@ -230,6 +236,13 @@ export async function handleKnowledgeRoutes(
     return true;
   }
   const agentId = runtime.agentId as UUID;
+
+  if (pathname.startsWith("/api/knowledge/scratchpad")) {
+    return handleScratchpadTopicRoutes(
+      ctx,
+      new ScratchpadTopicService(runtime, knowledgeService),
+    );
+  }
 
   // ── GET /api/knowledge ──────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/knowledge") {

@@ -2,7 +2,7 @@ import { Button } from "@elizaos/ui";
 import { Check } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type { SystemPermissionId } from "../../api";
-import { useBootConfig } from "../../config";
+import { useBootConfig } from "../../config/boot-config-react";
 import {
   hasRequiredOnboardingPermissions,
   isDesktopPlatform,

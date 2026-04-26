@@ -6,7 +6,7 @@
  * `subaction` parameter. Routes to the existing handlers in website-blocker.ts.
  */
 
-import { extractActionParamsViaLlm } from "@elizaos/agent";
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionExample,
@@ -475,27 +475,29 @@ export const ownerWebsiteBlockAction: Action & {
     let params = rawParams;
     let subaction = coerceSubaction(rawParams.subaction);
     if (!subaction) {
-      const recentConversationLines = await collectRecentConversationTexts({
-        runtime,
-        message,
-        state,
-        limit: 8,
-      });
-      subaction =
-        inferRecentSubaction(
-          getMessageText(message),
-          recentConversationLines,
-        ) ?? undefined;
+      const heuristicSubaction = inferRecentSubaction(
+        getMessageText(message),
+        await collectRecentConversationTexts({
+          runtime,
+          message,
+          state,
+          limit: 8,
+        }),
+      );
+      if (heuristicSubaction) {
+        params = { ...rawParams, subaction: heuristicSubaction };
+        subaction = heuristicSubaction;
+      }
     }
     if (!subaction) {
-      params = (await extractActionParamsViaLlm<OwnerWebsiteBlockParameters>({
+      params = (await extractActionParamsViaLlm<OwnerWebsiteBlockParameters & Record<string, unknown>>({
         runtime,
         message,
         state,
         actionName: ACTION_NAME,
         actionDescription: ownerWebsiteBlockAction.description ?? "",
         paramSchema: ownerWebsiteBlockAction.parameters ?? [],
-        existingParams: rawParams,
+        existingParams: rawParams as Record<string, unknown>,
         requiredFields: ["subaction"],
       })) as OwnerWebsiteBlockParameters;
       subaction = coerceSubaction(params.subaction);

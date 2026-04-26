@@ -6,23 +6,32 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 import {
-  type BootElizaRuntimeOptions,
-  getLastFailedPluginNames,
   loadElizaConfig,
   resolveDefaultAgentWorkspaceDir,
   resolveUserPath,
+} from "@elizaos/agent";
+import {
+  type BootElizaRuntimeOptions,
   type StartElizaOptions,
   applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
   applyN8nConfigToEnv as upstreamApplyN8nConfigToEnv,
   bootElizaRuntime as upstreamBootElizaRuntime,
-  collectPluginNames as upstreamCollectPluginNames,
   configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
-} from "@elizaos/agent";
+} from "@elizaos/agent/runtime/eliza";
 import {
   CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
+  collectPluginNames as upstreamCollectPluginNames,
 } from "@elizaos/agent/runtime/plugin-collector";
+import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
+
+export {
+  CUSTOM_PLUGINS_DIRNAME,
+  resolvePackageEntry,
+  scanDropInPlugins,
+} from "@elizaos/agent/runtime/plugin-types";
+
 import {
   type AgentRuntime,
   AutonomyService,
@@ -33,19 +42,11 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 
-export {
-  CUSTOM_PLUGINS_DIRNAME,
-  resolvePackageEntry,
-  scanDropInPlugins,
-} from "@elizaos/agent";
-
-import {
-  resolveServerOnlyPort,
-  syncResolvedApiPort,
-} from "@elizaos/shared";
+import { resolveServerOnlyPort, syncResolvedApiPort } from "@elizaos/shared";
 import { isNativeServerPlatform } from "../platform/is-native-server.js";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
+import { ensurePluginManagerAllowed } from "./plugin-manager-guard.js";
 import type { EmbeddingProgressCallback } from "./embedding-manager-support.js";
 import {
   DEFAULT_MODELS_DIR,
@@ -502,6 +503,12 @@ async function repairRuntimeAfterBoot(
   // call via resolveN8nMode, so this does not depend on autostart readiness.
   await ensureN8nDispatchService(runtime);
 
+  // Subscribe the trigger event bridge to the runtime event bus so
+  // event-kind triggers fire on real MESSAGE_RECEIVED / REACTION_RECEIVED /
+  // etc. emissions. Runs after N8N_DISPATCH so workflow-kind event
+  // triggers can dispatch immediately on first emit.
+  await ensureTriggerEventBridge(runtime);
+
   return runtime;
 }
 
@@ -522,6 +529,11 @@ let _n8nAutoStart: {
 // leaking closures that hold a stale runtime reference.
 let _n8nDispatch: { execute: (workflowId: string) => Promise<unknown> } | null =
   null;
+
+// Module-level handle for the trigger event bridge. Reset across
+// hot-reloads so we never leave two handler sets racing the runtime's
+// event bus.
+let _triggerEventBridge: { stop: () => void } | null = null;
 
 async function ensureN8nAuthBridge(runtime: AgentRuntime): Promise<void> {
   if (_n8nAuthBridge) {
@@ -614,6 +626,30 @@ async function ensureN8nDispatchService(runtime: AgentRuntime): Promise<void> {
   } catch (err) {
     logger.warn(
       `[eliza] Failed to register n8n dispatch service: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function ensureTriggerEventBridge(runtime: AgentRuntime): Promise<void> {
+  if (_triggerEventBridge) {
+    try {
+      _triggerEventBridge.stop();
+    } catch {
+      /* ignore */
+    }
+    _triggerEventBridge = null;
+  }
+  try {
+    const { startTriggerEventBridge } = await import(
+      "../services/trigger-event-bridge.js"
+    );
+    _triggerEventBridge = startTriggerEventBridge(runtime);
+    logger.info("[eliza] trigger event bridge armed");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to start trigger event bridge: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -901,6 +937,24 @@ export async function bootElizaRuntime(
   opts: BootElizaRuntimeOptionsExt = {},
 ): Promise<Awaited<ReturnType<typeof upstreamBootElizaRuntime>>> {
   syncAppEnvToEliza();
+
+  // Ensure `@elizaos/plugin-plugin-manager` is in `plugins.allow` BEFORE the
+  // upstream boot resolves plugins. Without this, headless deployments (CLI,
+  // server, no UI) never auto-enable the plugin and `APP create` /
+  // `PLUGIN install` actions silently fail to find the manager service. The
+  // helper short-circuits when already enabled or explicitly disabled.
+  try {
+    const result = await ensurePluginManagerAllowed();
+    if (result === "enabled") {
+      logger.info(
+        "[eliza] Auto-enabled @elizaos/plugin-plugin-manager via plugins.allow",
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      `[eliza] ensurePluginManagerAllowed failed at boot: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   try {
     // Eagerly download the embedding model before the full runtime boot.
@@ -1323,6 +1377,16 @@ export async function startEliza(
             /* ignore */
           }
           _n8nAuthBridge = null;
+        }
+        // Stop the trigger event bridge so its event handlers do not
+        // fire against the runtime after shutdown begins.
+        if (_triggerEventBridge) {
+          try {
+            _triggerEventBridge.stop();
+          } catch {
+            /* ignore */
+          }
+          _triggerEventBridge = null;
         }
         // Stop the n8n sidecar if it was started during this session. The
         // singleton is lazily constructed, so this is a no-op when n8n was

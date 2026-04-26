@@ -11,6 +11,8 @@ import { stripAssistantStageDirections } from "../../utils/assistant-text";
 import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { paramsToSchema } from "../pages/plugin-list-utils";
+import { findChoiceRegions } from "./message-choice-parser";
+import { type ChoiceOption, ChoiceWidget } from "./widgets/ChoiceWidget";
 
 /** Reject prototype-pollution keys that should never be traversed or rendered. */
 const BLOCKED_IDS = new Set(["__proto__", "constructor", "prototype"]);
@@ -51,7 +53,13 @@ interface MessageContentProps {
 type Segment =
   | { kind: "text"; text: string }
   | { kind: "config"; pluginId: string }
-  | { kind: "ui-spec"; spec: UiSpec; raw: string };
+  | { kind: "ui-spec"; spec: UiSpec; raw: string }
+  | {
+      kind: "choice";
+      id: string;
+      scope: string;
+      options: ChoiceOption[];
+    };
 
 // ── Detection ───────────────────────────────────────────────────────
 
@@ -98,7 +106,8 @@ const TRAILING_PARTIAL_TAG_RE = /<\/?[a-zA-Z][^>]*$|<\/?$/s;
 export function normalizeDisplayText(text: string): string {
   // Bound input length to keep the regex passes linear in adversarial cases.
   const MAX_DISPLAY_LEN = 200_000;
-  let normalized = text.length > MAX_DISPLAY_LEN ? text.slice(0, MAX_DISPLAY_LEN) : text;
+  let normalized =
+    text.length > MAX_DISPLAY_LEN ? text.slice(0, MAX_DISPLAY_LEN) : text;
 
   // Hide framework-selected actions and tool params from chat bubbles.
   normalized = normalized.replace(ACTION_XML_RE, "");
@@ -317,8 +326,8 @@ export function findPatchRegions(
 }
 
 /**
- * Parse message text for [CONFIG:id] markers, fenced UiSpec JSON, and
- * inline JSONL patch blocks (Chat Mode).
+ * Parse message text for [CONFIG:id] markers, [CHOICE:...] blocks,
+ * fenced UiSpec JSON, and inline JSONL patch blocks (Chat Mode).
  * Returns an array of segments for rendering.
  */
 function parseSegments(text: string): Segment[] {
@@ -338,6 +347,20 @@ function parseSegments(text: string): Segment[] {
       segment: { kind: "config", pluginId: m[1] },
     });
     m = CONFIG_RE.exec(cleaned);
+  }
+
+  // 1b. Find [CHOICE:scope id=...] ... [/CHOICE] blocks
+  for (const choice of findChoiceRegions(cleaned)) {
+    regions.push({
+      start: choice.start,
+      end: choice.end,
+      segment: {
+        kind: "choice",
+        id: choice.id,
+        scope: choice.scope,
+        options: choice.options,
+      },
+    });
   }
 
   // 2. Find fenced JSON that is a UiSpec (Generate Mode / legacy format)
@@ -872,6 +895,8 @@ function UiSpecBlock({ spec, raw }: { spec: UiSpec; raw: string }) {
 // ── Main component ──────────────────────────────────────────────────
 
 export function MessageContent({ message }: MessageContentProps) {
+  const { sendActionMessage } = useApp();
+
   // Parse segments — memoize to avoid re-parsing on every render
   const segments = useMemo(() => {
     try {
@@ -881,6 +906,13 @@ export function MessageContent({ message }: MessageContentProps) {
       return [{ kind: "text" as const, text: message.text }];
     }
   }, [message.text]);
+
+  const handleChoice = useCallback(
+    (value: string) => {
+      void sendActionMessage(value);
+    },
+    [sendActionMessage],
+  );
 
   // Fast path: single plain-text segment (most messages)
   if (segments.length === 1 && segments[0].kind === "text") {
@@ -903,7 +935,9 @@ export function MessageContent({ message }: MessageContentProps) {
               ? `text:${seg.text.slice(0, 80)}`
               : seg.kind === "config"
                 ? `config:${seg.pluginId}`
-                : `ui:${seg.raw.slice(0, 80)}`;
+                : seg.kind === "choice"
+                  ? `choice:${seg.id}`
+                  : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -923,6 +957,16 @@ export function MessageContent({ message }: MessageContentProps) {
             case "ui-spec":
               return (
                 <UiSpecBlock key={segmentKey} spec={seg.spec} raw={seg.raw} />
+              );
+            case "choice":
+              return (
+                <ChoiceWidget
+                  key={segmentKey}
+                  id={seg.id}
+                  scope={seg.scope}
+                  options={seg.options}
+                  onChoose={handleChoice}
+                />
               );
             default:
               return null;

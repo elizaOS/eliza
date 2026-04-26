@@ -8,7 +8,7 @@
  */
 
 import type { OnboardingOptions } from "../../api";
-import type { JsonSchemaObject } from "../../config";
+import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { ConfigUiHint } from "../../types";
 
 export const DEFAULT_RESPONSE_HANDLER_MODEL = "__DEFAULT_RESPONSE_HANDLER__";

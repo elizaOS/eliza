@@ -4,8 +4,8 @@ import { client, type PluginParamDef } from "../../api";
 import {
   ConfigRenderer,
   defaultRegistry,
-  type JsonSchemaObject,
-} from "../../config";
+} from "../../components/config-ui/config-renderer";
+import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { autoLabel } from "../../utils/labels";

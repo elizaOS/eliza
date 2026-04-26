@@ -4,9 +4,12 @@ import {
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
-  registerEscalationChannel,
   resolveOwnerContactWithFallback,
-} from "@elizaos/agent";
+} from "@elizaos/agent/config/owner-contacts";
+import { registerEscalationChannel } from "@elizaos/agent/services/escalation";
+import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
+import type { ActivityProfile } from "../activity-profile/types.js";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -41,9 +44,6 @@ import {
   LIFEOPS_MANUAL_OVERRIDE_KINDS,
   LIFEOPS_UNCLEAR_REASONS,
 } from "../contracts/index.js";
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
-import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
-import type { ActivityProfile } from "../activity-profile/types.js";
 import {
   getSelfControlStatus,
   startSelfControlBlock,
