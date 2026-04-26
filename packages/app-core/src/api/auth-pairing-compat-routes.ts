@@ -43,6 +43,12 @@ if (typeof pairingSweepTimer === "object" && "unref" in pairingSweepTimer) {
   pairingSweepTimer.unref();
 }
 
+export function _resetAuthPairingStateForTests(): void {
+  pairingCode = null;
+  pairingExpiresAt = 0;
+  pairingAttempts.clear();
+}
+
 function pairingEnabled(): boolean {
   return (
     Boolean(getCompatApiToken()) &&
