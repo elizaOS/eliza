@@ -41,6 +41,8 @@ import {
 } from "@elizaos/core";
 
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
+/** TTL for caching trigger task list to avoid repeated DB queries on high-frequency events. */
+const TRIGGER_CACHE_TTL_MS = 500;
 
 /**
  * Core `EventType`s the bridge subscribes to. Triggers created with an
@@ -108,13 +110,28 @@ export function startTriggerEventBridge(
   const lastDispatchMs = new Map<UUID, number>();
   const registered = new Map<EventType, BridgeHandler>();
 
+  // TTL cache for trigger task list to reduce DB round-trips on high-frequency events
+  let cachedTasks: Task[] | null = null;
+  let cacheTimestamp = 0;
+
+  const getCachedTriggers = async (): Promise<Task[]> => {
+    const current = now();
+    if (cachedTasks !== null && current - cacheTimestamp < TRIGGER_CACHE_TTL_MS) {
+      return cachedTasks;
+    }
+    const tasks = await listTriggers(runtime);
+    cachedTasks = tasks;
+    cacheTimestamp = current;
+    return tasks;
+  };
+
   const buildHandler = (eventType: EventType): BridgeHandler => {
     return async (payload: EventPayload) => {
       if (!triggersFeatureEnabled(runtime)) return;
 
       let tasks: Task[];
       try {
-        tasks = await listTriggers(runtime);
+        tasks = await getCachedTriggers();
       } catch (err) {
         runtime.logger.error(
           {
@@ -186,6 +203,8 @@ export function startTriggerEventBridge(
       }
       registered.clear();
       lastDispatchMs.clear();
+      cachedTasks = null;
+      cacheTimestamp = 0;
     },
   };
 }
