@@ -9,6 +9,7 @@ interface InternalToolAppDefinition {
   name: string;
   order: number;
   targetTab: Tab;
+  windowPath?: string;
 }
 
 const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
@@ -21,6 +22,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "lifeops",
     capabilities: ["lifeops", "tasks", "calendar", "gmail"],
     order: 0,
+    windowPath: "/apps/lifeops",
   },
   {
     name: "@elizaos/app-plugin-viewer",
@@ -31,6 +33,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "plugins",
     capabilities: ["plugins", "connectors", "viewer"],
     order: 1,
+    windowPath: "/apps/plugins",
   },
   {
     name: "@elizaos/app-skills-viewer",
@@ -40,6 +43,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "skills",
     capabilities: ["skills", "viewer"],
     order: 2,
+    windowPath: "/apps/skills",
   },
   {
     name: "@elizaos/app-training",
@@ -50,6 +54,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "fine-tuning",
     capabilities: ["training", "fine-tuning", "datasets", "models"],
     order: 3,
+    windowPath: "/apps/fine-tuning",
   },
   {
     name: "@elizaos/app-trajectory-viewer",
@@ -59,6 +64,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "trajectories",
     capabilities: ["trajectories", "debug", "viewer"],
     order: 4,
+    windowPath: "/apps/trajectories",
   },
   {
     name: "@elizaos/app-relationship-viewer",
@@ -69,6 +75,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "relationships",
     capabilities: ["relationships", "graph", "viewer"],
     order: 5,
+    windowPath: "/apps/relationships",
   },
   {
     name: "@elizaos/app-memory-viewer",
@@ -78,6 +85,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "memories",
     capabilities: ["memory", "facts", "viewer"],
     order: 6,
+    windowPath: "/apps/memories",
   },
   {
     name: "@elizaos/app-steward",
@@ -88,6 +96,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "inventory",
     capabilities: ["wallet", "transactions", "approvals", "trading"],
     order: 7,
+    windowPath: "/apps/inventory",
   },
   {
     name: "@elizaos/app-runtime-debugger",
@@ -98,6 +107,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "runtime",
     capabilities: ["runtime", "debug", "viewer"],
     order: 8,
+    windowPath: "/apps/runtime",
   },
   {
     name: "@elizaos/app-database-viewer",
@@ -107,6 +117,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "database",
     capabilities: ["database", "sql", "viewer"],
     order: 9,
+    windowPath: "/apps/database",
   },
   {
     name: "@elizaos/app-elizamaker",
@@ -117,6 +128,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "chat",
     capabilities: ["drops", "minting", "whitelist", "verification"],
     order: 10,
+    windowPath: "/apps/elizamaker",
   },
   {
     name: "@elizaos/app-log-viewer",
@@ -126,6 +138,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     targetTab: "logs",
     capabilities: ["logs", "debug", "viewer"],
     order: 11,
+    windowPath: "/apps/logs",
   },
 ] as const;
 
@@ -167,4 +180,25 @@ export function getInternalToolAppTargetTab(name: string): Tab | null {
 
 export function getInternalToolAppCatalogOrder(name: string): number {
   return INTERNAL_TOOL_APP_BY_NAME.get(name)?.order ?? Number.MAX_SAFE_INTEGER;
+}
+
+export function getInternalToolAppWindowPath(name: string): string | null {
+  return INTERNAL_TOOL_APP_BY_NAME.get(name)?.windowPath ?? null;
+}
+
+/** Plain descriptor used by the desktop application/tray menus. */
+export interface InternalToolAppDescriptor {
+  readonly name: string;
+  readonly displayName: string;
+  readonly windowPath: string | null;
+  readonly order: number;
+}
+
+export function getInternalToolAppDescriptors(): readonly InternalToolAppDescriptor[] {
+  return INTERNAL_TOOL_APPS.map((app) => ({
+    name: app.name,
+    displayName: app.displayName,
+    windowPath: app.windowPath ?? null,
+    order: app.order,
+  }));
 }
