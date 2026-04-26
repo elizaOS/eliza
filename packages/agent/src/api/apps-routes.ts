@@ -1182,5 +1182,256 @@ export async function handleAppsRoutes(
     return true;
   }
 
+  // -------------------------------------------------------------------------
+  // Unified APP-action HTTP surface (relaunch / load-from-directory / create)
+  //
+  // These endpoints pair with the in-process @elizaos/plugin-app-control APP
+  // action sub-modes. They live here so dashboard UIs and platform connectors
+  // can reach the same behaviour without going through the chat planner.
+  // -------------------------------------------------------------------------
+
+  if (method === "POST" && pathname === "/api/apps/relaunch") {
+    const body = await readJsonBody<{
+      name?: string;
+      runId?: string;
+      verify?: boolean;
+    }>(req, res);
+    if (!body) return true;
+    const name = body.name?.trim();
+    if (!name) {
+      error(res, "name is required");
+      return true;
+    }
+    const pluginManager = getPluginManager();
+
+    try {
+      // Stop matching runs first.
+      if (body.runId?.trim()) {
+        await appManager.stop(pluginManager, "", body.runId.trim(), null);
+      } else {
+        await appManager.stop(pluginManager, name, undefined, null);
+      }
+
+      const launch = await appManager.launch(
+        pluginManager,
+        name,
+        (_progress: InstallProgressLike) => {},
+        runtime,
+      );
+
+      let verify: { verdict: string; retryablePromptForChild?: string } | null =
+        null;
+      if (body.verify === true) {
+        const runtimeWithServices = runtime as {
+          getService?: (
+            type: string,
+          ) => {
+            verifyApp?: (opts: {
+              workdir: string;
+              appName?: string;
+              profile?: "fast" | "full";
+            }) => Promise<{
+              verdict: "pass" | "fail";
+              retryablePromptForChild: string;
+            }>;
+          } | null;
+        } | null;
+        const verificationService =
+          runtimeWithServices?.getService?.("app-verification") ?? null;
+        if (verificationService?.verifyApp) {
+          // Workdir is unknown server-side; verification needs the app's
+          // source dir which we cannot infer from a name alone, so we record
+          // skip rather than guess. Callers that need verification should
+          // route through the in-process APP action with an explicit workdir.
+          verify = {
+            verdict: "skipped",
+            retryablePromptForChild:
+              "Verification requires a workdir; relaunch endpoint cannot infer one.",
+          };
+        }
+      }
+
+      json(res, { launch, verify });
+    } catch (err) {
+      error(
+        res,
+        `Relaunch failed: ${err instanceof Error ? err.message : String(err)}`,
+        500,
+      );
+    }
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/apps/load-from-directory") {
+    const body = await readJsonBody<{ directory?: string }>(req, res);
+    if (!body) return true;
+    const directory = body.directory?.trim() ?? "";
+    if (!directory) {
+      error(res, "directory is required");
+      return true;
+    }
+    if (!path.isAbsolute(directory)) {
+      error(res, "directory must be an absolute path", 400);
+      return true;
+    }
+
+    const runtimeWithServices = runtime as {
+      getService?: (type: string) => {
+        register?: (
+          entry: Record<string, unknown>,
+          ctx?: { requesterEntityId?: string | null; requesterRoomId?: string | null },
+        ) => Promise<void>;
+      } | null;
+    } | null;
+    const registry =
+      runtimeWithServices?.getService?.("app-registry") ?? null;
+    if (!registry?.register) {
+      error(
+        res,
+        "AppRegistryService is not registered on the runtime",
+        503,
+      );
+      return true;
+    }
+
+    try {
+      const entries = await fs.readdir(directory, { withFileTypes: true });
+      let registered = 0;
+      const items: Array<{ slug: string; canonicalName: string }> = [];
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const subdir = path.join(directory, entry.name);
+        const pkgPath = path.join(subdir, "package.json");
+        const raw = await fs.readFile(pkgPath, "utf8").catch(() => null);
+        if (raw === null) continue;
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const elizaos =
+          parsed.elizaos && typeof parsed.elizaos === "object"
+            ? (parsed.elizaos as Record<string, unknown>)
+            : null;
+        const appMeta =
+          elizaos?.app && typeof elizaos.app === "object"
+            ? (elizaos.app as Record<string, unknown>)
+            : null;
+        if (!appMeta) continue;
+        const packageName =
+          typeof parsed.name === "string" ? parsed.name : null;
+        if (!packageName) continue;
+        const basename = packageName.replace(/^@[^/]+\//, "").trim();
+        const slug =
+          (typeof appMeta.slug === "string" && appMeta.slug.trim()) ||
+          basename.replace(/^app-/, "");
+        const displayName =
+          (typeof appMeta.displayName === "string" &&
+            appMeta.displayName.trim()) ||
+          basename;
+        const aliases = Array.isArray(appMeta.aliases)
+          ? appMeta.aliases.filter((v): v is string => typeof v === "string")
+          : [];
+        await registry.register(
+          {
+            slug,
+            canonicalName: packageName,
+            aliases,
+            directory: subdir,
+            displayName,
+          },
+          {
+            requesterEntityId: null,
+            requesterRoomId: null,
+          },
+        );
+        registered += 1;
+        items.push({ slug, canonicalName: packageName });
+      }
+      json(res, { ok: true, directory, registered, items });
+    } catch (err) {
+      error(
+        res,
+        `Load failed: ${err instanceof Error ? err.message : String(err)}`,
+        500,
+      );
+    }
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/apps/create") {
+    const body = await readJsonBody<{ intent?: string; editTarget?: string }>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    const intent = body.intent?.trim() ?? "";
+    if (!intent) {
+      error(res, "intent is required");
+      return true;
+    }
+
+    const runtimeWithActions = runtime as {
+      actions?: Array<{
+        name: string;
+        handler: (
+          runtime: unknown,
+          message: unknown,
+          state: unknown,
+          options: unknown,
+          callback: unknown,
+        ) => Promise<unknown>;
+      }>;
+      agentId?: string;
+    } | null;
+    const appAction =
+      runtimeWithActions?.actions?.find((a) => a.name === "APP") ?? null;
+    if (!appAction) {
+      error(res, "APP action is not registered on the runtime", 503);
+      return true;
+    }
+
+    try {
+      const lines: string[] = [];
+      const callback = async (content: { text?: string }) => {
+        if (typeof content?.text === "string" && content.text.length > 0) {
+          lines.push(content.text);
+        }
+        return [];
+      };
+      const fakeMessage = {
+        entityId: runtimeWithActions?.agentId ?? "system",
+        roomId: runtimeWithActions?.agentId ?? "system",
+        agentId: runtimeWithActions?.agentId ?? "system",
+        content: { text: intent },
+      };
+      const result = (await appAction.handler(
+        runtime,
+        fakeMessage,
+        undefined,
+        {
+          parameters: {
+            mode: "create",
+            intent,
+            ...(body.editTarget ? { editTarget: body.editTarget } : {}),
+          },
+          mode: "create",
+          intent,
+          ...(body.editTarget ? { editTarget: body.editTarget } : {}),
+        },
+        callback,
+      )) as { success?: boolean; text?: string; data?: unknown } | undefined;
+      json(res, {
+        success: result?.success !== false,
+        text: result?.text ?? lines.join("\n"),
+        messages: lines,
+        data: result?.data ?? null,
+      });
+    } catch (err) {
+      error(
+        res,
+        `Create failed: ${err instanceof Error ? err.message : String(err)}`,
+        500,
+      );
+    }
+    return true;
+  }
+
   return false;
 }
