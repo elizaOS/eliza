@@ -12,7 +12,7 @@
 services:
   milady-db:
     # If this tag ever fails to pull, try: supabase/postgres:latest
-    image: supabase/postgres:17.6.1.110
+    image: supabase/postgres:17.6.1.111
     container_name: milady-db
     restart: unless-stopped
     ports:

@@ -27,7 +27,7 @@ import {
   type BrowserBridgeTrackingMode,
   type CreateBrowserBridgeCompanionPairingRequest,
   type UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   CheckCircle2,
   Circle,

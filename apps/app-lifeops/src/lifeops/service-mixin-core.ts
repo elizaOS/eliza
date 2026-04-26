@@ -9,18 +9,16 @@ import type {
   LifeOpsOwnership,
   LifeOpsOwnershipInput,
   LifeOpsWorkflowDefinition,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import type {
-  BrowserBridgeAction,
-  BrowserBridgeCompanionStatus,
-  BrowserBridgeSettings,
-  UpsertBrowserBridgeCompanionRequest,
-} from "@elizaos/plugin-browser-bridge/contracts";
 import {
   BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
   BROWSER_BRIDGE_KINDS,
-} from "@elizaos/plugin-browser-bridge/contracts";
+  type BrowserBridgeAction,
+  type BrowserBridgeCompanionStatus,
+  type BrowserBridgeSettings,
+  type UpsertBrowserBridgeCompanionRequest,
+} from "@elizaos/plugin-browser-bridge";
 import type { computeAdaptiveWindowPolicy } from "./defaults.js";
 import {
   GoogleManagedClient,

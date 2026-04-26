@@ -2,7 +2,7 @@ import type { LifeOpsGmailMessageSummary } from "@elizaos/shared/contracts/lifeo
 import type {
   BrowserBridgeAction,
   BrowserBridgeCompanionStatus,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,

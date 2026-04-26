@@ -5,13 +5,13 @@ import type {
   BrowserBridgePageContext,
   BrowserBridgeSettings,
   BrowserBridgeTabSummary,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsBrowserSession,
   LifeOpsCalendarEvent,
   LifeOpsOccurrenceView,
   LifeOpsWorkflowRun,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   requireNonEmptyString,
   normalizeOptionalString,

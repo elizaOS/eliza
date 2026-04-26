@@ -4,10 +4,10 @@ import type {
   LifeOpsConnectorGrant,
   LifeOpsGmailMessageSummary,
   LifeOpsNextCalendarEventContext,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   LIFEOPS_CALENDAR_WINDOW_PRESETS,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   fail,
   normalizeEnumValue,

@@ -2,7 +2,7 @@ import type { IAgentRuntime, Task } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsCapabilitiesStatus,
   LifeOpsCapabilityEvidence,

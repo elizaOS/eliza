@@ -1,4 +1,5 @@
 import { logger, type IAgentRuntime, type Memory } from "@elizaos/core";
+import { hasAdminAccess } from "@elizaos/agent";
 import { checkSenderRole } from "./roles.ts";
 
 export const SELFCONTROL_ACCESS_ERROR =
@@ -12,6 +13,15 @@ export async function getSelfControlAccess(
   role: string | null;
   reason?: string;
 }> {
+  // Fast path: the canonical-owner check (ELIZA_ADMIN_ENTITY_ID setting +
+  // owner-contacts list) is authoritative for owner/admin access and works
+  // in test/benchmark environments where the per-world role table isn't
+  // populated. Falls through to the world-role check only when the fast
+  // path doesn't recognize the sender.
+  if (await hasAdminAccess(runtime, message)) {
+    return { allowed: true, role: "OWNER" };
+  }
+
   let roleCheck;
   try {
     roleCheck = await checkSenderRole(runtime, message);

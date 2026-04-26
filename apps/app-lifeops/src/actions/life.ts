@@ -22,7 +22,7 @@ import type {
   SetLifeOpsReminderPreferenceRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   buildNativeAppleReminderMetadata,
   type NativeAppleReminderLikeKind,

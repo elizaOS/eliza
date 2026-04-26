@@ -10,7 +10,7 @@ import type {
   LifeOpsWorkflowPermissionPolicy,
   LifeOpsWorkflowSchedule,
   LifeOpsWorkflowTriggerType,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   LIFEOPS_CONNECTOR_MODES,
   LIFEOPS_CONNECTOR_SIDES,
@@ -19,18 +19,16 @@ import {
   LIFEOPS_REMINDER_CHANNELS,
   LIFEOPS_TIME_WINDOW_NAMES,
   LIFEOPS_WORKFLOW_TRIGGER_TYPES,
-} from "@elizaos/app-lifeops/contracts";
-import type {
-  BrowserBridgeKind,
-  BrowserBridgePermissionState,
-  BrowserBridgeSettings,
-  UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "../contracts/index.js";
 import {
   BROWSER_BRIDGE_KINDS,
   BROWSER_BRIDGE_SITE_ACCESS_MODES,
   BROWSER_BRIDGE_TRACKING_MODES,
-} from "@elizaos/plugin-browser-bridge/contracts";
+  type BrowserBridgeKind,
+  type BrowserBridgePermissionState,
+  type BrowserBridgeSettings,
+  type UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge";
 import {
   resolveDefaultTimeZone,
   resolveDefaultWindowPolicy,
