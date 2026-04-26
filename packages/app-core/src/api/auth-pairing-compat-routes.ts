@@ -57,10 +57,9 @@ function normalizePairingCode(code: string): string {
 }
 
 function generatePairingCode(): string {
-  const bytes = crypto.randomBytes(12);
   let raw = "";
-  for (let i = 0; i < bytes.length; i += 1) {
-    raw += PAIRING_ALPHABET[bytes[i] % PAIRING_ALPHABET.length];
+  for (let i = 0; i < 12; i += 1) {
+    raw += PAIRING_ALPHABET[crypto.randomInt(0, PAIRING_ALPHABET.length)];
   }
   return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
 }

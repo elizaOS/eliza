@@ -18,25 +18,10 @@ import {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function normalizeCompatReason(reason: string): string {
-  return reason
-    .replaceAll("ELIZA_WALLET_EXPORT_TOKEN", "ELIZA_WALLET_EXPORT_TOKEN")
-    .replaceAll("ELIZA_TERMINAL_RUN_TOKEN", "ELIZA_TERMINAL_RUN_TOKEN")
-    .replaceAll("X-Eliza-Export-Token", "X-Eliza-Export-Token")
-    .replaceAll("X-Eliza-Terminal-Token", "X-Eliza-Terminal-Token");
-}
-
 export function normalizeCompatRejection<
   T extends { status: number; reason: string } | null,
 >(rejection: T): T {
-  if (!rejection) {
-    return rejection;
-  }
-
-  return {
-    ...rejection,
-    reason: normalizeCompatReason(rejection.reason),
-  } as T;
+  return rejection;
 }
 
 export function runWithCompatAuthContext<T>(

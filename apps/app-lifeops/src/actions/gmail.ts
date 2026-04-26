@@ -481,7 +481,7 @@ function normalizeQueryStringArray(value: unknown): string[] | undefined {
     );
   }
   if (typeof value === "string") {
-    return dedupeQueries(value.split(/\s*\|\|\s*/).map((item) => item.trim()));
+    return dedupeQueries(value.slice(0, 10_000).split(/\s{0,256}\|\|\s{0,256}/).map((item) => item.trim()));
   }
   return undefined;
 }

@@ -940,10 +940,9 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         metadata: request.metadata,
       });
       const config: BrowserBridgeCompanionConfig = {
-        apiBaseUrl: requireNonEmptyString(apiBaseUrl, "apiBaseUrl").replace(
-          /\/+$/,
-          "",
-        ),
+        apiBaseUrl: requireNonEmptyString(apiBaseUrl, "apiBaseUrl")
+          .slice(0, 2048)
+          .replace(/\/{1,256}$/, ""),
         companionId: pairing.companion.id,
         pairingToken: pairing.pairingToken,
         browser: pairing.companion.browser,

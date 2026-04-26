@@ -182,13 +182,14 @@ export function getConfiguredApiToken(): string | undefined {
 }
 
 export function extractAuthToken(req: http.IncomingMessage): string | null {
-  const auth =
+  const rawAuth =
     typeof req.headers.authorization === "string"
-      ? req.headers.authorization.trim()
+      ? req.headers.authorization
       : "";
-  if (auth) {
-    const match = /^Bearer\s+(.+)$/i.exec(auth);
-    if (match?.[1]) return match[1].trim();
+  const auth = rawAuth.length > 8192 ? rawAuth.slice(0, 8192).trim() : rawAuth.trim();
+  if (auth && auth.length >= 7 && auth.slice(0, 7).toLowerCase() === "bearer ") {
+    const token = auth.slice(7).trim();
+    if (token) return token;
   }
 
   const header =
@@ -375,10 +376,9 @@ export function normalizePairingCode(code: string): string {
 }
 
 function generatePairingCode(): string {
-  const bytes = crypto.randomBytes(8);
   let raw = "";
-  for (let i = 0; i < bytes.length; i++) {
-    raw += PAIRING_ALPHABET[bytes[i] % PAIRING_ALPHABET.length];
+  for (let i = 0; i < 8; i++) {
+    raw += PAIRING_ALPHABET[crypto.randomInt(0, PAIRING_ALPHABET.length)];
   }
   return `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
 }

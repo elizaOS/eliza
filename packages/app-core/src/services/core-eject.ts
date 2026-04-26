@@ -354,12 +354,15 @@ export function ejectCore(): Promise<CoreEjectResult> {
     await execFileAsync(
       "git",
       [
+        "-c",
+        "protocol.file.allow=never",
         "clone",
         "--branch",
         CORE_BRANCH,
         "--single-branch",
         "--depth",
         "1",
+        "--",
         CORE_GIT_URL,
         monorepoDir,
       ],

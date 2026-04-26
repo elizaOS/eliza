@@ -816,7 +816,10 @@ function trimPersistedValue(value: unknown): string | undefined {
 
 function normalizeApiBase(value: unknown): string | undefined {
   const trimmed = trimPersistedValue(value);
-  return trimmed?.replace(/\/+$/, "");
+  if (!trimmed) return trimmed;
+  let end = trimmed.length;
+  while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end--;
+  return trimmed.slice(0, end);
 }
 
 export function createPersistedActiveServer(args: {

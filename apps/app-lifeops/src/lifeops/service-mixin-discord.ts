@@ -48,6 +48,15 @@ import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js
 
 const DISCORD_CONNECTOR_SESSION_TITLE = "Open Discord for LifeOps";
 
+function isDiscordHost(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.hostname === "discord.com" || u.hostname.endsWith(".discord.com");
+  } catch {
+    return false;
+  }
+}
+
 function identityFromProbe(
   probe: DiscordTabProbe | null,
   fallback: Record<string, unknown> | null,
@@ -163,7 +172,7 @@ function pickNewestDiscordTab(
 ): BrowserBridgeTabSummary | null {
   return (
     [...tabs]
-      .filter((tab) => tab.url.includes("discord.com"))
+      .filter((tab) => isDiscordHost(tab.url))
       .sort((left, right) => {
         if (left.focusedActive !== right.focusedActive) {
           return left.focusedActive ? -1 : 1;
@@ -277,7 +286,7 @@ function siteAccessAllowsDiscord(
     return true;
   }
   return companion.permissions.grantedOrigins.some((origin) =>
-    origin.includes("discord.com"),
+    isDiscordHost(origin),
   );
 }
 
@@ -289,7 +298,7 @@ function browserAuthStateFromProbe(
   }
   if (
     probe?.loggedIn === false &&
-    Boolean(probe.url?.includes("discord.com"))
+    Boolean(probe.url && isDiscordHost(probe.url))
   ) {
     return "logged_out";
   }
@@ -303,7 +312,7 @@ function browserTabState(args: {
   if (args.probe?.dmInbox.visible) {
     return "dm_inbox_visible";
   }
-  if (args.probe?.url?.includes("discord.com")) {
+  if (args.probe?.url && isDiscordHost(args.probe.url)) {
     return "discord_open";
   }
   if (args.hasDiscordTab) {
@@ -427,7 +436,7 @@ function discordDesktopAccessStatus(
   const tabState = browserTabState({
     probe,
     hasDiscordTab:
-      Boolean(state.targetUrl?.includes("discord.com")) || state.cdpAvailable,
+      Boolean(state.targetUrl && isDiscordHost(state.targetUrl)) || state.cdpAvailable,
   });
 
   let nextAction: LifeOpsOwnerBrowserNextAction = "none";
@@ -538,7 +547,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
 
       const tabs = await this.listBrowserTabs();
       const currentPage = await this.getCurrentBrowserPage();
-      const currentPageProbe = currentPage?.url.includes("discord.com")
+      const currentPageProbe = currentPage?.url && isDiscordHost(currentPage.url)
         ? probeDiscordCapturedPage(currentPage)
         : null;
       const discordTab = pickNewestDiscordTab(tabs);
@@ -590,7 +599,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         loggedIn: probe?.loggedIn === true,
         authPending:
           probe?.loggedIn === false &&
-          Boolean(probe.url?.includes("discord.com")),
+          Boolean(probe.url && isDiscordHost(probe.url)),
         inProgress:
           session?.status === "queued" ||
           session?.status === "running" ||
@@ -685,7 +694,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         const probe = browserState.probe;
         const connected = probe?.loggedIn === true;
         const onDiscordPage =
-          Boolean(browserState.currentPageUrl?.includes("discord.com")) ||
+          Boolean(browserState.currentPageUrl && isDiscordHost(browserState.currentPageUrl)) ||
           Boolean(browserState.discordTab);
         const browserAccess = [
           discordDesktopAccessStatus(discordDesktopState),
@@ -865,7 +874,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           await this.lifeOpsDiscordGetOwnerBrowserDiscordState(existing);
         const hasConnectedBrowserPath =
           browserState.hasConnectedCompanion ||
-          Boolean(browserState.currentPageUrl?.includes("discord.com")) ||
+          Boolean(browserState.currentPageUrl && isDiscordHost(browserState.currentPageUrl)) ||
           Boolean(browserState.discordTab) ||
           Boolean(browserState.probe);
         if (hasConnectedBrowserPath) {
@@ -874,7 +883,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           const dmInboxVisible = probe?.dmInbox.visible === true;
           const identity =
             identityFromProbe(probe, existing?.identity ?? null) ?? {};
-          const onDiscordPage = Boolean(probe?.url?.includes("discord.com"));
+          const onDiscordPage = Boolean(probe?.url && isDiscordHost(probe.url));
           const onDiscordDmPage = Boolean(
             probe?.url?.includes("/channels/@me"),
           );

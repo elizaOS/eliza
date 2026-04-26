@@ -91,8 +91,9 @@ async function startApiHarness(state: CompatRuntimeState): Promise<Harness> {
     } catch (error) {
       if (!res.headersSent) {
         res.statusCode = 500;
-        res.end(String(error));
+        res.end("internal-error");
       }
+      void error;
     }
   });
 

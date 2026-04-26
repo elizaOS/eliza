@@ -346,12 +346,15 @@ export function ejectPlugin(pluginId: string): Promise<EjectResult> {
     await execFileAsync(
       "git",
       [
+        "-c",
+        "protocol.file.allow=never",
         "clone",
         "--branch",
         branch,
         "--single-branch",
         "--depth",
         "1",
+        "--",
         gitUrl,
         targetDir,
       ],

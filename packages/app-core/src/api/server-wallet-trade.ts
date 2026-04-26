@@ -19,11 +19,7 @@ import {
 // ---------------------------------------------------------------------------
 
 function normalizeCompatReason(reason: string): string {
-  return reason
-    .replaceAll("ELIZA_WALLET_EXPORT_TOKEN", "ELIZA_WALLET_EXPORT_TOKEN")
-    .replaceAll("ELIZA_TERMINAL_RUN_TOKEN", "ELIZA_TERMINAL_RUN_TOKEN")
-    .replaceAll("X-Eliza-Export-Token", "X-Eliza-Export-Token")
-    .replaceAll("X-Eliza-Terminal-Token", "X-Eliza-Terminal-Token");
+  return reason;
 }
 
 export function normalizeCompatRejection<

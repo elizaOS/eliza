@@ -65,9 +65,15 @@ export const removeFromClipboardAction: Action = {
 	similes: ["CLEAR_CLIPBOARD_ITEM", "DELETE_CLIPBOARD_ITEM"],
 	description:
 		"Remove an item from the bounded clipboard when it is no longer needed for the current task.",
-	validate: async (_runtime, message) =>
-		typeof message.content.itemId === "string" ||
-		/remove|clear|drop.*clipboard/i.test(String(message.content.text ?? "")),
+	validate: async (_runtime, message) => {
+		if (typeof message.content.itemId === "string") {
+			return true;
+		}
+		const rawText = String(message.content.text ?? "");
+		const safeText =
+			rawText.length > 10_000 ? rawText.slice(0, 10_000) : rawText;
+		return /remove|clear|drop.*clipboard/i.test(safeText);
+	},
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,
