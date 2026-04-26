@@ -27,10 +27,10 @@ import type {
   GetLifeOpsInboxRequest,
   IngestLifeOpsGmailEventRequest,
   LifeOpsCalendarEventUpdate,
-  ListLifeOpsCalendarsRequest,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsInboxChannel,
+  ListLifeOpsCalendarsRequest,
   ManageLifeOpsGmailMessagesRequest,
   ProcessLifeOpsRemindersRequest,
   RelockLifeOpsWebsiteAccessRequest,
@@ -75,6 +75,7 @@ import {
   type SyncLifeOpsScheduleObservationsRequest,
 } from "../lifeops/schedule-sync-contracts.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { sanitizePaymentSourceForClient } from "../lifeops/service-mixin-payments.js";
 
 export interface LifeOpsRouteContext {
   req: http.IncomingMessage;
@@ -100,18 +101,55 @@ export interface LifeOpsRouteContext {
   ) => string | null;
 }
 
-function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
+/**
+ * Ensure the request has the runtime context required to act on behalf of
+ * the configured admin entity. Returns `false` (and writes a 503) when the
+ * agent runtime is not available — this is the per-request analogue of an
+ * auth guard. The framework-level token check
+ * (`route.public !== true && !isAuthorized()` in
+ * `tryHandleRuntimePluginRoute`) already rejects unauthenticated callers
+ * before we get here; this helper is the second gate that confirms the
+ * route can actually resolve a tenant.
+ */
+function requireAuthorizedRouteContext(ctx: LifeOpsRouteContext): boolean {
   if (!ctx.state.runtime) {
     ctx.error(ctx.res, "Agent runtime is not available", 503);
+    return false;
+  }
+  return true;
+}
+
+function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
+  if (!requireAuthorizedRouteContext(ctx)) {
     return null;
   }
-  return new LifeOpsService(ctx.state.runtime, {
+  // `runtime` is non-null after the guard above. The service derives the
+  // owner/admin entity from `ctx.state.adminEntityId` when present,
+  // otherwise from `defaultOwnerEntityId(runtime)` (a stable per-agent UUID
+  // derived from `agentId`). That keeps tenant scoping intact even when the
+  // route dispatcher does not surface an explicit admin entity.
+  const runtime = ctx.state.runtime;
+  if (!runtime) {
+    return null;
+  }
+  return new LifeOpsService(runtime, {
     ownerEntityId: ctx.state.adminEntityId,
   });
 }
 
 // ---------------------------------------------------------------------------
 // Rate limit configuration per operation.
+//
+// Conventions for new routes:
+//   • Read GET endpoints: rely on `default` (60/min) unless they hit a paid
+//     upstream — then use `google_api_read` / similar.
+//   • State-changing POST/PUT/PATCH/DELETE: ALWAYS rate-limit. Pick the most
+//     specific bucket from the list below; fall back to `connector_write` for
+//     generic configuration writes or `default` only if nothing fits.
+//   • Sensitive flows (sending email, OAuth init, token refresh, paid API
+//     writes, irreversible deletes): use a dedicated tight bucket so a buggy
+//     client cannot drain quota or fan out side-effects.
+//
 // Keys are logical operation names; the "default" entry applies to any
 // operation not explicitly listed.
 // ---------------------------------------------------------------------------
@@ -122,10 +160,20 @@ const LIFEOPS_RATE_LIMITS = {
   task_create: { maxRequests: 30, windowMs: 60_000 },
   task_update: { maxRequests: 30, windowMs: 60_000 },
   gmail_draft: { maxRequests: 20, windowMs: 60_000 },
-  gmail_send: { maxRequests: 5, windowMs: 60_000 },
+  // Tightened from 5/min: composing and sending email is the most sensitive
+  // outbound action LifeOps takes; cap the burst at 2/min so a bug or a
+  // confused operator cannot machine-gun the user's contacts.
+  gmail_send: { maxRequests: 2, windowMs: 60_000 },
   calendar_create: { maxRequests: 20, windowMs: 60_000 },
   calendar_update: { maxRequests: 20, windowMs: 60_000 },
   calendar_delete: { maxRequests: 10, windowMs: 60_000 },
+  // OAuth + connector lifecycle: tight cap because these mutate stored
+  // credentials or initiate consent flows.
+  oauth_init: { maxRequests: 5, windowMs: 60_000 },
+  connector_write: { maxRequests: 10, windowMs: 60_000 },
+  // Generic outbound messaging (X DMs, iMessage, signal, telegram). Tighter
+  // than the default to limit blast radius.
+  outbound_message: { maxRequests: 5, windowMs: 60_000 },
   default: { maxRequests: 60, windowMs: 60_000 },
 } satisfies Record<string, RateLimitConfig>;
 
@@ -171,6 +219,15 @@ function rateLimitRequest(
       break;
     case "calendar_delete":
       config = LIFEOPS_RATE_LIMITS.calendar_delete;
+      break;
+    case "oauth_init":
+      config = LIFEOPS_RATE_LIMITS.oauth_init;
+      break;
+    case "connector_write":
+      config = LIFEOPS_RATE_LIMITS.connector_write;
+      break;
+    case "outbound_message":
+      config = LIFEOPS_RATE_LIMITS.outbound_message;
       break;
     default:
       config = LIFEOPS_RATE_LIMITS.default;
@@ -672,19 +729,18 @@ export async function handleLifeOpsRoutes(
   const { req, res, method, pathname, url, json, readJsonBody } = ctx;
 
   if (method === "GET" && pathname === "/api/lifeops/app-state") {
-    if (!ctx.state.runtime) {
-      ctx.error(res, "Agent runtime is not available", 503);
-      return true;
-    }
-    json(res, await loadLifeOpsAppState(ctx.state.runtime));
+    if (!requireAuthorizedRouteContext(ctx)) return true;
+    const runtime = ctx.state.runtime;
+    if (!runtime) return true;
+    json(res, await loadLifeOpsAppState(runtime));
     return true;
   }
 
   if (method === "POST" && pathname === "/api/lifeops/features/toggle") {
-    if (!ctx.state.runtime) {
-      ctx.error(res, "Agent runtime is not available", 503);
-      return true;
-    }
+    if (!requireAuthorizedRouteContext(ctx)) return true;
+    if (rateLimitRequest(ctx, "default")) return true;
+    const runtime = ctx.state.runtime;
+    if (!runtime) return true;
     const body = await readJsonBody<{
       featureKey?: unknown;
       enabled?: unknown;
@@ -706,7 +762,7 @@ export async function handleLifeOpsRoutes(
     const { createFeatureFlagService } = await import(
       "../lifeops/feature-flags.js"
     );
-    const service = createFeatureFlagService(ctx.state.runtime);
+    const service = createFeatureFlagService(runtime);
     const next = body.enabled
       ? await service.enable(body.featureKey, "local", null)
       : await service.disable(body.featureKey, "local", null);
@@ -730,10 +786,10 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "PUT" && pathname === "/api/lifeops/app-state") {
-    if (!ctx.state.runtime) {
-      ctx.error(res, "Agent runtime is not available", 503);
-      return true;
-    }
+    if (!requireAuthorizedRouteContext(ctx)) return true;
+    if (rateLimitRequest(ctx, "default")) return true;
+    const runtime = ctx.state.runtime;
+    if (!runtime) return true;
     const body = await readJsonBody<{
       enabled?: unknown;
       priorityScoring?: unknown;
@@ -747,7 +803,7 @@ export async function handleLifeOpsRoutes(
     }
     // Hydrate the previous priorityScoring config so partial PUTs do not
     // erase fields the caller did not send.
-    const previous = await loadLifeOpsAppState(ctx.state.runtime);
+    const previous = await loadLifeOpsAppState(runtime);
     let priorityScoring = previous.priorityScoring;
     if (body.priorityScoring !== undefined) {
       if (
@@ -777,7 +833,7 @@ export async function handleLifeOpsRoutes(
       priorityScoring = { enabled, model };
     }
     try {
-      const saved = await saveLifeOpsAppState(ctx.state.runtime, {
+      const saved = await saveLifeOpsAppState(runtime, {
         enabled: body.enabled,
         priorityScoring,
       });
@@ -865,7 +921,9 @@ export async function handleLifeOpsRoutes(
 
   const setCalendarIncludedMatch =
     method === "PUT"
-      ? pathname.match(/^\/api\/lifeops\/calendar\/calendars\/([^/]+)\/include$/)
+      ? pathname.match(
+          /^\/api\/lifeops\/calendar\/calendars\/([^/]+)\/include$/,
+        )
       : null;
   if (setCalendarIncludedMatch) {
     if (rateLimitRequest(ctx, "google_api_write")) return true;
@@ -877,7 +935,10 @@ export async function handleLifeOpsRoutes(
       "calendarId",
     );
     if (!calendarId) return true;
-    const body = await readJsonBody<SetLifeOpsCalendarIncludedRequest>(req, res);
+    const body = await readJsonBody<SetLifeOpsCalendarIncludedRequest>(
+      req,
+      res,
+    );
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       if (body.calendarId && body.calendarId !== calendarId) {
@@ -1450,6 +1511,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/connectors/x/start") {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1469,6 +1531,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/x/disconnect"
   ) {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1483,6 +1546,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/connectors/x") {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
     const body = await readJsonBody<UpsertLifeOpsXConnectorRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1491,6 +1555,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/x/posts") {
+    if (rateLimitRequest(ctx, "outbound_message")) return true;
     const body = await readJsonBody<CreateLifeOpsXPostRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1516,6 +1581,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/x/dms/curate") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1532,6 +1598,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/x/dms/send") {
+    if (rateLimitRequest(ctx, "outbound_message")) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1593,6 +1660,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/imessage/send"
   ) {
+    if (rateLimitRequest(ctx, "outbound_message")) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1633,6 +1701,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/telegram/start"
   ) {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
     const body = await readJsonBody<StartLifeOpsTelegramAuthRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1644,6 +1713,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/telegram/submit"
   ) {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
     const body = await readJsonBody<SubmitLifeOpsTelegramAuthRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1655,6 +1725,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/telegram/cancel"
   ) {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
     return runRoute(ctx, async (service) => {
       const side =
         parseConnectorSideQuery(url.searchParams.get("side")) ?? "owner";
@@ -1671,6 +1742,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/telegram/disconnect"
   ) {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
     return runRoute(ctx, async (service) => {
       json(
         res,
@@ -1685,6 +1757,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/telegram/verify"
   ) {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
     const body = await readJsonBody<VerifyLifeOpsTelegramConnectorRequest>(
       req,
       res,
@@ -1714,6 +1787,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/connectors/signal/pair") {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
     const body = await readJsonBody<StartLifeOpsSignalPairingRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -1741,6 +1815,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/connectors/signal/stop") {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
     const body = await readJsonBody<DisconnectLifeOpsMessagingConnectorRequest>(
       req,
       res,
@@ -1760,6 +1835,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/signal/disconnect"
   ) {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
     const body = await readJsonBody<DisconnectLifeOpsMessagingConnectorRequest>(
       req,
       res,
@@ -1797,6 +1873,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/discord/connect"
   ) {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
     const body = await readJsonBody<StartLifeOpsDiscordConnectorRequest>(
       req,
       res,
@@ -1816,6 +1893,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/connectors/discord/disconnect"
   ) {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
     const body = await readJsonBody<DisconnectLifeOpsMessagingConnectorRequest>(
       req,
       res,
@@ -1847,6 +1925,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/channel-policies") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<UpsertLifeOpsChannelPolicyRequest>(
       req,
       res,
@@ -1858,6 +1937,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/channels/phone-consent") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<CaptureLifeOpsPhoneConsentRequest>(
       req,
       res,
@@ -1884,6 +1964,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/activity-signals") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<CaptureLifeOpsActivitySignalRequest>(
       req,
       res,
@@ -1895,6 +1976,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/manual-override") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<CaptureLifeOpsManualOverrideRequest>(
       req,
       res,
@@ -1926,6 +2008,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/reminder-preferences") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<SetLifeOpsReminderPreferenceRequest>(
       req,
       res,
@@ -1937,6 +2020,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/reminders/acknowledge") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<AcknowledgeLifeOpsReminderRequest>(
       req,
       res,
@@ -1948,6 +2032,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/website-access/relock") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<RelockLifeOpsWebsiteAccessRequest>(
       req,
       res,
@@ -1962,6 +2047,7 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/website-access\/callbacks\/([^/]+)\/resolve$/,
   );
   if (method === "POST" && websiteAccessCallbackMatch) {
+    if (rateLimitRequest(ctx, "default")) return true;
     const callbackKey = decodeMatchedPathComponent(
       ctx,
       websiteAccessCallbackMatch,
@@ -2009,6 +2095,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/workflows") {
+    if (rateLimitRequest(ctx, "task_create")) return true;
     const body = await readJsonBody<CreateLifeOpsWorkflowRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -2021,6 +2108,7 @@ export async function handleLifeOpsRoutes(
   // `/api/browser-bridge/*`).
 
   if (method === "POST" && pathname === "/api/lifeops/schedule/observations") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<SyncLifeOpsScheduleObservationsRequest>(
       req,
       res,
@@ -2175,6 +2263,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/money/sources") {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
     const body = await readJsonBody<{
       kind: string;
       label: string;
@@ -2189,7 +2278,7 @@ export async function handleLifeOpsRoutes(
         institution: body.institution ?? null,
         accountMask: body.accountMask ?? null,
       });
-      json(res, { source }, 201);
+      json(res, { source: sanitizePaymentSourceForClient(source) }, 201);
     });
   }
 
@@ -2197,6 +2286,7 @@ export async function handleLifeOpsRoutes(
     method === "DELETE" &&
     pathname.startsWith("/api/lifeops/money/sources/")
   ) {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
     const sourceId = pathname.slice("/api/lifeops/money/sources/".length);
     if (!sourceId) {
       ctx.error(res, "sourceId required", 400);
@@ -2209,6 +2299,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/money/import-csv") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<{
       sourceId: string;
       csvText: string;
@@ -2256,6 +2347,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/money/plaid/link-token") {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
     return runRoute(ctx, async (service) => {
       const result = await service.createPlaidLinkToken();
       json(res, result);
@@ -2263,6 +2355,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/money/plaid/complete") {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
     const body = await readJsonBody<{
       publicToken: string;
       label?: string | null;
@@ -2273,16 +2366,10 @@ export async function handleLifeOpsRoutes(
         publicToken: body.publicToken,
         label: body.label ?? null,
       });
-      // Strip the Plaid access_token from the response — never echo secrets
-      // back to the browser. The token stays server-side in source.metadata.
-      const sanitizedMetadata: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(source.metadata)) {
-        if (key !== "plaid") sanitizedMetadata[key] = value;
-      }
       json(
         res,
         {
-          source: { ...source, metadata: sanitizedMetadata },
+          source: sanitizePaymentSourceForClient(source),
         },
         201,
       );
@@ -2290,6 +2377,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/money/plaid/sync") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<{ sourceId: string }>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -2304,6 +2392,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/money/paypal/authorize-url"
   ) {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
     const body = await readJsonBody<{ state: string }>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -2315,6 +2404,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/money/paypal/complete") {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
     const body = await readJsonBody<{
       code: string;
       label?: string | null;
@@ -2325,16 +2415,10 @@ export async function handleLifeOpsRoutes(
         code: body.code,
         label: body.label ?? null,
       });
-      // Strip PayPal tokens before responding — never echo secrets to the
-      // browser. The runtime keeps them in source.metadata for sync.
-      const sanitizedMetadata: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(source.metadata)) {
-        if (key !== "paypal") sanitizedMetadata[key] = value;
-      }
       json(
         res,
         {
-          source: { ...source, metadata: sanitizedMetadata },
+          source: sanitizePaymentSourceForClient(source),
           capability,
         },
         201,
@@ -2343,6 +2427,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/money/paypal/sync") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<{
       sourceId: string;
       windowDays?: number | null;
@@ -2352,6 +2437,105 @@ export async function handleLifeOpsRoutes(
       const result = await service.syncPaypalTransactions({
         sourceId: body.sourceId,
         windowDays: body.windowDays ?? null,
+      });
+      json(res, result);
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/smart-features/settings") {
+    return runRoute(ctx, async (service) => {
+      const get = (key: string): string | null => {
+        const value = service.runtime.getSetting?.(key);
+        if (value === undefined || value === null) return null;
+        return typeof value === "string" ? value : String(value);
+      };
+      json(res, {
+        emailClassifierEnabled:
+          (get("lifeops.emailClassifier.enabled") ?? "true") !== "false",
+        emailClassifierModel:
+          get("lifeops.emailClassifier.model") ?? "TEXT_SMALL",
+        billsAutoExtract:
+          (get("lifeops.bills.autoExtract") ?? "true") !== "false",
+      });
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/smart-features/settings"
+  ) {
+    if (rateLimitRequest(ctx, "default")) return true;
+    const body = await readJsonBody<{
+      emailClassifierEnabled?: boolean;
+      emailClassifierModel?: string | null;
+      billsAutoExtract?: boolean;
+    }>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const setRuntime = service.runtime.setSetting?.bind(service.runtime);
+      if (typeof setRuntime !== "function") {
+        ctx.error(res, "Runtime does not support setSetting", 501);
+        return;
+      }
+      if (typeof body.emailClassifierEnabled === "boolean") {
+        setRuntime(
+          "lifeops.emailClassifier.enabled",
+          body.emailClassifierEnabled ? "true" : "false",
+          false,
+        );
+      }
+      if (typeof body.emailClassifierModel === "string") {
+        setRuntime(
+          "lifeops.emailClassifier.model",
+          body.emailClassifierModel.trim() || "TEXT_SMALL",
+          false,
+        );
+      }
+      if (typeof body.billsAutoExtract === "boolean") {
+        setRuntime(
+          "lifeops.bills.autoExtract",
+          body.billsAutoExtract ? "true" : "false",
+          false,
+        );
+      }
+      json(res, { ok: true });
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/money/bills") {
+    return runRoute(ctx, async (service) => {
+      const bills = await service.getUpcomingBills({});
+      json(res, { bills });
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/money/bills/mark-paid") {
+    if (rateLimitRequest(ctx, "task_update")) return true;
+    const body = await readJsonBody<{ billId: string; paidAt?: string | null }>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const result = await service.markBillPaid({
+        billId: body.billId,
+        paidAt: body.paidAt ?? null,
+      });
+      json(res, result);
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/money/bills/snooze") {
+    if (rateLimitRequest(ctx, "task_update")) return true;
+    const body = await readJsonBody<{ billId: string; days?: number }>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      const result = await service.snoozeBill({
+        billId: body.billId,
+        days: body.days ?? 7,
       });
       json(res, result);
     });
@@ -2387,6 +2571,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/subscriptions/cancel") {
+    if (rateLimitRequest(ctx, "default")) return true;
     const body = await readJsonBody<{
       serviceName?: string | null;
       serviceSlug?: string | null;
@@ -2408,6 +2593,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/email-unsubscribe/scan") {
+    if (rateLimitRequest(ctx, "google_api_read")) return true;
     return runRoute(ctx, async (service) => {
       const requestUrl = ctx.url;
       const result = await service.scanEmailSubscriptions(requestUrl, {});
@@ -2419,6 +2605,7 @@ export async function handleLifeOpsRoutes(
     method === "POST" &&
     pathname === "/api/lifeops/email-unsubscribe/unsubscribe"
   ) {
+    if (rateLimitRequest(ctx, "google_api_write")) return true;
     const body = await readJsonBody<{
       senderEmail: string;
       blockAfter?: boolean;
@@ -2445,6 +2632,7 @@ export async function handleLifeOpsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/lifeops/seed") {
+    if (rateLimitRequest(ctx, "task_create")) return true;
     const body = await readJsonBody<{ keys: string[]; timezone?: string }>(
       req,
       res,
@@ -2505,6 +2693,7 @@ export async function handleLifeOpsRoutes(
       });
     }
     if (method === "DELETE") {
+      if (rateLimitRequest(ctx, "task_update")) return true;
       return runRoute(ctx, async (service) => {
         await service.deleteDefinition(definitionId);
         json(res, { deleted: true });
@@ -2551,6 +2740,7 @@ export async function handleLifeOpsRoutes(
       });
     }
     if (method === "DELETE") {
+      if (rateLimitRequest(ctx, "task_update")) return true;
       return runRoute(ctx, async (service) => {
         await service.deleteGoal(goalId);
         json(res, { deleted: true });
@@ -2591,6 +2781,7 @@ export async function handleLifeOpsRoutes(
       });
     }
     if (method === "PUT") {
+      if (rateLimitRequest(ctx, "task_update")) return true;
       const body = await readJsonBody<UpdateLifeOpsWorkflowRequest>(req, res);
       if (!body) return true;
       return runRoute(ctx, async (service) => {
@@ -2603,6 +2794,7 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/workflows\/([^/]+)\/run$/,
   );
   if (method === "POST" && workflowRunMatch) {
+    if (rateLimitRequest(ctx, "task_create")) return true;
     const workflowId = decodeMatchedPathComponent(
       ctx,
       workflowRunMatch,
@@ -2643,6 +2835,7 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/complete$/,
   );
   if (method === "POST" && completeMatch) {
+    if (rateLimitRequest(ctx, "task_update")) return true;
     const occurrenceId = decodeMatchedPathComponent(
       ctx,
       completeMatch,
@@ -2664,6 +2857,7 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/skip$/,
   );
   if (method === "POST" && skipMatch) {
+    if (rateLimitRequest(ctx, "task_update")) return true;
     const occurrenceId = decodeMatchedPathComponent(
       ctx,
       skipMatch,
@@ -2685,6 +2879,7 @@ export async function handleLifeOpsRoutes(
     /^\/api\/lifeops\/occurrences\/([^/]+)\/snooze$/,
   );
   if (method === "POST" && snoozeMatch) {
+    if (rateLimitRequest(ctx, "task_update")) return true;
     const occurrenceId = decodeMatchedPathComponent(
       ctx,
       snoozeMatch,

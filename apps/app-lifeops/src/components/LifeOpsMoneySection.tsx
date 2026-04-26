@@ -4,12 +4,15 @@ import {
   useApp,
 } from "@elizaos/app-core";
 import {
+  CalendarClock,
+  CheckCircle2,
   CreditCard,
   DollarSign,
   FilePlus2,
   Loader2,
   RefreshCw,
   Sparkles,
+  Timer,
   Trash2,
   TrendingDown,
   Upload,
@@ -19,6 +22,7 @@ import type {
   LifeOpsPaymentSource,
   LifeOpsPaymentsDashboard,
   LifeOpsRecurringCharge,
+  LifeOpsUpcomingBill,
 } from "../lifeops/payment-types.js";
 import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 import { LifeOpsLinkBankButton } from "./LifeOpsLinkBankButton.js";
@@ -67,6 +71,24 @@ function formatRelative(iso: string): string {
     }
   }
   return formatter.format(Math.round(diffMs / 1000), "second");
+}
+
+function formatDueRelative(dueDateIso: string): string {
+  // dueDateIso is YYYY-MM-DD; treat as UTC noon to avoid TZ-shift edge cases.
+  const due = new Date(`${dueDateIso}T12:00:00.000Z`).getTime();
+  if (!Number.isFinite(due)) return dueDateIso;
+  const today = new Date();
+  const todayUtc = Date.UTC(
+    today.getUTCFullYear(),
+    today.getUTCMonth(),
+    today.getUTCDate(),
+    12,
+  );
+  const diffDays = Math.round((due - todayUtc) / (24 * 60 * 60 * 1000));
+  if (diffDays === 0) return "due today";
+  if (diffDays === 1) return "due tomorrow";
+  if (diffDays > 1) return `due in ${diffDays}d`;
+  return `${Math.abs(diffDays)}d overdue`;
 }
 
 function formatCredits(value: number): string {
@@ -336,7 +358,12 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           executor: "user_browser",
           confirmed: false,
         })) as {
-          cancellation: { status: string; serviceName: string; error?: string };
+          cancellation: {
+            status: string;
+            serviceName: string;
+            error?: string;
+            managementUrl?: string | null;
+          };
         };
         const status = summary.cancellation.status;
         if (status === "completed" || status === "already_canceled") {
@@ -363,9 +390,16 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           return;
         }
         if (status === "failed" || status === "unsupported_surface") {
-          window.alert(
-            `Cancellation could not start: ${summary.cancellation.error ?? status}`,
-          );
+          // PLAYBOOK_NOT_IMPLEMENTED comes through as `failed` with the error
+          // string carrying the prefix and the managementUrl populated. Open
+          // the management page in a new tab so the user can finish manually.
+          const error = summary.cancellation.error ?? "";
+          const url = summary.cancellation.managementUrl;
+          if (error.includes("PLAYBOOK_NOT_IMPLEMENTED") && url) {
+            window.open(url, "_blank", "noopener");
+            return;
+          }
+          window.alert(`Cancellation could not start: ${error || status}`);
           return;
         }
       } catch (err) {
@@ -375,6 +409,48 @@ export function LifeOpsMoneySection(): JSX.Element | null {
       }
     },
     [openLifeOpsChat, refresh],
+  );
+
+  const onMarkBillPaid = useCallback(
+    async (bill: LifeOpsUpcomingBill) => {
+      try {
+        await client.markLifeOpsBillPaid({ billId: bill.id });
+        await refresh();
+      } catch (err) {
+        window.alert(
+          `Mark paid failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+    [refresh],
+  );
+
+  const onSnoozeBill = useCallback(
+    async (bill: LifeOpsUpcomingBill) => {
+      try {
+        await client.snoozeLifeOpsBill({ billId: bill.id, days: 7 });
+        await refresh();
+      } catch (err) {
+        window.alert(
+          `Snooze failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    },
+    [refresh],
+  );
+
+  const onChatAboutBill = useCallback(
+    (bill: LifeOpsUpcomingBill) => {
+      openLifeOpsChat(
+        [
+          `Help me look at this bill from ${bill.merchant}.`,
+          `Amount: ${formatUsd(bill.amountUsd)} ${bill.currency}.`,
+          `Due: ${bill.dueDate} (${formatDueRelative(bill.dueDate)}).`,
+          "What should I do about it?",
+        ].join(" "),
+      );
+    },
+    [openLifeOpsChat],
   );
 
   const playbookHitsByMerchant = useMemo(() => {
@@ -605,6 +681,75 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           transactions={creditTransactions}
         />
       </div>
+
+      <section
+        className="rounded-lg border border-border/20 bg-bg/30 p-3"
+        data-testid="lifeops-money-bills"
+      >
+        <header className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+            <CalendarClock className="h-3.5 w-3.5" aria-hidden /> Upcoming bills
+          </h2>
+          <span className="text-[11px] text-muted">
+            From classified email
+          </span>
+        </header>
+        {(dash.upcomingBills ?? []).length === 0 ? (
+          <p className="text-xs text-muted">
+            No bills detected from email yet.
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {(dash.upcomingBills ?? []).map((bill) => (
+              <li
+                key={bill.id}
+                className="flex items-center justify-between gap-2 rounded border border-border/10 bg-bg/40 px-2.5 py-1.5 text-xs"
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-txt">
+                    {bill.merchant}
+                  </div>
+                  <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
+                    <span>{formatDate(bill.dueDate)}</span>
+                    <span className="rounded bg-bg-muted/40 px-1.5 py-0.5 font-mono text-[10px]">
+                      {formatDueRelative(bill.dueDate)}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <span className="tabular-nums font-semibold text-amber-300">
+                    {formatUsd(bill.amountUsd)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void onMarkBillPaid(bill)}
+                    className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200 hover:bg-emerald-500/20"
+                    title="Mark this bill as paid"
+                  >
+                    <CheckCircle2 className="h-3 w-3" aria-hidden /> Paid
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void onSnoozeBill(bill)}
+                    className="inline-flex items-center gap-1 rounded border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                    title="Push the due date out a week"
+                  >
+                    <Timer className="h-3 w-3" aria-hidden /> Snooze 1w
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChatAboutBill(bill)}
+                    className="rounded border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                    title="Open chat about this bill"
+                  >
+                    Chat
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
         <header className="mb-2 flex items-center justify-between">

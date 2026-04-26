@@ -47,7 +47,7 @@ function parseIncludeNapsQuery(value: string | null): boolean | undefined {
     return undefined;
   }
   const normalized = value.trim().toLowerCase();
-  if (normalized === "" ) {
+  if (normalized === "") {
     return undefined;
   }
   if (normalized === "true" || normalized === "1") {
