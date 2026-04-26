@@ -4,7 +4,7 @@ import {
   type InstallProgressLike,
   isPluginManagerLike,
   type PluginManagerLike,
-} from "@elizaos/agent/services/plugin-manager-types";
+} from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 import chalk from "chalk";
 import type { Command } from "commander";

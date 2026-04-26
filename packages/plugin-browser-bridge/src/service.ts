@@ -4,7 +4,7 @@ import type {
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPairingResponse,

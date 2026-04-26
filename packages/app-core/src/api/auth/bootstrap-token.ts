@@ -12,7 +12,7 @@
  * `{ ok: false, reason }` and the caller MUST refuse the request.
  */
 
-import type { RuntimeEnvRecord } from "@elizaos/shared/runtime-env";
+import type { RuntimeEnvRecord } from "@elizaos/shared";
 import { createLocalJWKSet, jwtVerify } from "jose";
 import type { AuthStore } from "../../services/auth-store";
 import {

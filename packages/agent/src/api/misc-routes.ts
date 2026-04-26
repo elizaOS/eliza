@@ -3,13 +3,13 @@ import type http from "node:http";
 import {
   EMOTE_BY_ID,
   EMOTE_CATALOG,
-} from "@elizaos/app-companion/emotes/catalog";
+} from "@elizaos/app-companion";
 import {
   ensurePrivyWalletsForCustomUser,
   isPrivyWalletProvisioningEnabled,
-} from "@elizaos/app-steward/services/privy-wallets";
+} from "@elizaos/app-steward";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared/type-guards";
+import { asRecord } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import type {

@@ -32,6 +32,7 @@ import type {
 import { ModelType } from "../../../types/index.ts";
 import type {
 	CurrentFactCategory,
+	CustomMetadata,
 	DurableFactCategory,
 	FactKind,
 	FactMetadata,
@@ -448,13 +449,13 @@ async function applyStrengthen(
  * static type of `FactMetadata.structuredFields` is `Record<string,
  * unknown>` and that does not satisfy the metadata index signature directly.
  */
-function preserveFactMetadata(fact: Memory): MemoryMetadata {
+function preserveFactMetadata(fact: Memory): CustomMetadata {
 	const meta = readFactMetadata(fact);
 	const normalizedStructured =
 		meta.structuredFields && typeof meta.structuredFields === "object"
 			? toJsonObject(meta.structuredFields)
 			: undefined;
-	const next: MemoryMetadata = {
+	const next: CustomMetadata = {
 		type: MemoryType.CUSTOM,
 		...(typeof meta.confidence === "number"
 			? { confidence: meta.confidence }
@@ -495,7 +496,7 @@ async function applyStrengthenForMemory(
 	if (ctx.message.id && !evidence.includes(ctx.message.id)) {
 		evidence.push(ctx.message.id);
 	}
-	const nextMeta: MemoryMetadata = {
+	const nextMeta: CustomMetadata = {
 		...preserveFactMetadata(fact),
 		confidence: nextConfidence,
 		lastConfirmedAt: nowIso(),
@@ -515,7 +516,7 @@ async function applyDecay(
 		await ctx.runtime.deleteMemory(fact.id);
 		return true;
 	}
-	const nextMeta: MemoryMetadata = {
+	const nextMeta: CustomMetadata = {
 		...preserveFactMetadata(fact),
 		confidence: nextConfidence,
 	};

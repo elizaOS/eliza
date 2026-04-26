@@ -3,7 +3,7 @@ import type {
   WalletEntry,
   WalletPrimaryMap,
   WalletSource,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import type { Dispatch, SetStateAction } from "react";
 import type {
   AgentStatus,

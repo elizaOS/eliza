@@ -1,5 +1,5 @@
 import { type CodingAgentSession, useApp } from "@elizaos/app-core";
-import { Z_OVERLAY } from "@elizaos/ui/lib/floating-layers";
+import { Z_OVERLAY } from "@elizaos/ui";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 
 interface PtyConsoleSidePanelProps {

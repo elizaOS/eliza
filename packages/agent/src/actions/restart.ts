@@ -27,7 +27,7 @@ import { logger } from "@elizaos/core";
 import {
   getValidationKeywordTerms,
   textIncludesKeywordTerm,
-} from "@elizaos/shared/validation-keywords";
+} from "@elizaos/shared";
 import { requestRestart } from "../runtime/restart.js";
 import { hasOwnerAccess } from "../security/access.js";
 

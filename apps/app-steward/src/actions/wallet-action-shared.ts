@@ -8,7 +8,7 @@
 import {
   resolveApiToken,
   resolveDesktopApiPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 
 /** Resolve the loopback API port for wallet action calls at runtime. */
 export function getWalletActionApiPort(): string {

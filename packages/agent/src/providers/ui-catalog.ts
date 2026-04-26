@@ -5,7 +5,7 @@ import {
   type Provider,
   type State,
 } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/shared/validation-keywords";
+import { getValidationKeywordTerms } from "@elizaos/shared";
 import { hasAdminAccess } from "../security/access.js";
 import { COMPONENT_CATALOG } from "../shared/ui-catalog-prompt.js";
 

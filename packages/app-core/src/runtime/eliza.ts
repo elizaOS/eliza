@@ -5,11 +5,12 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { resolveUserPath } from "@elizaos/agent/config/paths";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
 import {
   type BootElizaRuntimeOptions,
+  getLastFailedPluginNames,
+  loadElizaConfig,
+  resolveDefaultAgentWorkspaceDir,
+  resolveUserPath,
   type StartElizaOptions,
   applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
   applyN8nConfigToEnv as upstreamApplyN8nConfigToEnv,
@@ -19,7 +20,7 @@ import {
   configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
-} from "@elizaos/agent/runtime/eliza";
+} from "@elizaos/agent";
 import {
   type AgentRuntime,
   AutonomyService,
@@ -34,13 +35,12 @@ export {
   CUSTOM_PLUGINS_DIRNAME,
   resolvePackageEntry,
   scanDropInPlugins,
-} from "@elizaos/agent/runtime/plugin-types";
+} from "@elizaos/agent";
 
-import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 import {
   resolveServerOnlyPort,
   syncResolvedApiPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import { isNativeServerPlatform } from "../platform/is-native-server.js";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";

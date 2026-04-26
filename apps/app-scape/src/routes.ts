@@ -8,7 +8,7 @@ import type {
   AppSessionActivityItem,
   AppSessionJsonValue,
   AppSessionState,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 import { decode, encode } from "@toon-format/toon";
 
 import type { JournalGoal, JournalMemory } from "./journal/types.js";

@@ -15,7 +15,7 @@ import {
 import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
-} from "@elizaos/shared/validation-keywords";
+} from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.js";
 import { parsePositiveInteger } from "../utils/number-parsing.js";
 import {

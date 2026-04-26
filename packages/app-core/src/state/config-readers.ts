@@ -2,7 +2,7 @@
  * Shared helpers for safely reading values from untyped config objects.
  */
 
-import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
+import { asNonEmptyString, asRecord } from "@elizaos/shared";
 
 export { asRecord };
 

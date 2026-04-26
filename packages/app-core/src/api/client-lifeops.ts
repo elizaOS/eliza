@@ -18,7 +18,7 @@ import type {
   ListLifeOpsCalendarsRequest,
   ManageLifeOpsGmailMessagesRequest,
   SetLifeOpsCalendarIncludedRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "@elizaos/app-lifeops";
 import { ElizaClient } from "./client-base";
 
 declare module "./client-base" {

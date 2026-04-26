@@ -16,7 +16,7 @@ import type http from "node:http";
 import type {
   WalletExportRejection,
   WalletExportRequestBody,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 
 export type { WalletExportRejection };
 

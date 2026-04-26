@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import type http from "node:http";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import {
+  loadElizaConfig,
+} from "@elizaos/agent";
 import { ethers } from "ethers";
 import { deriveSolanaAddress } from "../api/wallet";
 import { resolveWalletRpcReadiness } from "../api/wallet-rpc";
@@ -17,15 +19,15 @@ export function safeParseBigInt(value: string): bigint {
   }
 }
 
-import { ensureCompatApiAuthorized } from "@elizaos/app-core/api/auth";
+import { ensureCompatApiAuthorized } from "@elizaos/app-core";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
-} from "@elizaos/app-core/api/compat-route-shared";
+} from "@elizaos/app-core";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "@elizaos/app-core/api/response";
+} from "@elizaos/app-core";
 import { isStewardConfigured, signViaSteward } from "./steward-bridge";
 
 function normalizeHexData(value: unknown): string | undefined {

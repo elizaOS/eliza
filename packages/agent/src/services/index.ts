@@ -4,14 +4,63 @@ export * from "./app-session-gate.js";
 export * from "./browser-capture.js";
 export * from "./browser-workspace.js";
 export { CodingTaskExecutor } from "./coding-task-executor.js";
+export {
+  EscalationService,
+  registerEscalationChannel,
+  type EscalationState,
+} from "./escalation.js";
 export { createDefaultExecutorRegistry } from "./executor-registry.js";
 export * from "./overlay-app-presence.js";
+// `plugin-manager-types` re-exports `RegistryPluginInfo` and
+// `RegistrySearchResult` from `./registry-client-types.js`, which collide with
+// the same names exported from `./registry-client.js`. Re-export the
+// non-colliding names individually under stable aliases.
+export {
+  type CoreManagerLike,
+  type CoreStatusLike,
+  type EjectResult,
+  type InstallProgressLike,
+  type InstalledPluginInfo,
+  isCoreManagerLike,
+  isPluginManagerLike,
+  type PluginInstallOptionsLike,
+  type PluginInstallResult,
+  type PluginManagerLike,
+  type PluginUninstallResult,
+  type RegistryPluginAppMeta,
+  type RegistryPluginAppSessionFeature,
+  type RegistryPluginAppSessionInfo,
+  type RegistryPluginAppSessionMode,
+  type RegistryPluginInfo as RegistryPluginManagerInfo,
+  type RegistryPluginNpmInfo,
+  type RegistryPluginViewerInfo,
+  type RegistrySearchResult as RegistryPluginManagerSearchResult,
+  type RegistryVersionSupport,
+  type ReinjectResult,
+  type SyncResult,
+} from "./plugin-manager-types.js";
 export * from "./registry-client.js";
 export * from "./remote-signing-service.js";
 export { ResearchTaskExecutor } from "./research-task-executor.js";
 export * from "./sandbox-engine.js";
 export * from "./sandbox-manager.js";
 export * from "./self-updater.js";
+// `signal-pairing` and `whatsapp-pairing` both export `sanitizeAccountId`.
+// Re-export each with the function name aliased to the connector to avoid
+// collision while keeping all other names available from the bare barrel.
+export {
+  classifySignalPairingErrorStatus,
+  extractSignalCliProvisioningUrl,
+  parseSignalCliAccountsOutput,
+  sanitizeAccountId as sanitizeSignalAccountId,
+  signalAuthExists,
+  signalLogout,
+  type SignalPairingEvent,
+  type SignalPairingOptions,
+  SignalPairingSession,
+  type SignalPairingSnapshot,
+  type SignalPairingStatus,
+} from "./signal-pairing.js";
 export * from "./signing-policy.js";
 export * from "./skill-catalog-client.js";
 export * from "./skill-marketplace.js";
@@ -20,3 +69,12 @@ export * from "./task-executor.js";
 export * from "./tts-stream-bridge.js";
 export * from "./update-checker.js";
 export * from "./version-compat.js";
+export {
+  sanitizeAccountId as sanitizeWhatsAppAccountId,
+  whatsappAuthExists,
+  whatsappLogout,
+  type WhatsAppPairingEvent,
+  type WhatsAppPairingOptions,
+  WhatsAppPairingSession,
+  type WhatsAppPairingStatus,
+} from "./whatsapp-pairing.js";

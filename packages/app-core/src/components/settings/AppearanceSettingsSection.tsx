@@ -1,5 +1,7 @@
-import type { ResolvedContentPack } from "@elizaos/shared/contracts/content-pack";
-import { BUILTIN_THEMES } from "@elizaos/shared/themes/presets";
+import {
+  BUILTIN_THEMES,
+  type ResolvedContentPack,
+} from "@elizaos/shared";
 import { Button, Input, Switch } from "@elizaos/ui";
 import { Check, FolderOpen, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

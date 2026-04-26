@@ -1,1 +1,1 @@
-export * from "@elizaos/app-companion/vrm-assets";
+export * from "@elizaos/app-companion";

@@ -39,7 +39,7 @@ import type { AgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
-} from "@elizaos/shared/connectors";
+} from "@elizaos/shared";
 import { cacheDiscordAvatarUrl } from "./discord-avatar-cache.js";
 import type { RouteHelpers } from "./route-helpers.js";
 

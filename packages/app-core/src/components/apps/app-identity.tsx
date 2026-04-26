@@ -2,7 +2,7 @@ import {
   createGeneratedAppHeroDataUrl,
   getAppHeroMonogram,
   getAppHeroThemeKey,
-} from "@elizaos/shared/app-hero-art";
+} from "@elizaos/shared";
 import {
   Bot,
   Briefcase,

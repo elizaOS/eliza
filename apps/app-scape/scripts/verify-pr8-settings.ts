@@ -9,9 +9,9 @@
  */
 
 import {
-    aggregateSecrets,
-    discoverPluginsFromManifest,
-} from "@elizaos/agent/api/plugin-discovery-helpers";
+  aggregateSecrets,
+  discoverPluginsFromManifest,
+} from "@elizaos/agent";
 
 function assertTrue(label: string, ok: boolean): void {
     if (ok) {

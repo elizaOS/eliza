@@ -6,7 +6,7 @@ import type {
   AppRunSessionContext,
   AppSessionActionResult,
   AppSessionState,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 
 const APP_NAME = "@elizaos/app-defense-of-the-agents";
 const APP_DISPLAY_NAME = "Defense of the Agents";

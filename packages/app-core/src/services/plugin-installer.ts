@@ -28,12 +28,13 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import { requestRestart } from "@elizaos/agent/runtime";
 import {
   getPluginInfo,
+  loadElizaConfig,
   type RegistryPluginInfo,
-} from "@elizaos/agent/services/registry-client";
+  requestRestart,
+  saveElizaConfig,
+} from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import { createSerialise } from "../utils/serialise";
 

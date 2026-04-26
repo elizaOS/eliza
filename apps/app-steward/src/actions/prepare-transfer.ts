@@ -15,7 +15,7 @@ import type {
   EvmChainBalance,
   WalletAddresses,
   WalletBalancesResponse,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import {
   buildAuthHeaders,
   getWalletActionApiPort,

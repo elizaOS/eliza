@@ -1,4 +1,4 @@
-export * from "@elizaos/shared/runtime-env";
+export * from "@elizaos/shared";
 export * from "./character-schema.js";
 export * from "./config.js";
 export * from "./env-vars.js";

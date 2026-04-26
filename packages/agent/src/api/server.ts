@@ -28,17 +28,15 @@ import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { DropService } from "@elizaos/app-elizamaker/drop-service";
 import { setElizaMakerDropService } from "@elizaos/app-elizamaker/drop-service-registry";
-import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
-import {
-  normalizeJsonRpcUrl,
-  probeJsonRpcEndpoint,
-  TxService,
-} from "@elizaos/app-steward/api/tx-service";
+import { handleKnowledgeRoutes } from "@elizaos/app-knowledge";
 import {
   ensurePrivyWalletsForCustomUser,
   isPrivyWalletProvisioningEnabled,
-} from "@elizaos/app-steward/services/privy-wallets";
-import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
+  normalizeJsonRpcUrl,
+  probeJsonRpcEndpoint,
+  TxService,
+} from "@elizaos/app-steward";
+import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {
@@ -47,8 +45,10 @@ import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/a
 //   updateWalletTradeLedgerEntryStatus,
 // } from "./wallet-trading-profile.js";
 // Phase 2 extraction: Website-blocker routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
-import { handleTrainingRoutes } from "@elizaos/app-training/routes/training";
-import { handleTrajectoryRoute } from "@elizaos/app-training/routes/trajectory";
+import {
+  handleTrainingRoutes,
+  handleTrajectoryRoute,
+} from "@elizaos/app-training";
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -58,9 +58,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  getStylePresets,
+  normalizeCharacterLanguage,
   resolveApiBindHost,
   resolveServerOnlyPort,
-} from "@elizaos/shared/runtime-env";
+  resolveStylePresetByAvatarIndex,
+} from "@elizaos/shared";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
 import {
@@ -727,11 +730,6 @@ const resolveMcpServersRejection = _resolveMcpServersRejection;
 // Onboarding / config helpers — extracted to server-helpers-config.ts
 // ---------------------------------------------------------------------------
 
-import {
-  getStylePresets,
-  normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
-} from "@elizaos/shared/onboarding-presets";
 import { pickRandomNames } from "../runtime/onboarding-names.js";
 
 import {

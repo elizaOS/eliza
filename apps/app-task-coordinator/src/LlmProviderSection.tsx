@@ -1,6 +1,5 @@
 import { useApp } from "@elizaos/app-core";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
+import { Button, SettingsControls } from "@elizaos/ui";
 import {
   AlertTriangle,
   CheckCircle2,

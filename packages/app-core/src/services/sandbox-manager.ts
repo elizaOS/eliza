@@ -7,19 +7,17 @@ import {
   createEngine,
   detectBestEngine,
   type ISandboxEngine,
-} from "@elizaos/agent/services";
+  type SandboxManagerConfig,
+  type SandboxMode,
+  type SandboxState,
+} from "@elizaos/agent";
 
 export type {
   SandboxManagerConfig,
   SandboxMode,
   SandboxState,
-} from "@elizaos/agent/services/sandbox-manager";
+} from "@elizaos/agent";
 
-import type {
-  SandboxManagerConfig,
-  SandboxMode,
-  SandboxState,
-} from "@elizaos/agent/services/sandbox-manager";
 
 export interface SandboxExecOptions {
   command: string;

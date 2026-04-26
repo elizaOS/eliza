@@ -1,22 +1,22 @@
 import type http from "node:http";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
-import { persistConfigEnv } from "@elizaos/agent/api/config-env";
-import type {
-  RouteHelpers,
-  RouteRequestMeta,
-} from "@elizaos/agent/api/route-helpers";
-import type { ElizaConfig } from "@elizaos/agent/config/config";
+import {
+  createIntegrationTelemetrySpan,
+  type ElizaConfig,
+  persistConfigEnv,
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import {
   normalizeWalletRpcSelections,
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import {
   fetchEvmBalances,
   fetchSolanaBalances,

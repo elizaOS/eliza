@@ -34,13 +34,13 @@ import { selectLiveProvider } from "../helpers/live-provider";
 import { withTimeout, sleep } from "../helpers/test-utils";
 /** Matches the table name used by @elizaos/core personality module. */
 const USER_PREFS_TABLE = "user_personality_preferences";
-import { startApiServer } from "@elizaos/agent/api/server";
-import { ensureAgentWorkspace } from "@elizaos/agent/providers/workspace";
-import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
 import {
+  configureLocalEmbeddingPlugin,
+  ensureAgentWorkspace,
   extractPlugin,
   type PluginModuleShape,
-} from "@elizaos/agent/test-support/test-helpers";
+  startApiServer,
+} from "@elizaos/agent";
 
 // ---------------------------------------------------------------------------
 // Environment

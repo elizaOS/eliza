@@ -2,8 +2,10 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
-import { getPluginInfo } from "@elizaos/agent/services/registry-client";
+import {
+  getPluginInfo,
+  resolveStateDir,
+} from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import { createSerialise } from "../utils/serialise";
 import {

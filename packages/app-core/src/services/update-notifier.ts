@@ -3,11 +3,11 @@
  * to stderr if a newer version is available (like npm's update-notifier).
  */
 
-import { loadElizaConfig } from "@elizaos/agent/config/config";
 import {
   checkForUpdate,
+  loadElizaConfig,
   resolveChannel,
-} from "@elizaos/agent/services/update-checker";
+} from "@elizaos/agent";
 import { theme } from "../terminal/theme";
 
 let notified = false;

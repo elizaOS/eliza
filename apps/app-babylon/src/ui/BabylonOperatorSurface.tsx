@@ -1,4 +1,5 @@
 import {
+  type AppOperatorSurfaceProps,
   type BabylonActivityItem,
   type BabylonAgentGoal,
   type BabylonAgentStatus,
@@ -6,21 +7,18 @@ import {
   type BabylonPredictionMarket,
   type BabylonWallet,
   client,
-} from "@elizaos/app-core/api";
-import {
   formatDetailTimestamp,
+  selectLatestRunForApp,
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
   SurfaceSection,
-  selectLatestRunForApp,
   toneForHealthState,
   toneForStatusText,
   toneForViewerAttachment,
-} from "@elizaos/app-core/components/apps/extensions/surface";
-import type { AppOperatorSurfaceProps } from "@elizaos/app-core/components/apps/surfaces/types";
-import { useApp } from "@elizaos/app-core/state";
+  useApp,
+} from "@elizaos/app-core";
 import { Button, Input } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

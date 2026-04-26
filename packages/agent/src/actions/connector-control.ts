@@ -19,7 +19,7 @@
 
 import type { Action, ActionExample, HandlerOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
+import { resolveServerOnlyPort } from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.js";
 
 function getApiBase(): string {
