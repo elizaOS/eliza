@@ -1,16 +1,23 @@
 /**
  * @module plugin-app-control
- * @description elizaOS plugin that lets the Milady agent launch, close, and
- * list running Milady apps. Consumed by the Apps page's right-side chat.
+ * @description elizaOS plugin that lets the Milady agent launch, close, list,
+ * relaunch, load-from-directory, and create Milady apps.
  *
- * All actions talk to the Milady dashboard API over loopback:
- * - `POST /api/apps/launch` to start an app
- * - `GET  /api/apps/runs` to list running runs
- * - `POST /api/apps/runs/:runId/stop` to stop a run
- * - `GET  /api/apps/installed` for name resolution
+ * Surface:
+ * - One unified `APP` action (sub-modes: launch / relaunch / list /
+ *   load_from_directory / create). Legacy `LAUNCH_APP`, `CLOSE_APP`, and
+ *   `LIST_RUNNING_APPS` names remain as similes on the unified action.
+ * - `AppVerificationService` — owned by Agent B; left intact below.
+ *
+ * Standalone single-purpose action factories (createLaunchAppAction,
+ * createCloseAppAction, createListRunningAppsAction) are still exported
+ * for direct callers/tests but are NOT registered in the plugin's actions
+ * array — the unified `APP` action covers their planner surface via
+ * similes.
  */
 
 import type { Plugin } from "@elizaos/core";
+import { appAction, createAppAction } from "./actions/app.js";
 import { closeAppAction, createCloseAppAction } from "./actions/close-app.js";
 import {
 	createLaunchAppAction,
@@ -43,16 +50,22 @@ export type {
 	InstalledAppInfo,
 } from "./types.js";
 export {
+	appAction,
+	createAppAction,
+	closeAppAction,
 	createCloseAppAction,
 	createLaunchAppAction,
 	createListRunningAppsAction,
+	launchAppAction,
+	listRunningAppsAction,
 };
+export type { AppMode } from "./actions/app.js";
 
 export const appControlPlugin: Plugin = {
 	name: "app-control",
 	description:
-		"Launch, close, and list running Milady apps from agent chat. Backed by the Milady dashboard /api/apps/* HTTP surface.",
-	actions: [launchAppAction, closeAppAction, listRunningAppsAction],
+		"Launch, close, list, relaunch, load, and create Milady apps from agent chat. Backed by the Milady dashboard /api/apps/* HTTP surface.",
+	actions: [appAction],
 	services: [
 		// === appended by Agent B (AppVerificationService) ===
 		// Agent C: do not remove; reorder freely
