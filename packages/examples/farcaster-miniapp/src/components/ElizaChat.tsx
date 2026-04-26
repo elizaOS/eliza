@@ -10,8 +10,11 @@ export function ElizaChat() {
     const messagesEndRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
-        // Generate session ID
-        setSessionId(`session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`)
+        // Generate session ID using Web Crypto for unbiased randomness.
+        const bytes = new Uint8Array(6)
+        crypto.getRandomValues(bytes)
+        const suffix = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+        setSessionId(`session-${Date.now()}-${suffix}`)
 
         // Add welcome message
         setMessages([

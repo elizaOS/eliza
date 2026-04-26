@@ -24,13 +24,14 @@ import type { ConversationMeta } from "./server-helpers.js";
 // ---------------------------------------------------------------------------
 
 export function extractAuthToken(req: http.IncomingMessage): string | null {
-  const auth =
+  const rawAuth =
     typeof req.headers.authorization === "string"
-      ? req.headers.authorization.trim()
+      ? req.headers.authorization
       : "";
-  if (auth) {
-    const match = /^Bearer\s+(.+)$/i.exec(auth);
-    if (match?.[1]) return match[1].trim();
+  const auth = rawAuth.length > 8192 ? rawAuth.slice(0, 8192).trim() : rawAuth.trim();
+  if (auth && auth.length >= 7 && auth.slice(0, 7).toLowerCase() === "bearer ") {
+    const token = auth.slice(7).trim();
+    if (token) return token;
   }
 
   const header =

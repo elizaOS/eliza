@@ -182,12 +182,18 @@ export const readFileAction: Action = {
 	similes: ["OPEN_FILE", "LOAD_FILE"],
 	description:
 		"Read a local text file for the current task. Returns the file content so the agent can reference it. Set addToClipboard=true to keep the read result in bounded task clipboard state.",
-	validate: async (_runtime, message) =>
-		typeof message.content.filePath === "string" ||
-		typeof message.content.path === "string" ||
-		/(?:read|open|inspect).*(?:file|path)/i.test(
-			String(message.content.text ?? ""),
-		),
+	validate: async (_runtime, message) => {
+		if (
+			typeof message.content.filePath === "string" ||
+			typeof message.content.path === "string"
+		) {
+			return true;
+		}
+		const rawText = String(message.content.text ?? "");
+		const safeText =
+			rawText.length > 10_000 ? rawText.slice(0, 10_000) : rawText;
+		return /(?:read|open|inspect).*(?:file|path)/i.test(safeText);
+	},
 	handler: async (
 		runtime: IAgentRuntime,
 		message: Memory,

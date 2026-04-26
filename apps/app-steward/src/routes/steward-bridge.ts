@@ -1,7 +1,7 @@
-import crypto from "node:crypto";
 import {
   loadElizaConfig,
 } from "@elizaos/agent";
+import { fingerprintRandomToken } from "../services/steward-sidecar/helpers";
 import {
   type PolicyResult,
   type PolicyRule,
@@ -1169,10 +1169,7 @@ async function doEnsureStewardAgent(
           body: JSON.stringify({
             id: tenantId,
             name: "Desktop",
-            apiKeyHash: crypto
-              .createHash("sha256")
-              .update(apiKey)
-              .digest("hex"),
+            apiKeyHash: fingerprintRandomToken(apiKey),
           }),
         });
 

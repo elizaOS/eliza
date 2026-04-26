@@ -1110,7 +1110,9 @@ export function formatBenchmarkReportMarkdown(
       const planned = f.plannedAction ?? "(none)";
       const completed = f.completedAction ?? "(none)";
       const mode = f.failureMode ?? "error";
-      const err = f.error ? f.error.replace(/\|/g, "\\|") : "";
+      const err = f.error
+        ? f.error.replace(/\\/g, "\\\\").replace(/\|/g, "\\|")
+        : "";
       lines.push(
         `| ${f.case.id} | ${expected} | ${planned} | ${completed} | ${mode} | ${err} |`,
       );
@@ -1124,8 +1126,11 @@ export function formatBenchmarkReportMarkdown(
     lines.push("| Case | Planned | Started | Completed | Error |");
     lines.push("| --- | --- | --- | --- | --- |");
     for (const result of executionIssues) {
+      const issueErr = (result.error ?? "")
+        .replace(/\\/g, "\\\\")
+        .replace(/\|/g, "\\|");
       lines.push(
-        `| ${result.case.id} | ${result.plannedAction ?? "(none)"} | ${result.startedAction ?? "(none)"} | ${result.completedAction ?? "(none)"} | ${(result.error ?? "").replace(/\|/g, "\\|")} |`,
+        `| ${result.case.id} | ${result.plannedAction ?? "(none)"} | ${result.startedAction ?? "(none)"} | ${result.completedAction ?? "(none)"} | ${issueErr} |`,
       );
     }
     lines.push("");

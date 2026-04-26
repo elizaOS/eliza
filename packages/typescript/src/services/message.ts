@@ -152,7 +152,8 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	return /<@!?[^>]+>|@\w+/u.test(text);
+	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
 
 const DEFAULT_DUAL_PRESSURE_THRESHOLD = 20;
@@ -613,7 +614,11 @@ function extractProviderNamesFromXml(rawProviders: string): string[] {
 }
 
 function extractStructuredProviderList(rawProviders: string): string[] {
-	const tokens = rawProviders
+	const safe =
+		rawProviders.length > 10_000
+			? rawProviders.slice(0, 10_000)
+			: rawProviders;
+	const tokens = safe
 		.split(/[\n,;]/)
 		.map((providerName) =>
 			providerName.replace(/^[\s"'[\](){}]+|[\s"'[\](){}]+$/g, ""),
@@ -1159,7 +1164,8 @@ function normalizeActionIdentifier(actionName: string): string {
 }
 
 function unwrapPlannerIdentifier(value: string): string {
-	const trimmed = value.trim().replace(/^["'`]+|["'`]+$/g, "");
+	const safe = value.length > 10_000 ? value.slice(0, 10_000) : value;
+	const trimmed = safe.trim().replace(/^["'`]+|["'`]+$/g, "");
 	if (!trimmed) {
 		return "";
 	}

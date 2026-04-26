@@ -87,16 +87,22 @@ async function performFirstLaunchSetup(
 
   // 1. Create tenant
   const tenantApiKey = generateApiKey();
+  // Use scrypt with the stable tenant id as salt; the api key itself is a
+  // 256-bit random token, so this is effectively a slow KDF over a strong key.
+  const apiKeyHash = crypto
+    .scryptSync(tenantApiKey, DEFAULT_TENANT_ID, 64, {
+      N: 1 << 14,
+      r: 8,
+      p: 1,
+    })
+    .toString("hex");
   const tenantResponse = await fetch(`${apiBase}/tenants`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       id: DEFAULT_TENANT_ID,
       name: DEFAULT_TENANT_NAME,
-      apiKeyHash: crypto
-        .createHash("sha256")
-        .update(tenantApiKey)
-        .digest("hex"),
+      apiKeyHash,
     }),
   });
 

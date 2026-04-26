@@ -643,8 +643,13 @@ function coerceActionParamValue(
 		return value;
 	}
 
-	const splitValues = trimmed
-		.split(/\s*\|\|\s*|,|\n/)
+	const SAFE_SPLIT_LIMIT = 10_000;
+	const safeTrimmed =
+		trimmed.length > SAFE_SPLIT_LIMIT
+			? trimmed.slice(0, SAFE_SPLIT_LIMIT)
+			: trimmed;
+	const splitValues = safeTrimmed
+		.split(/\|\||,|\n/)
 		.map((entry) => entry.trim())
 		.filter((entry) => entry.length > 0);
 

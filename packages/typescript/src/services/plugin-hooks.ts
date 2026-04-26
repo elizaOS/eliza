@@ -157,9 +157,10 @@ export function applyPluginFilter(
 	// Normalize a plugin name for comparison
 	const normalizePluginName = (name: string): string => {
 		const lower = name.toLowerCase().trim();
+		const safeLower = lower.length > 256 ? lower.slice(0, 256) : lower;
 		// Extract short name from full package name
-		const match = lower.match(/@[^/]+\/plugin-(.+)$/);
-		return match ? match[1] : lower;
+		const match = safeLower.match(/@[^/]+\/plugin-(.+)$/);
+		return match ? match[1] : safeLower;
 	};
 
 	// Check if a plugin matches any name in a list

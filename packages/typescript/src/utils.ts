@@ -655,7 +655,8 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 	}
 
 	if (!xmlContent) {
-		const looksLikeXml = /<[/!?A-Za-z_][^>\n]*>/.test(text);
+		const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
+		const looksLikeXml = /<[/!?A-Za-z_][^>\n]*>/.test(safeText);
 		if (!looksLikeXml) {
 			return null;
 		}
@@ -838,13 +839,14 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 			const closeIdx = searchStart - closeSeq.length;
 			const innerRaw = input.slice(startTagEnd + 1, closeIdx);
 
-			// Basic unescaping for common XML entities (add more as needed)
+			// Basic unescaping for common XML entities (add more as needed).
+			// &amp; must be last so &amp;lt; decodes to &lt; (literal), not <.
 			const unescaped = innerRaw
 				.replace(/&lt;/g, "<")
 				.replace(/&gt;/g, ">")
-				.replace(/&amp;/g, "&")
 				.replace(/&quot;/g, '"')
 				.replace(/&apos;/g, "'")
+				.replace(/&amp;/g, "&")
 				.trim();
 
 			pairs.push({ key: tag, value: unescaped });
@@ -936,6 +938,8 @@ export function parseJSONObjectFromText(
  */
 
 export const normalizeJsonString = (str: string) => {
+	// Bound input to avoid polynomial-redos on adversarial inputs.
+	str = str.length > 100_000 ? str.slice(0, 100_000) : str;
 	// Remove extra spaces after '{' and before '}'
 	str = str.replace(/\{\s+/, "{").replace(/\s+\}/, "}").trim();
 

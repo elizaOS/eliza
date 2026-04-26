@@ -49,14 +49,14 @@ const DEFAULT_TIMEOUT_MS = 10_000;
  * Normalizes a base URL for Signal CLI HTTP server
  */
 export function normalizeBaseUrl(url: string): string {
-  const trimmed = url.trim();
+  const trimmed = url.trim().slice(0, 2048);
   if (!trimmed) {
     throw new Error("Signal base URL is required");
   }
   if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed.replace(/\/+$/, "");
+    return trimmed.replace(/\/{1,256}$/, "");
   }
-  return `http://${trimmed}`.replace(/\/+$/, "");
+  return `http://${trimmed}`.replace(/\/{1,256}$/, "");
 }
 
 /**

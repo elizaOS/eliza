@@ -14,6 +14,15 @@ export const DISCORD_APP_URL = "https://discord.com/channels/@me";
 const DISCORD_APP_TITLE = "Discord";
 const DISCORD_DM_PREVIEW_LIMIT = 5;
 
+function isDiscordHost(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.hostname === "discord.com" || u.hostname.endsWith(".discord.com");
+  } catch {
+    return false;
+  }
+}
+
 export interface DiscordTabIdentity {
   id: string | null;
   username: string | null;
@@ -412,7 +421,7 @@ async function findTabByIdOrPartition(
     (tab) =>
       tab.partition === partition &&
       typeof tab.url === "string" &&
-      tab.url.includes("discord.com"),
+      isDiscordHost(tab.url),
   );
   if (byPartition) return { id: byPartition.id, url: byPartition.url };
   return null;
