@@ -3,6 +3,9 @@
 # Pre-built `dist/` and `apps/app/dist/` are expected in the build context.
 
 .git
+.git/**
+**/.git
+**/.git/**
 .github
 .claude
 .devin
