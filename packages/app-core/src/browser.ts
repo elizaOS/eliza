@@ -13,7 +13,6 @@ export {
 } from "@elizaos/shared";
 export * from "@elizaos/ui";
 export { App } from "./App.tsx";
-export * from "./api/auth.ts";
 export * from "./api/index.ts";
 export * from "./api/response.ts";
 export * from "./app-shell/task-coordinator-slots.tsx";
