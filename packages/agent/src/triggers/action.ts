@@ -136,13 +136,20 @@ function scheduleText(
   return `on cron ${summary.cronExpression ?? "* * * * *"}`;
 }
 
+const EVERY_N_UNIT_PATTERN =
+  /\bevery\s+\d+\s*(second|minute|hour|day|week|month)s?\b/i;
+
 export function looksLikeTriggerIntent(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) {
     return false;
   }
 
-  return findKeywordTermMatch(trimmed, TRIGGER_INTENT_TERMS) !== undefined;
+  if (findKeywordTermMatch(trimmed, TRIGGER_INTENT_TERMS) !== undefined) {
+    return true;
+  }
+
+  return EVERY_N_UNIT_PATTERN.test(trimmed);
 }
 
 export const createTriggerTaskAction: Action = {
