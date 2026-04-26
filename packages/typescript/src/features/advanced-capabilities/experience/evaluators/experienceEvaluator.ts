@@ -401,7 +401,8 @@ function buildExperienceProvenance(
 		.filter((id): id is NonNullable<Memory["id"]> => typeof id === "string");
 
 	return {
-		sourceMessageIds: sourceMessageIds.length > 0 ? sourceMessageIds : undefined,
+		sourceMessageIds:
+			sourceMessageIds.length > 0 ? sourceMessageIds : undefined,
 		sourceRoomId: triggerMessage.roomId,
 		sourceTriggerMessageId: triggerMessage.id,
 		sourceTrajectoryId: readMetadataString(triggerMessage, "trajectoryId"),

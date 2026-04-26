@@ -202,13 +202,17 @@ function ProvenancePanel({
           </div>
         </div>
         <div>
-          <div className="text-xs font-semibold text-muted">Trigger message</div>
+          <div className="text-xs font-semibold text-muted">
+            Trigger message
+          </div>
           <div className="mt-1 font-mono text-xs text-muted-strong">
             {shortId(experience.sourceTriggerMessageId)}
           </div>
         </div>
         <div>
-          <div className="text-xs font-semibold text-muted">Evidence messages</div>
+          <div className="text-xs font-semibold text-muted">
+            Evidence messages
+          </div>
           <div className="mt-1 font-mono text-xs text-muted-strong">
             {sourceMessageIds.length > 0
               ? `${sourceMessageIds.length} captured`
