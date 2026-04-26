@@ -1,12 +1,6 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { manageBrowserBridgeAction } from "./action.ts";
 import {
-  getSelfControlStatus,
-  type SelfControlPluginConfig,
-  setSelfControlPluginConfig,
-} from "./website-blocker/engine.js";
-import { WebsiteBlockerService } from "./website-blocker/service.js";
-import {
   approveRequestAction,
   rejectRequestAction,
 } from "./actions/approval.js";
@@ -26,7 +20,6 @@ import { crossChannelSendAction } from "./actions/cross-channel-send.js";
 import { publishDeviceIntentAction } from "./actions/device-bus.js";
 import { dossierAction } from "./actions/dossier.js";
 import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
-import { paymentsAction } from "./actions/payments.js";
 import { healthAction } from "./actions/health.js";
 import { intentSyncAction } from "./actions/intent-sync.js";
 import { lifeAction } from "./actions/life.js";
@@ -40,8 +33,10 @@ import { ownerScheduleAction } from "./actions/owner-schedule.js";
 import { ownerScreenTimeAction } from "./actions/owner-screen-time.js";
 import { ownerWebsiteBlockAction } from "./actions/owner-website-block.js";
 import { passwordManagerAction } from "./actions/password-manager.js";
+import { paymentsAction } from "./actions/payments.js";
 import { relationshipAction } from "./actions/relationships.js";
 import { scheduleXDmReplyAction } from "./actions/schedule-x-dm-reply.js";
+import { searchAcrossChannelsAction } from "./actions/search-across-channels.js";
 import { subscriptionsAction } from "./actions/subscriptions.js";
 import {
   callExternalAction,
@@ -51,12 +46,16 @@ import {
 import { updateOwnerProfileAction } from "./actions/update-owner-profile.js";
 import { xReadAction } from "./actions/x-read.js";
 import { ActivityTrackerService } from "./activity-profile/activity-tracker-service.js";
+import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
 import {
   ensureProactiveAgentTask,
   PROACTIVE_TASK_NAME,
   registerProactiveTaskWorker,
 } from "./activity-profile/proactive-worker.js";
-import { PresenceSignalBridgeService } from "./activity-profile/presence-signal-bridge-service.js";
+import {
+  FOLLOWUP_TRACKER_TASK_NAME,
+  registerFollowupTrackerWorker,
+} from "./followup/index.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
   ensureLifeOpsSchedulerTask,
@@ -81,13 +80,12 @@ import {
   registerBlockRuleReconcilerWorker,
   releaseBlockAction,
 } from "./website-blocker/chat-integration/index.js";
-
-import { searchAcrossChannelsAction } from "./actions/search-across-channels.js";
-
 import {
-  FOLLOWUP_TRACKER_TASK_NAME,
-  registerFollowupTrackerWorker,
-} from "./followup/index.js";
+  getSelfControlStatus,
+  type SelfControlPluginConfig,
+  setSelfControlPluginConfig,
+} from "./website-blocker/engine.js";
+import { WebsiteBlockerService } from "./website-blocker/service.js";
 
 async function ensureTaskWithRetries(args: {
   runtime: IAgentRuntime;
@@ -391,10 +389,13 @@ const rawAppLifeOpsPlugin: Plugin = {
 
 export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
+export { calendarAction } from "./actions/calendar.js";
 export {
   runMorningCheckinAction,
   runNightCheckinAction,
 } from "./actions/checkin.js";
+export { gmailAction } from "./actions/gmail.js";
+export { inboxAction } from "./actions/inbox.js";
 export { lifeAction } from "./actions/life.js";
 // App blocker exports
 export { ownerAppBlockAction } from "./actions/owner-app-block.js";

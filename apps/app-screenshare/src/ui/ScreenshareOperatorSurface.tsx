@@ -177,8 +177,16 @@ export function ScreenshareOperatorSurface({
   }, [loadCapabilities, setActionNotice]);
 
   useEffect(() => {
-    void loadLaunchedSession().catch(() => {});
-  }, [loadLaunchedSession]);
+    void loadLaunchedSession().catch((error) => {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : "Failed to load screen share session.",
+        "error",
+        3200,
+      );
+    });
+  }, [loadLaunchedSession, setActionNotice]);
 
   const startHostSession = useCallback(async () => {
     setBusy("start");
@@ -239,19 +247,27 @@ export function ScreenshareOperatorSurface({
       sessionId: hostSession.id,
       token: hostToken,
     });
-    await navigator.clipboard.writeText(
-      JSON.stringify(
-        {
-          serverUrl: client.getBaseUrl() || window.location.origin,
-          sessionId: hostSession.id,
-          token: hostToken,
-          viewerUrl: url,
-        },
-        null,
-        2,
-      ),
-    );
-    setActionNotice("Screen share details copied.", "success", 1800);
+    try {
+      await navigator.clipboard.writeText(
+        JSON.stringify(
+          {
+            serverUrl: client.getBaseUrl() || window.location.origin,
+            sessionId: hostSession.id,
+            token: hostToken,
+            viewerUrl: url,
+          },
+          null,
+          2,
+        ),
+      );
+      setActionNotice("Screen share details copied.", "success", 1800);
+    } catch (error) {
+      setActionNotice(
+        error instanceof Error ? error.message : "Clipboard write failed.",
+        "error",
+        3200,
+      );
+    }
   }, [hostSession, hostToken, setActionNotice]);
 
   const openViewer = useCallback((url: string) => {
@@ -416,6 +432,8 @@ export function ScreenshareOperatorSurface({
             variant="outline"
             className="h-9 gap-2"
             onClick={() => void loadCapabilities()}
+            aria-label="Refresh capabilities"
+            title="Refresh capabilities"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>

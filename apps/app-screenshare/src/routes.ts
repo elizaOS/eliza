@@ -566,6 +566,15 @@ main{display:grid;grid-template-rows:auto 1fr auto;min-height:100vh}
     }
   }
 
+  function disconnect(label) {
+    state.running = false;
+    clearTimeout(state.timer);
+    frame.removeAttribute("src");
+    frame.style.display = "none";
+    empty.style.display = "block";
+    setStatus(label, "");
+  }
+
   function loadFrame() {
     if (!state.running) return;
     const src = endpoint("/api/apps/screenshare/session/" + encodeURIComponent(state.sessionId) + "/frame?token=" + encodeURIComponent(state.token) + "&t=" + Date.now());
@@ -665,9 +674,7 @@ main{display:grid;grid-template-rows:auto 1fr auto;min-height:100vh}
       body: JSON.stringify({ token: state.token })
     });
     if (response.ok) {
-      state.running = false;
-      applyConnection();
-      setStatus("Stopped", "");
+      disconnect("Stopped");
     }
   });
   applyConnection();

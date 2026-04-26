@@ -20,10 +20,21 @@ export * from "./api/compat-route-shared";
 export * from "./api/index";
 export * from "./api/response";
 export * from "./api/server-cloud-tts";
+export * from "./app-shell/task-coordinator-slots";
 export * from "./bridge/index";
-export * from "./character-catalog";
 export * from "./chat/index";
 export * from "./components/index";
+export {
+  BSC_GAS_READY_THRESHOLD,
+  HEX_ADDRESS_RE,
+  isAvaxChainName,
+  isBscChainName,
+} from "./components/inventory/constants";
+export type { TranslatorFn } from "./components/shared/LanguageDropdown";
+export type {
+  CompanionInferenceNotice,
+  CompanionSceneStatus,
+} from "./config/boot-config";
 export * from "./config/index";
 export * from "./events/index";
 export * from "./hooks/useActivityEvents";
@@ -61,3 +72,5 @@ export * from "./test-support/test-helpers";
 export * from "./types/index";
 export * from "./utils/index";
 export * from "./voice/index";
+export * from "./widgets/index";
+export * from "./widgets/index";

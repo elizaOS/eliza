@@ -4,12 +4,12 @@ import {
   CONNECTOR_PLUGINS as _upstreamConnectorPlugins,
   type ApplyPluginAutoEnableParams,
   type ApplyPluginAutoEnableResult,
-  applyPluginSelfDeclaredAutoEnable,
   AUTH_PROVIDER_PLUGINS,
+  applyPluginSelfDeclaredAutoEnable,
   isConnectorConfigured,
   isStreamingDestinationConfigured,
   STREAMING_PLUGINS,
-} from "@elizaos/agent";
+} from "@elizaos/agent/config/plugin-auto-enable";
 
 export {
   AUTH_PROVIDER_PLUGINS,

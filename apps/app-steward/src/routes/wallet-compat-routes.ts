@@ -11,27 +11,23 @@ import type http from "node:http";
 import {
   type ElizaConfig,
   loadElizaConfig,
-} from "@elizaos/agent";
+} from "@elizaos/agent/config/config";
 import {
+  type CompatRuntimeState,
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
   getCompatApiToken,
   isDevEnvironment,
-} from "@elizaos/app-core";
-import {
-  type CompatRuntimeState,
   isLoopbackRemoteAddress,
   readCompatJsonBody,
-} from "@elizaos/app-core";
-import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "@elizaos/app-core";
-import { deriveAgentVaultId } from "@elizaos/app-core";
+import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 import {
   createNodePlatformSecureStore,
   isWalletOsStoreReadEnabled,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/security/platform-secure-store-node";
 import { logger } from "@elizaos/core";
 import { getWalletAddresses } from "../api/wallet";
 import { fetchEvmNfts } from "../api/wallet-evm-balance";

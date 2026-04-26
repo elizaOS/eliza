@@ -1,9 +1,9 @@
+import { loadElizaConfig } from "@elizaos/agent";
 import { resolveCloudApiKey } from "@elizaos/agent/api/wallet-rpc";
 import {
-  loadElizaConfig,
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
-} from "@elizaos/agent";
+} from "@elizaos/agent/cloud/base-url";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,

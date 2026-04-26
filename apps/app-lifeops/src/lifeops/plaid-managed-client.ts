@@ -11,11 +11,11 @@
  * api key.
  */
 
+import { loadElizaConfig } from "@elizaos/agent";
 import {
-  loadElizaConfig,
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
-} from "@elizaos/agent";
+} from "@elizaos/agent/cloud/base-url";
 
 const PLAID_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -62,7 +62,8 @@ function resolveCloudConfig(): ResolvedCloudConfig {
   } catch {
     // Fall through to env.
   }
-  const apiKey = configKey ?? normalizeApiKey(process.env.ELIZAOS_CLOUD_API_KEY);
+  const apiKey =
+    configKey ?? normalizeApiKey(process.env.ELIZAOS_CLOUD_API_KEY);
   const baseUrl = configBase ?? process.env.ELIZAOS_CLOUD_BASE_URL ?? undefined;
   return {
     configured: Boolean(apiKey),
