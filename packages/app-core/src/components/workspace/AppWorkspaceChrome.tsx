@@ -304,16 +304,29 @@ export function AppWorkspaceChrome({
   const collapsed = isControlled
     ? (chatCollapsedProp ?? false)
     : internalCollapsed;
+  // Controlled mode is the source of truth on every viewport — including
+  // mobile. When the page passes chatCollapsed=true (e.g. forcing a
+  // single canonical compose surface in an empty state), the mobile
+  // pane-switcher must respect that and not flip back to open via local
+  // mobileChatOpen state.
   const effectiveCollapsed = chatDisabled
     ? true
-    : isMobileViewport
-      ? !mobileChatOpen
-      : collapsed;
+    : isControlled
+      ? collapsed
+      : isMobileViewport
+        ? !mobileChatOpen
+        : collapsed;
 
   const handleToggle = useCallback(
     (next: boolean) => {
       if (isMobileViewport) {
         mobileSidebarControl?.setOpen(false);
+        if (isControlled) {
+          // Page is the source of truth on mobile too — defer to it
+          // instead of touching local mobileChatOpen state.
+          onToggleChat?.(next);
+          return;
+        }
         setMobileChatOpen(chatDisabled ? false : !next);
         return;
       }
@@ -495,12 +508,12 @@ export function AppWorkspaceChrome({
               data-testid={`${testId}-chat-sidebar`}
               data-collapsed
             >
-              {isMobileViewport ? null : (
+              {!isMobileViewport ? (
                 <AppWorkspaceChatDockToggleButton
                   collapsed
                   testId={`${testId}-chat-expand`}
                 />
-              )}
+              ) : null}
             </aside>
           ) : (
             <>

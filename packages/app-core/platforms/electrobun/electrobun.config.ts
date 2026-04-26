@@ -107,14 +107,38 @@ export function createElectrobunConfig(): ElectrobunConfig {
     build: {
       bun: {
         entrypoint: "src/index.ts",
-        // node-llama-cpp ships per-platform sibling packages as dynamic
-        // imports (`@node-llama-cpp/<plat>`); only the host platform's
-        // sibling is installed, so bundling fails to resolve the rest.
-        // The runtime never loads node-llama-cpp from the Electrobun bun
-        // process anyway — leave it as a runtime-resolved external.
+        // The Electrobun bun process is a thin native shell — it creates
+        // windows, dispatches RPCs to the renderer, and manages the embedded
+        // API subprocess (or talks to an external API). It must NOT bundle
+        // the agent runtime, plugins, database, or ML stacks — those belong
+        // in the API subprocess. Any of these reaching the Electrobun bun
+        // bundle is a sign of an unintended import edge; either cut the edge
+        // or extend this list.
         external: [
+          // Agent runtime packages — used only via type imports in the bun
+          // src, but workspace TS resolution can drag the source graph in.
+          "@elizaos/core",
+          "@elizaos/agent",
+          "@elizaos/app-core",
+          // Plugins — initialized by the API subprocess, never the bun shell.
+          "@elizaos/plugin-sql",
+          "@elizaos/plugin-knowledge",
+          "@elizaos/plugin-bootstrap",
+          "@elizaos/plugin-local-ai",
+          "@elizaos/plugin-local-embedding",
+          // Database stack pulled in by plugin-sql.
+          "@electric-sql/pglite",
+          "drizzle-orm",
+          "pg",
+          // Native ML/embedding packages ship platform-specific bindings via
+          // relative require()s or per-platform sibling packages; bundling
+          // them breaks those paths.
           "node-llama-cpp",
           "@node-llama-cpp/*",
+          "onnxruntime-node",
+          "onnxruntime-common",
+          "onnxruntime-web",
+          "@huggingface/transformers",
         ],
       },
       views: {},

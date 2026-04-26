@@ -1252,6 +1252,117 @@ async function handleGenerateWorkflow(
 
   const name = readOptionalString(body, "name");
   const workflowId = readOptionalString(body, "workflowId");
+
+  // Prefer the plugin's `deployWorkflow` pipeline so generated workflows go
+  // through credential resolution server-side. Without this, the LLM emits
+  // `credentials: { gmailOAuth2: { id: "{{CREDENTIAL_ID}}" } }` and the
+  // placeholder reaches n8n raw — n8n then crashes on
+  // `Cannot read properties of undefined (reading 'execute')` whenever the
+  // user tries to activate or run the workflow because no real credential id
+  // exists for the lookup. The fallback proxy chain only runs when the
+  // plugin's workflow service isn't registered (test/CI shapes).
+  const service = ctx.runtime?.getService?.("n8n_workflow") as
+    | {
+        generateWorkflowDraft?: (prompt: string) => Promise<{
+          id?: string;
+          [k: string]: unknown;
+        }>;
+        deployWorkflow?: (
+          workflow: Record<string, unknown>,
+          userId: string,
+        ) => Promise<{
+          id: string;
+          name: string;
+          active: boolean;
+          missingCredentials: Array<{ credType: string; authUrl?: string }>;
+        }>;
+        getWorkflow?: (id: string) => Promise<Record<string, unknown>>;
+      }
+    | undefined;
+  if (
+    typeof service?.generateWorkflowDraft === "function" &&
+    typeof service?.deployWorkflow === "function" &&
+    typeof service?.getWorkflow === "function"
+  ) {
+    // Two-phase try blocks. The OUTER try wraps only operations that have NOT
+    // yet committed a side effect to n8n — generateWorkflowDraft (LLM call,
+    // pure) and deployWorkflow (the write). Failures here can safely fall
+    // through to the legacy proxy path because no workflow has been written
+    // yet. Once deployWorkflow returns successfully, the workflow IS in n8n
+    // and any further failure (e.g. the follow-up getWorkflow read) must NOT
+    // re-enter the legacy path — that path would re-invoke the LLM and POST
+    // a new workflow OR PUT-overwrite the just-deployed one with unresolved
+    // `{{CREDENTIAL_ID}}` placeholders.
+    let deployed:
+      | {
+          id: string;
+          name: string;
+          active: boolean;
+          missingCredentials: Array<{ credType: string; authUrl?: string }>;
+        }
+      | undefined;
+    try {
+      const draft = await service.generateWorkflowDraft(prompt);
+      if (name?.trim()) {
+        (draft as Record<string, unknown>).name = name.trim();
+      }
+      if (workflowId) {
+        (draft as Record<string, unknown>).id = workflowId;
+      }
+      // The plugin's deployWorkflow → getUserTagName → getEntityById(userId)
+      // requires a real UUID; passing "local" makes the entity lookup throw
+      // "Failed query: ... where entities.id in ($1)" because pg rejects the
+      // non-UUID string. Use the runtime's agentId — it's always a valid
+      // entity in Milady local and gives a stable per-agent tag for n8n
+      // credential mapping.
+      const userId = resolveAgentId(ctx);
+      deployed = await service.deployWorkflow(
+        draft as Record<string, unknown>,
+        userId,
+      );
+    } catch (err) {
+      logger.warn(
+        {
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[n8n-routes] generate/deploy path failed before commit; falling back to direct proxy",
+      );
+      // Pre-deploy failure — deploy never committed. Legacy proxy fallback
+      // is safe here.
+    }
+
+    if (deployed) {
+      if (deployed.missingCredentials.length > 0) {
+        sendJson(ctx, 200, {
+          ...deployed,
+          warning: "missing credentials",
+        });
+        return true;
+      }
+      // Deploy succeeded — the workflow is committed in n8n. Try to enrich
+      // the response with the full workflow body, but on failure return the
+      // deploy summary instead of falling through (see comment above on why
+      // the legacy path would corrupt the just-deployed workflow).
+      let full: Record<string, unknown> | undefined;
+      try {
+        full = await service.getWorkflow(deployed.id);
+      } catch (readErr) {
+        logger.warn(
+          {
+            err: readErr instanceof Error ? readErr.message : String(readErr),
+            deployedId: deployed.id,
+          },
+          "[n8n-routes] follow-up getWorkflow failed after successful deploy; returning deploy summary",
+        );
+      }
+      sendJson(ctx, 200, full ?? deployed);
+      return true;
+    }
+  }
+
+  // Legacy proxy fallback — used when the workflow service isn't available
+  // (e.g. plugin disabled in tests). Generated workflows from this path
+  // ship to n8n with `{{CREDENTIAL_ID}}` placeholders unresolved.
   const payload = await generateWorkflowPayload(ctx, prompt, name);
   if (workflowId) {
     return writeWorkflow(

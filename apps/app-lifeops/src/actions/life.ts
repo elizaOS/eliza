@@ -40,6 +40,10 @@ import {
 } from "../lifeops/time.js";
 import { gmailAction } from "./gmail.js";
 import {
+  extractConversationMetadataFromRoom,
+  isPageScopedConversationMetadata,
+} from "@elizaos/agent/api/conversation-metadata";
+import {
   type ExtractedLifeMissingField,
   type ExtractedLifeOperation,
   extractLifeOperationWithLlm,
@@ -2261,6 +2265,25 @@ function formatWeeklyGoalReview(args: {
 
 // ── Main action ───────────────────────────────────────
 
+// LIFE belongs to the LifeOps surface (home chat / page-lifeops /
+// app-lifeops direct rooms). On foreign page-* scopes the action set is
+// scoped to that surface (page-automations → CREATE_TRIGGER_TASK,
+// page-browser → browser actions, etc.). When LIFE stays eligible on those
+// scopes its long description contaminates the ACTION_PLANNER candidate
+// list, driving the LLM to mimic the life-param-extractor JSON schema and
+// producing envelopes the planner's XML parse cannot read.
+async function isForeignPageScope(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<boolean> {
+  const room = await runtime.getRoom(message.roomId);
+  const metadata = extractConversationMetadataFromRoom(room);
+  if (!isPageScopedConversationMetadata(metadata)) {
+    return false;
+  }
+  return metadata?.scope !== "page-lifeops";
+}
+
 export const lifeAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -2319,9 +2342,24 @@ export const lifeAction: Action & {
     if (looksLikeCodingTaskRequest(messageText(message))) {
       return false;
     }
+    if (await isForeignPageScope(runtime, message)) {
+      return false;
+    }
     return hasLifeOpsAccess(runtime, message);
   },
   handler: async (runtime, message, state, options) => {
+    // Defense-in-depth at dispatch time: validate() above excludes LIFE
+    // from the ACTION_PLANNER candidate list on foreign page-* scopes, but
+    // runtime.processActions dispatches by name/simile WITHOUT re-calling
+    // validate. When the LLM emits LIFE or a LIFE simile directly, the
+    // handler still fires. This guard mirrors validate()'s scope check so
+    // LIFE stays a no-op on foreign page-* scopes regardless of how it got
+    // dispatched. Returns empty text so the runtime callback does not
+    // render a user-visible message — any streamed tokens from the outer
+    // LLM reply already landed before this handler runs.
+    if (await isForeignPageScope(runtime, message)) {
+      return { success: false, text: "" };
+    }
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const fallback =
         "Life management is restricted to the owner, explicitly granted users, and the agent.";
