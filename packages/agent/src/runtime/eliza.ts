@@ -93,7 +93,7 @@ import {
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginAnthropic from "@elizaos/plugin-anthropic";
-import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge/plugin";
+import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
 import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
@@ -337,8 +337,9 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
     ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
     : {}),
   // trust: now built-in core capability (ENABLE_TRUST)
-  "@elizaos/app-lifeops": pluginAppLifeops,
-  "@elizaos/app-companion": pluginAppCompanion,
+  // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
+  // omitted from the static map — see the comment near the top of this file.
+  // They resolve via the dynamic-import fallback in plugin-resolver.ts.
   "@elizaos/plugin-browser-bridge": pluginBrowserBridge,
   "@elizaos/plugin-discord-local": discordLocalPlugin,
   // personality: now built-in advanced capability (advancedCapabilities: true)
