@@ -10,8 +10,8 @@ import {
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,
-  LifeOpsGmailBulkOperation,
   LifeOpsGmailBatchReplySendItem,
+  LifeOpsGmailBulkOperation,
   ManageLifeOpsGmailMessagesRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailReplyRequest,
@@ -1293,7 +1293,9 @@ function normalizeGmailIntentPlan(
     labelIds: normalizePlannerStringArray(parsed.labelIds),
     confirmDestructive: normalizeOptionalBoolean(parsed.confirmDestructive),
     olderThanDays:
-      typeof parsed.olderThanDays === "number" ? parsed.olderThanDays : undefined,
+      typeof parsed.olderThanDays === "number"
+        ? parsed.olderThanDays
+        : undefined,
     to: normalizePlannerStringArray(parsed.to ?? parsed.recipients),
     cc: normalizePlannerStringArray(parsed.cc),
     bcc: normalizePlannerStringArray(parsed.bcc),
@@ -1324,7 +1326,9 @@ function normalizeGmailPayloadPlan(
     labelIds: normalizePlannerStringArray(parsed.labelIds),
     confirmDestructive: normalizeOptionalBoolean(parsed.confirmDestructive),
     olderThanDays:
-      typeof parsed.olderThanDays === "number" ? parsed.olderThanDays : undefined,
+      typeof parsed.olderThanDays === "number"
+        ? parsed.olderThanDays
+        : undefined,
     to: normalizePlannerStringArray(parsed.to ?? parsed.recipients),
     cc: normalizePlannerStringArray(parsed.cc),
     bcc: normalizePlannerStringArray(parsed.bcc),
