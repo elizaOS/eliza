@@ -7,8 +7,17 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { type AgentRuntime, getTrajectoryContext } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  EventType,
+  getTrajectoryContext,
+} from "@elizaos/core";
 import { detectRuntimeModel } from "../api/agent-model.js";
+import {
+  type ModelTokenMetadata,
+  resolveModelTokenMetadata,
+} from "../config/model-metadata.js";
+import type { ElizaConfig } from "../config/types.js";
 
 import {
   compactActionsForIntent,
@@ -64,6 +73,9 @@ const ELIZA_ACTION_COMPACTION = (() => {
 
 // Track which runtimes have been wrapped to prevent double-installation.
 const installedRuntimes = new WeakSet<AgentRuntime>();
+const usageCaptureInstalledRuntimes = new WeakSet<AgentRuntime>();
+const usageCaptureStacks = new WeakMap<AgentRuntime, ModelUsageAccumulator[]>();
+const runtimeModelConfigs = new WeakMap<AgentRuntime, ElizaConfig>();
 const trackedTrajectoryLoggers = new WeakSet<object>();
 const trajectoryLlmLogCounts = new WeakMap<AgentRuntime, Map<string, number>>();
 const TRAJECTORY_CONTEXT_MANAGER_KEY = Symbol.for(
@@ -91,6 +103,47 @@ type RuntimeWithTrajectoryService = AgentRuntime & {
   getService?: (serviceType: string) => unknown;
   getServicesByType?: (serviceType: string) => unknown;
 };
+
+type RuntimeWithEmitEvent = AgentRuntime & {
+  emitEvent: (event: unknown, params?: unknown) => Promise<void> | void;
+};
+
+export interface CapturedModelUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  model?: string;
+  provider?: string;
+  isEstimated: boolean;
+  llmCalls: number;
+}
+
+interface ModelUsageRecord {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  model?: string;
+  provider?: string;
+  isEstimated: boolean;
+}
+
+interface ModelUsageAccumulator {
+  records: ModelUsageRecord[];
+}
+
+interface PromptBudget {
+  metadata: ModelTokenMetadata;
+  outputReserveTokens: number;
+  promptBudgetTokens: number;
+}
+
+export interface PromptBudgetResult {
+  prompt: string;
+  originalPromptTokens: number;
+  promptTokens: number;
+  budgetTokens: number;
+  truncated: boolean;
+}
 
 export function shouldPreserveFullPromptForTrajectoryCapture(): boolean {
   return getActiveTrajectoryStepId() !== null;
@@ -278,6 +331,17 @@ function ensureTrajectoryLoggerTracking(
       applyMissingNumber("promptTokens");
       applyMissingNumber("completionTokens");
 
+      if (typeof patch.tokenUsageEstimated === "boolean") {
+        const currentEstimated = latestCall.tokenUsageEstimated;
+        if (
+          typeof currentEstimated !== "boolean" ||
+          (currentEstimated && !patch.tokenUsageEstimated)
+        ) {
+          latestCall.tokenUsageEstimated = patch.tokenUsageEstimated;
+          updated = true;
+        }
+      }
+
       const enriched = enrichTrajectoryLlmCall(latestCall);
       const nextStepType = toText(enriched.stepType, "");
       if (nextStepType && toText(latestCall.stepType, "") !== nextStepType) {
@@ -342,8 +406,290 @@ function stringifyTrajectoryResponse(response: unknown): string {
   }
 }
 
-function estimateTokenCount(text: string): number {
-  return Math.max(1, Math.ceil(text.length / 4));
+export function estimateTokenCount(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+function isModelUsedEvent(event: unknown): boolean {
+  if (event === EventType.MODEL_USED || event === "MODEL_USED") {
+    return true;
+  }
+  if (Array.isArray(event)) {
+    return event.some((entry) => isModelUsedEvent(entry));
+  }
+  return false;
+}
+
+function toUsageModelLabel(
+  payload: Record<string, unknown>,
+): string | undefined {
+  for (const key of ["model", "modelId", "modelName", "type"]) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function normalizeModelUsageRecord(payload: unknown): ModelUsageRecord | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const tokens =
+    record.tokens &&
+    typeof record.tokens === "object" &&
+    !Array.isArray(record.tokens)
+      ? (record.tokens as Record<string, unknown>)
+      : undefined;
+  if (!tokens) return null;
+
+  const promptTokens = toOptionalNumber(tokens.prompt);
+  const completionTokens = toOptionalNumber(tokens.completion);
+  const totalTokens = toOptionalNumber(tokens.total);
+  if (
+    promptTokens === undefined &&
+    completionTokens === undefined &&
+    totalTokens === undefined
+  ) {
+    return null;
+  }
+
+  const normalizedPromptTokens = promptTokens ?? 0;
+  const normalizedCompletionTokens =
+    completionTokens ??
+    Math.max(
+      0,
+      (totalTokens ?? normalizedPromptTokens) - normalizedPromptTokens,
+    );
+  const normalizedTotalTokens =
+    totalTokens ?? normalizedPromptTokens + normalizedCompletionTokens;
+  const provider =
+    typeof record.provider === "string" && record.provider.trim().length > 0
+      ? record.provider.trim()
+      : typeof record.source === "string" && record.source.trim().length > 0
+        ? record.source.trim()
+        : undefined;
+
+  return {
+    promptTokens: normalizedPromptTokens,
+    completionTokens: normalizedCompletionTokens,
+    totalTokens: normalizedTotalTokens,
+    ...(toUsageModelLabel(record) ? { model: toUsageModelLabel(record) } : {}),
+    ...(provider ? { provider } : {}),
+    isEstimated:
+      record.usageEstimated === true ||
+      record.estimated === true ||
+      tokens.estimated === true,
+  };
+}
+
+function aggregateModelUsage(
+  records: readonly ModelUsageRecord[],
+): CapturedModelUsage | null {
+  if (records.length === 0) return null;
+
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let model: string | undefined;
+  let provider: string | undefined;
+  let isEstimated = false;
+
+  for (const record of records) {
+    promptTokens += record.promptTokens;
+    completionTokens += record.completionTokens;
+    totalTokens += record.totalTokens;
+    model = record.model ?? model;
+    provider = record.provider ?? provider;
+    isEstimated ||= record.isEstimated;
+  }
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: totalTokens || promptTokens + completionTokens,
+    ...(model ? { model } : {}),
+    ...(provider ? { provider } : {}),
+    isEstimated,
+    llmCalls: records.length,
+  };
+}
+
+function ensureModelUsageEventCapture(runtime: AgentRuntime): void {
+  if (usageCaptureInstalledRuntimes.has(runtime)) return;
+  usageCaptureInstalledRuntimes.add(runtime);
+
+  const runtimeWithEmit = runtime as RuntimeWithEmitEvent;
+  if (typeof runtimeWithEmit.emitEvent !== "function") return;
+
+  const originalEmitEvent = runtimeWithEmit.emitEvent.bind(runtime);
+  runtimeWithEmit.emitEvent = (async (event: unknown, params?: unknown) => {
+    if (isModelUsedEvent(event)) {
+      const usageRecord = normalizeModelUsageRecord(params);
+      if (usageRecord) {
+        for (const accumulator of usageCaptureStacks.get(runtime) ?? []) {
+          accumulator.records.push(usageRecord);
+        }
+      }
+    }
+    return originalEmitEvent(event, params);
+  }) as RuntimeWithEmitEvent["emitEvent"];
+}
+
+export async function withModelUsageCapture<T>(
+  runtime: AgentRuntime,
+  run: () => Promise<T>,
+): Promise<{ result: T; usage: CapturedModelUsage | null }> {
+  ensureModelUsageEventCapture(runtime);
+
+  const stack = usageCaptureStacks.get(runtime) ?? [];
+  const accumulator: ModelUsageAccumulator = { records: [] };
+  stack.push(accumulator);
+  usageCaptureStacks.set(runtime, stack);
+
+  try {
+    const result = await run();
+    return {
+      result,
+      usage: aggregateModelUsage(accumulator.records),
+    };
+  } finally {
+    const index = stack.indexOf(accumulator);
+    if (index >= 0) {
+      stack.splice(index, 1);
+    }
+    if (stack.length === 0) {
+      usageCaptureStacks.delete(runtime);
+    }
+  }
+}
+
+function resolvePayloadModelId(
+  runtime: AgentRuntime,
+  modelType: string,
+  payloadRecord: Record<string, unknown>,
+): string {
+  for (const key of ["model", "modelId", "modelName"]) {
+    const value = payloadRecord[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  const config = runtimeModelConfigs.get(runtime);
+  const detected = detectRuntimeModel(runtime, config);
+  if (detected && detected.trim().length > 0) {
+    return detected.trim();
+  }
+
+  return modelType;
+}
+
+function resolvePromptBudget(
+  runtime: AgentRuntime,
+  modelType: string,
+  payloadRecord: Record<string, unknown>,
+): PromptBudget {
+  const metadata = resolveModelTokenMetadata(
+    runtimeModelConfigs.get(runtime),
+    resolvePayloadModelId(runtime, modelType, payloadRecord),
+  );
+  const requestedOutputTokens = [
+    toOptionalNumber(payloadRecord.maxOutputTokens),
+    toOptionalNumber(payloadRecord.maxTokens),
+  ].find((value): value is number => value !== undefined && value > 0);
+  const outputReserveTokens = Math.min(
+    Math.max(1, metadata.contextWindow - 1),
+    requestedOutputTokens ?? metadata.maxTokens,
+  );
+  const promptBudgetTokens = Math.max(
+    1,
+    Math.floor((metadata.contextWindow - outputReserveTokens) * 0.95),
+  );
+
+  return {
+    metadata,
+    outputReserveTokens,
+    promptBudgetTokens,
+  };
+}
+
+function shouldApplyPromptBudget(modelType: string): boolean {
+  if (modelType.includes("EMBEDDING")) return false;
+  return (
+    modelType.includes("TEXT_") ||
+    modelType.includes("REASONING_") ||
+    modelType === "RESPONSE_HANDLER" ||
+    modelType === "ACTION_PLANNER"
+  );
+}
+
+function truncatePromptToTokenBudget(
+  prompt: string,
+  budgetTokens: number,
+): string {
+  const charBudget = Math.max(0, budgetTokens * 4);
+  if (prompt.length <= charBudget) return prompt;
+  if (charBudget <= 0) return "";
+
+  const marker =
+    "\n\n[... context truncated to fit model context window ...]\n\n";
+  const receivedMessageStart = prompt.search(/\n#{1,3}\s*Received Message\b/i);
+  const tail =
+    receivedMessageStart >= 0
+      ? prompt.slice(receivedMessageStart)
+      : prompt.slice(-Math.floor(charBudget * 0.7));
+  if (tail.length >= charBudget) {
+    return tail.slice(-charBudget);
+  }
+
+  const headBudget = charBudget - tail.length - marker.length;
+  if (headBudget <= 0) {
+    return tail.slice(-charBudget);
+  }
+
+  return `${prompt.slice(0, headBudget)}${marker}${tail}`;
+}
+
+export function fitPromptToTokenBudget(
+  prompt: string,
+  budgetTokens: number,
+): PromptBudgetResult {
+  const originalPromptTokens = estimateTokenCount(prompt);
+  if (originalPromptTokens <= budgetTokens) {
+    return {
+      prompt,
+      originalPromptTokens,
+      promptTokens: originalPromptTokens,
+      budgetTokens,
+      truncated: false,
+    };
+  }
+
+  let nextPrompt = compactActionsForIntent(prompt);
+  nextPrompt = compactCodingExamplesForIntent(nextPrompt);
+  nextPrompt = compactConversationHistory(nextPrompt);
+  nextPrompt = compactModelPrompt(nextPrompt);
+
+  let promptTokens = estimateTokenCount(nextPrompt);
+  let truncated = false;
+  if (promptTokens > budgetTokens) {
+    nextPrompt = truncatePromptToTokenBudget(nextPrompt, budgetTokens);
+    promptTokens = estimateTokenCount(nextPrompt);
+    truncated = true;
+  }
+
+  return {
+    prompt: nextPrompt,
+    originalPromptTokens,
+    promptTokens,
+    budgetTokens,
+    truncated,
+  };
 }
 
 function isGenericTrajectoryModel(model: string): boolean {
@@ -396,7 +742,14 @@ function resolveTrajectoryModelLabel(
 // Public API — install the useModel wrapper on a runtime
 // ---------------------------------------------------------------------------
 
-export function installPromptOptimizations(runtime: AgentRuntime): void {
+export function installPromptOptimizations(
+  runtime: AgentRuntime,
+  config?: ElizaConfig,
+): void {
+  if (config) {
+    runtimeModelConfigs.set(runtime, config);
+  }
+  ensureModelUsageEventCapture(runtime);
   if (installedRuntimes.has(runtime)) return;
   installedRuntimes.add(runtime);
 
@@ -422,7 +775,10 @@ export function installPromptOptimizations(runtime: AgentRuntime): void {
     const payload = args[1];
     const isTextLarge = modelType.includes("TEXT_LARGE");
     if (!payload || typeof payload !== "object") {
-      return originalUseModel(...args);
+      const { result } = await withModelUsageCapture(runtime, () =>
+        originalUseModel(...args),
+      );
+      return result;
     }
 
     const promptRecord = payload as Record<string, unknown>;
@@ -435,7 +791,10 @@ export function installPromptOptimizations(runtime: AgentRuntime): void {
             ? "input"
             : null;
     if (!promptKey) {
-      return originalUseModel(...args);
+      const { result } = await withModelUsageCapture(runtime, () =>
+        originalUseModel(...args),
+      );
+      return result;
     }
 
     const originalPrompt = String(promptRecord[promptKey] ?? "");
@@ -453,10 +812,11 @@ export function installPromptOptimizations(runtime: AgentRuntime): void {
     }
 
     let rewrittenArgs = args;
+    let nextPrompt = originalPrompt;
+    let outputReserveTokens: number | undefined;
 
-    // Preserve exact model input while a trajectory is active so trajectory
-    // detail views and RL exports keep the full prompt instead of the
-    // compacted/debug-optimized version.
+    // Skip intent compaction while trajectory capture is active; hard model
+    // budgets still apply because providers cannot accept overflow prompts.
     if (isTextLarge && !shouldPreserveFullPromptForTrajectoryCapture()) {
       // --- Context-aware action compaction (when enabled) ---
       // Strips <params> from actions not relevant to the user's intent.
@@ -474,7 +834,7 @@ export function installPromptOptimizations(runtime: AgentRuntime): void {
       }
 
       // --- Full prompt compaction (compact mode only) ---
-      let nextPrompt = workingPrompt;
+      nextPrompt = workingPrompt;
       if (ELIZA_PROMPT_OPT_MODE === "compact") {
         nextPrompt = compactModelPrompt(workingPrompt);
         if (ELIZA_PROMPT_TRACE && nextPrompt.length !== originalPrompt.length) {
@@ -487,21 +847,57 @@ export function installPromptOptimizations(runtime: AgentRuntime): void {
           `[eliza] Action compaction: ${originalPrompt.length} -> ${workingPrompt.length} chars (saved ${originalPrompt.length - workingPrompt.length})`,
         );
       }
+    }
 
-      if (nextPrompt !== originalPrompt) {
-        const rewrittenPayload = {
-          ...(payload as Record<string, unknown>),
-          [promptKey]: nextPrompt,
-        };
-        rewrittenArgs = [
-          args[0],
-          rewrittenPayload as Parameters<typeof originalUseModel>[1],
-          ...args.slice(2),
-        ] as Parameters<typeof originalUseModel>;
+    if (shouldApplyPromptBudget(modelType)) {
+      const budget = resolvePromptBudget(runtime, modelType, {
+        ...promptRecord,
+        [promptKey]: nextPrompt,
+      });
+      outputReserveTokens = budget.outputReserveTokens;
+      const budgetedPrompt = fitPromptToTokenBudget(
+        nextPrompt,
+        budget.promptBudgetTokens,
+      );
+      if (budgetedPrompt.prompt !== nextPrompt) {
+        nextPrompt = budgetedPrompt.prompt;
+        if (ELIZA_PROMPT_TRACE) {
+          runtime.logger?.info(
+            `[eliza] Budget prompt rewrite (${budget.metadata.source}:${budget.metadata.modelId}): ${budgetedPrompt.originalPromptTokens} -> ${budgetedPrompt.promptTokens} tokens`,
+          );
+        }
       }
     }
 
-    const result = await originalUseModel(...rewrittenArgs);
+    const shouldSetMaxOutputTokens =
+      outputReserveTokens !== undefined &&
+      toOptionalNumber(promptRecord.maxOutputTokens) !== undefined;
+    const shouldRewritePayload =
+      nextPrompt !== originalPrompt ||
+      (outputReserveTokens !== undefined &&
+        toOptionalNumber(promptRecord.maxTokens) !== outputReserveTokens) ||
+      shouldSetMaxOutputTokens;
+    if (shouldRewritePayload) {
+      const rewrittenPayload = {
+        ...(payload as Record<string, unknown>),
+        [promptKey]: nextPrompt,
+        ...(outputReserveTokens !== undefined
+          ? shouldSetMaxOutputTokens
+            ? { maxOutputTokens: outputReserveTokens }
+            : { maxTokens: outputReserveTokens }
+          : {}),
+      };
+      rewrittenArgs = [
+        args[0],
+        rewrittenPayload as Parameters<typeof originalUseModel>[1],
+        ...args.slice(2),
+      ] as Parameters<typeof originalUseModel>;
+    }
+
+    const { result, usage: capturedUsage } = await withModelUsageCapture(
+      runtime,
+      () => originalUseModel(...rewrittenArgs),
+    );
     const responseText = stringifyTrajectoryResponse(result);
     const payloadRecord = rewrittenArgs[1] as Record<string, unknown>;
     const systemPrompt =
@@ -510,6 +906,11 @@ export function installPromptOptimizations(runtime: AgentRuntime): void {
         : typeof runtime.character?.system === "string"
           ? runtime.character.system
           : "";
+    const promptTokens =
+      capturedUsage?.promptTokens ??
+      estimateTokenCount(systemPrompt + String(payloadRecord[promptKey] ?? ""));
+    const completionTokens =
+      capturedUsage?.completionTokens ?? estimateTokenCount(responseText);
     const fallbackCall = {
       stepId: normalizedTrajectoryStepId ?? undefined,
       model: resolveTrajectoryModelLabel(
@@ -519,21 +920,23 @@ export function installPromptOptimizations(runtime: AgentRuntime): void {
         args[2],
       ),
       systemPrompt,
-      userPrompt: originalPrompt,
+      userPrompt: String(payloadRecord[promptKey] ?? ""),
       response: responseText,
       temperature:
         typeof payloadRecord.temperature === "number"
           ? payloadRecord.temperature
           : 0,
       maxTokens:
-        typeof payloadRecord.maxTokens === "number"
-          ? payloadRecord.maxTokens
-          : 0,
+        toOptionalNumber(payloadRecord.maxTokens) ??
+        toOptionalNumber(payloadRecord.maxOutputTokens) ??
+        outputReserveTokens ??
+        0,
       purpose: "action",
       actionType: "runtime.useModel",
       latencyMs: Math.max(0, Date.now() - startedAt),
-      promptTokens: estimateTokenCount(systemPrompt + originalPrompt),
-      completionTokens: estimateTokenCount(responseText),
+      promptTokens,
+      completionTokens,
+      tokenUsageEstimated: !capturedUsage,
     };
 
     if (

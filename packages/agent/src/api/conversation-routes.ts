@@ -1298,7 +1298,7 @@ export async function handleConversationRoutes(
             type: "done",
             fullText: resolvedText,
             agentName: result.agentName,
-            ...(result.usage ? { estimatedUsage: result.usage } : {}),
+            ...(result.usage ? { usage: result.usage } : {}),
           });
         } else {
           writeSseJson(res, {
@@ -1306,7 +1306,7 @@ export async function handleConversationRoutes(
             fullText: "",
             agentName: result.agentName,
             noResponseReason: "ignored",
-            ...(result.usage ? { estimatedUsage: result.usage } : {}),
+            ...(result.usage ? { usage: result.usage } : {}),
           });
         }
       }

@@ -1,5 +1,9 @@
 import { z } from "zod";
 import { isSafeExecutableValue } from "../utils/exec-safety.js";
+import {
+  DEFAULT_MODEL_CONTEXT_WINDOW,
+  DEFAULT_MODEL_MAX_TOKENS,
+} from "./model-metadata.js";
 
 export const ModelApiSchema = z.union([
   z.literal("openai-completions"),
@@ -26,19 +30,25 @@ export const ModelDefinitionSchema = z
     id: z.string().min(1),
     name: z.string().min(1),
     api: ModelApiSchema.optional(),
-    reasoning: z.boolean().optional(),
-    input: z.array(z.union([z.literal("text"), z.literal("image")])).optional(),
+    reasoning: z.boolean().default(false),
+    input: z
+      .array(z.union([z.literal("text"), z.literal("image")]))
+      .default(["text"]),
     cost: z
       .object({
-        input: z.number().optional(),
-        output: z.number().optional(),
-        cacheRead: z.number().optional(),
-        cacheWrite: z.number().optional(),
+        input: z.number().nonnegative().default(0),
+        output: z.number().nonnegative().default(0),
+        cacheRead: z.number().nonnegative().default(0),
+        cacheWrite: z.number().nonnegative().default(0),
       })
       .strict()
-      .optional(),
-    contextWindow: z.number().positive().optional(),
-    maxTokens: z.number().positive().optional(),
+      .default({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }),
+    contextWindow: z
+      .number()
+      .int()
+      .positive()
+      .default(DEFAULT_MODEL_CONTEXT_WINDOW),
+    maxTokens: z.number().int().positive().default(DEFAULT_MODEL_MAX_TOKENS),
     headers: z.record(z.string(), z.string()).optional(),
     compat: ModelCompatSchema,
   })

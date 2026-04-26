@@ -11,6 +11,7 @@ import { readConfigEnvSync } from "../api/config-env.js";
 import { syncSolanaPublicKeyEnv } from "../api/wallet-env-sync.js";
 import { collectConfigEnvVars, collectConnectorEnvVars } from "./env-vars.js";
 import { resolveConfigIncludes } from "./includes.js";
+import { normalizeModelMetadataInConfig } from "./model-metadata.js";
 import {
   resolveConfigPath,
   resolveStateDir,
@@ -102,6 +103,7 @@ export function loadElizaConfig(): ElizaConfig {
       : { logging: { level: "error" } }
   ) as ElizaConfig;
   migrateLegacyRuntimeConfig(resolved as Record<string, unknown>);
+  normalizeModelMetadataInConfig(resolved);
 
   const skillsJsonPath = path.join(resolveStateDir(), "skills.json");
 
