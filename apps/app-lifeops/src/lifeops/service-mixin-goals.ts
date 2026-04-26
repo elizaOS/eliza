@@ -19,12 +19,12 @@ import type {
   LifeOpsTaskDefinition,
   LifeOpsWeeklyGoalReview,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   LIFEOPS_GOAL_STATUSES,
   LIFEOPS_GOAL_SUGGESTION_KINDS,
   LIFEOPS_REVIEW_STATES,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsGoalDefinition,

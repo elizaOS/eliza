@@ -1,4 +1,5 @@
 import { logger, type IAgentRuntime, type Memory } from "@elizaos/core";
+import { hasAdminAccess } from "@elizaos/agent";
 import { checkSenderRole } from "../website-blocker/roles.ts";
 
 export const APP_BLOCKER_ACCESS_ERROR =
@@ -12,6 +13,13 @@ export async function getAppBlockerAccess(
   role: string | null;
   reason?: string;
 }> {
+  // Fast path: canonical-owner check (ELIZA_ADMIN_ENTITY_ID + owner contacts)
+  // is authoritative and works in benchmark environments where world-role
+  // tables aren't seeded. Falls through to the world-role check otherwise.
+  if (await hasAdminAccess(runtime, message)) {
+    return { allowed: true, role: "OWNER" };
+  }
+
   let roleCheck;
   try {
     roleCheck = await checkSenderRole(runtime, message);

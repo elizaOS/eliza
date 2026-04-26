@@ -15,7 +15,7 @@ import type {
   ManageLifeOpsGmailMessagesRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailReplyRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import type {
   Action,
   ActionExample,

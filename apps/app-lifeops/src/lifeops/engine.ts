@@ -5,7 +5,7 @@ import type {
   LifeOpsProgressionRule,
   LifeOpsTaskDefinition,
   LifeOpsTimeWindowDefinition,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { normalizeWindowPolicy } from "./defaults.js";
 import {
   addDaysToLocalDate,

@@ -2,7 +2,7 @@ import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
 import type {
   LifeOpsOccurrence,
   LifeOpsTaskDefinition,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {

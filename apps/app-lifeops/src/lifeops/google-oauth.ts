@@ -6,7 +6,7 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
   StartLifeOpsGoogleConnectorResponse,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import {
   googleCapabilitiesToScopes,

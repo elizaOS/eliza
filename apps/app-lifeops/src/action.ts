@@ -14,7 +14,7 @@ import type {
   BrowserBridgeActionKind,
   BrowserBridgeKind,
   UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "./contracts/index.js";
 import { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 
 type BrowserCommand =

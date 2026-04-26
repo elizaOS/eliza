@@ -4,7 +4,7 @@ import { logger } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeTabSummary,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsBrowserSession,
   LifeOpsConnectorGrant,

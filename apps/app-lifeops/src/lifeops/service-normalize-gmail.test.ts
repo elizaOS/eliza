@@ -1,4 +1,4 @@
-import type { LifeOpsGmailMessageSummary } from "@elizaos/app-lifeops/contracts";
+import type { LifeOpsGmailMessageSummary } from "../contracts/index.js";
 import { describe, expect, it } from "vitest";
 import {
   buildGmailRecommendations,

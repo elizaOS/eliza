@@ -1,7 +1,7 @@
 import type {
   CaptureLifeOpsActivitySignalRequest,
   LifeOpsActivitySignal,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { client } from "@elizaos/app-core/api";
 import { isApiError } from "@elizaos/app-core/api/client-types-core";
 import { isElectrobunRuntime } from "@elizaos/app-core/bridge/electrobun-runtime";
