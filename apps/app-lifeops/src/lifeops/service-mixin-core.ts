@@ -22,7 +22,10 @@ import {
   BROWSER_BRIDGE_KINDS,
 } from "@elizaos/plugin-browser-bridge/contracts";
 import type { computeAdaptiveWindowPolicy } from "./defaults.js";
-import { GoogleManagedClient } from "./google-managed-client.js";
+import {
+  GoogleManagedClient,
+  resolveManagedGoogleCloudConfig,
+} from "./google-managed-client.js";
 import {
   createBrowserBridgeCompanionStatus,
   createLifeOpsAuditEvent,
@@ -171,8 +174,12 @@ export class LifeOpsServiceBase {
     options: LifeOpsServiceOptions = {},
   ) {
     this.repository = new LifeOpsRepository(runtime);
-    this.googleManagedClient = new GoogleManagedClient();
-    this.xManagedClient = new XManagedClient();
+    const resolveManagedCloudConfig = () =>
+      resolveManagedGoogleCloudConfig(runtime);
+    this.googleManagedClient = new GoogleManagedClient(
+      resolveManagedCloudConfig,
+    );
+    this.xManagedClient = new XManagedClient(resolveManagedCloudConfig);
     this.scheduleSyncClient = new LifeOpsScheduleSyncClient();
     this.explicitOwnerEntityIdValue =
       normalizeOptionalString(options.ownerEntityId) ?? null;

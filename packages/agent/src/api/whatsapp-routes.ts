@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
+import { logger } from "@elizaos/core";
 import type { WhatsAppPairingEvent } from "../services/whatsapp-pairing.js";
 import { readJsonBody as parseJsonBody, sendJson } from "./http-helpers.js";
 import { setOwnerContact } from "./owner-contact-helpers.js";
@@ -291,9 +292,13 @@ export async function handleWhatsAppRoute(
     try {
       await deps.whatsappLogout(state.workspaceDir, accountId);
     } catch (logoutErr) {
-      console.warn(
-        `[whatsapp] Logout failed for ${accountId}, deleting auth files directly:`,
-        String(logoutErr),
+      logger.warn(
+        {
+          accountId,
+          error:
+            logoutErr instanceof Error ? logoutErr.message : String(logoutErr),
+        },
+        "[whatsapp] Logout failed, deleting auth files directly",
       );
       const authDir = path.join(state.workspaceDir, "whatsapp-auth", accountId);
       try {

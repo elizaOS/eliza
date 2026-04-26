@@ -10,6 +10,7 @@ import {
   createPaymentAwareHandler,
   isRoutePaymentWrapped,
 } from "../middleware/x402/payment-wrapper.ts";
+import { readJsonBody } from "./http-helpers.ts";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
@@ -124,6 +125,40 @@ function augmentRequest(
   return req;
 }
 
+function requestMayHaveJsonBody(req: IncomingMessage, method: string): boolean {
+  if (method === "GET" || method === "HEAD") {
+    return false;
+  }
+  const contentType = req.headers["content-type"];
+  const contentTypeText = Array.isArray(contentType)
+    ? contentType.join(",")
+    : (contentType ?? "");
+  if (!contentTypeText.toLowerCase().includes("application/json")) {
+    return false;
+  }
+  const contentLength = req.headers["content-length"];
+  if (contentLength === "0") {
+    return false;
+  }
+  return Boolean(contentLength || req.headers["transfer-encoding"]);
+}
+
+async function attachJsonBodyIfPresent(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+): Promise<boolean> {
+  if (!requestMayHaveJsonBody(req, method)) {
+    return true;
+  }
+  const body = await readJsonBody(req, res, { requireObject: true });
+  if (body === null) {
+    return false;
+  }
+  (req as IncomingMessage & { body?: unknown }).body = body;
+  return true;
+}
+
 /**
  * Runs the first matching runtime plugin route. Returns true if matched (even on handler error).
  */
@@ -159,6 +194,9 @@ export async function tryHandleRuntimePluginRoute(options: {
 
     attachExpressResponseHelpers(res);
     augmentRequest(req, url, params);
+    if (!(await attachJsonBodyIfPresent(req, res, method))) {
+      return true;
+    }
 
     const effectiveHandler =
       route.x402 != null && !isRoutePaymentWrapped(route)

@@ -268,7 +268,7 @@ export function CharacterHubView({
     () => readHubCache<CharacterHistoryEntry[]>("history", []),
   );
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [, setHistoryError] = useState<string | null>(null);
   const [relationshipActivity, setRelationshipActivity] = useState<
     RelationshipsActivityItem[]
   >(() =>
@@ -668,6 +668,7 @@ export function CharacterHubView({
         return (
           <span
             className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted/80"
+            role="img"
             title={label}
             aria-label={label}
           >
@@ -709,7 +710,7 @@ export function CharacterHubView({
         body:
           recentRelationshipActivity.length > 0 ? (
             <ul className="flex flex-col divide-y divide-border/10 text-xs text-muted">
-              {recentRelationshipActivity.map((item, index) => {
+              {recentRelationshipActivity.map((item) => {
                 const connectors = parseConnectorsFromDetail(item.detail);
                 const memoryText =
                   item.type === "fact"
@@ -719,7 +720,7 @@ export function CharacterHubView({
                       : item.summary?.trim() || item.type;
                 return (
                   <li
-                    key={`${item.personId ?? "person"}-${index}-${item.timestamp ?? ""}`}
+                    key={`${item.type}-${item.personId ?? item.personName ?? "person"}-${item.timestamp ?? "unknown"}-${memoryText}`}
                     className="flex min-w-0 items-center gap-2 py-1.5 first:pt-0 last:pb-0"
                   >
                     <span className="inline-flex shrink-0 items-center gap-1">

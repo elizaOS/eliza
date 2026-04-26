@@ -1,10 +1,10 @@
 import type { LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
 
-export { LIFEOPS_CONNECTOR_DEGRADATION_AXES } from "./lifeops-connector-degradation.js";
 export type {
   LifeOpsConnectorDegradation,
   LifeOpsConnectorDegradationAxis,
 } from "./lifeops-connector-degradation.js";
+export { LIFEOPS_CONNECTOR_DEGRADATION_AXES } from "./lifeops-connector-degradation.js";
 
 export const LIFEOPS_TIME_WINDOW_NAMES = [
   "morning",
@@ -2538,10 +2538,10 @@ export type LifeOpsTelegramAuthState =
 export interface LifeOpsWhatsAppConnectorStatus {
   provider: "whatsapp";
   /**
-   * `connected` here means credentials are present in env; it does NOT imply
-   * a live network probe has been performed. A live send can still fail if
-   * the token has been revoked upstream. Callers that need true liveness
-   * must catch errors from the actual send/receive methods.
+   * `connected` here means credentials or local QR auth state are present; it
+   * does NOT imply a live network probe has been performed. A live send can
+   * still fail if the upstream session or token has been revoked. Callers that
+   * need true liveness must catch errors from the actual send/receive methods.
    */
   connected: boolean;
   /**

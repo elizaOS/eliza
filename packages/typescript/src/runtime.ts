@@ -1239,7 +1239,9 @@ export class AgentRuntime implements IAgentRuntime {
 					: `/${route.path}`;
 				this.routes.push({
 					...route,
-					path: route.rawPath ? routePath : `/${pluginToRegister.name}${routePath}`,
+					path: route.rawPath
+						? routePath
+						: `/${pluginToRegister.name}${routePath}`,
 				});
 			}
 		}

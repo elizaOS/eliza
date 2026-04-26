@@ -43,6 +43,7 @@ function isIosRuntime(): boolean {
 
 const MACOS_FULL_DISK_ACCESS_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
+const LIFEOPS_BROWSER_SETUP_ID = "lifeops-browser-setup";
 
 function ConnectorCardShell({
   icon,
@@ -314,6 +315,39 @@ function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
   return "Milady Desktop Browser is ready for Discord.";
 }
 
+function focusBrowserSetupPanel(): boolean {
+  if (typeof document === "undefined") {
+    return false;
+  }
+  const element = document.getElementById(LIFEOPS_BROWSER_SETUP_ID);
+  if (!element) {
+    return false;
+  }
+  element.scrollIntoView({ behavior: "smooth", block: "start" });
+  return true;
+}
+
+function browserAccessActionIcon(
+  action: LifeOpsOwnerBrowserAccessStatus["nextAction"],
+) {
+  switch (action) {
+    case "connect_browser":
+    case "open_extension_popup":
+    case "enable_browser_access":
+    case "enable_browser_control":
+      return <Plug2 className="mr-1.5 h-3 w-3" aria-hidden />;
+    case "log_in":
+    case "open_desktop_browser":
+    case "open_discord":
+    case "open_dm_inbox":
+    case "focus_discord_manually":
+    case "focus_dm_inbox_manually":
+      return <ExternalLink className="mr-1.5 h-3 w-3" aria-hidden />;
+    default:
+      return null;
+  }
+}
+
 export function SignalConnectorCard() {
   const signal = useSignalConnector();
   const isConnected = signal.status?.connected === true;
@@ -496,6 +530,47 @@ export function DiscordConnectorCard() {
     }
   }, [discord, setActionNotice, setTab]);
 
+  const handleBrowserAccessAction = useCallback(
+    async (access: LifeOpsOwnerBrowserAccessStatus) => {
+      if (access.source === "desktop_browser") {
+        await handleOpenDesktopDiscord();
+        return;
+      }
+
+      switch (access.nextAction) {
+        case "connect_browser":
+        case "open_extension_popup":
+        case "enable_browser_access":
+        case "enable_browser_control":
+          if (!focusBrowserSetupPanel()) {
+            setTab("browser");
+          }
+          setActionNotice(
+            "Use Guided Browser Setup to connect the browser profile that is already logged in to Discord.",
+            "info",
+            4200,
+          );
+          return;
+        case "focus_discord_manually":
+        case "focus_dm_inbox_manually":
+          setActionNotice(
+            "Open Discord in the connected browser profile, then refresh this card.",
+            "info",
+            4200,
+          );
+          return;
+        case "log_in":
+        case "open_discord":
+        case "open_dm_inbox":
+          await discord.connect();
+          return;
+        default:
+          await discord.refresh();
+      }
+    },
+    [discord, handleOpenDesktopDiscord, setActionNotice, setTab],
+  );
+
   return (
     <ConnectorCardShell
       icon={<DiscordIcon className="h-5 w-5 shrink-0 text-muted" />}
@@ -594,6 +669,7 @@ export function DiscordConnectorCard() {
           <div className="mt-2 space-y-2">
             {browserAccess.map((access) => {
               const badge = browserAccessBadge(access);
+              const actionLabel = browserAccessActionLabel(access.nextAction);
               return (
                 <div
                   key={`${access.source}:${access.browser ?? "desktop"}:${access.profileId ?? "default"}`}
@@ -623,6 +699,24 @@ export function DiscordConnectorCard() {
                           ? " • Discord tab found"
                           : ""}
                   </div>
+                  {actionLabel ? (
+                    <Button
+                      size="sm"
+                      variant={
+                        access.source === "desktop_browser"
+                          ? "outline"
+                          : "default"
+                      }
+                      className="mt-2 h-8 rounded-xl px-3 text-xs font-semibold"
+                      disabled={busy}
+                      onClick={() => void handleBrowserAccessAction(access)}
+                      title={actionLabel}
+                      aria-label={actionLabel}
+                    >
+                      {browserAccessActionIcon(access.nextAction)}
+                      {actionLabel}
+                    </Button>
+                  ) : null}
                 </div>
               );
             })}
