@@ -2,17 +2,113 @@
 /**
  * Unit tests for LoginView.
  *
- * Tests each tab independently. All network calls are replaced with
- * injected mock functions.
+ * Network calls are replaced with injected mock functions or global fetch
+ * stubs.
  */
 
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ComponentPropsWithoutRef, MouseEvent, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthLoginResult } from "../../api/auth-client";
+
+type ButtonProps = ComponentPropsWithoutRef<"button"> & {
+  asChild?: boolean;
+  variant?: string;
+  children?: ReactNode;
+};
+type TabsProps = { defaultValue: string; children?: ReactNode };
+type TabsTriggerProps = ComponentPropsWithoutRef<"button"> & {
+  value: string;
+  children?: ReactNode;
+};
+type TabsContentProps = ComponentPropsWithoutRef<"div"> & {
+  value: string;
+  children?: ReactNode;
+};
+
+vi.mock("@elizaos/ui", async () => {
+  const React = await import("react");
+  const TabsContext = React.createContext<{
+    value: string;
+    setValue: (value: string) => void;
+  } | null>(null);
+
+  const cn = (...classes: Array<string | false | null | undefined>) =>
+    classes.filter(Boolean).join(" ");
+  const Div = ({ children, ...props }: ComponentPropsWithoutRef<"div">) =>
+    React.createElement("div", props, children);
+
+  return {
+    Button: ({
+      asChild,
+      children,
+      variant: _variant,
+      ...props
+    }: ButtonProps) =>
+      asChild
+        ? React.createElement(React.Fragment, null, children)
+        : React.createElement("button", props, children),
+    Card: Div,
+    CardContent: Div,
+    CardHeader: Div,
+    CardTitle: ({ children, ...props }: ComponentPropsWithoutRef<"h2">) =>
+      React.createElement("h2", props, children),
+    cn,
+    Input: (props: ComponentPropsWithoutRef<"input">) =>
+      React.createElement("input", props),
+    Label: ({ children, ...props }: ComponentPropsWithoutRef<"label">) =>
+      React.createElement("label", props, children),
+    Tabs: ({ defaultValue, children }: TabsProps) => {
+      const [value, setValue] = React.useState(defaultValue);
+      return React.createElement(
+        TabsContext.Provider,
+        { value: { value, setValue } },
+        children,
+      );
+    },
+    TabsContent: ({ value, children, ...props }: TabsContentProps) => {
+      const tabs = React.useContext(TabsContext);
+      if (tabs?.value !== value) return null;
+      return React.createElement(
+        "div",
+        { role: "tabpanel", ...props },
+        children,
+      );
+    },
+    TabsList: ({ children, ...props }: ComponentPropsWithoutRef<"div">) =>
+      React.createElement("div", { role: "tablist", ...props }, children),
+    TabsTrigger: ({ value, children, onClick, ...props }: TabsTriggerProps) => {
+      const tabs = React.useContext(TabsContext);
+      const selected = tabs?.value === value;
+      return React.createElement(
+        "button",
+        {
+          role: "tab",
+          type: "button",
+          "aria-selected": selected,
+          onClick: (event: MouseEvent<HTMLButtonElement>) => {
+            tabs?.setValue(value);
+            onClick?.(event);
+          },
+          ...props,
+        },
+        children,
+      );
+    },
+  };
+});
+
+vi.mock("../../api/auth-client", () => ({
+  authLoginPassword: vi.fn(),
+}));
+
 import { LoginView } from "./LoginView";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const SUCCESS_RESULT: AuthLoginResult = {
   ok: true,
@@ -31,6 +127,36 @@ describe("LoginView — Password tab", () => {
       screen.getByLabelText(/^password$/i, { selector: "input" }),
     ).toBeDefined();
     expect(screen.getByRole("button", { name: /sign in/i })).toBeDefined();
+  });
+
+  it("renders password as the default method when all methods are available", () => {
+    render(
+      <LoginView
+        onLoginSuccess={vi.fn()}
+        loginFn={vi.fn()}
+        cloudEnabled={true}
+        connectorBindings={[{ connector: "discord", displayHandle: "user#1" }]}
+        pairing={{
+          pairingEnabled: true,
+          pairingCodeInput: "",
+          pairingBusy: false,
+          pairingError: null,
+          onCodeChange: vi.fn(),
+          onSubmit: vi.fn(),
+        }}
+      />,
+    );
+
+    expect(screen.getByLabelText(/display name/i)).toBeDefined();
+    const tablistStyle =
+      screen.getByRole("tablist").getAttribute("style") ?? "";
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual([
+      "Password",
+      "Cloud",
+      "Connector",
+      "Pairing",
+    ]);
+    expect(tablistStyle).toContain("repeat(4");
   });
 
   it("submit is disabled when fields are empty", () => {
@@ -109,7 +235,7 @@ describe("LoginView — Password tab", () => {
     );
   });
 
-  it("does not render password fields before remote password is configured", () => {
+  it("renders a blocked screen before remote password is configured", () => {
     render(
       <LoginView
         onLoginSuccess={vi.fn()}
@@ -117,25 +243,25 @@ describe("LoginView — Password tab", () => {
         reason="remote_password_not_configured"
       />,
     );
-    expect(screen.getByText(/remote access is not enabled yet/i)).toBeDefined();
-    expect(
-      screen.getByText(/remote password login has not been configured/i),
-    ).toBeDefined();
+    expect(screen.getByText(/remote access blocked/i)).toBeDefined();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "set a remote password in Settings",
+    );
     expect(screen.queryByLabelText(/display name/i)).toBeNull();
+    expect(screen.queryByRole("tablist")).toBeNull();
   });
 });
 
 // ── Cloud SSO tab ─────────────────────────────────────────────────────────────
 
 describe("LoginView — Cloud SSO tab", () => {
-  it("button is disabled when cloudEnabled=false", async () => {
-    const user = userEvent.setup();
+  it("is hidden when cloudEnabled=false", () => {
     render(<LoginView onLoginSuccess={vi.fn()} cloudEnabled={false} />);
-    await user.click(screen.getByRole("tab", { name: /cloud/i }));
-    const btn = screen.getByRole("button", {
-      name: /sign in with eliza cloud/i,
-    });
-    expect((btn as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("tab", { name: /cloud/i })).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    const tablistStyle =
+      screen.getByRole("tablist").getAttribute("style") ?? "";
+    expect(tablistStyle).toContain("repeat(1");
   });
 
   it("button is enabled when cloudEnabled=true", async () => {
@@ -156,17 +282,9 @@ describe("LoginView — Cloud SSO tab", () => {
 // ── Connector tab ─────────────────────────────────────────────────────────────
 
 describe("LoginView — Connector tab", () => {
-  it("shows placeholder when no bindings configured", async () => {
-    const user = userEvent.setup();
+  it("is hidden when no bindings are configured", () => {
     render(<LoginView onLoginSuccess={vi.fn()} connectorBindings={[]} />);
-    await user.click(screen.getByRole("tab", { name: /connector/i }));
-    expect(
-      (
-        screen.getByRole("button", {
-          name: /send login link/i,
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+    expect(screen.queryByRole("tab", { name: /connector/i })).toBeNull();
   });
 
   it("renders a button per binding", async () => {
@@ -183,11 +301,59 @@ describe("LoginView — Connector tab", () => {
     await user.click(screen.getByRole("tab", { name: /connector/i }));
     expect(screen.getAllByRole("button").length).toBeGreaterThanOrEqual(2);
   });
+
+  it("shows a durable error when the DM-link endpoint is unavailable", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: false, status: 404 }),
+    );
+
+    render(
+      <LoginView
+        onLoginSuccess={vi.fn()}
+        connectorBindings={[{ connector: "discord", displayHandle: "user#1" }]}
+      />,
+    );
+
+    await user.click(screen.getByRole("tab", { name: /connector/i }));
+    await user.click(
+      screen.getByRole("button", { name: /send link via discord/i }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/login links are unavailable on this server/i),
+      ).toBeDefined(),
+    );
+  });
 });
 
 // ── Pairing tab ───────────────────────────────────────────────────────────────
 
 describe("LoginView — Pairing tab", () => {
+  it("is hidden when pairing is unavailable", () => {
+    render(<LoginView onLoginSuccess={vi.fn()} />);
+    expect(screen.queryByRole("tab", { name: /pairing/i })).toBeNull();
+  });
+
+  it("is hidden when pairing is disabled", () => {
+    render(
+      <LoginView
+        onLoginSuccess={vi.fn()}
+        pairing={{
+          pairingEnabled: false,
+          pairingCodeInput: "",
+          pairingBusy: false,
+          pairingError: null,
+          onCodeChange: vi.fn(),
+          onSubmit: vi.fn(),
+        }}
+      />,
+    );
+    expect(screen.queryByRole("tab", { name: /pairing/i })).toBeNull();
+  });
+
   it("renders pairing form when pairing prop provided", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();
