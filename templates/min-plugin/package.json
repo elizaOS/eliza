@@ -21,7 +21,7 @@
   "devDependencies": {
     "@types/node": "^25.0.6",
     "typescript": "^6.0.0",
-    "vitest": "^2.1.8"
+    "vitest": "^4.0.0"
   },
   "elizaos": {
     "plugin": {
