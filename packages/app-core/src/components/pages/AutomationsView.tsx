@@ -65,7 +65,6 @@ import type {
   AutomationListResponse,
   AutomationNodeDescriptor,
   AutomationItem as CatalogAutomationItem,
-  AutomationRoomBinding,
   Conversation,
   N8nStatusResponse,
   N8nWorkflow,
@@ -1054,22 +1053,15 @@ function useAutomationsViewController() {
       // a minimal draft item so AutomationDraftPane renders with the
       // WorkflowGenerationProgress card during the LLM call.
       //
-      // Fill in every required field on AutomationItem with sensible
-      // defaults instead of casting through `unknown`. In particular,
-      // `room` MUST be set when an active workflow conversation exists —
-      // otherwise handleDeleteDraft sees `item.room?.conversationId` as
-      // undefined and shows a misleading "missing automation room" error
-      // when the user clicks "Delete draft" during the generation window.
+      // The `room` field is left null here. `activeWorkflowConversation`
+      // — the live conversation tied to this draft — lives in
+      // AutomationsLayout (a different scope from this controller hook),
+      // so we cannot read it from here without a larger refactor.
+      // Instead, handleDeleteDraft reads activeWorkflowConversation
+      // directly and falls back to it when item.room is missing on a
+      // synthesized draft (see the handler below).
       if (selectedItemId.startsWith("workflow-draft:")) {
         const draftId = selectedItemId.slice("workflow-draft:".length);
-        const draftRoom: AutomationRoomBinding | null =
-          activeWorkflowConversation
-            ? {
-                conversationId: activeWorkflowConversation.id,
-                roomId: activeWorkflowConversation.roomId,
-                scope: "automation-workflow-draft",
-              }
-            : null;
         const synthesized: AutomationItem = {
           id: selectedItemId,
           type: "automation_draft",
@@ -1084,7 +1076,7 @@ function useAutomationsViewController() {
           updatedAt: null,
           draftId,
           schedules: [],
-          room: draftRoom,
+          room: null,
         };
         return synthesized;
       }
@@ -4921,7 +4913,14 @@ function AutomationsLayout() {
 
   const handleDeleteDraft = useCallback(
     async (item: AutomationItem) => {
-      const conversationId = item.room?.conversationId;
+      // Synthesized in-flight drafts (workflow-draft:* ids surfaced
+      // before refreshAutomations completes) have no `room` because the
+      // controller's resolvedSelectedItem useMemo can't reach
+      // activeWorkflowConversation from its scope. Fall back to the
+      // live activeWorkflowConversation when item.room is missing —
+      // that's the same conversation the synthesized item represents.
+      const conversationId =
+        item.room?.conversationId ?? activeWorkflowConversation?.id ?? null;
       if (!conversationId) {
         setPageNotice("This draft is missing its automation room.");
         return;
