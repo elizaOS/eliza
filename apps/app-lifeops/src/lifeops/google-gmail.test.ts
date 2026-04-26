@@ -78,13 +78,25 @@ describe("fetchGoogleGmailTriageMessages", () => {
     const listUrls: URL[] = [];
     globalThis.fetch = vi.fn(async (input) => {
       const parsed = new URL(String(input));
-      listUrls.push(parsed);
+      if (parsed.pathname.endsWith("/messages")) {
+        listUrls.push(parsed);
+        return new Response(
+          JSON.stringify(
+            parsed.searchParams.get("pageToken")
+              ? { messages: [{ id: "m501" }] }
+              : {
+                  messages: Array.from({ length: 500 }, (_, index) => ({
+                    id: `m${index + 1}`,
+                  })),
+                  nextPageToken: "page-2",
+                },
+          ),
+          { status: 200 },
+        );
+      }
+      const id = parsed.pathname.split("/").pop() ?? "unknown";
       return new Response(
-        JSON.stringify(
-          parsed.searchParams.get("pageToken")
-            ? { messages: [] }
-            : { messages: [], nextPageToken: "page-2" },
-        ),
+        JSON.stringify(metadata(id, "2026-04-21T12:00:00.000Z")),
         { status: 200 },
       );
     }) as unknown as typeof fetch;
@@ -92,12 +104,12 @@ describe("fetchGoogleGmailTriageMessages", () => {
     await fetchGoogleGmailTriageMessages({
       accessToken: "token",
       selfEmail: "owner@example.test",
-      maxResults: 650,
+      maxResults: 501,
     });
 
     expect(listUrls).toHaveLength(2);
     expect(listUrls[0]?.searchParams.get("maxResults")).toBe("500");
-    expect(listUrls[1]?.searchParams.get("maxResults")).toBe("150");
+    expect(listUrls[1]?.searchParams.get("maxResults")).toBe("1");
     expect(listUrls[1]?.searchParams.get("pageToken")).toBe("page-2");
   });
 });
