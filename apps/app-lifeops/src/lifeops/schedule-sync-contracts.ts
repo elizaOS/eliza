@@ -30,6 +30,19 @@ export const LIFEOPS_SCHEDULE_OBSERVATION_ORIGINS = [
 export type LifeOpsScheduleObservationOrigin =
   (typeof LIFEOPS_SCHEDULE_OBSERVATION_ORIGINS)[number];
 
+export const LIFEOPS_SCHEDULE_OBSERVATION_STATES = [
+  "probably_awake",
+  "probably_sleeping",
+  "woke_recently",
+  "winding_down",
+  "meal_window_likely",
+  "ate_recently",
+  "active_recently",
+] as const;
+
+export type LifeOpsScheduleObservationState =
+  (typeof LIFEOPS_SCHEDULE_OBSERVATION_STATES)[number];
+
 export const LIFEOPS_SCHEDULE_STATE_SCOPES = ["local", "cloud"] as const;
 
 export type LifeOpsScheduleStateScope =
@@ -38,6 +51,7 @@ export type LifeOpsScheduleStateScope =
 export interface LifeOpsScheduleObservationSnapshot {
   effectiveDayKey: string;
   localDate: string;
+  phase: string;
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
   uncertaintyReason: LifeOpsUnclearReason | null;
@@ -46,11 +60,14 @@ export interface LifeOpsScheduleObservationSnapshot {
   regularity: LifeOpsScheduleRegularity;
   baseline: LifeOpsPersonalBaseline | null;
   sleepStatus: LifeOpsScheduleSleepStatus;
+  isProbablySleeping: boolean;
   sleepConfidence: number;
   currentSleepStartedAt: string | null;
   lastSleepStartedAt: string | null;
   lastSleepEndedAt: string | null;
   lastSleepDurationMinutes: number | null;
+  typicalWakeHour: number | null;
+  typicalSleepHour: number | null;
   wakeAt: string | null;
   firstActiveAt: string | null;
   lastActiveAt: string | null;
@@ -71,10 +88,10 @@ export interface LifeOpsScheduleObservation {
   observedAt: string;
   windowStartAt: string;
   windowEndAt: string | null;
-  circadianState: LifeOpsCircadianState;
-  stateConfidence: number;
-  uncertaintyReason: LifeOpsUnclearReason | null;
+  state: LifeOpsScheduleObservationState;
+  phase: string | null;
   mealLabel: LifeOpsScheduleMealLabel | null;
+  confidence: number;
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -94,12 +111,12 @@ export interface LifeOpsScheduleMergedState extends LifeOpsScheduleInsight {
 }
 
 export interface SyncLifeOpsScheduleObservationInput {
-  circadianState: LifeOpsCircadianState;
-  stateConfidence: number;
-  uncertaintyReason?: LifeOpsUnclearReason | null;
+  state: LifeOpsScheduleObservationState;
   windowStartAt: string;
   windowEndAt?: string | null;
+  phase?: string | null;
   mealLabel?: LifeOpsScheduleMealLabel | null;
+  confidence: number;
   snapshot?: Partial<LifeOpsScheduleObservationSnapshot> | null;
   metadata?: Record<string, unknown>;
 }
