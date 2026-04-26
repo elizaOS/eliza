@@ -556,6 +556,53 @@ export async function fetchGoogleGmailMessageDetail(args: {
   };
 }
 
+async function mapWithConcurrency<T, TResult>(
+  items: readonly T[],
+  concurrency: number,
+  mapper: (item: T) => Promise<TResult>,
+): Promise<TResult[]> {
+  if (items.length === 0) return [];
+  const results = new Array<TResult>(items.length);
+  let cursor = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (true) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await mapper(items[index]!);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function fetchGoogleGmailMessageMetadata(args: {
+  accessToken: string;
+  selfEmail?: string | null;
+  messageId?: string;
+}): Promise<SyncedGoogleGmailMessageSummary | null> {
+  const messageId = args.messageId?.trim();
+  if (!messageId) return null;
+  const params = new URLSearchParams({
+    format: "metadata",
+  });
+  for (const header of GMAIL_METADATA_HEADERS) {
+    params.append("metadataHeaders", header);
+  }
+
+  const response = await googleApiFetch(
+    `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(messageId)}?${params.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+    },
+  );
+  const parsed = (await response.json()) as GoogleGmailMetadataResponse;
+  return normalizeGoogleGmailMessage(parsed, args.selfEmail ?? null);
+}
+
 async function fetchGoogleGmailMessages(args: {
   accessToken: string;
   selfEmail?: string | null;
@@ -564,59 +611,73 @@ async function fetchGoogleGmailMessages(args: {
   labelIds?: string[];
   includeSpamTrash?: boolean;
 }): Promise<SyncedGoogleGmailMessageSummary[]> {
-  const maxResults =
-    args.maxResults && args.maxResults > 0 ? Math.min(args.maxResults, 50) : 20;
-  const listParams = new URLSearchParams({
-    maxResults: String(maxResults),
-    includeSpamTrash: args.includeSpamTrash === true ? "true" : "false",
-  });
-  for (const labelId of args.labelIds ?? []) {
-    listParams.append("labelIds", labelId);
-  }
-  if (args.query?.trim()) {
-    listParams.set("q", args.query.trim());
-  }
-
-  const listResponse = await googleApiFetch(
-    `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}?${listParams.toString()}`,
-    {
-      headers: {
-        Authorization: `Bearer ${args.accessToken}`,
-      },
-    },
+  const requestedMaxResults =
+    typeof args.maxResults === "number" &&
+    Number.isFinite(args.maxResults) &&
+    args.maxResults > 0
+      ? Math.trunc(args.maxResults)
+      : 20;
+  const maxResults = Math.min(
+    requestedMaxResults,
+    MAX_GMAIL_TRIAGE_MAX_RESULTS,
   );
+  const messages: SyncedGoogleGmailMessageSummary[] = [];
+  let pageToken: string | undefined;
 
-  const listed = (await listResponse.json()) as GoogleGmailListResponse;
-  const messages = await Promise.all(
-    (listed.messages ?? []).map(async (messageRef) => {
-      const messageId = messageRef.id?.trim();
-      if (!messageId) {
-        return null;
-      }
-      const params = new URLSearchParams({
-        format: "metadata",
-      });
-      for (const header of GMAIL_METADATA_HEADERS) {
-        params.append("metadataHeaders", header);
-      }
+  while (messages.length < maxResults) {
+    const pageSize = Math.min(
+      GOOGLE_GMAIL_LIST_PAGE_SIZE,
+      maxResults - messages.length,
+    );
+    const listParams = new URLSearchParams({
+      maxResults: String(pageSize),
+      includeSpamTrash: args.includeSpamTrash === true ? "true" : "false",
+    });
+    for (const labelId of args.labelIds ?? []) {
+      listParams.append("labelIds", labelId);
+    }
+    if (args.query?.trim()) {
+      listParams.set("q", args.query.trim());
+    }
+    if (pageToken) {
+      listParams.set("pageToken", pageToken);
+    }
 
-      const response = await googleApiFetch(
-        `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(messageId)}?${params.toString()}`,
-        {
-          headers: {
-            Authorization: `Bearer ${args.accessToken}`,
-          },
+    const listResponse = await googleApiFetch(
+      `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}?${listParams.toString()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${args.accessToken}`,
         },
-      );
-      const parsed = (await response.json()) as GoogleGmailMetadataResponse;
-      return normalizeGoogleGmailMessage(parsed, args.selfEmail ?? null);
-    }),
-  );
+      },
+    );
+
+    const listed = (await listResponse.json()) as GoogleGmailListResponse;
+    const pageMessages = await mapWithConcurrency(
+      listed.messages ?? [],
+      GOOGLE_GMAIL_METADATA_CONCURRENCY,
+      async (messageRef) =>
+        fetchGoogleGmailMessageMetadata({
+          accessToken: args.accessToken,
+          selfEmail: args.selfEmail ?? null,
+          messageId: messageRef.id,
+        }),
+    );
+    for (const message of pageMessages) {
+      if (message) {
+        messages.push(message);
+      }
+    }
+
+    const nextPageToken = listed.nextPageToken?.trim();
+    if (!nextPageToken || nextPageToken === pageToken) {
+      break;
+    }
+    pageToken = nextPageToken;
+  }
 
   return messages
-    .filter(
-      (message): message is SyncedGoogleGmailMessageSummary => message !== null,
-    )
+    .slice(0, maxResults)
     .sort((left, right) => {
       if (left.isImportant !== right.isImportant) {
         return right.isImportant ? 1 : -1;
