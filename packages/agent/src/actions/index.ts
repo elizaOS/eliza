@@ -14,6 +14,7 @@ export * from "./log-level.js";
 export * from "./media.js";
 export * from "./reinject-plugin.js";
 export * from "./restart.js";
+export * from "./scratchpad.js";
 export * from "./send-message.js";
 export * from "./settings-actions.js";
 export * from "./stream-control.js";
