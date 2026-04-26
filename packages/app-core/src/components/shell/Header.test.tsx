@@ -8,6 +8,7 @@ var isElectrobunRuntimeMock = vi.fn();
 var useMediaQueryMock = vi.fn();
 var useAppMock = vi.fn();
 var getOverlayAppMock = vi.fn();
+var useAuthStatusMock = vi.fn();
 
 vi.mock("@elizaos/app-companion/ui", () => ({
   InferenceCloudAlertButton: () => null,
@@ -37,6 +38,11 @@ vi.mock("@elizaos/app-core/components/shared/ThemeToggle", () => ({
 
 vi.mock("@elizaos/app-core/hooks", () => ({
   useMediaQuery: (query: string) => useMediaQueryMock(query),
+}));
+
+vi.mock("../../hooks/useAuthStatus", () => ({
+  useAuthStatus: (options: { observeOnly?: boolean }) =>
+    useAuthStatusMock(options),
 }));
 
 vi.mock("@elizaos/app-core/navigation", async () => {
@@ -90,6 +96,35 @@ function buildUseAppState(overrides?: Record<string, unknown>) {
   };
 }
 
+function buildAuthenticatedAuthStatus(
+  overrides?: Partial<{
+    access: {
+      mode: "local" | "session" | "remote";
+      passwordConfigured: boolean;
+      ownerConfigured: boolean;
+    };
+  }>,
+) {
+  return {
+    phase: "authenticated" as const,
+    identity: {
+      id: "owner-1",
+      displayName: "Owner",
+      kind: "owner" as const,
+    },
+    session: {
+      id: "session-1",
+      kind: "browser" as const,
+      expiresAt: null,
+    },
+    access: overrides?.access ?? {
+      mode: "local" as const,
+      passwordConfigured: true,
+      ownerConfigured: true,
+    },
+  };
+}
+
 describe("Header", () => {
   beforeEach(() => {
     cleanup();
@@ -98,6 +133,7 @@ describe("Header", () => {
     getTabGroupsMock.mockReset();
     useMediaQueryMock.mockReset();
     getOverlayAppMock.mockReset();
+    useAuthStatusMock.mockReset();
     getOverlayAppMock.mockReturnValue(undefined);
 
     Object.defineProperty(window.navigator, "userAgent", {
@@ -107,6 +143,10 @@ describe("Header", () => {
     window.history.replaceState(null, "", "/");
 
     useAppMock.mockReturnValue(buildUseAppState());
+    useAuthStatusMock.mockReturnValue({
+      state: { phase: "loading" },
+      refetch: vi.fn(),
+    });
     isElectrobunRuntimeMock.mockReturnValue(false);
     useMediaQueryMock.mockReturnValue(false);
     getTabGroupsMock.mockReturnValue([
@@ -245,6 +285,78 @@ describe("Header", () => {
     expect(outerPointerDown).not.toHaveBeenCalled();
     fireEvent.click(settingsButton);
     expect(setTab).toHaveBeenCalledWith("settings");
+  });
+
+  describe("access badge", () => {
+    it("shows local access with remote password status", () => {
+      useAuthStatusMock.mockReturnValue({
+        state: buildAuthenticatedAuthStatus(),
+        refetch: vi.fn(),
+      });
+
+      render(<Header hideCloudCredits />);
+
+      expect(useAuthStatusMock).toHaveBeenCalledWith({ observeOnly: true });
+      const badge = screen.getByTestId("header-access-badge");
+      expect(badge.textContent).toContain("Local");
+      expect(badge.textContent).toContain("Remote password set");
+      expect(badge.getAttribute("title")).toBe(
+        "Local access, Remote password set",
+      );
+    });
+
+    it("shows local access when the remote password is off", () => {
+      useAuthStatusMock.mockReturnValue({
+        state: buildAuthenticatedAuthStatus({
+          access: {
+            mode: "local",
+            passwordConfigured: false,
+            ownerConfigured: true,
+          },
+        }),
+        refetch: vi.fn(),
+      });
+
+      render(<Header hideCloudCredits />);
+
+      const badge = screen.getByTestId("header-access-badge");
+      expect(badge.textContent).toContain("Local");
+      expect(badge.textContent).toContain("Remote password off");
+    });
+
+    it("shows remote for authenticated remote sessions", () => {
+      useAuthStatusMock.mockReturnValue({
+        state: buildAuthenticatedAuthStatus({
+          access: {
+            mode: "session",
+            passwordConfigured: true,
+            ownerConfigured: true,
+          },
+        }),
+        refetch: vi.fn(),
+      });
+
+      render(<Header hideCloudCredits />);
+
+      const badge = screen.getByTestId("header-access-badge");
+      expect(badge.textContent).toBe("Remote");
+      expect(badge.getAttribute("title")).toBe("Remote session");
+    });
+
+    it("hides while auth status is unavailable", () => {
+      for (const state of [
+        { phase: "loading" as const },
+        { phase: "server_unavailable" as const },
+      ]) {
+        cleanup();
+        useAuthStatusMock.mockReturnValue({
+          state,
+          refetch: vi.fn(),
+        });
+        render(<Header hideCloudCredits />);
+        expect(screen.queryByTestId("header-access-badge")).toBeNull();
+      }
+    });
   });
 
   describe("active-app breadcrumb", () => {

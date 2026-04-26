@@ -44,65 +44,101 @@ interface UseAuthStatusOptions {
    * Useful when the app knows auth is not yet relevant (e.g. during onboarding).
    */
   skip?: boolean;
+  /**
+   * Subscribe to the latest auth status without starting a fetch or poll loop.
+   * Useful for read-only shell metadata that should reuse the app-level check.
+   */
+  observeOnly?: boolean;
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000;
+const authStatusSubscribers = new Set<(state: AuthStatusState) => void>();
+let authStatusSnapshot: AuthStatusState = { phase: "loading" };
+let authStatusFetch: Promise<void> | null = null;
+
+function publishAuthStatus(state: AuthStatusState): void {
+  authStatusSnapshot = state;
+  for (const subscriber of authStatusSubscribers) {
+    subscriber(state);
+  }
+}
+
+async function fetchAuthStatus(): Promise<void> {
+  if (authStatusFetch) return authStatusFetch;
+
+  publishAuthStatus(
+    authStatusSnapshot.phase === "loading"
+      ? authStatusSnapshot
+      : { phase: "loading" },
+  );
+
+  authStatusFetch = authMe()
+    .then((result) => {
+      if (result.ok === true) {
+        publishAuthStatus({
+          phase: "authenticated",
+          identity: result.identity,
+          session: result.session,
+          access: result.access,
+        });
+      } else if (result.ok === false) {
+        if (result.status === 503) {
+          publishAuthStatus({ phase: "server_unavailable" });
+        } else {
+          publishAuthStatus({
+            phase: "unauthenticated",
+            reason:
+              result.reason === "remote_auth_required" ||
+              result.reason === "remote_password_not_configured"
+                ? result.reason
+                : undefined,
+            access: result.access,
+          });
+        }
+      }
+    })
+    .finally(() => {
+      authStatusFetch = null;
+    });
+
+  return authStatusFetch;
+}
 
 export function useAuthStatus(options: UseAuthStatusOptions = {}): {
   state: AuthStatusState;
   refetch: () => void;
 } {
-  const { pollIntervalMs = DEFAULT_POLL_INTERVAL_MS, skip = false } = options;
-  const [state, setState] = useState<AuthStatusState>({ phase: "loading" });
+  const {
+    pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+    skip = false,
+    observeOnly = false,
+  } = options;
+  const [state, setState] = useState<AuthStatusState>(authStatusSnapshot);
   const mountedRef = useRef(true);
 
   const fetch = useCallback(async () => {
     if (!mountedRef.current) return;
-    setState((prev) =>
-      prev.phase === "loading" ? prev : { phase: "loading" },
-    );
-    const result = await authMe();
-    if (!mountedRef.current) return;
-
-    if (result.ok === true) {
-      setState({
-        phase: "authenticated",
-        identity: result.identity,
-        session: result.session,
-        access: result.access,
-      });
-    } else if (result.ok === false) {
-      if (result.status === 503) {
-        setState({ phase: "server_unavailable" });
-      } else {
-        setState({
-          phase: "unauthenticated",
-          reason:
-            result.reason === "remote_auth_required" ||
-            result.reason === "remote_password_not_configured"
-              ? result.reason
-              : undefined,
-          access: result.access,
-        });
-      }
-    }
+    await fetchAuthStatus();
   }, []);
 
   useEffect(() => {
     mountedRef.current = true;
-    if (!skip) void fetch();
+    authStatusSubscribers.add(setState);
+    setState(authStatusSnapshot);
+    if (!skip && !observeOnly) void fetch();
     return () => {
       mountedRef.current = false;
+      authStatusSubscribers.delete(setState);
     };
-  }, [skip, fetch]);
+  }, [skip, observeOnly, fetch]);
 
   useEffect(() => {
-    if (skip || pollIntervalMs === 0) return;
+    if (skip || observeOnly || pollIntervalMs === 0) return;
     const id = setInterval(() => {
       void fetch();
     }, pollIntervalMs);
     return () => clearInterval(id);
-  }, [skip, pollIntervalMs, fetch]);
+  }, [skip, observeOnly, pollIntervalMs, fetch]);
 
   return { state, refetch: fetch };
 }
