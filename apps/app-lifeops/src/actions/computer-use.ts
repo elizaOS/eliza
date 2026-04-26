@@ -8,6 +8,7 @@
  * "not installed" result instead of crashing the plugin load.
  */
 
+import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -16,7 +17,6 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
 
 const ACTION_NAME = "LIFEOPS_COMPUTER_USE";
 const ACTION_NAMES = {
@@ -82,6 +82,69 @@ function readSurface(
   return null;
 }
 
+function readNormalizedStringParam(
+  params: Record<string, unknown>,
+  key: string,
+): string {
+  const value = params[key];
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function isDesktopAlias(value: string): boolean {
+  return (
+    value === "finder" ||
+    value === "open_finder" ||
+    value === "open finder" ||
+    value === "desktop" ||
+    value === "screenshot" ||
+    value === "take_screenshot"
+  );
+}
+
+function selectSurface(params: Record<string, unknown>): ComputerUseSurface {
+  const explicitSurface = readSurface(params);
+  if (explicitSurface) {
+    return explicitSurface;
+  }
+
+  const action = readNormalizedStringParam(params, "action");
+  const command = readNormalizedStringParam(params, "command");
+  if (isDesktopAlias(action) || isDesktopAlias(command)) {
+    return "desktop";
+  }
+
+  if (
+    readNormalizedStringParam(params, "url") ||
+    readNormalizedStringParam(params, "selector") ||
+    ["navigate", "click", "type", "wait", "browser"].includes(action)
+  ) {
+    return "browser";
+  }
+
+  if (
+    readNormalizedStringParam(params, "path") ||
+    ["read", "write", "list", "delete", "move", "copy", "file"].includes(action)
+  ) {
+    return "file";
+  }
+
+  if (
+    command ||
+    ["execute", "run", "shell", "terminal", "command"].includes(action)
+  ) {
+    return "terminal";
+  }
+
+  if (
+    readNormalizedStringParam(params, "windowId") ||
+    ["window", "focus", "resize", "move_window"].includes(action)
+  ) {
+    return "window";
+  }
+
+  return "desktop";
+}
+
 async function loadComputerUseActions(): Promise<LoadedComputerUseActions | null> {
   try {
     // Dynamic import so a missing peer dependency does not break plugin load.
@@ -95,7 +158,9 @@ async function loadComputerUseActions(): Promise<LoadedComputerUseActions | null
     if (!plugin?.actions?.length) {
       return null;
     }
-    const byName = new Map(plugin.actions.map((action) => [action.name, action]));
+    const byName = new Map(
+      plugin.actions.map((action) => [action.name, action]),
+    );
     return {
       desktop: byName.get(ACTION_NAMES.desktop) ?? null,
       browser: byName.get(ACTION_NAMES.browser) ?? null,
@@ -123,18 +188,7 @@ function selectDelegateAction(
   options?: HandlerOptions,
 ): Action | null {
   const params = resolveWrapperParams(message, options);
-  const surface = readSurface(params);
-  if (surface) {
-    return actions[surface] ?? null;
-  }
-  return (
-    actions.desktop ??
-    actions.browser ??
-    actions.window ??
-    actions.file ??
-    actions.terminal ??
-    null
-  );
+  return actions[selectSurface(params)] ?? null;
 }
 
 const unavailableExamples: ActionExample[][] = [
@@ -199,13 +253,14 @@ export const lifeOpsComputerUseAction: Action & {
     "Disabled when ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0.",
   suppressPostActionContinuation: true,
 
-  validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
     if (!isComputerUseEnabled()) return false;
     if (!(await hasOwnerAccess(runtime, message))) return false;
     const actions = await getLoadedActions();
-    const base = actions
-      ? selectDelegateAction(actions, message)
-      : null;
+    const base = actions ? selectDelegateAction(actions, message) : null;
     if (!base?.validate) return true;
     return base.validate(runtime, message, undefined);
   },
@@ -310,7 +365,13 @@ export const lifeOpsComputerUseAction: Action & {
     ],
   ],
 
-  handler: async (runtime, message, state, options, callback): Promise<ActionResult> => {
+  handler: async (
+    runtime,
+    message,
+    state,
+    options,
+    callback,
+  ): Promise<ActionResult> => {
     if (!isComputerUseEnabled()) {
       return {
         text: "Computer use is disabled (ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0).",
@@ -338,15 +399,7 @@ export const lifeOpsComputerUseAction: Action & {
       };
     }
     const params = resolveWrapperParams(message, options);
-    const surface = readSurface(params);
-    if (!surface) {
-      return {
-        text: "Missing required parameter: surface. Use one of: desktop, browser, window, file, terminal.",
-        success: false,
-        values: { success: false, error: "MISSING_SURFACE" },
-        data: { actionName: ACTION_NAME, error: "MISSING_SURFACE" },
-      };
-    }
+    const surface = selectSurface(params);
     const base = actions[surface];
     if (!base) {
       return {
@@ -374,7 +427,14 @@ export const lifeOpsComputerUseAction: Action & {
       };
     }
 
-    const result = await base.handler(runtime, message, state, options, callback, []);
+    const result = await base.handler(
+      runtime,
+      message,
+      state,
+      options,
+      callback,
+      [],
+    );
     if (
       result &&
       typeof result === "object" &&

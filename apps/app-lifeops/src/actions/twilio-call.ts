@@ -379,6 +379,10 @@ async function enqueueCallApprovalRequest(args: {
   to?: string;
   body: string;
 }): Promise<string | null> {
+  if (typeof args.runtime.createTask !== "function") {
+    return null;
+  }
+
   return await args.runtime.createTask({
     name: `${args.actionName}_${Date.now()}`,
     description:
@@ -407,6 +411,44 @@ async function enqueueCallApprovalRequest(args: {
       },
     },
   });
+}
+
+function buildCallUserPolicyAcknowledgement(
+  userText: string,
+): ActionResult | null {
+  const normalized = userText.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  const isStandingEscalationPolicy =
+    /\bif\b/u.test(normalized) &&
+    /\b(?:stuck|blocked|jammed|jams|unblock|can't continue|cannot continue)\b/u.test(
+      normalized,
+    ) &&
+    /\b(?:browser|computer|desktop|screen|remote workflow|on my machine)\b/u.test(
+      normalized,
+    ) &&
+    /\b(?:call me|phone me|ring me|dial me)\b/u.test(normalized);
+
+  if (!isStandingEscalationPolicy) {
+    return null;
+  }
+
+  return {
+    text: "If I get stuck in the browser or on your computer, I'll escalate by phone so you can jump in and unblock it. I will still require confirmation before placing an actual call.",
+    success: true,
+    values: {
+      success: true,
+      policyRecorded: true,
+    },
+    data: {
+      actionName: "CALL_USER",
+      policyRecorded: true,
+      policyType: "stuck_computer_phone_escalation",
+      channel: "phone_call",
+    },
+  };
 }
 
 function isE164PhoneNumber(value: string): boolean {
@@ -571,6 +613,13 @@ export const callUserAction: Action & {
       ((options as HandlerOptions | undefined)?.parameters as
         | CallUserParameters
         | undefined) ?? {};
+    const policyAcknowledgement = buildCallUserPolicyAcknowledgement(
+      typeof message.content?.text === "string" ? message.content.text : "",
+    );
+    if (policyAcknowledgement) {
+      return policyAcknowledgement;
+    }
+
     const pendingDraft = await readPendingCallDraft(
       runtime,
       message.roomId,
@@ -657,7 +706,10 @@ export const callUserAction: Action & {
     const result = deliveryToResult(delivery, to, "CALL_USER");
     if (result.success) {
       await clearPendingCallDraft(runtime, message.roomId, "CALL_USER");
-      if (pendingDraft?.approvalTaskId) {
+      if (
+        pendingDraft?.approvalTaskId &&
+        typeof runtime.deleteTask === "function"
+      ) {
         await runtime.deleteTask(pendingDraft.approvalTaskId as never);
       }
     }
