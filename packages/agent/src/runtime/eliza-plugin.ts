@@ -44,6 +44,13 @@ import {
   reloadRuntimeConfigAction,
   restartRuntimeAction,
 } from "../actions/runtime.js";
+import {
+  scratchpadAddAction,
+  scratchpadDeleteAction,
+  scratchpadReadAction,
+  scratchpadReplaceAction,
+  scratchpadSearchAction,
+} from "../actions/scratchpad.js";
 import { searchConversationsAction } from "../actions/search-conversations.js";
 import { sendAdminMessageAction } from "../actions/send-admin-message.js";
 import { setUserNameAction } from "../actions/set-user-name.js";
@@ -300,6 +307,11 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       recallMemoryFilteredAction,
       forgetMemoryAction,
       editMemoryAction,
+      scratchpadAddAction,
+      scratchpadReadAction,
+      scratchpadSearchAction,
+      scratchpadReplaceAction,
+      scratchpadDeleteAction,
       archiveCodingTaskAction,
       reopenCodingTaskAction,
     ],

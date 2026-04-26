@@ -1,4 +1,5 @@
 import { Button, PagePanel } from "@elizaos/ui";
+import { BookOpen, Pencil } from "lucide-react";
 import {
   type ChangeEvent,
   useCallback,
@@ -39,6 +40,7 @@ import {
   shouldReadKnowledgeFileAsText,
   UploadZone,
 } from "./knowledge-upload";
+import { ScratchpadView } from "./ScratchpadView";
 
 // Re-export public API used by tests and other modules
 export {
@@ -46,6 +48,8 @@ export {
   type KnowledgeUploadFile,
   shouldReadKnowledgeFileAsText,
 } from "./knowledge-upload";
+
+type KnowledgePanelMode = "documents" | "scratchpad";
 
 /* ── Search Result Item ─────────────────────────────────────────────── */
 
@@ -196,6 +200,8 @@ export function KnowledgeView({
   const { setActionNotice } = useApp();
   const setActionNoticeRef = useRef(setActionNotice);
   setActionNoticeRef.current = setActionNotice;
+  const [activePanel, setActivePanel] =
+    useState<KnowledgePanelMode>("documents");
   const [searchQuery, setSearchQuery] = useState("");
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [searchResults, setSearchResults] = useState<
@@ -993,12 +999,49 @@ export function KnowledgeView({
     </div>
   );
 
+  const panelSelector = (
+    <div className="flex items-center gap-1 rounded-lg border border-border/35 bg-bg-muted/40 p-1">
+      <button
+        type="button"
+        onClick={() => setActivePanel("documents")}
+        className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-bold transition-colors ${
+          activePanel === "documents"
+            ? "bg-bg text-txt shadow-sm"
+            : "text-muted hover:text-txt"
+        }`}
+        aria-pressed={activePanel === "documents"}
+      >
+        <BookOpen className="h-3.5 w-3.5" aria-hidden="true" />
+        {t("knowledgeview.Documents", { defaultValue: "Documents" })}
+      </button>
+      <button
+        type="button"
+        onClick={() => setActivePanel("scratchpad")}
+        className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-bold transition-colors ${
+          activePanel === "scratchpad"
+            ? "bg-bg text-txt shadow-sm"
+            : "text-muted hover:text-txt"
+        }`}
+        aria-pressed={activePanel === "scratchpad"}
+      >
+        <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+        {t("knowledgeview.Scratchpad", { defaultValue: "Scratchpad" })}
+      </button>
+    </div>
+  );
+
   return (
     <div
       className={`flex flex-1 min-h-0 flex-col gap-4 ${inModal ? "min-h-0" : ""}`}
       data-testid="knowledge-view"
     >
-      {!shouldRenderSelectorRail && fileInputId ? (
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {panelSelector}
+      </div>
+
+      {activePanel === "documents" &&
+      !shouldRenderSelectorRail &&
+      fileInputId ? (
         <input
           id={fileInputId}
           type="file"
@@ -1009,7 +1052,7 @@ export function KnowledgeView({
         />
       ) : null}
 
-      {isServiceLoading && (
+      {activePanel === "documents" && isServiceLoading && (
         <PagePanel
           variant="inset"
           className="flex items-center gap-2 px-0 py-3 text-sm text-muted-strong !rounded-none !border-0 !bg-transparent !shadow-none !ring-0"
@@ -1019,7 +1062,7 @@ export function KnowledgeView({
         </PagePanel>
       )}
 
-      {loadError && !isServiceLoading && (
+      {activePanel === "documents" && loadError && !isServiceLoading && (
         <PagePanel.Notice
           tone="danger"
           actions={
@@ -1037,10 +1080,14 @@ export function KnowledgeView({
         </PagePanel.Notice>
       )}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
-        {documentContent}
-        {shouldRenderSelectorRail ? selectorRail : null}
-      </div>
+      {activePanel === "documents" ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
+          {documentContent}
+          {shouldRenderSelectorRail ? selectorRail : null}
+        </div>
+      ) : (
+        <ScratchpadView />
+      )}
     </div>
   );
 }
