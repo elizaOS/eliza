@@ -345,20 +345,21 @@ function WorkflowDetailPane({
   }, [workflow?.id]);
 
   if (!workflow) {
+    // Session 20 item 3: empty-state chat pane removed. The hero compose
+    // (AutomationsView dashboard tab) is the canonical workflow-create
+    // surface; the per-workflow chat pane below renders only after a
+    // workflow is selected, where the planner-routed conversational flow
+    // is the right tool for edit/refine.
     return (
-      <div className="flex flex-col gap-4 p-4 h-full">
-        <AutomationRoomChatPane
-          assistantLabel={t("automations.chat.assistantLabel")}
-          collapsed={false}
-          metadata={conversationMetadata}
-          onToggleCollapse={() => {}}
-          composerRef={composerRef}
-          onConversationResolved={onConversationResolved}
-          onAutomationMutated={onWorkflowMutated}
-          placeholder={t("automations.chat.placeholder")}
-          systemAddendum={WORKFLOW_SYSTEM_ADDENDUM}
-          title={conversationTitle}
-        />
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted">
+        <Workflow className="h-6 w-6 text-muted/40" />
+        <div className="text-txt-strong font-semibold">
+          No workflow selected
+        </div>
+        <div className="text-xs text-muted/80 max-w-xs">
+          Select a workflow from the sidebar to view its details, or switch to
+          the dashboard to create a new one.
+        </div>
       </div>
     );
   }
