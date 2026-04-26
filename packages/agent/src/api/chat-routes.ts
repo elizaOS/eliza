@@ -315,7 +315,7 @@ const PROVIDER_ISSUE_CHAT_REPLY = "Sorry, I'm having a provider issue";
 const INSUFFICIENT_CREDITS_CHAT_REPLY =
   "Eliza Cloud credits are depleted. Top up the cloud balance and try again.";
 const GENERIC_NO_RESPONSE_CHAT_REPLY = PROVIDER_ISSUE_CHAT_REPLY;
-const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 90_000;
+const DEFAULT_CHAT_GENERATION_TIMEOUT_MS = 180_000;
 const NON_EXECUTABLE_FALLBACK_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
 
 function isExecutableFallbackAction(action: { name: string }): boolean {

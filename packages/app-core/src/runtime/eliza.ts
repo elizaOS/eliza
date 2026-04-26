@@ -502,6 +502,12 @@ async function repairRuntimeAfterBoot(
   // call via resolveN8nMode, so this does not depend on autostart readiness.
   await ensureN8nDispatchService(runtime);
 
+  // Subscribe the trigger event bridge to the runtime event bus so
+  // event-kind triggers fire on real MESSAGE_RECEIVED / REACTION_RECEIVED /
+  // etc. emissions. Runs after N8N_DISPATCH so workflow-kind event
+  // triggers can dispatch immediately on first emit.
+  await ensureTriggerEventBridge(runtime);
+
   return runtime;
 }
 
@@ -522,6 +528,11 @@ let _n8nAutoStart: {
 // leaking closures that hold a stale runtime reference.
 let _n8nDispatch: { execute: (workflowId: string) => Promise<unknown> } | null =
   null;
+
+// Module-level handle for the trigger event bridge. Reset across
+// hot-reloads so we never leave two handler sets racing the runtime's
+// event bus.
+let _triggerEventBridge: { stop: () => void } | null = null;
 
 async function ensureN8nAuthBridge(runtime: AgentRuntime): Promise<void> {
   if (_n8nAuthBridge) {
@@ -614,6 +625,30 @@ async function ensureN8nDispatchService(runtime: AgentRuntime): Promise<void> {
   } catch (err) {
     logger.warn(
       `[eliza] Failed to register n8n dispatch service: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function ensureTriggerEventBridge(runtime: AgentRuntime): Promise<void> {
+  if (_triggerEventBridge) {
+    try {
+      _triggerEventBridge.stop();
+    } catch {
+      /* ignore */
+    }
+    _triggerEventBridge = null;
+  }
+  try {
+    const { startTriggerEventBridge } = await import(
+      "../services/trigger-event-bridge.js"
+    );
+    _triggerEventBridge = startTriggerEventBridge(runtime);
+    logger.info("[eliza] trigger event bridge armed");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to start trigger event bridge: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -1323,6 +1358,16 @@ export async function startEliza(
             /* ignore */
           }
           _n8nAuthBridge = null;
+        }
+        // Stop the trigger event bridge so its event handlers do not
+        // fire against the runtime after shutdown begins.
+        if (_triggerEventBridge) {
+          try {
+            _triggerEventBridge.stop();
+          } catch {
+            /* ignore */
+          }
+          _triggerEventBridge = null;
         }
         // Stop the n8n sidecar if it was started during this session. The
         // singleton is lazily constructed, so this is a no-op when n8n was
