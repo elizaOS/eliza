@@ -18,6 +18,7 @@
 
 import { cn } from "@elizaos/ui";
 import { useCallback, useId, useRef, useState } from "react";
+import { client } from "../../api";
 import type { BootstrapExchangeResult } from "../../api/client-agent";
 import {
   OnboardingField,
@@ -95,8 +96,8 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         if (exchangeFn) {
           result = await exchangeFn(rawToken);
         } else {
-          // Lazy-import the real client to avoid a hard dependency in tests.
-          const { client } = await import("../../api");
+          // `client` is statically imported above. The `exchangeFn` injection
+          // path remains the test seam; this branch is the production path.
           result = await client.postBootstrapExchange(rawToken);
         }
       } catch (err) {
