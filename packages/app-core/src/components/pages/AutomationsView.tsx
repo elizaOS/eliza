@@ -771,6 +771,14 @@ function useAutomationsViewController() {
 
   useEffect(() => {
     if (!selectedItemId) return;
+    // Exempt in-flight workflow drafts — they're not in allItems until
+    // generateWorkflowFromPrompt finishes and refreshAutomations
+    // surfaces the real workflow. Without this exemption the draft
+    // selection gets cleared mid-generation, the auto-select effect
+    // below picks lastSelectedIdRef (typically a task like Heartbeat),
+    // and the user lands somewhere unexpected — defeating the
+    // WorkflowGenerationProgress UI we just added on the draft pane.
+    if (selectedItemId.startsWith("workflow-draft:")) return;
     if (!allItems.some((item) => item.id === selectedItemId)) {
       setSelectedItemId(null);
       setSelectedItemKind(null);
@@ -1038,7 +1046,25 @@ function useAutomationsViewController() {
   const resolvedSelectedItem = useMemo(() => {
     if (editorOpen || editingId || editingTaskId) return null;
     if (selectedItemId) {
-      return allItems.find((item) => item.id === selectedItemId) ?? null;
+      const found = allItems.find((item) => item.id === selectedItemId);
+      if (found) return found;
+      // In-flight workflow draft (createWorkflowDraft set selectedItemId
+      // BEFORE refreshAutomations surfaced the real workflow). Synthesize
+      // a minimal draft item so AutomationDraftPane renders with the
+      // WorkflowGenerationProgress card during the LLM call.
+      if (selectedItemId.startsWith("workflow-draft:")) {
+        const draftId = selectedItemId.slice("workflow-draft:".length);
+        return {
+          id: selectedItemId,
+          type: "automation_draft",
+          isDraft: true,
+          title: "New workflow",
+          updatedAt: Date.now(),
+          system: false,
+          draftId,
+        } as unknown as AutomationItem;
+      }
+      return null;
     }
     return allItems[0] ?? null;
   }, [allItems, editingId, editingTaskId, editorOpen, selectedItemId]);
