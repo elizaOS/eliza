@@ -142,6 +142,13 @@ function styleForFilter(channel: InboxChannel): ChannelStyle {
     : CHANNEL_STYLES[channel as LifeOpsInboxChannel];
 }
 
+function messagesForThreadGroup(
+  group: LifeOpsInboxThreadGroup,
+): LifeOpsInboxMessage[] {
+  const messages = Array.isArray(group.messages) ? group.messages : [];
+  return messages.length > 0 ? messages : [group.latestMessage];
+}
+
 function formatRelativeTime(receivedAt: string): string {
   const parsed = Date.parse(receivedAt);
   if (!Number.isFinite(parsed)) return "";
@@ -469,17 +476,18 @@ function MessageRow({
 }
 
 function ReaderPane({
-  message,
+  threadGroup,
   onReply,
   onChat,
   onBack,
 }: {
-  message: LifeOpsInboxMessage | null;
+  threadGroup: LifeOpsInboxThreadGroup | null;
   onReply: (msg: LifeOpsInboxMessage) => void;
   onChat: (msg: LifeOpsInboxMessage) => void;
   onBack?: () => void;
 }) {
   const { t } = useApp();
+  const message = threadGroup?.latestMessage ?? null;
 
   if (!message) {
     return (
@@ -497,6 +505,12 @@ function ReaderPane({
   const style = styleFor(message.channel);
   const subject = message.subject?.trim() || `${style.label} message`;
   const receivedAt = formatAbsoluteTime(message.receivedAt);
+  const threadMessages = threadGroup
+    ? [...messagesForThreadGroup(threadGroup)].sort(
+        (left, right) =>
+          Date.parse(left.receivedAt) - Date.parse(right.receivedAt),
+      )
+    : [];
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-bg/10">
@@ -535,7 +549,11 @@ function ReaderPane({
               {style.label}
             </span>
             <span>·</span>
-            <span>{message.sender.displayName}</span>
+            <span>
+              {threadMessages.length > 1
+                ? `${threadMessages.length} messages`
+                : message.sender.displayName}
+            </span>
             {receivedAt ? (
               <>
                 <span>·</span>
@@ -547,9 +565,42 @@ function ReaderPane({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-txt/85">
-          {message.snippet}
-        </p>
+        <div className="space-y-3">
+          {(threadMessages.length > 0 ? threadMessages : [message]).map(
+            (item) => {
+              const itemStyle = styleFor(item.channel);
+              return (
+                <article
+                  key={item.id}
+                  className="rounded-xl border border-border/12 bg-bg/20 px-3 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-txt">
+                        {item.sender.displayName}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+                        <span
+                          className={`inline-flex items-center gap-1 ${itemStyle.text}`}
+                        >
+                          {itemStyle.icon}
+                          {itemStyle.label}
+                        </span>
+                        {item.sender.email ? <span>{item.sender.email}</span> : null}
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted">
+                      {formatAbsoluteTime(item.receivedAt)}
+                    </span>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-txt/85">
+                    {item.snippet}
+                  </p>
+                </article>
+              );
+            },
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border/12 px-5 py-3">
@@ -722,7 +773,12 @@ function InboxListPane({
             <ThreadRow
               key={group.threadId}
               group={group}
-              selected={group.latestMessage.id === selectedMessageId}
+              selected={
+                group.latestMessage.id === selectedMessageId ||
+                messagesForThreadGroup(group).some(
+                  (message) => message.id === selectedMessageId,
+                )
+              }
               onSelect={() =>
                 onSelect({ messageId: group.latestMessage.id })
               }
@@ -814,12 +870,29 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
     for (const msg of inbox.messages) map.set(msg.id, msg);
     for (const group of inbox.threadGroups) {
       map.set(group.latestMessage.id, group.latestMessage);
+      for (const msg of messagesForThreadGroup(group)) {
+        map.set(msg.id, msg);
+      }
     }
     return map;
   }, [inbox.messages, inbox.threadGroups]);
 
+  const threadGroupByMessageId = useMemo(() => {
+    const map = new Map<string, LifeOpsInboxThreadGroup>();
+    for (const group of inbox.threadGroups) {
+      map.set(group.latestMessage.id, group);
+      for (const msg of messagesForThreadGroup(group)) {
+        map.set(msg.id, group);
+      }
+    }
+    return map;
+  }, [inbox.threadGroups]);
+
   const selectedMessage =
     (selectedMessageId ? messageById.get(selectedMessageId) : null) ?? null;
+  const selectedThread =
+    (selectedMessageId ? threadGroupByMessageId.get(selectedMessageId) : null) ??
+    null;
 
   // Distinct Gmail accounts visible in the current feed. Only show the chip
   // group when more than one Gmail account has produced messages.
@@ -1026,9 +1099,9 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
       ) : (
         <div className="flex min-h-0 flex-1">
           {compactLayout ? (
-            selectedMessage ? (
+            selectedThread ? (
               <ReaderPane
-                message={selectedMessage}
+                threadGroup={selectedThread}
                 onReply={handleReply}
                 onChat={handleChat}
                 onBack={() => onSelect({ messageId: null })}
@@ -1061,7 +1134,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
               </div>
 
               <ReaderPane
-                message={selectedMessage}
+                threadGroup={selectedThread}
                 onReply={handleReply}
                 onChat={handleChat}
               />
