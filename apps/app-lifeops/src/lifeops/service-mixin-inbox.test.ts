@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsInboxMessage,
@@ -12,7 +12,9 @@ import {
   resolveInboxRequest,
   toInboxMessage,
   toInboxMessages,
+  withInbox,
 } from "./service-mixin-inbox.js";
+import type { LifeOpsCachedInboxMessage } from "./repository.js";
 
 describe("normalizeInboxChannel", () => {
   it("maps a canonical channel name to itself", () => {
@@ -58,6 +60,29 @@ describe("resolveInboxRequest", () => {
     expect(allowed.has("discord")).toBe(true);
     expect(allowed.has("telegram")).toBe(false);
     expect(allowed.size).toBe(2);
+  });
+
+  it("keeps normal reads bounded but expands explicit full-cache modes", () => {
+    expect(resolveInboxRequest({}).cacheMode).toBe("read-through");
+    expect(resolveInboxRequest({}).cacheLimit).toBe(200);
+
+    const refresh = resolveInboxRequest({
+      cacheMode: "refresh",
+      cacheLimit: 2500,
+    });
+    expect(refresh.cacheMode).toBe("refresh");
+    expect(refresh.cacheLimit).toBe(2500);
+
+    const cacheOnly = resolveInboxRequest({ cacheMode: "cache-only" });
+    expect(cacheOnly.cacheMode).toBe("cache-only");
+    expect(cacheOnly.cacheLimit).toBe(5000);
+  });
+
+  it("caps explicit cache warming to the bounded full-inbox window", () => {
+    expect(
+      resolveInboxRequest({ cacheMode: "refresh", cacheLimit: 50_000 })
+        .cacheLimit,
+    ).toBe(5000);
   });
 });
 
