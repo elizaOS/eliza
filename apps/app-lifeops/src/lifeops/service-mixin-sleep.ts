@@ -12,11 +12,11 @@ import {
   type SleepRegularityEpisodeLike,
 } from "./sleep-regularity.js";
 
-const DEFAULT_HISTORY_WINDOW_DAYS = 30;
+const DEFAULT_HISTORY_WINDOW_DAYS = 365;
 const DEFAULT_REGULARITY_WINDOW_DAYS = 30;
 const DEFAULT_BASELINE_WINDOW_DAYS = 28;
 const MIN_WINDOW_DAYS = 1;
-const MAX_WINDOW_DAYS = 90;
+const MAX_WINDOW_DAYS = 365;
 
 function clampWindowDays(value: number | undefined, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -170,7 +170,9 @@ export function withSleep<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    private async collectRegularityEpisodes(args: {
+    // Cannot be `private` — TS4094 fires when the mixin's anonymous class
+    // is re-exported through the composed LifeOpsService.
+    async collectRegularityEpisodes(args: {
       windowDays: number;
       includeNaps: boolean;
     }): Promise<SleepRegularityEpisodeLike[]> {
