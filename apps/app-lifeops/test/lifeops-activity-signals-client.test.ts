@@ -1,13 +1,6 @@
-// `client-lifeops` augments ElizaClient via declaration merging. Import
-// it for the side-effect first so the prototype methods exist before any
-// `new ElizaClient(...)` call. WHY direct sub-path import for the class:
-// the barrel `@elizaos/app-core` re-exports through `api/client.ts`, which
-// itself imports `client-lifeops` as a side-effect creating a cycle that
-// under vitest's ESM bundling can leave the bound `ElizaClient` reference
-// as `undefined`. Importing from `api/client-base` skips the cycle.
-import "../src/api/client-lifeops.js";
 import { ElizaClient } from "@elizaos/app-core/api/client-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import "../src/api/client-lifeops.js";
 
 type CapturedRequest = {
   init: RequestInit | undefined;

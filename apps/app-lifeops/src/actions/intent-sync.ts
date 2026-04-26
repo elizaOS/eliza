@@ -1,3 +1,4 @@
+import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -6,18 +7,17 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
 import {
+  acknowledgeIntent,
+  broadcastIntent,
   LIFE_INTENT_KINDS,
   LIFE_INTENT_PRIORITIES,
   LIFE_INTENT_TARGETS,
-  acknowledgeIntent,
-  broadcastIntent,
-  pruneExpiredIntents,
-  receivePendingIntents,
   type LifeOpsIntentKind,
   type LifeOpsIntentPriority,
   type LifeOpsIntentTargetDevice,
+  pruneExpiredIntents,
+  receivePendingIntents,
 } from "../lifeops/intent-sync.js";
 
 const ACTION_NAME = "INTENT_SYNC";
@@ -29,27 +29,6 @@ const SUBACTIONS = [
   "prune_expired",
 ] as const;
 type Subaction = (typeof SUBACTIONS)[number];
-
-type IntentSyncParameters = {
-  subaction?: string;
-  intent?: string;
-  kind?: string;
-  title?: string;
-  body?: string;
-  target?: string;
-  priority?: string;
-  intentId?: string;
-  deviceId?: string;
-  expiresInMinutes?: number;
-  targetDeviceId?: string;
-  actionUrl?: string;
-};
-
-type NormalizedIntentSyncParameters = IntentSyncParameters &
-  Record<string, unknown> & {
-    subaction?: string;
-    kind?: string;
-  };
 
 function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -99,6 +78,20 @@ function normalizeParams(
 ): Record<string, unknown> {
   if (!raw || typeof raw !== "object") return {};
   return raw;
+}
+
+function withStructuredBroadcastDefault(
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  if (
+    coerceString(params.subaction) ||
+    coerceString(params.mode) ||
+    coerceString(params.action) ||
+    !coerceString(params.kind)
+  ) {
+    return params;
+  }
+  return { ...params, subaction: "broadcast" };
 }
 
 function validationTerminate(
@@ -267,7 +260,9 @@ export const intentSyncAction: Action & {
     }
 
     const rawParameters = (options as HandlerOptions | undefined)?.parameters;
-    const normalized = normalizeParams(rawParameters);
+    const normalized = withStructuredBroadcastDefault(
+      normalizeParams(rawParameters),
+    );
     const params = (await extractActionParamsViaLlm<typeof normalized>({
       runtime,
       message,

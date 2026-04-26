@@ -1,10 +1,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
-import {
-  CORE_PLUGINS,
-  createElizaPlugin,
-} from "@elizaos/agent";
+import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent";
 import {
   AgentRuntime,
   type Content,
@@ -996,8 +993,5 @@ export async function startBenchmarkServer() {
 
 startBenchmarkServer().catch((err) => {
   console.error("Failed to start benchmark server:", err);
-  process.exit(1);
-});
-("Failed to start benchmark server:", err);
   process.exit(1);
 });
