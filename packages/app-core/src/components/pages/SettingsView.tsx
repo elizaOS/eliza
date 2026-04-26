@@ -258,7 +258,7 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     defaultLabel: "Security",
     icon: KeyRound,
     description: "settings.sections.security.desc",
-    defaultDescription: "Local access, remote password, sessions, and tokens.",
+    defaultDescription: "Local access, remote password, and sessions.",
     keywords: [
       "security",
       "auth",
@@ -266,7 +266,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "remote",
       "session",
       "login",
-      "token",
       "owner",
     ],
     keywordKeys: ["settings.keyword.security"],
@@ -1141,8 +1140,7 @@ export function SettingsView({
             defaultValue: "Security",
           })}
           description={t("settings.sections.security.desc", {
-            defaultValue:
-              "Local access, remote password, sessions, and tokens.",
+            defaultValue: "Local access, remote password, and sessions.",
           })}
           ref={registerContentItem("security")}
         >
