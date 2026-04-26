@@ -231,6 +231,7 @@ export interface AppLaunchPreparation {
   diagnostics?: AppLaunchDiagnostic[];
   launchUrl?: string | null;
   viewer?: Omit<AppViewerConfig, "authMessage"> | null;
+  skipRuntimePluginRegistration?: boolean;
 }
 
 export interface AppLaunchResult {

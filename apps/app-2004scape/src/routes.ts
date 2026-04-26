@@ -1,14 +1,17 @@
+import { randomBytes } from "node:crypto";
 import type http from "node:http";
 import { Readable } from "node:stream";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import type {
+  AppLaunchDiagnostic,
   AppLaunchPreparation,
   AppLaunchResult,
   AppSessionActionResult,
   AppSessionJsonValue,
   AppSessionState,
-} from "@elizaos/shared/contracts/apps";
+  AppViewerAuthMessage,
+} from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Inline route-context types (previously from @elizaos/agent route-helpers)
@@ -34,6 +37,12 @@ const APP_NAME = "@elizaos/app-2004scape";
 const APP_DISPLAY_NAME = "2004scape";
 const VIEWER_ROUTE_PATH = "/api/apps/2004scape/viewer";
 const VIEWER_PROXY_PREFIX = `${VIEWER_ROUTE_PATH}/proxy`;
+const RS_2004SCAPE_AUTH_MESSAGE_TYPE = "RS_2004SCAPE_AUTH";
+const RS_2004SCAPE_BOT_NAME_KEYS = ["RS_SDK_BOT_NAME", "BOT_NAME"] as const;
+const RS_2004SCAPE_BOT_PASSWORD_KEYS = [
+  "RS_SDK_BOT_PASSWORD",
+  "BOT_PASSWORD",
+] as const;
 const DEFAULT_RS_SDK_SERVER_URL = "https://rs-sdk-demo.fly.dev";
 const FETCH_TIMEOUT_MS = 30_000;
 const VIEWER_STALE_MS = 12_000;
@@ -46,6 +55,28 @@ const VIEWER_FRAME_ANCESTORS_DIRECTIVE =
   "http://[::1]:* http://[0:0:0:0:0:0:0:1]:* https://localhost:* " +
   "https://127.0.0.1:* https://[::1]:* https://[0:0:0:0:0:0:0:1]:* " +
   "electrobun: capacitor: capacitor-electron: app: tauri: file:";
+const USERNAME_SUFFIX_WORDS: readonly string[] = [
+  "ash",
+  "bay",
+  "elm",
+  "fir",
+  "ivy",
+  "oak",
+  "ore",
+  "rye",
+  "tin",
+  "yew",
+  "coal",
+  "fern",
+  "flax",
+  "gem",
+  "moss",
+  "reed",
+  "rune",
+  "star",
+] as const;
+const PASSWORD_CHARS =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -177,6 +208,144 @@ function resolveRemoteServerUrl(runtime: IAgentRuntime | null): string {
     }
   }
   return DEFAULT_RS_SDK_SERVER_URL;
+}
+
+async function isServerReachable(
+  serverUrl: string,
+  timeoutMs = 2000,
+): Promise<boolean> {
+  try {
+    const url = new URL(serverUrl);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const res = await fetch(url.href, {
+      method: "HEAD",
+      signal: controller.signal,
+    }).catch(() => null);
+    clearTimeout(timer);
+    return res !== null;
+  } catch {
+    return false;
+  }
+}
+
+function getCredentialKeys(
+  key: "RS_SDK_BOT_NAME" | "RS_SDK_BOT_PASSWORD",
+): readonly string[] {
+  return key === "RS_SDK_BOT_NAME"
+    ? RS_2004SCAPE_BOT_NAME_KEYS
+    : RS_2004SCAPE_BOT_PASSWORD_KEYS;
+}
+
+function resolveCredential(
+  runtime: IAgentRuntime | null | undefined,
+  key: "RS_SDK_BOT_NAME" | "RS_SDK_BOT_PASSWORD",
+): string | undefined {
+  for (const credentialKey of getCredentialKeys(key)) {
+    const value = resolveSettingLike(runtime, credentialKey);
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function persistCredential(
+  runtime: IAgentRuntime | null,
+  key: "RS_SDK_BOT_NAME" | "RS_SDK_BOT_PASSWORD",
+  value: string,
+  secret = false,
+): void {
+  const credentialKeys = getCredentialKeys(key);
+  for (const credentialKey of credentialKeys) {
+    process.env[credentialKey] = value;
+  }
+  if (!runtime) return;
+
+  const character = runtime.character as {
+    settings?: { secrets?: Record<string, string> };
+    secrets?: Record<string, string>;
+  };
+  if (!character.settings) {
+    character.settings = {};
+  }
+  if (!character.settings.secrets) {
+    character.settings.secrets = {};
+  }
+  if (!character.secrets) {
+    character.secrets = {};
+  }
+
+  for (const credentialKey of credentialKeys) {
+    try {
+      runtime.setSetting(credentialKey, value, secret);
+    } catch (err) {
+      logger.error(
+        `[app-2004scape] Failed to persist credential "${credentialKey}": ${err}`,
+      );
+    }
+    character.settings.secrets[credentialKey] = value;
+    character.secrets[credentialKey] = value;
+  }
+}
+
+function sanitizeUsernameBase(name: string, maxLength: number): string {
+  return name
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toLowerCase()
+    .slice(0, maxLength);
+}
+
+function generateBotUsername(agentName: string): string {
+  const word =
+    USERNAME_SUFFIX_WORDS[
+      Math.floor(Math.random() * USERNAME_SUFFIX_WORDS.length)
+    ];
+  const num = Math.floor(Math.random() * 100)
+    .toString()
+    .padStart(2, "0");
+  const suffixLength = word.length + num.length;
+  const maxNameLength = Math.max(1, 12 - suffixLength);
+  const sanitized = sanitizeUsernameBase(agentName, maxNameLength);
+  const base = sanitized.length > 0 ? sanitized : "bot";
+  return `${base}${word}${num}`;
+}
+
+function generateBotPassword(length = 16): string {
+  const bytes = randomBytes(length);
+  return Array.from(bytes)
+    .map((b) => PASSWORD_CHARS[b % PASSWORD_CHARS.length])
+    .join("");
+}
+
+async function prepareCredentials(
+  runtime: IAgentRuntime | null,
+): Promise<AppLaunchDiagnostic[]> {
+  const primaryName = resolveSettingLike(runtime, "RS_SDK_BOT_NAME");
+  const compatName = resolveSettingLike(runtime, "BOT_NAME");
+  const primaryPassword = resolveSettingLike(runtime, "RS_SDK_BOT_PASSWORD");
+  const compatPassword = resolveSettingLike(runtime, "BOT_PASSWORD");
+  const agentDisplayName = runtime?.character?.name || "agent";
+  const username =
+    primaryName ?? compatName ?? generateBotUsername(agentDisplayName);
+  const password = primaryPassword ?? compatPassword ?? generateBotPassword();
+
+  const shouldPersistName = primaryName !== username || compatName !== username;
+  const shouldPersistPassword =
+    primaryPassword !== password || compatPassword !== password;
+
+  if (shouldPersistName) {
+    persistCredential(runtime, "RS_SDK_BOT_NAME", username);
+  }
+  if (shouldPersistPassword) {
+    persistCredential(runtime, "RS_SDK_BOT_PASSWORD", password, true);
+  }
+
+  if (shouldPersistName || shouldPersistPassword) {
+    logger.info(`[app-2004scape] Prepared credentials for "${username}"`);
+  }
+
+  return [];
 }
 
 function normalizeSessionId(value: string | null | undefined): string | null {
@@ -1508,19 +1677,98 @@ function resolveLaunchRecord(
 // Exported route module interface (AppRouteModule)
 // ---------------------------------------------------------------------------
 
-export async function prepareLaunch(): Promise<AppLaunchPreparation> {
-  return {
-    launchUrl: VIEWER_ROUTE_PATH,
-    viewer: {
-      url: VIEWER_ROUTE_PATH,
-      embedParams: {
-        bot: "",
-        password: "",
-      },
-      postMessageAuth: true,
-      sandbox: VIEWER_SANDBOX,
+export async function prepareLaunch(ctx: {
+  runtime: IAgentRuntime | null;
+}): Promise<AppLaunchPreparation> {
+  const runtime = ctx.runtime ?? null;
+  const rsSdkServerUrl = resolveRemoteServerUrl(runtime);
+  const viewer = {
+    url: VIEWER_ROUTE_PATH,
+    embedParams: {
+      bot: "",
+      password: "",
     },
+    postMessageAuth: true,
+    sandbox: VIEWER_SANDBOX,
   };
+
+  const serverUp = await isServerReachable(rsSdkServerUrl);
+  if (!serverUp) {
+    logger.info(
+      `[app-2004scape] Server is not reachable at ${rsSdkServerUrl}; skipping plugin registration`,
+    );
+    return {
+      skipRuntimePluginRegistration: true,
+      diagnostics: [
+        {
+          code: "2004scape-server-unreachable",
+          severity: "warning",
+          message: `2004scape game server is not running at ${rsSdkServerUrl}. Start the server and re-launch the app.`,
+        },
+      ],
+      launchUrl: VIEWER_ROUTE_PATH,
+      viewer,
+    };
+  }
+
+  return {
+    diagnostics: await prepareCredentials(runtime),
+    launchUrl: VIEWER_ROUTE_PATH,
+    viewer,
+  };
+}
+
+export async function resolveViewerAuthMessage(ctx: {
+  runtime: IAgentRuntime | null;
+}): Promise<AppViewerAuthMessage | null> {
+  const runtime = ctx.runtime ?? null;
+  await prepareCredentials(runtime);
+  const username = resolveCredential(runtime, "RS_SDK_BOT_NAME");
+  const password = resolveCredential(runtime, "RS_SDK_BOT_PASSWORD");
+
+  if (!username || !password) {
+    logger.warn(
+      "[app-2004scape] Credentials are unavailable. Launch with a live runtime to auto-provision credentials.",
+    );
+    return null;
+  }
+
+  return {
+    type: RS_2004SCAPE_AUTH_MESSAGE_TYPE,
+    authToken: username,
+    sessionToken: password,
+    characterId: username,
+    agentId: runtime?.agentId,
+  };
+}
+
+export async function collectLaunchDiagnostics(ctx: {
+  runtime: IAgentRuntime | null;
+  viewer: AppLaunchResult["viewer"] | null;
+}): Promise<AppLaunchDiagnostic[]> {
+  const diagnostics: AppLaunchDiagnostic[] = [];
+  const botName = resolveCredential(ctx.runtime, "RS_SDK_BOT_NAME");
+  const botPassword = resolveCredential(ctx.runtime, "RS_SDK_BOT_PASSWORD");
+
+  if (!botName || !botPassword) {
+    diagnostics.push({
+      code: "2004scape-credentials-missing",
+      severity: "warning",
+      message:
+        "2004scape bot credentials are not stored yet. The viewer will load without auto-login until launch provisions them.",
+    });
+  }
+
+  if (ctx.viewer?.postMessageAuth && !ctx.viewer.authMessage) {
+    diagnostics.push({
+      code: "2004scape-auth-unavailable",
+      severity: "error",
+      message:
+        "2004scape auto-sign-in could not resolve stored bot credentials for this run.",
+    });
+  }
+
+  return diagnostics;
 }
 
 export async function resolveLaunchSession(
@@ -1546,12 +1794,10 @@ export async function refreshRunSession(
  * Idempotent: if the service isn't running or already stopped this is a
  * no-op.
  */
-export async function stopRun(ctx: {
-  runtime: unknown | null;
-}): Promise<void> {
-  const runtime = ctx.runtime as
-    | { getService?: (name: string) => unknown }
-    | null;
+export async function stopRun(ctx: { runtime: unknown | null }): Promise<void> {
+  const runtime = ctx.runtime as {
+    getService?: (name: string) => unknown;
+  } | null;
   const service = runtime?.getService?.("rs_2004scape") as
     | { stop?: () => Promise<void> | void }
     | null
