@@ -58,11 +58,6 @@ type GlobalWithLastFailedPluginNames = typeof globalThis & {
   [LAST_FAILED_PLUGIN_NAMES]?: string[];
 };
 
-const HEADLESS_PLUGIN_ENTRYPOINTS: Readonly<Record<string, string>> = {
-  "@elizaos/app-companion": "@elizaos/app-companion/plugin",
-  "@elizaos/app-lifeops": "@elizaos/app-lifeops/plugin",
-};
-
 // ---------------------------------------------------------------------------
 // Helpers (private)
 // ---------------------------------------------------------------------------
@@ -84,19 +79,6 @@ function isBenignOptionalPluginFailure(msg: string): boolean {
 function redactUserSegments(filepath: string): string {
   // Replace /Users/<name>/ or /home/<name>/ with /Users/<redacted>/ etc.
   return filepath.replace(/\/(Users|home)\/[^/]+\//g, "/$1/<redacted>/");
-}
-
-export function resolveRuntimePluginImportSpecifier(pluginName: string): string {
-  const headlessEntrypoint = HEADLESS_PLUGIN_ENTRYPOINTS[pluginName];
-  if (headlessEntrypoint) {
-    return headlessEntrypoint;
-  }
-
-  if (pluginName.startsWith("@elizaos/plugin-")) {
-    return resolveElizaPluginImportSpecifier(pluginName);
-  }
-
-  return pluginName;
 }
 
 function sanitizePluginCacheSegment(value: string): string {
@@ -1017,12 +999,13 @@ export async function resolvePlugins(
     const installRecord = installRecords[pluginName];
     const workspaceOverridePath = getWorkspacePluginOverridePath(pluginName);
     const staticElizaPlugin = await resolveStaticElizaPlugin(pluginName);
-    const runtimeImportSpecifier =
-      resolveRuntimePluginImportSpecifier(pluginName);
+    const exportSubpath = runtimePluginExportSubpath(pluginName);
 
     const importOfficialPluginFromNodeModules =
       async (): Promise<PluginModuleShape> =>
-        (await import(runtimeImportSpecifier)) as PluginModuleShape;
+        (await import(
+          resolveElizaPluginImportSpecifier(pluginName)
+        )) as PluginModuleShape;
 
     // Pre-flight: ensure native dependencies are available for special plugins.
     if (pluginName === "@elizaos/plugin-browser") {
@@ -1047,6 +1030,7 @@ export async function resolvePlugins(
         mod = await importPluginModuleFromPath(
           ejectedRecord.installPath,
           pluginName,
+          exportSubpath,
         );
       } else if (staticElizaPlugin) {
         // Prefer statically imported official plugins over workspace staging.
@@ -1070,6 +1054,7 @@ export async function resolvePlugins(
             mod = await importPluginModuleFromPath(
               workspaceOverridePath,
               pluginName,
+              exportSubpath,
             );
           }
         } else {
@@ -1083,6 +1068,7 @@ export async function resolvePlugins(
           mod = await importPluginModuleFromPath(
             workspaceOverridePath,
             pluginName,
+            exportSubpath,
           );
         }
       } else if (installRecord?.installPath) {
@@ -1100,6 +1086,7 @@ export async function resolvePlugins(
             mod = await importPluginModuleFromPath(
               installRecord.installPath,
               pluginName,
+              exportSubpath,
             );
           }
         } else {
@@ -1108,6 +1095,7 @@ export async function resolvePlugins(
             mod = await importPluginModuleFromPath(
               installRecord.installPath,
               pluginName,
+              exportSubpath,
             );
           } catch (installErr) {
             logger.warn(
@@ -1116,7 +1104,9 @@ export async function resolvePlugins(
             const staticMod = await resolveStaticElizaPlugin(pluginName);
             mod = staticMod
               ? (staticMod as PluginModuleShape)
-              : ((await import(runtimeImportSpecifier)) as PluginModuleShape);
+              : ((await import(
+                  runtimePluginImportSpecifier(pluginName)
+                )) as PluginModuleShape);
             if (repairBrokenInstallRecord(config, pluginName)) {
               repairedInstallRecords.add(pluginName);
             }
@@ -1133,7 +1123,9 @@ export async function resolvePlugins(
         // node_modules resolution).
         mod = staticElizaPlugin
           ? (staticElizaPlugin as PluginModuleShape)
-          : ((await import(runtimeImportSpecifier)) as PluginModuleShape);
+          : ((await import(
+              runtimePluginImportSpecifier(pluginName)
+            )) as PluginModuleShape);
       }
 
       const pluginInstance = findRuntimePluginExport(mod);
