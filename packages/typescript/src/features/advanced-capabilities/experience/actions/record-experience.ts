@@ -12,6 +12,11 @@ import type { State } from "../../../../types/state.ts";
 import { requireActionSpec } from "../generated/specs/spec-helpers";
 import type { ExperienceService } from "../service.ts";
 import { ExperienceType, OutcomeType } from "../types.ts";
+import {
+	detectExperienceDomain,
+	findDuplicateExperienceByLearning,
+	sanitizeExperienceText,
+} from "../utils/experienceText.ts";
 
 const spec = requireActionSpec("RECORD_EXPERIENCE");
 
@@ -94,13 +99,57 @@ export const recordExperienceAction: Action = {
 
 		const learningText =
 			typeof message.content.text === "string" ? message.content.text : "";
+		const sanitizedLearning = sanitizeExperienceText(learningText);
+		const duplicate = await findDuplicateExperienceByLearning(
+			experienceService,
+			sanitizedLearning,
+		);
+		if (duplicate) {
+			logger.info(
+				`[RecordExperienceAction] Existing similar experience reused (${duplicate.id})`,
+			);
+			return {
+				success: true,
+				text: "Experience already recorded.",
+				data: {
+					experienceId: duplicate.id,
+					duplicate: true,
+				},
+			};
+		}
+
+		const metadata =
+			message.metadata &&
+			typeof message.metadata === "object" &&
+			!Array.isArray(message.metadata)
+				? (message.metadata as Record<string, unknown>)
+				: {};
+		const sourceTrajectoryId =
+			typeof metadata.trajectoryId === "string" &&
+			metadata.trajectoryId.trim().length > 0
+				? metadata.trajectoryId.trim()
+				: undefined;
+		const sourceTrajectoryStepId =
+			typeof metadata.trajectoryStepId === "string" &&
+			metadata.trajectoryStepId.trim().length > 0
+				? metadata.trajectoryStepId.trim()
+				: undefined;
+
 		const recordedExperience = await experienceService.recordExperience({
 			type: ExperienceType.LEARNING,
 			outcome: OutcomeType.NEUTRAL,
-			context: state?.text ?? "",
-			action: learningText,
+			context: sanitizeExperienceText(state?.text ?? ""),
+			action: "explicit_record_request",
 			result: "Recorded from explicit remember/record request.",
-			learning: learningText,
+			learning: sanitizedLearning,
+			domain: detectExperienceDomain(sanitizedLearning),
+			tags: ["manual", "explicit"],
+			sourceMessageIds: message.id ? [message.id] : undefined,
+			sourceRoomId: message.roomId,
+			sourceTriggerMessageId: message.id,
+			sourceTrajectoryId,
+			sourceTrajectoryStepId,
+			extractionMethod: "record_experience_action",
 		});
 
 		logger.info(

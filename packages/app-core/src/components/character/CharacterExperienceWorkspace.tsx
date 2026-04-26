@@ -90,6 +90,11 @@ function uniqueSorted(values: Array<string | null | undefined>): string[] {
   ).sort((left, right) => left.localeCompare(right));
 }
 
+function shortId(value: string | null | undefined): string {
+  if (!value) return "Not recorded";
+  return value.length > 12 ? `${value.slice(0, 12)}...` : value;
+}
+
 function selectedOrFirst(
   experiences: CharacterExperienceRecord[],
   selectedExperienceId: string | null,
@@ -165,6 +170,68 @@ function EvidencePanel({
       <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted-strong">
         {body || "Not recorded."}
       </p>
+    </div>
+  );
+}
+
+function ProvenancePanel({
+  experience,
+}: {
+  experience: CharacterExperienceRecord;
+}) {
+  const sourceMessageIds = experience.sourceMessageIds ?? [];
+  const trajectoryTarget =
+    experience.sourceTrajectoryId ?? experience.sourceTrajectoryStepId ?? null;
+
+  return (
+    <div className="rounded-xl border border-border/30 bg-bg-muted/10 p-3">
+      <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
+        Evidence source
+      </div>
+      <div className="mt-3 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+        <div>
+          <div className="text-xs font-semibold text-muted">Method</div>
+          <div className="mt-1 font-mono text-xs text-muted-strong">
+            {experience.extractionMethod ?? "unknown"}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-semibold text-muted">Room</div>
+          <div className="mt-1 font-mono text-xs text-muted-strong">
+            {shortId(experience.sourceRoomId)}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-semibold text-muted">Trigger message</div>
+          <div className="mt-1 font-mono text-xs text-muted-strong">
+            {shortId(experience.sourceTriggerMessageId)}
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-semibold text-muted">Evidence messages</div>
+          <div className="mt-1 font-mono text-xs text-muted-strong">
+            {sourceMessageIds.length > 0
+              ? `${sourceMessageIds.length} captured`
+              : "Not recorded"}
+          </div>
+        </div>
+      </div>
+      {trajectoryTarget ? (
+        <div className="mt-3 text-xs text-muted">
+          Trajectory:{" "}
+          <a
+            href={`/trajectories/${trajectoryTarget}`}
+            className="font-mono text-muted-strong underline"
+          >
+            {shortId(trajectoryTarget)}
+          </a>
+        </div>
+      ) : null}
+      {experience.extractionReason ? (
+        <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted-strong">
+          {experience.extractionReason}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -284,7 +351,14 @@ export function CharacterExperienceWorkspace({
         experience.previousBelief,
         experience.correctedBelief,
         experience.supersedes,
+        experience.sourceRoomId,
+        experience.sourceTriggerMessageId,
+        experience.sourceTrajectoryId,
+        experience.sourceTrajectoryStepId,
+        experience.extractionMethod,
+        experience.extractionReason,
         ...(experience.relatedExperienceIds ?? []),
+        ...(experience.sourceMessageIds ?? []),
         ...experience.tags,
       );
       return haystack.includes(query);

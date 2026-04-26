@@ -5,6 +5,7 @@ import type {
 } from "../contracts/index.js";
 import { GoogleApiError } from "./google-api-error.js";
 import { googleApiFetch } from "./google-fetch.js";
+import { MAX_GMAIL_TRIAGE_MAX_RESULTS } from "./service-constants.js";
 
 const GOOGLE_GMAIL_USER_ENDPOINT =
   "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -31,6 +32,7 @@ interface GoogleGmailListResponse {
     id?: string;
     threadId?: string;
   }>;
+  nextPageToken?: string;
 }
 
 interface GoogleGmailMetadataHeader {
@@ -64,6 +66,9 @@ interface GoogleGmailThreadResponse {
   id?: string;
   messages?: GoogleGmailMetadataResponse[];
 }
+
+const GOOGLE_GMAIL_LIST_PAGE_SIZE = 500;
+const GOOGLE_GMAIL_METADATA_CONCURRENCY = 25;
 
 export interface SyncedGoogleGmailMessageSummary
   extends Omit<

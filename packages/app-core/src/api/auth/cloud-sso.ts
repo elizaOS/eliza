@@ -1,5 +1,5 @@
 /**
- * Cloud SSO module (P2).
+ * Cloud SSO module.
  *
  * Implements the OAuth-style redirect / code-exchange flow against the
  * Eliza Cloud control plane. The local Milady instance is the Relying
