@@ -74,15 +74,6 @@ function hashString(value: string): number {
   return Math.abs(hash);
 }
 
-function escapeSvgText(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function trimPackagePrefix(value: string): string {
   return value
     .replace(/^@[^/]+\//, "")
@@ -137,25 +128,6 @@ export function getAppHeroThemeKey(app: AppHeroArtworkSource): AppHeroThemeKey {
     return "ops";
   }
   return "app";
-}
-
-function getThemeBadge(theme: AppHeroThemeKey): string {
-  switch (theme) {
-    case "play":
-      return "PLAY";
-    case "chat":
-      return "CHAT";
-    case "money":
-      return "MONEY";
-    case "tools":
-      return "TOOLS";
-    case "world":
-      return "WORLD";
-    case "ops":
-      return "OPS";
-    default:
-      return "APP";
-  }
 }
 
 function getHeroPalette(name: string): HeroPalette {
@@ -372,12 +344,7 @@ function renderThemeMotif(
 
 export function createGeneratedAppHeroSvg(app: AppHeroArtworkSource): string {
   const palette = getHeroPalette(app.name);
-  const label = escapeSvgText(
-    getAppHeroDisplayLabel(app).slice(0, 30) || "App",
-  );
-  const monogram = escapeSvgText(getAppHeroMonogram(app));
   const theme = getAppHeroThemeKey(app);
-  const badge = escapeSvgText(getThemeBadge(theme));
   const seed = hashString(app.name);
   const gridOffsetX = 16 + (seed % 14);
   const gridOffsetY = 10 + ((seed >> 4) % 10);
@@ -401,10 +368,6 @@ export function createGeneratedAppHeroSvg(app: AppHeroArtworkSource): string {
           <stop offset="0%" stop-color="${palette.accent}" stop-opacity="0.22"/>
           <stop offset="100%" stop-color="${palette.accent}" stop-opacity="0"/>
         </radialGradient>
-        <linearGradient id="fade" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stop-color="${palette.shadow}" stop-opacity="0"/>
-          <stop offset="100%" stop-color="${palette.shadow}" stop-opacity="0.8"/>
-        </linearGradient>
         <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse" patternTransform="translate(${gridOffsetX} ${gridOffsetY})">
           <path d="M0 0H36M0 0V36" stroke="white" stroke-opacity="0.08" stroke-width="1"/>
           <circle cx="1.5" cy="1.5" r="1.5" fill="white" fill-opacity="0.14"/>
@@ -420,14 +383,6 @@ export function createGeneratedAppHeroSvg(app: AppHeroArtworkSource): string {
         <path d="M-172 34C-82 -54 74 -70 176 -22" stroke="${palette.accentSoft}" stroke-width="10" stroke-linecap="round"/>
       </g>
       ${motif}
-      <rect x="72" y="70" width="164" height="56" rx="28" fill="black" fill-opacity="0.18" stroke="white" stroke-opacity="0.22"/>
-      <text x="154" y="106" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="23" font-weight="700" letter-spacing="4" fill="white">${badge}</text>
-      <rect x="1012" y="70" width="110" height="56" rx="28" fill="black" fill-opacity="0.18" stroke="white" stroke-opacity="0.22"/>
-      <text x="1067" y="106" text-anchor="middle" font-family="ui-sans-serif, system-ui, sans-serif" font-size="26" font-weight="700" letter-spacing="5" fill="white">${monogram}</text>
-      <rect x="0" y="610" width="1200" height="290" fill="url(#fade)"/>
-      <text x="82" y="770" font-family="ui-sans-serif, system-ui, sans-serif" font-size="86" font-weight="700" fill="white">${label}</text>
-      <rect x="82" y="802" width="262" height="18" rx="9" fill="white" fill-opacity="0.14"/>
-      <rect x="82" y="836" width="194" height="10" rx="5" fill="white" fill-opacity="0.3"/>
     </svg>
   `.trim();
 }

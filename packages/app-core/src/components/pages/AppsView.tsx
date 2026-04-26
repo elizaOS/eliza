@@ -1064,23 +1064,26 @@ export function AppsView() {
       contentClassName="![scrollbar-width:none] [&::-webkit-scrollbar]:!hidden"
     >
       <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/35 pb-3">
-          <div className="min-w-0">
-            <h2 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-accent">
-              App Windows
-            </h2>
-          </div>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground">
+        <div className="flex justify-end">
+          <label
+            className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-border/60 bg-card/60 text-muted transition-colors hover:text-foreground"
+            title="Keep new windows on top"
+          >
             <input
               type="checkbox"
-              className="h-3.5 w-3.5 accent-accent"
+              aria-label="Keep new windows on top"
+              className="sr-only"
               checked={appWindowAlwaysOnTop}
               onChange={(event) =>
                 handleAppWindowAlwaysOnTopChange(event.currentTarget.checked)
               }
             />
-            <Pin className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>Keep new windows on top</span>
+            {appWindowAlwaysOnTop ? (
+              <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
+            )}
+            <span className="sr-only">Keep new windows on top</span>
           </label>
         </div>
 
