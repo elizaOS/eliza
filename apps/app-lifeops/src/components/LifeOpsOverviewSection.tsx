@@ -1223,7 +1223,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Sleep"
-              reason="Sleep needs activity or health data."
               ctaLabel="Connect Health"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-3"
@@ -1267,7 +1266,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Screen Time"
-              reason="Screen Time needs the browser bridge or mobile signals."
               ctaLabel="Set up tracking"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-3"
@@ -1327,7 +1325,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Social"
-              reason="Social tracking needs the browser bridge installed and paired."
               ctaLabel="Set up bridge"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-3"
@@ -1370,7 +1367,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Calendar"
-              reason="Connect Google for Calendar and Mail."
               ctaLabel="Connect Google"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-4"
@@ -1435,7 +1431,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Messages"
-              reason="Connect a messaging platform from Settings."
               ctaLabel="Connect platform"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-4"
@@ -1480,7 +1475,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Mail"
-              reason="Connect Google for Calendar and Mail."
               ctaLabel="Connect Google"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-4"
