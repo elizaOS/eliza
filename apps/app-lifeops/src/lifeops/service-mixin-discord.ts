@@ -673,7 +673,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         "local",
         normalizedSide,
       );
-      if (normalizedSide === "owner" && source !== "desktop_browser") {
+      if (normalizedSide === "owner") {
         const browserState =
           await this.lifeOpsDiscordGetOwnerBrowserDiscordState(grant);
         const discordDesktopState = await getDiscordDesktopCdpStatus();
@@ -855,7 +855,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
         return this.getDiscordConnectorStatus(normalizedSide);
       }
 
-      if (normalizedSide === "owner") {
+      if (normalizedSide === "owner" && source !== "desktop_browser") {
         const browserState =
           await this.lifeOpsDiscordGetOwnerBrowserDiscordState(existing);
         const hasConnectedBrowserPath =
