@@ -20,9 +20,22 @@ import {
 	createListRunningAppsAction,
 	listRunningAppsAction,
 } from "./actions/list-running-apps.js";
+// === appended by Agent B (AppVerificationService) ===
+// Agent C: do not remove; reorder freely
+import { AppVerificationService } from "./services/app-verification.js";
+// === end Agent B block ===
 
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
+export {
+	AppVerificationService,
+	type CheckResult,
+	type VerificationCheck,
+	type VerificationCheckKind,
+	type VerificationProfile,
+	type VerificationResult,
+	type VerifyOptions,
+} from "./services/index.js";
 export type {
 	AppLaunchResult,
 	AppRunSummary,
@@ -40,6 +53,12 @@ export const appControlPlugin: Plugin = {
 	description:
 		"Launch, close, and list running Milady apps from agent chat. Backed by the Milady dashboard /api/apps/* HTTP surface.",
 	actions: [launchAppAction, closeAppAction, listRunningAppsAction],
+	services: [
+		// === appended by Agent B (AppVerificationService) ===
+		// Agent C: do not remove; reorder freely
+		AppVerificationService,
+		// === end Agent B block ===
+	],
 };
 
 export default appControlPlugin;

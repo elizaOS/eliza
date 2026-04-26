@@ -31,7 +31,13 @@
 		"@elizaos/shared": "workspace:*"
 	},
 	"peerDependencies": {
-		"@elizaos/core": "workspace:*"
+		"@elizaos/core": "workspace:*",
+		"puppeteer-core": "^24.39.1"
+	},
+	"peerDependenciesMeta": {
+		"puppeteer-core": {
+			"optional": true
+		}
 	},
 	"devDependencies": {
 		"@types/node": "24.12.2",
