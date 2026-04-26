@@ -57,6 +57,11 @@ eliza/apps
 !eliza/apps/app-vincent/assets/**
 !eliza/apps/app-vincent/src/**
 eliza/cloud
+!eliza/cloud/
+!eliza/cloud/packages/
+!eliza/cloud/packages/sdk/
+!eliza/cloud/packages/sdk/package.json
+!eliza/cloud/packages/sdk/dist/**
 eliza/plugins/*/rust
 eliza/plugins/*/python
 eliza/plugins/*/.git
