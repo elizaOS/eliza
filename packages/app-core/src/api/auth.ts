@@ -263,9 +263,9 @@ export async function ensureCompatApiAuthorizedAsync(
           ip,
           userAgent,
         }).catch((err) => {
-          logger.error("[auth] legacy bearer audit failed", {
-            error: err instanceof Error ? err.message : String(err),
-          });
+          logger.error(
+            `[auth] legacy bearer audit failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
         });
         return true;
       }
@@ -274,9 +274,9 @@ export async function ensureCompatApiAuthorizedAsync(
         userAgent,
         reason: decision.reason ?? "post_grace",
       }).catch((err) => {
-        logger.error("[auth] legacy bearer rejection audit failed", {
-          error: err instanceof Error ? err.message : String(err),
-        });
+        logger.error(
+          `[auth] legacy bearer rejection audit failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       });
       recordFailedAuth(ip);
       sendJsonError(res, 401, "Unauthorized");
