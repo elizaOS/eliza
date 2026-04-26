@@ -3,9 +3,11 @@
  * audit-event payloads or error logs.
  *
  * The redactor walks the value depth-first and replaces any string assigned
- * to a sensitive key with a length-preserving placeholder. Long subjects /
- * bodies are truncated to a fixed prefix so an audit trail still has enough
- * context to debug, but cannot be used to leak the full message body.
+ * to a sensitive key with a placeholder. Email-looking substrings are also
+ * redacted in otherwise non-sensitive strings so audit context remains useful
+ * without leaking arbitrary addresses. Long subjects / bodies are truncated to
+ * a fixed prefix after PII redaction so an audit trail still has enough context
+ * to debug, but cannot be used to leak the full message body.
  *
  * Sensitive key names (matched case-insensitively, exact name OR substring
  * for the obvious credential terms):
@@ -15,8 +17,10 @@
  */
 
 const REDACTED = "[REDACTED]";
+const REDACTED_EMAIL = "[REDACTED_EMAIL]";
 const DEFAULT_SUBJECT_PREVIEW = 20;
 const DEFAULT_BODY_PREVIEW = 30;
+const EMAIL_ADDRESS_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 
 const FULL_REDACT_KEYS = new Set([
   "password",
@@ -33,6 +37,8 @@ const EMAIL_LIKE_KEYS = new Set([
   "to",
   "from",
   "email",
+  "cc",
+  "bcc",
   "ccemail",
   "bccemail",
   "replyto",
@@ -67,6 +73,10 @@ function shortenBody(value: string, max: number): string {
   return `${value.slice(0, max).trimEnd()}… [+${value.length - max} chars]`;
 }
 
+function redactEmailAddresses(value: string): string {
+  return value.replace(EMAIL_ADDRESS_PATTERN, REDACTED_EMAIL);
+}
+
 function redactString(
   rawKey: string,
   value: string,
@@ -79,16 +89,20 @@ function redactString(
   if (EMAIL_LIKE_KEYS.has(key)) {
     return REDACTED;
   }
+  const valueWithoutEmails = redactEmailAddresses(value);
   if (SUBJECT_KEYS.has(key)) {
     return shortenSubject(
-      value,
+      valueWithoutEmails,
       opts.subjectPreview ?? DEFAULT_SUBJECT_PREVIEW,
     );
   }
   if (BODY_KEYS.has(key)) {
-    return shortenBody(value, opts.bodyPreview ?? DEFAULT_BODY_PREVIEW);
+    return shortenBody(
+      valueWithoutEmails,
+      opts.bodyPreview ?? DEFAULT_BODY_PREVIEW,
+    );
   }
-  return value;
+  return valueWithoutEmails;
 }
 
 function redactValue(
