@@ -227,6 +227,161 @@ function graphChrome(uiTheme: "light" | "dark") {
   };
 }
 
+// ── Generation progress overlay ───────────────────────────────────────────────
+
+/**
+ * Stage messages for `WorkflowGenerationProgress`. The plugin's workflow
+ * generation today is a single request/response, so the client cannot yet
+ * observe the actual stage in real time. We cycle through plausible labels
+ * on a fixed timer based on observed median latencies of each phase:
+ *   1. extractKeywords (fast — runtime-context provider + keyword LLM call)
+ *   2. searchNodes + credential filter + fetchRuntimeContext
+ *   3. generateWorkflow (LLM, slowest)
+ *   4. validateAndRepair + injectMissingCredentialBlocks
+ *   5. deployWorkflow + resolveCredentials + activate
+ *
+ * When the plugin grows a server-sent-events streaming endpoint, the timer
+ * can be replaced with real per-stage progress events.
+ */
+const WORKFLOW_GENERATION_STAGES: ReadonlyArray<{
+  label: string;
+  hint: string;
+  /** Approximate seconds at which this stage takes over. */
+  startsAt: number;
+}> = [
+  {
+    label: "Understanding your prompt",
+    hint: "Extracting keywords + matching providers",
+    startsAt: 0,
+  },
+  {
+    label: "Finding the right nodes",
+    hint: "Searching catalog + checking credentials",
+    startsAt: 3,
+  },
+  {
+    label: "Generating workflow",
+    hint: "Asking the LLM with runtime facts",
+    startsAt: 6,
+  },
+  {
+    label: "Validating + repairing",
+    hint: "Clamping versions + auto-fixing references",
+    startsAt: 18,
+  },
+  {
+    label: "Deploying to n8n",
+    hint: "Minting credentials + activating",
+    startsAt: 24,
+  },
+  {
+    label: "Almost done",
+    hint: "Wrapping up — this is taking a bit longer than usual",
+    startsAt: 35,
+  },
+];
+
+function WorkflowGenerationProgress({
+  chrome,
+}: {
+  chrome: ReturnType<typeof graphChrome>;
+}) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - start) / 1000));
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
+
+  const currentIndex = WORKFLOW_GENERATION_STAGES.reduce(
+    (acc, stage, idx) => (elapsed >= stage.startsAt ? idx : acc),
+    0,
+  );
+
+  return (
+    <div
+      className="w-full max-w-md rounded-xl border px-5 py-4 text-sm shadow-lg"
+      style={{
+        background: chrome.overlayChipBg,
+        color: chrome.overlayChipText,
+        borderColor: chrome.overlayChipText,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <Spinner className="mt-0.5 h-4 w-4 shrink-0" />
+        <div className="min-w-0 flex-1 space-y-3">
+          <div>
+            <div className="font-semibold">Building your workflow…</div>
+            <div className="text-xs opacity-70">
+              Generations usually take 10–30 seconds.
+            </div>
+          </div>
+          <ol className="space-y-1.5">
+            {WORKFLOW_GENERATION_STAGES.map((stage, idx) => {
+              const isDone = idx < currentIndex;
+              const isActive = idx === currentIndex;
+              return (
+                <li
+                  key={stage.label}
+                  className={`flex items-start gap-2 text-xs transition-opacity ${
+                    isDone || isActive ? "opacity-100" : "opacity-40"
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border ${
+                      isDone
+                        ? "border-current bg-current/15"
+                        : isActive
+                          ? "border-current bg-current/15"
+                          : "border-current/40"
+                    }`}
+                    aria-hidden
+                  >
+                    {isDone ? (
+                      <svg
+                        viewBox="0 0 12 12"
+                        className="h-2.5 w-2.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        role="img"
+                        aria-label="completed"
+                      >
+                        <path
+                          d="M2.5 6.5l2.5 2.5 4.5-5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : isActive ? (
+                      <span
+                        className="h-1.5 w-1.5 animate-pulse rounded-full bg-current"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={`font-medium ${isActive ? "" : "opacity-70"}`}
+                    >
+                      {stage.label}
+                    </span>
+                    {(isDone || isActive) && (
+                      <span className="ml-1.5 opacity-60">— {stage.hint}</span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Node detail drawer ────────────────────────────────────────────────────────
 
 const PARAM_TRUNCATE_LENGTH = 200;
@@ -717,16 +872,7 @@ export function WorkflowGraphViewer({
             className="absolute inset-0 z-10 flex items-center justify-center backdrop-blur-[1px]"
             style={{ background: chrome.overlayBg }}
           >
-            <div
-              className="flex items-center gap-2 rounded-full border border-blue-500/30 px-4 py-2 text-sm"
-              style={{
-                background: chrome.overlayChipBg,
-                color: chrome.overlayChipText,
-              }}
-            >
-              <Spinner className="h-4 w-4" />
-              Building workflow...
-            </div>
+            <WorkflowGenerationProgress chrome={chrome} />
           </div>
         )}
 
