@@ -735,8 +735,13 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
               `telegram-user:${username}:${chatId}`,
             ) as UUID;
             const memory: Memory = {
+              // Use the same `username` value (with first_name fallback) that
+              // entityId is derived from — using ctx.message.from?.username
+              // here would give an empty string for users with no Telegram
+              // username, making `id` and `entityId` disagree for the same
+              // sender.
               id: stringToUuid(
-                `telegram:${chatId}:${ctx.message.from?.username ?? ""}:${Date.now()}`,
+                `telegram:${chatId}:${username}:${Date.now()}`,
               ) as UUID,
               entityId,
               agentId: runtime.agentId,
