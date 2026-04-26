@@ -26,6 +26,7 @@ import { useIMessageConnector } from "../hooks/useIMessageConnector.js";
 import { useSignalConnector } from "../hooks/useSignalConnector.js";
 import { useTelegramConnector } from "../hooks/useTelegramConnector.js";
 import { useWhatsAppConnector } from "../hooks/useWhatsAppConnector.js";
+import { WhatsAppQrOverlay } from "./WhatsAppQrOverlay.js";
 
 function isIosRuntime(): boolean {
   if (
@@ -42,8 +43,6 @@ function isIosRuntime(): boolean {
 
 const MACOS_FULL_DISK_ACCESS_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
-const WHATSAPP_SETUP_GUIDE_URL =
-  "https://docs.eliza.ai/plugin-setup-guide#whatsapp";
 
 function ConnectorCardShell({
   icon,
@@ -871,34 +870,21 @@ export function TelegramConnectorCard() {
 
 export function WhatsAppConnectorCard() {
   const whatsapp = useWhatsAppConnector();
-  const { setActionNotice } = useApp();
+  const [pairingOpen, setPairingOpen] = useState(false);
   const isConnected = whatsapp.status?.connected === true;
   const busy = whatsapp.loading;
   const statusLabel = busy
     ? "Checking..."
     : isConnected
       ? "Configured"
-      : "Needs setup";
+      : pairingOpen
+        ? "Pairing"
+        : "Needs setup";
   const statusVariant: "ok" | "muted" | "warning" = isConnected
     ? "ok"
-    : busy
+    : busy || pairingOpen
       ? "warning"
       : "muted";
-
-  const handleOpenSetupGuide = useCallback(async () => {
-    try {
-      await openExternalUrl(WHATSAPP_SETUP_GUIDE_URL);
-      setActionNotice("Opened the WhatsApp setup guide.", "success", 3600);
-    } catch (cause) {
-      setActionNotice(
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Milady could not open the WhatsApp setup guide.",
-        "error",
-        5000,
-      );
-    }
-  }, [setActionNotice]);
 
   return (
     <ConnectorCardShell
@@ -918,13 +904,14 @@ export function WhatsAppConnectorCard() {
           {!isConnected ? (
             <Button
               size="sm"
-              className="h-8 w-8 rounded-xl p-0"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
               disabled={busy}
-              onClick={() => void handleOpenSetupGuide()}
-              title="Open setup guide"
-              aria-label="Open setup guide"
+              onClick={() => setPairingOpen((open) => !open)}
+              title={pairingOpen ? "Hide WhatsApp QR" : "Pair WhatsApp"}
+              aria-label={pairingOpen ? "Hide WhatsApp QR" : "Pair WhatsApp"}
             >
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              <QrCode className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              {pairingOpen ? "Hide QR" : "Pair WhatsApp"}
             </Button>
           ) : null}
           <Button
@@ -939,6 +926,16 @@ export function WhatsAppConnectorCard() {
             <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
+        {pairingOpen ? (
+          <WhatsAppQrOverlay
+            accountId="default"
+            connectedMessage="WhatsApp is paired. LifeOps will reuse this local session."
+            onConnected={() => {
+              setPairingOpen(false);
+              void whatsapp.refresh();
+            }}
+          />
+        ) : null}
       </div>
 
       {whatsapp.error ? (
