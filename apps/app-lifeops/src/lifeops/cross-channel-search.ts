@@ -1,32 +1,19 @@
 /**
- * Cross-channel search (WS1).
+ * Cross-channel search.
  *
- * Fans a single semantic query across:
- *   - Gmail (via LifeOpsService.getGmailSearch)
- *   - Agent memory (runtime.searchMemories with embedding)
- *   - WS3 RelationshipsGraphService.getMemoriesForCluster (when a personRef
- *     resolves to a canonical cluster)
- *
- * Connectors that lack first-class search emit a typed `unsupported`
- * result. We never fabricate hits.
- *
- * Architecture note: this file is the orchestrator. The action
- * (search-across-channels.ts) handles LLM param extraction and result
- * formatting. The provider (cross-channel-context.ts) consumes
- * runCrossChannelSearch() to inject context for named persons/topics.
+ * This use-case fans a single query through registered search adapters and
+ * returns only cited hits from real provider, calendar, X, or memory surfaces.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Room,
-  UUID,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
 import { ModelType, logger } from "@elizaos/core";
-import type { LifeOpsGmailMessageSummary } from "@elizaos/shared";
-// WS3 dependency — types may not yet be exported from agent index when this
-// file is first compiled. Importing from the source path so type-only
-// resolution succeeds even before the public re-export lands.
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarFeed,
+  LifeOpsGmailMessageSummary,
+  LifeOpsXDm,
+  LifeOpsXFeedItem,
+} from "@elizaos/shared";
 import {
   getMemoriesForCluster as getClusterMemories,
   type RelationshipsGraphService,
@@ -46,12 +33,14 @@ export const CROSS_CHANNEL_SEARCH_CHANNELS = [
   "imessage",
   "whatsapp",
   "signal",
+  "x",
   "x-dm",
   "calendly",
   "calendar",
 ] as const;
 
-export type CrossChannelSearchChannel = (typeof CROSS_CHANNEL_SEARCH_CHANNELS)[number];
+export type CrossChannelSearchChannel =
+  (typeof CROSS_CHANNEL_SEARCH_CHANNELS)[number];
 
 export type CrossChannelSearchTimeWindow = {
   /** ISO timestamp lower bound (inclusive). */
@@ -140,6 +129,7 @@ const KNOWN_PLATFORM_FOR_CHANNEL: Record<CrossChannelSearchChannel, string> = {
   imessage: "imessage",
   whatsapp: "whatsapp",
   signal: "signal",
+  x: "x",
   "x-dm": "x",
   calendly: "calendly",
   calendar: "calendar",
@@ -174,14 +164,33 @@ function withinTimeWindow(
   return true;
 }
 
-function normalizeIsoFromMs(ms: number | undefined): string {
+function normalizeIso(
+  value: string | number | Date | null | undefined,
+): string | null {
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isFinite(time) ? value.toISOString() : null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? new Date(value).toISOString() : null;
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    const time = Date.parse(value);
+    return Number.isFinite(time) ? new Date(time).toISOString() : null;
+  }
+  return null;
+}
+
+function normalizeIsoFromMs(ms: number | undefined): string | null {
   if (typeof ms !== "number" || !Number.isFinite(ms)) {
-    return new Date(0).toISOString();
+    return null;
   }
   return new Date(ms).toISOString();
 }
 
-function classifyMemoryChannel(source: string | undefined): CrossChannelSearchChannel {
+function classifyMemoryChannel(
+  source: string | undefined,
+): CrossChannelSearchChannel {
   const normalized = (source ?? "").trim().toLowerCase();
   switch (normalized) {
     case "telegram":
@@ -197,7 +206,12 @@ function classifyMemoryChannel(source: string | undefined): CrossChannelSearchCh
       return "signal";
     case "x":
     case "twitter":
+    case "tweet":
+    case "x-feed":
+      return "x";
+    case "x_dm":
     case "x-dm":
+    case "twitter-dm":
       return "x-dm";
     case "calendly":
       return "calendly";
@@ -223,6 +237,45 @@ function isChannelEnabled(
   return channels.includes(channel);
 }
 
+function queryTerms(query: string): string[] {
+  return query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length > 0);
+}
+
+function textMatchesQuery(
+  parts: Array<string | null | undefined>,
+  query: string,
+): boolean {
+  const terms = queryTerms(query);
+  if (terms.length === 0) {
+    return false;
+  }
+  const haystack = parts
+    .filter((part): part is string => typeof part === "string")
+    .join(" ")
+    .toLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
+function compactText(parts: Array<string | null | undefined>): string {
+  return parts
+    .filter(
+      (part): part is string =>
+        typeof part === "string" && part.trim().length > 0,
+    )
+    .map((part) => part.replace(/\s+/g, " ").trim())
+    .join(" ")
+    .slice(0, 600);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 // ---------------------------------------------------------------------------
 // Per-channel adapters
 // ---------------------------------------------------------------------------
@@ -234,47 +287,157 @@ type GmailSearchService = {
   ) => Promise<{ messages: LifeOpsGmailMessageSummary[] }>;
 };
 
-async function searchGmail(
-  runtime: IAgentRuntime,
-  query: CrossChannelSearchQuery,
-): Promise<{
-  hits: CrossChannelSearchHit[];
-  unsupported: CrossChannelSearchUnsupported[];
-  degraded: CrossChannelSearchDegraded[];
-}> {
-  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
-  const lifeOps = runtime.getService("lifeops") as unknown as
-    | GmailSearchService
-    | null;
-  if (!lifeOps || typeof lifeOps.getGmailSearch !== "function") {
-    return {
-      hits: [],
-      unsupported: [
-        {
-          channel: "gmail",
-          reason: "LifeOpsService not registered on runtime",
-        },
-      ],
-      degraded: [],
-    };
-  }
+type TelegramSearchResult = {
+  id: string | null;
+  dialogId: string | null;
+  dialogTitle: string | null;
+  username: string | null;
+  content: string;
+  timestamp: string | null;
+  outgoing: boolean;
+};
 
+type TelegramSearchService = {
+  searchTelegramMessages: (request: {
+    query: string;
+    scope?: string;
+    limit?: number;
+  }) => Promise<TelegramSearchResult[]>;
+};
+
+type DiscordSearchResult = {
+  id: string | null;
+  content: string;
+  authorName: string | null;
+  channelId: string | null;
+  timestamp: string | null;
+};
+
+type DiscordSearchService = {
+  searchDiscordMessages: (request: {
+    query: string;
+    channelId?: string;
+  }) => Promise<DiscordSearchResult[]>;
+};
+
+type IMessageSearchResult = {
+  id: string;
+  fromHandle: string;
+  toHandles: string[];
+  text: string;
+  isFromMe: boolean;
+  sentAt: string;
+  chatId?: string;
+};
+
+type IMessageSearchService = {
+  searchIMessages: (request: {
+    query: string;
+    chatId?: string;
+    limit?: number;
+  }) => Promise<IMessageSearchResult[]>;
+};
+
+type CalendarSearchService = {
+  getCalendarFeed: (
+    requestUrl: URL,
+    request?: {
+      timeMin?: string;
+      timeMax?: string;
+    },
+    now?: Date,
+  ) => Promise<LifeOpsCalendarFeed>;
+};
+
+type XSearchService = {
+  searchXPosts: (
+    query: string,
+    opts?: { limit?: number },
+  ) => Promise<LifeOpsXFeedItem[]>;
+  getXDms?: (opts?: {
+    conversationId?: string;
+    limit?: number;
+  }) => Promise<LifeOpsXDm[]>;
+  readXInboundDms?: (opts?: { limit?: number }) => Promise<LifeOpsXDm[]>;
+};
+
+type LifeOpsSearchService = Partial<
+  GmailSearchService &
+    TelegramSearchService &
+    DiscordSearchService &
+    IMessageSearchService &
+    CalendarSearchService &
+    XSearchService
+>;
+
+type SearchAdapterResult = {
+  hits: CrossChannelSearchHit[];
+  degraded?: CrossChannelSearchDegraded[];
+};
+
+type SearchAdapterContext = {
+  runtime: IAgentRuntime;
+  service: LifeOpsSearchService | null;
+  query: CrossChannelSearchQuery;
+  limit: number;
+};
+
+type CrossChannelSearchAdapter = {
+  id: string;
+  label: string;
+  primaryChannel: CrossChannelSearchChannel;
+  channels: readonly CrossChannelSearchChannel[];
+  defaultEnabled?: boolean;
+  canSearch: (context: SearchAdapterContext) => boolean;
+  unavailableReason: (context: SearchAdapterContext) => string;
+  search: (context: SearchAdapterContext) => Promise<SearchAdapterResult>;
+};
+
+function getLifeOpsSearchService(
+  runtime: IAgentRuntime,
+): LifeOpsSearchService | null {
+  const service = runtime.getService("lifeops");
+  return service && typeof service === "object"
+    ? (service as LifeOpsSearchService)
+    : null;
+}
+
+function hasSearchMethod<K extends keyof LifeOpsSearchService>(
+  service: LifeOpsSearchService | null,
+  key: K,
+): service is LifeOpsSearchService & Required<Pick<LifeOpsSearchService, K>> {
+  return Boolean(service && typeof service[key] === "function");
+}
+
+function hasMemorySearch(runtime: IAgentRuntime): boolean {
+  return (
+    typeof runtime.useModel === "function" &&
+    typeof runtime.searchMemories === "function"
+  );
+}
+
+async function searchGmail(
+  service: GmailSearchService,
+  query: CrossChannelSearchQuery,
+  limit: number,
+): Promise<SearchAdapterResult> {
   const requestUrl = new URL("http://127.0.0.1/api/lifeops/gmail/search");
-  const feed = await lifeOps.getGmailSearch(requestUrl, {
+  const feed = await service.getGmailSearch(requestUrl, {
     query: query.query,
     maxResults: limit,
   });
 
   const hits: CrossChannelSearchHit[] = [];
   for (const msg of feed.messages) {
-    if (!withinTimeWindow(msg.receivedAt, query.timeWindow)) {
+    const timestamp = normalizeIso(msg.receivedAt);
+    if (!timestamp || !withinTimeWindow(timestamp, query.timeWindow)) {
       continue;
     }
     hits.push({
       channel: "gmail",
       id: `gmail:${msg.id}`,
       sourceRef: msg.id,
-      timestamp: msg.receivedAt,
+      timestamp,
       speaker: msg.from,
       subject: msg.subject,
       text: msg.snippet,
@@ -285,13 +448,16 @@ async function searchGmail(
       },
     });
   }
-  return { hits, unsupported: [], degraded: [] };
+  return { hits };
 }
 
 async function embedQuery(
   runtime: IAgentRuntime,
   text: string,
 ): Promise<number[] | null> {
+  if (typeof runtime.useModel !== "function") {
+    return null;
+  }
   const result = await runtime.useModel(ModelType.TEXT_EMBEDDING, { text });
   if (Array.isArray(result)) {
     return result;
@@ -309,16 +475,27 @@ async function embedQuery(
 async function searchAgentMemory(
   runtime: IAgentRuntime,
   query: CrossChannelSearchQuery,
-): Promise<{
-  hits: CrossChannelSearchHit[];
-  degraded: CrossChannelSearchDegraded[];
-}> {
+): Promise<SearchAdapterResult> {
+  if (!hasMemorySearch(runtime)) {
+    return {
+      hits: [],
+      degraded: [
+        {
+          channel: "memory",
+          reason: "Agent memory search is unavailable on this runtime",
+        },
+      ],
+    };
+  }
   const embedding = await embedQuery(runtime, query.query);
   if (!embedding) {
     return {
       hits: [],
       degraded: [
-        { channel: "memory", reason: "Embedding generation returned no vector" },
+        {
+          channel: "memory",
+          reason: "Embedding generation returned no vector",
+        },
       ],
     };
   }
@@ -334,7 +511,7 @@ async function searchAgentMemory(
 
   const memories = await runtime.searchMemories(searchParams);
   const hits = await memoriesToHits(runtime, memories, query);
-  return { hits, degraded: [] };
+  return { hits };
 }
 
 async function memoriesToHits(
@@ -350,6 +527,9 @@ async function memoriesToHits(
     if (!text) continue;
 
     const iso = normalizeIsoFromMs(mem.createdAt);
+    if (!iso) {
+      continue;
+    }
     if (!withinTimeWindow(iso, query.timeWindow)) {
       continue;
     }
@@ -375,7 +555,8 @@ async function memoriesToHits(
     }
 
     const speakerEntity = mem.entityId as string | undefined;
-    const memId = (mem.id as string | undefined) ?? `${roomId}:${mem.createdAt}`;
+    const memId =
+      (mem.id as string | undefined) ?? `${roomId}:${mem.createdAt}`;
 
     results.push({
       channel,
@@ -394,12 +575,396 @@ async function memoriesToHits(
   return results;
 }
 
+async function searchTelegram(
+  service: TelegramSearchService,
+  query: CrossChannelSearchQuery,
+  limit: number,
+): Promise<SearchAdapterResult> {
+  const rows = await service.searchTelegramMessages({
+    query: query.query,
+    limit,
+  });
+  const hits: CrossChannelSearchHit[] = [];
+  for (const [index, row] of rows.entries()) {
+    const timestamp = normalizeIso(row.timestamp);
+    if (!timestamp || !withinTimeWindow(timestamp, query.timeWindow)) {
+      continue;
+    }
+    const sourceRef =
+      row.id ?? row.dialogId ?? `telegram:${timestamp}:${index}`;
+    hits.push({
+      channel: "telegram",
+      id: `telegram:${sourceRef}`,
+      sourceRef,
+      timestamp,
+      speaker: row.outgoing
+        ? "me"
+        : (row.username ?? row.dialogTitle ?? "unknown"),
+      text: row.content.slice(0, 600),
+      citation: {
+        platform: "telegram",
+        label: row.dialogTitle ?? row.username ?? "Telegram search result",
+      },
+    });
+  }
+  return { hits };
+}
+
+async function searchDiscord(
+  service: DiscordSearchService,
+  query: CrossChannelSearchQuery,
+  limit: number,
+): Promise<SearchAdapterResult> {
+  const rows = await service.searchDiscordMessages({ query: query.query });
+  const hits: CrossChannelSearchHit[] = [];
+  for (const [index, row] of rows.slice(0, limit).entries()) {
+    const timestamp = normalizeIso(row.timestamp);
+    if (!timestamp || !withinTimeWindow(timestamp, query.timeWindow)) {
+      continue;
+    }
+    const sourceRef =
+      row.id ?? row.channelId ?? `discord:${timestamp}:${index}`;
+    hits.push({
+      channel: "discord",
+      id: `discord:${sourceRef}`,
+      sourceRef,
+      timestamp,
+      speaker: row.authorName ?? "unknown",
+      text: row.content.slice(0, 600),
+      citation: {
+        platform: "discord",
+        label: row.channelId
+          ? `channel:${row.channelId}`
+          : "Discord search result",
+      },
+    });
+  }
+  return { hits };
+}
+
+async function searchIMessages(
+  service: IMessageSearchService,
+  query: CrossChannelSearchQuery,
+  limit: number,
+): Promise<SearchAdapterResult> {
+  const rows = await service.searchIMessages({
+    query: query.query,
+    limit,
+  });
+  const hits: CrossChannelSearchHit[] = [];
+  for (const row of rows) {
+    const timestamp = normalizeIso(row.sentAt);
+    if (!timestamp || !withinTimeWindow(timestamp, query.timeWindow)) {
+      continue;
+    }
+    hits.push({
+      channel: "imessage",
+      id: `imessage:${row.id}`,
+      sourceRef: row.id,
+      timestamp,
+      speaker: row.isFromMe ? "me" : row.fromHandle,
+      text: row.text.slice(0, 600),
+      citation: {
+        platform: "imessage",
+        label: row.chatId ?? row.fromHandle,
+      },
+    });
+  }
+  return { hits };
+}
+
+function calendarSpeaker(event: LifeOpsCalendarEvent): string {
+  const organizer = event.organizer;
+  if (organizer && typeof organizer === "object") {
+    const displayName = organizer.displayName;
+    if (typeof displayName === "string" && displayName.trim().length > 0) {
+      return displayName.trim();
+    }
+    const email = organizer.email;
+    if (typeof email === "string" && email.trim().length > 0) {
+      return email.trim();
+    }
+  }
+  return event.accountEmail ?? "calendar";
+}
+
+async function searchCalendar(
+  service: CalendarSearchService,
+  query: CrossChannelSearchQuery,
+): Promise<SearchAdapterResult> {
+  const requestUrl = new URL("http://127.0.0.1/api/lifeops/calendar");
+  const feed = await service.getCalendarFeed(requestUrl, {
+    timeMin: query.timeWindow?.startIso,
+    timeMax: query.timeWindow?.endIso,
+  });
+  const hits: CrossChannelSearchHit[] = [];
+  for (const event of feed.events) {
+    const timestamp = normalizeIso(event.startAt);
+    if (!timestamp || !withinTimeWindow(timestamp, query.timeWindow)) {
+      continue;
+    }
+    if (
+      !textMatchesQuery(
+        [
+          event.title,
+          event.description,
+          event.location,
+          event.calendarSummary,
+          event.accountEmail,
+        ],
+        query.query,
+      )
+    ) {
+      continue;
+    }
+    hits.push({
+      channel: "calendar",
+      id: `calendar:${event.id}`,
+      sourceRef: event.id,
+      timestamp,
+      speaker: calendarSpeaker(event),
+      subject: event.title,
+      text: compactText([event.title, event.description, event.location]),
+      citation: {
+        platform: "calendar",
+        label: event.title || "Calendar event",
+        url: event.htmlLink ?? event.conferenceLink ?? undefined,
+      },
+    });
+  }
+  return { hits };
+}
+
+async function searchXFeed(
+  service: Required<Pick<XSearchService, "searchXPosts">>,
+  query: CrossChannelSearchQuery,
+  limit: number,
+): Promise<SearchAdapterResult> {
+  const rows = await service.searchXPosts(query.query, { limit });
+  const hits: CrossChannelSearchHit[] = [];
+  for (const row of rows) {
+    const timestamp = normalizeIso(row.createdAtSource);
+    if (!timestamp || !withinTimeWindow(timestamp, query.timeWindow)) {
+      continue;
+    }
+    const handle = row.authorHandle.replace(/^@/, "");
+    hits.push({
+      channel: "x",
+      id: `x:${row.externalTweetId}`,
+      sourceRef: row.externalTweetId,
+      timestamp,
+      speaker: row.authorHandle,
+      text: row.text.slice(0, 600),
+      citation: {
+        platform: "x",
+        label: row.authorHandle,
+        url: handle
+          ? `https://x.com/${encodeURIComponent(handle)}/status/${encodeURIComponent(
+              row.externalTweetId,
+            )}`
+          : undefined,
+      },
+    });
+  }
+  return { hits };
+}
+
+async function searchXDms(
+  service: XSearchService,
+  query: CrossChannelSearchQuery,
+  limit: number,
+): Promise<SearchAdapterResult> {
+  const searchLimit = Math.max(limit * 5, 50);
+  const rows = service.getXDms
+    ? await service.getXDms({ limit: searchLimit })
+    : await service.readXInboundDms?.({ limit: searchLimit });
+  const hits: CrossChannelSearchHit[] = [];
+  for (const row of rows ?? []) {
+    const timestamp = normalizeIso(row.receivedAt);
+    if (!timestamp || !withinTimeWindow(timestamp, query.timeWindow)) {
+      continue;
+    }
+    if (
+      !textMatchesQuery(
+        [row.text, row.senderHandle, row.senderId, row.conversationId],
+        query.query,
+      )
+    ) {
+      continue;
+    }
+    hits.push({
+      channel: "x-dm",
+      id: `x-dm:${row.externalDmId}`,
+      sourceRef: row.externalDmId,
+      timestamp,
+      speaker: row.senderHandle,
+      text: row.text.slice(0, 600),
+      citation: {
+        platform: "x",
+        label: `DM ${row.conversationId}`,
+      },
+    });
+    if (hits.length >= limit) {
+      break;
+    }
+  }
+  return { hits };
+}
+
+const SEARCH_PROVIDER_ADAPTERS: readonly CrossChannelSearchAdapter[] = [
+  {
+    id: "gmail",
+    label: "Gmail",
+    primaryChannel: "gmail",
+    channels: ["gmail"],
+    canSearch: ({ service }) => hasSearchMethod(service, "getGmailSearch"),
+    unavailableReason: () =>
+      "LifeOpsService.getGmailSearch is not registered on runtime",
+    search: async ({ service, query, limit }) =>
+      searchGmail(service as GmailSearchService, query, limit),
+  },
+  {
+    id: "agent-memory",
+    label: "Agent memory",
+    primaryChannel: "memory",
+    channels: CROSS_CHANNEL_SEARCH_CHANNELS,
+    canSearch: ({ runtime }) => hasMemorySearch(runtime),
+    unavailableReason: () =>
+      "Agent memory semantic search is unavailable on this runtime",
+    search: async ({ runtime, query }) => searchAgentMemory(runtime, query),
+  },
+  {
+    id: "telegram",
+    label: "Telegram",
+    primaryChannel: "telegram",
+    channels: ["telegram"],
+    canSearch: ({ service }) =>
+      hasSearchMethod(service, "searchTelegramMessages"),
+    unavailableReason: () =>
+      "LifeOpsService.searchTelegramMessages is not registered on runtime",
+    search: async ({ service, query, limit }) =>
+      searchTelegram(service as TelegramSearchService, query, limit),
+  },
+  {
+    id: "discord",
+    label: "Discord",
+    primaryChannel: "discord",
+    channels: ["discord"],
+    canSearch: ({ service }) =>
+      hasSearchMethod(service, "searchDiscordMessages"),
+    unavailableReason: () =>
+      "LifeOpsService.searchDiscordMessages is not registered on runtime",
+    search: async ({ service, query, limit }) =>
+      searchDiscord(service as DiscordSearchService, query, limit),
+  },
+  {
+    id: "imessage",
+    label: "iMessage",
+    primaryChannel: "imessage",
+    channels: ["imessage"],
+    canSearch: ({ service }) => hasSearchMethod(service, "searchIMessages"),
+    unavailableReason: () =>
+      "LifeOpsService.searchIMessages is not registered on runtime",
+    search: async ({ service, query, limit }) =>
+      searchIMessages(service as IMessageSearchService, query, limit),
+  },
+  {
+    id: "calendar",
+    label: "Calendar",
+    primaryChannel: "calendar",
+    channels: ["calendar"],
+    canSearch: ({ service }) => hasSearchMethod(service, "getCalendarFeed"),
+    unavailableReason: () =>
+      "LifeOpsService.getCalendarFeed is not registered on runtime",
+    search: async ({ service, query }) =>
+      searchCalendar(service as CalendarSearchService, query),
+  },
+  {
+    id: "x-feed",
+    label: "X feed",
+    primaryChannel: "x",
+    channels: ["x"],
+    canSearch: ({ service }) => hasSearchMethod(service, "searchXPosts"),
+    unavailableReason: () =>
+      "LifeOpsService.searchXPosts is not registered on runtime",
+    search: async ({ service, query, limit }) =>
+      searchXFeed(
+        service as Required<Pick<XSearchService, "searchXPosts">>,
+        query,
+        limit,
+      ),
+  },
+  {
+    id: "x-dm",
+    label: "X DM",
+    primaryChannel: "x-dm",
+    channels: ["x-dm"],
+    canSearch: ({ service }) =>
+      hasSearchMethod(service, "getXDms") ||
+      hasSearchMethod(service, "readXInboundDms"),
+    unavailableReason: () =>
+      "LifeOpsService.getXDms/readXInboundDms is not registered on runtime",
+    search: async ({ service, query, limit }) =>
+      searchXDms(service as XSearchService, query, limit),
+  },
+];
+
+function adapterCoversChannel(
+  adapter: CrossChannelSearchAdapter,
+  channel: CrossChannelSearchChannel,
+): boolean {
+  return adapter.channels.includes(channel);
+}
+
+function adapterEnabledForQuery(
+  adapter: CrossChannelSearchAdapter,
+  channels: CrossChannelSearchChannel[] | undefined,
+): boolean {
+  if (!channels || channels.length === 0) {
+    return adapter.defaultEnabled !== false;
+  }
+  return channels.some((channel) => adapterCoversChannel(adapter, channel));
+}
+
+function unsupportedForExplicitChannels(
+  context: SearchAdapterContext,
+  runnableAdapters: readonly CrossChannelSearchAdapter[],
+): CrossChannelSearchUnsupported[] {
+  const channels = context.query.channels;
+  if (!channels || channels.length === 0) {
+    return [];
+  }
+
+  const unsupported: CrossChannelSearchUnsupported[] = [];
+  for (const channel of new Set(channels)) {
+    if (
+      runnableAdapters.some((adapter) => adapterCoversChannel(adapter, channel))
+    ) {
+      continue;
+    }
+    const adapter =
+      SEARCH_PROVIDER_ADAPTERS.find(
+        (candidate) => candidate.primaryChannel === channel,
+      ) ??
+      SEARCH_PROVIDER_ADAPTERS.find((candidate) =>
+        adapterCoversChannel(candidate, channel),
+      );
+    unsupported.push({
+      channel,
+      reason:
+        adapter?.unavailableReason(context) ??
+        `No search adapter is registered for channel ${channel}`,
+    });
+  }
+  return unsupported;
+}
+
 // ---------------------------------------------------------------------------
 // WS3 cluster fan-out
 // ---------------------------------------------------------------------------
 
-// WS3 plans to publish this on RelationshipsGraphService. Until the type is
-// committed upstream we encode the expected signature locally.
+// Relationships service builds may not expose cluster fan-out yet, so keep the
+// optional signature local to this use-case.
 type GetMemoriesForClusterFn = (args: {
   primaryEntityId: UUID;
   count?: number;
@@ -422,10 +987,9 @@ async function resolvePerson(
     return { service: null, person: null, degraded: [] };
   }
 
-  const baseService =
-    (await resolveRelationshipsGraphService(
-      runtime,
-    )) as RelationshipsGraphServiceWithCluster | null;
+  const baseService = (await resolveRelationshipsGraphService(
+    runtime,
+  )) as RelationshipsGraphServiceWithCluster | null;
   const service = baseService
     ? ({
         ...baseService,
@@ -503,40 +1067,6 @@ async function searchClusterMemories(
 }
 
 // ---------------------------------------------------------------------------
-// Connector adapters that don't yet have first-class search
-// ---------------------------------------------------------------------------
-
-const CONNECTORS_WITHOUT_NATIVE_SEARCH: ReadonlyArray<{
-  channel: CrossChannelSearchChannel;
-  reason: string;
-}> = [
-  {
-    channel: "telegram",
-    reason: "Telegram MTProto search not wired — covered by memory fan-out only",
-  },
-  {
-    channel: "discord",
-    reason: "Discord browser scraper does not expose search",
-  },
-  {
-    channel: "imessage",
-    reason: "iMessage bridge does not expose search",
-  },
-  {
-    channel: "whatsapp",
-    reason: "WhatsApp connector does not expose search",
-  },
-  {
-    channel: "signal",
-    reason: "Signal connector does not expose search",
-  },
-  {
-    channel: "x-dm",
-    reason: "X DM connector does not expose search",
-  },
-];
-
-// ---------------------------------------------------------------------------
 // Result merge
 // ---------------------------------------------------------------------------
 
@@ -575,9 +1105,21 @@ export async function runCrossChannelSearch(
   }
 
   const channels = query.channels;
-  const unsupported: CrossChannelSearchUnsupported[] = [];
   const degraded: CrossChannelSearchDegraded[] = [];
   const allHits: CrossChannelSearchHit[] = [];
+  const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
+  const service = getLifeOpsSearchService(runtime);
+  const context: SearchAdapterContext = {
+    runtime,
+    service,
+    query,
+    limit,
+  };
+  const runnableAdapters = SEARCH_PROVIDER_ADAPTERS.filter(
+    (adapter) =>
+      adapterEnabledForQuery(adapter, channels) && adapter.canSearch(context),
+  );
+  const unsupported = unsupportedForExplicitChannels(context, runnableAdapters);
 
   // 1. Resolve canonical person via WS3 (best-effort).
   const personResolution = await resolvePerson(runtime, query.personRef);
@@ -586,39 +1128,17 @@ export async function runCrossChannelSearch(
   // 2. Fan out in parallel.
   const tasks: Array<Promise<void>> = [];
 
-  if (isChannelEnabled("gmail", channels)) {
+  for (const adapter of runnableAdapters) {
     tasks.push(
       (async () => {
         try {
-          const r = await searchGmail(runtime, query);
+          const r = await adapter.search(context);
           allHits.push(...r.hits);
-          unsupported.push(...r.unsupported);
-          degraded.push(...r.degraded);
+          degraded.push(...(r.degraded ?? []));
         } catch (err) {
           degraded.push({
-            channel: "gmail",
-            reason: `Gmail search failed: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          });
-        }
-      })(),
-    );
-  }
-
-  if (isChannelEnabled("memory", channels)) {
-    tasks.push(
-      (async () => {
-        try {
-          const r = await searchAgentMemory(runtime, query);
-          allHits.push(...r.hits);
-          degraded.push(...r.degraded);
-        } catch (err) {
-          degraded.push({
-            channel: "memory",
-            reason: `Memory search failed: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            channel: adapter.primaryChannel,
+            reason: `${adapter.label} search failed: ${errorMessage(err)}`,
           });
         }
       })(),
@@ -640,9 +1160,7 @@ export async function runCrossChannelSearch(
         } catch (err) {
           degraded.push({
             channel: "memory",
-            reason: `Cluster fan-out failed: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            reason: `Cluster fan-out failed: ${errorMessage(err)}`,
           });
         }
       })(),
@@ -651,27 +1169,23 @@ export async function runCrossChannelSearch(
 
   await Promise.all(tasks);
 
-  // 3. Emit unsupported markers for connectors without native search, only
-  //    when the caller explicitly asked for that channel (so we don't spam
-  //    every result with the full list).
-  for (const entry of CONNECTORS_WITHOUT_NATIVE_SEARCH) {
-    if (channels && channels.includes(entry.channel)) {
-      unsupported.push(entry);
-    }
-  }
-
-  // 4. Dedupe + rank.
+  // 3. Dedupe + rank.
   const merged = rankHits(dedupeHits(allHits));
+
+  const finalLimit = limit * CROSS_CHANNEL_SEARCH_CHANNELS.length;
+  const limited = merged.slice(0, finalLimit);
   const channelsWithHits = Array.from(
-    new Set(merged.map((h) => h.channel)),
+    new Set(limited.map((h) => h.channel)),
   ) as CrossChannelSearchChannel[];
 
-  const finalLimit =
-    (query.limit ?? DEFAULT_PER_CHANNEL_LIMIT) * CROSS_CHANNEL_SEARCH_CHANNELS.length;
-  const limited = merged.slice(0, finalLimit);
-
   logger.debug(
-    `[cross-channel-search] query="${query.query}" hits=${limited.length} unsupported=${unsupported.length} degraded=${degraded.length}`,
+    {
+      query: query.query,
+      hits: limited.length,
+      unsupported: unsupported.length,
+      degraded: degraded.length,
+    },
+    "[CrossChannelSearch] search completed",
   );
 
   return {

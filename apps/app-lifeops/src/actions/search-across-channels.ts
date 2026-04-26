@@ -142,7 +142,7 @@ async function extractSearchPlan(
     "Plan a SEARCH_ACROSS_CHANNELS request.",
     "The user may speak in any language. Do NOT translate the search query — keep the user's wording.",
     "Return ONLY valid JSON with exactly these fields:",
-    '{"query":"string|null","person":"string|null","startIso":"ISO8601|null","endIso":"ISO8601|null","channels":["gmail"|"telegram"|"discord"|"imessage"|"whatsapp"|"signal"|"calendly"|"calendar"|"memory"]|null,"shouldAct":true|false,"clarification":"string|null"}',
+    '{"query":"string|null","person":"string|null","startIso":"ISO8601|null","endIso":"ISO8601|null","channels":["gmail"|"telegram"|"discord"|"imessage"|"whatsapp"|"signal"|"x"|"x-dm"|"calendly"|"calendar"|"memory"]|null,"shouldAct":true|false,"clarification":"string|null"}',
     "",
     "Rules:",
     "- query: the substantive search phrase (entity, topic, keywords). Strip filler like 'find', 'search for', 'show me'.",
@@ -160,9 +160,10 @@ async function extractSearchPlan(
 
   const raw = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
   const text = typeof raw === "string" ? raw : "";
-  const parsed = parseJSONObjectFromText(text) as
-    | Record<string, unknown>
-    | null;
+  const parsed = parseJSONObjectFromText(text) as Record<
+    string,
+    unknown
+  > | null;
 
   if (!parsed) {
     return {
@@ -220,7 +221,10 @@ async function extractSearchPlan(
 // Format
 // ---------------------------------------------------------------------------
 
-function formatHitForClipboard(hit: CrossChannelSearchHit, index: number): string {
+function formatHitForClipboard(
+  hit: CrossChannelSearchHit,
+  index: number,
+): string {
   const subjectPart = hit.subject ? ` ${hit.subject}` : "";
   const ts = hit.timestamp.slice(0, 19);
   const body = hit.text.replace(/\s+/g, " ").trim().slice(0, 240);
@@ -240,7 +244,7 @@ function formatResult(result: CrossChannelSearchResult): string {
   });
   if (result.unsupported.length > 0) {
     lines.push("");
-    lines.push("Unsupported channels (no native search adapter):");
+    lines.push("Unsupported channels (no registered search adapter):");
     for (const u of result.unsupported) {
       lines.push(`  - ${u.channel}: ${u.reason}`);
     }
@@ -273,12 +277,12 @@ export const searchAcrossChannelsAction: Action = {
   ],
   description:
     "Search across every connected channel — Gmail, Telegram, Discord, " +
-    "iMessage, WhatsApp, Signal, X DMs, Calendly — plus agent memory. " +
+    "iMessage, WhatsApp, Signal, X feed, X DMs, Calendly — plus agent memory. " +
     "Returns merged hits with citations to source platform, room, and " +
-    "timestamp. Connectors without native search emit typed unsupported " +
-    "markers (no fabricated results). Admin/owner only.",
-  descriptionCompressed:
-    "Cross-channel search with citations. Admin only.",
+    "timestamp. Channels without a registered native or memory-backed search " +
+    "adapter emit typed unsupported markers (no fabricated results). " +
+    "Admin/owner only.",
+  descriptionCompressed: "Cross-channel search with citations. Admin only.",
 
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
 
@@ -388,7 +392,10 @@ export const searchAcrossChannelsAction: Action = {
       };
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      logger.error(`[${ACTION_NAME}] Search failed: ${errMsg}`);
+      logger.error(
+        { error: errMsg, query: plan.query },
+        `[${ACTION_NAME}] Search failed`,
+      );
       return {
         text: `Cross-channel search failed: ${errMsg}`,
         success: false,
@@ -441,7 +448,7 @@ export const searchAcrossChannelsAction: Action = {
     {
       name: "channels",
       description:
-        "Channel allowlist. Allowed values: gmail, memory, telegram, discord, imessage, whatsapp, signal, calendly, calendar.",
+        "Channel allowlist. Allowed values: gmail, memory, telegram, discord, imessage, whatsapp, signal, x, x-dm, calendly, calendar.",
       required: false,
       schema: {
         type: "array" as const,
