@@ -104,6 +104,13 @@ export function mapExperienceRecordToHubRecord(
     relatedExperienceIds: experience.relatedExperiences,
     previousBelief: experience.previousBelief,
     correctedBelief: experience.correctedBelief,
+    sourceMessageIds: experience.sourceMessageIds,
+    sourceRoomId: experience.sourceRoomId,
+    sourceTriggerMessageId: experience.sourceTriggerMessageId,
+    sourceTrajectoryId: experience.sourceTrajectoryId,
+    sourceTrajectoryStepId: experience.sourceTrajectoryStepId,
+    extractionMethod: experience.extractionMethod,
+    extractionReason: experience.extractionReason,
   };
 }
 

@@ -1,5 +1,5 @@
 /**
- * Session lifecycle routes (P1 password + cookie auth).
+ * Session lifecycle routes for password and cookie auth.
  *
  *   POST /api/auth/setup            — first-run owner identity + password
  *   POST /api/auth/login/password   — password login → session cookie
@@ -137,7 +137,7 @@ function clearSessionCookies(res: http.ServerResponse): void {
 // ── Route handler ───────────────────────────────────────────────────────────
 
 /**
- * Dispatch table for the P1 session routes. Returns true when a route
+ * Dispatch table for the session routes. Returns true when a route
  * matched and the response was sent; false to fall through to the rest of
  * the API surface.
  */
