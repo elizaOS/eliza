@@ -76,7 +76,12 @@ import { useWorkflowGenerationState } from "../../hooks/useWorkflowGenerationSta
 import { useApp } from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
-import { WidgetHost } from "../../widgets";
+// Direct sub-path import: `widgets/index.ts` re-exports `WidgetHost` while
+// also pulling other widgets/* modules that depend back through the barrel.
+// Going through the index from here drags Rollup into a chunk-level cycle
+// (warning: "reexported through module ... while both modules are
+// dependencies of each other"); the direct import skips it.
+import { WidgetHost } from "../../widgets/WidgetHost";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import {
   AppWorkspaceChrome,
