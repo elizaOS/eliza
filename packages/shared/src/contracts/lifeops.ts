@@ -2248,6 +2248,8 @@ export interface LifeOpsInboxMessage {
   repliedAt?: string;
   /** 0–100 score; higher = more important. */
   priorityScore?: number;
+  /** Coarse semantic category from the priority scorer. */
+  priorityCategory?: "important" | "planning" | "casual";
   /** DM, small/medium group chat, or public channel/broadcast. */
   chatType?: "dm" | "group" | "channel";
   /** For groups, number of participants. UI uses this to hide groups with >15 participants. */
@@ -2276,6 +2278,8 @@ export interface LifeOpsInboxThreadGroup {
   participantCount?: number;
   /** Highest priority score across messages in the thread */
   maxPriorityScore?: number;
+  /** Coarse semantic category from the priority scorer (mirrors latestMessage). */
+  priorityCategory?: "important" | "planning" | "casual";
   /** Messages in this visible thread window, newest first. */
   messages: LifeOpsInboxMessage[];
 }
@@ -2301,6 +2305,17 @@ export interface GetLifeOpsInboxRequest {
   maxParticipants?: number;
   /** Filter to a specific Google grant. */
   gmailAccountId?: string;
+  /**
+   * When true, only return messages where the user has not replied for >24h
+   * and the priority score is at least 50. Applies at both the message and
+   * thread-group layer.
+   */
+  missedOnly?: boolean;
+  /**
+   * When true, thread groups are sorted by max priority score desc, recency
+   * tiebreaker. When false (default), groups are sorted by recency only.
+   */
+  sortByPriority?: boolean;
 }
 
 export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [

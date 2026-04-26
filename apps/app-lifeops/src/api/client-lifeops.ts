@@ -254,12 +254,23 @@ export type LifeOpsSocialHabitSummary = {
   fetchedAt: string;
 };
 
+export type LifeOpsPriorityScoringStateDto = {
+  enabled: boolean;
+  model: string | null;
+};
+
+export type LifeOpsAppStateDto = {
+  enabled: boolean;
+  priorityScoring: LifeOpsPriorityScoringStateDto;
+};
+
 declare module "@elizaos/app-core/api/client-base" {
   interface ElizaClient {
-    getLifeOpsAppState(): Promise<{ enabled: boolean }>;
+    getLifeOpsAppState(): Promise<LifeOpsAppStateDto>;
     updateLifeOpsAppState(data: {
       enabled: boolean;
-    }): Promise<{ enabled: boolean }>;
+      priorityScoring?: LifeOpsPriorityScoringStateDto | null;
+    }): Promise<LifeOpsAppStateDto>;
     getLifeOpsOverview(): Promise<LifeOpsOverview>;
     getLifeOpsPaymentsDashboard(
       data?: { windowDays?: number | null },
@@ -290,6 +301,27 @@ declare module "@elizaos/app-core/api/client-base" {
     }): Promise<{
       charges: import("../lifeops/payment-types.js").LifeOpsRecurringCharge[];
     }>;
+    listLifeOpsUpcomingBills(): Promise<{
+      bills: import("../lifeops/payment-types.js").LifeOpsUpcomingBill[];
+    }>;
+    getLifeOpsSmartFeatureSettings(): Promise<{
+      emailClassifierEnabled: boolean;
+      emailClassifierModel: string;
+      billsAutoExtract: boolean;
+    }>;
+    updateLifeOpsSmartFeatureSettings(data: {
+      emailClassifierEnabled?: boolean;
+      emailClassifierModel?: string | null;
+      billsAutoExtract?: boolean;
+    }): Promise<{ ok: true }>;
+    markLifeOpsBillPaid(data: {
+      billId: string;
+      paidAt?: string | null;
+    }): Promise<{ ok: true }>;
+    snoozeLifeOpsBill(data: {
+      billId: string;
+      days?: number;
+    }): Promise<{ ok: true; dueDate: string }>;
     scanLifeOpsEmailSubscriptions(): Promise<
       import("../lifeops/email-unsubscribe-types.js").EmailSubscriptionScanResult
     >;
@@ -794,6 +826,48 @@ ElizaClient.prototype.scanLifeOpsEmailSubscriptions = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/email-unsubscribe/scan", { method: "POST" });
+};
+
+ElizaClient.prototype.listLifeOpsUpcomingBills = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/money/bills");
+};
+
+ElizaClient.prototype.markLifeOpsBillPaid = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/money/bills/mark-paid", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.snoozeLifeOpsBill = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/money/bills/snooze", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.getLifeOpsSmartFeatureSettings = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/lifeops/smart-features/settings");
+};
+
+ElizaClient.prototype.updateLifeOpsSmartFeatureSettings = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/smart-features/settings", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.lookupLifeOpsSubscriptionPlaybook = async function (
@@ -1608,6 +1682,12 @@ ElizaClient.prototype.getLifeOpsInbox = async function (
   }
   if (options.gmailAccountId) {
     params.set("gmailAccountId", options.gmailAccountId);
+  }
+  if (options.missedOnly === true) {
+    params.set("missedOnly", "true");
+  }
+  if (options.sortByPriority === true) {
+    params.set("sortByPriority", "true");
   }
   const query = params.toString();
   return this.fetch(`/api/lifeops/inbox${query ? `?${query}` : ""}`);
