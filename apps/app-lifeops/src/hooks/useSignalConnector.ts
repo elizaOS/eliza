@@ -1,4 +1,4 @@
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/app-core/api";
 import type {
   LifeOpsConnectorSide,
   LifeOpsSignalConnectorStatus,
@@ -129,8 +129,9 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
     pairingPollSessionIdRef.current = activePairingSessionId;
     pairingPollRef.current = setInterval(async () => {
       try {
-        const nextPairing =
-          await client.getLifeOpsSignalPairingStatus(activePairingSessionId);
+        const nextPairing = await client.getLifeOpsSignalPairingStatus(
+          activePairingSessionId,
+        );
         setPairingStatus(nextPairing);
         setError(pairingStatusError(nextPairing));
         if (!isActivePairingState(nextPairing.state)) {

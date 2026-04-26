@@ -6,6 +6,7 @@
  * `subaction` parameter. Routes to the existing handlers in website-blocker.ts.
  */
 
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -20,7 +21,6 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
@@ -472,17 +472,34 @@ export const ownerWebsiteBlockAction: Action & {
 
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerWebsiteBlockParameters;
-    const params = (await extractActionParamsViaLlm<OwnerWebsiteBlockParameters>({
-      runtime,
-      message,
-      state,
-      actionName: ACTION_NAME,
-      actionDescription: ownerWebsiteBlockAction.description ?? "",
-      paramSchema: ownerWebsiteBlockAction.parameters ?? [],
-      existingParams: rawParams,
-      requiredFields: ["subaction"],
-    })) as OwnerWebsiteBlockParameters;
-    let subaction = coerceSubaction(params.subaction);
+    let params = rawParams;
+    let subaction = coerceSubaction(rawParams.subaction);
+    if (!subaction) {
+      const recentConversationLines = await collectRecentConversationTexts({
+        runtime,
+        message,
+        state,
+        limit: 8,
+      });
+      subaction =
+        inferRecentSubaction(
+          getMessageText(message),
+          recentConversationLines,
+        ) ?? undefined;
+    }
+    if (!subaction) {
+      params = (await extractActionParamsViaLlm<OwnerWebsiteBlockParameters>({
+        runtime,
+        message,
+        state,
+        actionName: ACTION_NAME,
+        actionDescription: ownerWebsiteBlockAction.description ?? "",
+        paramSchema: ownerWebsiteBlockAction.parameters ?? [],
+        existingParams: rawParams,
+        requiredFields: ["subaction"],
+      })) as OwnerWebsiteBlockParameters;
+      subaction = coerceSubaction(params.subaction);
+    }
     if (!subaction) {
       const plan = await resolveOwnerWebsiteBlockPlanWithLlm({
         runtime,

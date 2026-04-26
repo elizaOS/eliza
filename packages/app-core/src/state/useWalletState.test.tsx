@@ -87,9 +87,8 @@ function createGenerateWalletResponse(
 const { clientMock, confirmDesktopActionMock, persistenceMock } = vi.hoisted(
   () => ({
     clientMock: {
-      // useWalletState reads server config on mount to seed capability flags;
-      // tests don't care about that path so an empty config is fine.
       getConfig: vi.fn(async () => ({})),
+      updateConfig: vi.fn(async () => ({})),
       updateWalletConfig: vi.fn<() => Promise<{ ok: boolean }>>(async () => ({
         ok: true,
       })),
@@ -154,6 +153,8 @@ describe("useWalletState cloud wallet import", () => {
     );
     clientMock.generateWallet.mockResolvedValue(createGenerateWalletResponse());
     clientMock.setWalletPrimary.mockResolvedValue({ ok: true });
+    clientMock.getConfig.mockResolvedValue({});
+    clientMock.updateConfig.mockResolvedValue({});
     clientMock.getWalletConfig.mockResolvedValue(createWalletConfig());
     clientMock.getWalletBalances.mockResolvedValue(createWalletBalances());
   });

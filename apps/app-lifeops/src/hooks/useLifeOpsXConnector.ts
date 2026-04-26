@@ -1,4 +1,5 @@
-import { client, openExternalUrl } from "@elizaos/app-core";
+import { client } from "@elizaos/app-core/api";
+import { openExternalUrl } from "@elizaos/app-core/utils";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,

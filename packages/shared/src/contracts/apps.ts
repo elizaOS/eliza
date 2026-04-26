@@ -337,6 +337,11 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
       aliases: ["@elizaos/plugin-shopify"],
     },
     {
+      slug: "screenshare",
+      canonicalName: "@elizaos/app-screenshare",
+      aliases: [],
+    },
+    {
       slug: "clawville",
       canonicalName: "@clawville/app-clawville",
       aliases: [],

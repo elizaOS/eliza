@@ -207,7 +207,7 @@ node --import tsx scripts/write-build-info.ts 2>/dev/null || true
 
 log "Building app UI"
 pushd apps/app >/dev/null
-NODE_ENV=production npx vite build
+NODE_ENV=production bun run build:web
 popd >/dev/null
 
 log "Preparing CI dockerignore"
@@ -226,6 +226,9 @@ console.log('Re-added eliza/packages/agent to workspaces');
 "
 
 log "Building Docker image"
+log "Docker build disk usage"
+df -h "$REPO_ROOT" || true
+"$DOCKER_BIN" system df || true
 "$DOCKER_BIN" build \
   --file eliza/packages/app-core/deploy/Dockerfile.ci \
   --tag "$DOCKER_IMAGE" \
