@@ -1,12 +1,8 @@
-import type {
-  ElizaConfig,
-} from "@elizaos/agent";
-import {
-  isElizaCloudServiceSelectedInConfig,
-  migrateLegacyRuntimeConfig,
-} from "@elizaos/shared";
+import type { ElizaConfig } from "@elizaos/shared";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
+  isElizaCloudServiceSelectedInConfig,
+  migrateLegacyRuntimeConfig,
   normalizeWalletRpcSelections,
   type WalletConfigUpdateRequest,
   type WalletRpcChain,

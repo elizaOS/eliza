@@ -64,7 +64,7 @@ export interface ParamSchemaDescriptor {
 }
 
 export interface ExtractActionParamsArgs<
-  T extends Record<string, unknown> = Record<string, unknown>,
+  T extends object = Record<string, unknown>,
 > {
   runtime: IAgentRuntime;
   message: Memory;
@@ -97,7 +97,7 @@ const DEFAULT_RECENT_MESSAGES_LIMIT = 8;
  * fills slots that are still missing.
  */
 export async function extractActionParamsViaLlm<
-  T extends Record<string, unknown> = Record<string, unknown>,
+  T extends object = Record<string, unknown>,
 >(args: ExtractActionParamsArgs<T>): Promise<Partial<T>> {
   const {
     runtime,

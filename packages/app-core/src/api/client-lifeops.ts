@@ -21,19 +21,23 @@ import type {
 } from "@elizaos/app-lifeops";
 import { ElizaClient } from "./client-base";
 
+type LifeOpsPriorityScoringStateDto = {
+  enabled: boolean;
+  model: string | null;
+};
+
+type LifeOpsAppStateDto = {
+  enabled: boolean;
+  priorityScoring: LifeOpsPriorityScoringStateDto;
+};
+
 declare module "./client-base" {
   interface ElizaClient {
-    getLifeOpsAppState(): Promise<{
-      enabled: boolean;
-      priorityScoring: { enabled: boolean; model: string | null };
-    }>;
+    getLifeOpsAppState(): Promise<LifeOpsAppStateDto>;
     updateLifeOpsAppState(data: {
       enabled: boolean;
-      priorityScoring?: { enabled: boolean; model: string | null } | null;
-    }): Promise<{
-      enabled: boolean;
-      priorityScoring: { enabled: boolean; model: string | null };
-    }>;
+      priorityScoring?: LifeOpsPriorityScoringStateDto | null;
+    }): Promise<LifeOpsAppStateDto>;
     getLifeOpsCalendarFeed(
       options?: GetLifeOpsCalendarFeedRequest,
     ): Promise<LifeOpsCalendarFeed>;
@@ -89,14 +93,17 @@ function buildQuery(params: URLSearchParams): string {
 }
 
 ElizaClient.prototype.getLifeOpsAppState = async function (this: ElizaClient) {
-  return this.fetch("/api/lifeops/app-state");
+  return this.fetch<LifeOpsAppStateDto>("/api/lifeops/app-state");
 };
 
 ElizaClient.prototype.updateLifeOpsAppState = async function (
   this: ElizaClient,
-  data,
+  data: {
+    enabled: boolean;
+    priorityScoring?: LifeOpsPriorityScoringStateDto | null;
+  },
 ) {
-  return this.fetch("/api/lifeops/app-state", {
+  return this.fetch<LifeOpsAppStateDto>("/api/lifeops/app-state", {
     method: "PUT",
     body: JSON.stringify(data),
   });
@@ -104,7 +111,7 @@ ElizaClient.prototype.updateLifeOpsAppState = async function (
 
 ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   this: ElizaClient,
-  options = {},
+  options: GetLifeOpsCalendarFeedRequest = {},
 ) {
   const params = new URLSearchParams();
   appendOptionalParam(params, "mode", options.mode);
@@ -119,25 +126,29 @@ ElizaClient.prototype.getLifeOpsCalendarFeed = async function (
   appendOptionalParam(params, "timeMax", options.timeMax);
   appendOptionalParam(params, "timeZone", options.timeZone);
   appendOptionalParam(params, "forceSync", options.forceSync);
-  return this.fetch(`/api/lifeops/calendar/feed${buildQuery(params)}`);
+  return this.fetch<LifeOpsCalendarFeed>(
+    `/api/lifeops/calendar/feed${buildQuery(params)}`,
+  );
 };
 
 ElizaClient.prototype.getLifeOpsCalendars = async function (
   this: ElizaClient,
-  options = {},
+  options: ListLifeOpsCalendarsRequest = {},
 ) {
   const params = new URLSearchParams();
   appendOptionalParam(params, "mode", options.mode);
   appendOptionalParam(params, "side", options.side);
   appendOptionalParam(params, "grantId", options.grantId);
-  return this.fetch(`/api/lifeops/calendar/calendars${buildQuery(params)}`);
+  return this.fetch<{ calendars: LifeOpsCalendarSummary[] }>(
+    `/api/lifeops/calendar/calendars${buildQuery(params)}`,
+  );
 };
 
 ElizaClient.prototype.setLifeOpsCalendarIncluded = async function (
   this: ElizaClient,
-  data,
+  data: SetLifeOpsCalendarIncludedRequest,
 ) {
-  return this.fetch(
+  return this.fetch<{ calendar: LifeOpsCalendarSummary }>(
     `/api/lifeops/calendar/calendars/${encodeURIComponent(data.calendarId)}/include`,
     {
       method: "PUT",
@@ -148,7 +159,7 @@ ElizaClient.prototype.setLifeOpsCalendarIncluded = async function (
 
 ElizaClient.prototype.getLifeOpsGmailTriage = async function (
   this: ElizaClient,
-  options = {},
+  options: GetLifeOpsGmailTriageRequest = {},
 ) {
   const params = new URLSearchParams();
   appendOptionalParam(params, "mode", options.mode);
@@ -156,12 +167,14 @@ ElizaClient.prototype.getLifeOpsGmailTriage = async function (
   appendOptionalParam(params, "grantId", options.grantId);
   appendOptionalParam(params, "forceSync", options.forceSync);
   appendOptionalParam(params, "maxResults", options.maxResults);
-  return this.fetch(`/api/lifeops/gmail/triage${buildQuery(params)}`);
+  return this.fetch<LifeOpsGmailTriageFeed>(
+    `/api/lifeops/gmail/triage${buildQuery(params)}`,
+  );
 };
 
 ElizaClient.prototype.getLifeOpsGmailSearch = async function (
   this: ElizaClient,
-  options,
+  options: GetLifeOpsGmailSearchRequest,
 ) {
   const params = new URLSearchParams();
   appendOptionalParam(params, "mode", options.mode);
@@ -172,12 +185,14 @@ ElizaClient.prototype.getLifeOpsGmailSearch = async function (
   appendOptionalParam(params, "query", options.query);
   appendOptionalParam(params, "replyNeededOnly", options.replyNeededOnly);
   appendOptionalParam(params, "includeSpamTrash", options.includeSpamTrash);
-  return this.fetch(`/api/lifeops/gmail/search${buildQuery(params)}`);
+  return this.fetch<LifeOpsGmailSearchFeed>(
+    `/api/lifeops/gmail/search${buildQuery(params)}`,
+  );
 };
 
 ElizaClient.prototype.getLifeOpsGmailNeedsResponse = async function (
   this: ElizaClient,
-  options = {},
+  options: GetLifeOpsGmailTriageRequest = {},
 ) {
   const params = new URLSearchParams();
   appendOptionalParam(params, "mode", options.mode);
@@ -185,12 +200,14 @@ ElizaClient.prototype.getLifeOpsGmailNeedsResponse = async function (
   appendOptionalParam(params, "grantId", options.grantId);
   appendOptionalParam(params, "forceSync", options.forceSync);
   appendOptionalParam(params, "maxResults", options.maxResults);
-  return this.fetch(`/api/lifeops/gmail/needs-response${buildQuery(params)}`);
+  return this.fetch<LifeOpsGmailNeedsResponseFeed>(
+    `/api/lifeops/gmail/needs-response${buildQuery(params)}`,
+  );
 };
 
 ElizaClient.prototype.getLifeOpsGmailRecommendations = async function (
   this: ElizaClient,
-  options = {},
+  options: GetLifeOpsGmailRecommendationsRequest = {},
 ) {
   const params = new URLSearchParams();
   appendOptionalParam(params, "mode", options.mode);
@@ -201,12 +218,14 @@ ElizaClient.prototype.getLifeOpsGmailRecommendations = async function (
   appendOptionalParam(params, "query", options.query);
   appendOptionalParam(params, "replyNeededOnly", options.replyNeededOnly);
   appendOptionalParam(params, "includeSpamTrash", options.includeSpamTrash);
-  return this.fetch(`/api/lifeops/gmail/recommendations${buildQuery(params)}`);
+  return this.fetch<LifeOpsGmailRecommendationsFeed>(
+    `/api/lifeops/gmail/recommendations${buildQuery(params)}`,
+  );
 };
 
 ElizaClient.prototype.getLifeOpsGmailUnresponded = async function (
   this: ElizaClient,
-  options = {},
+  options: GetLifeOpsGmailUnrespondedRequest = {},
 ) {
   const params = new URLSearchParams();
   appendOptionalParam(params, "mode", options.mode);
@@ -214,14 +233,16 @@ ElizaClient.prototype.getLifeOpsGmailUnresponded = async function (
   appendOptionalParam(params, "grantId", options.grantId);
   appendOptionalParam(params, "maxResults", options.maxResults);
   appendOptionalParam(params, "olderThanDays", options.olderThanDays);
-  return this.fetch(`/api/lifeops/gmail/unresponded${buildQuery(params)}`);
+  return this.fetch<LifeOpsGmailUnrespondedFeed>(
+    `/api/lifeops/gmail/unresponded${buildQuery(params)}`,
+  );
 };
 
 ElizaClient.prototype.manageLifeOpsGmailMessages = async function (
   this: ElizaClient,
-  data,
+  data: ManageLifeOpsGmailMessagesRequest,
 ) {
-  return this.fetch("/api/lifeops/gmail/manage", {
+  return this.fetch<LifeOpsGmailManageResult>("/api/lifeops/gmail/manage", {
     method: "POST",
     body: JSON.stringify(data),
   });
@@ -229,26 +250,26 @@ ElizaClient.prototype.manageLifeOpsGmailMessages = async function (
 
 ElizaClient.prototype.getGoogleLifeOpsConnectorStatus = async function (
   this: ElizaClient,
-  mode,
-  side,
+  mode?: LifeOpsConnectorMode,
+  side?: LifeOpsConnectorSide,
 ) {
   const params = new URLSearchParams();
   appendOptionalParam(params, "mode", mode);
   appendOptionalParam(params, "side", side);
-  return this.fetch(
+  return this.fetch<LifeOpsGoogleConnectorStatus>(
     `/api/lifeops/connectors/google/status${buildQuery(params)}`,
   );
 };
 
 ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
   this: ElizaClient,
-  mode,
-  side,
+  mode?: LifeOpsConnectorMode,
+  side?: LifeOpsConnectorSide,
 ) {
   const params = new URLSearchParams();
   appendOptionalParam(params, "mode", mode);
   appendOptionalParam(params, "side", side);
-  return this.fetch(
+  return this.fetch<LifeOpsGoogleConnectorStatus[]>(
     `/api/lifeops/connectors/google/accounts${buildQuery(params)}`,
   );
 };

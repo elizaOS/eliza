@@ -6,7 +6,7 @@ import {
   type WalletRpcChain,
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
-} from "@elizaos/agent";
+} from "@elizaos/shared";
 
 const PROVIDER_CREDENTIAL_KEYS: Record<
   WalletRpcChain,

@@ -17,12 +17,12 @@
 
 import fs from "node:fs";
 import type http from "node:http";
+import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
 import {
   checkRateLimit,
-  createIntegrationTelemetrySpan,
   type RateLimitConfig,
-  type ReadJsonBodyOptions,
-} from "@elizaos/agent";
+} from "@elizaos/agent/api/rate-limiter";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   CompleteLifeOpsBrowserSessionRequest,

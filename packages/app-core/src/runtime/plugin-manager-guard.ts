@@ -6,10 +6,7 @@
  * Skipped when `ELIZA_DISABLE_PLUGIN_MANAGER_AUTO_ENABLE=1` is set.
  */
 
-import {
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
 
 let _checked = false;
 let _lastResult: PluginManagerGuardResult = "error";

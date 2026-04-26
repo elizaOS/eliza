@@ -1,15 +1,14 @@
 import type http from "node:http";
 import {
-  applyCanonicalOnboardingConfig,
   type CloudRouteState as AutonomousCloudRouteState,
+  applyCanonicalOnboardingConfig,
   type CloudManager,
   createIntegrationTelemetrySpan,
-  type ElizaConfig,
   handleCloudRoute as handleAutonomousCloudRoute,
   normalizeCloudSiteUrl,
-  saveElizaConfig,
   validateCloudBaseUrl,
 } from "@elizaos/agent";
+import { type ElizaConfig, saveElizaConfig } from "@elizaos/agent/config";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,
@@ -184,7 +183,7 @@ async function persistCloudLoginStatus(args: {
 function toAutonomousState(state: CloudRouteState): AutonomousCloudRouteState {
   return {
     ...state,
-    saveConfig: saveElizaConfig,
+    saveConfig: () => saveElizaConfig(state.config),
     createTelemetrySpan: createIntegrationTelemetrySpan,
   };
 }
@@ -208,7 +207,7 @@ export async function handleCloudRoute(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("[cloud/disconnect] failed", err);
+      logger.error(`[cloud/disconnect] failed: ${message}`);
       sendJson(res, 500, { ok: false, error: message });
       return true;
     }

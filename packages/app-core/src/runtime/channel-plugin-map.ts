@@ -1,6 +1,6 @@
 import {
   CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
-} from "@elizaos/agent";
+} from "@elizaos/agent/runtime/plugin-collector";
 
 const INTERNAL_CHANNEL_PLUGIN_OVERRIDES = {
   signal: "@elizaos/plugin-signal",

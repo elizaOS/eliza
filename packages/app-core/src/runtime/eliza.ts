@@ -15,12 +15,14 @@ import {
   applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
   applyN8nConfigToEnv as upstreamApplyN8nConfigToEnv,
   bootElizaRuntime as upstreamBootElizaRuntime,
-  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
   collectPluginNames as upstreamCollectPluginNames,
   configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent";
+import {
+  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
+} from "@elizaos/agent/runtime/plugin-collector";
 import {
   type AgentRuntime,
   AutonomyService,

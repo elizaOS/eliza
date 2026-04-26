@@ -11,12 +11,8 @@
  *   POST /api/wallet/production-defaults
  */
 import type http from "node:http";
-import {
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent";
-import { readCompatJsonBody } from "@elizaos/app-core";
-import { sendJson, sendJsonError } from "@elizaos/app-core";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import { readCompatJsonBody, sendJson, sendJsonError } from "@elizaos/app-core";
 import {
   buildBscTradePreflight,
   buildBscTradeQuote,
@@ -74,7 +70,7 @@ export async function handleWalletBscCoreRoutes(
       resolveTradePermissionMode: resolveTradePermissionMode as never,
       isAgentAutomationRequest,
       canUseLocalTradeExecution: canUseLocalTradeExecution as never,
-      saveElizaConfig,
+      saveElizaConfig: saveElizaConfig as never,
     },
   });
 }

@@ -5,9 +5,7 @@
  * (meme-rush, trading-signal, token-info, etc.) and fallback action parsing.
  */
 
-import {
-  extractCompatTextContent,
-} from "@elizaos/agent";
+import { extractCompatTextContent } from "@elizaos/agent/api/compat-utils";
 import {
   type Action,
   type ActionParameters,

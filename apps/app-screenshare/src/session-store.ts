@@ -68,6 +68,10 @@ export function createScreenshareSession(
   label = "This machine",
 ): ScreenshareSession {
   const now = new Date().toISOString();
+  const store = getStore();
+  if (store.localSessionId) {
+    stopSessionInStore(store, store.localSessionId, now);
+  }
   const session: ScreenshareSession = {
     id: randomUUID(),
     token: randomBytes(24).toString("base64url"),
@@ -83,7 +87,6 @@ export function createScreenshareSession(
     lastInputAt: null,
   };
 
-  const store = getStore();
   store.sessions.set(session.id, session);
   store.localSessionId = session.id;
   return session;
@@ -125,11 +128,26 @@ export function stopScreenshareSession(
     return session;
   }
   const now = new Date().toISOString();
+  return stopSessionInStore(store, sessionId, now);
+}
+
+function stopSessionInStore(
+  store: ScreenshareSessionStore,
+  sessionId: string,
+  stoppedAt: string,
+): ScreenshareSession | null {
+  const session = store.sessions.get(sessionId);
+  if (!session) {
+    return null;
+  }
+  if (session.status === "stopped") {
+    return session;
+  }
   const stopped: ScreenshareSession = {
     ...session,
     status: "stopped",
-    updatedAt: now,
-    stoppedAt: now,
+    updatedAt: stoppedAt,
+    stoppedAt,
   };
   store.sessions.set(sessionId, stopped);
   if (store.localSessionId === sessionId) {
@@ -199,6 +217,19 @@ export function toPublicSession(
   };
 }
 
+function describeScreenshareReadiness(
+  session: ScreenshareSession,
+  unavailable: string[],
+): string {
+  if (session.status !== "active") {
+    return "Desktop stream is stopped.";
+  }
+  if (unavailable.length > 0) {
+    return `Desktop stream needs attention: ${unavailable.join(", ")}`;
+  }
+  return "Desktop stream is unavailable.";
+}
+
 export function getScreenshareCapabilities(): DesktopControlCapabilities {
   return detectDesktopControlCapabilities();
 }
@@ -226,7 +257,7 @@ export function buildScreenshareAppSession(
     controls: [],
     summary: ready
       ? "Desktop stream is ready for remote control."
-      : `Desktop stream needs attention: ${unavailable.join(", ")}`,
+      : describeScreenshareReadiness(session, unavailable),
     suggestedPrompts: [
       "Start a fresh screen share session",
       "List visible desktop windows",

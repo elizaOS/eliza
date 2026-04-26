@@ -67,17 +67,13 @@ export function captureDesktopScreenshot(
   try {
     if (os === "darwin") {
       if (region) {
-        runCommand(
-          "screencapture",
-          [
-            `-R${region.x},${region.y},${region.width},${region.height}`,
-            "-x",
-            tmpFile,
-          ],
-          10000,
-        );
+        runMacScreenshotCommand([
+          `-R${region.x},${region.y},${region.width},${region.height}`,
+          "-x",
+          tmpFile,
+        ]);
       } else {
-        runCommand("screencapture", ["-x", tmpFile], 10000);
+        runMacScreenshotCommand(["-x", tmpFile]);
       }
     } else if (os === "linux") {
       if (!isHeadfulGuiAvailable()) {
@@ -143,6 +139,8 @@ export function listDesktopWindows(): DesktopWindowInfo[] {
   if (os === "darwin") {
     const script = `
         tell application "System Events"
+          set previousDelimiters to AppleScript's text item delimiters
+          set AppleScript's text item delimiters to linefeed
           set windowList to {}
           repeat with proc in (every process whose visible is true)
             try
@@ -151,15 +149,24 @@ export function listDesktopWindows(): DesktopWindowInfo[] {
               end repeat
             end try
           end repeat
-          return windowList as text
+          set serializedWindowList to windowList as text
+          set AppleScript's text item delimiters to previousDelimiters
+          return serializedWindowList
         end tell`;
-    const output = execFileSync("osascript", ["-e", script], {
-      encoding: "utf-8",
-      timeout: 10000,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
+    let output: string;
+    try {
+      output = execFileSync("osascript", ["-e", script], {
+        encoding: "utf-8",
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+    } catch {
+      throw new Error(
+        "Window listing failed. Grant Accessibility permission to this app or terminal and try again.",
+      );
+    }
     return output
-      .split(", ")
+      .split("\n")
       .filter(Boolean)
       .map((entry) => {
         const parts = entry.split("|||");
@@ -360,10 +367,13 @@ export function performDesktopScroll(deltaX: number, deltaY: number): void {
   }
 
   if (os === "darwin") {
-    if (!commandExists("cliclick")) {
-      throw new Error("cliclick required for scroll on macOS.");
-    }
-    runCommand("cliclick", [`w:${normalizedX},${normalizedY}`], 5000);
+    const psScript = [
+      'ObjC.import("ApplicationServices")',
+      `const event = $.CGEventCreateScrollWheelEvent(null, 1, 2, ${-normalizedY}, ${-normalizedX})`,
+      "$.CGEventPost(0, event)",
+      "$.CFRelease(event)",
+    ].join("; ");
+    runCommand("osascript", ["-l", "JavaScript", "-e", psScript], 5000);
     return;
   }
 
@@ -436,7 +446,12 @@ export function performDesktopKeypress(keys: string): void {
 
   if (os === "darwin") {
     if (commandExists("cliclick")) {
-      runCommand("cliclick", [`kp:${keys}`], 5000);
+      const cliclickKey = toCliclickKey(keys);
+      if (cliclickKey) {
+        runCommand("cliclick", [`kp:${cliclickKey}`], 5000);
+      } else {
+        runCommand("cliclick", [`t:${keys}`], 5000);
+      }
       return;
     }
 
@@ -465,12 +480,12 @@ export function performDesktopKeypress(keys: string): void {
     if (!commandExists("xdotool")) {
       throw new Error("xdotool required for key input on Linux.");
     }
-    runCommand("xdotool", ["key", keys], 5000);
+    runCommand("xdotool", ["key", toXdotoolKey(keys)], 5000);
     return;
   }
 
   if (os === "win32") {
-    const escaped = keys.replace(/'/g, "''");
+    const escaped = toWindowsSendKey(keys).replace(/'/g, "''");
     runCommand(
       "powershell",
       [
@@ -483,6 +498,59 @@ export function performDesktopKeypress(keys: string): void {
   }
 
   throw new Error(`Key input not supported on platform: ${os}`);
+}
+
+function toCliclickKey(keys: string): string | null {
+  const keyMap: Record<string, string> = {
+    backspace: "delete",
+    down: "arrow-down",
+    enter: "enter",
+    escape: "esc",
+    esc: "esc",
+    left: "arrow-left",
+    right: "arrow-right",
+    return: "return",
+    space: "space",
+    tab: "tab",
+    up: "arrow-up",
+  };
+  return keyMap[keys.trim().toLowerCase()] ?? null;
+}
+
+function toXdotoolKey(keys: string): string {
+  const keyMap: Record<string, string> = {
+    backspace: "BackSpace",
+    down: "Down",
+    enter: "Return",
+    escape: "Escape",
+    esc: "Escape",
+    left: "Left",
+    right: "Right",
+    return: "Return",
+    space: "space",
+    tab: "Tab",
+    up: "Up",
+  };
+  const normalized = keys.trim().toLowerCase();
+  return keyMap[normalized] ?? keys.trim();
+}
+
+function toWindowsSendKey(keys: string): string {
+  const keyMap: Record<string, string> = {
+    backspace: "{BACKSPACE}",
+    down: "{DOWN}",
+    enter: "{ENTER}",
+    escape: "{ESC}",
+    esc: "{ESC}",
+    left: "{LEFT}",
+    right: "{RIGHT}",
+    return: "{ENTER}",
+    space: " ",
+    tab: "{TAB}",
+    up: "{UP}",
+  };
+  const normalized = keys.trim().toLowerCase();
+  return keyMap[normalized] ?? keys;
 }
 
 export function detectDesktopControlCapabilities(): DesktopControlCapabilities {
@@ -504,7 +572,12 @@ function detectScreenshotCapability(
   os: NodeJS.Platform,
 ): DesktopControlCapability {
   if (os === "darwin") {
-    return { available: true, tool: "screencapture (built-in)" };
+    return canCaptureMacScreen()
+      ? { available: true, tool: "screencapture (built-in)" }
+      : {
+          available: false,
+          tool: "screencapture blocked (grant Screen Recording permission)",
+        };
   }
   if (os === "linux") {
     if (!isHeadfulGuiAvailable()) {
@@ -558,7 +631,12 @@ function detectWindowListCapability(
   os: NodeJS.Platform,
 ): DesktopControlCapability {
   if (os === "darwin") {
-    return { available: true, tool: "AppleScript" };
+    return canUseMacSystemEvents()
+      ? { available: true, tool: "AppleScript" }
+      : {
+          available: false,
+          tool: "AppleScript blocked (grant Accessibility permission)",
+        };
   }
   if (os === "linux") {
     if (commandExists("wmctrl")) {
@@ -583,6 +661,45 @@ function runCommand(command: string, args: string[], timeout: number): void {
     timeout,
     stdio: ["ignore", "pipe", "pipe"],
   });
+}
+
+function runMacScreenshotCommand(args: string[]): void {
+  try {
+    runCommand("screencapture", args, 10000);
+  } catch {
+    throw new Error(
+      "Screen capture failed. Grant Screen Recording permission to this app or terminal and try again.",
+    );
+  }
+}
+
+function canCaptureMacScreen(): boolean {
+  const tmpFile = join(tmpdir(), `desktop-screenshot-probe-${Date.now()}.png`);
+  try {
+    runCommand("screencapture", ["-x", "-R0,0,1,1", tmpFile], 5000);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    removeTempFile(tmpFile);
+  }
+}
+
+function canUseMacSystemEvents(): boolean {
+  try {
+    execFileSync(
+      "osascript",
+      ["-e", 'tell application "System Events" to count of processes'],
+      {
+        encoding: "utf-8",
+        timeout: 3000,
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function removeTempFile(filePath: string): void {
