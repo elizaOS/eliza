@@ -34,6 +34,10 @@ import {
   probeJsonRpcEndpoint,
   TxService,
 } from "@elizaos/app-steward/api/tx-service";
+import {
+  ensurePrivyWalletsForCustomUser,
+  isPrivyWalletProvisioningEnabled,
+} from "@elizaos/app-steward/services/privy-wallets";
 import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
@@ -100,10 +104,6 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-import {
-  ensurePrivyWalletsForCustomUser,
-  isPrivyWalletProvisioningEnabled,
-} from "../services/privy-wallets.js";
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
 import { signalAuthExists } from "../services/signal-pairing.js";
 import { streamManager } from "../services/stream-manager.js";
@@ -663,6 +663,37 @@ function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
     max: 50,
     fallback,
   });
+}
+
+function sanitizeFavoriteAppList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const apps: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    apps.push(trimmed);
+  }
+  return apps;
+}
+
+function readFavoriteAppsFromConfig(config: ElizaConfig): string[] {
+  const ui = (config.ui ?? {}) as Record<string, unknown>;
+  return sanitizeFavoriteAppList(ui.favoriteApps);
+}
+
+function writeFavoriteAppsToConfig(
+  config: ElizaConfig,
+  apps: string[],
+): string[] {
+  const sanitized = sanitizeFavoriteAppList(apps);
+  const ui = (config.ui ?? {}) as Record<string, unknown>;
+  ui.favoriteApps = sanitized;
+  config.ui = ui as ElizaConfig["ui"];
+  saveElizaConfig(config);
+  return sanitized;
 }
 
 // Config redaction, skill validation extracted to server-helpers-config.ts
@@ -1752,6 +1783,13 @@ async function handleRequest(
       pathname,
       url,
       logBuffer: state.logBuffer,
+      clearLogBuffer: () => {
+        const previous = state.logBuffer.length;
+        state.logBuffer.length = 0;
+        return previous;
+      },
+      readJsonBody,
+      error,
       eventBuffer: state.eventBuffer,
       initSse: initSseFromChatRoutes,
       writeSseJson: writeSseJsonFromChatRoutes,
@@ -2119,7 +2157,11 @@ async function handleRequest(
   // ═══════════════════════════════════════════════════════════════════════
   // Config routes (extracted to config-routes.ts)
   // ═══════════════════════════════════════════════════════════════════════
-  if (pathname === "/api/config" || pathname === "/api/config/schema") {
+  if (
+    pathname === "/api/config" ||
+    pathname === "/api/config/schema" ||
+    pathname === "/api/config/reload"
+  ) {
     if (
       await handleConfigRoutes({
         req,
@@ -2128,6 +2170,7 @@ async function handleRequest(
         pathname,
         url,
         config: state.config,
+        runtime: state.runtime,
         json,
         error,
         readJsonBody,
@@ -2584,6 +2627,10 @@ async function handleRequest(
       json,
       error,
       runtime: state.runtime,
+      favoriteApps: {
+        read: () => readFavoriteAppsFromConfig(state.config),
+        write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
+      },
     })
   ) {
     return;
