@@ -310,7 +310,6 @@ export function configureDesktopLocalApiAuth(
 ): string {
   const token = ensureDesktopApiToken(env);
   env.ELIZA_PAIRING_DISABLED = "1";
-  env.ELIZA_PAIRING_DISABLED = "1";
   return token;
 }
 

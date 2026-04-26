@@ -1,5 +1,4 @@
 import process from "node:process";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import {
   type DevSettingsRow,
   ELIZA_RUNTIME_ENV_KEYS,
@@ -8,6 +7,7 @@ import {
   resolveApiSecurityConfig,
   resolveApiToken,
 } from "@elizaos/shared";
+import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 
 function summarizeList(label: string, items: string[], maxLen: number): string {
   if (items.length === 0) return `${label}: (empty)`;

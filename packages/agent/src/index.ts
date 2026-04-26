@@ -1,14 +1,3 @@
-export type {
-  InventoryProviderOption,
-  ModelOption,
-  SubscriptionCredentialSource,
-  WalletChainKind,
-  WalletEntry,
-  WalletPrimaryMap,
-  WalletProviderKind,
-  WalletSource,
-} from "@elizaos/shared";
-export * from "@elizaos/shared";
 export {
   type ExtractActionParamsArgs,
   extractActionParamsViaLlm,
@@ -98,79 +87,17 @@ export type {
 export * from "./api/wallet-capability.js";
 export * from "./api/workbench-helpers.js";
 export * from "./auth/index.js";
+export * from "./awareness/index.js";
 export { resolveCloudApiBaseUrl } from "./cloud/base-url.js";
 export * from "./cloud/index.js";
 export { CharacterSchema } from "./config/character-schema.js";
-export {
-  configFileExists,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "./config/config.js";
-export {
-  CONNECTOR_ENV_MAP,
-  collectConfigEnvVars,
-  collectConnectorEnvVars,
-} from "./config/env-vars.js";
-export {
-  CircularIncludeError,
-  ConfigIncludeError,
-  deepMerge,
-  INCLUDE_KEY,
-  type IncludeResolver,
-  MAX_INCLUDE_DEPTH,
-  resolveConfigIncludes,
-} from "./config/includes.js";
-export { isPlainObject } from "./config/object-utils.js";
-export {
-  loadOwnerContactRoutingHints,
-  loadOwnerContactsConfig,
-  type OwnerContactPlatformIdentity,
-  type OwnerContactResolution,
-  type OwnerContactRoutingHint,
-  resolveOwnerContactSource,
-  resolveOwnerContactWithFallback,
-} from "./config/owner-contacts.js";
-export {
-  getElizaNamespace,
-  resolveConfigPath,
-  resolveDefaultConfigCandidates,
-  resolveModelsCacheDir,
-  resolveOAuthDir,
-  resolveOAuthPath,
-  resolveStateDir,
-  resolveStewardCredentialsPath,
-  resolveUserPath,
-} from "./config/paths.js";
-export {
-  type ApplyPluginAutoEnableParams,
-  type ApplyPluginAutoEnableResult,
-  AUTH_PROVIDER_PLUGINS,
-  applyPluginAutoEnable,
-  applyPluginSelfDeclaredAutoEnable,
-  CONNECTOR_PLUGINS,
-  isConnectorConfigured,
-  isStreamingDestinationConfigured,
-  STREAMING_PLUGINS,
-} from "./config/plugin-auto-enable.js";
-export {
-  buildConfigSchema,
-  CONNECTOR_IDS,
-  type ConfigSchema,
-  type ConfigSchemaResponse,
-  type ConfigUiHint,
-  type ConfigUiHints,
-  type ConnectorUiMetadata,
-  type PluginUiMetadata,
-  type ShowIfCondition,
-} from "./config/schema.js";
-export {
-  normalizeTelegramCommandDescription,
-  normalizeTelegramCommandName,
-  resolveTelegramCustomCommands,
-  TELEGRAM_COMMAND_NAME_PATTERN,
-  type TelegramCustomCommandInput,
-  type TelegramCustomCommandIssue,
-} from "./config/telegram-custom-commands.js";
+export type { RolesConfig } from "./config/index.js";
+export * from "./config/index.js";
+// `contracts/awareness.js` and `contracts/config.js` add the local-only
+// (non-shared) contract surface — the rest of `./contracts` is already
+// re-exported through `@elizaos/shared`.
+export * from "./contracts/awareness.js";
+export * from "./contracts/config.js";
 export * from "./diagnostics/integration-observability.js";
 export * from "./hooks/index.js";
 export * from "./providers/workspace.js";
@@ -190,6 +117,7 @@ export {
 } from "./runtime/plugin-resolver.js";
 export * from "./runtime/plugin-types.js";
 export * from "./runtime/release-plugin-policy.js";
+export * from "./runtime/restart.js";
 export * from "./runtime/trajectory-internals.js";
 export * from "./runtime/trajectory-persistence.js";
 export * from "./runtime/trajectory-query.js";

@@ -1,22 +1,20 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
   StartLifeOpsGoogleConnectorResponse,
 } from "../contracts/index.js";
-import {
-  resolveOAuthDir,
-} from "@elizaos/agent";
+import { rewriteGoogleUrlForMock } from "./google-fetch.js";
 import {
   googleCapabilitiesToScopes,
   googleScopesToCapabilities,
   normalizeGoogleCapabilities,
   unionGoogleCapabilities,
 } from "./google-scopes.js";
-import { rewriteGoogleUrlForMock } from "./google-fetch.js";
 import {
   decryptTokenEnvelope,
   encryptTokenPayload,
@@ -278,7 +276,12 @@ function createState(): string {
 function pendingGoogleOAuthSessionDir(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
-  return path.join(resolveOAuthDir(env), "lifeops", "google", "pending-sessions");
+  return path.join(
+    resolveOAuthDir(env),
+    "lifeops",
+    "google",
+    "pending-sessions",
+  );
 }
 
 function pendingGoogleOAuthSessionPath(
@@ -586,11 +589,14 @@ function parseIdTokenClaims(
 async function fetchGoogleUserInfo(
   accessToken: string,
 ): Promise<Record<string, unknown>> {
-  const response = await fetch(rewriteGoogleUrlForMock(GOOGLE_USERINFO_ENDPOINT), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+  const response = await fetch(
+    rewriteGoogleUrlForMock(GOOGLE_USERINFO_ENDPOINT),
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
     },
-  });
+  );
   if (!response.ok) {
     throw new GoogleOAuthError(502, await readGoogleErrorMessage(response));
   }
@@ -604,8 +610,11 @@ async function fetchGoogleUserInfo(
   return parsed as Record<string, unknown>;
 }
 
-function readGoogleIdentityEmail(identity: Record<string, unknown>): string | null {
-  const value = identity.email ?? identity.emailAddress ?? identity.primaryEmail;
+function readGoogleIdentityEmail(
+  identity: Record<string, unknown>,
+): string | null {
+  const value =
+    identity.email ?? identity.emailAddress ?? identity.primaryEmail;
   if (typeof value !== "string") {
     return null;
   }

@@ -1,6 +1,4 @@
-import {
-  buildCharacterFromConfig as upstreamBuildCharacterFromConfig,
-} from "@elizaos/agent";
+import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@elizaos/agent";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,

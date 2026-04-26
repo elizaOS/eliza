@@ -2,9 +2,9 @@ import {
   ChatModalView,
   type OverlayAppContext,
   useApp,
-  usePtySessions,
   useRenderGuard,
 } from "@elizaos/app-core";
+import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";
 import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 import {
   memo,

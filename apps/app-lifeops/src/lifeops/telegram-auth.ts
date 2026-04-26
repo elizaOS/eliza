@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent";
+import { resolveOAuthDir } from "@elizaos/agent/config/paths";
 import { logger } from "@elizaos/core";
 // Re-export the real GramJS auth session from plugin-telegram.
 // The plugin's TelegramAccountAuthSession handles the full MTProto flow:

@@ -87,7 +87,9 @@ function createGenerateWalletResponse(
 const { clientMock, confirmDesktopActionMock, persistenceMock } = vi.hoisted(
   () => ({
     clientMock: {
-      getConfig: vi.fn(async () => ({})),
+      getConfig: vi.fn<() => Promise<Record<string, unknown>>>(
+        async () => ({}),
+      ),
       updateConfig: vi.fn(async () => ({})),
       updateWalletConfig: vi.fn<() => Promise<{ ok: boolean }>>(async () => ({
         ok: true,

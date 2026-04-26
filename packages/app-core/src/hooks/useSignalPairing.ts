@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api/client";
 
-export type {
-  SignalPairingStatus,
-} from "@elizaos/agent";
+export type { SignalPairingStatus } from "@elizaos/agent";
 
-import type {
-  SignalPairingStatus,
-} from "@elizaos/agent";
+import type { SignalPairingStatus } from "@elizaos/agent";
 
 interface SignalPairingState {
   status: SignalPairingStatus;

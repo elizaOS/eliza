@@ -7,11 +7,9 @@ import {
 import { logger } from "@elizaos/core";
 import {
   migrateLegacyRuntimeConfig,
-  normalizeOnboardingProviderId,
-} from "@elizaos/shared";
-import {
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountsConfig,
+  normalizeOnboardingProviderId,
   normalizeServiceRoutingConfig,
 } from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth";

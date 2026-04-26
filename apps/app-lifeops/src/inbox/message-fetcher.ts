@@ -206,17 +206,20 @@ export async function fetchGmailMessages(
   const capabilities = status.grantedCapabilities ?? [];
   if (!capabilities.includes("google.gmail.triage")) return [];
 
+  const limit = opts.limit ?? 50;
+
   // When no grantId is supplied, the service-side getGmailTriage already
   // aggregates across every Google grant and tags each summary with grantId
   // and accountEmail. We forward those onto the InboundMessage so the inbox
   // mixin can group by account and render account chips.
   const triageFeed = await source.getGmailTriage(
     INTERNAL_URL,
-    opts.grantId ? { grantId: opts.grantId } : undefined,
+    opts.grantId
+      ? { grantId: opts.grantId, maxResults: limit }
+      : { maxResults: limit },
   );
   if (triageFeed.messages.length === 0) return [];
 
-  const limit = opts.limit ?? 50;
   const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : 0;
 
   const results: InboundMessage[] = [];

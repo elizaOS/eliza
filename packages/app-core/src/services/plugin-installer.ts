@@ -658,14 +658,7 @@ async function listRemoteBranches(gitUrl: string): Promise<string[]> {
   try {
     const { stdout } = await execFileAsync(
       "git",
-      [
-        "-c",
-        "protocol.file.allow=never",
-        "ls-remote",
-        "--heads",
-        "--",
-        gitUrl,
-      ],
+      ["-c", "protocol.file.allow=never", "ls-remote", "--heads", "--", gitUrl],
       { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
     );
     const branches: string[] = [];

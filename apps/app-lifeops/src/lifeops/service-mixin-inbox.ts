@@ -1,9 +1,11 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   type GetLifeOpsInboxRequest,
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsInbox,
+  type LifeOpsInboxCacheMode,
   type LifeOpsInboxChannel,
   type LifeOpsInboxChannelCount,
   type LifeOpsInboxMessage,
@@ -21,9 +23,14 @@ import {
   type PriorityScore,
   scoreInboxMessages,
 } from "./priority-scoring.js";
+import type { LifeOpsCachedInboxMessage } from "./repository.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 const DEFAULT_INBOX_LIMIT = 100;
+const INBOX_CACHE_FRESH_MS = 60_000;
+const INBOX_CACHE_WARM_LIMIT = 200;
+const INBOX_CACHE_READ_LIMIT = 800;
+const INBOX_CACHE_FULL_LIMIT = 5000;
 const INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(LIFEOPS_INBOX_CHANNELS);
 const SUBJECT_REPLY_PREFIX = /^(?:\s*(?:re|fwd|fw)\s*:\s*)+/i;
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
@@ -47,10 +54,7 @@ function emptyChannelCounts(): Record<
   LifeOpsInboxChannel,
   LifeOpsInboxChannelCount
 > {
-  const counts = {} as Record<
-    LifeOpsInboxChannel,
-    LifeOpsInboxChannelCount
-  >;
+  const counts = {} as Record<LifeOpsInboxChannel, LifeOpsInboxChannelCount>;
   for (const channel of LIFEOPS_INBOX_CHANNELS) {
     counts[channel] = { total: 0, unread: 0 };
   }
@@ -73,7 +77,8 @@ function deriveThreadId(
       .replace(/^Email from\s+/i, "")
       .replace(SUBJECT_REPLY_PREFIX, "")
       .trim();
-    const fromKey = message.senderEmail?.trim().toLowerCase() ?? message.senderName;
+    const fromKey =
+      message.senderEmail?.trim().toLowerCase() ?? message.senderName;
     return `gmail:${fromKey}:${subject || externalId}`;
   }
   if (message.roomId) {
@@ -109,7 +114,7 @@ export function toInboxMessage(
     channel === "gmail"
       ? Boolean(
           message.gmailLikelyReplyNeeded === true ||
-            message.gmailIsImportant === true,
+          message.gmailIsImportant === true,
         )
       : true;
 
@@ -145,7 +150,24 @@ export function toInboxMessage(
     participantCount: message.participantCount,
     gmailAccountId: message.gmailAccountId,
     gmailAccountEmail: message.gmailAccountEmail,
+    lastSeenAt: message.lastSeenAt,
+    repliedAt: message.repliedAt,
+    priorityScore: message.priorityScore,
   };
+}
+
+export function toInboxMessages(
+  inbound: InboundMessage[],
+): LifeOpsInboxMessage[] {
+  const messages: LifeOpsInboxMessage[] = [];
+  let index = 0;
+  for (const message of inbound) {
+    const channel = normalizeInboxChannel(message.source);
+    index += 1;
+    if (!channel) continue;
+    messages.push(toInboxMessage(message, channel, index - 1));
+  }
+  return messages;
 }
 
 interface InboxBuildOptions {
@@ -267,9 +289,7 @@ function buildThreadGroups(
 
   const groups: LifeOpsInboxThreadGroup[] = [];
   for (const [key, members] of buckets) {
-    members.sort(
-      (a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt),
-    );
+    members.sort((a, b) => Date.parse(b.receivedAt) - Date.parse(a.receivedAt));
     const latestMessage = members[0];
     if (!latestMessage) continue;
     const totalCount = members.length;
@@ -282,8 +302,25 @@ function buildThreadGroups(
       .map((m) => m.priorityScore)
       .filter((value): value is number => typeof value === "number");
 
-    // Determine the dominant category from the LLM scoring when available.
+    // Determine the dominant category from persisted or current LLM scoring.
     let priorityCategory: PriorityCategory | undefined;
+    let bestPersistedCategory: {
+      category: PriorityCategory;
+      score: number;
+    } | null = null;
+    for (const member of members) {
+      if (!member.priorityCategory) continue;
+      const score = member.priorityScore ?? 0;
+      if (!bestPersistedCategory || score > bestPersistedCategory.score) {
+        bestPersistedCategory = {
+          category: member.priorityCategory,
+          score,
+        };
+      }
+    }
+    if (bestPersistedCategory) {
+      priorityCategory = bestPersistedCategory.category;
+    }
     if (llmScores && llmScores.size > 0) {
       const seen = new Map<PriorityCategory, number>();
       let best: { category: PriorityCategory; score: number } | null = null;
@@ -385,8 +422,22 @@ function isMissedMessage(message: LifeOpsInboxMessage, nowMs: number): boolean {
   return nowMs - received >= MISSED_REPLY_GAP_MS;
 }
 
+function isMissedThreadGroup(
+  group: LifeOpsInboxThreadGroup,
+  nowMs: number,
+): boolean {
+  return group.messages.some((message) => isMissedMessage(message, nowMs));
+}
+
 export function buildInbox(
   inbound: InboundMessage[],
+  options: InboxBuildOptions,
+): LifeOpsInbox {
+  return buildInboxFromMessages(toInboxMessages(inbound), options);
+}
+
+export function buildInboxFromMessages(
+  sourceMessages: readonly LifeOpsInboxMessage[],
   options: InboxBuildOptions,
 ): LifeOpsInbox {
   const collected: LifeOpsInboxMessage[] = [];
@@ -396,14 +447,12 @@ export function buildInbox(
       ? new Set(options.chatTypeFilter)
       : null;
 
-  let index = 0;
-  for (const message of inbound) {
-    const channel = normalizeInboxChannel(message.source);
-    index += 1;
+  for (const message of sourceMessages) {
+    const channel = message.channel;
     if (!channel || !options.allowed.has(channel)) {
       continue;
     }
-    const normalized = toInboxMessage(message, channel, index - 1);
+    const normalized = { ...message, sender: { ...message.sender } };
 
     if (chatTypeFilter && !chatTypeFilter.has(normalized.chatType ?? "dm")) {
       continue;
@@ -459,9 +508,7 @@ export function buildInbox(
     const nowMs = Date.now();
     messages = messages.filter((m) => isMissedMessage(m, nowMs));
     if (threadGroups) {
-      threadGroups = threadGroups.filter((g) =>
-        isMissedMessage(g.latestMessage, nowMs),
-      );
+      threadGroups = threadGroups.filter((g) => isMissedThreadGroup(g, nowMs));
     }
   }
 
@@ -478,6 +525,50 @@ export function buildInbox(
   return inbox;
 }
 
+function cacheReadLimitFor(resolved: ResolvedInboxRequest): number {
+  if (resolved.cacheMode === "cache-only") {
+    return Math.max(resolved.limit, resolved.cacheLimit);
+  }
+  if (resolved.cacheLimit > INBOX_CACHE_READ_LIMIT) {
+    return Math.max(resolved.limit, resolved.cacheLimit);
+  }
+  return Math.min(
+    INBOX_CACHE_READ_LIMIT,
+    Math.max(resolved.limit * 4, INBOX_CACHE_WARM_LIMIT),
+  );
+}
+
+function cacheWarmLimitFor(resolved: ResolvedInboxRequest): number {
+  if (resolved.cacheMode === "refresh") {
+    return resolved.cacheLimit;
+  }
+  return Math.min(500, Math.max(resolved.limit, INBOX_CACHE_WARM_LIMIT));
+}
+
+function isFreshCache(records: readonly LifeOpsCachedInboxMessage[]): boolean {
+  if (records.length === 0) return false;
+  let newest = 0;
+  for (const record of records) {
+    const parsed = Date.parse(record.cachedAt);
+    if (Number.isFinite(parsed) && parsed > newest) newest = parsed;
+  }
+  return newest > 0 && Date.now() - newest <= INBOX_CACHE_FRESH_MS;
+}
+
+function flattenInboxMessages(inbox: LifeOpsInbox): LifeOpsInboxMessage[] {
+  const messages = new Map<string, LifeOpsInboxMessage>();
+  for (const message of inbox.messages) {
+    messages.set(message.id, message);
+  }
+  for (const group of inbox.threadGroups ?? []) {
+    messages.set(group.latestMessage.id, group.latestMessage);
+    for (const message of group.messages ?? []) {
+      messages.set(message.id, message);
+    }
+  }
+  return [...messages.values()];
+}
+
 export interface ResolvedInboxRequest {
   limit: number;
   allowed: Set<LifeOpsInboxChannel>;
@@ -487,6 +578,8 @@ export interface ResolvedInboxRequest {
   gmailAccountId?: string;
   missedOnly: boolean;
   sortByPriority: boolean;
+  cacheMode: LifeOpsInboxCacheMode;
+  cacheLimit: number;
 }
 
 export function resolveInboxRequest(
@@ -506,10 +599,27 @@ export function resolveInboxRequest(
       : [...LIFEOPS_INBOX_CHANNELS];
   const chatTypeFilter =
     Array.isArray(request.chatTypeFilter) && request.chatTypeFilter.length > 0
-      ? (request.chatTypeFilter.filter((value) =>
-          value === "dm" || value === "group" || value === "channel",
+      ? (request.chatTypeFilter.filter(
+          (value) => value === "dm" || value === "group" || value === "channel",
         ) as InboxChatType[])
       : undefined;
+  const cacheMode: LifeOpsInboxCacheMode =
+    request.cacheMode === "refresh" || request.cacheMode === "cache-only"
+      ? request.cacheMode
+      : "read-through";
+  const requestedCacheLimit =
+    typeof request.cacheLimit === "number" &&
+    Number.isFinite(request.cacheLimit) &&
+    request.cacheLimit > 0
+      ? Math.floor(request.cacheLimit)
+      : undefined;
+  const cacheLimit = Math.min(
+    requestedCacheLimit ??
+      (cacheMode === "read-through"
+        ? INBOX_CACHE_WARM_LIMIT
+        : INBOX_CACHE_FULL_LIMIT),
+    INBOX_CACHE_FULL_LIMIT,
+  );
   return {
     limit,
     allowed: new Set<LifeOpsInboxChannel>(requestedChannels),
@@ -528,6 +638,8 @@ export function resolveInboxRequest(
         : undefined,
     missedOnly: request.missedOnly === true,
     sortByPriority: request.sortByPriority === true,
+    cacheMode,
+    cacheLimit,
   };
 }
 
@@ -547,10 +659,14 @@ async function loadPriorityScoringSettings(
       enabled: state.priorityScoring.enabled === true,
       model: state.priorityScoring.model ?? null,
     };
-  } catch {
-    // The route handler validates the cached blob and surfaces errors there;
-    // here we just silently default to "enabled, no model override" so
-    // unrelated state corruption never blocks the inbox.
+  } catch (error) {
+    logger.warn(
+      {
+        src: "lifeops.inbox",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "[LifeOpsInbox] failed to load priority scoring settings; using default model",
+    );
     return { enabled: true, model: null };
   }
 }
@@ -634,7 +750,8 @@ export async function fetchInbox(
   const resolved = resolveInboxRequest(request);
   const inbound = await fetchAllMessages(runtime, {
     sources: Array.from(resolved.allowed),
-    limit: resolved.limit,
+    limit:
+      resolved.cacheMode === "refresh" ? resolved.cacheLimit : resolved.limit,
     includeGmail: resolved.allowed.has("gmail"),
     gmailSource,
     xDmSource,
@@ -652,15 +769,54 @@ export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
       request: GetLifeOpsInboxRequest = {},
     ): Promise<LifeOpsInbox> {
       const resolved = resolveInboxRequest(request);
+      const ownerName = resolveOwnerName(this.runtime);
+      const buildFromCache = (
+        messages: readonly LifeOpsCachedInboxMessage[],
+      ): LifeOpsInbox =>
+        buildInboxFromMessages(messages, {
+          limit: resolved.limit,
+          allowed: resolved.allowed,
+          chatTypeFilter: resolved.chatTypeFilter,
+          maxParticipants: resolved.maxParticipants,
+          gmailAccountId: resolved.gmailAccountId,
+          ownerName,
+          groupByThread: resolved.groupByThread,
+          missedOnly: resolved.missedOnly,
+          sortByPriority: resolved.sortByPriority,
+        });
+      const cached = await this.repository.listCachedInboxMessages(
+        this.runtime.agentId,
+        {
+          channels: Array.from(resolved.allowed),
+          maxResults: cacheReadLimitFor(resolved),
+          gmailAccountId: resolved.gmailAccountId,
+        },
+      );
+      if (resolved.cacheMode === "cache-only") {
+        return buildFromCache(cached);
+      }
+      if (resolved.cacheMode !== "refresh" && isFreshCache(cached)) {
+        return buildFromCache(cached);
+      }
+
       const inbound = await fetchAllMessages(this.runtime, {
         sources: Array.from(resolved.allowed),
-        limit: resolved.limit,
+        limit: cacheWarmLimitFor(resolved),
         includeGmail: resolved.allowed.has("gmail"),
         gmailSource: this,
         xDmSource: this,
         gmailGrantId: resolved.gmailAccountId,
       });
-      return buildInboxWithLlm(this.runtime, inbound, resolved);
+      await this.repository.upsertCachedInboxMessages(
+        this.runtime.agentId,
+        toInboxMessages(inbound),
+      );
+      const inbox = await buildInboxWithLlm(this.runtime, inbound, resolved);
+      await this.repository.upsertCachedInboxMessages(
+        this.runtime.agentId,
+        flattenInboxMessages(inbox),
+      );
+      return inbox;
     }
   }
 

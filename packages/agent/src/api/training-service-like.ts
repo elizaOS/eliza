@@ -2,4 +2,4 @@
 export type {
   TrainingServiceLike,
   TrainingServiceWithRuntime,
-} from "@elizaos/app-training";
+} from "@elizaos/app-training/services/training-service-like";

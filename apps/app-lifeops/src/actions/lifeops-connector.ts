@@ -1,3 +1,4 @@
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionExample,
@@ -8,7 +9,6 @@ import type {
   State,
 } from "@elizaos/core";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { extractActionParamsViaLlm } from "@elizaos/agent";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -158,9 +158,7 @@ function missingParamResult(
 // Dispatch
 // ---------------------------------------------------------------------------
 
-async function dispatchListAll(
-  service: LifeOpsService,
-): Promise<ActionResult> {
+async function dispatchListAll(service: LifeOpsService): Promise<ActionResult> {
   const [
     google,
     x,
@@ -195,7 +193,10 @@ async function dispatchListAll(
         discord,
         imessage,
         whatsapp,
-        browser_bridge: { settings: browserSettings, companions: browserCompanions },
+        browser_bridge: {
+          settings: browserSettings,
+          companions: browserCompanions,
+        },
       },
     },
   };
@@ -222,7 +223,12 @@ async function dispatchGoogle(
         text: response.authUrl
           ? `Open this URL to finish Google connect: ${response.authUrl}`
           : `Google connector started for side=${side}, mode=${response.mode}.`,
-        data: { actionName: ACTION_NAME, connector: "google", subaction, response },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "google",
+          subaction,
+          response,
+        },
       };
     }
     case "disconnect": {
@@ -233,7 +239,12 @@ async function dispatchGoogle(
       return {
         success: true,
         text: `Google connector disconnected (side=${side}).`,
-        data: { actionName: ACTION_NAME, connector: "google", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "google",
+          subaction,
+          status,
+        },
       };
     }
     case "status": {
@@ -245,7 +256,12 @@ async function dispatchGoogle(
       return {
         success: true,
         text: `Google connector status retrieved (side=${side}).`,
-        data: { actionName: ACTION_NAME, connector: "google", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "google",
+          subaction,
+          status,
+        },
       };
     }
     case "verify":
@@ -330,7 +346,12 @@ async function dispatchTelegram(
       return {
         success: true,
         text: `Telegram auth started (state=${response.state}). Submit the SMS code to finish connecting.`,
-        data: { actionName: ACTION_NAME, connector: "telegram", subaction, response },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "telegram",
+          subaction,
+          response,
+        },
       };
     }
     case "disconnect": {
@@ -338,7 +359,12 @@ async function dispatchTelegram(
       return {
         success: true,
         text: `Telegram disconnected (side=${side}).`,
-        data: { actionName: ACTION_NAME, connector: "telegram", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "telegram",
+          subaction,
+          status,
+        },
       };
     }
     case "verify": {
@@ -349,9 +375,15 @@ async function dispatchTelegram(
         sendMessage: params.sendMessage,
       });
       return {
-        success: response.read.ok && (params.sendTarget ? response.send.ok : true),
+        success:
+          response.read.ok && (params.sendTarget ? response.send.ok : true),
         text: `Telegram verify: read=${response.read.ok ? "ok" : "fail"}, send=${response.send.ok ? "ok" : "fail"}.`,
-        data: { actionName: ACTION_NAME, connector: "telegram", subaction, response },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "telegram",
+          subaction,
+          response,
+        },
       };
     }
     case "status": {
@@ -359,7 +391,12 @@ async function dispatchTelegram(
       return {
         success: true,
         text: `Telegram connector status retrieved (side=${side}).`,
-        data: { actionName: ACTION_NAME, connector: "telegram", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "telegram",
+          subaction,
+          status,
+        },
       };
     }
     case "list":
@@ -379,7 +416,12 @@ async function dispatchSignal(
       return {
         success: true,
         text: `Signal pairing started (sessionId=${response.sessionId}). Scan the QR code from Signal mobile to link.`,
-        data: { actionName: ACTION_NAME, connector: "signal", subaction, response },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "signal",
+          subaction,
+          response,
+        },
       };
     }
     case "disconnect": {
@@ -387,7 +429,12 @@ async function dispatchSignal(
       return {
         success: true,
         text: `Signal disconnected (side=${side}).`,
-        data: { actionName: ACTION_NAME, connector: "signal", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "signal",
+          subaction,
+          status,
+        },
       };
     }
     case "status": {
@@ -395,7 +442,12 @@ async function dispatchSignal(
       return {
         success: true,
         text: `Signal connector status retrieved (side=${side}).`,
-        data: { actionName: ACTION_NAME, connector: "signal", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "signal",
+          subaction,
+          status,
+        },
       };
     }
     case "verify":
@@ -417,7 +469,12 @@ async function dispatchDiscord(
       return {
         success: true,
         text: `Discord browser connector authorized (side=${side}).`,
-        data: { actionName: ACTION_NAME, connector: "discord", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "discord",
+          subaction,
+          status,
+        },
       };
     }
     case "disconnect": {
@@ -425,7 +482,12 @@ async function dispatchDiscord(
       return {
         success: true,
         text: `Discord disconnected (side=${side}).`,
-        data: { actionName: ACTION_NAME, connector: "discord", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "discord",
+          subaction,
+          status,
+        },
       };
     }
     case "status": {
@@ -433,7 +495,12 @@ async function dispatchDiscord(
       return {
         success: true,
         text: `Discord connector status retrieved (side=${side}).`,
-        data: { actionName: ACTION_NAME, connector: "discord", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "discord",
+          subaction,
+          status,
+        },
       };
     }
     case "verify":
@@ -453,7 +520,12 @@ async function dispatchIMessage(
       return {
         success: true,
         text: `iMessage connector status retrieved.`,
-        data: { actionName: ACTION_NAME, connector: "imessage", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "imessage",
+          subaction,
+          status,
+        },
       };
     }
     case "connect":
@@ -485,7 +557,12 @@ async function dispatchWhatsApp(
       return {
         success: true,
         text: `WhatsApp connector status retrieved.`,
-        data: { actionName: ACTION_NAME, connector: "whatsapp", subaction, status },
+        data: {
+          actionName: ACTION_NAME,
+          connector: "whatsapp",
+          subaction,
+          status,
+        },
       };
     }
     case "connect":
@@ -745,14 +822,14 @@ export const lifeOpsConnectorAction: Action & {
     },
     {
       name: "phone",
-      description: "Telegram connect only — full phone number with country code.",
+      description:
+        "Telegram connect only — full phone number with country code.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "apiId",
-      description:
-        "Telegram connect only — optional Telegram apiId override.",
+      description: "Telegram connect only — optional Telegram apiId override.",
       required: false,
       schema: { type: "number" as const },
     },
@@ -778,8 +855,7 @@ export const lifeOpsConnectorAction: Action & {
     },
     {
       name: "sendMessage",
-      description:
-        "Telegram verify only — text body for the self-test send.",
+      description: "Telegram verify only — text body for the self-test send.",
       required: false,
       schema: { type: "string" as const },
     },

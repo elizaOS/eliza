@@ -65,6 +65,7 @@ export type PersistedLlmCall = {
   latencyMs: number;
   promptTokens?: number;
   completionTokens?: number;
+  tokenUsageEstimated?: boolean;
 };
 
 export type PersistedProviderAccess = {

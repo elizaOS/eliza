@@ -33,7 +33,10 @@ import {
   useState,
 } from "react";
 import { client, type OnboardingOptions, type PluginParamDef } from "../../api";
-import { ConfigRenderer, defaultRegistry } from "../../config";
+import {
+  ConfigRenderer,
+  defaultRegistry,
+} from "../../components/config-ui/config-renderer";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import {
   getOnboardingProviderOption,
@@ -382,7 +385,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           small: "minimax/minimax-m2.7",
           medium: "anthropic/claude-sonnet-4.6",
           large: "moonshotai/kimi-k2.5",
-          mega: "anthropic/claude-sonnet-4.6",
+          mega: "anthropic/claude-opus-4-7",
         };
 
         const vars = asRecord(asRecord(cfg.env)?.vars);

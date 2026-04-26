@@ -20,6 +20,7 @@
  */
 
 import { v4 } from "uuid";
+import { factExtractionTemplate } from "../../../prompts.ts";
 import type {
 	ActionResult,
 	Evaluator,
@@ -41,17 +42,16 @@ import type {
 import { MemoryType } from "../../../types/memory.ts";
 import { asUUID, type JsonValue } from "../../../types/primitives.ts";
 import { composePrompt } from "../../../utils.ts";
-import { factExtractionTemplate } from "../../../prompts.ts";
+import { recordFactCandidate } from "./_factCandidates.ts";
 import {
-	ExtractorOutputSchema,
 	type AddCurrentOp,
 	type AddDurableOp,
 	type ContradictOp,
 	type DecayOp,
 	type ExtractorOp,
+	ExtractorOutputSchema,
 	type StrengthenOp,
 } from "./factExtractor.schema.ts";
-import { recordFactCandidate } from "./_factCandidates.ts";
 
 const MAX_KNOWN_PER_KIND = 15;
 const CANDIDATE_POOL_SIZE = 30;
@@ -136,7 +136,10 @@ function readCategory(memory: Memory): string {
 function readEffectiveValidAt(memory: Memory): string | null {
 	const validAt = readFactMetadata(memory).validAt;
 	if (typeof validAt === "string" && validAt.length > 0) return validAt;
-	if (typeof memory.createdAt === "number" && Number.isFinite(memory.createdAt)) {
+	if (
+		typeof memory.createdAt === "number" &&
+		Number.isFinite(memory.createdAt)
+	) {
 		return new Date(memory.createdAt).toISOString();
 	}
 	return null;
@@ -183,10 +186,7 @@ function formatKnownCurrentLine(memory: Memory): string {
 	return `[${id}] (current.${readCategory(memory)}, since ${since}) ${text}`;
 }
 
-function formatKnownLines(
-	memories: Memory[],
-	kind: FactKind,
-): string {
+function formatKnownLines(memories: Memory[], kind: FactKind): string {
 	const lines: string[] = [];
 	for (const memory of memories) {
 		const line =
@@ -333,7 +333,10 @@ async function applyAddDurable(
 	if (factId && proposedEmbedding) {
 		const inserted = await ctx.runtime.getMemoryById(factId);
 		if (inserted) {
-			ctx.insertedThisRun.push({ memory: inserted, embedding: proposedEmbedding });
+			ctx.insertedThisRun.push({
+				memory: inserted,
+				embedding: proposedEmbedding,
+			});
 			ctx.candidatesById.set(factId, inserted);
 		}
 	}
@@ -381,7 +384,10 @@ async function applyAddCurrent(
 	if (factId && proposedEmbedding) {
 		const inserted = await ctx.runtime.getMemoryById(factId);
 		if (inserted) {
-			ctx.insertedThisRun.push({ memory: inserted, embedding: proposedEmbedding });
+			ctx.insertedThisRun.push({
+				memory: inserted,
+				embedding: proposedEmbedding,
+			});
 			ctx.candidatesById.set(factId, inserted);
 		}
 	}
@@ -505,10 +511,7 @@ async function applyStrengthenForMemory(
 	await ctx.runtime.updateMemory({ id: fact.id, metadata: nextMeta });
 }
 
-async function applyDecay(
-	ctx: ApplyContext,
-	op: DecayOp,
-): Promise<boolean> {
+async function applyDecay(ctx: ApplyContext, op: DecayOp): Promise<boolean> {
 	const fact = ctx.candidatesById.get(op.factId);
 	if (!fact || !fact.id) return false;
 	const nextConfidence = clamp01(pickFactConfidence(fact) - DECAY_DELTA);
@@ -638,7 +641,8 @@ async function handler(
 			"someone";
 		recentLines.push(`- ${senderName}: ${text}`);
 	}
-	const recentRendered = recentLines.length > 0 ? recentLines.join("\n") : "(none)";
+	const recentRendered =
+		recentLines.length > 0 ? recentLines.join("\n") : "(none)";
 
 	const agentName = runtime.character.name ?? "Agent";
 	const senderName =
@@ -708,7 +712,6 @@ async function handler(
 		}
 		if (op.op === "contradict") {
 			if (await applyContradict(ctx, op)) contradicted += 1;
-			continue;
 		}
 	}
 

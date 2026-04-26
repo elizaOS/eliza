@@ -1,6 +1,13 @@
+import { parseCronExpression } from "@elizaos/agent/triggers/scheduling";
 import {
-  parseCronExpression,
-} from "@elizaos/agent";
+  BROWSER_BRIDGE_KINDS,
+  BROWSER_BRIDGE_SITE_ACCESS_MODES,
+  BROWSER_BRIDGE_TRACKING_MODES,
+  type BrowserBridgeKind,
+  type BrowserBridgePermissionState,
+  type BrowserBridgeSettings,
+  type UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -22,15 +29,6 @@ import {
   LIFEOPS_TIME_WINDOW_NAMES,
   LIFEOPS_WORKFLOW_TRIGGER_TYPES,
 } from "../contracts/index.js";
-import {
-  BROWSER_BRIDGE_KINDS,
-  BROWSER_BRIDGE_SITE_ACCESS_MODES,
-  BROWSER_BRIDGE_TRACKING_MODES,
-  type BrowserBridgeKind,
-  type BrowserBridgePermissionState,
-  type BrowserBridgeSettings,
-  type UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge";
 import {
   resolveDefaultTimeZone,
   resolveDefaultWindowPolicy,

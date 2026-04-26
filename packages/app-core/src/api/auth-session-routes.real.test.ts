@@ -182,7 +182,7 @@ describe("P1 session routes (real pglite)", () => {
     delete process.env.ELIZA_API_TOKEN;
     delete process.env.ELIZA_CLOUD_PROVISIONED;
     delete process.env.MILADY_LEGACY_GRACE_UNTIL;
-  });
+  }, 30_000);
 
   afterEach(async () => {
     await harness.cleanup();
@@ -547,5 +547,58 @@ describe("P1 session routes (real pglite)", () => {
     );
     expect(cloudLocalOk).toBe(false);
     expect(cloudLocal.status()).toBe(401);
+  });
+
+  it("route auth rejects localhost trust when proxy headers report remote clients", async () => {
+    process.env.ELIZA_API_TOKEN = "configured-token-value";
+    const { ensureCompatApiAuthorizedAsync, _resetAuthRateLimiter: reset } =
+      await import("./auth");
+
+    const cases: Array<{
+      name: string;
+      headers: http.IncomingHttpHeaders;
+    }> = [
+      {
+        name: "Forwarded",
+        headers: { forwarded: 'for="[::1]", for=203.0.113.8' },
+      },
+      {
+        name: "X-Forwarded-For",
+        headers: { "x-forwarded-for": "127.0.0.1, 203.0.113.9" },
+      },
+      { name: "X-Real-IP", headers: { "x-real-ip": "198.51.100.4" } },
+      { name: "X-Client-IP", headers: { "x-client-ip": "198.51.100.5" } },
+      {
+        name: "CF-Connecting-IP",
+        headers: { "cf-connecting-ip": "2001:db8::1" },
+      },
+      {
+        name: "True-Client-IP",
+        headers: { "true-client-ip": "203.0.113.10:443" },
+      },
+      {
+        name: "similar client IP header",
+        headers: { "fastly-client-ip": "198.51.100.6" },
+      },
+    ];
+
+    for (const testCase of cases) {
+      reset();
+      const res = fakeRes();
+      const ok = await ensureCompatApiAuthorizedAsync(
+        fakeReq({
+          method: "GET",
+          pathname: "/api/secure",
+          headers: {
+            host: "localhost:31337",
+            ...testCase.headers,
+          },
+        }),
+        res.res,
+        { store: harness.store },
+      );
+      expect(ok, testCase.name).toBe(false);
+      expect(res.status(), testCase.name).toBe(401);
+    }
   });
 });

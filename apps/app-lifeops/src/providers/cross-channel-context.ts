@@ -15,6 +15,7 @@
  * than running a speculative search on every turn.
  */
 
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   IAgentRuntime,
   Memory,
@@ -24,13 +25,12 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
 import {
   CROSS_CHANNEL_SEARCH_CHANNELS,
-  runCrossChannelSearch,
   type CrossChannelSearchChannel,
   type CrossChannelSearchHit,
   type CrossChannelSearchQuery,
+  runCrossChannelSearch,
 } from "../lifeops/cross-channel-search.js";
 
 const EMPTY: ProviderResult = {

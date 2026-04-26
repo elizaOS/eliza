@@ -3,10 +3,21 @@
 // Knowledge*, Memory*, MCP*, Share*
 // ---------------------------------------------------------------------------
 
-import type {
-  ConversationMetadata,
-  ConversationScope,
-} from "@elizaos/agent";
+import type { ConversationMetadata, ConversationScope } from "@elizaos/agent";
+
+export type {
+  ScratchpadCreateTopicRequest,
+  ScratchpadDeleteTopicResponse,
+  ScratchpadReplaceTopicRequest,
+  ScratchpadSearchResponse,
+  ScratchpadSummaryPreviewRequest,
+  ScratchpadSummaryPreviewResponse,
+  ScratchpadTopicDto,
+  ScratchpadTopicMatchDto,
+  ScratchpadTopicResponse,
+  ScratchpadTopicSearchResultDto,
+  ScratchpadTopicsListResponse,
+} from "@elizaos/shared/contracts";
 
 // Conversations
 export interface Conversation {

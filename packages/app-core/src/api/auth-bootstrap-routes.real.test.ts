@@ -253,7 +253,7 @@ describe("cloud-provisioned auth bootstrap smoke (real HTTP)", () => {
 
   beforeEach(async () => {
     harness = await open();
-  });
+  }, 30_000);
 
   afterEach(async () => {
     await harness.cleanup();

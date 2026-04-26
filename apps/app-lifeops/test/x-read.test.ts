@@ -72,6 +72,62 @@ describe("readXDms", () => {
     expect(capturedAuth).toContain("oauth_signature=");
     expect(page.items).toEqual([]);
   });
+
+  test("maps DM events, sender handles, outbound filtering, and pagination cursor", async () => {
+    global.fetch = vi.fn(async () =>
+      jsonResponse({
+        data: [
+          {
+            id: "dm-in-1",
+            event_type: "MessageCreate",
+            sender_id: "alice-id",
+            dm_conversation_id: "conversation-1",
+            text: "Checking in",
+            created_at: "2026-04-19T11:00:00.000Z",
+          },
+          {
+            id: "dm-out-1",
+            event_type: "MessageCreate",
+            sender_id: "user-42",
+            dm_conversation_id: "conversation-1",
+            text: "On it",
+            created_at: "2026-04-19T11:01:00.000Z",
+          },
+          {
+            id: "reaction-1",
+            event_type: "ReactionCreate",
+            sender_id: "alice-id",
+          },
+        ],
+        includes: {
+          users: [
+            { id: "alice-id", username: "alice" },
+            { id: "user-42", username: "milady" },
+          ],
+        },
+        meta: { next_token: "next-page" },
+      }),
+    ) as unknown as typeof fetch;
+
+    const page = await readXDms(CREDS, { limit: 10 });
+
+    expect(page.nextCursor).toBe("next-page");
+    expect(page.items).toHaveLength(2);
+    expect(page.items[0]).toMatchObject({
+      id: "dm-in-1",
+      conversationId: "conversation-1",
+      senderId: "alice-id",
+      senderHandle: "alice",
+      text: "Checking in",
+      isInbound: true,
+    });
+    expect(page.items[1]).toMatchObject({
+      id: "dm-out-1",
+      senderId: "user-42",
+      senderHandle: "milady",
+      isInbound: false,
+    });
+  });
 });
 
 describe("pullXFeed", () => {
@@ -111,6 +167,36 @@ describe("searchX", () => {
     await searchX(CREDS, "elizaOS");
     expect(capturedUrl).toContain("/2/tweets/search/recent");
     expect(capturedUrl).toContain("query=elizaOS");
+  });
+
+  test("maps tweet authors and recent-search pagination cursor", async () => {
+    global.fetch = vi.fn(async () =>
+      jsonResponse({
+        data: [
+          {
+            id: "tweet-1",
+            author_id: "alice-id",
+            text: "elizaOS connector update",
+            created_at: "2026-04-19T12:00:00.000Z",
+            conversation_id: "tweet-1",
+          },
+        ],
+        includes: { users: [{ id: "alice-id", username: "alice" }] },
+        meta: { next_token: "next-search-page" },
+      }),
+    ) as unknown as typeof fetch;
+
+    const page = await searchX(CREDS, "elizaOS", { limit: 5 });
+
+    expect(page.nextCursor).toBe("next-search-page");
+    expect(page.items).toEqual([
+      expect.objectContaining({
+        id: "tweet-1",
+        authorId: "alice-id",
+        authorHandle: "alice",
+        text: "elizaOS connector update",
+      }),
+    ]);
   });
 });
 

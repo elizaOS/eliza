@@ -2760,6 +2760,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "APP_CREATE",
+      "description": "Multi-turn create-an-app flow: searches existing apps, asks the user new/edit/cancel, then dispatches a coding agent and verifies the output.",
+      "parameters": [],
+      "similes": [
+        "CREATE_APP",
+        "BUILD_APP",
+        "MAKE_APP",
+        "SCAFFOLD_APP"
+      ]
+    },
+    {
       "name": "BLUEBUBBLES_SEND_REACTION",
       "description": "Add or remove a reaction on a message via BlueBubbles",
       "parameters": [],
@@ -2801,6 +2812,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "/commands",
         "/cmds"
+      ]
+    },
+    {
+      "name": "CORE_STATUS",
+      "description": "Check thestatus of the @elizaos/core package (ejected or npm)",
+      "parameters": [],
+      "similes": [
+        "core status",
+        "check core",
+        "is core ejected",
+        "elizaos status"
       ]
     },
     {
@@ -2962,6 +2984,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "GET_PLUGIN_DETAILS",
+      "description": "Get detailed information about a specific plugin including features, dependencies, and usage.",
+      "parameters": [],
+      "similes": [
+        "tell me more about",
+        "show details for",
+        "plugin info",
+        "plugin details"
+      ]
+    },
+    {
       "name": "GET_SKILL_DETAILS",
       "description": "Get detailed information about a specific skill including version, owner, and stats.",
       "parameters": [],
@@ -3014,6 +3047,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SHOW_TASK_AGENTS",
         "LIST_SUB_AGENTS",
         "SHOW_TASK_STATUS"
+      ]
+    },
+    {
+      "name": "LIST_EJECTED_PLUGINS",
+      "description": "List all ejected plugins currently being managed locally",
+      "parameters": [],
+      "similes": [
+        "list ejected",
+        "show ejected plugins",
+        "which plugins are ejected",
+        "list local plugins"
       ]
     },
     {
@@ -3393,6 +3437,18 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
+      ]
+    },
+    {
+      "name": "SEARCH_PLUGINS",
+      "description": "Search for plugins in the ElizaOS registry by functionality, features, and natural language descriptions.",
+      "parameters": [],
+      "similes": [
+        "search for plugins",
+        "find plugins",
+        "look for plugins",
+        "discover plugins",
+        "search registry"
       ]
     },
     {

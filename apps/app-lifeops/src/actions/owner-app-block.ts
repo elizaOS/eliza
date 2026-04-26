@@ -6,6 +6,7 @@
  * the existing handlers in app-blocker.ts.
  */
 
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionExample,
@@ -14,15 +15,14 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   APP_BLOCKER_ACCESS_ERROR,
   getAppBlockerAccess,
 } from "../app-blocker/access.ts";
 import {
   blockAppsAction,
-  unblockAppsAction,
   getAppBlockStatusAction,
+  unblockAppsAction,
 } from "./app-blocker.js";
 
 const ACTION_NAME = "OWNER_APP_BLOCK";
@@ -95,7 +95,8 @@ export const ownerAppBlockAction: Action & {
     },
     {
       name: "durationMinutes",
-      description: "How long to block the apps, in minutes. Omit for indefinite block.",
+      description:
+        "How long to block the apps, in minutes. Omit for indefinite block.",
       required: false,
       schema: { type: "number" as const },
     },
@@ -105,7 +106,9 @@ export const ownerAppBlockAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Block Twitter and Instagram on my phone for 2 hours." },
+        content: {
+          text: "Block Twitter and Instagram on my phone for 2 hours.",
+        },
       },
       {
         name: "{{agentName}}",
@@ -160,14 +163,14 @@ export const ownerAppBlockAction: Action & {
 
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerAppBlockParameters;
-    const params = (await extractActionParamsViaLlm<OwnerAppBlockParameters>({
+    const params = (await extractActionParamsViaLlm<OwnerAppBlockParameters & Record<string, unknown>>({
       runtime,
       message,
       state,
       actionName: ACTION_NAME,
       actionDescription: ownerAppBlockAction.description ?? "",
       paramSchema: ownerAppBlockAction.parameters ?? [],
-      existingParams: rawParams,
+      existingParams: rawParams as Record<string, unknown>,
       requiredFields: ["subaction"],
     })) as OwnerAppBlockParameters;
     const subaction = coerceSubaction(params.subaction);

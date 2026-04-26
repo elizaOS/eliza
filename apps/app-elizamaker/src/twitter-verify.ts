@@ -13,12 +13,10 @@ import { logger } from "@elizaos/core";
 import {
   createIntegrationTelemetrySpan,
   resolveStateDir,
-  type VerificationResult,
 } from "@elizaos/agent";
+import type { VerificationResult } from "@elizaos/shared";
 
-export type {
-  VerificationResult,
-} from "@elizaos/agent";
+export type { VerificationResult } from "@elizaos/shared";
 
 const WHITELIST_FILE = "whitelist.json";
 

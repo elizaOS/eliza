@@ -1,6 +1,6 @@
 import { client } from "@elizaos/app-core";
-import type { BrowserBridgeCompanionStatus } from "../contracts/index.js";
 import { useCallback, useEffect, useState } from "react";
+import type { BrowserBridgeCompanionStatus } from "../contracts/index.js";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 
 const RECENT_CONTACT_WINDOW_MS = 5 * 60_000;
@@ -14,7 +14,6 @@ interface BrowserBridgeStatusChipProps {
 interface ChipDescriptor {
   label: string;
   dotClass: string;
-  textClass: string;
   borderClass: string;
 }
 
@@ -22,19 +21,16 @@ const CHIP_DESCRIPTORS: Record<ChipState, ChipDescriptor> = {
   connected: {
     label: "Browser connected",
     dotClass: "bg-emerald-400",
-    textClass: "text-emerald-200",
     borderClass: "border-emerald-500/30",
   },
   stale: {
     label: "Browser offline",
     dotClass: "bg-amber-300",
-    textClass: "text-amber-200",
     borderClass: "border-amber-500/30",
   },
   "needs-setup": {
     label: "Browser setup needed",
     dotClass: "bg-muted",
-    textClass: "text-muted",
     borderClass: "border-border/24",
   },
 };
@@ -102,13 +98,12 @@ export function BrowserBridgeStatusChip({
       data-testid="lifeops-overview-browser-chip"
       data-state={state}
       data-loaded={loaded ? "1" : "0"}
-      className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border bg-bg/30 px-2.5 text-[11px] font-medium transition-colors hover:bg-bg/50 ${descriptor.borderClass} ${descriptor.textClass}`}
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-bg/30 transition-colors hover:bg-bg/50 ${descriptor.borderClass}`}
     >
       <span
-        className={`h-1.5 w-1.5 rounded-full ${descriptor.dotClass}`}
+        className={`h-2 w-2 rounded-full ${descriptor.dotClass}`}
         aria-hidden
       />
-      {descriptor.label}
     </button>
   );
 }

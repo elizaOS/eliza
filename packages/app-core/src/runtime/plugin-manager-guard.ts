@@ -6,8 +6,6 @@
  * Skipped when `ELIZA_DISABLE_PLUGIN_MANAGER_AUTO_ENABLE=1` is set.
  */
 
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-
 let _checked = false;
 let _lastResult: PluginManagerGuardResult = "error";
 
@@ -49,6 +47,7 @@ export async function ensurePluginManagerAllowed(): Promise<PluginManagerGuardRe
     return _lastResult;
   }
   try {
+    const { loadElizaConfig, saveElizaConfig } = await import("@elizaos/agent");
     const config = loadElizaConfig();
     const PKG = "@elizaos/plugin-plugin-manager";
     const entries =

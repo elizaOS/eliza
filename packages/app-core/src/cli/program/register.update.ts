@@ -8,9 +8,7 @@
  *   eliza update channel [name]    # View or change release channel
  */
 
-import type {
-  ReleaseChannel,
-} from "@elizaos/agent";
+import type { ReleaseChannel } from "@elizaos/agent";
 import type { Command } from "commander";
 import { theme } from "../../terminal/theme";
 import { CLI_VERSION } from "../version";

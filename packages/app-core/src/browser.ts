@@ -13,8 +13,6 @@ export {
 } from "@elizaos/shared";
 export * from "@elizaos/ui";
 export { App } from "./App.tsx";
-export * from "./api/auth.ts";
-export * from "./api/compat-route-shared.ts";
 export * from "./api/index.ts";
 export * from "./api/response.ts";
 export * from "./app-shell/task-coordinator-slots.tsx";
@@ -31,6 +29,15 @@ export * from "./components/apps/surfaces/types.ts";
 export { CharacterEditor } from "./components/character/CharacterEditor.tsx";
 export * from "./components/character/character-greeting.ts";
 export * from "./components/chat/widgets/shared.tsx";
+export * from "./components/config-ui/config-renderer.tsx";
+export {
+  evaluateUiVisibility,
+  getSupportedComponents,
+  runValidation as runUiValidation,
+  sanitizeLinkHref,
+  UiRenderer,
+  type UiRendererProps,
+} from "./components/config-ui/ui-renderer.tsx";
 export { getExplorerTokenUrl } from "./components/inventory/chainConfig.ts";
 // Explicit named re-exports for the wallet helpers that renderer-side
 // modules (e.g. apps/app-companion/.../walletUtils.ts) reach for. The
@@ -53,11 +60,22 @@ export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/ThemeToggle.tsx";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
+export * from "./config/app-config.ts";
+export * from "./config/boot-config.ts";
+export * from "./config/boot-config-react.tsx";
 export type {
   CompanionInferenceNotice,
   CompanionSceneStatus,
 } from "./config/boot-config-store.ts";
+export * from "./config/branding.ts";
+export * from "./config/cloud-only.ts";
+export * from "./config/config-catalog.ts";
 export * from "./config/index.ts";
+export {
+  buildPluginConfigUiSpec,
+  buildPluginListUiSpec,
+} from "./config/plugin-ui-spec.ts";
+export * from "./config/ui-spec.ts";
 export * from "./events/index.ts";
 export * from "./hooks/useActivityEvents.ts";
 export * from "./hooks/useBugReport.tsx";

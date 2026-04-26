@@ -25,6 +25,9 @@ const pluginEdgeTtsSrc = path.join(
 );
 const reactPkg = path.join(fileDir, "node_modules/react");
 const reactDomPkg = path.join(fileDir, "node_modules/react-dom");
+const includeLiveE2e =
+  process.env.MILADY_INCLUDE_LIVE_E2E === "1" ||
+  process.env.ELIZA_INCLUDE_LIVE_E2E === "1";
 
 /**
  * Real `react` / `react-dom` packages (not .d.ts stubs from tsconfig paths)
@@ -42,6 +45,7 @@ export default defineConfig({
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
       "test/app/onboarding-companion.live.e2e.test.ts",
+      ...(includeLiveE2e ? [] : ["test/live-agent/**/*.e2e.test.ts"]),
     ],
   },
   resolve: {

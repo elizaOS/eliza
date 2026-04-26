@@ -215,8 +215,7 @@ function stateDirBase(): string {
 
 function safeName(raw: string): string {
   const trimmed = raw.trim();
-  const safeTrimmed =
-    trimmed.length > 1024 ? trimmed.slice(0, 1024) : trimmed;
+  const safeTrimmed = trimmed.length > 1024 ? trimmed.slice(0, 1024) : trimmed;
   const slug = safeTrimmed
     .replace(/[^a-zA-Z0-9._-]/g, "-")
     .replace(/-{1,1024}/g, "-")

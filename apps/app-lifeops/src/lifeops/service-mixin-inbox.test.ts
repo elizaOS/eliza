@@ -1,13 +1,20 @@
-import { describe, expect, it } from "vitest";
-import { LIFEOPS_INBOX_CHANNELS } from "@elizaos/shared";
+import { describe, expect, it, vi } from "vitest";
+import {
+  LIFEOPS_INBOX_CHANNELS,
+  type LifeOpsInboxMessage,
+} from "@elizaos/shared";
 
 import type { InboundMessage } from "../inbox/types.js";
 import {
   buildInbox,
+  buildInboxFromMessages,
   normalizeInboxChannel,
   resolveInboxRequest,
   toInboxMessage,
+  toInboxMessages,
+  withInbox,
 } from "./service-mixin-inbox.js";
+import type { LifeOpsCachedInboxMessage } from "./repository.js";
 
 describe("normalizeInboxChannel", () => {
   it("maps a canonical channel name to itself", () => {
@@ -53,6 +60,29 @@ describe("resolveInboxRequest", () => {
     expect(allowed.has("discord")).toBe(true);
     expect(allowed.has("telegram")).toBe(false);
     expect(allowed.size).toBe(2);
+  });
+
+  it("keeps normal reads bounded but expands explicit full-cache modes", () => {
+    expect(resolveInboxRequest({}).cacheMode).toBe("read-through");
+    expect(resolveInboxRequest({}).cacheLimit).toBe(200);
+
+    const refresh = resolveInboxRequest({
+      cacheMode: "refresh",
+      cacheLimit: 2500,
+    });
+    expect(refresh.cacheMode).toBe("refresh");
+    expect(refresh.cacheLimit).toBe(2500);
+
+    const cacheOnly = resolveInboxRequest({ cacheMode: "cache-only" });
+    expect(cacheOnly.cacheMode).toBe("cache-only");
+    expect(cacheOnly.cacheLimit).toBe(5000);
+  });
+
+  it("caps explicit cache warming to the bounded full-inbox window", () => {
+    expect(
+      resolveInboxRequest({ cacheMode: "refresh", cacheLimit: 50_000 })
+        .cacheLimit,
+    ).toBe(5000);
   });
 });
 
@@ -120,6 +150,59 @@ describe("toInboxMessage", () => {
       gmailLikelyReplyNeeded: false,
     };
     expect(toInboxMessage(msg, "gmail", 0).unread).toBe(false);
+  });
+
+  it("preserves priority retrieval metadata on normalized messages", () => {
+    const msg: InboundMessage = {
+      id: "mem-priority",
+      source: "telegram",
+      roomId: "room-priority",
+      entityId: "user-priority",
+      senderName: "Alice",
+      channelName: "Alice",
+      channelType: "dm",
+      text: "please review",
+      snippet: "please review",
+      timestamp: Date.UTC(2025, 0, 1, 12, 0, 0),
+      lastSeenAt: "2025-01-01T13:00:00.000Z",
+      repliedAt: "2025-01-01T14:00:00.000Z",
+      priorityScore: 88,
+    };
+    const out = toInboxMessage(msg, "telegram", 0);
+    expect(out.lastSeenAt).toBe("2025-01-01T13:00:00.000Z");
+    expect(out.repliedAt).toBe("2025-01-01T14:00:00.000Z");
+    expect(out.priorityScore).toBe(88);
+  });
+});
+
+describe("toInboxMessages", () => {
+  it("normalizes every supported inbound message for cache warming", () => {
+    const out = toInboxMessages([
+      {
+        id: "mem-1",
+        source: "discord",
+        roomId: "room-1",
+        senderName: "Alice",
+        channelName: "Alice",
+        channelType: "dm",
+        text: "hi",
+        snippet: "hi",
+        timestamp: 1,
+      },
+      {
+        id: "mem-2",
+        source: "slack",
+        roomId: "room-2",
+        senderName: "Ignored",
+        channelName: "Ignored",
+        channelType: "dm",
+        text: "ignored",
+        snippet: "ignored",
+        timestamp: 2,
+      },
+    ]);
+
+    expect(out.map((message) => message.id)).toEqual(["discord:mem-1"]);
   });
 });
 
@@ -279,6 +362,196 @@ describe("buildInbox", () => {
   });
 });
 
+describe("buildInboxFromMessages", () => {
+  it("builds the same inbox shape from cached normalized messages", () => {
+    const allowed = new Set(["discord"] as const);
+    const cached: LifeOpsInboxMessage[] = [
+      {
+        id: "discord:mem-old",
+        channel: "discord",
+        sender: {
+          id: "u1",
+          displayName: "Alice",
+          email: null,
+          avatarUrl: null,
+        },
+        subject: null,
+        snippet: "first",
+        receivedAt: "2025-01-01T09:00:00.000Z",
+        unread: true,
+        deepLink: null,
+        sourceRef: { channel: "discord", externalId: "mem-old" },
+        threadId: "room-1",
+        chatType: "dm",
+      },
+      {
+        id: "discord:mem-new",
+        channel: "discord",
+        sender: {
+          id: "u1",
+          displayName: "Alice",
+          email: null,
+          avatarUrl: null,
+        },
+        subject: null,
+        snippet: "later",
+        receivedAt: "2025-01-01T10:00:00.000Z",
+        unread: true,
+        deepLink: null,
+        sourceRef: { channel: "discord", externalId: "mem-new" },
+        threadId: "room-1",
+        chatType: "dm",
+        priorityScore: 88,
+        priorityCategory: "important",
+      },
+    ];
+
+    const inbox = buildInboxFromMessages(cached, {
+      limit: 50,
+      allowed: allowed as unknown as ReturnType<
+        typeof resolveInboxRequest
+      >["allowed"],
+      groupByThread: true,
+      sortByPriority: true,
+    });
+
+    expect(inbox.messages.map((message) => message.id)).toEqual([
+      "discord:mem-new",
+      "discord:mem-old",
+    ]);
+    expect(inbox.channelCounts.discord).toEqual({ total: 2, unread: 2 });
+    expect(inbox.threadGroups?.[0]?.maxPriorityScore).toBe(88);
+    expect(inbox.threadGroups?.[0]?.priorityCategory).toBe("important");
+  });
+});
+
+describe("LifeOps inbox cache modes", () => {
+  class BareInboxBase {
+    constructor(
+      public readonly runtime: Record<string, unknown>,
+      public readonly repository: Record<string, unknown>,
+    ) {}
+  }
+
+  const InboxService = withInbox(
+    BareInboxBase as unknown as Parameters<typeof withInbox>[0],
+  );
+
+  function cachedMessage(
+    id: string,
+    receivedAt: string,
+  ): LifeOpsCachedInboxMessage {
+    return {
+      id,
+      channel: "telegram",
+      sender: {
+        id: "user-1",
+        displayName: "Alice",
+        email: null,
+        avatarUrl: null,
+      },
+      subject: null,
+      snippet: "cached",
+      receivedAt,
+      unread: true,
+      deepLink: null,
+      sourceRef: { channel: "telegram", externalId: id.replace(/^telegram:/, "") },
+      threadId: "room-1",
+      chatType: "dm",
+      cachedAt: "2026-04-21T12:00:00.000Z",
+      updatedAt: "2026-04-21T12:00:00.000Z",
+      priorityFlags: [],
+    };
+  }
+
+  function makeRuntime() {
+    const roomId = "00000000-0000-0000-0000-000000000011";
+    const worldId = "00000000-0000-0000-0000-000000000012";
+    return {
+      agentId: "00000000-0000-0000-0000-000000000010",
+      character: { name: "Owner" },
+      getRoomsForParticipant: vi.fn(async () => [roomId]),
+      getRoom: vi.fn(async () => ({
+        id: roomId,
+        name: "Telegram DM",
+        source: "telegram",
+        type: "dm",
+        worldId,
+        metadata: {},
+      })),
+      getWorld: vi.fn(async () => ({ id: worldId, metadata: {} })),
+      getParticipantsForRoom: vi.fn(async () => ["owner", "sender"]),
+      getMemoriesByRoomIds: vi.fn(async () =>
+        Array.from({ length: 3 }, (_, index) => ({
+          id: `00000000-0000-0000-0000-00000000002${index}`,
+          roomId,
+          entityId: `00000000-0000-0000-0000-00000000003${index}`,
+          createdAt: Date.parse(`2026-04-21T12:0${index}:00.000Z`),
+          content: {
+            source: "telegram",
+            text: `live message ${index}`,
+          },
+          metadata: {
+            entityName: `Sender ${index}`,
+          },
+        })),
+      ),
+    };
+  }
+
+  function makeRepository(cached: LifeOpsCachedInboxMessage[] = []) {
+    return {
+      listCachedInboxMessages: vi.fn(async () => cached),
+      upsertCachedInboxMessages: vi.fn(async () => undefined),
+    };
+  }
+
+  it("serves cache-only reads without touching connector fetchers", async () => {
+    const runtime = makeRuntime();
+    const repository = makeRepository([
+      cachedMessage("telegram:cached-1", "2026-04-21T12:00:00.000Z"),
+    ]);
+    const service = new InboxService(runtime, repository);
+
+    const inbox = await service.getInbox({
+      channels: ["telegram"],
+      cacheMode: "cache-only",
+      limit: 50,
+    });
+
+    expect(inbox.messages.map((message) => message.id)).toEqual([
+      "telegram:cached-1",
+    ]);
+    expect(runtime.getRoomsForParticipant).not.toHaveBeenCalled();
+    expect(repository.upsertCachedInboxMessages).not.toHaveBeenCalled();
+  });
+
+  it("refresh mode ignores fresh cache and stores the full warm window", async () => {
+    const runtime = makeRuntime();
+    const repository = makeRepository([
+      cachedMessage("telegram:cached-fresh", new Date().toISOString()),
+    ]);
+    const service = new InboxService(runtime, repository);
+
+    const inbox = await service.getInbox({
+      channels: ["telegram"],
+      cacheMode: "refresh",
+      cacheLimit: 3,
+      limit: 1,
+    });
+
+    expect(inbox.messages).toHaveLength(1);
+    expect(runtime.getRoomsForParticipant).toHaveBeenCalledTimes(1);
+    expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 9 }),
+    );
+    expect(repository.upsertCachedInboxMessages).toHaveBeenCalled();
+    const firstCacheWrite =
+      repository.upsertCachedInboxMessages.mock.calls[0]?.[1] ?? [];
+    expect(firstCacheWrite).toHaveLength(3);
+  });
+});
+
 describe("resolveInboxRequest — Wave 2F filters", () => {
   it("passes through chatTypeFilter when valid", () => {
     const resolved = resolveInboxRequest({
@@ -303,24 +576,34 @@ describe("resolveInboxRequest — Wave 2F filters", () => {
   });
 
   it("normalizes maxParticipants to a positive integer or undefined", () => {
-    expect(resolveInboxRequest({ maxParticipants: 15 }).maxParticipants).toBe(15);
+    expect(resolveInboxRequest({ maxParticipants: 15 }).maxParticipants).toBe(
+      15,
+    );
+    expect(resolveInboxRequest({ maxParticipants: 15.7 }).maxParticipants).toBe(
+      15,
+    );
     expect(
-      resolveInboxRequest({ maxParticipants: 15.7 }).maxParticipants,
-    ).toBe(15);
-    expect(resolveInboxRequest({ maxParticipants: 0 }).maxParticipants).toBeUndefined();
-    expect(resolveInboxRequest({ maxParticipants: -3 }).maxParticipants).toBeUndefined();
+      resolveInboxRequest({ maxParticipants: 0 }).maxParticipants,
+    ).toBeUndefined();
+    expect(
+      resolveInboxRequest({ maxParticipants: -3 }).maxParticipants,
+    ).toBeUndefined();
   });
 
   it("trims and forwards a non-empty gmailAccountId", () => {
     expect(
       resolveInboxRequest({ gmailAccountId: " grant-1 " }).gmailAccountId,
     ).toBe("grant-1");
-    expect(resolveInboxRequest({ gmailAccountId: "" }).gmailAccountId).toBeUndefined();
+    expect(
+      resolveInboxRequest({ gmailAccountId: "" }).gmailAccountId,
+    ).toBeUndefined();
   });
 
   it("flips groupByThread on only when explicitly true", () => {
     expect(resolveInboxRequest({}).groupByThread).toBe(false);
-    expect(resolveInboxRequest({ groupByThread: true }).groupByThread).toBe(true);
+    expect(resolveInboxRequest({ groupByThread: true }).groupByThread).toBe(
+      true,
+    );
   });
 });
 
@@ -598,5 +881,84 @@ describe("buildInbox — Wave 2F filters and small-group heuristic", () => {
       "telegram:mem-old",
     ]);
     expect(group?.totalCount).toBe(2);
+  });
+
+  it("retrieves missed priority thread groups by any unreplied high-priority member", () => {
+    const inbound: InboundMessage[] = [
+      {
+        id: "room-a-low-latest",
+        source: "telegram",
+        roomId: "room-a",
+        senderName: "Alice",
+        channelName: "Alice",
+        channelType: "dm",
+        text: "thanks",
+        snippet: "thanks",
+        timestamp: Date.UTC(2025, 0, 3, 12),
+        chatType: "dm",
+        priorityScore: 10,
+      },
+      {
+        id: "room-a-high-older",
+        source: "telegram",
+        roomId: "room-a",
+        senderName: "Alice",
+        channelName: "Alice",
+        channelType: "dm",
+        text: "can you approve the contract?",
+        snippet: "can you approve the contract?",
+        timestamp: Date.UTC(2025, 0, 2, 12),
+        chatType: "dm",
+        priorityScore: 80,
+      },
+      {
+        id: "room-b-replied",
+        source: "telegram",
+        roomId: "room-b",
+        senderName: "Bob",
+        channelName: "Bob",
+        channelType: "dm",
+        text: "urgent but already handled",
+        snippet: "urgent but already handled",
+        timestamp: Date.UTC(2025, 0, 2, 13),
+        chatType: "dm",
+        priorityScore: 95,
+        repliedAt: "2025-01-02T14:00:00.000Z",
+      },
+      {
+        id: "room-c-high",
+        source: "discord",
+        roomId: "room-c",
+        senderName: "Carol",
+        channelName: "Carol",
+        channelType: "dm",
+        text: "please confirm tomorrow",
+        snippet: "please confirm tomorrow",
+        timestamp: Date.UTC(2025, 0, 2, 11),
+        chatType: "dm",
+        priorityScore: 70,
+      },
+    ];
+
+    const inbox = buildInbox(inbound, {
+      limit: 50,
+      allowed: allChannels(),
+      groupByThread: true,
+      missedOnly: true,
+      sortByPriority: true,
+    });
+
+    expect(inbox.messages.map((message) => message.id).sort()).toEqual([
+      "discord:room-c-high",
+      "telegram:room-a-high-older",
+    ]);
+    expect(inbox.threadGroups?.map((group) => group.threadId)).toEqual([
+      "room-a",
+      "room-c",
+    ]);
+    expect(inbox.threadGroups?.[0]?.maxPriorityScore).toBe(80);
+    expect(
+      inbox.threadGroups?.some((group) => group.threadId === "room-b"),
+    ).toBe(false);
   });
 });

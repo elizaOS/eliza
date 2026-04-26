@@ -615,9 +615,7 @@ function extractProviderNamesFromXml(rawProviders: string): string[] {
 
 function extractStructuredProviderList(rawProviders: string): string[] {
 	const safe =
-		rawProviders.length > 10_000
-			? rawProviders.slice(0, 10_000)
-			: rawProviders;
+		rawProviders.length > 10_000 ? rawProviders.slice(0, 10_000) : rawProviders;
 	const tokens = safe
 		.split(/[\n,;]/)
 		.map((providerName) =>

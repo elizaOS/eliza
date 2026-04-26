@@ -60,9 +60,8 @@ function phaseToStatusKey(phase: string): string {
 /**
  * Returns true when the cloud-provisioned bootstrap session has NOT yet been
  * established for this page load. After a successful exchange the UI writes
- * sessionStorage["milady_session"] — we treat presence of that key as
- * "bootstrap done" for P0. P1 will retire sessionStorage in favour of an
- * HttpOnly cookie set by the server.
+ * sessionStorage["milady_session"] as a renderer-side marker; the server-owned
+ * HttpOnly cookie remains the actual auth boundary.
  */
 function needsBootstrapSession(): boolean {
   try {
@@ -182,17 +181,11 @@ export function StartupShell() {
         if (needsBootstrapSession()) {
           // Cloud-provisioned but no session yet. Lock the dashboard and show
           // the bootstrap wizard step. Fail closed: we do NOT advance.
-          console.log(
-            "[eliza][startup] Cloud-provisioned container — bootstrap session required",
-          );
           setShowBootstrap(true);
           return;
         }
 
         // Cloud-provisioned and session already established — skip the wizard.
-        console.log(
-          "[eliza][startup] Cloud-provisioned container with session — skipping wizard",
-        );
         setState("onboardingComplete", true);
         coordinatorDispatchRef.current({ type: "ONBOARDING_COMPLETE" });
       })

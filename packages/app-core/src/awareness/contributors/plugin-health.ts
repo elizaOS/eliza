@@ -2,9 +2,7 @@
  * Plugin health contributor — reports loaded plugin count.
  */
 
-import type {
-  AwarenessContributor,
-} from "@elizaos/agent";
+import type { AwarenessContributor } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const pluginHealthContributor: AwarenessContributor = {

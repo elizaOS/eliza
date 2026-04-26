@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 
 export interface XPosterCredentials {
   apiKey: string;
@@ -14,7 +14,13 @@ export interface XPostResult {
   status: number | null;
   postId?: string;
   error?: string;
-  category: "success" | "auth" | "rate_limit" | "network" | "invalid" | "unknown";
+  category:
+    | "success"
+    | "auth"
+    | "rate_limit"
+    | "network"
+    | "invalid"
+    | "unknown";
 }
 
 function getXBaseUrl(): string {
@@ -145,10 +151,9 @@ function readXApiErrors(value: unknown): XApiError[] | undefined {
   return errors.length > 0 ? errors : undefined;
 }
 
-function readXErrorPayloadFields(record: Record<string, unknown>): Pick<
-  XPostPayload,
-  "detail" | "errors" | "title"
-> {
+function readXErrorPayloadFields(
+  record: Record<string, unknown>,
+): Pick<XPostPayload, "detail" | "errors" | "title"> {
   return {
     detail: readStringField(record, "detail"),
     errors: readXApiErrors(record.errors),
@@ -339,7 +344,13 @@ export interface XDmResult {
   dmConversationId?: string;
   dmEventId?: string;
   error?: string;
-  category: "success" | "auth" | "rate_limit" | "network" | "invalid" | "unknown";
+  category:
+    | "success"
+    | "auth"
+    | "rate_limit"
+    | "network"
+    | "invalid"
+    | "unknown";
 }
 
 function getXDmUrl(participantId: string): string {
@@ -416,7 +427,12 @@ export async function sendXDm(args: {
         payload?.title ??
         `HTTP ${response.status}`;
       span.failure({ statusCode: response.status, errorKind: category });
-      return { ok: false, status: response.status, error: errorMessage, category };
+      return {
+        ok: false,
+        status: response.status,
+        error: errorMessage,
+        category,
+      };
     }
 
     const dmEventId = payload?.data?.dm_event_id;
@@ -439,9 +455,13 @@ export async function sendXDm(args: {
       category: "success",
     };
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     span.failure({ error, errorKind: "network" });
-    return { ok: false, status: null, error: errorMessage, category: "network" };
+    return {
+      ok: false,
+      status: null,
+      error: errorMessage,
+      category: "network",
+    };
   }
 }

@@ -65,7 +65,6 @@ export * from "./security/platform-secure-store";
 export * from "./security/platform-secure-store-node";
 
 export * from "./services/phone-companion";
-export * from "./services/steward-sidecar";
 export * from "./shell/index";
 export * from "./state/index";
 export * from "./test-support/test-helpers";

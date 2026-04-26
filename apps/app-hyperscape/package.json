@@ -22,7 +22,21 @@
   },
   "elizaos": {
     "app": {
-      "heroImage": "assets/hero.png"
+      "heroImage": "assets/hero.png",
+      "runtimePlugin": "@hyperscape/plugin-hyperscape",
+      "uiExtension": {
+        "detailPanelId": "hyperscape-embedded-agents"
+      },
+      "session": {
+        "mode": "spectate-and-steer",
+        "features": [
+          "commands",
+          "telemetry",
+          "pause",
+          "resume",
+          "suggestions"
+        ]
+      }
     }
   }
 }

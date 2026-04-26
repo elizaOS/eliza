@@ -173,16 +173,6 @@ describe("Integration: WhatsApp pullWhatsAppRecent", () => {
     ]);
     parseAndBufferWhatsAppWebhookMessages(payload);
 
-    // Use the raw client to verify shape — service layer wraps the same buffer.
-    const { drainWhatsAppInboundBuffer: drain } = {
-      drainWhatsAppInboundBuffer: () => {
-        // We already imported drain at top; call it here to inspect.
-        return [] as ReturnType<typeof drainWhatsAppInboundBuffer>;
-      },
-    };
-    void drain; // suppress unused warning
-
-    // Re-read via peekWhatsAppInboundBuffer through the exported drain.
     const drained = drainWhatsAppInboundBuffer();
     expect(drained).toHaveLength(1);
     const msg = drained[0];

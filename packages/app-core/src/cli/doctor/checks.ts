@@ -17,9 +17,7 @@ import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import {
-  resolveConfigPath,
-} from "@elizaos/agent";
+import { resolveConfigPath } from "@elizaos/agent";
 import {
   resolveApiSecurityConfig,
   resolveServerOnlyPort,
