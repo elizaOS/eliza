@@ -56,6 +56,9 @@
           "telemetry",
           "suggestions"
         ]
+      },
+      "uiExtension": {
+        "detailPanelId": "defense-agent-control"
       }
     }
   }
