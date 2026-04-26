@@ -1,5 +1,4 @@
 import {
-  Badge,
   Button,
   client,
   isElectrobunRuntime,
@@ -11,6 +10,9 @@ import type {
   LifeOpsTelegramAuthState,
 } from "@elizaos/shared/contracts/lifeops";
 import {
+  CheckCircle2,
+  CircleAlert,
+  CircleDashed,
   ExternalLink,
   Loader2,
   MessageCircle,
@@ -211,15 +213,62 @@ function browserAccessTitle(access: LifeOpsOwnerBrowserAccessStatus): string {
 
 function browserAccessBadge(access: LifeOpsOwnerBrowserAccessStatus): {
   label: string;
-  variant: "default" | "secondary" | "outline";
+  tone: "ok" | "warning" | "muted";
 } {
-  if (access.active && access.tabState === "dm_inbox_visible") {
-    return { label: "Using now", variant: "default" };
+  if (isBrowserAccessReady(access)) {
+    return {
+      label: access.tabState === "dm_inbox_visible" ? "Using now" : "Ready",
+      tone: "ok",
+    };
   }
   if (access.active || access.available) {
-    return { label: "Available", variant: "secondary" };
+    return { label: "Available", tone: "warning" };
   }
-  return { label: "Not ready", variant: "outline" };
+  return { label: "Not ready", tone: "muted" };
+}
+
+function isBrowserAccessReady(
+  access: LifeOpsOwnerBrowserAccessStatus,
+): boolean {
+  return (
+    access.canControl &&
+    access.siteAccessOk !== false &&
+    access.nextAction === "none" &&
+    (access.tabState === "dm_inbox_visible" ||
+      access.tabState === "discord_open" ||
+      access.tabState === "background_discord")
+  );
+}
+
+function BrowserAccessStatusIcon({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "ok" | "warning" | "muted";
+}) {
+  const className =
+    tone === "ok"
+      ? "text-emerald-500"
+      : tone === "warning"
+        ? "text-amber-500"
+        : "text-muted/55";
+  const Icon =
+    tone === "ok"
+      ? CheckCircle2
+      : tone === "warning"
+        ? CircleAlert
+        : CircleDashed;
+  return (
+    <span
+      aria-label={label}
+      className={`inline-flex h-5 w-5 items-center justify-center ${className}`}
+      role="img"
+      title={label}
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+    </span>
+  );
 }
 
 function browserAccessSourceLabel(
@@ -554,7 +603,7 @@ export function DiscordConnectorCard() {
       ? "warning"
       : "muted";
   const browserAccessTones = browserAccess.map((access) =>
-    access.active && access.tabState === "dm_inbox_visible"
+    isBrowserAccessReady(access)
       ? "ok"
       : access.active || access.available
         ? "warning"
@@ -720,7 +769,7 @@ export function DiscordConnectorCard() {
         </div>
       ) : null}
 
-      {!dmInboxVisible && browserAccess.length > 0 ? (
+      {browserAccess.length > 0 ? (
         <details className="rounded-2xl bg-bg/24 px-3 py-2">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
             <span className="text-xs font-semibold text-txt">Sources</span>
@@ -742,9 +791,10 @@ export function DiscordConnectorCard() {
                     <div className="text-xs font-semibold text-txt">
                       {browserAccessTitle(access)}
                     </div>
-                    <Badge variant={badge.variant} className="text-2xs">
-                      {badge.label}
-                    </Badge>
+                    <BrowserAccessStatusIcon
+                      label={badge.label}
+                      tone={badge.tone}
+                    />
                   </div>
                   <div className="mt-1 text-xs text-muted">
                     {browserAccessMessage(access)}
