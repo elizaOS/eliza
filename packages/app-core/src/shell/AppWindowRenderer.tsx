@@ -51,6 +51,25 @@ import type { Tab } from "../navigation";
 import { useApp } from "../state/useApp";
 import { openExternalUrl } from "../utils";
 
+// Static imports for the internal-tool views. WHY not React.lazy: each of
+// these is also statically imported by the main shell (App.tsx + tab
+// routers + DetachedShellRoot), so a `lazy(() => import(...))` here would
+// be folded back into the main chunk by Rollup with a warning. If you
+// ever want true code splitting for these, move the lazy boundary up to
+// the call site that owns the only path to the module.
+import { ChatView } from "../components/pages/ChatView";
+import { DatabasePageView } from "../components/pages/DatabasePageView";
+import { InventoryView } from "../components/pages/InventoryView";
+import { LogsPageView } from "../components/pages/LogsPageView";
+import { MemoryViewerView } from "../components/pages/MemoryViewerView";
+import { PluginsPageView } from "../components/pages/PluginsPageView";
+import { RelationshipsView } from "../components/pages/RelationshipsView";
+import { RuntimeView } from "../components/pages/RuntimeView";
+import { SkillsView } from "../components/pages/SkillsView";
+import { TasksPageView } from "../components/pages/TasksPageView";
+import { TrajectoriesView } from "../components/pages/TrajectoriesView";
+import { FineTuningView } from "../components/training/injected";
+
 interface AppWindowRendererProps {
   slug: string;
 }
@@ -58,6 +77,12 @@ interface AppWindowRendererProps {
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
 
+/**
+ * Reserved for views that are ONLY ever loaded through this renderer (not
+ * statically imported anywhere else). Today nothing meets that bar — every
+ * tab view is also loaded by the main shell — but keep the helper around
+ * so lifeops or future plugin-contributed surfaces can opt in cleanly.
+ */
 function lazyNamedView<
   TModule extends Record<string, unknown>,
   TKey extends keyof TModule,
@@ -76,55 +101,6 @@ function lazyNamedView<
     };
   });
 }
-
-const PluginsPageView = lazyNamedView(
-  () => import("../components/pages/PluginsPageView"),
-  "PluginsPageView",
-);
-const SkillsView = lazyNamedView(
-  () => import("../components/pages/SkillsView"),
-  "SkillsView",
-);
-const TrajectoriesView = lazyNamedView(
-  () => import("../components/pages/TrajectoriesView"),
-  "TrajectoriesView",
-);
-const RelationshipsView = lazyNamedView(
-  () => import("../components/pages/RelationshipsView"),
-  "RelationshipsView",
-);
-const MemoryViewerView = lazyNamedView(
-  () => import("../components/pages/MemoryViewerView"),
-  "MemoryViewerView",
-);
-const RuntimeView = lazyNamedView(
-  () => import("../components/pages/RuntimeView"),
-  "RuntimeView",
-);
-const DatabasePageView = lazyNamedView(
-  () => import("../components/pages/DatabasePageView"),
-  "DatabasePageView",
-);
-const LogsPageView = lazyNamedView(
-  () => import("../components/pages/LogsPageView"),
-  "LogsPageView",
-);
-const FineTuningView = lazyNamedView(
-  () => import("../components/training/injected"),
-  "FineTuningView",
-);
-const InventoryView = lazyNamedView(
-  () => import("../components/pages/InventoryView"),
-  "InventoryView",
-);
-const TasksPageView = lazyNamedView(
-  () => import("../components/pages/TasksPageView"),
-  "TasksPageView",
-);
-const ChatView = lazyNamedView(
-  () => import("../components/pages/ChatView"),
-  "ChatView",
-);
 
 function AppWindowSuspense({ children }: { children: JSX.Element }): JSX.Element {
   return (
