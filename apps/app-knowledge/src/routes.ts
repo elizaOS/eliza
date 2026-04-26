@@ -18,6 +18,10 @@ import {
   presentKnowledgeDocument,
 } from "./document-presenter.js";
 import {
+  handleScratchpadTopicRoutes,
+  ScratchpadTopicService,
+} from "./scratchpad-topics.js";
+import {
   getKnowledgeService,
   type KnowledgeServiceLike,
 } from "./service-loader.js";
@@ -230,6 +234,13 @@ export async function handleKnowledgeRoutes(
     return true;
   }
   const agentId = runtime.agentId as UUID;
+
+  if (pathname.startsWith("/api/knowledge/scratchpad")) {
+    return handleScratchpadTopicRoutes(
+      ctx,
+      new ScratchpadTopicService(runtime, knowledgeService),
+    );
+  }
 
   // ── GET /api/knowledge ──────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/knowledge") {
