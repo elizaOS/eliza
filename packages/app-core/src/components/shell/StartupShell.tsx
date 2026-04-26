@@ -60,9 +60,8 @@ function phaseToStatusKey(phase: string): string {
 /**
  * Returns true when the cloud-provisioned bootstrap session has NOT yet been
  * established for this page load. After a successful exchange the UI writes
- * sessionStorage["milady_session"] — we treat presence of that key as
- * "bootstrap done" for P0. P1 will retire sessionStorage in favour of an
- * HttpOnly cookie set by the server.
+ * sessionStorage["milady_session"] as a renderer-side marker; the server-owned
+ * HttpOnly cookie remains the actual auth boundary.
  */
 function needsBootstrapSession(): boolean {
   try {

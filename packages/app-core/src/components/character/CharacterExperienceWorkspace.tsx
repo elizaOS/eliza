@@ -829,6 +829,8 @@ export function CharacterExperienceWorkspace({
               </div>
             ) : null}
 
+            <ProvenancePanel experience={visibleSelectedExperience} />
+
             <div className="rounded-xl border border-border/30 bg-bg-muted/10 p-3">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
