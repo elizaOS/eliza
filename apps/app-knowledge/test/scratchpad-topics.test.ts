@@ -1,3 +1,4 @@
+import type http from "node:http";
 import {
   type AgentRuntime,
   type Memory,
@@ -8,8 +9,9 @@ import {
   SCRATCHPAD_MAX_TOPICS,
   SCRATCHPAD_TOPIC_TOKEN_LIMIT,
 } from "@elizaos/shared/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  handleScratchpadTopicRoutes,
   type ScratchpadTopicError,
   ScratchpadTopicService,
 } from "../src/scratchpad-topics";
@@ -229,6 +231,10 @@ function createService() {
   };
 }
 
+function overLimitText(): string {
+  return "x".repeat(SCRATCHPAD_TOPIC_TOKEN_LIMIT * 4 + 1);
+}
+
 async function expectScratchpadError(
   promise: Promise<unknown>,
   status: number,
@@ -255,13 +261,16 @@ describe("ScratchpadTopicService", () => {
       409,
     );
 
-    const oversized = "x".repeat(SCRATCHPAD_TOPIC_TOKEN_LIMIT * 4 + 1);
+    const oversized = overLimitText();
     await expectScratchpadError(
       createService().service.createTopic({
         title: "Oversized",
         text: oversized,
       }),
       400,
+    );
+    expect(() => createService().service.previewSummary(oversized)).toThrow(
+      `Scratchpad topic exceeds ${SCRATCHPAD_TOPIC_TOKEN_LIMIT} approximate tokens`,
     );
   });
 
@@ -326,5 +335,36 @@ describe("ScratchpadTopicService", () => {
     expect(results.count).toBe(1);
     expect(results.results[0].topic.id).toBe(own.id);
     expect(results.results[0].matches.length).toBeGreaterThan(0);
+  });
+
+  it("validates route payloads against shared scratchpad limits", async () => {
+    const { service } = createService();
+    const json = vi.fn();
+    const error = vi.fn();
+    const res = {} as http.ServerResponse;
+
+    await expect(
+      handleScratchpadTopicRoutes(
+        {
+          req: {} as http.IncomingMessage,
+          res,
+          method: "POST",
+          pathname: "/api/knowledge/scratchpad/topics",
+          url: new URL("http://127.0.0.1/api/knowledge/scratchpad/topics"),
+          json,
+          error,
+          readJsonBody: async <T extends object>() =>
+            ({ title: "Too long", text: overLimitText() }) as T,
+        },
+        service,
+      ),
+    ).resolves.toBe(true);
+
+    expect(json).not.toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      res,
+      `text: text exceeds ${SCRATCHPAD_TOPIC_TOKEN_LIMIT} approximate tokens`,
+      400,
+    );
   });
 });
