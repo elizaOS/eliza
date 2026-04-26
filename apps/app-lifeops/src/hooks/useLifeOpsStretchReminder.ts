@@ -1,13 +1,11 @@
-import { client } from "@elizaos/app-core";
+import { client } from "@elizaos/app-core/api";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsOverview,
   LifeOpsReminderInspection,
 } from "@elizaos/shared";
-import type {
-  LifeOpsScheduleMergedState,
-} from "../lifeops/schedule-sync-contracts.js";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { LifeOpsScheduleMergedState } from "../lifeops/schedule-sync-contracts.js";
 
 type SeedTemplate = {
   key: string;
@@ -33,12 +31,15 @@ function selectStretchReminder(
   return (
     reminders.find((reminder) =>
       reminder.title.toLowerCase().includes("stretch"),
-    ) ?? reminders[0] ??
+    ) ??
+    reminders[0] ??
     null
   );
 }
 
-function overviewReminders(overview: LifeOpsOverview | null): LifeOpsActiveReminderView[] {
+function overviewReminders(
+  overview: LifeOpsOverview | null,
+): LifeOpsActiveReminderView[] {
   return [
     ...(overview?.owner.reminders ?? []),
     ...(overview?.agentOps.reminders ?? []),
@@ -63,15 +64,16 @@ export function useLifeOpsStretchReminder() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextOverview, nextSeedTemplates, nextSchedule] =
-        await Promise.all([
+      const [nextOverview, nextSeedTemplates, nextSchedule] = await Promise.all(
+        [
           client.getLifeOpsOverview(),
           client.getLifeOpsSeedTemplates(),
           client.getLifeOpsScheduleMergedState({
             scope: "effective",
             refresh: false,
           }),
-        ]);
+        ],
+      );
       setOverview(nextOverview);
       setSeedTemplates(nextSeedTemplates);
       setSchedule(nextSchedule.mergedState);
