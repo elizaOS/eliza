@@ -142,7 +142,7 @@ async function extractSearchPlan(
     "Plan a SEARCH_ACROSS_CHANNELS request.",
     "The user may speak in any language. Do NOT translate the search query — keep the user's wording.",
     "Return ONLY valid JSON with exactly these fields:",
-    '{"query":"string|null","person":"string|null","startIso":"ISO8601|null","endIso":"ISO8601|null","channels":["gmail"|"telegram"|"discord"|"imessage"|"whatsapp"|"signal"|"calendly"|"calendar"|"memory"]|null,"shouldAct":true|false,"clarification":"string|null"}',
+    '{"query":"string|null","person":"string|null","startIso":"ISO8601|null","endIso":"ISO8601|null","channels":["gmail"|"telegram"|"discord"|"imessage"|"whatsapp"|"signal"|"x"|"x-dm"|"calendly"|"calendar"|"memory"]|null,"shouldAct":true|false,"clarification":"string|null"}',
     "",
     "Rules:",
     "- query: the substantive search phrase (entity, topic, keywords). Strip filler like 'find', 'search for', 'show me'.",
@@ -444,7 +444,7 @@ export const searchAcrossChannelsAction: Action = {
     {
       name: "channels",
       description:
-        "Channel allowlist. Allowed values: gmail, memory, telegram, discord, imessage, whatsapp, signal, calendly, calendar.",
+        "Channel allowlist. Allowed values: gmail, memory, telegram, discord, imessage, whatsapp, signal, x, x-dm, calendly, calendar.",
       required: false,
       schema: {
         type: "array" as const,
