@@ -53,6 +53,18 @@ async function runValidate(
   return validate(runtime, message);
 }
 
+async function runHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+) {
+  const { lifeAction } = await import("./life.js");
+  const { handler } = lifeAction;
+  if (!handler) {
+    throw new Error("lifeAction.handler is required for this suite");
+  }
+  return handler(runtime, message, undefined, undefined);
+}
+
 describe("lifeAction.validate — scope gating", () => {
   const reminderPrompt = "set an alarm for 7am";
 
@@ -113,4 +125,57 @@ describe("lifeAction.validate — scope gating", () => {
     expect(result).toBe(false);
     expect(getRoom).not.toHaveBeenCalled();
   });
+});
+
+describe("lifeAction.handler — dispatch-time scope guard (Session 15)", () => {
+  // Session 14 diagnostic (GAP #1-REVISED-PART-C) proved that
+  // `runtime.processActions` (packages/typescript/src/runtime.ts:2473)
+  // dispatches actions by LLM-emitted name/simile WITHOUT re-calling
+  // validate(). LIFE's simile list (SET_REMINDER, SET_ALARM, CREATE_HABIT,
+  // etc.) overlaps with scheduled-task intent, so the LLM can still route
+  // a trigger-creation prompt to LIFE even after Session 11's validate
+  // gate excluded LIFE from the planner candidate list.
+  //
+  // These tests pin the dispatch-time guard at the top of LIFE.handler:
+  // on foreign page-* scope, the handler returns
+  // `{ success: false, text: "" }` so no habit is created and no
+  // user-visible callback text renders from LIFE's side. The streamed
+  // pre-action LLM tokens are a separate concern (runtime layer); this
+  // guard prevents the DB side-effect.
+
+  it("returns empty success:false on page-automations without touching any LifeOps service", async () => {
+    const getRoom = vi.fn(async (roomId: string) => ({
+      id: roomId,
+      metadata: {
+        ownership: {
+          ownerId: "0afe069b-83d3-0ea3-aa07-a47dd72ade03" as UUID,
+        },
+        webConversation: {
+          scope: "page-automations",
+          conversationId: "9bb7a9bd-a80b-4e08-89a9-983e437891f3",
+        },
+      },
+    }));
+    const runtime = { getRoom } as unknown as IAgentRuntime;
+    const message = buildMessage("every 7 minutes write a ping log entry");
+    const result = await runHandler(runtime, message);
+    expect(result).toEqual({ success: false, text: "" });
+    expect(getRoom).toHaveBeenCalledWith(ROOM_ID);
+  });
+
+  it.each([
+    "page-browser",
+    "page-apps",
+    "page-character",
+    "page-phone",
+    "page-wallet",
+  ])(
+    "returns empty success:false on foreign page scope %s",
+    async (scope) => {
+      const { runtime } = buildRuntime(scope);
+      const message = buildMessage("set an alarm for 7am");
+      const result = await runHandler(runtime, message);
+      expect(result).toEqual({ success: false, text: "" });
+    },
+  );
 });
