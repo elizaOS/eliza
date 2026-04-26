@@ -359,6 +359,82 @@ describe("withIMessage mixin", () => {
     );
   });
 
+  test("uses the configured bridge for reads when native Messages is send-only", async () => {
+    const previousUrl = process.env.ELIZA_BLUEBUBBLES_URL;
+    const previousPassword = process.env.ELIZA_BLUEBUBBLES_PASSWORD;
+    process.env.ELIZA_BLUEBUBBLES_URL = "http://127.0.0.1:5678";
+    process.env.ELIZA_BLUEBUBBLES_PASSWORD = "pw";
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/v1/server/info")) {
+        return new Response(
+          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/message/query")) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                guid: "bb-msg-1",
+                text: "read through bridge",
+                isFromMe: false,
+                dateCreated: Date.parse("2026-04-17T18:30:00.000Z"),
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not mocked", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const nativeService = {
+        isConnected: vi.fn(() => true),
+        getStatus: vi.fn(() => ({
+          available: true,
+          connected: true,
+          chatDbAvailable: false,
+          sendOnly: true,
+          chatDbPath: "/Users/test/Library/Messages/chat.db",
+          reason: "Full Disk Access is required to read chat.db.",
+          permissionAction: null,
+        })),
+        sendMessage: vi.fn(async () => ({ success: true })),
+        getMessages: vi.fn(async () => []),
+      };
+      const svc = createService(nativeService);
+
+      await expect(svc.getIMessageConnectorStatus()).resolves.toMatchObject({
+        available: true,
+        connected: true,
+        bridgeType: "bluebubbles",
+        sendMode: "private-api",
+      });
+      await expect(svc.readIMessages({ limit: 1 })).resolves.toEqual([
+        expect.objectContaining({
+          id: "bb-msg-1",
+          text: "read through bridge",
+        }),
+      ]);
+      expect(nativeService.getMessages).not.toHaveBeenCalled();
+    } finally {
+      if (previousUrl === undefined) {
+        delete process.env.ELIZA_BLUEBUBBLES_URL;
+      } else {
+        process.env.ELIZA_BLUEBUBBLES_URL = previousUrl;
+      }
+      if (previousPassword === undefined) {
+        delete process.env.ELIZA_BLUEBUBBLES_PASSWORD;
+      } else {
+        process.env.ELIZA_BLUEBUBBLES_PASSWORD = previousPassword;
+      }
+    }
+  });
+
   test("sendIMessage surfaces the bridge error when no backend exists", async () => {
     const svc = createService();
     await expect(

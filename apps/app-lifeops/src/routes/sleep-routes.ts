@@ -3,7 +3,7 @@ import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 const MIN_WINDOW_DAYS = 1;
-const MAX_WINDOW_DAYS = 90;
+const MAX_WINDOW_DAYS = 365;
 
 function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
   if (!ctx.state.runtime) {

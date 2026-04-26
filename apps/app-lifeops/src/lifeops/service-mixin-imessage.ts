@@ -234,6 +234,55 @@ function nativeStatusToLifeOps(
   };
 }
 
+function bridgeStatusToLifeOps(
+  status: Awaited<ReturnType<typeof getIMessageBackendStatus>>,
+  checkedAt: string,
+): LifeOpsIMessageConnectorStatus {
+  return {
+    available: status.backend !== "none",
+    connected: status.backend !== "none",
+    bridgeType: status.backend,
+    hostPlatform: normalizeHostPlatform(),
+    accountHandle: status.accountHandle,
+    sendMode: status.sendMode,
+    helperConnected: status.helperConnected,
+    privateApiEnabled: status.privateApiEnabled,
+    diagnostics: status.diagnostics,
+    lastSyncAt: null,
+    lastCheckedAt: checkedAt,
+    error: status.backend === "none" ? "no_backend_available" : null,
+  };
+}
+
+function nativeServiceCanRead(service: NativeIMessageServiceLike): boolean {
+  const status = service.getStatus?.();
+  if (status && !status.chatDbAvailable) {
+    return false;
+  }
+  return (
+    typeof service.getMessages === "function" ||
+    typeof service.getRecentMessages === "function"
+  );
+}
+
+async function getConfiguredBridgeStatusOrNull(): Promise<
+  Awaited<ReturnType<typeof getIMessageBackendStatus>> | null
+> {
+  try {
+    const status = await getIMessageBackendStatus(
+      resolveLifeOpsIMessageBridgeConfig(),
+    );
+    return status.backend === "none" ? null : status;
+  } catch (error) {
+    logger.warn(
+      `[lifeops-imessage] configured iMessage bridge probe failed: ${String(
+        error,
+      )}`,
+    );
+    return null;
+  }
+}
+
 function nativeMessageToLifeOps(message: NativeIMessageMessage): IMessageRecord {
   const attachmentPaths = message.attachmentPaths ?? [];
   return {
@@ -343,25 +392,18 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
       const checkedAt = new Date().toISOString();
       const nativeService = await getNativeIMessageService(this.runtime);
       if (nativeService) {
-        return nativeStatusToLifeOps(nativeService, checkedAt);
+        if (nativeServiceCanRead(nativeService)) {
+          return nativeStatusToLifeOps(nativeService, checkedAt);
+        }
+        const bridgeStatus = await getConfiguredBridgeStatusOrNull();
+        return bridgeStatus
+          ? bridgeStatusToLifeOps(bridgeStatus, checkedAt)
+          : nativeStatusToLifeOps(nativeService, checkedAt);
       }
 
       const config = resolveLifeOpsIMessageBridgeConfig();
       const status = await getIMessageBackendStatus(config);
-      return {
-        available: status.backend !== "none",
-        connected: status.backend !== "none",
-        bridgeType: status.backend,
-        hostPlatform: normalizeHostPlatform(),
-        accountHandle: status.accountHandle,
-        sendMode: status.sendMode,
-        helperConnected: status.helperConnected,
-        privateApiEnabled: status.privateApiEnabled,
-        diagnostics: status.diagnostics,
-        lastSyncAt: null,
-        lastCheckedAt: checkedAt,
-        error: status.backend === "none" ? "no_backend_available" : null,
-      };
+      return bridgeStatusToLifeOps(status, checkedAt);
     }
 
     async sendIMessage(
@@ -389,7 +431,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
       limit?: number;
     }): Promise<IMessageRecord[]> {
       const nativeService = await getNativeIMessageService(this.runtime);
-      if (nativeService) {
+      if (nativeService && nativeServiceCanRead(nativeService)) {
         const rows = nativeService.getMessages
           ? await nativeService.getMessages({
               chatId: opts.chatId,
@@ -404,7 +446,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
 
     async listIMessageChats(): Promise<IMessageChat[]> {
       const nativeService = await getNativeIMessageService(this.runtime);
-      if (nativeService?.getChats) {
+      if (nativeService?.getChats && nativeServiceCanRead(nativeService)) {
         return (await nativeService.getChats()).map(nativeChatToLifeOps);
       }
 
@@ -417,7 +459,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
       limit?: number;
     }): Promise<IMessageRecord[]> {
       const nativeService = await getNativeIMessageService(this.runtime);
-      if (nativeService) {
+      if (nativeService && nativeServiceCanRead(nativeService)) {
         const rows = nativeService.getMessages
           ? await nativeService.getMessages({
               chatId: opts.chatId,
@@ -439,6 +481,13 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<IMessageDeliveryResult[]> {
       const nativeService = await getNativeIMessageService(this.runtime);
       if (nativeService) {
+        const bridgeStatus = await getConfiguredBridgeStatusOrNull();
+        if (bridgeStatus) {
+          return getIMessageDeliveryStatus(
+            messageIds,
+            resolveLifeOpsIMessageBridgeConfig(),
+          );
+        }
         return messageIds.map((messageId) => ({
           messageId,
           status: "unknown",
