@@ -369,7 +369,7 @@ export function probeDiscordDocumentState(
   }
 }
 
-function buildDiscordProbeScript(): string {
+export function buildDiscordProbeScript(): string {
   return `(() => {
     const DISCORD_DM_PREVIEW_LIMIT = ${DISCORD_DM_PREVIEW_LIMIT};
     const normalizeDiscordText = ${normalizeDiscordText.toString()};
