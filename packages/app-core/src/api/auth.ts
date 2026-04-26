@@ -7,6 +7,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { logger } from "@elizaos/core";
 import { resolveApiToken } from "@elizaos/shared";
 import {
   CSRF_HEADER_NAME,
@@ -262,7 +263,9 @@ export async function ensureCompatApiAuthorizedAsync(
           ip,
           userAgent,
         }).catch((err) => {
-          console.error("[auth] legacy bearer audit failed:", err);
+          logger.error(
+            `[auth] legacy bearer audit failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
         });
         return true;
       }
@@ -271,7 +274,9 @@ export async function ensureCompatApiAuthorizedAsync(
         userAgent,
         reason: decision.reason ?? "post_grace",
       }).catch((err) => {
-        console.error("[auth] legacy bearer rejection audit failed:", err);
+        logger.error(
+          `[auth] legacy bearer rejection audit failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
       });
       recordFailedAuth(ip);
       sendJsonError(res, 401, "Unauthorized");

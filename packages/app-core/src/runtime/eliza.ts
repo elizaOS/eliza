@@ -46,6 +46,7 @@ import { resolveServerOnlyPort, syncResolvedApiPort } from "@elizaos/shared";
 import { isNativeServerPlatform } from "../platform/is-native-server.js";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
+import { ensurePluginManagerAllowed } from "./plugin-manager-guard.js";
 import type { EmbeddingProgressCallback } from "./embedding-manager-support.js";
 import {
   DEFAULT_MODELS_DIR,
@@ -936,6 +937,24 @@ export async function bootElizaRuntime(
   opts: BootElizaRuntimeOptionsExt = {},
 ): Promise<Awaited<ReturnType<typeof upstreamBootElizaRuntime>>> {
   syncAppEnvToEliza();
+
+  // Ensure `@elizaos/plugin-plugin-manager` is in `plugins.allow` BEFORE the
+  // upstream boot resolves plugins. Without this, headless deployments (CLI,
+  // server, no UI) never auto-enable the plugin and `APP create` /
+  // `PLUGIN install` actions silently fail to find the manager service. The
+  // helper short-circuits when already enabled or explicitly disabled.
+  try {
+    const result = await ensurePluginManagerAllowed();
+    if (result === "enabled") {
+      logger.info(
+        "[eliza] Auto-enabled @elizaos/plugin-plugin-manager via plugins.allow",
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      `[eliza] ensurePluginManagerAllowed failed at boot: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   try {
     // Eagerly download the embedding model before the full runtime boot.

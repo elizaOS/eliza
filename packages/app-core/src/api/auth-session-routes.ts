@@ -1,5 +1,5 @@
 /**
- * Session lifecycle routes (P1 password + cookie auth).
+ * Session lifecycle routes for password and cookie auth.
  *
  *   POST /api/auth/setup            — first-run owner identity + password
  *   POST /api/auth/login/password   — password login → session cookie
@@ -19,6 +19,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { logger } from "@elizaos/core";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
 import { AuthStore } from "../services/auth-store";
 import { extractHeaderValue, getProvidedApiToken } from "./auth";
@@ -136,7 +137,7 @@ function clearSessionCookies(res: http.ServerResponse): void {
 // ── Route handler ───────────────────────────────────────────────────────────
 
 /**
- * Dispatch table for the P1 session routes. Returns true when a route
+ * Dispatch table for the session routes. Returns true when a route
  * matched and the response was sent; false to fall through to the rest of
  * the API surface.
  */
@@ -289,7 +290,9 @@ async function handleSetup(
     ip: meta.ip,
     userAgent: meta.userAgent,
   }).catch((err) => {
-    console.error("[auth] legacy invalidate audit failed:", err);
+    logger.error(
+      `[auth] legacy invalidate audit failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   });
 
   await appendAuditEvent(
@@ -408,7 +411,9 @@ async function handleLoginPassword(
     ip: meta.ip,
     userAgent: meta.userAgent,
   }).catch((err) => {
-    console.error("[auth] legacy invalidate audit failed:", err);
+    logger.error(
+      `[auth] legacy invalidate audit failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   });
 
   await appendAuditEvent(

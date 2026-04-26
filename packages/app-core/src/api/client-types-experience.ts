@@ -18,6 +18,13 @@ export interface ExperienceRecord {
   supersedes?: string | null;
   previousBelief?: string | null;
   correctedBelief?: string | null;
+  sourceMessageIds?: string[];
+  sourceRoomId?: string | null;
+  sourceTriggerMessageId?: string | null;
+  sourceTrajectoryId?: string | null;
+  sourceTrajectoryStepId?: string | null;
+  extractionMethod?: string | null;
+  extractionReason?: string | null;
 }
 
 export interface ExperienceListResponse {

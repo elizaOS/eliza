@@ -196,6 +196,12 @@ describe("Experience extraction live LLM E2E", () => {
         expect(restartExperience?.action).toBe("pattern_recognition");
         expect(restartExperience?.tags).toContain("extracted");
         expect(restartExperience?.confidence).toBeGreaterThanOrEqual(0.6);
+        expect(restartExperience?.extractionMethod).toBe("experience_evaluator");
+        expect(restartExperience?.sourceMessageIds?.length).toBeGreaterThanOrEqual(
+          3,
+        );
+        expect(restartExperience?.sourceRoomId).toBe(harness.roomId);
+        expect(restartExperience?.sourceTriggerMessageId).toBe(trigger.id);
 
         const seededDuplicate = await experienceService.recordExperience({
           type: ExperienceType.LEARNING,

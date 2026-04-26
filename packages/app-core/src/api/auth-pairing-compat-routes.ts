@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
+import { logger } from "@elizaos/core";
 import { ensureRouteAuthorized, getCompatApiToken, tokenMatches } from "./auth";
 import {
   type CompatRuntimeState,
@@ -42,10 +43,15 @@ if (typeof pairingSweepTimer === "object" && "unref" in pairingSweepTimer) {
   pairingSweepTimer.unref();
 }
 
+export function _resetAuthPairingStateForTests(): void {
+  pairingCode = null;
+  pairingExpiresAt = 0;
+  pairingAttempts.clear();
+}
+
 function pairingEnabled(): boolean {
   return (
     Boolean(getCompatApiToken()) &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1" &&
     process.env.ELIZA_PAIRING_DISABLED !== "1"
   );
 }
@@ -71,7 +77,7 @@ function ensurePairingCode(): string | null {
   if (!pairingCode || now > pairingExpiresAt) {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
-    console.warn(`[api] Pairing code: ${pairingCode} (valid for 10 minutes)`);
+    logger.warn(`[api] Pairing code: ${pairingCode} (valid for 10 minutes)`);
   }
 
   return pairingCode;
@@ -115,12 +121,9 @@ export async function handleAuthPairingCompatRoutes(
   const url = new URL(req.url ?? "/", "http://localhost");
 
   // ── GET /api/onboarding/status ──────────────────────────────────────
-  // Cloud-provisioned containers used to skip auth here entirely; that
-  // bypass was the audited critical gap and is gone. Every caller now
-  // goes through the same compat-token path until P1+ adds session
-  // cookies; cloud-provisioned containers exchange their bootstrap
-  // token via `/api/auth/bootstrap/exchange` before reaching this
-  // route.
+  // Cloud-provisioned containers used to skip auth here entirely. That
+  // bypass is gone: callers now need a trusted local request, a valid
+  // cookie session, an allowed legacy bearer, or a bootstrap exchange.
   if (method === "GET" && url.pathname === "/api/onboarding/status") {
     if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;

@@ -17,7 +17,7 @@ elizaos = "2.0.0"
 elizaos-plugin-openai = "2.0.0"
 
 # Web framework
-axum = { version = "0.7", features = ["tokio"] }
+axum = { version = "0.8", features = ["tokio"] }
 tower-http = { version = "0.6", features = ["cors"] }
 
 # Async runtime

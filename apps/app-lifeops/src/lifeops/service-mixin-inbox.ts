@@ -5,6 +5,7 @@ import {
   type GetLifeOpsInboxRequest,
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsInbox,
+  type LifeOpsInboxCacheMode,
   type LifeOpsInboxChannel,
   type LifeOpsInboxChannelCount,
   type LifeOpsInboxMessage,
@@ -29,6 +30,7 @@ const DEFAULT_INBOX_LIMIT = 100;
 const INBOX_CACHE_FRESH_MS = 60_000;
 const INBOX_CACHE_WARM_LIMIT = 200;
 const INBOX_CACHE_READ_LIMIT = 800;
+const INBOX_CACHE_FULL_LIMIT = 5000;
 const INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(LIFEOPS_INBOX_CHANNELS);
 const SUBJECT_REPLY_PREFIX = /^(?:\s*(?:re|fwd|fw)\s*:\s*)+/i;
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
@@ -524,6 +526,12 @@ export function buildInboxFromMessages(
 }
 
 function cacheReadLimitFor(resolved: ResolvedInboxRequest): number {
+  if (resolved.cacheMode === "cache-only") {
+    return Math.max(resolved.limit, resolved.cacheLimit);
+  }
+  if (resolved.cacheLimit > INBOX_CACHE_READ_LIMIT) {
+    return Math.max(resolved.limit, resolved.cacheLimit);
+  }
   return Math.min(
     INBOX_CACHE_READ_LIMIT,
     Math.max(resolved.limit * 4, INBOX_CACHE_WARM_LIMIT),
@@ -531,6 +539,9 @@ function cacheReadLimitFor(resolved: ResolvedInboxRequest): number {
 }
 
 function cacheWarmLimitFor(resolved: ResolvedInboxRequest): number {
+  if (resolved.cacheMode === "refresh") {
+    return resolved.cacheLimit;
+  }
   return Math.min(500, Math.max(resolved.limit, INBOX_CACHE_WARM_LIMIT));
 }
 
@@ -567,6 +578,8 @@ export interface ResolvedInboxRequest {
   gmailAccountId?: string;
   missedOnly: boolean;
   sortByPriority: boolean;
+  cacheMode: LifeOpsInboxCacheMode;
+  cacheLimit: number;
 }
 
 export function resolveInboxRequest(
@@ -590,6 +603,23 @@ export function resolveInboxRequest(
           (value) => value === "dm" || value === "group" || value === "channel",
         ) as InboxChatType[])
       : undefined;
+  const cacheMode: LifeOpsInboxCacheMode =
+    request.cacheMode === "refresh" || request.cacheMode === "cache-only"
+      ? request.cacheMode
+      : "read-through";
+  const requestedCacheLimit =
+    typeof request.cacheLimit === "number" &&
+    Number.isFinite(request.cacheLimit) &&
+    request.cacheLimit > 0
+      ? Math.floor(request.cacheLimit)
+      : undefined;
+  const cacheLimit = Math.min(
+    requestedCacheLimit ??
+      (cacheMode === "read-through"
+        ? INBOX_CACHE_WARM_LIMIT
+        : INBOX_CACHE_FULL_LIMIT),
+    INBOX_CACHE_FULL_LIMIT,
+  );
   return {
     limit,
     allowed: new Set<LifeOpsInboxChannel>(requestedChannels),
@@ -608,6 +638,8 @@ export function resolveInboxRequest(
         : undefined,
     missedOnly: request.missedOnly === true,
     sortByPriority: request.sortByPriority === true,
+    cacheMode,
+    cacheLimit,
   };
 }
 
@@ -718,7 +750,8 @@ export async function fetchInbox(
   const resolved = resolveInboxRequest(request);
   const inbound = await fetchAllMessages(runtime, {
     sources: Array.from(resolved.allowed),
-    limit: resolved.limit,
+    limit:
+      resolved.cacheMode === "refresh" ? resolved.cacheLimit : resolved.limit,
     includeGmail: resolved.allowed.has("gmail"),
     gmailSource,
     xDmSource,
@@ -736,6 +769,21 @@ export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
       request: GetLifeOpsInboxRequest = {},
     ): Promise<LifeOpsInbox> {
       const resolved = resolveInboxRequest(request);
+      const ownerName = resolveOwnerName(this.runtime);
+      const buildFromCache = (
+        messages: readonly LifeOpsCachedInboxMessage[],
+      ): LifeOpsInbox =>
+        buildInboxFromMessages(messages, {
+          limit: resolved.limit,
+          allowed: resolved.allowed,
+          chatTypeFilter: resolved.chatTypeFilter,
+          maxParticipants: resolved.maxParticipants,
+          gmailAccountId: resolved.gmailAccountId,
+          ownerName,
+          groupByThread: resolved.groupByThread,
+          missedOnly: resolved.missedOnly,
+          sortByPriority: resolved.sortByPriority,
+        });
       const cached = await this.repository.listCachedInboxMessages(
         this.runtime.agentId,
         {
@@ -744,18 +792,11 @@ export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
           gmailAccountId: resolved.gmailAccountId,
         },
       );
-      if (isFreshCache(cached)) {
-        return buildInboxFromMessages(cached, {
-          limit: resolved.limit,
-          allowed: resolved.allowed,
-          chatTypeFilter: resolved.chatTypeFilter,
-          maxParticipants: resolved.maxParticipants,
-          gmailAccountId: resolved.gmailAccountId,
-          ownerName: resolveOwnerName(this.runtime),
-          groupByThread: resolved.groupByThread,
-          missedOnly: resolved.missedOnly,
-          sortByPriority: resolved.sortByPriority,
-        });
+      if (resolved.cacheMode === "cache-only") {
+        return buildFromCache(cached);
+      }
+      if (resolved.cacheMode !== "refresh" && isFreshCache(cached)) {
+        return buildFromCache(cached);
       }
 
       const inbound = await fetchAllMessages(this.runtime, {

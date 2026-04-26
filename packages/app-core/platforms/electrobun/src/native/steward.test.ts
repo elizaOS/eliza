@@ -9,7 +9,7 @@ const getApiBaseMock = vi.fn();
 const saveStewardCredentialsMock = vi.fn();
 const COLD_NATIVE_IMPORT_TIMEOUT_MS = 45_000;
 
-vi.mock("@elizaos/app-steward", () => ({
+vi.mock("@elizaos/app-steward/services/steward-sidecar", () => ({
   createDesktopStewardSidecar: vi.fn(() => ({
     start: startMock,
     stop: stopMock,
@@ -18,6 +18,9 @@ vi.mock("@elizaos/app-steward", () => ({
     getCredentials: getCredentialsMock,
     getApiBase: getApiBaseMock,
   })),
+}));
+
+vi.mock("@elizaos/app-steward/services/steward-credentials", () => ({
   saveStewardCredentials: saveStewardCredentialsMock,
 }));
 
