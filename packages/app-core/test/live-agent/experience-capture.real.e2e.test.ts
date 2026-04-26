@@ -20,6 +20,7 @@ type Extraction = {
   learning: string;
   context: string;
   confidence: number;
+  reasoning?: string;
 };
 
 type RuntimeHarness = {
@@ -56,10 +57,18 @@ type ExpectedRecordedExperience = Partial<
     | "learning"
     | "outcome"
     | "result"
+    | "sourceRoomId"
+    | "sourceTriggerMessageId"
+    | "sourceTrajectoryId"
+    | "sourceTrajectoryStepId"
     | "tags"
     | "type"
   >
->;
+> & {
+  extractionMethod?: string;
+  extractionReason?: string;
+  sourceMessageCount?: number;
+};
 
 type ExtractionScenario = {
   name: string;
@@ -333,6 +342,27 @@ function expectExperienceToMatch(
   if (expected.result !== undefined) {
     expect(actual.result).toBe(expected.result);
   }
+  if (expected.extractionMethod !== undefined) {
+    expect(actual.extractionMethod).toBe(expected.extractionMethod);
+  }
+  if (expected.extractionReason !== undefined) {
+    expect(actual.extractionReason).toBe(expected.extractionReason);
+  }
+  if (expected.sourceMessageCount !== undefined) {
+    expect(actual.sourceMessageIds).toHaveLength(expected.sourceMessageCount);
+  }
+  if (expected.sourceRoomId !== undefined) {
+    expect(actual.sourceRoomId).toBe(expected.sourceRoomId);
+  }
+  if (expected.sourceTriggerMessageId !== undefined) {
+    expect(actual.sourceTriggerMessageId).toBe(expected.sourceTriggerMessageId);
+  }
+  if (expected.sourceTrajectoryId !== undefined) {
+    expect(actual.sourceTrajectoryId).toBe(expected.sourceTrajectoryId);
+  }
+  if (expected.sourceTrajectoryStepId !== undefined) {
+    expect(actual.sourceTrajectoryStepId).toBe(expected.sourceTrajectoryStepId);
+  }
   if (expected.tags !== undefined) {
     expect(actual.tags).toEqual(expected.tags);
   }
@@ -376,6 +406,8 @@ describe("Experience Capture E2E", () => {
               "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
             context: "Debugging a local Python script failure.",
             confidence: 0.92,
+            reasoning:
+              "The agent corrected a failed command by installing a missing dependency.",
           },
         ],
         expectedRecordedDelta: 1,
@@ -391,6 +423,10 @@ describe("Experience Capture E2E", () => {
             outcome: OutcomeType.POSITIVE,
             result:
               "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
+            extractionMethod: "experience_evaluator",
+            extractionReason:
+              "The agent corrected a failed command by installing a missing dependency.",
+            sourceMessageCount: 3,
             tags: ["extracted", "novel", ExperienceType.CORRECTION],
             type: ExperienceType.CORRECTION,
           },
