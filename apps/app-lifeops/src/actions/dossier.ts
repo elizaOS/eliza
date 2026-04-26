@@ -7,7 +7,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
 import { LifeOpsService } from "../lifeops/service.js";
 
 const ACTION_NAME = "DOSSIER";
@@ -82,7 +82,7 @@ export const dossierAction: Action & {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state: State | undefined,
+    state: State | undefined,
     options: HandlerOptions | undefined,
   ): Promise<ActionResult> => {
     if (!(await hasAdminAccess(runtime, message))) {
@@ -94,8 +94,18 @@ export const dossierAction: Action & {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as DossierActionParams;
+    const params = (await extractActionParamsViaLlm<DossierActionParams>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: dossierAction.description ?? "",
+      paramSchema: dossierAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subject"],
+    })) as DossierActionParams;
 
     const subject =
       (params.subject && params.subject.trim()) ||

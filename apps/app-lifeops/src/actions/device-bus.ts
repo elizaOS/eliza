@@ -1,4 +1,4 @@
-import { hasOwnerAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm, hasOwnerAccess } from "@elizaos/agent";
 import {
   type Action,
   type ActionExample,
@@ -222,7 +222,7 @@ export const publishDeviceIntentAction: Action & {
     return hasOwnerAccess(runtime, message);
   },
 
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+  handler: async (runtime, message, state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         text: "",
@@ -235,10 +235,20 @@ export const publishDeviceIntentAction: Action & {
       };
     }
 
-    const params =
+    const rawParams =
       ((options as HandlerOptions | undefined)?.parameters as
         | PublishDeviceIntentParameters
         | undefined) ?? {};
+    const params = (await extractActionParamsViaLlm<PublishDeviceIntentParameters>({
+      runtime,
+      message,
+      state,
+      actionName: "PUBLISH_DEVICE_INTENT",
+      actionDescription: publishDeviceIntentAction.description ?? "",
+      paramSchema: publishDeviceIntentAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["kind"],
+    })) as PublishDeviceIntentParameters;
 
     const kind = normalizeKind(params.kind);
     if (!kind) {

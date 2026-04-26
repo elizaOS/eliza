@@ -6,7 +6,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
 import {
   LIFE_INTENT_KINDS,
   LIFE_INTENT_PRIORITIES,
@@ -259,15 +259,25 @@ export const intentSyncAction: Action & {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
   ): Promise<ActionResult> => {
     if (!(await hasAdminAccess(runtime, message))) {
       return fail("PERMISSION_DENIED");
     }
 
-    const rawParams = (options as HandlerOptions | undefined)?.parameters;
-    const params = normalizeParams(rawParams);
+    const rawParameters = (options as HandlerOptions | undefined)?.parameters;
+    const normalized = normalizeParams(rawParameters);
+    const params = (await extractActionParamsViaLlm<typeof normalized>({
+      runtime,
+      message,
+      state,
+      actionName: "INTENT_SYNC",
+      actionDescription: intentSyncAction.description ?? "",
+      paramSchema: intentSyncAction.parameters ?? [],
+      existingParams: normalized,
+      requiredFields: ["subaction"],
+    })) as typeof normalized;
 
     let subactionRaw = coerceString(params.subaction);
     let kindRaw = coerceString(params.kind);
