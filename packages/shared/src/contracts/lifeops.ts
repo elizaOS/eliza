@@ -2422,6 +2422,13 @@ export interface LifeOpsInbox {
   threadGroups?: LifeOpsInboxThreadGroup[];
 }
 
+export const LIFEOPS_INBOX_CACHE_MODES = [
+  "read-through",
+  "refresh",
+  "cache-only",
+] as const;
+export type LifeOpsInboxCacheMode = (typeof LIFEOPS_INBOX_CACHE_MODES)[number];
+
 export interface GetLifeOpsInboxRequest {
   /** Cap on the total number of messages returned. Defaults to 100. */
   limit?: number;
@@ -2446,6 +2453,14 @@ export interface GetLifeOpsInboxRequest {
    * tiebreaker. When false (default), groups are sorted by recency only.
    */
   sortByPriority?: boolean;
+  /**
+   * read-through: use fresh cache, otherwise fetch and cache;
+   * refresh: force a connector pull and cache the full requested window;
+   * cache-only: never hit connectors, only read persisted inbox messages.
+   */
+  cacheMode?: LifeOpsInboxCacheMode;
+  /** Cap on messages pulled/read for cache operations. Defaults to a bounded full-cache window. */
+  cacheLimit?: number;
 }
 
 export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [

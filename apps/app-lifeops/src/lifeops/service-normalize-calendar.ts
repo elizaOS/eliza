@@ -23,6 +23,7 @@ import {
 import {
   DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS,
   DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
+  MAX_GMAIL_TRIAGE_MAX_RESULTS,
   GOOGLE_PRIMARY_CALENDAR_ID,
   GOOGLE_CALENDAR_CACHE_TTL_MS,
 } from "./service-constants.js";
@@ -451,8 +452,11 @@ export function normalizeGmailTriageMaxResults(value: unknown): number {
     return DEFAULT_GMAIL_TRIAGE_MAX_RESULTS;
   }
   const maxResults = Math.trunc(normalizeFiniteNumber(value, "maxResults"));
-  if (maxResults < 1 || maxResults > 50) {
-    fail(400, "maxResults must be between 1 and 50");
+  if (maxResults < 1 || maxResults > MAX_GMAIL_TRIAGE_MAX_RESULTS) {
+    fail(
+      400,
+      `maxResults must be between 1 and ${MAX_GMAIL_TRIAGE_MAX_RESULTS}`,
+    );
   }
   return maxResults;
 }

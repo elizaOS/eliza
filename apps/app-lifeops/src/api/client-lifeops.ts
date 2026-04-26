@@ -1689,6 +1689,12 @@ ElizaClient.prototype.getLifeOpsInbox = async function (
   if (options.sortByPriority === true) {
     params.set("sortByPriority", "true");
   }
+  if (options.cacheMode) {
+    params.set("cacheMode", options.cacheMode);
+  }
+  if (options.cacheLimit !== undefined) {
+    params.set("cacheLimit", String(options.cacheLimit));
+  }
   const query = params.toString();
   return this.fetch(`/api/lifeops/inbox${query ? `?${query}` : ""}`);
 };

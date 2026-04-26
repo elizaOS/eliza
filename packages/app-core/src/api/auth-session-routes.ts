@@ -19,6 +19,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { logger } from "@elizaos/core";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
 import { AuthStore } from "../services/auth-store";
 import { extractHeaderValue, getProvidedApiToken } from "./auth";
@@ -289,7 +290,9 @@ async function handleSetup(
     ip: meta.ip,
     userAgent: meta.userAgent,
   }).catch((err) => {
-    console.error("[auth] legacy invalidate audit failed:", err);
+    logger.error("[auth] legacy invalidate audit failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   });
 
   await appendAuditEvent(
@@ -408,7 +411,9 @@ async function handleLoginPassword(
     ip: meta.ip,
     userAgent: meta.userAgent,
   }).catch((err) => {
-    console.error("[auth] legacy invalidate audit failed:", err);
+    logger.error("[auth] legacy invalidate audit failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
   });
 
   await appendAuditEvent(
