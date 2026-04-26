@@ -97,8 +97,9 @@ export const recordExperienceAction: Action = {
 			};
 		}
 
-		const learningText =
+		const messageText =
 			typeof message.content.text === "string" ? message.content.text : "";
+		const learningText = normalizeExplicitLearningText(messageText);
 		const sanitizedLearning = sanitizeExperienceText(learningText);
 		const duplicate = await findDuplicateExperienceByLearning(
 			experienceService,
@@ -165,3 +166,14 @@ export const recordExperienceAction: Action = {
 		};
 	},
 };
+
+function normalizeExplicitLearningText(text: string): string {
+	const normalized = text
+		.replace(
+			/^\s*(?:please\s+)?(?:remember|record)(?:\s+this)?(?:\s+experience)?\s*:?\s*/i,
+			"",
+		)
+		.trim();
+
+	return normalized || text;
+}
