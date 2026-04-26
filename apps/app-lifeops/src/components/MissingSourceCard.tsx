@@ -2,7 +2,6 @@ import { ArrowRight, PlugZap } from "lucide-react";
 
 interface MissingSourceCardProps {
   title: string;
-  reason: string;
   ctaLabel?: string;
   onCta?: () => void;
   className?: string;
