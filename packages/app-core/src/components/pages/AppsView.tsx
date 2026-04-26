@@ -49,6 +49,7 @@ const APPS_SIDEBAR_COLLAPSED_KEY = "milady:apps:sidebar:collapsed";
 const APPS_SIDEBAR_DEFAULT_WIDTH = 240;
 const APPS_SIDEBAR_MIN_WIDTH = 200;
 const APPS_SIDEBAR_MAX_WIDTH = 520;
+const APP_WINDOW_LAUNCH_ENABLED_KEY = "milady:apps:window:launch-enabled";
 const APP_WINDOW_ALWAYS_ON_TOP_KEY = "milady:apps:window:always-on-top";
 const APP_WINDOW_HEARTBEAT_MS = 15_000;
 
@@ -132,6 +133,17 @@ function loadInitialAppWindowAlwaysOnTop(): boolean {
   }
 }
 
+function loadInitialAppWindowLaunchEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      window.localStorage.getItem(APP_WINDOW_LAUNCH_ENABLED_KEY) === "true"
+    );
+  } catch {
+    return false;
+  }
+}
+
 function getCurrentAppsPath(): string {
   return getWindowNavigationPath();
 }
@@ -208,6 +220,9 @@ export function AppsView() {
   const [sidebarWidth, setSidebarWidth] = useState<number>(
     loadInitialSidebarWidth,
   );
+  const [appWindowLaunchEnabled, setAppWindowLaunchEnabled] = useState<boolean>(
+    loadInitialAppWindowLaunchEnabled,
+  );
   const [appWindowAlwaysOnTop, setAppWindowAlwaysOnTop] = useState<boolean>(
     loadInitialAppWindowAlwaysOnTop,
   );
@@ -240,6 +255,15 @@ export function AppsView() {
     setAppWindowAlwaysOnTop(next);
     try {
       window.localStorage.setItem(APP_WINDOW_ALWAYS_ON_TOP_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const handleAppWindowLaunchEnabledChange = useCallback((next: boolean) => {
+    setAppWindowLaunchEnabled(next);
+    try {
+      window.localStorage.setItem(APP_WINDOW_LAUNCH_ENABLED_KEY, String(next));
     } catch {
       /* ignore */
     }
@@ -491,7 +515,9 @@ export function AppsView() {
 
   const openAppRouteWindow = useCallback(
     async (app: RegistryAppInfo): Promise<boolean> => {
-      if (isAppWindow || !isElectrobunRuntime()) return false;
+      if (!appWindowLaunchEnabled || isAppWindow || !isElectrobunRuntime()) {
+        return false;
+      }
       const nativeSurface = nativeSurfaceForInternalToolTab(
         getInternalToolAppTargetTab(app.name),
       );
@@ -570,6 +596,7 @@ export function AppsView() {
       return true;
     },
     [
+      appWindowLaunchEnabled,
       appWindowAlwaysOnTop,
       isAppWindow,
       pushAppsUrl,
@@ -1070,18 +1097,33 @@ export function AppsView() {
               App Windows
             </h2>
           </div>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground">
-            <input
-              type="checkbox"
-              className="h-3.5 w-3.5 accent-accent"
-              checked={appWindowAlwaysOnTop}
-              onChange={(event) =>
-                handleAppWindowAlwaysOnTopChange(event.currentTarget.checked)
-              }
-            />
-            <Pin className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>Keep new windows on top</span>
-          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-accent"
+                checked={appWindowLaunchEnabled}
+                onChange={(event) =>
+                  handleAppWindowLaunchEnabledChange(
+                    event.currentTarget.checked,
+                  )
+                }
+              />
+              <span>Open apps in windows</span>
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-accent"
+                checked={appWindowAlwaysOnTop}
+                onChange={(event) =>
+                  handleAppWindowAlwaysOnTopChange(event.currentTarget.checked)
+                }
+              />
+              <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>Keep new windows on top</span>
+            </label>
+          </div>
         </div>
 
         {appWindows.length > 0 ? (

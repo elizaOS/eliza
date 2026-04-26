@@ -107,34 +107,65 @@ vi.mock("../apps/AppsCatalogGrid", () => ({
     onLaunch: (app: { name: string }) => void;
     visibleApps: Array<{ name: string; displayName?: string | null }>;
   }) => {
-    const pluginViewer = visibleApps.find(
-      (app) => app.name === "@elizaos/app-plugin-viewer",
-    );
+    const launchableApp =
+      visibleApps.find(
+        (app) => app.name === "@elizaos/app-defense-of-the-agents",
+      ) ?? visibleApps.find((app) => app.name === "@elizaos/app-plugin-viewer");
     return (
       <button
         type="button"
-        disabled={loading || !pluginViewer}
+        disabled={loading || !launchableApp}
         onClick={() => {
-          if (pluginViewer) onLaunch(pluginViewer);
+          if (launchableApp) onLaunch(launchableApp);
         }}
       >
-        Open Plugin Viewer
+        Open {launchableApp?.displayName ?? "App"}
       </button>
     );
   },
 }));
 
+function createCatalogApp(name: string, displayName: string) {
+  return {
+    name,
+    displayName,
+    description: `${displayName} test app`,
+    category: "game",
+    launchType: "local",
+    launchUrl: null,
+    icon: null,
+    heroImage: null,
+    capabilities: [],
+    stars: 0,
+    repository: "",
+    latestVersion: null,
+    supports: { v0: false, v1: false, v2: true },
+    npm: {
+      package: name,
+      v0Version: null,
+      v1Version: null,
+      v2Version: null,
+    },
+  };
+}
+
 describe("AppsView", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/apps");
+    window.localStorage.clear();
     clientMock.attachAppRun.mockResolvedValue({ run: null });
     clientMock.heartbeatAppRun.mockResolvedValue(undefined);
     clientMock.launchApp.mockResolvedValue({});
     clientMock.listAppRuns.mockResolvedValue([]);
     clientMock.listApps.mockResolvedValue([]);
-    clientMock.listCatalogApps.mockResolvedValue([]);
+    clientMock.listCatalogApps.mockResolvedValue([
+      createCatalogApp(
+        "@elizaos/app-defense-of-the-agents",
+        "Defense of the Agents",
+      ),
+    ]);
     invokeDesktopBridgeRequestMock.mockResolvedValue({
-      id: "plugins-window",
+      id: "app-window",
       alwaysOnTop: false,
     });
   });
@@ -144,11 +175,33 @@ describe("AppsView", () => {
     vi.clearAllMocks();
   });
 
-  it("does not auto-launch a second native app window after a manual catalog launch updates the route", async () => {
+  it("does not open a desktop app window by default", async () => {
     render(<AppsView />);
 
     const launchButton = await screen.findByRole("button", {
-      name: "Open Plugin Viewer",
+      name: "Open Defense of the Agents",
+    });
+
+    fireEvent.click(launchButton);
+
+    await waitFor(() => {
+      expect(clientMock.launchApp).toHaveBeenCalledWith(
+        "@elizaos/app-defense-of-the-agents",
+      );
+    });
+
+    expect(invokeDesktopBridgeRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("opens route apps in desktop windows only when the window preference is enabled", async () => {
+    render(<AppsView />);
+
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "Open apps in windows" }),
+    );
+
+    const launchButton = await screen.findByRole("button", {
+      name: "Open Defense of the Agents",
     });
 
     fireEvent.click(launchButton);
@@ -163,6 +216,15 @@ describe("AppsView", () => {
     });
 
     expect(invokeDesktopBridgeRequestMock).toHaveBeenCalledTimes(1);
-    expect(window.location.pathname).toBe("/apps/plugin-viewer");
+    expect(invokeDesktopBridgeRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rpcMethod: "desktopOpenAppWindow",
+        params: expect.objectContaining({
+          path: "/apps/defense-of-the-agents",
+        }),
+      }),
+    );
+    expect(clientMock.launchApp).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/apps/defense-of-the-agents");
   });
 });
