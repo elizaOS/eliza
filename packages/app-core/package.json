@@ -88,6 +88,7 @@
     "./components/pages/ChatModalView": "./src/components/pages/ChatModalView.tsx",
     "./components/shared/LanguageDropdown": "./src/components/shared/LanguageDropdown.tsx",
     "./components/shared/ThemeToggle": "./src/components/shared/ThemeToggle.tsx",
+    "./components/workspace/AppWorkspaceChrome": "./src/components/workspace/AppWorkspaceChrome.tsx",
     "./utils": "./src/utils/index.ts",
     "./utils/env": "./src/utils/env.ts",
     "./utils/asset-url": "./src/utils/asset-url.ts",
