@@ -134,7 +134,9 @@ describe("ScratchpadView", () => {
     render(<ScratchpadView />);
 
     expect(await screen.findAllByText("Launch plan")).toHaveLength(2);
-    expect(clientMock.getScratchpadTopic).toHaveBeenCalledWith("topic-1");
+    await waitFor(() =>
+      expect(clientMock.getScratchpadTopic).toHaveBeenCalledWith("topic-1"),
+    );
     expect(screen.getByText("1 / 10 topics")).toBeTruthy();
     expect(screen.getByText("42 tokens")).toBeTruthy();
     await waitFor(() =>
