@@ -1,5 +1,4 @@
 export * from "@elizaos/shared";
-export * from "@elizaos/shared/spoken-text";
 export * from "./actions/index.js";
 export {
   type ExtractActionParamsArgs,
