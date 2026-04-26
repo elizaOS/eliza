@@ -999,6 +999,7 @@ export async function resolvePlugins(
     const installRecord = installRecords[pluginName];
     const workspaceOverridePath = getWorkspacePluginOverridePath(pluginName);
     const staticElizaPlugin = await resolveStaticElizaPlugin(pluginName);
+    const exportSubpath = runtimePluginExportSubpath(pluginName);
 
     const importOfficialPluginFromNodeModules =
       async (): Promise<PluginModuleShape> =>
@@ -1029,6 +1030,7 @@ export async function resolvePlugins(
         mod = await importPluginModuleFromPath(
           ejectedRecord.installPath,
           pluginName,
+          exportSubpath,
         );
       } else if (staticElizaPlugin) {
         // Prefer statically imported official plugins over workspace staging.
@@ -1052,6 +1054,7 @@ export async function resolvePlugins(
             mod = await importPluginModuleFromPath(
               workspaceOverridePath,
               pluginName,
+              exportSubpath,
             );
           }
         } else {
@@ -1065,6 +1068,7 @@ export async function resolvePlugins(
           mod = await importPluginModuleFromPath(
             workspaceOverridePath,
             pluginName,
+            exportSubpath,
           );
         }
       } else if (installRecord?.installPath) {
@@ -1082,6 +1086,7 @@ export async function resolvePlugins(
             mod = await importPluginModuleFromPath(
               installRecord.installPath,
               pluginName,
+              exportSubpath,
             );
           }
         } else {
@@ -1090,6 +1095,7 @@ export async function resolvePlugins(
             mod = await importPluginModuleFromPath(
               installRecord.installPath,
               pluginName,
+              exportSubpath,
             );
           } catch (installErr) {
             logger.warn(
@@ -1098,7 +1104,9 @@ export async function resolvePlugins(
             const staticMod = await resolveStaticElizaPlugin(pluginName);
             mod = staticMod
               ? (staticMod as PluginModuleShape)
-              : ((await import(pluginName)) as PluginModuleShape);
+              : ((await import(
+                  runtimePluginImportSpecifier(pluginName)
+                )) as PluginModuleShape);
             if (repairBrokenInstallRecord(config, pluginName)) {
               repairedInstallRecords.add(pluginName);
             }
@@ -1115,7 +1123,9 @@ export async function resolvePlugins(
         // node_modules resolution).
         mod = staticElizaPlugin
           ? (staticElizaPlugin as PluginModuleShape)
-          : ((await import(pluginName)) as PluginModuleShape);
+          : ((await import(
+              runtimePluginImportSpecifier(pluginName)
+            )) as PluginModuleShape);
       }
 
       const pluginInstance = findRuntimePluginExport(mod);
