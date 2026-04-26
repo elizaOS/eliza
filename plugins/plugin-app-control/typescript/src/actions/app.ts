@@ -27,6 +27,7 @@ import {
 	createAppControlClient,
 } from "../client/api.js";
 import { readStringOption } from "../params.js";
+import { hasOwnerAccess as defaultOwnerAccessFn } from "../security.js";
 import { hasPendingIntent, isChoiceReply, runCreate } from "./app-create.js";
 import { runLaunch } from "./app-launch.js";
 import { runList } from "./app-list.js";
@@ -121,21 +122,9 @@ function inferMode(
 const KEYWORD_HEURISTIC =
 	/\b(launch|open|start|stop|close|relaunch|restart|create|build|make|new|scaffold|list|show|running)\b.*\b(app|application|mini)\b|\b(create|build|make|scaffold)\b.*\b(app|game|tool|application)\b|\b(load|register|import).*\b(directory|folder)\b/i;
 
-async function defaultOwnerAccessFn(
-	runtime: IAgentRuntime,
-	message: Memory,
-): Promise<boolean> {
-	const checker = (
-		runtime as unknown as {
-			__hasOwnerAccess?: OwnerAccessFn;
-		}
-	).__hasOwnerAccess;
-	if (typeof checker === "function") return checker(runtime, message);
-	// When no checker is wired, default to allow — matches the legacy
-	// LAUNCH_APP / CLOSE_APP / LIST_RUNNING_APPS behaviour, which never
-	// gated on owner role.
-	return true;
-}
+// `defaultOwnerAccessFn` is the real `hasOwnerAccess` from ./security.js
+// (imported above), which uses `checkSenderRole` from `@elizaos/core`.
+// Defined in ./security so this plugin doesn't need an `@elizaos/agent` dep.
 
 export function createAppAction(deps: AppActionDeps = {}): Action {
 	const clientFactory = () => deps.client ?? createAppControlClient();
