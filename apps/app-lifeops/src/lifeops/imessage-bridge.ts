@@ -103,15 +103,26 @@ async function probeBlueBubbles(
 ): Promise<boolean> {
   try {
     const target = new URL("/api/v1/server/info", url);
-    if (password) target.searchParams.set("password", password);
     const response = await fetch(target.toString(), {
       method: "GET",
+      headers: bluebubblesAuthHeaders(password),
       signal: AbortSignal.timeout(3_000),
     });
     return response.ok;
   } catch {
     return false;
   }
+}
+
+/**
+ * Build BlueBubbles auth headers. BlueBubbles' v1 API accepts the server
+ * password via either a `password` query parameter or an `Authorization:
+ * Bearer <password>` header; we always use the header form so the credential
+ * never lands in URL access logs, browser history, or referrer headers.
+ */
+function bluebubblesAuthHeaders(password?: string): Record<string, string> {
+  if (!password) return {};
+  return { Authorization: `Bearer ${password}` };
 }
 
 export async function detectIMessageBackend(
@@ -435,9 +446,6 @@ function buildBlueBubblesUrl(
     );
   }
   const url = new URL(pathname, config.bluebubblesUrl);
-  if (config.bluebubblesPassword) {
-    url.searchParams.set("password", config.bluebubblesPassword);
-  }
   if (search) {
     for (const [k, v] of Object.entries(search)) {
       url.searchParams.set(k, v);
@@ -451,13 +459,18 @@ async function bluebubblesRequest<T>(
   pathname: string,
   init: RequestInit & { search?: Record<string, string> } = {},
 ): Promise<T> {
-  const { search, ...requestInit } = init;
+  const { search, headers, ...requestInit } = init;
   const url = buildBlueBubblesUrl(config, pathname, search);
+  const mergedHeaders: Record<string, string> = {
+    ...bluebubblesAuthHeaders(config.bluebubblesPassword),
+    ...((headers as Record<string, string>) ?? {}),
+  };
 
   let response: Response;
   try {
     response = await fetch(url.toString(), {
       ...requestInit,
+      headers: mergedHeaders,
       signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {

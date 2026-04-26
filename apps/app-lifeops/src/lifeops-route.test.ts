@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAutomationsHash,
   buildLifeOpsHash,
+  LIFEOPS_ROUTE_SECTIONS,
   parseAutomationsRoute,
   parseHashParams,
   parseLifeOpsRoute,
@@ -75,6 +76,14 @@ describe("parseLifeOpsRoute", () => {
         "#lifeops.section=messages&lifeops.message=m-1",
       ),
     ).toEqual({ section: "messages", eventId: null, messageId: "m-1" });
+  });
+
+  it.each(LIFEOPS_ROUTE_SECTIONS)("round-trips the %s section", (section) => {
+    expect(parseLifeOpsRoute(`#lifeops.section=${section}`)).toEqual({
+      section,
+      eventId: null,
+      messageId: null,
+    });
   });
 
   it("rejects unknown sections but keeps ids so the app can decide what to do", () => {
