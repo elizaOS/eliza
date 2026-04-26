@@ -17,15 +17,18 @@
 
 import fs from "node:fs";
 import type http from "node:http";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
-import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
-import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
+import {
+  checkRateLimit,
+  createIntegrationTelemetrySpan,
+  type RateLimitConfig,
+  type ReadJsonBodyOptions,
+} from "@elizaos/agent";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
   type CreateBrowserBridgeCompanionAutoPairRequest,

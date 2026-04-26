@@ -2,7 +2,7 @@ import type {
   LifeOpsAwakeProbability,
   LifeOpsPersonalBaseline,
   LifeOpsScheduleRegularity,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { resolveLifeOpsRelativeTime } from "../src/lifeops/relative-time.js";
 

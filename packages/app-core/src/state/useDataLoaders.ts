@@ -7,7 +7,7 @@
  * checkExtensionStatus.
  */
 
-import { resolveStylePresetByAvatarIndex } from "@elizaos/shared/onboarding-presets";
+import { resolveStylePresetByAvatarIndex } from "@elizaos/shared";
 import {
   type RefObject,
   useCallback,

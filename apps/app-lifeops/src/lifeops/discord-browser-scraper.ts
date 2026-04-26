@@ -6,9 +6,9 @@ import {
   navigateBrowserWorkspaceTab,
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
-} from "@elizaos/agent/services/browser-workspace";
+} from "@elizaos/agent";
 import type { BrowserBridgePageContext } from "@elizaos/plugin-browser-bridge";
-import type { LifeOpsConnectorSide } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsConnectorSide } from "@elizaos/shared";
 
 export const DISCORD_APP_URL = "https://discord.com/channels/@me";
 const DISCORD_APP_TITLE = "Discord";

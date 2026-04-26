@@ -312,9 +312,13 @@ export type ConfigSnapshot = {
 
 // ── Simple showIf (legacy, still supported) ─────────────────────────
 
-export type { ShowIfCondition } from "@elizaos/agent/config/schema";
+export type {
+  ShowIfCondition,
+} from "@elizaos/agent";
 
-import type { ShowIfCondition } from "@elizaos/agent/config/schema";
+import type {
+  ShowIfCondition,
+} from "@elizaos/agent";
 
 // ── Dynamic values (Phase 2) ─────────────────────────────────────────
 

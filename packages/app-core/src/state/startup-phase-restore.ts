@@ -5,8 +5,10 @@
  * Probes for an existing install/connection and dispatches the result.
  */
 
-import { ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared/contracts/onboarding";
-import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import {
+  getStylePresets,
+  ONBOARDING_PROVIDER_CATALOG,
+} from "@elizaos/shared";
 import { client, type OnboardingOptions } from "../api";
 import {
   getBackendStartupTimeoutMs,

@@ -2,7 +2,7 @@ export {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
-} from "@elizaos/agent/config/config";
+} from "@elizaos/agent";
 
 export interface LegacyCloudConfig {
   cloud?: { enabled?: boolean } | null;

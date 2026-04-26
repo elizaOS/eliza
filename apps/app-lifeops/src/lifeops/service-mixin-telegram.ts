@@ -1,17 +1,15 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
-import type {
-  LifeOpsConnectorSide,
-  LifeOpsTelegramCapability,
-  LifeOpsTelegramConnectorStatus,
-  StartLifeOpsTelegramAuthRequest,
-  StartLifeOpsTelegramAuthResponse,
-  SubmitLifeOpsTelegramAuthRequest,
-  VerifyLifeOpsTelegramConnectorRequest,
-  VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/shared/contracts/lifeops";
 import {
   LIFEOPS_TELEGRAM_CAPABILITIES,
-} from "@elizaos/shared/contracts/lifeops";
+  type LifeOpsConnectorSide,
+  type LifeOpsTelegramCapability,
+  type LifeOpsTelegramConnectorStatus,
+  type StartLifeOpsTelegramAuthRequest,
+  type StartLifeOpsTelegramAuthResponse,
+  type SubmitLifeOpsTelegramAuthRequest,
+  type VerifyLifeOpsTelegramConnectorRequest,
+  type VerifyLifeOpsTelegramConnectorResponse,
+} from "@elizaos/shared";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
   fail,

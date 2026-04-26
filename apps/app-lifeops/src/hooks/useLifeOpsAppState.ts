@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { client } from "@elizaos/app-core/api";
+import { client } from "@elizaos/app-core";
 
 function errorMessage(cause: unknown): string {
   return cause instanceof Error && cause.message.trim().length > 0

@@ -16,7 +16,7 @@ import type {
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 
 export type {
   StewardApprovalInfo,

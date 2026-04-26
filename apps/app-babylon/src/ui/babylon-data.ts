@@ -3,7 +3,7 @@ import type {
   BabylonAgentStatus,
   BabylonChatMessage,
   BabylonTeamAgent,
-} from "@elizaos/app-core/api/client-types-babylon";
+} from "@elizaos/app-core";
 import { asRecord } from "@elizaos/shared";
 
 export interface BabylonTeamSummaryTotals {

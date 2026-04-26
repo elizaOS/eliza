@@ -4,11 +4,11 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import {
   findKeywordTermMatch,
+  getRecentMessagesData,
   getValidationKeywordTerms,
-} from "@elizaos/shared/validation-keywords";
+} from "@elizaos/shared";
 
 import type { RoleName } from "./types";
 

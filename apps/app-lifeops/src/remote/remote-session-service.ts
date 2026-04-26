@@ -19,7 +19,9 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
+import {
+  resolveStateDir,
+} from "@elizaos/agent";
 import { PairingCodeStore } from "./pairing-code.js";
 
 export type RemoteSessionStatus = "pending" | "active" | "denied" | "revoked";

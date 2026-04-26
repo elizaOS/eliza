@@ -30,12 +30,10 @@ import {
 import {
   buildCharacterFromConfig,
   configureLocalEmbeddingPlugin,
-} from "@elizaos/agent/runtime/eliza";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
-import {
+  createElizaPlugin,
   extractPlugin,
   type PluginModuleShape,
-} from "@elizaos/agent/test-support/test-helpers";
+} from "@elizaos/agent";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

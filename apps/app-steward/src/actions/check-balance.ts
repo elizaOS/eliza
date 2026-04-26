@@ -17,7 +17,7 @@ import type { Action, HandlerCallback, HandlerOptions } from "@elizaos/core";
 import type {
   EvmChainBalance,
   WalletBalancesResponse,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import {
   buildAuthHeaders,
   getWalletActionApiPort,

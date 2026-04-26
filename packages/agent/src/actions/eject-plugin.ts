@@ -4,7 +4,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
 } from "@elizaos/core";
-import { requestRestart } from "@elizaos/shared/restart";
+import { requestRestart } from "@elizaos/shared";
 import {
   isPluginManagerLike,
   type PluginManagerLike,

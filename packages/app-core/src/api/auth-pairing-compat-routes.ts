@@ -1,6 +1,8 @@
 import crypto from "node:crypto";
 import type http from "node:http";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import {
+  loadElizaConfig,
+} from "@elizaos/agent";
 import { ensureRouteAuthorized, getCompatApiToken, tokenMatches } from "./auth";
 import {
   type CompatRuntimeState,

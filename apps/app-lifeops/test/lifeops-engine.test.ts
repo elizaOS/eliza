@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { LifeOpsTaskDefinition } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsTaskDefinition } from "@elizaos/shared";
 import { materializeDefinitionOccurrences } from "../src/lifeops/engine.ts";
 
 function buildBaseDefinition(): Omit<LifeOpsTaskDefinition, "cadence"> {

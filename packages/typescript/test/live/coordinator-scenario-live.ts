@@ -1,5 +1,7 @@
-import { runCoordinatorLiveScenarios } from "@elizaos/agent/evals/coordinator-live-runner";
-import type { CoordinatorEvalChannel } from "@elizaos/agent/evals/coordinator-scenarios";
+import {
+  type CoordinatorEvalChannel,
+  runCoordinatorLiveScenarios,
+} from "@elizaos/agent";
 
 function takeFlag(name: string): string | undefined {
 	const index = process.argv.indexOf(name);

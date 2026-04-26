@@ -4,7 +4,7 @@
  * so disconnect appeared to do nothing.
  */
 
-import { resolveApiToken } from "@elizaos/shared/runtime-env";
+import { resolveApiToken } from "@elizaos/shared";
 import { getBrandConfig } from "./brand-config";
 import {
   normalizeApiBase,

@@ -15,12 +15,12 @@
 
 import type { Action, ActionExample, Memory } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
 import {
   getValidationKeywordTerms,
   normalizeKeywordMatchText,
+  resolveServerOnlyPort,
   textIncludesKeywordTerm,
-} from "@elizaos/shared/validation-keywords";
+} from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.js";
 
 const LAUNCH_APP_TERMS = getValidationKeywordTerms(

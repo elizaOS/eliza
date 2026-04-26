@@ -1,4 +1,4 @@
-import { resolveDesktopApiPort } from "@elizaos/shared/runtime-env";
+import { resolveDesktopApiPort } from "@elizaos/shared";
 import { DEFAULT_API_PORT } from "./constants";
 
 type ExternalApiBaseEnvKey =

@@ -5,12 +5,12 @@
  * that require Node APIs or server-only runtime state.
  */
 
-export type { RestartHandler } from "@elizaos/shared/restart";
+export type { RestartHandler } from "@elizaos/shared";
 export {
   RESTART_EXIT_CODE,
   requestRestart,
   setRestartHandler,
-} from "@elizaos/shared/restart";
+} from "@elizaos/shared";
 export * from "@elizaos/ui";
 export { App } from "./App.tsx";
 export * from "./api/auth.ts";

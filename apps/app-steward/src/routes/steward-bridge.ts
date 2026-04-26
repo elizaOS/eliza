@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import {
+  loadElizaConfig,
+} from "@elizaos/agent";
 import {
   type PolicyResult,
   type PolicyRule,

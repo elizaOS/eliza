@@ -6,7 +6,7 @@
  * Remote connection state (connecting/connected/error) collapses into one object.
  */
 
-import { getDefaultStylePreset } from "@elizaos/shared/onboarding-presets";
+import { getDefaultStylePreset } from "@elizaos/shared";
 import { useCallback, useReducer, useRef } from "react";
 import type { OnboardingOptions } from "../api";
 import { isElectrobunRuntime } from "../bridge";

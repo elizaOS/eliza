@@ -1,9 +1,9 @@
-import { resolveServiceRoutingInConfig } from "@elizaos/shared/contracts/onboarding";
 import {
+  asRecord,
   buildElizaCloudServiceRoute,
   normalizeServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing";
-import { asRecord } from "@elizaos/shared/type-guards";
+  resolveServiceRoutingInConfig,
+} from "@elizaos/shared";
 import {
   Button,
   Select,

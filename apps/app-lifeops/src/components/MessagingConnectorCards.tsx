@@ -8,7 +8,7 @@ import {
 import type {
   LifeOpsOwnerBrowserAccessStatus,
   LifeOpsTelegramAuthState,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   CheckCircle2,
   CircleAlert,

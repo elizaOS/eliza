@@ -20,7 +20,7 @@ import type {
 } from "@elizaos/core";
 import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
 import { hasAdminAccess } from "@elizaos/agent";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { getRecentMessagesData } from "@elizaos/shared";
 import {
   type CrossChannelSearchChannel,
   CROSS_CHANNEL_SEARCH_CHANNELS,

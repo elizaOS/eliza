@@ -19,7 +19,7 @@
  * @module first-time-setup
  */
 
-import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import { getStylePresets } from "@elizaos/shared";
 import { persistConfigEnv } from "../api/config-env.js";
 import {
   CLOUD_EVM_ADDRESS_ENV_KEY,

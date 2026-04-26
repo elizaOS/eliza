@@ -2,7 +2,9 @@
  * Runtime contributor — reports model, provider, and OS platform.
  */
 
-import type { AwarenessContributor } from "@elizaos/agent/contracts";
+import type {
+  AwarenessContributor,
+} from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 
 export const runtimeContributor: AwarenessContributor = {

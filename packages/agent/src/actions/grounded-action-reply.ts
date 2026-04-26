@@ -5,8 +5,10 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
-import { asRecord } from "@elizaos/shared/type-guards";
+import {
+  asRecord,
+  getRecentMessagesData,
+} from "@elizaos/shared";
 import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.js";
 import { recentConversationTexts } from "./recent-conversation-texts.js";
 

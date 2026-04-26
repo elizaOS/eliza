@@ -3,7 +3,7 @@ import {
   type ResolvedCharacterAsset,
   type ResolvedInjectedCharacter,
   resolveCharacterCatalog,
-} from "@elizaos/app-core/config";
+} from "@elizaos/app-core";
 
 function getResolved() {
   const catalog = getBootConfig().characterCatalog;

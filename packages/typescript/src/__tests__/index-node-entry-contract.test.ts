@@ -9,7 +9,7 @@ const DIST_ENTRY_URL = new URL(
 	import.meta.url,
 );
 const EXPLICIT_EVALUATOR_EXPORT_SNIPPET = `export {
-	factRefinementEvaluator,
+	factExtractorEvaluator,
 	skillExtractionEvaluator,
 	skillRefinementEvaluator,
 } from "./features/advanced-capabilities/evaluators/index";`;
@@ -32,6 +32,6 @@ describe("@elizaos/core node entry contract", () => {
 
 		expect(distEntry.skillRefinementEvaluator).toBeDefined();
 		expect(distEntry.skillExtractionEvaluator).toBeDefined();
-		expect(distEntry.factRefinementEvaluator).toBeDefined();
+		expect(distEntry.factExtractorEvaluator).toBeDefined();
 	}, 60000);
 });

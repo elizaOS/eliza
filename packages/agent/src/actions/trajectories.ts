@@ -8,7 +8,7 @@
 
 import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
 import { annotateActiveTrajectoryStep, logger } from "@elizaos/core";
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
+import { resolveServerOnlyPort } from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.js";
 
 function getApiBase(): string {

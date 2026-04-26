@@ -12,7 +12,7 @@ import {
   type LifeOpsInboxChannel,
   type LifeOpsInboxMessage,
   type LifeOpsInboxThreadGroup,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   AlarmClock,
   ArrowLeft,

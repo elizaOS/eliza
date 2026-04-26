@@ -17,7 +17,7 @@ import {
   useApp,
   useMediaQuery,
 } from "@elizaos/app-core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

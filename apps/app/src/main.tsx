@@ -8,6 +8,7 @@ import { Capacitor } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import {
+  CompanionShell,
   createVectorBrowserRenderer,
   GlobalEmoteOverlay,
   InferenceCloudAlertButton,
@@ -16,7 +17,6 @@ import {
   THREE,
   useCompanionSceneStatus,
 } from "@elizaos/app-companion";
-import { CompanionShell } from "@elizaos/app-companion/ui";
 import type { BrandingConfig } from "@elizaos/app-core";
 import {
   AGENT_READY_EVENT,
@@ -55,13 +55,12 @@ import {
   resolveWindowShellRoute,
   SHARE_TARGET_EVENT,
   setBootConfig,
+  type ShareTargetPayload,
   shouldInstallMainWindowOnboardingPatches,
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/app-core";
-import type { ShareTargetPayload } from "@elizaos/app-core/platform";
-import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops/platform";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
@@ -80,28 +79,29 @@ import "@elizaos/app-scape/ui";
 import "@elizaos/app-hyperscape/ui";
 import "@elizaos/app-2004scape/ui";
 import "@elizaos/app-defense-of-the-agents/ui";
-import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops/components/LifeOpsActivitySignalsEffect";
 import {
   AppBlockerSettingsCard,
+  dispatchQueuedLifeOpsGithubCallbackFromUrl,
+  LifeOpsActivitySignalsEffect,
   LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
   LifeOpsPageView,
   WebsiteBlockerSettingsCard,
-} from "@elizaos/app-lifeops/ui";
+} from "@elizaos/app-lifeops";
 import {
   ApprovalQueue,
   StewardLogo,
   TransactionHistory,
-} from "@elizaos/app-steward/ui";
+} from "@elizaos/app-steward";
 import {
   CodingAgentControlChip,
   CodingAgentSettingsSection,
   CodingAgentTasksPanel,
   PtyConsoleDrawer,
 } from "@elizaos/app-task-coordinator";
-import { FineTuningView } from "@elizaos/app-training/ui";
+import { FineTuningView } from "@elizaos/app-training";
 import "@elizaos/app-shopify/register";
 import "@elizaos/app-vincent/client";
-import { useVincentState } from "@elizaos/app-vincent/ui";
+import { useVincentState } from "@elizaos/app-vincent";
 import "@elizaos/app-vincent/register";
 import { shouldUseCloudOnlyBranding } from "@elizaos/app-core";
 import {
@@ -215,7 +215,7 @@ installDesktopPermissionsClientPatch(client);
 window.__ELIZA_APP_CHARACTER_EDITOR__ = CharacterEditor;
 getAppWindow()[BRANDED_WINDOW_KEYS.characterEditor] = CharacterEditor;
 
-import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import { getStylePresets } from "@elizaos/shared";
 
 // Derive VRM roster from STYLE_PRESETS so character names stay in one place.
 const APP_STYLE_PRESETS = getStylePresets();

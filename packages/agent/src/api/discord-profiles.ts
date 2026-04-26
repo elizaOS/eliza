@@ -1,5 +1,5 @@
 import type { AgentRuntime, Room, UUID } from "@elizaos/core";
-import { normalizeConnectorSource } from "@elizaos/shared/connectors";
+import { normalizeConnectorSource } from "@elizaos/shared";
 import { cacheDiscordAvatarUrl } from "./discord-avatar-cache.js";
 
 type DiscordUserProfile = {

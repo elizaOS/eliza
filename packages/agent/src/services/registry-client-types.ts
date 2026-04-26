@@ -5,7 +5,7 @@ import type {
   AppUiExtensionConfig,
   AppViewerConfig,
   RegistryAppInfo,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 
 export type RegistryAppViewerMeta = Omit<AppViewerConfig, "authMessage">;
 export type RegistryAppSessionMode = AppSessionMode;

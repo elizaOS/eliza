@@ -34,7 +34,9 @@ import {
   resolveCreateEventTravelIntent,
 } from "../travel-time/calendar-create.js";
 import { TravelTimeUnavailableError } from "../travel-time/service.js";
-import { renderGroundedActionReply } from "@elizaos/agent/actions";
+import {
+  renderGroundedActionReply,
+} from "@elizaos/agent";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
   calendarReadUnavailableMessage,

@@ -18,7 +18,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
+import { asNonEmptyString, asRecord } from "@elizaos/shared";
 import {
   extractRoleIntentWithLlm,
   looksLikeRoleIntent,

@@ -1,5 +1,7 @@
 import type { Plugin } from "@elizaos/core";
-import { gatePluginSessionForHostedApp } from "@elizaos/agent/services/app-session-gate";
+import {
+  gatePluginSessionForHostedApp,
+} from "@elizaos/agent";
 import { manageElizaBrowserWorkspaceAction } from "./action";
 import { appBrowserWorkspaceProvider } from "./provider";
 import { AppBrowserWorkspaceService } from "./service";

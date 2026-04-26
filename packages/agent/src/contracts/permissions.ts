@@ -1,1 +1,1 @@
-export * from "@elizaos/shared/contracts/permissions";
+export * from "@elizaos/shared";

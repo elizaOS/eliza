@@ -1,21 +1,19 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import type {
-  GetLifeOpsCalendarFeedRequest,
-  GetLifeOpsGmailTriageRequest,
-  GetLifeOpsInboxRequest,
-  LifeOpsCalendarFeed,
-  LifeOpsGmailTriageFeed,
-  LifeOpsOccurrence,
-  LifeOpsInbox,
-  LifeOpsXDm,
-  LifeOpsXFeedItem,
-  LifeOpsXFeedType,
-} from "@elizaos/shared/contracts/lifeops";
 import {
+  type GetLifeOpsCalendarFeedRequest,
+  type GetLifeOpsGmailTriageRequest,
+  type GetLifeOpsInboxRequest,
   LIFEOPS_OCCURRENCE_STATES,
+  type LifeOpsCalendarFeed,
+  type LifeOpsGmailTriageFeed,
+  type LifeOpsInbox,
+  type LifeOpsOccurrence,
   type LifeOpsOccurrenceState,
-} from "@elizaos/shared/contracts/lifeops";
+  type LifeOpsXDm,
+  type LifeOpsXFeedItem,
+  type LifeOpsXFeedType,
+} from "@elizaos/shared";
 import {
   computeMissedOccurrenceStreak,
   computeOccurrenceStreaks,

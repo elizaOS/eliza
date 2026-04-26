@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { isPrivyWalletProvisioningEnabled } from "@elizaos/app-steward/services/privy-wallets";
+import { isPrivyWalletProvisioningEnabled } from "@elizaos/app-steward";
 import {
   type AgentRuntime,
   type ChannelType,
@@ -25,7 +25,7 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared/onboarding-presets";
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import {

@@ -1,9 +1,8 @@
-import { Badge, Button, useApp } from "@elizaos/app-core";
-import { client } from "@elizaos/app-core/api";
+import { Badge, Button, client, useApp } from "@elizaos/app-core";
 import type {
   LifeOpsCapabilityState,
   LifeOpsManualOverrideKind,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   Activity,
   Clock3,

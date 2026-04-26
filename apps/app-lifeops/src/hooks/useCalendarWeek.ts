@@ -6,7 +6,7 @@
  */
 
 import { client, useApp } from "@elizaos/app-core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type CalendarViewMode = "day" | "week" | "month";

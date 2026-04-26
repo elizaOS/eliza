@@ -1,24 +1,23 @@
-import type { RouteHelpers, RouteRequestContext } from "@elizaos/agent/api";
 import {
   type TriggerRouteContext as AutonomousTriggerRouteContext,
-  handleTriggerRoutes as handleAutonomousTriggerRoutes,
-} from "@elizaos/agent/api/trigger-routes";
-import {
   buildTriggerConfig,
   buildTriggerMetadata,
   DISABLED_TRIGGER_INTERVAL_MS,
   executeTriggerTask,
   getTriggerHealthSnapshot,
   getTriggerLimit,
+  handleTriggerRoutes as handleAutonomousTriggerRoutes,
   listTriggerTasks,
   normalizeTriggerDraft,
   readTriggerConfig,
   readTriggerRuns,
+  type RouteHelpers,
+  type RouteRequestContext,
+  taskToTriggerSummary,
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
-  taskToTriggerSummary,
   triggersFeatureEnabled,
-} from "@elizaos/agent/triggers";
+} from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 
 export type TriggerRouteHelpers = RouteHelpers;

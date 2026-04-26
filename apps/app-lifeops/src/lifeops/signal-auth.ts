@@ -4,13 +4,13 @@ import path from "node:path";
 import type {
   LifeOpsConnectorSide,
   LifeOpsSignalPairingStatus,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
-  SignalPairingSession,
+  resolveOAuthDir,
   type SignalPairingEvent,
+  SignalPairingSession,
   type SignalPairingSnapshot,
-} from "@elizaos/agent/services/signal-pairing";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+} from "@elizaos/agent";
 
 export interface PendingSignalPairingSession {
   sessionId: string;

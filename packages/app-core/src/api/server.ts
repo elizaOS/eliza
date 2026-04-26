@@ -3,41 +3,39 @@ import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { handleCloudBillingRoute } from "@elizaos/agent/api/cloud-billing-routes";
-import { handleCloudCompatRoute } from "@elizaos/agent/api/cloud-compat-routes";
-import { clearPersistedOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
-// Override the wallet export rejection function with the hardened version
-// that adds rate limiting, audit logging, and a forced confirmation delay.
 import {
   AGENT_EVENT_ALLOWED_STREAMS,
+  clearPersistedOnboardingConfig,
+  cloneWithoutBlockedObjectKeys,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
   type ConversationMeta,
-  cloneWithoutBlockedObjectKeys,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
+  type ElizaConfig,
   extractAuthToken,
   fetchWithTimeoutGuard,
+  handleCloudBillingRoute,
+  handleCloudCompatRoute,
+  initStewardWalletCache,
   isAllowedHost,
   isAuthorized,
+  loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
+  resolveDefaultAgentWorkspaceDir,
   resolveMcpServersRejection,
   resolvePluginConfigMutationRejections,
+  resolveUserPath,
   routeAutonomyTextToUser,
+  saveElizaConfig,
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
   validateMcpServerConfig,
-} from "@elizaos/agent/api/server";
-import { initStewardWalletCache } from "@elizaos/agent/api/wallet";
-import {
-  type ElizaConfig,
-  loadElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent/config/config";
-import { resolveUserPath } from "@elizaos/agent/config/paths";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+} from "@elizaos/agent";
+// Override the wallet export rejection function with the hardened version
+// that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/onboarding";
+import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -51,7 +49,7 @@ import {
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 
-export { resolveWalletExportRejection } from "@elizaos/app-steward/routes/server-wallet-trade";
+export { resolveWalletExportRejection } from "@elizaos/app-steward";
 export {
   type CompatRuntimeState,
   DATABASE_UNAVAILABLE_MESSAGE,
@@ -154,8 +152,8 @@ const lazyEnsureTTS = () =>
     (m) => m.ensureTextToSpeechHandler,
   );
 
-import { hydrateWalletKeysFromNodePlatformSecureStore } from "@elizaos/app-steward/security/hydrate-wallet-keys-from-platform-store";
-import { deleteWalletSecretsFromOsStore } from "@elizaos/app-steward/security/wallet-os-store-actions";
+import { hydrateWalletKeysFromNodePlatformSecureStore } from "@elizaos/app-steward";
+import { deleteWalletSecretsFromOsStore } from "@elizaos/app-steward";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
 import { clearCloudSecrets, getCloudSecret } from "./cloud-secrets";
 

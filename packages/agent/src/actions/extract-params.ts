@@ -50,7 +50,7 @@ import {
   parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { getRecentMessagesData } from "@elizaos/shared";
 
 /**
  * Schema descriptor for a single action parameter — matches the shape used

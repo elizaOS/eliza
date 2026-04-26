@@ -13,7 +13,7 @@ import type {
   LifeOpsActivitySignal,
   LifeOpsTelemetryEvent,
   LifeOpsTelemetryPayload,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { resolveActivitySignalReliability } from "./source-reliability.js";
 
 export function deriveTelemetryDedupeKey(

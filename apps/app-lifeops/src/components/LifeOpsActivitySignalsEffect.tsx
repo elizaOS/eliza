@@ -1,4 +1,4 @@
-import { useApp } from "@elizaos/app-core/state";
+import { useApp } from "@elizaos/app-core";
 import { useLifeOpsActivitySignals } from "../hooks/useLifeOpsActivitySignals.js";
 
 export function LifeOpsActivitySignalsEffect(): null {

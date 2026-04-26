@@ -149,8 +149,8 @@ export const calendlyAction: Action = {
     {
       name: "subaction",
       description:
-        "One of: list_event_types, availability, upcoming_events, single_use_link.",
-      required: true,
+        "One of: list_event_types, availability, upcoming_events, single_use_link. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {

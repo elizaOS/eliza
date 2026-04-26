@@ -7,7 +7,7 @@ import {
   type WalletConfigStatus,
   type WalletEntry,
   type WalletPrimaryMap,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 

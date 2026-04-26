@@ -4,7 +4,7 @@ import type {
   LifeOpsInboxChannel,
   LifeOpsInboxMessage,
   LifeOpsInboxThreadGroup,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type InboxChannel = "all" | LifeOpsInboxChannel;

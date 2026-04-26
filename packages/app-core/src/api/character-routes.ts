@@ -1,11 +1,11 @@
-import type { RouteRequestContext } from "@elizaos/agent/api";
 import {
   type CharacterRouteContext as AutonomousCharacterRouteContext,
   type CharacterRouteState as AutonomousCharacterRouteState,
+  CharacterSchema,
+  type ElizaConfig,
   handleCharacterRoutes as handleAutonomousCharacterRoutes,
-} from "@elizaos/agent/api/character-routes";
-import type { ElizaConfig } from "@elizaos/agent/config";
-import { CharacterSchema } from "@elizaos/agent/config";
+  type RouteRequestContext,
+} from "@elizaos/agent";
 
 export interface CharacterRouteState extends AutonomousCharacterRouteState {
   config?: ElizaConfig;

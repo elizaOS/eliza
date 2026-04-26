@@ -3,4 +3,4 @@ export {
   handleKnowledgeRoutes,
   type KnowledgeRouteContext,
   type KnowledgeRouteHelpers,
-} from "@elizaos/app-knowledge/routes";
+} from "@elizaos/app-knowledge";
