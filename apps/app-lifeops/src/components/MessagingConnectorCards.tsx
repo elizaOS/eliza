@@ -476,15 +476,21 @@ export function SignalConnectorCard() {
 export function DiscordConnectorCard() {
   const discord = useDiscordConnector();
   const { setActionNotice, setTab } = useApp();
-  const isConnected = discord.status?.connected === true;
   const busy = discord.actionPending || discord.loading;
   const username = discord.status?.identity?.username;
   const browserAccess = discord.status?.browserAccess ?? [];
+  const activeDmInboxAccess =
+    browserAccess.find(
+      (access) => access.active && access.tabState === "dm_inbox_visible",
+    ) ?? null;
+  const isConnected =
+    discord.status?.connected === true || Boolean(activeDmInboxAccess);
   const desktopAccess =
     browserAccess.find((access) => access.source === "desktop_browser") ?? null;
   const discordDesktopAccess =
     browserAccess.find((access) => access.source === "discord_desktop") ?? null;
-  const dmInboxVisible = discord.status?.dmInbox.visible === true;
+  const dmInboxVisible =
+    discord.status?.dmInbox.visible === true || Boolean(activeDmInboxAccess);
   const canRelaunchDiscord =
     discordDesktopAccess?.nextAction === "relaunch_discord";
   const preferredDiscordDesktopAccess =

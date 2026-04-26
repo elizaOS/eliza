@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   createLifeOpsConnectorGrant,
   LifeOpsRepository,
@@ -6,6 +6,21 @@ import {
 import { LifeOpsService, LifeOpsServiceError } from "../src/lifeops/service.js";
 import { executeRawSql } from "../src/lifeops/sql.js";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
+
+let previousDiscordDesktopCdpPort: string | undefined;
+
+beforeEach(() => {
+  previousDiscordDesktopCdpPort = process.env.MILADY_DISCORD_DESKTOP_CDP_PORT;
+  process.env.MILADY_DISCORD_DESKTOP_CDP_PORT = "1";
+});
+
+afterEach(() => {
+  if (previousDiscordDesktopCdpPort === undefined) {
+    delete process.env.MILADY_DISCORD_DESKTOP_CDP_PORT;
+  } else {
+    process.env.MILADY_DISCORD_DESKTOP_CDP_PORT = previousDiscordDesktopCdpPort;
+  }
+});
 
 async function createDiscordBrowserService(
   agentId: string,
