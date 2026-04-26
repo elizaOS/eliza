@@ -1255,6 +1255,81 @@ async function handleGenerateWorkflow(
 
   const name = readOptionalString(body, "name");
   const workflowId = readOptionalString(body, "workflowId");
+
+  // Prefer the plugin's `deployWorkflow` pipeline so generated workflows go
+  // through credential resolution server-side. Without this, the LLM emits
+  // `credentials: { gmailOAuth2: { id: "{{CREDENTIAL_ID}}" } }` and the
+  // placeholder reaches n8n raw — n8n then crashes on
+  // `Cannot read properties of undefined (reading 'execute')` whenever the
+  // user tries to activate or run the workflow because no real credential id
+  // exists for the lookup. The fallback proxy chain only runs when the
+  // plugin's workflow service isn't registered (test/CI shapes).
+  const service = ctx.runtime?.getService?.("n8n_workflow") as
+    | {
+        generateWorkflowDraft?: (prompt: string) => Promise<{
+          id?: string;
+          [k: string]: unknown;
+        }>;
+        deployWorkflow?: (
+          workflow: Record<string, unknown>,
+          userId: string,
+        ) => Promise<{
+          id: string;
+          name: string;
+          active: boolean;
+          missingCredentials: Array<{ credType: string; authUrl?: string }>;
+        }>;
+        getWorkflow?: (id: string) => Promise<Record<string, unknown>>;
+      }
+    | undefined;
+  if (
+    typeof service?.generateWorkflowDraft === "function" &&
+    typeof service?.deployWorkflow === "function" &&
+    typeof service?.getWorkflow === "function"
+  ) {
+    try {
+      const draft = await service.generateWorkflowDraft(prompt);
+      if (name?.trim()) {
+        (draft as Record<string, unknown>).name = name.trim();
+      }
+      if (workflowId) {
+        (draft as Record<string, unknown>).id = workflowId;
+      }
+      // The plugin's deployWorkflow → getUserTagName → getEntityById(userId)
+      // requires a real UUID; passing "local" makes the entity lookup throw
+      // "Failed query: ... where entities.id in ($1)" because pg rejects the
+      // non-UUID string. Use the runtime's agentId — it's always a valid
+      // entity in Milady local and gives a stable per-agent tag for n8n
+      // credential mapping.
+      const userId = resolveAgentId(ctx);
+      const deployed = await service.deployWorkflow(
+        draft as Record<string, unknown>,
+        userId,
+      );
+      if (deployed.missingCredentials.length > 0) {
+        sendJson(ctx, 200, {
+          ...deployed,
+          warning: "missing credentials",
+        });
+        return true;
+      }
+      const full = await service.getWorkflow(deployed.id);
+      sendJson(ctx, 200, full);
+      return true;
+    } catch (err) {
+      logger.warn(
+        {
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "[n8n-routes] deployWorkflow path failed; falling back to direct proxy",
+      );
+      // fall through to legacy proxy path
+    }
+  }
+
+  // Legacy proxy fallback — used when the workflow service isn't available
+  // (e.g. plugin disabled in tests). Generated workflows from this path
+  // ship to n8n with `{{CREDENTIAL_ID}}` placeholders unresolved.
   const payload = await generateWorkflowPayload(ctx, prompt, name);
   if (workflowId) {
     return writeWorkflow(
