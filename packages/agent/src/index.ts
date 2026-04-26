@@ -1,14 +1,11 @@
-<<<<<<< HEAD
+export * from "@elizaos/shared";
 export * from "@elizaos/shared/spoken-text";
+export * from "./actions/index.js";
 export {
   type ExtractActionParamsArgs,
   extractActionParamsViaLlm,
   type ParamSchemaDescriptor,
 } from "./actions/extract-params.js";
-=======
-export * from "@elizaos/shared";
-export * from "./actions/index.js";
->>>>>>> 7c8f6a2aa8 (chore: WIP stragglers from parallel work)
 export * from "./api/index.js";
 export {
   findPrimaryEnvKey,
