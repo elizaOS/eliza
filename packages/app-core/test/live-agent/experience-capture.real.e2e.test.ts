@@ -7,6 +7,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { recordExperienceAction } from "../../../typescript/src/features/advanced-capabilities/experience/actions/record-experience.ts";
 import { experienceEvaluator } from "../../../typescript/src/features/advanced-capabilities/experience/evaluators/experienceEvaluator.ts";
 import { ExperienceService } from "../../../typescript/src/features/advanced-capabilities/experience/service.ts";
 import {
@@ -692,5 +693,67 @@ describe("Experience Capture E2E", () => {
 
     expect(hits).toBe(3);
     expect(`${hits}/${retrievalCases.length}`).toBe("3/3");
+  });
+
+  it("sanitizes explicit record requests, records provenance, and dedupes repeats", async () => {
+    const harness = createExperienceRuntimeHarness();
+    const explicitRuntime = harness.runtime;
+    const explicitService = harness.service;
+    await flushServiceLoad();
+
+    try {
+      const roomId = nextUuid("explicit-experience-room");
+      const userId = nextUuid("explicit-experience-user");
+      const message = makeMessage(
+        roomId,
+        userId,
+        "Please record this experience: redact /Users/shawwalters/secrets.env and shaw@example.com before saving debug notes.",
+      );
+      message.metadata = {
+        ...(message.metadata ?? {}),
+        trajectoryStepId: "explicit-step-001",
+      };
+
+      const result = await recordExperienceAction.handler(
+        explicitRuntime as never,
+        message,
+        {
+          text: "Manual review from /Users/shawwalters/project",
+        } as never,
+      );
+      expect(result.success).toBe(true);
+
+      const recorded = await explicitService.listExperiences({ limit: 10 });
+      expect(recorded).toHaveLength(1);
+      expect(recorded[0]).toMatchObject({
+        action: "explicit_record_request",
+        context: "Manual review from /Users/[USER]/project",
+        extractionMethod: "record_experience_action",
+        learning:
+          "Please record this experience: redact /Users/[USER]/secrets.env and [EMAIL] before saving debug notes.",
+        sourceRoomId: roomId,
+        sourceTriggerMessageId: message.id,
+        sourceTrajectoryStepId: "explicit-step-001",
+        tags: ["manual", "explicit"],
+      });
+      expect(recorded[0]?.sourceMessageIds).toEqual([message.id]);
+
+      const duplicate = makeMessage(
+        roomId,
+        userId,
+        "Record experience: redact /Users/shawwalters/secrets.env and shaw@example.com before saving debug notes.",
+      );
+      const duplicateResult = await recordExperienceAction.handler(
+        explicitRuntime as never,
+        duplicate,
+        { text: "Manual review" } as never,
+      );
+      expect(duplicateResult.data?.duplicate).toBe(true);
+      await expect(explicitService.listExperiences({ limit: 10 })).resolves.toHaveLength(
+        1,
+      );
+    } finally {
+      await explicitService.stop();
+    }
   });
 });
