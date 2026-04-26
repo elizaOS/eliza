@@ -24,8 +24,9 @@ type ExtractedExperience = {
 
 const EXISTING_EXPERIENCE_LIMIT = 5;
 const DUPLICATE_EXPERIENCE_LIMIT = 5;
-const DUPLICATE_JACCARD_THRESHOLD = 0.58;
-const DUPLICATE_CONTAINMENT_THRESHOLD = 0.8;
+const DUPLICATE_JACCARD_THRESHOLD = 0.45;
+const DUPLICATE_CONTAINMENT_THRESHOLD = 0.65;
+const DUPLICATE_SHARED_TERM_THRESHOLD = 4;
 const PASSIVE_ACTIONS = new Set([
 	"REPLY",
 	"NONE",
@@ -404,7 +405,8 @@ function isDuplicateLearning(a: string, b: string): boolean {
 
 	return (
 		jaccard >= DUPLICATE_JACCARD_THRESHOLD ||
-		containment >= DUPLICATE_CONTAINMENT_THRESHOLD
+		containment >= DUPLICATE_CONTAINMENT_THRESHOLD ||
+		(overlap >= DUPLICATE_SHARED_TERM_THRESHOLD && containment >= 0.4)
 	);
 }
 
