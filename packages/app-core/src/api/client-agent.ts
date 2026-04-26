@@ -822,10 +822,14 @@ ElizaClient.prototype.postBootstrapExchange = async function (
     identityId?: string;
     error?: string;
     reason?: string;
-  }>("/api/auth/bootstrap/exchange", {
-    method: "POST",
-    body: JSON.stringify({ token }),
-  }, { allowNonOk: true });
+  }>(
+    "/api/auth/bootstrap/exchange",
+    {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    },
+    { allowNonOk: true },
+  );
 
   if (
     typeof body.sessionId === "string" &&

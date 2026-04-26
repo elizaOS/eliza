@@ -20,15 +20,15 @@ import { cn } from "@elizaos/ui";
 import { useCallback, useId, useRef, useState } from "react";
 import type { BootstrapExchangeResult } from "../../api/client-agent";
 import {
+  OnboardingField,
   onboardingDetailStackClassName,
   onboardingHelperTextClassName,
   onboardingInputClassName,
   onboardingReadableTextFaintClassName,
   onboardingReadableTextMutedClassName,
-  OnboardingStatusBanner,
-  OnboardingField,
 } from "./onboarding-form-primitives";
 import {
+  OnboardingStepDivider,
   onboardingBodyTextShadowStyle,
   onboardingDescriptionClass,
   onboardingEyebrowClass,
@@ -36,7 +36,6 @@ import {
   onboardingHeaderBlockClass,
   onboardingPrimaryActionClass,
   onboardingPrimaryActionTextShadowStyle,
-  OnboardingStepDivider,
   onboardingTextShadowStyle,
   onboardingTitleClass,
 } from "./onboarding-step-chrome";
@@ -63,7 +62,9 @@ type SubmitState =
   | { phase: "error"; message: string; tone: "danger" }
   | { phase: "success" };
 
-function describeError(result: BootstrapExchangeResult & { ok: false }): string {
+function describeError(
+  result: BootstrapExchangeResult & { ok: false },
+): string {
   if (result.status === 429) {
     return "Too many attempts — wait a minute and try again.";
   }
@@ -159,10 +160,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
           Eliza Cloud
         </p>
         <OnboardingStepDivider />
-        <h1
-          className={onboardingTitleClass}
-          style={onboardingTextShadowStyle}
-        >
+        <h1 className={onboardingTitleClass} style={onboardingTextShadowStyle}>
           Finish setting up your container
         </h1>
         <p
@@ -232,9 +230,9 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
             Where do I get this?
           </span>{" "}
           <span className={onboardingReadableTextFaintClassName}>
-            Open your Eliza Cloud dashboard, select this container, and copy
-            the token shown under &ldquo;Bootstrap token&rdquo;. It is valid
-            for 24 hours and can only be used once.{" "}
+            Open your Eliza Cloud dashboard, select this container, and copy the
+            token shown under &ldquo;Bootstrap token&rdquo;. It is valid for 24
+            hours and can only be used once.{" "}
             <a
               href="/docs/security/bootstrap-token"
               target="_blank"
