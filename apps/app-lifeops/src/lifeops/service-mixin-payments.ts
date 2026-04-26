@@ -461,7 +461,9 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
     // access_token. Cloud routes live at /api/v1/milady/plaid/*.
     // -----------------------------------------------------------------------
 
-    private getPlaidManagedClient(): PlaidManagedClient {
+    // Cannot be `private` — TS4094 fires when the mixin's anonymous class
+    // is re-exported through the composed LifeOpsService.
+    getPlaidManagedClient(): PlaidManagedClient {
       if (!this.plaidManagedClientCache) {
         this.plaidManagedClientCache = new PlaidManagedClient();
       }
@@ -645,7 +647,9 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
     // can route the user to CSV import.
     // -----------------------------------------------------------------------
 
-    private getPaypalManagedClient(): PaypalManagedClient {
+    // Cannot be `private` — TS4094 fires when the mixin's anonymous class
+    // is re-exported through the composed LifeOpsService.
+    getPaypalManagedClient(): PaypalManagedClient {
       if (!this.paypalManagedClientCache) {
         this.paypalManagedClientCache = new PaypalManagedClient();
       }
@@ -896,7 +900,9 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       return { inserted, skipped, fallback: null };
     }
 
-    private async upsertPaypalTransaction(args: {
+    // Cannot be `private` — TS4094 fires when the mixin's anonymous class
+    // is re-exported through the composed LifeOpsService.
+    async upsertPaypalTransaction(args: {
       sourceId: string;
       transaction: PaypalTransactionDto;
     }): Promise<boolean> {
@@ -945,7 +951,9 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       return this.repository.insertPaymentTransaction(record);
     }
 
-    private async upsertPlaidTransaction(args: {
+    // Cannot be `private` — TS4094 fires when the mixin's anonymous class
+    // is re-exported through the composed LifeOpsService.
+    async upsertPlaidTransaction(args: {
       sourceId: string;
       transaction: PlaidTransactionDto;
     }): Promise<boolean> {
