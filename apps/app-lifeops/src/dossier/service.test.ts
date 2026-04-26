@@ -3,7 +3,7 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventAttendee,
   LifeOpsCalendarFeed,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
   DOSSIER_MEMORY_TABLE,

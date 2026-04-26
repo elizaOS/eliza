@@ -5,7 +5,7 @@ import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   createGmailFilterForSender,
   extractListUnsubscribeOptions,

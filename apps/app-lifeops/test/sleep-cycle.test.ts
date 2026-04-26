@@ -1,4 +1,4 @@
-import type { LifeOpsActivitySignal } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsActivitySignal } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
   type LifeOpsActivityWindow,

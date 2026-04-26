@@ -5,6 +5,7 @@ export * from "./config.js";
 export * from "./content-pack.js";
 export * from "./drop.js";
 export * from "./inbox.js";
+export * from "./lifeops.js";
 export * from "./onboarding.js";
 export * from "./permissions.js";
 export * from "./service-routing.js";

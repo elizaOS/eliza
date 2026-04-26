@@ -12,7 +12,7 @@ import {
   isBrowserCaptureSupported,
   startBrowserCapture,
   stopBrowserCapture,
-} from "@elizaos/agent/services/browser-capture";
+} from "@elizaos/agent";
 import { LifeOpsScreenContextSampler } from "../src/lifeops/screen-context.js";
 
 const LIVE_TESTS_ENABLED =

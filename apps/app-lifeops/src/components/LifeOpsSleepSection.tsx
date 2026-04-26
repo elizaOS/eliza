@@ -9,7 +9,7 @@ import type {
   LifeOpsSleepHistoryEpisode,
   LifeOpsSleepHistoryResponse,
   LifeOpsSleepRegularityResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   Activity,
   AlarmClock,

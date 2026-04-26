@@ -10,7 +10,7 @@ import type {
   LifeOpsCapabilityStatus,
   LifeOpsConnectorMode,
   LifeOpsXConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { loadLifeOpsAppState } from "./app-state.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createFeatureFlagService } from "./feature-flags.js";

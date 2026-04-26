@@ -63,7 +63,7 @@ import type {
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
   LifeOpsXSyncState,
-} from "@elizaos/shared/contracts/lifeops-extensions";
+} from "@elizaos/shared";
 import type {
   EmailUnsubscribeMethod,
   EmailUnsubscribeRecord,

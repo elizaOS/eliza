@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import sharp from "sharp";
 import { logger } from "@elizaos/core";
-import { FRAME_FILE } from "@elizaos/agent/services/browser-capture";
+import {
+  FRAME_FILE,
+} from "@elizaos/agent";
 
 export type LifeOpsScreenFocus =
   | "work"

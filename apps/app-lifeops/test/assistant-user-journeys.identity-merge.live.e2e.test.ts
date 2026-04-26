@@ -13,9 +13,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
 import { ConversationHarness } from "../../../../test/helpers/conversation-harness.ts";
 import { saveEnv } from "../../../../test/helpers/test-utils";
-import { buildCharacterFromConfig } from "@elizaos/agent/runtime/eliza";
-import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
+import {
+  buildCharacterFromConfig,
+  configureLocalEmbeddingPlugin,
+  createElizaPlugin,
+} from "@elizaos/agent";
 import {
   LIVE_PROVIDER_ENV_KEYS,
   LIVE_TESTS_ENABLED,

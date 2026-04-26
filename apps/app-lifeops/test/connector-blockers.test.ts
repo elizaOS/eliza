@@ -13,7 +13,7 @@ import { scheduleXDmReplyAction } from "../src/actions/schedule-x-dm-reply.js";
 import {
   listTriggerTasks,
   readTriggerConfig,
-} from "@elizaos/agent/triggers/runtime";
+} from "@elizaos/agent";
 
 type RuntimeWithMaps = AgentRuntime & {
   createRoomParticipants(entityIds: UUID[], roomId: UUID): Promise<UUID[]>;

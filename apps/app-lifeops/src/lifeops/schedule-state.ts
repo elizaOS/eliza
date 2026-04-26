@@ -1,15 +1,15 @@
 import crypto from "node:crypto";
-import type {
-  LifeOpsAwakeProbability,
-  LifeOpsCircadianState,
-  LifeOpsPersonalBaseline,
-  LifeOpsScheduleInsight,
-  LifeOpsScheduleMealInsight,
-  LifeOpsScheduleMealLabel,
-  LifeOpsScheduleRegularity,
-  LifeOpsUnclearReason,
-} from "@elizaos/shared/contracts/lifeops";
-import { asRecord } from "@elizaos/shared/type-guards";
+import {
+  asRecord,
+  type LifeOpsAwakeProbability,
+  type LifeOpsCircadianState,
+  type LifeOpsPersonalBaseline,
+  type LifeOpsScheduleInsight,
+  type LifeOpsScheduleMealInsight,
+  type LifeOpsScheduleMealLabel,
+  type LifeOpsScheduleRegularity,
+  type LifeOpsUnclearReason,
+} from "@elizaos/shared";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
 import type { LifeOpsScheduleInsightRecord } from "./repository.js";
 import type {

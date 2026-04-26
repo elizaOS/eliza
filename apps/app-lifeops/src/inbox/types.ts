@@ -168,4 +168,4 @@ export type {
   InboxAutoReplyConfig,
   InboxTriageConfig,
   InboxTriageRules,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";

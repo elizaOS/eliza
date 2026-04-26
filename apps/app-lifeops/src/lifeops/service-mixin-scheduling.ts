@@ -1,10 +1,10 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
-import type {
-  LifeOpsSchedulingNegotiation,
-  LifeOpsSchedulingProposal,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_NEGOTIATION_STATES } from "@elizaos/shared/contracts/lifeops";
+import {
+  LIFEOPS_NEGOTIATION_STATES,
+  type LifeOpsSchedulingNegotiation,
+  type LifeOpsSchedulingProposal,
+} from "@elizaos/shared";
 import {
   inspectLifeOpsSchedule,
   type LifeOpsScheduleInspection,

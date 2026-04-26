@@ -1,17 +1,17 @@
 // Side-effect: register LifeOps methods on ElizaClient.
 import "./api/client-lifeops.js";
-import { ElizaClient } from "@elizaos/app-core/api/client-base";
 import {
-  getAppBlockerPlugin,
   type AppBlockerPermissionResult,
   type AppBlockerPluginLike,
   type AppBlockerStatus,
   type BlockAppsOptions,
   type BlockAppsResult,
+  ElizaClient,
+  getAppBlockerPlugin,
   type InstalledApp,
   type SelectAppsResult,
   type UnblockAppsResult,
-} from "@elizaos/app-core/bridge/native-plugins";
+} from "@elizaos/app-core";
 
 function requireAppBlockerPlugin(): AppBlockerPluginLike {
   const plugin = getAppBlockerPlugin();
