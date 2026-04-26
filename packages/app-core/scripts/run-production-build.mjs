@@ -69,6 +69,9 @@ function run(executable, args, cwd) {
       env,
       shell: false,
     });
+    child.on("error", (error) => {
+      reject(new Error(`${executable} failed to start: ${error.message}`));
+    });
     child.on("exit", (code, signal) => {
       if (signal) {
         reject(new Error(`process exited with signal ${signal}`));
@@ -110,10 +113,7 @@ const writeBuildInfoScript = path.join(
   "write-build-info.ts",
 );
 const bunForScripts = resolveBunForScripts();
-const pruneCdnAssetsScript = path.join(
-  scriptDir,
-  "prune-cdn-local-assets.mjs",
-);
+const pruneCdnAssetsScript = path.join(scriptDir, "prune-cdn-local-assets.mjs");
 const { appAssetBaseUrl } = resolveElizaAssetBaseUrls();
 
 await Promise.all([

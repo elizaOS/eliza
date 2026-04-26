@@ -1,4 +1,4 @@
-import { useBootConfig } from "../../config";
+import { useBootConfig } from "../../config/boot-config-react";
 import type {
   CompanionInferenceNotice,
   CompanionSceneStatus,
