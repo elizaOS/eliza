@@ -31,7 +31,38 @@
   },
   "elizaos": {
     "app": {
-      "heroImage": "assets/hero.png"
+      "displayName": "Babylon",
+      "category": "game",
+      "heroImage": "assets/hero.png",
+      "launchType": "url",
+      "launchUrl": "{BABYLON_CLIENT_URL}",
+      "capabilities": [
+        "trades",
+        "prediction-markets",
+        "social",
+        "team-chat",
+        "autonomous"
+      ],
+      "uiExtension": {
+        "detailPanelId": "babylon-operator-dashboard"
+      },
+      "viewer": {
+        "url": "{BABYLON_CLIENT_URL}",
+        "embedParams": {
+          "embedded": "true"
+        },
+        "postMessageAuth": true,
+        "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"
+      },
+      "session": {
+        "mode": "spectate-and-steer",
+        "features": [
+          "commands",
+          "telemetry",
+          "pause",
+          "resume"
+        ]
+      }
     }
   }
 }
