@@ -1,8 +1,7 @@
-import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import {
   ChannelType,
   type Character,
@@ -34,6 +33,7 @@ const getMessageService = (runtime: IAgentRuntime): MessageService | null => {
   return null;
 };
 
+import { resolveSignalCliExecutable } from "./pairing-service";
 import {
   getSignalContactDisplayName,
   type ISignalService,
@@ -53,13 +53,11 @@ import {
   type SignalSettings,
 } from "./types";
 
-const execFileAsync = promisify(execFile);
 export const DEFAULT_SIGNAL_HTTP_HOST = "127.0.0.1";
 export const DEFAULT_SIGNAL_HTTP_PORT = 8080;
 const DEFAULT_SIGNAL_DAEMON_STARTUP_TIMEOUT_MS = 30_000;
 export const DEFAULT_SIGNAL_CLI_PATH = "signal-cli";
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
-const COMMON_SIGNAL_CLI_PATHS = ["/opt/homebrew/bin/signal-cli", "/usr/local/bin/signal-cli"];
 
 /**
  * signal-cli uses `$HOME/.local/share/signal-cli` as its default data
@@ -82,35 +80,6 @@ function sleep(ms: number): Promise<void> {
 
 function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, "");
-}
-
-async function resolveSignalCliPath(cliPath: string): Promise<string | null> {
-  const trimmed = cliPath.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (trimmed.includes("/") || trimmed.startsWith(".")) {
-    return fs.existsSync(trimmed) ? trimmed : null;
-  }
-
-  try {
-    const { stdout } = await execFileAsync("/usr/bin/which", [trimmed]);
-    const resolved = stdout.trim();
-    return resolved.length > 0 ? resolved : null;
-  } catch {
-    if (trimmed !== DEFAULT_SIGNAL_CLI_PATH) {
-      return null;
-    }
-
-    for (const candidate of COMMON_SIGNAL_CLI_PATHS) {
-      if (fs.existsSync(candidate)) {
-        return candidate;
-      }
-    }
-
-    return null;
-  }
 }
 
 function buildSignalCliEnv(): NodeJS.ProcessEnv {
@@ -566,7 +535,10 @@ export class SignalService extends Service implements ISignalService {
       return;
     }
 
-    const resolvedCliPath = await resolveSignalCliPath(cliPath);
+    const resolvedCliPath = await resolveSignalCliExecutable({
+      cliPath,
+      env: process.env,
+    });
     if (!resolvedCliPath) {
       throw new Error(`signal-cli executable not found for ${cliPath}`);
     }
