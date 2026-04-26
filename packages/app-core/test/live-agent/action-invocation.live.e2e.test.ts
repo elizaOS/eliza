@@ -19,10 +19,10 @@ import {
   getAppBlockerStatus,
   getSelfControlStatus,
   LifeOpsService,
-  readCalendlyCredentialsFromEnv,
-  readTwilioCredentialsFromEnv,
 } from "@elizaos/app-lifeops";
+import { readCalendlyCredentialsFromEnv } from "@elizaos/app-lifeops/lifeops/calendly-client";
 import { LifeOpsRepository } from "@elizaos/app-lifeops/lifeops/repository";
+import { readTwilioCredentialsFromEnv } from "@elizaos/app-lifeops/lifeops/twilio";
 import {
   type AgentRuntime,
   logger,
@@ -412,7 +412,9 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("OWNER_SEND_MESSAGE")) return;
         await withHarness(async (h) => {
-          await h.send("Send a Signal message to Priya saying thanks for the review.");
+          await h.send(
+            "Send a Signal message to Priya saying thanks for the review.",
+          );
           expectAnySelectedAction(h, ["OWNER_SEND_MESSAGE"]);
         });
       },
@@ -632,9 +634,7 @@ describe("Action Invocation E2E", () => {
       "block apps request triggers OWNER_APP_BLOCK",
       async () => {
         if (!requireAction("OWNER_APP_BLOCK")) return;
-        if (
-          !requireEnvironmentCapability(appBlockingAvailable, "app blocking")
-        )
+        if (!requireEnvironmentCapability(appBlockingAvailable, "app blocking"))
           return;
         await withHarness(async (h) => {
           await h.send("Block the Slack app while I focus on deep work.");
@@ -712,7 +712,12 @@ describe("Action Invocation E2E", () => {
       "health summary triggers HEALTH",
       async () => {
         if (!requireAction("HEALTH")) return;
-        if (!requireEnvironmentCapability(healthBackendAvailable, "health backend"))
+        if (
+          !requireEnvironmentCapability(
+            healthBackendAvailable,
+            "health backend",
+          )
+        )
           return;
         await withHarness(async (h) => {
           await h.send("How did I sleep last night?");
@@ -814,7 +819,9 @@ describe("Action Invocation E2E", () => {
       "phone call request triggers TWILIO_VOICE_CALL",
       async () => {
         if (!requireAction("TWILIO_VOICE_CALL")) return;
-        if (!requireEnvironmentCapability(twilioConfigured, "Twilio credentials"))
+        if (
+          !requireEnvironmentCapability(twilioConfigured, "Twilio credentials")
+        )
           return;
         await withHarness(async (h) => {
           await h.send("Call the dentist and reschedule my appointment.");

@@ -1,3 +1,4 @@
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -9,13 +10,12 @@ import type {
   State,
 } from "@elizaos/core";
 import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
 import {
   ALL_FEATURE_KEYS,
   BASE_FEATURE_DEFAULTS,
-  type LifeOpsFeatureKey,
   isLifeOpsFeatureKey,
+  type LifeOpsFeatureKey,
 } from "../lifeops/feature-flags.types.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 
@@ -66,7 +66,8 @@ async function extractToggleWithLlm(args: {
       featureKey: isLifeOpsFeatureKey(args.params.featureKey)
         ? args.params.featureKey
         : null,
-      enabled: typeof args.params.enabled === "boolean" ? args.params.enabled : null,
+      enabled:
+        typeof args.params.enabled === "boolean" ? args.params.enabled : null,
       reason: trimToNull(args.params.reason),
     };
   }
@@ -127,9 +128,10 @@ function buildConfirmation(
   const def = BASE_FEATURE_DEFAULTS[key];
   const verb = enabled ? "Enabled" : "Disabled";
   const tail = reason ? ` (${reason})` : "";
-  const cost = def.costsMoney && enabled
-    ? " Heads up: this feature can cost money — every action still requires explicit approval."
-    : "";
+  const cost =
+    def.costsMoney && enabled
+      ? " Heads up: this feature can cost money — every action still requires explicit approval."
+      : "";
   return `${verb} '${key}' (${source}). ${def.description}${tail}.${cost}`;
 }
 
@@ -247,7 +249,9 @@ export const toggleLifeOpsFeatureAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Enable flight booking, I want you to be able to book trips." },
+        content: {
+          text: "Enable flight booking, I want you to be able to book trips.",
+        },
       },
       {
         name: "{{agentName}}",
@@ -259,7 +263,9 @@ export const toggleLifeOpsFeatureAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Turn off the browser automation, I want to drive myself." },
+        content: {
+          text: "Turn off the browser automation, I want to drive myself.",
+        },
       },
       {
         name: "{{agentName}}",

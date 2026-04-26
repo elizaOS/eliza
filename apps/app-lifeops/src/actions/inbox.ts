@@ -1,7 +1,5 @@
-import {
-  hasAdminAccess,
-  resolveAdminEntityId,
-} from "@elizaos/agent";
+import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,

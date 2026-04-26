@@ -2,6 +2,7 @@
  * T8a — COMPUTE_TRAVEL_BUFFER action.
  */
 
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -11,11 +12,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
-  TravelTimeService,
   type CalendarEventLookupLike,
+  TravelTimeService,
   TravelTimeUnavailableError,
 } from "./service.js";
 

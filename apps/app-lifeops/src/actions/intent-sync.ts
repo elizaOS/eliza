@@ -1,4 +1,5 @@
-import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,

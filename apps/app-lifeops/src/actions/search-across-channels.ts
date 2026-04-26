@@ -9,6 +9,7 @@
  * and memory.
  */
 
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionResult,
@@ -18,12 +19,11 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
+import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
 import {
-  type CrossChannelSearchChannel,
   CROSS_CHANNEL_SEARCH_CHANNELS,
+  type CrossChannelSearchChannel,
   type CrossChannelSearchHit,
   type CrossChannelSearchPersonRef,
   type CrossChannelSearchQuery,
@@ -160,9 +160,10 @@ async function extractSearchPlan(
 
   const raw = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
   const text = typeof raw === "string" ? raw : "";
-  const parsed = parseJSONObjectFromText(text) as
-    | Record<string, unknown>
-    | null;
+  const parsed = parseJSONObjectFromText(text) as Record<
+    string,
+    unknown
+  > | null;
 
   if (!parsed) {
     return {
@@ -220,7 +221,10 @@ async function extractSearchPlan(
 // Format
 // ---------------------------------------------------------------------------
 
-function formatHitForClipboard(hit: CrossChannelSearchHit, index: number): string {
+function formatHitForClipboard(
+  hit: CrossChannelSearchHit,
+  index: number,
+): string {
   const subjectPart = hit.subject ? ` ${hit.subject}` : "";
   const ts = hit.timestamp.slice(0, 19);
   const body = hit.text.replace(/\s+/g, " ").trim().slice(0, 240);
@@ -277,8 +281,7 @@ export const searchAcrossChannelsAction: Action = {
     "Returns merged hits with citations to source platform, room, and " +
     "timestamp. Connectors without native search emit typed unsupported " +
     "markers (no fabricated results). Admin/owner only.",
-  descriptionCompressed:
-    "Cross-channel search with citations. Admin only.",
+  descriptionCompressed: "Cross-channel search with citations. Admin only.",
 
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
 

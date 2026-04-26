@@ -9,7 +9,7 @@
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { computeValueUsd } from "@elizaos/app-steward";
+import { computeValueUsd } from "@elizaos/app-steward/api/wallet-dex-prices";
 import { logger } from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ethers } from "ethers";
@@ -80,7 +80,7 @@ export {
   fetchDexPrices,
   fetchDexScreenerPrices,
   WRAPPED_NATIVE,
-} from "@elizaos/app-steward";
+} from "@elizaos/app-steward/api/wallet-dex-prices";
 
 export {
   type AnkrTokenAsset,

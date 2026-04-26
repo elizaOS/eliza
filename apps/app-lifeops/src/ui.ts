@@ -3,6 +3,7 @@ export {
   BrowserBridgeSetupPanel,
   BrowserBridgeSetupPanel as LifeOpsBrowserSetupPanel,
 } from "./components/BrowserBridgeSetupPanel.tsx";
+export { LifeOpsActivitySignalsEffect } from "./components/LifeOpsActivitySignalsEffect.tsx";
 export * from "./components/LifeOpsPageSections.tsx";
 export * from "./components/LifeOpsPageView.tsx";
 export * from "./components/LifeOpsSettingsSection.tsx";

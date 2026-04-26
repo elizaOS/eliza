@@ -6,6 +6,7 @@
  * mark_followup_done, set_followup_threshold.
  */
 
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionResult,
@@ -25,9 +26,8 @@ import {
   type LifeOpsMessageChannel,
 } from "@elizaos/shared";
 import { LifeOpsService } from "../lifeops/service.js";
-import { extractActionParamsViaLlm } from "@elizaos/agent";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 type Subaction =
   | "list_contacts"
@@ -581,7 +581,11 @@ export const relationshipAction: Action & {
         contacts.length === 0
           ? "You have no contacts in your Rolodex yet."
           : `You have ${contacts.length} contact${contacts.length === 1 ? "" : "s"}:\n${contacts.map(formatRelationshipLine).join("\n")}`;
-      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
       return {
         text,
         success: true,
@@ -625,7 +629,11 @@ export const relationshipAction: Action & {
         metadata: {},
       });
       const text = `Added ${rel.name} (${rel.primaryChannel}: ${rel.primaryHandle}) to your Rolodex.`;
-      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
       return {
         text,
         success: true,
@@ -664,7 +672,11 @@ export const relationshipAction: Action & {
         metadata: {},
       });
       const text = `Logged interaction with ${rel.name} on ${channel}.`;
-      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
       return {
         text,
         success: true,
@@ -698,7 +710,11 @@ export const relationshipAction: Action & {
         metadata: {},
       });
       const text = `Scheduled follow-up for ${dueAt}: ${reason || "(no reason)"}.`;
-      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
       return {
         text,
         success: true,
@@ -719,7 +735,11 @@ export const relationshipAction: Action & {
       }
       await service.completeFollowUp(followUpId);
       const text = `Marked follow-up ${followUpId} as completed.`;
-      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
       return {
         text,
         success: true,
@@ -735,7 +755,11 @@ export const relationshipAction: Action & {
           : `You have ${queue.length} follow-up${queue.length === 1 ? "" : "s"} due:\n${queue
               .map((fu) => `- ${fu.dueAt} — ${fu.reason} (id: ${fu.id})`)
               .join("\n")}`;
-      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
       return {
         text,
         success: true,
@@ -760,7 +784,11 @@ export const relationshipAction: Action & {
         days === null
           ? `No contact has been logged with ${rel?.name ?? relationshipId}.`
           : `It has been ${days} day${days === 1 ? "" : "s"} since you contacted ${rel?.name ?? relationshipId}.`;
-      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
       return {
         text,
         success: true,
@@ -779,7 +807,11 @@ export const relationshipAction: Action & {
                   `- ${entry.name}: last contacted ${entry.lastContactedAt} (+${entry.daysOverdue}d over ${entry.thresholdDays}d threshold)`,
               )
               .join("\n")}`;
-      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
       return {
         text,
         success: true,
@@ -835,7 +867,11 @@ export const relationshipAction: Action & {
         pendingFollowUps.length > 0
           ? `Marked ${relationship.name} as followed up and completed ${pendingFollowUps.length} open follow-up${pendingFollowUps.length === 1 ? "" : "s"}.`
           : `Marked ${relationship.name} as followed up.`;
-      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
       return {
         text,
         success: true,
@@ -889,7 +925,11 @@ export const relationshipAction: Action & {
         },
       });
       const text = `Set follow-up threshold for ${relationship.name} to ${thresholdDays} days.`;
-      await callback?.({ text, source: "action", action: "OWNER_RELATIONSHIP" });
+      await callback?.({
+        text,
+        source: "action",
+        action: "OWNER_RELATIONSHIP",
+      });
       return {
         text,
         success: true,

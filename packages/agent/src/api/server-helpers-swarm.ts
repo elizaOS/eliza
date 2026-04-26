@@ -10,7 +10,7 @@ import type {
   SwarmEvent,
   TaskCompletionSummary,
   TaskContext,
-} from "@elizaos/app-task-coordinator";
+} from "@elizaos/app-task-coordinator/api/coordinator-types";
 import {
   type AgentRuntime,
   ChannelType,

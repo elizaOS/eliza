@@ -16,14 +16,6 @@
  * runCrossChannelSearch() to inject context for named persons/topics.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Room,
-  UUID,
-} from "@elizaos/core";
-import { ModelType, logger } from "@elizaos/core";
-import type { LifeOpsGmailMessageSummary } from "@elizaos/shared";
 // WS3 dependency — types may not yet be exported from agent index when this
 // file is first compiled. Importing from the source path so type-only
 // resolution succeeds even before the public re-export lands.
@@ -32,7 +24,10 @@ import {
   type RelationshipsGraphService,
   type RelationshipsPersonSummary,
   resolveRelationshipsGraphService,
-} from "@elizaos/agent";
+} from "@elizaos/agent/services/relationships-graph";
+import type { IAgentRuntime, Memory, Room, UUID } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
+import type { LifeOpsGmailMessageSummary } from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -51,7 +46,8 @@ export const CROSS_CHANNEL_SEARCH_CHANNELS = [
   "calendar",
 ] as const;
 
-export type CrossChannelSearchChannel = (typeof CROSS_CHANNEL_SEARCH_CHANNELS)[number];
+export type CrossChannelSearchChannel =
+  (typeof CROSS_CHANNEL_SEARCH_CHANNELS)[number];
 
 export type CrossChannelSearchTimeWindow = {
   /** ISO timestamp lower bound (inclusive). */
@@ -181,7 +177,9 @@ function normalizeIsoFromMs(ms: number | undefined): string {
   return new Date(ms).toISOString();
 }
 
-function classifyMemoryChannel(source: string | undefined): CrossChannelSearchChannel {
+function classifyMemoryChannel(
+  source: string | undefined,
+): CrossChannelSearchChannel {
   const normalized = (source ?? "").trim().toLowerCase();
   switch (normalized) {
     case "telegram":
@@ -243,9 +241,9 @@ async function searchGmail(
   degraded: CrossChannelSearchDegraded[];
 }> {
   const limit = query.limit ?? DEFAULT_PER_CHANNEL_LIMIT;
-  const lifeOps = runtime.getService("lifeops") as unknown as
-    | GmailSearchService
-    | null;
+  const lifeOps = runtime.getService(
+    "lifeops",
+  ) as unknown as GmailSearchService | null;
   if (!lifeOps || typeof lifeOps.getGmailSearch !== "function") {
     return {
       hits: [],
@@ -318,7 +316,10 @@ async function searchAgentMemory(
     return {
       hits: [],
       degraded: [
-        { channel: "memory", reason: "Embedding generation returned no vector" },
+        {
+          channel: "memory",
+          reason: "Embedding generation returned no vector",
+        },
       ],
     };
   }
@@ -375,7 +376,8 @@ async function memoriesToHits(
     }
 
     const speakerEntity = mem.entityId as string | undefined;
-    const memId = (mem.id as string | undefined) ?? `${roomId}:${mem.createdAt}`;
+    const memId =
+      (mem.id as string | undefined) ?? `${roomId}:${mem.createdAt}`;
 
     results.push({
       channel,
@@ -422,10 +424,9 @@ async function resolvePerson(
     return { service: null, person: null, degraded: [] };
   }
 
-  const baseService =
-    (await resolveRelationshipsGraphService(
-      runtime,
-    )) as RelationshipsGraphServiceWithCluster | null;
+  const baseService = (await resolveRelationshipsGraphService(
+    runtime,
+  )) as RelationshipsGraphServiceWithCluster | null;
   const service = baseService
     ? ({
         ...baseService,
@@ -512,7 +513,8 @@ const CONNECTORS_WITHOUT_NATIVE_SEARCH: ReadonlyArray<{
 }> = [
   {
     channel: "telegram",
-    reason: "Telegram MTProto search not wired — covered by memory fan-out only",
+    reason:
+      "Telegram MTProto search not wired — covered by memory fan-out only",
   },
   {
     channel: "discord",
@@ -667,7 +669,8 @@ export async function runCrossChannelSearch(
   ) as CrossChannelSearchChannel[];
 
   const finalLimit =
-    (query.limit ?? DEFAULT_PER_CHANNEL_LIMIT) * CROSS_CHANNEL_SEARCH_CHANNELS.length;
+    (query.limit ?? DEFAULT_PER_CHANNEL_LIMIT) *
+    CROSS_CHANNEL_SEARCH_CHANNELS.length;
   const limited = merged.slice(0, finalLimit);
 
   logger.debug(

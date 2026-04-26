@@ -1,4 +1,3 @@
-import type { AwarenessRegistry } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,
@@ -6,6 +5,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
+import type { AwarenessRegistry } from "@elizaos/shared";
 
 export function createSelfStatusProvider(
   registry: AwarenessRegistry,

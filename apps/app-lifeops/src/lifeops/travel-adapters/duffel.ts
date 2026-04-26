@@ -1,5 +1,5 @@
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import {
   PaymentRequiredError,
   parseX402Response,
@@ -427,9 +427,7 @@ function mapOrder(raw: DuffelApiOrder): DuffelOrder {
   };
 }
 
-function mapPayment(
-  raw: DuffelPaymentResponse["data"],
-): DuffelPayment {
+function mapPayment(raw: DuffelPaymentResponse["data"]): DuffelPayment {
   return {
     id: raw.id,
     orderId: raw.order_id,
@@ -485,8 +483,7 @@ function readRelayCost(envelope: unknown): DuffelCallCost {
   }
   const totalUsd = cost.total_usd;
   const platformFeeUsd = cost.platform_fee_usd;
-  const markupPercent =
-    totalUsd > 0 ? platformFeeUsd / totalUsd : null;
+  const markupPercent = totalUsd > 0 ? platformFeeUsd / totalUsd : null;
   return {
     totalUsd,
     creatorMarkupUsd: cost.creator_markup_usd,
@@ -512,7 +509,9 @@ interface DuffelRequest {
   operation: string;
 }
 
-async function duffelFetch<T>(args: DuffelRequest): Promise<DuffelFetchResult<T>> {
+async function duffelFetch<T>(
+  args: DuffelRequest,
+): Promise<DuffelFetchResult<T>> {
   const { config, method, directPath, cloudRelayPath, body, operation } = args;
 
   const isCloud = config.mode === "cloud";
@@ -541,7 +540,13 @@ async function duffelFetch<T>(args: DuffelRequest): Promise<DuffelFetchResult<T>
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.error(
-      { boundary: "lifeops", integration: "duffel", operation, mode: config.mode, err: error instanceof Error ? error : undefined },
+      {
+        boundary: "lifeops",
+        integration: "duffel",
+        operation,
+        mode: config.mode,
+        err: error instanceof Error ? error : undefined,
+      },
       `[lifeops-travel] Duffel ${operation} network error: ${msg}`,
     );
     span.failure({ error, errorKind: "network_error" });
@@ -580,11 +585,19 @@ async function duffelFetch<T>(args: DuffelRequest): Promise<DuffelFetchResult<T>
     const errorBody = await response.text().catch(() => "");
     const errorMsg = errorBody || `HTTP ${response.status}`;
     logger.warn(
-      { boundary: "lifeops", integration: "duffel", operation, mode: config.mode, statusCode: response.status },
+      {
+        boundary: "lifeops",
+        integration: "duffel",
+        operation,
+        mode: config.mode,
+        statusCode: response.status,
+      },
       `[lifeops-travel] Duffel ${operation} HTTP error: ${errorMsg}`,
     );
     span.failure({ statusCode: response.status, errorKind: "http_error" });
-    throw new Error(`Duffel ${operation} failed (${response.status}): ${errorMsg}`);
+    throw new Error(
+      `Duffel ${operation} failed (${response.status}): ${errorMsg}`,
+    );
   }
 
   const payload = (await response.json()) as T;
@@ -612,7 +625,11 @@ export async function searchFlights(
   const resolvedConfig = config ?? readDuffelConfigFromEnv();
   const passengerCount = Math.max(1, Math.round(request.passengers ?? 1));
 
-  const slices: Array<{ origin: string; destination: string; departure_date: string }> = [
+  const slices: Array<{
+    origin: string;
+    destination: string;
+    departure_date: string;
+  }> = [
     {
       origin: request.origin.toUpperCase().trim(),
       destination: request.destination.toUpperCase().trim(),
@@ -630,29 +647,43 @@ export async function searchFlights(
   const requestBody = {
     data: {
       slices,
-      passengers: Array.from({ length: passengerCount }, () => ({ type: "adult" })),
+      passengers: Array.from({ length: passengerCount }, () => ({
+        type: "adult",
+      })),
       cabin_class: "economy",
     },
   };
 
   logger.info(
-    { boundary: "lifeops", integration: "duffel", origin: request.origin, destination: request.destination },
+    {
+      boundary: "lifeops",
+      integration: "duffel",
+      origin: request.origin,
+      destination: request.destination,
+    },
     `[lifeops-travel] Searching flights ${request.origin} → ${request.destination} on ${request.departureDate}`,
   );
 
-  const { data: responseData, cost } = await duffelFetch<DuffelOfferRequestResponse>({
-    config: resolvedConfig,
-    method: "POST",
-    directPath: "/air/offer_requests?return_offers=true",
-    cloudRelayPath: "/api/cloud/travel-providers/duffel/offer-requests",
-    body: requestBody,
-    operation: "offer_request",
-  });
+  const { data: responseData, cost } =
+    await duffelFetch<DuffelOfferRequestResponse>({
+      config: resolvedConfig,
+      method: "POST",
+      directPath: "/air/offer_requests?return_offers=true",
+      cloudRelayPath: "/api/cloud/travel-providers/duffel/offer-requests",
+      body: requestBody,
+      operation: "offer_request",
+    });
 
   const offers = (responseData.data.offers ?? []).map(mapOffer);
 
   logger.info(
-    { boundary: "lifeops", integration: "duffel", offerRequestId: responseData.data.id, offerCount: offers.length, costUsd: cost.totalUsd },
+    {
+      boundary: "lifeops",
+      integration: "duffel",
+      offerRequestId: responseData.data.id,
+      offerCount: offers.length,
+      costUsd: cost.totalUsd,
+    },
     `[lifeops-travel] Duffel returned ${offers.length} offers for request ${responseData.data.id}`,
   );
 
@@ -697,7 +728,9 @@ export async function createOrder(
 ): Promise<DuffelOrder> {
   const resolvedConfig = config ?? readDuffelConfigFromEnv();
   if (request.selectedOffers.length !== 1) {
-    throw new Error("Duffel createOrder: exactly one selected offer is required");
+    throw new Error(
+      "Duffel createOrder: exactly one selected offer is required",
+    );
   }
   if (request.passengers.length === 0) {
     throw new Error("Duffel createOrder: at least one passenger is required");

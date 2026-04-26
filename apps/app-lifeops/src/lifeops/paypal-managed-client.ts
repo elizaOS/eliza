@@ -12,11 +12,11 @@
  * import instead.
  */
 
-import { loadElizaConfig } from "@elizaos/agent";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
 } from "@elizaos/agent/cloud/base-url";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 
 const PAYPAL_REQUEST_TIMEOUT_MS = 30_000;
 
