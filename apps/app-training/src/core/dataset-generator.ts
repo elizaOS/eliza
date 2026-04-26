@@ -14,11 +14,9 @@
  * - Falls back to whichever is available
  */
 
+import type { Trajectory } from "@elizaos/agent/types/trajectory";
 import type { IAgentRuntime } from "@elizaos/core";
 import * as ElizaCore from "@elizaos/core";
-import type {
-  Trajectory,
-} from "@elizaos/agent";
 import { randomUUID } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";

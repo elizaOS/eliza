@@ -1,9 +1,11 @@
+import type {
+  RouteHelpers,
+  RouteRequestContext,
+} from "@elizaos/agent/api/route-helpers";
 import {
   parseClampedFloat,
   parsePositiveInteger,
-  type RouteHelpers,
-  type RouteRequestContext,
-} from "@elizaos/agent";
+} from "@elizaos/agent/utils/number-parsing";
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
   __setKnowledgeUrlFetchImplForTests,

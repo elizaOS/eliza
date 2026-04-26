@@ -1,3 +1,8 @@
+import {
+  loadOwnerContactsConfig,
+  resolveOwnerContactWithFallback,
+} from "@elizaos/agent/config/owner-contacts";
+import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
 import {
   logger,
@@ -5,32 +10,27 @@ import {
   parseJSONObjectFromText,
   stringToUuid,
 } from "@elizaos/core";
-import {
-  getAgentEventService,
-  loadOwnerContactsConfig,
-  resolveOwnerContactWithFallback,
-} from "@elizaos/agent";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
-import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
-import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
-import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import {
+  type BackgroundJobContext,
   BackgroundPlannerError,
   planJob,
-  type BackgroundJobContext,
 } from "../lifeops/background-planner.js";
 import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
+import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
+import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { resolveEffectiveDayKey } from "./analyzer.js";
 import {
   type CalendarEventSlim,
   type GoalSlim,
   type InboxDigestSlim,
   type OccurrenceSlim,
+  type ProactiveRelativeTimeSlim,
   planDowntimeNudges,
   planGm,
   planGn,
   planGoalCheckIns,
-  type ProactiveRelativeTimeSlim,
   planNudges,
 } from "./proactive-planner.js";
 import {
@@ -63,9 +63,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function resolveExecutionNow(
-  options: Record<string, unknown> = {},
-): Date {
+function resolveExecutionNow(options: Record<string, unknown> = {}): Date {
   const raw = options.now;
   if (raw instanceof Date) {
     return new Date(raw.getTime());
@@ -508,7 +506,9 @@ export async function executeProactiveTask(
           );
         }
       }
-      logger.info(`[proactive] Fired ${action.kind} on ${resolvedTarget.source}`);
+      logger.info(
+        `[proactive] Fired ${action.kind} on ${resolvedTarget.source}`,
+      );
     } catch (err) {
       logger.warn(`[proactive] Failed to send ${action.kind}: ${err}`);
     }

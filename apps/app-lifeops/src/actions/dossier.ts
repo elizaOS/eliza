@@ -1,3 +1,5 @@
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -7,7 +9,6 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
 import { LifeOpsService } from "../lifeops/service.js";
 
 const ACTION_NAME = "DOSSIER";
@@ -123,7 +124,10 @@ export const dossierAction: Action & {
 
     const service = new LifeOpsService(runtime);
 
-    if (typeof (service as unknown as { generateDossier?: unknown }).generateDossier !== "function") {
+    if (
+      typeof (service as unknown as { generateDossier?: unknown })
+        .generateDossier !== "function"
+    ) {
       return {
         text: "LifeOps service is unavailable; cannot generate dossier.",
         success: false,

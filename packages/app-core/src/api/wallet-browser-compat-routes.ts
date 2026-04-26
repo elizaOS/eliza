@@ -5,7 +5,7 @@ import {
   loadElizaConfig,
   resolveWalletRpcReadiness,
 } from "@elizaos/agent";
-import type { StewardSignRequest } from "@elizaos/app-steward";
+import type { StewardSignRequest } from "@elizaos/app-steward/types/steward";
 import { ethers } from "ethers";
 
 /** @internal Exported for testing. Parse a transaction value string to BigInt. */
@@ -19,7 +19,10 @@ export function safeParseBigInt(value: string): bigint {
   }
 }
 
-import { isStewardConfigured, signViaSteward } from "@elizaos/app-steward";
+import {
+  isStewardConfigured,
+  signViaSteward,
+} from "@elizaos/app-steward/routes/steward-bridge";
 import { ensureRouteAuthorized } from "./auth";
 import {
   type CompatRuntimeState,

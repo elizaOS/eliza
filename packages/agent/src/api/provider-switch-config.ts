@@ -1,8 +1,8 @@
+import { asNonEmptyString, asRecord } from "@elizaos/shared";
 import {
   applySubscriptionCredentials,
   deleteCredentials,
-} from "@elizaos/agent";
-import { asNonEmptyString, asRecord } from "@elizaos/shared";
+} from "../auth/credentials.js";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
 import {

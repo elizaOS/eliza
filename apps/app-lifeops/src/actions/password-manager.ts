@@ -1,19 +1,20 @@
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
-  logger,
   type Action,
   type ActionExample,
   type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
 } from "@elizaos/core";
-import { extractActionParamsViaLlm, hasOwnerAccess } from "@elizaos/agent";
 import {
   injectCredentialToClipboard,
   listPasswordItems,
-  searchPasswordItems,
   type PasswordManagerBridgeConfig,
   type PasswordManagerItem,
+  searchPasswordItems,
 } from "../lifeops/password-manager-bridge.js";
 
 /**
@@ -101,7 +102,10 @@ const examples: ActionExample[][] = [
     },
   ],
   [
-    { name: "{{user1}}", content: { text: "Copy my AWS password to clipboard" } },
+    {
+      name: "{{user1}}",
+      content: { text: "Copy my AWS password to clipboard" },
+    },
     {
       name: "{{agent}}",
       content: {
@@ -149,7 +153,8 @@ export const passwordManagerAction: Action & {
     }
 
     const rawParameters = (options as HandlerOptions | undefined)?.parameters;
-    const rawParams = ((typeof rawParameters === "object" && rawParameters !== null
+    const rawParams = ((typeof rawParameters === "object" &&
+    rawParameters !== null
       ? (rawParameters as PasswordManagerParameters)
       : {}) ?? {}) as PasswordManagerParameters;
     const params = (await extractActionParamsViaLlm<PasswordManagerParameters>({
@@ -212,7 +217,13 @@ export const passwordManagerAction: Action & {
       }
       const result = await injectCredentialToClipboard(itemId, field, config);
       logger.info(
-        { action: "PASSWORD_MANAGER", subaction, itemId, field, fixtureMode: result.fixtureMode === true },
+        {
+          action: "PASSWORD_MANAGER",
+          subaction,
+          itemId,
+          field,
+          fixtureMode: result.fixtureMode === true,
+        },
         `[PASSWORD_MANAGER] Copied ${field} for item ${itemId} to clipboard`,
       );
       const fixtureSuffix = result.fixtureMode
@@ -246,8 +257,7 @@ export const passwordManagerAction: Action & {
   parameters: [
     {
       name: "subaction",
-      description:
-        "One of: search, list, inject_username, inject_password.",
+      description: "One of: search, list, inject_username, inject_password.",
       schema: { type: "string" as const },
     },
     {
@@ -263,7 +273,8 @@ export const passwordManagerAction: Action & {
     },
     {
       name: "itemId",
-      description: "Password manager item id (required for inject_* subactions).",
+      description:
+        "Password manager item id (required for inject_* subactions).",
       schema: { type: "string" as const },
     },
     {

@@ -12,11 +12,11 @@
  * import instead.
  */
 
-import { loadElizaConfig } from "@elizaos/agent";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
-} from "@elizaos/agent";
+} from "@elizaos/agent/cloud/base-url";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 
 const PAYPAL_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -150,11 +150,10 @@ export class PaypalManagedClient {
 
   private requireConfig(): ResolvedCloudConfig & { apiKey: string } {
     const config = this.configSource();
-    const apiKey = config.apiKey;
-    if (!apiKey) {
+    if (!config.apiKey) {
       throw new PaypalManagedClientError(409, "Eliza Cloud is not connected.");
     }
-    return { ...config, apiKey };
+    return { ...config, apiKey: config.apiKey };
   }
 
   get configured(): boolean {

@@ -700,7 +700,12 @@ export type ElizaDesktopRPCSchema = {
         response: DesktopManagedWindowSnapshot | null;
       };
       desktopOpenAppWindow: {
-        params: { title: string; path: string; alwaysOnTop?: boolean };
+        params: {
+          slug?: string;
+          title: string;
+          path: string;
+          alwaysOnTop?: boolean;
+        };
         response: DesktopManagedWindowSnapshot | null;
       };
       desktopSetManagedWindowAlwaysOnTop: {

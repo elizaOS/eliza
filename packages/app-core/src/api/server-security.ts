@@ -12,7 +12,7 @@ import {
 import {
   normalizeCompatRejection,
   runWithCompatAuthContext,
-} from "@elizaos/app-steward";
+} from "@elizaos/app-steward/routes/server-wallet-trade";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 
 export function resolveMcpTerminalAuthorizationRejection(

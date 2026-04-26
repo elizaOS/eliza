@@ -1,12 +1,10 @@
-import type {
-  RouteRequestContext,
-} from "@elizaos/agent";
+import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
+import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type {
   LifeOpsOccurrence,
   LifeOpsTaskDefinition,
 } from "../contracts/index.js";
-import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
 import {
   getSelfControlStatus,
   isWebsiteBlockedByPolicy,

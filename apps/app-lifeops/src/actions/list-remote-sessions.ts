@@ -2,6 +2,7 @@
  * LIST_REMOTE_SESSIONS — control-plane action for T9a.
  */
 
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -9,7 +10,6 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
 import { getRemoteSessionService } from "../remote/remote-session-service.js";
 
 const ACTION_NAME = "LIST_REMOTE_SESSIONS";
@@ -27,7 +27,10 @@ export const listRemoteSessionsAction: Action = {
   examples: [
     [
       { name: "{{name1}}", content: { text: "Are any remote sessions open?" } },
-      { name: "{{agentName}}", content: { text: "No active remote sessions." } },
+      {
+        name: "{{agentName}}",
+        content: { text: "No active remote sessions." },
+      },
     ],
   ] as ActionExample[][],
 
@@ -56,7 +59,9 @@ export const listRemoteSessionsAction: Action = {
     const lines = sessions.map(
       (s) =>
         `• ${s.id} — status=${s.status}${
-          s.ingressUrl ? ` ingress=${s.ingressUrl}` : ` ingress=<none:${s.reason ?? "unknown"}>`
+          s.ingressUrl
+            ? ` ingress=${s.ingressUrl}`
+            : ` ingress=<none:${s.reason ?? "unknown"}>`
         }${s.localMode ? " (local)" : ""}`,
     );
     return {

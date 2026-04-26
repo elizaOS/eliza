@@ -48,7 +48,7 @@ export function isPermissionDeniedError(
 }
 
 function matchesAccessibilityPermissionError(message: string): boolean {
-  return /accessibility|assistive access|not authorized to send apple events|osascript.*not allowed|system events got an error|not permitted to send keystrokes|control.*not allowed/i.test(
+  return /accessibility|assistive access|not authorized to send apple events|osascript.*not allowed|osascript.*etimedout|spawnsync osascript etimedout|system events got an error|not permitted to send keystrokes|control.*not allowed/i.test(
     message,
   );
 }

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type {
   Trajectory,
   TrajectoryLlmCall,
-} from "@elizaos/agent";
+} from "@elizaos/agent/types/trajectory";
 
 export interface GeminiTuningExample {
   messages: Array<{

@@ -107,6 +107,15 @@ export function createElectrobunConfig(): ElectrobunConfig {
     build: {
       bun: {
         entrypoint: "src/index.ts",
+        // node-llama-cpp ships per-platform sibling packages as dynamic
+        // imports (`@node-llama-cpp/<plat>`); only the host platform's
+        // sibling is installed, so bundling fails to resolve the rest.
+        // The runtime never loads node-llama-cpp from the Electrobun bun
+        // process anyway — leave it as a runtime-resolved external.
+        external: [
+          "node-llama-cpp",
+          "@node-llama-cpp/*",
+        ],
       },
       views: {},
       // Watch these extra dirs in dev --watch mode so changes to the Vite

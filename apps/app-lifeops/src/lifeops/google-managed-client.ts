@@ -1,9 +1,9 @@
-import { loadElizaConfig } from "@elizaos/agent";
 import { resolveCloudApiKey } from "@elizaos/agent/api/wallet-rpc";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
-} from "@elizaos/agent";
+} from "@elizaos/agent/cloud/base-url";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -333,13 +333,12 @@ export class GoogleManagedClient {
     apiKey: string;
   } {
     const config = this.getConfig();
-    const apiKey = config.apiKey;
-    if (!apiKey) {
+    if (!config.apiKey) {
       throw new ManagedGoogleClientError(409, "Eliza Cloud is not connected.");
     }
     return {
       ...config,
-      apiKey,
+      apiKey: config.apiKey,
     };
   }
 

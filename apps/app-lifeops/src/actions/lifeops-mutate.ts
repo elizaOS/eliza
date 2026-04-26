@@ -1,3 +1,4 @@
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionExample,
@@ -13,7 +14,6 @@ import type {
   LifeOpsPaymentSourceKind,
 } from "../lifeops/payment-types.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { extractActionParamsViaLlm } from "@elizaos/agent";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -695,7 +695,8 @@ export const lifeOpsMutateAction: Action & {
     },
     {
       name: "maxResults",
-      description: "gmail_manage only — max messages to apply when using query.",
+      description:
+        "gmail_manage only — max messages to apply when using query.",
       required: false,
       schema: { type: "number" as const },
     },
@@ -714,7 +715,8 @@ export const lifeOpsMutateAction: Action & {
     },
     {
       name: "eventId",
-      description: "calendar_update / calendar_delete — Google Calendar event ID.",
+      description:
+        "calendar_update / calendar_delete — Google Calendar event ID.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -769,7 +771,8 @@ export const lifeOpsMutateAction: Action & {
     },
     {
       name: "occurrenceId",
-      description: "reminder_snooze / reminder_complete — LifeOps occurrence ID.",
+      description:
+        "reminder_snooze / reminder_complete — LifeOps occurrence ID.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -931,7 +934,9 @@ export const lifeOpsMutateAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Reply to that finance email saying 'received, thanks'." },
+        content: {
+          text: "Reply to that finance email saying 'received, thanks'.",
+        },
       },
       {
         name: "{{agentName}}",
@@ -955,7 +960,9 @@ export const lifeOpsMutateAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Add a Chase Sapphire payment source labeled 'Sapphire 4242'." },
+        content: {
+          text: "Add a Chase Sapphire payment source labeled 'Sapphire 4242'.",
+        },
       },
       {
         name: "{{agentName}}",

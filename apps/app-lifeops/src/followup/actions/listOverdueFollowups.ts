@@ -1,12 +1,8 @@
-import type {
-  Action,
-  ActionExample,
-  IAgentRuntime,
-} from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import type { Action, ActionExample, IAgentRuntime } from "@elizaos/core";
 import {
-  FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
   computeOverdueFollowups,
+  FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
 } from "../followup-tracker.js";
 
 export const listOverdueFollowupsAction: Action = {

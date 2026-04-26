@@ -1,19 +1,19 @@
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
 import {
   detectRemoteDesktopBackend,
   endRemoteSession,
   getSessionStatus,
   listActiveSessions,
-  startRemoteSession,
   type RemoteDesktopSession,
+  startRemoteSession,
 } from "../lifeops/remote-desktop.js";
 
 const ACTION_NAME = "REMOTE_DESKTOP";
@@ -111,7 +111,7 @@ export const remoteDesktopAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: 'This will expose your desktop to the network. Re-issue with confirmed: true to start the session.',
+          text: "This will expose your desktop to the network. Re-issue with confirmed: true to start the session.",
         },
       },
     ],
