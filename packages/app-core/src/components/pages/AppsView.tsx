@@ -38,6 +38,7 @@ import {
   resolveEmbeddedViewerUrl,
   shouldUseEmbeddedAppViewer,
 } from "../apps/viewer-auth";
+import { AppDetailsView, appNeedsDetailsPage } from "./AppDetailsView";
 
 export { shouldShowAppInAppsView } from "../apps/helpers";
 
@@ -107,6 +108,25 @@ function loadInitialAppWindowAlwaysOnTop(): boolean {
 
 function getCurrentAppsPath(): string {
   return getWindowNavigationPath();
+}
+
+/**
+ * Parse the current apps sub-path into `{slug, action}`. Action recognizes
+ * `details` for `/apps/<slug>/details`. Anything else is treated as a
+ * direct app surface (`action: null`).
+ */
+function parseAppsRoute(path: string): {
+  slug: string | null;
+  action: "details" | null;
+} {
+  if (!path.startsWith("/apps/")) return { slug: null, action: null };
+  const after = path.slice("/apps/".length).replace(/[?#].*$/, "");
+  if (!after) return { slug: null, action: null };
+  const [slug, sub] = after.split("/");
+  return {
+    slug: slug || null,
+    action: sub === "details" ? "details" : null,
+  };
 }
 
 function resolveDesktopViewerUrl(viewerUrl: string): string | null {
@@ -274,19 +294,77 @@ export function AppsView() {
     currentGameViewerUrl.length > 0 &&
     activeGameRun?.viewerAttachment === "attached";
 
-  /** Push or replace the browser URL to reflect the active app (or browse). */
-  const pushAppsUrl = useCallback((slug?: string) => {
-    try {
-      const path = slug ? `/apps/${slug}` : "/apps";
-      if (shouldUseHashNavigation()) {
-        window.location.hash = path;
-      } else {
-        window.history.replaceState(null, "", path);
+  /**
+   * Push or replace the browser URL to reflect the active app (or browse).
+   * `subPath` is appended after the slug so `/apps/<slug>/details` shows
+   * the details page instead of launching directly.
+   */
+  const pushAppsUrl = useCallback(
+    (slug?: string, subPath?: "details") => {
+      try {
+        const path = slug
+          ? subPath
+            ? `/apps/${slug}/${subPath}`
+            : `/apps/${slug}`
+          : "/apps";
+        if (shouldUseHashNavigation()) {
+          window.location.hash = path;
+        } else {
+          window.history.replaceState(null, "", path);
+        }
+      } catch {
+        /* ignore — sandboxed iframe or SSR */
       }
-    } catch {
-      /* ignore — sandboxed iframe or SSR */
-    }
+    },
+    [],
+  );
+
+  // Track the current `/apps/<slug>/details` slug for the details-page
+  // routing. Listens to hashchange + popstate so back/forward navigation
+  // unmounts AppDetailsView correctly.
+  const [appsDetailsSlug, setAppsDetailsSlug] = useState<string | null>(() =>
+    parseAppsRoute(getCurrentAppsPath()).action === "details"
+      ? parseAppsRoute(getCurrentAppsPath()).slug
+      : null,
+  );
+  useEffect(() => {
+    const handle = () => {
+      const parsed = parseAppsRoute(getCurrentAppsPath());
+      setAppsDetailsSlug(
+        parsed.action === "details" ? parsed.slug : null,
+      );
+    };
+    window.addEventListener("hashchange", handle);
+    window.addEventListener("popstate", handle);
+    return () => {
+      window.removeEventListener("hashchange", handle);
+      window.removeEventListener("popstate", handle);
+    };
   }, []);
+
+  // Bun side fires this when a menu/tray click hits an app that declares
+  // `hasDetailsPage: true`. We switch to the apps tab and navigate the
+  // hash to /apps/<slug>/details so AppDetailsView mounts.
+  useEffect(() => {
+    return subscribeDesktopBridgeEvent({
+      rpcMessage: "desktopAppDetailsRequested",
+      ipcChannel: "desktop:appDetailsRequested",
+      listener: (payload) => {
+        if (
+          !payload ||
+          typeof payload !== "object" ||
+          typeof (payload as { slug?: unknown }).slug !== "string"
+        ) {
+          return;
+        }
+        const slug = (payload as { slug: string }).slug;
+        if (!slug) return;
+        setTab("apps");
+        setState("appsSubTab", "browse");
+        pushAppsUrl(slug, "details");
+      },
+    });
+  }, [pushAppsUrl, setState, setTab]);
 
   const sortedRuns = useMemo(
     () => [...appRuns].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
@@ -622,6 +700,19 @@ export function AppsView() {
     async (app: RegistryAppInfo) => {
       slugAutoLaunchDone.current = true;
 
+      // Apps that declare config / runtime / widgets show a Details page
+      // first so the user can review settings before launching. The Launch
+      // button on AppDetailsView is what eventually calls the bridge or
+      // navigates inline. Skip when we're already inside an app window
+      // (the slug lives there, not in the main shell).
+      if (!isAppWindow && appNeedsDetailsPage(app.name)) {
+        const slug = getAppSlug(app.name);
+        pushRecentApp(app.name);
+        setState("appsSubTab", "browse");
+        pushAppsUrl(slug, "details");
+        return;
+      }
+
       // In Electrobun, every app opens in its own native window — internal
       // tools, overlays, and catalog apps alike. `openAppRouteWindow` is the
       // single source of truth: it dedupes by slug and focuses an existing
@@ -777,7 +868,12 @@ export function AppsView() {
   useEffect(() => {
     if (slugAutoLaunchDone.current || apps.length === 0) return;
 
-    const slug = getAppSlugFromPath(getCurrentAppsPath());
+    const parsed = parseAppsRoute(getCurrentAppsPath());
+    // /apps/<slug>/details is handled by the details renderer below; never
+    // auto-launch from it (would loop straight back to details).
+    if (parsed.action === "details") return;
+
+    const slug = parsed.slug ?? getAppSlugFromPath(getCurrentAppsPath());
     slugAutoLaunchDone.current = true;
     if (!slug) return;
 
@@ -1114,25 +1210,34 @@ export function AppsView() {
           </div>
         ) : null}
 
-        <RunningAppsRow
-          runs={sortedRuns}
-          catalogApps={apps}
-          busyRunId={busyRunId}
-          onOpenRun={(run) => void handleOpenRun(run)}
-          onStopRun={(run) => void handleStopRun(run)}
-          stoppingRunId={stoppingRunId}
-        />
+        {appsDetailsSlug ? (
+          <AppDetailsView
+            slug={appsDetailsSlug}
+            onLaunched={() => pushAppsUrl()}
+          />
+        ) : (
+          <>
+            <RunningAppsRow
+              runs={sortedRuns}
+              catalogApps={apps}
+              busyRunId={busyRunId}
+              onOpenRun={(run) => void handleOpenRun(run)}
+              onStopRun={(run) => void handleStopRun(run)}
+              stoppingRunId={stoppingRunId}
+            />
 
-        <AppsCatalogGrid
-          activeAppNames={activeAppNames}
-          error={error}
-          favoriteAppNames={favoriteAppNames}
-          loading={loading}
-          searchQuery={searchQuery}
-          visibleApps={visibleApps}
-          onLaunch={(app) => void handleLaunch(app)}
-          onToggleFavorite={handleToggleFavorite}
-        />
+            <AppsCatalogGrid
+              activeAppNames={activeAppNames}
+              error={error}
+              favoriteAppNames={favoriteAppNames}
+              loading={loading}
+              searchQuery={searchQuery}
+              visibleApps={visibleApps}
+              onLaunch={(app) => void handleLaunch(app)}
+              onToggleFavorite={handleToggleFavorite}
+            />
+          </>
+        )}
       </div>
     </PageLayout>
   );

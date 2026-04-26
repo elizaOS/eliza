@@ -10,6 +10,13 @@ interface InternalToolAppDefinition {
   order: number;
   targetTab: Tab;
   windowPath?: string;
+  /**
+   * When true, clicking the app navigates to the App Details page first
+   * (config + diagnostics + widgets + Launch button) rather than launching
+   * directly. Default false — most viewers/inspectors don't need a details
+   * step, only apps with real configuration or runtime knobs do.
+   */
+  hasDetailsPage?: boolean;
 }
 
 const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
@@ -23,6 +30,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     capabilities: ["lifeops", "tasks", "calendar", "gmail"],
     order: 0,
     windowPath: "/apps/lifeops",
+    hasDetailsPage: true,
   },
   {
     name: "@elizaos/app-plugin-viewer",
@@ -55,6 +63,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     capabilities: ["training", "fine-tuning", "datasets", "models"],
     order: 3,
     windowPath: "/apps/fine-tuning",
+    hasDetailsPage: true,
   },
   {
     name: "@elizaos/app-trajectory-viewer",
@@ -97,6 +106,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     capabilities: ["wallet", "transactions", "approvals", "trading"],
     order: 7,
     windowPath: "/apps/inventory",
+    hasDetailsPage: true,
   },
   {
     name: "@elizaos/app-runtime-debugger",
@@ -129,6 +139,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     capabilities: ["drops", "minting", "whitelist", "verification"],
     order: 10,
     windowPath: "/apps/elizamaker",
+    hasDetailsPage: true,
   },
   {
     name: "@elizaos/app-log-viewer",
@@ -186,11 +197,16 @@ export function getInternalToolAppWindowPath(name: string): string | null {
   return INTERNAL_TOOL_APP_BY_NAME.get(name)?.windowPath ?? null;
 }
 
+export function getInternalToolAppHasDetailsPage(name: string): boolean {
+  return INTERNAL_TOOL_APP_BY_NAME.get(name)?.hasDetailsPage === true;
+}
+
 /** Plain descriptor used by the desktop application/tray menus. */
 export interface InternalToolAppDescriptor {
   readonly name: string;
   readonly displayName: string;
   readonly windowPath: string | null;
+  readonly hasDetailsPage: boolean;
   readonly order: number;
 }
 
@@ -199,6 +215,7 @@ export function getInternalToolAppDescriptors(): readonly InternalToolAppDescrip
     name: app.name,
     displayName: app.displayName,
     windowPath: app.windowPath ?? null,
+    hasDetailsPage: app.hasDetailsPage === true,
     order: app.order,
   }));
 }
