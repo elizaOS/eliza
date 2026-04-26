@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import type { LifeOpsSignalInboundMessage } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsSignalInboundMessage } from "@elizaos/shared";
 
 /**
  * signal-local-client.ts

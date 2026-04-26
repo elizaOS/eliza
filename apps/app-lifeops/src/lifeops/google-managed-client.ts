@@ -1,8 +1,9 @@
+import { loadElizaConfig } from "@elizaos/agent";
+import { resolveCloudApiKey } from "@elizaos/agent/api/wallet-rpc";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
 } from "@elizaos/agent/cloud/base-url";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -11,7 +12,7 @@ import type {
   LifeOpsGoogleConnectorReason,
   SendLifeOpsGmailMessageRequest,
   StartLifeOpsGoogleConnectorResponse,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import type { GmailSubscriptionMessageHeaders } from "./email-unsubscribe-gmail.js";
 import type { SyncedGoogleCalendarEvent } from "./google-calendar.js";
 import type { SyncedGoogleGmailMessageSummary } from "./google-gmail.js";
@@ -35,6 +36,19 @@ export interface ResolvedManagedGoogleCloudConfig {
   apiBaseUrl: string;
   siteUrl: string;
 }
+
+interface CloudAuthApiKeyService {
+  isAuthenticated: () => boolean;
+  getApiKey?: () => string | undefined;
+}
+
+type ManagedCloudRuntimeLike = {
+  getService?: (serviceType: string) => unknown;
+  getSetting?: (key: string) => unknown;
+  character?: {
+    secrets?: Record<string, unknown>;
+  } | null;
+} | null;
 
 export interface ManagedGoogleConnectorStatusResponse {
   provider: "google";
@@ -141,7 +155,6 @@ const DEFAULT_MANAGED_GOOGLE_CAPABILITIES: readonly LifeOpsGoogleCapability[] =
     "google.calendar.read",
     "google.gmail.triage",
     "google.gmail.send",
-    "google.gmail.manage",
   ] as const;
 
 function normalizeManagedGoogleCapabilities(
@@ -198,7 +211,7 @@ function managedGoogleCapabilitiesToScopes(
   return [...scopes];
 }
 
-function normalizeApiKey(value: string | undefined): string | null {
+function normalizeApiKey(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed || trimmed.length === 0) {
     return null;
@@ -206,8 +219,8 @@ function normalizeApiKey(value: string | undefined): string | null {
   return trimmed.toUpperCase() === "[REDACTED]" ? null : trimmed;
 }
 
-function readConfigCloudSettings(): {
-  apiKey: string | null;
+function loadManagedCloudSettings(): {
+  config: Record<string, unknown>;
   baseUrl: string | null;
 } {
   try {
@@ -217,10 +230,7 @@ function readConfigCloudSettings(): {
         ? (config.cloud as Record<string, unknown>)
         : null;
     return {
-      apiKey:
-        cloud && typeof cloud.apiKey === "string"
-          ? normalizeApiKey(cloud.apiKey)
-          : null,
+      config,
       baseUrl:
         cloud &&
         typeof cloud.baseUrl === "string" &&
@@ -230,10 +240,24 @@ function readConfigCloudSettings(): {
     };
   } catch {
     return {
-      apiKey: null,
+      config: {},
       baseUrl: null,
     };
   }
+}
+
+function resolveRuntimeCloudApiKey(
+  runtime?: ManagedCloudRuntimeLike,
+): string | null {
+  const cloudAuth = runtime?.getService?.("CLOUD_AUTH");
+  if (!cloudAuth || typeof cloudAuth !== "object") {
+    return null;
+  }
+  const service = cloudAuth as CloudAuthApiKeyService;
+  if (service.isAuthenticated?.() !== true) {
+    return null;
+  }
+  return normalizeApiKey(service.getApiKey?.());
 }
 
 function buildTimeoutSignal(timeoutMs: number): AbortSignal {
@@ -269,11 +293,14 @@ async function readJsonResponse<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-export function resolveManagedGoogleCloudConfig(): ResolvedManagedGoogleCloudConfig {
-  const configCloud = readConfigCloudSettings();
+export function resolveManagedGoogleCloudConfig(
+  runtime?: ManagedCloudRuntimeLike,
+): ResolvedManagedGoogleCloudConfig {
+  const cloudSettings = loadManagedCloudSettings();
   const apiKey =
-    configCloud.apiKey ?? normalizeApiKey(process.env.ELIZAOS_CLOUD_API_KEY);
-  const baseUrl = configCloud.baseUrl ?? process.env.ELIZAOS_CLOUD_BASE_URL;
+    resolveRuntimeCloudApiKey(runtime) ??
+    normalizeApiKey(resolveCloudApiKey(cloudSettings.config, runtime));
+  const baseUrl = cloudSettings.baseUrl ?? process.env.ELIZAOS_CLOUD_BASE_URL;
   const siteUrl = normalizeCloudSiteUrl(baseUrl);
   const apiBaseUrl = resolveCloudApiBaseUrl(baseUrl);
 
@@ -568,6 +595,7 @@ export class GoogleManagedClient {
 
   async getGmailSubscriptionHeaders(args: {
     side: LifeOpsConnectorSide;
+    grantId?: string;
     query: string;
     maxResults: number;
   }): Promise<ManagedGoogleGmailSubscriptionHeadersResponse> {
@@ -576,6 +604,7 @@ export class GoogleManagedClient {
       query: args.query,
       maxResults: String(args.maxResults),
     });
+    if (args.grantId) query.set("grantId", args.grantId);
     return this.request<ManagedGoogleGmailSubscriptionHeadersResponse>(
       `milady/google/gmail/subscription-headers?${query.toString()}`,
       {

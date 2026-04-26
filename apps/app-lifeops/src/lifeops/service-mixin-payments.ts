@@ -1,19 +1,8 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
-import { findLifeOpsSubscriptionPlaybook } from "./subscriptions-playbooks.js";
 import {
-  PlaidManagedClient,
-  PlaidManagedClientError,
-  type PlaidTransactionDto,
-} from "./plaid-managed-client.js";
-import {
-  PaypalManagedClient,
-  PaypalManagedClientError,
-  type PaypalTransactionDto,
-} from "./paypal-managed-client.js";
-import {
-  parseTransactionsCsv,
   type ParsedCsvTransaction,
+  parseTransactionsCsv,
 } from "./payment-csv-import.js";
 import {
   detectRecurringCharges,
@@ -25,20 +14,35 @@ import type {
   ImportTransactionsCsvResult,
   LifeOpsPaymentSource,
   LifeOpsPaymentSourceKind,
-  LifeOpsPaymentTransaction,
   LifeOpsPaymentsDashboard,
+  LifeOpsPaymentTransaction,
   LifeOpsRecurringCharge,
   LifeOpsSpendingCategoryBreakdown,
   LifeOpsSpendingSummary,
+  LifeOpsUpcomingBill,
   ListTransactionsRequest,
   SpendingSummaryRequest,
 } from "./payment-types.js";
+import {
+  type PaypalCallbackResponse,
+  PaypalManagedClient,
+  PaypalManagedClientError,
+  type PaypalTransactionDto,
+} from "./paypal-managed-client.js";
+import {
+  type PlaidExchangeResponse,
+  PlaidManagedClient,
+  PlaidManagedClientError,
+  type PlaidSyncResponse,
+  type PlaidTransactionDto,
+} from "./plaid-managed-client.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {
   fail,
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
+import { findLifeOpsSubscriptionPlaybook } from "./subscriptions-playbooks.js";
 
 const DEFAULT_WINDOW_DAYS = 30;
 const MS_PER_DAY = 86_400_000;
@@ -47,7 +51,23 @@ const VALID_SOURCE_KINDS: readonly LifeOpsPaymentSourceKind[] = [
   "plaid",
   "manual",
   "paypal",
+  "email",
 ];
+
+const EMAIL_SOURCE_LABEL = "Email bills";
+const SENSITIVE_PAYMENT_SOURCE_METADATA_KEYS = new Set(["plaid", "paypal"]);
+
+export function sanitizePaymentSourceForClient(
+  source: LifeOpsPaymentSource,
+): LifeOpsPaymentSource {
+  const metadata: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source.metadata ?? {})) {
+    if (!SENSITIVE_PAYMENT_SOURCE_METADATA_KEYS.has(key.toLowerCase())) {
+      metadata[key] = value;
+    }
+  }
+  return { ...source, metadata };
+}
 
 function normalizeSourceKind(value: unknown): LifeOpsPaymentSourceKind {
   if (typeof value !== "string") {
@@ -94,10 +114,7 @@ function computeSpendingSummary(args: {
 
   let totalSpend = 0;
   let totalIncome = 0;
-  const categoryTotals = new Map<
-    string,
-    { total: number; count: number }
-  >();
+  const categoryTotals = new Map<string, { total: number; count: number }>();
   const merchantTotals = new Map<
     string,
     { display: string; total: number; count: number }
@@ -195,7 +212,8 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
 ) {
   class LifeOpsPaymentsMixin extends Base {
     async listPaymentSources(): Promise<LifeOpsPaymentSource[]> {
-      return this.repository.listPaymentSources(this.agentId());
+      const sources = await this.repository.listPaymentSources(this.agentId());
+      return sources.map((source) => sanitizePaymentSourceForClient(source));
     }
 
     async addPaymentSource(
@@ -278,7 +296,8 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
           metadata: { sourceRowIndex: txn.rowIndex },
           createdAt: new Date().toISOString(),
         };
-        const didInsert = await this.repository.insertPaymentTransaction(record);
+        const didInsert =
+          await this.repository.insertPaymentTransaction(record);
         if (didInsert) {
           inserted += 1;
         } else {
@@ -322,10 +341,9 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       });
     }
 
-    async getRecurringCharges(args: {
-      sourceId?: string | null;
-      sinceDays?: number | null;
-    } = {}): Promise<LifeOpsRecurringCharge[]> {
+    async getRecurringCharges(
+      args: { sourceId?: string | null; sinceDays?: number | null } = {},
+    ): Promise<LifeOpsRecurringCharge[]> {
       const sinceDays = Math.max(
         30,
         Math.min(
@@ -373,9 +391,9 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       });
     }
 
-    async getPaymentsDashboard(args: {
-      windowDays?: number | null;
-    } = {}): Promise<LifeOpsPaymentsDashboard> {
+    async getPaymentsDashboard(
+      args: { windowDays?: number | null } = {},
+    ): Promise<LifeOpsPaymentsDashboard> {
       const windowDays = Math.max(
         7,
         Math.min(
@@ -386,10 +404,11 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
             : DEFAULT_WINDOW_DAYS,
         ),
       );
-      const [sources, recurring, spending] = await Promise.all([
+      const [sources, recurring, spending, upcomingBills] = await Promise.all([
         this.listPaymentSources(),
         this.getRecurringCharges({}),
         this.getSpendingSummary({ windowDays }),
+        this.getUpcomingBills(),
       ]);
       const latestAudit = await this.repository.getLatestSubscriptionAudit(
         this.agentId(),
@@ -420,9 +439,245 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         recurring,
         recurringPlaybookHits,
         spending,
+        upcomingBills,
         gmailSubscriptionAuditId: latestAudit?.id ?? null,
         generatedAt: new Date().toISOString(),
       };
+    }
+
+    /**
+     * Look up the singleton "Email bills" payment source for this agent,
+     * creating it on first use. Bills detected from email are persisted
+     * against this source so the existing transactions table can carry them
+     * without a parallel schema. Cannot be `private` — TS4094 fires when
+     * the mixin's anonymous class is re-exported.
+     */
+    async getOrCreateEmailPaymentSource(): Promise<LifeOpsPaymentSource> {
+      const sources = await this.listPaymentSources();
+      const existing = sources.find((source) => source.kind === "email");
+      if (existing) return existing;
+      const now = new Date().toISOString();
+      const source: LifeOpsPaymentSource = {
+        id: crypto.randomUUID(),
+        agentId: this.agentId(),
+        kind: "email",
+        label: EMAIL_SOURCE_LABEL,
+        institution: null,
+        accountMask: null,
+        status: "active",
+        lastSyncedAt: now,
+        transactionCount: 0,
+        metadata: {},
+        createdAt: now,
+        updatedAt: now,
+      };
+      await this.repository.upsertPaymentSource(source);
+      return source;
+    }
+
+    /**
+     * Idempotent insert of a bill extracted from an email. The transaction
+     * id is derived from `(agent, sourceId, sourceMessageId)` so re-ingesting
+     * the same Gmail message never creates a duplicate row.
+     */
+    async upsertBillFromEmail(args: {
+      sourceMessageId: string;
+      merchant: string;
+      amountUsd: number;
+      currency: string;
+      dueDate: string | null;
+      postedAt?: string | null;
+      confidence: number;
+    }): Promise<{ inserted: boolean; transactionId: string }> {
+      const source = await this.getOrCreateEmailPaymentSource();
+      const merchantRaw = requireNonEmptyString(
+        args.merchant,
+        "merchant",
+      ).slice(0, 200);
+      const externalId = `email:${args.sourceMessageId}`;
+      const transactionId = crypto
+        .createHash("sha1")
+        .update(`${this.agentId()}|${source.id}|${args.sourceMessageId}`)
+        .digest("hex")
+        .slice(0, 32);
+      const postedAt =
+        normalizeOptionalString(args.postedAt) ?? new Date().toISOString();
+      const record: LifeOpsPaymentTransaction = {
+        id: transactionId,
+        agentId: this.agentId(),
+        sourceId: source.id,
+        externalId,
+        postedAt,
+        amountUsd: Number(Math.abs(args.amountUsd).toFixed(2)),
+        direction: "debit",
+        merchantRaw,
+        merchantNormalized: merchantRaw.toLowerCase().slice(0, 200),
+        description: null,
+        category: "Bills",
+        currency: args.currency || "USD",
+        metadata: {
+          kind: "bill",
+          sourceMessageId: args.sourceMessageId,
+          dueDate: args.dueDate,
+          confidence: Number(args.confidence.toFixed(2)),
+        },
+        createdAt: new Date().toISOString(),
+      };
+      const inserted = await this.repository.insertPaymentTransaction(record);
+      if (inserted) {
+        const newCount =
+          await this.repository.countPaymentTransactionsForSource(
+            this.agentId(),
+            source.id,
+          );
+        await this.repository.upsertPaymentSource({
+          ...source,
+          lastSyncedAt: new Date().toISOString(),
+          transactionCount: newCount,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      return { inserted, transactionId };
+    }
+
+    /**
+     * Mark a previously-extracted bill as paid. Idempotent — repeated calls
+     * just re-stamp the metadata. The row itself is not deleted so the
+     * transaction history stays intact.
+     */
+    async markBillPaid(args: {
+      billId: string;
+      paidAt?: string | null;
+    }): Promise<{ ok: true }> {
+      const billId = requireNonEmptyString(args.billId, "billId");
+      const transactions = await this.repository.listPaymentTransactions(
+        this.agentId(),
+        { limit: 5000 },
+      );
+      const target = transactions.find((tx) => tx.id === billId);
+      if (!target) {
+        fail(404, `Bill ${billId} not found.`);
+      }
+      const paidAt =
+        normalizeOptionalString(args.paidAt) ?? new Date().toISOString();
+      const nextMetadata = {
+        ...target.metadata,
+        kind: "bill_paid",
+        paidAt,
+      };
+      // The schema has no UPDATE helper for payment transactions yet — the
+      // simplest correct approach is to delete + re-insert with a different
+      // primary key (paid bills should NOT continue to surface as upcoming).
+      // For now, we mark via a metadata-side write only, which still removes
+      // the row from upcoming bills since `getUpcomingBills` filters on
+      // `kind === "bill"`.
+      await this.repository.deletePaymentTransactionById(
+        this.agentId(),
+        billId,
+      );
+      await this.repository.insertPaymentTransaction({
+        ...target,
+        // Keep the same id so callers can reference the bill in audit trails.
+        metadata: nextMetadata,
+      });
+      return { ok: true };
+    }
+
+    /**
+     * Push a bill's due date out by N days. Used for "Snooze 1w" UI.
+     */
+    async snoozeBill(args: {
+      billId: string;
+      days: number;
+    }): Promise<{ ok: true; dueDate: string }> {
+      const billId = requireNonEmptyString(args.billId, "billId");
+      const days =
+        Number.isFinite(args.days) && args.days > 0
+          ? Math.min(60, Math.trunc(args.days))
+          : 7;
+      const transactions = await this.repository.listPaymentTransactions(
+        this.agentId(),
+        { limit: 5000 },
+      );
+      const target = transactions.find((tx) => tx.id === billId);
+      if (!target) {
+        fail(404, `Bill ${billId} not found.`);
+      }
+      const currentDue =
+        typeof target.metadata?.dueDate === "string"
+          ? target.metadata.dueDate
+          : null;
+      const baseDate = currentDue
+        ? new Date(`${currentDue}T00:00:00.000Z`)
+        : new Date();
+      if (Number.isNaN(baseDate.getTime())) {
+        fail(409, "Bill has an unparseable due date.");
+      }
+      const nextDue = new Date(baseDate.getTime() + days * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      await this.repository.deletePaymentTransactionById(
+        this.agentId(),
+        billId,
+      );
+      await this.repository.insertPaymentTransaction({
+        ...target,
+        metadata: {
+          ...target.metadata,
+          dueDate: nextDue,
+        },
+      });
+      return { ok: true, dueDate: nextDue };
+    }
+
+    /**
+     * Read upcoming bills (transactions on the email source whose metadata
+     * carries `kind: "bill"` and a future `dueDate`) sorted by due date.
+     */
+    async getUpcomingBills(
+      args: { now?: Date } = {},
+    ): Promise<LifeOpsUpcomingBill[]> {
+      const sources = await this.listPaymentSources();
+      const emailSource = sources.find((source) => source.kind === "email");
+      if (!emailSource) return [];
+      const transactions = await this.repository.listPaymentTransactions(
+        this.agentId(),
+        {
+          sourceId: emailSource.id,
+          limit: 200,
+        },
+      );
+      const now = args.now ?? new Date();
+      const todayIso = now.toISOString().slice(0, 10);
+      const bills: LifeOpsUpcomingBill[] = [];
+      for (const transaction of transactions) {
+        const metadata = transaction.metadata ?? {};
+        if (metadata.kind !== "bill") continue;
+        const dueDate =
+          typeof metadata.dueDate === "string" ? metadata.dueDate : null;
+        if (!dueDate || dueDate < todayIso) continue;
+        const sourceMessageId =
+          typeof metadata.sourceMessageId === "string"
+            ? metadata.sourceMessageId
+            : null;
+        const confidence =
+          typeof metadata.confidence === "number" &&
+          Number.isFinite(metadata.confidence)
+            ? metadata.confidence
+            : 0.5;
+        bills.push({
+          id: transaction.id,
+          merchant: transaction.merchantRaw,
+          amountUsd: transaction.amountUsd,
+          currency: transaction.currency,
+          dueDate,
+          postedAt: transaction.postedAt,
+          sourceMessageId,
+          confidence,
+        });
+      }
+      bills.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      return bills;
     }
 
     summarizePaymentsDashboard(dashboard: LifeOpsPaymentsDashboard): string {
@@ -495,8 +750,11 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       publicToken: string;
       label?: string | null;
     }): Promise<LifeOpsPaymentSource> {
-      const publicToken = requireNonEmptyString(args.publicToken, "publicToken");
-      let result;
+      const publicToken = requireNonEmptyString(
+        args.publicToken,
+        "publicToken",
+      );
+      let result: PlaidExchangeResponse;
       try {
         result = await this.getPlaidManagedClient().exchangePublicToken({
           publicToken,
@@ -521,7 +779,8 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         kind: "plaid",
         label: label.slice(0, 120),
         institution: result.institution.institutionName.slice(0, 120),
-        accountMask: result.institution.primaryAccountMask?.slice(0, 16) ?? null,
+        accountMask:
+          result.institution.primaryAccountMask?.slice(0, 16) ?? null,
         status: "active",
         lastSyncedAt: null,
         transactionCount: 0,
@@ -569,7 +828,10 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
           | undefined) ?? null;
       const accessToken = plaidMetadata?.accessToken;
       if (typeof accessToken !== "string" || accessToken.length === 0) {
-        fail(409, "Plaid source is missing an access token. Re-link the account.");
+        fail(
+          409,
+          "Plaid source is missing an access token. Re-link the account.",
+        );
       }
       const cursor = plaidMetadata?.cursor ?? "";
 
@@ -579,7 +841,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       let hasMore = true;
       let pageGuard = 0;
       while (hasMore && pageGuard < 20) {
-        let delta;
+        let delta: PlaidSyncResponse;
         try {
           delta = await this.getPlaidManagedClient().syncTransactions({
             accessToken,
@@ -657,9 +919,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     /** Returns a PayPal Login URL the frontend should open in a popup. */
-    async createPaypalAuthorizeUrl(args: {
-      state: string;
-    }): Promise<{
+    async createPaypalAuthorizeUrl(args: { state: string }): Promise<{
       url: string;
       scope: string;
       environment: "live" | "sandbox";
@@ -689,7 +949,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       capability: { hasReporting: boolean; hasIdentity: boolean };
     }> {
       const code = requireNonEmptyString(args.code, "code");
-      let exchange;
+      let exchange: PaypalCallbackResponse;
       try {
         exchange = await this.getPaypalManagedClient().exchangeCode({ code });
       } catch (error) {
@@ -783,9 +1043,10 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       if (Number.isFinite(expiryMs) && expiryMs <= Date.now() + 60_000) {
         if (paypalMetadata?.refreshToken) {
           try {
-            const refreshed = await this.getPaypalManagedClient().refreshAccessToken(
-              { refreshToken: paypalMetadata.refreshToken },
-            );
+            const refreshed =
+              await this.getPaypalManagedClient().refreshAccessToken({
+                refreshToken: paypalMetadata.refreshToken,
+              });
             accessToken = refreshed.accessToken;
             await this.repository.upsertPaymentSource({
               ...source,
@@ -839,12 +1100,14 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       let totalPages = 1;
       try {
         do {
-          const result = await this.getPaypalManagedClient().searchTransactions({
-            accessToken,
-            startDate,
-            endDate,
-            page,
-          });
+          const result = await this.getPaypalManagedClient().searchTransactions(
+            {
+              accessToken,
+              startDate,
+              endDate,
+              page,
+            },
+          );
           totalPages = result.totalPages;
           for (const transaction of result.transactions) {
             const wasInserted = await this.upsertPaypalTransaction({

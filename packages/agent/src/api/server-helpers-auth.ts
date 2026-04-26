@@ -13,7 +13,7 @@ import {
   resolveApiToken,
   setApiToken,
   stripOptionalHostPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { sweepExpiredEntries } from "./memory-bounds.js";
 
@@ -153,7 +153,7 @@ export function applyCors(
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Browser-Bridge-Companion-Id, X-Eliza-Browser-Companion-Id",
+      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Browser-Bridge-Companion-Id, X-Eliza-Browser-Companion-Id, X-Milady-CSRF",
     );
   }
 
@@ -182,13 +182,14 @@ export function getConfiguredApiToken(): string | undefined {
 }
 
 export function extractAuthToken(req: http.IncomingMessage): string | null {
-  const auth =
+  const rawAuth =
     typeof req.headers.authorization === "string"
-      ? req.headers.authorization.trim()
+      ? req.headers.authorization
       : "";
-  if (auth) {
-    const match = /^Bearer\s+(.+)$/i.exec(auth);
-    if (match?.[1]) return match[1].trim();
+  const auth = rawAuth.length > 8192 ? rawAuth.slice(0, 8192).trim() : rawAuth.trim();
+  if (auth && auth.length >= 7 && auth.slice(0, 7).toLowerCase() === "bearer ") {
+    const token = auth.slice(7).trim();
+    if (token) return token;
   }
 
   const header =
@@ -202,9 +203,73 @@ export function extractAuthToken(req: http.IncomingMessage): string | null {
   return null;
 }
 
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
+}
+
+function isLoopbackRemoteAddress(
+  remoteAddress: string | null | undefined,
+): boolean {
+  if (!remoteAddress) return false;
+  const normalized = remoteAddress.trim().toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    normalized === "::ffff:127.0.0.1" ||
+    normalized === "::ffff:0:127.0.0.1"
+  );
+}
+
+function isTrustedLocalOrigin(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "null") return true;
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      parsed.protocol === "file:" ||
+      parsed.protocol === "app:" ||
+      parsed.protocol === "tauri:" ||
+      parsed.protocol === "capacitor:" ||
+      parsed.protocol === "capacitor-electron:" ||
+      parsed.protocol === "electrobun:"
+    ) {
+      return true;
+    }
+    return isLoopbackBindHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function isTrustedLocalRequest(req: http.IncomingMessage): boolean {
+  if (isCloudProvisionedContainer()) return false;
+  if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
+
+  const host = firstHeaderValue(req.headers.host);
+  if (host && !isLoopbackBindHost(host)) return false;
+
+  const secFetchSite = firstHeaderValue(
+    req.headers["sec-fetch-site"],
+  )?.toLowerCase();
+  if (secFetchSite === "cross-site") return false;
+
+  const origin = firstHeaderValue(req.headers.origin);
+  if (origin && !isTrustedLocalOrigin(origin)) return false;
+
+  const referer = firstHeaderValue(req.headers.referer);
+  if (!origin && referer && !isTrustedLocalOrigin(referer)) return false;
+
+  return true;
+}
+
 export function isAuthorized(req: http.IncomingMessage): boolean {
+  if (isTrustedLocalRequest(req)) return true;
+
   const expected = getConfiguredApiToken();
-  if (!expected) return !isCloudProvisionedContainer();
+  if (!expected) return false;
   const provided = extractAuthToken(req);
   if (!provided) return false;
   return tokenMatches(expected, provided);
@@ -311,10 +376,9 @@ export function normalizePairingCode(code: string): string {
 }
 
 function generatePairingCode(): string {
-  const bytes = crypto.randomBytes(8);
   let raw = "";
-  for (let i = 0; i < bytes.length; i++) {
-    raw += PAIRING_ALPHABET[bytes[i] % PAIRING_ALPHABET.length];
+  for (let i = 0; i < 8; i++) {
+    raw += PAIRING_ALPHABET[crypto.randomInt(0, PAIRING_ALPHABET.length)];
   }
   return `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
 }
@@ -370,12 +434,6 @@ export function normalizeWsClientId(value: unknown): string | null {
   if (!trimmed) return null;
   if (!SAFE_WS_CLIENT_ID_RE.test(trimmed)) return null;
   return trimmed;
-}
-
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
-  return null;
 }
 
 export function resolveTerminalRunClientId(

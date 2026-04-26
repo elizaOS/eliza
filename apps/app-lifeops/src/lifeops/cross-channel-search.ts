@@ -23,18 +23,16 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { ModelType, logger } from "@elizaos/core";
-import type { LifeOpsGmailMessageSummary } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsGmailMessageSummary } from "@elizaos/shared";
 // WS3 dependency — types may not yet be exported from agent index when this
 // file is first compiled. Importing from the source path so type-only
 // resolution succeeds even before the public re-export lands.
-import type {
-  RelationshipsGraphService,
-  RelationshipsPersonSummary,
-} from "@elizaos/agent/services/relationships-graph";
 import {
   getMemoriesForCluster as getClusterMemories,
+  type RelationshipsGraphService,
+  type RelationshipsPersonSummary,
   resolveRelationshipsGraphService,
-} from "@elizaos/agent/services/relationships-graph";
+} from "@elizaos/agent";
 
 // ---------------------------------------------------------------------------
 // Public types

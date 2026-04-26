@@ -5,21 +5,24 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { resolveUserPath } from "@elizaos/agent/config/paths";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
 import {
   type BootElizaRuntimeOptions,
+  getLastFailedPluginNames,
+  loadElizaConfig,
+  resolveDefaultAgentWorkspaceDir,
+  resolveUserPath,
   type StartElizaOptions,
   applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
   applyN8nConfigToEnv as upstreamApplyN8nConfigToEnv,
   bootElizaRuntime as upstreamBootElizaRuntime,
-  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
   collectPluginNames as upstreamCollectPluginNames,
   configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
-} from "@elizaos/agent/runtime/eliza";
+} from "@elizaos/agent";
+import {
+  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
+} from "@elizaos/agent/runtime/plugin-collector";
 import {
   type AgentRuntime,
   AutonomyService,
@@ -34,13 +37,12 @@ export {
   CUSTOM_PLUGINS_DIRNAME,
   resolvePackageEntry,
   scanDropInPlugins,
-} from "@elizaos/agent/runtime/plugin-types";
+} from "@elizaos/agent";
 
-import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 import {
   resolveServerOnlyPort,
   syncResolvedApiPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import { isNativeServerPlatform } from "../platform/is-native-server.js";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
@@ -1003,16 +1005,18 @@ function getPgliteDataDirFromError(err: unknown): string | null {
     }
   }
 
-  for (const message of collectErrorMessages(err)) {
+  for (const rawMessage of collectErrorMessages(err)) {
+    const message =
+      rawMessage.length > 4096 ? rawMessage.slice(0, 4096) : rawMessage;
     const retryPathMatch = message.match(
-      /before retrying:\s*([^\n]+?)(?:\s*$|\.)/,
+      /before retrying:[ \t]{0,16}([^\n]{1,1024}?)(?:[ \t]*$|\.)/,
     );
     if (retryPathMatch?.[1]) {
       return retryPathMatch[1].trim();
     }
 
     const initPathMatch = message.match(
-      /PGlite initialization failed for (.+?):/i,
+      /PGlite initialization failed for ([^:\n]{1,1024}):/i,
     );
     if (initPathMatch?.[1]) {
       return initPathMatch[1].trim();

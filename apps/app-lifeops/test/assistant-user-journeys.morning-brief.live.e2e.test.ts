@@ -14,9 +14,11 @@ import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
 import { saveEnv, withTimeout } from "../../../../test/helpers/test-utils";
-import { buildCharacterFromConfig } from "@elizaos/agent/runtime/eliza";
-import { configureLocalEmbeddingPlugin } from "@elizaos/agent/runtime/eliza";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
+import {
+  buildCharacterFromConfig,
+  configureLocalEmbeddingPlugin,
+  createElizaPlugin,
+} from "@elizaos/agent";
 import {
   createApprovalQueue,
 } from "../src/lifeops/approval-queue.js";

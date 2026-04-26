@@ -2,7 +2,7 @@ import type { IAgentRuntime, Task } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsCapabilitiesStatus,
   LifeOpsCapabilityEvidence,
@@ -10,7 +10,7 @@ import type {
   LifeOpsCapabilityStatus,
   LifeOpsConnectorMode,
   LifeOpsXConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { loadLifeOpsAppState } from "./app-state.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createFeatureFlagService } from "./feature-flags.js";

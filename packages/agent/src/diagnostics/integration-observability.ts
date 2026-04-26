@@ -72,8 +72,11 @@ function inferErrorKind(error: unknown): string | undefined {
 
 function sanitizeToken(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  const token = value.toLowerCase().replace(/[^a-z0-9_-]/g, "_");
-  const normalized = token.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+  const safe = value.length > 1024 ? value.slice(0, 1024) : value;
+  const token = safe.toLowerCase().replace(/[^a-z0-9_-]/g, "_");
+  const normalized = token
+    .replace(/_{1,1024}/g, "_")
+    .replace(/^_{1,1024}|_{1,1024}$/g, "");
   return normalized ? normalized.slice(0, 64) : undefined;
 }
 

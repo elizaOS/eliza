@@ -16,7 +16,7 @@ export {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
   sortOnboardingProviders,
-} from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 
 import { resolveAppAssetUrl } from "../utils/asset-url";
 

@@ -19,7 +19,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
 } from "@elizaos/core";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
+import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared";
 import { loadElizaConfig } from "../config/config.js";
 import {
   createAudioProvider,

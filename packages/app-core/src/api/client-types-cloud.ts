@@ -8,7 +8,7 @@ import type {
   AppUiExtensionConfig,
   AppViewerConfig,
   RegistryAppInfo,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 import type { TrajectoryExportFormat } from "./client-types-core";
 
 export type {
@@ -160,6 +160,11 @@ export interface CloudLoginResponse {
 export interface CloudLoginPollResponse {
   status: "pending" | "authenticated" | "expired" | "error";
   keyPrefix?: string;
+  error?: string;
+}
+
+export interface CloudLoginPersistResponse {
+  ok: boolean;
   error?: string;
 }
 

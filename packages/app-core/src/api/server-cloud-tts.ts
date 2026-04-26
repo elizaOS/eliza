@@ -7,8 +7,10 @@
  */
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { isElizaCloudServiceSelectedInConfig } from "@elizaos/shared/contracts";
-import { sanitizeSpeechText } from "@elizaos/shared/spoken-text";
+import {
+  isElizaCloudServiceSelectedInConfig,
+  sanitizeSpeechText,
+} from "@elizaos/shared";
 import { ttsDebug, ttsDebugTextPreview } from "../utils/tts-debug";
 import { getCloudSecret } from "./cloud-secrets";
 

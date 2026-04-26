@@ -5,7 +5,7 @@ import { logger } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-} from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import type {
   CloudChainType,

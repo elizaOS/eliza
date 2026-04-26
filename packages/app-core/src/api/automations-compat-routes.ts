@@ -1,20 +1,16 @@
 import type http from "node:http";
 import {
+  type ConversationMetadata,
+  type ConversationScope,
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
-} from "@elizaos/agent/api/conversation-metadata";
-import type {
-  ConversationMetadata,
-  ConversationScope,
-} from "@elizaos/agent/api/server-types";
-import { toWorkbenchTask } from "@elizaos/agent/api/workbench-helpers";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import {
   listTriggerTasks,
+  loadElizaConfig,
   taskToTriggerSummary,
-} from "@elizaos/agent/triggers/runtime";
-import type { TriggerSummary } from "@elizaos/agent/triggers/types";
-import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
+  toWorkbenchTask,
+  type TriggerSummary,
+} from "@elizaos/agent";
+import { LifeOpsService } from "@elizaos/app-lifeops";
 import {
   type AgentRuntime,
   logger,
@@ -27,8 +23,8 @@ import type {
   LifeOpsGoogleConnectorStatus,
   LifeOpsSignalConnectorStatus,
   LifeOpsTelegramConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
-import { ensureCompatApiAuthorized } from "./auth";
+} from "@elizaos/shared";
+import { ensureRouteAuthorized } from "./auth";
 import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
 import type {
   AutomationItem,
@@ -863,7 +859,7 @@ export async function handleAutomationsCompatRoutes(
     return false;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) {
+  if (!(await ensureRouteAuthorized(req, res, state))) {
     return true;
   }
 

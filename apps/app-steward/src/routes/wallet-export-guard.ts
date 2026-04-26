@@ -14,9 +14,9 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import type {
-  WalletExportRequestBody,
   WalletExportRejection,
-} from "@elizaos/shared/contracts";
+  WalletExportRequestBody,
+} from "@elizaos/shared";
 
 export type { WalletExportRejection };
 

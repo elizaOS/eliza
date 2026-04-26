@@ -23,6 +23,7 @@ import {
   resolveContactCandidates,
 } from "./connector-resolver.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
+import { extractActionParamsViaLlm } from "./extract-params.js";
 
 type ReadMessagesParams = {
   /** Person name for Rolodex resolution. */
@@ -63,7 +64,7 @@ export const readMessagesAction: Action = {
     return hasContextSignalSyncForKey(message, state, "read_messages");
   },
 
-  handler: async (runtime, message, _state, options) => {
+  handler: async (runtime, message, state, options) => {
     if (!(await hasAdminAccess(runtime, message))) {
       return {
         text: "Permission denied: only the owner or admins may read messages.",
@@ -73,8 +74,18 @@ export const readMessagesAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as ReadMessagesParams;
+    const params = (await extractActionParamsViaLlm<ReadMessagesParams>({
+      runtime,
+      message,
+      state,
+      actionName: "READ_MESSAGES",
+      actionDescription: readMessagesAction.description ?? "",
+      paramSchema: readMessagesAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["contact"],
+    })) as ReadMessagesParams;
     const { contact, entityId, platform } = params;
     const contactName = typeof contact === "string" ? contact.trim() : "";
     const limit = Math.min(

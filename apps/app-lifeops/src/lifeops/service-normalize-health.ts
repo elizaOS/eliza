@@ -1,4 +1,4 @@
-import type { LifeOpsHealthSignal } from "@elizaos/app-lifeops/contracts";
+import type { LifeOpsHealthSignal } from "../contracts/index.js";
 import {
   fail,
   normalizeOptionalBoolean,

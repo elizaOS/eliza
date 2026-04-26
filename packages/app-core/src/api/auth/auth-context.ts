@@ -14,7 +14,7 @@
  */
 
 import type http from "node:http";
-import type { RuntimeEnvRecord } from "@elizaos/shared/runtime-env";
+import type { RuntimeEnvRecord } from "@elizaos/shared";
 import type {
   AuthIdentityRow,
   AuthSessionRow,

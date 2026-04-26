@@ -19,7 +19,7 @@ import {
   parseKeyValueXml,
   type UUID,
 } from "@elizaos/core";
-import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
+import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { extractCompatTextContent } from "./compat-utils.js";

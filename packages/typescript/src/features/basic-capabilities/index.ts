@@ -164,7 +164,8 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	return /<@!?[^>]+>|@\w+/u.test(text);
+	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
 
 // ============================================================================

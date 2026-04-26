@@ -4,7 +4,7 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { getRecentMessagesData } from "@elizaos/shared";
 import { resolveContextWindow } from "./lifeops-extraction-config.js";
 
 export const LIFE_OPERATION_VALUES = [

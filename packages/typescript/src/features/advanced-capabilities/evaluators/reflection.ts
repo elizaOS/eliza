@@ -171,10 +171,6 @@ function hasValidStructuredList<T>(
 	return isOmittedStructuredList(value, itemKey) || normalize(value).length > 0;
 }
 
-function isFalseLike(value: unknown): boolean {
-	return value === false || value === "false";
-}
-
 function parseBooleanLike(value: unknown): boolean | null {
 	if (typeof value === "boolean") {
 		return value;
@@ -197,29 +193,6 @@ function parseBooleanLike(value: unknown): boolean | null {
 	}
 
 	return null;
-}
-
-// Best-effort guardrail for long-term memory: even if the model emits a fact,
-// do not store obviously transient session/debug/status chatter.
-const TEMPORARY_REFLECTION_FACT_PATTERNS = [
-	/\b(today|tonight|tomorrow|yesterday|just now|right now|at the moment|this (morning|afternoon|evening|week|month|session|conversation|run|turn))\b/,
-	/\b(currently|current|actively)\b.{0,24}\b(debugging|fixing|investigating|testing|triaging|iterating|working|trying)\b/,
-	/\b(debugging|fixing|investigating|testing|triaging|iterating|working on|trying out|switching)\b.{0,24}\b(issue|bug|glitch|reply|response|route|settings?|api|status)\b/,
-	/\b(stalled|blocked)\b.{0,24}\b(reply|response|chat|route|issue)\b/,
-	/\b(thinks?|thought)\b.{0,24}\b(fixed|solved|working)\b/,
-	/\bin one session\b/,
-	/\b(appreciates?|praised?|complimented?|thanked)\b.{0,32}\b(attitude|tone|energy|vibe|style)\b/,
-] as const;
-
-function isDurableReflectionFactClaim(claim: string): boolean {
-	const normalized = claim.trim().toLowerCase();
-	if (!normalized) {
-		return false;
-	}
-
-	return !TEMPORARY_REFLECTION_FACT_PATTERNS.some((pattern) =>
-		pattern.test(normalized),
-	);
 }
 
 const TOON_HEADER_PATTERN = /^TOON(?:\s+DOCUMENT)?[:\s-]*$/i;
@@ -652,18 +625,13 @@ async function handler(
 
 	const actionResults = message.id ? runtime.getActionResults(message.id) : [];
 
-	// Run all queries in parallel
-	const [existingRelationships, entities, knownFacts] = await Promise.all([
+	// Run all queries in parallel. Facts are owned by `factExtractorEvaluator`
+	// now, so we no longer fetch the existing fact list here.
+	const [existingRelationships, entities] = await Promise.all([
 		runtime.getRelationships({
 			entityIds: [message.entityId, agentId],
 		}),
 		getEntityDetails({ runtime, roomId }),
-		runtime.getMemories({
-			tableName: "facts",
-			roomId,
-			limit: 30,
-			unique: true,
-		}),
 	]);
 
 	// Strip bloated metadata (indicators arrays grow unbounded over time and
@@ -679,7 +647,6 @@ async function handler(
 	const prompt = composePrompt({
 		state: {
 			...(state?.values || {}),
-			knownFacts: formatFacts(knownFacts),
 			actionResults: formatActionResults(actionResults),
 			roomType: message.content.channelType as string,
 			entitiesInRoom: JSON.stringify(entities),
@@ -764,55 +731,8 @@ async function handler(
 		return undefined;
 	}
 
-	// Handle facts - parseKeyValueXml returns nested structures differently
-	// Facts might be a single object or an array depending on the count
-	const factsArray = normalizeFactEntries(reflection.facts);
-
-	// Store new facts - filter for valid new facts with claim text
-	const newFacts = factsArray.filter(
-		(fact): fact is FactXml & { claim: string } =>
-			fact != null &&
-			isFalseLike(fact.already_known) &&
-			isFalseLike(fact.in_bio) &&
-			typeof fact.claim === "string" &&
-			fact.claim.trim() !== "" &&
-			isDurableReflectionFactClaim(fact.claim),
-	);
-
-	if (factsArray.length > newFacts.length) {
-		runtime.logger.debug(
-			{
-				src: "plugin:advanced-capabilities:evaluator:reflection",
-				agentId: runtime.agentId,
-				discardedFacts: factsArray.length - newFacts.length,
-			},
-			"Skipping non-durable reflection facts",
-		);
-	}
-
-	await Promise.all(
-		newFacts.map(async (fact) => {
-			const factMemory = {
-				id: asUUID(v4()),
-				entityId: agentId,
-				agentId,
-				content: { text: fact.claim },
-				roomId,
-				createdAt: Date.now(),
-			};
-			// Create memory first and capture the returned ID
-			const createdMemoryId = await runtime.createMemory(
-				factMemory,
-				"facts",
-				true,
-			);
-			// Update the memory object with the actual ID from the database
-			const createdMemory = { ...factMemory, id: createdMemoryId };
-			// Queue embedding generation asynchronously for the memory with correct ID
-			await runtime.queueEmbeddingGeneration(createdMemory, "low");
-			return createdMemory;
-		}),
-	);
+	// Fact extraction is handled by `factExtractorEvaluator` now; this
+	// evaluator is responsible only for relationships and task completion.
 
 	// Handle relationships - similar structure normalization
 	const relationshipsArray = normalizeRelationshipEntries(
@@ -975,7 +895,6 @@ async function handler(
 		},
 		data: {
 			taskCompletion,
-			factCount: newFacts.length,
 			relationshipCount: relationshipsArray.length,
 		},
 	};
@@ -1002,12 +921,3 @@ export const reflectionEvaluator: Evaluator = {
 	},
 	handler,
 };
-
-// Helper function to format facts for context
-function formatFacts(facts: Memory[]) {
-	const result: string[] = [];
-	for (let i = facts.length - 1; i >= 0; i -= 1) {
-		result.push(facts[i]?.content.text ?? "");
-	}
-	return result.join("\n");
-}

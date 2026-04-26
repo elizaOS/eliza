@@ -1,9 +1,11 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import { basename } from "node:path";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import {
+  loadElizaConfig,
+} from "@elizaos/agent";
 import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared";
 import {
   getIMessageBackendStatus,
   getIMessageDeliveryStatus,

@@ -1,4 +1,4 @@
-import type { AwarenessRegistry } from "@elizaos/agent/awareness/registry";
+import type { AwarenessRegistry } from "@elizaos/agent";
 import type {
   IAgentRuntime,
   Memory,

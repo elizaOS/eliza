@@ -253,7 +253,9 @@ export interface BrowserBridgeCompanionSyncResponse {
   tabs: BrowserBridgeTabSummary[];
   currentPage: BrowserBridgePageContext | null;
   settings: BrowserBridgeSettings;
-  session: import("@elizaos/shared/contracts/lifeops").LifeOpsBrowserSession | null;
+  session:
+    | import("@elizaos/shared/contracts/lifeops").LifeOpsBrowserSession
+    | null;
 }
 
 export interface UpdateBrowserBridgeSessionProgressRequest {

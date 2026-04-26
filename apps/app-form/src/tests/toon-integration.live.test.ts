@@ -26,7 +26,15 @@ try {
   } else if (process.env.OPENAI_API_KEY) {
     const { default: OpenAI } = await import("openai");
     const baseURL = process.env.OPENAI_BASE_URL || undefined;
-    const isGroq = baseURL?.includes("groq.com");
+    const isGroq = (() => {
+      if (!baseURL) return false;
+      try {
+        const host = new URL(baseURL).hostname;
+        return host === "groq.com" || host.endsWith(".groq.com");
+      } catch {
+        return false;
+      }
+    })();
     const client = new OpenAI({ baseURL });
     hasApiKey = true;
     callLLM = async (prompt: string) => {

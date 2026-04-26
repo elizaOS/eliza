@@ -11,10 +11,10 @@ import type {
   LifeOpsWindowPolicy,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   LIFEOPS_REMINDER_CHANNELS,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   requireNonEmptyString,
   normalizeOptionalString,

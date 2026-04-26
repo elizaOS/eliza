@@ -17,7 +17,7 @@ import {
 import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
-} from "@elizaos/shared/validation-keywords";
+} from "@elizaos/shared";
 import {
   readTaskCompleted,
   readTaskMetadata,

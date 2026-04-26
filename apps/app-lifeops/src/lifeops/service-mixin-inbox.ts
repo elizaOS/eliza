@@ -1,25 +1,33 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  GetLifeOpsInboxRequest,
-  LifeOpsInboxChannel,
-  LifeOpsInbox,
-  LifeOpsInboxChannelCount,
-  LifeOpsInboxMessage,
-  LifeOpsInboxThreadGroup,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_INBOX_CHANNELS } from "@elizaos/shared/contracts/lifeops";
+import {
+  type GetLifeOpsInboxRequest,
+  LIFEOPS_INBOX_CHANNELS,
+  type LifeOpsInbox,
+  type LifeOpsInboxChannel,
+  type LifeOpsInboxChannelCount,
+  type LifeOpsInboxMessage,
+  type LifeOpsInboxThreadGroup,
+} from "@elizaos/shared";
 import {
   fetchAllMessages,
   type GmailInboxSource,
   type XDmInboxSource,
 } from "../inbox/message-fetcher.js";
 import type { InboundMessage } from "../inbox/types.js";
+import { loadLifeOpsAppState } from "./app-state.js";
+import {
+  type PriorityCategory,
+  type PriorityScore,
+  scoreInboxMessages,
+} from "./priority-scoring.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
 const DEFAULT_INBOX_LIMIT = 100;
 const INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(LIFEOPS_INBOX_CHANNELS);
 const SUBJECT_REPLY_PREFIX = /^(?:\s*(?:re|fwd|fw)\s*:\s*)+/i;
+const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
+const MISSED_MIN_PRIORITY = 50;
 
 export type InboxChatType = "dm" | "group" | "channel";
 
@@ -148,13 +156,23 @@ interface InboxBuildOptions {
   maxParticipants?: number;
   gmailAccountId?: string;
   ownerName?: string | null;
+  missedOnly?: boolean;
+  /**
+   * When true, thread groups are sorted by maxPriorityScore desc with recency
+   * as tiebreaker. When false (default), groups are sorted by recency only.
+   * Messages mode opts in; Mail mode keeps recency-first because email
+   * priority is less actionable.
+   */
+  sortByPriority?: boolean;
+  /** Optional precomputed score map keyed by message id. */
+  llmScores?: ReadonlyMap<string, PriorityScore>;
 }
 
 /**
- * Compute a v1 small-group importance score for a thread group. Returns a
- * number in [0, 100]. Replaced by LLM scoring in Wave 3.
+ * Compute a v1 small-group importance score for a thread group. Used as the
+ * fallback path when LLM priority scoring is disabled or fails. Returns a
+ * number in [0, 100].
  */
-// v1 heuristic — replaced by LLM scoring in Wave 3
 function scoreSmallGroupThread(
   members: LifeOpsInboxMessage[],
   ownerNameLower: string | null,
@@ -201,9 +219,24 @@ function scoreSmallGroupThread(
   return Math.min(score, 100);
 }
 
+function applyLlmScores(
+  messages: LifeOpsInboxMessage[],
+  scores: ReadonlyMap<string, PriorityScore>,
+): void {
+  if (scores.size === 0) return;
+  for (const message of messages) {
+    const score = scores.get(message.id);
+    if (!score) continue;
+    message.priorityScore = score.score;
+    message.priorityCategory = score.category;
+  }
+}
+
 function buildThreadGroups(
   messages: LifeOpsInboxMessage[],
   ownerName: string | null,
+  llmScores?: ReadonlyMap<string, PriorityScore>,
+  sortByPriority = false,
 ): LifeOpsInboxThreadGroup[] {
   const buckets = new Map<string, LifeOpsInboxMessage[]>();
   for (const message of messages) {
@@ -214,7 +247,7 @@ function buildThreadGroups(
   }
 
   // Identify the group thread with the most-recent activity to award the
-  // "most-recent group activity" heuristic point.
+  // "most-recent group activity" heuristic point in the fallback path.
   let mostRecentGroupKey: string | null = null;
   let mostRecentGroupTs = -Infinity;
   for (const [key, members] of buckets) {
@@ -249,7 +282,41 @@ function buildThreadGroups(
       .map((m) => m.priorityScore)
       .filter((value): value is number => typeof value === "number");
 
+    // Determine the dominant category from the LLM scoring when available.
+    let priorityCategory: PriorityCategory | undefined;
+    if (llmScores && llmScores.size > 0) {
+      const seen = new Map<PriorityCategory, number>();
+      let best: { category: PriorityCategory; score: number } | null = null;
+      for (const member of members) {
+        const score = llmScores.get(member.id);
+        if (!score) continue;
+        seen.set(score.category, (seen.get(score.category) ?? 0) + 1);
+        if (!best || score.score > best.score) {
+          best = { category: score.category, score: score.score };
+        }
+      }
+      // Prefer the category attached to the highest-scoring message; ties
+      // fall back to the most common category.
+      if (best) {
+        priorityCategory = best.category;
+      } else if (seen.size > 0) {
+        let topCategory: PriorityCategory = "casual";
+        let topCount = -1;
+        for (const [cat, count] of seen) {
+          if (count > topCount) {
+            topCount = count;
+            topCategory = cat;
+          }
+        }
+        priorityCategory = topCategory;
+      }
+    }
+
+    // Fallback: only run the v1 heuristic for small groups when the LLM
+    // produced nothing for the latest message.
+    const latestHasLlmScore = llmScores?.has(latestMessage.id) === true;
     if (
+      !latestHasLlmScore &&
       latestMessage.chatType === "group" &&
       typeof participantCount === "number" &&
       participantCount <= 15
@@ -280,16 +347,42 @@ function buildThreadGroups(
       unreadCount,
       participantCount,
       maxPriorityScore,
+      priorityCategory,
       messages: [...members],
     });
   }
 
-  groups.sort(
-    (a, b) =>
-      Date.parse(b.latestMessage.receivedAt) -
-      Date.parse(a.latestMessage.receivedAt),
-  );
+  if (sortByPriority) {
+    groups.sort((a, b) => {
+      const aScore = a.maxPriorityScore ?? -1;
+      const bScore = b.maxPriorityScore ?? -1;
+      if (aScore !== bScore) return bScore - aScore;
+      return (
+        Date.parse(b.latestMessage.receivedAt) -
+        Date.parse(a.latestMessage.receivedAt)
+      );
+    });
+  } else {
+    groups.sort(
+      (a, b) =>
+        Date.parse(b.latestMessage.receivedAt) -
+        Date.parse(a.latestMessage.receivedAt),
+    );
+  }
   return groups;
+}
+
+function isMissedMessage(message: LifeOpsInboxMessage, nowMs: number): boolean {
+  if (typeof message.repliedAt === "string" && message.repliedAt.length > 0) {
+    return false;
+  }
+  const score = message.priorityScore;
+  if (typeof score !== "number" || score < MISSED_MIN_PRIORITY) {
+    return false;
+  }
+  const received = Date.parse(message.receivedAt);
+  if (!Number.isFinite(received)) return false;
+  return nowMs - received >= MISSED_REPLY_GAP_MS;
 }
 
 export function buildInbox(
@@ -346,14 +439,40 @@ export function buildInbox(
       ? collected.slice(0, options.limit)
       : collected;
 
+  if (options.llmScores && options.llmScores.size > 0) {
+    applyLlmScores(trimmed, options.llmScores);
+  }
+
+  let messages = trimmed;
+  let threadGroups: LifeOpsInboxThreadGroup[] | undefined;
+
+  if (options.groupByThread) {
+    threadGroups = buildThreadGroups(
+      trimmed,
+      options.ownerName ?? null,
+      options.llmScores,
+      options.sortByPriority === true,
+    );
+  }
+
+  if (options.missedOnly === true) {
+    const nowMs = Date.now();
+    messages = messages.filter((m) => isMissedMessage(m, nowMs));
+    if (threadGroups) {
+      threadGroups = threadGroups.filter((g) =>
+        isMissedMessage(g.latestMessage, nowMs),
+      );
+    }
+  }
+
   const inbox: LifeOpsInbox = {
-    messages: trimmed,
+    messages,
     channelCounts: counts,
     fetchedAt: new Date().toISOString(),
   };
 
-  if (options.groupByThread) {
-    inbox.threadGroups = buildThreadGroups(trimmed, options.ownerName ?? null);
+  if (threadGroups) {
+    inbox.threadGroups = threadGroups;
   }
 
   return inbox;
@@ -366,6 +485,8 @@ export interface ResolvedInboxRequest {
   chatTypeFilter?: ReadonlyArray<InboxChatType>;
   maxParticipants?: number;
   gmailAccountId?: string;
+  missedOnly: boolean;
+  sortByPriority: boolean;
 }
 
 export function resolveInboxRequest(
@@ -405,6 +526,8 @@ export function resolveInboxRequest(
       request.gmailAccountId.trim().length > 0
         ? request.gmailAccountId.trim()
         : undefined,
+    missedOnly: request.missedOnly === true,
+    sortByPriority: request.sortByPriority === true,
   };
 }
 
@@ -413,6 +536,93 @@ function resolveOwnerName(runtime: IAgentRuntime): string | null {
   return typeof name === "string" && name.trim().length > 0
     ? name.trim()
     : null;
+}
+
+async function loadPriorityScoringSettings(
+  runtime: IAgentRuntime,
+): Promise<{ enabled: boolean; model: string | null }> {
+  try {
+    const state = await loadLifeOpsAppState(runtime);
+    return {
+      enabled: state.priorityScoring.enabled === true,
+      model: state.priorityScoring.model ?? null,
+    };
+  } catch {
+    // The route handler validates the cached blob and surfaces errors there;
+    // here we just silently default to "enabled, no model override" so
+    // unrelated state corruption never blocks the inbox.
+    return { enabled: true, model: null };
+  }
+}
+
+async function computeLlmScores(
+  runtime: IAgentRuntime,
+  messages: LifeOpsInboxMessage[],
+  ownerName: string | null,
+): Promise<Map<string, PriorityScore>> {
+  const out = new Map<string, PriorityScore>();
+  if (messages.length === 0) return out;
+  const settings = await loadPriorityScoringSettings(runtime);
+  if (!settings.enabled) return out;
+  const scored = await scoreInboxMessages(runtime, messages, {
+    ownerName,
+    model: settings.model,
+  });
+  for (let i = 0; i < messages.length; i += 1) {
+    const message = messages[i];
+    const score = scored[i];
+    if (!message || !score) continue;
+    out.set(message.id, score);
+  }
+  return out;
+}
+
+/**
+ * Build the inbox once with a synchronous shell (channel allow-list, filters,
+ * trimming) so we know which messages survive, then score those messages
+ * with the LLM and rebuild thread groups with priority data attached.
+ */
+async function buildInboxWithLlm(
+  runtime: IAgentRuntime,
+  inbound: InboundMessage[],
+  resolved: ResolvedInboxRequest,
+): Promise<LifeOpsInbox> {
+  const ownerName = resolveOwnerName(runtime);
+  // First pass: trim and filter without LLM scoring or grouping. We still
+  // honor the chatType / participant / gmail filters here because LLM scoring
+  // should only run on messages the user will actually see.
+  const initial = buildInbox(inbound, {
+    limit: resolved.limit,
+    allowed: resolved.allowed,
+    chatTypeFilter: resolved.chatTypeFilter,
+    maxParticipants: resolved.maxParticipants,
+    gmailAccountId: resolved.gmailAccountId,
+    ownerName,
+    // groupByThread/missedOnly are deferred to the second pass so we can
+    // factor in LLM scores before grouping/filtering.
+    groupByThread: false,
+  });
+
+  const llmScores = await computeLlmScores(
+    runtime,
+    initial.messages,
+    ownerName,
+  );
+
+  // Second pass: re-build with the LLM scores so thread grouping picks them
+  // up and missedOnly can filter on score >= 50.
+  return buildInbox(inbound, {
+    limit: resolved.limit,
+    allowed: resolved.allowed,
+    chatTypeFilter: resolved.chatTypeFilter,
+    maxParticipants: resolved.maxParticipants,
+    gmailAccountId: resolved.gmailAccountId,
+    ownerName,
+    groupByThread: resolved.groupByThread,
+    missedOnly: resolved.missedOnly,
+    sortByPriority: resolved.sortByPriority,
+    llmScores,
+  });
 }
 
 export async function fetchInbox(
@@ -430,10 +640,7 @@ export async function fetchInbox(
     xDmSource,
     gmailGrantId: resolved.gmailAccountId,
   });
-  return buildInbox(inbound, {
-    ...resolved,
-    ownerName: resolveOwnerName(runtime),
-  });
+  return buildInboxWithLlm(runtime, inbound, resolved);
 }
 
 /** @internal */
@@ -453,10 +660,7 @@ export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
         xDmSource: this,
         gmailGrantId: resolved.gmailAccountId,
       });
-      return buildInbox(inbound, {
-        ...resolved,
-        ownerName: resolveOwnerName(this.runtime),
-      });
+      return buildInboxWithLlm(this.runtime, inbound, resolved);
     }
   }
 

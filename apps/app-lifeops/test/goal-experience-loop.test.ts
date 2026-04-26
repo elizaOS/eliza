@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { LifeOpsOccurrence } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsOccurrence } from "@elizaos/shared";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 import {
   createLifeOpsGoalDefinition,

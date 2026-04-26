@@ -1,5 +1,5 @@
-import type { LifeOpsGoalReviewState } from "@elizaos/app-lifeops/contracts";
-import { LIFEOPS_REVIEW_STATES } from "@elizaos/app-lifeops/contracts";
+import type { LifeOpsGoalReviewState } from "../contracts/index.js";
+import { LIFEOPS_REVIEW_STATES } from "../contracts/index.js";
 
 export const GOAL_GROUNDING_STATES = [
   "grounded",

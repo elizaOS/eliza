@@ -372,7 +372,7 @@ export function AppsCatalogGrid({
                     }}
                   >
                     <div className="flex items-center gap-3">
-                      <h2 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-muted-strong">
+                      <h2 className="text-sm font-semibold text-muted-strong">
                         {section.label}
                       </h2>
                       <div className="h-px flex-1 bg-border/30" />

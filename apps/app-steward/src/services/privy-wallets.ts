@@ -86,7 +86,7 @@ function resolvePrivyConfig(
   return {
     appId,
     appSecret,
-    apiBaseUrl: apiBaseUrl.replace(/\/+$/, ""),
+    apiBaseUrl: apiBaseUrl.replace(/\/{1,1024}$/, ""),
   };
 }
 

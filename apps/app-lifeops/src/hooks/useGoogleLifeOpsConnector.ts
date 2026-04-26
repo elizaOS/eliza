@@ -1,21 +1,22 @@
+import { client } from "@elizaos/app-core/api";
+import { isApiError } from "@elizaos/app-core/api/client-types-core";
+import { APP_RESUME_EVENT } from "@elizaos/app-core/events";
+import { useApp } from "@elizaos/app-core/state";
+import { openExternalUrl } from "@elizaos/app-core/utils";
 import type {
   DisconnectLifeOpsGoogleConnectorRequest,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
-} from "@elizaos/app-lifeops/contracts";
-import { LIFEOPS_GOOGLE_CAPABILITIES } from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
+import { LIFEOPS_GOOGLE_CAPABILITIES } from "../contracts/index.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { client } from "@elizaos/app-core/api";
-import { isApiError } from "@elizaos/app-core/api/client-types-core";
-import { APP_RESUME_EVENT } from "@elizaos/app-core/events";
 import {
   dispatchLifeOpsGoogleConnectorRefresh,
   LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT,
   type LifeOpsGoogleConnectorRefreshDetail,
 } from "../events/index.js";
-import { useApp } from "@elizaos/app-core/state";
-import { openExternalUrl } from "@elizaos/app-core/utils";
 
 const DEFAULT_GOOGLE_CONNECTOR_POLL_INTERVAL_MS = 15_000;
 const GOOGLE_CONNECTOR_SILENT_REFRESH_DEBOUNCE_MS = 150;
@@ -24,6 +25,10 @@ const DEFAULT_VISIBLE_GOOGLE_MODES: readonly LifeOpsConnectorMode[] = [
   "cloud_managed",
   "local",
 ] as const;
+const GOOGLE_INBOX_TRACKING_CAPABILITIES: readonly LifeOpsGoogleCapability[] =
+  LIFEOPS_GOOGLE_CAPABILITIES.filter(
+    (capability) => capability !== "google.gmail.manage",
+  );
 const GOOGLE_CONNECTOR_STORAGE_KEY = "elizaos:lifeops:google-connector-refresh";
 const GOOGLE_CONNECTOR_BROADCAST_CHANNEL = "elizaos:lifeops:google-connector";
 const GOOGLE_CONNECTOR_MESSAGE_TYPE = "lifeops-google-connector-refresh";
@@ -507,7 +512,7 @@ export function useGoogleLifeOpsConnector(
     try {
       setActionPending(true);
       setPendingAuthUrl(null);
-      const requestedCapabilities = [...LIFEOPS_GOOGLE_CAPABILITIES];
+      const requestedCapabilities = [...GOOGLE_INBOX_TRACKING_CAPABILITIES];
       const connectMode = resolveConnectMode(
         status ?? null,
         selectedModeRef.current,
@@ -532,7 +537,7 @@ export function useGoogleLifeOpsConnector(
     } finally {
       setActionPending(false);
     }
-  }, [side, status?.defaultMode, status?.mode]);
+  }, [side, status]);
 
   const disconnect = useCallback(async () => {
     if (!status) {
@@ -590,7 +595,7 @@ export function useGoogleLifeOpsConnector(
   const connectAdditional = useCallback(async () => {
     try {
       setActionPending(true);
-      const requestedCapabilities = [...LIFEOPS_GOOGLE_CAPABILITIES];
+      const requestedCapabilities = [...GOOGLE_INBOX_TRACKING_CAPABILITIES];
       const connectMode = resolveConnectMode(
         status ?? null,
         selectedModeRef.current,
@@ -613,7 +618,7 @@ export function useGoogleLifeOpsConnector(
     } finally {
       setActionPending(false);
     }
-  }, [side, status?.defaultMode, status?.mode]);
+  }, [side, status]);
 
   const modeOptions = useMemo(() => resolveVisibleModes(status), [status]);
   const activeMode =

@@ -13,7 +13,7 @@ import type {
   LifeOpsNextCalendarEventContext,
   LifeOpsOccurrenceView,
   LifeOpsOverview,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import type { LifeOpsService } from "../lifeops/service.js";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
 import { hasPrivateAccess } from "@elizaos/agent";

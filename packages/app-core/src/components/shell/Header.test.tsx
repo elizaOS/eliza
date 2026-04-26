@@ -7,6 +7,7 @@ var getTabGroupsMock = vi.fn();
 var isElectrobunRuntimeMock = vi.fn();
 var useMediaQueryMock = vi.fn();
 var useAppMock = vi.fn();
+var getOverlayAppMock = vi.fn();
 
 vi.mock("@elizaos/app-companion/ui", () => ({
   InferenceCloudAlertButton: () => null,
@@ -38,18 +39,31 @@ vi.mock("@elizaos/app-core/hooks", () => ({
   useMediaQuery: (query: string) => useMediaQueryMock(query),
 }));
 
-vi.mock("@elizaos/app-core/navigation", () => ({
-  getTabGroups: (...args: unknown[]) => getTabGroupsMock(...args),
-}));
+vi.mock("@elizaos/app-core/navigation", async () => {
+  const actual = await vi.importActual<
+    typeof import("@elizaos/app-core/navigation")
+  >("@elizaos/app-core/navigation");
+  return {
+    ...actual,
+    getTabGroups: (...args: unknown[]) => getTabGroupsMock(...args),
+  };
+});
 
 vi.mock("@elizaos/app-core/state", () => ({
   useApp: () => useAppMock(),
+}));
+
+vi.mock("../apps/overlay-app-registry", () => ({
+  getOverlayApp: (name: string) => getOverlayAppMock(name),
 }));
 
 import { Header } from "./Header";
 
 function buildUseAppState(overrides?: Record<string, unknown>) {
   return {
+    activeGameRunId: "",
+    activeOverlayApp: null,
+    appRuns: [],
     browserEnabled: true,
     chatLastUsage: null,
     conversationMessages: [],
@@ -83,6 +97,8 @@ describe("Header", () => {
     isElectrobunRuntimeMock.mockReset();
     getTabGroupsMock.mockReset();
     useMediaQueryMock.mockReset();
+    getOverlayAppMock.mockReset();
+    getOverlayAppMock.mockReturnValue(undefined);
 
     Object.defineProperty(window.navigator, "userAgent", {
       configurable: true,
@@ -229,5 +245,210 @@ describe("Header", () => {
     expect(outerPointerDown).not.toHaveBeenCalled();
     fireEvent.click(settingsButton);
     expect(setTab).toHaveBeenCalledWith("settings");
+  });
+
+  describe("active-app breadcrumb", () => {
+    it("hides the breadcrumb when no app is active", () => {
+      render(<Header hideCloudCredits />);
+      expect(screen.queryByTestId("header-breadcrumb")).toBeNull();
+      expect(screen.queryByTestId("header-breadcrumb-home")).toBeNull();
+      expect(screen.queryByTestId("header-breadcrumb-current")).toBeNull();
+    });
+
+    it("renders 'Apps > <displayName>' from an active overlay app", () => {
+      getOverlayAppMock.mockReturnValue({
+        name: "@elizaos/app-companion",
+        displayName: "Companion",
+        description: "",
+        category: "",
+        icon: null,
+        Component: () => null as unknown as JSX.Element,
+      });
+      useAppMock.mockReturnValue(
+        buildUseAppState({ activeOverlayApp: "@elizaos/app-companion" }),
+      );
+
+      render(<Header hideCloudCredits />);
+
+      const crumb = screen.getByTestId("header-breadcrumb");
+      expect(crumb.getAttribute("aria-label")).toBe("Breadcrumb");
+      expect(screen.getByTestId("header-breadcrumb-home").textContent).toBe(
+        "Apps",
+      );
+      const current = screen.getByTestId("header-breadcrumb-current");
+      expect(current.textContent).toBe("Companion");
+      expect(current.getAttribute("aria-current")).toBe("page");
+      expect(current.getAttribute("title")).toBe("Companion");
+    });
+
+    it("renders the active game run's displayName when one is active", () => {
+      useAppMock.mockReturnValue(
+        buildUseAppState({
+          activeGameRunId: "run-42",
+          appRuns: [
+            { runId: "run-42", appName: "trivia", displayName: "Trivia Night" },
+          ],
+        }),
+      );
+
+      render(<Header hideCloudCredits />);
+      expect(screen.getByTestId("header-breadcrumb-current").textContent).toBe(
+        "Trivia Night",
+      );
+    });
+
+    it("hides the breadcrumb when the overlay registry returns nothing (no raw slug leak)", () => {
+      getOverlayAppMock.mockReturnValue(undefined);
+      useAppMock.mockReturnValue(
+        buildUseAppState({ activeOverlayApp: "ghost-app-internal-id" }),
+      );
+
+      render(<Header hideCloudCredits />);
+      expect(screen.queryByTestId("header-breadcrumb")).toBeNull();
+      expect(screen.queryByText("ghost-app-internal-id")).toBeNull();
+    });
+
+    it("clears active app state and navigates to apps tab on home click", () => {
+      const setState = vi.fn();
+      const setTab = vi.fn();
+      getOverlayAppMock.mockReturnValue({
+        name: "@elizaos/app-companion",
+        displayName: "Companion",
+        description: "",
+        category: "",
+        icon: null,
+        Component: () => null as unknown as JSX.Element,
+      });
+      useAppMock.mockReturnValue(
+        buildUseAppState({
+          activeOverlayApp: "@elizaos/app-companion",
+          setState,
+          setTab,
+          tab: "chat",
+        }),
+      );
+
+      render(<Header hideCloudCredits />);
+
+      const home = screen.getByTestId("header-breadcrumb-home");
+      fireEvent.click(home);
+
+      expect(setState).toHaveBeenCalledWith("activeOverlayApp", null);
+      expect(setState).toHaveBeenCalledWith("activeGameRunId", "");
+      expect(setTab).toHaveBeenCalledWith("apps");
+    });
+
+    it("preserves the desktop-window-titlebar-drag-zone test-id when the breadcrumb is shown", () => {
+      isElectrobunRuntimeMock.mockReturnValue(true);
+      getOverlayAppMock.mockReturnValue({
+        name: "@elizaos/app-companion",
+        displayName: "Companion",
+        description: "",
+        category: "",
+        icon: null,
+        Component: () => null as unknown as JSX.Element,
+      });
+      useAppMock.mockReturnValue(
+        buildUseAppState({ activeOverlayApp: "@elizaos/app-companion" }),
+      );
+
+      render(<Header hideCloudCredits />);
+
+      const dragZone = screen.getByTestId("desktop-window-titlebar-drag-zone");
+      expect(dragZone).toBeTruthy();
+      expect(
+        dragZone.querySelector('[data-testid="header-breadcrumb"]'),
+      ).toBeTruthy();
+      expect(dragZone.getAttribute("data-no-camera-drag")).toBe("true");
+    });
+
+    it("renders 'Apps > LifeOps' when on the lifeops tool tab (no overlay needed)", () => {
+      useAppMock.mockReturnValue(buildUseAppState({ tab: "lifeops" }));
+
+      render(<Header hideCloudCredits />);
+
+      expect(screen.getByTestId("header-breadcrumb-home").textContent).toBe(
+        "Apps",
+      );
+      expect(screen.getByTestId("header-breadcrumb-current").textContent).toBe(
+        "LifeOps",
+      );
+    });
+
+    it("renders 'Apps > Plugins' when on the plugins tool tab", () => {
+      useAppMock.mockReturnValue(buildUseAppState({ tab: "plugins" }));
+
+      render(<Header hideCloudCredits />);
+
+      expect(screen.getByTestId("header-breadcrumb-current").textContent).toBe(
+        "Plugins",
+      );
+    });
+
+    it("renders 'Apps > Skills' when on the skills tool tab", () => {
+      useAppMock.mockReturnValue(buildUseAppState({ tab: "skills" }));
+      render(<Header hideCloudCredits />);
+      expect(screen.getByTestId("header-breadcrumb-current").textContent).toBe(
+        "Skills",
+      );
+    });
+
+    it("does NOT show breadcrumb on top-level tabs that aren't under Apps", () => {
+      // chat / browser / inventory / character live in their own nav groups.
+      for (const tab of ["chat", "browser", "inventory", "character"]) {
+        cleanup();
+        useAppMock.mockReturnValue(buildUseAppState({ tab }));
+        render(<Header hideCloudCredits />);
+        expect(screen.queryByTestId("header-breadcrumb")).toBeNull();
+      }
+    });
+
+    it("does NOT show breadcrumb on the apps catalog itself (no app selected)", () => {
+      useAppMock.mockReturnValue(buildUseAppState({ tab: "apps" }));
+      render(<Header hideCloudCredits />);
+      expect(screen.queryByTestId("header-breadcrumb")).toBeNull();
+    });
+
+    it("tool-tab home click navigates to apps without touching overlay state", () => {
+      const setState = vi.fn();
+      const setTab = vi.fn();
+      useAppMock.mockReturnValue(
+        buildUseAppState({ setState, setTab, tab: "lifeops" }),
+      );
+
+      render(<Header hideCloudCredits />);
+      fireEvent.click(screen.getByTestId("header-breadcrumb-home"));
+
+      // Tool-tab branch: navigate only, no overlay/run reset.
+      expect(setTab).toHaveBeenCalledWith("apps");
+      expect(setState).not.toHaveBeenCalledWith("activeOverlayApp", null);
+      expect(setState).not.toHaveBeenCalledWith("activeGameRunId", "");
+    });
+
+    it("opts breadcrumb home button out of camera drag without swallowing pointerdown reach to OS", () => {
+      const outerPointerDown = vi.fn();
+      getOverlayAppMock.mockReturnValue({
+        name: "@elizaos/app-companion",
+        displayName: "Companion",
+        description: "",
+        category: "",
+        icon: null,
+        Component: () => null as unknown as JSX.Element,
+      });
+      useAppMock.mockReturnValue(
+        buildUseAppState({ activeOverlayApp: "@elizaos/app-companion" }),
+      );
+
+      render(
+        <div onPointerDown={outerPointerDown}>
+          <Header hideCloudCredits />
+        </div>,
+      );
+
+      const home = screen.getByTestId("header-breadcrumb-home");
+      expect(home.getAttribute("data-no-camera-drag")).toBe("true");
+      fireEvent.pointerDown(home);
+      expect(outerPointerDown).not.toHaveBeenCalled();
+    });
   });
 });

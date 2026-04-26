@@ -1,5 +1,5 @@
 import type { JsonValue, Room } from "@elizaos/core";
-import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
+import { asNonEmptyString, asRecord } from "@elizaos/shared";
 import type {
   ConversationMeta,
   ConversationMetadata,

@@ -3,9 +3,13 @@ import type http from "node:http";
 import {
   EMOTE_BY_ID,
   EMOTE_CATALOG,
-} from "@elizaos/app-companion/emotes/catalog";
+} from "@elizaos/app-companion";
+import {
+  ensurePrivyWalletsForCustomUser,
+  isPrivyWalletProvisioningEnabled,
+} from "@elizaos/app-steward";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared/type-guards";
+import { asRecord } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import type {
@@ -16,10 +20,6 @@ import {
   buildTestHandler,
   registerCustomActionLive,
 } from "../runtime/custom-actions.js";
-import {
-  ensurePrivyWalletsForCustomUser,
-  isPrivyWalletProvisioningEnabled,
-} from "../services/privy-wallets.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.js";
 

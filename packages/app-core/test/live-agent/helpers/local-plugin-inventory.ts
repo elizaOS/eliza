@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   extractPlugin,
   type PluginModuleShape,
-} from "@elizaos/agent/test-support/test-helpers";
+} from "@elizaos/agent";
 
 type PluginCategory =
   | "ai-provider"

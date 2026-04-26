@@ -1,4 +1,4 @@
-import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
+import { asNonEmptyString, asRecord } from "@elizaos/shared";
 import {
   dispatchLifeOpsGithubCallback,
   type LifeOpsGithubCallbackDetail,

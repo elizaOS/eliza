@@ -1,11 +1,12 @@
-import { client, type AppRunSummary } from "@elizaos/app-core/api";
 import {
+  type AppOperatorSurfaceProps,
+  type AppRunSummary,
+  client,
   type GameOperatorAction,
   type GameOperatorEvent,
   GameOperatorShell,
-} from "@elizaos/app-core/components/apps/surfaces/GameOperatorShell";
-import type { AppOperatorSurfaceProps } from "@elizaos/app-core/components/apps/surfaces/types";
-import { useApp } from "@elizaos/app-core/state";
+  useApp,
+} from "@elizaos/app-core";
 import { useCallback, useMemo, useState } from "react";
 
 const LANES = ["top", "mid", "bot"] as const;

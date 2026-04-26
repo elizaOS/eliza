@@ -2,7 +2,7 @@ import {
   createGeneratedAppHeroDataUrl,
   getAppHeroMonogram,
   getAppHeroThemeKey,
-} from "@elizaos/shared/app-hero-art";
+} from "@elizaos/shared";
 import {
   Bot,
   Briefcase,
@@ -20,11 +20,6 @@ export interface AppIdentitySource {
   displayName?: string | null;
   category?: string | null;
   icon?: string | null;
-  /**
-   * URL to a full-card hero image for this app. Declared by the app
-   * itself in `package.json` → `elizaos.app.heroImage` and surfaced via
-   * `RegistryAppInfo.heroImage`; falls back to generated hero art when absent.
-   */
   heroImage?: string | null;
   description?: string | null;
 }
@@ -262,13 +257,6 @@ function getHeroBlobs(seed: number): HeroBlob[] {
   ];
 }
 
-/**
- * Full-card hero visual for an app. Prefers an app-declared hero image
- * (see `AppIdentitySource.heroImage`, sourced from the app's own
- * package.json and served via `/api/apps/hero/<slug>`), then a
- * caller-provided icon URL, then a generated hero image data URL seeded
- * from the app name so each app still gets dedicated art when no asset ships.
- */
 export function AppHero({
   app,
   className = "",
@@ -281,7 +269,6 @@ export function AppHero({
   const palette = getAppPalette(app.name);
   const { imageSrc, handleImageError } = useResolvedAppImageSource(app);
   const Icon = getAppCategoryIcon(app);
-  const monogram = getAppMonogram(app);
   const blobs = getHeroBlobs(hashString(app.name));
   const iconRotation = hashString(app.name) % 24;
 
@@ -347,9 +334,6 @@ export function AppHero({
         <>
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(255,255,255,0.22),transparent_55%)]" />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-          <div className="absolute left-3 top-3 inline-flex items-center rounded-full border border-white/25 bg-white/15 px-2 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.22em] text-white backdrop-blur-sm">
-            {monogram}
-          </div>
         </>
       ) : null}
     </div>

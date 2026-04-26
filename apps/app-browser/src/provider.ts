@@ -1,12 +1,12 @@
-import type { Provider } from "@elizaos/core";
 import {
   getBrowserWorkspaceMode,
   listBrowserWorkspaceTabs,
-} from "@elizaos/agent/services/browser-workspace";
+} from "@elizaos/agent";
 import {
   getStewardPendingApprovals,
   getStewardWalletStatus,
-} from "@elizaos/agent/services/steward-wallet";
+} from "@elizaos/app-steward";
+import type { Provider } from "@elizaos/core";
 
 async function formatWorkspaceSummary(): Promise<{
   text: string;
@@ -59,7 +59,8 @@ export const appBrowserWorkspaceProvider: Provider = {
   name: "app_browser_workspace",
   description:
     "Summarizes Eliza browser workspace tabs plus Steward wallet signing state for the agent.",
-  descriptionCompressed: "Browser workspace tabs + Steward wallet signing state.",
+  descriptionCompressed:
+    "Browser workspace tabs + Steward wallet signing state.",
   get: async () => {
     try {
       const summary = await formatWorkspaceSummary();

@@ -65,11 +65,17 @@ export class ElizaClient {
   }
 
   private static generateClientId(): string {
-    const random =
-      typeof globalThis.crypto?.randomUUID === "function"
-        ? globalThis.crypto.randomUUID()
-        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
-    return `ui-${random.replace(/[^a-zA-Z0-9._-]/g, "")}`;
+    let random: string;
+    if (typeof globalThis.crypto?.randomUUID === "function") {
+      random = globalThis.crypto.randomUUID();
+    } else if (typeof globalThis.crypto?.getRandomValues === "function") {
+      const buf = new Uint8Array(16);
+      globalThis.crypto.getRandomValues(buf);
+      random = `${Date.now().toString(36)}${Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("")}`;
+    } else {
+      random = `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+    }
+    return `ui-${random.slice(0, 256).replace(/[^a-zA-Z0-9._-]/g, "")}`;
   }
 
   constructor(baseUrl?: string, token?: string) {
@@ -150,7 +156,10 @@ export class ElizaClient {
   }
 
   setBaseUrl(baseUrl: string | null): void {
-    const normalized = baseUrl?.trim().replace(/\/+$/, "") || "";
+    const trimmed = baseUrl?.slice(0, 4096).trim() ?? "";
+    let end = trimmed.length;
+    while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end--;
+    const normalized = trimmed.slice(0, end);
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.disconnectWs();

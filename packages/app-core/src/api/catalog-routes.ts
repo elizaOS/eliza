@@ -10,9 +10,10 @@
 // covers the static, declared catalog only.
 
 import type http from "node:http";
-import type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
+import type { RegistryAppInfo } from "@elizaos/shared";
 import { type AppEntry, getApps, loadRegistry } from "../registry";
-import { ensureCompatApiAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth";
+import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 
 function appEntryToRegistryAppInfo(entry: AppEntry): RegistryAppInfo {
@@ -46,6 +47,7 @@ function appEntryToRegistryAppInfo(entry: AppEntry): RegistryAppInfo {
 export async function handleCatalogRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -55,7 +57,7 @@ export async function handleCatalogRoutes(
   }
 
   if (method === "GET" && url.pathname === "/api/catalog/apps") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const apps = getApps(loadRegistry()).filter((a) => a.render.visible);
     sendJsonResponse(res, 200, apps.map(appEntryToRegistryAppInfo));
     return true;

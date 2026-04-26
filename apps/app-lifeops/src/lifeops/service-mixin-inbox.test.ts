@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LIFEOPS_INBOX_CHANNELS } from "@elizaos/shared/contracts/lifeops";
+import { LIFEOPS_INBOX_CHANNELS } from "@elizaos/shared";
 
 import type { InboundMessage } from "../inbox/types.js";
 import {

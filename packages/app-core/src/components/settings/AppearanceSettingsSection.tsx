@@ -1,5 +1,7 @@
-import type { ResolvedContentPack } from "@elizaos/shared/contracts/content-pack";
-import { BUILTIN_THEMES } from "@elizaos/shared/themes/presets";
+import {
+  BUILTIN_THEMES,
+  type ResolvedContentPack,
+} from "@elizaos/shared";
 import { Button, Input, Switch } from "@elizaos/ui";
 import { Check, FolderOpen, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -38,6 +40,15 @@ function supportsDirectoryUpload(): boolean {
     webkitdirectory?: string | boolean;
   };
   return "webkitdirectory" in input;
+}
+
+function isSafeContentPackUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 export function AppearanceSettingsSection() {
@@ -113,7 +124,10 @@ export function AppearanceSettingsSection() {
     if (!activePackId) return;
 
     const persistedUrl = loadPersistedActivePackUrl();
-    if (!persistedUrl) return;
+    if (!persistedUrl || !isSafeContentPackUrl(persistedUrl)) {
+      if (persistedUrl) savePersistedActivePackUrl(null);
+      return;
+    }
 
     let cancelled = false;
     void loadContentPackFromUrl(persistedUrl)
@@ -230,6 +244,10 @@ export function AppearanceSettingsSection() {
   const handleLoadFromUrl = useCallback(async () => {
     const url = urlInput.trim();
     if (!url) return;
+    if (!isSafeContentPackUrl(url)) {
+      setPackLoadError("Pack URL must be an http(s) URL");
+      return;
+    }
 
     try {
       const pack = await loadContentPackFromUrl(url);

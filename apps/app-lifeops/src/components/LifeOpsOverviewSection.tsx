@@ -11,7 +11,7 @@ import type {
   LifeOpsOverview,
   LifeOpsScheduleInsight,
   LifeOpsXConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   ArrowRight,
   AtSign,
@@ -382,13 +382,17 @@ function DashboardPanel({
 }) {
   return (
     <section
+      aria-label={title}
       className={`min-w-0 overflow-hidden rounded-lg border border-border/16 bg-card/12 ${className}`}
     >
-      <div className="flex items-center justify-between gap-3 border-b border-border/12 px-4 py-3">
+      <div className="flex items-center justify-between gap-3 border-b border-border/12 px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 text-muted">{icon}</span>
-          <h2 className="truncate text-xs font-semibold uppercase tracking-wide text-muted">
-            {title}
+          <h2
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-bg/30 text-muted"
+            title={title}
+          >
+            <span className="sr-only">{title}</span>
+            {icon}
           </h2>
         </div>
         {action}
@@ -1100,31 +1104,29 @@ export function LifeOpsOverviewSection({
           className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3"
           data-testid="lifeops-overview-setup-warning"
         >
-          <div className="flex min-w-0 items-start gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <span className="mt-0.5 shrink-0 text-amber-300">
               <TriangleAlert className="h-4 w-4" aria-hidden />
             </span>
-            <div className="min-w-0 space-y-1">
-              <div className="text-sm font-medium text-txt">
-                {hasAnyOverviewAccess
-                  ? "Overview is partial."
-                  : "Overview needs access."}
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-txt">
+                {hasAnyOverviewAccess ? "Partial overview" : "Connect a source"}
               </div>
-              <p className="text-xs leading-relaxed text-muted">
-                {hasAnyOverviewAccess
-                  ? `Some widgets stay hidden until access is available for ${formatLabelList(
-                      missingWidgets,
-                    )}. Local time is inferred automatically.`
-                  : "Local time is inferred automatically, but LifeOps still needs calendar, mail, messages, or activity access to populate this dashboard."}
-              </p>
             </div>
           </div>
+          <span
+            className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-amber-300/25 bg-amber-300/10 px-2 text-[11px] font-semibold text-amber-200"
+            title={formatLabelList(missingWidgets)}
+          >
+            +{missingWidgets.length}
+          </span>
           <button
             type="button"
-            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+            aria-label="Open LifeOps settings"
+            title="Settings"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/16 bg-bg/50 text-txt transition-colors hover:border-accent/30 hover:text-accent"
             onClick={() => onNavigate("setup")}
           >
-            Settings
             <ArrowRight className="h-3.5 w-3.5" aria-hidden />
           </button>
         </div>
@@ -1146,13 +1148,8 @@ export function LifeOpsOverviewSection({
             <TriangleAlert className="h-5 w-5" aria-hidden />
           </div>
           <h2 className="mt-4 text-base font-semibold text-txt">
-            Add some access to populate Overview
+            Connect a source
           </h2>
-          <p className="mx-auto mt-2 max-w-2xl text-sm leading-relaxed text-muted">
-            Connect calendar, mail, messages, X, or browser activity in
-            Settings. As soon as one of those sources is available, LifeOps can
-            render the corresponding widgets here.
-          </p>
           <button
             type="button"
             className="mt-4 inline-flex h-9 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-sm font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
@@ -1226,7 +1223,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Sleep"
-              reason="Sleep needs activity or health data."
               ctaLabel="Connect Health"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-3"
@@ -1270,7 +1266,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Screen Time"
-              reason="Screen Time needs the browser bridge or mobile signals."
               ctaLabel="Set up tracking"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-3"
@@ -1330,7 +1325,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Social"
-              reason="Social tracking needs the browser bridge installed and paired."
               ctaLabel="Set up bridge"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-3"
@@ -1373,7 +1367,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Calendar"
-              reason="Connect Google for Calendar and Mail."
               ctaLabel="Connect Google"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-4"
@@ -1438,7 +1431,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Messages"
-              reason="Connect a messaging platform from Settings."
               ctaLabel="Connect platform"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-4"
@@ -1483,7 +1475,6 @@ export function LifeOpsOverviewSection({
           ) : (
             <MissingSourceCard
               title="Mail"
-              reason="Connect Google for Calendar and Mail."
               ctaLabel="Connect Google"
               onCta={() => onNavigate("setup")}
               className="xl:col-span-4"

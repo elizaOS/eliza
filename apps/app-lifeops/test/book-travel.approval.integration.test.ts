@@ -2,7 +2,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import {
+  resolveOAuthDir,
+} from "@elizaos/agent";
 import type { ActionResult, AgentRuntime, Memory, UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { saveEnv } from "../../../../test/helpers/test-utils";

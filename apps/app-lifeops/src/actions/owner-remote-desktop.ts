@@ -16,7 +16,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm, hasOwnerAccess } from "@elizaos/agent";
 import { remoteDesktopAction } from "./remote-desktop.js";
 import { startRemoteSessionAction } from "./start-remote-session.js";
 import { revokeRemoteSessionAction } from "./revoke-remote-session.js";
@@ -70,8 +70,9 @@ export const ownerRemoteDesktopAction: Action = {
   parameters: [
     {
       name: "subaction",
-      description: "Required. One of: start, end, status, list, revoke.",
-      required: true,
+      description:
+        "One of: start, end, status, list, revoke. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {
@@ -166,8 +167,18 @@ export const ownerRemoteDesktopAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerRemoteDesktopParameters;
+    const params = (await extractActionParamsViaLlm<OwnerRemoteDesktopParameters>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerRemoteDesktopAction.description ?? "",
+      paramSchema: ownerRemoteDesktopAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as OwnerRemoteDesktopParameters;
     const subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       return {

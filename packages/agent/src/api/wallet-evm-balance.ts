@@ -4,18 +4,19 @@
  * Handles multi-chain EVM balance + NFT retrieval with provider-key resolution
  * and automatic fallback to public RPC endpoints when premium APIs are unavailable.
  */
+
+import {
+  computeValueUsd,
+  type DexTokenMeta,
+  fetchDexPrices,
+  WRAPPED_NATIVE,
+} from "@elizaos/app-steward";
 import { logger } from "@elizaos/core";
 import type {
   EvmChainBalance,
   EvmNft,
   EvmTokenBalance,
 } from "../contracts/wallet.js";
-import {
-  computeValueUsd,
-  type DexTokenMeta,
-  fetchDexPrices,
-  WRAPPED_NATIVE,
-} from "./wallet-dex-prices.js";
 import {
   resolveAvalancheRpcUrls,
   resolveBaseRpcUrls,

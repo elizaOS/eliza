@@ -9,7 +9,7 @@ import type {
   AppSessionJsonValue,
   AppSessionState,
   AppViewerAuthMessage,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Constants

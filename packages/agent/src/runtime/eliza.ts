@@ -99,25 +99,21 @@ import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
 import {
-  isElizaSettingsDebugEnabled,
-  settingsDebugCloudSummary,
-} from "@elizaos/shared";
-import { resolveElizaCloudTopology } from "@elizaos/shared/contracts";
-import {
+  getDefaultStylePreset,
   getOnboardingProviderOption,
+  isElizaSettingsDebugEnabled,
   migrateLegacyRuntimeConfig,
+  normalizeCharacterLanguage,
   normalizeOnboardingProviderId,
   resolveDeploymentTargetInConfig,
+  resolveElizaCloudTopology,
+  resolveServerOnlyPort,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts/onboarding";
-import {
-  getDefaultStylePreset,
-  normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared/onboarding-presets";
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
+  settingsDebugCloudSummary,
+} from "@elizaos/shared";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
@@ -1582,7 +1578,10 @@ export function applyN8nConfigToEnv(
     const rawBase = cloud.baseUrl ?? "https://www.elizacloud.ai";
     // Strip trailing /api/v1 (or /api/v1/) plus any trailing slashes so we can
     // build `${siteUrl}/api/v1/agents/${agentId}/n8n` without duplication.
-    const siteUrl = rawBase.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
+    const safeBase = rawBase.length > 8192 ? rawBase.slice(0, 8192) : rawBase;
+    const siteUrl = safeBase
+      .replace(/\/api\/v1\/?$/, "")
+      .replace(/\/{1,1024}$/, "");
     const gateway = `${siteUrl}/api/v1/agents/${agentId}/n8n`;
     if (!process.env.N8N_HOST) process.env.N8N_HOST = gateway;
     if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = cloud.apiKey;
@@ -3021,7 +3020,7 @@ export async function startEliza(
           ? ` | data dir: ${pgliteDir}`
           : "") +
         (dbProvider === "postgres" && postgresUrl
-          ? ` | connection: ${postgresUrl.replace(/:\/\/([^:]+):([^@]+)@/, "://$1:***@")}`
+          ? ` | connection: ${(postgresUrl.length > 4096 ? postgresUrl.slice(0, 4096) : postgresUrl).replace(/:\/\/([^:@]{1,1024}):([^@]{1,1024})@/, "://$1:***@")}`
           : ""),
     );
   }
@@ -3663,7 +3662,7 @@ export async function startEliza(
   const initializeRuntimeServices = async (): Promise<void> => {
     try {
       const { stewardEvmPreBoot } = await import(
-        "../services/steward-evm-bridge.js"
+        "@elizaos/app-steward/services/steward-evm-bridge"
       );
       await stewardEvmPreBoot(runtime);
     } catch (err) {
@@ -3750,7 +3749,7 @@ export async function startEliza(
 
     try {
       const { stewardEvmPostBoot } = await import(
-        "../services/steward-evm-bridge.js"
+        "@elizaos/app-steward/services/steward-evm-bridge"
       );
       await stewardEvmPostBoot(runtime);
     } catch (err) {
@@ -4107,7 +4106,7 @@ export async function startEliza(
           }
           try {
             const { stewardEvmPreBoot: preBootHR } = await import(
-              "../services/steward-evm-bridge.js"
+              "@elizaos/app-steward/services/steward-evm-bridge"
             );
             await preBootHR(newRuntime);
           } catch {
@@ -4122,7 +4121,7 @@ export async function startEliza(
 
           try {
             const { stewardEvmPostBoot: postBootHR } = await import(
-              "../services/steward-evm-bridge.js"
+              "@elizaos/app-steward/services/steward-evm-bridge"
             );
             await postBootHR(newRuntime);
           } catch {

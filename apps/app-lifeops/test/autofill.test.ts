@@ -1,4 +1,6 @@
-import { DatabaseSync } from "@elizaos/agent/test-utils/sqlite-compat";
+import {
+  DatabaseSync,
+} from "@elizaos/agent";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   __internal,

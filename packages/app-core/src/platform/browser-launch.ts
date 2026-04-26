@@ -35,18 +35,23 @@ function normalizeLaunchApiBase(apiBase: string): string {
     throw new Error("Missing launch API base");
   }
 
+  const stripTrailingSlashes = (s: string): string => {
+    let end = s.length;
+    while (end > 0 && s.charCodeAt(end - 1) === 47) end--;
+    return s.slice(0, end);
+  };
   try {
     const parsed = new URL(trimmed);
     if (
       parsed.protocol === "https:" ||
       (parsed.protocol === "http:" && isAllowedHttpHost(parsed.hostname))
     ) {
-      return parsed.toString().replace(/\/+$/, "");
+      return stripTrailingSlashes(parsed.toString());
     }
     throw new Error(`Rejected launch apiBase protocol: ${parsed.protocol}`);
   } catch {
     if (trimmed.startsWith("/") && !trimmed.startsWith("//")) {
-      return trimmed.replace(/\/+$/, "") || "/";
+      return stripTrailingSlashes(trimmed) || "/";
     }
     throw new Error("Rejected invalid launch apiBase");
   }

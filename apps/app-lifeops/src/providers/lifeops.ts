@@ -1,7 +1,7 @@
 import type {
   LifeOpsGmailTriageSummary,
   LifeOpsNextCalendarEventContext,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   type IAgentRuntime,
   logger,

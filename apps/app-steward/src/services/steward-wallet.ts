@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
+import { getWalletAddresses } from "../api/wallet";
 import type {
   StewardApprovalActionResponse,
   StewardPendingApproval,
@@ -8,7 +9,6 @@ import type {
   StewardSignResponse,
   StewardStatusResponse,
 } from "../types/steward";
-import { getWalletAddresses } from "../api/wallet";
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 
@@ -175,7 +175,7 @@ async function requestStewardWallet(
     throw new Error(getStewardWalletUnavailableMessage());
   }
 
-  return fetch(`${baseUrl.replace(/\/+$/, "")}${pathname}`, {
+  return fetch(`${baseUrl.replace(/\/{1,1024}$/, "")}${pathname}`, {
     ...init,
     headers: init?.headers ?? buildStewardWalletHeaders(env),
     signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),

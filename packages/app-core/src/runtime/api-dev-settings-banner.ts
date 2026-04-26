@@ -2,14 +2,12 @@ import process from "node:process";
 import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import {
   type DevSettingsRow,
-  formatDevSettingsTable,
-} from "@elizaos/shared/dev-settings-table";
-import {
   ELIZA_RUNTIME_ENV_KEYS,
   firstWinningEnvString,
+  formatDevSettingsTable,
   resolveApiSecurityConfig,
   resolveApiToken,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 
 function summarizeList(label: string, items: string[], maxLen: number): string {
   if (items.length === 0) return `${label}: (empty)`;

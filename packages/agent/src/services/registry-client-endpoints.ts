@@ -25,7 +25,7 @@ function createRegistryEndpointFetchInit(): RequestInit {
 }
 
 export function normaliseEndpointUrl(url: string): string {
-  return url.replace(/\/+$/, "");
+  return url.replace(/\/{1,1024}$/, "");
 }
 
 export function isDefaultEndpoint(url: string, defaultUrl: string): boolean {

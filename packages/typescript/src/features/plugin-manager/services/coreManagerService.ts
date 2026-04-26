@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 import fs from "fs-extra";
@@ -10,6 +10,7 @@ import { resolveStateDir } from "../utils/paths.ts";
 import { getRegistryEntry } from "./pluginRegistryService.ts";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const CORE_GIT_URL = "https://github.com/elizaos/eliza.git";
 const CORE_BRANCH = "develop";
@@ -343,8 +344,18 @@ export class CoreManagerService extends Service {
 			}
 
 			logger.info(`Cloning ${CORE_PACKAGE_NAME} from ${CORE_GIT_URL}...`);
-			await execAsync(
-				`git clone --branch ${CORE_BRANCH} --single-branch --depth 1 ${CORE_GIT_URL} ${monorepoDir}`,
+			await execFileAsync(
+				"git",
+				[
+					"clone",
+					"--branch",
+					CORE_BRANCH,
+					"--single-branch",
+					"--depth",
+					"1",
+					CORE_GIT_URL,
+					monorepoDir,
+				],
 				{
 					env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
 				},

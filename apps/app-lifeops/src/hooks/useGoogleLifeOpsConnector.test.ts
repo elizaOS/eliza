@@ -166,6 +166,37 @@ describe("useGoogleLifeOpsConnector - pendingAuthUrl state", () => {
     );
   });
 
+  it("connect() requests inbox tracking without Gmail manage scopes", async () => {
+    const { result } = renderHook(() => useGoogleLifeOpsConnector());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.connect();
+    });
+
+    const [request] =
+      clientMock.startGoogleLifeOpsConnector.mock.calls[0] ?? [];
+    expect(request?.capabilities).toContain("google.gmail.triage");
+    expect(request?.capabilities).not.toContain("google.gmail.manage");
+  });
+
+  it("connectAdditional() requests inbox tracking without Gmail manage scopes", async () => {
+    clientMock.getGoogleLifeOpsConnectorStatus.mockResolvedValue(
+      clientMock.connectedStatus,
+    );
+    const { result } = renderHook(() => useGoogleLifeOpsConnector());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.connectAdditional();
+    });
+
+    const [request] =
+      clientMock.startGoogleLifeOpsConnector.mock.calls[0] ?? [];
+    expect(request?.capabilities).toContain("google.gmail.triage");
+    expect(request?.capabilities).not.toContain("google.gmail.manage");
+  });
+
   it("is cleared when connect() throws", async () => {
     clientMock.startGoogleLifeOpsConnector.mockRejectedValueOnce(
       new Error("network error"),

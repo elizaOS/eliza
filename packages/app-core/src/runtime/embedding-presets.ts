@@ -1,7 +1,7 @@
 import {
   detectEmbeddingTier,
   EMBEDDING_PRESETS as upstreamEmbeddingPresets,
-} from "@elizaos/agent/runtime/embedding-presets";
+} from "@elizaos/agent";
 
 export { detectEmbeddingTier };
 

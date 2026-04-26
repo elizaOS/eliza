@@ -6,7 +6,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import type { LifeOpsBrowserSession } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsBrowserSession } from "@elizaos/shared";
 import { LifeOpsService } from "./lifeops/service.js";
 
 function formatSettingsLine(

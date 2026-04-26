@@ -1,5 +1,11 @@
 import type { Service, UUID } from "@elizaos/core";
 import type {
+  CompleteLifeOpsBrowserSessionRequest,
+  ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserSessionRequest,
+  LifeOpsBrowserSession,
+} from "@elizaos/shared";
+import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPairingResponse,
   BrowserBridgeCompanionStatus,
@@ -13,17 +19,13 @@ import type {
   UpdateBrowserBridgeSessionProgressRequest,
   UpdateBrowserBridgeSettingsRequest,
 } from "./contracts.ts";
-import type {
-  CompleteLifeOpsBrowserSessionRequest,
-  ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserSessionRequest,
-  LifeOpsBrowserSession,
-} from "@elizaos/shared/contracts/lifeops";
 
 export const BROWSER_BRIDGE_ROUTE_SERVICE_TYPE = "lifeops_browser_plugin";
 
 export interface BrowserBridgeRouteService extends Service {
-  getBrowserSettings(ownerEntityId?: UUID | null): Promise<BrowserBridgeSettings>;
+  getBrowserSettings(
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeSettings>;
   updateBrowserSettings(
     request: UpdateBrowserBridgeSettingsRequest,
     ownerEntityId?: UUID | null,
@@ -31,7 +33,9 @@ export interface BrowserBridgeRouteService extends Service {
   listBrowserCompanions(
     ownerEntityId?: UUID | null,
   ): Promise<BrowserBridgeCompanionStatus[]>;
-  listBrowserTabs(ownerEntityId?: UUID | null): Promise<BrowserBridgeTabSummary[]>;
+  listBrowserTabs(
+    ownerEntityId?: UUID | null,
+  ): Promise<BrowserBridgeTabSummary[]>;
   getCurrentBrowserPage(
     ownerEntityId?: UUID | null,
   ): Promise<BrowserBridgePageContext | null>;

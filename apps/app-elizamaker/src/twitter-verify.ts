@@ -10,11 +10,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
-import type { VerificationResult } from "@elizaos/agent/contracts/verification";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
+import {
+  createIntegrationTelemetrySpan,
+  resolveStateDir,
+  type VerificationResult,
+} from "@elizaos/agent";
 
-export type { VerificationResult } from "@elizaos/agent/contracts/verification";
+export type {
+  VerificationResult,
+} from "@elizaos/agent";
 
 const WHITELIST_FILE = "whitelist.json";
 

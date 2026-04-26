@@ -1,6 +1,8 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 
-import { computeNextCronRunAtMs } from "@elizaos/agent/triggers/scheduling";
+import {
+  computeNextCronRunAtMs,
+} from "@elizaos/agent";
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsBrowserSession,
@@ -10,8 +12,8 @@ import type {
   LifeOpsWorkflowRecord,
   LifeOpsWorkflowRun,
   UpdateLifeOpsWorkflowRequest,
-} from "@elizaos/app-lifeops/contracts";
-import { LIFEOPS_WORKFLOW_STATUSES } from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
+import { LIFEOPS_WORKFLOW_STATUSES } from "../contracts/index.js";
 import { resolveNextRelativeScheduleInstant } from "./relative-schedule-resolver.js";
 import {
   createLifeOpsWorkflowDefinition,

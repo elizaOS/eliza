@@ -7,6 +7,7 @@ import {
   applyPaymentProtection,
   isRoutePaymentWrapped,
 } from "../../middleware/x402/payment-wrapper.ts";
+import { readJsonBody } from "../http-helpers.ts";
 import { tryHandleRuntimePluginRoute } from "../runtime-plugin-routes.ts";
 
 function captureResponseBody(res: ServerResponse): { text: Promise<string> } {
@@ -39,6 +40,116 @@ function captureResponseBody(res: ServerResponse): { text: Promise<string> } {
 describe("tryHandleRuntimePluginRoute + x402", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("parses JSON request bodies before dispatching plugin routes", async () => {
+    const routes: Route[] = [
+      {
+        type: "POST",
+        path: "/demo/body",
+        public: true,
+        handler: async (req, res) => {
+          res.status(200).json({
+            body: req.body,
+          });
+        },
+      } as Route,
+    ];
+
+    const runtime = {
+      routes,
+      character: {},
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getSetting: () => undefined,
+      emitEvent: vi.fn().mockResolvedValue(undefined),
+    } as unknown as AgentRuntime;
+
+    const payload = JSON.stringify({ channelIds: ["123"] });
+    const req = new http.IncomingMessage();
+    req.method = "POST";
+    req.url = "/demo/body";
+    req.headers = {
+      "content-type": "application/json",
+      "content-length": String(Buffer.byteLength(payload)),
+    };
+    req.push(payload);
+    req.push(null);
+
+    const res = new http.ServerResponse(req);
+    const { text: bodyText } = captureResponseBody(res);
+
+    const url = new URL("http://127.0.0.1/demo/body");
+    const handled = await tryHandleRuntimePluginRoute({
+      req,
+      res,
+      method: "POST",
+      pathname: "/demo/body",
+      url,
+      runtime,
+      isAuthorized: () => true,
+    });
+
+    expect(handled).toBe(true);
+    const body = JSON.parse(await bodyText) as {
+      body: { channelIds?: string[] };
+    };
+    expect(body.body.channelIds).toEqual(["123"]);
+  });
+
+  it("keeps parsed JSON available to plugin routes that call readJsonBody", async () => {
+    const routes: Route[] = [
+      {
+        type: "POST",
+        path: "/demo/body-helper",
+        public: true,
+        handler: async (req, res) => {
+          const body = await readJsonBody(
+            req as http.IncomingMessage,
+            res as ServerResponse,
+          );
+          res.status(200).json({ body });
+        },
+      } as Route,
+    ];
+
+    const runtime = {
+      routes,
+      character: {},
+      agentId: "00000000-0000-0000-0000-000000000001",
+      getSetting: () => undefined,
+      emitEvent: vi.fn().mockResolvedValue(undefined),
+    } as unknown as AgentRuntime;
+
+    const payload = JSON.stringify({ side: "owner" });
+    const req = new http.IncomingMessage();
+    req.method = "POST";
+    req.url = "/demo/body-helper";
+    req.headers = {
+      "content-type": "application/json",
+      "content-length": String(Buffer.byteLength(payload)),
+    };
+    req.push(payload);
+    req.push(null);
+
+    const res = new http.ServerResponse(req);
+    const { text: bodyText } = captureResponseBody(res);
+
+    const url = new URL("http://127.0.0.1/demo/body-helper");
+    const handled = await tryHandleRuntimePluginRoute({
+      req,
+      res,
+      method: "POST",
+      pathname: "/demo/body-helper",
+      url,
+      runtime,
+      isAuthorized: () => true,
+    });
+
+    expect(handled).toBe(true);
+    const response = JSON.parse(await bodyText) as {
+      body: { side?: string };
+    };
+    expect(response.body.side).toBe("owner");
   });
 
   it("returns 402 JSON when route has x402 and no payment proof", async () => {

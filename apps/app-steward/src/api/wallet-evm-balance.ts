@@ -9,7 +9,7 @@ import type {
   EvmChainBalance,
   EvmNft,
   EvmTokenBalance,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import {
   computeValueUsd,
   type DexTokenMeta,

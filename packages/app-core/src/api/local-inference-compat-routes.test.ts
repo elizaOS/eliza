@@ -37,8 +37,9 @@ async function startApiHarness(state: CompatRuntimeState): Promise<Harness> {
     } catch (err) {
       if (!res.headersSent) {
         res.statusCode = 500;
-        res.end(String(err));
+        res.end("internal-error");
       }
+      void err;
     }
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

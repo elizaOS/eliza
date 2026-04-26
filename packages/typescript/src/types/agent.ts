@@ -63,12 +63,14 @@ export type Character = Partial<
 		| "messageExamples"
 		| "knowledge"
 		| "secrets"
+		| "style"
 	>
 > & {
 	settings?: CharacterSettings;
 	secrets?: Record<string, string | number | boolean>;
 	messageExamples?: MessageExampleGroup[];
 	knowledge?: KnowledgeSourceItem[];
+	style?: { all?: string[]; chat?: string[]; post?: string[] };
 	/** Enable advanced planning capabilities for this character */
 	advancedPlanning?: boolean;
 	/** Enable advanced memory capabilities for this character */

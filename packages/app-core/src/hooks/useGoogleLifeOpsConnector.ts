@@ -2,7 +2,7 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleConnectorStatus,
-} from "@elizaos/app-lifeops/contracts";
+} from "@elizaos/app-lifeops";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api";
 

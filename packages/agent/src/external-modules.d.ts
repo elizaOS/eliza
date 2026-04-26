@@ -234,7 +234,7 @@ declare module "@elizaos/app-training/core/context-types" {
 }
 
 declare module "@elizaos/app-training/core/context-catalog" {
-  import type { AgentContext } from "@elizaos/app-training/core/context-types";
+  import type { AgentContext } from "@elizaos/app-training";
 
   export type ContextResolutionSource = string;
   export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]>;

@@ -1,4 +1,4 @@
-import type { AppDetailExtensionProps } from "@elizaos/app-core/components/apps/extensions/types";
+import type { AppDetailExtensionProps } from "@elizaos/app-core";
 import { ClawvilleOperatorSurface } from "./ClawvilleOperatorSurface";
 
 export function ClawvilleDetailExtension({ app }: AppDetailExtensionProps) {

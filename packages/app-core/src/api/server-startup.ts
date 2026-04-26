@@ -7,7 +7,7 @@ import path from "node:path";
 import {
   isSafeResetStateDir as upstreamIsSafeResetStateDir,
   resolveCorsOrigin as upstreamResolveCorsOrigin,
-} from "@elizaos/agent/api/server";
+} from "@elizaos/agent";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 
 const PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos", "eliza"]);

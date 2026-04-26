@@ -6,7 +6,7 @@ import type {
   Room,
   UUID,
 } from "@elizaos/core";
-import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
+import { asNonEmptyString, asRecord } from "@elizaos/shared";
 import { resolveOwnerEntityId } from "../runtime/owner-entity.js";
 import { fetchConfiguredOwnerName } from "./owner-name.js";
 

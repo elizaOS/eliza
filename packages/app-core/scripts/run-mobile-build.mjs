@@ -626,6 +626,11 @@ function overlayAndroid() {
       "MainActivity.java",
       "MiladyAssistActivity.java",
       "MiladyBootReceiver.java",
+      "MiladyBrowserActivity.java",
+      "MiladyCalendarActivity.java",
+      "MiladyCameraActivity.java",
+      "MiladyClockActivity.java",
+      "MiladyContactsActivity.java",
       "MiladyDialActivity.java",
       "MiladyInCallService.java",
       "MiladyMmsReceiver.java",
@@ -712,6 +717,11 @@ function overlayAndroid() {
       "MiladyRespondViaMessageService",
       "MiladySmsComposeActivity",
       "MiladyBootReceiver",
+      "MiladyBrowserActivity",
+      "MiladyContactsActivity",
+      "MiladyCameraActivity",
+      "MiladyClockActivity",
+      "MiladyCalendarActivity",
     ]) {
       const nextXml = removeApplicationComponentBlock(
         xml,
@@ -849,6 +859,153 @@ function overlayAndroid() {
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>`,
+    );
+    // Browser: replaces stripped Browser2 as the only http(s) handler.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyBrowserActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladyBrowserActivity"
+            android:exported="true"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>`,
+    );
+    // Contacts: replaces stripped Contacts. Handles content://contacts.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyContactsActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladyContactsActivity"
+            android:exported="true"
+            android:label="Contacts"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_CONTACTS" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.dir/contact" />
+                <data android:mimeType="vnd.android.cursor.dir/person" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.item/contact" />
+                <data android:mimeType="vnd.android.cursor.item/person" />
+            </intent-filter>
+        </activity>`,
+    );
+    // Camera: replaces stripped Camera2. STILL_IMAGE_CAMERA + IMAGE_CAPTURE.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyCameraActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladyCameraActivity"
+            android:exported="true"
+            android:label="Camera"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.action.IMAGE_CAPTURE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.media.action.VIDEO_CAPTURE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>`,
+    );
+    // Clock: replaces stripped DeskClock. SET_ALARM is critical.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyClockActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladyClockActivity"
+            android:exported="true"
+            android:label="Clock"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SET_ALARM" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SHOW_ALARMS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SET_TIMER" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SHOW_TIMERS" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.DISMISS_ALARM" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>`,
+    );
+    // Calendar: replaces stripped Calendar.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.MiladyCalendarActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.MiladyCalendarActivity"
+            android:exported="true"
+            android:label="Calendar"
+            android:theme="@style/AppTheme.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.APP_CALENDAR" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.item/event" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.INSERT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.dir/event" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.EDIT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="vnd.android.cursor.item/event" />
+            </intent-filter>
+        </activity>`,
     );
     dirty = true;
     for (const perm of ANDROID_PERMISSIONS) {

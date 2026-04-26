@@ -1,3 +1,4 @@
+import { Square } from "lucide-react";
 import type { MouseEvent } from "react";
 import type { AppRunSummary, RegistryAppInfo } from "../../api";
 import { AppHero } from "./app-identity";
@@ -108,13 +109,17 @@ export function RunningAppsRow({
                   data-testid={`running-app-stop-${run.runId}`}
                   aria-label={`Stop ${run.displayName}`}
                   disabled={isStopping}
-                  className="absolute bottom-3 right-3 inline-flex items-center rounded-full bg-black/40 px-3 py-1 text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-white/90 backdrop-blur-sm transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  className="absolute bottom-3 right-3 inline-flex h-8 w-8 items-center justify-center rounded-full bg-black/40 text-white/90 backdrop-blur-sm transition-all hover:bg-danger/80 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={(event: MouseEvent<HTMLButtonElement>) => {
                     event.stopPropagation();
                     onStopRun(run);
                   }}
                 >
-                  {isStopping ? "Stopping…" : "Stop"}
+                  {isStopping ? (
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+                  ) : (
+                    <Square className="h-3.5 w-3.5" aria-hidden />
+                  )}
                 </button>
               ) : null}
             </div>

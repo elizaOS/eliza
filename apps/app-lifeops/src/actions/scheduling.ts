@@ -28,7 +28,7 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { hasAdminAccess } from "@elizaos/agent";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 import {
@@ -268,22 +268,23 @@ function formatSlotsText(slots: readonly ProposedMeetingSlot[]): string {
 
 function cleanBundledCounterparty(value: string): string {
   return value
-    .replace(/^(?:with|for|and|also|maybe|please)\s+/iu, "")
-    .replace(/\s+(?:at|if|while|during|thanks|please)\b.*$/iu, "")
+    .slice(0, 1024)
+    .replace(/^(?:with|for|and|also|maybe|please)\s{1,32}/iu, "")
+    .replace(/\s{1,32}(?:at|if|while|during|thanks|please)\b.{0,1024}$/iu, "")
     .replace(/[.?!,;:]+$/u, "")
     .trim();
 }
 
 export function extractBundledMeetingCounterparties(messageText: string): string[] {
-  const trimmed = messageText.trim();
+  const trimmed = messageText.trim().slice(0, 10_000);
   if (trimmed.length === 0) {
     return [];
   }
 
   const patterns = [
-    /\bschedule\s+(.+?)(?:\s+at\s+the\s+same\s+time\b|\s+same\s+day\b|\s+if\s+possible\b|[.?!]|$)/iu,
-    /\bbundle\s+(.+?)(?:\s+together\b|\s+on\s+the\s+same\s+day\b|\s+if\s+possible\b|[.?!]|$)/iu,
-    /\bmeetings?\s+with\s+(.+?)(?:\s+on\s+the\s+same\s+day\b|\s+at\s+the\s+same\s+time\b|\s+if\s+possible\b|[.?!]|$)/iu,
+    /\bschedule\s{1,32}(.{1,2048}?)(?:\s{1,32}at\s{1,32}the\s{1,32}same\s{1,32}time\b|\s{1,32}same\s{1,32}day\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
+    /\bbundle\s{1,32}(.{1,2048}?)(?:\s{1,32}together\b|\s{1,32}on\s{1,32}the\s{1,32}same\s{1,32}day\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
+    /\bmeetings?\s{1,32}with\s{1,32}(.{1,2048}?)(?:\s{1,32}on\s{1,32}the\s{1,32}same\s{1,32}day\b|\s{1,32}at\s{1,32}the\s{1,32}same\s{1,32}time\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
   ];
 
   for (const pattern of patterns) {
@@ -293,7 +294,8 @@ export function extractBundledMeetingCounterparties(messageText: string): string
       continue;
     }
     const counterparties = raw
-      .split(/\s*(?:,|&|\band\b)\s*/iu)
+      .slice(0, 2048)
+      .split(/\s{0,32}(?:,|&|\band\b)\s{0,32}/iu)
       .map(cleanBundledCounterparty)
       .filter((value) => value.length > 0);
     if (counterparties.length >= 2) {

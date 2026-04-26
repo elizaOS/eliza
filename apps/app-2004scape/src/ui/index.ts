@@ -1,7 +1,9 @@
-import { registerOperatorSurface } from "@elizaos/app-core/components/apps/surfaces/registry";
-import { registerDetailExtension } from "@elizaos/app-core/components/apps/extensions/registry";
-import { TwoThousandFourScapeOperatorSurface } from "./TwoThousandFourScapeOperatorSurface.js";
+import {
+  registerDetailExtension,
+  registerOperatorSurface,
+} from "@elizaos/app-core";
 import { TwoThousandFourScapeDetailExtension } from "./TwoThousandFourScapeDetailExtension.js";
+import { TwoThousandFourScapeOperatorSurface } from "./TwoThousandFourScapeOperatorSurface.js";
 
 registerOperatorSurface("@elizaos/app-2004scape", TwoThousandFourScapeOperatorSurface);
 registerDetailExtension("2004scape-operator-dashboard", TwoThousandFourScapeDetailExtension);

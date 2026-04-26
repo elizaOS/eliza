@@ -59,14 +59,18 @@ export const browserBridgeSettings = pgTable("browser_bridge_settings", {
   agentId: text("agent_id").primaryKey(),
   enabled: boolean("enabled").notNull().default(false),
   trackingMode: text("tracking_mode").notNull().default("current_tab"),
-  allowBrowserControl: boolean("allow_browser_control").notNull().default(false),
+  allowBrowserControl: boolean("allow_browser_control")
+    .notNull()
+    .default(false),
   requireConfirmationForAccountAffecting: boolean(
     "require_confirmation_for_account_affecting",
   )
     .notNull()
     .default(true),
   incognitoEnabled: boolean("incognito_enabled").notNull().default(false),
-  siteAccessMode: text("site_access_mode").notNull().default("current_site_only"),
+  siteAccessMode: text("site_access_mode")
+    .notNull()
+    .default("current_site_only"),
   grantedOriginsJson: text("granted_origins_json").notNull().default("[]"),
   blockedOriginsJson: text("blocked_origins_json").notNull().default("[]"),
   maxRememberedTabs: integer("max_remembered_tabs").notNull().default(10),

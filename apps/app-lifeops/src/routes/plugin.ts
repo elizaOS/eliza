@@ -1,11 +1,11 @@
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
 import {
+  decodePathComponent as httpDecodePathComponent,
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/agent/api/http-helpers";
-import { decodePathComponent as httpDecodePathComponent } from "@elizaos/agent/api/server-helpers";
+} from "@elizaos/agent";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
@@ -227,6 +227,11 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "POST", path: "/api/lifeops/money/paypal/authorize-url" },
   { type: "POST", path: "/api/lifeops/money/paypal/complete" },
   { type: "POST", path: "/api/lifeops/money/paypal/sync" },
+  { type: "GET", path: "/api/lifeops/money/bills" },
+  { type: "POST", path: "/api/lifeops/money/bills/mark-paid" },
+  { type: "POST", path: "/api/lifeops/money/bills/snooze" },
+  { type: "GET", path: "/api/lifeops/smart-features/settings" },
+  { type: "POST", path: "/api/lifeops/smart-features/settings" },
   { type: "GET", path: "/api/lifeops/subscriptions/playbook-lookup" },
   { type: "GET", path: "/api/lifeops/subscriptions/playbooks" },
   { type: "POST", path: "/api/lifeops/subscriptions/cancel" },

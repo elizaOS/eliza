@@ -19,12 +19,13 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import type {
-  LifeOpsFollowUpStatus,
-  LifeOpsMessageChannel,
-} from "@elizaos/shared/contracts/lifeops";
-import { LIFEOPS_MESSAGE_CHANNELS } from "@elizaos/shared/contracts/lifeops";
+import {
+  LIFEOPS_MESSAGE_CHANNELS,
+  type LifeOpsFollowUpStatus,
+  type LifeOpsMessageChannel,
+} from "@elizaos/shared";
 import { LifeOpsService } from "../lifeops/service.js";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 
@@ -526,7 +527,17 @@ export const relationshipAction: Action & {
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }
 
-    const params = getParams(options);
+    const rawParams = getParams(options);
+    const params = (await extractActionParamsViaLlm<RelationshipParameters>({
+      runtime,
+      message,
+      state,
+      actionName: "OWNER_RELATIONSHIP",
+      actionDescription: relationshipAction.description ?? "",
+      paramSchema: relationshipAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as RelationshipParameters;
     const body = messageText(message);
     const explicitSubaction = normalizeRelationshipSubaction(params.subaction);
     let subaction: Subaction | null = explicitSubaction;

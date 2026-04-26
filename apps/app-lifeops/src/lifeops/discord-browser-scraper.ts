@@ -6,13 +6,22 @@ import {
   navigateBrowserWorkspaceTab,
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
-} from "@elizaos/agent/services/browser-workspace";
-import type { BrowserBridgePageContext } from "@elizaos/plugin-browser-bridge/contracts";
-import type { LifeOpsConnectorSide } from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/agent";
+import type { BrowserBridgePageContext } from "@elizaos/plugin-browser-bridge";
+import type { LifeOpsConnectorSide } from "@elizaos/shared";
 
 export const DISCORD_APP_URL = "https://discord.com/channels/@me";
 const DISCORD_APP_TITLE = "Discord";
 const DISCORD_DM_PREVIEW_LIMIT = 5;
+
+function isDiscordHost(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.hostname === "discord.com" || u.hostname.endsWith(".discord.com");
+  } catch {
+    return false;
+  }
+}
 
 export interface DiscordTabIdentity {
   id: string | null;
@@ -232,7 +241,7 @@ export function probeDiscordCapturedPage(
         mainText?: string | null;
         links?: Array<{ text: string; href: string }>;
         forms?: Array<{ action: string | null; fields: string[] }>;
-	      },
+      },
 ): DiscordTabProbe {
   const safeUrl = normalizeDiscordText(page.url);
   if (!safeUrl || !isDiscordUrl(safeUrl)) {
@@ -369,7 +378,7 @@ export function probeDiscordDocumentState(
   }
 }
 
-function buildDiscordProbeScript(): string {
+export function buildDiscordProbeScript(): string {
   return `(() => {
     const DISCORD_DM_PREVIEW_LIMIT = ${DISCORD_DM_PREVIEW_LIMIT};
     const normalizeDiscordText = ${normalizeDiscordText.toString()};
@@ -412,7 +421,7 @@ async function findTabByIdOrPartition(
     (tab) =>
       tab.partition === partition &&
       typeof tab.url === "string" &&
-      tab.url.includes("discord.com"),
+      isDiscordHost(tab.url),
   );
   if (byPartition) return { id: byPartition.id, url: byPartition.url };
   return null;

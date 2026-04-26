@@ -18,9 +18,11 @@ import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { DropService } from "@elizaos/agent/api/drop-service";
-import { RegistryService } from "@elizaos/agent/api/registry-service";
-import { TxService } from "@elizaos/agent/api/tx-service";
+import {
+  DropService,
+  RegistryService,
+  TxService,
+} from "@elizaos/agent";
 import { type AnvilInstance, startAnvil } from "./anvil-helper";
 import { type DeployedContracts, deployContracts } from "./contract-deployer";
 

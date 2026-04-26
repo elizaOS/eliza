@@ -1,14 +1,14 @@
 import crypto from "node:crypto";
 import type http from "node:http";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
 import {
-  ensureCompatApiAuthorized,
-  getCompatApiToken,
-  tokenMatches,
-} from "./auth";
+  loadElizaConfig,
+} from "@elizaos/agent";
+import { ensureRouteAuthorized, getCompatApiToken, tokenMatches } from "./auth";
 import {
   type CompatRuntimeState,
+  getCompatDrizzleDb,
   hasCompatPersistedOnboardingState,
+  isTrustedLocalRequest,
   readCompatJsonBody,
 } from "./compat-route-shared";
 import {
@@ -57,10 +57,9 @@ function normalizePairingCode(code: string): string {
 }
 
 function generatePairingCode(): string {
-  const bytes = crypto.randomBytes(12);
   let raw = "";
-  for (let i = 0; i < bytes.length; i += 1) {
-    raw += PAIRING_ALPHABET[bytes[i] % PAIRING_ALPHABET.length];
+  for (let i = 0; i < 12; i += 1) {
+    raw += PAIRING_ALPHABET[crypto.randomInt(0, PAIRING_ALPHABET.length)];
   }
   return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
 }
@@ -112,7 +111,7 @@ function rateLimitPairing(ip: string | null): boolean {
 export async function handleAuthPairingCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  _state: CompatRuntimeState,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -125,7 +124,7 @@ export async function handleAuthPairingCompatRoutes(
   // token via `/api/auth/bootstrap/exchange` before reaching this
   // route.
   if (method === "GET" && url.pathname === "/api/onboarding/status") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     const config = loadElizaConfig();
@@ -144,13 +143,37 @@ export async function handleAuthPairingCompatRoutes(
   // to show pairing UI. The response leaks no secrets — only whether auth
   // is configured and whether pairing is currently open.
   if (method === "GET" && url.pathname === "/api/auth/status") {
-    const required = Boolean(getCompatApiToken());
+    const localAccess = isTrustedLocalRequest(req);
+    const db = getCompatDrizzleDb(state);
+    let passwordConfigured = false;
+    if (db) {
+      const { AuthStore } = await import("../services/auth-store");
+      const owner = (
+        await new AuthStore(
+          db as ConstructorParameters<typeof AuthStore>[0],
+        ).listIdentitiesByKind("owner")
+      )[0];
+      passwordConfigured = Boolean(owner?.passwordHash);
+    }
+    const bootstrapRequired = isCloudProvisioned();
+    const tokenRequired = Boolean(getCompatApiToken());
+    const loginRequired = !localAccess && !tokenRequired && !bootstrapRequired;
+    const required =
+      !localAccess &&
+      (tokenRequired ||
+        passwordConfigured ||
+        bootstrapRequired ||
+        loginRequired);
     const enabled = pairingEnabled();
     if (enabled) {
       ensurePairingCode();
     }
     sendJsonResponse(res, 200, {
       required,
+      loginRequired,
+      bootstrapRequired: required && bootstrapRequired && !tokenRequired,
+      localAccess,
+      passwordConfigured,
       pairingEnabled: enabled,
       expiresAt: enabled ? pairingExpiresAt : null,
     });

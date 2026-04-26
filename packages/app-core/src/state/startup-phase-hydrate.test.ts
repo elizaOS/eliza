@@ -8,6 +8,11 @@ const { clientMock, wsHandlers } = vi.hoisted(() => {
     getCodingAgentStatus: vi.fn(async () => ({ tasks: [] })),
     connectWs: vi.fn(),
     disconnectWs: vi.fn(),
+    getConfig: vi.fn(async () => ({})),
+    getStreamSettings: vi.fn(async () => ({ settings: { avatarIndex: 1 } })),
+    getWalletAddresses: vi.fn(async () => ({})),
+    hasCustomBackground: vi.fn(async () => false),
+    hasCustomVrm: vi.fn(async () => false),
     onWsEvent: vi.fn(
       (event: string, handler: (data: Record<string, unknown>) => void) => {
         handlers.set(event, handler);
@@ -33,8 +38,12 @@ vi.mock("../events", () => ({
   dispatchAppEmoteEvent: vi.fn(),
 }));
 
-import type { ReadyPhaseDeps } from "./startup-phase-hydrate";
-import { bindReadyPhase } from "./startup-phase-hydrate";
+vi.mock("../components/companion/injected", () => ({
+  prefetchVrmToCache: vi.fn(async () => undefined),
+}));
+
+import type { HydratingDeps, ReadyPhaseDeps } from "./startup-phase-hydrate";
+import { bindReadyPhase, runHydrating } from "./startup-phase-hydrate";
 
 function createReadyDeps(
   overrides: Partial<ReadyPhaseDeps> = {},
@@ -64,10 +73,42 @@ function createReadyDeps(
   };
 }
 
+function createHydratingDeps(
+  overrides: Partial<HydratingDeps> = {},
+): HydratingDeps {
+  return {
+    setStartupError: vi.fn(),
+    setOnboardingLoading: vi.fn(),
+    hydrateInitialConversationState: vi.fn(async () => null),
+    requestGreetingWhenRunningRef: { current: vi.fn(async () => undefined) },
+    loadWorkbench: vi.fn(async () => undefined),
+    loadPlugins: vi.fn(async () => undefined),
+    loadSkills: vi.fn(async () => undefined),
+    loadCharacter: vi.fn(async () => undefined),
+    loadWalletConfig: vi.fn(async () => undefined),
+    loadInventory: vi.fn(async () => undefined),
+    loadUpdateStatus: vi.fn(async () => undefined),
+    checkExtensionStatus: vi.fn(async () => undefined),
+    pollCloudCredits: vi.fn(),
+    fetchAutonomyReplay: vi.fn(async () => undefined),
+    setSelectedVrmIndex: vi.fn(),
+    setCustomVrmUrl: vi.fn(),
+    setCustomBackgroundUrl: vi.fn(),
+    setWalletAddresses: vi.fn(),
+    setTab: vi.fn(),
+    setTabRaw: vi.fn(),
+    onboardingCompletionCommittedRef: { current: false },
+    initialTabSetRef: { current: false },
+    onboardingMode: "basic",
+    ...overrides,
+  };
+}
+
 describe("bindReadyPhase wallet recovery", () => {
   beforeEach(() => {
     wsHandlers.clear();
     vi.clearAllMocks();
+    window.history.replaceState(null, "", "/");
   });
 
   afterEach(() => {
@@ -109,5 +150,38 @@ describe("bindReadyPhase wallet recovery", () => {
     expect(deps.setPendingRestartReasons).toHaveBeenCalledWith([]);
 
     cleanup();
+  });
+
+  it("tracks hash navigation inside desktop app windows", () => {
+    window.history.replaceState(null, "", "/?appWindow=1#/apps/plugin-viewer");
+    const deps = createReadyDeps();
+    const cleanup = bindReadyPhase({
+      current: deps,
+    });
+
+    window.location.hash = "#/apps/skills";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+
+    expect(deps.setTabRaw).toHaveBeenCalledWith("skills");
+
+    cleanup();
+  });
+});
+
+describe("runHydrating app-window routing", () => {
+  beforeEach(() => {
+    wsHandlers.clear();
+    vi.clearAllMocks();
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("keeps app windows on their hash route instead of forcing chat", async () => {
+    window.history.replaceState(null, "", "/?appWindow=1#/apps/plugin-viewer");
+    const deps = createHydratingDeps();
+
+    await runHydrating(deps, vi.fn(), { current: false });
+
+    expect(deps.setTab).not.toHaveBeenCalledWith("chat");
+    expect(deps.setTabRaw).toHaveBeenCalledWith("apps");
   });
 });

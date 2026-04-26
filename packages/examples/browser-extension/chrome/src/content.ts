@@ -164,7 +164,12 @@ function extractPageContent(): ExtractedContent {
   console.log("[Content Script] Extracting page content...");
   
   // Detect site type for better extraction
-  const isTwitter = window.location.hostname.includes("x.com") || window.location.hostname.includes("twitter.com");
+  const hostname = window.location.hostname;
+  const isTwitter =
+    hostname === "x.com" ||
+    hostname.endsWith(".x.com") ||
+    hostname === "twitter.com" ||
+    hostname.endsWith(".twitter.com");
   
   // Find the main content area - with site-specific selectors
   let mainElement: Element | null = null;

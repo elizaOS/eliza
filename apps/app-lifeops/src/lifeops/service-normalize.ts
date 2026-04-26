@@ -9,7 +9,7 @@ import type {
   LifeOpsReminderUrgency,
   LifeOpsSubjectType,
   LifeOpsVisibilityScope,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   LIFEOPS_CONTEXT_POLICIES,
   LIFEOPS_DOMAINS,
@@ -17,7 +17,7 @@ import {
   LIFEOPS_REMINDER_URGENCY_LEVELS,
   LIFEOPS_SUBJECT_TYPES,
   LIFEOPS_VISIBILITY_SCOPES,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { LifeOpsServiceError } from "./service-types.js";
 import { LIFEOPS_TIME_ZONE_ALIASES } from "./service-constants.js";
 import { isValidTimeZone, resolveDefaultTimeZone } from "./defaults.js";

@@ -49,9 +49,11 @@ export function normalizeCloudSiteUrl(rawUrl?: string): string {
       parsed.pathname = "";
     }
 
-    return parsed.toString().replace(/\/+$/, "");
+    return parsed.toString().replace(/\/{1,1024}$/, "");
   } catch {
-    return candidate.replace(/\/+$/, "");
+    const safeCandidate =
+      candidate.length > 8192 ? candidate.slice(0, 8192) : candidate;
+    return safeCandidate.replace(/\/{1,1024}$/, "");
   }
 }
 

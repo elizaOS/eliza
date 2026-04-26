@@ -1,13 +1,11 @@
-import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
-import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import {
+  colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
-  formatDevSettingsTable,
-} from "@elizaos/shared/dev-settings-table";
-import {
   firstWinningEnvString,
+  formatDevSettingsTable,
   resolveDesktopApiPortPreference,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
+import { prependDevSubsystemFigletHeading } from "@elizaos/shared/dev-settings-figlet-heading";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { resolveMainWindowPartition } from "./main-window-session";
 

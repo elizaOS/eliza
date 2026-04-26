@@ -215,10 +215,12 @@ function stateDirBase(): string {
 
 function safeName(raw: string): string {
   const trimmed = raw.trim();
-  const slug = trimmed
+  const safeTrimmed =
+    trimmed.length > 1024 ? trimmed.slice(0, 1024) : trimmed;
+  const slug = safeTrimmed
     .replace(/[^a-zA-Z0-9._-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/-{1,1024}/g, "-")
+    .replace(/^-{1,1024}|-{1,1024}$/g, "");
   if (!slug) throw new Error("Invalid skill name");
   if (!VALID_NAME.test(slug)) throw new Error(`Invalid skill name: ${raw}`);
   return slug;
@@ -419,12 +421,17 @@ function inferRepository(skill: Record<string, unknown>): string | null {
 
   // Try to extract repository from githubUrl (e.g., https://github.com/owner/repo/tree/...)
   const githubUrl = skill.githubUrl;
-  if (typeof githubUrl === "string" && githubUrl.includes("github.com")) {
+  if (typeof githubUrl === "string") {
     try {
       const url = new URL(githubUrl);
-      const parts = url.pathname.split("/").filter(Boolean);
-      if (parts.length >= 2) {
-        return normalizeRepo(`${parts[0]}/${parts[1]}`);
+      if (
+        url.hostname === "github.com" ||
+        url.hostname.endsWith(".github.com")
+      ) {
+        const parts = url.pathname.split("/").filter(Boolean);
+        if (parts.length >= 2) {
+          return normalizeRepo(`${parts[0]}/${parts[1]}`);
+        }
       }
     } catch (err) {
       logger.debug(
@@ -509,7 +516,7 @@ function isLegacySkillsmp(baseUrl: string): boolean {
       hostname === LEGACY_SKILLSMP_HOST || hostname.endsWith(".skillsmp.com")
     );
   } catch {
-    return baseUrl.toLowerCase().includes(LEGACY_SKILLSMP_HOST);
+    return false;
   }
 }
 

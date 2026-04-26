@@ -8,7 +8,7 @@ import type {
   LifeOpsScheduleRegularity,
   LifeOpsScheduleSleepStatus,
   LifeOpsUnclearReason,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 
 export const LIFEOPS_SCHEDULE_DEVICE_KINDS = [
   "iphone",

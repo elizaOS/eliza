@@ -7,7 +7,7 @@ import type {
   AllPermissionsState,
   PermissionState,
   SystemPermissionId,
-} from "@elizaos/agent/contracts/permissions";
+} from "@elizaos/agent";
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
@@ -17,7 +17,7 @@ import type {
   OnboardingConnectorConfig as ConnectorConfig,
   OnboardingOptions,
   SubscriptionStatusResponse,
-} from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 import {
   type AppBlockerInstalledApp,
   type AppBlockerPermissionResult,
@@ -248,6 +248,10 @@ declare module "./client-base" {
     }>;
     getAuthStatus(): Promise<{
       required: boolean;
+      loginRequired?: boolean;
+      bootstrapRequired?: boolean;
+      localAccess?: boolean;
+      passwordConfigured?: boolean;
       pairingEnabled: boolean;
       expiresAt: number | null;
     }>;

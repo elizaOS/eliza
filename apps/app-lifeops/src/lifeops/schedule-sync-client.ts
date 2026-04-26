@@ -1,4 +1,4 @@
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import { loadElizaConfig } from "@elizaos/agent";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
@@ -176,7 +176,10 @@ export class LifeOpsScheduleSyncClient {
     return this.getConfig().configured;
   }
 
-  private requireConfig(): Exclude<ResolvedScheduleSyncConfig, { configured: false }> {
+  private requireConfig(): Exclude<
+    ResolvedScheduleSyncConfig,
+    { configured: false }
+  > {
     const config = this.getConfig();
     if (!config.configured) {
       throw new LifeOpsScheduleSyncClientError(
@@ -234,10 +237,7 @@ export class LifeOpsScheduleSyncClient {
     };
   }
 
-  private async request<T>(
-    pathname: string,
-    init: RequestInit,
-  ): Promise<T> {
+  private async request<T>(pathname: string, init: RequestInit): Promise<T> {
     const response = await fetch(this.resolvePath(pathname), {
       ...init,
       headers: this.requestHeaders(init.headers),
