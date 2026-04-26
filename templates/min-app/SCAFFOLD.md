@@ -40,8 +40,16 @@ All three must exit zero. If one fails, fix it. Do not silence errors with `as a
 After verification passes, emit a single line on stdout:
 
 ```
-APP_CREATE_DONE {"appName":"<__APP_NAME__>","files":["<list>"],"tests":{"passed":<n>,"failed":0},"lint":"ok","typecheck":"ok"}
+APP_CREATE_DONE {"name":"<__APP_NAME__>","files":["<list>"],"testsPassed":<n>,"lintClean":true,"description":"<one factual sentence>"}
 ```
+
+Field contract (all required except `description`):
+
+- `name` — string, the npm-style package name you used in `package.json`.
+- `files` — array of repo-relative paths you created or modified.
+- `testsPassed` — non-negative number of tests that passed in step 4.
+- `lintClean` — boolean. `true` only when `bun run lint` exited zero with no warnings.
+- `description` — optional one-sentence summary of what the app does.
 
 The orchestrator will cross-check the claims against disk and the verification log. If anything you assert does not match reality, it will retry you with a structured failure report (capped by `MILADY_APP_VERIFICATION_MAX_RETRIES`, default `3`).
 
