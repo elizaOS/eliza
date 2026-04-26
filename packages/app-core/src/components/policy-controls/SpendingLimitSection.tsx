@@ -22,8 +22,8 @@ function UsdInput({
           inputMode="decimal"
           value={value}
           onChange={(e) => {
-            const v = e.target.value;
-            if (/^\d*\.?\d*$/.test(v)) onChange(v);
+            const v = e.target.value.slice(0, 32);
+            if (/^(?:\d+(?:\.\d*)?|\.\d*)?$/.test(v)) onChange(v);
           }}
           className="h-8 text-sm pl-7 tabular-nums"
           placeholder="0"

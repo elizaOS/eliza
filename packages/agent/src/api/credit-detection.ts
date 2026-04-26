@@ -12,7 +12,8 @@ const BILLING_KEYWORDS_RE =
   /\b(?:billing|quota|credits?|budget|spending|payment|subscription|plan limit)\b/i;
 
 export function isInsufficientCreditsMessage(message: string): boolean {
-  return INSUFFICIENT_CREDITS_RE.test(message);
+  const safe = message.length > 10_000 ? message.slice(0, 10_000) : message;
+  return INSUFFICIENT_CREDITS_RE.test(safe);
 }
 
 export function isInsufficientCreditsError(err: unknown): boolean {
@@ -26,15 +27,19 @@ export function isInsufficientCreditsError(err: unknown): boolean {
 
   const status = (err as { status?: number }).status;
   if (status === 402) return true;
-  if (status === 429 && BILLING_KEYWORDS_RE.test(msg)) return true;
+  const safeMsg = msg.length > 10_000 ? msg.slice(0, 10_000) : msg;
+  if (status === 429 && BILLING_KEYWORDS_RE.test(safeMsg)) return true;
 
   const errorBody = (err as { error?: { type?: string; code?: string } }).error;
   if (errorBody?.type === "insufficient_quota") return true;
-  if (
-    typeof errorBody?.code === "string" &&
-    INSUFFICIENT_CREDITS_RE.test(errorBody.code)
-  ) {
-    return true;
+  if (typeof errorBody?.code === "string") {
+    const safeCode =
+      errorBody.code.length > 10_000
+        ? errorBody.code.slice(0, 10_000)
+        : errorBody.code;
+    if (INSUFFICIENT_CREDITS_RE.test(safeCode)) {
+      return true;
+    }
   }
 
   return false;

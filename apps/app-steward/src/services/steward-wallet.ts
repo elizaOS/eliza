@@ -175,7 +175,7 @@ async function requestStewardWallet(
     throw new Error(getStewardWalletUnavailableMessage());
   }
 
-  return fetch(`${baseUrl.replace(/\/+$/, "")}${pathname}`, {
+  return fetch(`${baseUrl.replace(/\/{1,1024}$/, "")}${pathname}`, {
     ...init,
     headers: init?.headers ?? buildStewardWalletHeaders(env),
     signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),

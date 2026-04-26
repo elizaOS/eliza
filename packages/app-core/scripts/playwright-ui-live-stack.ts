@@ -249,14 +249,11 @@ async function startUiProxyServer(args: {
         }
         return;
       }
+      console.error("[playwright-ui-live-stack] proxy error:", error);
       response.writeHead(500, {
         "Content-Type": "application/json; charset=utf-8",
       });
-      response.end(
-        JSON.stringify({
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      response.end(JSON.stringify({ error: "Internal proxy error" }));
     }
   });
   const wss = new WebSocketServer({ noServer: true });

@@ -962,14 +962,11 @@ async function startUiProxyServer(args: {
         response,
       });
     } catch (error) {
+      console.error("[qa-checklist e2e] proxy error:", error);
       response.writeHead(500, {
         "Content-Type": "application/json; charset=utf-8",
       });
-      response.end(
-        JSON.stringify({
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      response.end(JSON.stringify({ error: "Internal proxy error" }));
     }
   });
   const wss = new WebSocketServer({ noServer: true });
@@ -1560,10 +1557,17 @@ async function qaVoiceStats(page: Page): Promise<QaVoiceStats> {
 
     const ttsFetches = (qaWindow.__qaFetches ?? []).filter((record) => {
       const url = String(record.url ?? "");
+      let host = "";
+      try {
+        host = new URL(url, "http://localhost").hostname;
+      } catch {
+        host = "";
+      }
       return (
         url.includes("/api/tts/") ||
         url.includes("/api/stream/voice/speak") ||
-        url.includes("api.elevenlabs.io")
+        host === "api.elevenlabs.io" ||
+        host.endsWith(".elevenlabs.io")
       );
     });
 

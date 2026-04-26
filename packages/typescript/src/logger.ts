@@ -582,8 +582,9 @@ const CHAT_PREVIEW_IN_MAX = 200;
 const CHAT_PREVIEW_OUT_MAX = 120;
 
 function escapeChatPreview(text: string): string {
-	const oneLine = text.replace(/\s+/g, " ").trim();
-	return oneLine.replace(/"/g, '\\"');
+	const safe = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const oneLine = safe.replace(/\s+/g, " ").trim();
+	return oneLine.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 function writeChatLine(line: string): void {

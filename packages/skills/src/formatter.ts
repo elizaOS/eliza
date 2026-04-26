@@ -89,7 +89,8 @@ const SKILL_COMMAND_DESCRIPTION_MAX_LENGTH = 100;
  * @returns Sanitized command name
  */
 function sanitizeSkillCommandName(raw: string): string {
-  const normalized = raw
+  const clamped = raw.length > 1024 ? raw.slice(0, 1024) : raw;
+  const normalized = clamped
     .toLowerCase()
     .replace(/[^a-z0-9_]+/g, "_")
     .replace(/_+/g, "_")

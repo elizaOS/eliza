@@ -172,6 +172,9 @@ async function applyReloadedConfig(params: {
     }
   }
   for (const [key, value] of Object.entries(nextRecord)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
     stateRecord[key] = value;
   }
 

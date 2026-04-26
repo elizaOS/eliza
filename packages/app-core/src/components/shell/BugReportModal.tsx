@@ -226,8 +226,17 @@ export function BugReportModal() {
   }, [buildDiagnosticsBlock, form.logs]);
 
   const formatMarkdown = useCallback((): string => {
-    const strip = (s: string, max = 10_000) =>
-      s.replace(/<[^>]*>/g, "").slice(0, max);
+    const strip = (s: string, max = 10_000) => {
+      const truncated = s.length > max ? s.slice(0, max) : s;
+      // Iteratively strip `<...>` tags to defeat embedded `<scr<script>ipt>` patterns.
+      let out = truncated;
+      let prev: string;
+      do {
+        prev = out;
+        out = out.replace(/<[^>]*>/g, "");
+      } while (out !== prev);
+      return out.slice(0, max);
+    };
     const lines: string[] = [];
     lines.push(`### Description\n${strip(form.description)}`);
     lines.push(`\n### Steps to Reproduce\n${strip(form.stepsToReproduce)}`);

@@ -34,7 +34,8 @@ const TEMPLATE_ICONS: Record<string, string> = {
 };
 
 function normalizeProjectName(value: string): string {
-  return value
+  const clamped = value.length > 256 ? value.slice(0, 256) : value;
+  return clamped
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9-_]+/g, "-")

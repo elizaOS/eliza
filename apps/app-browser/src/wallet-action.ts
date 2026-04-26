@@ -33,8 +33,14 @@ const DATA_RE = /\b(?:data|calldata)\s*:?\s*(0x[a-fA-F0-9]+)\b/i;
 const TX_ID_RE = /\b(tx[\w:-]+)\b/i;
 const VALUE_RE = /\bvalue(?:\s*\(wei\))?\s*:?\s*(\d+)\b/i;
 
+const MAX_MESSAGE_TEXT_LENGTH = 8192;
+
 function getMessageText(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  const raw =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  return raw.length > MAX_MESSAGE_TEXT_LENGTH
+    ? raw.slice(0, MAX_MESSAGE_TEXT_LENGTH)
+    : raw;
 }
 
 function normalizeString(value: unknown): string | undefined {

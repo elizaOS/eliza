@@ -164,8 +164,16 @@ function looksLikePlannerCall(call: TrajectoryCallLike): boolean {
   );
 }
 
+const MAX_TRAJECTORY_TEXT_LENGTH = 200_000;
+
+function clampTrajectoryText(text: string): string {
+  return text.length > MAX_TRAJECTORY_TEXT_LENGTH
+    ? text.slice(0, MAX_TRAJECTORY_TEXT_LENGTH)
+    : text;
+}
+
 function stripContextRoutingPrompt(prompt: string): string {
-  return prompt
+  return clampTrajectoryText(prompt)
     .replace(/\ncontext_routing:[\s\S]*?\ndecision_note:/m, "\ndecision_note:")
     .replace(/\n- primaryContext:[^\n]*/g, "")
     .replace(/\n- secondaryContexts:[^\n]*/g, "")

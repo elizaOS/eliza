@@ -34,7 +34,7 @@ function renderTranscriptMessageContent(
 }
 
 const LEGACY_REPLY_REFERENCE_RE =
-  /^Referencing MessageID ([0-9a-f-]{36})(?: \([^)]+\))?(?: in channel .*)?(?: in guild .*)?$/i;
+  /^Referencing MessageID ([0-9a-f-]{36})(?: \([^)]{0,512}\))?(?: in channel [^\n]{0,512})?(?: in guild [^\n]{0,512})?$/i;
 
 function normalizeTranscriptMessage(message: ChatMessageData): ChatMessageData {
   const rawText = typeof message.text === "string" ? message.text : "";
@@ -47,7 +47,13 @@ function normalizeTranscriptMessage(message: ChatMessageData): ChatMessageData {
   let removedLegacyReference = false;
 
   const cleanedLines = lines.filter((line) => {
-    const match = line.trim().match(LEGACY_REPLY_REFERENCE_RE);
+    const trimmed = line.trim();
+    // Clamp length before regex to prevent worst-case backtracking on
+    // pathological inputs.
+    if (trimmed.length > 4096) {
+      return true;
+    }
+    const match = trimmed.match(LEGACY_REPLY_REFERENCE_RE);
     if (!match) {
       return true;
     }

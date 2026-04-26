@@ -504,12 +504,10 @@ async function startScenarioApiServer(
         if (!res.headersSent) {
           res.statusCode = 500;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(
-            JSON.stringify({
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          );
+          res.end(JSON.stringify({ error: "Internal Server Error" }));
         }
+        // Log full error server-side for diagnostics; do not expose to client.
+        console.error("[scenario-runner] route handler error", error);
       }
       return;
     }
@@ -571,7 +569,7 @@ function addClockOffset(baseNow: Date, offset: string): Date {
 
 function resolveScenarioTemplates(value: unknown, currentNow: Date): unknown {
   if (typeof value === "string") {
-    return value.replace(/\{\{([^}]+)\}\}/g, (fullMatch, rawToken) => {
+    return value.replace(/\{\{([^{}]{1,256})\}\}/g, (fullMatch, rawToken) => {
       const token = String(rawToken).trim();
       const resolved = resolveNowToken(token, currentNow);
       if (resolved === null) {
@@ -683,7 +681,7 @@ async function resolveTemplateString(args: {
   apiServer: ScenarioApiServer;
   variables: ScenarioVariableState;
 }): Promise<string> {
-  const matches = Array.from(args.value.matchAll(/\{\{([^}]+)\}\}/g));
+  const matches = Array.from(args.value.matchAll(/\{\{([^{}]{1,256})\}\}/g));
   if (matches.length === 0) {
     return args.value;
   }

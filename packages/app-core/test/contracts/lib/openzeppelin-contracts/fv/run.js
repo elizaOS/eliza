@@ -12,7 +12,7 @@ const fs = require("node:fs");
 const pLimit = require("p-limit").default;
 const { hideBin } = require("yargs/helpers");
 const yargs = require("yargs/yargs");
-const { exec } = require("node:child_process");
+const { execFile } = require("node:child_process");
 
 const { argv } = yargs(hideBin(process.argv))
   .env("")
@@ -45,7 +45,7 @@ if (argv._.length === 0 && !argv.all) {
     (argv.all
       ? glob.sync(pattern)
       : argv._.map((name) =>
-          fs.existsSync(name) ? name : pattern.replace("*", name),
+          fs.existsSync(name) ? name : pattern.replaceAll("*", name),
         )
     ).map((conf, i, { length }) =>
       limit(
@@ -53,9 +53,9 @@ if (argv._.length === 0 && !argv.all) {
           new Promise((resolve) => {
             if (argv.verbose)
               console.log(`[${i + 1}/${length}] Running ${conf}`);
-            exec(`certoraRun ${conf}`, (error, stdout, stderr) => {
+            execFile("certoraRun", [conf], (error, stdout, stderr) => {
               const match = stdout.match(
-                "https://prover.certora.com/output/[a-z0-9]+/[a-z0-9]+[?]anonymousKey=[a-z0-9]+",
+                /https:\/\/prover\.certora\.com\/output\/[a-z0-9]+\/[a-z0-9]+\?anonymousKey=[a-z0-9]+/,
               );
               if (error) {
                 console.error(
