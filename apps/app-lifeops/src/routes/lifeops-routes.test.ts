@@ -305,6 +305,65 @@ describe("LifeOps route validation", () => {
     expect(getXDmDigest).not.toHaveBeenCalled();
   });
 
+  it("passes inbox cache controls through to the service", async () => {
+    const getInbox = vi.spyOn(LifeOpsService.prototype, "getInbox").mockResolvedValue({
+      messages: [],
+      channelCounts: {
+        gmail: { total: 0, unread: 0 },
+        discord: { total: 0, unread: 0 },
+        telegram: { total: 0, unread: 0 },
+        signal: { total: 0, unread: 0 },
+        imessage: { total: 0, unread: 0 },
+        whatsapp: { total: 0, unread: 0 },
+        sms: { total: 0, unread: 0 },
+        x_dm: { total: 0, unread: 0 },
+      },
+      fetchedAt: "2026-04-22T12:00:00.000Z",
+    });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/inbox?channels=gmail,telegram&limit=25&cacheMode=refresh&cacheLimit=1200&groupByThread=true",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getInbox).toHaveBeenCalledWith({
+      limit: 25,
+      channels: ["gmail", "telegram"],
+      groupByThread: true,
+      chatTypeFilter: undefined,
+      maxParticipants: undefined,
+      gmailAccountId: undefined,
+      missedOnly: undefined,
+      sortByPriority: undefined,
+      cacheMode: "refresh",
+      cacheLimit: 1200,
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      expect.objectContaining({ messages: [] }),
+    );
+  });
+
+  it("rejects invalid inbox cache modes before service dispatch", async () => {
+    const getInbox = vi.spyOn(LifeOpsService.prototype, "getInbox");
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/inbox?cacheMode=forever",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "cacheMode must be one of: read-through, refresh, cache-only",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(getInbox).not.toHaveBeenCalled();
+  });
+
   it("passes Gmail recommendation query inputs through to the service", async () => {
     const getGmailRecommendations = vi
       .spyOn(LifeOpsService.prototype, "getGmailRecommendations")
