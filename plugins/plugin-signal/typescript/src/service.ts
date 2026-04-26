@@ -33,7 +33,7 @@ const getMessageService = (runtime: IAgentRuntime): MessageService | null => {
   return null;
 };
 
-import { resolveSignalCliExecutable } from "./pairing-service";
+import { missingSignalCliMessage, resolveSignalCliExecutable } from "./pairing-service";
 import {
   getSignalContactDisplayName,
   type ISignalService,
@@ -540,7 +540,7 @@ export class SignalService extends Service implements ISignalService {
       env: process.env,
     });
     if (!resolvedCliPath) {
-      throw new Error(`signal-cli executable not found for ${cliPath}`);
+      throw new Error(missingSignalCliMessage(cliPath));
     }
 
     fs.mkdirSync(authDir, { recursive: true });
