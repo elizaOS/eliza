@@ -21,14 +21,12 @@ import {
   AlertTriangle,
   Archive,
   Brain,
-  Cpu,
   Download,
   type LucideIcon,
   Palette,
   RefreshCw,
   Shield,
   SlidersHorizontal,
-  Terminal,
   Upload,
   User,
   Wallet,
@@ -42,9 +40,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { CodingAgentSettingsSection } from "../../app-shell/task-coordinator-slots.js";
 import { useApp } from "../../state";
-import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
@@ -164,45 +160,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.provider",
       "settings.keyword.apiKey",
       "settings.keyword.inference",
-    ],
-  },
-  {
-    id: "local-models",
-    label: "settings.sections.localModels.label",
-    defaultLabel: "Local Models",
-    icon: Cpu,
-    description: "settings.sections.localModels.desc",
-    defaultDescription: "Download and assign local models.",
-    keywords: [
-      "local",
-      "llama",
-      "llama.cpp",
-      "gguf",
-      "model",
-      "download",
-      "inference",
-      "offline",
-      "gpu",
-      "vram",
-    ],
-  },
-  {
-    id: "coding-agents",
-    label: "settings.sections.codingagents.label",
-    defaultLabel: "Task Agents",
-    icon: Terminal,
-    description: "settings.codingAgentsDescription",
-    defaultDescription: "Claude Code, Codex, Gemini, and Aider.",
-    keywords: [
-      "codex",
-      "agent",
-      "reasoning",
-      "parallel",
-      "approval",
-      "routing",
-      "provider routing",
-      "task coordinator",
-      "task agents",
     ],
   },
   {
@@ -1092,36 +1049,6 @@ export function SettingsView({
           ref={registerContentItem("ai-model")}
         >
           <ProviderSwitcher />
-        </SettingsSection>
-      )}
-
-      {visibleSectionIds.has("local-models") && (
-        <SettingsSection
-          id="local-models"
-          title={t("settings.sections.localModels.label", {
-            defaultValue: "Local Models",
-          })}
-          description={t("settings.sections.localModels.desc", {
-            defaultValue: "Download and assign local models.",
-          })}
-          ref={registerContentItem("local-models")}
-        >
-          <LocalInferencePanel />
-        </SettingsSection>
-      )}
-
-      {visibleSectionIds.has("coding-agents") && (
-        <SettingsSection
-          id="coding-agents"
-          title={t("settings.sections.codingagents.label", {
-            defaultValue: "Task Agents",
-          })}
-          description={t("settings.codingAgentsDescription", {
-            defaultValue: "Claude Code, Codex, Gemini, and Aider.",
-          })}
-          ref={registerContentItem("coding-agents")}
-        >
-          <CodingAgentSettingsSection />
         </SettingsSection>
       )}
 
