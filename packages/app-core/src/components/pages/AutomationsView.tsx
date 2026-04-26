@@ -771,6 +771,14 @@ function useAutomationsViewController() {
 
   useEffect(() => {
     if (!selectedItemId) return;
+    // Exempt in-flight workflow drafts — they're not in allItems until
+    // generateWorkflowFromPrompt finishes and refreshAutomations
+    // surfaces the real workflow. Without this exemption the draft
+    // selection gets cleared mid-generation, the auto-select effect
+    // below picks lastSelectedIdRef (typically a task like Heartbeat),
+    // and the user lands somewhere unexpected — defeating the
+    // WorkflowGenerationProgress UI we just added on the draft pane.
+    if (selectedItemId.startsWith("workflow-draft:")) return;
     if (!allItems.some((item) => item.id === selectedItemId)) {
       setSelectedItemId(null);
       setSelectedItemKind(null);
@@ -1038,7 +1046,41 @@ function useAutomationsViewController() {
   const resolvedSelectedItem = useMemo(() => {
     if (editorOpen || editingId || editingTaskId) return null;
     if (selectedItemId) {
-      return allItems.find((item) => item.id === selectedItemId) ?? null;
+      const found = allItems.find((item) => item.id === selectedItemId);
+      if (found) return found;
+      // In-flight workflow draft (createWorkflowDraft set selectedItemId
+      // BEFORE refreshAutomations surfaced the real workflow). Synthesize
+      // a minimal draft item so AutomationDraftPane renders with the
+      // WorkflowGenerationProgress card during the LLM call.
+      //
+      // The `room` field is left null here. `activeWorkflowConversation`
+      // — the live conversation tied to this draft — lives in
+      // AutomationsLayout (a different scope from this controller hook),
+      // so we cannot read it from here without a larger refactor.
+      // Instead, handleDeleteDraft reads activeWorkflowConversation
+      // directly and falls back to it when item.room is missing on a
+      // synthesized draft (see the handler below).
+      if (selectedItemId.startsWith("workflow-draft:")) {
+        const draftId = selectedItemId.slice("workflow-draft:".length);
+        const synthesized: AutomationItem = {
+          id: selectedItemId,
+          type: "automation_draft",
+          source: "workflow_draft",
+          title: "New workflow",
+          description: "",
+          status: "draft",
+          enabled: false,
+          system: false,
+          isDraft: true,
+          hasBackingWorkflow: false,
+          updatedAt: null,
+          draftId,
+          schedules: [],
+          room: null,
+        };
+        return synthesized;
+      }
+      return null;
     }
     return allItems[0] ?? null;
   }, [allItems, editingId, editingTaskId, editorOpen, selectedItemId]);
@@ -4828,6 +4870,38 @@ function AutomationsLayout() {
         await Promise.all(
           item.schedules.map((schedule) => client.deleteTrigger(schedule.id)),
         );
+        // Also delete the chat conversation/room that backed this workflow.
+        // Without this, the `/api/automations` aggregator keeps surfacing the
+        // workflow row as a ghost entry because rooms with workflowId
+        // metadata are listed even when the underlying n8n workflow is gone.
+        const conversationId = item.room?.conversationId;
+        if (conversationId) {
+          try {
+            await client.deleteConversation(conversationId);
+          } catch (roomErr) {
+            // Non-fatal: the workflow itself is deleted; surface the room
+            // failure to the user but don't roll back.
+            setPageNotice(
+              `Workflow deleted, but its chat room could not be removed: ${
+                roomErr instanceof Error ? roomErr.message : String(roomErr)
+              }`,
+            );
+          }
+        }
+        if (selectedItemId === item.id) {
+          setSelectedItemId(null);
+          setSelectedItemKind(null);
+        }
+        // Mirror handleDeleteDraft: also clear the active workflow
+        // conversation if it's the one tied to the deleted workflow.
+        // Without this, refreshAutomationsWithDraftBinding keeps receiving
+        // a stale conversation reference on subsequent refreshes.
+        if (
+          conversationId &&
+          activeWorkflowConversation?.id === conversationId
+        ) {
+          setActiveWorkflowConversation(null);
+        }
         await ctx.refreshAutomations();
       } catch (error) {
         setPageNotice(
@@ -4841,7 +4915,15 @@ function AutomationsLayout() {
         setWorkflowBusyId(null);
       }
     },
-    [ctx, t],
+    [
+      activeWorkflowConversation?.id,
+      ctx,
+      selectedItemId,
+      setActiveWorkflowConversation,
+      setSelectedItemId,
+      setSelectedItemKind,
+      t,
+    ],
   );
 
   const handleDuplicateWorkflow = useCallback(
@@ -4871,7 +4953,14 @@ function AutomationsLayout() {
 
   const handleDeleteDraft = useCallback(
     async (item: AutomationItem) => {
-      const conversationId = item.room?.conversationId;
+      // Synthesized in-flight drafts (workflow-draft:* ids surfaced
+      // before refreshAutomations completes) have no `room` because the
+      // controller's resolvedSelectedItem useMemo can't reach
+      // activeWorkflowConversation from its scope. Fall back to the
+      // live activeWorkflowConversation when item.room is missing —
+      // that's the same conversation the synthesized item represents.
+      const conversationId =
+        item.room?.conversationId ?? activeWorkflowConversation?.id ?? null;
       if (!conversationId) {
         setPageNotice("This draft is missing its automation room.");
         return;
@@ -5313,6 +5402,36 @@ export function AutomationsView() {
 
 export function AutomationsDesktopShell() {
   const controller = useAutomationsViewController();
+  // Collapse the right-rail chat dock when no workflow / draft is
+  // selected. The Automations Overview page already has a centered hero
+  // compose ("Describe a task or workflow…") that's the canonical create
+  // surface; the bottom-right dock + hero showed two inputs at once and
+  // confused users. When a workflow or draft IS selected, the rail (and
+  // its PageScopedChatPane) opens so the user can edit/refine.
+  //
+  // Stay in CONTROLLED mode at all times. An earlier revision flipped
+  // between controlled (when nothing selected) and uncontrolled (when
+  // something selected); that left AppWorkspaceChrome's internal
+  // `internalCollapsed` stuck at `true` after the controlled phase, so
+  // the rail never opened on the first selection. Always-controlled
+  // avoids that transition entirely.
+  const hasScopedItem = controller.resolvedSelectedItem != null;
+  const [userCollapsedWhenSelected, setUserCollapsedWhenSelected] =
+    useState(false);
+  // When the user clears the selection, also reset the toggle so the next
+  // selection starts with the rail open by default.
+  useEffect(() => {
+    if (!hasScopedItem) setUserCollapsedWhenSelected(false);
+  }, [hasScopedItem]);
+  const chatCollapsed = hasScopedItem ? userCollapsedWhenSelected : true;
+  const handleToggleChat = useCallback(
+    (next: boolean) => {
+      // No-op when nothing is selected — the rail is force-closed in that
+      // state and the toggle button is hidden, so this should never fire.
+      if (hasScopedItem) setUserCollapsedWhenSelected(next);
+    },
+    [hasScopedItem],
+  );
   return (
     <AutomationsViewContext.Provider value={controller}>
       <AppWorkspaceChrome
@@ -5322,6 +5441,9 @@ export function AutomationsDesktopShell() {
             activeItem={controller.resolvedSelectedItem}
           />
         }
+        chatCollapsed={chatCollapsed}
+        onToggleChat={handleToggleChat}
+        hideCollapseButton={!hasScopedItem}
         main={
           <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
             <AutomationsLayout />

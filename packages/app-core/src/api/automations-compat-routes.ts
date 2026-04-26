@@ -541,15 +541,27 @@ async function buildAutomationListResponse(
     }
   }
 
-  for (const [workflowId, room] of workflowRooms.entries()) {
-    if (!workflowItemsById.has(workflowId)) {
-      workflowItemsById.set(
-        workflowId,
-        buildWorkflowItem(undefined, room, {
+  // Only synthesize workflow items from rooms when n8n itself is offline
+  // (`workflowFetchError` set) — in that case the room is the most-recent
+  // ground truth we have and should be surfaced. When n8n IS online and
+  // returned a list, any workflowId in `workflowRooms` that isn't in the
+  // current n8n list is an ORPHAN: the workflow was deleted but the chat
+  // room/conversation wasn't cleaned up. Surfacing those creates ghost
+  // rows the user can't dismiss. Skip them; the UI's deleteWorkflow path
+  // also deletes the conversation now, so future deletions won't leak
+  // rooms.
+  const n8nOffline = workflowFetchError !== null;
+  if (n8nOffline) {
+    for (const [workflowId, room] of workflowRooms.entries()) {
+      if (!workflowItemsById.has(workflowId)) {
+        workflowItemsById.set(
           workflowId,
-          workflowName: room.metadata.workflowName,
-        }),
-      );
+          buildWorkflowItem(undefined, room, {
+            workflowId,
+            workflowName: room.metadata.workflowName,
+          }),
+        );
+      }
     }
   }
 

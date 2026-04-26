@@ -36,10 +36,13 @@ import {
   type AgentRuntime,
   AutonomyService,
   ChannelType,
+  EventType,
   logger,
+  type Memory,
   ModelType,
   type Plugin,
   stringToUuid,
+  type UUID,
 } from "@elizaos/core";
 
 import { resolveServerOnlyPort, syncResolvedApiPort } from "@elizaos/shared";
@@ -752,6 +755,50 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
           logger.info(
             `[eliza] Telegram message from @${username}: ${text.substring(0, 80)}`,
           );
+
+          // Surface the inbound Telegram message on the runtime event bus so
+          // event-kind triggers can fire on real Telegram messages via the
+          // trigger-event-bridge → executeTriggerTask path. Without this hop
+          // the chat reply goes through useModel directly and bypasses
+          // messageService entirely, so triggers that filter on
+          // MESSAGE_RECEIVED never see Telegram traffic. Build a minimal
+          // Memory that satisfies the event-bus contract; the
+          // trigger-event-bridge only reads roomId / source / kind.
+          try {
+            const telegramRoomId = stringToUuid(
+              `telegram:${chatId}`,
+            ) as UUID;
+            const entityId = stringToUuid(
+              `telegram-user:${username}:${chatId}`,
+            ) as UUID;
+            const memory: Memory = {
+              // Use the same `username` value (with first_name fallback) that
+              // entityId is derived from — using ctx.message.from?.username
+              // here would give an empty string for users with no Telegram
+              // username, making `id` and `entityId` disagree for the same
+              // sender.
+              id: stringToUuid(
+                `telegram:${chatId}:${username}:${Date.now()}`,
+              ) as UUID,
+              entityId,
+              agentId: runtime.agentId,
+              roomId: telegramRoomId,
+              content: {
+                text,
+                source: "telegram",
+              },
+              createdAt: Date.now(),
+            };
+            await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+              runtime,
+              message: memory,
+              source: "telegram",
+            });
+          } catch (emitErr) {
+            logger.warn(
+              `[eliza] Telegram MESSAGE_RECEIVED emit failed: ${emitErr instanceof Error ? emitErr.message : String(emitErr)}`,
+            );
+          }
 
           let history = chatHistories.get(chatId);
           if (!history) {

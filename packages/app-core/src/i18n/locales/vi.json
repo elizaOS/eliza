@@ -135,6 +135,8 @@
   "automations.n8n.deleteConfirmMessage": "Xóa vĩnh viễn workflow này. Hành động này không thể hoàn tác.",
   "automations.n8n.deleteConfirmWorkflow": "Xóa \"{{name}}\"? Hành động này không thể hoàn tác.",
   "automations.n8n.deleteFailed": "Không thể xóa workflow.",
+  "automations.n8n.detailEmptyBody": "Chọn một workflow từ thanh bên để xem chi tiết, hoặc chuyển sang bảng điều khiển để tạo workflow mới.",
+  "automations.n8n.detailEmptyHeading": "Chưa chọn workflow",
   "automations.n8n.deleteWorkflow": "Xóa workflow",
   "automations.n8n.errorDeleteWorkflow": "Không thể xóa workflow: {{message}}",
   "automations.n8n.errorLoadStatus": "Không thể tải trạng thái n8n: {{message}}",

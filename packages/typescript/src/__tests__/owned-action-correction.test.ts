@@ -62,4 +62,66 @@ describe("findOwnedActionCorrectionFromMetadata", () => {
 		expect(result).not.toBeNull();
 		expect(result?.actionName).toBe("OWNER_SEND_MESSAGE");
 	});
+
+	// Regression: an LLM pick of CREATE_CRON for "every 9 minutes write a
+	// ping log entry" was overridden to LIFE by the keyword-overlap scorer
+	// because LIFE's multi-paragraph description mentions reminders,
+	// alarms, and recurring verbs. That reroute broke trigger creation on
+	// page-automations because LIFE's handler — gated by the dispatch-time
+	// scope guard on foreign page-* scopes — short-circuits to empty, so
+	// no trigger is created. Adding CREATE_TRIGGER_TASK + its schedule
+	// similes to EXPLICIT_INTENT_ACTIONS makes the planner's schedule
+	// picks authoritative, same as SPAWN_AGENT.
+	describe("schedule-intent planner picks are authoritative", () => {
+		const runtime = {
+			actions: [
+				{
+					name: "LIFE",
+					// Truncated real LIFE description with reminder/alarm vocabulary.
+					description:
+						"Manage the user's personal routines, habits, goals, reminders, alarms, and escalation settings through LifeOps. USE this action for: creating, editing, or deleting tasks, habits, routines, and goals; todo and goal requests like 'add a todo', 'remember to call mom', or 'set a goal'; setting one-off alarms or wake-up reminders.",
+					similes: ["CREATE_HABIT", "SET_ALARM", "CREATE_TODO"],
+				},
+				{
+					name: "CREATE_TRIGGER_TASK",
+					description:
+						"Create a scheduled task that executes on a schedule (interval, once, or cron). Use when the user wants to schedule, automate, or create a recurring/timed task, trigger, or heartbeat.",
+					similes: [
+						"CREATE_TRIGGER",
+						"SCHEDULE_TRIGGER",
+						"SCHEDULE_TASK",
+						"CREATE_HEARTBEAT",
+						"SCHEDULE_HEARTBEAT",
+						"CREATE_AUTOMATION",
+						"SCHEDULE_AUTOMATION",
+						"CREATE_CRON",
+						"CREATE_RECURRING",
+					],
+				},
+			],
+		};
+
+		it.each([
+			"CREATE_TRIGGER_TASK",
+			"CREATE_CRON",
+			"CREATE_TRIGGER",
+			"SCHEDULE_TRIGGER",
+			"SCHEDULE_TASK",
+			"CREATE_HEARTBEAT",
+			"SCHEDULE_HEARTBEAT",
+			"CREATE_AUTOMATION",
+			"SCHEDULE_AUTOMATION",
+			"CREATE_RECURRING",
+		])(
+			"treats %s as explicit intent (no override to LIFE)",
+			(actionName) => {
+				const result = findOwnedActionCorrectionFromMetadata(
+					runtime,
+					{ content: { text: "every 9 minutes write a ping log entry" } },
+					{ actions: [actionName] },
+				);
+				expect(result).toBeNull();
+			},
+		);
+	});
 });

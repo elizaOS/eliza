@@ -168,40 +168,12 @@ export * from "./connectors";
 export * from "./contracts";
 export * from "./dev-settings-banner-style";
 export * from "./dev-settings-table";
-export type {
-  ConnectorAdminWhitelist,
-  RoleCheckResult,
-  RoleGrantSource,
-  RoleName,
-  RolesConfig as ElizaCoreRolesConfig,
-  RolesWorldMetadata,
-  ServerOwnershipState,
-} from "./eliza-core-roles";
-// `eliza-core-roles` defines its own `RolesConfig` that overlaps with the
-// `RolesConfig` re-exported from `@elizaos/core` via `./config`. Skip the
-// duplicate name here — callers needing the vendored role helpers should use
-// the named exports below.
-export {
-  canModifyRole,
-  checkSenderPrivateAccess,
-  checkSenderRole,
-  findWorldsForOwner,
-  getConfiguredOwnerEntityIds,
-  getConnectorAdminWhitelist,
-  getEntityRole,
-  getLiveEntityMetadataFromMessage,
-  getUserServerRole,
-  hasConfiguredCanonicalOwner,
-  matchEntityToConnectorAdminWhitelist,
-  normalizeRole,
-  ROLE_RANK,
-  resolveCanonicalOwnerId,
-  resolveCanonicalOwnerIdForMessage,
-  resolveEntityRole,
-  resolveWorldForMessage,
-  setConnectorAdminWhitelist,
-  setEntityRole,
-} from "./eliza-core-roles";
+// `eliza-core-roles` is intentionally NOT re-exported from this barrel.
+// It pulls runtime imports (`logger`, `createUniqueUuid`) from `@elizaos/core`,
+// which would drag the entire `@elizaos/core` source graph (plugin-sql,
+// transformers, onnxruntime) into every consumer of `@elizaos/shared`.
+// Callers that need the vendored role helpers must import them through the
+// dedicated subpath: `import { ROLE_RANK } from "@elizaos/shared/eliza-core-roles"`.
 export * from "./env-utils";
 export * from "./onboarding-presets";
 export * from "./onboarding-presets.characters";

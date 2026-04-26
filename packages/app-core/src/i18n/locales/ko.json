@@ -135,6 +135,8 @@
   "automations.n8n.deleteConfirmMessage": "이 워크플로우를 영구적으로 삭제합니다. 되돌릴 수 없어요.",
   "automations.n8n.deleteConfirmWorkflow": "\"{{name}}\"을(를) 삭제할까요? 되돌릴 수 없어요.",
   "automations.n8n.deleteFailed": "워크플로우 삭제에 실패했어요.",
+  "automations.n8n.detailEmptyBody": "사이드바에서 워크플로우를 선택해 세부 정보를 보거나, 대시보드로 전환해 새로 만드세요.",
+  "automations.n8n.detailEmptyHeading": "선택된 워크플로우 없음",
   "automations.n8n.deleteWorkflow": "워크플로우 삭제",
   "automations.n8n.errorDeleteWorkflow": "워크플로우 삭제 실패: {{message}}",
   "automations.n8n.errorLoadStatus": "n8n 상태를 불러오지 못했어요: {{message}}",
