@@ -44,8 +44,10 @@ import { AppContext, type AppContextValue, type AppState } from "./internal";
 import { PtySessionsCtx } from "./PtySessionsContext";
 import {
   createPersistedActiveServer,
+  fetchServerFavoriteApps,
   loadFavoriteApps,
   loadRecentApps,
+  replaceServerFavoriteApps,
   saveFavoriteApps,
   savePersistedActiveServer,
   saveRecentApps,
@@ -870,6 +872,31 @@ function AppProviderInner({
   const setFavoriteApps = useCallback((apps: string[]) => {
     setFavoriteAppsRaw(apps);
     saveFavoriteApps(apps);
+    // Mirror the change to the server so the agent's FAVORITE_APP action
+    // and the dashboard share a single source of truth. Fire-and-forget;
+    // failures keep the local cache as the optimistic source.
+    void replaceServerFavoriteApps(apps);
+  }, []);
+
+  // Hydrate favorites from the server on mount. The local cache primes the
+  // first paint; the server response is authoritative if it differs.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchServerFavoriteApps().then((serverApps) => {
+      if (cancelled || serverApps == null) return;
+      setFavoriteAppsRaw((current) => {
+        if (
+          current.length === serverApps.length &&
+          current.every((entry, idx) => entry === serverApps[idx])
+        ) {
+          return current;
+        }
+        return serverApps;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // --- Recently launched apps ---

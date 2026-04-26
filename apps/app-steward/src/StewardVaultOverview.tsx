@@ -1,3 +1,4 @@
+import { Button } from "@elizaos/ui";
 import type {
   StewardBalanceResponse,
   StewardStatusResponse,
@@ -7,7 +8,6 @@ import type {
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
 } from "@miladyai/shared/contracts/wallet";
-import { Button } from "@elizaos/ui";
 import { Copy, RefreshCw, Shield } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getChainName, truncateAddress } from "./chain-utils";

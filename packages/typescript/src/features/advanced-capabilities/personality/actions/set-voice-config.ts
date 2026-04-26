@@ -80,7 +80,7 @@ export const setVoiceConfigAction: Action = {
 
 	handler: async (
 		runtime: IAgentRuntime,
-		message: Memory,
+		_message: Memory,
 		_state?: State,
 		options?: Record<string, unknown>,
 		callback?: HandlerCallback,
@@ -135,11 +135,12 @@ export const setVoiceConfigAction: Action = {
 				delete nextVoice.model_id;
 			}
 
+			const nextSettings = {
+				...existingSettings,
+				voice: nextVoice,
+			} as typeof runtime.character.settings;
 			const result = await persistCharacterPatch(runtime, {
-				settings: {
-					...existingSettings,
-					voice: nextVoice,
-				},
+				settings: nextSettings,
 			});
 
 			if (!result.success) {

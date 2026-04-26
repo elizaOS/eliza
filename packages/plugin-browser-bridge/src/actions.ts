@@ -20,16 +20,16 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import type {
+  BrowserBridgeCompanionPackageStatus,
+  BrowserBridgeCompanionStatus,
+} from "./contracts.ts";
 import {
   buildBrowserBridgeCompanionPackage,
   getBrowserBridgeCompanionPackageStatus,
   openBrowserBridgeCompanionManager,
   openBrowserBridgeCompanionPackagePath,
 } from "./packaging.ts";
-import type {
-  BrowserBridgeCompanionPackageStatus,
-  BrowserBridgeCompanionStatus,
-} from "./contracts.ts";
 import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeRouteService,
@@ -252,6 +252,9 @@ export const browserBridgeRefreshAction: Action = {
     try {
       const status = getBrowserBridgeCompanionPackageStatus();
 
+      // Companions live behind the runtime service. Best-effort: if the
+      // service is not registered (for example in a unit-test runtime) we
+      // still return the package status snapshot.
       let companions: BrowserBridgeCompanionStatus[] = [];
       let companionsAvailable = false;
       const service = runtime.getService<BrowserBridgeRouteService>(

@@ -112,7 +112,7 @@ export const manageStyleRulesAction: Action = {
 
 	handler: async (
 		runtime: IAgentRuntime,
-		message: Memory,
+		_message: Memory,
 		_state?: State,
 		options?: Record<string, unknown>,
 		callback?: HandlerCallback,
@@ -248,7 +248,10 @@ export const manageStyleRulesAction: Action = {
 				summary = `Reordered style rule from index ${index} to ${destination} in '${category}'.`;
 			}
 
-			const nextStyle = { ...currentStyle, [category]: nextList };
+			const nextStyle = {
+				...currentStyle,
+				[category]: nextList,
+			} as typeof runtime.character.style;
 			const result = await persistCharacterPatch(runtime, {
 				style: nextStyle,
 			});

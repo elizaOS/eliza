@@ -28,7 +28,7 @@ import type {
   LifeOpsSignalConnectorStatus,
   LifeOpsTelegramConnectorStatus,
 } from "@elizaos/shared/contracts/lifeops";
-import { ensureCompatApiAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth";
 import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
 import type {
   AutomationItem,
@@ -863,7 +863,7 @@ export async function handleAutomationsCompatRoutes(
     return false;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) {
+  if (!(await ensureRouteAuthorized(req, res, state))) {
     return true;
   }
 

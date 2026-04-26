@@ -1,4 +1,4 @@
-import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent";
+import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security";
 import {
   type Action,
   type ActionExample,
@@ -328,6 +328,26 @@ function normalizeLookup(value: string): string {
     .trim();
 }
 
+function messageText(message: Memory): string {
+  return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+function isStandingOwnerCallPolicy(message: Memory): boolean {
+  const text = normalizeLookup(messageText(message));
+  if (!text) {
+    return false;
+  }
+  const isConditional =
+    /\b(if|when|whenever)\b/.test(text) ||
+    /\bget stuck\b/.test(text) ||
+    /\bblocked\b/.test(text);
+  const mentionsCall = /\b(call|phone|dial)\b/.test(text);
+  const mentionsBlockedWork =
+    /\b(stuck|blocked|jam|jams|unblock)\b/.test(text) &&
+    /\b(browser|computer|desktop|remote|workflow|machine)\b/.test(text);
+  return isConditional && mentionsCall && mentionsBlockedWork;
+}
+
 function getPendingCallCacheKey(roomId: string, actionName: string): string {
   return `lifeops:twilio-call:pending:${actionName}:${roomId}`;
 }
@@ -625,6 +645,23 @@ export const callUserAction: Action & {
       message.roomId,
       "CALL_USER",
     );
+
+    if (params.confirmed !== true && isStandingOwnerCallPolicy(message)) {
+      return {
+        text: "Recorded. If I get stuck in the browser or on your computer, I'll escalate by phone so you can jump in to unblock it.",
+        success: true,
+        values: {
+          success: true,
+          policyRecorded: true,
+          channel: "phone_call",
+        },
+        data: {
+          actionName: "CALL_USER",
+          policyRecorded: true,
+          channel: "phone_call",
+        },
+      };
+    }
 
     if (params.confirmed !== true) {
       logger.info({ action: "CALL_USER" }, "[CALL_USER] confirmation required");

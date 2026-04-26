@@ -41,6 +41,7 @@ type RuntimeHarness = {
   setCache: (key: string, value: string) => Promise<void>;
   getService: (serviceType: string) => ExperienceService | null;
   getSetting: (key: string) => string | undefined;
+  getTextSmallPrompts: () => string[];
   queueExtraction: (extractions: Extraction[]) => void;
 };
 
@@ -67,7 +68,9 @@ type ExtractionScenario = {
   expectedRecordedDelta: number;
   expectedExperiences?: ExpectedRecordedExperience[];
   triggerEntityId?: UUID;
+  triggerContent?: Record<string, unknown>;
   messageCountBeforeTrigger?: string;
+  expectedShouldRun?: boolean;
 };
 
 function nextUuid(label: string): UUID {
@@ -104,7 +107,12 @@ function embeddingForText(text: string): number[] {
   return dimensions;
 }
 
-function makeMessage(roomId: UUID, entityId: UUID, text: string): Memory {
+function makeMessage(
+  roomId: UUID,
+  entityId: UUID,
+  text: string,
+  content?: Record<string, unknown>,
+): Memory {
   return createMessageMemory({
     id: nextUuid("experience-message"),
     roomId,
@@ -112,6 +120,7 @@ function makeMessage(roomId: UUID, entityId: UUID, text: string): Memory {
     content: {
       text,
       source: "client_chat",
+      ...content,
     },
   });
 }
@@ -129,6 +138,7 @@ function createExperienceRuntimeHarness(): {
   const cache = new Map<string, string>();
   const settings = new Map<string, string>([["AUTO_RECORD_THRESHOLD", "0.6"]]);
   const extractionQueue: string[] = [];
+  const textSmallPrompts: string[] = [];
   const agentId = nextUuid("experience-agent");
   let service: ExperienceService | null = null;
 
@@ -170,6 +180,7 @@ function createExperienceRuntimeHarness(): {
         return embeddingForText(params.text ?? "");
       }
       if (modelType === ModelType.TEXT_SMALL) {
+        textSmallPrompts.push(params.prompt ?? "");
         const next = extractionQueue.shift();
         if (!next) {
           throw new Error(
@@ -191,6 +202,9 @@ function createExperienceRuntimeHarness(): {
     },
     getSetting(key) {
       return settings.get(key);
+    },
+    getTextSmallPrompts() {
+      return [...textSmallPrompts];
     },
     queueExtraction(extractions) {
       extractionQueue.push(JSON.stringify(extractions));
@@ -237,6 +251,13 @@ async function runExtractionCase(
   if (!triggerMessage) {
     throw new Error("Expected at least one trigger message");
   }
+  if (options.triggerContent) {
+    triggerMessage.content = {
+      ...triggerMessage.content,
+      ...options.triggerContent,
+    };
+    await runtime.upsertMemory(triggerMessage, "messages");
+  }
 
   await runtime.setCache(
     "experience-extraction:last-message-count",
@@ -247,7 +268,9 @@ async function runExtractionCase(
     runtime as never,
     triggerMessage,
   );
-  expect(shouldRun).toBe(triggerEntityId === runtime.agentId);
+  expect(shouldRun).toBe(
+    options.expectedShouldRun ?? triggerEntityId === runtime.agentId,
+  );
 
   if (!shouldRun) {
     const after = await service.listExperiences({ limit: 100 });
@@ -337,6 +360,10 @@ describe("Experience Capture E2E", () => {
     const formedScenarios: ExtractionScenario[] = [
       {
         name: "dependency correction",
+        messageCountBeforeTrigger: "0",
+        triggerContent: {
+          actions: ["RUN_COMMAND"],
+        },
         recentTexts: [
           "Let me run the Python script.",
           "It failed with ModuleNotFoundError for pandas.",
@@ -467,7 +494,7 @@ describe("Experience Capture E2E", () => {
               "Redact /Users/[USER]/secrets.env and [EMAIL] before saving debug notes.",
             outcome: OutcomeType.NEUTRAL,
             result:
-              "Redact /Users/shawwalters/secrets.env and shaw@example.com before saving debug notes.",
+              "Redact /Users/[USER]/secrets.env and [EMAIL] before saving debug notes.",
             tags: ["extracted", "novel", ExperienceType.LEARNING],
             type: ExperienceType.LEARNING,
           },
@@ -476,6 +503,29 @@ describe("Experience Capture E2E", () => {
     ];
 
     const skippedScenarios: ExtractionScenario[] = [
+      {
+        name: "simple mode reply-only turn",
+        recentTexts: [
+          "The user asked for a quick greeting.",
+          "The agent answered with a short greeting.",
+          "No tool use, correction, discovery, or transferable outcome happened.",
+        ],
+        triggerContent: {
+          actions: ["REPLY"],
+          conversationMode: "simple",
+        },
+        expectedShouldRun: false,
+        extraction: [
+          {
+            type: "LEARNING",
+            learning:
+              "This should not record because simple reply-only turns are skipped.",
+            context: "Simple chat response.",
+            confidence: 0.99,
+          },
+        ],
+        expectedRecordedDelta: 0,
+      },
       {
         name: "low confidence hunch",
         recentTexts: [
@@ -556,6 +606,15 @@ describe("Experience Capture E2E", () => {
     for (const scenario of skippedScenarios) {
       await runExtractionCase(runtime, experienceService, scenario);
     }
+
+    const prompts = runtime.getTextSmallPrompts();
+    expect(
+      prompts.some((prompt) =>
+        prompt.includes(
+          "Install dependencies before rerunning Python scripts after ModuleNotFoundError for pandas.",
+        ),
+      ),
+    ).toBe(true);
 
     const allExperiences = await experienceService.listExperiences({ limit: 20 });
     expect(allExperiences).toHaveLength(formedScenarios.length);

@@ -105,6 +105,7 @@ function ChainBadge({ chain }: { chain: ChainKey }) {
     <span
       className="inline-flex h-4 shrink-0 items-center rounded-full border border-border/35 bg-bg/40 px-1.5 font-mono text-[0.52rem] font-semibold leading-none text-muted"
       title={label}
+      role="img"
       aria-label={label}
     >
       {label.slice(0, 3).toUpperCase()}

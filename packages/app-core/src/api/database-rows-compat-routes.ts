@@ -1,13 +1,15 @@
 import type http from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   quoteIdent,
   sanitizeIdentifier,
   sqlLiteral,
 } from "../utils/sql-compat";
-import { ensureCompatApiAuthorized } from "./auth";
-import { DATABASE_UNAVAILABLE_MESSAGE } from "./compat-route-shared";
+import { ensureRouteAuthorized } from "./auth";
+import {
+  type CompatRuntimeState,
+  DATABASE_UNAVAILABLE_MESSAGE,
+} from "./compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
@@ -16,7 +18,7 @@ import {
 export async function handleDatabaseRowsCompatRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  runtime: AgentRuntime | null,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
   const match = /^\/api\/database\/tables\/([^/]+)\/rows$/.exec(pathname);
@@ -24,10 +26,11 @@ export async function handleDatabaseRowsCompatRoute(
     return false;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) {
+  if (!(await ensureRouteAuthorized(req, res, state))) {
     return true;
   }
 
+  const runtime = state.current;
   if (!runtime) {
     sendJsonErrorResponse(res, 503, DATABASE_UNAVAILABLE_MESSAGE);
     return true;

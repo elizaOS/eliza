@@ -5,7 +5,7 @@
  */
 import type http from "node:http";
 import { type AgentRuntime, logger, type Task } from "@elizaos/core";
-import { ensureCompatApiAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
@@ -173,10 +173,11 @@ function decodeCompatTodoId(
 async function handleTaskBackedWorkbenchTodoRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  runtime: AgentRuntime | null,
+  state: CompatRuntimeState,
   pathname: string,
   method: string,
 ): Promise<boolean> {
+  const runtime = state.current;
   if (!runtime) {
     return false;
   }
@@ -188,7 +189,7 @@ async function handleTaskBackedWorkbenchTodoRoute(
     return false;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) {
+  if (!(await ensureRouteAuthorized(req, res, state))) {
     return true;
   }
 
@@ -440,7 +441,7 @@ export async function handleWorkbenchCompatRoutes(
     return handleTaskBackedWorkbenchTodoRoute(
       req,
       res,
-      state.current,
+      state,
       url.pathname,
       method,
     );

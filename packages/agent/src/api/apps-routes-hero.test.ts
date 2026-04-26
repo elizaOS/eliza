@@ -50,7 +50,9 @@ function makePluginManager(
   return {
     refreshRegistry: vi.fn(async () => registry),
     listInstalledPlugins: vi.fn(async () => []),
-    getRegistryPlugin: vi.fn(async (name: string) => registry.get(name) ?? null),
+    getRegistryPlugin: vi.fn(
+      async (name: string) => registry.get(name) ?? null,
+    ),
     searchRegistry: vi.fn(async () => []),
     installPlugin: vi.fn(),
     uninstallPlugin: vi.fn(),
@@ -243,10 +245,7 @@ describe("GET /api/apps/hero/:slug", () => {
     );
 
     for (const app of appPackages) {
-      const ctx = makeRouteContext(
-        pluginManager,
-        `/api/apps/hero/${app.slug}`,
-      );
+      const ctx = makeRouteContext(pluginManager, `/api/apps/hero/${app.slug}`);
       const expected = fs.readFileSync(path.resolve(app.dir, app.heroImage));
       const handled = await handleAppsRoutes(ctx);
 
