@@ -832,6 +832,8 @@ function buildGmailWorkflowPlanSnapshot(args: {
   const executedIndex = executedStepId
     ? steps.findIndex((step) => step.id === executedStepId)
     : -1;
+  // One handler invocation owns one Gmail service call; later workflow steps
+  // are persisted for the next planner turn instead of being executed here.
   const nextSteps =
     executedIndex >= 0
       ? steps.slice(executedIndex + 1)

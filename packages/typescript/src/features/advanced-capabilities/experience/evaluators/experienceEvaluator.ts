@@ -26,7 +26,13 @@ const EXISTING_EXPERIENCE_LIMIT = 5;
 const DUPLICATE_EXPERIENCE_LIMIT = 5;
 const DUPLICATE_JACCARD_THRESHOLD = 0.58;
 const DUPLICATE_CONTAINMENT_THRESHOLD = 0.8;
-const PASSIVE_ACTIONS = new Set(["REPLY", "NONE", "NOACTION", "IGNORE", "WAIT"]);
+const PASSIVE_ACTIONS = new Set([
+	"REPLY",
+	"NONE",
+	"NOACTION",
+	"IGNORE",
+	"WAIT",
+]);
 const STOP_WORDS = new Set([
 	"about",
 	"after",
@@ -312,7 +318,10 @@ function readStringArray(value: unknown): string[] {
 }
 
 function normalizeActionName(name: string): string {
-	return name.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+	return name
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, "");
 }
 
 function hasNonPassiveAction(content: Record<string, unknown>): boolean {

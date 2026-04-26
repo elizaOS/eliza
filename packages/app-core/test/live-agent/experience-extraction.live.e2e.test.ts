@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import {
+  type AgentRuntime,
   ChannelType,
   createMessageMemory,
-  type AgentRuntime,
   type Memory,
   type Plugin,
   type UUID,
@@ -21,12 +21,15 @@ import { createRealTestRuntime } from "../helpers/real-runtime.ts";
 
 const liveModelTestsEnabled =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
-const selectedLiveProvider = liveModelTestsEnabled ? selectLiveProvider() : null;
+const selectedLiveProvider = liveModelTestsEnabled
+  ? selectLiveProvider()
+  : null;
 const canRunLiveTests = liveModelTestsEnabled && selectedLiveProvider !== null;
 
 const experienceCapabilityPlugin: Plugin = {
   name: "experience-live-e2e-advanced-capability",
-  description: "Registers the built-in experience capability for live e2e tests.",
+  description:
+    "Registers the built-in experience capability for live e2e tests.",
   services: [ExperienceService],
   evaluators: [experienceEvaluator],
 };
@@ -109,7 +112,9 @@ describe("Experience extraction live LLM E2E", () => {
 
     runtime = result.runtime;
     cleanup = result.cleanup;
-    const service = runtime.getService("EXPERIENCE") as ExperienceService | null;
+    const service = runtime.getService(
+      "EXPERIENCE",
+    ) as ExperienceService | null;
     if (!service) {
       throw new Error("Experience service is not registered");
     }
@@ -235,9 +240,9 @@ describe("Experience extraction live LLM E2E", () => {
           duplicateTrigger,
         ]);
 
-        expect(await experienceEvaluator.validate(runtime, duplicateTrigger)).toBe(
-          true,
-        );
+        expect(
+          await experienceEvaluator.validate(runtime, duplicateTrigger),
+        ).toBe(true);
         await experienceEvaluator.handler(runtime, duplicateTrigger);
 
         const duplicateAfter = await experienceService.listExperiences({
@@ -262,7 +267,10 @@ describe("Experience extraction live LLM E2E", () => {
             conversationMode: "simple",
           },
         );
-        await runtime.setCache("experience-extraction:last-message-count", "24");
+        await runtime.setCache(
+          "experience-extraction:last-message-count",
+          "24",
+        );
         await seedMessages(runtime, [
           createUserMessage(harness.roomId, harness.userId, "Thanks."),
           createAgentMessage(runtime, harness.roomId, "No problem."),
