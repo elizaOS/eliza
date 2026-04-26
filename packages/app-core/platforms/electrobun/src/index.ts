@@ -667,7 +667,8 @@ function createAppWindowBoundsStore(): BoundsStore {
       typeof f.height === "number" &&
       f.width >= 200 &&
       f.height >= 200 &&
-      f.x > -16000
+      f.x > -16000 &&
+      f.y > -16000
     );
   }
 
@@ -1873,16 +1874,29 @@ function handleDeepLink(url: string): void {
 
   // `<scheme>://apps/<slug>` → URL parses host="apps", pathname="/<slug>"
   if (parsed.host === "apps") {
-    const slug = parsed.pathname.replace(/^\/+/, "").replace(/[?#].*$/, "");
+    const slug = parsed.pathname
+      .replace(/^\/+/, "")
+      .replace(/[?#].*$/, "")
+      .split("/")[0];
     if (slug) {
       const entry = findAppMenuEntryBySlug(slug);
       if (entry) {
-        void getDesktopManager().openAppWindow({
-          slug: entry.slug,
-          title: entry.displayName,
-          path: entry.windowPath,
-          alwaysOnTop: false,
-        });
+        // Mirror the menu/tray handler: apps with a details page get a config
+        // review screen instead of a direct window so deep links and clicks
+        // produce identical UX.
+        if (entry.hasDetailsPage) {
+          void restoreWindow();
+          sendToActiveRenderer("desktopAppDetailsRequested", {
+            slug: entry.slug,
+          });
+        } else {
+          void getDesktopManager().openAppWindow({
+            slug: entry.slug,
+            title: entry.displayName,
+            path: entry.windowPath,
+            alwaysOnTop: false,
+          });
+        }
         return;
       }
     }

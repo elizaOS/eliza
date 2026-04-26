@@ -388,6 +388,10 @@ export function AppsView() {
         if (!slug) return;
         setTab("apps");
         setState("appsSubTab", "browse");
+        // Update state directly: pushAppsUrl uses replaceState in non-hash
+        // routing mode, which fires no event, so the hashchange/popstate
+        // listener wouldn't pick it up.
+        setAppsDetailsSlug(slug);
         pushAppsUrl(slug, "details");
       },
     });
@@ -748,26 +752,22 @@ export function AppsView() {
         return;
       }
 
-      // In Electrobun, every app opens in its own native window — internal
-      // tools, overlays, and catalog apps alike. `openAppRouteWindow` is the
-      // single source of truth: it dedupes by slug and focuses an existing
-      // window if there is one. If the bridge call fails or the slug is not
-      // window-launchable in Electrobun, surface a notice — never fall through
-      // to the iframe-attach path inside the apps shell.
+      // In Electrobun, try to open the app's dedicated native window via
+      // `openAppRouteWindow` — slug-deduped + per-app bounds, Ghost-style.
+      // The helper itself respects the user's `appWindowLaunchEnabled`
+      // toggle: when off it returns false, and we fall through to the
+      // web-style launch path (catalog → client.launchApp + iframe-attach;
+      // internal tool → setTab; overlay → activeOverlayApp). That gives
+      // the toggle a real opt-out semantics instead of bricking launches.
       if (isElectrobunRuntime()) {
         const openedRouteWindow = await openAppRouteWindow(app).catch(
           () => false,
         );
         if (openedRouteWindow) return;
-        setActionNotice(
-          t("appsview.OpenWindowFailed", {
-            defaultValue: `Could not open ${app.displayName ?? app.name} in a window.`,
-            name: app.displayName ?? app.name,
-          }),
-          "error",
-          4000,
-        );
-        return;
+        // openAppRouteWindow returned false → either the toggle is off,
+        // we're already inside an app window, or the bridge declined.
+        // Continue to the web-fallback paths below so the click isn't a
+        // dead-end.
       }
 
       // Web fallback: internal tools switch tabs in the shell.

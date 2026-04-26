@@ -20,7 +20,8 @@ import {
   Settings as SettingsIcon,
   TriangleAlert,
 } from "lucide-react";
-import { client, type RegistryAppInfo } from "../../api";
+import { type RegistryAppInfo } from "../../api";
+import { useRegistryCatalog } from "../apps/useRegistryCatalog";
 import { invokeDesktopBridgeRequest } from "../../bridge";
 import { useApp } from "../../state/useApp";
 import { findAppBySlug, getAppSlug } from "../apps/helpers";
@@ -211,34 +212,9 @@ export function AppDetailsView({
   const { plugins, appRuns, t, setTab, setState, setActionNotice } = useApp();
 
   // Catalog of registry apps for slug → app resolution.
-  const [catalog, setCatalog] = useState<RegistryAppInfo[]>([]);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const [serverApps, catalogApps] = await Promise.all([
-          client.listApps().catch(() => [] as RegistryAppInfo[]),
-          client.listCatalogApps().catch(() => [] as RegistryAppInfo[]),
-        ]);
-        if (cancelled) return;
-        const merged = [...catalogApps, ...serverApps].filter(
-          (entry, index, items) =>
-            !items
-              .slice(index + 1)
-              .some((candidate) => candidate.name === entry.name),
-        );
-        setCatalog(merged);
-      } catch (err) {
-        if (cancelled) return;
-        setCatalogError(err instanceof Error ? err.message : String(err));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { catalog: registryCatalog, error: catalogError } =
+    useRegistryCatalog();
+  const catalog: RegistryAppInfo[] = registryCatalog ?? [];
 
   const resolved = useMemo(
     () => resolveAppFromSlug(slug, catalog),
@@ -670,17 +646,17 @@ export function AppDetailsView({
  * Convenience: does this slug resolve to an app that wants the details
  * page? Used by AppsView.handleLaunch to decide whether to navigate to
  * /apps/<slug>/details or call openAppRouteWindow directly.
+ *
+ * Only apps that explicitly declare `hasDetailsPage: true` (today: a
+ * handful of internal tools with real config / runtime knobs) route
+ * through the details page. Catalog and overlay apps launch directly —
+ * launching is the primary action; the user only needs the extra step
+ * when there's config worth touching first.
  */
 export function appNeedsDetailsPage(name: string): boolean {
   if (isInternalToolApp(name)) {
     return getInternalToolAppHasDetailsPage(name);
   }
-  if (isOverlayApp(name)) {
-    // Overlays never need a details page by default — they're zero-config.
-    return false;
-  }
-  // Catalog/registry apps: show details so the user can pick launch mode
-  // before sending the launchApp RPC.
-  return true;
+  return false;
 }
 

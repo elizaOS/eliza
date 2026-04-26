@@ -31,6 +31,7 @@ import {
   findAppBySlug,
   getAppSlug,
 } from "../components/apps/helpers";
+import { useRegistryCatalog } from "../components/apps/useRegistryCatalog";
 import {
   getInternalToolAppDescriptors,
   getInternalToolAppTargetTab,
@@ -272,8 +273,7 @@ function RegistryAppWindowView({
   slug: string;
 }): JSX.Element {
   const { t } = useApp();
-  const [catalog, setCatalog] = useState<RegistryAppInfo[] | null>(null);
-  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const { catalog, error: catalogError } = useRegistryCatalog();
   const [runState, setRunState] = useState<RegistryRunState>({
     status: "loading",
     run: null,
@@ -283,33 +283,6 @@ function RegistryAppWindowView({
   const [retryCounter, setRetryCounter] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const authSentRef = useRef(false);
-
-  // Load catalog so we can resolve the slug to a package name.
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const [serverApps, catalogApps] = await Promise.all([
-          client.listApps().catch(() => [] as RegistryAppInfo[]),
-          client.listCatalogApps().catch(() => [] as RegistryAppInfo[]),
-        ]);
-        if (cancelled) return;
-        const merged = [...catalogApps, ...serverApps].filter(
-          (app, index, items) =>
-            !items
-              .slice(index + 1)
-              .some((candidate) => candidate.name === app.name),
-        );
-        setCatalog(merged);
-      } catch (err) {
-        if (cancelled) return;
-        setCatalogError(err instanceof Error ? err.message : String(err));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const resolvedApp = useMemo<RegistryAppInfo | null>(() => {
     if (!catalog) return null;
