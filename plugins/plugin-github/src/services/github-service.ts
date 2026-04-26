@@ -14,6 +14,7 @@ import { Octokit } from "@octokit/rest";
 import {
   GITHUB_SERVICE_TYPE,
   type GitHubIdentity,
+  type GitHubOctokitClient,
   type IGitHubService,
 } from "../types.js";
 
@@ -43,11 +44,23 @@ export class GitHubService extends Service implements IGitHubService {
   capabilityDescription =
     "GitHub REST API integration for PRs, issues, and notifications";
 
-  private userClient: Octokit | null = null;
-  private agentClient: Octokit | null = null;
+  private userClient: GitHubOctokitClient | null = null;
+  private agentClient: GitHubOctokitClient | null = null;
 
-  static async start(runtime: IAgentRuntime): Promise<Service> {
-    const service = new GitHubService(runtime);
+  constructor(
+    runtime?: IAgentRuntime,
+    private readonly createClient: (auth: string) => GitHubOctokitClient = (
+      auth,
+    ) => new Octokit({ auth }),
+  ) {
+    super(runtime);
+  }
+
+  static async start(
+    runtime: IAgentRuntime,
+    createClient?: (auth: string) => GitHubOctokitClient,
+  ): Promise<Service> {
+    const service = new GitHubService(runtime, createClient);
     service.initialize();
     return service;
   }
@@ -58,14 +71,14 @@ export class GitHubService extends Service implements IGitHubService {
     }
     const tokens = readTokens(this.runtime);
     if (tokens.user) {
-      this.userClient = new Octokit({ auth: tokens.user });
+      this.userClient = this.createClient(tokens.user);
     } else {
       logger.info(
         "[GitHubService] GITHUB_USER_PAT not set — user-acting calls will be rejected",
       );
     }
     if (tokens.agent) {
-      this.agentClient = new Octokit({ auth: tokens.agent });
+      this.agentClient = this.createClient(tokens.agent);
     } else {
       logger.info(
         "[GitHubService] GITHUB_AGENT_PAT not set — agent-acting calls will be rejected",
@@ -73,7 +86,7 @@ export class GitHubService extends Service implements IGitHubService {
     }
   }
 
-  getOctokit(as: GitHubIdentity): Octokit | null {
+  getOctokit(as: GitHubIdentity): GitHubOctokitClient | null {
     return as === "user" ? this.userClient : this.agentClient;
   }
 
@@ -81,7 +94,10 @@ export class GitHubService extends Service implements IGitHubService {
    * Allows tests to inject an Octokit-shaped mock without going through
    * environment variables. Not part of the public runtime contract.
    */
-  setClientForTesting(as: GitHubIdentity, client: Octokit | null): void {
+  setClientForTesting(
+    as: GitHubIdentity,
+    client: GitHubOctokitClient | null,
+  ): void {
     if (as === "user") {
       this.userClient = client;
     } else {
