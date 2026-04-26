@@ -290,9 +290,9 @@ async function handleSetup(
     ip: meta.ip,
     userAgent: meta.userAgent,
   }).catch((err) => {
-    logger.error("[auth] legacy invalidate audit failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    logger.error(
+      `[auth] legacy invalidate audit failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   });
 
   await appendAuditEvent(
@@ -411,9 +411,9 @@ async function handleLoginPassword(
     ip: meta.ip,
     userAgent: meta.userAgent,
   }).catch((err) => {
-    logger.error("[auth] legacy invalidate audit failed", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    logger.error(
+      `[auth] legacy invalidate audit failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   });
 
   await appendAuditEvent(
