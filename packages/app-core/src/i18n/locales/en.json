@@ -135,6 +135,8 @@
   "automations.n8n.deleteConfirmMessage": "Permanently delete this workflow. This cannot be undone.",
   "automations.n8n.deleteConfirmWorkflow": "Delete \"{{name}}\"? This cannot be undone.",
   "automations.n8n.deleteFailed": "Failed to delete workflow.",
+  "automations.n8n.detailEmptyBody": "Select a workflow from the sidebar to view its details, or switch to the dashboard to create a new one.",
+  "automations.n8n.detailEmptyHeading": "No workflow selected",
   "automations.n8n.deleteWorkflow": "Delete workflow",
   "automations.n8n.errorDeleteWorkflow": "Failed to delete workflow: {{message}}",
   "automations.n8n.errorLoadStatus": "Failed to load n8n status: {{message}}",

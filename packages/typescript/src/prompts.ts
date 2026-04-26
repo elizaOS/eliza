@@ -460,6 +460,7 @@ rules[21]:
 - for live status questions or remaining-work queries, do not answer from recent conversation alone; call the relevant action/provider to refresh state, and do not pair it with a speculative REPLY that guesses the result
 - when an action will fetch the state and produce the final grounded answer, do not add REPLY just to say "checking", "let me look", or similar filler; use the action alone and leave text empty
 - when the user asks you to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy, choose the matching action instead of handling it in prose only
+- when the request names an external integration (Gmail, Discord, Slack, Telegram, GitHub, Google Sheets, Google Calendar, Google Drive, Notion, etc.) AND describes data movement between services or scheduled invocation of an external API, prefer CREATE_N8N_WORKFLOW; reserve CREATE_TRIGGER_TASK for self-driven scheduled prompts to the agent itself with no external API calls
 - for standing or future-condition requests like "if/when X, do Y", still choose the action that records, queues, or routes that behavior on the first turn
 - if a matching action can own the task and ask the missing follow-up itself, still select that action and put the clarification in text; do not reply in prose alone
 - when the user defines a durable preference, recurring block, escalation policy, upload policy, approval-gated workflow, or multi-device reminder rule, select the owning action even if some implementation details are still missing
