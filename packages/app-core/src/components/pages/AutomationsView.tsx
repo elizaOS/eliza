@@ -65,6 +65,7 @@ import type {
   AutomationListResponse,
   AutomationNodeDescriptor,
   AutomationItem as CatalogAutomationItem,
+  AutomationRoomBinding,
   Conversation,
   N8nStatusResponse,
   N8nWorkflow,
@@ -1052,17 +1053,40 @@ function useAutomationsViewController() {
       // BEFORE refreshAutomations surfaced the real workflow). Synthesize
       // a minimal draft item so AutomationDraftPane renders with the
       // WorkflowGenerationProgress card during the LLM call.
+      //
+      // Fill in every required field on AutomationItem with sensible
+      // defaults instead of casting through `unknown`. In particular,
+      // `room` MUST be set when an active workflow conversation exists —
+      // otherwise handleDeleteDraft sees `item.room?.conversationId` as
+      // undefined and shows a misleading "missing automation room" error
+      // when the user clicks "Delete draft" during the generation window.
       if (selectedItemId.startsWith("workflow-draft:")) {
         const draftId = selectedItemId.slice("workflow-draft:".length);
-        return {
+        const draftRoom: AutomationRoomBinding | null =
+          activeWorkflowConversation
+            ? {
+                conversationId: activeWorkflowConversation.id,
+                roomId: activeWorkflowConversation.roomId,
+                scope: "automation-workflow-draft",
+              }
+            : null;
+        const synthesized: AutomationItem = {
           id: selectedItemId,
           type: "automation_draft",
-          isDraft: true,
+          source: "workflow_draft",
           title: "New workflow",
-          updatedAt: Date.now(),
+          description: "",
+          status: "draft",
+          enabled: false,
           system: false,
+          isDraft: true,
+          hasBackingWorkflow: false,
+          updatedAt: null,
           draftId,
-        } as unknown as AutomationItem;
+          schedules: [],
+          room: draftRoom,
+        };
+        return synthesized;
       }
       return null;
     }
