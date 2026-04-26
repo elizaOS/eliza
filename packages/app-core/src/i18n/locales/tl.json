@@ -135,6 +135,8 @@
   "automations.n8n.deleteConfirmMessage": "Permanenteng burahin ang workflow na ito. Hindi na ito maibabalik.",
   "automations.n8n.deleteConfirmWorkflow": "Burahin ang \"{{name}}\"? Hindi na ito maibabalik.",
   "automations.n8n.deleteFailed": "Hindi nabura ang workflow.",
+  "automations.n8n.detailEmptyBody": "Pumili ng workflow sa sidebar para makita ang detalye nito, o bumalik sa dashboard para gumawa ng bago.",
+  "automations.n8n.detailEmptyHeading": "Walang napiling workflow",
   "automations.n8n.deleteWorkflow": "Burahin ang workflow",
   "automations.n8n.errorDeleteWorkflow": "Hindi nabura ang workflow: {{message}}",
   "automations.n8n.errorLoadStatus": "Hindi na-load ang n8n status: {{message}}",

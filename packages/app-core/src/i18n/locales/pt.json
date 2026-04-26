@@ -135,6 +135,8 @@
   "automations.n8n.deleteConfirmMessage": "Excluir este fluxo de trabalho permanentemente. Esta ação não pode ser desfeita.",
   "automations.n8n.deleteConfirmWorkflow": "Excluir \"{{name}}\"? Esta ação não pode ser desfeita.",
   "automations.n8n.deleteFailed": "Falha ao excluir fluxo de trabalho.",
+  "automations.n8n.detailEmptyBody": "Selecione um fluxo de trabalho na barra lateral para ver os detalhes ou volte ao painel para criar um novo.",
+  "automations.n8n.detailEmptyHeading": "Nenhum fluxo de trabalho selecionado",
   "automations.n8n.deleteWorkflow": "Excluir fluxo de trabalho",
   "automations.n8n.errorDeleteWorkflow": "Falha ao excluir fluxo de trabalho: {{message}}",
   "automations.n8n.errorLoadStatus": "Falha ao carregar status do n8n: {{message}}",
