@@ -1,14 +1,12 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import {
-  ensureCompatApiAuthorized,
-  getCompatApiToken,
-  tokenMatches,
-} from "./auth";
+import { ensureRouteAuthorized, getCompatApiToken, tokenMatches } from "./auth";
 import {
   type CompatRuntimeState,
+  getCompatDrizzleDb,
   hasCompatPersistedOnboardingState,
+  isTrustedLocalRequest,
   readCompatJsonBody,
 } from "./compat-route-shared";
 import {
@@ -112,7 +110,7 @@ function rateLimitPairing(ip: string | null): boolean {
 export async function handleAuthPairingCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  _state: CompatRuntimeState,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -125,7 +123,7 @@ export async function handleAuthPairingCompatRoutes(
   // token via `/api/auth/bootstrap/exchange` before reaching this
   // route.
   if (method === "GET" && url.pathname === "/api/onboarding/status") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     const config = loadElizaConfig();
@@ -144,13 +142,37 @@ export async function handleAuthPairingCompatRoutes(
   // to show pairing UI. The response leaks no secrets — only whether auth
   // is configured and whether pairing is currently open.
   if (method === "GET" && url.pathname === "/api/auth/status") {
-    const required = Boolean(getCompatApiToken());
+    const localAccess = isTrustedLocalRequest(req);
+    const db = getCompatDrizzleDb(state);
+    let passwordConfigured = false;
+    if (db) {
+      const { AuthStore } = await import("../services/auth-store");
+      const owner = (
+        await new AuthStore(
+          db as ConstructorParameters<typeof AuthStore>[0],
+        ).listIdentitiesByKind("owner")
+      )[0];
+      passwordConfigured = Boolean(owner?.passwordHash);
+    }
+    const bootstrapRequired = isCloudProvisioned();
+    const tokenRequired = Boolean(getCompatApiToken());
+    const loginRequired = !localAccess && !tokenRequired && !bootstrapRequired;
+    const required =
+      !localAccess &&
+      (tokenRequired ||
+        passwordConfigured ||
+        bootstrapRequired ||
+        loginRequired);
     const enabled = pairingEnabled();
     if (enabled) {
       ensurePairingCode();
     }
     sendJsonResponse(res, 200, {
       required,
+      loginRequired,
+      bootstrapRequired: required && bootstrapRequired && !tokenRequired,
+      localAccess,
+      passwordConfigured,
       pairingEnabled: enabled,
       expiresAt: enabled ? pairingExpiresAt : null,
     });

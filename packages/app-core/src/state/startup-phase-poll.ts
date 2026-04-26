@@ -167,7 +167,7 @@ export async function runPollingBackend(
   const deadline = Date.now() + policy.backendTimeoutMs;
   let attempts = 0;
   let lastErr: unknown = null;
-  let latestAuth = {
+  let latestAuth: Awaited<ReturnType<typeof client.getAuthStatus>> = {
     required: false,
     pairingEnabled: false,
     expiresAt: null as number | null,
@@ -185,6 +185,13 @@ export async function runPollingBackend(
       latestAuth = auth;
       if (cancelled.current) return;
       if (auth.required && !client.hasToken()) {
+        if (auth.loginRequired) {
+          deps.setAuthRequired(false);
+          deps.setOnboardingComplete(true);
+          deps.setOnboardingLoading(false);
+          dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+          return;
+        }
         deps.setAuthRequired(true);
         deps.setPairingEnabled(auth.pairingEnabled);
         deps.setPairingExpiresAt(auth.expiresAt);
@@ -335,6 +342,17 @@ export async function runPollingBackend(
       return;
     } catch (err) {
       const ae = asApiLikeError(err);
+      if (
+        ae?.status === 401 &&
+        latestAuth.loginRequired &&
+        !client.hasToken()
+      ) {
+        deps.setAuthRequired(false);
+        deps.setOnboardingComplete(true);
+        deps.setOnboardingLoading(false);
+        dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+        return;
+      }
       if (ae?.status === 401 && client.hasToken()) {
         // On desktop, 401 is transient (port not ready / port changed).
         // Never clear the shell-injected token or show pairing.

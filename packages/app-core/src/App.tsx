@@ -28,6 +28,7 @@ import {
 import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
+import { LoginView } from "./components/auth/LoginView";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
 import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
@@ -55,6 +56,7 @@ import {
   useStreamPopoutNavigation,
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
+import { useAuthStatus } from "./hooks/useAuthStatus";
 import {
   APPS_ENABLED,
   isAndroidPhoneSurfaceEnabled,
@@ -588,6 +590,14 @@ export function App() {
 
   const isPopout = useIsPopout();
   const companionShellVisible = activeOverlayApp !== null;
+
+  // Auth gate — only active after the coordinator reaches "ready".
+  // During onboarding / pairing / startup phases the StartupShell handles
+  // its own gate (bootstrap step), so we skip the check.
+  const isCoordinatorReady = startupCoordinator.phase === "ready";
+  const { state: authState, refetch: refetchAuth } = useAuthStatus({
+    skip: !isCoordinatorReady || isPopout,
+  });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
   // delaying WebSocket agent-status updates (which would freeze the loader).
@@ -1124,6 +1134,34 @@ export function App() {
         <BugReportModal />
       </BugReportProvider>
     );
+  }
+
+  // Auth gate — when the coordinator is ready, check /api/auth/me.
+  // "loading" phase: wait (fall through to the coordinator's own "ready" render).
+  // "unauthenticated": render LoginView.
+  // "authenticated": proceed to the main shell.
+  // "server_unavailable": treat as unauthenticated (fail closed).
+  if (isCoordinatorReady && !isPopout) {
+    if (
+      authState.phase === "unauthenticated" ||
+      authState.phase === "server_unavailable"
+    ) {
+      return (
+        <BugReportProvider value={bugReport}>
+          <LoginView
+            onLoginSuccess={refetchAuth}
+            reason={
+              authState.phase === "unauthenticated"
+                ? authState.reason
+                : undefined
+            }
+          />
+          <BugReportModal />
+        </BugReportProvider>
+      );
+    }
+    // While loading the auth state we allow the main shell to continue
+    // rendering (avoids a flash of login screen on refresh when cookies are valid).
   }
 
   // Coordinator is at "ready" — the app shell renders. No legacy onboarding

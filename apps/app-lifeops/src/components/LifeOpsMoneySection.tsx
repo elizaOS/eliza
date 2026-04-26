@@ -4,12 +4,14 @@ import {
   useApp,
 } from "@elizaos/app-core";
 import {
+  Ban,
   CalendarClock,
   CheckCircle2,
   CreditCard,
   DollarSign,
   FilePlus2,
   Loader2,
+  MessageCircle,
   RefreshCw,
   Sparkles,
   Timer,
@@ -338,18 +340,6 @@ export function LifeOpsMoneySection(): JSX.Element | null {
     [openLifeOpsChat],
   );
 
-  /**
-   * Deep-link from a recurring-charge row to the SUBSCRIPTIONS cancellation
-   * flow. Two-stage UX:
-   *   1. First click — start the cancellation (executor: user_browser).
-   *      The agent opens the management URL and stops at the destructive
-   *      step. Cancellation status will return one of: awaiting_confirmation,
-   *      needs_login, needs_mfa, phone_only, chat_only, blocked, completed.
-   *   2. Second click — re-call with confirmed=true to execute the
-   *      destructive step.
-   * The button hands off to chat for any non-completed terminal state so the
-   * user can finish in a richer surface.
-   */
   const onCancelRecurringCharge = useCallback(
     async (charge: LifeOpsRecurringCharge, playbookKey: string) => {
       try {
@@ -514,10 +504,11 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           <button
             type="button"
             onClick={() => void onScanGmail()}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border/30 bg-bg-muted/30 px-2.5 py-1 text-xs font-medium hover:bg-bg-muted/60"
+            aria-label="Scan Gmail for subscription senders"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
             title="Scan Gmail for subscription senders"
           >
-            <Upload className="h-3.5 w-3.5" /> Scan Gmail
+            <Upload className="h-3.5 w-3.5" aria-hidden />
           </button>
           <button
             type="button"
@@ -525,10 +516,11 @@ export function LifeOpsMoneySection(): JSX.Element | null {
               void refresh();
               void refreshCreditTransactions();
             }}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border/30 bg-bg-muted/30 px-2.5 py-1 text-xs font-medium hover:bg-bg-muted/60"
+            aria-label="Refresh dashboard"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
             title="Refresh dashboard"
           >
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           </button>
         </div>
       </header>
@@ -575,10 +567,11 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                 <button
                   type="button"
                   onClick={() => void onAddSource()}
-                  className="inline-flex items-center gap-1 rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-xs font-medium hover:bg-bg-muted/60"
+                  aria-label="Add a source manually"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                   title="Add a source manually (CSV / manual)"
                 >
-                  <FilePlus2 className="h-3 w-3" /> Add
+                  <FilePlus2 className="h-3.5 w-3.5" aria-hidden />
                 </button>
               </div>
             </header>
@@ -591,19 +584,20 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                     key={source.id}
                     className="flex items-center justify-between gap-2 rounded border border-border/20 bg-bg/40 px-3 py-2 text-xs"
                   >
-                    <div className="min-w-0">
-                      <div className="truncate font-medium text-txt">
-                        {source.label}
-                        <span className="ml-2 rounded bg-bg-muted/40 px-1.5 py-0.5 text-[10px] font-mono text-muted">
-                          {source.kind}
-                        </span>
-                      </div>
-                      <div className="mt-0.5 truncate text-[11px] text-muted">
-                        {source.institution ?? "—"} · {source.transactionCount}{" "}
-                        transactions
-                        {source.lastSyncedAt
-                          ? ` · last sync ${formatDate(source.lastSyncedAt)}`
-                          : " · never synced"}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border/20 bg-bg-muted/30 font-mono text-[10px] uppercase text-muted">
+                        {source.kind.slice(0, 2)}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-txt">
+                          {source.label}
+                        </div>
+                        <div className="truncate text-[11px] text-muted">
+                          {source.institution ??
+                            (source.lastSyncedAt
+                              ? formatDate(source.lastSyncedAt)
+                              : `${source.transactionCount} tx`)}
+                        </div>
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
@@ -611,35 +605,40 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                         <button
                           type="button"
                           onClick={() => void onImportCsv(source)}
-                          className="rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                          aria-label={`Import CSV for ${source.label}`}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
+                          title="Import CSV"
                         >
-                          Import CSV
+                          <Upload className="h-3.5 w-3.5" aria-hidden />
                         </button>
                       ) : null}
                       {source.kind === "plaid" ? (
                         <button
                           type="button"
                           onClick={() => void onSyncPlaid(source)}
-                          className="rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                          aria-label={`Sync ${source.label}`}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                           title="Pull the latest transactions from Plaid"
                         >
-                          Sync
+                          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                         </button>
                       ) : null}
                       {source.kind === "paypal" ? (
                         <button
                           type="button"
                           onClick={() => void onSyncPaypal(source)}
-                          className="rounded-md border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                          aria-label={`Sync ${source.label}`}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                           title="Pull recent PayPal transactions (Reporting API)"
                         >
-                          Sync
+                          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
                         </button>
                       ) : null}
                       <button
                         type="button"
                         onClick={() => void onDeleteSource(source)}
-                        className="rounded-md p-1 text-muted hover:bg-bg-muted/40 hover:text-rose-300"
+                        aria-label={`Remove ${source.label}`}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted hover:bg-bg-muted/40 hover:text-rose-300"
                         title="Remove source"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -690,9 +689,6 @@ export function LifeOpsMoneySection(): JSX.Element | null {
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">
             <CalendarClock className="h-3.5 w-3.5" aria-hidden /> Upcoming bills
           </h2>
-          <span className="text-[11px] text-muted">
-            From classified email
-          </span>
         </header>
         {(dash.upcomingBills ?? []).length === 0 ? (
           <p className="text-xs text-muted">
@@ -723,26 +719,29 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                   <button
                     type="button"
                     onClick={() => void onMarkBillPaid(bill)}
-                    className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-200 hover:bg-emerald-500/20"
+                    aria-label={`Mark ${bill.merchant} paid`}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
                     title="Mark this bill as paid"
                   >
-                    <CheckCircle2 className="h-3 w-3" aria-hidden /> Paid
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
                   </button>
                   <button
                     type="button"
                     onClick={() => void onSnoozeBill(bill)}
-                    className="inline-flex items-center gap-1 rounded border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                    aria-label={`Snooze ${bill.merchant} one week`}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                     title="Push the due date out a week"
                   >
-                    <Timer className="h-3 w-3" aria-hidden /> Snooze 1w
+                    <Timer className="h-3.5 w-3.5" aria-hidden />
                   </button>
                   <button
                     type="button"
                     onClick={() => onChatAboutBill(bill)}
-                    className="rounded border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                    aria-label={`Open chat about ${bill.merchant}`}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                     title="Open chat about this bill"
                   >
-                    Chat
+                    <MessageCircle className="h-3.5 w-3.5" aria-hidden />
                   </button>
                 </div>
               </li>
@@ -810,10 +809,11 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                                   playbookKey,
                                 )
                               }
-                              className="mr-1 rounded border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[11px] font-semibold text-rose-200 hover:bg-rose-500/20"
+                              aria-label={`Cancel ${charge.merchantDisplay}`}
+                              className="mr-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-rose-500/40 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20"
                               title={`Open the cancellation flow for ${charge.merchantDisplay}`}
                             >
-                              Cancel
+                              <Ban className="h-3.5 w-3.5" aria-hidden />
                             </button>
                           );
                         }
@@ -822,10 +822,11 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                       <button
                         type="button"
                         onClick={() => onChatAboutRecurringCharge(charge)}
-                        className="mr-1 rounded border border-border/30 bg-bg-muted/30 px-2 py-0.5 text-[11px] hover:bg-bg-muted/60"
+                        aria-label={`Open chat about ${charge.merchantDisplay}`}
+                        className="mr-1 inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/30 bg-bg-muted/30 text-muted hover:bg-bg-muted/60 hover:text-txt"
                         title="Open chat with this recurring charge attached"
                       >
-                        Chat
+                        <MessageCircle className="h-3.5 w-3.5" aria-hidden />
                       </button>
                     </td>
                   </tr>
@@ -892,13 +893,16 @@ function CloudCreditsBalance(props: {
 }): JSX.Element {
   if (!props.connected) {
     return (
-      <section className="rounded-lg border border-border/20 bg-bg/30 px-4 py-3 text-xs text-muted">
-        Connect Eliza Cloud to see your credit balance.{" "}
+      <section className="flex items-center justify-between gap-3 rounded-lg border border-border/20 bg-bg/30 px-4 py-3 text-xs text-muted">
+        <span className="inline-flex items-center gap-2">
+          <Sparkles className="h-3.5 w-3.5" aria-hidden />
+          Eliza Cloud
+        </span>
         <a
           href="#/settings"
           className="font-medium text-txt underline-offset-2 hover:underline"
         >
-          Open settings →
+          Settings
         </a>
       </section>
     );
@@ -912,33 +916,31 @@ function CloudCreditsBalance(props: {
       : "text-emerald-300";
 
   return (
-    <section className="flex items-center justify-between gap-4 rounded-lg border border-border/20 bg-bg/40 px-4 py-3">
+    <section
+      className="flex items-center justify-between gap-4 rounded-lg border border-border/20 bg-bg/40 px-4 py-3"
+      title="Eliza Cloud balance"
+    >
       <div className="flex items-center gap-3">
         <div className="rounded-md border border-border/30 bg-bg-muted/30 p-2 text-txt/80">
           <Sparkles className="h-4 w-4" aria-hidden />
         </div>
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted">
-            Eliza Cloud balance
-          </div>
           {showLoading ? (
             <div className="mt-1 h-6 w-32 animate-pulse rounded bg-bg-muted/40" />
           ) : (
             <div
-              className={`mt-0.5 text-2xl font-semibold tabular-nums ${accentColor}`}
+              className={`text-2xl font-semibold tabular-nums ${accentColor}`}
             >
               {formatCredits(props.balance ?? 0)}
-              <span className="ml-2 text-xs font-normal text-muted">
-                credits remaining
-              </span>
             </div>
           )}
         </div>
       </div>
       {props.low && !showLoading ? (
-        <div className="text-[11px] text-amber-300">
-          Low balance — consider topping up.
-        </div>
+        <span
+          className="h-2.5 w-2.5 rounded-full bg-amber-300 shadow-[0_0_0_3px_rgba(245,158,11,0.18)]"
+          title="Low balance"
+        />
       ) : null}
     </section>
   );
@@ -956,7 +958,7 @@ function CloudCreditsActivity(props: {
   return (
     <section className="rounded-lg border border-border/20 bg-bg/30 p-3">
       <header className="mb-2 flex items-center justify-between">
-        <h2 className="text-sm font-semibold">Recent credit activity</h2>
+        <h2 className="text-sm font-semibold">Credits</h2>
         {props.loading ? (
           <Loader2
             className="h-3.5 w-3.5 animate-spin text-muted"

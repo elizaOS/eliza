@@ -59,6 +59,7 @@ export {
 export {
   _resetSensitiveLimiters,
   bootstrapExchangeLimiter,
+  getSensitiveLimiter,
   SENSITIVE_RATE_LIMIT_MAX,
   SENSITIVE_RATE_LIMIT_WINDOW_MS,
 } from "./sensitive-rate-limit";

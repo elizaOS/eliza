@@ -87,7 +87,10 @@ export const deleteTriggerTaskAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     if (!triggersFeatureEnabled(runtime)) {
-      return { success: false, text: "Triggers are disabled by configuration." };
+      return {
+        success: false,
+        text: "Triggers are disabled by configuration.",
+      };
     }
     if (!(await hasOwnerAccess(runtime, message))) {
       return {

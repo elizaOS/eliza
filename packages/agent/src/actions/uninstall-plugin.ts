@@ -29,12 +29,7 @@ interface PluginUninstallResponse {
 export const uninstallPluginAction: Action = {
   name: "UNINSTALL_PLUGIN",
 
-  similes: [
-    "REMOVE_PLUGIN",
-    "DELETE_PLUGIN",
-    "DROP_PLUGIN",
-    "PURGE_PLUGIN",
-  ],
+  similes: ["REMOVE_PLUGIN", "DELETE_PLUGIN", "DROP_PLUGIN", "PURGE_PLUGIN"],
 
   description:
     "Uninstall a plugin from this agent. Removes the plugin package and " +
@@ -74,13 +69,18 @@ export const uninstallPluginAction: Action = {
         signal: AbortSignal.timeout(120_000),
       });
 
-      const data = (await resp.json().catch(() => ({}))) as PluginUninstallResponse;
+      const data = (await resp
+        .json()
+        .catch(() => ({}))) as PluginUninstallResponse;
 
       if (!resp.ok || data.success === false) {
         const errMsg =
           data.error || data.message || `Uninstall failed (${resp.status}).`;
         logger.warn(`[uninstall-plugin] ${errMsg}`);
-        return { success: false, text: `Failed to uninstall ${pluginId}: ${errMsg}` };
+        return {
+          success: false,
+          text: `Failed to uninstall ${pluginId}: ${errMsg}`,
+        };
       }
 
       const name = data.pluginName ?? npmName;

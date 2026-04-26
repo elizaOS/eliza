@@ -3,6 +3,7 @@ import type { Action, AgentContext, Evaluator, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
+import type { X402Config, X402RequestValidator } from "./payment";
 import type { UUID } from "./primitives";
 import type {
 	JsonValue,
@@ -13,7 +14,6 @@ import type {
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
 import type { TestSuite } from "./testing";
-import type { X402Config, X402RequestValidator } from "./payment";
 
 /**
  * Type for a service class constructor.

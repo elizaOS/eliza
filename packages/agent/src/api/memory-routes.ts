@@ -16,6 +16,8 @@ import {
 import type { RouteRequestContext } from "./route-helpers.js";
 
 const HASH_MEMORY_SOURCE = "hash_memory";
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MEMORY_SEARCH_SCAN_LIMIT = 500;
 const MEMORY_SEARCH_DEFAULT_LIMIT = 10;
 const MEMORY_SEARCH_MAX_LIMIT = 50;
@@ -591,6 +593,75 @@ export async function handleMemoryRoutes(
       limit,
       offset,
     });
+    return true;
+  }
+
+  // ── Memory mutation by id ─────────────────────────────────────────────
+  // DELETE /api/memories/:id and PATCH /api/memories/:id operate on the bare
+  // id segment. Path matching only fires when the segment looks like a UUID,
+  // which keeps the literal sibling routes (`feed`, `browse`, `stats`,
+  // `by-entity/...`) unambiguous.
+
+  const memoryIdMatch = /^\/api\/memories\/([^/]+)$/.exec(pathname);
+  if (memoryIdMatch && (method === "DELETE" || method === "PATCH")) {
+    const rawId = decodeURIComponent(memoryIdMatch[1] ?? "");
+    if (!UUID_REGEX.test(rawId)) {
+      error(res, "Invalid memory id.", 400);
+      return true;
+    }
+    const memoryId = rawId as UUID;
+    const existing = await runtime.getMemoryById(memoryId);
+    if (!existing) {
+      error(res, "Memory not found.", 404);
+      return true;
+    }
+
+    if (method === "DELETE") {
+      await runtime.deleteMemory(memoryId);
+      json(res, { deleted: true, id: memoryId });
+      return true;
+    }
+
+    // PATCH — update text, regenerate embedding, then atomically persist
+    // both via runtime.updateMemory (the SQL adapter writes content +
+    // embedding in a single transaction). If embedding generation fails we
+    // return 500 *before* touching the database, so there is nothing to roll
+    // back.
+    const body = await readJsonBody<{ text?: unknown }>(req, res);
+    if (!body) return true;
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    if (!text) {
+      error(res, "text is required", 400);
+      return true;
+    }
+
+    const existingContent =
+      (existing.content as Record<string, unknown> | undefined) ?? {};
+    const nextContent = { ...existingContent, text };
+
+    let embedding: number[];
+    try {
+      embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+        text,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      error(res, `Failed to regenerate embedding: ${detail}`, 500);
+      return true;
+    }
+    if (!Array.isArray(embedding) || embedding.length === 0) {
+      error(res, "Embedding model returned no vector.", 500);
+      return true;
+    }
+
+    await runtime.updateMemory({
+      id: memoryId,
+      content: nextContent,
+      embedding,
+    });
+
+    const updated = await runtime.getMemoryById(memoryId);
+    json(res, { updated: true, id: memoryId, memory: updated });
     return true;
   }
 

@@ -11,7 +11,7 @@ import {
   normalizeLinkedAccountsConfig,
   normalizeServiceRoutingConfig,
 } from "@elizaos/shared/contracts/service-routing";
-import { ensureCompatApiAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth";
 import { getCloudSecret } from "./cloud-secrets";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
@@ -105,7 +105,7 @@ export async function handleOnboardingCompatRoute(
     return false;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) {
+  if (!(await ensureRouteAuthorized(req, res, state))) {
     return true;
   }
 

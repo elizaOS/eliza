@@ -41,3 +41,11 @@ export { documentsProvider } from "./documents-provider";
 export { knowledgeProvider } from "./provider";
 export { KnowledgeService } from "./service";
 export * from "./types";
+export {
+	__setKnowledgeUrlFetchImplForTests,
+	type FetchedKnowledgeUrl,
+	type FetchedKnowledgeUrlKind,
+	type FetchKnowledgeFromUrlOptions,
+	fetchKnowledgeFromUrl,
+	isYouTubeUrl,
+} from "./url-ingest";

@@ -17,6 +17,7 @@ import {
   handlerRegistry,
   toPublicRegistration,
 } from "../services/local-inference/handler-registry";
+import { snapshotProviders } from "../services/local-inference/providers";
 import {
   type RoutingPolicy,
   readRoutingPreferences,
@@ -30,8 +31,8 @@ import type {
 } from "../services/local-inference/types";
 import { AGENT_MODEL_SLOTS } from "../services/local-inference/types";
 import {
-  ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
+  ensureRouteAuthorized,
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
@@ -161,7 +162,7 @@ export async function handleLocalInferenceCompatRoutes(
 
   // ── GET: full hub snapshot (catalog + installed + hardware + state) ─
   if (method === "GET" && pathname === "/api/local-inference/hub") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     try {
       const snapshot = await localInferenceService.snapshot();
       sendJsonResponse(res, 200, snapshot);
@@ -177,7 +178,7 @@ export async function handleLocalInferenceCompatRoutes(
 
   // ── GET: hardware probe only ────────────────────────────────────────
   if (method === "GET" && pathname === "/api/local-inference/hardware") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     try {
       const probe = await localInferenceService.getHardware();
       sendJsonResponse(res, 200, probe);
@@ -193,7 +194,7 @@ export async function handleLocalInferenceCompatRoutes(
 
   // ── GET: curated catalog ────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/local-inference/catalog") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     sendJsonResponse(res, 200, {
       models: localInferenceService.getCatalog(),
     });
@@ -202,7 +203,7 @@ export async function handleLocalInferenceCompatRoutes(
 
   // ── GET: installed models ───────────────────────────────────────────
   if (method === "GET" && pathname === "/api/local-inference/installed") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     try {
       const models = await localInferenceService.getInstalled();
       sendJsonResponse(res, 200, { models });
@@ -248,9 +249,25 @@ export async function handleLocalInferenceCompatRoutes(
     return true;
   }
 
+  // ── GET: provider status snapshot ──────────────────────────────────
+  if (method === "GET" && pathname === "/api/local-inference/providers") {
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    try {
+      const providers = await snapshotProviders();
+      sendJsonResponse(res, 200, { providers });
+    } catch (err) {
+      sendJsonErrorResponse(
+        res,
+        500,
+        err instanceof Error ? err.message : "Failed to read providers",
+      );
+    }
+    return true;
+  }
+
   // ── GET: registered model handlers across all providers ────────────
   if (method === "GET" && pathname === "/api/local-inference/routing") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     try {
       const [prefs, registrations] = await Promise.all([
         readRoutingPreferences(),
@@ -361,7 +378,7 @@ export async function handleLocalInferenceCompatRoutes(
 
   // ── GET: model-type assignments ─────────────────────────────────────
   if (method === "GET" && pathname === "/api/local-inference/assignments") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     try {
       const assignments = await localInferenceService.getAssignments();
       sendJsonResponse(res, 200, { assignments });
@@ -415,7 +432,7 @@ export async function handleLocalInferenceCompatRoutes(
 
   // ── GET: device bridge status (paired mobile device connectivity) ───
   if (method === "GET" && pathname === "/api/local-inference/device") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     sendJsonResponse(res, 200, deviceBridge.status());
     return true;
   }
@@ -452,7 +469,7 @@ export async function handleLocalInferenceCompatRoutes(
 
   // ── GET: HuggingFace search ─────────────────────────────────────────
   if (method === "GET" && pathname === "/api/local-inference/hf-search") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const q = url.searchParams.get("q")?.trim() ?? "";
     if (q.length === 0) {
       sendJsonResponse(res, 200, { models: [] });
@@ -488,7 +505,7 @@ export async function handleLocalInferenceCompatRoutes(
 
   // ── GET: active model ───────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/local-inference/active") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     sendJsonResponse(res, 200, localInferenceService.getActive());
     return true;
   }
@@ -541,7 +558,7 @@ export async function handleLocalInferenceCompatRoutes(
       pathname,
     );
     if (method === "POST" && match) {
-      if (!ensureCompatApiAuthorized(req, res)) return true;
+      if (!(await ensureRouteAuthorized(req, res, state))) return true;
       try {
         const result = await localInferenceService.verifyModel(match[1] ?? "");
         sendJsonResponse(res, 200, result);

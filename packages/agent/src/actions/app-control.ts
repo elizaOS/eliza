@@ -540,7 +540,9 @@ export const listAppsAction: Action = {
         const resp = await fetch(`${base}/api/apps/runs`, {
           signal: AbortSignal.timeout(15_000),
         });
-        const runs = (await resp.json().catch(() => [])) as AppRunSummaryShape[];
+        const runs = (await resp
+          .json()
+          .catch(() => [])) as AppRunSummaryShape[];
         if (!resp.ok) {
           return {
             success: false,
@@ -737,11 +739,9 @@ export const getRunningAppsAction: Action = {
 // ---------------------------------------------------------------------------
 // FAVORITE_APP — pin or unpin an app from the favorites list.
 //
-// The current dashboard persists favorites in browser localStorage under
-// `eliza:favorite-apps` (see packages/app-core/src/state/persistence.ts).
-// There is no server-side endpoint that owns this list yet, so the action
-// reports that explicitly rather than silently writing somewhere the UI
-// won't read back.
+// Persists via PUT /api/apps/favorites which writes the list to the
+// runtime config (config.ui.favoriteApps). The dashboard reads the same
+// list on mount so changes show up without a refresh.
 // ---------------------------------------------------------------------------
 
 export const favoriteAppAction: Action = {
@@ -750,9 +750,8 @@ export const favoriteAppAction: Action = {
   similes: ["PIN_APP", "STAR_APP", "BOOKMARK_APP", "UNFAVORITE_APP"],
 
   description:
-    "Pin or unpin an app in the dashboard favorites list. Requires a server " +
-    "endpoint to persist the change — currently the dashboard owns this " +
-    "state in browser localStorage only.",
+    "Pin or unpin an app in the dashboard favorites list. Persists via " +
+    "PUT /api/apps/favorites on the local runtime.",
 
   validate: async (runtime, message) => {
     return hasOwnerAccess(runtime, message);
@@ -785,15 +784,47 @@ export const favoriteAppAction: Action = {
       };
     }
 
-    return {
-      success: false,
-      text:
-        `Cannot ${isFavorite ? "favorite" : "unfavorite"} ${appName}: ` +
-        "the favorites list lives in browser localStorage only. " +
-        "A server endpoint (e.g. POST /api/apps/favorites) must be added " +
-        "before the agent can persist this change.",
-      data: { appName, isFavorite, blocked: "missing-server-endpoint" },
-    };
+    try {
+      const base = getApiBase();
+      const resp = await fetch(`${base}/api/apps/favorites`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appName, isFavorite }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const data = (await resp.json().catch(() => ({}))) as {
+        favoriteApps?: string[];
+        error?: string;
+      };
+      if (!resp.ok) {
+        const errMsg = data.error || `HTTP ${resp.status}`;
+        logger.warn(`[app-control] favorite update failed: ${errMsg}`);
+        return {
+          success: false,
+          text: `Failed to ${isFavorite ? "favorite" : "unfavorite"} ${appName}: ${errMsg}`,
+        };
+      }
+      const favorites = Array.isArray(data.favoriteApps)
+        ? data.favoriteApps
+        : [];
+      const verb = isFavorite ? "Favorited" : "Unfavorited";
+      logger.info(
+        `[app-control] ${verb.toLowerCase()} ${appName} (${favorites.length} total)`,
+      );
+      return {
+        success: true,
+        text: `${verb} ${appName}.`,
+        values: { appName, isFavorite, count: favorites.length },
+        data: { appName, isFavorite, favoriteApps: favorites },
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.error(`[app-control] favorite error: ${msg}`);
+      return {
+        success: false,
+        text: `Failed to update favorite for ${appName}: ${msg}`,
+      };
+    }
   },
 
   parameters: [
@@ -819,7 +850,8 @@ export const favoriteAppAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "Cannot favorite shopify: the favorites list lives in browser localStorage only.",
+          text: "Favorited shopify.",
+          action: "FAVORITE_APP",
         },
       },
     ],
