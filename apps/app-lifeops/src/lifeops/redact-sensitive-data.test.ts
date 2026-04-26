@@ -27,6 +27,7 @@ describe("redactSensitiveData", () => {
       toList: ["dan@example.com"],
       replyTo: "ed@example.com",
       cc: "fred@example.com",
+      bcc: "greta@example.com",
     });
     expect(out).toEqual({
       from: "[REDACTED]",
@@ -34,7 +35,25 @@ describe("redactSensitiveData", () => {
       fromEmail: "[REDACTED]",
       toList: ["[REDACTED]"],
       replyTo: "[REDACTED]",
-      cc: "fred@example.com",
+      cc: "[REDACTED]",
+      bcc: "[REDACTED]",
+    });
+  });
+
+  it("redacts email-looking substrings under non-sensitive keys", () => {
+    const out = redactSensitiveData({
+      reason: "Assigned owner alice.smith+test@example.co.uk after import",
+      metadata: {
+        note: "Contact bob@example.com, backup carol@example.org.",
+      },
+      tags: ["team", "dave@example.net"],
+    });
+    expect(out).toEqual({
+      reason: "Assigned owner [REDACTED_EMAIL] after import",
+      metadata: {
+        note: "Contact [REDACTED_EMAIL], backup [REDACTED_EMAIL].",
+      },
+      tags: ["team", "[REDACTED_EMAIL]"],
     });
   });
 
@@ -51,6 +70,22 @@ describe("redactSensitiveData", () => {
     const out = redactSensitiveData({ body: longBody, snippet: longBody });
     expect((out as { body: string }).body).toMatch(/\[\+90 chars\]$/);
     expect((out as { snippet: string }).snippet).toMatch(/\[\+90 chars\]$/);
+  });
+
+  it("redacts emails before shortening body-like fields", () => {
+    const out = redactSensitiveData(
+      {
+        body: `Please contact alexandria.verylongperson@example.com about ${"x".repeat(
+          80,
+        )}`,
+      },
+      { bodyPreview: 40 },
+    );
+    const body = (out as { body: string }).body;
+    expect(body).toContain("[REDACTED_EMAIL]");
+    expect(body).not.toContain("alexandria");
+    expect(body).not.toContain("example.com");
+    expect(body).toMatch(/\[\+\d+ chars\]$/);
   });
 
   it("walks nested arrays and objects", () => {
