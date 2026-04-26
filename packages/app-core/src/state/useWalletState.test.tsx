@@ -87,6 +87,9 @@ function createGenerateWalletResponse(
 const { clientMock, confirmDesktopActionMock, persistenceMock } = vi.hoisted(
   () => ({
     clientMock: {
+      // useWalletState reads server config on mount to seed capability flags;
+      // tests don't care about that path so an empty config is fine.
+      getConfig: vi.fn(async () => ({})),
       updateWalletConfig: vi.fn<() => Promise<{ ok: boolean }>>(async () => ({
         ok: true,
       })),

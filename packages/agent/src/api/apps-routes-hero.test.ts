@@ -249,9 +249,23 @@ describe("GET /api/apps/hero/:slug", () => {
       const expected = fs.readFileSync(path.resolve(app.dir, app.heroImage));
       const handled = await handleAppsRoutes(ctx);
 
+      // Hero assets may ship as PNG, SVG, JPEG, or WebP. Map file extension
+      // to the matching MIME so the test stays correct as new formats land.
+      const ext = path.extname(app.heroImage).toLowerCase();
+      const expectedContentType =
+        ext === ".svg"
+          ? "image/svg+xml"
+          : ext === ".jpg" || ext === ".jpeg"
+            ? "image/jpeg"
+            : ext === ".webp"
+              ? "image/webp"
+              : "image/png";
+
       expect(handled, app.name).toBe(true);
       expect(ctx.recorded.status, app.name).toBe(200);
-      expect(ctx.recorded.headers["Content-Type"], app.name).toBe("image/png");
+      expect(ctx.recorded.headers["Content-Type"], app.name).toBe(
+        expectedContentType,
+      );
       expect(ctx.recorded.body?.equals(expected), app.name).toBe(true);
     }
   });
