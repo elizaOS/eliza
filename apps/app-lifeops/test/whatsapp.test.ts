@@ -79,6 +79,36 @@ describe("sendWhatsAppMessage", () => {
     });
   });
 
+  test("includes reply context when replying to an inbound message", async () => {
+    let capturedBody: unknown;
+    global.fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({ messages: [{ id: "wamid.reply" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    const result = await sendWhatsAppMessage(
+      {
+        accessToken: "tok-abc",
+        phoneNumberId: "555000111",
+        apiVersion: "v21.0",
+      },
+      {
+        to: "+15551112222",
+        text: "reply text",
+        replyToMessageId: "wamid.source",
+      },
+    );
+
+    expect(result.messageId).toBe("wamid.reply");
+    expect(capturedBody).toMatchObject({
+      context: { message_id: "wamid.source" },
+      text: { body: "reply text" },
+    });
+  });
+
   test("throws WhatsAppError on non-2xx", async () => {
     global.fetch = vi.fn(async () =>
       new Response(
@@ -148,7 +178,16 @@ describe("parseWhatsAppWebhookMessages", () => {
 
 describe("withWhatsApp mixin", () => {
   class StubBase {
-    runtime = { agentId: "test", logger: console };
+    runtime = {
+      agentId: "test",
+      getService: vi.fn(() => null),
+      logger: {
+        debug: vi.fn(),
+        error: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+      },
+    };
     ownerEntityId = null;
   }
   const Composed = withWhatsApp(StubBase as never);
@@ -166,6 +205,28 @@ describe("withWhatsApp mixin", () => {
     await expect(
       svc.sendWhatsAppMessage({ to: "+1", text: "x" }),
     ).rejects.toBeInstanceOf(LifeOpsServiceError);
+  });
+
+  test("sendWhatsAppMessage uses configured Cloud API credentials", async () => {
+    process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = "tok-service";
+    process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = "phone-service";
+    process.env.ELIZA_WHATSAPP_API_VERSION = "v21.0";
+    process.env.MILADY_MOCK_WHATSAPP_BASE = "http://127.0.0.1:7879";
+    let capturedUrl = "";
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      capturedUrl = typeof input === "string" ? input : input.toString();
+      return new Response(
+        JSON.stringify({ messages: [{ id: "wamid.service" }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+
+    await expect(
+      svc.sendWhatsAppMessage({ to: "+15551112222", text: "service send" }),
+    ).resolves.toEqual({ ok: true, messageId: "wamid.service" });
+    expect(capturedUrl).toBe(
+      "http://127.0.0.1:7879/v21.0/phone-service/messages",
+    );
   });
 
   test("ingestWhatsAppWebhook parses payload and returns count", async () => {

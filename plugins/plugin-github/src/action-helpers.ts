@@ -5,16 +5,16 @@
  */
 
 import type { HandlerCallback, IAgentRuntime } from "@elizaos/core";
-import type { Octokit } from "@octokit/rest";
 import type { GitHubService } from "./services/github-service.js";
 import {
   GITHUB_SERVICE_TYPE,
   type GitHubActionResult,
   type GitHubIdentity,
+  type GitHubOctokitClient,
 } from "./types.js";
 
 export interface ResolvedClient {
-  client: Octokit;
+  client: GitHubOctokitClient;
   identity: GitHubIdentity;
 }
 
@@ -32,7 +32,7 @@ export function resolveIdentity(
 export function getClient(
   runtime: IAgentRuntime,
   identity: GitHubIdentity,
-): Octokit | null {
+): GitHubOctokitClient | null {
   const service = runtime.getService<GitHubService>(GITHUB_SERVICE_TYPE);
   if (!service) {
     return null;
