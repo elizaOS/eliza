@@ -712,9 +712,14 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
             hasTab: Boolean(workspaceTabId),
           }),
         ];
-        if (!browserState.available && discordDesktopState.cdpAvailable) {
-          const desktopProbe = discordDesktopState.probe;
-          const desktopConnected = desktopProbe?.loggedIn === true;
+        const desktopProbe = discordDesktopState.probe;
+        const desktopDmInboxVisible = desktopProbe?.dmInbox.visible === true;
+        const desktopConnected =
+          desktopProbe?.loggedIn === true || desktopDmInboxVisible;
+        if (
+          discordDesktopState.cdpAvailable &&
+          (desktopConnected || !browserState.available)
+        ) {
           return {
             provider: "discord",
             side: normalizedSide,
