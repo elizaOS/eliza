@@ -257,10 +257,7 @@ export class AuthStore {
       .update(authSessionTable)
       .set({ revokedAt: now })
       .where(
-        and(
-          eq(authSessionTable.id, id),
-          isNull(authSessionTable.revokedAt),
-        ),
+        and(eq(authSessionTable.id, id), isNull(authSessionTable.revokedAt)),
       )) as unknown as DrizzleRunResult;
     return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
   }
@@ -279,10 +276,7 @@ export class AuthStore {
       .update(authSessionTable)
       .set({ lastSeenAt, expiresAt })
       .where(
-        and(
-          eq(authSessionTable.id, id),
-          isNull(authSessionTable.revokedAt),
-        ),
+        and(eq(authSessionTable.id, id), isNull(authSessionTable.revokedAt)),
       );
   }
 

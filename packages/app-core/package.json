@@ -23,6 +23,7 @@
     "build": "bun run build:dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
+    "test:auth": "vitest run --config vitest.config.ts --no-file-parallelism src/api/auth src/api/auth-bootstrap-routes src/api/auth-session-routes src/services/auth-store src/cli/program/register.auth",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
