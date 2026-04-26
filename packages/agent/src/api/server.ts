@@ -26,7 +26,8 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 import os from "node:os";
 import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
+import { DropService } from "@elizaos/app-elizamaker/drop-service";
+import { setElizaMakerDropService } from "@elizaos/app-elizamaker/drop-service-registry";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
 import {
   normalizeJsonRpcUrl,
@@ -250,7 +251,6 @@ export {
 
 type OnboardingRouteArg = Parameters<typeof handleOnboardingRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
-type DropRouteArg = Parameters<typeof handleDropRoutes>[0];
 type TtsRouteArg = Parameters<typeof handleTtsRoutes>[0];
 type PermissionsExtraRouteArg = Parameters<
   typeof handlePermissionsExtraRoutes
@@ -493,12 +493,6 @@ function _persistDeletedConversationIdsToState(ids: Set<string>): void {
     mode: 0o600,
   });
   fs.renameSync(tmpFilePath, filePath);
-}
-
-function readOGCodeFromState(): string | null {
-  const filePath = path.join(resolveStateDir(), OG_FILENAME);
-  if (!fs.existsSync(filePath)) return null;
-  return fs.readFileSync(filePath, "utf-8").trim();
 }
 
 function initializeOGCodeInState(): void {
@@ -1127,7 +1121,6 @@ async function handleRequest(
     });
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
   const _registryService = state.registryService;
-  const dropService = state.dropService;
 
   const canonicalizeRestartReason = (reason: string): string => {
     if (
@@ -1919,29 +1912,6 @@ async function handleRequest(
         >(ensurePrivyWalletsForCustomUser),
         RegistryService,
       },
-    })
-  ) {
-    return;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  //  Drop / Mint / Whitelist Routes (extracted to drop-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
-  if (
-    await handleDropRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      json,
-      error,
-      readJsonBody,
-      dropService,
-      agentName: state.agentName,
-      getWalletAddresses:
-        coerce<DropRouteArg["getWalletAddresses"]>(getWalletAddresses),
-      readOGCodeFromState,
     })
   ) {
     return;
@@ -3373,6 +3343,10 @@ export async function startApiServer(opts?: {
             registryConfig.collectionAddress,
             dropEnabled,
           );
+          setElizaMakerDropService(state.dropService);
+        } else {
+          state.dropService = null;
+          setElizaMakerDropService(null);
         }
 
         addLog(

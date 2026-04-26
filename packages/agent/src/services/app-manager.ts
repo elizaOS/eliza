@@ -70,13 +70,11 @@ export type {
 
 const DEFAULT_VIEWER_SANDBOX = "allow-scripts allow-same-origin allow-popups";
 const DEFAULT_RS_SDK_SERVER_URL = "https://rs-sdk-demo.fly.dev";
-const BABYLON_APP_ROUTE_SLUG = "babylon";
 const HYPERSCAPE_APP_ROUTE_SLUG = "hyperscape";
 const LOCAL_DEV_HYPERSCAPE_CLIENT_URL = "http://localhost:3333";
 const PRODUCTION_HYPERSCAPE_CLIENT_URL = "https://hyperscape.gg";
 const SAFE_APP_URL_PROTOCOLS = new Set(["http:", "https:"]);
 const SAFE_APP_TEMPLATE_ENV_KEYS = new Set([
-  "BABYLON_CLIENT_URL",
   "BOT_NAME",
   "HYPERSCAPE_CHARACTER_ID",
   "HYPERSCAPE_CLIENT_URL",
@@ -152,10 +150,6 @@ function isAppRegistryPlugin(
   plugin: RegistryPluginInfo,
 ): plugin is RegistryAppPlugin {
   return hasAppInterface(plugin);
-}
-
-function isBabylonAppName(appName: string): boolean {
-  return packageNameToAppRouteSlug(appName) === BABYLON_APP_ROUTE_SLUG;
 }
 
 function isHyperscapeAppName(appName: string): boolean {
@@ -569,304 +563,6 @@ function resolveSettingLike(
   return undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Babylon credential auto-provisioning
-// ---------------------------------------------------------------------------
-
-function persistBabylonCredential(
-  runtime: IAgentRuntime | null,
-  key: string,
-  value: string,
-  secret = false,
-): void {
-  process.env[key] = value;
-  if (!runtime) return;
-
-  try {
-    runtime.setSetting(key, value, secret);
-  } catch (err) {
-    logger.error(
-      `[app-manager] Failed to persist Babylon credential "${key}": ${err}`,
-    );
-  }
-
-  const character = runtime.character as {
-    settings?: { secrets?: Record<string, string> };
-    secrets?: Record<string, string>;
-  };
-  if (!character.settings) {
-    character.settings = {};
-  }
-  if (!character.settings.secrets) {
-    character.settings.secrets = {};
-  }
-  character.settings.secrets[key] = value;
-  if (!character.secrets) {
-    character.secrets = {};
-  }
-  character.secrets[key] = value;
-}
-
-function resolveBabylonApiBaseUrl(runtime: IAgentRuntime | null): string {
-  return (
-    resolveSettingLike(runtime, "BABYLON_API_URL") ??
-    resolveSettingLike(runtime, "BABYLON_APP_URL") ??
-    resolveSettingLike(runtime, "BABYLON_CLIENT_URL") ??
-    (isProductionRuntime()
-      ? PRODUCTION_BABYLON_CLIENT_URL
-      : LOCAL_DEV_BABYLON_CLIENT_URL)
-  ).replace(/\/+$/, "");
-}
-
-/**
- * Probe Babylon for dev credentials. In development mode, Babylon generates
- * deterministic credentials from the server hostname. We can discover them
- * by calling the health/auth probe endpoints.
- */
-async function probeBabylonDevCredentials(
-  baseUrl: string,
-): Promise<{ agentId: string; agentSecret: string } | null> {
-  // Try well-known dev agent IDs with common dev secrets
-  const devAgentIds = [
-    "babylon-agent-alice",
-    "babylon-test-agent",
-    "dev-admin-local",
-  ];
-  // Dev secrets are deterministic from hostname — try multiple hostname sources
-  const nodeCrypto = await import("node:crypto");
-  const os = await import("node:os");
-  const hostnames = new Set<string>();
-  // Add all likely hostname sources
-  hostnames.add("localhost");
-  hostnames.add("0.0.0.0");
-  if (process.env.HOSTNAME) hostnames.add(process.env.HOSTNAME);
-  try {
-    hostnames.add(os.hostname());
-  } catch {
-    /* ignore */
-  }
-  const devSecrets: string[] = [];
-  for (const hostname of hostnames) {
-    if (!hostname) continue;
-    const hash = nodeCrypto
-      .createHash("sha256")
-      .update(`babylon-dev:${hostname}:agent`)
-      .digest("hex")
-      .substring(0, 32);
-    devSecrets.push(`dev_agent_${hash}`);
-  }
-
-  for (const agentId of devAgentIds) {
-    for (const agentSecret of devSecrets) {
-      try {
-        const response = await fetch(new URL("/api/agents/auth", baseUrl), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentId, agentSecret }),
-          signal: AbortSignal.timeout(3_000),
-        });
-        if (response.ok) {
-          const data = (await response.json()) as {
-            success?: boolean;
-            sessionToken?: string;
-          };
-          if (data.success || data.sessionToken) {
-            logger.info(
-              `[app-manager] Babylon dev credentials discovered (agentId=${agentId})`,
-            );
-            return { agentId, agentSecret };
-          }
-        }
-      } catch {
-        // Connection failed — Babylon not reachable
-        return null;
-      }
-    }
-  }
-  return null;
-}
-
-async function authenticateBabylonAgentSession(
-  baseUrl: string,
-  agentId: string,
-  agentSecret: string,
-): Promise<{ sessionToken: string; expiresAt?: string } | null> {
-  const response = await fetch(new URL("/api/agents/auth", baseUrl), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      agentId,
-      agentSecret,
-    }),
-    signal: AbortSignal.timeout(3_000),
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = (await response.json()) as {
-    success?: boolean;
-    sessionToken?: string;
-    expiresAt?: string;
-  };
-  if (!data.sessionToken) {
-    return null;
-  }
-
-  return {
-    sessionToken: data.sessionToken,
-    expiresAt:
-      typeof data.expiresAt === "string" && data.expiresAt.trim().length > 0
-        ? data.expiresAt
-        : undefined,
-  };
-}
-
-/**
- * Auto-provision Babylon credentials on app launch.
- *
- * Flow:
- * 1. If BABYLON_AGENT_ID + BABYLON_AGENT_SECRET are already set, skip.
- * 2. In dev mode: probe Babylon for dev credentials and auto-configure.
- * 3. In production: warn the user to set credentials manually.
- */
-async function prepareBabylonLaunch(
-  runtime: IAgentRuntime | null,
-): Promise<AppLaunchDiagnostic[]> {
-  const existingId =
-    resolveSettingLike(runtime, "BABYLON_AGENT_ID") ??
-    process.env.BABYLON_AGENT_ID?.trim();
-  const existingSecret =
-    resolveSettingLike(runtime, "BABYLON_AGENT_SECRET") ??
-    process.env.BABYLON_AGENT_SECRET?.trim();
-
-  // Already configured — nothing to do
-  if (existingId && existingSecret) {
-    // Verify the credentials work by attempting auth
-    const baseUrl = resolveBabylonApiBaseUrl(runtime);
-    try {
-      const session = await authenticateBabylonAgentSession(
-        baseUrl,
-        existingId,
-        existingSecret,
-      );
-      if (session) {
-        persistBabylonCredential(
-          runtime,
-          BABYLON_AGENT_SESSION_TOKEN_KEY,
-          session.sessionToken,
-          true,
-        );
-        if (session.expiresAt) {
-          persistBabylonCredential(
-            runtime,
-            BABYLON_AGENT_SESSION_EXPIRES_AT_KEY,
-            session.expiresAt,
-            true,
-          );
-        }
-        logger.info(
-          `[app-manager] Babylon credentials verified (agentId=${existingId})`,
-        );
-        return [];
-      }
-      return [
-        {
-          code: "babylon-auth-failed",
-          severity: "warning",
-          message:
-            "Babylon credentials are set but authentication failed. Check BABYLON_AGENT_ID and BABYLON_AGENT_SECRET.",
-        },
-      ];
-    } catch {
-      return [
-        {
-          code: "babylon-unreachable",
-          severity: "warning",
-          message: `Cannot reach Babylon at ${baseUrl}. Is the server running?`,
-        },
-      ];
-    }
-  }
-
-  // No credentials — try auto-provisioning in dev mode
-  if (!isProductionRuntime()) {
-    const baseUrl = resolveBabylonApiBaseUrl(runtime);
-
-    // First check if Babylon is even reachable
-    try {
-      await fetch(new URL("/api/health", baseUrl), {
-        signal: AbortSignal.timeout(3_000),
-      });
-    } catch {
-      return [
-        {
-          code: "babylon-unreachable",
-          severity: "warning",
-          message: `Cannot reach Babylon at ${baseUrl}. Start the Babylon dev server and re-launch.`,
-        },
-      ];
-    }
-
-    // Try dev credentials
-    const devCreds = await probeBabylonDevCredentials(baseUrl);
-    if (devCreds) {
-      persistBabylonCredential(runtime, "BABYLON_AGENT_ID", devCreds.agentId);
-      persistBabylonCredential(
-        runtime,
-        "BABYLON_AGENT_SECRET",
-        devCreds.agentSecret,
-        true,
-      );
-      const session = await authenticateBabylonAgentSession(
-        baseUrl,
-        devCreds.agentId,
-        devCreds.agentSecret,
-      );
-      if (session) {
-        persistBabylonCredential(
-          runtime,
-          BABYLON_AGENT_SESSION_TOKEN_KEY,
-          session.sessionToken,
-          true,
-        );
-        if (session.expiresAt) {
-          persistBabylonCredential(
-            runtime,
-            BABYLON_AGENT_SESSION_EXPIRES_AT_KEY,
-            session.expiresAt,
-            true,
-          );
-        }
-      }
-      logger.info(
-        `[app-manager] Auto-provisioned Babylon dev credentials (agentId=${devCreds.agentId})`,
-      );
-      return [];
-    }
-
-    return [
-      {
-        code: "babylon-no-agent-id",
-        severity: "warning",
-        message:
-          "Could not auto-provision Babylon credentials. Set BABYLON_AGENT_ID and BABYLON_AGENT_SECRET in your environment.",
-      },
-    ];
-  }
-
-  // Production without credentials
-  return [
-    {
-      code: "babylon-no-agent-id",
-      severity: "warning",
-      message:
-        "BABYLON_AGENT_ID is not set. Set BABYLON_AGENT_ID and BABYLON_AGENT_SECRET for full Babylon integration.",
-    },
-  ];
-}
-
 function readSafeTemplateEnv(key: string): string | undefined {
   if (!SAFE_APP_TEMPLATE_ENV_KEYS.has(key)) {
     return undefined;
@@ -1004,26 +700,6 @@ async function buildViewerAuthMessage(
     );
   }
 
-  // Babylon auth — passes agent credentials to the viewer iframe
-  if (isBabylonAppName(appInfo.name)) {
-    const agentId =
-      resolveSettingLike(runtime, "BABYLON_AGENT_ID") ??
-      process.env.BABYLON_AGENT_ID?.trim();
-    const sessionToken =
-      resolveSettingLike(runtime, BABYLON_AGENT_SESSION_TOKEN_KEY) ??
-      process.env[BABYLON_AGENT_SESSION_TOKEN_KEY]?.trim();
-    if (!agentId || !sessionToken) {
-      return undefined;
-    }
-    return {
-      type: "BABYLON_AUTH",
-      authToken: sessionToken,
-      sessionToken,
-      agentId,
-      characterId: agentId,
-    };
-  }
-
   return undefined;
 }
 
@@ -1115,10 +791,6 @@ function buildAppSession(
   }
   const canSendCommands =
     features.has("commands") || features.has("suggestions");
-  const summary = isBabylonAppName(appInfo.name)
-    ? "Connecting to Babylon..."
-    : "Connecting session...";
-
   const characterId =
     authMessage?.characterId ??
     (isHyperscapeAppName(appInfo.name)
@@ -1137,7 +809,7 @@ function buildAppSession(
     followEntity,
     canSendCommands,
     controls,
-    summary,
+    summary: "Connecting session...",
   };
 }
 
@@ -1217,16 +889,6 @@ async function prepareLaunch(
   runtime: IAgentRuntime | null,
 ): Promise<AppLaunchPreparation> {
   const routeModule = await importAppRouteModule(appInfo.name);
-
-  if (isBabylonAppName(appInfo.name)) {
-    const diagnostics = await prepareBabylonLaunch(runtime);
-    const babylonUrl = resolveBabylonApiBaseUrl(runtime);
-    const agentId = resolveSettingLike(runtime, "BABYLON_AGENT_ID");
-    logger.info(
-      `[app-manager] Babylon launch: url=${babylonUrl} agentId=${agentId ?? "(none)"}`,
-    );
-    return { diagnostics };
-  }
 
   if (typeof routeModule?.prepareLaunch === "function") {
     return (
