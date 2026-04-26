@@ -135,6 +135,8 @@
   "automations.n8n.deleteConfirmMessage": "Eliminar este flujo de trabajo permanentemente. No se puede deshacer.",
   "automations.n8n.deleteConfirmWorkflow": "¿Eliminar \"{{name}}\"? No se puede deshacer.",
   "automations.n8n.deleteFailed": "No se pudo eliminar el flujo de trabajo.",
+  "automations.n8n.detailEmptyBody": "Selecciona un flujo de trabajo en la barra lateral para ver sus detalles, o cambia al panel para crear uno nuevo.",
+  "automations.n8n.detailEmptyHeading": "No hay ningún flujo seleccionado",
   "automations.n8n.deleteWorkflow": "Eliminar flujo de trabajo",
   "automations.n8n.errorDeleteWorkflow": "No se pudo eliminar el flujo de trabajo: {{message}}",
   "automations.n8n.errorLoadStatus": "No se pudo cargar el estado de n8n: {{message}}",

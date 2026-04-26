@@ -135,6 +135,8 @@
   "automations.n8n.deleteConfirmMessage": "永久删除此工作流，此操作无法撤销。",
   "automations.n8n.deleteConfirmWorkflow": "删除“{{name}}”？此操作无法撤销。",
   "automations.n8n.deleteFailed": "删除工作流失败。",
+  "automations.n8n.detailEmptyBody": "从侧边栏选择一个工作流以查看详情，或切换到仪表板创建新的工作流。",
+  "automations.n8n.detailEmptyHeading": "未选择工作流",
   "automations.n8n.deleteWorkflow": "删除工作流",
   "automations.n8n.errorDeleteWorkflow": "删除工作流失败：{{message}}",
   "automations.n8n.errorLoadStatus": "加载 n8n 状态失败：{{message}}",
