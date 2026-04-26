@@ -5,7 +5,7 @@ import type {
   LifeOpsSleepCycle,
   LifeOpsSleepCycleEvidence,
   LifeOpsSleepCycleType,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   buildUtcDateFromLocalParts,
   getLocalDateKey,

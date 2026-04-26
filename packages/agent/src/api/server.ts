@@ -28,13 +28,15 @@ import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { DropService } from "@elizaos/app-elizamaker/drop-service";
 import { setElizaMakerDropService } from "@elizaos/app-elizamaker/drop-service-registry";
-import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
+import { handleKnowledgeRoutes } from "@elizaos/app-knowledge";
 import {
+  ensurePrivyWalletsForCustomUser,
+  isPrivyWalletProvisioningEnabled,
   normalizeJsonRpcUrl,
   probeJsonRpcEndpoint,
   TxService,
-} from "@elizaos/app-steward/api/tx-service";
-import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
+} from "@elizaos/app-steward";
+import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
 // import {
@@ -43,8 +45,10 @@ import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/a
 //   updateWalletTradeLedgerEntryStatus,
 // } from "./wallet-trading-profile.js";
 // Phase 2 extraction: Website-blocker routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
-import { handleTrainingRoutes } from "@elizaos/app-training/routes/training";
-import { handleTrajectoryRoute } from "@elizaos/app-training/routes/trajectory";
+import {
+  handleTrainingRoutes,
+  handleTrajectoryRoute,
+} from "@elizaos/app-training";
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -54,9 +58,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  getStylePresets,
+  normalizeCharacterLanguage,
   resolveApiBindHost,
   resolveServerOnlyPort,
-} from "@elizaos/shared/runtime-env";
+  resolveStylePresetByAvatarIndex,
+} from "@elizaos/shared";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
 import {
@@ -100,10 +107,6 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-import {
-  ensurePrivyWalletsForCustomUser,
-  isPrivyWalletProvisioningEnabled,
-} from "../services/privy-wallets.js";
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
 import { signalAuthExists } from "../services/signal-pairing.js";
 import { streamManager } from "../services/stream-manager.js";
@@ -114,6 +117,12 @@ import {
   telegramAccountAuthStateExists,
   telegramAccountSessionExists,
 } from "../services/telegram-account-auth.js";
+import {
+  sanitizeAccountId as sanitizeWhatsAppAccountId,
+  WhatsAppPairingSession,
+  whatsappAuthExists,
+  whatsappLogout,
+} from "../services/whatsapp-pairing.js";
 // Telegram account auth: moved to @elizaos/plugin-telegram (account-setup-routes + account-auth-service).
 // WhatsApp pairing: route handlers moved to @elizaos/plugin-whatsapp.
 import {
@@ -232,9 +241,10 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-// handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
-// applyWhatsAppQrOverride is still used by plugin-status routes.
-import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
+import {
+  applyWhatsAppQrOverride,
+  handleWhatsAppRoute,
+} from "./whatsapp-routes.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 import { handleXRelayRoute } from "./x-relay-routes.js";
 
@@ -665,6 +675,37 @@ function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
   });
 }
 
+function sanitizeFavoriteAppList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const apps: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    apps.push(trimmed);
+  }
+  return apps;
+}
+
+function readFavoriteAppsFromConfig(config: ElizaConfig): string[] {
+  const ui = (config.ui ?? {}) as Record<string, unknown>;
+  return sanitizeFavoriteAppList(ui.favoriteApps);
+}
+
+function writeFavoriteAppsToConfig(
+  config: ElizaConfig,
+  apps: string[],
+): string[] {
+  const sanitized = sanitizeFavoriteAppList(apps);
+  const ui = (config.ui ?? {}) as Record<string, unknown>;
+  ui.favoriteApps = sanitized;
+  config.ui = ui as ElizaConfig["ui"];
+  saveElizaConfig(config);
+  return sanitized;
+}
+
 // Config redaction, skill validation extracted to server-helpers-config.ts
 // isBlockedObjectKey, redactDeep, redactConfigSecrets, isRedactedSecretValue,
 // stripRedactedPlaceholderValuesDeep imported from server-helpers-config.ts above.
@@ -689,11 +730,6 @@ const resolveMcpServersRejection = _resolveMcpServersRejection;
 // Onboarding / config helpers — extracted to server-helpers-config.ts
 // ---------------------------------------------------------------------------
 
-import {
-  getStylePresets,
-  normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
-} from "@elizaos/shared/onboarding-presets";
 import { pickRandomNames } from "../runtime/onboarding-names.js";
 
 import {
@@ -1752,6 +1788,13 @@ async function handleRequest(
       pathname,
       url,
       logBuffer: state.logBuffer,
+      clearLogBuffer: () => {
+        const previous = state.logBuffer.length;
+        state.logBuffer.length = 0;
+        return previous;
+      },
+      readJsonBody,
+      error,
       eventBuffer: state.eventBuffer,
       initSse: initSseFromChatRoutes,
       writeSseJson: writeSseJsonFromChatRoutes,
@@ -2119,7 +2162,11 @@ async function handleRequest(
   // ═══════════════════════════════════════════════════════════════════════
   // Config routes (extracted to config-routes.ts)
   // ═══════════════════════════════════════════════════════════════════════
-  if (pathname === "/api/config" || pathname === "/api/config/schema") {
+  if (
+    pathname === "/api/config" ||
+    pathname === "/api/config/schema" ||
+    pathname === "/api/config/reload"
+  ) {
     if (
       await handleConfigRoutes({
         req,
@@ -2128,6 +2175,7 @@ async function handleRequest(
         pathname,
         url,
         config: state.config,
+        runtime: state.runtime,
         json,
         error,
         readJsonBody,
@@ -2584,6 +2632,10 @@ async function handleRequest(
       json,
       error,
       runtime: state.runtime,
+      favoriteApps: {
+        read: () => readFavoriteAppsFromConfig(state.config),
+        write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
+      },
     })
   ) {
     return;
@@ -2699,6 +2751,32 @@ async function handleRequest(
         activeTerminalRunCount = Math.max(0, activeTerminalRunCount + delta);
       },
     })
+  ) {
+    return;
+  }
+
+  if (
+    await handleWhatsAppRoute(
+      req,
+      res,
+      pathname,
+      method,
+      {
+        whatsappPairingSessions: state.whatsappPairingSessions ?? new Map(),
+        broadcastWs: state.broadcastWs ?? undefined,
+        config: state.config,
+        runtime: state.runtime ?? undefined,
+        saveConfig: () => saveElizaConfig(state.config),
+        workspaceDir: resolveDefaultAgentWorkspaceDir(),
+      },
+      {
+        sanitizeAccountId: sanitizeWhatsAppAccountId,
+        whatsappAuthExists,
+        whatsappLogout,
+        createWhatsAppPairingSession: (options) =>
+          new WhatsAppPairingSession(options),
+      },
+    )
   ) {
     return;
   }
@@ -2930,6 +3008,7 @@ export async function startApiServer(opts?: {
     pendingRestartReasons: [],
     connectorRouteHandlers: [],
     connectorHealthMonitor: null,
+    whatsappPairingSessions: new Map(),
   };
   const trainingServiceCtor = await resolveTrainingServiceCtor();
   const trainingServiceOptions = {

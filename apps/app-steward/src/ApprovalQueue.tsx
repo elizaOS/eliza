@@ -3,17 +3,15 @@
  * Polls every 10 seconds for new items.
  */
 
+import { Button, PagePanel, Spinner } from "@elizaos/ui";
+import { Check, Clock, Copy, RefreshCw, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { formatWeiValue, getChainName, truncateAddress } from "./chain-utils";
 import type {
   StewardApprovalActionResponse,
   StewardPendingApproval,
   StewardPolicyResult,
 } from "./types/steward";
-import { PagePanel } from "@elizaos/ui/components/composites/page-panel";
-import { Button } from "@elizaos/ui/components/ui/button";
-import { Spinner } from "@elizaos/ui/components/ui/spinner";
-import { Check, Clock, Copy, RefreshCw, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { formatWeiValue, getChainName, truncateAddress } from "./chain-utils";
 
 interface ApprovalQueueProps {
   getStewardPending: () => Promise<StewardPendingApproval[]>;

@@ -7,11 +7,13 @@ interface WhatsAppQrOverlayProps {
   accountId?: string;
   /** Called when QR pairing succeeds — parent should install plugin + close modal. */
   onConnected?: () => void;
+  connectedMessage?: string;
 }
 
 export function WhatsAppQrOverlay({
   accountId = "default",
   onConnected,
+  connectedMessage,
 }: WhatsAppQrOverlayProps) {
   const {
     status,
@@ -47,9 +49,10 @@ export function WhatsAppQrOverlay({
           </span>
         </div>
         <div className="text-2xs mt-1 text-muted">
-          {onConnected
-            ? "Installing WhatsApp plugin and restarting agent..."
-            : "WhatsApp is paired. Auth state is saved for automatic reconnection."}
+          {connectedMessage ??
+            (onConnected
+              ? "Finishing WhatsApp setup..."
+              : "WhatsApp is paired. Auth state is saved for automatic reconnection.")}
         </div>
         {!onConnected && (
           <Button
@@ -125,14 +128,14 @@ export function WhatsAppQrOverlay({
         background: "rgba(255,255,255,0.04)",
       }}
     >
-      <div className="flex items-start gap-4">
+      <div className="flex flex-col items-start gap-4 sm:flex-row">
         {/* QR Code area */}
         <div className="shrink-0">
           {qrDataUrl ? (
             <img
               src={qrDataUrl}
               alt="WhatsApp QR Code"
-              className="w-48 h-48 bg-white dark:bg-white"
+              className="h-40 w-40 bg-white dark:bg-white sm:h-48 sm:w-48"
               style={{
                 imageRendering: "pixelated",
                 border: "1px solid var(--border)",
@@ -140,7 +143,7 @@ export function WhatsAppQrOverlay({
             />
           ) : (
             <div
-              className="w-48 h-48 flex items-center justify-center"
+              className="flex h-40 w-40 items-center justify-center sm:h-48 sm:w-48"
               style={{
                 border: "1px solid var(--border)",
                 background: "var(--bg-hover)",

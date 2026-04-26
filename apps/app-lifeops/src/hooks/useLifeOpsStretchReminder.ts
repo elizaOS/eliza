@@ -1,9 +1,9 @@
-import { client } from "@elizaos/app-core/api";
+import { client } from "@elizaos/app-core";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsOverview,
   LifeOpsReminderInspection,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import type {
   LifeOpsScheduleMergedState,
 } from "../lifeops/schedule-sync-contracts.js";

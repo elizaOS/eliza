@@ -7,44 +7,39 @@ import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { StatusBar, Style } from "@capacitor/status-bar";
-import { App } from "@elizaos/app-core/App";
-import { client } from "@elizaos/app-core/api";
-import {
-  initializeCapacitorBridge,
-  initializeStorageBridge,
-  isElectrobunRuntime,
-  subscribeDesktopBridgeEvent,
-} from "@elizaos/app-core/bridge";
-import { CharacterEditor } from "@elizaos/app-core/components/character/CharacterEditor";
-import type { AppBootConfig, BrandingConfig } from "@elizaos/app-core/config";
-import {
-  getBootConfig,
-  setBootConfig,
-  shouldUseCloudOnlyBranding,
-} from "@elizaos/app-core/config";
 import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
+  App,
+  type AppBootConfig,
+  applyForceFreshOnboardingReset,
+  applyLaunchConnectionFromUrl,
+  type BrandingConfig,
+  CharacterEditor,
+  client,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   dispatchAppEvent,
-  SHARE_TARGET_EVENT,
-  TRAY_ACTION_EVENT,
-} from "@elizaos/app-core/events";
-import {
-  applyForceFreshOnboardingReset,
-  applyLaunchConnectionFromUrl,
+  getBootConfig,
+  initializeCapacitorBridge,
+  initializeStorageBridge,
   installDesktopPermissionsClientPatch,
   installForceFreshOnboardingClientPatch,
   installLocalProviderCloudPreferencePatch,
   isDetachedWindowShell,
+  isElectrobunRuntime,
   resolveWindowShellRoute,
+  setBootConfig,
+  SHARE_TARGET_EVENT,
   shouldInstallMainWindowOnboardingPatches,
+  shouldUseCloudOnlyBranding,
+  subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
-} from "@elizaos/app-core/platform";
-import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops/components/LifeOpsActivitySignalsEffect";
-import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops/platform";
+  TRAY_ACTION_EVENT,
+} from "@elizaos/app-core";
+import { dispatchQueuedLifeOpsGithubCallbackFromUrl } from "@elizaos/app-lifeops";
+import { LifeOpsActivitySignalsEffect } from "@elizaos/app-lifeops";
 // Side-effect: register LifeOps sidebar widgets into the app-core widget registry.
 import "@elizaos/app-lifeops/widgets";
 // Side-effect: register coding-agent (task-coordinator) slots so app-core
@@ -58,17 +53,15 @@ import "@elizaos/app-hyperscape/ui";
 import "@elizaos/app-2004scape/ui";
 import "@elizaos/app-defense-of-the-agents/ui";
 import {
+  AppProvider,
+  applyUiTheme,
   DESKTOP_TRAY_MENU_ITEMS,
   DesktopOnboardingRuntime,
   DesktopSurfaceNavigationRuntime,
   DesktopTrayRuntime,
   DetachedShellRoot,
-} from "@elizaos/app-core/shell";
-import {
-  AppProvider,
-  applyUiTheme,
   loadUiTheme,
-} from "@elizaos/app-core/state";
+} from "@elizaos/app-core";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import { ErrorBoundary } from "@elizaos/ui";
@@ -166,7 +159,7 @@ installDesktopPermissionsClientPatch(client as never);
 // Register custom character editor for app-core's ViewRouter to pick up
 window.__ELIZA_CHARACTER_EDITOR__ = CharacterEditor;
 
-import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import { getStylePresets } from "@elizaos/shared";
 
 // Derive VRM roster from STYLE_PRESETS so character names stay in one place.
 const ELIZA_STYLE_PRESETS = getStylePresets();

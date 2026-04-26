@@ -10,8 +10,12 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { sendJson, sendJsonError, readJsonBody } from "@elizaos/agent/api/http-helpers";
-import { decodePathComponent } from "@elizaos/agent/api/server-helpers";
+import {
+  decodePathComponent,
+  readJsonBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { itIf } from "../../../../test/helpers/conditional-tests.ts";
 import { req } from "../../../../test/helpers/http.ts";

@@ -1,4 +1,4 @@
-import type { LifeOpsActivitySignal } from "@elizaos/app-lifeops/contracts";
+import type { LifeOpsActivitySignal } from "../contracts/index.js";
 import type { IAgentRuntime, UUID } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
@@ -8,7 +8,9 @@ import {
 } from "../lifeops/screen-context.js";
 import { LifeOpsService } from "../lifeops/service.js";
 
-export { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
+export {
+  resolveOwnerEntityId,
+} from "@elizaos/agent";
 
 import {
   analyzeMessages,

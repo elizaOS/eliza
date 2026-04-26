@@ -17,8 +17,13 @@ import dns from "node:dns";
 import type http from "node:http";
 import net from "node:net";
 import { promisify } from "node:util";
-import { type AgentRuntime, logger } from "@elizaos/core";
-import { resolveApiBindHost } from "@elizaos/shared/runtime-env";
+import {
+  type AgentRuntime,
+  logger,
+  type Memory,
+  ModelType,
+} from "@elizaos/core";
+import { resolveApiBindHost } from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import type {
   DatabaseConfig,
@@ -1268,6 +1273,140 @@ async function handleQuery(
 }
 
 // ---------------------------------------------------------------------------
+// Vector similarity search
+// ---------------------------------------------------------------------------
+
+const VECTOR_SEARCH_DEFAULT_LIMIT = 10;
+const VECTOR_SEARCH_MAX_LIMIT = 100;
+const VECTOR_SEARCH_DEFAULT_TABLE = "messages";
+// Mirrors the table allowlist we expose for CRUD via the memory routes —
+// only memory-bearing tables hold embeddings worth searching.
+const VECTOR_SEARCH_ALLOWED_TABLES = new Set<string>([
+  "messages",
+  "memories",
+  "facts",
+  "documents",
+  "knowledge",
+]);
+
+/**
+ * GET  /api/database/vectors/search?query=...&limit=...&table=...&threshold=...
+ * POST /api/database/vectors/search   { query, limit?, table?, threshold? }
+ *
+ * Embeds the query via the runtime's TEXT_EMBEDDING model and runs a vector
+ * similarity search via runtime.searchMemories(). Returns top-k matches with
+ * similarity scores. Owner-only by virtue of running on the agent's own API
+ * port (gated by the existing API token / loopback policy in server.ts).
+ */
+async function handleVectorSearch(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  runtime: AgentRuntime,
+  method: string,
+): Promise<void> {
+  let query: string;
+  let rawLimit: number | undefined;
+  let table: string;
+  let threshold: number | undefined;
+
+  if (method === "POST") {
+    const body = await readJsonBody<{
+      query?: unknown;
+      limit?: unknown;
+      table?: unknown;
+      threshold?: unknown;
+    }>(req, res);
+    if (!body) return;
+    query = typeof body.query === "string" ? body.query.trim() : "";
+    rawLimit = typeof body.limit === "number" ? body.limit : undefined;
+    table =
+      typeof body.table === "string" && body.table.trim()
+        ? body.table.trim()
+        : VECTOR_SEARCH_DEFAULT_TABLE;
+    threshold = typeof body.threshold === "number" ? body.threshold : undefined;
+  } else {
+    const url = new URL(
+      req.url ?? "/",
+      `http://${req.headers.host ?? "localhost"}`,
+    );
+    query = url.searchParams.get("query")?.trim() ?? "";
+    const limitParam = url.searchParams.get("limit");
+    rawLimit = limitParam ? Number(limitParam) : undefined;
+    const tableParam = url.searchParams.get("table")?.trim();
+    table = tableParam || VECTOR_SEARCH_DEFAULT_TABLE;
+    const thresholdParam = url.searchParams.get("threshold");
+    threshold = thresholdParam ? Number(thresholdParam) : undefined;
+  }
+
+  if (!query) {
+    sendJsonError(res, "query is required", 400);
+    return;
+  }
+  if (!VECTOR_SEARCH_ALLOWED_TABLES.has(table)) {
+    sendJsonError(
+      res,
+      `table "${table}" is not searchable. Allowed: ${[...VECTOR_SEARCH_ALLOWED_TABLES].join(", ")}`,
+      400,
+    );
+    return;
+  }
+  const limit = Math.min(
+    Math.max(1, Math.floor(rawLimit ?? VECTOR_SEARCH_DEFAULT_LIMIT)),
+    VECTOR_SEARCH_MAX_LIMIT,
+  );
+
+  let embeddingResult: unknown;
+  try {
+    embeddingResult = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
+      text: query,
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    sendJsonError(res, `Embedding model failed: ${detail}`, 500);
+    return;
+  }
+
+  const embedding = Array.isArray(embeddingResult)
+    ? (embeddingResult as number[])
+    : ((embeddingResult as { embedding?: number[] })?.embedding ?? null);
+
+  if (!embedding || embedding.length === 0) {
+    sendJsonError(res, "Embedding model returned no vector.", 500);
+    return;
+  }
+
+  const searchParams: Parameters<typeof runtime.searchMemories>[0] = {
+    embedding,
+    query,
+    tableName: table,
+    limit,
+    ...(typeof threshold === "number" ? { match_threshold: threshold } : {}),
+  };
+
+  const matches: Memory[] = await runtime.searchMemories(searchParams);
+  const results = matches.map((m) => {
+    const content = m.content as { text?: string } | undefined;
+    return {
+      id: m.id ?? null,
+      text: content?.text ?? "",
+      similarity: (m as { similarity?: number }).similarity ?? null,
+      roomId: m.roomId ?? null,
+      entityId: m.entityId ?? null,
+      createdAt: m.createdAt ?? null,
+      tableName: table,
+    };
+  });
+
+  sendJson(res, {
+    query,
+    table,
+    limit,
+    count: results.length,
+    results,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
@@ -1285,6 +1424,8 @@ async function handleQuery(
  *   PUT    /api/database/tables/:table/rows
  *   DELETE /api/database/tables/:table/rows
  *   POST   /api/database/query
+ *   GET    /api/database/vectors/search
+ *   POST   /api/database/vectors/search
  */
 export async function handleDatabaseRoute(
   req: http.IncomingMessage,
@@ -1337,6 +1478,15 @@ export async function handleDatabaseRoute(
   // ── POST /api/database/query ──────────────────────────────────────────
   if (method === "POST" && pathname === "/api/database/query") {
     await handleQuery(req, res, runtime);
+    return true;
+  }
+
+  // ── GET|POST /api/database/vectors/search ─────────────────────────────
+  if (
+    (method === "GET" || method === "POST") &&
+    pathname === "/api/database/vectors/search"
+  ) {
+    await handleVectorSearch(req, res, runtime, method);
     return true;
   }
 

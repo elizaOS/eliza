@@ -1,5 +1,7 @@
 import process from "node:process";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import {
+  loadElizaConfig,
+} from "@elizaos/agent";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 
 export interface EdgeTtsConfig {

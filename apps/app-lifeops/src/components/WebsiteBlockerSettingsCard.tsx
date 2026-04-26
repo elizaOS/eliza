@@ -1,7 +1,7 @@
 import { Badge, Button, useApp } from "@elizaos/app-core";
 import type { WebsiteBlockerSettingsCardProps } from "../types";
 import { ShieldBan } from "lucide-react";
-import type { PermissionStatus } from "@elizaos/shared/contracts/permissions";
+import type { PermissionStatus } from "@elizaos/shared";
 
 function translate(
   t: (key: string) => string,

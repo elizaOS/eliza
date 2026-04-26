@@ -14,6 +14,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   APP_BLOCKER_ACCESS_ERROR,
   getAppBlockerAccess,
@@ -25,8 +26,6 @@ import {
 } from "./app-blocker.js";
 
 const ACTION_NAME = "OWNER_APP_BLOCK";
-const OWNER_APP_BLOCK_INTENT_RE =
-  /\b(block|blocking|blocked|unblock|unblocking|shield|app block|block apps|phone apps|focus mode|restrict apps)\b/i;
 
 type Subaction = "block" | "unblock" | "status";
 
@@ -69,18 +68,15 @@ export const ownerAppBlockAction: Action & {
 
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
-    return (
-      access.allowed &&
-      typeof message.content?.text === "string" &&
-      OWNER_APP_BLOCK_INTENT_RE.test(message.content.text)
-    );
+    return access.allowed;
   },
 
   parameters: [
     {
       name: "subaction",
-      description: "Required. One of: block, unblock, status.",
-      required: true,
+      description:
+        "One of: block, unblock, status. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {
@@ -162,8 +158,18 @@ export const ownerAppBlockAction: Action & {
       } as ActionResult;
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerAppBlockParameters;
+    const params = (await extractActionParamsViaLlm<OwnerAppBlockParameters>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerAppBlockAction.description ?? "",
+      paramSchema: ownerAppBlockAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as OwnerAppBlockParameters;
     const subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       return {

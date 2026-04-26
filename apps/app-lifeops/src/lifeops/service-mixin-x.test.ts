@@ -17,6 +17,21 @@ function makeRuntime(agentId = "agent-x") {
   } as unknown as ConstructorParameters<typeof LifeOpsService>[0];
 }
 
+function makeCloudAuthedRuntime(apiKey: string, agentId = "agent-x") {
+  return {
+    agentId,
+    getService(serviceType: string) {
+      if (serviceType !== "CLOUD_AUTH") {
+        return null;
+      }
+      return {
+        isAuthenticated: () => true,
+        getApiKey: () => apiKey,
+      };
+    },
+  } as unknown as ConstructorParameters<typeof LifeOpsService>[0];
+}
+
 describe("LifeOps X service mixin", () => {
   beforeEach(() => {
     process.env.TWITTER_API_KEY = "api-key";
@@ -30,7 +45,8 @@ describe("LifeOps X service mixin", () => {
     process.env.TWITTER_API_KEY = ORIGINAL_ENV.TWITTER_API_KEY;
     process.env.TWITTER_API_SECRET_KEY = ORIGINAL_ENV.TWITTER_API_SECRET_KEY;
     process.env.TWITTER_ACCESS_TOKEN = ORIGINAL_ENV.TWITTER_ACCESS_TOKEN;
-    process.env.TWITTER_ACCESS_TOKEN_SECRET = ORIGINAL_ENV.TWITTER_ACCESS_TOKEN_SECRET;
+    process.env.TWITTER_ACCESS_TOKEN_SECRET =
+      ORIGINAL_ENV.TWITTER_ACCESS_TOKEN_SECRET;
     process.env.TWITTER_USER_ID = ORIGINAL_ENV.TWITTER_USER_ID;
     vi.restoreAllMocks();
   });
@@ -99,5 +115,32 @@ describe("LifeOps X service mixin", () => {
     expect(status.feedWrite).toBe(false);
     expect(status.dmRead).toBe(true);
     expect(status.dmWrite).toBe(false);
+  });
+
+  it("treats authenticated cloud auth as managed X configuration", async () => {
+    const service = new LifeOpsService(makeCloudAuthedRuntime("cloud-key"));
+    vi.spyOn(service.repository, "getConnectorGrant").mockResolvedValue(null);
+    vi.spyOn(service.repository, "upsertConnectorGrant").mockResolvedValue();
+    vi.spyOn(service.xManagedClient, "getStatus").mockResolvedValue({
+      provider: "x",
+      side: "owner",
+      mode: "cloud_managed",
+      configured: true,
+      connected: false,
+      reason: "disconnected",
+      identity: null,
+      grantedScopes: [],
+      grantedCapabilities: [],
+      connectionId: null,
+      linkedAt: null,
+      lastUsedAt: null,
+    });
+
+    const status = await service.getXConnectorStatus();
+
+    expect(status.mode).toBe("cloud_managed");
+    expect(status.executionTarget).toBe("cloud");
+    expect(status.availableModes).toContain("cloud_managed");
+    expect(status.configured).toBe(true);
   });
 });

@@ -246,7 +246,7 @@ describe("BrowserWorkspaceView", () => {
   });
 
   it("does not render Discord inside the web iframe fallback", async () => {
-    clientMock!.getBrowserWorkspace.mockResolvedValue({
+    getClientMock().getBrowserWorkspace.mockResolvedValue({
       mode: "web",
       tabs: [
         {

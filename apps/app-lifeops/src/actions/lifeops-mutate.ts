@@ -7,12 +7,13 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { CreateLifeOpsCalendarEventRequest } from "@elizaos/app-lifeops/contracts";
+import type { CreateLifeOpsCalendarEventRequest } from "../contracts/index.js";
 import type {
   AddPaymentSourceRequest,
   LifeOpsPaymentSourceKind,
 } from "../lifeops/payment-types.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -549,8 +550,17 @@ export const lifeOpsMutateAction: Action & {
     state?: State,
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
-    void state;
-    const params = mergeParams(message, options);
+    const merged = mergeParams(message, options);
+    const params = (await extractActionParamsViaLlm<MutateActionParams>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: lifeOpsMutateAction.description ?? "",
+      paramSchema: lifeOpsMutateAction.parameters ?? [],
+      existingParams: merged,
+      requiredFields: ["subaction"],
+    })) as MutateActionParams;
     const subaction = normalizeSubaction(params.subaction);
     if (!subaction) {
       return {
@@ -610,8 +620,8 @@ export const lifeOpsMutateAction: Action & {
     {
       name: "subaction",
       description:
-        "Which write operation. One of: gmail_reply, gmail_manage, mark_read, calendar_create, calendar_update, calendar_delete, reminder_snooze, reminder_complete, reminder_create, payment_source_add, payment_source_delete, payment_csv_import, unsubscribe_sender.",
-      required: true,
+        "Which write operation. One of: gmail_reply, gmail_manage, mark_read, calendar_create, calendar_update, calendar_delete, reminder_snooze, reminder_complete, reminder_create, payment_source_add, payment_source_delete, payment_csv_import, unsubscribe_sender. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const, enum: [...VALID_SUBACTIONS] },
     },
     {

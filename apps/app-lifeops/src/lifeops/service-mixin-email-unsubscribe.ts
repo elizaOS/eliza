@@ -5,7 +5,7 @@ import type {
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   createGmailFilterForSender,
   extractListUnsubscribeOptions,
@@ -26,7 +26,10 @@ import type {
   EmailUnsubscribeScanRequest,
   EmailUnsubscribeStatus,
 } from "./email-unsubscribe-types.js";
-import { resolveGoogleExecutionTarget } from "./google-connector-gateway.js";
+import {
+  resolveGoogleExecutionTarget,
+  resolveGoogleGrants,
+} from "./google-connector-gateway.js";
 import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {
@@ -35,7 +38,10 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import { hasGoogleGmailManageCapability } from "./service-normalize-calendar.js";
+import {
+  hasGoogleGmailManageCapability,
+  hasGoogleGmailTriageCapability,
+} from "./service-normalize-calendar.js";
 
 const DEFAULT_SCAN_MAX_MESSAGES = 200;
 const MAX_SENDERS_RETURNED = 200;
@@ -147,6 +153,10 @@ function aggregateSenders(
     .slice(0, MAX_SENDERS_RETURNED);
 }
 
+function managedGoogleGrantId(grant: LifeOpsConnectorGrant): string {
+  return grant.cloudConnectionId ?? grant.id;
+}
+
 /** @internal */
 export function withEmailUnsubscribe<
   TBase extends Constructor<LifeOpsServiceBase>,
@@ -190,12 +200,6 @@ export function withEmailUnsubscribe<
       requestUrl: URL,
       request: EmailUnsubscribeScanRequest = {},
     ): Promise<EmailSubscriptionScanResult> {
-      const grant = await this.requireGoogleGmailGrant(
-        requestUrl,
-        undefined,
-        undefined,
-        undefined,
-      );
       const query =
         normalizeOptionalString(request.query) ??
         "(category:promotions OR category:updates OR list:* OR unsubscribe) newer_than:180d";
@@ -208,20 +212,72 @@ export function withEmailUnsubscribe<
             : DEFAULT_SCAN_MAX_MESSAGES,
         ),
       );
-      const headers =
-        resolveGoogleExecutionTarget(grant) === "cloud"
-          ? (
-              await this.googleManagedClient.getGmailSubscriptionHeaders({
-                side: grant.side,
-                query,
-                maxResults: maxMessages,
-              })
-            ).headers
-          : await fetchGmailSubscriptionHeaders({
-              accessToken: await this.accessTokenForGrant(grant),
-              query,
-              maxMessages,
-            });
+      const allGrants = (
+        await this.repository.listConnectorGrants(this.agentId())
+      ).filter((grant) => grant.provider === "google");
+      let grants = resolveGoogleGrants({ grants: allGrants }).filter((grant) =>
+        hasGoogleGmailTriageCapability(grant),
+      );
+      if (grants.length === 0) {
+        grants = [
+          await this.requireGoogleGmailGrant(
+            requestUrl,
+            undefined,
+            undefined,
+            undefined,
+          ),
+        ];
+      }
+
+      const results = await Promise.allSettled(
+        grants.map(async (grant) => ({
+          grant,
+          headers:
+            resolveGoogleExecutionTarget(grant) === "cloud"
+              ? (
+                  await this.googleManagedClient.getGmailSubscriptionHeaders({
+                    side: grant.side,
+                    grantId: managedGoogleGrantId(grant),
+                    query,
+                    maxResults: maxMessages,
+                  })
+                ).headers
+              : await fetchGmailSubscriptionHeaders({
+                  accessToken: await this.accessTokenForGrant(grant),
+                  query,
+                  maxMessages,
+                }),
+        })),
+      );
+
+      const headers: GmailSubscriptionMessageHeaders[] = [];
+      let successfulScans = 0;
+      let firstFailure: unknown = null;
+      for (let index = 0; index < results.length; index += 1) {
+        const result = results[index];
+        if (result.status === "fulfilled") {
+          successfulScans += 1;
+          headers.push(...result.value.headers);
+          continue;
+        }
+        firstFailure ??= result.reason;
+        const grant = grants[index];
+        this.logLifeOpsWarn(
+          "email_subscription_scan",
+          `gmail scan unavailable: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+          {
+            grantId: grant?.id,
+            side: grant?.side,
+            mode: grant?.mode,
+          },
+        );
+      }
+      if (successfulScans === 0 && firstFailure) {
+        fail(
+          409,
+          `Gmail subscription scan failed: ${firstFailure instanceof Error ? firstFailure.message : String(firstFailure)}`,
+        );
+      }
       const senders = aggregateSenders(headers);
       const syncedAt = new Date().toISOString();
       return {

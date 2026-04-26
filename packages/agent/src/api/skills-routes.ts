@@ -756,7 +756,10 @@ export async function handleSkillsRoutes(
 
     const description =
       body.description?.trim() || "Describe what this skill does.";
-    const template = `---\nname: ${slug}\ndescription: ${description.replace(/"/g, '\\"')}\n---\n\n## Instructions\n\n[Describe what this skill does and how the agent should use it]\n\n## When to Use\n\nUse this skill when [describe trigger conditions].\n\n## Steps\n\n1. [First step]\n2. [Second step]\n3. [Third step]\n`;
+    const escapedDescription = description
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"');
+    const template = `---\nname: ${slug}\ndescription: ${escapedDescription}\n---\n\n## Instructions\n\n[Describe what this skill does and how the agent should use it]\n\n## When to Use\n\nUse this skill when [describe trigger conditions].\n\n## Steps\n\n1. [First step]\n2. [Second step]\n3. [Third step]\n`;
 
     fs.mkdirSync(skillDir, { recursive: true });
     fs.writeFileSync(path.join(skillDir, "SKILL.md"), template, "utf-8");

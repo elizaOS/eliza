@@ -14,9 +14,9 @@ import { Readable } from "node:stream";
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,
+  type DrizzleDatabase,
   plugin as sqlPlugin,
 } from "@elizaos/plugin-sql";
-import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStore } from "../services/auth-store";
 import { _resetAuthRateLimiter } from "./auth";
@@ -137,10 +137,11 @@ function fakeReq(opts: {
   cookie?: string;
   bearer?: string;
   ip?: string;
+  headers?: http.IncomingHttpHeaders;
 }): http.IncomingMessage {
   const bodyStr = opts.body === undefined ? "" : JSON.stringify(opts.body);
   const stream = Readable.from([bodyStr]) as unknown as http.IncomingMessage;
-  const headers: http.IncomingHttpHeaders = {};
+  const headers: http.IncomingHttpHeaders = { ...(opts.headers ?? {}) };
   if (opts.cookie) headers.cookie = opts.cookie;
   if (opts.bearer) headers.authorization = `Bearer ${opts.bearer}`;
   Object.assign(stream, {
@@ -179,12 +180,14 @@ describe("P1 session routes (real pglite)", () => {
     _resetAuthSessionRoutesLimiter();
     _resetLegacyBearerState();
     delete process.env.ELIZA_API_TOKEN;
+    delete process.env.ELIZA_CLOUD_PROVISIONED;
     delete process.env.MILADY_LEGACY_GRACE_UNTIL;
   });
 
   afterEach(async () => {
     await harness.cleanup();
     delete process.env.ELIZA_API_TOKEN;
+    delete process.env.ELIZA_CLOUD_PROVISIONED;
     delete process.env.MILADY_LEGACY_GRACE_UNTIL;
   });
 
@@ -247,10 +250,39 @@ describe("P1 session routes (real pglite)", () => {
       method: "GET",
       pathname: "/api/auth/me",
       cookie: `${SESSION_COOKIE_NAME}=${sessionId}`,
+      ip: "10.0.0.8",
     });
     const meAfterRes = fakeRes();
     await handleAuthSessionRoutes(meAfterReq, meAfterRes.res, harness.state);
     expect(meAfterRes.status()).toBe(401);
+  });
+
+  it("local /api/auth/me succeeds without a password session", async () => {
+    const res = fakeRes();
+    await handleAuthSessionRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/me",
+        headers: { host: "localhost:31337" },
+      }),
+      res.res,
+      harness.state,
+    );
+
+    expect(res.status()).toBe(200);
+    const body = res.body() as {
+      session: { kind: string; expiresAt: number | null };
+      access: {
+        mode: string;
+        passwordConfigured: boolean;
+        ownerConfigured: boolean;
+      };
+    };
+    expect(body.session.kind).toBe("local");
+    expect(body.session.expiresAt).toBeNull();
+    expect(body.access.mode).toBe("local");
+    expect(body.access.passwordConfigured).toBe(false);
+    expect(body.access.ownerConfigured).toBe(false);
   });
 
   it("setup is one-shot — second call returns 409", async () => {
@@ -332,6 +364,66 @@ describe("P1 session routes (real pglite)", () => {
     expect(extractSessionCookieValue(good.cookies())).not.toBeNull();
   });
 
+  it("local access can set a remote password without current password", async () => {
+    await handleAuthSessionRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/setup",
+        body: {
+          password: "initial secure password 1!",
+          displayName: "alice",
+        },
+      }),
+      fakeRes().res,
+      harness.state,
+    );
+
+    const change = fakeRes();
+    await handleAuthSessionRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/password/change",
+        body: { newPassword: "new secure password 2!" },
+        headers: { host: "localhost:31337" },
+      }),
+      change.res,
+      harness.state,
+    );
+    expect(change.status()).toBe(200);
+
+    const oldLogin = fakeRes();
+    await handleAuthSessionRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/login/password",
+        ip: "10.0.0.8",
+        body: {
+          displayName: "alice",
+          password: "initial secure password 1!",
+        },
+      }),
+      oldLogin.res,
+      harness.state,
+    );
+    expect(oldLogin.status()).toBe(401);
+
+    const newLogin = fakeRes();
+    await handleAuthSessionRoutes(
+      fakeReq({
+        method: "POST",
+        pathname: "/api/auth/login/password",
+        ip: "10.0.0.8",
+        body: {
+          displayName: "alice",
+          password: "new secure password 2!",
+        },
+      }),
+      newLogin.res,
+      harness.state,
+    );
+    expect(newLogin.status()).toBe(200);
+  });
+
   it("legacy bearer migration: pre-grace use emits deprecation header; password setup retires it", async () => {
     process.env.ELIZA_API_TOKEN = "legacy-token-value-1234567890";
 
@@ -345,6 +437,8 @@ describe("P1 session routes (real pglite)", () => {
       method: "GET",
       pathname: "/api/some-thing",
       bearer: "legacy-token-value-1234567890",
+      ip: "10.0.0.8",
+      headers: { host: "10.0.0.2:31337" },
     });
     const res = fakeRes();
     const ok = await ensureCompatApiAuthorizedAsync(req, res.res, {
@@ -373,6 +467,8 @@ describe("P1 session routes (real pglite)", () => {
         method: "GET",
         pathname: "/api/some-thing",
         bearer: "legacy-token-value-1234567890",
+        ip: "10.0.0.8",
+        headers: { host: "10.0.0.2:31337" },
       }),
       post.res,
       { store: harness.store },
@@ -395,11 +491,61 @@ describe("P1 session routes (real pglite)", () => {
         method: "GET",
         pathname: "/api/some-thing",
         bearer: "legacy-token-value-1234567890",
+        ip: "10.0.0.8",
+        headers: { host: "10.0.0.2:31337" },
       }),
       res.res,
       { store: harness.store },
     );
     expect(ok).toBe(false);
     expect(res.status()).toBe(401);
+  });
+
+  it("route auth trusts localhost only, not remote or cloud loopback", async () => {
+    process.env.ELIZA_API_TOKEN = "configured-token-value";
+    const { ensureCompatApiAuthorizedAsync, _resetAuthRateLimiter: reset } =
+      await import("./auth");
+    reset();
+
+    const local = fakeRes();
+    const localOk = await ensureCompatApiAuthorizedAsync(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/secure",
+        headers: { host: "localhost:31337" },
+      }),
+      local.res,
+      { store: harness.store },
+    );
+    expect(localOk).toBe(true);
+
+    const remote = fakeRes();
+    const remoteOk = await ensureCompatApiAuthorizedAsync(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/secure",
+        ip: "10.0.0.8",
+        headers: { host: "10.0.0.2:31337" },
+      }),
+      remote.res,
+      { store: harness.store },
+    );
+    expect(remoteOk).toBe(false);
+    expect(remote.status()).toBe(401);
+
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    reset();
+    const cloudLocal = fakeRes();
+    const cloudLocalOk = await ensureCompatApiAuthorizedAsync(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/secure",
+        headers: { host: "localhost:31337" },
+      }),
+      cloudLocal.res,
+      { store: harness.store },
+    );
+    expect(cloudLocalOk).toBe(false);
+    expect(cloudLocal.status()).toBe(401);
   });
 });

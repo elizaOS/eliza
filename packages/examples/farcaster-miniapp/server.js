@@ -1,5 +1,6 @@
 import express from 'express'
 import cors from 'cors'
+import { randomBytes } from 'node:crypto'
 
 const app = express()
 
@@ -19,7 +20,7 @@ function nowMs() {
 }
 
 function createSessionId() {
-    return `session-${nowMs()}-${Math.random().toString(36).slice(2, 10)}`
+    return `session-${nowMs()}-${randomBytes(6).toString('hex')}`
 }
 
 function getOrCreateSession(sessionId, userId) {

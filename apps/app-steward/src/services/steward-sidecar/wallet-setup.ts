@@ -2,8 +2,7 @@
  * Steward Sidecar — first-launch wallet creation and verification.
  */
 
-import crypto from "node:crypto";
-import { generateApiKey } from "./helpers";
+import { fingerprintRandomToken, generateApiKey } from "./helpers";
 import type { StewardCredentials, StewardSidecarStatus } from "./types";
 import {
   CREDENTIALS_FILE,
@@ -93,10 +92,7 @@ async function performFirstLaunchSetup(
     body: JSON.stringify({
       id: DEFAULT_TENANT_ID,
       name: DEFAULT_TENANT_NAME,
-      apiKeyHash: crypto
-        .createHash("sha256")
-        .update(tenantApiKey)
-        .digest("hex"),
+      apiKeyHash: fingerprintRandomToken(tenantApiKey),
     }),
   });
 

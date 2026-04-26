@@ -5,14 +5,14 @@ export type {
   Platform,
   SystemPermissionDefinition,
   SystemPermissionId,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 
 import type {
   PermissionState,
   Platform,
   SystemPermissionDefinition,
   SystemPermissionId,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 
 /** Local variant uses an index signature (the canonical contract uses explicit keys). */
 export interface AllPermissionsState {

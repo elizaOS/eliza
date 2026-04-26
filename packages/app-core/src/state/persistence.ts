@@ -562,6 +562,75 @@ export function saveFavoriteApps(apps: string[]): void {
   }, undefined);
 }
 
+/**
+ * Hydrate the favorites list from the server-side persisted store
+ * (config.ui.favoriteApps), falling back to the local cache on failure.
+ * Mirrors the result back into localStorage so the next boot is fast.
+ */
+export async function fetchServerFavoriteApps(): Promise<string[] | null> {
+  try {
+    const resp = await fetch("/api/apps/favorites", {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { favoriteApps?: unknown };
+    const sanitized = sanitizeFavoriteApps(data.favoriteApps);
+    saveFavoriteApps(sanitized);
+    return sanitized;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Replace the server-persisted favorites list. Used when the UI commits
+ * a bulk reorder/edit. Best-effort: returns null on failure.
+ */
+export async function replaceServerFavoriteApps(
+  favoriteAppNames: string[],
+): Promise<string[] | null> {
+  try {
+    const resp = await fetch("/api/apps/favorites/replace", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ favoriteAppNames }),
+    });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { favoriteApps?: unknown };
+    const sanitized = sanitizeFavoriteApps(data.favoriteApps);
+    saveFavoriteApps(sanitized);
+    return sanitized;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Toggle a single app's favorite state on the server. Returns the updated
+ * list, or `null` if the request failed (caller should keep optimistic UI
+ * state). Local cache is updated on success.
+ */
+export async function toggleServerFavoriteApp(
+  appName: string,
+  isFavorite: boolean,
+): Promise<string[] | null> {
+  try {
+    const resp = await fetch("/api/apps/favorites", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appName, isFavorite }),
+    });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { favoriteApps?: unknown };
+    const sanitized = sanitizeFavoriteApps(data.favoriteApps);
+    saveFavoriteApps(sanitized);
+    return sanitized;
+  } catch {
+    return null;
+  }
+}
+
 /* ── Recent apps persistence ──────────────────────────────────────────── */
 const RECENT_APPS_KEY = "eliza:recent-apps";
 /** Cap on persisted recency list. Older entries are evicted. */
@@ -747,7 +816,10 @@ function trimPersistedValue(value: unknown): string | undefined {
 
 function normalizeApiBase(value: unknown): string | undefined {
   const trimmed = trimPersistedValue(value);
-  return trimmed?.replace(/\/+$/, "");
+  if (!trimmed) return trimmed;
+  let end = trimmed.length;
+  while (end > 0 && trimmed.charCodeAt(end - 1) === 47) end--;
+  return trimmed.slice(0, end);
 }
 
 export function createPersistedActiveServer(args: {

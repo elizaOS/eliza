@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
 import type http from "node:http";
-import { deriveSolanaAddress } from "@elizaos/agent/api/wallet";
-import { resolveWalletRpcReadiness } from "@elizaos/agent/api/wallet-rpc";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type { StewardSignRequest } from "@elizaos/app-steward/types";
+import {
+  deriveSolanaAddress,
+  loadElizaConfig,
+  resolveWalletRpcReadiness,
+} from "@elizaos/agent";
+import type { StewardSignRequest } from "@elizaos/app-steward";
 import { ethers } from "ethers";
 
 /** @internal Exported for testing. Parse a transaction value string to BigInt. */
@@ -20,8 +22,8 @@ export function safeParseBigInt(value: string): bigint {
 import {
   isStewardConfigured,
   signViaSteward,
-} from "@elizaos/app-steward/routes/steward-bridge";
-import { ensureCompatApiAuthorized } from "./auth";
+} from "@elizaos/app-steward";
+import { ensureRouteAuthorized } from "./auth";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
@@ -273,7 +275,7 @@ async function signLocalBrowserSolanaMessage(
 export async function handleWalletBrowserCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  _state: CompatRuntimeState,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -287,7 +289,7 @@ export async function handleWalletBrowserCompatRoutes(
     return false;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) {
+  if (!(await ensureRouteAuthorized(req, res, state))) {
     return true;
   }
 

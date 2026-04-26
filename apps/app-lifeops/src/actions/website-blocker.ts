@@ -177,13 +177,13 @@ function normalizeWebsiteCandidates(value: unknown): string[] {
   const values = Array.isArray(value)
     ? value
     : typeof value === "string"
-      ? value.split(/\s*\|\|\s*|,|\n/)
+      ? value.slice(0, 10_000).split(/\s{0,256}\|\|\s{0,256}|,|\n/)
       : [];
   return [...new Set(
     values
       .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim())
-      .map((item) => item.replace(/^[\[\]'"]+|[\[\]'"]+$/g, ""))
+      .map((item) => item.trim().slice(0, 1024))
+      .map((item) => item.replace(/^[\[\]'"]{1,32}|[\[\]'"]{1,32}$/g, ""))
       .filter((item) => item.length > 0),
   )];
 }

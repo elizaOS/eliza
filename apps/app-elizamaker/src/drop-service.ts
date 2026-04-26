@@ -10,10 +10,16 @@
 
 import { logger } from "@elizaos/core";
 import { ethers } from "ethers";
-import type { DropStatus, MintResult } from "@elizaos/agent/contracts/drop";
-import type { TxService } from "@elizaos/app-steward/api/tx-service";
+import type {
+  DropStatus,
+  MintResult,
+} from "@elizaos/agent";
+import type { TxService } from "@elizaos/app-steward";
 
-export type { DropStatus, MintResult } from "@elizaos/agent/contracts/drop";
+export type {
+  DropStatus,
+  MintResult,
+} from "@elizaos/agent";
 
 // ── ABI ──────────────────────────────────────────────────────────────────
 

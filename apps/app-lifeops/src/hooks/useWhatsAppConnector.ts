@@ -1,5 +1,5 @@
-import { client } from "@elizaos/app-core/api";
-import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared/contracts/lifeops";
+import { client } from "@elizaos/app-core";
+import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 
 function formatError(cause: unknown, fallback: string): string {

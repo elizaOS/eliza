@@ -13,20 +13,16 @@ import {
   loadElizaConfig,
 } from "@elizaos/agent/config/config";
 import {
+  type CompatRuntimeState,
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
   getCompatApiToken,
   isDevEnvironment,
-} from "@elizaos/app-core/api/auth";
-import {
-  type CompatRuntimeState,
   isLoopbackRemoteAddress,
   readCompatJsonBody,
-} from "@elizaos/app-core/api/compat-route-shared";
-import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "@elizaos/app-core/api/response";
+} from "@elizaos/app-core";
 import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
 import {
   createNodePlatformSecureStore,

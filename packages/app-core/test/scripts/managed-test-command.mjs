@@ -578,6 +578,7 @@ export async function runManagedTestCommand({
         cwd,
         env,
         stdio: "inherit",
+        shell: false,
       });
 
       heartbeatTimer = setInterval(() => {

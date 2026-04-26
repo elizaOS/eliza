@@ -13,7 +13,7 @@
  * @module actions/transfer-token
  */
 
-import { hasAdminAccess } from "@elizaos/agent/security";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   HandlerCallback,

@@ -5,6 +5,10 @@ export {
 } from "./auth.js";
 export { BackupScheduler } from "./backup.js";
 export {
+  normalizeCloudSiteUrl,
+  resolveCloudApiBaseUrl,
+} from "./base-url.js";
+export {
   type BackupInfo,
   type CloudAgent,
   type CloudAgentCreateParams,
@@ -21,3 +25,4 @@ export {
   ConnectionMonitor,
   type ConnectionMonitorCallbacks,
 } from "./reconnect.js";
+export { validateCloudBaseUrl } from "./validate-url.js";

@@ -273,7 +273,7 @@ export function LocalInferencePanel() {
   const catalog = hub.catalog;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <HardwareBadge hardware={hub.hardware} />
       <DeviceBridgeStatusBar />
       <FirstRunOffer
@@ -289,7 +289,7 @@ export function LocalInferencePanel() {
         onUnload={handleUnload}
         busy={busy}
       />
-      <nav className="flex gap-4 border-b border-border/40">
+      <nav className="inline-flex h-8 w-fit items-center rounded-lg border border-border/60 bg-bg/40 p-0.5">
         {(
           [
             ["curated", "Curated"],
@@ -303,10 +303,10 @@ export function LocalInferencePanel() {
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              className={`-mb-px border-b-2 px-1 pb-2 text-sm font-medium transition-colors ${
+              className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
                 active
-                  ? "border-accent text-txt"
-                  : "border-transparent text-muted hover:text-txt"
+                  ? "bg-card text-txt shadow-sm"
+                  : "text-muted hover:text-txt"
               }`}
             >
               <span className="inline-flex items-center gap-1.5">
@@ -362,7 +362,7 @@ export function LocalInferencePanel() {
       )}
 
       <AdvancedSettingsDisclosure title="Local routing">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           <ProvidersList />
           <RoutingMatrix />
           <SlotAssignments
@@ -398,15 +398,14 @@ function ExternalInstalledSummary({
   if (external.length === 0) return null;
 
   return (
-    <section className="space-y-2 border-t border-border/40 pt-4">
-      <header className="space-y-0.5">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
+    <section className="space-y-2 border-t border-border/40 pt-3">
+      <header>
+        <h3
+          className="text-[10px] font-medium uppercase tracking-wider text-muted"
+          title="Milady can load these models without re-downloading."
+        >
           Discovered from other tools
         </h3>
-        <p className="text-xs-tight text-muted">
-          Milady can load these models without re-downloading. We never modify
-          files owned by another tool.
-        </p>
       </header>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
         {external.map((m) => {
@@ -414,7 +413,7 @@ function ExternalInstalledSummary({
           return (
             <div
               key={m.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/60 px-3 py-2"
+              className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-card/60 px-2 py-1.5"
             >
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium text-txt">
@@ -436,7 +435,7 @@ function ExternalInstalledSummary({
               ) : (
                 <Button
                   size="sm"
-                  className="h-8 rounded-lg"
+                  className="h-7 rounded-md px-2 text-xs"
                   onClick={() => onActivate(m.id)}
                   disabled={busy}
                 >

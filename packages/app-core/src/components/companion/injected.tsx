@@ -1,10 +1,10 @@
-import { useBootConfig } from "../../config/boot-config-react";
 import type {
   CompanionInferenceNotice,
   CompanionSceneStatus,
   ResolveCompanionInferenceNoticeArgs,
 } from "../../config/boot-config";
 import { getBootConfig } from "../../config/boot-config";
+import { useBootConfig } from "../../config/boot-config-react";
 
 export function resolveCompanionInferenceNotice(
   args: ResolveCompanionInferenceNoticeArgs,

@@ -1,5 +1,5 @@
 import { client } from "@elizaos/app-core";
-import type { BrowserBridgeCompanionStatus } from "@elizaos/app-lifeops/contracts";
+import type { BrowserBridgeCompanionStatus } from "../contracts/index.js";
 import { useCallback, useEffect, useState } from "react";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 

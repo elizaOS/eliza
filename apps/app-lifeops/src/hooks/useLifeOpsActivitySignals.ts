@@ -1,22 +1,20 @@
 import type {
   CaptureLifeOpsActivitySignalRequest,
   LifeOpsActivitySignal,
-} from "@elizaos/app-lifeops/contracts";
-import { client } from "@elizaos/app-core/api";
-import { isApiError } from "@elizaos/app-core/api/client-types-core";
-import { isElectrobunRuntime } from "@elizaos/app-core/bridge/electrobun-runtime";
+} from "../contracts/index.js";
 import { Capacitor } from "@capacitor/core";
-import {
-  getMobileSignalsPlugin,
-  type MobileSignalsHealthSnapshot,
-  type MobileSignalsSignal,
-  type MobileSignalsSnapshot,
-} from "@elizaos/app-core/bridge/native-plugins";
-import { loadDesktopWorkspaceSnapshot } from "@elizaos/app-core/utils/desktop-workspace";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
-} from "@elizaos/app-core/events";
+  client,
+  getMobileSignalsPlugin,
+  isApiError,
+  isElectrobunRuntime,
+  loadDesktopWorkspaceSnapshot,
+  type MobileSignalsHealthSnapshot,
+  type MobileSignalsSignal,
+  type MobileSignalsSnapshot,
+} from "@elizaos/app-core";
 import { useEffect, useRef } from "react";
 import { dispatchLifeOpsActivitySignalsStatus } from "../events/index.js";
 

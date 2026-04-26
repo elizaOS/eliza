@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  type ProviderStatus,
-  snapshotProviders,
-} from "../../services/local-inference/providers";
+import { client } from "../../api";
+import type { ProviderStatus } from "../../api/client-local-inference";
 
 const KIND_LABEL: Record<ProviderStatus["kind"], string> = {
   "cloud-api": "Cloud API",
@@ -30,8 +28,9 @@ export function ProvidersList() {
 
   const refresh = useCallback(async () => {
     try {
-      const ps = await snapshotProviders();
-      setProviders(ps);
+      const { providers: nextProviders } =
+        await client.getLocalInferenceProviders();
+      setProviders(nextProviders);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load providers");

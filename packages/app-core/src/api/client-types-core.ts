@@ -3,17 +3,20 @@
 // Re-exports from external packages included here.
 // ---------------------------------------------------------------------------
 
-import type { DatabaseProviderType } from "@elizaos/agent/contracts/config";
+import type {
+  DatabaseProviderType,
+  TradePermissionMode as WalletTradePermissionMode,
+} from "@elizaos/agent";
 
 // Use server-types / types only — do not re-export from api/server or
 // api/trajectory-routes (those modules pull the full API + app-training into Vite).
-export type { StreamEventType } from "@elizaos/agent/api/server-types";
 export type {
+  StreamEventType,
+  TrajectoryExportFormat,
   TriggerLastStatus,
   TriggerType,
   TriggerWakeMode,
-} from "@elizaos/agent/triggers";
-export type { TrajectoryExportFormat } from "@elizaos/agent/types";
+} from "@elizaos/agent";
 
 export interface DatabaseStatus {
   provider: DatabaseProviderType;
@@ -129,7 +132,6 @@ export interface ProviderModelRecord {
   category: ProviderModelCategory;
 }
 
-import type { TradePermissionMode as WalletTradePermissionMode } from "@elizaos/agent/contracts/wallet";
 export type TradePermissionMode = WalletTradePermissionMode;
 
 export interface AgentAutomationModeResponse {

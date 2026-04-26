@@ -98,10 +98,8 @@ const CONNECTOR_SCENARIO_DIR = path.join(
   "connector-certification",
 );
 const CONNECTOR_CATALOG_PATH = path.join(
-  REPO_ROOT,
-  "test",
+  import.meta.dirname,
   "scenarios",
-  "lifeops",
   "_catalogs",
   "lifeops-connector-certification.json",
 );

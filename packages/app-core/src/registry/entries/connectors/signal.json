@@ -20,8 +20,16 @@
       "required": false,
       "sensitive": false,
       "label": "Cli Path",
-      "help": "Path to signal-cli executable (alternative to HTTP API)",
+      "help": "Path to signal-cli executable (alternative to HTTP API). Leave blank to resolve signal-cli from PATH and auto-install with Homebrew on macOS/Linux when available; on Windows or without Homebrew, install signal-cli manually and set this path.",
       "advanced": false
+    },
+    "SIGNAL_CLI_AUTO_INSTALL": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Auto Install Cli",
+      "help": "Set false to disable Homebrew auto-install for the default signal-cli binary on macOS/Linux.",
+      "advanced": true
     },
     "SIGNAL_HTTP_URL": {
       "type": "url",

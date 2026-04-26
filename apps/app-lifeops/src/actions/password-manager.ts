@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm, hasOwnerAccess } from "@elizaos/agent";
 import {
   injectCredentialToClipboard,
   listPasswordItems,
@@ -143,15 +143,25 @@ export const passwordManagerAction: Action & {
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),
 
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+  handler: async (runtime, message, state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return failure("PERMISSION_DENIED");
     }
 
     const rawParameters = (options as HandlerOptions | undefined)?.parameters;
-    const params = ((typeof rawParameters === "object" && rawParameters !== null
+    const rawParams = ((typeof rawParameters === "object" && rawParameters !== null
       ? (rawParameters as PasswordManagerParameters)
       : {}) ?? {}) as PasswordManagerParameters;
+    const params = (await extractActionParamsViaLlm<PasswordManagerParameters>({
+      runtime,
+      message,
+      state,
+      actionName: "PASSWORD_MANAGER",
+      actionDescription: passwordManagerAction.description ?? "",
+      paramSchema: passwordManagerAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as PasswordManagerParameters;
 
     const subaction = (params.subaction ?? "").toString().trim().toLowerCase();
     const config = readConfig(runtime);

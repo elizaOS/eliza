@@ -1,13 +1,13 @@
-import type { LifeOpsGmailMessageSummary } from "@elizaos/shared/contracts/lifeops";
-import type {
-  BrowserBridgeAction,
-  BrowserBridgeCompanionStatus,
-} from "@elizaos/plugin-browser-bridge/contracts";
 import type {
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,
+  LifeOpsGmailMessageSummary,
   LifeOpsGmailTriageFeed,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
+import type {
+  BrowserBridgeAction,
+  BrowserBridgeCompanionStatus,
+} from "@elizaos/plugin-browser-bridge";
 import {
   createLifeOpsSubscriptionAudit,
   createLifeOpsSubscriptionCancellation,

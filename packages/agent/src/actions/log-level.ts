@@ -9,7 +9,7 @@ import {
 import {
   getValidationKeywordTerms,
   textIncludesKeywordTerm,
-} from "@elizaos/shared/validation-keywords";
+} from "@elizaos/shared";
 
 const LOG_LEVEL_COMMAND_TERMS = getValidationKeywordTerms(
   "action.logLevel.command",

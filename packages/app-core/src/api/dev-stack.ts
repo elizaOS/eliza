@@ -15,7 +15,7 @@
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 
 export const ELIZA_DEV_STACK_SCHEMA = "elizaos.dev.stack/v1" as const;
 

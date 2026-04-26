@@ -30,9 +30,16 @@ vi.mock("@elizaos/agent/config/config", () => ({
   }),
 }));
 
-vi.mock("@elizaos/agent/api/workbench-helpers", () => ({
-  toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
-}));
+vi.mock("@elizaos/agent/api/workbench-helpers", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@elizaos/agent/api/workbench-helpers")
+    >();
+  return {
+    ...actual,
+    toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
+  };
+});
 
 vi.mock("@elizaos/agent/triggers/runtime", () => ({
   listTriggerTasks: (...args: unknown[]) => listTriggerTasksMock(...args),
@@ -91,8 +98,9 @@ async function startApiHarness(state: CompatRuntimeState): Promise<Harness> {
     } catch (error) {
       if (!res.headersSent) {
         res.statusCode = 500;
-        res.end(String(error));
+        res.end("internal-error");
       }
+      void error;
     }
   });
 

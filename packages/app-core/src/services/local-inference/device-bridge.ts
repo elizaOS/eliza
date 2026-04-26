@@ -557,13 +557,13 @@ export class DeviceBridge {
       if (!pending) return;
       clearTimeout(pending.timeout);
       this.pendingLoads.delete(msg.correlationId);
-      if (msg.ok) {
+      if (msg.ok === false) {
+        pending.reject(new Error(msg.error));
+      } else {
         const device = this.devices.get(pending.routedDeviceId);
         if (device) device.loadedPath = msg.loadedPath;
         pending.resolve();
         this.emitStatus();
-      } else {
-        pending.reject(new Error(msg.error));
       }
       return;
     }
@@ -573,13 +573,13 @@ export class DeviceBridge {
       if (!pending) return;
       clearTimeout(pending.timeout);
       this.pendingUnloads.delete(msg.correlationId);
-      if (msg.ok) {
+      if (msg.ok === false) {
+        pending.reject(new Error(msg.error));
+      } else {
         const device = this.devices.get(pending.routedDeviceId);
         if (device) device.loadedPath = null;
         pending.resolve();
         this.emitStatus();
-      } else {
-        pending.reject(new Error(msg.error));
       }
       return;
     }
@@ -591,10 +591,10 @@ export class DeviceBridge {
       this.pendingGenerates.delete(msg.correlationId);
       // Best-effort purge the persisted copy.
       void this.persistPendingGenerates();
-      if (msg.ok) {
-        pending.resolve(msg.text);
-      } else {
+      if (msg.ok === false) {
         pending.reject(new Error(msg.error));
+      } else {
+        pending.resolve(msg.text);
       }
       return;
     }

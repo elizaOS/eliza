@@ -2,19 +2,17 @@ import crypto from "node:crypto";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
 import {
+  buildTriggerConfig,
+  buildTriggerMetadata,
   getTriggerLimit,
   listTriggerTasks,
+  normalizeTriggerDraft,
   readTriggerConfig,
   taskToTriggerSummary,
   TRIGGER_TASK_NAME,
   TRIGGER_TASK_TAGS,
   triggersFeatureEnabled,
-} from "@elizaos/agent/triggers/runtime";
-import {
-  buildTriggerConfig,
-  buildTriggerMetadata,
-  normalizeTriggerDraft,
-} from "@elizaos/agent/triggers/scheduling";
+} from "@elizaos/agent";
 
 type ScheduledTriggerTaskResult = {
   duplicateTaskId?: UUID;

@@ -3,8 +3,10 @@ import type {
 	Action,
 	ActionExample,
 	ActionResult,
+	CharacterSettings,
 	HandlerCallback,
 	IAgentRuntime,
+	JsonValue,
 	Memory,
 	State,
 } from "../../../../types/index.ts";
@@ -18,8 +20,14 @@ type SetVoiceConfigParameters = {
 	modelId?: string;
 };
 
+type JsonObject = Record<string, JsonValue>;
+
 function isVoiceProvider(value: unknown): value is VoiceProvider {
 	return value === "elevenlabs" || value === "edge";
+}
+
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -80,7 +88,7 @@ export const setVoiceConfigAction: Action = {
 
 	handler: async (
 		runtime: IAgentRuntime,
-		message: Memory,
+		_message: Memory,
 		_state?: State,
 		options?: Record<string, unknown>,
 		callback?: HandlerCallback,
@@ -114,13 +122,12 @@ export const setVoiceConfigAction: Action = {
 		}
 
 		try {
-			const existingSettings =
-				(runtime.character.settings as Record<string, unknown> | undefined) ??
-				{};
-			const existingVoice =
-				(existingSettings.voice as Record<string, unknown> | undefined) ?? {};
+			const existingSettings = runtime.character.settings ?? {};
+			const existingVoice = isJsonObject(existingSettings.voice)
+				? existingSettings.voice
+				: {};
 
-			const nextVoice: Record<string, unknown> = {
+			const nextVoice: JsonObject = {
 				...existingVoice,
 				provider,
 				voiceId,
@@ -135,11 +142,13 @@ export const setVoiceConfigAction: Action = {
 				delete nextVoice.model_id;
 			}
 
+			const nextSettings: CharacterSettings = {
+				...existingSettings,
+				voice: nextVoice,
+			};
+
 			const result = await persistCharacterPatch(runtime, {
-				settings: {
-					...existingSettings,
-					voice: nextVoice,
-				},
+				settings: nextSettings,
 			});
 
 			if (!result.success) {

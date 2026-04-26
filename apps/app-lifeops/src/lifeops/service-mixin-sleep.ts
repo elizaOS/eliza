@@ -3,7 +3,7 @@ import type {
   LifeOpsSleepHistoryEpisode,
   LifeOpsSleepHistoryResponse,
   LifeOpsSleepRegularityResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {

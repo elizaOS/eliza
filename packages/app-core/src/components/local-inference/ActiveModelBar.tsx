@@ -11,11 +11,6 @@ interface ActiveModelBarProps {
   busy: boolean;
 }
 
-/**
- * Thin strip above the catalog showing which model is currently loaded
- * (and a quick way to unload it). When nothing is active this is empty
- * so the layout doesn't jump as state changes.
- */
 export function ActiveModelBar({
   active,
   installed,
@@ -26,22 +21,39 @@ export function ActiveModelBar({
 
   const current = installed.find((m) => m.id === active.modelId);
   const label = current?.displayName ?? active.modelId;
+  const status =
+    active.status === "loading"
+      ? "loading"
+      : active.status === "ready"
+        ? "ready"
+        : `error: ${active.error ?? "unknown"}`;
+  const dotClass =
+    active.status === "error"
+      ? "bg-danger"
+      : active.status === "loading"
+        ? "bg-warn"
+        : "bg-ok";
 
   return (
-    <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 flex items-center gap-3 text-sm">
+    <div
+      className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-2 py-1.5 text-xs"
+      title={`${label} · ${status}`}
+    >
       <span
-        className="inline-flex h-2 w-2 rounded-full bg-emerald-500"
+        className={`inline-flex h-2 w-2 rounded-full ${dotClass}`}
         aria-hidden
       />
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1 truncate">
         <span className="font-medium">{label}</span>
-        <span className="ml-2 text-xs text-muted-foreground">
-          {active.status === "loading" && "loading…"}
-          {active.status === "ready" && "ready"}
-          {active.status === "error" && `error: ${active.error ?? "unknown"}`}
-        </span>
+        <span className="ml-1.5 text-muted">{status}</span>
       </div>
-      <Button size="sm" variant="outline" onClick={onUnload} disabled={busy}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 rounded-md px-2 text-xs"
+        onClick={onUnload}
+        disabled={busy}
+      >
         Unload
       </Button>
     </div>

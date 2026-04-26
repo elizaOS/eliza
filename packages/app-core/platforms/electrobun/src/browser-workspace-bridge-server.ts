@@ -28,13 +28,27 @@ function isLoopback(addr: string | undefined): boolean {
   return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
 }
 
+function scrubStack(value: unknown): unknown {
+  if (value instanceof Error) return { error: value.message || "Internal error" };
+  if (Array.isArray(value)) return value.map(scrubStack);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k === "stack" || k === "stackTrace") continue;
+      out[k] = scrubStack(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 function json(
   res: http.ServerResponse,
   status: number,
   body: Record<string, unknown>,
 ): void {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(body));
+  res.end(JSON.stringify(scrubStack(body)));
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage): Promise<T | null> {

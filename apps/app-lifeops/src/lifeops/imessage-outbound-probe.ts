@@ -1,7 +1,5 @@
-import {
-  DEFAULT_CHAT_DB_PATH,
-  openChatDb,
-} from "../../../../plugins/plugin-imessage/typescript/src/index.js";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
   createLifeOpsActivitySignal,
   type LifeOpsRepository,
@@ -17,7 +15,23 @@ export async function probeIMessageOutboundActivity(args: {
   if (process.platform !== "darwin") {
     return;
   }
-  const reader = await openChatDb(args.dbPath ?? process.env.IMESSAGE_DB_PATH ?? DEFAULT_CHAT_DB_PATH);
+  // Dynamic import: openChatDb / DEFAULT_CHAT_DB_PATH ship in the local
+  // workspace plugin but are absent from the published @elizaos/plugin-imessage
+  // tarball. Static imports would crash module load on non-darwin CI builds
+  // that resolve the plugin from npm.
+  const mod = (await import("@elizaos/plugin-imessage")) as {
+    openChatDb?: (path: string) => Promise<{
+      getLatestOwnMessageTimestamp: () => number | null;
+      close: () => void;
+    } | null>;
+    DEFAULT_CHAT_DB_PATH?: string;
+  };
+  if (typeof mod.openChatDb !== "function") {
+    return;
+  }
+  const defaultPath =
+    mod.DEFAULT_CHAT_DB_PATH ?? join(homedir(), "Library", "Messages", "chat.db");
+  const reader = await mod.openChatDb(args.dbPath ?? process.env.IMESSAGE_DB_PATH ?? defaultPath);
   if (!reader) {
     return;
   }

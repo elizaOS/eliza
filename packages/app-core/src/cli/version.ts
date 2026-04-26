@@ -1,3 +1,5 @@
-import { resolveElizaVersion } from "@elizaos/agent/version-resolver";
+import {
+  resolveElizaVersion,
+} from "@elizaos/agent";
 
 export const CLI_VERSION = resolveElizaVersion(import.meta.url);

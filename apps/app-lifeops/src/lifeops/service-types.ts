@@ -1,7 +1,7 @@
 import type {
   LifeOpsCircadianState,
   LifeOpsWorkflowRun,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import type { IAgentRuntime } from "@elizaos/core";
 
 export type LifeOpsWorkflowSchedulerState = {

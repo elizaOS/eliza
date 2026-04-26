@@ -11,25 +11,71 @@ import { AgentEventService } from "@elizaos/core";
 import { launchAppAction, stopAppAction } from "../actions/app-control.js";
 import { browserSessionAction } from "../actions/browser-session.js";
 import {
+  executeDatabaseQueryAction,
+  getTableDataAction,
+  listDatabaseTablesAction,
+  searchVectorsAction,
+} from "../actions/database.js";
+import {
+  getRelationshipActivityAction,
   linkEntityAction,
   readEntityAction,
+  resolveMergeCandidateAction,
   searchEntityAction,
 } from "../actions/entity-actions.js";
 import { extractPageAction } from "../actions/extract-page.js";
+import {
+  clearLogsAction,
+  exportLogsAction,
+  queryLogsAction,
+} from "../actions/logs.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
+import {
+  editMemoryAction,
+  forgetMemoryAction,
+  recallMemoryFilteredAction,
+} from "../actions/memories.js";
 import { readChannelAction } from "../actions/read-channel.js";
 import { readMessagesAction } from "../actions/read-messages.js";
 import { restartAction } from "../actions/restart.js";
+import {
+  describeRegisteredActionsAction,
+  getRuntimeStatusAction,
+  reloadRuntimeConfigAction,
+  restartRuntimeAction,
+} from "../actions/runtime.js";
 import { searchConversationsAction } from "../actions/search-conversations.js";
 import { sendAdminMessageAction } from "../actions/send-admin-message.js";
 import { setUserNameAction } from "../actions/set-user-name.js";
+import {
+  toggleAutoTrainingAction,
+  toggleCapabilityAction,
+  updateAiProviderAction,
+  updateIdentityAction,
+} from "../actions/settings-actions.js";
 import {
   addRegisteredSkillSlug,
   clearRegisteredSkillSlugs,
   skillCommandAction,
 } from "../actions/skill-command.js";
+import {
+  archiveCodingTaskAction,
+  reopenCodingTaskAction,
+} from "../actions/tasks-coding.js";
 import { terminalAction } from "../actions/terminal.js";
+import {
+  annotateTrajectoryAction,
+  exportTrajectoryDatasetAction,
+  queryTrajectoriesAction,
+} from "../actions/trajectories.js";
+import { updateOwnerNameAction } from "../actions/update-owner-name.js";
 import { webSearchAction } from "../actions/web-search.js";
+import {
+  createWorkflowAction,
+  deleteWorkflowAction,
+  promoteTaskToWorkflowAction,
+  toggleWorkflowActiveAction,
+} from "../actions/workflow/index.js";
 import { lateJoinWhitelistEvaluator } from "../evaluators/late-join-whitelist.js";
 import { adminPanelProvider } from "../providers/admin-panel.js";
 import { adminTrustProvider } from "../providers/admin-trust.js";
@@ -54,7 +100,10 @@ import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import { createWorkspaceProvider } from "../providers/workspace-provider.js";
 import { ElizaCharacterPersistenceService } from "../services/character-persistence.js";
 import { createTriggerTaskAction } from "../triggers/action.js";
+import { deleteTriggerTaskAction } from "../triggers/delete-trigger.js";
+import { runTriggerNowAction } from "../triggers/run-trigger.js";
 import { registerTriggerTaskWorker } from "../triggers/runtime.js";
+import { updateTriggerTaskAction } from "../triggers/update-trigger.js";
 import { setCustomActionsRuntime } from "./custom-actions.js";
 
 export type ElizaPluginConfig = {
@@ -207,6 +256,13 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       sendAdminMessageAction,
       terminalAction,
       createTriggerTaskAction,
+      updateTriggerTaskAction,
+      deleteTriggerTaskAction,
+      runTriggerNowAction,
+      createWorkflowAction,
+      deleteWorkflowAction,
+      toggleWorkflowActiveAction,
+      promoteTaskToWorkflowAction,
       manageTasksAction,
       setUserNameAction,
       skillCommandAction,
@@ -218,7 +274,34 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       searchEntityAction,
       linkEntityAction,
       readEntityAction,
+      resolveMergeCandidateAction,
+      getRelationshipActivityAction,
+      updateOwnerNameAction,
       readMessagesAction,
+      updateIdentityAction,
+      updateAiProviderAction,
+      toggleCapabilityAction,
+      toggleAutoTrainingAction,
+      // Observability / introspection actions
+      queryLogsAction,
+      exportLogsAction,
+      clearLogsAction,
+      getRuntimeStatusAction,
+      describeRegisteredActionsAction,
+      reloadRuntimeConfigAction,
+      restartRuntimeAction,
+      listDatabaseTablesAction,
+      getTableDataAction,
+      executeDatabaseQueryAction,
+      searchVectorsAction,
+      queryTrajectoriesAction,
+      exportTrajectoryDatasetAction,
+      annotateTrajectoryAction,
+      recallMemoryFilteredAction,
+      forgetMemoryAction,
+      editMemoryAction,
+      archiveCodingTaskAction,
+      reopenCodingTaskAction,
     ],
   };
 

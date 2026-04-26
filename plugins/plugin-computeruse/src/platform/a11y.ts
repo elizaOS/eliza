@@ -199,7 +199,7 @@ if ($parent) {
 $lines -join [Environment]::NewLine
 `;
     const output = execSync(
-      `powershell -Command "${psScript.replace(/"/g, '\\"')}"`,
+      `powershell -Command "${psScript.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`,
       {
         encoding: "utf-8",
         timeout: 10000,

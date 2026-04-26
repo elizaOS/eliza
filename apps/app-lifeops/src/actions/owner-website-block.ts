@@ -20,6 +20,7 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
@@ -45,7 +46,7 @@ interface OwnerWebsiteBlockParameters {
 }
 
 const HOSTNAME_ONLY_RE =
-  /^(?:(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/[^\s]*)?)(?:\s*(?:,|and)\s*(?:(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/[^\s]*)?))*$/i;
+  /^(?:(?:https?:\/\/)?(?:www\.)?[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,8}(?:\/[^\s]{0,1024})?)(?:\s{0,16}(?:,|and)\s{0,16}(?:(?:https?:\/\/)?(?:www\.)?[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,8}(?:\/[^\s]{0,1024})?)){0,16}$/i;
 
 const DIRECT_CONFIRMATION_RE =
   /^(?:yes|yep|yeah|sure|ok|okay|please do|do it|do it now|actually do it now|go ahead|confirm|confirmed)\b/i;
@@ -56,7 +57,8 @@ function normalizeText(value: string): string {
 
 function messageLooksLikeHostnameOnly(text: string): boolean {
   const trimmed = text.trim();
-  return trimmed.length > 0 && HOSTNAME_ONLY_RE.test(trimmed);
+  if (trimmed.length === 0 || trimmed.length > 4096) return false;
+  return HOSTNAME_ONLY_RE.test(trimmed);
 }
 
 function parseDirectJsonObject(
@@ -356,8 +358,8 @@ export const ownerWebsiteBlockAction: Action & {
     {
       name: "subaction",
       description:
-        "Required. One of: block, unblock, status, request_permission.",
-      required: true,
+        "One of: block, unblock, status, request_permission. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {
@@ -468,8 +470,18 @@ export const ownerWebsiteBlockAction: Action & {
       } as ActionResult;
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerWebsiteBlockParameters;
+    const params = (await extractActionParamsViaLlm<OwnerWebsiteBlockParameters>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerWebsiteBlockAction.description ?? "",
+      paramSchema: ownerWebsiteBlockAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as OwnerWebsiteBlockParameters;
     let subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       const plan = await resolveOwnerWebsiteBlockPlanWithLlm({

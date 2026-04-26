@@ -18,7 +18,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
+import { asNonEmptyString, asRecord } from "@elizaos/shared";
 import {
   extractRoleIntentWithLlm,
   looksLikeRoleIntent,
@@ -118,10 +118,11 @@ function asString(value: unknown): string | null {
 }
 
 function normalizeEntityLookupName(raw: string): string | null {
-  const normalized = raw
+  const safeRaw = raw.length > 1024 ? raw.slice(0, 1024) : raw;
+  const normalized = safeRaw
     .trim()
-    .replace(/^@+/, "")
-    .replace(/[.!?,;:]+$/g, "")
+    .replace(/^@{1,1024}/, "")
+    .replace(/[.!?,;:]{1,1024}$/g, "")
     .trim();
   if (!normalized || normalized.length > MAX_USERNAME_LENGTH) {
     return null;

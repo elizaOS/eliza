@@ -11,34 +11,31 @@
  */
 
 import type {
+  AllPermissionsState,
   AudioGenConfig,
   AudioGenProvider,
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
   CustomActionDef,
   CustomActionHandler,
   DatabaseProviderType,
+  DropStatus,
   ImageConfig,
   ImageProvider,
   MediaConfig,
   MediaMode,
+  MintResult,
+  PermissionState,
+  PermissionStatus,
   ReleaseChannel,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+  VerificationResult,
   VideoConfig,
   VideoProvider,
   VisionConfig,
   VisionProvider,
-} from "@elizaos/agent/contracts/config";
-import type { DropStatus, MintResult } from "@elizaos/agent/contracts/drop";
-import type {
-  AllPermissionsState,
-  PermissionState,
-  PermissionStatus,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-} from "@elizaos/agent/contracts/permissions";
-import type { VerificationResult } from "@elizaos/agent/contracts/verification";
-import type {
-  BrowserWorkspaceSnapshot,
-  BrowserWorkspaceTab,
-} from "@elizaos/agent/services/browser-workspace";
+} from "@elizaos/agent";
 import type {
   StewardApprovalActionResponse,
   StewardApprovalInfo,
@@ -57,7 +54,7 @@ import type {
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-} from "@elizaos/app-steward/types";
+} from "@elizaos/app-steward";
 import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
@@ -83,13 +80,13 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcProviderId,
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import type {
   CloudProviderOption,
   OnboardingConnectorConfig as ConnectorConfig,
@@ -105,7 +102,7 @@ import type {
   StylePreset,
   SubscriptionProviderStatus,
   SubscriptionStatusResponse,
-} from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";

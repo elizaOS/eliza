@@ -6,8 +6,10 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
   StartLifeOpsGoogleConnectorResponse,
-} from "@elizaos/app-lifeops/contracts";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+} from "../contracts/index.js";
+import {
+  resolveOAuthDir,
+} from "@elizaos/agent";
 import {
   googleCapabilitiesToScopes,
   googleScopesToCapabilities,
@@ -15,6 +17,12 @@ import {
   unionGoogleCapabilities,
 } from "./google-scopes.js";
 import { rewriteGoogleUrlForMock } from "./google-fetch.js";
+import {
+  decryptTokenEnvelope,
+  encryptTokenPayload,
+  isEncryptedTokenEnvelope,
+  resolveTokenEncryptionKey,
+} from "./token-encryption.js";
 
 const GOOGLE_AUTHORIZATION_ENDPOINT =
   "https://accounts.google.com/o/oauth2/v2/auth";
@@ -473,27 +481,43 @@ function resolveTokenPath(
   return path.join(tokenStorageRoot(env), tokenRef);
 }
 
+function decodeStoredGoogleToken(
+  rawJson: string,
+): StoredGoogleConnectorToken | null {
+  const parsed = JSON.parse(rawJson) as Partial<StoredGoogleConnectorToken>;
+  if (!parsed || typeof parsed !== "object") {
+    return null;
+  }
+  return {
+    ...(parsed as StoredGoogleConnectorToken),
+    side: parsed.side === "agent" ? "agent" : "owner",
+  };
+}
+
 function readStoredGoogleTokenFile(
   tokenRef: string,
   env: NodeJS.ProcessEnv = process.env,
 ): StoredGoogleConnectorToken | null {
   const filePath = resolveTokenPath(tokenRef, env);
+  let rawFileContents: string;
   try {
-    const raw = fs.readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<StoredGoogleConnectorToken>;
-    if (!parsed || typeof parsed !== "object") {
-      return null;
-    }
-    return {
-      ...(parsed as StoredGoogleConnectorToken),
-      side: parsed.side === "agent" ? "agent" : "owner",
-    };
+    rawFileContents = fs.readFileSync(filePath, "utf-8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return null;
     }
     throw error;
   }
+  const parsedRaw = JSON.parse(rawFileContents);
+  if (isEncryptedTokenEnvelope(parsedRaw)) {
+    const key = resolveTokenEncryptionKey(tokenStorageRoot(env), env);
+    const plaintext = decryptTokenEnvelope(parsedRaw, key);
+    return decodeStoredGoogleToken(plaintext);
+  }
+  // Legacy plaintext token — read it as-is and let the next write
+  // re-encrypt. We do NOT re-write here so that read paths stay free of
+  // side effects.
+  return decodeStoredGoogleToken(rawFileContents);
 }
 
 function writeStoredGoogleTokenFile(
@@ -503,7 +527,10 @@ function writeStoredGoogleTokenFile(
 ): void {
   const filePath = resolveTokenPath(tokenRef, env);
   ensureTokenStorageDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, JSON.stringify(token, null, 2), {
+  const credentialsRoot = tokenStorageRoot(env);
+  const key = resolveTokenEncryptionKey(credentialsRoot, env);
+  const envelope = encryptTokenPayload(JSON.stringify(token), key);
+  fs.writeFileSync(filePath, JSON.stringify(envelope, null, 2), {
     encoding: "utf-8",
     mode: 0o600,
   });

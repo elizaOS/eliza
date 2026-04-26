@@ -6,7 +6,7 @@ const USER_REQUEST_WRAPPER = /<user_request>\s*([\s\S]*?)\s*<\/user_request>/i;
 const LANGUAGE_INSTRUCTION_SUFFIX = /\n*\[language instruction:[^\]]*\]\s*$/i;
 
 export function extractUserText(raw: string): string {
-	let text = raw;
+	let text = raw.length > 100_000 ? raw.slice(0, 100_000) : raw;
 	if (text.trimStart().startsWith(KNOWLEDGE_AUGMENTATION_PREFIX)) {
 		const match = text.match(USER_REQUEST_WRAPPER);
 		if (match?.[1]) {

@@ -96,7 +96,9 @@ function extractXmlTag(
 const TRAILING_PARTIAL_TAG_RE = /<\/?[a-zA-Z][^>]*$|<\/?$/s;
 
 export function normalizeDisplayText(text: string): string {
-  let normalized = text;
+  // Bound input length to keep the regex passes linear in adversarial cases.
+  const MAX_DISPLAY_LEN = 200_000;
+  let normalized = text.length > MAX_DISPLAY_LEN ? text.slice(0, MAX_DISPLAY_LEN) : text;
 
   // Hide framework-selected actions and tool params from chat bubbles.
   normalized = normalized.replace(ACTION_XML_RE, "");

@@ -1,5 +1,5 @@
 import type { AgentRuntime } from "@elizaos/core";
-import type { LifeOpsGoalDefinition } from "@elizaos/app-lifeops/contracts";
+import type { LifeOpsGoalDefinition } from "@elizaos/app-lifeops";
 import { describe, expect, it } from "vitest";
 import {
   buildGoalCreateExtractionPrompt,

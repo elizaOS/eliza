@@ -3,9 +3,9 @@ import type {
   LifeOpsTelegramAuthState,
   LifeOpsTelegramConnectorStatus,
   VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
-import { client } from "@elizaos/app-core/api";
+import { client } from "@elizaos/app-core";
 
 function formatError(cause: unknown, fallback: string): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {

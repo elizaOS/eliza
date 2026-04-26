@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
 import {
   CalendlyError,
   createCalendlySingleUseLink,
@@ -149,8 +149,8 @@ export const calendlyAction: Action = {
     {
       name: "subaction",
       description:
-        "One of: list_event_types, availability, upcoming_events, single_use_link.",
-      required: true,
+        "One of: list_event_types, availability, upcoming_events, single_use_link. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {
@@ -231,7 +231,7 @@ export const calendlyAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
   ): Promise<ActionResult> => {
     if (!(await hasAdminAccess(runtime, message))) {
@@ -250,9 +250,19 @@ export const calendlyAction: Action = {
     }
 
     const rawParameters = (options as HandlerOptions | undefined)?.parameters;
-    const params = ((typeof rawParameters === "object" && rawParameters !== null
+    const rawParams = ((typeof rawParameters === "object" && rawParameters !== null
       ? (rawParameters as CalendlyParameters)
       : {}) ?? {}) as CalendlyParameters;
+    const params = (await extractActionParamsViaLlm<CalendlyParameters>({
+      runtime,
+      message,
+      state,
+      actionName: "CALENDLY",
+      actionDescription: calendlyAction.description ?? "",
+      paramSchema: calendlyAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as CalendlyParameters;
     const subaction = parseSubaction(params.subaction);
     const eventTypeUri = coerceString(params.eventTypeUri);
     const startDate = coerceString(params.startDate);

@@ -295,21 +295,23 @@ async function fetchReleases() {
 async function writePayload(payload) {
   await mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
   await writeFile(OUTPUT_PATH, toModule(payload));
-  const biomeCommand = process.platform === "win32" ? "cmd.exe" : "bunx";
-  const biomeArgs =
-    process.platform === "win32"
-      ? [
-          "/d",
-          "/s",
-          "/c",
-          "bunx",
-          "@biomejs/biome",
-          "format",
-          "--write",
-          OUTPUT_PATH,
-        ]
-      : ["@biomejs/biome", "format", "--write", OUTPUT_PATH];
-  execFileSync(biomeCommand, biomeArgs, { stdio: "ignore" });
+  // Use the relative path under REPO_ROOT to avoid passing an absolute path
+  // string through the spawn invocation; biome resolves it from cwd.
+  const relOutput = path.relative(REPO_ROOT, OUTPUT_PATH);
+  const biomeArgs = ["@biomejs/biome", "format", "--write", relOutput];
+  if (process.platform === "win32") {
+    execFileSync("bunx.cmd", biomeArgs, {
+      stdio: "ignore",
+      cwd: REPO_ROOT,
+      shell: false,
+    });
+  } else {
+    execFileSync("bunx", biomeArgs, {
+      stdio: "ignore",
+      cwd: REPO_ROOT,
+      shell: false,
+    });
+  }
 }
 
 async function main() {

@@ -1,9 +1,10 @@
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent/api";
 import {
   type AgentAdminRouteState,
+  type ElizaConfig,
   handleAgentAdminRoutes as handleAutonomousAgentAdminRoutes,
-} from "@elizaos/agent/api/agent-admin-routes";
-import type { ElizaConfig } from "@elizaos/agent/config/types";
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/agent";
 
 export type { AgentAdminRouteState };
 

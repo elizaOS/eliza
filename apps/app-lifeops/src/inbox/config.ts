@@ -1,4 +1,6 @@
-import { loadElizaConfig } from "@elizaos/agent/config/config";
+import {
+  loadElizaConfig,
+} from "@elizaos/agent";
 import type { InboxTriageConfig } from "./types.js";
 
 /**

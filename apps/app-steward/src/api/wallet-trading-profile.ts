@@ -13,7 +13,7 @@ import type {
   WalletTradingProfileSourceFilter,
   WalletTradingProfileTokenBreakdown,
   WalletTradingProfileWindow,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 
 const WALLET_PROFILE_LEDGER_VERSION = 1;
 const MAX_WALLET_PROFILE_LEDGER_ENTRIES = 2000;

@@ -6,7 +6,7 @@ import {
 import type {
   LifeOpsTelegramDialogSummary,
   VerifyLifeOpsTelegramConnectorResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { TelegramClient } from "telegram";
 import { StringSession } from "telegram/sessions/index.js";
 import type { StoredTelegramConnectorToken } from "./telegram-auth.js";
@@ -15,7 +15,9 @@ import { readStoredTelegramToken } from "./telegram-auth.js";
 export interface TelegramLocalClientLike {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
-  getDialogs(args: { limit: number }): Promise<ReadonlyArray<TelegramDialogLike>>;
+  getDialogs(args: {
+    limit: number;
+  }): Promise<ReadonlyArray<TelegramDialogLike>>;
   getEntity(target: unknown): Promise<unknown>;
   sendMessage(
     entity: unknown,
@@ -145,8 +147,9 @@ function toIsoDate(value: Date | number | string | undefined): string | null {
     return value.toISOString();
   }
   if (typeof value === "number" && Number.isFinite(value)) {
-    return new Date(value < 1_000_000_000_000 ? value * 1000 : value)
-      .toISOString();
+    return new Date(
+      value < 1_000_000_000_000 ? value * 1000 : value,
+    ).toISOString();
   }
   if (typeof value === "string" && value.trim().length > 0) {
     const parsed = Date.parse(value);
@@ -168,7 +171,9 @@ function normalizeDialogTitle(dialog: TelegramDialogLike): string {
   return title || "Untitled chat";
 }
 
-function dialogSummary(dialog: TelegramDialogLike): LifeOpsTelegramDialogSummary {
+function dialogSummary(
+  dialog: TelegramDialogLike,
+): LifeOpsTelegramDialogSummary {
   return {
     id: serializeTelegramId(dialog.id) || normalizeDialogTitle(dialog),
     title: normalizeDialogTitle(dialog),
@@ -184,7 +189,8 @@ function dialogSummary(dialog: TelegramDialogLike): LifeOpsTelegramDialogSummary
         : null,
     lastMessageAt: toIsoDate(dialog.message?.date ?? undefined),
     unreadCount:
-      typeof dialog.unreadCount === "number" && Number.isFinite(dialog.unreadCount)
+      typeof dialog.unreadCount === "number" &&
+      Number.isFinite(dialog.unreadCount)
         ? dialog.unreadCount
         : 0,
   };
@@ -201,7 +207,7 @@ function resolveApiCredentials(token: StoredTelegramConnectorToken): {
   const apiHash =
     token.apiHash.trim().length > 0
       ? token.apiHash.trim()
-      : token.connectorConfig?.appHash?.trim() ?? "";
+      : (token.connectorConfig?.appHash?.trim() ?? "");
   if (!Number.isInteger(apiId) || apiId <= 0 || apiHash.length === 0) {
     throw new Error("Telegram connector is missing MTProto credentials.");
   }
@@ -284,7 +290,8 @@ async function withTelegramLocalClient<T>(
   work: (client: TelegramLocalClientLike) => Promise<T>,
 ): Promise<T> {
   const readStoredToken = deps.readStoredToken ?? readStoredTelegramToken;
-  const loadSessionString = deps.loadSessionString ?? loadTelegramAccountSessionString;
+  const loadSessionString =
+    deps.loadSessionString ?? loadTelegramAccountSessionString;
   const token = readStoredToken(tokenRef);
   if (!token) {
     throw new Error("Telegram connector token is missing.");
@@ -355,13 +362,19 @@ function readOutboxMaxId(dialog: TelegramDialogLike | null): number | null {
 
 function isGlobalSearchScope(scope?: string): boolean {
   const normalized = scope?.trim().toLowerCase();
-  return !normalized || normalized === "*" || normalized === "all" || normalized === "global";
+  return (
+    !normalized ||
+    normalized === "*" ||
+    normalized === "all" ||
+    normalized === "global"
+  );
 }
 
 export function telegramLocalSessionAvailable(
   deps: Pick<TelegramLocalClientDeps, "loadSessionString"> = {},
 ): boolean {
-  const loadSessionString = deps.loadSessionString ?? loadTelegramAccountSessionString;
+  const loadSessionString =
+    deps.loadSessionString ?? loadTelegramAccountSessionString;
   return loadSessionString().trim().length > 0;
 }
 
@@ -432,9 +445,13 @@ export async function searchTelegramMessages(args: {
       .slice(0, limit)
       .map((message) => ({
         id:
-          message.id !== undefined ? serializeTelegramId(message.id) || null : null,
+          message.id !== undefined
+            ? serializeTelegramId(message.id) || null
+            : null,
         dialogId:
-          dialog?.id !== undefined ? serializeTelegramId(dialog.id) || null : null,
+          dialog?.id !== undefined
+            ? serializeTelegramId(dialog.id) || null
+            : null,
         dialogTitle: dialog ? normalizeDialogTitle(dialog) : null,
         username:
           typeof dialog?.entity?.username === "string" &&
@@ -547,7 +564,8 @@ export async function verifyTelegramLocalConnector(args: {
   const now = deps.now ?? (() => new Date());
   const target = args.sendTarget?.trim() || "me";
   const message =
-    args.sendMessage?.trim() || `LifeOps Telegram verification ${now().toISOString()}`;
+    args.sendMessage?.trim() ||
+    `LifeOps Telegram verification ${now().toISOString()}`;
 
   return withTelegramLocalClient(args.tokenRef, deps, async (client) => {
     let dialogs: ReadonlyArray<TelegramDialogLike> = [];

@@ -12,14 +12,23 @@ interface DataSourcesStripProps {
   onSetup?: (sourceId: string) => void;
 }
 
-function dotToneClass(state: DataSourceState): string {
+function sourceInitials(label: string): string {
+  return label
+    .split(/[\s/_-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function sourceToneClass(state: DataSourceState): string {
   switch (state) {
     case "live":
-      return "bg-emerald-400";
+      return "border-emerald-400/35 bg-emerald-400/14 text-emerald-200";
     case "partial":
-      return "bg-amber-300";
+      return "border-amber-300/35 bg-amber-300/14 text-amber-200";
     default:
-      return "bg-muted";
+      return "border-border/18 bg-bg/30 text-muted";
   }
 }
 
@@ -36,41 +45,39 @@ export function DataSourcesStrip({
     >
       {sources.map((source) => {
         const isClickable = source.state === "unwired" && Boolean(onSetup);
-        const baseClasses =
-          "inline-flex h-7 items-center gap-2 rounded-lg border border-border/12 bg-bg/24 px-2 text-[11px] font-medium text-muted";
+        const baseClasses = `inline-flex h-7 w-7 items-center justify-center rounded-full border text-[10px] font-semibold ${sourceToneClass(
+          source.state,
+        )}`;
         const interactiveClasses = isClickable
           ? " transition-colors hover:border-accent/30 hover:text-accent"
           : "";
-        const dotEl = (
-          <span
-            className={`h-2 w-2 rounded-full ${dotToneClass(source.state)}`}
-            aria-hidden
-          />
-        );
+        const initials = sourceInitials(source.label) || "?";
+        const label = `${source.label}: ${source.state}`;
         if (isClickable) {
           return (
             <button
               key={source.id}
               type="button"
-              title={source.label}
+              title={label}
+              aria-label={`Set up ${source.label}`}
               onClick={() => onSetup?.(source.id)}
               className={`${baseClasses}${interactiveClasses}`}
               data-state={source.state}
             >
-              {dotEl}
-              {source.label}
+              {initials}
             </button>
           );
         }
         return (
           <span
             key={source.id}
-            title={source.label}
+            role="img"
+            title={label}
+            aria-label={label}
             className={baseClasses}
             data-state={source.state}
           >
-            {dotEl}
-            {source.label}
+            {initials}
           </span>
         );
       })}

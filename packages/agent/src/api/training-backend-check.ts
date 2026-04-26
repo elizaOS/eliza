@@ -3,4 +3,4 @@ export {
   type BackendAvailability,
   clearBackendCache,
   detectAvailableBackends,
-} from "@elizaos/app-training/services";
+} from "@elizaos/app-training";

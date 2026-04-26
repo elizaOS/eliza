@@ -53,7 +53,7 @@ export type SignalAccountConfig = {
   httpHost?: string;
   /** HTTP port for signal-cli daemon (default 8080). */
   httpPort?: number;
-  /** signal-cli binary path (default: signal-cli). */
+  /** signal-cli binary path. Leave blank to auto-resolve/install the default binary where supported. */
   cliPath?: string;
   /** Auto-start signal-cli daemon (default: true if httpUrl not set). */
   autoStart?: boolean;

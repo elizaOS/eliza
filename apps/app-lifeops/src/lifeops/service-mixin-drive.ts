@@ -2,7 +2,7 @@
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   resolveGoogleExecutionTarget,
 } from "./google-connector-gateway.js";

@@ -1,5 +1,3 @@
-export * from "@elizaos/app-lifeops/routes/website-blocker-routes";
-export * from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 export * from "./agent-admin-routes.js";
 export * from "./agent-lifecycle-routes.js";
 export * from "./agent-model.js";
@@ -62,7 +60,6 @@ export * from "./trajectory-routes.js";
 export * from "./trigger-routes.js";
 export * from "./tx-service.js";
 export * from "./wallet.js";
-export * from "./wallet-dex-prices.js";
 export * from "./wallet-evm-balance.js";
 export * from "./wallet-routes.js";
 export * from "./wallet-rpc.js";

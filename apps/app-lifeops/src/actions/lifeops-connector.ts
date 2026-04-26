@@ -8,6 +8,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -620,8 +621,17 @@ export const lifeOpsConnectorAction: Action & {
     state?: State,
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
-    void state;
-    const params = mergeParams(message, options);
+    const merged = mergeParams(message, options);
+    const params = (await extractActionParamsViaLlm<ConnectorActionParams>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: lifeOpsConnectorAction.description ?? "",
+      paramSchema: lifeOpsConnectorAction.parameters ?? [],
+      existingParams: merged,
+      requiredFields: ["subaction"],
+    })) as ConnectorActionParams;
     const subaction = normalizeSubaction(params.subaction);
     if (!subaction) {
       return {
@@ -713,8 +723,8 @@ export const lifeOpsConnectorAction: Action & {
     {
       name: "subaction",
       description:
-        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (health probe, Telegram only); status (per-connector status); list (cross-connector status when connector is omitted).",
-      required: true,
+        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (health probe, Telegram only); status (per-connector status); list (cross-connector status when connector is omitted). Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const, enum: [...VALID_SUBACTIONS] },
     },
     {

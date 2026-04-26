@@ -1,13 +1,4 @@
-/**
- * ShopifyAppView — full-screen overlay app for Shopify store management.
- *
- * Shows a setup card when the store is not connected. When connected,
- * renders a tabbed dashboard: Overview, Products, Orders, Inventory,
- * Customers.
- *
- * Implements the OverlayApp Component contract (receives OverlayAppContext).
- */
-
+import type { OverlayAppContext } from "@elizaos/app-core";
 import {
   Badge,
   Button,
@@ -29,15 +20,12 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useState } from "react";
-import type { OverlayAppContext } from "@elizaos/app-core";
 import { CustomersPanel } from "./CustomersPanel";
 import { InventoryLevelsPanel } from "./InventoryLevelsPanel";
 import { OrdersPanel } from "./OrdersPanel";
 import { ProductsPanel } from "./ProductsPanel";
 import { StoreOverviewCard } from "./StoreOverviewCard";
 import { useShopifyDashboard } from "./useShopifyDashboard";
-
-// ── Setup card (not connected) ────────────────────────────────────────────
 
 function ShopifySetupCard() {
   return (
@@ -51,16 +39,8 @@ function ShopifySetupCard() {
             <div className="text-xl font-semibold text-txt">
               Connect your Shopify store
             </div>
-            <p className="mt-2 text-sm leading-6 text-muted">
-              Add the following environment variables to your{" "}
-              <code className="rounded bg-bg-accent px-1 py-0.5 font-mono text-xs text-txt">
-                .env
-              </code>{" "}
-              file, then restart the app to activate the Shopify dashboard.
-            </p>
           </div>
 
-          {/* Env var instructions */}
           <div className="w-full rounded-xl border border-border/24 bg-bg px-4 py-4 text-left">
             <div className="space-y-3">
               <div>
@@ -84,11 +64,7 @@ function ShopifySetupCard() {
           </div>
 
           <p className="text-xs text-muted">
-            Generate an access token in your Shopify admin under{" "}
-            <strong className="text-muted-strong">
-              Apps → Develop apps → API credentials
-            </strong>
-            . Request{" "}
+            Restart after setting these env vars. Required scopes:{" "}
             <code className="rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
               read_products
             </code>
@@ -111,8 +87,6 @@ function ShopifySetupCard() {
     </div>
   );
 }
-
-// ── Connection status indicator ───────────────────────────────────────────
 
 function ConnectionStatus({
   connected,
@@ -143,8 +117,6 @@ function ConnectionStatus({
     </div>
   );
 }
-
-// ── Main view ─────────────────────────────────────────────────────────────
 
 type DashboardTab =
   | "overview"
@@ -201,7 +173,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
       data-testid="shopify-shell"
       className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-bg supports-[height:100dvh]:h-[100dvh]"
     >
-      {/* Header */}
       <div className="flex shrink-0 items-center gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-md">
         <Button
           type="button"
@@ -242,7 +213,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
         </Button>
       </div>
 
-      {/* Body */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {statusError ? (
           <div className="m-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
@@ -250,7 +220,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
           </div>
         ) : null}
 
-        {/* Not connected: setup card */}
         {!statusLoading && !connected ? (
           <div className="flex min-h-full items-center justify-center px-4 py-12">
             <ShopifySetupCard />
@@ -260,7 +229,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
             <Skeleton className="h-80 w-full max-w-lg rounded-2xl mx-4" />
           </div>
         ) : (
-          /* Connected: full dashboard */
           <div className="px-4 py-4">
             <Tabs
               value={activeTab}
@@ -289,7 +257,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                 </TabsTrigger>
               </TabsList>
 
-              {/* Overview */}
               <TabsContent value="overview">
                 <div className="space-y-4">
                   {shop ? (
@@ -297,13 +264,14 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                   ) : null}
 
                   <div className="grid gap-4 lg:grid-cols-2">
-                    {/* Recent orders summary */}
                     <div className="rounded-2xl border border-border/24 bg-card/32 px-4 py-4">
                       <div className="flex items-center gap-2">
-                        <ShoppingCart className="h-4 w-4 text-muted-strong" />
-                        <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-                          Recent orders
-                        </div>
+                        <span
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-bg-accent text-muted-strong"
+                          title="Recent orders"
+                        >
+                          <ShoppingCart className="h-4 w-4" aria-hidden />
+                        </span>
                       </div>
                       <div className="mt-3 space-y-2">
                         {ordersLoading && orders.length === 0 ? (
@@ -341,21 +309,23 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="mt-2 h-7 text-xs-tight"
+                          className="mt-2 h-7 rounded-full px-2 text-xs-tight"
                           onClick={() => setActiveTab("orders")}
+                          title={`View all ${ordersTotal.toLocaleString()} orders`}
                         >
-                          View all {ordersTotal.toLocaleString()} orders
+                          +{(ordersTotal - 5).toLocaleString()}
                         </Button>
                       ) : null}
                     </div>
 
-                    {/* Low inventory summary */}
                     <div className="rounded-2xl border border-border/24 bg-card/32 px-4 py-4">
                       <div className="flex items-center gap-2">
-                        <Package className="h-4 w-4 text-muted-strong" />
-                        <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-                          Low inventory
-                        </div>
+                        <span
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-bg-accent text-muted-strong"
+                          title="Low inventory"
+                        >
+                          <Package className="h-4 w-4" aria-hidden />
+                        </span>
                       </div>
                       <div className="mt-3 space-y-2">
                         {inventoryLoading && inventoryItems.length === 0 ? (
@@ -404,10 +374,15 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                           type="button"
                           variant="ghost"
                           size="sm"
-                          className="mt-2 h-7 text-xs-tight"
+                          className="mt-2 h-7 rounded-full px-2 text-xs-tight"
                           onClick={() => setActiveTab("inventory")}
+                          title="View inventory"
                         >
-                          View inventory
+                          +
+                          {(
+                            inventoryItems.filter((i) => i.available <= 5)
+                              .length - 5
+                          ).toLocaleString()}
                         </Button>
                       ) : null}
                     </div>
@@ -415,7 +390,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                 </div>
               </TabsContent>
 
-              {/* Products */}
               <TabsContent value="products">
                 <ProductsPanel
                   products={products}
@@ -429,7 +403,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                 />
               </TabsContent>
 
-              {/* Orders */}
               <TabsContent value="orders">
                 <OrdersPanel
                   orders={orders}
@@ -441,7 +414,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                 />
               </TabsContent>
 
-              {/* Inventory */}
               <TabsContent value="inventory">
                 <InventoryLevelsPanel
                   items={inventoryItems}
@@ -451,7 +423,6 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
                 />
               </TabsContent>
 
-              {/* Customers */}
               <TabsContent value="customers">
                 <CustomersPanel
                   customers={customers}

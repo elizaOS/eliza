@@ -1,14 +1,12 @@
-/**
- * CustomersPanel — searchable customer table with name, email, order count,
- * total spent, and join date.
- */
-
-import { Input, Skeleton } from "@elizaos/app-core";
-import { Search, Users } from "lucide-react";
-import { formatShortDate } from "@elizaos/app-core";
+import { formatShortDate, Input, Skeleton } from "@elizaos/app-core";
+import {
+  CalendarDays,
+  CircleDollarSign,
+  Search,
+  ShoppingCart,
+  Users,
+} from "lucide-react";
 import type { ShopifyCustomer } from "./useShopifyDashboard";
-
-// ── Customer row ──────────────────────────────────────────────────────────
 
 function CustomerRow({ customer }: { customer: ShopifyCustomer }) {
   const fullName =
@@ -16,12 +14,10 @@ function CustomerRow({ customer }: { customer: ShopifyCustomer }) {
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/20 bg-card/30 px-3 py-3 transition-colors hover:bg-card/50">
-      {/* Avatar initials */}
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/30 bg-bg-accent text-xs-tight font-semibold uppercase text-muted-strong">
         {(customer.firstName?.[0] ?? customer.email[0] ?? "?").toUpperCase()}
       </div>
 
-      {/* Name + email */}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-txt">
           {fullName}
@@ -31,33 +27,32 @@ function CustomerRow({ customer }: { customer: ShopifyCustomer }) {
         </div>
       </div>
 
-      {/* Orders count */}
-      <div className="shrink-0 text-right">
-        <div className="text-sm font-semibold text-txt">
-          {customer.ordersCount.toLocaleString()}
-        </div>
-        <div className="mt-0.5 text-2xs text-muted">orders</div>
+      <div
+        className="flex shrink-0 items-center gap-1.5 text-sm font-semibold text-txt"
+        title="Orders"
+      >
+        <ShoppingCart className="h-3.5 w-3.5 text-muted" aria-hidden />
+        {customer.ordersCount.toLocaleString()}
       </div>
 
-      {/* Total spent */}
-      <div className="shrink-0 text-right">
-        <div className="text-sm font-semibold text-txt">
-          {customer.totalSpent} {customer.currencyCode}
-        </div>
-        <div className="mt-0.5 text-2xs text-muted">spent</div>
+      <div
+        className="flex shrink-0 items-center gap-1.5 text-sm font-semibold text-txt"
+        title="Total spent"
+      >
+        <CircleDollarSign className="h-3.5 w-3.5 text-muted" aria-hidden />
+        {customer.totalSpent} {customer.currencyCode}
       </div>
 
-      {/* Join date */}
-      <div className="hidden shrink-0 text-right sm:block">
-        <div className="text-xs-tight text-muted">
-          Joined {formatShortDate(customer.createdAt)}
-        </div>
+      <div
+        className="hidden shrink-0 items-center gap-1.5 text-xs-tight text-muted sm:flex"
+        title="Joined"
+      >
+        <CalendarDays className="h-3.5 w-3.5" aria-hidden />
+        {formatShortDate(customer.createdAt)}
       </div>
     </div>
   );
 }
-
-// ── Panel ─────────────────────────────────────────────────────────────────
 
 interface CustomersPanelProps {
   customers: ShopifyCustomer[];
@@ -78,7 +73,6 @@ export function CustomersPanel({
 }: CustomersPanelProps) {
   return (
     <div className="space-y-3">
-      {/* Search + count */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted/60" />
@@ -96,14 +90,12 @@ export function CustomersPanel({
         ) : null}
       </div>
 
-      {/* Error */}
       {error ? (
         <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
           {error}
         </div>
       ) : null}
 
-      {/* Loading skeletons */}
       {loading && customers.length === 0 ? (
         <div className="space-y-2">
           {Array.from({ length: 8 }, (_, i) => i).map((i) => (

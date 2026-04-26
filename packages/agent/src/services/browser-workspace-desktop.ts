@@ -38,7 +38,7 @@ export function resolveBrowserWorkspaceBridgeConfig(
   }
 
   return {
-    baseUrl: baseUrl.replace(/\/+$/, ""),
+    baseUrl: baseUrl.replace(/\/{1,1024}$/, ""),
     token:
       normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_TOKEN) ??
       normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_TOKEN),

@@ -17,7 +17,7 @@ import type {
   BrowserWorkspaceTab,
   NavigateBrowserWorkspaceTabRequest,
   OpenBrowserWorkspaceTabRequest,
-} from "@elizaos/agent/services/browser-workspace";
+} from "@elizaos/agent";
 import type { RPCSchema } from "electrobun/bun";
 import type { ExistingElizaInstallInfo } from "../../../src/types/index.js";
 
@@ -216,12 +216,12 @@ export type {
   PermissionState,
   PermissionStatus,
   SystemPermissionId,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 
 import type {
   PermissionState,
   SystemPermissionId,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 
 /** Local variant uses an index signature (the canonical contract uses explicit keys). */
 export interface AllPermissionsState {

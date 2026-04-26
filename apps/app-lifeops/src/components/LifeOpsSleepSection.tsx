@@ -9,7 +9,7 @@ import type {
   LifeOpsSleepHistoryEpisode,
   LifeOpsSleepHistoryResponse,
   LifeOpsSleepRegularityResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
   Activity,
   AlarmClock,
@@ -262,6 +262,8 @@ function TabButton({
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={active}
       onClick={onClick}
       className={[
         "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
@@ -269,7 +271,6 @@ function TabButton({
           ? "bg-accent/20 text-txt"
           : "text-muted hover:bg-bg/30 hover:text-txt",
       ].join(" ")}
-      aria-pressed={active}
     >
       {label}
     </button>

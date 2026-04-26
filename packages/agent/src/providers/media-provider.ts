@@ -18,7 +18,7 @@ import type {
   MediaConfig,
   VideoConfig,
   VisionConfig,
-} from "@elizaos/agent/config";
+} from "@elizaos/agent";
 
 // ============================================================================
 // Fetch Utilities

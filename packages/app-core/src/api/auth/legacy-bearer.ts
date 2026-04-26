@@ -21,7 +21,7 @@
  * outright; the caller still validates the token via `tokenMatches`.
  */
 
-import type { RuntimeEnvRecord } from "@elizaos/shared/runtime-env";
+import type { RuntimeEnvRecord } from "@elizaos/shared";
 import type { AuthStore } from "../../services/auth-store";
 import { appendAuditEvent } from "./audit";
 

@@ -3,13 +3,21 @@
  *
  * The existing `authAttempts` bucket in `../auth.ts` covers token-auth
  * failures (20/min/ip). Sensitive auth writes — bootstrap exchange,
- * password change, machine-token rotation — get a stricter bucket sized
- * 5/min/ip, separate so a normal auth-failure burst doesn't lock out
- * legitimate sensitive writes.
+ * password change, machine-token rotation, owner-binding state changes,
+ * SSO callback exchanges — get a stricter bucket sized 5/min/ip, separate
+ * so a normal auth-failure burst doesn't lock out legitimate sensitive
+ * writes.
+ *
+ * Each named route gets its own bucket via `getSensitiveLimiter(name)` so
+ * a flood on `/api/auth/login/sso/start` does not lock out
+ * `/api/auth/owner/bind/start` for the same client. Buckets are created
+ * lazily and tracked centrally so the singleton sweep + reset hooks cover
+ * all of them.
  *
  * Caller pattern:
  *
- *   if (!sensitiveRateLimit.consume(ip)) {
+ *   const limiter = getSensitiveLimiter("auth.bootstrap.exchange");
+ *   if (!limiter.consume(ip)) {
  *     sendJsonError(res, 429, "Too many requests");
  *     return true;
  *   }
@@ -58,11 +66,38 @@ class SensitiveRateLimiter {
   }
 }
 
-export const bootstrapExchangeLimiter = new SensitiveRateLimiter();
+const limiterRegistry = new Map<string, SensitiveRateLimiter>();
+
+/**
+ * Look up (or lazily create) the named sensitive-route limiter. Use one
+ * name per logical operation — e.g. `auth.bootstrap.exchange`,
+ * `auth.login.sso.start`, `auth.owner.bind.start`.
+ *
+ * Buckets are kept in a central registry so the sweep timer and the
+ * `_resetSensitiveLimiters` test helper handle them all.
+ */
+export function getSensitiveLimiter(name: string): SensitiveRateLimiter {
+  let limiter = limiterRegistry.get(name);
+  if (!limiter) {
+    limiter = new SensitiveRateLimiter();
+    limiterRegistry.set(name, limiter);
+  }
+  return limiter;
+}
+
+/**
+ * Bootstrap exchange limiter — kept as a named export so existing P0
+ * callers don't churn. New code should prefer `getSensitiveLimiter(name)`.
+ */
+export const bootstrapExchangeLimiter = getSensitiveLimiter(
+  "auth.bootstrap.exchange",
+);
 
 const sweepTimer = setInterval(
   () => {
-    bootstrapExchangeLimiter.sweep();
+    for (const limiter of limiterRegistry.values()) {
+      limiter.sweep();
+    }
   },
   5 * 60 * 1000,
 );
@@ -72,5 +107,7 @@ if (typeof sweepTimer === "object" && "unref" in sweepTimer) {
 
 /** Reset state. Test-only. */
 export function _resetSensitiveLimiters(): void {
-  bootstrapExchangeLimiter.reset();
+  for (const limiter of limiterRegistry.values()) {
+    limiter.reset();
+  }
 }

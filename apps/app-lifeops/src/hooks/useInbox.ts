@@ -4,7 +4,7 @@ import type {
   LifeOpsInboxChannel,
   LifeOpsInboxMessage,
   LifeOpsInboxThreadGroup,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type InboxChannel = "all" | LifeOpsInboxChannel;
@@ -23,6 +23,10 @@ export interface UseInboxOptions {
   maxParticipants?: number;
   /** Filter Gmail to a specific Google grant. */
   gmailAccountId?: string;
+  /** Only return threads that have gone unreplied for >24h with priority >=50. */
+  missedOnly?: boolean;
+  /** Sort thread groups by priority desc with recency tiebreaker. */
+  sortByPriority?: boolean;
 }
 
 export interface UseInboxResult {
@@ -96,6 +100,8 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
           : undefined,
         maxParticipants: opts.maxParticipants,
         gmailAccountId: opts.gmailAccountId,
+        missedOnly: opts.missedOnly,
+        sortByPriority: opts.sortByPriority,
       });
       setFeed(result);
     } catch (cause) {
@@ -117,6 +123,8 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
     chatTypeFilterKey,
     opts.maxParticipants,
     opts.gmailAccountId,
+    opts.missedOnly,
+    opts.sortByPriority,
     t,
   ]);
 
