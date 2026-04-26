@@ -425,6 +425,133 @@ describe("buildInboxFromMessages", () => {
   });
 });
 
+describe("LifeOps inbox cache modes", () => {
+  class BareInboxBase {
+    constructor(
+      public readonly runtime: Record<string, unknown>,
+      public readonly repository: Record<string, unknown>,
+    ) {}
+  }
+
+  const InboxService = withInbox(
+    BareInboxBase as unknown as Parameters<typeof withInbox>[0],
+  );
+
+  function cachedMessage(
+    id: string,
+    receivedAt: string,
+  ): LifeOpsCachedInboxMessage {
+    return {
+      id,
+      channel: "telegram",
+      sender: {
+        id: "user-1",
+        displayName: "Alice",
+        email: null,
+        avatarUrl: null,
+      },
+      subject: null,
+      snippet: "cached",
+      receivedAt,
+      unread: true,
+      deepLink: null,
+      sourceRef: { channel: "telegram", externalId: id.replace(/^telegram:/, "") },
+      threadId: "room-1",
+      chatType: "dm",
+      cachedAt: "2026-04-21T12:00:00.000Z",
+      updatedAt: "2026-04-21T12:00:00.000Z",
+      priorityFlags: [],
+    };
+  }
+
+  function makeRuntime() {
+    const roomId = "00000000-0000-0000-0000-000000000011";
+    const worldId = "00000000-0000-0000-0000-000000000012";
+    return {
+      agentId: "00000000-0000-0000-0000-000000000010",
+      character: { name: "Owner" },
+      getRoomsForParticipant: vi.fn(async () => [roomId]),
+      getRoom: vi.fn(async () => ({
+        id: roomId,
+        name: "Telegram DM",
+        source: "telegram",
+        type: "dm",
+        worldId,
+        metadata: {},
+      })),
+      getWorld: vi.fn(async () => ({ id: worldId, metadata: {} })),
+      getParticipantsForRoom: vi.fn(async () => ["owner", "sender"]),
+      getMemoriesByRoomIds: vi.fn(async () =>
+        Array.from({ length: 3 }, (_, index) => ({
+          id: `00000000-0000-0000-0000-00000000002${index}`,
+          roomId,
+          entityId: `00000000-0000-0000-0000-00000000003${index}`,
+          createdAt: Date.parse(`2026-04-21T12:0${index}:00.000Z`),
+          content: {
+            source: "telegram",
+            text: `live message ${index}`,
+          },
+          metadata: {
+            entityName: `Sender ${index}`,
+          },
+        })),
+      ),
+    };
+  }
+
+  function makeRepository(cached: LifeOpsCachedInboxMessage[] = []) {
+    return {
+      listCachedInboxMessages: vi.fn(async () => cached),
+      upsertCachedInboxMessages: vi.fn(async () => undefined),
+    };
+  }
+
+  it("serves cache-only reads without touching connector fetchers", async () => {
+    const runtime = makeRuntime();
+    const repository = makeRepository([
+      cachedMessage("telegram:cached-1", "2026-04-21T12:00:00.000Z"),
+    ]);
+    const service = new InboxService(runtime, repository);
+
+    const inbox = await service.getInbox({
+      channels: ["telegram"],
+      cacheMode: "cache-only",
+      limit: 50,
+    });
+
+    expect(inbox.messages.map((message) => message.id)).toEqual([
+      "telegram:cached-1",
+    ]);
+    expect(runtime.getRoomsForParticipant).not.toHaveBeenCalled();
+    expect(repository.upsertCachedInboxMessages).not.toHaveBeenCalled();
+  });
+
+  it("refresh mode ignores fresh cache and stores the full warm window", async () => {
+    const runtime = makeRuntime();
+    const repository = makeRepository([
+      cachedMessage("telegram:cached-fresh", new Date().toISOString()),
+    ]);
+    const service = new InboxService(runtime, repository);
+
+    const inbox = await service.getInbox({
+      channels: ["telegram"],
+      cacheMode: "refresh",
+      cacheLimit: 3,
+      limit: 1,
+    });
+
+    expect(inbox.messages).toHaveLength(1);
+    expect(runtime.getRoomsForParticipant).toHaveBeenCalledTimes(1);
+    expect(runtime.getMemoriesByRoomIds).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 9 }),
+    );
+    expect(repository.upsertCachedInboxMessages).toHaveBeenCalled();
+    const firstCacheWrite =
+      repository.upsertCachedInboxMessages.mock.calls[0]?.[1] ?? [];
+    expect(firstCacheWrite).toHaveLength(3);
+  });
+});
+
 describe("resolveInboxRequest — Wave 2F filters", () => {
   it("passes through chatTypeFilter when valid", () => {
     const resolved = resolveInboxRequest({
