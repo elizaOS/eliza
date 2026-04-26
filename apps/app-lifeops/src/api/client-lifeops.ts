@@ -722,7 +722,10 @@ ElizaClient.prototype.getLifeOpsAppState = async function (this: ElizaClient) {
 
 ElizaClient.prototype.updateLifeOpsAppState = async function (
   this: ElizaClient,
-  data,
+  data: {
+    enabled: boolean;
+    priorityScoring?: LifeOpsPriorityScoringStateDto | null;
+  },
 ) {
   return this.fetch<LifeOpsAppStateDto>("/api/lifeops/app-state", {
     method: "PUT",

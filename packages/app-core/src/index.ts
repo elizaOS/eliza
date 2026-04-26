@@ -24,6 +24,17 @@ export * from "./app-shell/task-coordinator-slots";
 export * from "./bridge/index";
 export * from "./chat/index";
 export * from "./components/index";
+export {
+  BSC_GAS_READY_THRESHOLD,
+  HEX_ADDRESS_RE,
+  isAvaxChainName,
+  isBscChainName,
+} from "./components/inventory/constants";
+export type { TranslatorFn } from "./components/shared/LanguageDropdown";
+export type {
+  CompanionInferenceNotice,
+  CompanionSceneStatus,
+} from "./config/boot-config";
 export * from "./config/index";
 export * from "./events/index";
 export * from "./hooks/useActivityEvents";

@@ -1,7 +1,5 @@
-import type {
-  ElizaConfig,
-  RouteRequestContext,
-} from "@elizaos/agent";
+import type { RouteRequestContext } from "@elizaos/agent/api/route-helpers";
+import type { ElizaConfig } from "@elizaos/agent/config/config";
 import type {
   BscTradeQuoteResponse,
   BscUnsignedApprovalTx,

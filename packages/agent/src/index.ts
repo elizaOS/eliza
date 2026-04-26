@@ -88,6 +88,9 @@ export * from "./api/wallet-capability.js";
 export * from "./api/workbench-helpers.js";
 export * from "./auth/index.js";
 export * from "./awareness/index.js";
+export { resolveCloudApiBaseUrl } from "./cloud/base-url.js";
+export * from "./cloud/index.js";
+export { CharacterSchema } from "./config/character-schema.js";
 export type { RolesConfig } from "./config/index.js";
 export * from "./config/index.js";
 // `contracts/awareness.js` and `contracts/config.js` add the local-only
@@ -98,8 +101,27 @@ export * from "./contracts/config.js";
 export * from "./diagnostics/integration-observability.js";
 export * from "./hooks/index.js";
 export * from "./providers/workspace.js";
+export * from "./runtime/advanced-capabilities-config.js";
+export * from "./runtime/agent-event-service.js";
 export * from "./runtime/core-plugins.js";
-export * from "./runtime/index.js";
+export * from "./runtime/eliza.js";
+export * from "./runtime/eliza-plugin.js";
+export * from "./runtime/embedding-presets.js";
+export * from "./runtime/onboarding-names.js";
+export * from "./runtime/owner-entity.js";
+export * from "./runtime/plugin-collector.js";
+export * from "./runtime/plugin-lifecycle.js";
+export {
+  getLastFailedPluginNames,
+  resolvePlugins,
+} from "./runtime/plugin-resolver.js";
+export * from "./runtime/plugin-types.js";
+export * from "./runtime/release-plugin-policy.js";
+export * from "./runtime/restart.js";
+export * from "./runtime/trajectory-internals.js";
+export * from "./runtime/trajectory-persistence.js";
+export * from "./runtime/trajectory-query.js";
+export * from "./runtime/version.js";
 export * from "./security/index.js";
 export * from "./services/index.js";
 export {

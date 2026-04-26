@@ -5,9 +5,11 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { resolveUserPath } from "@elizaos/agent/config/paths";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+import {
+  loadElizaConfig,
+  resolveDefaultAgentWorkspaceDir,
+  resolveUserPath,
+} from "@elizaos/agent";
 import {
   type BootElizaRuntimeOptions,
   type StartElizaOptions,

@@ -14,10 +14,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import {
-  type ElizaConfig,
-  saveElizaConfig,
-} from "@elizaos/agent";
+import { type ElizaConfig, saveElizaConfig } from "@elizaos/agent/config";
 import { sendJson, sendJsonError } from "@elizaos/app-core";
 import { logger } from "@elizaos/core";
 import type {

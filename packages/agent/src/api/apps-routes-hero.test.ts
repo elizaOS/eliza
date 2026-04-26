@@ -148,6 +148,24 @@ function readUpstreamHeroAppPackages(): Array<{
     });
 }
 
+function expectedHeroContentType(heroImage: string): string {
+  const extension = path.extname(heroImage).toLowerCase();
+  const contentTypes: Record<string, string> = {
+    ".avif": "image/avif",
+    ".gif": "image/gif",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+  };
+  const contentType = contentTypes[extension];
+  if (!contentType) {
+    throw new Error(`Unsupported hero asset extension: ${heroImage}`);
+  }
+  return contentType;
+}
+
 function makeRouteContext(
   pluginManager: PluginManagerLike,
   pathname: string,
@@ -251,7 +269,9 @@ describe("GET /api/apps/hero/:slug", () => {
 
       expect(handled, app.name).toBe(true);
       expect(ctx.recorded.status, app.name).toBe(200);
-      expect(ctx.recorded.headers["Content-Type"], app.name).toBe("image/png");
+      expect(ctx.recorded.headers["Content-Type"], app.name).toBe(
+        expectedHeroContentType(app.heroImage),
+      );
       expect(ctx.recorded.body?.equals(expected), app.name).toBe(true);
     }
   });

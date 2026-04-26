@@ -27,6 +27,7 @@ import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import {
   confirmDesktopAction,
+  isCloudStatusAuthenticated,
   openExternalUrl,
   yieldHttpAfterNativeMessageBox,
 } from "../utils";
@@ -292,8 +293,11 @@ export function useCloudState({
   }, []);
 
   const handleCloudLogin = useCallback(async () => {
-    // Already connected (existing API key) — no need to re-authenticate.
-    if (elizaCloudConnected) return;
+    if (
+      isCloudStatusAuthenticated(elizaCloudConnected, elizaCloudStatusReason)
+    ) {
+      return;
+    }
     if (elizaCloudLoginBusyRef.current || elizaCloudLoginBusy) return;
     elizaCloudLoginBusyRef.current = true;
     setElizaCloudLoginBusy(true);
@@ -308,8 +312,13 @@ export function useCloudState({
     const useDirectAuth = !hasBackend;
 
     if (hasBackend) {
-      const alreadyConnected = await pollCloudCredits();
-      if (alreadyConnected) {
+      const cloudStatus = await client.getCloudStatus().catch(() => null);
+      const alreadyAuthenticated = isCloudStatusAuthenticated(
+        Boolean(cloudStatus?.connected),
+        cloudStatus?.reason,
+      );
+      if (alreadyAuthenticated) {
+        await pollCloudCredits();
         await loadWalletConfig().catch(() => undefined);
         setElizaCloudLoginError(null);
         setActionNotice("Already connected to Eliza Cloud.", "info", 4000);
@@ -472,6 +481,7 @@ export function useCloudState({
   }, [
     elizaCloudConnected,
     elizaCloudLoginBusy,
+    elizaCloudStatusReason,
     setActionNotice,
     pollCloudCredits,
     loadWalletConfig,
