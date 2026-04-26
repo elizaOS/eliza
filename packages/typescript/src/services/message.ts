@@ -1291,8 +1291,29 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // (e.g. "build me an app" does not contain "spawn" or "agent"), so the
 // metadata-based corrector must not override them with a keyword-matched
 // alternative like a cross-channel send action.
+//
+// CREATE_TRIGGER_TASK + its schedule similes are included because the phrase
+// structure the planner matches on ("every N minutes", "at 7am daily",
+// "schedule a cron task") does not keyword-overlap with the action's
+// description the way LIFE's multi-paragraph reminder/alarm prose does.
+// Without these entries, the correction layer (findOwnedActionCorrectionFromMetadata)
+// routinely overrides a correct CREATE_CRON/CREATE_TRIGGER_TASK pick on
+// page-automations with LIFE based on fuzzy description overlap — breaking
+// Session 11's scope-gated architecture end-to-end.
 const EXPLICIT_INTENT_ACTIONS = new Set(
-	["SPAWN_AGENT"].map(normalizeActionIdentifier),
+	[
+		"SPAWN_AGENT",
+		"CREATE_TRIGGER_TASK",
+		"CREATE_TRIGGER",
+		"SCHEDULE_TRIGGER",
+		"SCHEDULE_TASK",
+		"CREATE_HEARTBEAT",
+		"SCHEDULE_HEARTBEAT",
+		"CREATE_AUTOMATION",
+		"SCHEDULE_AUTOMATION",
+		"CREATE_CRON",
+		"CREATE_RECURRING",
+	].map(normalizeActionIdentifier),
 );
 
 function shouldAttemptCanonicalActionRepair(
