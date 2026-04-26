@@ -682,7 +682,7 @@ IMPORTANT: Your response must ONLY contain the TOON document above. Do not inclu
 
 export const POST_CREATION_TEMPLATE = postCreationTemplate;
 
-export const reflectionEvaluatorTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
+export const reflectionEvaluatorTemplate = `# Task: Generate Agent Reflection and Extract Relationships
 
 # Examples:
 {{evaluationExamples}}
@@ -700,29 +700,20 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 
 {{recentMessages}}
 
-# Known Facts:
-{{knownFacts}}
-
 # Latest Action Results:
 {{actionResults}}
 
 # Instructions:
 1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
-2. Extract only durable new facts from the conversation.
-  - Prefer facts about the current user/sender that will still matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, or ongoing constraints.
-  - Do NOT extract temporary status updates, current debugging/work items, one-off session metrics, isolated praise/complaints, or facts that are only true right now.
-  - If a fact would feel stale, irrelevant, or surprising to store a week from now, skip it.
-  - When in doubt, omit the fact.
-3. Identify and describe relationships between entities.
+2. Identify and describe relationships between entities.
   - The sourceEntityId is the UUID of the entity initiating the interaction.
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
   - Use exact UUIDs from the entities-in-room list only. Never invent placeholders, names, handles, or email addresses in sourceEntityId or targetEntityId.
-4. It is normal to return no facts when nothing durable was learned.
-5. Always decide whether the user's task or request is actually complete right now.
+3. Always decide whether the user's task or request is actually complete right now.
   - Set \`task_completed: true\` only if the user no longer needs additional action or follow-up from you in this turn.
   - If you asked a clarifying question, an action failed, work is still pending, or you only partially completed the request, set \`task_completed: false\`.
-6. Always include a short \`task_completion_reason\` grounded in the conversation and action results.
+4. Always include a short \`task_completion_reason\` grounded in the conversation and action results.
 
 Output:
 TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
@@ -731,19 +722,13 @@ Use indexed TOON fields exactly like this:
 thought: "a self-reflective thought on the conversation"
 task_completed: false
 task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
-facts[0]:
-  claim: durable factual statement
-  type: fact
-  in_bio: false
-  already_known: false
 relationships[0]:
   sourceEntityId: entity_initiating_interaction
   targetEntityId: entity_being_interacted_with
   tags[0]: dm_interaction
 
-For additional entries, increment the index: facts[1], relationships[1], tags[1], etc.
+For additional entries, increment the index: relationships[1], tags[1], etc.
 Always include \`task_completed\` and \`task_completion_reason\`.
-If there are no durable new facts, omit all facts[...] entries.
 If there are no relationships, omit all relationships[...] entries.
 
 IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
