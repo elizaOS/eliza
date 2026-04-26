@@ -13,7 +13,10 @@ import {
   groupAppsForCatalog,
   isHiddenFromAppsView,
 } from "./helpers";
-import { getInternalToolApps } from "./internal-tool-apps";
+import {
+  getInternalToolAppHasDetailsPage,
+  getInternalToolApps,
+} from "./internal-tool-apps";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const upstreamAppsDir = path.resolve(here, "../../../../../apps");
@@ -185,6 +188,12 @@ describe("apps catalog coverage", () => {
     });
 
     expect(missing).toEqual([]);
+  });
+
+  it("launches LifeOps directly instead of routing through app details", () => {
+    expect(getInternalToolAppHasDetailsPage("@elizaos/app-lifeops")).toBe(
+      false,
+    );
   });
 
   it("hides non-primary game apps and the finance section by default", () => {
