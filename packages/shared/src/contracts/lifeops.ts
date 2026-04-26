@@ -2581,6 +2581,7 @@ export interface LifeOpsDiscordDmInboxStatus {
 export const LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES = [
   "lifeops_browser",
   "desktop_browser",
+  "discord_desktop",
 ] as const;
 export type LifeOpsOwnerBrowserAccessSource =
   (typeof LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES)[number];
@@ -2614,6 +2615,7 @@ export const LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS = [
   "focus_dm_inbox_manually",
   "log_in",
   "open_desktop_browser",
+  "relaunch_discord",
 ] as const;
 export type LifeOpsOwnerBrowserNextAction =
   (typeof LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS)[number];
@@ -2772,6 +2774,7 @@ export interface LifeOpsSignalPairingStatus {
 
 export interface StartLifeOpsDiscordConnectorRequest {
   side?: LifeOpsConnectorSide;
+  source?: LifeOpsOwnerBrowserAccessSource;
 }
 
 export interface StartLifeOpsTelegramAuthRequest {
