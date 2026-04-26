@@ -2348,6 +2348,19 @@ export const lifeAction: Action & {
     return hasLifeOpsAccess(runtime, message);
   },
   handler: async (runtime, message, state, options) => {
+    // Defense-in-depth at dispatch time: Session 11's validate() gate
+    // excludes LIFE from the ACTION_PLANNER candidate list on foreign
+    // page-* scopes, but runtime.processActions (runtime.ts:2473)
+    // dispatches by name/simile WITHOUT re-calling validate. When the LLM
+    // emits LIFE or a LIFE simile directly, the handler still fires. This
+    // guard mirrors validate()'s scope check so LIFE stays a no-op on
+    // foreign page-* scopes regardless of how it got dispatched.
+    // Returns empty text so the callback at runtime.ts:2853 does not
+    // render a user-visible message from LIFE — any streamed tokens from
+    // the outer LLM reply already landed before this handler runs.
+    if (await isForeignPageScope(runtime, message)) {
+      return { success: false, text: "" };
+    }
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const fallback =
         "Life management is restricted to the owner, explicitly granted users, and the agent.";
