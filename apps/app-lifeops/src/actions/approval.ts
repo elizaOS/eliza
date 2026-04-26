@@ -9,7 +9,7 @@
  * the user's language.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent/security";
+import { hasOwnerAccess } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,

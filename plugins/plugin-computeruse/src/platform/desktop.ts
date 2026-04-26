@@ -656,7 +656,7 @@ export function desktopKeyPress(key: string): void {
 
       if (os === "darwin") {
         if (commandExists("cliclick")) {
-          runCommand("cliclick", [`kp:${safeKey}`], 5000);
+          runCommand("cliclick", [`kp:${toCliclickKeyName(safeKey)}`], 5000);
         } else {
           // Map common key names to macOS key codes
           const keyCodes: Record<string, number> = {

@@ -19,12 +19,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  parseJSONObjectFromText,
-  parseKeyValueXml,
-} from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security";
+import { hasAdminAccess } from "@elizaos/agent";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
@@ -34,7 +29,6 @@ import {
   hasLifeOpsAccess,
   INTERNAL_URL,
 } from "./lifeops-google-helpers.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { calendarAction } from "./calendar.js";
 import {
   checkAvailabilityAction,
@@ -43,7 +37,6 @@ import {
   updateMeetingPreferencesAction,
 } from "./scheduling.js";
 import { calendlyAction } from "./calendly.js";
-import { inferTimeZoneFromLocationText } from "./timezone-normalization.js";
 
 type OwnerCalendarSubaction =
   // Google Calendar
@@ -221,116 +214,8 @@ function normalizeSubaction(
     : null;
 }
 
-function normalizeShouldAct(value: unknown): boolean | null {
-  if (typeof value === "boolean") return value;
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase();
-  if (["true", "yes", "1"].includes(normalized)) return true;
-  if (["false", "no", "0"].includes(normalized)) return false;
-  return null;
-}
-
-function normalizePlannerResponse(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
 function messageText(message: Memory): string {
   return typeof message.content?.text === "string" ? message.content.text : "";
-}
-
-type DeterministicOwnerCalendarPlan = {
-  subaction: OwnerCalendarSubaction;
-  parameters?: Partial<OwnerCalendarParameters>;
-};
-
-function normalizeIntentText(value: string): string {
-  return value.trim().replace(/\s+/gu, " ");
-}
-
-function looksLikeNonRequestPreface(text: string): boolean {
-  return /\b(?:do not do this yet|don't do this yet|not asking you to do it yet|only thinking out loud|just thinking out loud|brainstorming|not yet)\b/iu.test(
-    text,
-  );
-}
-
-function looksLikeRecurringBlockRequest(text: string): boolean {
-  return (
-    /\b(?:daily|every day|each day|per day|recurring)\b/iu.test(text) &&
-    /\b(?:hour|block|time with|time for|protect|book)\b/iu.test(text)
-  );
-}
-
-function looksLikeSchedulingPreferenceRequest(text: string): boolean {
-  return (
-    /\b(?:no calls? between|blackout|preferred hours?|sleep window|travel buffer|unless i explicitly say|unless i say it'?s okay)\b/iu.test(
-      text,
-    ) ||
-    (/\b(?:calls?|meetings?)\b/iu.test(text) &&
-      /\b(?:between \d|allowed|okay|hours?)\b/iu.test(text))
-  );
-}
-
-function looksLikeTravelBundleRequest(text: string): boolean {
-  return (
-    /\b(?:schedule|bundle|cluster)\b/iu.test(text) &&
-    /\b(?:same time|same day|same window|if possible)\b/iu.test(text)
-  );
-}
-
-function looksLikeBulkRescheduleRequest(text: string): boolean {
-  return (
-    /\b(?:cancel|push|move|reschedule)\b/iu.test(text) &&
-    /\b(?:all|every|everything)\b/iu.test(text) &&
-    /\b(?:meeting|meetings|calls)\b/iu.test(text)
-  );
-}
-
-function looksLikeFlightConflictRequest(text: string): boolean {
-  return (
-    /\bflight\b/iu.test(text) &&
-    /\b(?:conflict|rebook|reschedul|other thing|flag)\b/iu.test(text)
-  );
-}
-
-export function inferDeterministicOwnerCalendarPlan(
-  rawText: string,
-): DeterministicOwnerCalendarPlan | null {
-  const text = normalizeIntentText(rawText);
-  if (text.length === 0) {
-    return null;
-  }
-
-  if (looksLikeNonRequestPreface(text)) {
-    return null;
-  }
-
-  if (looksLikeRecurringBlockRequest(text)) {
-    return { subaction: "recurring_block" };
-  }
-
-  if (looksLikeSchedulingPreferenceRequest(text)) {
-    return { subaction: "update_preferences" };
-  }
-
-  if (looksLikeBulkRescheduleRequest(text)) {
-    return { subaction: "bulk_reschedule" };
-  }
-
-  if (looksLikeTravelBundleRequest(text)) {
-    const timeZone = inferTimeZoneFromLocationText(text) ?? undefined;
-    return {
-      subaction: "propose_times",
-      parameters: timeZone ? { timeZone } : undefined,
-    };
-  }
-
-  if (looksLikeFlightConflictRequest(text)) {
-    return { subaction: "travel_itinerary" };
-  }
-
-  return null;
 }
 
 function extractBulkRescheduleCohortLabel(text: string): string | null {
@@ -417,9 +302,10 @@ async function handleBulkReschedulePreview(args: {
   runtime: IAgentRuntime;
   message: Memory;
   callback: HandlerCallback | undefined;
+  timeZone: string | null;
 }): Promise<ActionResult> {
   const text = messageText(args.message);
-  const timeZone = inferTimeZoneFromLocationText(text) ?? resolveDefaultTimeZone();
+  const timeZone = args.timeZone ?? resolveDefaultTimeZone();
   const cohortLabel = extractBulkRescheduleCohortLabel(text);
   const { timeMin, timeMax, scopeLabel } = buildBulkRescheduleLookupWindow(
     timeZone,
@@ -505,98 +391,6 @@ async function handleBulkReschedulePreview(args: {
   };
 }
 
-type OwnerCalendarLlmPlan = {
-  subaction: OwnerCalendarSubaction | null;
-  shouldAct: boolean | null;
-  response?: string;
-};
-
-async function resolveOwnerCalendarPlanWithLlm(args: {
-  runtime: IAgentRuntime;
-  message: Memory;
-  state: State | undefined;
-  intent: string;
-  params: OwnerCalendarParameters;
-}): Promise<OwnerCalendarLlmPlan> {
-  if (typeof args.runtime.useModel !== "function") {
-    return { subaction: null, shouldAct: null };
-  }
-
-  const recentConversation = (
-    await collectRecentConversationTexts({
-      runtime: args.runtime,
-      message: args.message,
-      state: args.state,
-      limit: 6,
-    })
-  ).join("\n");
-
-  const prompt = [
-    "Plan the OWNER_CALENDAR subaction for this request.",
-    "Return ONLY valid JSON with exactly these fields:",
-    `{"subaction":"${VALID_SUBACTIONS.join('"|"')}"|null,"shouldAct":true|false,"response":"string|null"}`,
-    "",
-    "OWNER_CALENDAR is the owner's single umbrella for Google Calendar, Calendly, availability, scheduling preferences, and scheduling negotiation.",
-    "Choose view_today / view_week / next_event / search_events for calendar lookups.",
-    "Choose create_event for creating a concrete event at a concrete date/time.",
-    "Choose travel_itinerary for calendar-backed travel or itinerary lookups.",
-    "Choose recurring_block for recurring protected time blocks.",
-    "Choose bulk_reschedule for requests to cancel, move, or push a cohort of meetings behind a single approval-gated plan.",
-    "Recurring daily or weekly time blocks like 'book 1 hour per day for time with Jill' still belong to recurring_block even when the owner only gives a soft preference like 'before sleep' or says any time is fine.",
-    "Choose check_availability for free/busy questions over a specific window.",
-    "Choose propose_times for requests to suggest or offer a few candidate meeting slots.",
-    "When the owner is temporarily in a city and wants to bundle multiple people into the same window, choose propose_times or another calendar subaction with shouldAct=true even if exact dates still need a follow-up.",
-    "Choose update_preferences for durable rules like no-call hours, blackout windows, preferred hours, sleep windows, and travel buffer.",
-    "Requests that define when meetings or calls may happen, even if phrased as a standing policy like 'no calls between 11pm and 8am unless I explicitly say it's okay', are update_preferences.",
-    "If the owner asks you to flag a conflict before a flight and help rebook the other thing, keep shouldAct=true. OWNER_CALENDAR still owns the conflict detection and reschedule path even when you still need itinerary details.",
-    "Do not use OWNER_CALENDAR for reminder-only or bump-me-later policies about unanswered event decisions; those belong to reminder, inbox, or escalation actions instead.",
-    "Do not use OWNER_CALENDAR for device ringing, push-notification, or cross-device reminder behavior. Those belong to device-intent actions.",
-    "Choose calendly_availability / calendly_list_event_types / calendly_upcoming / calendly_single_use_link when the request mentions Calendly by name or includes a calendly.com URL or eventTypeUri.",
-    "Choose negotiate_start / negotiate_propose / negotiate_respond / negotiate_finalize / negotiate_list / negotiate_cancel for multi-turn scheduling coordination with another person or team.",
-    "Do not use OWNER_CALENDAR for morning briefs, night briefs, operating pictures, command-center views, or broad day-start/day-end reviews. Those belong to RUN_MORNING_CHECKIN / RUN_NIGHT_CHECKIN even when they include meeting context.",
-    "Set shouldAct=false only when this is not a calendar/scheduling request and another action should handle it.",
-    "When shouldAct=false, response must be a short clarifying sentence in the user's language.",
-    "",
-    'Example: "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> {"subaction":"recurring_block","shouldAct":true,"response":null}',
-    'Example: "I\'m in Tokyo for limited time so let\'s schedule PendingReality and Ryan at the same time if possible" -> {"subaction":"propose_times","shouldAct":true,"response":null}',
-    'Example: "flag the conflict before my flight later and help rebook the other thing" -> {"subaction":"travel_itinerary","shouldAct":true,"response":null}',
-    'Example: "We\'re gonna cancel some stuff and push everything back until next month. All partnership meetings." -> {"subaction":"bulk_reschedule","shouldAct":true,"response":null}',
-    "",
-    `Current request: ${JSON.stringify(messageText(args.message))}`,
-    `Resolved intent: ${JSON.stringify(args.intent)}`,
-    `Structured parameters: ${JSON.stringify(args.params)}`,
-    `Recent conversation: ${JSON.stringify(recentConversation)}`,
-  ].join("\n");
-
-  try {
-    const result = await args.runtime.useModel(ModelType.TEXT_SMALL, {
-      prompt,
-    });
-    const rawResponse = typeof result === "string" ? result : "";
-    const parsed =
-      parseKeyValueXml<Record<string, unknown>>(rawResponse) ??
-      parseJSONObjectFromText(rawResponse);
-    if (!parsed) {
-      return { subaction: null, shouldAct: null };
-    }
-    const subaction = normalizeSubaction(parsed.subaction);
-    return {
-      subaction,
-      shouldAct: subaction ? true : normalizeShouldAct(parsed.shouldAct),
-      response: normalizePlannerResponse(parsed.response),
-    };
-  } catch (error) {
-    args.runtime.logger?.warn?.(
-      {
-        src: "action:owner-calendar",
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Owner calendar planning model call failed",
-    );
-    return { subaction: null, shouldAct: null };
-  }
-}
-
 async function route(
   subaction: OwnerCalendarSubaction,
   runtime: IAgentRuntime,
@@ -638,6 +432,7 @@ async function route(
         runtime,
         message,
         callback: delegatedCallback,
+        timeZone: params.timeZone ?? null,
       });
     case "propose_times":
       return (await proposeMeetingTimesAction.handler!(
@@ -817,43 +612,12 @@ export const ownerCalendarAction: Action & {
     const params = getParams(options);
     const subaction = normalizeSubaction(params.subaction);
     if (!subaction) {
-      const intent = (params.intent ?? messageText(message)).trim();
-      const deterministicPlan = inferDeterministicOwnerCalendarPlan(intent);
-      if (deterministicPlan) {
-        const mergedOptions: HandlerOptions = {
-          ...(options ?? {}),
-          parameters: {
-            ...params,
-            ...(deterministicPlan.parameters ?? {}),
-            subaction: deterministicPlan.subaction,
-          } as HandlerOptions["parameters"],
-        };
-        return route(
-          deterministicPlan.subaction,
-          runtime,
-          message,
-          state,
-          mergedOptions,
-          callback,
-        );
-      }
-      const plan = await resolveOwnerCalendarPlanWithLlm({
-        runtime,
-        message,
-        state,
-        intent,
-        params,
-      });
-      if (plan.subaction) {
-        return route(plan.subaction, runtime, message, state, options, callback);
-      }
       const text =
-        plan.response ??
         "Tell me whether you want to view your calendar, create an event, check availability, propose times, adjust scheduling preferences, use Calendly, or manage a scheduling negotiation.";
       await callback?.({ text });
       return {
         text,
-        success: true,
+        success: false,
         data: { error: "MISSING_SUBACTION", noop: true },
       };
     }

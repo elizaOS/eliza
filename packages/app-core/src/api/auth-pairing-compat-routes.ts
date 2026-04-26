@@ -135,13 +135,10 @@ export async function handleAuthPairingCompatRoutes(
   }
 
   // ── GET /api/auth/status ────────────────────────────────────────────
-  // Cloud-provisioned bypass deleted (was the second half of the audited
-  // gap at line 140). The SPA reads this through a session cookie or
-  // exchanges a bootstrap token first; either way auth is required.
+  // This is a public probe so unauthenticated clients can decide whether
+  // to show pairing UI. The response leaks no secrets — only whether auth
+  // is configured and whether pairing is currently open.
   if (method === "GET" && url.pathname === "/api/auth/status") {
-    if (!ensureCompatApiAuthorized(req, res)) {
-      return true;
-    }
     const required = Boolean(getCompatApiToken());
     const enabled = pairingEnabled();
     if (enabled) {

@@ -16,7 +16,7 @@ import type {
 } from "@elizaos/app-lifeops/contracts";
 import type { LifeOpsService } from "../lifeops/service.js";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
-import { hasPrivateAccess } from "@elizaos/agent/security";
+import { hasPrivateAccess } from "@elizaos/agent";
 
 export const INTERNAL_URL = new URL("http://127.0.0.1/");
 

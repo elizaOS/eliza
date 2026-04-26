@@ -19,7 +19,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { ModelType, logger, parseJSONObjectFromText } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent/security";
+import { hasAdminAccess } from "@elizaos/agent";
 import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import {
   type CrossChannelSearchChannel,

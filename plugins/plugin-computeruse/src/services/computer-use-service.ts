@@ -329,7 +329,11 @@ export class ComputerUseService extends Service {
           );
           break;
         case "drag":
-          this.requireCoordinate(params.startCoordinate, "drag");
+          this.requireCoordinate(
+            params.startCoordinate,
+            "drag",
+            "startCoordinate",
+          );
           this.requireCoordinate(params.coordinate, "drag");
           desktopDrag(
             params.startCoordinate[0],
@@ -338,6 +342,11 @@ export class ComputerUseService extends Service {
             params.coordinate[1],
           );
           break;
+        default:
+          return this.failEntry(entry, {
+            success: false,
+            error: `Unknown desktop action: ${(params as { action: string }).action}`,
+          });
       }
 
       const result: ComputerActionResult = { success: true };
@@ -1353,9 +1362,10 @@ export class ComputerUseService extends Service {
   private requireCoordinate(
     coordinate: [number, number] | undefined,
     action: string,
+    fieldName: string = "coordinate",
   ): asserts coordinate is [number, number] {
     if (!coordinate || coordinate.length < 2) {
-      throw new Error(`coordinate [x, y] is required for ${action}`);
+      throw new Error(`${fieldName} [x, y] is required for ${action}`);
     }
   }
 

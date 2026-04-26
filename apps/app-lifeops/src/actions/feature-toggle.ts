@@ -9,7 +9,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security";
+import { hasOwnerAccess } from "@elizaos/agent";
 import { createFeatureFlagService } from "../lifeops/feature-flags.js";
 import {
   ALL_FEATURE_KEYS,

@@ -11,7 +11,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security";
+import { hasOwnerAccess } from "@elizaos/agent";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
   TravelTimeService,

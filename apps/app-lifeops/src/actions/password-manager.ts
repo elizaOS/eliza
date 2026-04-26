@@ -7,7 +7,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent/security";
+import { hasOwnerAccess } from "@elizaos/agent";
 import {
   injectCredentialToClipboard,
   listPasswordItems,
@@ -42,22 +42,6 @@ type PasswordManagerParameters = {
   confirmed?: boolean;
   limit?: number;
 };
-
-function parseLooseParameterString(raw: unknown): Partial<PasswordManagerParameters> {
-  if (typeof raw !== "string") {
-    return {};
-  }
-  const subactionMatch = raw.match(
-    /\bsubaction\s*[:=]\s*["']?([a-z_]+)["']?/i,
-  );
-  const queryMatch = raw.match(/\bquery\s*[:=]\s*["']([^"']+)["']/i);
-  const intentMatch = raw.match(/\bintent\s*[:=]\s*["']([^"']+)["']/i);
-  return {
-    subaction: subactionMatch?.[1],
-    query: queryMatch?.[1],
-    intent: intentMatch?.[1],
-  };
-}
 
 function readConfig(
   runtime: { getSetting?: (key: string) => unknown } | undefined,
@@ -165,12 +149,9 @@ export const passwordManagerAction: Action & {
     }
 
     const rawParameters = (options as HandlerOptions | undefined)?.parameters;
-    const params = {
-      ...parseLooseParameterString(rawParameters),
-      ...((typeof rawParameters === "object" && rawParameters !== null
-        ? (rawParameters as PasswordManagerParameters)
-        : {}) ?? {}),
-    } satisfies PasswordManagerParameters;
+    const params = ((typeof rawParameters === "object" && rawParameters !== null
+      ? (rawParameters as PasswordManagerParameters)
+      : {}) ?? {}) as PasswordManagerParameters;
 
     const subaction = (params.subaction ?? "").toString().trim().toLowerCase();
     const config = readConfig(runtime);

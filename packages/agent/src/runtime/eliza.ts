@@ -59,8 +59,18 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
-import * as pluginAppCompanion from "@elizaos/app-companion/plugin";
-import * as pluginAppLifeops from "@elizaos/app-lifeops/plugin";
+// `@elizaos/app-lifeops` and `@elizaos/app-companion` are NOT eagerly imported
+// here. Both packages transitively import from `@elizaos/agent` (e.g.
+// `hasOwnerAccess` from this package's barrel) — a top-level static import
+// would form a module-init cycle that leaves named exports of the app-lifeops
+// actions array as `undefined`, crashing `runtime.registerPlugin` when it
+// iterates `plugin.actions`.
+//
+// Both apps still resolve at plugin-load time via the dynamic-import fallback
+// in `plugin-resolver.ts` (which awaits `import("@elizaos/app-lifeops")` after
+// the static module graph has fully evaluated, so the cycle never forms).
+// Keep this here as a single sentinel: if we ever need a static reference,
+// add `as const` data only — never an `import * as` of an app-* package.
 import {
   AgentRuntime,
   AutonomyService,

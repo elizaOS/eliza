@@ -78,10 +78,7 @@ import {
   looksLikeGoalAdviceOnly,
   looksLikeRelationshipFollowUpRequest,
 } from "./non-actionable-request.js";
-import {
-  extractExplicitTimeZoneFromText,
-  normalizeExplicitTimeZoneToken,
-} from "./timezone-normalization.js";
+import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -172,12 +169,6 @@ function normalizeLifeTimeZoneToken(
   value: string | null | undefined,
 ): string | null {
   return normalizeExplicitTimeZoneToken(value);
-}
-
-function extractLifeTimeZoneFromText(
-  value: string | null | undefined,
-): string | null {
-  return extractExplicitTimeZoneFromText(value);
 }
 
 type DeferredLifeGoalDraft = {
@@ -1379,20 +1370,6 @@ function buildSingleDailySlot(
   };
 }
 
-function addYearsToLocalDate(
-  dateOnly: { year: number; month: number; day: number },
-  yearDelta: number,
-): { year: number; month: number; day: number } {
-  const utcDate = new Date(
-    Date.UTC(dateOnly.year + yearDelta, dateOnly.month - 1, dateOnly.day, 12),
-  );
-  return {
-    year: utcDate.getUTCFullYear(),
-    month: utcDate.getUTCMonth() + 1,
-    day: utcDate.getUTCDate(),
-  };
-}
-
 function buildCustomTimeWindowPolicy(
   minuteOfDay: number,
   timeZone: string,
@@ -1468,15 +1445,7 @@ function parseTimeOfDayToken(token: string): number | null {
   return parseClockToken(normalized);
 }
 
-function resolveAlarmDayOffset(intent: string): number | null {
-  const lower = normalizeLifeInputText(intent).toLowerCase();
-  if (/\btomorrow\b/.test(lower)) return 1;
-  if (/\b(today|tonight)\b/.test(lower)) return 0;
-  return null;
-}
-
 function buildOneOffDueAtFromMinuteOfDay(args: {
-  intent?: string;
   minuteOfDay: number;
   now?: Date;
   timeZone?: string;
@@ -1490,20 +1459,6 @@ function buildOneOffDueAtFromMinuteOfDay(args: {
     day: nowParts.day,
   };
 
-  const explicitDate =
-    typeof args.intent === "string"
-      ? parseExplicitLocalDateForLifeRequest(args.intent, timeZone, now)
-      : null;
-  if (explicitDate) {
-    localDate = explicitDate;
-  }
-
-  const explicitDayOffset =
-    typeof args.intent === "string" ? resolveAlarmDayOffset(args.intent) : null;
-  if (explicitDate === null && explicitDayOffset !== null) {
-    localDate = addDaysToLocalDate(localDate, explicitDayOffset);
-  }
-
   const buildCandidate = () =>
     buildUtcDateFromLocalParts(timeZone, {
       ...localDate,
@@ -1514,158 +1469,11 @@ function buildOneOffDueAtFromMinuteOfDay(args: {
 
   let candidate = buildCandidate();
   if (candidate.getTime() <= now.getTime()) {
-    if (explicitDate && !explicitDate.explicitYear) {
-      localDate = addYearsToLocalDate(localDate, 1);
-      candidate = buildCandidate();
-    } else if (explicitDate === null && explicitDayOffset === null) {
-      localDate = addDaysToLocalDate(localDate, 1);
-      candidate = buildCandidate();
-    }
+    localDate = addDaysToLocalDate(localDate, 1);
+    candidate = buildCandidate();
   }
 
   return candidate.toISOString();
-}
-
-function parseExplicitLocalDateForLifeRequest(
-  value: string,
-  timeZone: string,
-  now = new Date(),
-): { year: number; month: number; day: number; explicitYear: boolean } | null {
-  const normalized = normalizeLifeInputText(value).toLowerCase();
-  const localToday = getZonedDateParts(now, timeZone);
-  const monthMap: Record<string, number> = {
-    january: 1,
-    jan: 1,
-    february: 2,
-    feb: 2,
-    march: 3,
-    mar: 3,
-    april: 4,
-    apr: 4,
-    may: 5,
-    june: 6,
-    jun: 6,
-    july: 7,
-    jul: 7,
-    august: 8,
-    aug: 8,
-    september: 9,
-    sept: 9,
-    sep: 9,
-    october: 10,
-    oct: 10,
-    november: 11,
-    nov: 11,
-    december: 12,
-    dec: 12,
-  };
-  const weekdayMap: Record<string, number> = {
-    sunday: 0,
-    sun: 0,
-    monday: 1,
-    mon: 1,
-    tuesday: 2,
-    tue: 2,
-    tues: 2,
-    wednesday: 3,
-    wed: 3,
-    thursday: 4,
-    thu: 4,
-    thur: 4,
-    thurs: 4,
-    friday: 5,
-    fri: 5,
-    saturday: 6,
-    sat: 6,
-  };
-
-  const isoMatch = normalized.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
-  if (isoMatch) {
-    return {
-      year: Number(isoMatch[1]),
-      month: Number(isoMatch[2]),
-      day: Number(isoMatch[3]),
-      explicitYear: true,
-    };
-  }
-
-  const monthNameMatch = normalized.match(
-    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/i,
-  );
-  if (monthNameMatch) {
-    const monthToken = monthNameMatch[1];
-    if (!monthToken) {
-      return null;
-    }
-    const month = monthMap[monthToken.toLowerCase().replace(/\./g, "")];
-    if (month === undefined) {
-      return null;
-    }
-    return {
-      year: monthNameMatch[3] ? Number(monthNameMatch[3]) : localToday.year,
-      month,
-      day: Number(monthNameMatch[2]),
-      explicitYear: Boolean(monthNameMatch[3]),
-    };
-  }
-
-  const numericMatch = normalized.match(
-    /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/,
-  );
-  if (numericMatch) {
-    const yearRaw = numericMatch[3];
-    const year =
-      yearRaw === undefined
-        ? localToday.year
-        : yearRaw.length === 2
-          ? 2000 + Number(yearRaw)
-          : Number(yearRaw);
-    return {
-      year,
-      month: Number(numericMatch[1]),
-      day: Number(numericMatch[2]),
-      explicitYear: Boolean(yearRaw),
-    };
-  }
-
-  const weekdayMatch = normalized.match(
-    /\b(?:(this|next)\s+)?(sun(?:day)?|mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?)\b/i,
-  );
-  if (!weekdayMatch) {
-    return null;
-  }
-
-  const weekdayToken = weekdayMatch[2]?.toLowerCase();
-  const targetWeekday = weekdayToken ? weekdayMap[weekdayToken] : undefined;
-  if (targetWeekday === undefined) {
-    return null;
-  }
-
-  const qualifier = weekdayMatch[1]?.toLowerCase() ?? "";
-  const currentWeekday = new Date(
-    Date.UTC(
-      localToday.year,
-      Math.max(0, localToday.month - 1),
-      localToday.day,
-      12,
-    ),
-  ).getUTCDay();
-  let delta = (targetWeekday - currentWeekday + 7) % 7;
-  if (qualifier === "next") {
-    delta = delta === 0 ? 7 : delta + 7;
-  }
-  const resolved = addDaysToLocalDate(
-    {
-      year: localToday.year,
-      month: localToday.month,
-      day: localToday.day,
-    },
-    delta,
-  );
-  return {
-    ...resolved,
-    explicitYear: false,
-  };
 }
 
 function mergeMetadataRecords(
@@ -1945,7 +1753,6 @@ function buildCadenceFromLlmParams(
         cadence: {
           kind: "once",
           dueAt: buildOneOffDueAtFromMinuteOfDay({
-            intent: context?.intent,
             minuteOfDay: timeOfDayMinute,
             now: context?.now,
             timeZone: effectiveTimeZone,
@@ -2821,13 +2628,12 @@ export const lifeAction: Action & {
               (editingDeferredDefinitionDraft || !hadExplicitCadence) &&
               llmPlan.cadenceKind
             ) {
-              const llmCadenceTimeZone =
-                normalizeLifeTimeZoneToken(
-                  detailString(details, "timeZone") ??
-                    llmPlan.timeZone ??
-                    deferredDefinitionDraft?.request.timezone ??
-                    windowPolicy?.timezone,
-                ) ?? extractLifeTimeZoneFromText(intent);
+              const llmCadenceTimeZone = normalizeLifeTimeZoneToken(
+                detailString(details, "timeZone") ??
+                  llmPlan.timeZone ??
+                  deferredDefinitionDraft?.request.timezone ??
+                  windowPolicy?.timezone,
+              );
               const llmCadence = buildCadenceFromLlmParams(llmPlan, {
                 intent,
                 timeZone: llmCadenceTimeZone ?? undefined,
@@ -2851,13 +2657,12 @@ export const lifeAction: Action & {
             }
           }
         }
-        const resolvedTimeZone =
-          normalizeLifeTimeZoneToken(
-            detailString(details, "timeZone") ??
-              llmPlan?.timeZone ??
-              deferredDefinitionDraft?.request.timezone ??
-              windowPolicy?.timezone,
-          ) ?? extractLifeTimeZoneFromText(intent);
+        const resolvedTimeZone = normalizeLifeTimeZoneToken(
+          detailString(details, "timeZone") ??
+            llmPlan?.timeZone ??
+            deferredDefinitionDraft?.request.timezone ??
+            windowPolicy?.timezone,
+        );
         const timedRequestKind = llmRequestKind;
         const nativeAppleMetadata =
           timedRequestKind && cadence?.kind === "once"
@@ -2957,7 +2762,6 @@ export const lifeAction: Action & {
               deferredDefinitionDraft?.request.reminderPlan ??
               buildDefaultReminderPlan(`${title} reminder`),
             timezone:
-              extractLifeTimeZoneFromText(intent) ??
               normalizeLifeTimeZoneToken(llmPlan?.timeZone) ??
               normalizeLifeTimeZoneToken(
                 resolvedTimeZone ?? deferredDefinitionDraft?.request.timezone,
@@ -3024,7 +2828,6 @@ export const lifeAction: Action & {
             definitionDraft.intent || definitionDraft.request.title,
           cadence: definitionDraft.request.cadence,
           timezone:
-            extractLifeTimeZoneFromText(definitionDraft.intent) ??
             normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
             definitionDraft.request.timezone,
           priority: definitionDraft.request.priority,

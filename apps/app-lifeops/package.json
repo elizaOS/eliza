@@ -54,6 +54,7 @@
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "^0.45.1",
     "lucide-react": "^1.0.0",
+    "react-plaid-link": "^4.0.1",
     "sharp": "^0.34.5",
     "telegram": "2.26.22"
   },

@@ -1,4 +1,4 @@
-import { hasAdminAccess } from "@elizaos/agent/security";
+import { hasAdminAccess } from "@elizaos/agent";
 import type {
   Action,
   ActionResult,

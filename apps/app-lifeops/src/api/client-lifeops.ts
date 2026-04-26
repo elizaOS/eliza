@@ -343,6 +343,26 @@ declare module "@elizaos/app-core/api/client-base" {
       skipped: number;
       nextCursor: string;
     }>;
+    createLifeOpsPaypalAuthorizeUrl(data: { state: string }): Promise<{
+      url: string;
+      scope: string;
+      environment: "live" | "sandbox";
+    }>;
+    completeLifeOpsPaypalLink(data: {
+      code: string;
+      label?: string | null;
+    }): Promise<{
+      source: import("../lifeops/payment-types.js").LifeOpsPaymentSource;
+      capability: { hasReporting: boolean; hasIdentity: boolean };
+    }>;
+    syncLifeOpsPaypalTransactions(data: {
+      sourceId: string;
+      windowDays?: number | null;
+    }): Promise<{
+      inserted: number;
+      skipped: number;
+      fallback: "csv_export" | null;
+    }>;
     unsubscribeLifeOpsEmailSender(data: {
       senderEmail: string;
       blockAfter?: boolean;
@@ -823,6 +843,36 @@ ElizaClient.prototype.syncLifeOpsPlaidTransactions = async function (
   data,
 ) {
   return this.fetch("/api/lifeops/money/plaid/sync", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.createLifeOpsPaypalAuthorizeUrl = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/money/paypal/authorize-url", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.completeLifeOpsPaypalLink = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/money/paypal/complete", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.syncLifeOpsPaypalTransactions = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/money/paypal/sync", {
     method: "POST",
     body: JSON.stringify(data),
   });
