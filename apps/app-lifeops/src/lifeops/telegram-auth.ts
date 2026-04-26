@@ -14,7 +14,7 @@ import {
   type TelegramAccountAuthSessionLike,
   type TelegramAccountAuthSnapshot,
   type TelegramAccountConnectorConfig,
-} from "../../../../plugins/plugin-telegram/src/account-auth-service.ts";
+} from "@elizaos/plugin-telegram/account-auth-service";
 import {
   decryptTokenEnvelope,
   encryptTokenPayload,
