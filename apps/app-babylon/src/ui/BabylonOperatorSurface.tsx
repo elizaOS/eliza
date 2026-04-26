@@ -21,7 +21,7 @@ import {
   extractTeamDashboard,
   extractTradingBalance,
   summarizeBabylonActivity,
-} from "@elizaos/app-core/components/apps/babylon-data";
+} from "./babylon-data";
 import {
   formatDetailTimestamp,
   SurfaceBadge,

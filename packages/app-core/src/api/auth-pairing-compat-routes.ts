@@ -11,6 +11,7 @@ import {
   hasCompatPersistedOnboardingState,
   readCompatJsonBody,
 } from "./compat-route-shared";
+import { isCloudProvisioned } from "./server-onboarding-compat";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
@@ -130,6 +131,10 @@ export async function handleAuthPairingCompatRoutes(
     const config = loadElizaConfig();
     sendJsonResponse(res, 200, {
       complete: hasCompatPersistedOnboardingState(config),
+      // Metadata only — no auth implication. The client uses this to decide
+      // whether to show the bootstrap-token wizard step. Auth is enforced by
+      // the exchange endpoint itself; this flag never grants access.
+      cloudProvisioned: isCloudProvisioned(),
     });
     return true;
   }

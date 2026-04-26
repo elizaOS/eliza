@@ -15,4 +15,11 @@ export * from "./schema.ts";
 export * from "./packaging.ts";
 export * from "./routes.ts";
 export * from "./service.ts";
+export {
+  browserBridgeActions,
+  browserBridgeInstallAction,
+  browserBridgeOpenManagerAction,
+  browserBridgeRefreshAction,
+  browserBridgeRevealFolderAction,
+} from "./actions.ts";
 export { browserBridgePlugin } from "./plugin.ts";
