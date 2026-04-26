@@ -552,6 +552,43 @@ export const lifeGmailMessages = pgTable(
   (t) => [unique().on(t.agentId, t.provider, t.side, t.externalMessageId)],
 );
 
+export const lifeInboxMessages = pgTable(
+  "life_inbox_messages",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    channel: text("channel").notNull(),
+    externalId: text("external_id").notNull(),
+    threadId: text("thread_id"),
+    senderId: text("sender_id").notNull(),
+    senderDisplay: text("sender_display").notNull(),
+    senderEmail: text("sender_email"),
+    subject: text("subject"),
+    snippet: text("snippet").notNull().default(""),
+    receivedAt: text("received_at").notNull(),
+    isUnread: boolean("is_unread").notNull().default(true),
+    deepLink: text("deep_link"),
+    sourceRefJson: text("source_ref_json").notNull().default("{}"),
+    chatType: text("chat_type").notNull().default("dm"),
+    participantCount: integer("participant_count"),
+    gmailAccountId: text("gmail_account_id"),
+    gmailAccountEmail: text("gmail_account_email"),
+    priorityScore: integer("priority_score"),
+    priorityCategory: text("priority_category"),
+    priorityFlagsJson: text("priority_flags_json").notNull().default("[]"),
+    cachedAt: text("cached_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [
+    unique().on(t.agentId, t.channel, t.externalId),
+    index("idx_life_inbox_messages_agent_received").on(
+      t.agentId,
+      t.receivedAt,
+    ),
+    index("idx_life_inbox_messages_agent_channel").on(t.agentId, t.channel),
+  ],
+);
+
 export const lifeGmailSyncStates = pgTable(
   "life_gmail_sync_states",
   {
@@ -1298,6 +1335,7 @@ export const lifeOpsSchema = {
   lifeCalendarEvents,
   lifeCalendarSyncStates,
   lifeGmailMessages,
+  lifeInboxMessages,
   lifeGmailSyncStates,
   lifeGmailSpamReviewItems,
   lifeWorkflowDefinitions,
