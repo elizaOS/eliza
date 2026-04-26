@@ -71,10 +71,6 @@ export type {
 const DEFAULT_VIEWER_SANDBOX = "allow-scripts allow-same-origin allow-popups";
 const DEFAULT_RS_SDK_SERVER_URL = "https://rs-sdk-demo.fly.dev";
 const BABYLON_APP_ROUTE_SLUG = "babylon";
-const LOCAL_DEV_BABYLON_CLIENT_URL = "http://localhost:3000";
-const PRODUCTION_BABYLON_CLIENT_URL = "https://staging.babylon.market";
-const BABYLON_AGENT_SESSION_TOKEN_KEY = "BABYLON_AGENT_SESSION_TOKEN";
-const BABYLON_AGENT_SESSION_EXPIRES_AT_KEY = "BABYLON_AGENT_SESSION_EXPIRES_AT";
 const HYPERSCAPE_APP_ROUTE_SLUG = "hyperscape";
 const LOCAL_DEV_HYPERSCAPE_CLIENT_URL = "http://localhost:3333";
 const PRODUCTION_HYPERSCAPE_CLIENT_URL = "https://hyperscape.gg";
@@ -538,18 +534,6 @@ function isLocalPlugin(appInfo: RegistryPluginInfo): boolean {
 }
 
 function getTemplateFallbackValue(key: string): string | undefined {
-  if (key === "BABYLON_CLIENT_URL") {
-    const runtimeClientUrl =
-      process.env.BABYLON_CLIENT_URL?.trim() ??
-      process.env.BABYLON_APP_URL?.trim() ??
-      process.env.BABYLON_API_URL?.trim();
-    if (runtimeClientUrl && runtimeClientUrl.length > 0) {
-      return runtimeClientUrl;
-    }
-    return isProductionRuntime()
-      ? PRODUCTION_BABYLON_CLIENT_URL
-      : LOCAL_DEV_BABYLON_CLIENT_URL;
-  }
   if (key === "RS_SDK_BOT_NAME") {
     const runtimeBotName = process.env.BOT_NAME?.trim();
     if (runtimeBotName && runtimeBotName.length > 0) {

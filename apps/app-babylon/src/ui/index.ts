@@ -7,3 +7,4 @@ registerOperatorSurface("@elizaos/app-babylon", BabylonOperatorSurface);
 registerDetailExtension("babylon-operator-dashboard", BabylonDetailExtension);
 
 export { BabylonOperatorSurface, BabylonDetailExtension };
+export * from "./babylon-data.js";

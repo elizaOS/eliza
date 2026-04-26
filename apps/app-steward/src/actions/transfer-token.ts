@@ -13,11 +13,13 @@
  * @module actions/transfer-token
  */
 
+import { hasAdminAccess } from "@elizaos/agent/security";
 import type {
   Action,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
+  Memory,
 } from "@elizaos/core";
 import {
   buildAuthHeaders,
@@ -145,15 +147,25 @@ export const transferTokenAction: Action = {
 
   description:
     "Transfer tokens or native BNB to another address. Use this when a user " +
-    "asks to send, transfer, or pay tokens to a recipient address on BSC.",
-  descriptionCompressed: "Transfer tokens/BNB to address on BSC.",
+    "asks to send, transfer, or pay tokens to a recipient address on BSC. " +
+    "Requires sender role of ADMIN or OWNER — non-admin senders cannot " +
+    "initiate a transfer through this action.",
+  descriptionCompressed:
+    "Transfer tokens/BNB to address on BSC (admin/owner only).",
 
-  validate: async (runtime: IAgentRuntime): Promise<boolean> => {
-    return Boolean(
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+  ): Promise<boolean> => {
+    const hasWallet = Boolean(
       runtime.getSetting("EVM_PRIVATE_KEY") ||
         runtime.getSetting("PRIVY_APP_ID") ||
         runtime.getSetting("STEWARD_API_URL"), // Steward provides the wallet
     );
+    if (!hasWallet) return false;
+    // Mutating action — gate on admin/owner role. Non-admin senders are
+    // rejected at validate so the action never reaches the handler.
+    return hasAdminAccess(runtime, message);
   },
 
   handler: async (

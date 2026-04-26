@@ -9,7 +9,7 @@
  * Non-loading phases (error, pairing, onboarding) delegate to their views.
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import { CONNECT_EVENT } from "../../events";
 import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
@@ -17,6 +17,7 @@ import { applyLaunchConnection } from "../../platform";
 import { useApp } from "../../state";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";
+import { BootstrapStep } from "../onboarding/BootstrapStep";
 import { PairingView } from "./PairingView";
 import { RuntimeGate } from "./RuntimeGate";
 import { StartupFailureView } from "./StartupFailureView";
@@ -50,6 +51,22 @@ function phaseToStatusKey(phase: string): string {
   }
 }
 
+/**
+ * Returns true when the cloud-provisioned bootstrap session has NOT yet been
+ * established for this page load. After a successful exchange the UI writes
+ * sessionStorage["milady_session"] — we treat presence of that key as
+ * "bootstrap done" for P0. P1 will retire sessionStorage in favour of an
+ * HttpOnly cookie set by the server.
+ */
+function needsBootstrapSession(): boolean {
+  try {
+    return !sessionStorage.getItem("milady_session");
+  } catch {
+    // sessionStorage unavailable — treat as needing bootstrap (fail closed).
+    return true;
+  }
+}
+
 export function StartupShell() {
   const {
     startupCoordinator,
@@ -66,6 +83,13 @@ export function StartupShell() {
     ? (startupCoordinator.state as { loaded?: boolean }).loaded
     : false;
   const progress = PHASE_PROGRESS[phase] ?? 50;
+
+  // ── Bootstrap gate state ───────────────────────────────────────
+  // Set to true when the server reports cloudProvisioned=true and no
+  // session exists yet. Set to false once the bootstrap exchange succeeds
+  // (onAdvance callback below).
+  const [showBootstrap, setShowBootstrap] = useState(false);
+
   // ── Cloud onboarding skip ──────────────────────────────────────
   // Fallback: if a cloud-provisioned container still reaches onboarding-required
   // (e.g. splash probe didn't fire SPLASH_CLOUD_SKIP), re-check the server here

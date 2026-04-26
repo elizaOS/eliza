@@ -21,4 +21,10 @@ export const WritableStream =
 export const TransformStream =
   typeof globalThis !== "undefined" ? globalThis.TransformStream : class {};
 
+// @elizaos/agent browser fallback
+export const createIntegrationTelemetrySpan = () => ({
+  success: () => {},
+  failure: () => {},
+});
+
 export default {};

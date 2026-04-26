@@ -17,7 +17,7 @@ import {
   authSessionTable,
 } from "@elizaos/plugin-sql/schema";
 import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
-import { and, eq, lte } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, ne } from "drizzle-orm";
 
 export interface AuthIdentityRow {
   id: string;
@@ -175,6 +175,37 @@ export class AuthStore {
     return row ? rowToIdentity(row) : null;
   }
 
+  async findIdentityByDisplayName(
+    displayName: string,
+  ): Promise<AuthIdentityRow | null> {
+    const rows = await this.db
+      .select()
+      .from(authIdentityTable)
+      .where(eq(authIdentityTable.displayName, displayName))
+      .limit(1);
+    const row = rows[0];
+    return row ? rowToIdentity(row) : null;
+  }
+
+  async listIdentitiesByKind(
+    kind: "owner" | "machine",
+  ): Promise<AuthIdentityRow[]> {
+    const rows = await this.db
+      .select()
+      .from(authIdentityTable)
+      .where(eq(authIdentityTable.kind, kind));
+    return rows.map(rowToIdentity);
+  }
+
+  async hasOwnerIdentity(): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: authIdentityTable.id })
+      .from(authIdentityTable)
+      .where(eq(authIdentityTable.kind, "owner"))
+      .limit(1);
+    return rows.length > 0;
+  }
+
   async createSession(input: CreateSessionInput): Promise<AuthSessionRow> {
     const inserted = await this.db
       .insert(authSessionTable)
@@ -228,10 +259,109 @@ export class AuthStore {
       .where(
         and(
           eq(authSessionTable.id, id),
-          /* not already revoked */ eq(authSessionTable.id, id),
+          isNull(authSessionTable.revokedAt),
         ),
       )) as unknown as DrizzleRunResult;
     return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
+  }
+
+  /**
+   * Slide the browser session forward: bump `lastSeenAt` and extend
+   * `expiresAt`. Caller computes the new `expiresAt` so the store stays
+   * policy-free.
+   */
+  async touchSession(
+    id: string,
+    lastSeenAt: number,
+    expiresAt: number,
+  ): Promise<void> {
+    await this.db
+      .update(authSessionTable)
+      .set({ lastSeenAt, expiresAt })
+      .where(
+        and(
+          eq(authSessionTable.id, id),
+          isNull(authSessionTable.revokedAt),
+        ),
+      );
+  }
+
+  /**
+   * Revoke every active session for an identity, except optionally the one
+   * currently in use. Returns the number of rows updated. Implemented in a
+   * single statement — no read/write race window.
+   */
+  async revokeAllSessionsForIdentity(
+    identityId: string,
+    now: number = Date.now(),
+    exceptSessionId?: string,
+  ): Promise<number> {
+    const condition = exceptSessionId
+      ? and(
+          eq(authSessionTable.identityId, identityId),
+          isNull(authSessionTable.revokedAt),
+          ne(authSessionTable.id, exceptSessionId),
+        )
+      : and(
+          eq(authSessionTable.identityId, identityId),
+          isNull(authSessionTable.revokedAt),
+        );
+    const result = (await this.db
+      .update(authSessionTable)
+      .set({ revokedAt: now })
+      .where(condition)) as unknown as DrizzleRunResult;
+    return typeof result.rowCount === "number" ? result.rowCount : 0;
+  }
+
+  /**
+   * Mark every active legacy machine session (scopes containing the literal
+   * "legacy" entry) as revoked. Used when a real auth method lands and the
+   * legacy bearer must be retired immediately.
+   */
+  async revokeLegacyBearerSessions(now: number = Date.now()): Promise<number> {
+    const allMachine = await this.db
+      .select()
+      .from(authSessionTable)
+      .where(
+        and(
+          eq(authSessionTable.kind, "machine"),
+          isNull(authSessionTable.revokedAt),
+        ),
+      );
+    let revoked = 0;
+    for (const row of allMachine) {
+      const session = rowToSession(row);
+      if (!session.scopes.includes("legacy")) continue;
+      await this.db
+        .update(authSessionTable)
+        .set({ revokedAt: now })
+        .where(eq(authSessionTable.id, session.id));
+      revoked += 1;
+    }
+    return revoked;
+  }
+
+  /**
+   * List every active (unrevoked, unexpired) session for an identity, newest
+   * first. Used by `/api/auth/sessions` to populate the security UI.
+   */
+  async listSessionsForIdentity(
+    identityId: string,
+    now: number = Date.now(),
+  ): Promise<AuthSessionRow[]> {
+    const rows = await this.db
+      .select()
+      .from(authSessionTable)
+      .where(eq(authSessionTable.identityId, identityId))
+      .orderBy(desc(authSessionTable.lastSeenAt));
+    const out: AuthSessionRow[] = [];
+    for (const row of rows) {
+      const session = rowToSession(row);
+      if (session.revokedAt !== null) continue;
+      if (session.expiresAt <= now) continue;
+      out.push(session);
+    }
+    return out;
   }
 
   /**
