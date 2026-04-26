@@ -14,9 +14,9 @@ import { Readable } from "node:stream";
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,
+  type DrizzleDatabase,
   plugin as sqlPlugin,
 } from "@elizaos/plugin-sql";
-import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStore } from "../services/auth-store";
 import { _resetAuthRateLimiter } from "./auth";

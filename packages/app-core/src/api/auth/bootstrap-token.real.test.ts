@@ -14,9 +14,9 @@ import path from "node:path";
 import {
   createDatabaseAdapter,
   DatabaseMigrationService,
+  type DrizzleDatabase,
   plugin as sqlPlugin,
 } from "@elizaos/plugin-sql";
-import type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
 import {
   exportJWK,
   generateKeyPair,
