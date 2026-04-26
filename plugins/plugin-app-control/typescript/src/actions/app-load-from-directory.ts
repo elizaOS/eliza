@@ -1,0 +1,193 @@
+/**
+ * @module plugin-app-control/actions/app-load-from-directory
+ *
+ * load_from_directory sub-mode: scan an absolute directory for subdirs that
+ * contain a package.json with an `elizaos.app` field. For each match, register
+ * a curated app definition (security-audited; never auto-launches).
+ */
+
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import type {
+	ActionResult,
+	HandlerCallback,
+	IAgentRuntime,
+	Memory,
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { readStringOption } from "../params.js";
+import {
+	type AppRegistryEntry,
+	type AppRegistryService,
+	APP_REGISTRY_SERVICE_TYPE,
+} from "../services/app-registry-service.js";
+
+interface DiscoveredApp {
+	directory: string;
+	packageName: string;
+	displayName: string;
+	slug: string;
+	aliases: string[];
+}
+
+async function readPackageJson(
+	dir: string,
+): Promise<Record<string, unknown> | null> {
+	const pkgPath = path.join(dir, "package.json");
+	const raw = await fs.readFile(pkgPath, "utf8").catch(() => null);
+	if (raw === null) return null;
+	const parsed = JSON.parse(raw) as unknown;
+	if (!parsed || typeof parsed !== "object") return null;
+	return parsed as Record<string, unknown>;
+}
+
+function readString(value: unknown): string | null {
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : null;
+}
+
+function readStringArray(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return value.filter((v): v is string => typeof v === "string");
+}
+
+function packageBasename(name: string): string {
+	return name.replace(/^@[^/]+\//, "").trim();
+}
+
+async function discoverApps(directory: string): Promise<DiscoveredApp[]> {
+	const stat = await fs.stat(directory).catch(() => null);
+	if (!stat?.isDirectory()) {
+		throw new Error(`Not a directory: ${directory}`);
+	}
+
+	const entries = await fs.readdir(directory, { withFileTypes: true });
+	const found: DiscoveredApp[] = [];
+
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
+		const subdir = path.join(directory, entry.name);
+		const pkg = await readPackageJson(subdir);
+		if (!pkg) continue;
+
+		const elizaos =
+			pkg.elizaos && typeof pkg.elizaos === "object"
+				? (pkg.elizaos as Record<string, unknown>)
+				: null;
+		const appMeta =
+			elizaos?.app && typeof elizaos.app === "object"
+				? (elizaos.app as Record<string, unknown>)
+				: null;
+		if (!appMeta) continue;
+
+		const packageName = readString(pkg.name);
+		if (!packageName) continue;
+
+		const slug =
+			readString(appMeta.slug) ??
+			packageBasename(packageName).replace(/^app-/, "");
+		const displayName =
+			readString(appMeta.displayName) ?? packageBasename(packageName);
+		const aliases = readStringArray(appMeta.aliases);
+
+		found.push({
+			directory: subdir,
+			packageName,
+			displayName,
+			slug,
+			aliases,
+		});
+	}
+
+	return found;
+}
+
+export interface RunLoadFromDirectoryInput {
+	runtime: IAgentRuntime;
+	message: Memory;
+	options?: Record<string, unknown>;
+	callback?: HandlerCallback;
+}
+
+export async function runLoadFromDirectory({
+	runtime,
+	message,
+	options,
+	callback,
+}: RunLoadFromDirectoryInput): Promise<ActionResult> {
+	const directory = readStringOption(options, "directory");
+	if (!directory) {
+		const text =
+			'I need an absolute directory path. Try: pass { directory: "/abs/path/to/apps" }.';
+		await callback?.({ text });
+		return { success: false, text };
+	}
+
+	if (!path.isAbsolute(directory)) {
+		const text = `Directory must be an absolute path: "${directory}".`;
+		await callback?.({ text });
+		return { success: false, text };
+	}
+
+	const service = runtime.getService(
+		APP_REGISTRY_SERVICE_TYPE,
+	) as AppRegistryService | null;
+	if (!service) {
+		const text = "AppRegistryService is not registered; cannot load apps.";
+		await callback?.({ text });
+		return { success: false, text };
+	}
+
+	const discovered = await discoverApps(directory);
+	if (discovered.length === 0) {
+		const text = `No apps found under ${directory} (no subdir contained a package.json with elizaos.app).`;
+		await callback?.({ text });
+		return { success: true, text, data: { directory, registered: [] } };
+	}
+
+	const registered: AppRegistryEntry[] = [];
+	const requesterEntityId =
+		typeof message.entityId === "string" ? message.entityId : null;
+	const requesterRoomId =
+		typeof message.roomId === "string" ? message.roomId : null;
+
+	for (const app of discovered) {
+		const entry: AppRegistryEntry = {
+			slug: app.slug,
+			canonicalName: app.packageName,
+			aliases: app.aliases,
+			directory: app.directory,
+			displayName: app.displayName,
+		};
+		await service.register(entry, {
+			requesterEntityId,
+			requesterRoomId,
+		});
+		registered.push(entry);
+	}
+
+	logger.info(
+		`[plugin-app-control] APP/load_from_directory ${directory} registered=${registered.length}`,
+	);
+
+	const lines = [
+		`Registered ${registered.length} app${registered.length === 1 ? "" : "s"} from ${directory}:`,
+		...registered.map((r) => `  - ${r.displayName} (${r.canonicalName})`),
+		"",
+		"Apps are registered only — none were launched.",
+	];
+	const text = lines.join("\n");
+	await callback?.({ text });
+
+	return {
+		success: true,
+		text,
+		values: {
+			mode: "load_from_directory",
+			directory,
+			registeredCount: registered.length,
+		},
+		data: { directory, registered },
+	};
+}
