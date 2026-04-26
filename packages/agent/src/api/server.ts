@@ -157,7 +157,6 @@ import {
 } from "./chat-routes.js";
 import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
 import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
-import { handleCloudFeaturesRoute } from "./cloud-features-routes.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
@@ -214,7 +213,6 @@ import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
-import { handleTravelProviderRelayRoute } from "./travel-provider-relay-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
 import { handleUpdateRoutes } from "./update-routes.js";
@@ -994,6 +992,14 @@ const rejectWebSocketUpgrade = _rejectWebSocketUpgrade;
 const isWebSocketAuthorized = _isWebSocketAuthorized;
 const getConfiguredApiToken = _getConfiguredApiToken;
 const pairingEnabled = _pairingEnabled;
+
+function isLifeOpsCloudPluginRoute(pathname: string): boolean {
+  return (
+    pathname === "/api/cloud/features" ||
+    pathname === "/api/cloud/features/sync" ||
+    pathname.startsWith("/api/cloud/travel-providers/")
+  );
+}
 const ensurePairingCode = _ensurePairingCode;
 const normalizePairingCode = _normalizePairingCode;
 const rateLimitPairing = _rateLimitPairing;
@@ -2261,31 +2267,23 @@ async function handleRequest(
   // @elizaos/app-steward plugin routes. See apps/app-steward/src/plugin.ts.
   // ═══════════════════════════════════════════════════════════════════════
 
+  if (
+    isLifeOpsCloudPluginRoute(pathname) &&
+    (await tryHandleRuntimePluginRoute({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      runtime: state.runtime,
+      isAuthorized: () => isAuthorized(req),
+    }))
+  ) {
+    return;
+  }
+
   // ── Cloud routes (/api/cloud/*) ─────────────────────────────────────────
   if (pathname.startsWith("/api/cloud/")) {
-    // Cloud-managed feature flag sync — must run before the generic
-    // cloud passthrough so /api/cloud/features hits the local upserter.
-    const featuresHandled = await handleCloudFeaturesRoute(
-      req,
-      res,
-      pathname,
-      method,
-      { config: state.config, runtime: state.runtime },
-    );
-    if (featuresHandled) return;
-
-    // Travel-provider relay — must run before the generic cloud
-    // passthrough so provider-specific billing paths are hit instead of
-    // the bare Cloud proxy.
-    const travelProviderHandled = await handleTravelProviderRelayRoute(
-      req,
-      res,
-      pathname,
-      method,
-      { config: state.config, runtime: state.runtime },
-    );
-    if (travelProviderHandled) return;
-
     const xRelayHandled = await handleXRelayRoute(req, res, pathname, method, {
       config: state.config,
       runtime: state.runtime,

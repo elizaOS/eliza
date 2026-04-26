@@ -5,6 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../cloud/validate-url.js", () => ({
   validateCloudBaseUrl: vi.fn(async () => null),
 }));
+vi.mock("@elizaos/agent/cloud/base-url", () => ({
+  normalizeCloudSiteUrl: (value?: string) =>
+    value?.replace(/\/+$/, "") || "https://www.elizacloud.ai",
+}));
+vi.mock("@elizaos/agent/cloud/validate-url", () => ({
+  validateCloudBaseUrl: vi.fn(async () => null),
+}));
 
 import {
   handleTravelProviderRelayRoute,
