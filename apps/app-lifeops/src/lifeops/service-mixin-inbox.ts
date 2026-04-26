@@ -750,7 +750,8 @@ export async function fetchInbox(
   const resolved = resolveInboxRequest(request);
   const inbound = await fetchAllMessages(runtime, {
     sources: Array.from(resolved.allowed),
-    limit: resolved.limit,
+    limit:
+      resolved.cacheMode === "refresh" ? resolved.cacheLimit : resolved.limit,
     includeGmail: resolved.allowed.has("gmail"),
     gmailSource,
     xDmSource,
@@ -768,6 +769,21 @@ export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
       request: GetLifeOpsInboxRequest = {},
     ): Promise<LifeOpsInbox> {
       const resolved = resolveInboxRequest(request);
+      const ownerName = resolveOwnerName(this.runtime);
+      const buildFromCache = (
+        messages: readonly LifeOpsCachedInboxMessage[],
+      ): LifeOpsInbox =>
+        buildInboxFromMessages(messages, {
+          limit: resolved.limit,
+          allowed: resolved.allowed,
+          chatTypeFilter: resolved.chatTypeFilter,
+          maxParticipants: resolved.maxParticipants,
+          gmailAccountId: resolved.gmailAccountId,
+          ownerName,
+          groupByThread: resolved.groupByThread,
+          missedOnly: resolved.missedOnly,
+          sortByPriority: resolved.sortByPriority,
+        });
       const cached = await this.repository.listCachedInboxMessages(
         this.runtime.agentId,
         {
@@ -776,18 +792,11 @@ export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
           gmailAccountId: resolved.gmailAccountId,
         },
       );
-      if (isFreshCache(cached)) {
-        return buildInboxFromMessages(cached, {
-          limit: resolved.limit,
-          allowed: resolved.allowed,
-          chatTypeFilter: resolved.chatTypeFilter,
-          maxParticipants: resolved.maxParticipants,
-          gmailAccountId: resolved.gmailAccountId,
-          ownerName: resolveOwnerName(this.runtime),
-          groupByThread: resolved.groupByThread,
-          missedOnly: resolved.missedOnly,
-          sortByPriority: resolved.sortByPriority,
-        });
+      if (resolved.cacheMode === "cache-only") {
+        return buildFromCache(cached);
+      }
+      if (resolved.cacheMode !== "refresh" && isFreshCache(cached)) {
+        return buildFromCache(cached);
       }
 
       const inbound = await fetchAllMessages(this.runtime, {
