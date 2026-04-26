@@ -226,6 +226,9 @@ console.log('Re-added eliza/packages/agent to workspaces');
 "
 
 log "Building Docker image"
+log "Docker build disk usage"
+df -h "$REPO_ROOT" || true
+"$DOCKER_BIN" system df || true
 "$DOCKER_BIN" build \
   --file eliza/packages/app-core/deploy/Dockerfile.ci \
   --tag "$DOCKER_IMAGE" \
