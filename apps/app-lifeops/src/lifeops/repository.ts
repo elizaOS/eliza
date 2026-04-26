@@ -1,5 +1,20 @@
 import crypto from "node:crypto";
+import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import {
+  type BrowserBridgeCompanionStatus,
+  type BrowserBridgePageContext,
+  type BrowserBridgePermissionState,
+  type BrowserBridgeSettings,
+  type BrowserBridgeTabSummary,
+  browserBridgeSchema,
+} from "@elizaos/plugin-browser-bridge";
+import type {
+  LifeOpsXDm,
+  LifeOpsXFeedItem,
+  LifeOpsXFeedType,
+  LifeOpsXSyncState,
+} from "@elizaos/shared/contracts/lifeops-extensions";
 import type {
   LifeOpsActivitySignal,
   LifeOpsAuditEvent,
@@ -49,21 +64,6 @@ import type {
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
 } from "../contracts/index.js";
-import type { IAgentRuntime } from "@elizaos/core";
-import {
-  browserBridgeSchema,
-  type BrowserBridgeCompanionStatus,
-  type BrowserBridgePageContext,
-  type BrowserBridgePermissionState,
-  type BrowserBridgeSettings,
-  type BrowserBridgeTabSummary,
-} from "@elizaos/plugin-browser-bridge";
-import type {
-  LifeOpsXDm,
-  LifeOpsXFeedItem,
-  LifeOpsXFeedType,
-  LifeOpsXSyncState,
-} from "@elizaos/shared/contracts/lifeops-extensions";
 import type {
   EmailUnsubscribeMethod,
   EmailUnsubscribeRecord,
@@ -2737,10 +2737,7 @@ export class LifeOpsRepository {
     return row ? parsePaymentSource(row) : null;
   }
 
-  async deletePaymentSource(
-    agentId: string,
-    sourceId: string,
-  ): Promise<void> {
+  async deletePaymentSource(agentId: string, sourceId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_payment_transactions
@@ -3076,6 +3073,49 @@ export class LifeOpsRepository {
 
   async upsertConnectorGrant(grant: LifeOpsConnectorGrant): Promise<void> {
     const identityEmail = deriveConnectorIdentityEmail(grant.identity);
+    const logicalIdentityClause =
+      identityEmail === null
+        ? "identity_email IS NULL"
+        : `identity_email = ${sqlQuote(identityEmail)}`;
+    const existingRows = await executeRawSql(
+      this.runtime,
+      `SELECT id, created_at
+         FROM life_connector_grants
+        WHERE agent_id = ${sqlQuote(grant.agentId)}
+          AND provider = ${sqlQuote(grant.provider)}
+          AND side = ${sqlQuote(grant.side)}
+          AND mode = ${sqlQuote(grant.mode)}
+          AND ${logicalIdentityClause}
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1`,
+    );
+    const existingRow = existingRows[0] ?? null;
+    const targetId = existingRow ? toText(existingRow.id, grant.id) : grant.id;
+    const createdAt = existingRow
+      ? toText(existingRow.created_at, grant.createdAt)
+      : grant.createdAt;
+
+    if (existingRow) {
+      await executeRawSql(
+        this.runtime,
+        `UPDATE life_connector_grants
+            SET identity_json = ${sqlJson(grant.identity)},
+                identity_email = ${sqlText(identityEmail)},
+                granted_scopes_json = ${sqlJson(grant.grantedScopes)},
+                capabilities_json = ${sqlJson(grant.capabilities)},
+                token_ref = ${sqlText(grant.tokenRef)},
+                execution_target = ${sqlQuote(grant.executionTarget)},
+                source_of_truth = ${sqlQuote(grant.sourceOfTruth)},
+                preferred_by_agent = ${sqlBoolean(grant.preferredByAgent)},
+                cloud_connection_id = ${sqlText(grant.cloudConnectionId)},
+                metadata_json = ${sqlJson(grant.metadata)},
+                last_refresh_at = ${sqlText(grant.lastRefreshAt)},
+                updated_at = ${sqlQuote(grant.updatedAt)}
+          WHERE id = ${sqlQuote(targetId)}`,
+      );
+      return;
+    }
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_connector_grants (
@@ -3085,7 +3125,7 @@ export class LifeOpsRepository {
         preferred_by_agent, cloud_connection_id, metadata_json,
         last_refresh_at, created_at, updated_at
       ) VALUES (
-        ${sqlQuote(grant.id)},
+        ${sqlQuote(targetId)},
         ${sqlQuote(grant.agentId)},
         ${sqlQuote(grant.provider)},
         ${sqlQuote(grant.side)},
@@ -3101,10 +3141,13 @@ export class LifeOpsRepository {
         ${sqlText(grant.cloudConnectionId)},
         ${sqlJson(grant.metadata)},
         ${sqlText(grant.lastRefreshAt)},
-        ${sqlQuote(grant.createdAt)},
+        ${sqlQuote(createdAt)},
         ${sqlQuote(grant.updatedAt)}
       )
-      ON CONFLICT(agent_id, provider, side, mode, identity_email) DO UPDATE SET
+      ON CONFLICT(id) DO UPDATE SET
+        agent_id = excluded.agent_id,
+        provider = excluded.provider,
+        side = excluded.side,
         identity_json = excluded.identity_json,
         identity_email = excluded.identity_email,
         granted_scopes_json = excluded.granted_scopes_json,
@@ -3116,6 +3159,7 @@ export class LifeOpsRepository {
         cloud_connection_id = excluded.cloud_connection_id,
         metadata_json = excluded.metadata_json,
         last_refresh_at = excluded.last_refresh_at,
+        created_at = life_connector_grants.created_at,
         updated_at = excluded.updated_at`,
     );
   }
@@ -3145,6 +3189,7 @@ export class LifeOpsRepository {
           AND provider = ${sqlQuote(provider)}
           AND side = ${sqlQuote(side)}
           AND mode = ${sqlQuote(mode)}
+        ORDER BY updated_at DESC, created_at DESC
         LIMIT 1`,
     );
     const row = rows[0];
