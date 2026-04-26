@@ -23,10 +23,17 @@ import { ElizaClient } from "./client-base";
 
 declare module "./client-base" {
   interface ElizaClient {
-    getLifeOpsAppState(): Promise<{ enabled: boolean }>;
+    getLifeOpsAppState(): Promise<{
+      enabled: boolean;
+      priorityScoring: { enabled: boolean; model: string | null };
+    }>;
     updateLifeOpsAppState(data: {
       enabled: boolean;
-    }): Promise<{ enabled: boolean }>;
+      priorityScoring?: { enabled: boolean; model: string | null } | null;
+    }): Promise<{
+      enabled: boolean;
+      priorityScoring: { enabled: boolean; model: string | null };
+    }>;
     getLifeOpsCalendarFeed(
       options?: GetLifeOpsCalendarFeedRequest,
     ): Promise<LifeOpsCalendarFeed>;
