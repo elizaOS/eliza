@@ -12,7 +12,7 @@ import type {
   LifeOpsGmailMessageSummary,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   createGoogleCalendarEvent,
   deleteGoogleCalendarEvent,

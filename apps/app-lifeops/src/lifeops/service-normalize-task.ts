@@ -1,5 +1,7 @@
-import type { BrowserBridgeAction } from "@elizaos/plugin-browser-bridge/contracts";
-import { BROWSER_BRIDGE_ACTION_KINDS } from "@elizaos/plugin-browser-bridge/contracts";
+import {
+  BROWSER_BRIDGE_ACTION_KINDS,
+  type BrowserBridgeAction,
+} from "@elizaos/plugin-browser-bridge";
 import type {
   CreateLifeOpsDefinitionRequest,
   GetLifeOpsCalendarFeedRequest,
@@ -12,7 +14,7 @@ import type {
   LifeOpsWindowPolicy,
   LifeOpsWorkflowAction,
   LifeOpsWorkflowActionPlan,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   fail,
   normalizeEnumValue,

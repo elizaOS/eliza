@@ -1,5 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { LifeOpsGmailSpamReviewItem } from "@elizaos/app-lifeops/contracts";
+import type { LifeOpsGmailSpamReviewItem } from "../contracts/index.js";
 import type { IAgentRuntime } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";

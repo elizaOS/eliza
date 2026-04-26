@@ -3,8 +3,8 @@ import type {
   LifeOpsXCapability,
   LifeOpsXFeedType,
   StartLifeOpsXConnectorResponse,
-} from "@elizaos/app-lifeops/contracts";
-import { LIFEOPS_X_CAPABILITIES } from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
+import { LIFEOPS_X_CAPABILITIES } from "../contracts/index.js";
 import {
   type ResolvedManagedGoogleCloudConfig,
   resolveManagedGoogleCloudConfig,

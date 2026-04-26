@@ -3,7 +3,7 @@ import type {
   LifeOpsCadence,
   LifeOpsGoalDefinition,
   LifeOpsOccurrenceView,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { Badge, Button } from "@elizaos/app-core";
 import { ExternalLink } from "lucide-react";
 import type { ReactNode } from "react";

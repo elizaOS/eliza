@@ -19,7 +19,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import {

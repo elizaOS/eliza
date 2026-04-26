@@ -1,27 +1,27 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
-import type {
-  BrowserBridgeCompanionAutoPairResponse,
-  BrowserBridgeCompanionConfig,
-  BrowserBridgeCompanionPairingResponse,
-  BrowserBridgeCompanionStatus,
-  BrowserBridgeCompanionSyncResponse,
-  BrowserBridgePageContext,
-  BrowserBridgeSettings,
-  BrowserBridgeTabSummary,
-  CreateBrowserBridgeCompanionAutoPairRequest,
-  CreateBrowserBridgeCompanionPairingRequest,
-  SyncBrowserBridgeStateRequest,
-  UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge/contracts";
-import { BROWSER_BRIDGE_KINDS } from "@elizaos/plugin-browser-bridge/contracts";
+import {
+  BROWSER_BRIDGE_KINDS,
+  type BrowserBridgeCompanionAutoPairResponse,
+  type BrowserBridgeCompanionConfig,
+  type BrowserBridgeCompanionPairingResponse,
+  type BrowserBridgeCompanionStatus,
+  type BrowserBridgeCompanionSyncResponse,
+  type BrowserBridgePageContext,
+  type BrowserBridgeSettings,
+  type BrowserBridgeTabSummary,
+  type CreateBrowserBridgeCompanionAutoPairRequest,
+  type CreateBrowserBridgeCompanionPairingRequest,
+  type SyncBrowserBridgeStateRequest,
+  type UpdateBrowserBridgeSettingsRequest,
+} from "@elizaos/plugin-browser-bridge";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,
   UpdateLifeOpsBrowserSessionProgressRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { recordBrowserFocusWindow } from "./browser-extension-store.js";
 import {
   fail,

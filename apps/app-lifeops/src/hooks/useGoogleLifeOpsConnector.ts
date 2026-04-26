@@ -9,8 +9,8 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
-} from "@elizaos/app-lifeops/contracts";
-import { LIFEOPS_GOOGLE_CAPABILITIES } from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
+import { LIFEOPS_GOOGLE_CAPABILITIES } from "../contracts/index.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   dispatchLifeOpsGoogleConnectorRefresh,

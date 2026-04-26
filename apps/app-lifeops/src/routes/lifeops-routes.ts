@@ -54,7 +54,7 @@ import type {
   UpdateLifeOpsWorkflowRequest,
   UpsertLifeOpsChannelPolicyRequest,
   UpsertLifeOpsXConnectorRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   LIFEOPS_ACTIVITY_SIGNAL_STATES,
   LIFEOPS_CONNECTOR_MODES,
@@ -63,7 +63,7 @@ import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsGmailSpamReviewStatus,
   type VerifyLifeOpsTelegramConnectorRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import {
   loadLifeOpsAppState,

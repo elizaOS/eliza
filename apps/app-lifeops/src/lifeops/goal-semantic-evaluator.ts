@@ -4,7 +4,7 @@ import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalReviewState,
   LifeOpsGoalSuggestionKind,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   buildGoalSemanticReviewMetadata,
   type GoalSemanticReviewMetadata,

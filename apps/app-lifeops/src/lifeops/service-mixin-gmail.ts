@@ -31,7 +31,7 @@ import type {
   SendLifeOpsGmailMessageRequest,
   SendLifeOpsGmailReplyRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { ModelType } from "@elizaos/core";
 import { extractBill } from "./bill-extraction.js";
 import {

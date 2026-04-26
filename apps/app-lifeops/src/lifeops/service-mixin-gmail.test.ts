@@ -1,7 +1,7 @@
 import type {
   LifeOpsConnectorGrant,
   LifeOpsGmailMessageSummary,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "./service.js";
 import { LifeOpsServiceError } from "./service-types.js";

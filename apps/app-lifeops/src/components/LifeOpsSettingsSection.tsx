@@ -6,7 +6,7 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   AlertTriangle,
   CalendarDays,

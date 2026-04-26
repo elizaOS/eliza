@@ -4,7 +4,7 @@ import type {
   CreateLifeOpsGoalRequest,
   LifeOpsGoalDefinition,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   buildGoalGroundingMetadata,
   GOAL_GROUNDING_STATES,

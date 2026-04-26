@@ -2,7 +2,7 @@ import type {
   LifeOpsGmailBulkOperation,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailUnrespondedThread,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { GoogleApiError } from "./google-api-error.js";
 import { googleApiFetch } from "./google-fetch.js";
 
