@@ -231,6 +231,11 @@ function nativeStatusToLifeOps(
     lastSyncAt: null,
     lastCheckedAt: checkedAt,
     error: status?.reason ?? null,
+    chatDbAvailable: status?.chatDbAvailable ?? false,
+    sendOnly: status?.sendOnly ?? !status?.chatDbAvailable,
+    chatDbPath: status?.chatDbPath,
+    reason: status?.reason ?? null,
+    permissionAction: status?.permissionAction ?? null,
   };
 }
 

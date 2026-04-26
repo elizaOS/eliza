@@ -20,10 +20,26 @@ describe("ElizaClient iMessage bridge methods", () => {
 
   it("requests chat-scoped messages with the expected query string", async () => {
     fetchMock.mockResolvedValue(
-      new Response(JSON.stringify({ messages: [], count: 0 }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({
+          messages: [
+            {
+              id: "msg-1",
+              fromHandle: "+15551112222",
+              toHandles: [],
+              text: "hello",
+              isFromMe: false,
+              sentAt: "2026-04-25T18:00:00.000Z",
+              chatId: "iMessage;+;group-abc",
+            },
+          ],
+          count: 1,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
     );
 
     const client = new ElizaClient({ baseUrl: "http://127.0.0.1:31337" });
@@ -32,11 +48,24 @@ describe("ElizaClient iMessage bridge methods", () => {
       limit: 25,
     });
 
-    expect(result).toEqual({ messages: [], count: 0 });
+    expect(result).toEqual({
+      messages: [
+        {
+          id: "msg-1",
+          text: "hello",
+          handle: "+15551112222",
+          chatId: "iMessage;+;group-abc",
+          timestamp: Date.parse("2026-04-25T18:00:00.000Z"),
+          isFromMe: false,
+          hasAttachments: false,
+        },
+      ],
+      count: 1,
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toMatch(
-      /\/api\/imessage\/messages\?chatId=iMessage%3B%2B%3Bgroup-abc&limit=25$/,
+      /\/api\/lifeops\/connectors\/imessage\/messages\?chatId=iMessage%3B%2B%3Bgroup-abc&limit=25$/,
     );
   });
 
@@ -44,9 +73,8 @@ describe("ElizaClient iMessage bridge methods", () => {
     fetchMock.mockResolvedValue(
       new Response(
         JSON.stringify({
-          success: true,
+          ok: true,
           messageId: "msg-123",
-          chatId: "chat_id:iMessage;+;group-abc",
         }),
         {
           status: 200,
@@ -57,7 +85,7 @@ describe("ElizaClient iMessage bridge methods", () => {
 
     const client = new ElizaClient({ baseUrl: "http://127.0.0.1:31337" });
     const result = await client.sendIMessage({
-      chatId: "iMessage;+;group-abc",
+      to: "+15551112222",
       text: "hello from milady",
       mediaUrl: "/tmp/image.png",
     });
@@ -65,15 +93,14 @@ describe("ElizaClient iMessage bridge methods", () => {
     expect(result).toEqual({
       success: true,
       messageId: "msg-123",
-      chatId: "chat_id:iMessage;+;group-abc",
     });
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toMatch(/\/api\/imessage\/messages$/);
+    expect(url).toMatch(/\/api\/lifeops\/connectors\/imessage\/send$/);
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toEqual({
-      chatId: "iMessage;+;group-abc",
+      to: "+15551112222",
       text: "hello from milady",
-      mediaUrl: "/tmp/image.png",
+      attachmentPaths: ["/tmp/image.png"],
     });
   });
 });
