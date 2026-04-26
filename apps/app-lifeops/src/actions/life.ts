@@ -73,11 +73,7 @@ import {
   toActionData,
   weekRange,
 } from "./lifeops-google-helpers.js";
-import {
-  looksLikeCodingTaskRequest,
-  looksLikeGoalAdviceOnly,
-  looksLikeRelationshipFollowUpRequest,
-} from "./non-actionable-request.js";
+import { looksLikeCodingTaskRequest } from "./non-actionable-request.js";
 import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
 
 // ── Types ─────────────────────────────────────────────
@@ -2310,15 +2306,10 @@ export const lifeAction: Action & {
   descriptionCompressed: "LifeOps: manage habits, goals, reminders, alarms, escalation. Create/edit/complete/snooze items. Query active status.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
-    const text = messageText(message);
-    if (
-      looksLikeGoalAdviceOnly(text) ||
-      looksLikeRelationshipFollowUpRequest(text) ||
-      // Coding prompts share LifeOps verbs ("make", "create", "add") so
-      // the action selector can still pick LIFE. Decline here to let
-      // plugin-agent-orchestrator's CREATE_TASK take the route.
-      looksLikeCodingTaskRequest(text)
-    ) {
+    // Coding prompts share LifeOps verbs ("make", "create", "add") so
+    // the action selector can still pick LIFE. Decline here to let
+    // plugin-agent-orchestrator's CREATE_TASK take the route.
+    if (looksLikeCodingTaskRequest(messageText(message))) {
       return false;
     }
     return hasLifeOpsAccess(runtime, message);

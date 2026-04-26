@@ -14,7 +14,10 @@ import {
   parseKeyValueXml,
   type State,
 } from "@elizaos/core";
-import { findKeywordTermMatch } from "@elizaos/shared/validation-keywords";
+import {
+  findKeywordTermMatch,
+  getValidationKeywordTerms,
+} from "@elizaos/shared/validation-keywords";
 import {
   readTaskCompleted,
   readTaskMetadata,
@@ -25,31 +28,6 @@ import { hasOwnerAccess } from "../security/access.js";
 import { readTriggerConfig } from "../triggers/runtime.js";
 
 const MANAGE_TASKS_ACTION = "MANAGE_TASKS";
-
-const TASK_INTENT_TERMS: string[] = [
-  "create task",
-  "add task",
-  "new task",
-  "make task",
-  "complete task",
-  "finish task",
-  "done with task",
-  "mark task done",
-  "delete task",
-  "remove task",
-  "update task",
-  "edit task",
-  "change task",
-  "list tasks",
-  "show tasks",
-  "my tasks",
-  "what are my tasks",
-  "add a todo",
-  "add a to-do",
-  "create a to do",
-  "task list",
-  "check off",
-];
 
 interface TaskExtraction {
   operation?: string;
@@ -95,7 +73,10 @@ function extractionPrompt(userText: string, taskList: string): string {
 export function looksLikeTaskIntent(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
-  return findKeywordTermMatch(trimmed, TASK_INTENT_TERMS) !== undefined;
+  const terms = getValidationKeywordTerms("validate.taskIntent", {
+    includeAllLocales: true,
+  });
+  return findKeywordTermMatch(trimmed, terms) !== undefined;
 }
 
 export const manageTasksAction: Action = {
