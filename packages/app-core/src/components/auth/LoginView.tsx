@@ -7,18 +7,8 @@ import {
   cn,
   Input,
   Label,
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
 } from "@elizaos/ui";
-import {
-  type FormEvent,
-  type ReactNode,
-  useCallback,
-  useId,
-  useState,
-} from "react";
+import { type FormEvent, useCallback, useId, useState } from "react";
 import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
 import {
   OnboardingStepDivider,
@@ -36,12 +26,6 @@ export interface LoginViewProps {
    * main dashboard.
    */
   onLoginSuccess: () => void;
-  /** Whether Eliza Cloud SSO is available. */
-  cloudEnabled?: boolean;
-  /** Connector bindings available for DM-link login. */
-  connectorBindings?: ConnectorBinding[];
-  /** Optional pairing props forwarded to the pairing tab. */
-  pairing?: PairingTabProps;
   /** Injected login function (tests). */
   loginFn?: (params: {
     displayName: string;
@@ -49,20 +33,6 @@ export interface LoginViewProps {
     rememberDevice?: boolean;
   }) => Promise<AuthLoginResult>;
   reason?: "remote_auth_required" | "remote_password_not_configured";
-}
-
-export interface ConnectorBinding {
-  connector: "discord" | "telegram" | "wechat" | "matrix";
-  displayHandle: string;
-}
-
-export interface PairingTabProps {
-  pairingEnabled: boolean;
-  pairingCodeInput: string;
-  pairingBusy: boolean;
-  pairingError: string | null;
-  onCodeChange: (value: string) => void;
-  onSubmit: (code: string) => void;
 }
 
 // ── Password tab ──────────────────────────────────────────────────────────────
@@ -207,170 +177,6 @@ function PasswordTab({
   );
 }
 
-// ── SSO tab ───────────────────────────────────────────────────────────────────
-
-function SsoTab() {
-  return (
-    <div className="flex flex-col items-center gap-4 py-2">
-      <p className="text-sm text-muted-foreground text-center leading-relaxed">
-        Sign in with your Eliza Cloud account. This method requires the instance
-        to have an active Eliza Cloud connection.
-      </p>
-      <Button asChild className="w-full" variant="outline">
-        <a href="/api/auth/login/sso/start?returnTo=/">
-          Sign in with Eliza Cloud
-        </a>
-      </Button>
-    </div>
-  );
-}
-
-// ── Connector tab ─────────────────────────────────────────────────────────────
-
-function ConnectorTab({ bindings }: { bindings: ConnectorBinding[] }) {
-  return (
-    <div className="flex flex-col gap-4 py-2">
-      <p className="text-sm text-muted-foreground leading-relaxed">
-        Choose a connector — we&rsquo;ll send you a one-time login link.
-      </p>
-      <div className="flex flex-col gap-2">
-        {bindings.map((b) => (
-          <ConnectorLoginButton
-            key={`${b.connector}:${b.displayHandle}`}
-            binding={b}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-const DM_LINK_UNAVAILABLE_MESSAGE =
-  "Login links are unavailable on this server. Use another sign-in method or contact the instance owner.";
-
-type ConnectorSendState =
-  | { phase: "idle" }
-  | { phase: "sending" }
-  | { phase: "sent"; connector: string }
-  | { phase: "error"; message: string };
-
-function ConnectorLoginButton({ binding }: { binding: ConnectorBinding }) {
-  const [state, setState] = useState<ConnectorSendState>({ phase: "idle" });
-
-  const handleClick = useCallback(async () => {
-    setState({ phase: "sending" });
-    try {
-      const res = await fetch("/api/auth/login/owner/dm-link/request", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          connector: binding.connector,
-          externalId: binding.displayHandle,
-        }),
-      });
-      if (res.status === 404) {
-        setState({
-          phase: "error",
-          message: DM_LINK_UNAVAILABLE_MESSAGE,
-        });
-        return;
-      }
-      if (!res.ok) {
-        setState({
-          phase: "error",
-          message: `Request failed (${res.status}). Try again.`,
-        });
-        return;
-      }
-      setState({ phase: "sent", connector: binding.connector });
-    } catch (err) {
-      setState({
-        phase: "error",
-        message: err instanceof Error ? err.message : "Network error.",
-      });
-    }
-  }, [binding]);
-
-  const label = `${binding.connector[0].toUpperCase()}${binding.connector.slice(1)} — ${binding.displayHandle}`;
-
-  if (state.phase === "sent") {
-    return (
-      <p className="rounded-lg border border-[var(--ok-muted)] bg-[var(--ok-subtle)] px-4 py-3 text-sm text-ok">
-        Login link sent via {state.connector}. Click it to sign in.
-      </p>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Button
-        variant="outline"
-        disabled={state.phase === "sending"}
-        onClick={handleClick}
-        className="w-full justify-start"
-      >
-        {state.phase === "sending" ? "Sending…" : `Send link via ${label}`}
-      </Button>
-      {state.phase === "error" && (
-        <p className="text-xs text-danger">{state.message}</p>
-      )}
-    </div>
-  );
-}
-
-// ── Pairing tab ───────────────────────────────────────────────────────────────
-
-function PairingTab({ pairing }: { pairing: PairingTabProps }) {
-  const pairingCodeId = useId().replace(/:/g, "");
-
-  const code = pairing.pairingCodeInput.trim();
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (code) pairing.onSubmit(code);
-      }}
-      className="flex flex-col gap-4"
-    >
-      <p className="text-sm text-muted-foreground leading-relaxed">
-        Enter the pairing code shown in your CLI or desktop app.
-      </p>
-      <div className="flex flex-col gap-1.5">
-        <Label
-          htmlFor={pairingCodeId}
-          className="text-xs uppercase tracking-wide text-muted-foreground"
-        >
-          Pairing code
-        </Label>
-        <Input
-          id={pairingCodeId}
-          type="text"
-          placeholder="xxxx-xxxx-xxxx"
-          value={pairing.pairingCodeInput}
-          onChange={(e) => pairing.onCodeChange(e.target.value)}
-          disabled={pairing.pairingBusy}
-          autoComplete="off"
-          spellCheck={false}
-        />
-      </div>
-      {pairing.pairingError && (
-        <p role="alert" className="text-sm text-danger">
-          {pairing.pairingError}
-        </p>
-      )}
-      <Button
-        type="submit"
-        disabled={pairing.pairingBusy || !code}
-        className="w-full"
-      >
-        {pairing.pairingBusy ? "Pairing…" : "Submit code"}
-      </Button>
-    </form>
-  );
-}
-
 // ── Root component ────────────────────────────────────────────────────────────
 
 const SCREEN_SHELL_CLASS =
@@ -378,61 +184,12 @@ const SCREEN_SHELL_CLASS =
 const SCREEN_CARD_CLASS =
   "relative z-10 w-full max-w-[520px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-xl";
 
-type LoginMethodValue = "password" | "sso" | "connector" | "pairing";
-
-interface LoginMethod {
-  value: LoginMethodValue;
-  label: string;
-  content: ReactNode;
-}
-
 export function LoginView({
   onLoginSuccess,
-  cloudEnabled = false,
-  connectorBindings = [],
-  pairing,
   loginFn,
   reason,
 }: LoginViewProps) {
   const remotePasswordMissing = reason === "remote_password_not_configured";
-  const visibleMethods: LoginMethod[] = [
-    {
-      value: "password",
-      label: "Password",
-      content: (
-        <PasswordTab onLoginSuccess={onLoginSuccess} loginFn={loginFn} />
-      ),
-    },
-  ];
-
-  if (cloudEnabled) {
-    visibleMethods.push({
-      value: "sso",
-      label: "Cloud",
-      content: <SsoTab />,
-    });
-  }
-
-  if (connectorBindings.length > 0) {
-    visibleMethods.push({
-      value: "connector",
-      label: "Connector",
-      content: <ConnectorTab bindings={connectorBindings} />,
-    });
-  }
-
-  if (pairing?.pairingEnabled) {
-    visibleMethods.push({
-      value: "pairing",
-      label: "Pairing",
-      content: <PairingTab pairing={pairing} />,
-    });
-  }
-
-  const loginDescription =
-    visibleMethods.length > 1
-      ? "Choose your login method below."
-      : "Sign in with your password.";
 
   return (
     <div className={SCREEN_SHELL_CLASS}>
@@ -462,7 +219,7 @@ export function LoginView({
             >
               {remotePasswordMissing
                 ? "A remote password is required before this instance can accept browser logins from another machine."
-                : loginDescription}
+                : "Sign in with your password."}
             </p>
           </div>
         </CardHeader>
@@ -477,26 +234,7 @@ export function LoginView({
               password in Settings.
             </div>
           ) : (
-            <Tabs defaultValue="password">
-              <TabsList
-                className="mb-5 grid w-full"
-                style={{
-                  gridTemplateColumns: `repeat(${visibleMethods.length}, minmax(0, 1fr))`,
-                }}
-              >
-                {visibleMethods.map((method) => (
-                  <TabsTrigger key={method.value} value={method.value}>
-                    {method.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-
-              {visibleMethods.map((method) => (
-                <TabsContent key={method.value} value={method.value}>
-                  {method.content}
-                </TabsContent>
-              ))}
-            </Tabs>
+            <PasswordTab onLoginSuccess={onLoginSuccess} loginFn={loginFn} />
           )}
         </CardContent>
       </Card>

@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
+import { logger } from "@elizaos/core";
 import { ensureRouteAuthorized, getCompatApiToken, tokenMatches } from "./auth";
 import {
   type CompatRuntimeState,
@@ -45,7 +46,6 @@ if (typeof pairingSweepTimer === "object" && "unref" in pairingSweepTimer) {
 function pairingEnabled(): boolean {
   return (
     Boolean(getCompatApiToken()) &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1" &&
     process.env.ELIZA_PAIRING_DISABLED !== "1"
   );
 }
@@ -71,7 +71,7 @@ function ensurePairingCode(): string | null {
   if (!pairingCode || now > pairingExpiresAt) {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
-    console.warn(`[api] Pairing code: ${pairingCode} (valid for 10 minutes)`);
+    logger.warn(`[api] Pairing code: ${pairingCode} (valid for 10 minutes)`);
   }
 
   return pairingCode;
