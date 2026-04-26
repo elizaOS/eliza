@@ -730,7 +730,7 @@ describe("Experience Capture E2E", () => {
         context: "Manual review from /Users/[USER]/project",
         extractionMethod: "record_experience_action",
         learning:
-          "Please record this experience: redact /Users/[USER]/secrets.env and [EMAIL] before saving debug notes.",
+          "redact /Users/[USER]/secrets.env and [EMAIL] before saving debug notes.",
         sourceRoomId: roomId,
         sourceTriggerMessageId: message.id,
         sourceTrajectoryStepId: "explicit-step-001",
@@ -749,9 +749,9 @@ describe("Experience Capture E2E", () => {
         { text: "Manual review" } as never,
       );
       expect(duplicateResult.data?.duplicate).toBe(true);
-      await expect(explicitService.listExperiences({ limit: 10 })).resolves.toHaveLength(
-        1,
-      );
+      await expect(
+        explicitService.listExperiences({ limit: 10 }),
+      ).resolves.toHaveLength(1);
     } finally {
       await explicitService.stop();
     }
