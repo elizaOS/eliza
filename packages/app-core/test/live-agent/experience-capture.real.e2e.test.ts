@@ -616,7 +616,9 @@ describe("Experience Capture E2E", () => {
       ),
     ).toBe(true);
 
-    const allExperiences = await experienceService.listExperiences({ limit: 20 });
+    const allExperiences = await experienceService.listExperiences({
+      limit: 20,
+    });
     expect(allExperiences).toHaveLength(formedScenarios.length);
 
     const retrievalCases = [

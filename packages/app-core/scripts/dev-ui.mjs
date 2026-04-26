@@ -18,7 +18,6 @@ import {
   existsSync,
   readFileSync,
   realpathSync,
-  writeFileSync,
 } from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
