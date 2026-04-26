@@ -30,7 +30,6 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     capabilities: ["lifeops", "tasks", "calendar", "gmail"],
     order: 0,
     windowPath: "/apps/lifeops",
-    hasDetailsPage: true,
   },
   {
     name: "@elizaos/app-plugin-viewer",
