@@ -32,6 +32,7 @@ export const hasPrivateAccess = async () => false;
 export const extractActionParamsViaLlm = async () => ({});
 
 export class TelegramClient {}
+export const Api = {};
 export class StringSession {
   constructor(public value = "") {}
 }
