@@ -118,7 +118,10 @@ export function startTriggerEventBridge(
 
   const getCachedTriggers = async (): Promise<Task[]> => {
     const current = now();
-    if (cachedTasks !== null && current - cacheTimestamp < TRIGGER_CACHE_TTL_MS) {
+    if (
+      cachedTasks !== null &&
+      current - cacheTimestamp < TRIGGER_CACHE_TTL_MS
+    ) {
       return cachedTasks;
     }
     const tasks = await listTriggers(runtime);
@@ -128,7 +131,11 @@ export function startTriggerEventBridge(
     const newEventTypes = new Set<EventType>();
     for (const task of tasks) {
       const trigger = readTriggerConfig(task);
-      if (trigger?.enabled && trigger.triggerType === "event" && trigger.eventKind) {
+      if (
+        trigger?.enabled &&
+        trigger.triggerType === "event" &&
+        trigger.eventKind
+      ) {
         newEventTypes.add(trigger.eventKind as EventType);
       }
     }
@@ -139,7 +146,10 @@ export function startTriggerEventBridge(
   /** Check if there are any triggers for the given event type (uses cached knowledge). */
   const hasTriggersForEvent = (eventType: EventType): boolean => {
     // If cache is stale or empty, we must query — return true to allow the fetch
-    if (cachedTasks === null || now() - cacheTimestamp >= TRIGGER_CACHE_TTL_MS) {
+    if (
+      cachedTasks === null ||
+      now() - cacheTimestamp >= TRIGGER_CACHE_TTL_MS
+    ) {
       return true;
     }
     return eventTypesWithTriggers.has(eventType);
@@ -158,7 +168,6 @@ export function startTriggerEventBridge(
       try {
         tasks = await getCachedTriggers();
       } catch (err) {
-</search>
         runtime.logger.error(
           {
             src: "trigger-event-bridge",
