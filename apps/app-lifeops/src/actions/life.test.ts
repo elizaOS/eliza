@@ -68,7 +68,7 @@ async function runHandler(
 describe("lifeAction.validate — scope gating", () => {
   const reminderPrompt = "set an alarm for 7am";
 
-  it("rejects on page-automations scope (Session 8/10 reproduction)", async () => {
+  it("rejects on page-automations scope", async () => {
     const { runtime } = buildRuntime("page-automations");
     const message = buildMessage(reminderPrompt);
     const result = await runValidate(runtime, message);
@@ -127,14 +127,12 @@ describe("lifeAction.validate — scope gating", () => {
   });
 });
 
-describe("lifeAction.handler — dispatch-time scope guard (Session 15)", () => {
-  // Session 14 diagnostic (GAP #1-REVISED-PART-C) proved that
-  // `runtime.processActions` (packages/typescript/src/runtime.ts:2473)
-  // dispatches actions by LLM-emitted name/simile WITHOUT re-calling
-  // validate(). LIFE's simile list (SET_REMINDER, SET_ALARM, CREATE_HABIT,
-  // etc.) overlaps with scheduled-task intent, so the LLM can still route
-  // a trigger-creation prompt to LIFE even after Session 11's validate
-  // gate excluded LIFE from the planner candidate list.
+describe("lifeAction.handler — dispatch-time scope guard", () => {
+  // `runtime.processActions` dispatches actions by LLM-emitted name/simile
+  // WITHOUT re-calling validate(). LIFE's simile list (SET_REMINDER,
+  // SET_ALARM, CREATE_HABIT, etc.) overlaps with scheduled-task intent, so
+  // the LLM can still route a trigger-creation prompt to LIFE even after
+  // the validate gate excluded LIFE from the planner candidate list.
   //
   // These tests pin the dispatch-time guard at the top of LIFE.handler:
   // on foreign page-* scope, the handler returns

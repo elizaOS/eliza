@@ -5402,13 +5402,12 @@ export function AutomationsView() {
 
 export function AutomationsDesktopShell() {
   const controller = useAutomationsViewController();
-  // Session 22 UI cleanup: collapse the right-rail chat dock when no
-  // workflow / draft is selected. The Automations Overview page already
-  // has a centered hero compose ("Describe a task or workflow…") that's
-  // the canonical create surface; the bottom-right dock + hero showed
-  // two inputs at once and confused users. When a workflow or draft IS
-  // selected, the rail (and its PageScopedChatPane) opens so the user
-  // can edit/refine.
+  // Collapse the right-rail chat dock when no workflow / draft is
+  // selected. The Automations Overview page already has a centered hero
+  // compose ("Describe a task or workflow…") that's the canonical create
+  // surface; the bottom-right dock + hero showed two inputs at once and
+  // confused users. When a workflow or draft IS selected, the rail (and
+  // its PageScopedChatPane) opens so the user can edit/refine.
   //
   // Stay in CONTROLLED mode at all times. An earlier revision flipped
   // between controlled (when nothing selected) and uncontrolled (when

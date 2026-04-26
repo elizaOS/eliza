@@ -548,8 +548,8 @@ async function buildAutomationListResponse(
   // current n8n list is an ORPHAN: the workflow was deleted but the chat
   // room/conversation wasn't cleaned up. Surfacing those creates ghost
   // rows the user can't dismiss. Skip them; the UI's deleteWorkflow path
-  // also deletes the conversation now (Session 18 P2 follow-up), so future
-  // deletions won't leak rooms.
+  // also deletes the conversation now, so future deletions won't leak
+  // rooms.
   const n8nOffline = workflowFetchError !== null;
   if (n8nOffline) {
     for (const [workflowId, room] of workflowRooms.entries()) {
