@@ -23,6 +23,7 @@ import {
   Brain,
   Download,
   KeyRound,
+  LayoutGrid,
   type LucideIcon,
   Palette,
   RefreshCw,
@@ -43,6 +44,7 @@ import {
 } from "react";
 import { useApp } from "../../state";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
@@ -212,6 +214,27 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "settings.keyword.wallet",
       "settings.keyword.browser",
       "settings.keyword.training",
+    ],
+  },
+  {
+    id: "apps",
+    label: "settings.sections.apps.label",
+    defaultLabel: "Apps",
+    icon: LayoutGrid,
+    description: "settings.sections.apps.desc",
+    defaultDescription:
+      "Installed apps, launching, relaunching, editing, and creating new ones.",
+    keywords: [
+      "apps",
+      "app",
+      "launch",
+      "relaunch",
+      "stop",
+      "edit",
+      "scaffold",
+      "create app",
+      "install",
+      "directory",
     ],
   },
   {
@@ -1099,6 +1122,22 @@ export function SettingsView({
           ref={registerContentItem("capabilities")}
         >
           <CapabilitiesSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("apps") && (
+        <SettingsSection
+          id="apps"
+          title={t("settings.sections.apps.label", {
+            defaultValue: "Apps",
+          })}
+          description={t("settings.sections.apps.desc", {
+            defaultValue:
+              "Installed apps, launching, relaunching, editing, and creating new ones.",
+          })}
+          ref={registerContentItem("apps")}
+        >
+          <AppsManagementSection />
         </SettingsSection>
       )}
 

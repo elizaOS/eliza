@@ -5,7 +5,13 @@
  * that are not currently running. Clicking an app launches / focuses it.
  */
 
-import { LayoutGrid } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@elizaos/ui";
+import { LayoutGrid, MoreHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
@@ -100,6 +106,85 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
   }, [catalogApps, appRuns, favoriteApps]);
 
   // -------------------------------------------------------------------------
+  // Kebab menu actions: relaunch, edit, stop. Launch stays as the tile click.
+  // -------------------------------------------------------------------------
+
+  const handleRelaunch = useCallback(
+    async (app: RegistryAppInfo) => {
+      try {
+        await client.fetch("/api/apps/relaunch", {
+          method: "POST",
+          body: JSON.stringify({ name: app.name }),
+        });
+        setActionNotice(
+          `${app.displayName ?? app.name} relaunched.`,
+          "success",
+          3000,
+        );
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error
+            ? err.message
+            : t("appsview.LaunchFailed", {
+                name: app.displayName ?? app.name,
+                message: t("common.error"),
+              }),
+          "error",
+          4000,
+        );
+      }
+    },
+    [setActionNotice, t],
+  );
+
+  const handleEdit = useCallback(
+    async (app: RegistryAppInfo) => {
+      try {
+        await client.fetch("/api/apps/create", {
+          method: "POST",
+          body: JSON.stringify({ intent: "edit", editTarget: app.name }),
+        });
+        setActionNotice(
+          `Editing ${app.displayName ?? app.name}…`,
+          "info",
+          3500,
+        );
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error
+            ? err.message
+            : `Couldn't start an edit for ${app.displayName ?? app.name}.`,
+          "error",
+          4000,
+        );
+      }
+    },
+    [setActionNotice],
+  );
+
+  const handleStop = useCallback(
+    async (app: RegistryAppInfo) => {
+      try {
+        await client.stopApp(app.name);
+        setActionNotice(
+          `${app.displayName ?? app.name} stopped.`,
+          "success",
+          3000,
+        );
+      } catch (err) {
+        setActionNotice(
+          err instanceof Error
+            ? err.message
+            : `Couldn't stop ${app.displayName ?? app.name}.`,
+          "error",
+          4000,
+        );
+      }
+    },
+    [setActionNotice],
+  );
+
+  // -------------------------------------------------------------------------
   // Launch handler (identical logic to FavoriteAppsBar)
   // -------------------------------------------------------------------------
 
@@ -158,25 +243,88 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
             const run = runByName.get(app.name);
             const displayName = app.displayName ?? getAppShortName(app);
             const ringClass = run ? getRunRingClass(run) : "";
+            const isRunning = Boolean(run);
             return (
-              <button
+              <div
                 key={app.name}
-                type="button"
-                title={displayName}
-                aria-label={t("chatsidebar.launchApp", {
-                  defaultValue: `Launch ${displayName}`,
-                  name: displayName,
-                })}
-                className={`rounded-2xl transition-transform hover:scale-105 ${ringClass}`}
-                onClick={() => void handleLaunch(app)}
+                className="group relative"
+                data-testid={`apps-section-tile-${app.name}`}
               >
-                <AppIdentityTile
-                  app={app}
-                  active={Boolean(run)}
-                  size="sm"
-                  imageOnly
-                />
-              </button>
+                <button
+                  type="button"
+                  title={displayName}
+                  aria-label={t("chatsidebar.launchApp", {
+                    defaultValue: `Launch ${displayName}`,
+                    name: displayName,
+                  })}
+                  className={`rounded-2xl transition-transform hover:scale-105 ${ringClass}`}
+                  onClick={() => void handleLaunch(app)}
+                >
+                  <AppIdentityTile
+                    app={app}
+                    active={isRunning}
+                    size="sm"
+                    imageOnly
+                  />
+                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Actions for ${displayName}`}
+                      data-testid={`apps-section-kebab-${app.name}`}
+                      onClick={(event) => event.stopPropagation()}
+                      className="absolute -right-1 -top-1 inline-flex h-5 w-5 items-center justify-center rounded-full border border-border bg-bg text-muted opacity-0 shadow-sm transition-opacity hover:text-txt focus:opacity-100 focus-visible:opacity-100 group-hover:opacity-100"
+                    >
+                      <MoreHorizontal className="h-3 w-3" aria-hidden />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    sideOffset={4}
+                    className="w-36"
+                    onClick={(event: React.MouseEvent) =>
+                      event.stopPropagation()
+                    }
+                  >
+                    <DropdownMenuItem
+                      data-testid={`apps-section-launch-${app.name}`}
+                      onSelect={() => void handleLaunch(app)}
+                    >
+                      {t("settings.sections.apps.launch", {
+                        defaultValue: "Launch",
+                      })}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      data-testid={`apps-section-relaunch-${app.name}`}
+                      onSelect={() => void handleRelaunch(app)}
+                    >
+                      {t("settings.sections.apps.relaunch", {
+                        defaultValue: "Relaunch",
+                      })}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      data-testid={`apps-section-edit-${app.name}`}
+                      onSelect={() => void handleEdit(app)}
+                    >
+                      {t("settings.sections.apps.edit", {
+                        defaultValue: "Edit",
+                      })}
+                    </DropdownMenuItem>
+                    {isRunning ? (
+                      <DropdownMenuItem
+                        data-testid={`apps-section-stop-${app.name}`}
+                        className="text-danger focus:text-danger"
+                        onSelect={() => void handleStop(app)}
+                      >
+                        {t("settings.sections.apps.stop", {
+                          defaultValue: "Stop",
+                        })}
+                      </DropdownMenuItem>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             );
           })}
         </div>
