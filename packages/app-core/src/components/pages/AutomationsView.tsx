@@ -5313,6 +5313,14 @@ export function AutomationsView() {
 
 export function AutomationsDesktopShell() {
   const controller = useAutomationsViewController();
+  // Session 22 UI cleanup: collapse the right-rail chat dock when no
+  // workflow / draft is selected. The Automations Overview page already
+  // has a centered hero compose ("Describe a task or workflow…") that's
+  // the canonical create surface; the bottom-right dock + hero showed
+  // two inputs at once and confused users. When a workflow or draft IS
+  // selected, restore uncontrolled behavior so the rail (and its
+  // PageScopedChatPane) is available for editing/refining.
+  const hasScopedItem = controller.resolvedSelectedItem != null;
   return (
     <AutomationsViewContext.Provider value={controller}>
       <AppWorkspaceChrome
@@ -5322,6 +5330,9 @@ export function AutomationsDesktopShell() {
             activeItem={controller.resolvedSelectedItem}
           />
         }
+        {...(hasScopedItem
+          ? {}
+          : { chatCollapsed: true, onToggleChat: () => {}, hideCollapseButton: true })}
         main={
           <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
             <AutomationsLayout />
