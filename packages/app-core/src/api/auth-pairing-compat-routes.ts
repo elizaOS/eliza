@@ -11,11 +11,11 @@ import {
   hasCompatPersistedOnboardingState,
   readCompatJsonBody,
 } from "./compat-route-shared";
-import { isCloudProvisioned } from "./server-onboarding-compat";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
+import { isCloudProvisioned } from "./server-onboarding-compat";
 
 // ---------------------------------------------------------------------------
 // Pairing state & helpers
