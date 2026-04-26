@@ -1299,7 +1299,7 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // Without these entries, the correction layer (findOwnedActionCorrectionFromMetadata)
 // routinely overrides a correct CREATE_CRON/CREATE_TRIGGER_TASK pick on
 // page-automations with LIFE based on fuzzy description overlap — breaking
-// Session 11's scope-gated architecture end-to-end.
+// the scope-gated routing on the page-automations surface.
 const EXPLICIT_INTENT_ACTIONS = new Set(
 	[
 		"SPAWN_AGENT",

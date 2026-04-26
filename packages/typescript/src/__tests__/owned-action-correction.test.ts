@@ -63,16 +63,16 @@ describe("findOwnedActionCorrectionFromMetadata", () => {
 		expect(result?.actionName).toBe("OWNER_SEND_MESSAGE");
 	});
 
-	// Session 15 regression — before this fix, an LLM pick of CREATE_CRON for
-	// "every 9 minutes write a ping log entry" was overridden to LIFE by the
-	// keyword-overlap scorer because LIFE's multi-paragraph description
-	// mentions reminders, alarms, and recurring verbs. That reroute broke
-	// DoD-F1 on page-automations because LIFE's handler (even after
-	// Session 14's dispatch-time scope guard) short-circuits to empty and no
-	// trigger is created. Adding CREATE_TRIGGER_TASK + its schedule similes
-	// to EXPLICIT_INTENT_ACTIONS makes the planner's schedule picks
-	// authoritative, same as SPAWN_AGENT.
-	describe("Session 15 — schedule-intent planner picks are authoritative", () => {
+	// Regression: an LLM pick of CREATE_CRON for "every 9 minutes write a
+	// ping log entry" was overridden to LIFE by the keyword-overlap scorer
+	// because LIFE's multi-paragraph description mentions reminders,
+	// alarms, and recurring verbs. That reroute broke trigger creation on
+	// page-automations because LIFE's handler — gated by the dispatch-time
+	// scope guard on foreign page-* scopes — short-circuits to empty, so
+	// no trigger is created. Adding CREATE_TRIGGER_TASK + its schedule
+	// similes to EXPLICIT_INTENT_ACTIONS makes the planner's schedule
+	// picks authoritative, same as SPAWN_AGENT.
+	describe("schedule-intent planner picks are authoritative", () => {
 		const runtime = {
 			actions: [
 				{

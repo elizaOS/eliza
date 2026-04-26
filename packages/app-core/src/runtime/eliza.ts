@@ -756,13 +756,14 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
             `[eliza] Telegram message from @${username}: ${text.substring(0, 80)}`,
           );
 
-          // Surface the inbound Telegram message on the runtime event bus
-          // so event-kind triggers (Session 2 G1 bridge → executeTriggerTask)
-          // can fire on real Telegram messages. Without this hop the Milady
-          // shim handles the chat reply via useModel directly and bypasses
-          // messageService entirely — DoD-F4 fails (Session 17b finding).
-          // Build a minimal Memory that satisfies the event-bus contract;
-          // the trigger-event-bridge only reads roomId / source / kind.
+          // Surface the inbound Telegram message on the runtime event bus so
+          // event-kind triggers can fire on real Telegram messages via the
+          // trigger-event-bridge → executeTriggerTask path. Without this hop
+          // the chat reply goes through useModel directly and bypasses
+          // messageService entirely, so triggers that filter on
+          // MESSAGE_RECEIVED never see Telegram traffic. Build a minimal
+          // Memory that satisfies the event-bus contract; the
+          // trigger-event-bridge only reads roomId / source / kind.
           try {
             const telegramRoomId = stringToUuid(
               `telegram:${chatId}`,
