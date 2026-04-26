@@ -7,6 +7,9 @@
  * - One unified `APP` action (sub-modes: launch / relaunch / list /
  *   load_from_directory / create). Legacy `LAUNCH_APP`, `CLOSE_APP`, and
  *   `LIST_RUNNING_APPS` names remain as similes on the unified action.
+ * - `available_apps` provider — installed + running apps for the planner.
+ * - `AppRegistryService` — persists load_from_directory registrations and
+ *   re-registers them on boot.
  * - `AppVerificationService` — owned by Agent B; left intact below.
  *
  * Standalone single-purpose action factories (createLaunchAppAction,
@@ -27,6 +30,8 @@ import {
 	createListRunningAppsAction,
 	listRunningAppsAction,
 } from "./actions/list-running-apps.js";
+import { availableAppsProvider } from "./providers/available-apps.js";
+import { AppRegistryService } from "./services/app-registry-service.js";
 // === appended by Agent B (AppVerificationService) ===
 // Agent C: do not remove; reorder freely
 import { AppVerificationService } from "./services/app-verification.js";
@@ -43,6 +48,11 @@ export {
 	type VerificationResult,
 	type VerifyOptions,
 } from "./services/index.js";
+export {
+	AppRegistryService,
+	APP_REGISTRY_SERVICE_TYPE,
+	type AppRegistryEntry,
+} from "./services/app-registry-service.js";
 export type {
 	AppLaunchResult,
 	AppRunSummary,
@@ -59,6 +69,7 @@ export {
 	launchAppAction,
 	listRunningAppsAction,
 };
+export { availableAppsProvider };
 export type { AppMode } from "./actions/app.js";
 
 export const appControlPlugin: Plugin = {
@@ -66,7 +77,9 @@ export const appControlPlugin: Plugin = {
 	description:
 		"Launch, close, list, relaunch, load, and create Milady apps from agent chat. Backed by the Milady dashboard /api/apps/* HTTP surface.",
 	actions: [appAction],
+	providers: [availableAppsProvider],
 	services: [
+		AppRegistryService,
 		// === appended by Agent B (AppVerificationService) ===
 		// Agent C: do not remove; reorder freely
 		AppVerificationService,
