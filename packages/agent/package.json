@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-alpha.381",
+  "version": "2.0.0-alpha.382",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
