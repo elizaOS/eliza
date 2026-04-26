@@ -119,6 +119,7 @@ describe("Experience extraction live LLM E2E", () => {
       throw new Error("Experience service is not registered");
     }
     experienceService = service;
+    runtime.setSetting("AUTO_RECORD_THRESHOLD", "0.4");
     await flushExperienceLoad();
   }, 180_000);
 
@@ -143,9 +144,9 @@ describe("Experience extraction live LLM E2E", () => {
           runtime,
           harness.roomId,
           [
-            "Action completed: restarting the Vite dev server picked up the changed environment variable.",
-            "The earlier run kept stale config, but the rerun passed after restart.",
-            "Transferable lesson: restart the dev server after changing environment variables.",
+            "Action completed after a correction: restarting the Vite dev server picked up the changed environment variable.",
+            "I was wrong to assume editing .env would update the already-running process.",
+            "Novel transferable lesson to remember: restart the dev server after changing environment variables so stale config is cleared.",
           ].join(" "),
           { actions: ["RUN_COMMAND"] },
         );
@@ -159,12 +160,12 @@ describe("Experience extraction live LLM E2E", () => {
           createAgentMessage(
             runtime,
             harness.roomId,
-            "I checked the running process and it was still using the old environment.",
+            "I checked the running process and confirmed it was still using the old environment.",
           ),
           createAgentMessage(
             runtime,
             harness.roomId,
-            "I restarted the Vite dev server, then reran the check and the new API base URL appeared.",
+            "I restarted the Vite dev server, then reran the check and the new API base URL appeared. This corrected the stale config failure.",
           ),
           trigger,
         ]);
