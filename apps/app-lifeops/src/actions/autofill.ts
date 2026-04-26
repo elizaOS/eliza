@@ -18,16 +18,18 @@
  * contains zero code paths that accept, store, log, or return a plaintext
  * credential.
  */
+
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
-  logger,
   type Action,
   type ActionExample,
   type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
 } from "@elizaos/core";
-import { extractActionParamsViaLlm, hasOwnerAccess } from "@elizaos/agent";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
   extractRegistrableDomain,
@@ -37,7 +39,13 @@ import {
 import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
 import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
 
-const FIELD_PURPOSES = ["email", "password", "name", "phone", "custom"] as const;
+const FIELD_PURPOSES = [
+  "email",
+  "password",
+  "name",
+  "phone",
+  "custom",
+] as const;
 type FieldPurpose = (typeof FIELD_PURPOSES)[number];
 
 const WHITELIST_CACHE_KEY = "eliza:lifeops-autofill-whitelist";
@@ -207,16 +215,18 @@ export const requestFieldFillAction: Action = {
       ((options as HandlerOptions | undefined)?.parameters as
         | RequestFieldFillParameters
         | undefined) ?? {};
-    const params = (await extractActionParamsViaLlm<RequestFieldFillParameters & Record<string, unknown>>({
-      runtime,
-      message,
-      state,
-      actionName: "REQUEST_FIELD_FILL",
-      actionDescription: requestFieldFillAction.description ?? "",
-      paramSchema: requestFieldFillAction.parameters ?? [],
-      existingParams: rawParams as Record<string, unknown>,
-      requiredFields: ["tabUrl", "fieldPurpose"],
-    })) as RequestFieldFillParameters;
+    const params = (await extractActionParamsViaLlm<RequestFieldFillParameters>(
+      {
+        runtime,
+        message,
+        state,
+        actionName: "REQUEST_FIELD_FILL",
+        actionDescription: requestFieldFillAction.description ?? "",
+        paramSchema: requestFieldFillAction.parameters ?? [],
+        existingParams: rawParams,
+        requiredFields: ["tabUrl", "fieldPurpose"],
+      },
+    )) as RequestFieldFillParameters;
 
     const tabUrl = (params.tabUrl ?? "").toString().trim();
     if (!tabUrl) return failure("REQUEST_FIELD_FILL", "MISSING_TAB_URL");
@@ -389,16 +399,17 @@ export const addAutofillWhitelistAction: Action = {
       ((options as HandlerOptions | undefined)?.parameters as
         | AddAutofillWhitelistParameters
         | undefined) ?? {};
-    const params = (await extractActionParamsViaLlm<AddAutofillWhitelistParameters & Record<string, unknown>>({
-      runtime,
-      message,
-      state,
-      actionName: "ADD_AUTOFILL_WHITELIST",
-      actionDescription: addAutofillWhitelistAction.description ?? "",
-      paramSchema: addAutofillWhitelistAction.parameters ?? [],
-      existingParams: rawParams as Record<string, unknown>,
-      requiredFields: ["domain"],
-    })) as AddAutofillWhitelistParameters;
+    const params =
+      (await extractActionParamsViaLlm<AddAutofillWhitelistParameters>({
+        runtime,
+        message,
+        state,
+        actionName: "ADD_AUTOFILL_WHITELIST",
+        actionDescription: addAutofillWhitelistAction.description ?? "",
+        paramSchema: addAutofillWhitelistAction.parameters ?? [],
+        existingParams: rawParams,
+        requiredFields: ["domain"],
+      })) as AddAutofillWhitelistParameters;
     const rawDomain = (params.domain ?? "").toString().trim();
     if (!rawDomain) {
       return failure("ADD_AUTOFILL_WHITELIST", "MISSING_DOMAIN");

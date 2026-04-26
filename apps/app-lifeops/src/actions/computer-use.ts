@@ -8,7 +8,7 @@
  * "not installed" result instead of crashing the plugin load.
  */
 
-import { hasOwnerAccess } from "@elizaos/agent";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,

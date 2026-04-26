@@ -11,11 +11,11 @@
  * api key.
  */
 
-import { loadElizaConfig } from "@elizaos/agent";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
-} from "@elizaos/agent";
+} from "@elizaos/agent/cloud/base-url";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 
 const PLAID_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -149,11 +149,10 @@ export class PlaidManagedClient {
 
   private requireConfig(): ResolvedCloudConfig & { apiKey: string } {
     const config = this.configSource();
-    const apiKey = config.apiKey;
-    if (!apiKey) {
+    if (!config.apiKey) {
       throw new PlaidManagedClientError(409, "Eliza Cloud is not connected.");
     }
-    return { ...config, apiKey };
+    return { ...config, apiKey: config.apiKey };
   }
 
   get configured(): boolean {

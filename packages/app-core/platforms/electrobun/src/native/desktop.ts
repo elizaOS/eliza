@@ -264,6 +264,7 @@ export class DesktopManager {
     | null = null;
   private openAppWindowCallback:
     | ((options: {
+        slug?: string;
         title: string;
         path: string;
         alwaysOnTop?: boolean;
@@ -360,6 +361,7 @@ export class DesktopManager {
   setOpenAppWindowCallback(
     cb:
       | ((options: {
+          slug?: string;
           title: string;
           path: string;
           alwaysOnTop?: boolean;
@@ -429,6 +431,7 @@ export class DesktopManager {
   }
 
   async openAppWindow(options: {
+    slug?: string;
     title: string;
     path: string;
     alwaysOnTop?: boolean;

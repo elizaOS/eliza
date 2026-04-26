@@ -1,9 +1,9 @@
 import crypto from "node:crypto";
-import type { AgentRuntime } from "@elizaos/core";
 import type {
   Trajectory,
   TrajectoryListResult,
-} from "@elizaos/agent";
+} from "@elizaos/agent/types/trajectory";
+import type { AgentRuntime } from "@elizaos/core";
 import type { TrainingServiceWithRuntime } from "./training-service-like.js";
 
 interface DatasetRecord {

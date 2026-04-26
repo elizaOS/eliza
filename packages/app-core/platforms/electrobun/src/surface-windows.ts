@@ -28,13 +28,33 @@ export interface ManagedWindowFrame {
 export interface ManagedWindowLike {
   focus(): void;
   setAlwaysOnTop(flag: boolean): void;
-  on(event: "close" | "focus", handler: () => void): void;
+  on(
+    event: "close" | "focus" | "resize" | "move",
+    handler: () => void,
+  ): void;
+  /**
+   * Optional — when present, used to capture window position+size for
+   * per-slug bounds persistence. Mocks may omit this.
+   */
+  getFrame?: () => ManagedWindowFrame;
   webview: {
     on(event: "dom-ready", handler: () => void): void;
     loadURL?: (url: string) => void;
     toggleDevTools?: () => void;
     openDevTools?: () => void;
   };
+}
+
+/**
+ * Persistence backend for per-slug window bounds. Wired by the bun entry
+ * via SurfaceWindowManagerOptions; tests can pass an in-memory store.
+ *
+ * **Why injected**: keeps surface-windows.ts free of fs / Utils.paths
+ * dependencies so it stays pure and unit-testable.
+ */
+export interface BoundsStore {
+  load(slug: string): ManagedWindowFrame | null;
+  save(slug: string, frame: ManagedWindowFrame): void;
 }
 
 export interface CreateManagedWindowOptions {
@@ -48,6 +68,7 @@ export interface CreateManagedWindowOptions {
 
 interface ManagedWindowRecord extends ManagedWindowSnapshot {
   window: ManagedWindowLike;
+  slug?: string;
 }
 
 interface SurfaceWindowManagerOptions {
@@ -58,6 +79,12 @@ interface SurfaceWindowManagerOptions {
   injectApiBase: (window: ManagedWindowLike) => void;
   onWindowFocused?: (window: ManagedWindowLike) => void;
   onRegistryChanged?: () => void;
+  /**
+   * Optional per-slug bounds persistence. When supplied, slug-keyed
+   * window launches restore the user's last position+size and save
+   * updates on resize/move (debounced 500ms inside this manager).
+   */
+  boundsStore?: BoundsStore;
 }
 
 const SURFACE_LABELS: Record<ManagedSurface, string> = {
@@ -164,6 +191,7 @@ export class SurfaceWindowManager {
   private readonly injectApiBaseFn: SurfaceWindowManagerOptions["injectApiBase"];
   private readonly onWindowFocused?: SurfaceWindowManagerOptions["onWindowFocused"];
   private readonly onRegistryChanged?: SurfaceWindowManagerOptions["onRegistryChanged"];
+  private readonly boundsStore?: BoundsStore;
   private readonly windows = new Map<string, ManagedWindowRecord>();
   private readonly pendingSurfaceWindows = new Map<
     string,
@@ -179,6 +207,7 @@ export class SurfaceWindowManager {
     this.injectApiBaseFn = options.injectApiBase;
     this.onWindowFocused = options.onWindowFocused;
     this.onRegistryChanged = options.onRegistryChanged;
+    this.boundsStore = options.boundsStore;
   }
 
   listWindows(surface?: ManagedSurface): ManagedWindowSnapshot[] {
@@ -262,6 +291,7 @@ export class SurfaceWindowManager {
   }
 
   async openAppWindow(options: {
+    slug?: string;
     title: string;
     path: string;
     alwaysOnTop?: boolean;
@@ -274,7 +304,17 @@ export class SurfaceWindowManager {
       options.path,
       options.title,
       options.alwaysOnTop === true,
+      options.slug,
     );
+  }
+
+  findWindowBySlug(slug: string): ManagedWindowSnapshot | undefined {
+    for (const entry of this.windows.values()) {
+      if (entry.slug === slug) {
+        return this.toSnapshot(entry);
+      }
+    }
+    return undefined;
   }
 
   focusWindow(id: string): boolean {
@@ -323,9 +363,27 @@ export class SurfaceWindowManager {
     routePath?: string,
     titleOverride?: string,
     alwaysOnTop = false,
+    slug?: string,
   ): Promise<ManagedWindowSnapshot> {
     if (!isManagedSurface(surface)) {
       throw new Error(`Unsupported surface: ${surface}`);
+    }
+
+    // Slug-based dedupe: re-launch by slug focuses the existing window
+    // instead of spawning a duplicate. WHY: lets every launch entry point
+    // (UI, app menu, tray) share one window per app — Ghost-style.
+    if (slug) {
+      for (const entry of this.windows.values()) {
+        if (entry.slug === slug) {
+          if (alwaysOnTop && !entry.alwaysOnTop) {
+            entry.window.setAlwaysOnTop(true);
+            entry.alwaysOnTop = true;
+          }
+          entry.window.focus();
+          this.notifyRegistryChanged();
+          return this.toSnapshot(entry);
+        }
+      }
     }
 
     const rendererUrl = await this.resolveRendererUrlFn();
@@ -339,13 +397,21 @@ export class SurfaceWindowManager {
     const url = routePath
       ? buildAppWindowRendererUrl(rendererUrl, routePath)
       : buildSurfaceWindowRendererUrl(rendererUrl, surface, tabHint, browse);
-    const id = `${surface}_${++this.counter}`;
+    const id = slug ? `${surface}_${slug}` : `${surface}_${++this.counter}`;
+
+    // Restore previously-saved frame for this slug, falling back to the
+    // surface's default position+size on first launch or when persistence
+    // is unavailable. WHY: per-app windows should remember where the user
+    // put them last (Ghost-style UX).
+    const savedFrame =
+      slug && this.boundsStore ? this.boundsStore.load(slug) : null;
+    const frame = savedFrame ?? SURFACE_FRAMES[surface];
 
     const window = this.createWindowFn({
       title,
       url,
       preload,
-      frame: SURFACE_FRAMES[surface],
+      frame,
       titleBarStyle: "default",
       transparent: false,
     });
@@ -360,6 +426,7 @@ export class SurfaceWindowManager {
       singleton,
       alwaysOnTop,
       window,
+      slug,
     };
 
     this.windows.set(id, record);
@@ -379,6 +446,28 @@ export class SurfaceWindowManager {
       this.onWindowFocused?.(window);
       this.notifyRegistryChanged();
     });
+
+    // Per-slug bounds persistence. WHY: getFrame() polls the OS, so we
+    // debounce 500ms to avoid disk thrash during a drag/resize gesture.
+    if (slug && this.boundsStore && typeof window.getFrame === "function") {
+      const store = this.boundsStore;
+      let saveTimer: ReturnType<typeof setTimeout> | null = null;
+      const scheduleSave = () => {
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          saveTimer = null;
+          try {
+            const current = window.getFrame?.();
+            if (current) store.save(slug, current);
+          } catch {
+            /* ignore — never let bounds save break the window */
+          }
+        }, 500);
+      };
+      window.on("resize", scheduleSave);
+      window.on("move", scheduleSave);
+    }
+
     this.notifyRegistryChanged();
     return this.toSnapshot(record);
   }

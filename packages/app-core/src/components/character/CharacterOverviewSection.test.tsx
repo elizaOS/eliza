@@ -30,8 +30,12 @@ describe("CharacterOverviewSection", () => {
       />,
     );
 
-    expect(screen.getByText("Chunk map")).toBeTruthy();
-    expect(screen.getByText("People graph")).toBeTruthy();
+    // The widget surface renders the section title and a click target;
+    // captions / bars / pie / nodes are passed through `widget.body` by
+    // higher-level callers and aren't asserted here. We just verify both
+    // widgets surfaced + the click handler routes the right section.
+    expect(screen.getByText("Knowledge")).toBeTruthy();
+    expect(screen.getByText("Relationships")).toBeTruthy();
     expect(screen.queryByText(/doc/i)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Open Knowledge" }));

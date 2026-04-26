@@ -8,8 +8,13 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { resolveApiToken } from "@elizaos/shared";
+import {
+  CSRF_HEADER_NAME,
+  findActiveSession,
+  verifyCsrfToken,
+} from "./auth/sessions";
+import { isTrustedLocalRequest } from "./compat-route-shared";
 import { sendJsonError } from "./response";
-import { isTrustedLocalRequest } from "./trusted-local-request";
 
 /**
  * Normalise a potentially multi-valued HTTP header into a single string.
@@ -205,8 +210,6 @@ export async function ensureCompatApiAuthorizedAsync(
   // Cookie path
   const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
   if (sessionCookie) {
-    const { findActiveSession, verifyCsrfToken, CSRF_HEADER_NAME } =
-      await import("./auth/sessions");
     const session = await findActiveSession(
       options.store,
       sessionCookie,
@@ -230,7 +233,6 @@ export async function ensureCompatApiAuthorizedAsync(
   // Bearer-auth requests are exempt from CSRF (they're not cookie-bound).
   const provided = getProvidedApiToken(req);
   if (provided) {
-    const { findActiveSession } = await import("./auth/sessions");
     const sessionFromBearer = await findActiveSession(
       options.store,
       provided,

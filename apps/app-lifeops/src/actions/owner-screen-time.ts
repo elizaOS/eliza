@@ -6,6 +6,7 @@
  * existing handlers in screen-time.ts and activity-report.ts.
  */
 
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionExample,
@@ -14,14 +15,13 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { extractActionParamsViaLlm } from "@elizaos/agent";
-import { screenTimeAction } from "./screen-time.js";
 import {
   getActivityReportAction,
   getTimeOnAppAction,
   getTimeOnSiteAction,
 } from "./activity-report.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import { screenTimeAction } from "./screen-time.js";
 
 const ACTION_NAME = "OWNER_SCREEN_TIME";
 
@@ -115,7 +115,8 @@ export const ownerScreenTimeAction: Action = {
     },
     {
       name: "intent",
-      description: "Free-form user intent string (logged, not used for dispatch).",
+      description:
+        "Free-form user intent string (logged, not used for dispatch).",
       required: false,
       schema: { type: "string" as const },
     },

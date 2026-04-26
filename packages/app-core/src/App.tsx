@@ -92,10 +92,27 @@ function lazyNamedView<
   });
 }
 
-const CharacterEditor = lazyNamedView(
-  () => import("./components/character/CharacterEditor"),
-  "CharacterEditor",
-);
+// Static imports for views that AppWindowRenderer (and DetachedShellRoot)
+// also import statically. WHY not lazy here: a `lazy()` for a module that
+// any other importer pulls eagerly is folded back into the main chunk by
+// Rollup with a warning, since the dynamic boundary can't actually defer
+// load. Going all-static makes the load path honest. If you want true
+// route-level splitting back, lift `lazy()` to a single owning call site.
+import { CharacterEditor } from "./components/character/CharacterEditor";
+import { DatabasePageView } from "./components/pages/DatabasePageView";
+import { InventoryView } from "./components/pages/InventoryView";
+import { LogsPageView } from "./components/pages/LogsPageView";
+import { MemoryViewerView } from "./components/pages/MemoryViewerView";
+import { PluginsPageView } from "./components/pages/PluginsPageView";
+import { RelationshipsView } from "./components/pages/RelationshipsView";
+import { RuntimeView } from "./components/pages/RuntimeView";
+import { SkillsView } from "./components/pages/SkillsView";
+import { TasksPageView } from "./components/pages/TasksPageView";
+import { TrajectoriesView } from "./components/pages/TrajectoriesView";
+import { FineTuningView } from "./components/training/injected";
+
+// True lazy boundaries: these views are only imported here, so Rollup can
+// honour the split into separate chunks.
 const AppsPageView = lazyNamedView(
   () => import("./components/pages/AppsPageView"),
   "AppsPageView",
@@ -116,29 +133,9 @@ const ContactsPageView = lazyNamedView(
   () => import("./components/pages/MiladyOsAppsView"),
   "ContactsPageView",
 );
-const DatabasePageView = lazyNamedView(
-  () => import("./components/pages/DatabasePageView"),
-  "DatabasePageView",
-);
 const DesktopWorkspaceSection = lazyNamedView(
   () => import("./components/settings/DesktopWorkspaceSection"),
   "DesktopWorkspaceSection",
-);
-const FineTuningView = lazyNamedView(
-  () => import("./components/training/injected"),
-  "FineTuningView",
-);
-const InventoryView = lazyNamedView(
-  () => import("./components/pages/InventoryView"),
-  "InventoryView",
-);
-const LogsPageView = lazyNamedView(
-  () => import("./components/pages/LogsPageView"),
-  "LogsPageView",
-);
-const MemoryViewerView = lazyNamedView(
-  () => import("./components/pages/MemoryViewerView"),
-  "MemoryViewerView",
 );
 const MessagesPageView = lazyNamedView(
   () => import("./components/pages/MiladyOsAppsView"),
@@ -148,37 +145,13 @@ const PhonePageView = lazyNamedView(
   () => import("./components/pages/MiladyOsAppsView"),
   "PhonePageView",
 );
-const PluginsPageView = lazyNamedView(
-  () => import("./components/pages/PluginsPageView"),
-  "PluginsPageView",
-);
-const RelationshipsView = lazyNamedView(
-  () => import("./components/pages/RelationshipsView"),
-  "RelationshipsView",
-);
-const RuntimeView = lazyNamedView(
-  () => import("./components/pages/RuntimeView"),
-  "RuntimeView",
-);
 const SettingsView = lazyNamedView(
   () => import("./components/pages/SettingsView"),
   "SettingsView",
 );
-const SkillsView = lazyNamedView(
-  () => import("./components/pages/SkillsView"),
-  "SkillsView",
-);
 const StreamView = lazyNamedView(
   () => import("./components/pages/StreamView"),
   "StreamView",
-);
-const TasksPageView = lazyNamedView(
-  () => import("./components/pages/TasksPageView"),
-  "TasksPageView",
-);
-const TrajectoriesView = lazyNamedView(
-  () => import("./components/pages/TrajectoriesView"),
-  "TrajectoriesView",
 );
 
 function LazyViewBoundary({ children }: { children: ReactNode }) {

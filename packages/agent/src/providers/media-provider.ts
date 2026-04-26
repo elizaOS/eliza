@@ -18,7 +18,7 @@ import type {
   MediaConfig,
   VideoConfig,
   VisionConfig,
-} from "@elizaos/agent";
+} from "../config/types.eliza.js";
 
 // ============================================================================
 // Fetch Utilities

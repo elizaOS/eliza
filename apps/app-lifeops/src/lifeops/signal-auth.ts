@@ -1,16 +1,16 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import {
+  type SignalPairingEvent,
+  SignalPairingSession,
+  type SignalPairingSnapshot,
+} from "@elizaos/agent/services/signal-pairing";
 import type {
   LifeOpsConnectorSide,
   LifeOpsSignalPairingStatus,
 } from "@elizaos/shared";
-import {
-  resolveOAuthDir,
-  type SignalPairingEvent,
-  SignalPairingSession,
-  type SignalPairingSnapshot,
-} from "@elizaos/agent";
 
 export interface PendingSignalPairingSession {
   sessionId: string;
@@ -44,16 +44,17 @@ interface ManagedSignalPairingSession extends PendingSignalPairingSession {
   pairingSession: SignalPairingSession;
 }
 
-const pendingSignalPairingSessions = new Map<string, ManagedSignalPairingSession>();
+const pendingSignalPairingSessions = new Map<
+  string,
+  ManagedSignalPairingSession
+>();
 const SIGNAL_PAIRING_SESSION_TTL_MS = 10 * 60 * 1000;
 
 function signalStorageRoot(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveOAuthDir(env), "lifeops", "signal");
 }
 
-function signalPendingSessionDir(
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+function signalPendingSessionDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(signalStorageRoot(env), "pending");
 }
 
@@ -170,7 +171,10 @@ function cleanupExpiredSessions(): void {
     }
   }
   for (const session of listPendingSignalSessions()) {
-    if (now - new Date(session.createdAt).getTime() > SIGNAL_PAIRING_SESSION_TTL_MS) {
+    if (
+      now - new Date(session.createdAt).getTime() >
+      SIGNAL_PAIRING_SESSION_TTL_MS
+    ) {
       deletePendingSignalSession(session.sessionId);
     }
   }
@@ -297,10 +301,14 @@ function writeDeviceInfo(session: ManagedSignalPairingSession): void {
     deviceName: "Eliza Mac",
   };
   fs.mkdirSync(session.authDir, { recursive: true });
-  fs.writeFileSync(credentialFilePath(session.authDir), JSON.stringify(info, null, 2), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
+  fs.writeFileSync(
+    credentialFilePath(session.authDir),
+    JSON.stringify(info, null, 2),
+    {
+      encoding: "utf-8",
+      mode: 0o600,
+    },
+  );
 }
 
 function applySnapshot(
@@ -319,7 +327,10 @@ function applyEvent(
   const snapshot = session.pairingSession.getSnapshot();
   applySnapshot(session, snapshot);
 
-  if (typeof event.phoneNumber === "string" && event.phoneNumber.trim().length > 0) {
+  if (
+    typeof event.phoneNumber === "string" &&
+    event.phoneNumber.trim().length > 0
+  ) {
     session.phoneNumber = event.phoneNumber.trim();
   }
   if (typeof event.uuid === "string" && event.uuid.trim().length > 0) {

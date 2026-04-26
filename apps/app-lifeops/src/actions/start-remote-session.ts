@@ -10,6 +10,7 @@
  * an explicit `ingressUrl: null` with `reason: "data-plane-not-configured"`.
  */
 
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -18,10 +19,9 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
 import {
-  RemoteSessionError,
   getRemoteSessionService,
+  RemoteSessionError,
 } from "../remote/remote-session-service.js";
 
 const ACTION_NAME = "START_REMOTE_SESSION";
@@ -78,7 +78,9 @@ export const startRemoteSessionAction: Action = {
       },
       {
         name: "{{agentName}}",
-        content: { text: "Remote session active. Data plane ingress: vnc://host:5900" },
+        content: {
+          text: "Remote session active. Data plane ingress: vnc://host:5900",
+        },
       },
     ],
   ] as ActionExample[][],
@@ -112,7 +114,8 @@ export const startRemoteSessionAction: Action = {
     }
 
     const requesterIdentity =
-      coerceString(params.requesterIdentity) ?? String(message.entityId ?? "unknown");
+      coerceString(params.requesterIdentity) ??
+      String(message.entityId ?? "unknown");
 
     const service = getRemoteSessionService();
 

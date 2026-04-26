@@ -1,3 +1,4 @@
+import { hasPrivateAccess } from "@elizaos/agent/security/access";
 import type { Action, Memory, ProviderDataRecord } from "@elizaos/core";
 import type {
   LifeOpsCalendarEvent,
@@ -16,7 +17,6 @@ import type {
 } from "../contracts/index.js";
 import type { LifeOpsService } from "../lifeops/service.js";
 import { getLocalDateKey, getZonedDateParts } from "../lifeops/time.js";
-import { hasPrivateAccess } from "@elizaos/agent";
 
 export const INTERNAL_URL = new URL("http://127.0.0.1/");
 
@@ -384,9 +384,7 @@ export function formatGmailRecommendations(
   if (feed.recommendations.length === 0) {
     return "No Gmail actions are recommended from the current email set.";
   }
-  const lines = [
-    `Recommended Gmail actions: ${feed.summary.totalCount}.`,
-  ];
+  const lines = [`Recommended Gmail actions: ${feed.summary.totalCount}.`];
   for (const recommendation of feed.recommendations.slice(0, 6)) {
     const operation = recommendation.operation
       ? ` (${recommendation.operation.replace("_", " ")})`

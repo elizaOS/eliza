@@ -1,17 +1,6 @@
 import crypto from "node:crypto";
-import {
-  getAgentEventService,
-  resolveOwnerEntityId,
-} from "@elizaos/agent";
-import type {
-  LifeOpsAuditEvent,
-  LifeOpsAuditEventType,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsOwnership,
-  LifeOpsOwnershipInput,
-  LifeOpsWorkflowDefinition,
-} from "../contracts/index.js";
+import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
+import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
   BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
@@ -21,6 +10,15 @@ import {
   type BrowserBridgeSettings,
   type UpsertBrowserBridgeCompanionRequest,
 } from "@elizaos/plugin-browser-bridge";
+import type {
+  LifeOpsAuditEvent,
+  LifeOpsAuditEventType,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsOwnership,
+  LifeOpsOwnershipInput,
+  LifeOpsWorkflowDefinition,
+} from "../contracts/index.js";
 import type { computeAdaptiveWindowPolicy } from "./defaults.js";
 import {
   GoogleManagedClient,

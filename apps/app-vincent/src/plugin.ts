@@ -11,9 +11,7 @@
  */
 
 import type http from "node:http";
-import {
-  loadElizaConfig,
-} from "@elizaos/agent";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { Plugin, Route } from "@elizaos/core";
 import { handleVincentRoute } from "./routes";
 
