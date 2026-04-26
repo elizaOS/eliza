@@ -1,9 +1,10 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   discoverScenarios,
+  listScenarioMetadata,
   loadAllScenarios,
   matchesScenarioFileGlobs,
 } from "../loader.ts";
@@ -65,6 +66,58 @@ describe("loader", () => {
     );
     const loaded = await loadAllScenarios(root, new Set(["keep.me"]));
     expect(loaded.map((l) => l.scenario.id)).toEqual(["keep.me"]);
+  });
+
+  it("lists scenario ids without importing runtime-only modules", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "sc-loader-native-"));
+    writeScenario(
+      root,
+      "native.scenario.ts",
+      `import "@elizaos/native-only-test-missing";
+import { scenario } from "@elizaos/scenario-schema";
+export default scenario({ id: "native.only", title: "t", domain: "d", turns: [] });
+`,
+    );
+
+    const listed = await listScenarioMetadata(root);
+    expect(listed.map((entry) => entry.id)).toEqual(["native.only"]);
+    await expect(loadAllScenarios(root)).rejects.toThrow(
+      /native-only-test-missing/,
+    );
+  });
+
+  it("applies pending filtering from static metadata", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "sc-loader-pending-"));
+    writeScenario(
+      root,
+      "pending.scenario.ts",
+      `import "@elizaos/native-only-test-missing";
+import { scenario } from "@elizaos/scenario-schema";
+export default scenario({
+  id: "pending.only",
+  title: "t",
+  domain: "d",
+  status: "pending",
+  turns: [{ kind: "api", name: "nested", method: "GET", path: "/", expect: { status: "success" } }],
+});
+`,
+    );
+
+    const previousIncludePending = process.env.SCENARIO_INCLUDE_PENDING;
+    try {
+      delete process.env.SCENARIO_INCLUDE_PENDING;
+      await expect(listScenarioMetadata(root)).resolves.toEqual([]);
+
+      process.env.SCENARIO_INCLUDE_PENDING = "1";
+      const listed = await listScenarioMetadata(root);
+      expect(listed.map((entry) => entry.id)).toEqual(["pending.only"]);
+    } finally {
+      if (previousIncludePending === undefined) {
+        delete process.env.SCENARIO_INCLUDE_PENDING;
+      } else {
+        process.env.SCENARIO_INCLUDE_PENDING = previousIncludePending;
+      }
+    }
   });
 
   it("matches shard globs against scenario file paths", async () => {

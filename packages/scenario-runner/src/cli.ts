@@ -10,20 +10,11 @@
  *   2  configuration error (no LLM key, bad args, silent skip without reason)
  */
 
-import path from "node:path";
 import crypto from "node:crypto";
+import path from "node:path";
 import process from "node:process";
 import { logger } from "@elizaos/core";
-import { availableProviderNames } from "../../app-core/test/helpers/live-provider.ts";
-import { runScenario } from "./executor.ts";
-import { loadAllScenarios } from "./loader.ts";
-import {
-  buildAggregate,
-  printStdoutSummary,
-  writeReport,
-  writeReportBundle,
-} from "./reporter.ts";
-import { createScenarioRuntime } from "./runtime-factory.ts";
+import { listScenarioMetadata, loadAllScenarios } from "./loader.ts";
 import type { ScenarioReport } from "./types.ts";
 
 interface ParsedArgs {
@@ -112,16 +103,28 @@ async function main(): Promise<number> {
   const parsed = parseArgs(argv);
 
   if (parsed.command === "list") {
-    const loaded = await loadAllScenarios(
+    const loaded = await listScenarioMetadata(
       parsed.dir,
       parsed.filter,
       parsed.fileGlobs,
     );
-    for (const { scenario } of loaded) {
+    for (const scenario of loaded) {
       process.stdout.write(`${scenario.id}\n`);
     }
     return 0;
   }
+
+  const [
+    { availableProviderNames },
+    { runScenario },
+    { buildAggregate, printStdoutSummary, writeReport, writeReportBundle },
+    { createScenarioRuntime },
+  ] = await Promise.all([
+    import("../../app-core/test/helpers/live-provider.ts"),
+    import("./executor.ts"),
+    import("./reporter.ts"),
+    import("./runtime-factory.ts"),
+  ]);
 
   if (availableProviderNames().length === 0) {
     process.stderr.write(
