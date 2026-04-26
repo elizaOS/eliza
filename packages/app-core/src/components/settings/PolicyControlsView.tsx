@@ -482,7 +482,8 @@ function UsdField({
         inputMode="decimal"
         value={value}
         onChange={(e) => {
-          if (/^\d*\.?\d*$/.test(e.target.value)) onChange(e.target.value);
+          const v = e.target.value.slice(0, 32);
+          if (/^(?:\d+(?:\.\d*)?|\.\d*)?$/.test(v)) onChange(v);
         }}
         className="h-8 text-xs pl-6 tabular-nums"
         placeholder="0"

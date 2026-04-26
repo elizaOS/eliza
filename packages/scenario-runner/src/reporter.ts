@@ -92,6 +92,7 @@ export function printStdoutSummary(report: AggregateReport): void {
     const first =
       s.failedAssertions[0]?.detail ?? s.error ?? s.skipReason ?? "";
     const detail = first
+      .replace(/\\/g, "\\\\")
       .replace(/\|/g, "\\|")
       .replace(/\n/g, " ")
       .slice(0, 140);

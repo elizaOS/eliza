@@ -11,7 +11,11 @@
  * The `@elizaos/app-lifeops/widgets` entry point imports this transitively.
  */
 
-import { ElizaClient } from "@elizaos/app-core";
+// Direct source-module import to break the barrel cycle:
+// app-core/api/client.ts imports this file (LifeOps extension) as a
+// side-effect before re-exporting `ElizaClient` from its barrel, so a
+// barrel import here would resolve to `undefined` at module-init time.
+import { ElizaClient } from "@elizaos/app-core/api/client-base";
 import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPackageStatus,

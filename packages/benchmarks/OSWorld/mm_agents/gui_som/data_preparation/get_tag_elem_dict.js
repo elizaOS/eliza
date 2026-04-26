@@ -4,8 +4,10 @@
     var generateQuerySelector = function (el) {
         function cssEscape(value) {
             if (!value) return '';
-            // Escape all CSS special characters, including the colon.
-            return value.replace(/([!"#$%&'()*+,./:;<=>?@[\]^`{|}~])/g, '\\$&');
+            // Escape backslash first, then all other CSS special characters.
+            return value
+                .replace(/\\/g, '\\\\')
+                .replace(/([!"#$%&'()*+,./:;<=>?@[\]^`{|}~])/g, '\\$&');
         }
 
         function getChildIndex(el) {

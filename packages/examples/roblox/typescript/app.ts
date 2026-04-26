@@ -86,6 +86,26 @@ export function assertValidChatBody(body: RobloxChatRequestBody): void {
   if (!body.text || typeof body.text !== "string") throw new Error("text must be a string");
 }
 
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 60;
+
+function createRateLimiter() {
+  const buckets = new Map<string, { count: number; resetAt: number }>();
+  return function rateLimit(ip: string): boolean {
+    const now = Date.now();
+    const bucket = buckets.get(ip);
+    if (!bucket || bucket.resetAt <= now) {
+      buckets.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+      return true;
+    }
+    if (bucket.count >= RATE_LIMIT_MAX_REQUESTS) {
+      return false;
+    }
+    bucket.count += 1;
+    return true;
+  };
+}
+
 export function createRobloxBridgeApp(runtime: RuntimeLike, sharedSecret: string): express.Express {
   const app = express();
   app.use(
@@ -95,6 +115,8 @@ export function createRobloxBridgeApp(runtime: RuntimeLike, sharedSecret: string
       },
     })
   );
+
+  const checkChatRateLimit = createRateLimiter();
 
   app.get("/health", (_req: Request, res: Response) => {
     res.json({ status: "ok" });
@@ -114,6 +136,11 @@ export function createRobloxBridgeApp(runtime: RuntimeLike, sharedSecret: string
     "/roblox/chat",
     async (req: Request<object, object, RobloxChatRequestBody>, res: Response) => {
       try {
+        const clientIp = req.ip ?? req.socket.remoteAddress ?? "unknown";
+        if (!checkChatRateLimit(clientIp)) {
+          res.status(429).json({ error: "Too Many Requests" });
+          return;
+        }
         const rawReq = req as RequestWithRawBody;
         if (!verifySharedSecret(rawReq, sharedSecret)) {
           res.status(401).json({ error: "Unauthorized" });

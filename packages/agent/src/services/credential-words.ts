@@ -8,7 +8,7 @@
  * @module services/credential-words
  */
 
-import { randomBytes } from "node:crypto";
+import { randomInt } from "node:crypto";
 
 /**
  * Cute animal/nature words used to form memorable bot username suffixes.
@@ -119,8 +119,9 @@ export function generateBotUsername(agentName: string): string {
  * @returns Random password string
  */
 export function generateBotPassword(length = 16): string {
-  const bytes = randomBytes(length);
-  return Array.from(bytes)
-    .map((b) => PASSWORD_CHARS[b % PASSWORD_CHARS.length])
-    .join("");
+  let result = "";
+  for (let i = 0; i < length; i++) {
+    result += PASSWORD_CHARS[randomInt(0, PASSWORD_CHARS.length)];
+  }
+  return result;
 }

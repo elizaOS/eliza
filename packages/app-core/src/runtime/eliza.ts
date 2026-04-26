@@ -1005,16 +1005,18 @@ function getPgliteDataDirFromError(err: unknown): string | null {
     }
   }
 
-  for (const message of collectErrorMessages(err)) {
+  for (const rawMessage of collectErrorMessages(err)) {
+    const message =
+      rawMessage.length > 4096 ? rawMessage.slice(0, 4096) : rawMessage;
     const retryPathMatch = message.match(
-      /before retrying:\s*([^\n]+?)(?:\s*$|\.)/,
+      /before retrying:[ \t]{0,16}([^\n]{1,1024}?)(?:[ \t]*$|\.)/,
     );
     if (retryPathMatch?.[1]) {
       return retryPathMatch[1].trim();
     }
 
     const initPathMatch = message.match(
-      /PGlite initialization failed for (.+?):/i,
+      /PGlite initialization failed for ([^:\n]{1,1024}):/i,
     );
     if (initPathMatch?.[1]) {
       return initPathMatch[1].trim();

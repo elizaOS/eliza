@@ -229,7 +229,10 @@ const BUILTIN_VALIDATORS: Record<
   (value: unknown, args?: Record<string, unknown>) => boolean
 > = {
   required: (v) => v != null && v !== "",
-  email: (v) => typeof v === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+  email: (v) =>
+    typeof v === "string" &&
+    v.length <= 254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
   minLength: (v, args) =>
     typeof v === "string" && v.length >= Number(args?.length ?? 0),
   maxLength: (v, args) =>

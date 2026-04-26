@@ -260,10 +260,8 @@ export async function readJsonBody<T = Record<string, unknown>>(
       return null;
     }
     raw = body;
-  } catch (err) {
-    const msg =
-      err instanceof Error ? err.message : "Failed to read request body";
-    await writeJsonError(res, msg, readErrorStatus);
+  } catch {
+    await writeJsonError(res, readErrorMessage, readErrorStatus);
     return null;
   }
 

@@ -60,7 +60,8 @@ function extractReason(
   if (typeof raw === "string" && raw.length > 0) {
     return raw;
   }
-  const match = BECAUSE_RE.exec(text);
+  const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+  const match = BECAUSE_RE.exec(safeText);
   if (match) {
     return match[1].trim();
   }

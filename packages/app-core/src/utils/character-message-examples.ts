@@ -15,12 +15,13 @@ interface NormalizeCharacterMessageExamplesOptions {
 }
 
 function extractLikelyJson(input: string): string {
-  const trimmed = input.trim();
+  const safe = input.length > 200_000 ? input.slice(0, 200_000) : input;
+  const trimmed = safe.trim();
   if (!trimmed) return trimmed;
 
   const withoutFences = trimmed
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
+    .replace(/^```(?:json)?[ \t\r\n]{0,1024}/i, "")
+    .replace(/[ \t\r\n]{0,1024}```$/i, "")
     .trim();
 
   if (withoutFences.startsWith("{") || withoutFences.startsWith("[")) {

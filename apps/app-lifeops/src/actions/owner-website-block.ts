@@ -46,7 +46,7 @@ interface OwnerWebsiteBlockParameters {
 }
 
 const HOSTNAME_ONLY_RE =
-  /^(?:(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/[^\s]*)?)(?:\s*(?:,|and)\s*(?:(?:https?:\/\/)?(?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/[^\s]*)?))*$/i;
+  /^(?:(?:https?:\/\/)?(?:www\.)?[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,8}(?:\/[^\s]{0,1024})?)(?:\s{0,16}(?:,|and)\s{0,16}(?:(?:https?:\/\/)?(?:www\.)?[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,8}(?:\/[^\s]{0,1024})?)){0,16}$/i;
 
 const DIRECT_CONFIRMATION_RE =
   /^(?:yes|yep|yeah|sure|ok|okay|please do|do it|do it now|actually do it now|go ahead|confirm|confirmed)\b/i;
@@ -57,7 +57,8 @@ function normalizeText(value: string): string {
 
 function messageLooksLikeHostnameOnly(text: string): boolean {
   const trimmed = text.trim();
-  return trimmed.length > 0 && HOSTNAME_ONLY_RE.test(trimmed);
+  if (trimmed.length === 0 || trimmed.length > 4096) return false;
+  return HOSTNAME_ONLY_RE.test(trimmed);
 }
 
 function parseDirectJsonObject(

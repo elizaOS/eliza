@@ -337,7 +337,10 @@ function buildTrajectoryWhereClauses(options: TrajectoryListOptions): string[] {
     }
   }
   if (options.search) {
-    const searchPattern = `%${options.search.toLowerCase().replace(/[%_]/g, "\\$&")}%`;
+    const searchPattern = `%${options.search
+      .toLowerCase()
+      .replace(/\\/g, "\\\\")
+      .replace(/[%_]/g, "\\$&")}%`;
     const quotedPattern = sqlQuote(searchPattern);
     whereClauses.push(
       `(

@@ -165,8 +165,9 @@ function indexRunEvent(
 ): void {
   if (!hasRunIdAndSeq(event)) return;
   const runId = event.runId;
+  if (runId === "__proto__" || runId === "constructor" || runId === "prototype") return;
   const seq = Math.trunc(event.seq);
-  const bySeq = store.runIndex[runId] ?? {};
+  const bySeq = store.runIndex[runId] ?? Object.create(null);
   bySeq[seq] = event.eventId;
   store.runIndex[runId] = bySeq;
 }
@@ -191,6 +192,7 @@ function removeEventFromStore(
 
   if (hasRunIdAndSeq(event)) {
     const runId = event.runId;
+    if (runId === "__proto__" || runId === "constructor" || runId === "prototype") return;
     const seq = Math.trunc(event.seq);
     const bySeq = store.runIndex[runId];
     if (bySeq && bySeq[seq] === eventId) {
