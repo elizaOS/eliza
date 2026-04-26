@@ -23,8 +23,13 @@ const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
 const COMMON_SIGNAL_CLI_PATHS = [
   "/opt/homebrew/bin/signal-cli",
   "/usr/local/bin/signal-cli",
+  "/home/linuxbrew/.linuxbrew/bin/signal-cli",
 ];
-const COMMON_HOMEBREW_PATHS = ["/opt/homebrew/bin/brew", "/usr/local/bin/brew"];
+const COMMON_HOMEBREW_PATHS = [
+  "/opt/homebrew/bin/brew",
+  "/usr/local/bin/brew",
+  "/home/linuxbrew/.linuxbrew/bin/brew",
+];
 const SIGNAL_CLI_AUTO_INSTALL_ENV = "SIGNAL_CLI_AUTO_INSTALL";
 const MILADY_SIGNAL_CLI_AUTO_INSTALL_ENV = "MILADY_SIGNAL_CLI_AUTO_INSTALL";
 
@@ -196,6 +201,10 @@ function autoInstallSignalCliEnabled(env: NodeJS.ProcessEnv): boolean {
   return !["0", "false", "no", "off"].includes(raw.trim().toLowerCase());
 }
 
+function canAutoInstallSignalCli(platform: NodeJS.Platform): boolean {
+  return platform === "darwin" || platform === "linux";
+}
+
 async function resolveHomebrewPath(
   deps: ExecutableResolutionDeps,
 ): Promise<string | null> {
@@ -217,15 +226,21 @@ async function resolveHomebrewPath(
 
 async function installSignalCliWithHomebrew(
   deps: ExecutableResolutionDeps,
-): Promise<void> {
+): Promise<boolean> {
   const brewPath = await resolveHomebrewPath(deps);
   if (!brewPath) {
-    throw new Error(
-      "Homebrew is not installed. Install Homebrew or run `brew install signal-cli` manually, then retry.",
-    );
+    return false;
   }
 
-  await deps.execFile(brewPath, ["install", "signal-cli"], { env: deps.env });
+  try {
+    await deps.execFile(brewPath, ["install", "signal-cli"], { env: deps.env });
+  } catch (error) {
+    throw new Error(
+      `Failed to auto-install signal-cli with Homebrew. ${signalCliInstallInstructions(deps.platform)}`,
+      { cause: error },
+    );
+  }
+  return true;
 }
 
 function isDefaultSignalCliRequest(
@@ -266,26 +281,45 @@ export async function resolveSignalCliExecutable(
   }
 
   if (
-    deps.platform !== "darwin" ||
+    !canAutoInstallSignalCli(deps.platform) ||
     !isDefaultSignalCliRequest(requestedBinary, options, deps.env) ||
     !autoInstallSignalCliEnabled(deps.env)
   ) {
     return null;
   }
 
-  await installSignalCliWithHomebrew(deps);
+  const installed = await installSignalCliWithHomebrew(deps);
+  if (!installed) {
+    return null;
+  }
   return resolveExecutablePath(DEFAULT_SIGNAL_CLI_NAME, deps);
 }
 
-function missingSignalCliMessage(
+export function signalCliInstallInstructions(
+  platform: NodeJS.Platform,
+): string {
+  if (platform === "darwin") {
+    return "Milady can auto-install the default Signal CLI on macOS when Homebrew is available (`brew install signal-cli`). Fallback: install signal-cli from https://github.com/AsamK/signal-cli/releases and set SIGNAL_CLI_PATH to its bin/signal-cli executable.";
+  }
+  if (platform === "linux") {
+    return "Milady can auto-install the default Signal CLI on Linux when Homebrew/Linuxbrew is available (`brew install signal-cli`). Fallback: install the latest signal-cli Linux release from https://github.com/AsamK/signal-cli/releases, ensure Java Runtime 25+ is installed, and set SIGNAL_CLI_PATH to its bin/signal-cli executable.";
+  }
+  if (platform === "win32") {
+    return "On Windows, install the latest signal-cli release from https://github.com/AsamK/signal-cli/releases, ensure Java Runtime 25+ is installed, and set SIGNAL_CLI_PATH to signal-cli.bat or signal-cli.exe. Milady does not auto-run a Windows package manager.";
+  }
+  return "Install signal-cli from https://github.com/AsamK/signal-cli/releases for your platform, ensure Java Runtime 25+ is installed, and set SIGNAL_CLI_PATH to the signal-cli executable.";
+}
+
+export function missingSignalCliMessage(
   cliPath: string | undefined,
   env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = os.platform(),
 ): string {
   const requestedBinary =
     cliPath?.trim() || env.SIGNAL_CLI_PATH?.trim() || DEFAULT_SIGNAL_CLI_NAME;
   const installHint =
     requestedBinary === DEFAULT_SIGNAL_CLI_NAME
-      ? "Milady auto-installs the default Signal CLI on macOS when Homebrew is available; otherwise run `brew install signal-cli` and retry."
+      ? signalCliInstallInstructions(platform)
       : "Install that binary or update SIGNAL_CLI_PATH to point at an existing signal-cli executable.";
   return `Failed to load dependencies: Cannot find ${requestedBinary}. ${installHint}`;
 }
