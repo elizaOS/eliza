@@ -26,5 +26,14 @@ export const createIntegrationTelemetrySpan = () => ({
   success: () => {},
   failure: () => {},
 });
+export const hasAdminAccess = async () => false;
+export const hasOwnerAccess = async () => false;
+export const hasPrivateAccess = async () => false;
+export const extractActionParamsViaLlm = async () => ({});
+
+export class TelegramClient {}
+export class StringSession {
+  constructor(public value = "") {}
+}
 
 export default {};
