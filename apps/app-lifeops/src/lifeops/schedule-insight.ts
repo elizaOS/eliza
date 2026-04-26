@@ -488,6 +488,27 @@ function deriveCircadianState(args: {
   };
 }
 
+function resolveSchedulePhase(args: {
+  nowMs: number;
+  timezone: string;
+  circadianState: LifeOpsCircadianState;
+  sleepCycle: Pick<LifeOpsSleepCycle, "isProbablySleeping" | "cycleType">;
+}): string {
+  if (args.sleepCycle.isProbablySleeping) {
+    return args.sleepCycle.cycleType === "nap" ? "napping" : "sleeping";
+  }
+  if (args.circadianState === "waking" || args.circadianState === "winding_down") {
+    return args.circadianState;
+  }
+
+  const local = getZonedDateParts(new Date(args.nowMs), args.timezone);
+  const hour = local.hour + local.minute / 60;
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 22) return "evening";
+  return "night";
+}
+
 function toHistoricalSleepEpisodes(
   episodes: readonly LifeOpsSleepEpisode[],
 ): SleepRegularityEpisodeLike[] {
@@ -592,6 +613,12 @@ function analyzeLifeOpsScheduleInsight(args: {
     });
 
   const sleepStatus = sleepCycle.sleepStatus;
+  const phase = resolveSchedulePhase({
+    nowMs: args.nowMs,
+    timezone: args.timezone,
+    circadianState,
+    sleepCycle,
+  });
   const effectiveDayKey = dayBoundary.effectiveDayKey;
   const wakeAt = sleepCycle.lastSleepEndedAt;
   const relativeTime = resolveLifeOpsRelativeTime({
@@ -620,6 +647,7 @@ function analyzeLifeOpsScheduleInsight(args: {
       localDate: dayBoundary.localDate,
       timezone: args.timezone,
       inferredAt: new Date(args.nowMs).toISOString(),
+      phase,
       circadianState,
       stateConfidence,
       uncertaintyReason,
@@ -628,11 +656,14 @@ function analyzeLifeOpsScheduleInsight(args: {
       regularity,
       baseline,
       sleepStatus,
+      isProbablySleeping: sleepCycle.isProbablySleeping,
       sleepConfidence: Math.max(sleepCycle.sleepConfidence, awakeProbability.pAsleep),
       currentSleepStartedAt: sleepCycle.currentSleepStartedAt,
       lastSleepStartedAt: sleepCycle.lastSleepStartedAt,
       lastSleepEndedAt: sleepCycle.lastSleepEndedAt,
       lastSleepDurationMinutes: sleepCycle.lastSleepDurationMinutes,
+      typicalWakeHour: sleepResolution.typicalWakeHour,
+      typicalSleepHour: sleepResolution.typicalSleepHour,
       wakeAt,
       firstActiveAt: toIso(firstActiveAtMs),
       lastActiveAt: toIso(lastActiveAtMs),

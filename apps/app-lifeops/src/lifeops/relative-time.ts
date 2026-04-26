@@ -18,12 +18,14 @@ import {
 
 type RelativeTimeScheduleFields = Pick<
   LifeOpsScheduleInsight,
+  | "phase"
   | "circadianState"
   | "stateConfidence"
   | "uncertaintyReason"
   | "awakeProbability"
   | "regularity"
   | "baseline"
+  | "isProbablySleeping"
   | "sleepConfidence"
   | "currentSleepStartedAt"
   | "lastSleepStartedAt"
@@ -168,6 +170,36 @@ function isAwakeState(state: LifeOpsCircadianState): boolean {
   return state === "awake" || state === "waking" || state === "winding_down";
 }
 
+function fallbackSchedulePhase(args: {
+  phase: string | null | undefined;
+  circadianState: LifeOpsCircadianState;
+  nowMs: number;
+  timezone: string;
+}): string {
+  if (typeof args.phase === "string" && args.phase.trim().length > 0) {
+    return args.phase;
+  }
+  if (
+    args.circadianState === "sleeping" ||
+    args.circadianState === "napping" ||
+    args.circadianState === "waking" ||
+    args.circadianState === "winding_down"
+  ) {
+    return args.circadianState;
+  }
+  const parts = getZonedDateParts(new Date(args.nowMs), args.timezone);
+  if (parts.hour >= 5 && parts.hour < 12) {
+    return "morning";
+  }
+  if (parts.hour >= 12 && parts.hour < 17) {
+    return "afternoon";
+  }
+  if (parts.hour >= 17 && parts.hour < 22) {
+    return "evening";
+  }
+  return "night";
+}
+
 function baselineBedtimeHour(
   baseline: LifeOpsPersonalBaseline | null | undefined,
 ): number | null {
@@ -280,16 +312,34 @@ export function resolveLifeOpsRelativeTime(args: {
     bedtimeTargetMs === null || bedtimeTargetMs > args.nowMs
       ? null
       : minutesBetween(bedtimeTargetMs, args.nowMs);
+  const phase = fallbackSchedulePhase({
+    phase: args.schedule.phase,
+    circadianState: args.schedule.circadianState,
+    nowMs: args.nowMs,
+    timezone: args.timezone,
+  });
+  const isProbablySleeping =
+    args.schedule.isProbablySleeping ||
+    isAsleepState(args.schedule.circadianState);
+  const isAwake = isAwakeState(args.schedule.circadianState);
   return {
     computedAt: new Date(args.nowMs).toISOString(),
     localNowAt: formatInstantAsRfc3339InTimeZone(
       new Date(args.nowMs),
       args.timezone,
     ),
+    phase,
     circadianState: args.schedule.circadianState,
     stateConfidence: roundConfidence(args.schedule.stateConfidence),
     uncertaintyReason: args.schedule.uncertaintyReason,
     awakeProbability,
+    isProbablySleeping,
+    isAwake,
+    awakeState: isProbablySleeping
+      ? "probably_sleeping"
+      : isAwake
+        ? "awake"
+        : "unknown",
     wakeAnchorAt,
     wakeAnchorSource,
     minutesSinceWake,

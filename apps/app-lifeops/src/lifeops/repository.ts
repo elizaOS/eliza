@@ -1363,6 +1363,25 @@ function parseSleepEpisode(
   };
 }
 
+function deriveCircadianStateFromSchedulePhase(args: {
+  phase: string;
+  isProbablySleeping: boolean;
+  sleepStatus: LifeOpsScheduleMergedStateRecord["sleepStatus"];
+}): LifeOpsCircadianState {
+  if (
+    args.phase === "sleeping" ||
+    args.phase === "napping" ||
+    args.phase === "waking" ||
+    args.phase === "winding_down"
+  ) {
+    return args.phase;
+  }
+  if (args.isProbablySleeping || args.sleepStatus === "sleeping_now") {
+    return "sleeping";
+  }
+  return "awake";
+}
+
 function parseScheduleObservation(
   row: Record<string, unknown>,
 ): LifeOpsScheduleObservationRecord {
@@ -1378,16 +1397,16 @@ function parseScheduleObservation(
     observedAt: toText(row.observed_at),
     windowStartAt: toText(row.window_start_at),
     windowEndAt: row.window_end_at ? toText(row.window_end_at) : null,
-    circadianState: toText(row.circadian_state) as LifeOpsCircadianState,
-    stateConfidence: toNumber(row.state_confidence, 0),
-    uncertaintyReason: row.uncertainty_reason
-      ? (toText(row.uncertainty_reason) as LifeOpsUnclearReason)
+    state: toText(row.state) as LifeOpsScheduleObservationRecord["state"],
+    phase: row.phase
+      ? toText(row.phase)
       : null,
     mealLabel: row.meal_label
       ? (toText(
           row.meal_label,
         ) as LifeOpsScheduleObservationRecord["mealLabel"])
       : null,
+    confidence: toNumber(row.confidence, 0),
     metadata: parseJsonRecord(row.metadata_json),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
@@ -1398,6 +1417,24 @@ function parseScheduleMergedState(
   row: Record<string, unknown>,
 ): LifeOpsScheduleMergedStateRecord {
   const inferredAt = toText(row.inferred_at);
+  const metadata = parseJsonRecord(row.metadata_json);
+  const sleepStatus = toText(
+    row.sleep_status,
+  ) as LifeOpsScheduleMergedStateRecord["sleepStatus"];
+  const phase = toText(row.phase);
+  const isProbablySleeping = toBoolean(row.is_probably_sleeping, false);
+  const circadianState =
+    typeof metadata.circadianState === "string"
+      ? (metadata.circadianState as LifeOpsCircadianState)
+      : deriveCircadianStateFromSchedulePhase({
+          phase,
+          isProbablySleeping,
+          sleepStatus,
+        });
+  const uncertaintyReason =
+    typeof metadata.uncertaintyReason === "string"
+      ? (metadata.uncertaintyReason as LifeOpsUnclearReason)
+      : null;
   return refreshLifeOpsRelativeTime(
     {
       id: toText(row.id),
@@ -1408,20 +1445,18 @@ function parseScheduleMergedState(
       localDate: toText(row.local_date),
       timezone: toText(row.timezone, "UTC"),
       inferredAt,
-      circadianState: toText(row.circadian_state) as LifeOpsCircadianState,
-      stateConfidence: toNumber(row.state_confidence, 0),
-      uncertaintyReason: row.uncertainty_reason
-        ? (toText(row.uncertainty_reason) as LifeOpsUnclearReason)
-        : null,
+      phase,
+      circadianState,
+      stateConfidence: toNumber(metadata.stateConfidence, toNumber(row.sleep_confidence, 0)),
+      uncertaintyReason,
       awakeProbability: parseAwakeProbability(
         row.awake_probability_json,
         inferredAt,
       ),
       regularity: parseScheduleRegularity(row.regularity_json),
-      baseline: parsePersonalBaseline(row.baseline_json),
-      sleepStatus: toText(
-        row.sleep_status,
-      ) as LifeOpsScheduleMergedStateRecord["sleepStatus"],
+      baseline: parsePersonalBaseline(metadata.baseline),
+      sleepStatus,
+      isProbablySleeping,
       sleepConfidence: toNumber(row.sleep_confidence, 0),
       currentSleepStartedAt: row.current_sleep_started_at
         ? toText(row.current_sleep_started_at)
@@ -1437,6 +1472,18 @@ function parseScheduleMergedState(
         row.last_sleep_duration_minutes !== undefined &&
         row.last_sleep_duration_minutes !== ""
           ? toNumber(row.last_sleep_duration_minutes, 0)
+          : null,
+      typicalWakeHour:
+        row.typical_wake_hour !== null &&
+        row.typical_wake_hour !== undefined &&
+        row.typical_wake_hour !== ""
+          ? toNumber(row.typical_wake_hour, 0)
+          : null,
+      typicalSleepHour:
+        row.typical_sleep_hour !== null &&
+        row.typical_sleep_hour !== undefined &&
+        row.typical_sleep_hour !== ""
+          ? toNumber(row.typical_sleep_hour, 0)
           : null,
       wakeAt: row.wake_at ? toText(row.wake_at) : null,
       firstActiveAt: row.first_active_at ? toText(row.first_active_at) : null,
@@ -1460,7 +1507,7 @@ function parseScheduleMergedState(
       contributingDeviceKinds: parseJsonArray<
         LifeOpsScheduleMergedStateRecord["contributingDeviceKinds"][number]
       >(row.contributing_device_kinds_json),
-      metadata: parseJsonRecord(row.metadata_json),
+      metadata,
       createdAt: toText(row.created_at),
       updatedAt: toText(row.updated_at),
     },
@@ -4791,14 +4838,13 @@ export class LifeOpsRepository {
       this.runtime,
       `INSERT INTO life_schedule_insights (
          id, agent_id, effective_day_key, local_date, timezone, inferred_at,
-         circadian_state, state_confidence, uncertainty_reason, sleep_status,
-         sleep_confidence,
+         phase, sleep_status, is_probably_sleeping, sleep_confidence,
          current_sleep_started_at, last_sleep_started_at, last_sleep_ended_at,
-         last_sleep_duration_minutes, wake_at, first_active_at, last_active_at,
-         last_meal_at,
+         last_sleep_duration_minutes, typical_wake_hour, typical_sleep_hour,
+         wake_at, first_active_at, last_active_at, last_meal_at,
          next_meal_label, next_meal_window_start_at, next_meal_window_end_at,
          next_meal_confidence, meals_json, awake_probability_json,
-         regularity_json, baseline_json, metadata_json, created_at, updated_at
+         regularity_json, metadata_json, created_at, updated_at
        ) VALUES (
          ${sqlQuote(insight.id)},
          ${sqlQuote(insight.agentId)},
@@ -4806,15 +4852,16 @@ export class LifeOpsRepository {
          ${sqlQuote(insight.localDate)},
          ${sqlQuote(insight.timezone)},
          ${sqlQuote(insight.inferredAt)},
-         ${sqlQuote(insight.circadianState)},
-         ${sqlNumber(insight.stateConfidence)},
-         ${sqlText(insight.uncertaintyReason)},
+         ${sqlQuote(insight.phase)},
          ${sqlQuote(insight.sleepStatus)},
+         ${sqlBoolean(insight.isProbablySleeping)},
          ${sqlNumber(insight.sleepConfidence)},
          ${sqlText(insight.currentSleepStartedAt)},
          ${sqlText(insight.lastSleepStartedAt)},
          ${sqlText(insight.lastSleepEndedAt)},
          ${sqlInteger(insight.lastSleepDurationMinutes)},
+         ${sqlNumber(insight.typicalWakeHour)},
+         ${sqlNumber(insight.typicalSleepHour)},
          ${sqlText(insight.wakeAt)},
          ${sqlText(insight.firstActiveAt)},
          ${sqlText(insight.lastActiveAt)},
@@ -4826,7 +4873,6 @@ export class LifeOpsRepository {
          ${sqlJson(insight.meals)},
          ${sqlJson(insight.awakeProbability)},
          ${sqlJson(insight.regularity)},
-         ${sqlJson(insight.baseline)},
          ${sqlJson(insight.metadata)},
          ${sqlQuote(insight.createdAt)},
          ${sqlQuote(insight.updatedAt)}
@@ -4835,15 +4881,16 @@ export class LifeOpsRepository {
          local_date = EXCLUDED.local_date,
          timezone = EXCLUDED.timezone,
          inferred_at = EXCLUDED.inferred_at,
-         circadian_state = EXCLUDED.circadian_state,
-         state_confidence = EXCLUDED.state_confidence,
-         uncertainty_reason = EXCLUDED.uncertainty_reason,
+         phase = EXCLUDED.phase,
          sleep_status = EXCLUDED.sleep_status,
+         is_probably_sleeping = EXCLUDED.is_probably_sleeping,
          sleep_confidence = EXCLUDED.sleep_confidence,
          current_sleep_started_at = EXCLUDED.current_sleep_started_at,
          last_sleep_started_at = EXCLUDED.last_sleep_started_at,
          last_sleep_ended_at = EXCLUDED.last_sleep_ended_at,
          last_sleep_duration_minutes = EXCLUDED.last_sleep_duration_minutes,
+         typical_wake_hour = EXCLUDED.typical_wake_hour,
+         typical_sleep_hour = EXCLUDED.typical_sleep_hour,
          wake_at = EXCLUDED.wake_at,
          first_active_at = EXCLUDED.first_active_at,
          last_active_at = EXCLUDED.last_active_at,
@@ -4855,7 +4902,6 @@ export class LifeOpsRepository {
          meals_json = EXCLUDED.meals_json,
          awake_probability_json = EXCLUDED.awake_probability_json,
          regularity_json = EXCLUDED.regularity_json,
-         baseline_json = EXCLUDED.baseline_json,
          metadata_json = EXCLUDED.metadata_json,
          updated_at = EXCLUDED.updated_at`,
     );
@@ -4925,8 +4971,8 @@ export class LifeOpsRepository {
       this.runtime,
       `INSERT INTO life_schedule_observations (
          id, agent_id, origin, device_id, device_kind, timezone, observed_at,
-         window_start_at, window_end_at, circadian_state, state_confidence,
-         uncertainty_reason, meal_label, metadata_json, created_at, updated_at
+         window_start_at, window_end_at, state, phase, meal_label, confidence,
+         metadata_json, created_at, updated_at
        ) VALUES (
          ${sqlQuote(observation.id)},
          ${sqlQuote(observation.agentId)},
@@ -4937,10 +4983,10 @@ export class LifeOpsRepository {
          ${sqlQuote(observation.observedAt)},
          ${sqlQuote(observation.windowStartAt)},
          ${sqlText(observation.windowEndAt)},
-         ${sqlQuote(observation.circadianState)},
-         ${sqlNumber(observation.stateConfidence)},
-         ${sqlText(observation.uncertaintyReason)},
+         ${sqlQuote(observation.state)},
+         ${sqlText(observation.phase)},
          ${sqlText(observation.mealLabel)},
+         ${sqlNumber(observation.confidence)},
          ${sqlJson(observation.metadata)},
          ${sqlQuote(observation.createdAt)},
          ${sqlQuote(observation.updatedAt)}
@@ -4948,10 +4994,10 @@ export class LifeOpsRepository {
        ON CONFLICT(id) DO UPDATE SET
          observed_at = EXCLUDED.observed_at,
          window_end_at = EXCLUDED.window_end_at,
-         circadian_state = EXCLUDED.circadian_state,
-         state_confidence = EXCLUDED.state_confidence,
-         uncertainty_reason = EXCLUDED.uncertainty_reason,
+         state = EXCLUDED.state,
+         phase = EXCLUDED.phase,
          meal_label = EXCLUDED.meal_label,
+         confidence = EXCLUDED.confidence,
          metadata_json = EXCLUDED.metadata_json,
          updated_at = EXCLUDED.updated_at`,
     );
@@ -4992,18 +5038,25 @@ export class LifeOpsRepository {
   async upsertScheduleMergedState(
     state: LifeOpsScheduleMergedStateRecord,
   ): Promise<void> {
+    const persistedMetadata = {
+      ...state.metadata,
+      circadianState: state.circadianState,
+      stateConfidence: state.stateConfidence,
+      uncertaintyReason: state.uncertaintyReason,
+      baseline: state.baseline,
+    };
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_schedule_merged_states (
          id, agent_id, scope, effective_day_key, local_date, timezone,
-         merged_at, inferred_at, circadian_state, state_confidence,
-         uncertainty_reason, sleep_status, sleep_confidence,
+         merged_at, inferred_at, phase, sleep_status, is_probably_sleeping,
+         sleep_confidence,
          current_sleep_started_at, last_sleep_started_at,
          last_sleep_ended_at, last_sleep_duration_minutes,
-         wake_at, first_active_at, last_active_at,
+         typical_wake_hour, typical_sleep_hour, wake_at, first_active_at, last_active_at,
          last_meal_at, next_meal_label, next_meal_window_start_at,
          next_meal_window_end_at, next_meal_confidence, meals_json,
-         awake_probability_json, regularity_json, baseline_json,
+         awake_probability_json, regularity_json,
          observation_count, device_count, contributing_device_kinds_json,
          metadata_json, created_at, updated_at
        ) VALUES (
@@ -5015,15 +5068,16 @@ export class LifeOpsRepository {
          ${sqlQuote(state.timezone)},
          ${sqlQuote(state.mergedAt)},
          ${sqlQuote(state.inferredAt)},
-         ${sqlQuote(state.circadianState)},
-         ${sqlNumber(state.stateConfidence)},
-         ${sqlText(state.uncertaintyReason)},
+         ${sqlQuote(state.phase)},
          ${sqlQuote(state.sleepStatus)},
+         ${sqlBoolean(state.isProbablySleeping)},
          ${sqlNumber(state.sleepConfidence)},
          ${sqlText(state.currentSleepStartedAt)},
          ${sqlText(state.lastSleepStartedAt)},
          ${sqlText(state.lastSleepEndedAt)},
          ${sqlInteger(state.lastSleepDurationMinutes)},
+         ${sqlNumber(state.typicalWakeHour)},
+         ${sqlNumber(state.typicalSleepHour)},
          ${sqlText(state.wakeAt)},
          ${sqlText(state.firstActiveAt)},
          ${sqlText(state.lastActiveAt)},
@@ -5035,11 +5089,10 @@ export class LifeOpsRepository {
          ${sqlJson(state.meals)},
          ${sqlJson(state.awakeProbability)},
          ${sqlJson(state.regularity)},
-         ${state.baseline === null ? "NULL" : sqlJson(state.baseline)},
          ${sqlInteger(state.observationCount)},
          ${sqlInteger(state.deviceCount)},
          ${sqlJson(state.contributingDeviceKinds)},
-         ${sqlJson(state.metadata)},
+         ${sqlJson(persistedMetadata)},
          ${sqlQuote(state.createdAt)},
          ${sqlQuote(state.updatedAt)}
        )
@@ -5048,15 +5101,16 @@ export class LifeOpsRepository {
          local_date = EXCLUDED.local_date,
          merged_at = EXCLUDED.merged_at,
          inferred_at = EXCLUDED.inferred_at,
-         circadian_state = EXCLUDED.circadian_state,
-         state_confidence = EXCLUDED.state_confidence,
-         uncertainty_reason = EXCLUDED.uncertainty_reason,
+         phase = EXCLUDED.phase,
          sleep_status = EXCLUDED.sleep_status,
+         is_probably_sleeping = EXCLUDED.is_probably_sleeping,
          sleep_confidence = EXCLUDED.sleep_confidence,
          current_sleep_started_at = EXCLUDED.current_sleep_started_at,
          last_sleep_started_at = EXCLUDED.last_sleep_started_at,
          last_sleep_ended_at = EXCLUDED.last_sleep_ended_at,
          last_sleep_duration_minutes = EXCLUDED.last_sleep_duration_minutes,
+         typical_wake_hour = EXCLUDED.typical_wake_hour,
+         typical_sleep_hour = EXCLUDED.typical_sleep_hour,
          wake_at = EXCLUDED.wake_at,
          first_active_at = EXCLUDED.first_active_at,
          last_active_at = EXCLUDED.last_active_at,
@@ -5068,7 +5122,6 @@ export class LifeOpsRepository {
          meals_json = EXCLUDED.meals_json,
          awake_probability_json = EXCLUDED.awake_probability_json,
          regularity_json = EXCLUDED.regularity_json,
-         baseline_json = EXCLUDED.baseline_json,
          observation_count = EXCLUDED.observation_count,
          device_count = EXCLUDED.device_count,
          contributing_device_kinds_json = EXCLUDED.contributing_device_kinds_json,

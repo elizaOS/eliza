@@ -1248,13 +1248,19 @@ export type LifeOpsRelativeTimeAnchorSource =
   | "typical_sleep"
   | "day_boundary";
 
+export type LifeOpsAwakeState = "awake" | "probably_sleeping" | "unknown";
+
 export interface LifeOpsRelativeTime {
   computedAt: string;
   localNowAt: string;
+  phase: string;
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
   uncertaintyReason: LifeOpsUnclearReason | null;
   awakeProbability: LifeOpsAwakeProbability;
+  isProbablySleeping: boolean;
+  isAwake: boolean;
+  awakeState: LifeOpsAwakeState;
   wakeAnchorAt: string | null;
   wakeAnchorSource: LifeOpsRelativeTimeAnchorSource | null;
   minutesSinceWake: number | null;
@@ -1289,6 +1295,7 @@ export interface LifeOpsScheduleInsight {
   localDate: string;
   timezone: string;
   inferredAt: string;
+  phase: string;
   circadianState: LifeOpsCircadianState;
   stateConfidence: number;
   uncertaintyReason: LifeOpsUnclearReason | null;
@@ -1297,11 +1304,14 @@ export interface LifeOpsScheduleInsight {
   regularity: LifeOpsScheduleRegularity;
   baseline: LifeOpsPersonalBaseline | null;
   sleepStatus: LifeOpsScheduleSleepStatus;
+  isProbablySleeping: boolean;
   sleepConfidence: number;
   currentSleepStartedAt: string | null;
   lastSleepStartedAt: string | null;
   lastSleepEndedAt: string | null;
   lastSleepDurationMinutes: number | null;
+  typicalWakeHour: number | null;
+  typicalSleepHour: number | null;
   wakeAt: string | null;
   firstActiveAt: string | null;
   lastActiveAt: string | null;
