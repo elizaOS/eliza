@@ -198,6 +198,9 @@ function inferTelegramRetryState(args: {
 }
 
 function browserAccessTitle(access: LifeOpsOwnerBrowserAccessStatus): string {
+  if (access.source === "discord_desktop") {
+    return "Discord Desktop App";
+  }
   if (access.source === "desktop_browser") {
     return "Milady Desktop Browser";
   }
@@ -227,7 +230,9 @@ function browserAccessSourceLabel(
   }
   return access.source === "desktop_browser"
     ? "Milady Desktop Browser"
-    : "Your Browser";
+    : access.source === "discord_desktop"
+      ? "Discord Desktop"
+      : "Your Browser";
 }
 
 function browserAccessActionLabel(
@@ -254,6 +259,8 @@ function browserAccessActionLabel(
       return "Log In to Discord";
     case "open_desktop_browser":
       return "Open Milady Desktop";
+    case "relaunch_discord":
+      return "Relaunch Discord";
     default:
       return null;
   }
@@ -261,6 +268,24 @@ function browserAccessActionLabel(
 
 function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
   const sourceLabel = browserAccessSourceLabel(access);
+  if (access.source === "discord_desktop") {
+    if (access.nextAction === "relaunch_discord") {
+      return "Relaunch Discord with local agent control enabled. This keeps your existing Discord login.";
+    }
+    if (access.authState === "logged_out") {
+      return "Discord Desktop is controllable, but that session still needs you to log in.";
+    }
+    if (access.tabState === "missing") {
+      return "Discord Desktop control is on, but no Discord page target was found yet.";
+    }
+    if (
+      access.authState === "logged_in" &&
+      access.tabState !== "dm_inbox_visible"
+    ) {
+      return "Discord Desktop is connected, but the DM inbox is not visible yet.";
+    }
+    return "Discord Desktop is ready for local agent control.";
+  }
   if (access.source === "lifeops_browser") {
     if (!access.available && access.nextAction === "enable_browser_access") {
       return access.active
@@ -338,11 +363,16 @@ function browserAccessActionIcon(
       return <Plug2 className="mr-1.5 h-3 w-3" aria-hidden />;
     case "log_in":
     case "open_desktop_browser":
+    case "relaunch_discord":
     case "open_discord":
     case "open_dm_inbox":
     case "focus_discord_manually":
     case "focus_dm_inbox_manually":
-      return <ExternalLink className="mr-1.5 h-3 w-3" aria-hidden />;
+      return action === "relaunch_discord" ? (
+        <RefreshCw className="mr-1.5 h-3 w-3" aria-hidden />
+      ) : (
+        <ExternalLink className="mr-1.5 h-3 w-3" aria-hidden />
+      );
     default:
       return null;
   }
@@ -452,14 +482,19 @@ export function DiscordConnectorCard() {
   const browserAccess = discord.status?.browserAccess ?? [];
   const desktopAccess =
     browserAccess.find((access) => access.source === "desktop_browser") ?? null;
+  const discordDesktopAccess =
+    browserAccess.find((access) => access.source === "discord_desktop") ?? null;
   const preferredAccess =
     browserAccess.find((access) => access.active) ??
     browserAccess.find((access) => access.available) ??
+    discordDesktopAccess ??
     browserAccess[0] ??
     null;
   const available =
     discord.status?.available === true ||
     browserAccess.some((access) => access.available);
+  const canRelaunchDiscord =
+    discordDesktopAccess?.nextAction === "relaunch_discord";
   const dmInboxVisible = discord.status?.dmInbox.visible === true;
   const visibleDmCount = discord.status?.dmInbox.count ?? 0;
   const lastError = discord.status?.lastError;
@@ -471,29 +506,33 @@ export function DiscordConnectorCard() {
   const pairing =
     discord.status?.reason === "pairing" ||
     preferredAccess?.nextAction === "open_discord" ||
-    preferredAccess?.nextAction === "open_dm_inbox";
+    preferredAccess?.nextAction === "open_dm_inbox" ||
+    preferredAccess?.nextAction === "relaunch_discord";
   const authPending =
     discord.status?.reason === "auth_pending" ||
     preferredAccess?.authState === "logged_out";
-  const showConnectButton = available && (!isConnected || !dmInboxVisible);
+  const showConnectButton =
+    (available || canRelaunchDiscord) && (!isConnected || !dmInboxVisible);
   const statusLabel = dmInboxVisible
     ? `Connected • ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
     : authPending
       ? `Log in to Discord in ${browserAccessSourceLabel(preferredAccess)}`
-      : preferredAccess?.nextAction === "enable_browser_control"
-        ? "Enable browser control"
-        : preferredAccess?.nextAction === "connect_browser" ||
-            preferredAccess?.nextAction === "open_extension_popup"
-          ? "Connect Your Browser"
-          : preferredAccess?.nextAction === "open_desktop_browser"
-            ? "Open Milady Desktop"
-            : !available
-              ? "Browser access unavailable"
-              : isConnected
-                ? "Connected, opening DM inbox"
-                : pairing
-                  ? `Opening Discord in ${browserAccessSourceLabel(preferredAccess)}…`
-                  : "Not connected";
+      : preferredAccess?.nextAction === "relaunch_discord"
+        ? "Relaunch Discord"
+        : preferredAccess?.nextAction === "enable_browser_control"
+          ? "Enable browser control"
+          : preferredAccess?.nextAction === "connect_browser" ||
+              preferredAccess?.nextAction === "open_extension_popup"
+            ? "Connect Your Browser"
+            : preferredAccess?.nextAction === "open_desktop_browser"
+              ? "Open Milady Desktop"
+              : !available
+                ? "Browser access unavailable"
+                : isConnected
+                  ? "Connected, opening DM inbox"
+                  : pairing
+                    ? `Opening Discord in ${browserAccessSourceLabel(preferredAccess)}…`
+                    : "Not connected";
   const statusVariant: "ok" | "muted" | "warning" = isConnected
     ? dmInboxVisible
       ? "ok"
@@ -511,7 +550,10 @@ export function DiscordConnectorCard() {
 
   const handleOpenDesktopDiscord = useCallback(async () => {
     try {
-      await client.startDiscordConnector({ side: "owner" });
+      await client.startDiscordConnector({
+        side: "owner",
+        source: "desktop_browser",
+      });
       await discord.refresh();
       setTab("browser");
       setActionNotice(
@@ -534,6 +576,10 @@ export function DiscordConnectorCard() {
     async (access: LifeOpsOwnerBrowserAccessStatus) => {
       if (access.source === "desktop_browser") {
         await handleOpenDesktopDiscord();
+        return;
+      }
+      if (access.source === "discord_desktop") {
+        await discord.connect("discord_desktop");
         return;
       }
 
@@ -562,7 +608,7 @@ export function DiscordConnectorCard() {
         case "log_in":
         case "open_discord":
         case "open_dm_inbox":
-          await discord.connect();
+          await discord.connect(access.source);
           return;
         default:
           await discord.refresh();
@@ -582,8 +628,8 @@ export function DiscordConnectorCard() {
         <Button
           size="sm"
           className="h-8 w-8 rounded-xl p-0"
-          disabled={busy || !available}
-          onClick={() => void discord.connect()}
+          disabled={busy || (!available && !canRelaunchDiscord)}
+          onClick={() => void discord.connect(preferredAccess?.source)}
           title={
             browserAccessActionLabel(preferredAccess?.nextAction) ??
             (authPending
@@ -605,7 +651,11 @@ export function DiscordConnectorCard() {
                   : "Connect Discord")
           }
         >
-          <Plug2 className="h-3.5 w-3.5" aria-hidden />
+          {preferredAccess?.nextAction === "relaunch_discord" ? (
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          ) : (
+            <Plug2 className="h-3.5 w-3.5" aria-hidden />
+          )}
         </Button>
       ) : null}
 
