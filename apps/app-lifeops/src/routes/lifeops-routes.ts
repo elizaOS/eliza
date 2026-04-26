@@ -734,7 +734,10 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "Agent runtime is not available", 503);
       return true;
     }
-    const body = await readJsonBody<{ enabled?: unknown }>(req, res);
+    const body = await readJsonBody<{
+      enabled?: unknown;
+      priorityScoring?: unknown;
+    }>(req, res);
     if (!body) {
       return true;
     }
@@ -742,9 +745,41 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "enabled must be a boolean", 400);
       return true;
     }
+    // Hydrate the previous priorityScoring config so partial PUTs do not
+    // erase fields the caller did not send.
+    const previous = await loadLifeOpsAppState(ctx.state.runtime);
+    let priorityScoring = previous.priorityScoring;
+    if (body.priorityScoring !== undefined) {
+      if (
+        !body.priorityScoring ||
+        typeof body.priorityScoring !== "object" ||
+        Array.isArray(body.priorityScoring)
+      ) {
+        ctx.error(res, "priorityScoring must be an object", 400);
+        return true;
+      }
+      const ps = body.priorityScoring as {
+        enabled?: unknown;
+        model?: unknown;
+      };
+      const enabled =
+        typeof ps.enabled === "boolean" ? ps.enabled : priorityScoring.enabled;
+      let model: string | null = priorityScoring.model;
+      if (ps.model === null) {
+        model = null;
+      } else if (typeof ps.model === "string") {
+        const trimmed = ps.model.trim();
+        model = trimmed.length > 0 ? trimmed : null;
+      } else if (ps.model !== undefined) {
+        ctx.error(res, "priorityScoring.model must be a string or null", 400);
+        return true;
+      }
+      priorityScoring = { enabled, model };
+    }
     try {
       const saved = await saveLifeOpsAppState(ctx.state.runtime, {
         enabled: body.enabled,
+        priorityScoring,
       });
       json(res, saved);
     } catch (error) {
@@ -1164,6 +1199,8 @@ export async function handleLifeOpsRoutes(
         gmailAccountIdRaw !== null && gmailAccountIdRaw.trim().length > 0
           ? gmailAccountIdRaw.trim()
           : undefined;
+      const missedOnly = url.searchParams.get("missedOnly") === "true";
+      const sortByPriority = url.searchParams.get("sortByPriority") === "true";
       const request: GetLifeOpsInboxRequest = {
         limit,
         channels,
@@ -1171,6 +1208,8 @@ export async function handleLifeOpsRoutes(
         chatTypeFilter,
         maxParticipants,
         gmailAccountId,
+        missedOnly: missedOnly || undefined,
+        sortByPriority: sortByPriority || undefined,
       };
       json(res, await service.getInbox(request));
     });

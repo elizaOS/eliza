@@ -14,8 +14,10 @@ import {
   type LifeOpsInboxThreadGroup,
 } from "@elizaos/shared/contracts/lifeops";
 import {
+  AlarmClock,
   ArrowLeft,
   AtSign,
+  CalendarClock,
   ExternalLink,
   MessageCircle,
   MessageSquare,
@@ -25,6 +27,7 @@ import {
   Send,
   Shield,
   Smartphone,
+  Sparkles,
 } from "lucide-react";
 import {
   type JSX,
@@ -129,7 +132,9 @@ export const LIFEOPS_MESSAGE_CHANNELS: LifeOpsInboxChannel[] =
 export const LIFEOPS_MAIL_CHANNELS: LifeOpsInboxChannel[] = ["gmail"];
 
 const SMALL_GROUP_PARTICIPANT_CAP = 15;
-const IMPORTANT_THREAD_SCORE_THRESHOLD = 30;
+const IMPORTANT_PRIORITY_SCORE_THRESHOLD = 70;
+const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
+const MISSED_MIN_PRIORITY = 50;
 const ALL_GMAIL_ACCOUNTS = "__all__";
 
 function styleFor(channel: LifeOpsInboxChannel): ChannelStyle {
@@ -147,6 +152,23 @@ function messagesForThreadGroup(
 ): LifeOpsInboxMessage[] {
   const messages = Array.isArray(group.messages) ? group.messages : [];
   return messages.length > 0 ? messages : [group.latestMessage];
+}
+
+function computeMissedAgeMs(message: LifeOpsInboxMessage): number | null {
+  if (typeof message.repliedAt === "string" && message.repliedAt.length > 0) {
+    return null;
+  }
+  const received = Date.parse(message.receivedAt);
+  if (!Number.isFinite(received)) return null;
+  const age = Date.now() - received;
+  return age >= MISSED_REPLY_GAP_MS ? age : null;
+}
+
+function formatMissedAge(ageMs: number): string {
+  const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+  if (days >= 1) return `${days}d ago`;
+  const hours = Math.max(1, Math.floor(ageMs / (60 * 60 * 1000)));
+  return `${hours}h ago`;
 }
 
 function formatRelativeTime(receivedAt: string): string {
@@ -265,10 +287,15 @@ function ThreadRow({
   const message = group.latestMessage;
   const style = styleFor(message.channel);
   const subject = message.subject?.trim() || `${style.label} message`;
-  const isImportantSmallGroup =
-    group.chatType === "group" &&
-    typeof group.maxPriorityScore === "number" &&
-    group.maxPriorityScore >= IMPORTANT_THREAD_SCORE_THRESHOLD;
+  const score = group.maxPriorityScore ?? message.priorityScore ?? 0;
+  const category =
+    group.priorityCategory ?? message.priorityCategory ?? null;
+  const isImportant =
+    score >= IMPORTANT_PRIORITY_SCORE_THRESHOLD || category === "important";
+  const isPlanning = category === "planning";
+  const missedAge = computeMissedAgeMs(message);
+  const isMissed =
+    missedAge !== null && score >= MISSED_MIN_PRIORITY;
   const senderLabel =
     group.chatType === "group" && typeof group.participantCount === "number"
       ? `${message.sender.displayName} (${group.participantCount})`
@@ -348,9 +375,19 @@ function ThreadRow({
           {message.snippet}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {isImportantSmallGroup ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/16 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-500/40">
+          {isImportant ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-amber-500/16 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-500/40"
+              title={`Priority score ${score}`}
+            >
+              <Sparkles className="h-2.5 w-2.5" aria-hidden />
               Important
+            </span>
+          ) : null}
+          {isPlanning ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/16 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300 ring-1 ring-sky-500/40">
+              <CalendarClock className="h-2.5 w-2.5" aria-hidden />
+              Planning
             </span>
           ) : null}
           {showAccountSubtitle && message.gmailAccountEmail ? (
@@ -361,17 +398,28 @@ function ThreadRow({
         </div>
       </div>
 
-      <button
-        type="button"
-        aria-label="Reply"
-        onClick={(e) => {
-          e.stopPropagation();
-          onReply();
-        }}
-        className="mt-0.5 shrink-0 rounded-full p-1.5 text-muted opacity-0 transition-opacity hover:bg-bg-muted/40 hover:text-txt group-hover:opacity-100"
-      >
-        <MessageSquareReply className="h-3.5 w-3.5" />
-      </button>
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        {isMissed && missedAge !== null ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-amber-500/16 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-500/40"
+            title="Unreplied for over 24h"
+          >
+            <AlarmClock className="h-2.5 w-2.5" aria-hidden />
+            Missed · {formatMissedAge(missedAge)}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          aria-label="Reply"
+          onClick={(e) => {
+            e.stopPropagation();
+            onReply();
+          }}
+          className="mt-0.5 rounded-full p-1.5 text-muted opacity-0 transition-opacity hover:bg-bg-muted/40 hover:text-txt group-hover:opacity-100"
+        >
+          <MessageSquareReply className="h-3.5 w-3.5" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -836,6 +884,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
 
   const [selectedGmailAccount, setSelectedGmailAccount] =
     useState<string>(ALL_GMAIL_ACCOUNTS);
+  const [missedOnly, setMissedOnly] = useState<boolean>(false);
 
   const chatTypeFilter = useMemo<ReadonlyArray<InboxChatType> | undefined>(
     () =>
@@ -858,6 +907,9 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
       isMailMode && selectedGmailAccount !== ALL_GMAIL_ACCOUNTS
         ? selectedGmailAccount
         : undefined,
+    missedOnly: isMessagesMode ? missedOnly : false,
+    // Mail mode keeps recency-first because email priority is less actionable.
+    sortByPriority: isMessagesMode,
   });
 
   const selectedMessageId = selection.messageId ?? null;
@@ -1069,6 +1121,26 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
             />
           );
         })}
+        {isMessagesMode ? (
+          <button
+            type="button"
+            aria-pressed={missedOnly}
+            onClick={() => setMissedOnly((prev) => !prev)}
+            title={t("lifeopsInbox.missedTooltip", {
+              defaultValue:
+                "Threads you have not replied to in 24h with priority ≥ 50",
+            })}
+            className={[
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+              missedOnly
+                ? "bg-amber-500/16 text-amber-300 ring-1 ring-amber-500/40"
+                : "bg-bg-muted/30 text-muted hover:text-txt",
+            ].join(" ")}
+          >
+            <AlarmClock className="h-3.5 w-3.5" aria-hidden />
+            {t("lifeopsInbox.missed", { defaultValue: "Missed" })}
+          </button>
+        ) : null}
       </div>
 
       {showGmailAccountChips ? (
