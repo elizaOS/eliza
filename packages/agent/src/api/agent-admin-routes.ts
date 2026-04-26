@@ -3,7 +3,7 @@ import type { AgentRuntime, UUID } from "@elizaos/core";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
-} from "@elizaos/shared/onboarding-presets";
+} from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import { resolveUserPath } from "../config/paths.js";
 import { detectRuntimeModel } from "./agent-model.js";

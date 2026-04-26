@@ -23,7 +23,7 @@ import {
   type Memory,
   ModelType,
 } from "@elizaos/core";
-import { resolveApiBindHost } from "@elizaos/shared/runtime-env";
+import { resolveApiBindHost } from "@elizaos/shared";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import type {
   DatabaseConfig,

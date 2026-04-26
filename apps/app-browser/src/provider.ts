@@ -1,11 +1,11 @@
 import {
   getBrowserWorkspaceMode,
   listBrowserWorkspaceTabs,
-} from "@elizaos/agent/services/browser-workspace";
+} from "@elizaos/agent";
 import {
   getStewardPendingApprovals,
   getStewardWalletStatus,
-} from "@elizaos/app-steward/services/steward-wallet";
+} from "@elizaos/app-steward";
 import type { Provider } from "@elizaos/core";
 
 async function formatWorkspaceSummary(): Promise<{

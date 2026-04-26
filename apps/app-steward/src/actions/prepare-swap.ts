@@ -14,7 +14,7 @@ import type {
   BscTradePreflightResponse,
   BscTradeQuoteResponse,
   BscTradeSide,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import {
   buildAuthHeaders,
   getWalletActionApiPort,

@@ -1,4 +1,4 @@
-import type { EvmSigningCapabilityKind } from "@elizaos/shared/contracts/wallet";
+import type { EvmSigningCapabilityKind } from "@elizaos/shared";
 
 /**
  * EVM signing capability resolver.

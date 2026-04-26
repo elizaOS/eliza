@@ -7,7 +7,7 @@ import type {
   AppRunSessionContext,
   AppSessionState,
   AppViewerAuthMessage,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 import {
   asRuntimeLike,
   type BabylonConfig,

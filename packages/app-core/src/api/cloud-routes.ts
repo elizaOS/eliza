@@ -1,20 +1,20 @@
 import type http from "node:http";
 import {
+  applyCanonicalOnboardingConfig,
   type CloudRouteState as AutonomousCloudRouteState,
+  type CloudManager,
+  createIntegrationTelemetrySpan,
+  type ElizaConfig,
   handleCloudRoute as handleAutonomousCloudRoute,
-} from "@elizaos/agent/api/cloud-routes";
-import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
-import { normalizeCloudSiteUrl } from "@elizaos/agent/cloud/base-url";
-import type { CloudManager } from "@elizaos/agent/cloud/cloud-manager";
-import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
-import type { ElizaConfig } from "@elizaos/agent/config/config";
-import { saveElizaConfig } from "@elizaos/agent/config/config";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
+  normalizeCloudSiteUrl,
+  saveElizaConfig,
+  validateCloudBaseUrl,
+} from "@elizaos/agent";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-} from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 import { isTimeoutError } from "../utils/errors";
 import {
   disconnectCloudConnection,

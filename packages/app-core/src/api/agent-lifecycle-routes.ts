@@ -1,8 +1,9 @@
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent/api";
 import {
   type AgentLifecycleRouteState,
   handleAgentLifecycleRoutes as handleAutonomousAgentLifecycleRoutes,
-} from "@elizaos/agent/api/agent-lifecycle-routes";
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/agent";
 
 export type { AgentLifecycleRouteState };
 

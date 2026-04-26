@@ -25,8 +25,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 
-import { normalizeCharacterLanguage } from "@elizaos/shared/onboarding-presets";
-import { asRecord } from "@elizaos/shared/type-guards";
+import {
+  asRecord,
+  normalizeCharacterLanguage,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveTrajectoryGrouping } from "../runtime/trajectory-internals.js";
 import { startTrajectoryStepInDatabase } from "../runtime/trajectory-storage.js";

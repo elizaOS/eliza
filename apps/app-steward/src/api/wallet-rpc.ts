@@ -1,8 +1,10 @@
-import type { ElizaConfig } from "@elizaos/agent/config/config";
+import type {
+  ElizaConfig,
+} from "@elizaos/agent";
 import {
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcSelections,
@@ -10,7 +12,7 @@ import {
   type WalletRpcChain,
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 
 export const DEFAULT_CLOUD_API_BASE_URL = "https://elizacloud.ai/api/v1";
 // Multiple BSC public RPCs so we have working fallbacks when Eliza

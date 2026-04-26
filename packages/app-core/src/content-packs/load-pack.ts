@@ -12,7 +12,7 @@ import {
   type ContentPackSource,
   type ResolvedContentPack,
   validateContentPackManifest,
-} from "@elizaos/shared/contracts/content-pack";
+} from "@elizaos/shared";
 
 export class ContentPackLoadError extends Error {
   constructor(

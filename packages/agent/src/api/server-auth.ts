@@ -11,7 +11,9 @@ import {
   resolveApiSecurityConfig,
   resolveApiToken,
   setApiToken,
-} from "@elizaos/shared/runtime-env";
+  type WalletExportRejection,
+  type WalletExportRequestBody,
+} from "@elizaos/shared";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { sendJsonError } from "./http-helpers.js";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
@@ -242,10 +244,6 @@ export function resolvePluginConfigMutationRejections(
 // Wallet export rejection
 // ---------------------------------------------------------------------------
 
-import type {
-  WalletExportRejection,
-  WalletExportRequestBody,
-} from "@elizaos/shared/contracts";
 
 export type { WalletExportRejection };
 

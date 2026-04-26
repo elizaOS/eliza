@@ -3,8 +3,10 @@
  * Extracted from ConfigPageView.tsx.
  */
 
-import { normalizeOnboardingProviderId } from "@elizaos/shared/contracts";
-import { WALLET_RPC_PROVIDER_OPTIONS } from "@elizaos/shared/contracts/wallet";
+import {
+  normalizeOnboardingProviderId,
+  WALLET_RPC_PROVIDER_OPTIONS,
+} from "@elizaos/shared";
 import { Button, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";

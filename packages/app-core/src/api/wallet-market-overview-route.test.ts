@@ -1,7 +1,9 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import type { fetchWithTimeoutGuard } from "@elizaos/agent/api/server";
-import type { WalletMarketOverviewResponse } from "@elizaos/shared/contracts/wallet";
+import type {
+  fetchWithTimeoutGuard,
+} from "@elizaos/agent";
+import type { WalletMarketOverviewResponse } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {

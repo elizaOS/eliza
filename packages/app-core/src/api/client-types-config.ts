@@ -3,16 +3,16 @@
 // Update*, Extension*, Workbench*, Character*, Voice*, Skill*
 // ---------------------------------------------------------------------------
 
-import type { ConversationScope } from "@elizaos/agent/api/server-types";
-import type { ReleaseChannel } from "@elizaos/agent/contracts/config";
 import type {
   CreateTriggerRequest as _CreateTriggerRequest,
   TriggerHealthSnapshot as _TriggerHealthSnapshot,
   TriggerRunRecord as _TriggerRunRecord,
   TriggerSummary as _TriggerSummary,
   UpdateTriggerRequest as _UpdateTriggerRequest,
-} from "@elizaos/agent/triggers";
-import type { MessageExampleContent } from "@elizaos/shared/contracts/onboarding";
+  ConversationScope,
+  ReleaseChannel,
+} from "@elizaos/agent";
+import type { MessageExampleContent } from "@elizaos/shared";
 import type { ConfigUiHint } from "../types";
 
 export type {
@@ -51,7 +51,7 @@ export type {
   StartLifeOpsGoogleConnectorResponse,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "@elizaos/app-lifeops";
 export type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
@@ -573,7 +573,7 @@ export interface AutomationNodeCatalogResponse {
   };
 }
 
-export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared/contracts/lifeops";
+export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared";
 
 // Voice / TTS config
 export type VoiceProvider = "elevenlabs" | "simple-voice" | "edge";

@@ -7,7 +7,7 @@ import type {
   AppSessionActivityItem,
   AppSessionActionResult,
   AppSessionState,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 
 import {
   asRuntimeLike,

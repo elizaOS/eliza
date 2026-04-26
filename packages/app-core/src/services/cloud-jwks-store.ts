@@ -13,7 +13,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { RuntimeEnvRecord } from "@elizaos/shared/runtime-env";
+import type { RuntimeEnvRecord } from "@elizaos/shared";
 
 export const DEFAULT_JWKS_TTL_MS = 6 * 60 * 60 * 1000;
 const JWKS_CACHE_FILENAME = "cloud-jwks.json";

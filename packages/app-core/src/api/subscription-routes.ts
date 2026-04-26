@@ -1,9 +1,9 @@
-import type { RouteRequestContext } from "@elizaos/agent/api";
 import {
   type SubscriptionRouteState as AutonomousSubscriptionRouteState,
+  type ElizaConfig,
   handleSubscriptionRoutes as handleAutonomousSubscriptionRoutes,
-} from "@elizaos/agent/api/subscription-routes";
-import type { ElizaConfig } from "@elizaos/agent/config/types";
+  type RouteRequestContext,
+} from "@elizaos/agent";
 
 export type SubscriptionRouteState = Omit<
   AutonomousSubscriptionRouteState,

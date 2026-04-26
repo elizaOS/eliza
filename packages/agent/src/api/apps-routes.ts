@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { createGeneratedAppHeroSvg } from "@elizaos/shared/app-hero-art";
+import { createGeneratedAppHeroSvg } from "@elizaos/shared";
 import {
   type AppRunActionResult,
   type AppRunSummary,

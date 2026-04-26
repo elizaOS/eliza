@@ -1,6 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Trajectory, TrajectoryLlmCall } from "@elizaos/agent/types";
+import type {
+  Trajectory,
+  TrajectoryLlmCall,
+} from "@elizaos/agent";
 
 export interface GeminiTuningExample {
   messages: Array<{

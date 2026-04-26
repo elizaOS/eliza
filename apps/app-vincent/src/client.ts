@@ -3,7 +3,7 @@
  */
 
 /** Declaration merging must target the module that declares `ElizaClient` (see `declare module` below). */
-import { ElizaClient } from "@elizaos/app-core/api/client-base";
+import { ElizaClient } from "@elizaos/app-core";
 import type {
   VincentStartLoginResponse,
   VincentStatusResponse,

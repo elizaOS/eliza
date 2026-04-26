@@ -10,7 +10,7 @@
  */
 
 import type { Action, HandlerCallback, HandlerOptions } from "@elizaos/core";
-import type { WalletAddresses } from "@elizaos/shared/contracts";
+import type { WalletAddresses } from "@elizaos/shared";
 import {
   buildAuthHeaders,
   getWalletActionApiPort,

@@ -1,19 +1,15 @@
 import {
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
+  type DeploymentTargetConfig,
+  type LinkedAccountsConfig,
   normalizeOnboardingProviderId,
   type OnboardingCredentialInputs,
   type OnboardingLocalProviderId,
   requiresAdditionalRuntimeProvider,
-} from "@elizaos/shared/contracts/onboarding";
-import type {
-  DeploymentTargetConfig,
-  LinkedAccountsConfig,
-  ServiceRouteConfig,
-  ServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing";
-import {
-  buildDefaultElizaCloudServiceRouting,
-  buildElizaCloudServiceRoute,
-} from "@elizaos/shared/contracts/service-routing";
+  type ServiceRouteConfig,
+  type ServiceRoutingConfig,
+} from "@elizaos/shared";
 import {
   isElizaCloudOnboardingTarget,
   type OnboardingServerTarget,

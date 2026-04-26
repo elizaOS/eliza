@@ -8,17 +8,17 @@
  *   GET  /api/wallet/nfts      — EVM NFT fetch
  */
 import type http from "node:http";
-import { getWalletAddresses } from "@elizaos/agent/api/wallet";
-import { fetchEvmNfts } from "@elizaos/agent/api/wallet-evm-balance";
-import { resolveWalletRpcReadiness } from "@elizaos/agent/api/wallet-rpc";
 import {
   type ElizaConfig,
+  fetchEvmNfts,
+  getWalletAddresses,
   loadElizaConfig,
-} from "@elizaos/agent/config/config";
+  resolveWalletRpcReadiness,
+} from "@elizaos/agent";
 import {
   getStewardBridgeStatus,
   isStewardConfigured,
-} from "@elizaos/app-steward/routes/steward-bridge";
+} from "@elizaos/app-steward";
 import { logger } from "@elizaos/core";
 import { deriveAgentVaultId } from "../security/agent-vault-id";
 import {

@@ -12,12 +12,12 @@
 import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/app-lifeops/types";
+} from "@elizaos/app-lifeops";
 import type {
   StewardApprovalActionResponse,
   StewardPendingApproval,
   StewardTxRecord,
-} from "@elizaos/app-steward/types/steward";
+} from "@elizaos/app-steward";
 import type { ComponentType, ReactNode } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { Tab } from "../navigation";

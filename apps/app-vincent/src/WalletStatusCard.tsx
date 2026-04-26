@@ -6,7 +6,7 @@ import { Button, StatusBadge } from "@elizaos/app-core";
 import type {
   WalletAddresses,
   WalletBalancesResponse,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import { Copy, Wallet } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 

@@ -9,7 +9,7 @@ import {
   getDefaultStylePreset,
   getStylePresets,
   normalizeCharacterLanguage,
-} from "@elizaos/shared/onboarding-presets";
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import {
   ONBOARDING_CLOUD_PROVIDER_OPTIONS,

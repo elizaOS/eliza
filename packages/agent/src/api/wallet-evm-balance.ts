@@ -10,7 +10,7 @@ import {
   type DexTokenMeta,
   fetchDexPrices,
   WRAPPED_NATIVE,
-} from "@elizaos/app-steward/api/wallet-dex-prices";
+} from "@elizaos/app-steward";
 import { logger } from "@elizaos/core";
 import type {
   EvmChainBalance,

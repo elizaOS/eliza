@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { resolveConfigPath } from "@elizaos/agent/config/paths";
+import {
+  resolveConfigPath,
+} from "@elizaos/agent";
 import type { Command } from "commander";
 import JSON5 from "json5";
 import { formatDocsLink } from "../../terminal/links";

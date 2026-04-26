@@ -7,7 +7,7 @@
  * server the same way app-control.ts does.
  */
 
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
+import { resolveServerOnlyPort } from "@elizaos/shared";
 
 export function getApiBase(): string {
   const port = resolveServerOnlyPort(process.env);

@@ -10,11 +10,11 @@
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
 import {
+  decodePathComponent as httpDecodePathComponent,
   readJsonBody as httpReadJsonBody,
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
-} from "@elizaos/agent/api/http-helpers";
-import { decodePathComponent as httpDecodePathComponent } from "@elizaos/agent/api/server-helpers";
+} from "@elizaos/agent";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import { browserBridgeActions } from "./actions.ts";
 import {

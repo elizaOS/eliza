@@ -3,14 +3,17 @@
  * cloud-mode detection, and cloud-provisioned container detection.
  */
 
-import { applyOnboardingCredentialPersistence } from "@elizaos/agent/api/provider-switch-config";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import {
+  applyOnboardingCredentialPersistence,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "@elizaos/agent";
 import { logger, stringToUuid } from "@elizaos/core";
 import {
   deriveOnboardingCredentialPersistencePlan,
   migrateLegacyRuntimeConfig,
   normalizeOnboardingCredentialInputs,
-} from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 import {
   type DeploymentTargetConfig,
   type LinkedAccountsConfig,
@@ -18,12 +21,12 @@ import {
   normalizeLinkedAccountsConfig,
   normalizeServiceRoutingConfig,
   type ServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing";
+} from "@elizaos/shared";
 import {
   getDefaultStylePreset,
   getStylePresets,
   normalizeCharacterLanguage,
-} from "@elizaos/shared/onboarding-presets";
+} from "@elizaos/shared";
 import { PREMADE_VOICES } from "../voice/types";
 import { resolveProviderCredential } from "./credential-resolver";
 

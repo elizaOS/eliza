@@ -6,7 +6,7 @@ import {
   resolveApiToken,
   resolveServerOnlyPort,
   setApiToken,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import type { Command } from "commander";
 import { formatDocsLink } from "../../terminal/links";
 import { theme } from "../../terminal/theme";

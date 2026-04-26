@@ -9,4 +9,4 @@ export {
   type StewardSidecarConfig,
   type StewardSidecarStatus,
   type StewardWalletInfo,
-} from "@elizaos/app-steward/services/steward-sidecar";
+} from "@elizaos/app-steward";

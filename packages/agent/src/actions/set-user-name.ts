@@ -15,11 +15,11 @@ import type {
   HandlerOptions,
   State,
 } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
 import {
+  getRecentMessagesData,
   getValidationKeywordTerms,
   textIncludesKeywordTerm,
-} from "@elizaos/shared/validation-keywords";
+} from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.js";
 import {
   fetchConfiguredOwnerName,

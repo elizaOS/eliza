@@ -7,7 +7,7 @@ import type http from "node:http";
 import type {
   WalletExportRejection,
   WalletExportRequestBody,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import type { FallbackParsedAction } from "./binance-skill-helpers.js";
 
 export type { WalletExportRejection };

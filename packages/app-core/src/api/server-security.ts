@@ -8,11 +8,11 @@ import {
   resolveTerminalRunClientId as upstreamResolveTerminalRunClientId,
   resolveTerminalRunRejection as upstreamResolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as upstreamResolveWebSocketUpgradeRejection,
-} from "@elizaos/agent/api/server";
+} from "@elizaos/agent";
 import {
   normalizeCompatRejection,
   runWithCompatAuthContext,
-} from "@elizaos/app-steward/routes/server-wallet-trade";
+} from "@elizaos/app-steward";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 
 export function resolveMcpTerminalAuthorizationRejection(

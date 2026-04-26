@@ -4,21 +4,18 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  applyPluginRuntimeMutation,
-  type PluginRuntimeApplyResult,
-} from "@elizaos/agent/api/plugin-runtime-apply";
-import {
-  findPrimaryEnvKey,
-  readBundledPluginPackageMetadata,
-} from "@elizaos/agent/api/server";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import {
   type AdvancedCapabilityPluginId,
+  applyPluginRuntimeMutation,
+  findPrimaryEnvKey,
   isAdvancedCapabilityPluginId,
+  loadElizaConfig,
+  type PluginRuntimeApplyResult,
+  readBundledPluginPackageMetadata,
   resolveAdvancedCapabilitiesEnabled,
-} from "@elizaos/agent/runtime/advanced-capabilities-config";
+  saveElizaConfig,
+} from "@elizaos/agent";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared/type-guards";
+import { asRecord } from "@elizaos/shared";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars";
 import {
   CONNECTOR_PLUGINS,

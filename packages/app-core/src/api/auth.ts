@@ -7,7 +7,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { resolveApiToken } from "@elizaos/shared/runtime-env";
+import { resolveApiToken } from "@elizaos/shared";
 import { isTrustedLocalRequest } from "./compat-route-shared";
 import { sendJsonError } from "./response";
 

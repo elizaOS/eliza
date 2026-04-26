@@ -2,14 +2,14 @@ import type http from "node:http";
 import {
   type ElizaConfig,
   loadElizaConfig,
-} from "@elizaos/agent/config/config";
+} from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   normalizeOnboardingProviderId,
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts/onboarding";
-import { isLoopbackBindHost } from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
+import { isLoopbackBindHost } from "@elizaos/shared";
 import { sendJsonError as sendJsonErrorResponse } from "./response";
 
 const MAX_BODY_BYTES = 1_048_576;

@@ -10,7 +10,7 @@
 // covers the static, declared catalog only.
 
 import type http from "node:http";
-import type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
+import type { RegistryAppInfo } from "@elizaos/shared";
 import { type AppEntry, getApps, loadRegistry } from "../registry";
 import { ensureRouteAuthorized } from "./auth";
 import type { CompatRuntimeState } from "./compat-route-shared";
