@@ -1,3 +1,18 @@
+/**
+ * LoginView — multi-method login for Milady.
+ *
+ * Four tabs, rendered in this order (password first: most common for local installs):
+ *   1. Password   — displayName + password + remember device + submit
+ *   2. Eliza Cloud SSO — single button (disabled with tooltip until P2 backend lands)
+ *   3. Connector  — sign in via Discord / Telegram DM link (disabled until P3)
+ *   4. Pairing code — legacy 4-4-4 pairing flow; kept through the 14-day grace window
+ *
+ * On a 200 from /api/auth/me the caller should redirect to "/".
+ *
+ * Uses @elizaos/ui primitives (Tabs, Card, Input, Label, Button) + onboarding
+ * styles for the dark visual shell.
+ */
+
 import {
   Button,
   Card,
@@ -11,14 +26,12 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@elizaos/ui";
-import {
-  type FormEvent,
-  type ReactNode,
-  useCallback,
-  useId,
-  useState,
-} from "react";
+import { useCallback, useId, useState } from "react";
 import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
 import {
   OnboardingStepDivider,
@@ -36,11 +49,17 @@ export interface LoginViewProps {
    * main dashboard.
    */
   onLoginSuccess: () => void;
-  /** Whether Eliza Cloud SSO is available. */
+  /**
+   * Whether Eliza Cloud SSO is available. When false the SSO tab button is
+   * disabled with an explanatory tooltip.
+   */
   cloudEnabled?: boolean;
-  /** Connector bindings available for DM-link login. */
+  /**
+   * Connector bindings available for DM-link login.
+   * Empty array → connector tab shows "no bindings" state.
+   */
   connectorBindings?: ConnectorBinding[];
-  /** Optional pairing props forwarded to the pairing tab. */
+  /** Optional legacy pairing props forwarded to the pairing tab. */
   pairing?: PairingTabProps;
   /** Injected login function (tests). */
   loginFn?: (params: {
@@ -91,7 +110,7 @@ function PasswordTab({
   });
 
   const handleSubmit = useCallback(
-    async (e: FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
       if (!displayName.trim() || !password) return;
       setSubmitState({ phase: "submitting" });
@@ -209,18 +228,39 @@ function PasswordTab({
 
 // ── SSO tab ───────────────────────────────────────────────────────────────────
 
-function SsoTab() {
+function SsoTab({ cloudEnabled }: { cloudEnabled: boolean }) {
+  const tooltipText =
+    "Available when Eliza Cloud is configured on this instance.";
+
   return (
     <div className="flex flex-col items-center gap-4 py-2">
       <p className="text-sm text-muted-foreground text-center leading-relaxed">
         Sign in with your Eliza Cloud account. This method requires the instance
         to have an active Eliza Cloud connection.
       </p>
-      <Button asChild className="w-full" variant="outline">
-        <a href="/api/auth/login/sso/start?returnTo=/">
-          Sign in with Eliza Cloud
-        </a>
-      </Button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="w-full">
+              <Button
+                asChild={cloudEnabled}
+                disabled={!cloudEnabled}
+                className="w-full"
+                variant="outline"
+              >
+                {cloudEnabled ? (
+                  <a href="/api/auth/login/sso/start?returnTo=/">
+                    Sign in with Eliza Cloud
+                  </a>
+                ) : (
+                  <span>Sign in with Eliza Cloud</span>
+                )}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          {!cloudEnabled && <TooltipContent>{tooltipText}</TooltipContent>}
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }
@@ -228,6 +268,37 @@ function SsoTab() {
 // ── Connector tab ─────────────────────────────────────────────────────────────
 
 function ConnectorTab({ bindings }: { bindings: ConnectorBinding[] }) {
+  const hasBindings = bindings.length > 0;
+  const unavailableTooltip =
+    "Available when a connector owner is bound to this instance.";
+
+  if (!hasBindings) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-2">
+        <p className="text-sm text-muted-foreground text-center leading-relaxed">
+          Log in via a Discord or Telegram message. This method requires a
+          connector owner binding to be configured first.
+        </p>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="w-full">
+                <Button disabled className="w-full" variant="outline">
+                  Send login link
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{unavailableTooltip}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <p className="text-xs text-muted-foreground/60 text-center">
+          No connector bindings configured. Set up a connector in Settings to
+          enable this method.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4 py-2">
       <p className="text-sm text-muted-foreground leading-relaxed">
@@ -245,9 +316,6 @@ function ConnectorTab({ bindings }: { bindings: ConnectorBinding[] }) {
   );
 }
 
-const DM_LINK_UNAVAILABLE_MESSAGE =
-  "Login links are unavailable on this server. Use another sign-in method or contact the instance owner.";
-
 type ConnectorSendState =
   | { phase: "idle" }
   | { phase: "sending" }
@@ -260,6 +328,7 @@ function ConnectorLoginButton({ binding }: { binding: ConnectorBinding }) {
   const handleClick = useCallback(async () => {
     setState({ phase: "sending" });
     try {
+      // P3 backend route — may not exist yet. Surface 404 gracefully.
       const res = await fetch("/api/auth/login/owner/dm-link/request", {
         method: "POST",
         credentials: "include",
@@ -272,7 +341,7 @@ function ConnectorLoginButton({ binding }: { binding: ConnectorBinding }) {
       if (res.status === 404) {
         setState({
           phase: "error",
-          message: DM_LINK_UNAVAILABLE_MESSAGE,
+          message: "DM-link login is not yet available (backend pending).",
         });
         return;
       }
@@ -321,8 +390,16 @@ function ConnectorLoginButton({ binding }: { binding: ConnectorBinding }) {
 
 // ── Pairing tab ───────────────────────────────────────────────────────────────
 
-function PairingTab({ pairing }: { pairing: PairingTabProps }) {
+function PairingTab({ pairing }: { pairing: PairingTabProps | undefined }) {
   const pairingCodeId = useId().replace(/:/g, "");
+
+  if (!pairing) {
+    return (
+      <p className="py-2 text-sm text-muted-foreground">
+        Pairing is not available in the current server configuration.
+      </p>
+    );
+  }
 
   const code = pairing.pairingCodeInput.trim();
 
@@ -335,7 +412,8 @@ function PairingTab({ pairing }: { pairing: PairingTabProps }) {
       className="flex flex-col gap-4"
     >
       <p className="text-sm text-muted-foreground leading-relaxed">
-        Enter the pairing code shown in your CLI or desktop app.
+        Enter the pairing code shown in your CLI or desktop app. This method
+        will be removed after the 14-day migration grace window.
       </p>
       <div className="flex flex-col gap-1.5">
         <Label
@@ -350,7 +428,7 @@ function PairingTab({ pairing }: { pairing: PairingTabProps }) {
           placeholder="xxxx-xxxx-xxxx"
           value={pairing.pairingCodeInput}
           onChange={(e) => pairing.onCodeChange(e.target.value)}
-          disabled={pairing.pairingBusy}
+          disabled={pairing.pairingBusy || !pairing.pairingEnabled}
           autoComplete="off"
           spellCheck={false}
         />
@@ -362,7 +440,7 @@ function PairingTab({ pairing }: { pairing: PairingTabProps }) {
       )}
       <Button
         type="submit"
-        disabled={pairing.pairingBusy || !code}
+        disabled={pairing.pairingBusy || !pairing.pairingEnabled || !code}
         className="w-full"
       >
         {pairing.pairingBusy ? "Pairing…" : "Submit code"}
@@ -378,14 +456,6 @@ const SCREEN_SHELL_CLASS =
 const SCREEN_CARD_CLASS =
   "relative z-10 w-full max-w-[520px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-xl";
 
-type LoginMethodValue = "password" | "sso" | "connector" | "pairing";
-
-interface LoginMethod {
-  value: LoginMethodValue;
-  label: string;
-  content: ReactNode;
-}
-
 export function LoginView({
   onLoginSuccess,
   cloudEnabled = false,
@@ -395,45 +465,6 @@ export function LoginView({
   reason,
 }: LoginViewProps) {
   const remotePasswordMissing = reason === "remote_password_not_configured";
-  const visibleMethods: LoginMethod[] = [
-    {
-      value: "password",
-      label: "Password",
-      content: (
-        <PasswordTab onLoginSuccess={onLoginSuccess} loginFn={loginFn} />
-      ),
-    },
-  ];
-
-  if (cloudEnabled) {
-    visibleMethods.push({
-      value: "sso",
-      label: "Cloud",
-      content: <SsoTab />,
-    });
-  }
-
-  if (connectorBindings.length > 0) {
-    visibleMethods.push({
-      value: "connector",
-      label: "Connector",
-      content: <ConnectorTab bindings={connectorBindings} />,
-    });
-  }
-
-  if (pairing?.pairingEnabled) {
-    visibleMethods.push({
-      value: "pairing",
-      label: "Pairing",
-      content: <PairingTab pairing={pairing} />,
-    });
-  }
-
-  const loginDescription =
-    visibleMethods.length > 1
-      ? "Choose your login method below."
-      : "Sign in with your password.";
-
   return (
     <div className={SCREEN_SHELL_CLASS}>
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -456,50 +487,55 @@ export function LoginView({
               className={cn(onboardingTitleClass, "mt-2")}
               style={{ textShadow: "var(--onboarding-text-shadow-strong)" }}
             >
-              {remotePasswordMissing ? "Remote access blocked" : "Sign in"}
+              Sign in
             </CardTitle>
             <p
               className={cn(onboardingDescriptionClass, "mt-2")}
               style={onboardingBodyTextShadowStyle}
             >
               {remotePasswordMissing
-                ? "A remote password is required before this instance can accept browser logins from another machine."
-                : loginDescription}
+                ? "Remote access is not enabled yet. Open this instance on the host machine via localhost and set a remote password in Settings."
+                : "Choose your login method below."}
             </p>
           </div>
         </CardHeader>
 
         <CardContent className="px-6 pb-6">
-          {remotePasswordMissing ? (
-            <div
-              role="alert"
-              className="rounded-lg border border-border/60 bg-bg/50 px-4 py-3 text-sm leading-6 text-muted-foreground"
-            >
-              Open Milady on the host machine via localhost, then set a remote
-              password in Settings.
-            </div>
-          ) : (
-            <Tabs defaultValue="password">
-              <TabsList
-                className="mb-5 grid w-full"
-                style={{
-                  gridTemplateColumns: `repeat(${visibleMethods.length}, minmax(0, 1fr))`,
-                }}
-              >
-                {visibleMethods.map((method) => (
-                  <TabsTrigger key={method.value} value={method.value}>
-                    {method.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+          <Tabs defaultValue="password">
+            <TabsList className="mb-5 w-full grid grid-cols-4">
+              <TabsTrigger value="password">Password</TabsTrigger>
+              <TabsTrigger value="sso">Cloud</TabsTrigger>
+              <TabsTrigger value="connector">Connector</TabsTrigger>
+              <TabsTrigger value="pairing">Pairing</TabsTrigger>
+            </TabsList>
 
-              {visibleMethods.map((method) => (
-                <TabsContent key={method.value} value={method.value}>
-                  {method.content}
-                </TabsContent>
-              ))}
-            </Tabs>
-          )}
+            <TabsContent value="password">
+              {remotePasswordMissing ? (
+                <p className="rounded-lg border border-border/60 bg-bg/50 px-4 py-3 text-sm leading-6 text-muted-foreground">
+                  Remote password login has not been configured. Open this
+                  instance on the host machine with localhost, then set a remote
+                  password in Settings.
+                </p>
+              ) : (
+                <PasswordTab
+                  onLoginSuccess={onLoginSuccess}
+                  loginFn={loginFn}
+                />
+              )}
+            </TabsContent>
+
+            <TabsContent value="sso">
+              <SsoTab cloudEnabled={cloudEnabled} />
+            </TabsContent>
+
+            <TabsContent value="connector">
+              <ConnectorTab bindings={connectorBindings} />
+            </TabsContent>
+
+            <TabsContent value="pairing">
+              <PairingTab pairing={pairing} />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>
