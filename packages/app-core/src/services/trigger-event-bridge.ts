@@ -87,6 +87,8 @@ function stripRuntimeFields(
   const source = payload as unknown as Record<string, unknown>;
   for (const [key, value] of Object.entries(source)) {
     if (key === "runtime" || key === "source") continue;
+    // Skip function values (e.g. callback) — they cannot be serialized to JSON
+    if (typeof value === "function") continue;
     out[key] = value;
   }
   return out;
@@ -110,7 +112,20 @@ export function startTriggerEventBridge(
     return async (payload: EventPayload) => {
       if (!triggersFeatureEnabled(runtime)) return;
 
-      const tasks = await listTriggers(runtime);
+      let tasks: Task[];
+      try {
+        tasks = await listTriggers(runtime);
+      } catch (err) {
+        runtime.logger.error(
+          {
+            src: "trigger-event-bridge",
+            eventKind: eventType,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          "trigger-event-bridge failed to list triggers — skipping event",
+        );
+        return;
+      }
       const forwardedPayload = stripRuntimeFields(payload);
 
       for (const task of tasks) {
