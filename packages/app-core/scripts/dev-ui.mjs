@@ -841,7 +841,7 @@ function startVite() {
     const text = data.toString();
     if (text.includes("ready")) {
       console.log(
-        `\n  ${green(logPrefix)} ${orange(`http://localhost:${UI_PORT}/`)}\n`,
+        `\n  ${green(logPrefix)} ${orange(`http://localhost:${UI_PORT}/`)}\n  ${green(logPrefix)} ${dim("Local access: no password required on this machine")}\n  ${green(logPrefix)} ${dim("Remote access: set a password in Settings > Security")}\n`,
       );
     }
   });

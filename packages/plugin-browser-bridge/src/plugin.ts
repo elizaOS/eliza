@@ -17,11 +17,11 @@ import {
 import { decodePathComponent as httpDecodePathComponent } from "@elizaos/agent/api/server-helpers";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
 import { browserBridgeActions } from "./actions.ts";
-import { browserBridgeSchema } from "./schema.ts";
 import {
   type BrowserBridgeRouteContext,
   handleBrowserBridgeRoutes,
 } from "./routes.ts";
+import { browserBridgeSchema } from "./schema.ts";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);

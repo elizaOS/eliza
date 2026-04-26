@@ -1,15 +1,7 @@
-/**
- * OrdersPanel — tabbed order list (All / Unfulfilled / Fulfilled) with
- * expandable rows showing line item counts, financial status, and dates.
- */
-
-import { SegmentedControl, Skeleton } from "@elizaos/app-core";
+import { formatShortDate, SegmentedControl, Skeleton } from "@elizaos/app-core";
 import { ChevronDown, ChevronUp, ShoppingCart } from "lucide-react";
 import { useState } from "react";
-import { formatShortDate } from "@elizaos/app-core";
 import type { ShopifyOrder } from "./useShopifyDashboard";
-
-// ── Status badges ─────────────────────────────────────────────────────────
 
 function FulfillmentBadge({
   status,
@@ -19,9 +11,9 @@ function FulfillmentBadge({
   if (!status) return null;
 
   const styles = {
-    FULFILLED: "bg-ok/15 text-ok border border-ok/20",
-    UNFULFILLED: "bg-warn/15 text-warn border border-warn/20",
-    PARTIALLY_FULFILLED: "bg-warn/15 text-warn border border-warn/20",
+    FULFILLED: "bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.18)]",
+    UNFULFILLED: "bg-warn shadow-[0_0_0_3px_rgba(245,158,11,0.18)]",
+    PARTIALLY_FULFILLED: "bg-warn shadow-[0_0_0_3px_rgba(245,158,11,0.18)]",
   } satisfies Record<NonNullable<ShopifyOrder["fulfillmentStatus"]>, string>;
 
   const labels: Record<
@@ -35,10 +27,11 @@ function FulfillmentBadge({
 
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.1em] ${styles[status]}`}
-    >
-      {labels[status]}
-    </span>
+      role="img"
+      aria-label={labels[status]}
+      title={labels[status]}
+      className={`inline-flex h-2.5 w-2.5 rounded-full ${styles[status]}`}
+    />
   );
 }
 
@@ -48,10 +41,10 @@ function FinancialBadge({
   status: ShopifyOrder["financialStatus"];
 }) {
   const styles = {
-    PAID: "bg-ok/15 text-ok border border-ok/20",
-    PENDING: "bg-warn/15 text-warn border border-warn/20",
-    REFUNDED: "bg-danger/15 text-danger border border-danger/20",
-    PARTIALLY_REFUNDED: "bg-danger/15 text-danger border border-danger/20",
+    PAID: "bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.18)]",
+    PENDING: "bg-warn shadow-[0_0_0_3px_rgba(245,158,11,0.18)]",
+    REFUNDED: "bg-danger shadow-[0_0_0_3px_rgba(239,68,68,0.18)]",
+    PARTIALLY_REFUNDED: "bg-danger shadow-[0_0_0_3px_rgba(239,68,68,0.18)]",
   } satisfies Record<ShopifyOrder["financialStatus"], string>;
 
   const labels: Record<ShopifyOrder["financialStatus"], string> = {
@@ -63,14 +56,13 @@ function FinancialBadge({
 
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.1em] ${styles[status]}`}
-    >
-      {labels[status]}
-    </span>
+      role="img"
+      aria-label={labels[status]}
+      title={labels[status]}
+      className={`inline-flex h-2.5 w-2.5 rounded-full ${styles[status]}`}
+    />
   );
 }
-
-// ── Order row ─────────────────────────────────────────────────────────────
 
 function OrderRow({ order }: { order: ShopifyOrder }) {
   const [expanded, setExpanded] = useState(false);
@@ -82,7 +74,6 @@ function OrderRow({ order }: { order: ShopifyOrder }) {
         onClick={() => setExpanded((prev) => !prev)}
         className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-card/50 rounded-xl"
       >
-        {/* Order name */}
         <div className="min-w-[4rem] shrink-0">
           <div className="text-sm font-semibold text-txt">{order.name}</div>
           <div className="mt-0.5 text-xs-tight text-muted">
@@ -90,12 +81,10 @@ function OrderRow({ order }: { order: ShopifyOrder }) {
           </div>
         </div>
 
-        {/* Customer email */}
         <div className="min-w-0 flex-1 truncate text-xs text-muted">
           {order.email || "—"}
         </div>
 
-        {/* Total */}
         <div className="shrink-0 text-right">
           <div className="text-sm font-semibold text-txt">
             {order.totalPrice} {order.currencyCode}
@@ -105,13 +94,11 @@ function OrderRow({ order }: { order: ShopifyOrder }) {
           </div>
         </div>
 
-        {/* Badges */}
         <div className="flex shrink-0 flex-wrap gap-1.5">
           <FulfillmentBadge status={order.fulfillmentStatus} />
           <FinancialBadge status={order.financialStatus} />
         </div>
 
-        {/* Expand toggle */}
         <div className="shrink-0 text-muted">
           {expanded ? (
             <ChevronUp className="h-4 w-4" />
@@ -179,8 +166,6 @@ function OrderRow({ order }: { order: ShopifyOrder }) {
   );
 }
 
-// ── Tab items ─────────────────────────────────────────────────────────────
-
 type OrderTab = "any" | "unfulfilled" | "fulfilled";
 
 const ORDER_TABS = [
@@ -188,8 +173,6 @@ const ORDER_TABS = [
   { value: "unfulfilled" as const, label: "Unfulfilled" },
   { value: "fulfilled" as const, label: "Fulfilled" },
 ];
-
-// ── Panel ─────────────────────────────────────────────────────────────────
 
 interface OrdersPanelProps {
   orders: ShopifyOrder[];
@@ -214,7 +197,6 @@ export function OrdersPanel({
 
   return (
     <div className="space-y-3">
-      {/* Filter tabs */}
       <div className="flex items-center justify-between gap-3">
         <SegmentedControl
           value={activeTab}
@@ -228,14 +210,12 @@ export function OrdersPanel({
         ) : null}
       </div>
 
-      {/* Error */}
       {error ? (
         <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
           {error}
         </div>
       ) : null}
 
-      {/* Loading skeletons */}
       {loading && orders.length === 0 ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }, (_, i) => i).map((i) => (

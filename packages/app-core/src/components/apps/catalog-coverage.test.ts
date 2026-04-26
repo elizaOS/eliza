@@ -81,7 +81,13 @@ function readUpstreamAppPackages(): Array<{
       }
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
       return typeof packageJson.name === "string"
-        ? [{ dir: path.dirname(packageJsonPath), name: packageJson.name, packageJson }]
+        ? [
+            {
+              dir: path.dirname(packageJsonPath),
+              name: packageJson.name,
+              packageJson,
+            },
+          ]
         : [];
     });
 }
@@ -173,7 +179,9 @@ describe("apps catalog coverage", () => {
           ? []
           : [{ name: app.name, reason: `missing static file: ${heroImage}` }];
       }
-      return [{ name: app.name, reason: `unsupported hero source: ${heroImage}` }];
+      return [
+        { name: app.name, reason: `unsupported hero source: ${heroImage}` },
+      ];
     });
 
     expect(missing).toEqual([]);

@@ -39,8 +39,8 @@ import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/worksp
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/onboarding";
 import {
-  ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
+  ensureRouteAuthorized,
   getCompatApiToken,
 } from "./auth";
 import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
@@ -714,7 +714,7 @@ async function handleCompatRoute(
   // Eliza Cloud thin-client proxy (compat agents, jobs, …) — was missing from the
   // compat wrapper, so the dashboard saw 404 on `/api/cloud/compat/agents`.
   if (url.pathname.startsWith("/api/cloud/compat/")) {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     return handleCloudCompatRoute(req, res, url.pathname, method, {
@@ -727,7 +727,7 @@ async function handleCompatRoute(
   // API key persisted during login is always available, even if the
   // upstream's in-memory state.config hasn't been refreshed.
   if (url.pathname.startsWith("/api/cloud/billing/")) {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     return handleCloudBillingRoute(req, res, url.pathname, method, {
@@ -759,7 +759,7 @@ async function handleCompatRoute(
   // handler reads the sidecar singleton from services/n8n-sidecar via
   // peekN8nSidecar(), so no construction happens just from a status probe.
   if (url.pathname.startsWith("/api/n8n/")) {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     return handleN8nRoutes({
       req,
       res,
@@ -776,7 +776,7 @@ async function handleCompatRoute(
   if (await handleComputerUseCompatRoutes(req, res, state)) return true;
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     return await _handleCloudTtsPreviewRoute(req, res);
   }
 
@@ -811,7 +811,10 @@ async function handleCompatRoute(
       method === "GET" &&
       url.pathname === "/api/cloud/status";
 
-    if (!isCloudStatusExempt && !ensureCompatApiAuthorized(req, res)) {
+    if (
+      !isCloudStatusExempt &&
+      !(await ensureRouteAuthorized(req, res, state))
+    ) {
       return true;
     }
 
@@ -951,7 +954,7 @@ async function handleCompatRoute(
   if (await handlePluginsCompatRoutes(req, res, state)) return true;
 
   // Catalog routes — registry SoT projections (apps, plugins, connectors)
-  if (await handleCatalogRoutes(req, res)) return true;
+  if (await handleCatalogRoutes(req, res, state)) return true;
 
   if (await handleOnboardingCompatRoute(req, res, state)) return true;
 
@@ -961,7 +964,7 @@ async function handleCompatRoute(
     method === "GET" &&
     url.pathname.match(/^\/api\/plugins\/([^/]+)\/ui-spec$/);
   if (uiSpecMatch) {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
     const { buildPluginConfigUiSpec } = await import(
       "../config/plugin-ui-spec"
@@ -984,7 +987,7 @@ async function handleCompatRoute(
   // The app runs a single agent; expose it under an `agents` array so older
   // health probes and desktop callers can use the same response shape.
   if (method === "GET" && url.pathname === "/api/agents") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     const config = loadElizaConfig();
@@ -1006,7 +1009,7 @@ async function handleCompatRoute(
   }
 
   if (method === "GET" && url.pathname === "/api/config") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -1018,8 +1021,7 @@ async function handleCompatRoute(
     return true;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) return true;
-  return handleDatabaseRowsCompatRoute(req, res, state.current);
+  return handleDatabaseRowsCompatRoute(req, res, state);
 }
 
 export async function handleMiladyCompatRoute(
@@ -1089,7 +1091,7 @@ export function patchHttpCreateServerForCompat(
         );
         res.setHeader(
           "Access-Control-Allow-Headers",
-          "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token",
+          "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Milady-CSRF",
         );
         res.setHeader("Access-Control-Allow-Credentials", "true");
       }

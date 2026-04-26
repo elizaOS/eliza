@@ -16,19 +16,11 @@ import type {
   Memory,
   State,
   Task,
-} from "@elizaos/core";
-import type {
   TriggerKind,
   TriggerType,
   TriggerWakeMode,
 } from "@elizaos/core";
 import { hasOwnerAccess } from "../security/access.js";
-import {
-  DISABLED_TRIGGER_INTERVAL_MS,
-  buildTriggerConfig,
-  buildTriggerMetadata,
-  normalizeTriggerDraft,
-} from "./scheduling.js";
 import {
   listTriggerTasks,
   readTriggerConfig,
@@ -36,6 +28,12 @@ import {
   taskToTriggerSummary,
   triggersFeatureEnabled,
 } from "./runtime.js";
+import {
+  buildTriggerConfig,
+  buildTriggerMetadata,
+  DISABLED_TRIGGER_INTERVAL_MS,
+  normalizeTriggerDraft,
+} from "./scheduling.js";
 import type { TriggerTaskMetadata } from "./types.js";
 
 const UPDATE_TRIGGER_TASK_ACTION = "UPDATE_TRIGGER_TASK";
@@ -97,7 +95,7 @@ function readWakeMode(value: unknown): TriggerWakeMode | undefined {
 
 function readKind(value: unknown): TriggerKind | undefined {
   const s = readString(value);
-  if (s === "coordinator" || s === "workflow") return s;
+  if (s === "text" || s === "workflow") return s;
   return undefined;
 }
 
@@ -144,7 +142,10 @@ export const updateTriggerTaskAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult | undefined> => {
     if (!triggersFeatureEnabled(runtime)) {
-      return { success: false, text: "Triggers are disabled by configuration." };
+      return {
+        success: false,
+        text: "Triggers are disabled by configuration.",
+      };
     }
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
@@ -187,7 +188,8 @@ export const updateTriggerTaskAction: Action = {
         instructions: readString(params.instructions),
         triggerType: readTriggerType(params.triggerType),
         wakeMode: readWakeMode(params.wakeMode),
-        enabled: enabledOverride === undefined ? current.enabled : enabledOverride,
+        enabled:
+          enabledOverride === undefined ? current.enabled : enabledOverride,
         createdBy: current.createdBy,
         timezone: readString(params.timezone),
         intervalMs: readNumber(params.intervalMs) ?? current.intervalMs,
@@ -206,7 +208,8 @@ export const updateTriggerTaskAction: Action = {
         instructions: current.instructions,
         triggerType: current.triggerType,
         wakeMode: current.wakeMode,
-        enabled: enabledOverride === undefined ? current.enabled : enabledOverride,
+        enabled:
+          enabledOverride === undefined ? current.enabled : enabledOverride,
         createdBy: current.createdBy,
       },
     });

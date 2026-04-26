@@ -348,6 +348,13 @@ interface CapturedResponse {
   end: (chunk?: unknown) => void;
 }
 
+export interface FavoriteAppsStore {
+  /** Read the persisted favorites list. Returns a fresh array. */
+  read: () => string[];
+  /** Replace the persisted favorites list. Implementation must persist. */
+  write: (apps: string[]) => string[];
+}
+
 export interface AppsRouteContext
   extends RouteRequestMeta,
     Pick<RouteHelpers, "readJsonBody" | "json" | "error"> {
@@ -356,6 +363,21 @@ export interface AppsRouteContext
   getPluginManager: () => PluginManagerLike;
   parseBoundedLimit: (rawLimit: string | null, fallback?: number) => number;
   runtime: unknown | null;
+  favoriteApps?: FavoriteAppsStore;
+}
+
+function sanitizeFavoriteAppNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const apps: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    apps.push(trimmed);
+  }
+  return apps;
 }
 
 function isNonAppRegistryPlugin(plugin: RegistryPluginInfo): boolean {
@@ -746,6 +768,61 @@ export async function handleAppsRoutes(
     const pluginManager = getPluginManager();
     const installed = await appManager.listInstalled(pluginManager);
     json(res, installed);
+    return true;
+  }
+
+  if (pathname === "/api/apps/favorites") {
+    const store = ctx.favoriteApps;
+    if (!store) {
+      error(res, "Favorites store is not configured", 503);
+      return true;
+    }
+
+    if (method === "GET") {
+      json(res, { favoriteApps: store.read() });
+      return true;
+    }
+
+    if (method === "PUT") {
+      const body = await readJsonBody<{
+        appName?: unknown;
+        isFavorite?: unknown;
+      }>(req, res);
+      if (!body) return true;
+      const rawName =
+        typeof body.appName === "string" ? body.appName.trim() : "";
+      if (!rawName) {
+        error(res, "appName is required", 400);
+        return true;
+      }
+      if (typeof body.isFavorite !== "boolean") {
+        error(res, "isFavorite must be a boolean", 400);
+        return true;
+      }
+      const current = store.read();
+      const filtered = current.filter((entry) => entry !== rawName);
+      const next = body.isFavorite ? [...filtered, rawName] : filtered;
+      const persisted = store.write(sanitizeFavoriteAppNames(next));
+      json(res, { favoriteApps: persisted });
+      return true;
+    }
+  }
+
+  if (method === "POST" && pathname === "/api/apps/favorites/replace") {
+    const store = ctx.favoriteApps;
+    if (!store) {
+      error(res, "Favorites store is not configured", 503);
+      return true;
+    }
+    const body = await readJsonBody<{ favoriteAppNames?: unknown }>(req, res);
+    if (!body) return true;
+    if (!Array.isArray(body.favoriteAppNames)) {
+      error(res, "favoriteAppNames must be an array of strings", 400);
+      return true;
+    }
+    const sanitized = sanitizeFavoriteAppNames(body.favoriteAppNames);
+    const persisted = store.write(sanitized);
+    json(res, { favoriteApps: persisted });
     return true;
   }
 

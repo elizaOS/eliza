@@ -1,7 +1,7 @@
 import type http from "node:http";
 import {
-  ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
+  ensureRouteAuthorized,
   getCompatApiToken,
   getProvidedApiToken,
   tokenMatches,
@@ -191,7 +191,7 @@ export async function handleComputerUseCompatRoutes(
   }
 
   if (method === "GET" && url.pathname === "/api/computer-use/approvals") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 

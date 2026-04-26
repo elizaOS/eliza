@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { clientMock, useAppMock } = vi.hoisted(() => ({
@@ -143,5 +149,52 @@ describe("ProviderSwitcher", () => {
       screen.getByText("API config for @elizaos/plugin-anthropic"),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: /Use provider/ })).toBeTruthy();
+  });
+
+  it("keeps direct providers usable when local-only mode is active", async () => {
+    clientMock.getConfig.mockResolvedValueOnce({
+      cloud: {
+        enabled: false,
+        inferenceMode: "local",
+        services: { inference: false },
+      },
+      models: {},
+    });
+
+    render(<ProviderSwitcher />);
+
+    await screen.findByRole("button", { name: /Local only active/ });
+    fireEvent.click(screen.getByRole("button", { name: /Anthropic/ }));
+
+    const useProvider = screen.getByRole("button", { name: /Use provider/ });
+    fireEvent.click(useProvider);
+
+    await waitFor(() =>
+      expect(clientMock.switchProvider).toHaveBeenCalledWith("anthropic"),
+    );
+  });
+
+  it("does not treat direct API routing as local-only just because cloud is disabled", async () => {
+    clientMock.getConfig.mockResolvedValueOnce({
+      cloud: { enabled: false },
+      models: {},
+      serviceRouting: {
+        llmText: {
+          backend: "anthropic",
+          transport: "direct",
+        },
+      },
+    });
+
+    render(<ProviderSwitcher />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("API config for @elizaos/plugin-anthropic"),
+      ).toBeTruthy(),
+    );
+    expect(screen.queryByRole("button", { name: /Local only active/ })).toBe(
+      null,
+    );
   });
 });
