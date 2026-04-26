@@ -4828,6 +4828,38 @@ function AutomationsLayout() {
         await Promise.all(
           item.schedules.map((schedule) => client.deleteTrigger(schedule.id)),
         );
+        // Also delete the chat conversation/room that backed this workflow.
+        // Without this, the `/api/automations` aggregator keeps surfacing the
+        // workflow row as a ghost entry because rooms with workflowId
+        // metadata are listed even when the underlying n8n workflow is gone.
+        const conversationId = item.room?.conversationId;
+        if (conversationId) {
+          try {
+            await client.deleteConversation(conversationId);
+          } catch (roomErr) {
+            // Non-fatal: the workflow itself is deleted; surface the room
+            // failure to the user but don't roll back.
+            setPageNotice(
+              `Workflow deleted, but its chat room could not be removed: ${
+                roomErr instanceof Error ? roomErr.message : String(roomErr)
+              }`,
+            );
+          }
+        }
+        if (selectedItemId === item.id) {
+          setSelectedItemId(null);
+          setSelectedItemKind(null);
+        }
+        // Mirror handleDeleteDraft: also clear the active workflow
+        // conversation if it's the one tied to the deleted workflow.
+        // Without this, refreshAutomationsWithDraftBinding keeps receiving
+        // a stale conversation reference on subsequent refreshes.
+        if (
+          conversationId &&
+          activeWorkflowConversation?.id === conversationId
+        ) {
+          setActiveWorkflowConversation(null);
+        }
         await ctx.refreshAutomations();
       } catch (error) {
         setPageNotice(
@@ -4841,7 +4873,15 @@ function AutomationsLayout() {
         setWorkflowBusyId(null);
       }
     },
-    [ctx, t],
+    [
+      activeWorkflowConversation?.id,
+      ctx,
+      selectedItemId,
+      setActiveWorkflowConversation,
+      setSelectedItemId,
+      setSelectedItemKind,
+      t,
+    ],
   );
 
   const handleDuplicateWorkflow = useCallback(
