@@ -1,4 +1,5 @@
-import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
+import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security";
 import {
   type Action,
   type ActionExample,
@@ -159,7 +160,7 @@ export const twilioCallAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
   ): Promise<ActionResult> => {
     if (!(await hasAdminAccess(runtime, message))) {
@@ -181,8 +182,18 @@ export const twilioCallAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as TwilioCallParameters;
+    const params = (await extractActionParamsViaLlm<TwilioCallParameters>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: twilioCallAction.description ?? "",
+      paramSchema: twilioCallAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["to", "message"],
+    })) as TwilioCallParameters;
     const to = coerceString(params.to);
     const messageBody = coerceString(params.message);
     const confirmed = coerceBool(params.confirmed);
@@ -326,6 +337,26 @@ function normalizeLookup(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+function messageText(message: Memory): string {
+  return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+function isStandingOwnerCallPolicy(message: Memory): boolean {
+  const text = normalizeLookup(messageText(message));
+  if (!text) {
+    return false;
+  }
+  const isConditional =
+    /\b(if|when|whenever)\b/.test(text) ||
+    /\bget stuck\b/.test(text) ||
+    /\bblocked\b/.test(text);
+  const mentionsCall = /\b(call|phone|dial)\b/.test(text);
+  const mentionsBlockedWork =
+    /\b(stuck|blocked|jam|jams|unblock)\b/.test(text) &&
+    /\b(browser|computer|desktop|remote|workflow|machine)\b/.test(text);
+  return isConditional && mentionsCall && mentionsBlockedWork;
 }
 
 function getPendingCallCacheKey(roomId: string, actionName: string): string {
@@ -626,6 +657,23 @@ export const callUserAction: Action & {
       "CALL_USER",
     );
 
+    if (params.confirmed !== true && isStandingOwnerCallPolicy(message)) {
+      return {
+        text: "Recorded. If I get stuck in the browser or on your computer, I'll escalate by phone so you can jump in to unblock it.",
+        success: true,
+        values: {
+          success: true,
+          policyRecorded: true,
+          channel: "phone_call",
+        },
+        data: {
+          actionName: "CALL_USER",
+          policyRecorded: true,
+          channel: "phone_call",
+        },
+      };
+    }
+
     if (params.confirmed !== true) {
       logger.info({ action: "CALL_USER" }, "[CALL_USER] confirmation required");
       const spokenMessage =
@@ -797,7 +845,7 @@ export const callExternalAction: Action & {
     return hasOwnerAccess(runtime, message);
   },
 
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+  handler: async (runtime, message, state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         text: "",
@@ -807,10 +855,20 @@ export const callExternalAction: Action & {
       };
     }
 
-    const params =
+    const rawParams =
       ((options as HandlerOptions | undefined)?.parameters as
         | CallExternalParameters
         | undefined) ?? {};
+    const params = (await extractActionParamsViaLlm<CallExternalParameters>({
+      runtime,
+      message,
+      state,
+      actionName: "CALL_EXTERNAL",
+      actionDescription: callExternalAction.description ?? "",
+      paramSchema: callExternalAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["to"],
+    })) as CallExternalParameters;
     const pendingDraft = await readPendingCallDraft(
       runtime,
       message.roomId,

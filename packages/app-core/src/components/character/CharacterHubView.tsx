@@ -668,8 +668,8 @@ export function CharacterHubView({
         return (
           <span
             className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted/80"
-            role="img"
             title={label}
+            role="img"
             aria-label={label}
           >
             <Icon className="h-3.5 w-3.5" />
@@ -720,7 +720,14 @@ export function CharacterHubView({
                       : item.summary?.trim() || item.type;
                 return (
                   <li
-                    key={`${item.type}-${item.personId ?? item.personName ?? "person"}-${item.timestamp ?? "unknown"}-${memoryText}`}
+                    key={[
+                      item.personId,
+                      item.personName,
+                      item.type,
+                      item.timestamp ?? "no-time",
+                      item.summary,
+                      item.detail ?? "",
+                    ].join(":")}
                     className="flex min-w-0 items-center gap-2 py-1.5 first:pt-0 last:pb-0"
                   >
                     <span className="inline-flex shrink-0 items-center gap-1">

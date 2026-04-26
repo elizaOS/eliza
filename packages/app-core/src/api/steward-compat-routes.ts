@@ -20,7 +20,7 @@ import {
 } from "@elizaos/app-steward/routes/steward-bridge";
 import { logger } from "@elizaos/core";
 import type { PolicyRule as StewardPolicyRule } from "@stwd/sdk";
-import { ensureCompatApiAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth";
 import {
   type CompatRuntimeState,
   getConfiguredCompatAgentName,
@@ -119,7 +119,7 @@ function normalizeStewardPolicyRule(
 export async function handleStewardCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  _state: CompatRuntimeState,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -131,7 +131,7 @@ export async function handleStewardCompatRoutes(
 
   // ── GET /api/wallet/steward-status ──────────────────────────────────
   if (method === "GET" && url.pathname === "/api/wallet/steward-status") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -158,7 +158,7 @@ export async function handleStewardCompatRoutes(
 
   // ── GET /api/wallet/steward-policies ────────────────────────────────
   if (method === "GET" && url.pathname === "/api/wallet/steward-policies") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -186,7 +186,7 @@ export async function handleStewardCompatRoutes(
 
   // ── PUT /api/wallet/steward-policies ────────────────────────────────
   if (method === "PUT" && url.pathname === "/api/wallet/steward-policies") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -245,7 +245,7 @@ export async function handleStewardCompatRoutes(
 
   // ── GET /api/wallet/steward-tx-records ──────────────────────────────
   if (method === "GET" && url.pathname === "/api/wallet/steward-tx-records") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -289,7 +289,7 @@ export async function handleStewardCompatRoutes(
     method === "GET" &&
     url.pathname === "/api/wallet/steward-pending-approvals"
   ) {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -322,7 +322,7 @@ export async function handleStewardCompatRoutes(
     (url.pathname === "/api/wallet/steward-approve-tx" ||
       url.pathname === "/api/wallet/steward-deny-tx")
   ) {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -409,7 +409,7 @@ export async function handleStewardCompatRoutes(
     method === "GET" &&
     url.pathname === "/api/wallet/steward-webhook-events"
   ) {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -431,7 +431,7 @@ export async function handleStewardCompatRoutes(
 
   // ── POST /api/wallet/steward-sign ───────────────────────────────────
   if (method === "POST" && url.pathname === "/api/wallet/steward-sign") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -482,7 +482,7 @@ export async function handleStewardCompatRoutes(
 
   // ── GET /api/wallet/steward-addresses ───────────────────────────────
   if (method === "GET" && url.pathname === "/api/wallet/steward-addresses") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -504,7 +504,7 @@ export async function handleStewardCompatRoutes(
 
   // ── GET /api/wallet/steward-balances ────────────────────────────────
   if (method === "GET" && url.pathname === "/api/wallet/steward-balances") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -532,7 +532,7 @@ export async function handleStewardCompatRoutes(
 
   // ── GET /api/wallet/steward-tokens ──────────────────────────────────
   if (method === "GET" && url.pathname === "/api/wallet/steward-tokens") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 

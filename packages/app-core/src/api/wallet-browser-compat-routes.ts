@@ -21,7 +21,7 @@ import {
   isStewardConfigured,
   signViaSteward,
 } from "@elizaos/app-steward/routes/steward-bridge";
-import { ensureCompatApiAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth";
 import {
   type CompatRuntimeState,
   readCompatJsonBody,
@@ -273,7 +273,7 @@ async function signLocalBrowserSolanaMessage(
 export async function handleWalletBrowserCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  _state: CompatRuntimeState,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -287,7 +287,7 @@ export async function handleWalletBrowserCompatRoutes(
     return false;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) {
+  if (!(await ensureRouteAuthorized(req, res, state))) {
     return true;
   }
 

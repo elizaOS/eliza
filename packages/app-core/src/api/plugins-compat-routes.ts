@@ -26,8 +26,8 @@ import {
 } from "../config/plugin-auto-enable";
 import { entriesToLegacyManifest, loadRegistry } from "../registry";
 import {
-  ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
+  ensureRouteAuthorized,
 } from "./auth";
 import {
   type CompatRuntimeState,
@@ -1348,7 +1348,7 @@ export async function handlePluginsCompatRoutes(
   }
 
   if (method === "GET" && url.pathname === "/api/plugins") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -1362,7 +1362,7 @@ export async function handlePluginsCompatRoutes(
   }
 
   if (method === "GET" && url.pathname === "/api/plugins/diagnostics") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     const diagnostics = buildPluginDriftDiagnostics(state.current);
@@ -1372,7 +1372,7 @@ export async function handlePluginsCompatRoutes(
   }
 
   if (method === "PUT" && url.pathname.startsWith("/api/plugins/")) {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -1433,7 +1433,7 @@ export async function handlePluginsCompatRoutes(
   const testMatch =
     method === "POST" && url.pathname.match(/^\/api\/plugins\/([^/]+)\/test$/);
   if (testMatch) {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const testPluginId = normalizePluginId(decodeURIComponent(testMatch[1]));
     const startMs = Date.now();
 
@@ -1489,7 +1489,7 @@ export async function handlePluginsCompatRoutes(
     method === "POST" &&
     url.pathname.match(/^\/api\/plugins\/([^/]+)\/reveal$/);
   if (revealMatch) {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const revealBody = await readCompatJsonBody(req, res);
     if (revealBody == null) return true;
     const key = (revealBody.key as string)?.trim();

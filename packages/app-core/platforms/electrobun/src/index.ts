@@ -11,6 +11,7 @@ import Electrobun, {
   BrowserView,
   BrowserWindow,
   BuildConfig,
+  Session,
   Updater,
   Utils,
   WGPU,
@@ -55,6 +56,11 @@ import {
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
 } from "./native/agent";
+import {
+  type DesktopSession,
+  installDesktopSessionCookies,
+  loadOrCreateDesktopSession,
+} from "./native/auth-bridge";
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
@@ -1415,6 +1421,68 @@ async function syncPermissionsToRestApi(
   }
 }
 
+// Tracks whether the desktop loopback session has already been primed for the
+// current process lifetime. The bridge is idempotent on disk, but cookie jar
+// writes are cheap and we don't need to repeat them on every status tick.
+let desktopSessionPrimed = false;
+
+/**
+ * Best-effort: mint (or reuse) a loopback-only desktop session and install the
+ * cookies into the main window's session jar so the renderer's first /api
+ * request is already authenticated. Failure is silent — the renderer falls
+ * back to the standard login flow.
+ *
+ * Loopback-only enforcement is implemented server-side: the auth-context
+ * resolver MUST refuse a session marked loopback-only on a non-loopback
+ * request. The bridge does not — and cannot — be that boundary.
+ */
+async function primeDesktopSessionAuth(
+  apiBase: string,
+  rendererOrigin: string,
+): Promise<void> {
+  if (desktopSessionPrimed) return;
+  let session: DesktopSession | null;
+  try {
+    session = await loadOrCreateDesktopSession({ apiBase });
+  } catch (err) {
+    console.warn(
+      "[Main] Desktop auth bridge failed:",
+      err instanceof Error ? err.message : err,
+    );
+    return;
+  }
+  if (!session) {
+    console.log(
+      "[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
+    );
+    return;
+  }
+
+  try {
+    const partition = resolveMainWindowPartition(process.env);
+    const electrobunSession =
+      partition !== null
+        ? Session.fromPartition(partition)
+        : Session.defaultSession;
+    const installer = electrobunSession.cookies as {
+      set: Parameters<typeof installDesktopSessionCookies>[0]["set"];
+    };
+    const touched = installDesktopSessionCookies(installer, session, {
+      apiOrigin: apiBase,
+      rendererOrigin,
+    });
+    desktopSessionPrimed = true;
+    console.log(
+      `[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
+    );
+  } catch (err) {
+    console.warn(
+      "[Main] Desktop auth cookie install failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 async function _startAgent(win: BrowserWindow): Promise<void> {
   const runtimeResolution = resolveDesktopRuntimeMode(
     process.env as Record<string, string | undefined>,
@@ -1439,15 +1507,19 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
     const status = await agent.start();
 
     if (status.state === "running" && status.port) {
-      const apiToken = resolveApiToken(process.env) ?? undefined;
-      pushApiBaseToRenderer(
-        win,
-        resolveRendererFacingApiBase(
-          process.env as Record<string, string | undefined>,
-          status.port,
-        ),
-        apiToken,
+      const apiBase = `http://127.0.0.1:${status.port}`;
+      const rendererBase = resolveRendererFacingApiBase(
+        process.env as Record<string, string | undefined>,
+        status.port,
       );
+      // Mint or reload the loopback desktop session and install the
+      // session+csrf cookies on the webview's cookie jar BEFORE we tell the
+      // renderer to start hitting /api. This is the desktop trust path: if
+      // the bridge succeeds, the renderer skips the login UI; if it fails,
+      // the renderer behaves like a remote browser (password-required).
+      await primeDesktopSessionAuth(apiBase, rendererBase);
+      const apiToken = resolveApiToken(process.env) ?? undefined;
+      pushApiBaseToRenderer(win, rendererBase, apiToken);
       setAgentReady(true);
       // Sync real OS permission states to the REST API so the renderer
       // can display them and capability toggles can unlock.
@@ -1861,6 +1933,17 @@ async function main(): Promise<void> {
   cleanupFns.push(
     getAgentManager().onStatusChange((status) => {
       if (status.port) {
+        // The agent rebound to a different loopback port (or recovered from a
+        // crash) — the cookies we installed during _startAgent were scoped to
+        // the old origin. Re-prime so the renderer's next /api request stays
+        // authenticated.
+        desktopSessionPrimed = false;
+        const apiBase = `http://127.0.0.1:${status.port}`;
+        const rendererBase = resolveRendererFacingApiBase(
+          process.env as Record<string, string | undefined>,
+          status.port,
+        );
+        void primeDesktopSessionAuth(apiBase, rendererBase);
         if (currentWindow) {
           injectApiBase(currentWindow);
         }

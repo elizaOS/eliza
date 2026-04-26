@@ -62,7 +62,6 @@ export * from "./trajectory-routes.js";
 export * from "./trigger-routes.js";
 export * from "./tx-service.js";
 export * from "./wallet.js";
-export * from "./wallet-dex-prices.js";
 export * from "./wallet-evm-balance.js";
 export * from "./wallet-routes.js";
 export * from "./wallet-rpc.js";

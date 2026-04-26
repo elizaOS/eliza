@@ -1828,6 +1828,111 @@ export const LIFEOPS_GMAIL_BULK_OPERATIONS = [
 export type LifeOpsGmailBulkOperation =
   (typeof LIFEOPS_GMAIL_BULK_OPERATIONS)[number];
 
+export const LIFEOPS_GMAIL_MANAGE_EXECUTION_MODES = [
+  "proposal",
+  "dry_run",
+  "execute",
+] as const;
+export type LifeOpsGmailManageExecutionMode =
+  (typeof LIFEOPS_GMAIL_MANAGE_EXECUTION_MODES)[number];
+
+export const LIFEOPS_GMAIL_MANAGE_STATUSES = [
+  "proposed",
+  "dry_run",
+  "approved",
+  "executed",
+  "partial",
+  "failed",
+  "cancelled",
+] as const;
+export type LifeOpsGmailManageStatus =
+  (typeof LIFEOPS_GMAIL_MANAGE_STATUSES)[number];
+
+export const LIFEOPS_GMAIL_MANAGE_UNDO_STATUSES = [
+  "not_available",
+  "available",
+  "completed",
+  "expired",
+  "failed",
+] as const;
+export type LifeOpsGmailManageUndoStatus =
+  (typeof LIFEOPS_GMAIL_MANAGE_UNDO_STATUSES)[number];
+
+export interface LifeOpsGmailManageApprovalIdentity {
+  proposalId?: string;
+  approvalId?: string;
+  proposedBy?: LifeOpsActor;
+  approvedBy?: LifeOpsActor;
+  approvedAt?: string;
+}
+
+export interface LifeOpsGmailManagePlanIdentity {
+  planId?: string;
+  planHash?: string;
+  idempotencyKey?: string;
+}
+
+export interface LifeOpsGmailManageMessageSnapshot {
+  messageId: string;
+  externalId: string;
+  threadId: string;
+  subject: string;
+  from: string;
+  fromEmail: string | null;
+  receivedAt: string;
+  snippet: string;
+  labels: string[];
+  grantId?: string;
+  accountEmail?: string;
+  syncedAt?: string;
+  snapshotHash?: string;
+}
+
+export interface LifeOpsGmailManageChunkRequest {
+  chunkId: string;
+  chunkIndex: number;
+  chunkCount: number;
+  messageIds?: string[];
+  cursor?: string;
+}
+
+export interface LifeOpsGmailManageChunkStatus {
+  chunkId: string;
+  chunkIndex: number;
+  chunkCount: number;
+  processedCount: number;
+  remainingCount: number;
+  nextCursor: string | null;
+}
+
+export interface LifeOpsGmailManageAuditContext {
+  auditEventId?: string;
+  auditRef?: string;
+  parentAuditEventId?: string;
+  actor?: LifeOpsActor;
+}
+
+export interface LifeOpsGmailManageAuditState {
+  auditEventId: string | null;
+  auditRef: string | null;
+  actor: LifeOpsActor;
+  recordedAt: string | null;
+}
+
+export interface LifeOpsGmailManageUndoRequest {
+  undoId: string;
+  auditEventId?: string;
+  reason?: string;
+}
+
+export interface LifeOpsGmailManageUndoState {
+  status: LifeOpsGmailManageUndoStatus;
+  undoId: string | null;
+  undoExpiresAt: string | null;
+  auditEventId: string | null;
+  messageIds: string[];
+}
+
 export interface ManageLifeOpsGmailMessagesRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -1838,6 +1943,14 @@ export interface ManageLifeOpsGmailMessagesRequest {
   maxResults?: number;
   labelIds?: string[];
   confirmDestructive?: boolean;
+  executionMode?: LifeOpsGmailManageExecutionMode;
+  reason?: string;
+  approval?: LifeOpsGmailManageApprovalIdentity;
+  plan?: LifeOpsGmailManagePlanIdentity;
+  selectedMessageSnapshots?: LifeOpsGmailManageMessageSnapshot[];
+  chunk?: LifeOpsGmailManageChunkRequest;
+  audit?: LifeOpsGmailManageAuditContext;
+  undo?: LifeOpsGmailManageUndoRequest;
 }
 
 export interface LifeOpsGmailManageResult {
@@ -1849,6 +1962,15 @@ export interface LifeOpsGmailManageResult {
   destructive: boolean;
   grantId?: string;
   accountEmail?: string;
+  executionMode?: LifeOpsGmailManageExecutionMode;
+  status?: LifeOpsGmailManageStatus;
+  reason?: string;
+  approval?: LifeOpsGmailManageApprovalIdentity;
+  plan?: LifeOpsGmailManagePlanIdentity;
+  selectedMessageSnapshots?: LifeOpsGmailManageMessageSnapshot[];
+  chunk?: LifeOpsGmailManageChunkStatus;
+  audit?: LifeOpsGmailManageAuditState;
+  undo?: LifeOpsGmailManageUndoState;
 }
 
 export interface LifeOpsGmailRecommendationMessage {
@@ -2256,6 +2378,8 @@ export interface LifeOpsInboxMessage {
   repliedAt?: string;
   /** 0–100 score; higher = more important. */
   priorityScore?: number;
+  /** Coarse semantic category from the priority scorer. */
+  priorityCategory?: "important" | "planning" | "casual";
   /** DM, small/medium group chat, or public channel/broadcast. */
   chatType?: "dm" | "group" | "channel";
   /** For groups, number of participants. UI uses this to hide groups with >15 participants. */
@@ -2284,6 +2408,8 @@ export interface LifeOpsInboxThreadGroup {
   participantCount?: number;
   /** Highest priority score across messages in the thread */
   maxPriorityScore?: number;
+  /** Coarse semantic category from the priority scorer (mirrors latestMessage). */
+  priorityCategory?: "important" | "planning" | "casual";
   /** Messages in this visible thread window, newest first. */
   messages: LifeOpsInboxMessage[];
 }
@@ -2309,6 +2435,17 @@ export interface GetLifeOpsInboxRequest {
   maxParticipants?: number;
   /** Filter to a specific Google grant. */
   gmailAccountId?: string;
+  /**
+   * When true, only return messages where the user has not replied for >24h
+   * and the priority score is at least 50. Applies at both the message and
+   * thread-group layer.
+   */
+  missedOnly?: boolean;
+  /**
+   * When true, thread groups are sorted by max priority score desc, recency
+   * tiebreaker. When false (default), groups are sorted by recency only.
+   */
+  sortByPriority?: boolean;
 }
 
 export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [

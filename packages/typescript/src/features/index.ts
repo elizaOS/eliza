@@ -194,10 +194,17 @@ const pluginManagerCapability = {
 
 // ─── Knowledge & trajectories (native RAG / run logging) ──────────────────────
 
-export type { KnowledgePluginConfig } from "./knowledge/index.ts";
+export type {
+	FetchedKnowledgeUrl,
+	FetchedKnowledgeUrlKind,
+	FetchKnowledgeFromUrlOptions,
+	KnowledgePluginConfig,
+} from "./knowledge/index.ts";
 export {
 	createKnowledgePlugin,
 	documentsProvider,
+	fetchKnowledgeFromUrl,
+	isYouTubeUrl,
 	KnowledgeService,
 	knowledgeActions,
 	knowledgePlugin,

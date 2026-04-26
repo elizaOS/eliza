@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { ensureCompatApiAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth";
 import {
   type CompatRuntimeState,
   isLoopbackRemoteAddress,
@@ -24,7 +24,7 @@ import {
 export async function handleDevCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  _state: CompatRuntimeState,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -45,7 +45,7 @@ export async function handleDevCompatRoutes(
       sendJsonErrorResponse(res, 403, "loopback only");
       return true;
     }
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     const payload = resolveDevStackFromEnv();

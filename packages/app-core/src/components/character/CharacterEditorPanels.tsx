@@ -211,6 +211,7 @@ export function CharacterStylePanel({
         {STYLE_SECTION_KEYS.map((key) => {
           const items = style?.[key] ?? [];
           const duplicateIndices = getDuplicateIndices(items);
+          const itemOccurrences = new Map<string, number>();
           return (
             <div
               key={key}
@@ -230,16 +231,17 @@ export function CharacterStylePanel({
               <div className="flex flex-col gap-1">
                 {items.length > 0 ? (
                   items.map((item, index) => {
-                    const occurrence = items
-                      .slice(0, index)
-                      .filter((candidate) => candidate === item).length;
+                    const comparableKey = normalizeComparable(item) || item;
+                    const occurrence =
+                      (itemOccurrences.get(comparableKey) ?? 0) + 1;
+                    itemOccurrences.set(comparableKey, occurrence);
                     const isDragging =
                       dragStyleIndex?.key === key &&
                       dragStyleIndex.index === index;
                     const isDuplicate = duplicateIndices.has(index);
                     return (
                       <fieldset
-                        key={`${key}:${item}:${occurrence}`}
+                        key={`${key}:${comparableKey}:${occurrence}`}
                         draggable
                         onDragStart={(e: DragEvent<HTMLFieldSetElement>) => {
                           setDragStyleIndex({ key, index });

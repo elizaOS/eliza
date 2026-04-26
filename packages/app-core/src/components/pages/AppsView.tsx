@@ -1101,6 +1101,7 @@ export function AppsView() {
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground">
               <input
                 type="checkbox"
+                aria-label="Open apps in windows"
                 className="h-3.5 w-3.5 accent-accent"
                 checked={appWindowLaunchEnabled}
                 onChange={(event) =>
@@ -1114,13 +1115,18 @@ export function AppsView() {
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground">
               <input
                 type="checkbox"
+                aria-label="Keep new windows on top"
                 className="h-3.5 w-3.5 accent-accent"
                 checked={appWindowAlwaysOnTop}
                 onChange={(event) =>
                   handleAppWindowAlwaysOnTopChange(event.currentTarget.checked)
                 }
               />
-              <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+              {appWindowAlwaysOnTop ? (
+                <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
               <span>Keep new windows on top</span>
             </label>
           </div>

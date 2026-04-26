@@ -1,8 +1,3 @@
-/**
- * ProductsPanel — searchable product grid with status badges, price ranges,
- * inventory counts, and a "Create Product" dialog form.
- */
-
 import {
   Button,
   Dialog,
@@ -24,13 +19,11 @@ import {
 import { useState } from "react";
 import type { ShopifyProduct } from "./useShopifyDashboard";
 
-// ── Status badge ──────────────────────────────────────────────────────────
-
 function ProductStatusBadge({ status }: { status: ShopifyProduct["status"] }) {
   const styles = {
-    ACTIVE: "bg-ok/15 text-ok border border-ok/20",
-    DRAFT: "bg-bg-accent text-muted border border-border/30",
-    ARCHIVED: "bg-danger/15 text-danger border border-danger/20",
+    ACTIVE: "bg-ok shadow-[0_0_0_3px_rgba(16,185,129,0.18)]",
+    DRAFT: "bg-muted shadow-[0_0_0_3px_rgba(148,163,184,0.18)]",
+    ARCHIVED: "bg-danger shadow-[0_0_0_3px_rgba(239,68,68,0.18)]",
   } satisfies Record<ShopifyProduct["status"], string>;
 
   const labels: Record<ShopifyProduct["status"], string> = {
@@ -41,14 +34,13 @@ function ProductStatusBadge({ status }: { status: ShopifyProduct["status"] }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.1em] ${styles[status]}`}
-    >
-      {labels[status]}
-    </span>
+      role="img"
+      aria-label={labels[status]}
+      title={labels[status]}
+      className={`inline-flex h-2.5 w-2.5 rounded-full ${styles[status]}`}
+    />
   );
 }
-
-// ── Create product dialog ─────────────────────────────────────────────────
 
 interface CreateProductDialogProps {
   open: boolean;
@@ -199,8 +191,6 @@ function CreateProductDialog({ open, onClose }: CreateProductDialogProps) {
   );
 }
 
-// ── Product row ───────────────────────────────────────────────────────────
-
 function ProductRow({ product }: { product: ShopifyProduct }) {
   const priceLabel =
     product.priceRange.min === product.priceRange.max
@@ -209,7 +199,6 @@ function ProductRow({ product }: { product: ShopifyProduct }) {
 
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border/20 bg-card/30 px-3 py-3 transition-colors hover:bg-card/50">
-      {/* Thumbnail */}
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/20 bg-bg-accent overflow-hidden">
         {product.imageUrl ? (
           <img
@@ -222,7 +211,6 @@ function ProductRow({ product }: { product: ShopifyProduct }) {
         )}
       </div>
 
-      {/* Title + meta */}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-txt">
           {product.title}
@@ -234,23 +222,23 @@ function ProductRow({ product }: { product: ShopifyProduct }) {
         </div>
       </div>
 
-      {/* Price */}
       <div className="shrink-0 text-right">
         <div className="text-sm font-semibold text-txt">{priceLabel}</div>
-        <div className="mt-0.5 text-xs-tight text-muted">
-          {product.totalInventory.toLocaleString()} in stock
+        <div
+          className="mt-0.5 flex items-center justify-end gap-1 text-xs-tight text-muted"
+          title="Inventory"
+        >
+          <Package className="h-3 w-3" aria-hidden />
+          {product.totalInventory.toLocaleString()}
         </div>
       </div>
 
-      {/* Status */}
       <div className="shrink-0">
         <ProductStatusBadge status={product.status} />
       </div>
     </div>
   );
 }
-
-// ── Panel ─────────────────────────────────────────────────────────────────
 
 interface ProductsPanelProps {
   products: ShopifyProduct[];
@@ -280,7 +268,6 @@ export function ProductsPanel({
 
   return (
     <div className="space-y-3">
-      {/* Toolbar */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted/60" />
@@ -305,14 +292,12 @@ export function ProductsPanel({
         </Button>
       </div>
 
-      {/* Error */}
       {error ? (
         <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
           {error}
         </div>
       ) : null}
 
-      {/* Loading skeletons */}
       {loading && products.length === 0 ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }, (_, i) => i).map((i) => (
@@ -334,7 +319,6 @@ export function ProductsPanel({
         </div>
       )}
 
-      {/* Pagination */}
       {total > PAGE_SIZE ? (
         <div className="flex items-center justify-between pt-1">
           <span className="text-xs text-muted">

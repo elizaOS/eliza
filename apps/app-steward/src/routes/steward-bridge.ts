@@ -1,9 +1,5 @@
 import crypto from "node:crypto";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type {
-  StewardSignRequest,
-  StewardSignResponse,
-} from "../types/steward";
 import {
   type PolicyResult,
   type PolicyRule,
@@ -20,6 +16,7 @@ import {
   resolveEffectiveStewardConfig,
   saveStewardCredentials,
 } from "../services/steward-credentials";
+import type { StewardSignRequest, StewardSignResponse } from "../types/steward";
 
 export interface StewardBridgeOptions {
   env?: NodeJS.ProcessEnv;

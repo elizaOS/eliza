@@ -1,5 +1,6 @@
 import { Button, SegmentedControl, useApp } from "@elizaos/app-core";
 import { client } from "@elizaos/app-core/api";
+import type { ModelOption } from "@elizaos/shared/contracts/onboarding";
 import type {
   LifeOpsCalendarSummary,
   LifeOpsConnectorMode,
@@ -17,6 +18,7 @@ import {
   Mail,
   Plug2,
   Plus,
+  Sparkles,
   ToggleRight,
   Unplug,
   X,
@@ -878,6 +880,400 @@ function GoogleConnectorSideCard({
   );
 }
 
+function flattenModelOptions(
+  models: {
+    nano?: ModelOption[];
+    small?: ModelOption[];
+    medium?: ModelOption[];
+    large?: ModelOption[];
+    mega?: ModelOption[];
+  } | undefined,
+): ModelOption[] {
+  if (!models) return [];
+  const seen = new Set<string>();
+  const out: ModelOption[] = [];
+  // Smart features run on the small-model tier by default — surface those
+  // first so the most appropriate ids are at the top of the dropdown.
+  for (const tier of ["small", "nano", "medium", "large", "mega"] as const) {
+    const list = models[tier];
+    if (!list) continue;
+    for (const opt of list) {
+      if (seen.has(opt.id)) continue;
+      seen.add(opt.id);
+      out.push(opt);
+    }
+  }
+  return out;
+}
+
+function SmartFeaturesCard() {
+  const { t } = useApp();
+  const [enabled, setEnabled] = useState<boolean>(true);
+  const [model, setModel] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const state = await client.getLifeOpsAppState();
+        if (cancelled) return;
+        setEnabled(state.priorityScoring?.enabled !== false);
+        setModel(state.priorityScoring?.model ?? "");
+        setError(null);
+      } catch (cause) {
+        if (cancelled) return;
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    void (async () => {
+      try {
+        const opts = await client.getOnboardingOptions();
+        if (cancelled) return;
+        setModelOptions(flattenModelOptions(opts.models));
+      } catch {
+        // Onboarding options can fail on first boot; the dropdown then falls
+        // back to a free-text input. No need to surface this as an error.
+      } finally {
+        if (!cancelled) setOptionsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persist = useCallback(
+    async (next: { enabled: boolean; model: string }) => {
+      setSaving(true);
+      try {
+        const previous = await client.getLifeOpsAppState();
+        const saved = await client.updateLifeOpsAppState({
+          enabled: previous.enabled,
+          priorityScoring: {
+            enabled: next.enabled,
+            model: next.model.trim().length > 0 ? next.model.trim() : null,
+          },
+        });
+        setEnabled(saved.priorityScoring.enabled !== false);
+        setModel(saved.priorityScoring.model ?? "");
+        setError(null);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
+
+  const handleToggle = useCallback(
+    () => void persist({ enabled: !enabled, model }),
+    [enabled, model, persist],
+  );
+
+  const handleModelChange = useCallback(
+    (value: string) => {
+      setModel(value);
+      void persist({ enabled, model: value });
+    },
+    [enabled, persist],
+  );
+
+  return (
+    <section className="space-y-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-bg/38">
+          <Sparkles className="h-4 w-4 text-muted" aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold text-txt">
+            {t("lifeopssettings.smartFeaturesTitle", {
+              defaultValue: "Smart features",
+            })}
+          </h3>
+          <p className="mt-0.5 text-xs text-muted">
+            {t("lifeopssettings.smartFeaturesDescription", {
+              defaultValue:
+                "LLM-based priority scoring for the inbox. Falls back to the keyword heuristic when disabled or unavailable.",
+            })}
+          </p>
+        </div>
+      </div>
+
+      <label className="flex items-center justify-between gap-3 rounded-xl bg-bg/40 px-3 py-2 text-xs">
+        <span className="font-medium text-txt">
+          {t("lifeopssettings.priorityScoringEnable", {
+            defaultValue: "Enable LLM priority scoring",
+          })}
+        </span>
+        <input
+          type="checkbox"
+          className="h-4 w-4"
+          checked={enabled}
+          disabled={loading || saving}
+          onChange={handleToggle}
+        />
+      </label>
+
+      <div className="space-y-1">
+        <label
+          className="text-xs font-medium text-txt"
+          htmlFor="lifeops-priority-scoring-model"
+        >
+          {t("lifeopssettings.priorityScoringModel", {
+            defaultValue: "Model",
+          })}
+        </label>
+        {modelOptions.length > 0 ? (
+          <select
+            id="lifeops-priority-scoring-model"
+            className="w-full rounded-xl border border-border/30 bg-bg/40 px-2.5 py-1.5 text-xs text-txt"
+            value={model}
+            disabled={loading || saving || optionsLoading || !enabled}
+            onChange={(e) => handleModelChange(e.target.value)}
+          >
+            <option value="">
+              {t("lifeopssettings.priorityScoringDefaultModel", {
+                defaultValue: "Default (small/fast model from runtime)",
+              })}
+            </option>
+            {modelOptions.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.name} ({opt.provider})
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            id="lifeops-priority-scoring-model"
+            type="text"
+            className="w-full rounded-xl border border-border/30 bg-bg/40 px-2.5 py-1.5 text-xs text-txt"
+            placeholder={t("lifeopssettings.priorityScoringModelPlaceholder", {
+              defaultValue: "e.g. claude-haiku-4-5, gpt-4o-mini",
+            })}
+            value={model}
+            disabled={loading || saving || !enabled}
+            onChange={(e) => setModel(e.target.value)}
+            onBlur={() => handleModelChange(model)}
+            title={t("lifeopssettings.priorityScoringModelHint", {
+              defaultValue:
+                "Model id passed to runtime.useModel. Leave blank to use the runtime default small model.",
+            })}
+          />
+        )}
+        <p className="text-[11px] text-muted">
+          {t("lifeopssettings.priorityScoringModelHelp", {
+            defaultValue:
+              "Used to score inbox messages 0–100 and bucket them into Important / Planning / Casual.",
+          })}
+        </p>
+      </div>
+
+      {error ? <div className="text-xs text-danger">{error}</div> : null}
+    </section>
+  );
+}
+
+function EmailIntelligenceCard() {
+  const { t } = useApp();
+  const [enabled, setEnabled] = useState<boolean>(true);
+  const [autoExtract, setAutoExtract] = useState<boolean>(true);
+  const [model, setModel] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const settings = await client.getLifeOpsSmartFeatureSettings();
+        if (cancelled) return;
+        setEnabled(settings.emailClassifierEnabled);
+        setAutoExtract(settings.billsAutoExtract);
+        setModel(
+          settings.emailClassifierModel === "TEXT_SMALL"
+            ? ""
+            : settings.emailClassifierModel,
+        );
+        setError(null);
+      } catch (cause) {
+        if (cancelled) return;
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    void (async () => {
+      try {
+        const opts = await client.getOnboardingOptions();
+        if (cancelled) return;
+        setModelOptions(flattenModelOptions(opts.models));
+      } catch {
+        // Onboarding options can fail before the backend has discovered any
+        // providers — UI then falls back to a free-text input.
+      } finally {
+        if (!cancelled) setOptionsLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const persist = useCallback(
+    async (next: { enabled: boolean; autoExtract: boolean; model: string }) => {
+      setSaving(true);
+      try {
+        await client.updateLifeOpsSmartFeatureSettings({
+          emailClassifierEnabled: next.enabled,
+          emailClassifierModel:
+            next.model.trim().length > 0 ? next.model.trim() : "TEXT_SMALL",
+          billsAutoExtract: next.autoExtract,
+        });
+        setError(null);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [],
+  );
+
+  const onToggleEnabled = useCallback(() => {
+    const next = !enabled;
+    setEnabled(next);
+    void persist({ enabled: next, autoExtract, model });
+  }, [enabled, autoExtract, model, persist]);
+
+  const onToggleAutoExtract = useCallback(() => {
+    const next = !autoExtract;
+    setAutoExtract(next);
+    void persist({ enabled, autoExtract: next, model });
+  }, [enabled, autoExtract, model, persist]);
+
+  const onModelChange = useCallback(
+    (value: string) => {
+      setModel(value);
+      void persist({ enabled, autoExtract, model: value });
+    },
+    [enabled, autoExtract, persist],
+  );
+
+  return (
+    <section className="space-y-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-bg/38">
+          <Mail className="h-4 w-4 text-muted" aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-sm font-semibold text-txt">
+            {t("lifeopssettings.emailIntelligenceTitle", {
+              defaultValue: "Email intelligence",
+            })}
+          </h3>
+          <p className="mt-0.5 text-xs text-muted">
+            {t("lifeopssettings.emailIntelligenceDescription", {
+              defaultValue:
+                "Classify incoming Gmail and pull bills into the Money dashboard. Rules run first; the LLM is only asked when rules are ambiguous.",
+            })}
+          </p>
+        </div>
+      </div>
+
+      <label className="flex items-center justify-between gap-3 rounded-xl bg-bg/40 px-3 py-2 text-xs">
+        <span className="font-medium text-txt">
+          {t("lifeopssettings.emailClassifierEnable", {
+            defaultValue: "Enable email classification",
+          })}
+        </span>
+        <input
+          type="checkbox"
+          className="h-4 w-4"
+          checked={enabled}
+          disabled={loading || saving}
+          onChange={onToggleEnabled}
+        />
+      </label>
+
+      <label className="flex items-center justify-between gap-3 rounded-xl bg-bg/40 px-3 py-2 text-xs">
+        <span className="font-medium text-txt">
+          {t("lifeopssettings.billsAutoExtract", {
+            defaultValue: "Auto-extract bills into Money",
+          })}
+        </span>
+        <input
+          type="checkbox"
+          className="h-4 w-4"
+          checked={autoExtract}
+          disabled={loading || saving || !enabled}
+          onChange={onToggleAutoExtract}
+        />
+      </label>
+
+      <div className="space-y-1">
+        <label
+          className="text-xs font-medium text-txt"
+          htmlFor="lifeops-email-classifier-model"
+        >
+          {t("lifeopssettings.emailClassifierModel", {
+            defaultValue: "Email classifier model",
+          })}
+        </label>
+        {modelOptions.length > 0 ? (
+          <select
+            id="lifeops-email-classifier-model"
+            className="w-full rounded-xl border border-border/30 bg-bg/40 px-2.5 py-1.5 text-xs text-txt"
+            value={model}
+            disabled={loading || saving || optionsLoading || !enabled}
+            onChange={(event) => onModelChange(event.target.value)}
+          >
+            <option value="">
+              {t("lifeopssettings.emailClassifierDefaultModel", {
+                defaultValue: "Default (small/fast model from runtime)",
+              })}
+            </option>
+            {modelOptions.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.name} ({opt.provider})
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            id="lifeops-email-classifier-model"
+            type="text"
+            className="w-full rounded-xl border border-border/30 bg-bg/40 px-2.5 py-1.5 text-xs text-txt"
+            placeholder="e.g. claude-haiku-4-5, gpt-4o-mini"
+            value={model}
+            disabled={loading || saving || !enabled}
+            onChange={(event) => setModel(event.target.value)}
+            onBlur={() => onModelChange(model)}
+          />
+        )}
+        <p className="text-[11px] text-muted">
+          {t("lifeopssettings.emailClassifierModelHelp", {
+            defaultValue:
+              "Used only for ambiguous emails (when rules can't decide). Rules cover most senders cheaply.",
+          })}
+        </p>
+      </div>
+
+      {error ? <div className="text-xs text-danger">{error}</div> : null}
+    </section>
+  );
+}
+
 export function LifeOpsSettingsSection({
   ownerGithub = DEFAULT_OWNER_GITHUB,
   agentGithub = DEFAULT_AGENT_GITHUB,
@@ -948,6 +1344,10 @@ export function LifeOpsSettingsSection({
       </div>
 
       <BrowserBridgeSetupPanel />
+
+      <SmartFeaturesCard />
+
+      <EmailIntelligenceCard />
 
       <section className="space-y-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
         <div className="flex items-center gap-3">

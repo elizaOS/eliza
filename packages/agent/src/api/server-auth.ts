@@ -57,6 +57,26 @@ export function getConfiguredApiToken(): string | undefined {
   return resolveApiToken(process.env) ?? undefined;
 }
 
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
+}
+
+function isLoopbackRemoteAddress(
+  remoteAddress: string | null | undefined,
+): boolean {
+  if (!remoteAddress) return false;
+  const normalized = remoteAddress.trim().toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    normalized === "::ffff:127.0.0.1" ||
+    normalized === "::ffff:0:127.0.0.1"
+  );
+}
+
 export function isLoopbackBindHost(host: string): boolean {
   let normalized = host.trim().toLowerCase();
 
@@ -98,6 +118,48 @@ export function isLoopbackBindHost(host: string): boolean {
   return false;
 }
 
+function isTrustedLocalOrigin(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "null") return true;
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      parsed.protocol === "file:" ||
+      parsed.protocol === "app:" ||
+      parsed.protocol === "tauri:" ||
+      parsed.protocol === "capacitor:" ||
+      parsed.protocol === "capacitor-electron:" ||
+      parsed.protocol === "electrobun:"
+    ) {
+      return true;
+    }
+    return isLoopbackBindHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function isTrustedLocalRequest(req: http.IncomingMessage): boolean {
+  if (isCloudProvisionedContainer()) return false;
+  if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
+
+  const host = firstHeaderValue(req.headers.host);
+  if (host && !isLoopbackBindHost(host)) return false;
+
+  const secFetchSite = firstHeaderValue(
+    req.headers["sec-fetch-site"],
+  )?.toLowerCase();
+  if (secFetchSite === "cross-site") return false;
+
+  const origin = firstHeaderValue(req.headers.origin);
+  if (origin && !isTrustedLocalOrigin(origin)) return false;
+
+  const referer = firstHeaderValue(req.headers.referer);
+  if (!origin && referer && !isTrustedLocalOrigin(referer)) return false;
+
+  return true;
+}
+
 export function ensureApiTokenForBindHost(host: string): void {
   if (resolveApiSecurityConfig(process.env).disableAutoApiToken) {
     return;
@@ -127,8 +189,10 @@ export function ensureApiTokenForBindHost(host: string): void {
 }
 
 export function isAuthorized(req: http.IncomingMessage): boolean {
+  if (isTrustedLocalRequest(req)) return true;
+
   const expected = getConfiguredApiToken();
-  if (!expected) return !isCloudProvisionedContainer();
+  if (!expected) return false;
   const provided = extractAuthToken(req);
   if (!provided) return false;
   return tokenMatches(expected, provided);

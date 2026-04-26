@@ -10,8 +10,8 @@ import {
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
   CreateLifeOpsGmailReplyDraftRequest,
-  LifeOpsGmailBulkOperation,
   LifeOpsGmailBatchReplySendItem,
+  LifeOpsGmailBulkOperation,
   ManageLifeOpsGmailMessagesRequest,
   SendLifeOpsGmailBatchReplyRequest,
   SendLifeOpsGmailReplyRequest,
@@ -69,8 +69,7 @@ type GmailSubaction =
   | "send_batch_replies"
   | "send_message";
 
-export type GmailLlmPlan = {
-  subaction: GmailSubaction | null;
+type GmailPlanFields = {
   queries: string[];
   messageId?: string;
   messageIds?: string[];
@@ -79,8 +78,6 @@ export type GmailLlmPlan = {
   labelIds?: string[];
   confirmDestructive?: boolean;
   olderThanDays?: number;
-  response?: string;
-  shouldAct?: boolean | null;
   confirmed?: boolean;
   holdForApproval?: boolean;
   to?: string[];
@@ -88,6 +85,42 @@ export type GmailLlmPlan = {
   bcc?: string[];
   subject?: string;
   bodyText?: string;
+};
+
+type GmailPlanStepKind =
+  | "gmail_subaction"
+  | "classify"
+  | "propose_action"
+  | "request_approval"
+  | "audit";
+
+type GmailPlanStepStatus = "pending" | "ready" | "blocked" | "completed";
+
+type GmailPlanStep = Partial<GmailPlanFields> & {
+  id: string;
+  kind: GmailPlanStepKind;
+  subaction?: GmailSubaction;
+  goal?: string;
+  dependsOn?: string[];
+  requiresApproval?: boolean;
+  status?: GmailPlanStepStatus;
+};
+
+type GmailWorkflowPlan = {
+  summary?: string;
+  currentStepId?: string;
+  lastExecutedStepId?: string;
+  nextStepIds?: string[];
+  steps: GmailPlanStep[];
+};
+
+export type GmailLlmPlan = GmailPlanFields & {
+  subaction: GmailSubaction | null;
+  response?: string;
+  shouldAct?: boolean | null;
+  steps?: GmailPlanStep[];
+  currentStepId?: string;
+  planSummary?: string;
 };
 
 type GmailComposeDraftStatus = "pending_clarification" | "sent";
@@ -173,36 +206,23 @@ type GmailPlanningContext = {
   recentConversation: string;
   latestReplyDraft: GmailReplyDraftContext | null;
   latestMessageTarget: GmailMessageTargetContext | null;
+  activeWorkflowPlan: GmailWorkflowPlan | null;
   currentMessage: string;
   timeZone: string;
   nowIso: string;
   localNow: string;
 };
 
-type GmailIntentPlan = {
+type GmailIntentPlan = GmailPlanFields & {
   subaction: GmailSubaction | null;
   shouldAct?: boolean | null;
   response?: string;
-  confirmed?: boolean;
-  holdForApproval?: boolean;
-  messageId?: string;
-  messageIds?: string[];
-  replyNeededOnly?: boolean;
-  operation?: LifeOpsGmailBulkOperation;
-  labelIds?: string[];
-  confirmDestructive?: boolean;
-  olderThanDays?: number;
-  to?: string[];
-  cc?: string[];
-  bcc?: string[];
-  subject?: string;
-  bodyText?: string;
+  steps?: GmailPlanStep[];
+  currentStepId?: string;
+  planSummary?: string;
 };
 
-type GmailPayloadPlan = Omit<
-  GmailLlmPlan,
-  "subaction" | "shouldAct" | "response"
->;
+type GmailPayloadPlan = GmailPlanFields;
 
 const GMAIL_CONTEXT_WINDOW = 12;
 const ACTION_NAME = "GMAIL_ACTION";
@@ -655,6 +675,206 @@ function normalizePlannerGmailOperation(
   }
 }
 
+function normalizeGmailPlanStepKind(
+  value: unknown,
+  subaction: GmailSubaction | null,
+): GmailPlanStepKind {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    switch (normalized) {
+      case "gmail_subaction":
+      case "classify":
+      case "propose_action":
+      case "request_approval":
+      case "audit":
+        return normalized;
+      default:
+        break;
+    }
+  }
+  return subaction ? "gmail_subaction" : "propose_action";
+}
+
+function normalizeGmailPlanStepStatus(
+  value: unknown,
+): GmailPlanStepStatus | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case "pending":
+    case "ready":
+    case "blocked":
+    case "completed":
+      return normalized;
+    case "complete":
+    case "done":
+      return "completed";
+    case "waiting":
+    case "waiting_approval":
+      return "blocked";
+    default:
+      return undefined;
+  }
+}
+
+function normalizeGmailPlanStep(
+  value: unknown,
+  index: number,
+): GmailPlanStep | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const subaction = normalizeGmailSubaction(record.subaction);
+  const payload = normalizeGmailPayloadPlan(record);
+  const id =
+    normalizePlannerString(record.id ?? record.stepId) ?? `step_${index + 1}`;
+  return {
+    id,
+    kind: normalizeGmailPlanStepKind(record.kind ?? record.type, subaction),
+    subaction: subaction ?? undefined,
+    goal: normalizePlannerString(
+      record.goal ?? record.description ?? record.purpose,
+    ),
+    dependsOn: normalizePlannerStringArray(record.dependsOn),
+    requiresApproval: normalizeOptionalBoolean(record.requiresApproval),
+    status: normalizeGmailPlanStepStatus(record.status),
+    ...payload,
+  };
+}
+
+function normalizeGmailPlanSteps(value: unknown): GmailPlanStep[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const steps = value
+    .map((step, index) => normalizeGmailPlanStep(step, index))
+    .filter((step): step is GmailPlanStep => step !== null);
+  return steps.length > 0 ? steps : undefined;
+}
+
+function isExecutableGmailPlanStep(step: GmailPlanStep): boolean {
+  return Boolean(
+    step.subaction &&
+      step.kind === "gmail_subaction" &&
+      step.status !== "blocked" &&
+      step.status !== "completed",
+  );
+}
+
+function selectGmailPlanStep(args: {
+  steps: GmailPlanStep[] | undefined;
+  currentStepId?: string;
+}): GmailPlanStep | undefined {
+  if (!args.steps || args.steps.length === 0) {
+    return undefined;
+  }
+  const currentStep = args.currentStepId
+    ? args.steps.find((step) => step.id === args.currentStepId)
+    : undefined;
+  if (currentStep && isExecutableGmailPlanStep(currentStep)) {
+    return currentStep;
+  }
+  return args.steps.find(isExecutableGmailPlanStep);
+}
+
+function mergeGmailPayloadPlans(
+  primary: GmailPayloadPlan,
+  fallback: GmailPayloadPlan,
+): GmailPayloadPlan {
+  return {
+    queries: dedupeQueries([...primary.queries, ...fallback.queries]),
+    messageId: primary.messageId ?? fallback.messageId,
+    messageIds: mergePlannerArray(primary.messageIds, fallback.messageIds),
+    replyNeededOnly: primary.replyNeededOnly ?? fallback.replyNeededOnly,
+    confirmed: primary.confirmed ?? fallback.confirmed,
+    holdForApproval: primary.holdForApproval ?? fallback.holdForApproval,
+    operation: primary.operation ?? fallback.operation,
+    labelIds: mergePlannerArray(primary.labelIds, fallback.labelIds),
+    confirmDestructive:
+      primary.confirmDestructive ?? fallback.confirmDestructive,
+    olderThanDays: primary.olderThanDays ?? fallback.olderThanDays,
+    to: mergePlannerArray(primary.to, fallback.to),
+    cc: mergePlannerArray(primary.cc, fallback.cc),
+    bcc: mergePlannerArray(primary.bcc, fallback.bcc),
+    subject: primary.subject ?? fallback.subject,
+    bodyText: primary.bodyText ?? fallback.bodyText,
+  };
+}
+
+function buildGmailWorkflowPlanSnapshot(args: {
+  plan: GmailLlmPlan;
+  executedSubaction: GmailSubaction | null;
+  success: boolean;
+}): GmailWorkflowPlan | undefined {
+  if (!args.plan.steps || args.plan.steps.length === 0) {
+    return undefined;
+  }
+
+  const currentStep =
+    selectGmailPlanStep({
+      steps: args.plan.steps,
+      currentStepId: args.plan.currentStepId,
+    }) ??
+    args.plan.steps.find(
+      (step) =>
+        step.subaction === args.executedSubaction &&
+        step.status !== "completed",
+    );
+  const executedStepId = currentStep?.id;
+  const steps = args.plan.steps.map((step) =>
+    args.success && step.id === executedStepId
+      ? { ...step, status: "completed" as const }
+      : step,
+  );
+  const executedIndex = executedStepId
+    ? steps.findIndex((step) => step.id === executedStepId)
+    : -1;
+  // One handler invocation owns one Gmail service call; later workflow steps
+  // are persisted for the next planner turn instead of being executed here.
+  const nextSteps =
+    executedIndex >= 0
+      ? steps.slice(executedIndex + 1)
+      : steps.filter((step) => step.status !== "completed");
+  const nextStepIds = nextSteps
+    .filter((step) => step.status !== "completed")
+    .map((step) => step.id);
+
+  return {
+    summary: args.plan.planSummary,
+    currentStepId: nextStepIds[0],
+    lastExecutedStepId: args.success ? executedStepId : undefined,
+    nextStepIds,
+    steps,
+  };
+}
+
+function attachGmailWorkflowPlanData(args: {
+  data: ActionResult["data"] | undefined;
+  plan: GmailLlmPlan;
+  executedSubaction: GmailSubaction | null;
+  success: boolean;
+}): ActionResult["data"] | undefined {
+  const gmailPlan = buildGmailWorkflowPlanSnapshot({
+    plan: args.plan,
+    executedSubaction: args.executedSubaction,
+    success: args.success,
+  });
+  if (!gmailPlan) {
+    return args.data;
+  }
+  const dataRecord =
+    args.data && typeof args.data === "object"
+      ? (args.data as Record<string, unknown>)
+      : {};
+  return toActionData({
+    ...dataRecord,
+    gmailPlan,
+  });
+}
+
 function coerceGmailComposeDraft(value: unknown): GmailComposeDraft | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -837,6 +1057,39 @@ function latestGmailMessageTargetContext(
   return null;
 }
 
+function coerceGmailWorkflowPlan(value: unknown): GmailWorkflowPlan | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  const steps = normalizeGmailPlanSteps(record.steps);
+  if (!steps) {
+    return null;
+  }
+  return {
+    summary: normalizePlannerString(record.summary ?? record.planSummary),
+    currentStepId: normalizePlannerString(record.currentStepId),
+    lastExecutedStepId: normalizePlannerString(record.lastExecutedStepId),
+    nextStepIds: normalizePlannerStringArray(record.nextStepIds),
+    steps,
+  };
+}
+
+function latestGmailWorkflowPlan(
+  state: State | undefined,
+): GmailWorkflowPlan | null {
+  const records = gmailStateDataRecords(state);
+  for (const record of records.reverse()) {
+    const plan =
+      coerceGmailWorkflowPlan(record.gmailPlan) ??
+      coerceGmailWorkflowPlan(record.plan);
+    if (plan) {
+      return plan;
+    }
+  }
+  return null;
+}
+
 function gmailComposeDraftFromMessageEntry(entry: {
   content?: unknown;
 }): GmailComposeDraft | null {
@@ -971,6 +1224,7 @@ async function buildGmailPlanningContext(args: {
     recentConversation,
     latestReplyDraft: latestGmailReplyDraftContext(args.state),
     latestMessageTarget: latestGmailMessageTargetContext(args.state),
+    activeWorkflowPlan: latestGmailWorkflowPlan(args.state),
     currentMessage,
     timeZone,
     nowIso,
@@ -1015,10 +1269,19 @@ function normalizeGmailIntentPlan(
   parsed: Record<string, unknown> | null,
 ): GmailIntentPlan {
   if (!parsed) {
-    return { subaction: null, shouldAct: null };
+    return { subaction: null, queries: [], shouldAct: null };
   }
+  const steps = normalizeGmailPlanSteps(parsed.steps);
+  const currentStepId = normalizePlannerString(
+    parsed.currentStepId ?? parsed.current_step_id,
+  );
+  const selectedStep = selectGmailPlanStep({ steps, currentStepId });
   return {
-    subaction: normalizeGmailSubaction(parsed.subaction),
+    subaction:
+      normalizeGmailSubaction(parsed.subaction) ??
+      selectedStep?.subaction ??
+      null,
+    queries: dedupeQueries(extractPlannerQueries(parsed)),
     shouldAct: normalizeShouldAct(parsed.shouldAct),
     confirmed: normalizeOptionalBoolean(parsed.confirmed),
     holdForApproval: normalizeOptionalBoolean(parsed.holdForApproval),
@@ -1032,12 +1295,19 @@ function normalizeGmailIntentPlan(
     labelIds: normalizePlannerStringArray(parsed.labelIds),
     confirmDestructive: normalizeOptionalBoolean(parsed.confirmDestructive),
     olderThanDays:
-      typeof parsed.olderThanDays === "number" ? parsed.olderThanDays : undefined,
+      typeof parsed.olderThanDays === "number"
+        ? parsed.olderThanDays
+        : undefined,
     to: normalizePlannerStringArray(parsed.to ?? parsed.recipients),
     cc: normalizePlannerStringArray(parsed.cc),
     bcc: normalizePlannerStringArray(parsed.bcc),
     subject: normalizePlannerString(parsed.subject),
     bodyText: normalizePlannerString(parsed.bodyText ?? parsed.body),
+    steps,
+    currentStepId: currentStepId ?? selectedStep?.id,
+    planSummary: normalizePlannerString(
+      parsed.planSummary ?? parsed.summary ?? parsed.plan,
+    ),
   };
 }
 
@@ -1058,12 +1328,36 @@ function normalizeGmailPayloadPlan(
     labelIds: normalizePlannerStringArray(parsed.labelIds),
     confirmDestructive: normalizeOptionalBoolean(parsed.confirmDestructive),
     olderThanDays:
-      typeof parsed.olderThanDays === "number" ? parsed.olderThanDays : undefined,
+      typeof parsed.olderThanDays === "number"
+        ? parsed.olderThanDays
+        : undefined,
     to: normalizePlannerStringArray(parsed.to ?? parsed.recipients),
     cc: normalizePlannerStringArray(parsed.cc),
     bcc: normalizePlannerStringArray(parsed.bcc),
     subject: normalizePlannerString(parsed.subject),
     bodyText: normalizePlannerString(parsed.bodyText ?? parsed.body),
+  };
+}
+
+function payloadFromGmailPlanFields(
+  fields: Partial<GmailPlanFields>,
+): GmailPayloadPlan {
+  return {
+    queries: fields.queries ?? [],
+    messageId: fields.messageId,
+    messageIds: fields.messageIds,
+    replyNeededOnly: fields.replyNeededOnly,
+    confirmed: fields.confirmed,
+    holdForApproval: fields.holdForApproval,
+    operation: fields.operation,
+    labelIds: fields.labelIds,
+    confirmDestructive: fields.confirmDestructive,
+    olderThanDays: fields.olderThanDays,
+    to: fields.to,
+    cc: fields.cc,
+    bcc: fields.bcc,
+    subject: fields.subject,
+    bodyText: fields.bodyText,
   };
 }
 
@@ -1107,16 +1401,24 @@ async function resolveGmailIntentPlanWithLlm(args: {
 }): Promise<GmailIntentPlan> {
   const { context } = args;
   const prompt = [
-    "Choose the Gmail subaction for this request.",
+    "Create the Gmail execution plan for this request.",
     "The user may speak in any language.",
-    "You are ONLY choosing the Gmail subaction and whether the assistant should act now.",
+    "This action can execute only one Gmail subaction in this invocation, but it must still plan the full user-visible workflow.",
+    "Set top-level subaction to the first Gmail subaction that should execute now.",
+    "Use steps to represent dependent work such as search, read, classify, propose_action, request_approval, execute, and audit.",
+    "For multi-step requests, do not collapse directly to a later write/send step before required search/read/classification/approval steps have happened.",
     "Mailbox ownership (OWNER vs AGENT) is selected outside this planner.",
-    "If the current request is vague or a follow-up, use recent conversation to recover the target.",
+    "If the current request is vague or a follow-up, use recent conversation and any active Gmail workflow plan to recover the target or next step.",
     "When shouldAct=false, provide a short natural-language response that asks only for what is missing.",
     "When shouldAct=false, write that response in the user's language unless they clearly asked to switch languages.",
     "",
     "Return ONLY valid JSON with exactly these fields:",
-    '{"subaction":"triage"|"needs_response"|"recommend"|"unresponded"|"search"|"read"|"draft_reply"|"draft_batch_replies"|"manage"|"send_reply"|"send_batch_replies"|"send_message"|null,"shouldAct":true|false,"response":"string|null"}',
+    '{"subaction":"triage"|"needs_response"|"recommend"|"unresponded"|"search"|"read"|"draft_reply"|"draft_batch_replies"|"manage"|"send_reply"|"send_batch_replies"|"send_message"|null,"shouldAct":true|false,"response":"string|null","planSummary":"string|null","currentStepId":"string|null","steps":[]}',
+    "Each step must be an object with id, kind, subaction, goal, status, dependsOn, requiresApproval, and any known Gmail fields.",
+    'Allowed step kind values: "gmail_subaction", "classify", "propose_action", "request_approval", "audit".',
+    "Only gmail_subaction steps may set subaction. Use null subaction for classify/propose_action/request_approval/audit steps.",
+    'Allowed step status values: "pending", "ready", "blocked", "completed". Use ready for the step to execute now.',
+    "Gmail fields on steps may include queries, messageId, messageIds, replyNeededOnly, operation, labelIds, confirmDestructive, olderThanDays, to, cc, bcc, subject, bodyText, confirmed, and holdForApproval.",
     "",
     "Subactions and when to use each:",
     "  triage — broad inbox overview only",
@@ -1132,7 +1434,7 @@ async function resolveGmailIntentPlanWithLlm(args: {
     "  send_batch_replies — send confirmed replies to multiple emails",
     "  send_message — compose or send a brand-new outbound email",
     "Use triage only for broad inbox overviews.",
-    "Use search whenever the request includes a specific sender, subject, keyword, label, or time filter.",
+    "Use search as the first step when the request includes a specific sender, subject, keyword, label, or time filter and later work depends on seeing the matching thread.",
     "Use needs_response only when the user is specifically asking about emails that need a reply.",
     "Use recommend when the user asks what to archive, mark read, label, spam-review, or otherwise clean up without explicitly executing the write.",
     "Use unresponded when the user asks what sent emails are waiting for a reply.",
@@ -1141,17 +1443,11 @@ async function resolveGmailIntentPlanWithLlm(args: {
     "If there is an active compose draft and the user is filling in fields or confirming the send, choose send_message.",
     "",
     "Examples:",
-    '  "check my inbox" -> {"subaction":"triage","shouldAct":true,"response":null}',
-    '  "which emails need a response" -> {"subaction":"needs_response","shouldAct":true,"response":null}',
-    '  "recommend inbox filters" -> {"subaction":"recommend","shouldAct":true,"response":null}',
-    '  "what sent emails are unresponded to" -> {"subaction":"unresponded","shouldAct":true,"response":null}',
-    '  "did Sarah email me this week" -> {"subaction":"search","shouldAct":true,"response":null}',
-    '  "archive that email" with recent target context -> {"subaction":"manage","shouldAct":true,"response":null}',
-    '  "read that email" with recent target context -> {"subaction":"read","shouldAct":true,"response":null}',
-    '  "draft a reply to John" -> {"subaction":"draft_reply","shouldAct":true,"response":null}',
-    '  "send that reply now" with recent draft context -> {"subaction":"send_reply","shouldAct":true,"response":null}',
-    '  "send an email to zo@iqlabs.dev" -> {"subaction":"send_message","shouldAct":true,"response":null}',
-    '  "can you help me with my email?" -> {"subaction":null,"shouldAct":false,"response":"What do you want to do in Gmail — check inbox, search, read, or draft a reply?"}',
+    '  "check my inbox" -> {"subaction":"triage","shouldAct":true,"response":null,"planSummary":"Triage Gmail inbox","currentStepId":"triage","steps":[{"id":"triage","kind":"gmail_subaction","subaction":"triage","goal":"Summarize the inbox","status":"ready","dependsOn":[],"requiresApproval":false}]}',
+    '  "did Sarah email me this week" -> {"subaction":"search","shouldAct":true,"response":null,"planSummary":"Search Gmail for Sarah this week","currentStepId":"search_sarah","steps":[{"id":"search_sarah","kind":"gmail_subaction","subaction":"search","goal":"Find matching email threads","status":"ready","queries":["from:sarah newer_than:7d"],"dependsOn":[],"requiresApproval":false}]}',
+    '  "search for Sarah, read the thread, tell me if I should reply, draft it for approval, then send if I approve" -> {"subaction":"search","shouldAct":true,"response":null,"planSummary":"Find, read, classify, draft, approve, and send a Sarah reply","currentStepId":"search_sarah","steps":[{"id":"search_sarah","kind":"gmail_subaction","subaction":"search","goal":"Find the Sarah thread","status":"ready","queries":["from:sarah"],"dependsOn":[],"requiresApproval":false},{"id":"read_thread","kind":"gmail_subaction","subaction":"read","goal":"Read the selected thread","status":"pending","dependsOn":["search_sarah"],"requiresApproval":false},{"id":"classify_need","kind":"classify","subaction":null,"goal":"Decide whether the thread needs action","status":"pending","dependsOn":["read_thread"],"requiresApproval":false},{"id":"propose_reply","kind":"propose_action","subaction":null,"goal":"Propose the reply strategy","status":"pending","dependsOn":["classify_need"],"requiresApproval":false},{"id":"draft_reply","kind":"gmail_subaction","subaction":"draft_reply","goal":"Draft the reply","status":"pending","dependsOn":["propose_reply"],"requiresApproval":false},{"id":"approve_send","kind":"request_approval","subaction":null,"goal":"Ask before sending","status":"pending","dependsOn":["draft_reply"],"requiresApproval":true},{"id":"send_reply","kind":"gmail_subaction","subaction":"send_reply","goal":"Send the approved reply","status":"pending","dependsOn":["approve_send"],"requiresApproval":true},{"id":"audit","kind":"audit","subaction":null,"goal":"Report what happened","status":"pending","dependsOn":["send_reply"],"requiresApproval":false}]}',
+    '  "send that reply now" with recent draft context -> {"subaction":"send_reply","shouldAct":true,"response":null,"planSummary":"Send the existing Gmail reply draft","currentStepId":"send_reply","steps":[{"id":"send_reply","kind":"gmail_subaction","subaction":"send_reply","goal":"Send the confirmed reply draft","status":"ready","dependsOn":[],"requiresApproval":true,"confirmed":true}]}',
+    '  "can you help me with my email?" -> {"subaction":null,"shouldAct":false,"response":"What do you want to do in Gmail — check inbox, search, read, or draft a reply?","planSummary":null,"currentStepId":null,"steps":[]}',
     ...(args.activeComposeDraft
       ? [
           "",
@@ -1175,6 +1471,13 @@ async function resolveGmailIntentPlanWithLlm(args: {
           })}`,
         ]
       : []),
+    ...(context.activeWorkflowPlan
+      ? [
+          "",
+          "Active Gmail workflow plan from recent action results:",
+          `  ${JSON.stringify(context.activeWorkflowPlan)}`,
+        ]
+      : []),
     "",
     `Current timezone: ${context.timeZone}`,
     `Current local datetime: ${context.localNow}`,
@@ -1187,7 +1490,7 @@ async function resolveGmailIntentPlanWithLlm(args: {
   const parsed = await runGmailPlanningModel({
     runtime: args.runtime,
     prompt,
-    modelType: ModelType.TEXT_SMALL,
+    modelType: ModelType.TEXT_LARGE,
     failureMessage: "Gmail intent planning model call failed",
   });
   return normalizeGmailIntentPlan(parsed);
@@ -1197,10 +1500,12 @@ async function extractGmailPayloadWithLlm(args: {
   runtime: IAgentRuntime;
   intent: string;
   subaction: GmailSubaction;
+  currentStep?: GmailPlanStep;
+  steps?: GmailPlanStep[];
   context: GmailPlanningContext;
   activeComposeDraft?: GmailComposeDraft | null;
 }): Promise<GmailPayloadPlan> {
-  const { context, subaction } = args;
+  const { context, subaction, currentStep } = args;
   const searchLikeSubaction =
     subaction === "needs_response" ||
     subaction === "recommend" ||
@@ -1212,9 +1517,10 @@ async function extractGmailPayloadWithLlm(args: {
     subaction === "manage" ||
     subaction === "send_reply";
   const prompt = [
-    `Extract Gmail parameters for the fixed subaction ${subaction}.`,
+    `Extract Gmail parameters for the current executable step ${currentStep?.id ?? subaction} (${subaction}).`,
     "The user may speak in any language.",
-    "Do NOT change the subaction. Only extract the supporting fields.",
+    "Do not skip ahead to a later workflow step. Only extract the supporting fields for the current executable step.",
+    "The larger stepwise plan is provided for dependency context; preserve it conceptually while returning only current-step fields.",
     "",
     "Return ONLY valid JSON with exactly these fields:",
     '{"queries":[],"messageId":null,"messageIds":[],"replyNeededOnly":null,"operation":null,"labelIds":[],"confirmDestructive":null,"olderThanDays":null,"to":[],"cc":[],"bcc":[],"subject":null,"bodyText":null}',
@@ -1268,6 +1574,14 @@ async function extractGmailPayloadWithLlm(args: {
           })}`,
         ]
       : []),
+    ...(args.steps && args.steps.length > 0
+      ? [
+          "",
+          "Stepwise Gmail workflow plan:",
+          `  ${JSON.stringify(args.steps)}`,
+          `Current executable step: ${JSON.stringify(currentStep ?? null)}`,
+        ]
+      : []),
     ...(context.latestReplyDraft || context.latestMessageTarget
       ? [
           "",
@@ -1318,36 +1632,59 @@ export async function extractGmailPlanWithLlm(
     context,
     activeComposeDraft,
   });
-  if (!intentPlan.subaction || intentPlan.shouldAct === false) {
+  const currentStep = selectGmailPlanStep({
+    steps: intentPlan.steps,
+    currentStepId: intentPlan.currentStepId,
+  });
+  const subaction = currentStep?.subaction ?? intentPlan.subaction;
+  const intentPayload = payloadFromGmailPlanFields(intentPlan);
+  const stepPayload = currentStep
+    ? payloadFromGmailPlanFields(currentStep)
+    : { queries: [] };
+  const plannedPayload = mergeGmailPayloadPlans(intentPayload, stepPayload);
+  if (!subaction || intentPlan.shouldAct === false) {
     return {
-      subaction: intentPlan.subaction,
+      subaction,
       queries: [],
       response: intentPlan.response,
       shouldAct: intentPlan.shouldAct,
+      steps: intentPlan.steps,
+      currentStepId: intentPlan.currentStepId,
+      planSummary: intentPlan.planSummary,
     };
   }
-  if (!shouldExtractGmailPayload(intentPlan.subaction)) {
+  if (!shouldExtractGmailPayload(subaction)) {
     return {
-      subaction: intentPlan.subaction,
-      queries: [],
+      subaction,
       response: intentPlan.response,
       shouldAct: intentPlan.shouldAct,
+      ...plannedPayload,
+      steps: intentPlan.steps,
+      currentStepId: intentPlan.currentStepId ?? currentStep?.id,
+      planSummary: intentPlan.planSummary,
       replyNeededOnly:
-        intentPlan.subaction === "needs_response" ? true : undefined,
+        plannedPayload.replyNeededOnly ??
+        (subaction === "needs_response" ? true : undefined),
     };
   }
   const payloadPlan = await extractGmailPayloadWithLlm({
     runtime,
     intent,
-    subaction: intentPlan.subaction,
+    subaction,
+    currentStep,
+    steps: intentPlan.steps,
     context,
     activeComposeDraft,
   });
+  const mergedPayload = mergeGmailPayloadPlans(payloadPlan, plannedPayload);
   return {
-    subaction: intentPlan.subaction,
+    subaction,
     shouldAct: intentPlan.shouldAct,
     response: intentPlan.response,
-    ...payloadPlan,
+    ...mergedPayload,
+    steps: intentPlan.steps,
+    currentStepId: intentPlan.currentStepId ?? currentStep?.id,
+    planSummary: intentPlan.planSummary,
   };
 }
 
@@ -1842,12 +2179,21 @@ export const gmailAction: Action & {
       text: string;
       data?: T;
     }) => {
+      const data = attachGmailWorkflowPlanData({
+        data: payload.data,
+        plan: llmPlan,
+        executedSubaction: subaction,
+        success: payload.success,
+      });
       await callback?.({
         text: payload.text,
         source: "action",
         action: ACTION_NAME,
       });
-      return payload;
+      return {
+        ...payload,
+        ...(data ? { data } : {}),
+      };
     };
     const renderReply = (
       scenario: string,

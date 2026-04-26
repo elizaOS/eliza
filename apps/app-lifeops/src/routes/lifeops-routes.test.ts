@@ -30,7 +30,10 @@ function createContext(
       headers: {},
       socket: { remoteAddress: "127.0.0.1" },
     } as unknown as http.IncomingMessage,
-    res: {} as http.ServerResponse,
+    res: {
+      writeHead: vi.fn(),
+      end: vi.fn(),
+    } as unknown as http.ServerResponse,
     method,
     pathname: url.pathname,
     url,
@@ -55,6 +58,107 @@ function createContext(
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe("LifeOps route auth + rate limits", () => {
+  it("returns 503 when the agent runtime is not available (state-changing)", async () => {
+    const readJsonBody = vi.fn(async () => ({
+      to: "+15551112222",
+      text: "hi",
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/imessage/send",
+      {
+        readJsonBody,
+        state: { runtime: null, adminEntityId: null },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "Agent runtime is not available",
+      503,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 when the agent runtime is not available (read)", async () => {
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/app-state",
+      { state: { runtime: null, adminEntityId: null } },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "Agent runtime is not available",
+      503,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      path: "/api/lifeops/smart-features/settings",
+      maxAllowed: 60,
+      body: { emailClassifierEnabled: true },
+      mockService: null,
+      runtimePatch: {
+        setSetting: vi.fn(),
+      },
+    },
+    {
+      path: "/api/lifeops/money/bills/mark-paid",
+      maxAllowed: 30,
+      body: { billId: "bill-1" },
+      mockService: "markBillPaid" as const,
+      runtimePatch: {},
+    },
+    {
+      path: "/api/lifeops/money/bills/snooze",
+      maxAllowed: 30,
+      body: { billId: "bill-1", days: 7 },
+      mockService: "snoozeBill" as const,
+      runtimePatch: {},
+    },
+  ])("rate-limits new write route $path", async (scenario) => {
+    const agentId = `00000000-0000-0000-0000-${String(Math.trunc(Math.random() * 1_000_000)).padStart(12, "0")}`;
+    const routeRuntime = {
+      ...runtime,
+      agentId,
+      ...scenario.runtimePatch,
+    } as LifeOpsRouteContext["state"]["runtime"];
+    const readJsonBody = vi.fn(async () => scenario.body);
+    if (scenario.mockService) {
+      vi.spyOn(
+        LifeOpsService.prototype,
+        scenario.mockService,
+      ).mockResolvedValue(
+        scenario.mockService === "snoozeBill"
+          ? { ok: true, dueDate: "2026-05-01" }
+          : { ok: true },
+      );
+    }
+    const { context } = createContext("POST", scenario.path, {
+      readJsonBody,
+      state: { runtime: routeRuntime, adminEntityId: null },
+    });
+
+    for (let i = 0; i < scenario.maxAllowed; i += 1) {
+      await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    }
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(context.res.writeHead).toHaveBeenCalledWith(429, {
+      "Retry-After": expect.any(String),
+    });
+    expect(context.res.end).toHaveBeenCalledWith(
+      expect.stringContaining("Rate limit exceeded"),
+    );
+  });
 });
 
 describe("LifeOps route validation", () => {

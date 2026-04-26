@@ -18,6 +18,7 @@ const {
     getCloudStatus: vi.fn(),
     getCloudCredits: vi.fn(),
     cloudLogin: vi.fn(),
+    cloudLoginPersist: vi.fn(),
     cloudLoginDirect: vi.fn(),
     cloudLoginPoll: vi.fn(),
     cloudLoginPollDirect: vi.fn(),
@@ -79,6 +80,7 @@ describe("useCloudState", () => {
       low: false,
       critical: false,
     });
+    clientMock.cloudLoginPersist.mockResolvedValue({ ok: true });
   });
 
   afterEach(() => {
@@ -142,5 +144,31 @@ describe("useCloudState", () => {
     );
     expect(result.current.elizaCloudLoginBusy).toBe(false);
     expect(result.current.elizaCloudLoginError).toBeNull();
+  });
+
+  it("uses the same-origin local backend when no explicit API base URL is set", async () => {
+    clientMock.getBaseUrl.mockReturnValue("");
+    clientMock.getCloudStatus.mockResolvedValue({
+      connected: false,
+      enabled: false,
+      hasApiKey: false,
+    });
+    clientMock.cloudLogin.mockResolvedValue({
+      ok: true,
+      sessionId: "session-1",
+      browserUrl: "https://www.elizacloud.ai/auth/cli-login?session=session-1",
+    });
+
+    const { result } = renderHook(() => useCloudState(createParams()));
+
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+
+    expect(clientMock.cloudLogin).toHaveBeenCalledTimes(1);
+    expect(clientMock.cloudLoginDirect).not.toHaveBeenCalled();
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai/auth/cli-login?session=session-1",
+    );
   });
 });

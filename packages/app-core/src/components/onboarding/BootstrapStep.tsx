@@ -109,7 +109,7 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
         return;
       }
 
-      if (!result.ok) {
+      if (result.ok === false) {
         setSubmitState({
           phase: "error",
           message: describeError(result),

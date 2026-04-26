@@ -9,6 +9,7 @@ import {
   resolveDeploymentTargetInConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared/contracts/onboarding";
+import { isLoopbackBindHost } from "@elizaos/shared/runtime-env";
 import { sendJsonError as sendJsonErrorResponse } from "./response";
 
 const MAX_BODY_BYTES = 1_048_576;
@@ -56,6 +57,65 @@ export function isLoopbackRemoteAddress(
     normalized === "::ffff:127.0.0.1" ||
     normalized === "::ffff:0:127.0.0.1"
   );
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
+}
+
+function isCloudProvisionedByEnv(): boolean {
+  return process.env.ELIZA_CLOUD_PROVISIONED === "1";
+}
+
+function isTrustedLocalOrigin(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "null") return true;
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      parsed.protocol === "file:" ||
+      parsed.protocol === "app:" ||
+      parsed.protocol === "tauri:" ||
+      parsed.protocol === "capacitor:" ||
+      parsed.protocol === "capacitor-electron:" ||
+      parsed.protocol === "electrobun:"
+    ) {
+      return true;
+    }
+    return isLoopbackBindHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Same-machine dashboard access. This is intentionally stricter than just
+ * checking `remoteAddress`: the browser must also be targeting a loopback Host
+ * and must not present cross-site browser metadata.
+ */
+export function isTrustedLocalRequest(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+): boolean {
+  if (isCloudProvisionedByEnv()) return false;
+  if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
+
+  const host = firstHeaderValue(req.headers.host);
+  if (host && !isLoopbackBindHost(host)) return false;
+
+  const secFetchSite = firstHeaderValue(
+    req.headers["sec-fetch-site"],
+  )?.toLowerCase();
+  if (secFetchSite === "cross-site") return false;
+
+  const origin = firstHeaderValue(req.headers.origin);
+  if (origin && !isTrustedLocalOrigin(origin)) return false;
+
+  const referer = firstHeaderValue(req.headers.referer);
+  if (!origin && referer && !isTrustedLocalOrigin(referer)) return false;
+
+  return true;
 }
 
 export async function readCompatJsonBody(
@@ -154,4 +214,22 @@ export function getConfiguredCompatAgentName(): string | null {
       ? config.ui.assistant.name.trim()
       : "";
   return assistantName || null;
+}
+
+interface AdapterWithDb {
+  db?: unknown;
+}
+
+/**
+ * Best-effort grab of the Drizzle DB handle off the live runtime adapter.
+ * Returns null when the runtime is not yet up or the adapter has not
+ * exposed a `db` field. Callers MUST treat null as "service unavailable"
+ * — it is never authentication.
+ */
+export function getCompatDrizzleDb(state: CompatRuntimeState): unknown | null {
+  const runtime = state.current;
+  if (!runtime) return null;
+  const adapter = runtime.adapter as AdapterWithDb | undefined;
+  if (!adapter?.db) return null;
+  return adapter.db;
 }

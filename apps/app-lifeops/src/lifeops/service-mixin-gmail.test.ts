@@ -4,10 +4,13 @@ import type {
 } from "@elizaos/app-lifeops/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "./service.js";
+import { LifeOpsServiceError } from "./service-types.js";
 
-function runtime() {
+function runtime(overrides: Record<string, unknown> = {}) {
   return {
     agentId: "agent-gmail-service",
+    character: { name: "Milady" },
+    ...overrides,
   } as unknown as ConstructorParameters<typeof LifeOpsService>[0];
 }
 
@@ -65,6 +68,93 @@ function message(
     ...overrides,
   };
 }
+
+const REPLY_DRAFT_ARGS = {
+  message: message({
+    labels: ["INBOX"],
+    likelyReplyNeeded: true,
+    subject: "Project update",
+    from: "Alex",
+    fromEmail: "alex@example.test",
+    snippet: "Can you confirm this still works for Friday?",
+  }),
+  tone: "neutral" as const,
+  includeQuotedOriginal: false,
+  senderName: "Owner",
+  sendAllowed: true,
+  subjectType: "owner" as const,
+  conversationContext: ["Owner asked for concise, direct email replies."],
+  actionHistory: [],
+  trajectorySummary: null,
+};
+
+describe("LifeOps Gmail reply draft rendering", () => {
+  it("uses the generated model body and preserves explicit confirmation", async () => {
+    const useModel = vi
+      .fn()
+      .mockResolvedValue("Hi Alex,\n\nFriday still works for me.\n\nOwner");
+    const service = new LifeOpsService(runtime({ useModel }));
+
+    const draft = await service.renderGmailReplyDraft(REPLY_DRAFT_ARGS);
+
+    expect(draft.bodyText).toBe(
+      "Hi Alex,\n\nFriday still works for me.\n\nOwner",
+    );
+    expect(draft.previewLines).toEqual([
+      "Hi Alex,",
+      "Friday still works for me.",
+      "Owner",
+    ]);
+    expect(draft.sendAllowed).toBe(true);
+    expect(draft.requiresConfirmation).toBe(true);
+  });
+
+  it("fails safely when no model is configured", async () => {
+    const service = new LifeOpsService(runtime({ useModel: undefined }));
+
+    await expect(
+      service.renderGmailReplyDraft(REPLY_DRAFT_ARGS),
+    ).rejects.toMatchObject({
+      status: 503,
+      message:
+        "Gmail reply draft generation requires a configured language model. No fallback draft was created.",
+    });
+  });
+
+  it("fails safely when the model call fails", async () => {
+    const useModel = vi.fn().mockRejectedValue(new Error("model unavailable"));
+    const service = new LifeOpsService(runtime({ useModel }));
+
+    await expect(
+      service.renderGmailReplyDraft(REPLY_DRAFT_ARGS),
+    ).rejects.toMatchObject({
+      status: 502,
+      message:
+        "Gmail reply draft generation failed. No fallback draft was created.",
+    });
+  });
+
+  it("fails safely when the model output has no usable draft text", async () => {
+    const useModel = vi.fn().mockResolvedValue("<think>reasoning</think>");
+    const service = new LifeOpsService(runtime({ useModel }));
+
+    await expect(
+      service.renderGmailReplyDraft(REPLY_DRAFT_ARGS),
+    ).rejects.toMatchObject({
+      status: 502,
+      message:
+        "Gmail reply draft generation returned no usable text. No fallback draft was created.",
+    });
+  });
+
+  it("uses LifeOps service errors for unsafe draft generation failures", async () => {
+    const service = new LifeOpsService(runtime({ useModel: undefined }));
+
+    await expect(
+      service.renderGmailReplyDraft(REPLY_DRAFT_ARGS),
+    ).rejects.toBeInstanceOf(LifeOpsServiceError);
+  });
+});
 
 describe("LifeOps Gmail service spam review queue", () => {
   it("persists spam candidates when Gmail recommendations are built", async () => {
