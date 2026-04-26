@@ -2,6 +2,7 @@ export * from "./asset-url";
 export * from "./assistant-text";
 export * from "./character-message-examples";
 export * from "./clipboard";
+export * from "./cloud-status";
 export * from "./desktop-dialogs";
 export * from "./desktop-workspace";
 export * from "./eliza-cloud-model-route";

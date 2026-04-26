@@ -58,7 +58,7 @@ const { clientMock } = vi.hoisted(() => {
   };
 });
 
-vi.mock("@elizaos/app-core", () => ({ client: clientMock }));
+vi.mock("@elizaos/app-core/api", () => ({ client: clientMock }));
 
 import { useSignalConnector } from "./useSignalConnector";
 

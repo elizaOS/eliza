@@ -42,17 +42,17 @@ describe("readCsrfTokenFromCookie", () => {
 // ── fetchWithCsrf ─────────────────────────────────────────────────────────────
 
 describe("fetchWithCsrf", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: ReturnType<typeof vi.fn<typeof fetch>>;
 
   beforeEach(() => {
     fetchMock = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock);
     // Plant a CSRF cookie for mutation-method tests.
     document.cookie = `${CSRF_COOKIE_NAME}=csrf-test-value; path=/`;
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     document.cookie = `${CSRF_COOKIE_NAME}=; Max-Age=0; path=/`;
   });
 

@@ -11,7 +11,6 @@ import {
   cloneWithoutBlockedObjectKeys,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
-  type ElizaConfig,
   extractAuthToken,
   fetchWithTimeoutGuard,
   handleCloudBillingRoute,
@@ -19,7 +18,6 @@ import {
   initStewardWalletCache,
   isAllowedHost,
   isAuthorized,
-  loadElizaConfig,
   normalizeWsClientId,
   persistConversationRoomTitle,
   resolveDefaultAgentWorkspaceDir,
@@ -27,11 +25,15 @@ import {
   resolvePluginConfigMutationRejections,
   resolveUserPath,
   routeAutonomyTextToUser,
-  saveElizaConfig,
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
   validateMcpServerConfig,
 } from "@elizaos/agent";
+import {
+  type ElizaConfig,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "@elizaos/agent/config";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger } from "@elizaos/core";

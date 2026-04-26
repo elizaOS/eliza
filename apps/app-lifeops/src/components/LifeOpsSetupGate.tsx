@@ -8,7 +8,12 @@
  * Dismiss flag is persisted via localStorage under
  * LIFEOPS_SETUP_GATE_DISMISSED_KEY.
  */
-import { Button, Input, useApp } from "@elizaos/app-core";
+import {
+  Button,
+  Input,
+  isCloudStatusAuthenticated,
+  useApp,
+} from "@elizaos/app-core";
 import { CalendarDays, MessageCircle, SkipForward } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
@@ -62,8 +67,13 @@ interface LifeOpsSetupGateProps {
 }
 
 export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
-  const { elizaCloudConnected, elizaCloudLoginBusy, handleCloudLogin, t } =
-    useApp();
+  const {
+    elizaCloudConnected,
+    elizaCloudLoginBusy,
+    elizaCloudStatusReason,
+    handleCloudLogin,
+    t,
+  } = useApp();
   const ownerConnector = useGoogleLifeOpsConnector({
     includeAccounts: false,
     side: "owner",
@@ -78,6 +88,10 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
 
   const calendarConnected = ownerConnector.status?.connected === true;
   const xConnected = xConnector.status?.connected === true;
+  const cloudAuthenticated = isCloudStatusAuthenticated(
+    elizaCloudConnected,
+    elizaCloudStatusReason,
+  );
 
   const canContinue =
     name.trim().length > 0 &&
@@ -89,12 +103,12 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
   }, [ownerConnector]);
 
   const handleConnectX = useCallback(() => {
-    if (!elizaCloudConnected) {
+    if (!cloudAuthenticated) {
       void handleCloudLogin();
       return;
     }
     void xConnector.connect("cloud_managed");
-  }, [elizaCloudConnected, handleCloudLogin, xConnector]);
+  }, [cloudAuthenticated, handleCloudLogin, xConnector]);
 
   const handleSkip = useCallback(() => {
     setSkipped(true);

@@ -55,16 +55,23 @@ export {
 } from "./components/inventory/constants.ts";
 export * from "./components/inventory/index.ts";
 export * from "./components/pages/ChatModalView.tsx";
+export * from "./components/pages/PageScopedChatPane.tsx";
 export { PhoneCompanionApp } from "./components/phone-companion/PhoneCompanionApp.tsx";
+export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/ThemeToggle.tsx";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
 export * from "./config/app-config.ts";
 export * from "./config/boot-config.ts";
 export * from "./config/boot-config-react.tsx";
+export type {
+  CompanionInferenceNotice,
+  CompanionSceneStatus,
+} from "./config/boot-config-store.ts";
 export * from "./config/branding.ts";
 export * from "./config/cloud-only.ts";
 export * from "./config/config-catalog.ts";
+export * from "./config/index.ts";
 export {
   buildPluginConfigUiSpec,
   buildPluginListUiSpec,

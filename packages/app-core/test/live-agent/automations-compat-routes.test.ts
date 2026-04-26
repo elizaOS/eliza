@@ -30,11 +30,16 @@ vi.mock("@elizaos/agent/config/config", () => ({
   }),
 }));
 
-vi.mock("@elizaos/agent/api/workbench-helpers", () => ({
-  WORKBENCH_TASK_TAG: "workbench-task",
-  WORKBENCH_TODO_TAG: "workbench-todo",
-  toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
-}));
+vi.mock("@elizaos/agent/api/workbench-helpers", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@elizaos/agent/api/workbench-helpers")
+    >();
+  return {
+    ...actual,
+    toWorkbenchTask: (...args: unknown[]) => toWorkbenchTaskMock(...args),
+  };
+});
 
 vi.mock("@elizaos/agent/triggers/runtime", () => ({
   listTriggerTasks: (...args: unknown[]) => listTriggerTasksMock(...args),

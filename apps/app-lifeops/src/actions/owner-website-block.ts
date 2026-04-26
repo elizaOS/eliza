@@ -6,6 +6,7 @@
  * `subaction` parameter. Routes to the existing handlers in website-blocker.ts.
  */
 
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import type {
   Action,
   ActionExample,
@@ -20,7 +21,6 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { extractActionParamsViaLlm } from "@elizaos/agent";
 import {
   getSelfControlAccess,
   SELFCONTROL_ACCESS_ERROR,
@@ -473,7 +473,7 @@ export const ownerWebsiteBlockAction: Action & {
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerWebsiteBlockParameters;
     let params = rawParams;
-    let subaction = coerceSubaction(params.subaction);
+    let subaction = coerceSubaction(rawParams.subaction);
     if (!subaction) {
       const heuristicSubaction = inferRecentSubaction(
         getMessageText(message),

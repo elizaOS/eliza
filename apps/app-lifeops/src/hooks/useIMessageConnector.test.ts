@@ -34,7 +34,7 @@ const { clientMock, statusResponse } =
     };
   });
 
-vi.mock("@elizaos/app-core", () => ({ client: clientMock }));
+vi.mock("@elizaos/app-core/api", () => ({ client: clientMock }));
 
 import { useIMessageConnector } from "./useIMessageConnector.js";
 

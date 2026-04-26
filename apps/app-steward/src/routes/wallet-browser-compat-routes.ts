@@ -1,8 +1,6 @@
 import crypto from "node:crypto";
 import type http from "node:http";
-import {
-  loadElizaConfig,
-} from "@elizaos/agent";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { ethers } from "ethers";
 import { deriveSolanaAddress } from "../api/wallet";
 import { resolveWalletRpcReadiness } from "../api/wallet-rpc";
@@ -19,12 +17,10 @@ export function safeParseBigInt(value: string): bigint {
   }
 }
 
-import { ensureCompatApiAuthorized } from "@elizaos/app-core";
 import {
   type CompatRuntimeState,
+  ensureCompatApiAuthorized,
   readCompatJsonBody,
-} from "@elizaos/app-core";
-import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "@elizaos/app-core";

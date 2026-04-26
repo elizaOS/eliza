@@ -11,16 +11,18 @@
  * context cannot leak between cases.
  */
 
-import { getAppBlockerStatus } from "@elizaos/app-lifeops/app-blocker/engine";
-import { readCalendlyCredentialsFromEnv } from "@elizaos/app-lifeops/lifeops/calendly-client";
-import { detectHealthBackend } from "@elizaos/app-lifeops/lifeops/health-bridge";
-import { detectPasswordManagerBackend } from "@elizaos/app-lifeops/lifeops/password-manager-bridge";
+import {
+  appLifeOpsPlugin,
+  detectHealthBackend,
+  detectPasswordManagerBackend,
+  detectRemoteDesktopBackend,
+  getAppBlockerStatus,
+  getSelfControlStatus,
+  LifeOpsService,
+  readCalendlyCredentialsFromEnv,
+  readTwilioCredentialsFromEnv,
+} from "@elizaos/app-lifeops";
 import { LifeOpsRepository } from "@elizaos/app-lifeops/lifeops/repository";
-import { detectRemoteDesktopBackend } from "@elizaos/app-lifeops/lifeops/remote-desktop";
-import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
-import { readTwilioCredentialsFromEnv } from "@elizaos/app-lifeops/lifeops/twilio";
-import { appLifeOpsPlugin } from "@elizaos/app-lifeops/plugin";
-import { getSelfControlStatus } from "@elizaos/app-lifeops/selfcontrol";
 import {
   type AgentRuntime,
   logger,

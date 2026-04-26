@@ -1,11 +1,9 @@
 import {
   applyCanonicalOnboardingConfig,
   type ElizaConfig,
-} from "@elizaos/agent";
-import {
   resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl,
   validateCloudBaseUrl,
-} from "@elizaos/agent/cloud";
+} from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {

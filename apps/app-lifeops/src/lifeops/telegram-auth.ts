@@ -1,12 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  resolveOAuthDir,
-} from "@elizaos/agent";
+import { resolveOAuthDir } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import type { LifeOpsConnectorSide } from "@elizaos/shared";
-
 // Re-export the real GramJS auth session from plugin-telegram.
 // The plugin's TelegramAccountAuthSession handles the full MTProto flow:
 //   provisioning → code → 2FA → session persistence.
@@ -16,7 +12,8 @@ import {
   type TelegramAccountAuthSessionLike,
   type TelegramAccountAuthSnapshot,
   type TelegramAccountConnectorConfig,
-} from "@elizaos/plugin-telegram";
+} from "@elizaos/plugin-telegram/account-auth-service";
+import type { LifeOpsConnectorSide } from "@elizaos/shared";
 import {
   decryptTokenEnvelope,
   encryptTokenPayload,

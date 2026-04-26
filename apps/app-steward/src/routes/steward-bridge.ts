@@ -1,6 +1,4 @@
-import {
-  loadElizaConfig,
-} from "@elizaos/agent";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { fingerprintRandomToken } from "../services/steward-sidecar/helpers";
 import {
   type PolicyResult,

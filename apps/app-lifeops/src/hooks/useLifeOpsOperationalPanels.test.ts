@@ -256,10 +256,8 @@ const { clientMock } = vi.hoisted(() => {
   };
 });
 
-vi.mock("@elizaos/app-core", () => ({
-  client: clientMock,
-  openExternalUrl: vi.fn(),
-}));
+vi.mock("@elizaos/app-core/api", () => ({ client: clientMock }));
+vi.mock("@elizaos/app-core/utils", () => ({ openExternalUrl: vi.fn() }));
 
 import { useLifeOpsCapabilitiesStatus } from "./useLifeOpsCapabilitiesStatus";
 import { useLifeOpsScheduleState } from "./useLifeOpsScheduleState";
