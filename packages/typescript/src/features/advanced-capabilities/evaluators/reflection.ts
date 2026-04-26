@@ -626,10 +626,7 @@ async function handler(
 	const actionResults = message.id ? runtime.getActionResults(message.id) : [];
 
 	// Run all queries in parallel. Facts are owned by `factExtractorEvaluator`
-	// now, so we no longer fetch the existing fact list here. The reflection
-	// template still references `{{knownFacts}}`; passing an empty string keeps
-	// the variable substitution stable until the template is updated to drop
-	// the section entirely.
+	// now, so we no longer fetch the existing fact list here.
 	const [existingRelationships, entities] = await Promise.all([
 		runtime.getRelationships({
 			entityIds: [message.entityId, agentId],
@@ -650,7 +647,6 @@ async function handler(
 	const prompt = composePrompt({
 		state: {
 			...(state?.values || {}),
-			knownFacts: "",
 			actionResults: formatActionResults(actionResults),
 			roomType: message.content.channelType as string,
 			entitiesInRoom: JSON.stringify(entities),
