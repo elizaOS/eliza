@@ -42,6 +42,17 @@ function agentNameFromRuntime(runtime: AgentRuntime | null): string {
   return runtime?.character?.name ?? "Eliza";
 }
 
+function getOptionalWalletAddresses(): {
+  evmAddress?: string;
+  solanaAddress?: string;
+} {
+  const addresses = getWalletAddresses();
+  return {
+    evmAddress: addresses.evmAddress ?? undefined,
+    solanaAddress: addresses.solanaAddress ?? undefined,
+  };
+}
+
 function elizaMakerRouteHandler(): NonNullable<Route["handler"]> {
   return async (req, res, runtime) => {
     const httpReq = req as unknown as http.IncomingMessage;
@@ -60,7 +71,7 @@ function elizaMakerRouteHandler(): NonNullable<Route["handler"]> {
       readJsonBody: httpReadJsonBody,
       dropService: getElizaMakerDropService(),
       agentName: agentNameFromRuntime(runtime as AgentRuntime | null),
-      getWalletAddresses,
+      getWalletAddresses: getOptionalWalletAddresses,
       readOGCodeFromState: readOGCode,
     });
   };
