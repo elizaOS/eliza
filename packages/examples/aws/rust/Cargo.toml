@@ -19,7 +19,7 @@ path = "src/test_local.rs"
 [dependencies]
 # AWS Lambda runtime
 lambda_http = "0.13"
-lambda_runtime = "0.13"
+lambda_runtime = "1.1"
 
 # Async runtime
 tokio = { version = "1.42", features = ["rt-multi-thread", "macros", "time"] }
