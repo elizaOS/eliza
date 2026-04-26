@@ -1,4 +1,10 @@
-import { Badge, Button, client, useApp } from "@elizaos/app-core";
+import {
+  Badge,
+  Button,
+  client,
+  isCloudStatusAuthenticated,
+  useApp,
+} from "@elizaos/app-core";
 import type {
   LifeOpsCapabilityState,
   LifeOpsManualOverrideKind,
@@ -558,6 +564,7 @@ export function LifeOpsXPanel() {
     elizaCloudConnected,
     elizaCloudLoginBusy,
     elizaCloudLoginError,
+    elizaCloudStatusReason,
     handleCloudLogin,
     t,
   } = useApp();
@@ -570,9 +577,13 @@ export function LifeOpsXPanel() {
   const ownerIdentity = readXIdentity(status?.identity ?? null, "");
   const agentIdentity = readXIdentity(agentStatus?.identity ?? null, "");
   const mode = status?.mode ?? status?.defaultMode ?? "cloud_managed";
+  const cloudAuthenticated = isCloudStatusAuthenticated(
+    elizaCloudConnected,
+    elizaCloudStatusReason,
+  );
   const ownerNeedsCloudLogin =
-    !elizaCloudConnected && status?.hasCredentials !== true;
-  const agentNeedsCloudLogin = !elizaCloudConnected;
+    !cloudAuthenticated && status?.hasCredentials !== true;
+  const agentNeedsCloudLogin = !cloudAuthenticated;
   const actionPending =
     ownerX.actionPending || agentX.actionPending || elizaCloudLoginBusy;
 
