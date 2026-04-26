@@ -13,6 +13,7 @@ import type {
   LifeOpsPaymentSourceKind,
 } from "../lifeops/payment-types.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 
 // ---------------------------------------------------------------------------
@@ -549,8 +550,17 @@ export const lifeOpsMutateAction: Action & {
     state?: State,
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
-    void state;
-    const params = mergeParams(message, options);
+    const merged = mergeParams(message, options);
+    const params = (await extractActionParamsViaLlm<MutateActionParams>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: lifeOpsMutateAction.description ?? "",
+      paramSchema: lifeOpsMutateAction.parameters ?? [],
+      existingParams: merged,
+      requiredFields: ["subaction"],
+    })) as MutateActionParams;
     const subaction = normalizeSubaction(params.subaction);
     if (!subaction) {
       return {

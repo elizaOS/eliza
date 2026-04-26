@@ -27,7 +27,7 @@ import {
   type IAgentRuntime,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm, hasOwnerAccess } from "@elizaos/agent";
 import {
   DEFAULT_AUTOFILL_WHITELIST,
   extractRegistrableDomain,
@@ -186,7 +186,7 @@ export const requestFieldFillAction: Action = {
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),
 
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+  handler: async (runtime, message, state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return failure("REQUEST_FIELD_FILL", "PERMISSION_DENIED");
     }
@@ -203,10 +203,20 @@ export const requestFieldFillAction: Action = {
       throw error;
     }
 
-    const params =
+    const rawParams =
       ((options as HandlerOptions | undefined)?.parameters as
         | RequestFieldFillParameters
         | undefined) ?? {};
+    const params = (await extractActionParamsViaLlm<RequestFieldFillParameters>({
+      runtime,
+      message,
+      state,
+      actionName: "REQUEST_FIELD_FILL",
+      actionDescription: requestFieldFillAction.description ?? "",
+      paramSchema: requestFieldFillAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["tabUrl", "fieldPurpose"],
+    })) as RequestFieldFillParameters;
 
     const tabUrl = (params.tabUrl ?? "").toString().trim();
     if (!tabUrl) return failure("REQUEST_FIELD_FILL", "MISSING_TAB_URL");
@@ -371,14 +381,24 @@ export const addAutofillWhitelistAction: Action = {
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),
 
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+  handler: async (runtime, message, state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return failure("ADD_AUTOFILL_WHITELIST", "PERMISSION_DENIED");
     }
-    const params =
+    const rawParams =
       ((options as HandlerOptions | undefined)?.parameters as
         | AddAutofillWhitelistParameters
         | undefined) ?? {};
+    const params = (await extractActionParamsViaLlm<AddAutofillWhitelistParameters>({
+      runtime,
+      message,
+      state,
+      actionName: "ADD_AUTOFILL_WHITELIST",
+      actionDescription: addAutofillWhitelistAction.description ?? "",
+      paramSchema: addAutofillWhitelistAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["domain"],
+    })) as AddAutofillWhitelistParameters;
     const rawDomain = (params.domain ?? "").toString().trim();
     if (!rawDomain) {
       return failure("ADD_AUTOFILL_WHITELIST", "MISSING_DOMAIN");

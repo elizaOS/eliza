@@ -1,3 +1,4 @@
+import { extractActionParamsViaLlm } from "@elizaos/agent";
 import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security";
 import {
   type Action,
@@ -159,7 +160,7 @@ export const twilioCallAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
   ): Promise<ActionResult> => {
     if (!(await hasAdminAccess(runtime, message))) {
@@ -181,8 +182,18 @@ export const twilioCallAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as TwilioCallParameters;
+    const params = (await extractActionParamsViaLlm<TwilioCallParameters>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: twilioCallAction.description ?? "",
+      paramSchema: twilioCallAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["to", "message"],
+    })) as TwilioCallParameters;
     const to = coerceString(params.to);
     const messageBody = coerceString(params.message);
     const confirmed = coerceBool(params.confirmed);
@@ -834,7 +845,7 @@ export const callExternalAction: Action & {
     return hasOwnerAccess(runtime, message);
   },
 
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+  handler: async (runtime, message, state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         text: "",
@@ -844,10 +855,20 @@ export const callExternalAction: Action & {
       };
     }
 
-    const params =
+    const rawParams =
       ((options as HandlerOptions | undefined)?.parameters as
         | CallExternalParameters
         | undefined) ?? {};
+    const params = (await extractActionParamsViaLlm<CallExternalParameters>({
+      runtime,
+      message,
+      state,
+      actionName: "CALL_EXTERNAL",
+      actionDescription: callExternalAction.description ?? "",
+      paramSchema: callExternalAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["to"],
+    })) as CallExternalParameters;
     const pendingDraft = await readPendingCallDraft(
       runtime,
       message.roomId,

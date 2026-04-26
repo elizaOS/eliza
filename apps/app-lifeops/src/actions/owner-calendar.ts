@@ -19,7 +19,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
@@ -609,7 +609,17 @@ export const ownerCalendarAction: Action & {
     options,
     callback,
   ): Promise<ActionResult> => {
-    const params = getParams(options);
+    const rawParams = getParams(options);
+    const params = (await extractActionParamsViaLlm<OwnerCalendarParameters>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerCalendarAction.description ?? "",
+      paramSchema: ownerCalendarAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as OwnerCalendarParameters;
     const subaction = normalizeSubaction(params.subaction);
     if (!subaction) {
       const text =

@@ -7,6 +7,7 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
 import { hasAdminAccess } from "../security/access.js";
+import { extractActionParamsViaLlm } from "./extract-params.js";
 import type {
   RelationshipsGraphService,
   RelationshipsPersonDetail,
@@ -165,7 +166,7 @@ export const searchEntityAction: Action = {
     return hasContextSignalSyncForKey(message, state, "search_entity");
   },
 
-  handler: async (runtime, message, _state, options) => {
+  handler: async (runtime, message, state, options) => {
     if (!(await hasAdminAccess(runtime, message))) {
       return {
         text: "Permission denied.",
@@ -175,8 +176,18 @@ export const searchEntityAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as SearchEntityParams;
+    const params = (await extractActionParamsViaLlm<SearchEntityParams>({
+      runtime,
+      message,
+      state,
+      actionName: "SEARCH_ENTITY",
+      actionDescription: searchEntityAction.description ?? "",
+      paramSchema: searchEntityAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["query"],
+    })) as SearchEntityParams;
     const { query, platform } = params;
     const limit = Math.min(Math.max(1, params.limit ?? 10), 25);
 
@@ -342,7 +353,7 @@ export const readEntityAction: Action = {
     return hasContextSignalSyncForKey(message, state, "search_entity");
   },
 
-  handler: async (runtime, message, _state, options) => {
+  handler: async (runtime, message, state, options) => {
     if (!(await hasAdminAccess(runtime, message))) {
       return {
         text: "Permission denied.",
@@ -352,8 +363,18 @@ export const readEntityAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as ReadEntityParams;
+    const params = (await extractActionParamsViaLlm<ReadEntityParams>({
+      runtime,
+      message,
+      state,
+      actionName: "READ_ENTITY",
+      actionDescription: readEntityAction.description ?? "",
+      paramSchema: readEntityAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["name"],
+    })) as ReadEntityParams;
     const { entityId, name } = params;
 
     if (!entityId && !name) {

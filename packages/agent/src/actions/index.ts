@@ -4,6 +4,7 @@ export * from "./configure-plugin.js";
 export * from "./connector-control.js";
 export * from "./context-signal.js";
 export * from "./eject-plugin.js";
+export * from "./extract-params.js";
 export * from "./get-self-status.js";
 export * from "./grounded-action-reply.js";
 export * from "./install-plugin.js";

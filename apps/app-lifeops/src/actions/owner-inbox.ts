@@ -13,7 +13,7 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm, hasAdminAccess } from "@elizaos/agent";
 import { gmailAction } from "./gmail.js";
 import { inboxAction } from "./inbox.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
@@ -418,7 +418,17 @@ export const ownerInboxAction: Action & {
     options: HandlerOptions | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const params = (options?.parameters ?? {}) as OwnerInboxParams;
+    const rawParams = (options?.parameters ?? {}) as OwnerInboxParams;
+    const params = await extractActionParamsViaLlm<OwnerInboxParams>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerInboxAction.description ?? "",
+      paramSchema: ownerInboxAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    });
     const body = messageText(message);
     let subaction = normalizeSubaction(params.subaction);
     let channel = normalizeChannel(params.channel);

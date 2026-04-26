@@ -10,6 +10,7 @@ import type {
 import { logger, ModelType } from "@elizaos/core";
 import { formatSpeakerLabel } from "../providers/conversation-utils.js";
 import { hasAdminAccess } from "../security/access.js";
+import { extractActionParamsViaLlm } from "./extract-params.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
 
 type SearchConversationsParams = {
@@ -69,7 +70,7 @@ export const searchConversationsAction: Action = {
     return hasContextSignalSyncForKey(message, state, "search_conversations");
   },
 
-  handler: async (runtime, message, _state, options) => {
+  handler: async (runtime, message, state, options) => {
     if (!(await hasAdminAccess(runtime, message))) {
       return {
         text: "Permission denied: only the owner or admins may search conversations.",
@@ -79,8 +80,18 @@ export const searchConversationsAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as SearchConversationsParams;
+    const params = (await extractActionParamsViaLlm<SearchConversationsParams>({
+      runtime,
+      message,
+      state,
+      actionName: "SEARCH_CONVERSATIONS",
+      actionDescription: searchConversationsAction.description ?? "",
+      paramSchema: searchConversationsAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["query"],
+    })) as SearchConversationsParams;
     const { query, source, entityId } = params;
     const limit = Math.min(
       Math.max(1, params.limit ?? DEFAULT_LIMIT),
