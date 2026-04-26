@@ -51,6 +51,16 @@ function matchesQuery(
   );
 }
 
+function threadGroupMatchesQuery(
+  group: LifeOpsInboxThreadGroup,
+  q: string,
+): boolean {
+  if (matchesQuery(group.latestMessage, q)) {
+    return true;
+  }
+  return (group.messages ?? []).some((message) => matchesQuery(message, q));
+}
+
 export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
   const { t } = useApp();
   const [feed, setFeed] = useState<LifeOpsInbox | null>(null);
@@ -123,7 +133,7 @@ export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {
   const threadGroups = useMemo<LifeOpsInboxThreadGroup[]>(() => {
     const base = feed?.threadGroups ?? [];
     const q = searchQuery.trim().toLowerCase();
-    return q ? base.filter((g) => matchesQuery(g.latestMessage, q)) : base;
+    return q ? base.filter((g) => threadGroupMatchesQuery(g, q)) : base;
   }, [feed, searchQuery]);
 
   return {
