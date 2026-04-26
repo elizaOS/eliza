@@ -26,7 +26,14 @@ import {
   openBrowserBridgeCompanionManager,
   openBrowserBridgeCompanionPackagePath,
 } from "./packaging.ts";
-import type { BrowserBridgeCompanionPackageStatus } from "./contracts.ts";
+import type {
+  BrowserBridgeCompanionPackageStatus,
+  BrowserBridgeCompanionStatus,
+} from "./contracts.ts";
+import {
+  BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
+  type BrowserBridgeRouteService,
+} from "./service.ts";
 
 const INSTALL_NAME = "BROWSER_BRIDGE_INSTALL";
 const REVEAL_FOLDER_NAME = "BROWSER_BRIDGE_REVEAL_FOLDER";
@@ -245,20 +252,14 @@ export const browserBridgeRefreshAction: Action = {
     try {
       const status = getBrowserBridgeCompanionPackageStatus();
 
-      // Companions live behind the runtime service. Best-effort: if the
-      // service is not registered (for example in a unit-test runtime) we
-      // still return the package status snapshot.
-      let companions: unknown[] = [];
+      let companions: BrowserBridgeCompanionStatus[] = [];
       let companionsAvailable = false;
-      const service = runtime.getService<{
-        listCompanions?: () => Promise<{ companions: unknown[] }>;
-      }>("lifeops_browser_plugin");
-      if (service && typeof service.listCompanions === "function") {
+      const service = runtime.getService<BrowserBridgeRouteService>(
+        BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
+      );
+      if (service) {
         try {
-          const result = await service.listCompanions();
-          companions = Array.isArray(result?.companions)
-            ? result.companions
-            : [];
+          companions = await service.listBrowserCompanions();
           companionsAvailable = true;
         } catch (err) {
           logger.warn(

@@ -2499,6 +2499,7 @@
   "settings.appearance.load": "I-load",
   "settings.appearance.loadFromFolder": "I-load mula sa folder",
   "settings.appearance.loadedPacks": "Mga na-load na content pack",
+  "settings.appearance.companionPerformance": "Performance ng companion",
   "settings.appearance.mode": "Mode",
   "settings.appearance.packUrlPlaceholder": "https://example.com/packs/my-pack/",
   "settings.appearance.theme": "Tema",

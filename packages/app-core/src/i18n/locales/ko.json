@@ -2499,6 +2499,7 @@
   "settings.appearance.load": "불러오기",
   "settings.appearance.loadFromFolder": "폴더에서 불러오기",
   "settings.appearance.loadedPacks": "불러온 콘텐츠 팩",
+  "settings.appearance.companionPerformance": "컴패니언 성능",
   "settings.appearance.mode": "Mode",
   "settings.appearance.packUrlPlaceholder": "https://example.com/packs/my-pack/",
   "settings.appearance.theme": "테마",
