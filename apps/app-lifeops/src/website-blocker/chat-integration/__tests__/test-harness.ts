@@ -1,7 +1,14 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
+import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
-import type { IAgentRuntime, Task, UUID } from "@elizaos/core";
+import {
+  resetSelfControlStatusCache,
+  setSelfControlPluginConfig,
+} from "../../engine.js";
 
 export interface BlockRuleTestHarness {
   runtime: IAgentRuntime;
@@ -73,6 +80,18 @@ const BOOTSTRAP_STATEMENTS = [
 export async function createBlockRuleHarness(
   agentId: UUID = "00000000-0000-0000-0000-000000000042" as UUID,
 ): Promise<BlockRuleTestHarness> {
+  const tempDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "lifeops-block-rules-"),
+  );
+  const hostsFilePath = path.join(tempDir, "hosts");
+  fs.writeFileSync(hostsFilePath, "127.0.0.1 localhost\n::1 localhost\n");
+  setSelfControlPluginConfig({
+    hostsFilePath,
+    validateSystemResolution: false,
+    statusCacheTtlMs: 0,
+  });
+  resetSelfControlStatusCache();
+
   const pgClient = new PGlite();
   const db = drizzle(pgClient);
   for (const statement of BOOTSTRAP_STATEMENTS) {
@@ -81,7 +100,14 @@ export async function createBlockRuleHarness(
 
   const taskWorkers = new Map<
     string,
-    { name: string; execute: (rt: IAgentRuntime, options: unknown, task: Task) => Promise<unknown> }
+    {
+      name: string;
+      execute: (
+        rt: IAgentRuntime,
+        options: unknown,
+        task: Task,
+      ) => Promise<unknown>;
+    }
   >();
   const tasks = new Map<UUID, Task>();
 
@@ -97,7 +123,11 @@ export async function createBlockRuleHarness(
     registerTaskWorker: (worker: {
       name: string;
       shouldRun?: (rt: IAgentRuntime) => Promise<boolean>;
-      execute: (rt: IAgentRuntime, options: unknown, task: Task) => Promise<unknown>;
+      execute: (
+        rt: IAgentRuntime,
+        options: unknown,
+        task: Task,
+      ) => Promise<unknown>;
     }) => {
       taskWorkers.set(worker.name, worker);
     },
@@ -115,7 +145,10 @@ export async function createBlockRuleHarness(
     close: async () => {
       tasks.clear();
       taskWorkers.clear();
+      setSelfControlPluginConfig(undefined);
+      resetSelfControlStatusCache();
       await pgClient.close();
+      fs.rmSync(tempDir, { recursive: true, force: true });
     },
   };
 }

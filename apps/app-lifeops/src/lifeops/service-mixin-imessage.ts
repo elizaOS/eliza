@@ -1,8 +1,6 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import { basename } from "node:path";
-import {
-  loadElizaConfig,
-} from "@elizaos/agent";
+import { loadElizaConfig } from "@elizaos/agent";
 import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { LifeOpsIMessageConnectorStatus } from "@elizaos/shared";
@@ -86,6 +84,7 @@ type RuntimeWithPluginLifecycle = {
 };
 
 const NATIVE_IMESSAGE_SERVICE_LOAD_TIMEOUT_MS = 8_000;
+const IMESSAGE_PLUGIN_PACKAGE = "@elizaos/plugin-imessage";
 
 function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") {
@@ -120,7 +119,8 @@ function normalizeHostPlatform(): LifeOpsIMessageConnectorStatus["hostPlatform"]
 async function waitForNativeIMessageService(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
 ): Promise<boolean> {
-  const runtimeWithLifecycle = runtime as typeof runtime & RuntimeWithPluginLifecycle;
+  const runtimeWithLifecycle = runtime as typeof runtime &
+    RuntimeWithPluginLifecycle;
   if (typeof runtimeWithLifecycle.getServiceLoadPromise !== "function") {
     return Boolean(runtime.getService("imessage"));
   }
@@ -149,7 +149,8 @@ async function ensureNativeIMessagePluginLoaded(
     return true;
   }
 
-  const runtimeWithLifecycle = runtime as typeof runtime & RuntimeWithPluginLifecycle;
+  const runtimeWithLifecycle = runtime as typeof runtime &
+    RuntimeWithPluginLifecycle;
   if (
     typeof runtimeWithLifecycle.registerPlugin !== "function" &&
     typeof runtimeWithLifecycle.reloadPlugin !== "function"
@@ -157,9 +158,11 @@ async function ensureNativeIMessagePluginLoaded(
     return false;
   }
 
-  const mod = await import("@elizaos/plugin-imessage");
-  const plugin = (mod.default ??
-    (mod as { plugin?: Plugin }).plugin) as Plugin | undefined;
+  const mod = (await import(/* @vite-ignore */ IMESSAGE_PLUGIN_PACKAGE)) as {
+    default?: Plugin;
+    plugin?: Plugin;
+  };
+  const plugin = (mod.default ?? mod.plugin) as Plugin | undefined;
   if (!plugin) {
     return false;
   }
@@ -168,7 +171,10 @@ async function ensureNativeIMessagePluginLoaded(
     typeof runtimeWithLifecycle.getPluginOwnership === "function"
       ? runtimeWithLifecycle.getPluginOwnership("imessage")
       : null;
-  if (existingOwnership && typeof runtimeWithLifecycle.reloadPlugin === "function") {
+  if (
+    existingOwnership &&
+    typeof runtimeWithLifecycle.reloadPlugin === "function"
+  ) {
     await runtimeWithLifecycle.reloadPlugin(plugin);
     return waitForNativeIMessageService(runtime);
   }
@@ -184,7 +190,9 @@ async function ensureNativeIMessagePluginLoaded(
 async function getNativeIMessageService(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
 ): Promise<NativeIMessageServiceLike | null> {
-  let service = runtime.getService("imessage") as NativeIMessageServiceLike | null;
+  let service = runtime.getService(
+    "imessage",
+  ) as NativeIMessageServiceLike | null;
   if (service) {
     return service;
   }
@@ -272,9 +280,9 @@ function nativeServiceCanRead(service: NativeIMessageServiceLike): boolean {
   );
 }
 
-async function getConfiguredBridgeStatusOrNull(): Promise<
-  Awaited<ReturnType<typeof getIMessageBackendStatus>> | null
-> {
+async function getConfiguredBridgeStatusOrNull(): Promise<Awaited<
+  ReturnType<typeof getIMessageBackendStatus>
+> | null> {
   try {
     const status = await getIMessageBackendStatus(
       resolveLifeOpsIMessageBridgeConfig(),
@@ -290,7 +298,9 @@ async function getConfiguredBridgeStatusOrNull(): Promise<
   }
 }
 
-function nativeMessageToLifeOps(message: NativeIMessageMessage): IMessageRecord {
+function nativeMessageToLifeOps(
+  message: NativeIMessageMessage,
+): IMessageRecord {
   const attachmentPaths = message.attachmentPaths ?? [];
   return {
     id: message.id,
@@ -311,7 +321,9 @@ function nativeMessageToLifeOps(message: NativeIMessageMessage): IMessageRecord 
 }
 
 function nativeChatToLifeOps(chat: NativeIMessageChat): IMessageChat {
-  const participants = chat.participants.map((participant) => participant.handle);
+  const participants = chat.participants.map(
+    (participant) => participant.handle,
+  );
   return {
     id: chat.chatId,
     name: chat.displayName ?? (participants.join(", ") || chat.chatId),
@@ -445,7 +457,10 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
               limit: opts.limit,
             })
           : await nativeService.getRecentMessages?.(opts.limit);
-        return filterSince((rows ?? []).map(nativeMessageToLifeOps), opts.since);
+        return filterSince(
+          (rows ?? []).map(nativeMessageToLifeOps),
+          opts.since,
+        );
       }
 
       return readIMessagesBridge(opts, resolveLifeOpsIMessageBridgeConfig());
@@ -472,7 +487,9 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
               chatId: opts.chatId,
               limit: Math.max(opts.limit ?? 100, 100),
             })
-          : await nativeService.getRecentMessages?.(Math.max(opts.limit ?? 100, 100));
+          : await nativeService.getRecentMessages?.(
+              Math.max(opts.limit ?? 100, 100),
+            );
         const query = opts.query.trim().toLowerCase();
         return (rows ?? [])
           .map(nativeMessageToLifeOps)

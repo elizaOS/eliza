@@ -112,7 +112,7 @@ describe("apps catalog coverage", () => {
       filterAppsForCatalog(
         upstreamPackageNames
           .filter((name) => !injectedCatalogNames.has(name))
-          .map(makeCatalogCandidate),
+          .map((name) => makeCatalogCandidate(name)),
         { showAllApps: true },
       ).map((app) => app.name),
     );
@@ -134,7 +134,7 @@ describe("apps catalog coverage", () => {
     );
     expect(
       filterAppsForCatalog(
-        APPS_VIEW_HIDDEN_APP_NAMES.map(makeCatalogCandidate),
+        APPS_VIEW_HIDDEN_APP_NAMES.map((name) => makeCatalogCandidate(name)),
       ).map((app) => app.name),
     ).toEqual([]);
   });

@@ -1,13 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-
+import { withWhatsApp } from "../src/lifeops/service-mixin-whatsapp.js";
+import { LifeOpsServiceError } from "../src/lifeops/service-types.js";
 import {
   parseWhatsAppWebhookMessages,
   readWhatsAppCredentialsFromEnv,
   sendWhatsAppMessage,
   WhatsAppError,
 } from "../src/lifeops/whatsapp-client.js";
-import { withWhatsApp } from "../src/lifeops/service-mixin-whatsapp.js";
-import { LifeOpsServiceError } from "../src/lifeops/service-types.js";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = global.fetch;
@@ -34,8 +33,8 @@ describe("readWhatsAppCredentialsFromEnv", () => {
     process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = "555000111";
     const creds = readWhatsAppCredentialsFromEnv();
     expect(creds).not.toBeNull();
-    expect(creds!.accessToken).toBe("tok-abc");
-    expect(creds!.phoneNumberId).toBe("555000111");
+    expect(creds?.accessToken).toBe("tok-abc");
+    expect(creds?.phoneNumberId).toBe("555000111");
   });
 });
 
@@ -43,14 +42,16 @@ describe("sendWhatsAppMessage", () => {
   test("POSTs to graph.facebook.com with Bearer auth and correct body", async () => {
     let capturedUrl = "";
     let capturedInit: RequestInit | undefined;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      capturedUrl = typeof input === "string" ? input : input.toString();
-      capturedInit = init;
-      return new Response(
-        JSON.stringify({ messages: [{ id: "wamid.123" }] }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    });
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        capturedUrl = typeof input === "string" ? input : input.toString();
+        capturedInit = init;
+        return new Response(
+          JSON.stringify({ messages: [{ id: "wamid.123" }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    );
     global.fetch = fetchMock as unknown as typeof fetch;
 
     const result = await sendWhatsAppMessage(
@@ -80,11 +81,12 @@ describe("sendWhatsAppMessage", () => {
   });
 
   test("throws WhatsAppError on non-2xx", async () => {
-    global.fetch = vi.fn(async () =>
-      new Response(
-        JSON.stringify({ error: { message: "invalid token" } }),
-        { status: 401, headers: { "content-type": "application/json" } },
-      ),
+    global.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: { message: "invalid token" } }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
     ) as unknown as typeof fetch;
 
     await expect(
@@ -148,7 +150,7 @@ describe("parseWhatsAppWebhookMessages", () => {
 
 describe("withWhatsApp mixin", () => {
   class StubBase {
-    runtime = { agentId: "test", logger: console };
+    runtime = { agentId: "test", getService: vi.fn(() => null) };
     ownerEntityId = null;
   }
   const Composed = withWhatsApp(StubBase as never);

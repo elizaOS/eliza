@@ -142,6 +142,13 @@ function getSeededOffset(
   return ((seed % divisor) / divisor - 0.5) * spread;
 }
 
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function renderPlayMotif(seed: number, palette: HeroPalette): string {
   const shiftX = getSeededOffset(seed, 19, 26);
   const shiftY = getSeededOffset(seed >> 3, 13, 20);
@@ -352,9 +359,11 @@ export function createGeneratedAppHeroSvg(app: AppHeroArtworkSource): string {
   const radialY = 10 + ((seed >> 6) % 30);
   const arcTilt = (seed % 24) - 12;
   const motif = renderThemeMotif(theme, seed, palette);
+  const title = escapeXmlText(getAppHeroDisplayLabel(app));
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" fill="none">
+      <title>${title}</title>
       <defs>
         <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stop-color="${palette.start}"/>
