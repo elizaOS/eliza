@@ -16,6 +16,7 @@ import {
 } from "@elizaos/agent/api/http-helpers";
 import { decodePathComponent as httpDecodePathComponent } from "@elizaos/agent/api/server-helpers";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import { browserBridgeActions } from "./actions.ts";
 import { browserBridgeSchema } from "./schema.ts";
 import {
   type BrowserBridgeRouteContext,
@@ -162,4 +163,5 @@ export const browserBridgePlugin: Plugin = {
     "Agent Browser Bridge: Chrome/Safari companion pairing, settings, tab + page context sync, packaging artifacts, and workflow-linked browser session endpoints.",
   schema: browserBridgeSchema,
   routes: browserBridgePluginRoutes,
+  actions: browserBridgeActions,
 };

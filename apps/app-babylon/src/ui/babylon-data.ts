@@ -1,10 +1,10 @@
-import { asRecord } from "@elizaos/shared/type-guards";
 import type {
   BabylonActivityItem,
   BabylonAgentStatus,
   BabylonChatMessage,
   BabylonTeamAgent,
-} from "../../api/client-types-babylon";
+} from "@elizaos/app-core/api/client-types-babylon";
+import { asRecord } from "@elizaos/shared";
 
 export interface BabylonTeamSummaryTotals {
   walletBalance: number;

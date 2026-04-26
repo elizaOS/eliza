@@ -165,6 +165,26 @@ export function mergeAggregatedCalendarFeedEvents(
   );
 }
 
+function managedPrimaryCalendarEntry(
+  grant: LifeOpsConnectorGrant,
+): Awaited<ReturnType<typeof listGoogleCalendars>>[number] {
+  const email =
+    typeof grant.identity.email === "string"
+      ? grant.identity.email.trim().toLowerCase()
+      : "";
+  return {
+    calendarId: "primary",
+    summary: email ? `${email} primary` : "Primary calendar",
+    description: null,
+    primary: true,
+    accessRole: "reader",
+    backgroundColor: null,
+    foregroundColor: null,
+    timeZone: null,
+    selected: true,
+  };
+}
+
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsCalendarService> {
@@ -204,10 +224,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
                     error instanceof ManagedGoogleClientError &&
                     error.status === 404
                   ) {
-                    throw new LifeOpsServiceError(
-                      503,
-                      "Google calendar discovery is unavailable for this connection. The connector backend needs the managed calendar-list route.",
-                    );
+                    return [managedPrimaryCalendarEntry(grant)];
                   }
                   throw error;
                 }
@@ -237,8 +254,6 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
             foregroundColor: entry.foregroundColor,
             timeZone: entry.timeZone,
             selected: entry.selected,
-            // Preference plumbing lands in Phase 1.2; default to true so new
-            // calendars are never silently hidden from the agent.
             includeInFeed: true,
           });
         }

@@ -179,6 +179,30 @@ function logSettingsClient(
 const SETTINGS_MUTATION_TIMEOUT_MS = 30_000;
 
 // ---------------------------------------------------------------------------
+// Bootstrap exchange types
+// ---------------------------------------------------------------------------
+
+/** Successful response from POST /api/auth/bootstrap/exchange. */
+export interface BootstrapExchangeSuccess {
+  ok: true;
+  sessionId: string;
+  expiresAt: number;
+  identityId: string;
+}
+
+/** Failure response from POST /api/auth/bootstrap/exchange. */
+export interface BootstrapExchangeFailure {
+  ok: false;
+  status: 400 | 401 | 429 | 503;
+  error: string;
+  reason?: string;
+}
+
+export type BootstrapExchangeResult =
+  | BootstrapExchangeSuccess
+  | BootstrapExchangeFailure;
+
+// ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
 
@@ -227,6 +251,7 @@ declare module "./client-base" {
       pairingEnabled: boolean;
       expiresAt: number | null;
     }>;
+    postBootstrapExchange(token: string): Promise<BootstrapExchangeResult>;
     pair(code: string): Promise<{ token: string }>;
     getOnboardingOptions(): Promise<OnboardingOptions>;
     submitOnboarding(data: Record<string, unknown>): Promise<void>;
@@ -784,6 +809,59 @@ ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
     }
   }
   throw lastErr;
+};
+
+ElizaClient.prototype.postBootstrapExchange = async function (
+  this: ElizaClient,
+  token: string,
+): Promise<BootstrapExchangeResult> {
+  // Use allowNonOk so 401/429/503 bodies are parsed rather than thrown.
+  const body = await this.fetch<{
+    sessionId?: string;
+    expiresAt?: number;
+    identityId?: string;
+    error?: string;
+    reason?: string;
+  }>(
+    "/api/auth/bootstrap/exchange",
+    {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    },
+    { allowNonOk: true },
+  );
+
+  if (
+    typeof body.sessionId === "string" &&
+    typeof body.expiresAt === "number" &&
+    typeof body.identityId === "string"
+  ) {
+    return {
+      ok: true,
+      sessionId: body.sessionId,
+      expiresAt: body.expiresAt,
+      identityId: body.identityId,
+    };
+  }
+
+  // Map reason to an HTTP status bucket for the UI layer.
+  const reason = body.reason;
+  const status: 400 | 401 | 429 | 503 =
+    reason === "rate_limited"
+      ? 429
+      : reason === "db_unavailable" ||
+          reason === "missing_issuer_env" ||
+          reason === "missing_container_env"
+        ? 503
+        : reason === "missing_token"
+          ? 400
+          : 401;
+  return {
+    ok: false,
+    status,
+    error: body.error ?? "exchange_failed",
+    reason,
+  };
 };
 
 ElizaClient.prototype.pair = async function (this: ElizaClient, code) {

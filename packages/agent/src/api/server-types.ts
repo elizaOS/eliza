@@ -5,7 +5,7 @@
  */
 
 import type http from "node:http";
-import type { DropService } from "@elizaos/app-elizamaker";
+import type { DropService } from "@elizaos/app-elizamaker/drop-service";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import type { AppManager } from "../services/app-manager.js";

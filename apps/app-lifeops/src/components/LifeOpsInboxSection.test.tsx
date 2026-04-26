@@ -106,6 +106,7 @@ function gmailFeedFixture(message = SAMPLE_GMAIL_MESSAGE) {
         latestMessage: message,
         totalCount: 1,
         unreadCount: message.unread ? 1 : 0,
+        messages: [message],
       },
     ],
     refresh: vi.fn(),

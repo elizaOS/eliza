@@ -89,6 +89,32 @@ function buildWebsiteBlockerContext(
   };
 }
 
+function runtimeSetting(
+  runtime: AgentRuntime | null,
+  key: string,
+): string | undefined {
+  const value = runtime?.getSetting?.(key);
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function buildCloudProxyConfig(
+  runtime: AgentRuntime | null,
+): CloudProxyConfigLike {
+  return {
+    cloud: {
+      apiKey:
+        runtimeSetting(runtime, "ELIZAOS_CLOUD_API_KEY") ??
+        process.env.ELIZAOS_CLOUD_API_KEY,
+      baseUrl:
+        runtimeSetting(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
+        process.env.ELIZAOS_CLOUD_BASE_URL,
+      serviceKey:
+        runtimeSetting(runtime, "ELIZAOS_CLOUD_SERVICE_KEY") ??
+        process.env.ELIZAOS_CLOUD_SERVICE_KEY,
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // All static LifeOps routes (exact-path matches)
 // ---------------------------------------------------------------------------
@@ -278,11 +304,32 @@ const WEBSITE_BLOCKER_ROUTES: Array<{ type: string; path: string }> = [
   { type: "DELETE", path: "/api/website-blocker" },
 ];
 
+const CLOUD_FEATURE_ROUTES: Array<{ type: string; path: string }> = [
+  { type: "GET", path: "/api/cloud/features" },
+  { type: "POST", path: "/api/cloud/features/sync" },
+];
+
+const TRAVEL_PROVIDER_RELAY_ROUTES: Array<{ type: string; path: string }> = [
+  { type: "GET", path: "/api/cloud/travel-providers/:provider/:providerPath*" },
+  {
+    type: "POST",
+    path: "/api/cloud/travel-providers/:provider/:providerPath*",
+  },
+];
+
 // ---------------------------------------------------------------------------
 // Build Plugin Route arrays
 // ---------------------------------------------------------------------------
 
 type PluginRouteHandler = NonNullable<Route["handler"]>;
+
+interface CloudProxyConfigLike {
+  cloud?: {
+    apiKey?: string;
+    baseUrl?: string;
+    serviceKey?: string;
+  };
+}
 
 function lifeOpsRouteHandler(): PluginRouteHandler {
   return async (
@@ -335,7 +382,73 @@ function websiteBlockerRouteHandler(): PluginRouteHandler {
   };
 }
 
+function cloudFeaturesRouteHandler(): PluginRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const agentRuntime = (runtime as AgentRuntime) ?? null;
+    const method = (httpReq.method ?? "GET").toUpperCase();
+    const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
+    const { handleCloudFeaturesRoute } = await import(
+      "./cloud-features-routes.js"
+    );
+    await handleCloudFeaturesRoute(httpReq, httpRes, url.pathname, method, {
+      config: buildCloudProxyConfig(agentRuntime),
+      runtime: agentRuntime,
+    });
+  };
+}
+
+function travelProviderRelayRouteHandler(): PluginRouteHandler {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
+    const httpReq = req as http.IncomingMessage;
+    const httpRes = res as http.ServerResponse;
+    const agentRuntime = (runtime as AgentRuntime) ?? null;
+    const method = (httpReq.method ?? "GET").toUpperCase();
+    const url = new URL(httpReq.url ?? "/", requestBaseUrl(httpReq));
+    const { handleTravelProviderRelayRoute } = await import(
+      "./travel-provider-relay-routes.js"
+    );
+    await handleTravelProviderRelayRoute(
+      httpReq,
+      httpRes,
+      url.pathname,
+      method,
+      {
+        config: buildCloudProxyConfig(agentRuntime),
+        runtime: agentRuntime,
+      },
+    );
+  };
+}
+
 const lifeOpsPluginRoutes: Route[] = [
+  ...CLOUD_FEATURE_ROUTES.map(
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: cloudFeaturesRouteHandler(),
+      }) as Route,
+  ),
+  ...TRAVEL_PROVIDER_RELAY_ROUTES.map(
+    (r) =>
+      ({
+        type: r.type as Route["type"],
+        path: r.path,
+        rawPath: true as const,
+        handler: travelProviderRelayRouteHandler(),
+      }) as Route,
+  ),
   // Static LifeOps routes
   ...LIFEOPS_STATIC_ROUTES.map(
     (r) =>

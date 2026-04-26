@@ -26,7 +26,8 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 import os from "node:os";
 import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
+import { DropService } from "@elizaos/app-elizamaker/drop-service";
+import { setElizaMakerDropService } from "@elizaos/app-elizamaker/drop-service-registry";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
 import {
   normalizeJsonRpcUrl,
@@ -157,7 +158,6 @@ import {
 } from "./chat-routes.js";
 import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
 import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
-import { handleCloudFeaturesRoute } from "./cloud-features-routes.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
@@ -214,7 +214,6 @@ import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
-import { handleTravelProviderRelayRoute } from "./travel-provider-relay-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
 import { handleUpdateRoutes } from "./update-routes.js";
@@ -252,7 +251,6 @@ export {
 
 type OnboardingRouteArg = Parameters<typeof handleOnboardingRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
-type DropRouteArg = Parameters<typeof handleDropRoutes>[0];
 type TtsRouteArg = Parameters<typeof handleTtsRoutes>[0];
 type PermissionsExtraRouteArg = Parameters<
   typeof handlePermissionsExtraRoutes
@@ -495,12 +493,6 @@ function _persistDeletedConversationIdsToState(ids: Set<string>): void {
     mode: 0o600,
   });
   fs.renameSync(tmpFilePath, filePath);
-}
-
-function readOGCodeFromState(): string | null {
-  const filePath = path.join(resolveStateDir(), OG_FILENAME);
-  if (!fs.existsSync(filePath)) return null;
-  return fs.readFileSync(filePath, "utf-8").trim();
 }
 
 function initializeOGCodeInState(): void {
@@ -994,6 +986,14 @@ const rejectWebSocketUpgrade = _rejectWebSocketUpgrade;
 const isWebSocketAuthorized = _isWebSocketAuthorized;
 const getConfiguredApiToken = _getConfiguredApiToken;
 const pairingEnabled = _pairingEnabled;
+
+function isLifeOpsCloudPluginRoute(pathname: string): boolean {
+  return (
+    pathname === "/api/cloud/features" ||
+    pathname === "/api/cloud/features/sync" ||
+    pathname.startsWith("/api/cloud/travel-providers/")
+  );
+}
 const ensurePairingCode = _ensurePairingCode;
 const normalizePairingCode = _normalizePairingCode;
 const rateLimitPairing = _rateLimitPairing;
@@ -1121,7 +1121,6 @@ async function handleRequest(
     });
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
   const _registryService = state.registryService;
-  const dropService = state.dropService;
 
   const canonicalizeRestartReason = (reason: string): string => {
     if (
@@ -1918,29 +1917,6 @@ async function handleRequest(
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  //  Drop / Mint / Whitelist Routes (extracted to drop-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
-  if (
-    await handleDropRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      json,
-      error,
-      readJsonBody,
-      dropService,
-      agentName: state.agentName,
-      getWalletAddresses:
-        coerce<DropRouteArg["getWalletAddresses"]>(getWalletAddresses),
-      readOGCodeFromState,
-    })
-  ) {
-    return;
-  }
-
   // ── Update routes (extracted to update-routes.ts) ─────────────────────
   if (
     await handleUpdateRoutes({
@@ -2261,31 +2237,23 @@ async function handleRequest(
   // @elizaos/app-steward plugin routes. See apps/app-steward/src/plugin.ts.
   // ═══════════════════════════════════════════════════════════════════════
 
+  if (
+    isLifeOpsCloudPluginRoute(pathname) &&
+    (await tryHandleRuntimePluginRoute({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      runtime: state.runtime,
+      isAuthorized: () => isAuthorized(req),
+    }))
+  ) {
+    return;
+  }
+
   // ── Cloud routes (/api/cloud/*) ─────────────────────────────────────────
   if (pathname.startsWith("/api/cloud/")) {
-    // Cloud-managed feature flag sync — must run before the generic
-    // cloud passthrough so /api/cloud/features hits the local upserter.
-    const featuresHandled = await handleCloudFeaturesRoute(
-      req,
-      res,
-      pathname,
-      method,
-      { config: state.config, runtime: state.runtime },
-    );
-    if (featuresHandled) return;
-
-    // Travel-provider relay — must run before the generic cloud
-    // passthrough so provider-specific billing paths are hit instead of
-    // the bare Cloud proxy.
-    const travelProviderHandled = await handleTravelProviderRelayRoute(
-      req,
-      res,
-      pathname,
-      method,
-      { config: state.config, runtime: state.runtime },
-    );
-    if (travelProviderHandled) return;
-
     const xRelayHandled = await handleXRelayRoute(req, res, pathname, method, {
       config: state.config,
       runtime: state.runtime,
@@ -3375,6 +3343,10 @@ export async function startApiServer(opts?: {
             registryConfig.collectionAddress,
             dropEnabled,
           );
+          setElizaMakerDropService(state.dropService);
+        } else {
+          state.dropService = null;
+          setElizaMakerDropService(null);
         }
 
         addLog(
