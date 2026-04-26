@@ -4,7 +4,21 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { importPluginModuleFromPath } from "./plugin-resolver";
+import {
+  importPluginModuleFromPath,
+  resolveRuntimePluginImportSpecifier,
+} from "./plugin-resolver";
+
+describe("resolveRuntimePluginImportSpecifier", () => {
+  it("uses headless plugin entrypoints for app packages", () => {
+    expect(resolveRuntimePluginImportSpecifier("@elizaos/app-companion")).toBe(
+      "@elizaos/app-companion/plugin",
+    );
+    expect(resolveRuntimePluginImportSpecifier("@elizaos/app-lifeops")).toBe(
+      "@elizaos/app-lifeops/plugin",
+    );
+  });
+});
 
 describe("importPluginModuleFromPath", () => {
   let stateDir: string;

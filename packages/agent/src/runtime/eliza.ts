@@ -66,9 +66,10 @@ export {
 // actions array as `undefined`, crashing `runtime.registerPlugin` when it
 // iterates `plugin.actions`.
 //
-// Both apps still resolve at plugin-load time via the dynamic-import fallback
-// in `plugin-resolver.ts` (which awaits `import("@elizaos/app-lifeops")` after
-// the static module graph has fully evaluated, so the cycle never forms).
+// Both apps still resolve at plugin-load time via headless dynamic-import
+// entrypoints in `plugin-resolver.ts`, after the static module graph has fully
+// evaluated, so the cycle never forms and browser-only UI exports stay out of
+// the agent process.
 // Keep this here as a single sentinel: if we ever need a static reference,
 // add `as const` data only — never an `import * as` of an app-* package.
 import {
@@ -337,8 +338,6 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
     ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
     : {}),
   // trust: now built-in core capability (ENABLE_TRUST)
-  "@elizaos/app-lifeops": pluginAppLifeops,
-  "@elizaos/app-companion": pluginAppCompanion,
   "@elizaos/plugin-browser-bridge": pluginBrowserBridge,
   "@elizaos/plugin-discord-local": discordLocalPlugin,
   // personality: now built-in advanced capability (advancedCapabilities: true)
