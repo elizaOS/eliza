@@ -2,6 +2,7 @@ import type http from "node:http";
 import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
+import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,
   CaptureLifeOpsActivitySignalRequest,
@@ -61,10 +62,11 @@ import {
   LIFEOPS_CONNECTOR_SIDES,
   LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
   LIFEOPS_INBOX_CHANNELS,
+  LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES,
   type LifeOpsGmailSpamReviewStatus,
+  type LifeOpsOwnerBrowserAccessSource,
   type VerifyLifeOpsTelegramConnectorRequest,
 } from "../contracts/index.js";
-import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import {
   loadLifeOpsAppState,
   saveLifeOpsAppState,
@@ -370,6 +372,31 @@ function parseConnectorSideFromRequest(
     );
   }
   return bodySide ?? querySide;
+}
+
+function parseDiscordConnectorSourceInput(
+  value: unknown,
+): LifeOpsOwnerBrowserAccessSource | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new LifeOpsServiceError(
+      400,
+      `source must be one of: ${LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES.join(", ")}`,
+    );
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return undefined;
+  }
+  if (!isOneOf(normalized, LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES)) {
+    throw new LifeOpsServiceError(
+      400,
+      `source must be one of: ${LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES.join(", ")}`,
+    );
+  }
+  return normalized;
 }
 
 function parseGmailSpamReviewStatusInput(
@@ -1884,6 +1911,7 @@ export async function handleLifeOpsRoutes(
         res,
         await service.authorizeDiscordConnector(
           parseConnectorSideFromRequest(url, body),
+          parseDiscordConnectorSourceInput(body.source),
         ),
       );
     });

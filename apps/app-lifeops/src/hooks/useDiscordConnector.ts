@@ -2,6 +2,7 @@ import { client } from "@elizaos/app-core/api";
 import type {
   LifeOpsConnectorSide,
   LifeOpsDiscordConnectorStatus,
+  LifeOpsOwnerBrowserAccessSource,
 } from "@elizaos/shared/contracts/lifeops";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -98,18 +99,21 @@ export function useDiscordConnector(options: UseDiscordConnectorOptions = {}) {
     }
   }, [status?.reason, side, clearPoll]);
 
-  const connect = useCallback(async () => {
-    try {
-      setActionPending(true);
-      setError(null);
-      const nextStatus = await client.startDiscordConnector({ side });
-      setStatus(nextStatus);
-    } catch (cause) {
-      setError(formatError(cause, "Discord connector failed to start."));
-    } finally {
-      setActionPending(false);
-    }
-  }, [side]);
+  const connect = useCallback(
+    async (source?: LifeOpsOwnerBrowserAccessSource) => {
+      try {
+        setActionPending(true);
+        setError(null);
+        const nextStatus = await client.startDiscordConnector({ side, source });
+        setStatus(nextStatus);
+      } catch (cause) {
+        setError(formatError(cause, "Discord connector failed to start."));
+      } finally {
+        setActionPending(false);
+      }
+    },
+    [side],
+  );
 
   const disconnect = useCallback(async () => {
     try {

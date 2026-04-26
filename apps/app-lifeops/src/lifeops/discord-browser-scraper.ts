@@ -232,7 +232,7 @@ export function probeDiscordCapturedPage(
         mainText?: string | null;
         links?: Array<{ text: string; href: string }>;
         forms?: Array<{ action: string | null; fields: string[] }>;
-	      },
+      },
 ): DiscordTabProbe {
   const safeUrl = normalizeDiscordText(page.url);
   if (!safeUrl || !isDiscordUrl(safeUrl)) {
