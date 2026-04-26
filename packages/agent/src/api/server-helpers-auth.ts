@@ -484,16 +484,16 @@ export function ensureApiTokenForBindHost(host: string): void {
   setApiToken(process.env, generated);
 
   if (cloudProvisioned) {
-    console.warn(
+    logger.warn(
       "[eliza-api] Steward-managed cloud container started without ELIZA_API_TOKEN/ELIZA_API_TOKEN; generated a temporary inbound API token for this process.",
     );
   } else {
-    console.warn(
+    logger.warn(
       `[eliza-api] ELIZA_API_BIND/ELIZA_API_BIND=${host} is non-loopback and ELIZA_API_TOKEN/ELIZA_API_TOKEN is unset.`,
     );
   }
   const tokenFingerprint = `${generated.slice(0, 4)}...${generated.slice(-4)}`;
-  console.warn(
+  logger.warn(
     `[eliza-api] Generated temporary API token (${tokenFingerprint}) for this process. Set ELIZA_API_TOKEN or ELIZA_API_TOKEN explicitly to override.`,
   );
 }

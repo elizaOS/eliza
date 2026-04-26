@@ -182,17 +182,11 @@ export function StartupShell() {
         if (needsBootstrapSession()) {
           // Cloud-provisioned but no session yet. Lock the dashboard and show
           // the bootstrap wizard step. Fail closed: we do NOT advance.
-          console.log(
-            "[eliza][startup] Cloud-provisioned container — bootstrap session required",
-          );
           setShowBootstrap(true);
           return;
         }
 
         // Cloud-provisioned and session already established — skip the wizard.
-        console.log(
-          "[eliza][startup] Cloud-provisioned container with session — skipping wizard",
-        );
         setState("onboardingComplete", true);
         coordinatorDispatchRef.current({ type: "ONBOARDING_COMPLETE" });
       })
