@@ -152,9 +152,17 @@ describe("importPluginModuleFromPath", () => {
           name: "@elizaos/app-sample",
           version: "0.0.0",
           type: "module",
-          main: "./src/index.ts",
+          main: "./src/ui-entry.ts",
+          exports: {
+            ".": "./src/ui-entry.ts",
+            "./plugin": "./src/index.ts",
+          },
           peerDependencies: { react: "*" },
         }),
+      );
+      await fs.writeFile(
+        path.join(appRoot, "src", "ui-entry.ts"),
+        'throw new Error("UI entry should not be imported for runtime plugin loading");\n',
       );
       await fs.writeFile(
         path.join(appRoot, "src", "index.ts"),
@@ -175,6 +183,7 @@ describe("importPluginModuleFromPath", () => {
       const pluginModule = await importPluginModuleFromPath(
         appRoot,
         "@elizaos/app-sample",
+        "./plugin",
       );
       expect(pluginModule.appSamplePlugin).toBeDefined();
 
