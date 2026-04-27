@@ -421,6 +421,20 @@ describe("Actions", () => {
 			expect(replyDoc?.similes ?? []).not.toContain("SEND_REPLY");
 		});
 
+		it("keeps IGNORE available for group messages addressed elsewhere", () => {
+			const ignoreDoc = allActionDocs.find((doc) => doc.name === "IGNORE");
+			expect(ignoreDoc).toBeDefined();
+			expect(ignoreDoc?.description).toContain(
+				"In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent",
+			);
+			expect(ignoreDoc?.description).toContain(
+				"repo name, URL, quote, or third-person reference",
+			);
+			expect(ignoreDoc?.descriptionCompressed).toContain(
+				"addressed to someone else in a group",
+			);
+		});
+
 		it("should validate action structure", () => {
 			for (const action of mockActions) {
 				expect(action).toHaveProperty("name");
