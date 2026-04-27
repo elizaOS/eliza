@@ -21,6 +21,10 @@ type Mode = "sequential" | "web" | "counter-app";
 
 const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function codexHasStoredAuth(): boolean {
   if (process.env.OPENAI_API_KEY?.trim()) {
     return true;
@@ -29,10 +33,20 @@ function codexHasStoredAuth(): boolean {
   try {
     const authPath = path.join(os.homedir(), ".codex", "auth.json");
     const raw = fs.readFileSync(authPath, "utf8");
-    const parsed = JSON.parse(raw) as { OPENAI_API_KEY?: string };
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isRecord(parsed)) return false;
+    const apiKey = parsed.OPENAI_API_KEY;
+    if (typeof apiKey === "string" && apiKey.trim().length > 0) return true;
+    // ChatGPT-mode: tokens object with access_token + refresh_token, same
+    // shape the e2e test wrapper accepts.
+    const tokens = parsed.tokens;
     return (
-      typeof parsed.OPENAI_API_KEY === "string" &&
-      parsed.OPENAI_API_KEY.trim().length > 0
+      parsed.auth_mode === "chatgpt" &&
+      isRecord(tokens) &&
+      typeof tokens.access_token === "string" &&
+      tokens.access_token.trim().length > 0 &&
+      typeof tokens.refresh_token === "string" &&
+      tokens.refresh_token.trim().length > 0
     );
   } catch {
     return false;
@@ -43,7 +57,11 @@ function claudeHasDeterministicAuth(): boolean {
   if (process.env.ANTHROPIC_API_KEY?.trim()) {
     return true;
   }
-
+  // Claude Code reads CLAUDE_CODE_OAUTH_TOKEN at startup — that's the
+  // header-passthrough auth path that survives PTY spawn.
+  if (process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim()) {
+    return true;
+  }
   // Accept either the per-app credentials file or the OAuth-token file at
   // ~/.claude.json — same set the live e2e wrapper accepts.
   return (
