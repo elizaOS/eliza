@@ -179,8 +179,9 @@ export async function handleWhatsAppRoute(
 
   if (method === "POST" && pathname === "/api/whatsapp/pair") {
     const body = await readJsonBody<WhatsAppAccountBody>(req, res);
-    const configurePlugin = shouldConfigurePlugin(body);
     const authScope = resolveAuthScope(body?.authScope);
+    const configurePlugin =
+      authScope === "platform" && shouldConfigurePlugin(body);
     let accountId: string;
     try {
       accountId = deps.sanitizeAccountId(
@@ -346,8 +347,9 @@ export async function handleWhatsAppRoute(
 
   if (method === "POST" && pathname === "/api/whatsapp/disconnect") {
     const body = await readJsonBody<WhatsAppAccountBody>(req, res);
-    const configurePlugin = shouldConfigurePlugin(body);
     const authScope = resolveAuthScope(body?.authScope);
+    const configurePlugin =
+      authScope === "platform" && shouldConfigurePlugin(body);
     let accountId: string;
     try {
       accountId = deps.sanitizeAccountId(
