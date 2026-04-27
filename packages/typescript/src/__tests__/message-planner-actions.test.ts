@@ -2,10 +2,24 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	extractPlannerActionNames,
 	extractPlannerProviderNames,
+	getActionContinuationDecision,
 	resolvePlannerActionName,
 	withActionResultsForPrompt,
 } from "../services/message.ts";
-import type { ActionResult, State } from "../types";
+import type { Action, ActionResult, State } from "../types";
+
+function buildAction(
+	name: string,
+	options: Pick<Action, "similes" | "suppressPostActionContinuation"> = {},
+): Action {
+	return {
+		name,
+		description: name,
+		validate: async () => true,
+		handler: async () => undefined,
+		...options,
+	};
+}
 
 describe("extractPlannerActionNames", () => {
 	it("parses bare XML action entries without nested <name> tags", () => {
@@ -166,5 +180,61 @@ describe("withActionResultsForPrompt", () => {
 		expect(updated.values.actionResults).toContain("10. ACTION_10 - succeeded");
 		expect(updated.values.actionResults).not.toContain("OLD_ACTION");
 		expect(updated.data.actionResults).toBe(actionResults);
+	});
+});
+
+describe("getActionContinuationDecision", () => {
+	it("continues after non-terminal actions", () => {
+		const decision = getActionContinuationDecision(
+			{
+				actions: [buildAction("LOOK_UP_ORDER")],
+			},
+			{ actions: ["LOOK_UP_ORDER"] },
+		);
+
+		expect(decision).toEqual({
+			shouldContinue: true,
+			suppressed: false,
+			continuingActions: ["LOOK_UP_ORDER"],
+			suppressingActions: [],
+		});
+	});
+
+	it("does not continue after terminal-only actions", () => {
+		const decision = getActionContinuationDecision(
+			{
+				actions: [buildAction("REPLY")],
+			},
+			{ actions: ["REPLY"] },
+		);
+
+		expect(decision).toEqual({
+			shouldContinue: false,
+			suppressed: false,
+			continuingActions: [],
+			suppressingActions: [],
+		});
+	});
+
+	it("globally suppresses continuation when any selected action owns the turn", () => {
+		const decision = getActionContinuationDecision(
+			{
+				actions: [
+					buildAction("LOOK_UP_ORDER"),
+					buildAction("CALL_USER", {
+						similes: ["PHONE_OWNER"],
+						suppressPostActionContinuation: true,
+					}),
+				],
+			},
+			{ actions: ["LOOK_UP_ORDER", "PHONE_OWNER"] },
+		);
+
+		expect(decision).toEqual({
+			shouldContinue: false,
+			suppressed: true,
+			continuingActions: ["LOOK_UP_ORDER"],
+			suppressingActions: ["CALL_USER"],
+		});
 	});
 });

@@ -2,11 +2,11 @@
  * SHELL_COMMAND action — runs a shell command on the server.
  *
  * When triggered the action:
- *   1. Extracts the command from the parameters, NL text, or MCP-style JSON
+ *   1. Extracts the command from parameters or MCP-style JSON
  *   2. POSTs to the local API server to execute it
  *   3. The API broadcasts output via WebSocket for real-time display
- *   4. Optionally captures the output and stores it in bounded clipboard state
- *   5. Returns a descriptive text response
+ *   4. Captures the output for the post-action LLM response
+ *   5. Stores the full output as a document attachment for follow-up actions
  *
  * @module actions/terminal
  */
@@ -16,31 +16,27 @@ import type {
   ActionExample,
   HandlerOptions,
   IAgentRuntime,
+  JsonValue,
+  Media,
   Memory,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { ContentType, logger, stringToUuid } from "@elizaos/core";
 import { hasOwnerAccess } from "../security/access.js";
 
 /** API port for posting terminal requests. */
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
+const TERMINAL_ACTION_NAME = "SHELL_COMMAND";
 
 const FAIL = { success: false, text: "" } as const;
 
 type TerminalActionParameters = {
-  arguments?: unknown;
-  command?: unknown;
-  shellCommand?: unknown;
-  addToClipboard?: unknown;
-  persistToClipboard?: unknown;
-  saveToClipboard?: unknown;
-  clipboardTitle?: unknown;
-  title?: unknown;
+  arguments?: JsonValue;
+  command?: JsonValue;
+  shellCommand?: JsonValue;
 };
 
 type TerminalActionInput = {
   command?: string;
-  addToClipboard: boolean;
-  clipboardTitle?: string;
 };
 
 type CapturedTerminalRun = {
@@ -54,97 +50,34 @@ type CapturedTerminalRun = {
   maxDurationMs?: number;
 };
 
-type ClipboardStoreResult = {
-  requested?: boolean;
-  stored: boolean;
-  replaced?: boolean;
-  reason?: string;
-  item?: {
-    id?: string;
-    title?: string;
-  };
-  snapshot?: {
-    items: unknown[];
-    maxItems: number;
-  };
+type TerminalOutputAttachment = {
+  attachment: Media;
+  memoryId?: string;
 };
 
-type ClipboardStoreFn = (
-  runtime: IAgentRuntime,
-  message: Memory,
-  options: {
-    fallbackTitle: string;
-    content: string;
-    sourceType: string;
-    sourceId: string;
-    sourceLabel: string;
-  },
-) => Promise<ClipboardStoreResult>;
-
-let cachedClipboardStoreFn: ClipboardStoreFn | null | undefined;
-
-function parseBooleanFlag(value: unknown): boolean {
-  if (value === true) {
-    return true;
-  }
-  if (typeof value === "string") {
-    return /^(true|1|yes|y|on)$/i.test(value.trim());
-  }
-  return false;
-}
-
-function readStringValue(value: unknown): string | undefined {
+function readStringValue(value: JsonValue | undefined): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function isJsonRecord(value: JsonValue): value is Record<string, JsonValue> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function parseJsonArguments(
-  value: unknown,
-): Record<string, unknown> | undefined {
+  value: JsonValue | undefined,
+): Record<string, JsonValue> | undefined {
   if (typeof value !== "string" || !value.trim()) {
     return undefined;
   }
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown> | null;
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+    const parsed = JSON.parse(value) as JsonValue;
+    if (isJsonRecord(parsed)) {
       return parsed;
     }
   } catch {
     // Ignore invalid MCP-style argument payloads and fall back to NL parsing.
   }
   return undefined;
-}
-
-function resolveClipboardRequested(
-  params: TerminalActionParameters,
-  argumentParams: Record<string, unknown> | undefined,
-  message?: Memory,
-): boolean {
-  return [
-    params.addToClipboard,
-    params.persistToClipboard,
-    params.saveToClipboard,
-    argumentParams?.addToClipboard,
-    argumentParams?.persistToClipboard,
-    argumentParams?.saveToClipboard,
-    message?.content?.addToClipboard,
-    message?.content?.persistToClipboard,
-    message?.content?.saveToClipboard,
-  ].some((value) => parseBooleanFlag(value));
-}
-
-function resolveClipboardTitle(
-  params: TerminalActionParameters,
-  argumentParams: Record<string, unknown> | undefined,
-  message?: Memory,
-): string | undefined {
-  return (
-    readStringValue(params.clipboardTitle) ??
-    readStringValue(params.title) ??
-    readStringValue(argumentParams?.clipboardTitle) ??
-    readStringValue(argumentParams?.title) ??
-    readStringValue(message?.content?.clipboardTitle) ??
-    readStringValue(message?.content?.title)
-  );
 }
 
 /**
@@ -154,12 +87,8 @@ function resolveClipboardTitle(
  *   1. `parameters.command` — explicit parameter
  *   2. `parameters.shellCommand` — explicit alias
  *   3. `parameters.arguments` — MCP-style JSON string like `{"command":"ls"}`
- *   4. Natural language extraction from message text
  */
-function getCommand(
-  options?: HandlerOptions,
-  _message?: Memory,
-): string | undefined {
+function getCommand(options?: HandlerOptions): string | undefined {
   const params = (options?.parameters ?? {}) as TerminalActionParameters;
   const argumentParams = parseJsonArguments(params.arguments);
 
@@ -177,28 +106,17 @@ function getCommand(
   );
 }
 
-function resolveTerminalInput(
-  options?: HandlerOptions,
-  message?: Memory,
-): TerminalActionInput {
-  const params = (options?.parameters ?? {}) as TerminalActionParameters;
-  const argumentParams = parseJsonArguments(params.arguments);
-
+function resolveTerminalInput(options?: HandlerOptions): TerminalActionInput {
   return {
-    command: getCommand(options, message),
-    addToClipboard: resolveClipboardRequested(params, argumentParams, message),
-    clipboardTitle: resolveClipboardTitle(params, argumentParams, message),
+    command: getCommand(options),
   };
 }
 
 function normalizeCapturedRun(
   command: string,
-  value: unknown,
+  value: JsonValue,
 ): CapturedTerminalRun {
-  const data =
-    value && typeof value === "object" && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
+  const data = isJsonRecord(value) ? value : {};
   const exitCode =
     typeof data.exitCode === "number" && Number.isFinite(data.exitCode)
       ? data.exitCode
@@ -218,31 +136,6 @@ function normalizeCapturedRun(
         ? data.maxDurationMs
         : undefined,
   };
-}
-
-async function getClipboardStoreFn(): Promise<ClipboardStoreFn | null> {
-  if (cachedClipboardStoreFn !== undefined) {
-    return cachedClipboardStoreFn;
-  }
-
-  try {
-    const clipboardModule =
-      "@elizaos/core/advanced-capabilities/clipboard/index";
-    const mod = (await import(/* @vite-ignore */ clipboardModule)) as {
-      maybeStoreTaskClipboardItem?: ClipboardStoreFn;
-    };
-    cachedClipboardStoreFn =
-      typeof mod.maybeStoreTaskClipboardItem === "function"
-        ? mod.maybeStoreTaskClipboardItem
-        : null;
-  } catch (error) {
-    cachedClipboardStoreFn = null;
-    logger.warn(
-      `[terminal] Clipboard plugin unavailable; shell output will not be persisted (${error instanceof Error ? error.message : String(error)})`,
-    );
-  }
-
-  return cachedClipboardStoreFn;
 }
 
 function formatOutputBlock(content: string): string {
@@ -268,98 +161,99 @@ function buildCommandArtifactContent(result: CapturedTerminalRun): string {
     .join("\n");
 }
 
-async function maybeStoreCommandOutput(
+function buildOutputPreview(content: string, maxLength = 3_000): string {
+  const trimmed = content.trimEnd();
+  if (trimmed.length <= maxLength) {
+    return formatOutputBlock(trimmed);
+  }
+  return `${trimmed.slice(0, maxLength).trimEnd()}\n\n[... ${trimmed.length - maxLength} chars omitted; use the attachment for full output ...]`;
+}
+
+async function createCommandOutputAttachment(
   runtime: IAgentRuntime | undefined,
   message: Memory,
-  input: TerminalActionInput,
   result: CapturedTerminalRun,
-) {
-  if (!input.addToClipboard) {
-    return {
-      requested: false,
-      stored: false,
-    } as const;
+): Promise<TerminalOutputAttachment | undefined> {
+  if (!runtime?.createMemory) {
+    return undefined;
   }
 
-  if (!runtime) {
-    return {
-      requested: true,
-      stored: false,
-      reason:
-        "Runtime unavailable; command output could not be added to the clipboard.",
-    } as const;
+  const attachmentId = stringToUuid(
+    `terminal-output:${message.id ?? message.roomId}:${result.runId ?? result.command}:${Date.now()}`,
+  );
+  const title = `Shell output: ${result.command}`;
+  const attachment: Media = {
+    id: attachmentId,
+    url: `memory://terminal-output/${attachmentId}`,
+    title,
+    source: TERMINAL_ACTION_NAME,
+    description: `Full stdout/stderr for \`${result.command}\` (exit ${result.exitCode}).`,
+    text: buildCommandArtifactContent(result),
+    contentType: ContentType.DOCUMENT,
+  };
+
+  try {
+    const memoryId = await runtime.createMemory(
+      {
+        id: stringToUuid(`terminal-output-memory:${attachmentId}`),
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        roomId: message.roomId,
+        createdAt: Date.now(),
+        content: {
+          text: `Stored terminal output attachment ${attachment.id}: ${attachment.title}`,
+          source: TERMINAL_ACTION_NAME,
+          attachments: [attachment],
+        },
+      },
+      "messages",
+    );
+
+    return { attachment, memoryId };
+  } catch (error) {
+    logger.warn(
+      `[terminal] Failed to store shell output attachment (${error instanceof Error ? error.message : String(error)})`,
+    );
+    return { attachment };
   }
-
-  const clipboardMessage = {
-    ...message,
-    content: {
-      ...message.content,
-      addToClipboard: true,
-      ...(input.clipboardTitle ? { clipboardTitle: input.clipboardTitle } : {}),
-    },
-  } as Memory;
-
-  const storeClipboardItem = await getClipboardStoreFn();
-  if (!storeClipboardItem) {
-    return {
-      requested: true,
-      stored: false,
-      reason:
-        "Clipboard plugin unavailable; command output could not be added to the clipboard.",
-    } as const;
-  }
-
-  return storeClipboardItem(runtime, clipboardMessage, {
-    fallbackTitle: input.clipboardTitle ?? result.command,
-    content: buildCommandArtifactContent(result),
-    sourceType: "command",
-    sourceId: result.command,
-    sourceLabel: result.command,
-  });
 }
 
 function buildCapturedResponseText(
   result: CapturedTerminalRun,
-  clipboardResult: Awaited<ReturnType<typeof maybeStoreCommandOutput>>,
+  outputAttachment: TerminalOutputAttachment | undefined,
 ): string {
-  const clipboardItem = clipboardResult.stored
-    ? clipboardResult.item
-    : undefined;
-  const clipboardSnapshot = clipboardResult.stored
-    ? clipboardResult.snapshot
-    : undefined;
+  const outputContent = buildCommandArtifactContent(result);
 
   return [
-    `Executed shell command: \`${result.command}\``,
+    `Shell command completed: \`${result.command}\``,
     `Exit code: ${result.exitCode}`,
     result.timedOut
       ? `Timed out${typeof result.maxDurationMs === "number" ? ` after ${result.maxDurationMs} ms` : ""}.`
       : "",
     result.truncated ? "Captured output truncated to 128 KB." : "",
-    clipboardResult.requested
-      ? clipboardResult.stored
-        ? `${clipboardResult.replaced ? "Updated" : "Added"} clipboard item ${clipboardItem?.id ?? "unknown"}: ${clipboardItem?.title ?? result.command}`
-        : `Clipboard add skipped: ${clipboardResult.reason}`
+    outputAttachment
+      ? `Full output attachment: ${outputAttachment.attachment.id} (${outputAttachment.attachment.title})`
       : "",
-    clipboardSnapshot
-      ? `Clipboard usage: ${clipboardSnapshot.items.length}/${clipboardSnapshot.maxItems}.`
-      : "",
-    clipboardSnapshot
-      ? "Clear unused clipboard state when it is no longer needed."
-      : "",
+    outputAttachment?.memoryId
+      ? `Attachment memory: ${outputAttachment.memoryId}`
+      : outputAttachment
+        ? "Attachment memory could not be persisted; full output is still present in this action result."
+        : "No attachment was stored for this output.",
     "",
-    "STDOUT:",
-    formatOutputBlock(result.stdout),
+    "Output preview:",
+    buildOutputPreview(outputContent),
     "",
-    "STDERR:",
-    formatOutputBlock(result.stderr),
+    "Next-step contract for the planner:",
+    "- Decide whether to reply to the user, stay silent, or continue with another action.",
+    "- If the output should be kept for this task, call SAVE_ATTACHMENT_TO_CLIPBOARD with the attachmentId above.",
+    "- If replying, answer naturally from the output instead of echoing this report.",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
 export const terminalAction: Action = {
-  name: "SHELL_COMMAND",
+  name: TERMINAL_ACTION_NAME,
 
   similes: [
     "RUN_IN_TERMINAL",
@@ -376,7 +270,7 @@ export const terminalAction: Action = {
     "Run a single explicit shell command that the user provided directly. " +
     "Only use when the user gives a specific command like 'run ls -la' or 'execute npm install'. " +
     "Do NOT use for building projects, creating websites, or multi-step work — use CREATE_TASK instead. " +
-    "Set addToClipboard=true to capture the command output, return it inline, and store it in bounded clipboard state.",
+    "The command output is captured as a document attachment for post-action planning. After the run, decide whether to reply, stay silent, continue with another action, or save the attachment via the clipboard plugin.",
 
   validate: async (runtime, message) => {
     // Permission is the only gate here. Whether the action is relevant to the
@@ -394,10 +288,7 @@ export const terminalAction: Action = {
       };
     }
 
-    const input = resolveTerminalInput(
-      options as HandlerOptions | undefined,
-      message as Memory | undefined,
-    );
+    const input = resolveTerminalInput(options as HandlerOptions | undefined);
     const command = input.command;
 
     if (!command) {
@@ -413,7 +304,7 @@ export const terminalAction: Action = {
           body: JSON.stringify({
             command,
             clientId: "runtime-terminal-action",
-            ...(input.addToClipboard ? { captureOutput: true } : {}),
+            captureOutput: true,
           }),
         },
       );
@@ -422,28 +313,23 @@ export const terminalAction: Action = {
         return FAIL;
       }
 
-      if (!input.addToClipboard) {
-        return {
-          text: `Running in terminal: \`${command}\``,
-          success: true,
-          data: { command },
-        };
-      }
-
-      const capturedRun = normalizeCapturedRun(command, await response.json());
-      const clipboardResult = await maybeStoreCommandOutput(
-        runtime as IAgentRuntime | undefined,
-        message as Memory,
-        input,
+      const responseBody = (await response.json()) as JsonValue;
+      const capturedRun = normalizeCapturedRun(command, responseBody);
+      const outputAttachment = await createCommandOutputAttachment(
+        runtime,
+        message,
         capturedRun,
       );
 
       return {
-        text: buildCapturedResponseText(capturedRun, clipboardResult),
+        text: buildCapturedResponseText(capturedRun, outputAttachment),
         success: true,
         data: {
+          actionName: TERMINAL_ACTION_NAME,
           ...capturedRun,
-          clipboard: clipboardResult,
+          outputAttachment: outputAttachment?.attachment,
+          outputAttachmentMemoryId: outputAttachment?.memoryId,
+          suppressVisibleCallback: true,
         },
       };
     } catch {
@@ -458,19 +344,6 @@ export const terminalAction: Action = {
       required: true,
       schema: { type: "string" as const },
     },
-    {
-      name: "addToClipboard",
-      description:
-        "When true, wait for the command to finish, capture stdout/stderr, and store the result in bounded clipboard state.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-    {
-      name: "clipboardTitle",
-      description: "Optional clipboard title to use when addToClipboard=true.",
-      required: false,
-      schema: { type: "string" as const },
-    },
   ],
   examples: [
     [
@@ -483,7 +356,7 @@ export const terminalAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "Running in terminal: `ls -la`",
+          text: "The directory listing completed. It shows the current files and folders in your home directory.",
         },
       },
     ],
@@ -497,7 +370,7 @@ export const terminalAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "Executed shell command: `git status`\nExit code: 0",
+          text: "The `git status` output was captured. I saved the full output as an attachment and can keep it in the clipboard if it is useful for the next step.",
         },
       },
     ],
