@@ -656,7 +656,7 @@ type ProjectPackageInfo = {
 
 type StructuredProofClaim = {
 	kind: StructuredProofKind;
-	name: string;
+	projectName: string;
 	files: string[];
 	tests: TestRunSummary;
 };
@@ -741,6 +741,14 @@ function proofField(proof: Record<string, unknown>, field: string): unknown {
 	return undefined;
 }
 
+function hasProofField(proof: Record<string, unknown>, field: string): boolean {
+	if (Object.hasOwn(proof, field)) {
+		return true;
+	}
+	const extra = proof.extra;
+	return isRecord(extra) && Object.hasOwn(extra, field);
+}
+
 function isNonNegativeInteger(value: unknown): value is number {
 	return (
 		typeof value === "number" &&
@@ -763,13 +771,19 @@ function parseStructuredProofClaim(
 		};
 	}
 
+	for (const legacyField of ["name", "testsPassed", "lintClean"]) {
+		if (hasProofField(raw, legacyField)) {
+			issues.push(
+				`structured proof uses legacy field ${legacyField}; emit the canonical ${expectedKind} schema`,
+			);
+		}
+	}
+
 	const kindValue = proofField(raw, "kind");
 	const kind =
-		kindValue === undefined
-			? expectedKind
-			: kindValue === "APP_CREATE_DONE" || kindValue === "PLUGIN_CREATE_DONE"
-				? kindValue
-				: undefined;
+		kindValue === "APP_CREATE_DONE" || kindValue === "PLUGIN_CREATE_DONE"
+			? kindValue
+			: undefined;
 	if (!kind) {
 		issues.push(
 			`structured proof kind must be ${expectedKind}; received ${String(kindValue)}`,
@@ -780,23 +794,22 @@ function parseStructuredProofClaim(
 		);
 	}
 
-	const nameValue = proofField(raw, "name");
-	const appNameValue = proofField(raw, "appName");
-	const name =
+	const nameField =
+		expectedKind === "APP_CREATE_DONE" ? "appName" : "pluginName";
+	const forbiddenNameField =
+		expectedKind === "APP_CREATE_DONE" ? "pluginName" : "appName";
+	const nameValue = proofField(raw, nameField);
+	const projectName =
 		typeof nameValue === "string" && nameValue.trim().length > 0
 			? nameValue.trim()
-			: typeof appNameValue === "string" && appNameValue.trim().length > 0
-				? appNameValue.trim()
-				: undefined;
-	if (!name) {
-		issues.push("structured proof must include a non-empty name or appName");
+			: undefined;
+	if (!projectName) {
+		issues.push(`structured proof must include a non-empty ${nameField}`);
 	}
-	if (
-		typeof nameValue === "string" &&
-		typeof appNameValue === "string" &&
-		nameValue.trim() !== appNameValue.trim()
-	) {
-		issues.push("structured proof name and appName must match when both exist");
+	if (hasProofField(raw, forbiddenNameField)) {
+		issues.push(
+			`structured proof ${forbiddenNameField} is invalid for ${expectedKind}`,
+		);
 	}
 
 	const filesValue = proofField(raw, "files");
@@ -821,10 +834,6 @@ function parseStructuredProofClaim(
 	if (lint !== "ok") {
 		issues.push('structured proof must include lint:"ok"');
 	}
-	const lintClean = proofField(raw, "lintClean");
-	if (lintClean !== undefined && lintClean !== true) {
-		issues.push("structured proof lintClean must be true when present");
-	}
 
 	const testsValue = proofField(raw, "tests");
 	let tests: TestRunSummary | undefined;
@@ -847,19 +856,11 @@ function parseStructuredProofClaim(
 			tests = { passed, failed };
 		}
 	}
-	const legacyTestsPassed = proofField(raw, "testsPassed");
-	if (
-		legacyTestsPassed !== undefined &&
-		(!isNonNegativeInteger(legacyTestsPassed) ||
-			(tests && legacyTestsPassed !== tests.passed))
-	) {
-		issues.push("structured proof testsPassed must match tests.passed");
-	}
 
-	if (!kind || !name || !files || !tests || issues.length > 0) {
+	if (!kind || !projectName || !files || !tests || issues.length > 0) {
 		return { issues };
 	}
-	return { claim: { kind, name, files, tests }, issues };
+	return { claim: { kind, projectName, files, tests }, issues };
 }
 
 async function validateClaimedFiles(
@@ -1023,8 +1024,9 @@ function buildRetryPrompt(
 	lines.push(
 		"After fixing the issues, rerun `bun run typecheck`, `bun run lint`, and `bun run test`, then re-emit exactly one structured completion line:",
 	);
+	const nameField = proofKind === "APP_CREATE_DONE" ? "appName" : "pluginName";
 	lines.push(
-		`${proofKind} {"name":"<package-name>","files":["src/index.ts"],"testsPassed":<exact passed count>,"lintClean":true,"typecheck":"ok","lint":"ok","tests":{"passed":<exact passed count>,"failed":0},"description":"<one factual sentence>"}`,
+		`${proofKind} {"${nameField}":"<package-name>","files":["src/index.ts"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok","description":"<one factual sentence>"}`,
 	);
 	const text = lines.join("\n");
 	return truncate(text, RETRY_PROMPT_LIMIT);
