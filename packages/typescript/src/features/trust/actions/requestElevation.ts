@@ -11,6 +11,7 @@ export const requestElevationAction: ElizaAction = {
 	name: "REQUEST_ELEVATION",
 	description:
 		"Request temporary elevation of permissions for a specific action",
+	suppressPostActionContinuation: true,
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -113,11 +114,12 @@ export const requestElevationAction: ElizaAction = {
 		} | null;
 
 		if (!requestData?.action) {
-			return {
-				success: false,
-				text: 'Please specify the action you need elevated permissions for. Example: "I need to manage roles to help moderate the channel"',
-				error: "No action specified",
-			};
+				return {
+					success: false,
+					text: 'Please specify the action you need elevated permissions for. Example: "I need to manage roles to help moderate the channel"',
+					error: "No action specified",
+					data: { actionName: "REQUEST_ELEVATION" },
+				};
 		}
 
 		const trustProfile = await trustEngine.evaluateTrust(
@@ -154,8 +156,9 @@ export const requestElevationAction: ElizaAction = {
 					text: `Elevation approved! You have been granted temporary ${requestData.action} permissions until ${expiryTime}.
 
 Please use these permissions responsibly. All actions will be logged for audit.`,
-					data: {
-						approved: true,
+						data: {
+							actionName: "REQUEST_ELEVATION",
+							approved: true,
 						expiresAt: result.ttl ? Date.now() + result.ttl : undefined,
 						method: result.method,
 					},
@@ -172,8 +175,9 @@ Please use these permissions responsibly. All actions will be logged for audit.`
 				return {
 					success: false,
 					text: denialMessage,
-					data: {
-						approved: false,
+						data: {
+							actionName: "REQUEST_ELEVATION",
+							approved: false,
 						reason: result.reason,
 						currentTrust: trustProfile.overallTrust,
 					},
@@ -186,9 +190,10 @@ Please use these permissions responsibly. All actions will be logged for audit.`
 			);
 			return {
 				success: false,
-				text: "Failed to process elevation request. Please try again.",
-				error: error instanceof Error ? error.message : "Unknown error",
-			};
+					text: "Failed to process elevation request. Please try again.",
+					error: error instanceof Error ? error.message : "Unknown error",
+					data: { actionName: "REQUEST_ELEVATION" },
+				};
 		}
 	},
 
