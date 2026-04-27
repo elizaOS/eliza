@@ -5259,6 +5259,56 @@ export class DefaultMessageService implements IMessageService {
 				break;
 			}
 			traceActionResults.push(...latestActionResults);
+
+			// Break the post-action continuation loop when any of the just-run
+			// actions returned a "needs human confirmation" signal. The
+			// confirmation has to come from the next user message — there is
+			// nothing the agent can do to supply it on its own. Without this,
+			// REMOTE_DESKTOP / OWNER_SEND_MESSAGE confirm-then-dispatch /
+			// BLOCK_WEBSITES re-fire their plan every iteration until
+			// maxMultiStepIterations is hit.
+			const confirmErrorCodes = new Set([
+				"CONFIRMATION_REQUIRED",
+				"NOT_CONFIRMED",
+				"REQUIRES_CONFIRMATION",
+				"AWAITING_CONFIRMATION",
+				"NEEDS_CONFIRMATION",
+			]);
+			const requiresConfirmation = latestActionResults.some((r) => {
+				const v =
+					r &&
+					"values" in r &&
+					typeof r.values === "object" &&
+					r.values !== null
+						? (r.values as Record<string, unknown>)
+						: null;
+				const d =
+					r &&
+					"data" in r &&
+					typeof r.data === "object" &&
+					r.data !== null
+						? (r.data as Record<string, unknown>)
+						: null;
+				const ve = typeof v?.error === "string" ? v.error : "";
+				const de = typeof d?.error === "string" ? d.error : "";
+				return (
+					v?.requiresConfirmation === true ||
+					d?.requiresConfirmation === true ||
+					confirmErrorCodes.has(ve) ||
+					confirmErrorCodes.has(de)
+				);
+			});
+			if (requiresConfirmation) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						agentId: runtime.agentId,
+						iteration: iterationCount + 1,
+					},
+					"Post-action continuation: action returned requiresConfirmation — terminating loop until next user message",
+				);
+				break;
+			}
 		}
 
 		accumulatedState = withTaskCompletion(
