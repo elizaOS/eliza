@@ -74,6 +74,7 @@ interface RoleAssignment {
 
 export const updateRoleAction: ElizaAction = {
 	name: "UPDATE_ROLE",
+	suppressPostActionContinuation: true,
 	similes: ["CHANGE_ROLE", "SET_PERMISSIONS", "ASSIGN_ROLE", "MAKE_ADMIN"],
 	description:
 		"Assigns a role (Admin, Owner, None) to a user or list of users in a channel.",
@@ -172,10 +173,11 @@ export const updateRoleAction: ElizaAction = {
 			await callback?.({
 				text: "I couldn't find the world. This action only works in a world.",
 			});
-			return {
-				success: false,
-				data: {
+				return {
 					success: false,
+					data: {
+						actionName: "UPDATE_ROLE",
+						success: false,
 					error: "World not found",
 				},
 			};
@@ -256,10 +258,11 @@ export const updateRoleAction: ElizaAction = {
 				actions: ["UPDATE_ROLE"],
 				source: "discord",
 			});
-			return {
-				success: false,
-				data: {
+				return {
 					success: false,
+					data: {
+						actionName: "UPDATE_ROLE",
+						success: false,
 					message: "No valid role assignments found",
 				},
 			};
@@ -311,10 +314,11 @@ export const updateRoleAction: ElizaAction = {
 			logger.info(`Updated roles in world metadata for server ${serverId}`);
 		}
 
-		return {
-			success: worldUpdated,
-			data: {
+			return {
 				success: worldUpdated,
+				data: {
+					actionName: "UPDATE_ROLE",
+					success: worldUpdated,
 				updatedRoles,
 				totalProcessed: result.length,
 				totalUpdated: updatedRoles.length,

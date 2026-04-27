@@ -554,6 +554,7 @@ async function generateErrorResponse(
 
 export const updateSettingsAction: ElizaAction = {
 	name: "UPDATE_SETTINGS",
+	suppressPostActionContinuation: true,
 	similes: ["UPDATE_SETTING", "SAVE_SETTING", "SET_CONFIGURATION", "CONFIGURE"],
 	description:
 		"Saves a configuration setting during the onboarding process, or update an existing setting. Use this when you are onboarding with a world owner or admin.",
@@ -651,32 +652,38 @@ export const updateSettingsAction: ElizaAction = {
 			const serverOwnership = worlds?.find((world) => world.metadata?.settings);
 			if (!serverOwnership) {
 				await generateErrorResponse(runtime, state, callback);
-				return {
-					success: false,
-					text: "No server found where you are the owner",
-					data: { error: "NO_SERVER_OWNERSHIP" },
-				};
+					return {
+						success: false,
+						text: "No server found where you are the owner",
+						data: {
+							actionName: "UPDATE_SETTINGS",
+							error: "NO_SERVER_OWNERSHIP",
+						},
+					};
 			}
 
 			const serverId = serverOwnership?.messageServerId;
 
 			if (!serverId) {
-				return {
-					success: false,
-					text: "No server ID found",
-					data: { error: "NO_SERVER_ID" },
-				};
+					return {
+						success: false,
+						text: "No server ID found",
+						data: { actionName: "UPDATE_SETTINGS", error: "NO_SERVER_ID" },
+					};
 			}
 
 			const worldSettings = await getWorldSettings(runtime, serverId);
 
 			if (!worldSettings) {
 				await generateErrorResponse(runtime, state, callback);
-				return {
-					success: false,
-					text: "No settings state found for server",
-					data: { error: "NO_SETTINGS_STATE" },
-				};
+					return {
+						success: false,
+						text: "No settings state found for server",
+						data: {
+							actionName: "UPDATE_SETTINGS",
+							error: "NO_SETTINGS_STATE",
+						},
+					};
 			}
 
 			const extractedSettings = await extractSettingValues(
@@ -697,11 +704,14 @@ export const updateSettingsAction: ElizaAction = {
 				const updatedWorldSettings = await getWorldSettings(runtime, serverId);
 				if (!updatedWorldSettings) {
 					await generateErrorResponse(runtime, state, callback);
-					return {
-						success: false,
-						text: "Failed to retrieve updated settings state",
-						data: { error: "SETTINGS_RETRIEVAL_FAILED" },
-					};
+						return {
+							success: false,
+							text: "Failed to retrieve updated settings state",
+							data: {
+								actionName: "UPDATE_SETTINGS",
+								error: "SETTINGS_RETRIEVAL_FAILED",
+							},
+						};
 				}
 
 				await generateSuccessResponse(
@@ -715,8 +725,9 @@ export const updateSettingsAction: ElizaAction = {
 				return {
 					success: true,
 					text: updateResults.messages.join(". "),
-					data: {
-						success: true,
+						data: {
+							actionName: "UPDATE_SETTINGS",
+							success: true,
 						updatedSettings: extractedSettings,
 						messages: updateResults.messages,
 					},
@@ -727,8 +738,9 @@ export const updateSettingsAction: ElizaAction = {
 				return {
 					success: false,
 					text: "No settings were updated from your message",
-					data: {
-						success: false,
+						data: {
+							actionName: "UPDATE_SETTINGS",
+							success: false,
 						reason: "NO_VALID_SETTINGS_FOUND",
 					},
 				};
@@ -742,8 +754,9 @@ export const updateSettingsAction: ElizaAction = {
 			return {
 				success: false,
 				text: "An error occurred while updating settings",
-				data: {
-					error: error instanceof Error ? error.message : "UNKNOWN_ERROR",
+					data: {
+						actionName: "UPDATE_SETTINGS",
+						error: error instanceof Error ? error.message : "UNKNOWN_ERROR",
 				},
 			};
 		}
