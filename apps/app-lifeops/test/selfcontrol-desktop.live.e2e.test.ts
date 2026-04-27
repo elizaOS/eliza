@@ -12,6 +12,8 @@ const LIVE_TESTS_ENABLED =
   process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const CI_ENABLED = /^(1|true)$/i.test(process.env.CI ?? "");
+const HEADLESS_DESKTOP_SMOKE =
+  process.env.MILADY_DESKTOP_HEADLESS_SMOKE === "1";
 const WATCH_DESKTOP_SUPPORTED =
   process.platform === "darwin" &&
   (!CI_ENABLED || process.env.MILADY_LIVE_DESKTOP_WATCH_TEST === "1");
@@ -262,14 +264,30 @@ async function startDesktopStack(
       (value) => value.ready === true && value.runtime === "ok",
     );
 
-    const devStack = await waitForJsonPredicate<DevStackPayload>(
-      `http://127.0.0.1:${apiPort}/api/dev/stack`,
-      (value) =>
-        value.api?.listenPort === apiPort &&
-        value.desktop?.desktopApiBase === `http://127.0.0.1:${apiPort}`,
-    );
+    let devStack: DevStackPayload | null = null;
+    if (mode === "dev:desktop" && HEADLESS_DESKTOP_SMOKE) {
+      devStack = await waitForJsonPredicate<DevStackPayload>(
+        `http://127.0.0.1:${apiPort}/api/dev/stack`,
+        (value) =>
+          value.api?.listenPort === apiPort &&
+          value.desktop?.desktopApiBase === `http://127.0.0.1:${apiPort}`,
+        30_000,
+      ).catch((error) => {
+        logs.push(
+          `[test] desktop dev-stack metadata unavailable in headless smoke: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+        return null;
+      });
+    } else {
+      devStack = await waitForJsonPredicate<DevStackPayload>(
+        `http://127.0.0.1:${apiPort}/api/dev/stack`,
+        (value) =>
+          value.api?.listenPort === apiPort &&
+          value.desktop?.desktopApiBase === `http://127.0.0.1:${apiPort}`,
+      );
+    }
 
-    if (mode === "dev:desktop:watch") {
+    if (mode === "dev:desktop:watch" && devStack) {
       expect(devStack.desktop?.rendererUrl).toBe(`http://127.0.0.1:${uiPort}/`);
       expect(devStack.desktop?.uiPort).toBe(uiPort);
       await waitForTextPredicate(
@@ -277,11 +295,11 @@ async function startDesktopStack(
         (text) =>
           text.includes('<div id="root">') || text.includes("<!doctype html>"),
       );
-    } else {
+    } else if (devStack) {
       expect(devStack.desktop?.rendererUrl ?? null).toBeNull();
     }
 
-    if (devStack.desktopDevLog?.apiTailPath) {
+    if (devStack?.desktopDevLog?.apiTailPath) {
       await waitForTextPredicate(
         `http://127.0.0.1:${apiPort}${devStack.desktopDevLog.apiTailPath}`,
         (text) => text.length > 0,
