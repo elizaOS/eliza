@@ -2554,6 +2554,20 @@ export interface LifeOpsSignalConnectorStatus {
   degradations?: LifeOpsConnectorDegradation[];
 }
 
+export interface SendLifeOpsSignalMessageRequest {
+  side?: LifeOpsConnectorSide;
+  recipient: string;
+  text: string;
+}
+
+export interface SendLifeOpsSignalMessageResponse {
+  provider: "signal";
+  side: LifeOpsConnectorSide;
+  recipient: string;
+  ok: true;
+  timestamp: number;
+}
+
 /**
  * A single inbound Signal message as returned by {@link readSignalInbound} and
  * the signal-local-client reader.
@@ -2717,6 +2731,7 @@ export interface LifeOpsWhatsAppConnectorStatus {
    */
   inbound: true;
   phoneNumberId?: string;
+  phoneNumber?: string | null;
   localAuthAvailable?: boolean;
   localAuthRegistered?: boolean | null;
   serviceConnected?: boolean;
@@ -2809,6 +2824,46 @@ export interface LifeOpsSignalPairingStatus {
 export interface StartLifeOpsDiscordConnectorRequest {
   side?: LifeOpsConnectorSide;
   source?: LifeOpsOwnerBrowserAccessSource;
+}
+
+export interface SendLifeOpsDiscordMessageRequest {
+  side?: LifeOpsConnectorSide;
+  channelId?: string;
+  text: string;
+}
+
+export interface SendLifeOpsDiscordMessageResponse {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  channelId: string;
+  ok: true;
+  deliveryStatus: "sent" | "sending" | "failed" | "unknown";
+}
+
+export interface VerifyLifeOpsDiscordConnectorRequest {
+  side?: LifeOpsConnectorSide;
+  channelId?: string;
+  sendMessage?: string;
+}
+
+export interface VerifyLifeOpsDiscordConnectorResponse {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  verifiedAt: string;
+  status: LifeOpsDiscordConnectorStatus;
+  send: {
+    ok: boolean;
+    error: string | null;
+    channelId: string | null;
+    message: string;
+    deliveryStatus: "sent" | "sending" | "failed" | "unknown" | null;
+  };
+}
+
+export interface SendLifeOpsWhatsAppMessageRequest {
+  to: string;
+  text: string;
+  replyToMessageId?: string;
 }
 
 export interface StartLifeOpsTelegramAuthRequest {

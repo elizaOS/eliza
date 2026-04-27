@@ -1902,6 +1902,26 @@ export async function handleLifeOpsRoutes(
     });
   }
 
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/signal/send"
+  ) {
+    if (rateLimitRequest(ctx, "outbound_message")) return true;
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.sendSignalMessage({
+          side: parseConnectorSideFromRequest(url, body),
+          recipient: requireBodyString(body, "recipient"),
+          text: requireBodyString(body, "text"),
+        }),
+        201,
+      );
+    });
+  }
+
   // -----------------------------------------------------------------------
   // Discord connector
   // -----------------------------------------------------------------------
@@ -1962,11 +1982,83 @@ export async function handleLifeOpsRoutes(
   }
 
   if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/discord/send"
+  ) {
+    if (rateLimitRequest(ctx, "outbound_message")) return true;
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.sendDiscordMessage({
+          side: parseConnectorSideFromRequest(url, body),
+          channelId: parseOptionalBodyString(body, "channelId"),
+          text: requireBodyString(body, "text"),
+        }),
+        201,
+      );
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/discord/verify"
+  ) {
+    if (rateLimitRequest(ctx, "outbound_message")) return true;
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.verifyDiscordConnector({
+          side: parseConnectorSideFromRequest(url, body),
+          channelId: parseOptionalBodyString(body, "channelId"),
+          sendMessage: parseOptionalBodyString(body, "sendMessage"),
+        }),
+      );
+    });
+  }
+
+  if (
     method === "GET" &&
     pathname === "/api/lifeops/connectors/whatsapp/status"
   ) {
     return runRoute(ctx, async (service) => {
       json(res, await service.getWhatsAppConnectorStatus());
+    });
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/lifeops/connectors/whatsapp/send"
+  ) {
+    if (rateLimitRequest(ctx, "outbound_message")) return true;
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.sendWhatsAppMessage({
+          to: requireBodyString(body, "to"),
+          text: requireBodyString(body, "text"),
+          replyToMessageId: parseOptionalBodyString(body, "replyToMessageId"),
+        }),
+        201,
+      );
+    });
+  }
+
+  if (
+    method === "GET" &&
+    pathname === "/api/lifeops/connectors/whatsapp/messages"
+  ) {
+    return runRoute(ctx, async (service) => {
+      const limit =
+        parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
+          max: 500,
+        }) ?? 25;
+      json(res, service.pullWhatsAppRecent(limit));
     });
   }
 

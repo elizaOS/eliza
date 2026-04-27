@@ -103,6 +103,11 @@ import type {
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SendLifeOpsIMessageRequest,
+  SendLifeOpsDiscordMessageRequest,
+  SendLifeOpsDiscordMessageResponse,
+  SendLifeOpsSignalMessageRequest,
+  SendLifeOpsSignalMessageResponse,
+  SendLifeOpsWhatsAppMessageRequest,
   SetLifeOpsCalendarIncludedRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
@@ -119,6 +124,8 @@ import type {
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
   UpdateLifeOpsGoalRequest,
+  VerifyLifeOpsDiscordConnectorRequest,
+  VerifyLifeOpsDiscordConnectorResponse,
   VerifyLifeOpsTelegramConnectorRequest,
   VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
@@ -679,6 +686,9 @@ declare module "@elizaos/app-core/api/client-base" {
     disconnectSignalConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsSignalConnectorStatus>;
+    sendSignalConnectorMessage(
+      data: SendLifeOpsSignalMessageRequest,
+    ): Promise<SendLifeOpsSignalMessageResponse>;
 
     // --- Discord connector ---
     getDiscordConnectorStatus(
@@ -690,9 +700,31 @@ declare module "@elizaos/app-core/api/client-base" {
     disconnectDiscordConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsDiscordConnectorStatus>;
+    sendDiscordConnectorMessage(
+      data: SendLifeOpsDiscordMessageRequest,
+    ): Promise<SendLifeOpsDiscordMessageResponse>;
+    verifyDiscordConnector(
+      data?: VerifyLifeOpsDiscordConnectorRequest,
+    ): Promise<VerifyLifeOpsDiscordConnectorResponse>;
 
     // --- WhatsApp connector ---
     getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus>;
+    sendWhatsAppConnectorMessage(
+      data: SendLifeOpsWhatsAppMessageRequest,
+    ): Promise<{ ok: true; messageId: string }>;
+    getWhatsAppConnectorMessages(options?: {
+      limit?: number;
+    }): Promise<{
+      count: number;
+      messages: Array<{
+        id: string;
+        from: string;
+        channelId: string;
+        timestamp: string;
+        type: "text" | "image" | "audio" | "document" | "unknown";
+        text?: string;
+      }>;
+    }>;
 
     // --- Telegram connector ---
     getTelegramConnectorStatus(
@@ -2107,6 +2139,16 @@ ElizaClient.prototype.disconnectSignalConnector = async function (
   });
 };
 
+ElizaClient.prototype.sendSignalConnectorMessage = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/connectors/signal/send", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
 // ---------------------------------------------------------------------------
 // Discord connector
 // ---------------------------------------------------------------------------
@@ -2143,6 +2185,26 @@ ElizaClient.prototype.disconnectDiscordConnector = async function (
   });
 };
 
+ElizaClient.prototype.sendDiscordConnectorMessage = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/connectors/discord/send", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.verifyDiscordConnector = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch("/api/lifeops/connectors/discord/verify", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
 // ---------------------------------------------------------------------------
 // WhatsApp connector
 // ---------------------------------------------------------------------------
@@ -2151,6 +2213,28 @@ ElizaClient.prototype.getWhatsAppConnectorStatus = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/lifeops/connectors/whatsapp/status");
+};
+
+ElizaClient.prototype.sendWhatsAppConnectorMessage = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/lifeops/connectors/whatsapp/send", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.getWhatsAppConnectorMessages = async function (
+  this: ElizaClient,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch(`/api/lifeops/connectors/whatsapp/messages${query}`);
 };
 
 // ---------------------------------------------------------------------------
