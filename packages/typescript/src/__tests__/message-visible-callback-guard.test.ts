@@ -14,7 +14,7 @@ function buildCallbackMemory(): Memory {
 }
 
 describe("wrapSingleTurnVisibleCallback", () => {
-	it("delivers only the first visible reply in a single turn", async () => {
+	it("delivers every visible reply in a single turn", async () => {
 		const callback = vi.fn(async () => [buildCallbackMemory()]);
 		const runtime = {
 			agentId: stringToUuid("agent-1"),
@@ -33,21 +33,21 @@ describe("wrapSingleTurnVisibleCallback", () => {
 
 		expect(guardedCallback).toBeDefined();
 		await guardedCallback?.({ text: "first visible reply" }, "INBOX");
-		const suppressed = await guardedCallback?.(
-			{ text: "second visible reply" },
-			"CALL_USER",
-		);
+		await guardedCallback?.({ text: "second visible reply" }, "CALL_USER");
 
-		expect(callback).toHaveBeenCalledTimes(1);
+		expect(callback).toHaveBeenCalledTimes(2);
 		expect(callback).toHaveBeenCalledWith(
 			{ text: "first visible reply" },
 			"INBOX",
 		);
-		expect(suppressed).toEqual([]);
-		expect(runtime.logger.warn).toHaveBeenCalledTimes(1);
+		expect(callback).toHaveBeenCalledWith(
+			{ text: "second visible reply" },
+			"CALL_USER",
+		);
+		expect(runtime.logger.warn).not.toHaveBeenCalled();
 	});
 
-	it("suppresses exact duplicate attachment deliveries", async () => {
+	it("delivers exact duplicate attachment callbacks", async () => {
 		const callback = vi.fn(async () => [buildCallbackMemory()]);
 		const runtime = {
 			agentId: stringToUuid("agent-1"),
@@ -74,11 +74,20 @@ describe("wrapSingleTurnVisibleCallback", () => {
 		};
 
 		await guardedCallback?.(content, "LIFEOPS_COMPUTER_USE");
-		const suppressed = await guardedCallback?.(content, "LIFEOPS_COMPUTER_USE");
+		await guardedCallback?.(content, "LIFEOPS_COMPUTER_USE");
 
-		expect(callback).toHaveBeenCalledTimes(1);
-		expect(suppressed).toEqual([]);
-		expect(runtime.logger.warn).toHaveBeenCalledTimes(1);
+		expect(callback).toHaveBeenCalledTimes(2);
+		expect(callback).toHaveBeenNthCalledWith(
+			1,
+			content,
+			"LIFEOPS_COMPUTER_USE",
+		);
+		expect(callback).toHaveBeenNthCalledWith(
+			2,
+			content,
+			"LIFEOPS_COMPUTER_USE",
+		);
+		expect(runtime.logger.warn).not.toHaveBeenCalled();
 	});
 
 	it("still forwards non-visible callbacks after a visible reply", async () => {
