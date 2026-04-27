@@ -31,6 +31,14 @@ export function isTestExempt(file) {
   if (file.startsWith(".cursor/")) return true;
   if (file.startsWith("scripts/")) return true;
   if (/\.sh$/i.test(file)) return true;
+  // Static assets (images, fonts, audio, video) have no runtime behavior a
+  // Vitest suite can assert against.
+  if (
+    /\.(png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?|heic|woff2?|ttf|otf|eot|mp3|mp4|wav|ogg|webm|mov)$/i.test(
+      file,
+    )
+  )
+    return true;
   if (/(^|\/)(bun\.lock|package-lock\.json|yarn\.lock|pnpm-lock\.yaml)$/.test(file))
     return true;
   if (/(^|\/)package\.json$/.test(file)) return true;
