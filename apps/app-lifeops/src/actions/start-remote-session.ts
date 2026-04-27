@@ -108,8 +108,17 @@ export const startRemoteSessionAction: Action = {
       return {
         text: "Remote sessions require explicit confirmation. Re-issue with confirmed: true.",
         success: false,
-        values: { success: false, error: "NOT_CONFIRMED" },
-        data: { actionName: ACTION_NAME },
+        // Canonical confirmation-required signal so the multi-step loop in
+        // services/message.ts breaks instead of re-firing the same plan.
+        values: {
+          success: false,
+          error: "CONFIRMATION_REQUIRED",
+          requiresConfirmation: true,
+        },
+        data: {
+          actionName: ACTION_NAME,
+          requiresConfirmation: true,
+        },
       };
     }
 
