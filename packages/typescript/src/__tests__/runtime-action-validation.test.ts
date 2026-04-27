@@ -1,5 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { createTaskClipboardService } from "../features/advanced-capabilities/clipboard/services/taskClipboardService";
 import { AgentRuntime } from "../runtime";
 import type { Action, Character, Memory, State } from "../types";
 import { stringToUuid } from "../utils";
@@ -20,15 +24,44 @@ const TEST_CHARACTER: Character = {
 	style: { all: [], chat: [], post: [] },
 };
 
-function buildTestMessage(agentId: string): Memory {
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+	for (const dir of tempDirs.splice(0)) {
+		await rm(dir, { recursive: true, force: true });
+	}
+});
+
+function buildTestMessage(
+	agentId: string,
+	content: Partial<Memory["content"]> = {},
+): Memory {
 	return {
 		id: stringToUuid("message-1"),
 		agentId: agentId as ReturnType<typeof stringToUuid>,
 		entityId: stringToUuid("user-1"),
 		roomId: stringToUuid("room-1"),
-		content: { text: "send this out" },
+		content: { text: "send this out", ...content },
 		createdAt: Date.now(),
 	};
+}
+
+async function buildRuntimeWithClipboard(): Promise<AgentRuntime> {
+	const clipboardBasePath = await mkdtemp(
+		join(tmpdir(), "runtime-action-clipboard-"),
+	);
+	tempDirs.push(clipboardBasePath);
+	return new AgentRuntime({
+		adapter: new InMemoryDatabaseAdapter(),
+		character: {
+			...TEST_CHARACTER,
+			settings: {
+				...TEST_CHARACTER.settings,
+				CLIPBOARD_BASE_PATH: clipboardBasePath,
+			},
+		},
+		logLevel: "error",
+	});
 }
 
 const EMPTY_STATE: State = {
@@ -182,5 +215,134 @@ describe("AgentRuntime.processActions parameter validation", () => {
 				}),
 			}),
 		]);
+	});
+
+	it("copies result-only action output to task clipboard when requested", async () => {
+		const runtime = await buildRuntimeWithClipboard();
+		const action: Action = {
+			name: "REPORT",
+			description: "Generate a report.",
+			validate: async () => true,
+			handler: async () => ({
+				success: true,
+				text: "Report output",
+				data: { actionName: "REPORT" },
+			}),
+		};
+		runtime.actions.push(action);
+		vi.spyOn(runtime, "composeState").mockResolvedValue(EMPTY_STATE);
+		vi.spyOn(runtime, "createMemory").mockResolvedValue(
+			stringToUuid("memory-4"),
+		);
+		const callback = vi.fn(async () => []);
+		const message = buildTestMessage(runtime.agentId, {
+			text: "Run the report and copy result to clipboard",
+		});
+
+		await runtime.processActions(
+			message,
+			[{ content: { actions: ["REPORT"] } }],
+			EMPTY_STATE,
+			callback,
+		);
+
+		expect(callback).toHaveBeenCalledTimes(1);
+		const callbackContent = callback.mock.calls[0]?.[0];
+		expect(callbackContent?.text).toContain("Report output");
+		expect(callbackContent?.text).toContain(
+			"Copied REPORT result to clipboard item",
+		);
+		const items = await createTaskClipboardService(runtime).listItems(
+			message.entityId,
+		);
+		expect(items).toHaveLength(1);
+		expect(items[0]).toMatchObject({
+			title: "REPORT result",
+			content: "Report output",
+			sourceType: "action_result",
+			sourceLabel: "REPORT",
+		});
+	});
+
+	it("appends clipboard status to a handler callback without duplicating result text", async () => {
+		const runtime = await buildRuntimeWithClipboard();
+		const action: Action = {
+			name: "CALLBACK_REPORT",
+			description: "Generate a callback report.",
+			validate: async () => true,
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: "Visible report" });
+				return {
+					success: true,
+					text: "Structured report",
+					data: { actionName: "CALLBACK_REPORT" },
+				};
+			},
+		};
+		runtime.actions.push(action);
+		vi.spyOn(runtime, "composeState").mockResolvedValue(EMPTY_STATE);
+		vi.spyOn(runtime, "createMemory").mockResolvedValue(
+			stringToUuid("memory-5"),
+		);
+		const callback = vi.fn(async () => []);
+		const message = buildTestMessage(runtime.agentId, {
+			text: "Run the report and copy it to clipboard",
+		});
+
+		await runtime.processActions(
+			message,
+			[{ content: { actions: ["CALLBACK_REPORT"] } }],
+			EMPTY_STATE,
+			callback,
+		);
+
+		expect(callback).toHaveBeenCalledTimes(1);
+		const callbackText = callback.mock.calls[0]?.[0]?.text;
+		expect(callbackText).toContain("Visible report");
+		expect(callbackText).toContain(
+			"Copied CALLBACK_REPORT result to clipboard item",
+		);
+		expect(callbackText).not.toContain("Structured report");
+		const items = await createTaskClipboardService(runtime).listItems(
+			message.entityId,
+		);
+		expect(items[0]?.content).toBe("Structured report");
+	});
+
+	it("does not copy terminal reply action output to task clipboard", async () => {
+		const runtime = await buildRuntimeWithClipboard();
+		const action: Action = {
+			name: "REPLY",
+			description: "Reply to the user.",
+			validate: async () => true,
+			handler: async () => ({
+				success: true,
+				text: "Plain reply",
+				data: { actionName: "REPLY" },
+			}),
+		};
+		runtime.actions.push(action);
+		vi.spyOn(runtime, "composeState").mockResolvedValue(EMPTY_STATE);
+		vi.spyOn(runtime, "createMemory").mockResolvedValue(
+			stringToUuid("memory-6"),
+		);
+		const callback = vi.fn(async () => []);
+		const message = buildTestMessage(runtime.agentId, {
+			text: "Reply and copy result to clipboard",
+		});
+
+		await runtime.processActions(
+			message,
+			[{ content: { actions: ["REPLY"] } }],
+			EMPTY_STATE,
+			callback,
+		);
+
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(callback.mock.calls[0]?.[0]?.text).toBe("Plain reply");
+		const items = await createTaskClipboardService(runtime).listItems(
+			message.entityId,
+		);
+		expect(items).toHaveLength(0);
 	});
 });
