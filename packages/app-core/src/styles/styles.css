@@ -330,6 +330,22 @@ kbd {
   box-shadow: 0 0 0 4px var(--focus);
 }
 
+/*
+ * Brief accent flash on a connector panel deep-link target. Triggered by
+ * SettingsView's SETTINGS_FOCUS_CONNECTOR_EVENT listener — adds the class for
+ * ~1.8s, then removes it. The accent box-shadow ring sits outside the panel
+ * so it doesn't shift layout.
+ */
+@keyframes connector-flash {
+  0%   { box-shadow: 0 0 0 0 transparent; }
+  20%  { box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 60%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.connector-flash {
+  animation: connector-flash 1.6s ease-out;
+  border-radius: var(--radius-md);
+}
+
 /* Reduced motion - !important is intentional for accessibility override */
 @media (prefers-reduced-motion: reduce) {
   *,

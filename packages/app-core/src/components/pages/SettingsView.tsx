@@ -41,7 +41,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { useApp } from "../../state";
+import {
+  SETTINGS_FOCUS_CONNECTOR_EVENT,
+  type SettingsFocusConnectorDetail,
+  useApp,
+} from "../../state";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
@@ -715,6 +719,37 @@ export function SettingsView({
   useEffect(() => {
     void loadPlugins();
   }, [loadPlugins]);
+
+  // Deep-link target: another component (e.g. AutomationsView's missing-creds
+  // banner, or apps/app/src/main.tsx parsing milady://settings/connectors/<x>)
+  // dispatches SETTINGS_FOCUS_CONNECTOR_EVENT with the canonical provider id.
+  // We focus the Integrations section, then scroll the matching panel wrapper
+  // (`[data-connector="<provider>"]`) into view and briefly flash it.
+  // Providers without a wrapper (e.g. Slack today) gracefully fall through —
+  // the section header is still in view.
+  useEffect(() => {
+    function handle(event: Event) {
+      const detail = (event as CustomEvent<SettingsFocusConnectorDetail>).detail;
+      if (!detail?.provider) return;
+      setActiveSection("integrations");
+      queueContentAlignment("integrations");
+      requestAnimationFrame(() => {
+        const node = document.querySelector<HTMLElement>(
+          `[data-connector="${CSS.escape(detail.provider)}"]`,
+        );
+        if (!node) return;
+        node.scrollIntoView({ behavior: "smooth", block: "start" });
+        node.classList.add("connector-flash");
+        window.setTimeout(
+          () => node.classList.remove("connector-flash"),
+          1800,
+        );
+      });
+    }
+    window.addEventListener(SETTINGS_FOCUS_CONNECTOR_EVENT, handle);
+    return () =>
+      window.removeEventListener(SETTINGS_FOCUS_CONNECTOR_EVENT, handle);
+  }, [queueContentAlignment]);
 
   const handleSectionChange = useCallback(
     (sectionId: string) => {
