@@ -82,13 +82,15 @@ describe("sendWhatsAppMessage", () => {
 
   test("includes reply context when replying to an inbound message", async () => {
     let capturedBody: unknown;
-    global.fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      capturedBody = JSON.parse(String(init?.body));
-      return new Response(
-        JSON.stringify({ messages: [{ id: "wamid.reply" }] }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }) as unknown as typeof fetch;
+    global.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        capturedBody = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({ messages: [{ id: "wamid.reply" }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    ) as unknown as typeof fetch;
 
     const result = await sendWhatsAppMessage(
       {
@@ -201,6 +203,15 @@ describe("withWhatsApp mixin", () => {
     expect(status.connected).toBe(false);
     expect(status.provider).toBe("whatsapp");
     expect(typeof status.lastCheckedAt).toBe("string");
+  });
+
+  test("getWhatsAppConnectorStatus ignores user-facing WhatsApp runtime service", async () => {
+    svc.runtime.getService.mockReturnValue({ connected: true });
+
+    const status = await svc.getWhatsAppConnectorStatus();
+
+    expect(status.connected).toBe(false);
+    expect(svc.runtime.getService).not.toHaveBeenCalled();
   });
 
   test("sendWhatsAppMessage throws LifeOpsServiceError without creds", async () => {
