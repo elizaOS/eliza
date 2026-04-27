@@ -579,6 +579,7 @@ export class BlueBubblesService extends Service {
 			roomId,
 			worldId,
 			worldName: "iMessage",
+			userId: senderHandle as unknown as UUID,
 			userName: senderHandle,
 			name: message.handle?.address ?? senderHandle,
 			source: "bluebubbles",
@@ -607,15 +608,36 @@ export class BlueBubblesService extends Service {
 		memory.createdAt = message.dateCreated;
 		memory.metadata = {
 			...(memory.metadata ?? {}),
+			source: "bluebubbles",
+			provider: "bluebubbles",
+			timestamp: message.dateCreated,
 			entityName: message.handle?.address ?? senderHandle,
 			entityUserName: senderHandle,
 			fromId: senderHandle,
+			sourceId: entityId,
+			chatType: isGroup ? ChannelType.GROUP : ChannelType.DM,
+			messageIdFull: message.guid,
+			sender: {
+				id: senderHandle,
+				name: message.handle?.address ?? senderHandle,
+				username: senderHandle,
+			},
+			bluebubbles: {
+				id: senderHandle,
+				userId: senderHandle,
+				username: senderHandle,
+				userName: senderHandle,
+				name: message.handle?.address ?? senderHandle,
+				chatGuid: chat.guid,
+				chatIdentifier: chat.chatIdentifier,
+				messageGuid: message.guid,
+			},
 			bluebubblesChatGuid: chat.guid,
 			bluebubblesChatIdentifier: chat.chatIdentifier,
 			bluebubblesMessageGuid: message.guid,
 			bluebubblesThreadOriginatorGuid:
 				message.threadOriginatorGuid ?? undefined,
-		};
+		} as unknown as Memory["metadata"];
 
 		await this.runtime.createMemory(memory, "messages");
 
