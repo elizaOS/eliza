@@ -1523,11 +1523,13 @@ export class TrajectoriesService extends Service {
 			);
 		}
 		if (options.search) {
-			const escaped = options.search
-				.replace(/\\/g, "\\\\")
-				.replace(/'/g, "''")
-				.replace(/%/g, "\\%")
-				.replace(/_/g, "\\_");
+			// Single-pass escape so LIKE-wildcard escapes do not introduce
+			// unescaped backslashes (CodeQL js/incomplete-sanitization).
+			const escaped = options.search.replace(/[\\'%_]/g, (ch) => {
+				if (ch === "'") return "''";
+				if (ch === "\\") return "\\\\";
+				return `\\${ch}`;
+			});
 			whereClauses.push(`(
         id ILIKE '%${escaped}%' OR
         agent_id ILIKE '%${escaped}%' OR

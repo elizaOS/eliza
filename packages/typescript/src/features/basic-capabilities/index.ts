@@ -156,6 +156,7 @@ function textContainsAgentName(
 		return false;
 	}
 
+	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
 	return names.some((name) => {
 		const candidate = name?.trim();
 		if (!candidate) {
@@ -166,7 +167,7 @@ function textContainsAgentName(
 			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
 			"iu",
 		);
-		return pattern.test(text);
+		return pattern.test(safeText);
 	});
 }
 
