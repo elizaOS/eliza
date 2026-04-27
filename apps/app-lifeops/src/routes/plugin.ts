@@ -196,6 +196,7 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/connectors/signal/pairing-status" },
   { type: "POST", path: "/api/lifeops/connectors/signal/stop" },
   { type: "POST", path: "/api/lifeops/connectors/signal/disconnect" },
+  { type: "GET", path: "/api/lifeops/connectors/signal/messages" },
   { type: "POST", path: "/api/lifeops/connectors/signal/send" },
   // Discord
   { type: "GET", path: "/api/lifeops/connectors/discord/status" },

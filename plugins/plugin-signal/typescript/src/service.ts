@@ -415,8 +415,8 @@ export class SignalService extends Service implements ISignalService {
 
       const isGroup = room?.type === ChannelType.GROUP;
       const result = isGroup
-        ? await service.sendGroupMessage(channelId, text)
-        : await service.sendMessage(channelId, text);
+        ? await service.sendGroupMessage(channelId, text, { record: false })
+        : await service.sendMessage(channelId, text, { record: false });
 
       if (!target.roomId) {
         return;
@@ -978,6 +978,15 @@ export class SignalService extends Service implements ISignalService {
       lastTimestamp = result.timestamp;
     }
 
+    if (options?.record !== false) {
+      await this.recordOutgoingMessage({
+        channelId: normalizedRecipient,
+        text,
+        timestamp: lastTimestamp,
+        isGroup: false,
+      });
+    }
+
     return { timestamp: lastTimestamp };
   }
 
@@ -1001,7 +1010,57 @@ export class SignalService extends Service implements ISignalService {
       lastTimestamp = result.timestamp;
     }
 
+    if (options?.record !== false) {
+      await this.recordOutgoingMessage({
+        channelId: groupId,
+        text,
+        timestamp: lastTimestamp,
+        isGroup: true,
+      });
+    }
+
     return { timestamp: lastTimestamp };
+  }
+
+  private async recordOutgoingMessage(args: {
+    channelId: string;
+    text: string;
+    timestamp: number;
+    isGroup: boolean;
+  }): Promise<void> {
+    const roomId = await this.getRoomId(
+      args.isGroup ? this.accountNumber || "signal-agent" : args.channelId,
+      args.isGroup ? args.channelId : undefined
+    );
+    const worldId = createUniqueUuid(this.runtime, "signal-world");
+    const displayName = this.character?.name || "Agent";
+
+    await this.runtime.ensureConnection({
+      entityId: this.runtime.agentId,
+      roomId,
+      worldId,
+      worldName: "Signal",
+      userId: this.runtime.agentId,
+      userName: displayName,
+      name: displayName,
+      source: "signal",
+      type: args.isGroup ? ChannelType.GROUP : ChannelType.DM,
+      channelId: args.channelId,
+    });
+
+    const memory = createMessageMemory({
+      id: createUniqueUuid(this.runtime, `signal:${args.timestamp}`),
+      entityId: this.runtime.agentId,
+      roomId,
+      content: {
+        text: args.text,
+        source: "signal",
+      },
+    });
+    await this.runtime.createMemory(
+      { ...memory, createdAt: args.timestamp },
+      "messages"
+    );
   }
 
   async sendReaction(

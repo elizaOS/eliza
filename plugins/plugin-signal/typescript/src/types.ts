@@ -148,9 +148,10 @@ export interface SignalSettings {
 }
 
 export interface SignalMessageSendOptions {
-  attachments: string[] | undefined;
-  quote: { timestamp: number; author: string } | undefined;
-  expiresInSeconds: number | undefined;
+  attachments?: string[];
+  quote?: { timestamp: number; author: string };
+  expiresInSeconds?: number;
+  record?: boolean;
 }
 
 export class SignalPluginError extends Error {
