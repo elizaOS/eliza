@@ -2,6 +2,8 @@
  * Steward Sidecar — first-launch wallet creation and verification.
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { fingerprintRandomToken, generateApiKey } from "./helpers";
 import type { StewardCredentials, StewardSidecarStatus } from "./types";
 import {
@@ -79,9 +81,6 @@ async function performFirstLaunchSetup(
   dataDir: string,
   updateStatus: (partial: Partial<StewardSidecarStatus>) => void,
 ): Promise<StewardCredentials> {
-  const fs = await import("node:fs");
-  const path = await import("node:path");
-
   console.log("[StewardSidecar] First launch — creating tenant and wallet");
 
   // 1. Create tenant

@@ -33,7 +33,9 @@ import type {
   RelationshipsActivityItem,
 } from "../../api/client-types";
 import { useApp } from "../../state/useApp";
-import { WidgetHost } from "../../widgets";
+// Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
+// chunk-level circular dependency.
+import { WidgetHost } from "../../widgets/WidgetHost";
 import { getBrandIcon } from "../conversations/brand-icons";
 import { KnowledgeView } from "../pages/KnowledgeView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";

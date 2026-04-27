@@ -19,6 +19,15 @@
  *   await sidecar.stop();
  */
 
+// Node builtins are imported statically: this file only runs in the bun
+// process (StewardSidecar manages a child Steward API process), never in
+// the renderer. Other steward modules (api/wallet, services/steward-*)
+// already use static node:* imports — keeping this file dynamic just
+// triggered the Vite "dynamically imported but also statically imported"
+// warning without preventing browser-bundling.
+import * as childProcess from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { waitForHealthy } from "./steward-sidecar/health-check";
 import {
   allocateFirstFreeLoopbackPort,
@@ -240,8 +249,6 @@ export class StewardSidecar {
   // ─── Internal ────────────────────────────────────────────────────────────
 
   private async ensureDataDir(): Promise<void> {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
     const dir = this.config.dataDir;
     const home = process.env.HOME || process.env.USERPROFILE || "";
 
@@ -282,8 +289,6 @@ export class StewardSidecar {
   }
 
   private async loadOrCreateCredentials(): Promise<void> {
-    const fs = await import("node:fs");
-    const path = await import("node:path");
     const credPath = path.join(this.config.dataDir, CREDENTIALS_FILE);
 
     if (fs.existsSync(credPath)) {
@@ -314,8 +319,6 @@ export class StewardSidecar {
   }
 
   private async spawnProcess(): Promise<void> {
-    const path = await import("node:path");
-
     const entryPoint =
       this.config.stewardEntryPoint || (await findStewardEntryPoint());
 
@@ -389,8 +392,7 @@ export class StewardSidecar {
         }
       });
     } else {
-      const { spawn } = await import("node:child_process");
-      const child = spawn("node", [entryPoint], {
+      const child = childProcess.spawn("node", [entryPoint], {
         env,
         cwd: path.dirname(entryPoint),
         stdio: ["ignore", "pipe", "pipe"],
