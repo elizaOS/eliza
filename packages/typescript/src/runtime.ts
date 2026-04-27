@@ -3165,13 +3165,21 @@ export class AgentRuntime implements IAgentRuntime {
 					typeof actionResult?.text === "string"
 						? actionResult.text.trim()
 						: "";
+				const visibleCallbackText = storedCallbackData.find((content) =>
+					callbackContentHasVisibleOutput(content),
+				)?.text;
+				const actionTextForClipboard =
+					actionText ||
+					(typeof visibleCallbackText === "string"
+						? visibleCallbackText.trim()
+						: "");
 				const suppressVisibleActionText =
 					suppressesVisibleActionResult(actionResult);
 				const clipboardStatus = await this.maybeStoreActionResultClipboard({
 					message,
 					action,
 					actionId,
-					actionText,
+					actionText: actionTextForClipboard,
 					actionResult,
 				});
 				const visibleActionText = suppressVisibleActionText

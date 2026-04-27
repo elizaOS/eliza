@@ -309,6 +309,46 @@ describe("AgentRuntime.processActions parameter validation", () => {
 		expect(items[0]?.content).toBe("Structured report");
 	});
 
+	it("copies callback-only action output when no result text is returned", async () => {
+		const runtime = await buildRuntimeWithClipboard();
+		const action: Action = {
+			name: "CALLBACK_ONLY_REPORT",
+			description: "Generate a callback-only report.",
+			validate: async () => true,
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				await callback?.({ text: "Callback-only report" });
+				return undefined;
+			},
+		};
+		runtime.actions.push(action);
+		vi.spyOn(runtime, "composeState").mockResolvedValue(EMPTY_STATE);
+		vi.spyOn(runtime, "createMemory").mockResolvedValue(
+			stringToUuid("memory-7"),
+		);
+		const callback = vi.fn(async () => []);
+		const message = buildTestMessage(runtime.agentId, {
+			text: "Run the callback report and copy it to clipboard",
+		});
+
+		await runtime.processActions(
+			message,
+			[{ content: { actions: ["CALLBACK_ONLY_REPORT"] } }],
+			EMPTY_STATE,
+			callback,
+		);
+
+		expect(callback).toHaveBeenCalledTimes(1);
+		const callbackText = callback.mock.calls[0]?.[0]?.text;
+		expect(callbackText).toContain("Callback-only report");
+		expect(callbackText).toContain(
+			"Copied CALLBACK_ONLY_REPORT result to clipboard item",
+		);
+		const items = await createTaskClipboardService(runtime).listItems(
+			message.entityId,
+		);
+		expect(items[0]?.content).toBe("Callback-only report");
+	});
+
 	it("does not copy terminal reply action output to task clipboard", async () => {
 		const runtime = await buildRuntimeWithClipboard();
 		const action: Action = {
