@@ -217,6 +217,49 @@ describe("AgentRuntime.processActions parameter validation", () => {
 		]);
 	});
 
+	it("injects the executed action name into structured results that omit it", async () => {
+		const runtime = new AgentRuntime({
+			adapter: new InMemoryDatabaseAdapter(),
+			character: TEST_CHARACTER,
+			logLevel: "error",
+		});
+		const action: Action = {
+			name: "OMITS_ACTION_NAME",
+			description: "Return structured data without actionName.",
+			validate: async () => true,
+			handler: async () => ({
+				success: true,
+				text: "Structured result",
+				data: { detail: "kept" },
+			}),
+		};
+		runtime.actions.push(action);
+		vi.spyOn(runtime, "composeState").mockResolvedValue(EMPTY_STATE);
+		vi.spyOn(runtime, "createMemory").mockResolvedValue(
+			stringToUuid("memory-action-name"),
+		);
+		const callback = vi.fn(async () => []);
+		const message = buildTestMessage(runtime.agentId);
+
+		await runtime.processActions(
+			message,
+			[{ content: { actions: ["OMITS_ACTION_NAME"] } }],
+			EMPTY_STATE,
+			callback,
+		);
+
+		expect(runtime.getActionResults(message.id)).toEqual([
+			expect.objectContaining({
+				success: true,
+				text: "Structured result",
+				data: expect.objectContaining({
+					actionName: "OMITS_ACTION_NAME",
+					detail: "kept",
+				}),
+			}),
+		]);
+	});
+
 	it("copies result-only action output to task clipboard when requested", async () => {
 		const runtime = await buildRuntimeWithClipboard();
 		const action: Action = {

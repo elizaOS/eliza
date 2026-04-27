@@ -130,12 +130,12 @@ export const recordTrustInteractionAction: ElizaAction = {
 		} | null;
 
 		if (!parsedContent?.type) {
-				return {
-					success: false,
-					text: "Could not parse trust interaction details. Please provide type and optionally: targetEntityId, impact, description",
-					error: "Invalid or missing interaction type",
-					data: { actionName: "RECORD_TRUST_INTERACTION" },
-				};
+			return {
+				success: false,
+				text: "Could not parse trust interaction details. Please provide type and optionally: targetEntityId, impact, description",
+				error: "Invalid or missing interaction type",
+				data: { actionName: "RECORD_TRUST_INTERACTION" },
+			};
 		}
 
 		const evidenceType = parsedContent.type as TrustEvidenceType;
@@ -153,12 +153,12 @@ export const recordTrustInteractionAction: ElizaAction = {
 				{ evidenceType },
 				"[RecordTrustInteraction] Invalid evidence type:",
 			);
-				return {
-					success: false,
-					text: `Invalid interaction type. Valid types are: ${validTypes.join(", ")}`,
-					error: "Invalid evidence type provided",
-					data: { actionName: "RECORD_TRUST_INTERACTION" },
-				};
+			return {
+				success: false,
+				text: `Invalid interaction type. Valid types are: ${validTypes.join(", ")}`,
+				error: "Invalid evidence type provided",
+				data: { actionName: "RECORD_TRUST_INTERACTION" },
+			};
 		}
 
 		const finalTargetEntityId = targetEntityId || runtime.agentId;
@@ -197,10 +197,10 @@ export const recordTrustInteractionAction: ElizaAction = {
 
 			return {
 				success: true,
-					text: `Trust interaction recorded: ${matchedType} with impact ${interaction.impact > 0 ? "+" : ""}${interaction.impact}`,
-					data: {
-						actionName: "RECORD_TRUST_INTERACTION",
-						interaction,
+				text: `Trust interaction recorded: ${matchedType} with impact ${interaction.impact > 0 ? "+" : ""}${interaction.impact}`,
+				data: {
+					actionName: "RECORD_TRUST_INTERACTION",
+					interaction,
 					success: true,
 				},
 			};
@@ -211,10 +211,10 @@ export const recordTrustInteractionAction: ElizaAction = {
 			);
 			return {
 				success: false,
-					text: "Failed to record trust interaction. Please try again.",
-					error: error instanceof Error ? error.message : "Unknown error",
-					data: { actionName: "RECORD_TRUST_INTERACTION" },
-				};
+				text: "Failed to record trust interaction. Please try again.",
+				error: error instanceof Error ? error.message : "Unknown error",
+				data: { actionName: "RECORD_TRUST_INTERACTION" },
+			};
 		}
 	},
 

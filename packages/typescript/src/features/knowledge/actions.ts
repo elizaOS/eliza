@@ -156,7 +156,7 @@ export const processKnowledgeAction: Action = {
 						text: response.text,
 						data: { actionName: "PROCESS_KNOWLEDGE" },
 					};
-					}
+				}
 
 				const fileName = path.basename(filePath);
 				const result = await addKnowledgeFromFilePath({
@@ -197,7 +197,7 @@ export const processKnowledgeAction: Action = {
 						text: response.text,
 						data: { actionName: "PROCESS_KNOWLEDGE" },
 					};
-					}
+				}
 
 				const title = deriveKnowledgeTitle(
 					knowledgeContent,
@@ -558,7 +558,7 @@ export const ingestKnowledgeFromUrlAction: Action = {
 					filename,
 				},
 				data: {
-						actionName: "INGEST_KNOWLEDGE_FROM_URL",
+					actionName: "INGEST_KNOWLEDGE_FROM_URL",
 					ingestData: {
 						documentId: result.clientDocumentId,
 						fragmentCount: result.fragmentCount,
@@ -583,7 +583,7 @@ export const ingestKnowledgeFromUrlAction: Action = {
 				values: {
 					error: error instanceof Error ? error.message : String(error),
 				},
-					data: { actionName: "INGEST_KNOWLEDGE_FROM_URL" },
+				data: { actionName: "INGEST_KNOWLEDGE_FROM_URL" },
 			};
 		}
 	},
@@ -718,7 +718,7 @@ export const updateKnowledgeDocumentAction: Action = {
 					fragmentCount: result.fragmentCount,
 				},
 				data: {
-						actionName: "UPDATE_KNOWLEDGE_DOCUMENT",
+					actionName: "UPDATE_KNOWLEDGE_DOCUMENT",
 					updateData: {
 						documentId: result.documentId,
 						fragmentCount: result.fragmentCount,
@@ -844,7 +844,7 @@ export const deleteKnowledgeDocumentAction: Action = {
 					text: errMsg,
 					success: false,
 					values: { error: "not_found" },
-						data: { actionName: "DELETE_KNOWLEDGE_DOCUMENT" },
+					data: { actionName: "DELETE_KNOWLEDGE_DOCUMENT" },
 				};
 			}
 
@@ -882,7 +882,7 @@ export const deleteKnowledgeDocumentAction: Action = {
 					deletedFragments: relatedFragmentIds.length,
 				},
 				data: {
-						actionName: "DELETE_KNOWLEDGE_DOCUMENT",
+					actionName: "DELETE_KNOWLEDGE_DOCUMENT",
 					deleteData: {
 						documentId,
 						deletedFragments: relatedFragmentIds.length,

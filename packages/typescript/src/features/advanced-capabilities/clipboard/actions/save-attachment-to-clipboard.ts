@@ -153,12 +153,12 @@ export const saveAttachmentToClipboardAction: Action = {
 				actions: ["SAVE_ATTACHMENT_TO_CLIPBOARD_FAILED"],
 				source: message.content.source,
 			});
-				return {
-					success: false,
-					text: "Failed to save attachment to clipboard",
-					error: errorMessage,
-					data: { actionName: "SAVE_ATTACHMENT_TO_CLIPBOARD" },
-				};
+			return {
+				success: false,
+				text: "Failed to save attachment to clipboard",
+				error: errorMessage,
+				data: { actionName: "SAVE_ATTACHMENT_TO_CLIPBOARD" },
+			};
 		}
 	},
 	parameters: [
