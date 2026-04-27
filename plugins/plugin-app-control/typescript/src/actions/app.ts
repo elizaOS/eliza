@@ -21,13 +21,12 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { hasOwnerAccess as defaultOwnerAccessFn, logger } from "@elizaos/core";
 import {
 	type AppControlClient,
 	createAppControlClient,
 } from "../client/api.js";
 import { readStringOption } from "../params.js";
-import { hasOwnerAccess as defaultOwnerAccessFn } from "@elizaos/core";
 import { hasPendingIntent, isChoiceReply, runCreate } from "./app-create.js";
 import { runLaunch } from "./app-launch.js";
 import { runList } from "./app-list.js";
