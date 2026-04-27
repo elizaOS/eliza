@@ -37,11 +37,16 @@ import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import fs from "node:fs";
-
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import {
+  APP_REGISTRY_SERVICE_TYPE,
+  AppRegistryService,
+  AppVerificationService,
+  createAppAction,
+} from "../../../../plugins/plugin-app-control/typescript/src/index.ts";
 import {
   cleanForChat,
   listAgentsAction,
@@ -49,15 +54,208 @@ import {
   sendToAgentAction,
   spawnAgentAction,
 } from "@elizaos/plugin-agent-orchestrator";
+import {
+  parseStructuredProofDirective,
+  type AppStructuredProofClaim,
+} from "../../../../plugins/plugin-agent-orchestrator/src/services/structured-proof-bridge.ts";
 import { createTestRuntime } from "../helpers/pglite-runtime";
 
 type Framework = "claude" | "codex";
 type Mode = "sequential" | "web" | "counter-app";
 
 const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
+const COUNTER_AGENT_TIMEOUT_MS = 10 * 60_000;
+const CODEX_UPDATE_TIMEOUT_MS = 5 * 60_000;
+const CAPTURE_LIMIT = 16 * 1024 * 1024;
+const CODEX_OLD_VERSION_RE = /requires a newer version of Codex/i;
+
+type CapturedCommandResult = {
+  stdout: string;
+  stderr: string;
+  output: string;
+};
+
+type CommandFailure = Error & {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function truncateForLog(text: string, max = 4000): string {
+  return text.length <= max
+    ? text
+    : `${text.slice(0, max)}\n...truncated ${text.length - max} chars`;
+}
+
+function commandFailure(
+  command: string,
+  args: string[],
+  stdout: string,
+  stderr: string,
+  exitCode: number | null,
+  signal: NodeJS.Signals | null,
+): CommandFailure {
+  const output = [stdout, stderr].filter(Boolean).join("\n--- stderr ---\n");
+  return Object.assign(
+    new Error(
+      `${command} ${args.join(" ")} failed with ${
+        signal ? `signal ${signal}` : `exit code ${exitCode ?? -1}`
+      }\n${truncateForLog(output)}`,
+    ),
+    { stdout, stderr, exitCode, signal },
+  );
+}
+
+function appendCapturedChunk(
+  state: { stdout: string; stderr: string; overflow: boolean },
+  stream: "stdout" | "stderr",
+  chunk: Buffer,
+): void {
+  const text = chunk.toString("utf8");
+  if (stream === "stdout") {
+    state.stdout += text;
+  } else {
+    state.stderr += text;
+  }
+  if (state.stdout.length + state.stderr.length > CAPTURE_LIMIT) {
+    state.overflow = true;
+  }
+}
+
+function runCapturedCommand(
+  command: string,
+  args: string[],
+  opts: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    timeoutMs: number;
+  },
+): Promise<CapturedCommandResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: opts.cwd,
+      env: opts.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const state = { stdout: "", stderr: "", overflow: false };
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+    }, opts.timeoutMs);
+
+    child.stdout?.on("data", (chunk: Buffer) => {
+      appendCapturedChunk(state, "stdout", chunk);
+      if (state.overflow) child.kill("SIGTERM");
+    });
+    child.stderr?.on("data", (chunk: Buffer) => {
+      appendCapturedChunk(state, "stderr", chunk);
+      if (state.overflow) child.kill("SIGTERM");
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("exit", (code, signal) => {
+      clearTimeout(timer);
+      const output = [state.stdout, state.stderr]
+        .filter(Boolean)
+        .join("\n--- stderr ---\n");
+      if (timedOut) {
+        reject(
+          Object.assign(
+            new Error(
+              `${command} ${args.join(" ")} timed out after ${opts.timeoutMs}ms\n${truncateForLog(output)}`,
+            ),
+            {
+              stdout: state.stdout,
+              stderr: state.stderr,
+              exitCode: code,
+              signal,
+            },
+          ) satisfies CommandFailure,
+        );
+        return;
+      }
+      if (state.overflow) {
+        reject(
+          Object.assign(
+            new Error(
+              `${command} ${args.join(" ")} exceeded ${CAPTURE_LIMIT} bytes of output`,
+            ),
+            {
+              stdout: state.stdout,
+              stderr: state.stderr,
+              exitCode: code,
+              signal,
+            },
+          ) satisfies CommandFailure,
+        );
+        return;
+      }
+      if (signal || code !== 0) {
+        reject(commandFailure(command, args, state.stdout, state.stderr, code, signal));
+        return;
+      }
+      resolve({ stdout: state.stdout, stderr: state.stderr, output });
+    });
+  });
+}
+
+function errorDetail(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return JSON.stringify(error);
+}
+
+function isCodexCliTooOldError(error: unknown): boolean {
+  return CODEX_OLD_VERSION_RE.test(errorDetail(error));
+}
+
+function readCodexVersion(): string {
+  return execFileSync("codex", ["--version"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 5_000,
+  }).trim();
+}
+
+function resolveCodexNpmCommand(): string {
+  const codexPath = execFileSync("which", ["codex"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 5_000,
+  }).trim();
+  const colocatedNpm = path.join(path.dirname(codexPath), "npm");
+  if (fs.existsSync(colocatedNpm)) return colocatedNpm;
+  return "npm";
+}
+
+async function updateCodexCli(): Promise<string> {
+  const before = readCodexVersion();
+  const npmCommand = resolveCodexNpmCommand();
+  const update = await runCapturedCommand(
+    npmCommand,
+    ["install", "-g", "@openai/codex@latest"],
+    {
+      timeoutMs: CODEX_UPDATE_TIMEOUT_MS,
+      env: { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" },
+    },
+  );
+  const after = readCodexVersion();
+  return [
+    `command=${npmCommand} install -g @openai/codex@latest`,
+    `before=${before}`,
+    `after=${after}`,
+    truncateForLog(update.output, 2000),
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function codexHasStoredAuth(): boolean {
@@ -108,6 +306,13 @@ function claudeHasDeterministicAuth(): boolean {
 function isFrameworkAuthenticated(framework: Framework): boolean {
   if (framework === "claude" && !claudeHasDeterministicAuth()) {
     return false;
+  }
+  if (
+    framework === "claude" &&
+    (process.env.ANTHROPIC_API_KEY?.trim() ||
+      process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim())
+  ) {
+    return true;
   }
 
   try {
@@ -537,272 +742,362 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
   }
 }
 
-/**
- * Recursively copies a directory tree, applying placeholder substitutions
- * to every UTF-8-clean file. Mirrors the create-app flow's `copyTemplate`.
- */
-function copyTemplateTree(
-  src: string,
-  dest: string,
-  replacements: Record<string, string>,
-): void {
-  fs.mkdirSync(dest, { recursive: true });
-  for (const entry of fs.readdirSync(src)) {
-    const from = path.join(src, entry);
-    const to = path.join(dest, entry);
-    const stat = fs.statSync(from);
-    if (stat.isDirectory()) {
-      copyTemplateTree(from, to, replacements);
-    } else if (stat.isFile()) {
-      const raw = fs.readFileSync(from);
-      const text = raw.toString("utf8");
-      if (Buffer.byteLength(text, "utf8") === raw.length) {
-        let rewritten = text;
-        for (const [token, value] of Object.entries(replacements)) {
-          rewritten = rewritten.split(token).join(value);
-        }
-        fs.writeFileSync(to, rewritten, "utf8");
-      } else {
-        fs.cpSync(from, to);
+function readJsonObject(file: string): Record<string, unknown> {
+  const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as unknown;
+  if (!isRecord(parsed)) {
+    throw new Error(`Expected JSON object at ${file}`);
+  }
+  return parsed;
+}
+
+function createCounterAppPrompt(input: {
+  agentType: Framework;
+  appDir: string;
+  appName: string;
+  appSlug: string;
+  displayName: string;
+}): string {
+  const expectedFiles = [
+    "package.json",
+    "tsconfig.json",
+    "biome.json",
+    "vitest.config.ts",
+    "index.html",
+    "src/counter.ts",
+    "src/main.ts",
+    "tests/counter.test.ts",
+  ];
+  return [
+    "Create a complete, minimal Milady Eliza app for a browser counter.",
+    "",
+    `Agent framework under test: ${input.agentType}.`,
+    `Create the app package at exactly: ${input.appDir}`,
+    `Package name: ${input.appName}`,
+    `App slug: ${input.appSlug}`,
+    `Display name: ${input.displayName}`,
+    "",
+    "The package must be self-contained and use vanilla TypeScript. Do not install dependencies.",
+    "Create these files and include all of them in the final files claim:",
+    ...expectedFiles.map((file) => `- ${file}`),
+    "",
+    "package.json requirements:",
+    '- "type": "module"',
+    '- scripts: "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "biome check .", "test": "vitest run --config ./vitest.config.ts"',
+    `- elizaos.app.displayName = "${input.displayName}"`,
+    `- elizaos.app.slug = "${input.appSlug}"`,
+    '- elizaos.app.category = "utility"',
+    "",
+    "Counter behavior requirements:",
+    "- src/counter.ts exports a CounterState type and a nextCount(state, delta) function.",
+    "- index.html contains the visible counter value and increment/decrement buttons.",
+    '- src/main.ts imports nextCount and wires button click handlers with addEventListener("click", ...).',
+    "- tests/counter.test.ts verifies increment and decrement behavior by importing nextCount.",
+    "",
+    "Before signaling completion, run these commands from the app package directory in order:",
+    "1. bun run typecheck",
+    "2. bun run lint",
+    "3. bun run test",
+    "",
+    "After all three commands exit zero, emit exactly one final stdout line.",
+    'That final line must start with APP_CREATE_DONE, followed by one space, then a JSON object with fields: appName, files, tests, lint, typecheck.',
+    `The JSON appName field must be "${input.appName}".`,
+    "The JSON tests.failed field must be 0, and tests.passed must match the Vitest Tests summary.",
+    'The JSON lint and typecheck fields must both be "ok".',
+    "Do not emit APP_CREATE_DONE until verification has passed.",
+  ].join("\n");
+}
+
+async function runCounterAgentCli(
+  agentType: Framework,
+  task: string,
+  workdir: string,
+): Promise<string> {
+  const env = { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" };
+  if (agentType === "claude") {
+    const model = process.env.MILADY_LIVE_CLAUDE_MODEL?.trim();
+    const args = [
+      "-p",
+      "--dangerously-skip-permissions",
+      "--output-format",
+      "text",
+      ...(model ? ["--model", model] : []),
+      task,
+    ];
+    const result = await runCapturedCommand("claude", args, {
+      cwd: workdir,
+      env,
+      timeoutMs: COUNTER_AGENT_TIMEOUT_MS,
+    });
+    return result.output;
+  }
+
+  const model = process.env.MILADY_LIVE_CODEX_MODEL?.trim();
+  const args = [
+    "exec",
+    "--cd",
+    workdir,
+    "--sandbox",
+    "workspace-write",
+    "--skip-git-repo-check",
+    "--color",
+    "never",
+    "-c",
+    'approval_policy="never"',
+    ...(model ? ["--model", model] : []),
+    task,
+  ];
+  const result = await runCapturedCommand("codex", args, {
+    cwd: workdir,
+    env,
+    timeoutMs: COUNTER_AGENT_TIMEOUT_MS,
+  });
+  return result.output;
+}
+
+async function runCounterAgentCliWithCodexUpdate(
+  agentType: Framework,
+  task: string,
+  workdir: string,
+): Promise<string> {
+  try {
+    return await runCounterAgentCli(agentType, task, workdir);
+  } catch (error) {
+    if (agentType !== "codex" || !isCodexCliTooOldError(error)) {
+      throw error;
+    }
+    const updateDetail = await updateCodexCli().catch((updateError) => {
+      throw new Error(
+        [
+          "Codex CLI reported that the configured model requires a newer CLI, and automatic update failed.",
+          "Original Codex failure:",
+          errorDetail(error),
+          "Update failure:",
+          errorDetail(updateError),
+        ].join("\n"),
+      );
+    });
+    console.log(
+      "[task-agent-live-smoke] CODEX_UPDATE",
+      JSON.stringify({
+        framework: agentType,
+        mode: "counter-app",
+        detail: truncateForLog(updateDetail, 1200),
+      }),
+    );
+    try {
+      return await runCounterAgentCli(agentType, task, workdir);
+    } catch (retryError) {
+      if (isCodexCliTooOldError(retryError)) {
+        throw new Error(
+          [
+            "Codex CLI still reports an old-version error after automatic update.",
+            "Update detail:",
+            updateDetail,
+            "Retry failure:",
+            errorDetail(retryError),
+          ].join("\n"),
+        );
       }
+      throw retryError;
     }
   }
 }
 
-const APP_CREATE_DONE_RE = /APP_CREATE_DONE\s+(\{[\s\S]*?\})/m;
+function extractAppProof(output: string): AppStructuredProofClaim {
+  const invalidReasons: string[] = [];
+  for (const line of output.split(/\r?\n/)) {
+    const parsed = parseStructuredProofDirective(line);
+    if (!parsed) continue;
+    if (!parsed.ok) {
+      invalidReasons.push(parsed.reason);
+      continue;
+    }
+    if (parsed.parsed.kind !== "APP_CREATE_DONE") {
+      invalidReasons.push(`unexpected proof kind ${parsed.parsed.kind}`);
+      continue;
+    }
+    return parsed.parsed.claim;
+  }
 
-/**
- * Real spawn + real LLM smoke for the APP create flow.
- *
- * Mirrors what `createAppAction({mode: "create"})` does end-to-end:
- *   1. Scaffolds `eliza/templates/min-app` into a fresh tempdir, replacing
- *      __APP_NAME__ / __APP_DISPLAY_NAME__ for a counter app.
- *   2. Spawns a real Claude Code (or Codex) child via PTYService, with the
- *      same task prompt the create flow builds.
- *   3. Polls the PTY output for the canonical APP_CREATE_DONE sentinel.
- *   4. Cross-checks the claim against disk: every claimed file exists.
- *   5. Runs the real AppVerificationService against the final workspace
- *      (typecheck + lint + test) and asserts verdict=pass.
- *
- * This is the gap I called out in the audit: until this runs green, the
- * "spawn → child writes code → emits sentinel → parent verifies" chain
- * was unverified end-to-end. Watchdog: 12 minutes for the spawn-and-code
- * cycle, plus ~10s for the verification.
- */
-async function runCounterAppSmoke(agentType: Framework): Promise<void> {
-  // import.meta.dirname → .../eliza/packages/app-core/test/scripts
-  // 4 levels up reaches the eliza repo root where templates/min-app lives.
-  const elizaRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
-  const templateSrc = path.join(elizaRoot, "templates", "min-app");
-  if (!fs.existsSync(templateSrc)) {
-    throw new Error(
-      `min-app template not found at ${templateSrc} — re-check repo layout`,
+  const invalid = invalidReasons.length
+    ? `\nMalformed APP_CREATE_DONE lines:\n${invalidReasons.map((r) => `- ${r}`).join("\n")}`
+    : "";
+  throw new Error(
+    `No valid APP_CREATE_DONE proof found in agent output.${invalid}\nOutput tail:\n${truncateForLog(output.slice(-6000))}`,
+  );
+}
+
+function assertCounterAppDisk(input: {
+  appDir: string;
+  appName: string;
+  appSlug: string;
+  displayName: string;
+  proof: AppStructuredProofClaim;
+}): void {
+  assert.equal(input.proof.appName, input.appName);
+  const expectedFiles = [
+    "package.json",
+    "tsconfig.json",
+    "biome.json",
+    "vitest.config.ts",
+    "index.html",
+    "src/counter.ts",
+    "src/main.ts",
+    "tests/counter.test.ts",
+  ];
+  for (const file of expectedFiles) {
+    assert.ok(
+      input.proof.files.includes(file),
+      `APP_CREATE_DONE files must include ${file}`,
+    );
+    const full = path.join(input.appDir, file);
+    assert.ok(
+      fs.existsSync(full) && fs.statSync(full).size > 0,
+      `expected non-empty file at ${full}`,
     );
   }
-  const workdir = createWorkdir(agentType, "counter-app");
-  copyTemplateTree(templateSrc, workdir, {
-    __APP_NAME__: "live-counter",
-    __APP_DISPLAY_NAME__: "Live Counter",
-  });
+  for (const claimed of input.proof.files) {
+    assert.ok(!path.isAbsolute(claimed), `claimed file must be relative: ${claimed}`);
+    const full = path.resolve(input.appDir, claimed);
+    assert.ok(
+      path.relative(input.appDir, full).startsWith("..") === false,
+      `claimed file escapes app dir: ${claimed}`,
+    );
+    assert.ok(
+      fs.existsSync(full) && fs.statSync(full).size > 0,
+      `claimed file missing or empty: ${full}`,
+    );
+  }
 
-  const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-  const service = await PTYService.start(runtime as unknown as IAgentRuntime);
-  runtime.services.set("PTY_SERVICE", [service]);
+  const pkg = readJsonObject(path.join(input.appDir, "package.json"));
+  assert.equal(pkg.name, input.appName);
+  const elizaos = isRecord(pkg.elizaos) ? pkg.elizaos : null;
+  const app = elizaos && isRecord(elizaos.app) ? elizaos.app : null;
+  assert.ok(app, "package.json must include elizaos.app metadata");
+  assert.equal(app.displayName, input.displayName);
+  assert.equal(app.slug, input.appSlug);
 
-  const events: Array<{ event: string; data: unknown }> = [];
-  const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
-    events.push({ event, data });
-  });
+  const allText = expectedFiles
+    .map((file) => fs.readFileSync(path.join(input.appDir, file), "utf8"))
+    .join("\n");
+  for (const placeholder of [
+    "__APP_NAME__",
+    "__APP_DISPLAY_NAME__",
+    "__PLUGIN_NAME__",
+    "__PLUGIN_DISPLAY_NAME__",
+  ]) {
+    assert.ok(!allText.includes(placeholder), `placeholder remains: ${placeholder}`);
+  }
 
-  // Lazy-load the verification service from plugin-app-control so we don't
-  // pull it into the static import graph for the simpler smokes.
-  const { AppVerificationService } = await import(
-    "@elizaos/plugin-app-control"
+  const index = fs.readFileSync(path.join(input.appDir, "index.html"), "utf8");
+  const main = fs.readFileSync(path.join(input.appDir, "src", "main.ts"), "utf8");
+  const counter = fs.readFileSync(
+    path.join(input.appDir, "src", "counter.ts"),
+    "utf8",
   );
-  const verifier = new AppVerificationService(
+  const test = fs.readFileSync(
+    path.join(input.appDir, "tests", "counter.test.ts"),
+    "utf8",
+  );
+  assert.match(index, /<button\b/i);
+  assert.match(main, /addEventListener\(["']click["']/);
+  assert.match(main, /nextCount/);
+  assert.match(counter, /export\s+function\s+nextCount/);
+  assert.match(test, /nextCount/);
+}
+
+/**
+ * Real CLI + real LLM smoke for the APP create/load flow.
+ */
+async function runCounterAppSmoke(agentType: Framework): Promise<void> {
+  const workdir = createWorkdir(agentType, "counter-app");
+  const appSlug = `counter-live-${agentType}`;
+  const appName = `@milady/${appSlug}`;
+  const displayName =
+    agentType === "codex" ? "Live Counter Codex" : "Live Counter Claude";
+  const appDir = path.join(workdir, appSlug);
+  const stateDir = path.join(workdir, ".state");
+  const previousStateDir = process.env.MILADY_STATE_DIR;
+  const previousElizaStateDir = process.env.ELIZA_STATE_DIR;
+  process.env.MILADY_STATE_DIR = stateDir;
+  process.env.ELIZA_STATE_DIR = stateDir;
+  const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
+  const appRegistry = await AppRegistryService.start(
     runtime as unknown as IAgentRuntime,
   );
+  const appVerification = new AppVerificationService(
+    runtime as unknown as IAgentRuntime,
+  );
+  runtime.services.set(APP_REGISTRY_SERVICE_TYPE, [appRegistry]);
+  runtime.services.set(AppVerificationService.serviceType, [appVerification]);
 
   try {
-    const [preflight] = await service.checkAvailableAgents([agentType]);
-    assert.equal(preflight?.installed, true);
+    const taskPrompt = createCounterAppPrompt({
+      agentType,
+      appDir,
+      appName,
+      appSlug,
+      displayName,
+    });
 
-    const taskPrompt = [
-      'You are building a Milady app called "Live Counter".',
-      "The user's intent: a tiny counter app — a single file-backed integer that goes up and down.",
-      "",
-      `The app source directory is ${workdir}. It has already been scaffolded from the min-app template.`,
-      "Work in that source directory, not in the agent's scratch directory.",
-      "Read SCAFFOLD.md in the source directory before editing.",
-      "",
-      "Replace the trivial hello action in src/plugin.ts with two real actions:",
-      "  - INCREMENT_COUNTER — bumps a value persisted to disk",
-      "  - DECREMENT_COUNTER — drops it",
-      "Persist the value to a single JSON file at /tmp/live-counter.json so",
-      "the count survives between handler calls. Update the existing test in",
-      "tests/launch.test.ts to exercise both actions and assert persistence.",
-      "",
-      "Before signaling completion, run these commands from the source directory in order:",
-      "  1. bun run typecheck",
-      "  2. bun run lint",
-      "  3. bun run test",
-      "",
-      "After all three pass, emit exactly one completion line in this canonical schema:",
-      'APP_CREATE_DONE {"appName":"live-counter","files":["src/plugin.ts","tests/launch.test.ts"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok"}',
-      "Use files actually changed or added. Do not emit legacy field names like 'name' or 'testsPassed'.",
-    ].join("\n");
-
-    const spawnResult = await spawnAgentAction.handler(
-      runtime as unknown as IAgentRuntime,
-      createMessage({
-        agentType,
-        workdir,
-        task: taskPrompt,
-      }) as never,
-      undefined,
-      {},
-      undefined,
-    );
-    assert.equal(spawnResult?.success, true);
-    const initialSessionId = String(spawnResult?.data?.sessionId);
-    assert.ok(initialSessionId, "spawn returned no sessionId");
-    // Note: we deliberately do NOT call waitForTrackedSession here. The
-    // orchestrator's auth-recovery may rotate the session id mid-flight
-    // (see SwarmCoordinator's "claude recovery N" path); binding the test
-    // to one id loses the recovered session. Instead, poll all active
-    // sessions for the sentinel below.
-
-    let proofClaim: Record<string, unknown> | null = null;
-
-    await waitFor(
-      async () => {
-        const sessions = await service.listSessions();
-        if (sessions.length === 0) {
-          // Orchestrator may have stopped all sessions. If we already
-          // captured a task_complete event in any of them, treat as done
-          // (the cross-check will fail if no proof was actually emitted).
-          return false;
-        }
-
-        // Find any active session (current or rotated) with output we can
-        // scan for the sentinel.
-        for (const s of sessions) {
-          const rawOutput = await service.getSessionOutput(s.id).catch(() => "");
-          if (!rawOutput) continue;
-          const cleaned = cleanForChat(rawOutput);
-          const match =
-            cleaned.match(APP_CREATE_DONE_RE) ??
-            rawOutput.match(APP_CREATE_DONE_RE);
-          if (match) {
-            try {
-              const parsed = JSON.parse(match[1]) as Record<string, unknown>;
-              // Ignore the prompt-echo: the prompt itself contains the
-              // sentinel template with literal "<exact passed count>"
-              // string. Real proof has integer tests.passed.
-              const tests = parsed.tests as
-                | Record<string, unknown>
-                | undefined;
-              const passedRaw = tests?.passed;
-              if (typeof passedRaw === "number") {
-                proofClaim = parsed;
-                return true;
-              }
-            } catch {
-              // not JSON yet; keep polling
-            }
-          }
-        }
-
-        // If every session has stopped, fail with the most recent output
-        // so we can debug.
-        const allStopped = sessions.every(
-          (s) => s.status === "stopped" || s.status === "error",
-        );
-        if (allStopped) {
-          const last = sessions[sessions.length - 1];
-          const output = last
-            ? await service
-                .getSessionOutput(last.id, 400)
-                .catch(() => "<output unavailable>")
-            : "<no sessions>";
-          throw new Error(
-            `all spawned sessions ended without emitting a real APP_CREATE_DONE proof. Last output (tail):\n${output.slice(-1500)}`,
-          );
-        }
-
-        return false;
-      },
-      12 * 60 * 1000,
-      4_000,
-    );
-
-    assert.ok(
-      proofClaim,
-      "child agent never emitted an APP_CREATE_DONE sentinel within the timeout",
-    );
-
-    // Cross-check the claim against disk — the orchestrator's
-    // structured-proof bridge does this in production.
-    assert.equal(
-      (proofClaim as Record<string, unknown>).appName,
-      "live-counter",
-      `appName mismatch in proof: ${JSON.stringify(proofClaim)}`,
-    );
-    const claimedFiles = Array.isArray(
-      (proofClaim as Record<string, unknown>).files,
-    )
-      ? ((proofClaim as Record<string, unknown>).files as unknown[]).filter(
-          (f): f is string => typeof f === "string",
-        )
-      : [];
-    assert.ok(
-      claimedFiles.length > 0,
-      `proof claimed no files: ${JSON.stringify(proofClaim)}`,
-    );
-    for (const claimed of claimedFiles) {
-      const full = path.join(workdir, claimed);
-      assert.ok(
-        fs.existsSync(full) && fs.statSync(full).size > 0,
-        `claimed file does not exist or is empty: ${full}`,
-      );
-    }
-
-    // Now run the real AppVerificationService against the final
-    // workspace — this is what the parent runtime would do.
-    const verification = await verifier.verifyApp({
+    const rawOutput = await runCounterAgentCliWithCodexUpdate(
+      agentType,
+      taskPrompt,
       workdir,
-      appName: "live-counter",
-      checks: [
-        { kind: "typecheck" },
-        { kind: "lint" },
-        { kind: "test" },
-      ],
+    );
+    const proof = extractAppProof(rawOutput);
+    assertCounterAppDisk({ appDir, appName, appSlug, displayName, proof });
+
+    const verification = await appVerification.verifyApp({
+      workdir: appDir,
+      appName,
+      checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
+      packageManager: "bun",
+      requireStructuredProof: true,
+      structuredProof: proof,
       runId: `live-counter-${agentType}-${Date.now()}`,
-      structuredProof: {
-        kind: "APP_CREATE_DONE",
-        ...(proofClaim as Record<string, unknown>),
-      },
     });
 
     if (verification.verdict !== "pass") {
       const summary = verification.checks
         .map(
-          (c) =>
-            `  - ${c.kind}: ${c.passed ? "pass" : "FAIL"} (${c.durationMs}ms)`,
+          (check) =>
+            `  - ${check.kind}: ${check.passed ? "pass" : "FAIL"} (${check.durationMs}ms)`,
         )
         .join("\n");
       throw new Error(
         `verifyApp returned verdict=fail.\nChecks:\n${summary}\n\nRetryable prompt:\n${verification.retryablePromptForChild}`,
       );
     }
-    assert.equal(verification.verdict, "pass");
+
+    const appAction = createAppAction({
+      hasOwnerAccess: async () => true,
+    });
+    const loadResult = await appAction.handler(
+      runtime as unknown as IAgentRuntime,
+      createMessage({
+        text: `load apps from ${workdir} directory`,
+      }) as never,
+      undefined,
+      { mode: "load_from_directory", directory: workdir },
+      undefined,
+    );
+    assert.equal(loadResult?.success, true);
+    const registered = await appRegistry.list();
+    const registeredApp = registered.find((entry) => entry.slug === appSlug);
+    assert.ok(registeredApp, `APP/load_from_directory did not register ${appSlug}`);
+    assert.equal(registeredApp.canonicalName, appName);
+    assert.equal(registeredApp.displayName, displayName);
+    assert.equal(path.resolve(registeredApp.directory), path.resolve(appDir));
 
     console.log(
       "[task-agent-live-smoke] counter-app verification",
       JSON.stringify({
-        framework: agentType,
-        sessionId,
-        proofClaim,
+        agentType,
+        appName,
+        appSlug,
+        registeredDirectory: registeredApp.directory,
+        proof,
         verdict: verification.verdict,
         checks: verification.checks.map((c) => ({
           kind: c.kind,
@@ -812,9 +1107,19 @@ async function runCounterAppSmoke(agentType: Framework): Promise<void> {
       }),
     );
   } finally {
-    unsubscribe();
-    await service.stop();
+    await appVerification.stop();
+    await appRegistry.stop();
     await cleanup();
+    if (previousStateDir !== undefined) {
+      process.env.MILADY_STATE_DIR = previousStateDir;
+    } else {
+      delete process.env.MILADY_STATE_DIR;
+    }
+    if (previousElizaStateDir !== undefined) {
+      process.env.ELIZA_STATE_DIR = previousElizaStateDir;
+    } else {
+      delete process.env.ELIZA_STATE_DIR;
+    }
     if (!KEEP_ARTIFACTS) {
       fs.rmSync(workdir, { recursive: true, force: true });
     }

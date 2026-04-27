@@ -26,12 +26,15 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("secondaryContexts:");
 			expect(shouldRespondTemplate).toContain("evidenceTurnIds:");
 
-			expect(shouldRespondTemplate).toContain("rules[6]:");
+			expect(shouldRespondTemplate).toContain("rules[7]:");
 			expect(shouldRespondTemplate).toContain(
 				"direct mention of {{agentName}}",
 			);
 			expect(shouldRespondTemplate).toContain(
 				"request to stop or be quiet directed at {{agentName}} -> STOP",
+			);
+			expect(shouldRespondTemplate).toContain(
+				"in group conversations, if the latest message is addressed to someone else and not to {{agentName}}, IGNORE",
 			);
 			expect(shouldRespondTemplate).toContain("decision_note:");
 			expect(shouldRespondTemplate).toContain(
@@ -71,6 +74,9 @@ describe("Prompts", () => {
 			);
 			expect(messageHandlerTemplate).toContain(
 				"if actions are REPLY-only and you want the REPLY action to generate the final user-facing message, set simple=false",
+			);
+			expect(messageHandlerTemplate).toContain(
+				"in group conversations, choose IGNORE if the latest message is addressed to someone else and not to {{agentName}}",
 			);
 		});
 
