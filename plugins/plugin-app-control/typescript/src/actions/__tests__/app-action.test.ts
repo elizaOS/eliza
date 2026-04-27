@@ -234,9 +234,9 @@ describe("APP create dispatch", () => {
 			expect(result.text).toContain("Task session session-app-1 is running");
 			expect(createTaskHandler).toHaveBeenCalledTimes(1);
 
-			const handlerOptions = (createTaskHandler.mock.calls[0] as unknown[])[
-				3
-			] as HandlerOptions;
+			const handlerOptions = (
+				createTaskHandler.mock.calls[0] as unknown[]
+			)[3] as HandlerOptions;
 			const parameters = handlerOptions.parameters as Record<string, unknown>;
 			expect(parameters.task).toContain(
 				'APP_CREATE_DONE {"appName":"note-taker"',
@@ -251,7 +251,9 @@ describe("APP create dispatch", () => {
 			});
 			expect(parameters.agentType).toBeUndefined();
 			expect(parameters.env).toBeUndefined();
-			expect((handlerOptions as Record<string, unknown>).validator).toBeUndefined();
+			expect(
+				(handlerOptions as Record<string, unknown>).validator,
+			).toBeUndefined();
 			expect((handlerOptions as Record<string, unknown>).env).toBeUndefined();
 			expect(JSON.stringify(handlerOptions)).not.toContain("ANTHROPIC_MODEL");
 
