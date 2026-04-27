@@ -244,13 +244,31 @@ async function runSubscriptionsAction(
 ): Promise<ActionResult> {
   const params = mergeParams(message, options);
   const service = new LifeOpsService(runtime);
-  const planner = await resolveSubscriptionsPlanWithLlm({
-    runtime,
-    message,
-    state,
-    params,
-  });
-  const mode = normalizeMode(params.mode) ?? planner.mode ?? null;
+  // Trust planner-supplied mode. The action planner has already chosen the
+  // subaction, and the shared LLM param extractor (in handlers that route
+  // here through an umbrella) has already filled in any missing mode field.
+  // Only fall back to the in-handler LLM planner when the mode is genuinely
+  // missing — running it unconditionally just throws away correct hints
+  // (this was the root cause of subscriptions-cancel-* never completing).
+  const trustedMode = normalizeMode(params.mode);
+  const planner = trustedMode
+    ? {
+        mode: trustedMode,
+        shouldAct: true as const,
+        response: null,
+        serviceName: null,
+        serviceSlug: null,
+        executor: null,
+        confirmed: null,
+        queryWindowDays: undefined as number | undefined,
+      }
+    : await resolveSubscriptionsPlanWithLlm({
+        runtime,
+        message,
+        state,
+        params,
+      });
+  const mode = trustedMode ?? planner.mode ?? null;
 
   if (planner.shouldAct === false && planner.response) {
     return {
