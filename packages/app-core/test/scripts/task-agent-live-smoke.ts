@@ -17,9 +17,13 @@ import {
 import { createTestRuntime } from "../helpers/pglite-runtime";
 
 type Framework = "claude" | "codex";
-type Mode = "sequential" | "web";
+type Mode = "sequential" | "web" | "counter-app";
 
 const KEEP_ARTIFACTS = process.env.MILADY_KEEP_LIVE_ARTIFACTS === "1";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function codexHasStoredAuth(): boolean {
   if (process.env.OPENAI_API_KEY?.trim()) {
@@ -29,10 +33,20 @@ function codexHasStoredAuth(): boolean {
   try {
     const authPath = path.join(os.homedir(), ".codex", "auth.json");
     const raw = fs.readFileSync(authPath, "utf8");
-    const parsed = JSON.parse(raw) as { OPENAI_API_KEY?: string };
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isRecord(parsed)) return false;
+    const apiKey = parsed.OPENAI_API_KEY;
+    if (typeof apiKey === "string" && apiKey.trim().length > 0) return true;
+    // ChatGPT-mode: tokens object with access_token + refresh_token, same
+    // shape the e2e test wrapper accepts.
+    const tokens = parsed.tokens;
     return (
-      typeof parsed.OPENAI_API_KEY === "string" &&
-      parsed.OPENAI_API_KEY.trim().length > 0
+      parsed.auth_mode === "chatgpt" &&
+      isRecord(tokens) &&
+      typeof tokens.access_token === "string" &&
+      tokens.access_token.trim().length > 0 &&
+      typeof tokens.refresh_token === "string" &&
+      tokens.refresh_token.trim().length > 0
     );
   } catch {
     return false;
@@ -43,8 +57,17 @@ function claudeHasDeterministicAuth(): boolean {
   if (process.env.ANTHROPIC_API_KEY?.trim()) {
     return true;
   }
-
-  return fs.existsSync(path.join(os.homedir(), ".claude", ".credentials.json"));
+  // Claude Code reads CLAUDE_CODE_OAUTH_TOKEN at startup — that's the
+  // header-passthrough auth path that survives PTY spawn.
+  if (process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim()) {
+    return true;
+  }
+  // Accept either the per-app credentials file or the OAuth-token file at
+  // ~/.claude.json — same set the live e2e wrapper accepts.
+  return (
+    fs.existsSync(path.join(os.homedir(), ".claude", ".credentials.json")) ||
+    fs.existsSync(path.join(os.homedir(), ".claude.json"))
+  );
 }
 
 function isFrameworkAuthenticated(framework: Framework): boolean {
@@ -479,6 +502,273 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
   }
 }
 
+/**
+ * Recursively copies a directory tree, applying placeholder substitutions
+ * to every UTF-8-clean file. Mirrors the create-app flow's `copyTemplate`.
+ */
+function copyTemplateTree(
+  src: string,
+  dest: string,
+  replacements: Record<string, string>,
+): void {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src)) {
+    const from = path.join(src, entry);
+    const to = path.join(dest, entry);
+    const stat = fs.statSync(from);
+    if (stat.isDirectory()) {
+      copyTemplateTree(from, to, replacements);
+    } else if (stat.isFile()) {
+      const raw = fs.readFileSync(from);
+      const text = raw.toString("utf8");
+      if (Buffer.byteLength(text, "utf8") === raw.length) {
+        let rewritten = text;
+        for (const [token, value] of Object.entries(replacements)) {
+          rewritten = rewritten.split(token).join(value);
+        }
+        fs.writeFileSync(to, rewritten, "utf8");
+      } else {
+        fs.cpSync(from, to);
+      }
+    }
+  }
+}
+
+const APP_CREATE_DONE_RE = /APP_CREATE_DONE\s+(\{[\s\S]*?\})/m;
+
+/**
+ * Real spawn + real LLM smoke for the APP create flow.
+ *
+ * Mirrors what `createAppAction({mode: "create"})` does end-to-end:
+ *   1. Scaffolds `eliza/templates/min-app` into a fresh tempdir, replacing
+ *      __APP_NAME__ / __APP_DISPLAY_NAME__ for a counter app.
+ *   2. Spawns a real Claude Code (or Codex) child via PTYService, with the
+ *      same task prompt the create flow builds.
+ *   3. Polls the PTY output for the canonical APP_CREATE_DONE sentinel.
+ *   4. Cross-checks the claim against disk: every claimed file exists.
+ *   5. Runs the real AppVerificationService against the final workspace
+ *      (typecheck + lint + test) and asserts verdict=pass.
+ *
+ * This is the gap I called out in the audit: until this runs green, the
+ * "spawn → child writes code → emits sentinel → parent verifies" chain
+ * was unverified end-to-end. Watchdog: 12 minutes for the spawn-and-code
+ * cycle, plus ~10s for the verification.
+ */
+async function runCounterAppSmoke(agentType: Framework): Promise<void> {
+  // import.meta.dirname → .../eliza/packages/app-core/test/scripts
+  // 4 levels up reaches the eliza repo root where templates/min-app lives.
+  const elizaRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+  const templateSrc = path.join(elizaRoot, "templates", "min-app");
+  if (!fs.existsSync(templateSrc)) {
+    throw new Error(
+      `min-app template not found at ${templateSrc} — re-check repo layout`,
+    );
+  }
+  const workdir = createWorkdir(agentType, "counter-app");
+  copyTemplateTree(templateSrc, workdir, {
+    __APP_NAME__: "live-counter",
+    __APP_DISPLAY_NAME__: "Live Counter",
+  });
+
+  const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
+  const service = await PTYService.start(runtime as unknown as IAgentRuntime);
+  runtime.services.set("PTY_SERVICE", [service]);
+
+  const events: Array<{ event: string; data: unknown }> = [];
+  const unsubscribe = service.onSessionEvent((_sessionId, event, data) => {
+    events.push({ event, data });
+  });
+
+  // Lazy-load the verification service from plugin-app-control so we don't
+  // pull it into the static import graph for the simpler smokes.
+  const { AppVerificationService } = await import(
+    "@elizaos/plugin-app-control"
+  );
+  const verifier = new AppVerificationService(
+    runtime as unknown as IAgentRuntime,
+  );
+
+  try {
+    const [preflight] = await service.checkAvailableAgents([agentType]);
+    assert.equal(preflight?.installed, true);
+
+    const taskPrompt = [
+      'You are building a Milady app called "Live Counter".',
+      "The user's intent: a tiny counter app — a single file-backed integer that goes up and down.",
+      "",
+      `The app source directory is ${workdir}. It has already been scaffolded from the min-app template.`,
+      "Work in that source directory, not in the agent's scratch directory.",
+      "Read SCAFFOLD.md in the source directory before editing.",
+      "",
+      "Replace the trivial hello action in src/plugin.ts with two real actions:",
+      "  - INCREMENT_COUNTER — bumps a value persisted to disk",
+      "  - DECREMENT_COUNTER — drops it",
+      "Persist the value to a single JSON file at /tmp/live-counter.json so",
+      "the count survives between handler calls. Update the existing test in",
+      "tests/launch.test.ts to exercise both actions and assert persistence.",
+      "",
+      "Before signaling completion, run these commands from the source directory in order:",
+      "  1. bun run typecheck",
+      "  2. bun run lint",
+      "  3. bun run test",
+      "",
+      "After all three pass, emit exactly one completion line in this canonical schema:",
+      'APP_CREATE_DONE {"appName":"live-counter","files":["src/plugin.ts","tests/launch.test.ts"],"tests":{"passed":<exact passed count>,"failed":0},"lint":"ok","typecheck":"ok"}',
+      "Use files actually changed or added. Do not emit legacy field names like 'name' or 'testsPassed'.",
+    ].join("\n");
+
+    const spawnResult = await spawnAgentAction.handler(
+      runtime as unknown as IAgentRuntime,
+      createMessage({
+        agentType,
+        workdir,
+        task: taskPrompt,
+      }) as never,
+      undefined,
+      {},
+      undefined,
+    );
+    assert.equal(spawnResult?.success, true);
+    const sessionId = String(spawnResult?.data?.sessionId);
+    assert.ok(sessionId, "spawn returned no sessionId");
+    await waitForTrackedSession(runtime, sessionId, agentType);
+
+    const taskEventStart = events.length;
+
+    let proofClaim: Record<string, unknown> | null = null;
+
+    await waitFor(
+      async () => {
+        const sessionInfo = service.getSession(sessionId);
+        if (!sessionInfo) {
+          throw new Error("session disappeared before completing");
+        }
+        const recentLoginRequired = events.findLast(
+          (entry) => entry.event === "login_required",
+        );
+        if (recentLoginRequired) {
+          const details = recentLoginRequired.data as {
+            instructions?: string;
+          };
+          throw new Error(
+            details.instructions || "framework authentication is required",
+          );
+        }
+        if (
+          sessionInfo.status === "stopped" ||
+          sessionInfo.status === "error"
+        ) {
+          const output = await service.getSessionOutput(sessionId, 400);
+          throw new Error(
+            `session ended early with status ${sessionInfo.status}. Output: ${output.slice(-1200)}`,
+          );
+        }
+        const rawOutput = await service.getSessionOutput(sessionId);
+        const cleaned = cleanForChat(rawOutput);
+        const match = cleaned.match(APP_CREATE_DONE_RE) ??
+          rawOutput.match(APP_CREATE_DONE_RE);
+        if (!match) {
+          return (
+            sessionInfo.status === "completed" ||
+            sawTaskCompletion(events, taskEventStart)
+          );
+        }
+        try {
+          proofClaim = JSON.parse(match[1]) as Record<string, unknown>;
+        } catch {
+          return false;
+        }
+        return true;
+      },
+      12 * 60 * 1000,
+      4_000,
+    );
+
+    assert.ok(
+      proofClaim,
+      "child agent never emitted an APP_CREATE_DONE sentinel within the timeout",
+    );
+
+    // Cross-check the claim against disk — the orchestrator's
+    // structured-proof bridge does this in production.
+    assert.equal(
+      (proofClaim as Record<string, unknown>).appName,
+      "live-counter",
+      `appName mismatch in proof: ${JSON.stringify(proofClaim)}`,
+    );
+    const claimedFiles = Array.isArray(
+      (proofClaim as Record<string, unknown>).files,
+    )
+      ? ((proofClaim as Record<string, unknown>).files as unknown[]).filter(
+          (f): f is string => typeof f === "string",
+        )
+      : [];
+    assert.ok(
+      claimedFiles.length > 0,
+      `proof claimed no files: ${JSON.stringify(proofClaim)}`,
+    );
+    for (const claimed of claimedFiles) {
+      const full = path.join(workdir, claimed);
+      assert.ok(
+        fs.existsSync(full) && fs.statSync(full).size > 0,
+        `claimed file does not exist or is empty: ${full}`,
+      );
+    }
+
+    // Now run the real AppVerificationService against the final
+    // workspace — this is what the parent runtime would do.
+    const verification = await verifier.verifyApp({
+      workdir,
+      appName: "live-counter",
+      checks: [
+        { kind: "typecheck" },
+        { kind: "lint" },
+        { kind: "test" },
+      ],
+      runId: `live-counter-${agentType}-${Date.now()}`,
+      structuredProof: {
+        kind: "APP_CREATE_DONE",
+        ...(proofClaim as Record<string, unknown>),
+      },
+    });
+
+    if (verification.verdict !== "pass") {
+      const summary = verification.checks
+        .map(
+          (c) =>
+            `  - ${c.kind}: ${c.passed ? "pass" : "FAIL"} (${c.durationMs}ms)`,
+        )
+        .join("\n");
+      throw new Error(
+        `verifyApp returned verdict=fail.\nChecks:\n${summary}\n\nRetryable prompt:\n${verification.retryablePromptForChild}`,
+      );
+    }
+    assert.equal(verification.verdict, "pass");
+
+    console.log(
+      "[task-agent-live-smoke] counter-app verification",
+      JSON.stringify({
+        framework: agentType,
+        sessionId,
+        proofClaim,
+        verdict: verification.verdict,
+        checks: verification.checks.map((c) => ({
+          kind: c.kind,
+          passed: c.passed,
+          durationMs: c.durationMs,
+        })),
+      }),
+    );
+  } finally {
+    unsubscribe();
+    await service.stop();
+    await cleanup();
+    if (!KEEP_ARTIFACTS) {
+      fs.rmSync(workdir, { recursive: true, force: true });
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const frameworkIndex = process.argv.indexOf("--framework");
   const modeIndex = process.argv.indexOf("--mode");
@@ -490,10 +780,10 @@ async function main(): Promise<void> {
 
   if (
     (framework !== "claude" && framework !== "codex") ||
-    (mode !== "sequential" && mode !== "web")
+    (mode !== "sequential" && mode !== "web" && mode !== "counter-app")
   ) {
     throw new Error(
-      "Usage: task-agent-live-smoke.ts --framework <claude|codex> --mode <sequential|web>",
+      "Usage: task-agent-live-smoke.ts --framework <claude|codex> --mode <sequential|web|counter-app>",
     );
   }
 
@@ -511,8 +801,10 @@ async function main(): Promise<void> {
 
   if (mode === "sequential") {
     await runSequentialSmoke(framework);
-  } else {
+  } else if (mode === "web") {
     await runWebSmoke(framework);
+  } else {
+    await runCounterAppSmoke(framework);
   }
 
   console.log(
