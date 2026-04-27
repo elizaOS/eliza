@@ -51,7 +51,7 @@ export async function runLaunch({
 	}
 
 	const appName = resolution.match?.name ?? target;
-	let result;
+	let result: Awaited<ReturnType<AppControlClient["launchApp"]>>;
 	try {
 		result = await client.launchApp(appName);
 	} catch (err) {
@@ -59,7 +59,9 @@ export async function runLaunch({
 		// race with concurrent uninstall) must not crash the planner turn.
 		const message = err instanceof Error ? err.message : String(err);
 		const text = `Failed to launch ${appName}: ${message}`;
-		logger.warn(`[plugin-app-control] APP/launch ${appName} failed: ${message}`);
+		logger.warn(
+			`[plugin-app-control] APP/launch ${appName} failed: ${message}`,
+		);
 		await callback?.({ text });
 		return { success: false, text, error: message };
 	}

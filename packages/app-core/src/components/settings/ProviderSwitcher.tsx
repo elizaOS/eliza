@@ -290,6 +290,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const [subscriptionStatus, setSubscriptionStatus] = useState<
     Array<{
       provider: string;
+      accountId: string;
+      label: string;
       configured: boolean;
       valid: boolean;
       expiresAt: number | null;

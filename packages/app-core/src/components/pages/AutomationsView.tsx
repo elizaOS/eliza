@@ -4919,7 +4919,6 @@ function AutomationsLayout() {
       activeWorkflowConversation?.id,
       ctx,
       selectedItemId,
-      setActiveWorkflowConversation,
       setSelectedItemId,
       setSelectedItemKind,
       t,

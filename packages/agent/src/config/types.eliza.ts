@@ -11,7 +11,7 @@ import type {
 } from "../contracts/config.js";
 import type {
   DeploymentTargetConfig,
-  LinkedAccountsConfig,
+  LinkedAccountFlagsConfig,
   ServiceRoutingConfig,
 } from "../contracts/service-routing.js";
 import type { AgentBinding, AgentsConfig } from "./types.agents.js";
@@ -824,8 +824,13 @@ export type ElizaConfig = {
   };
   /** Deployment target for the current agent runtime. */
   deploymentTarget?: DeploymentTargetConfig;
-  /** Linked external accounts that can be used by routing decisions. */
-  linkedAccounts?: LinkedAccountsConfig;
+  /**
+   * Legacy linked-account flags persisted in `milady.json` (e.g.
+   * `linkedAccounts.elizacloud.status === "linked"`). Per-account
+   * credential records live under `~/.eliza/auth/{providerId}/...`
+   * and are surfaced via the WS3 accounts API, not this config.
+   */
+  linkedAccounts?: LinkedAccountFlagsConfig;
   /** Canonical per-capability routing for AI and cloud-backed services. */
   serviceRouting?: ServiceRoutingConfig;
   /** CUA (Computer Use Agent) cloud sandbox configuration. */

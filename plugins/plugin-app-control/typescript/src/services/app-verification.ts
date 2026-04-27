@@ -12,7 +12,7 @@
  */
 
 import { type ExecFileOptions, execFile } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -58,7 +58,8 @@ export type VerificationCheckKind =
 	| "test"
 	| "build"
 	| "launch"
-	| "browser";
+	| "browser"
+	| "structured-proof";
 
 export type VerificationCheck =
 	| { kind: "typecheck" }
@@ -80,15 +81,26 @@ export type CheckResult = {
 	output: string;
 	outputPath?: string;
 	diagnostics?: Diagnostic[];
+	testSummary?: TestRunSummary;
 };
 
 export type VerificationProfile = "fast" | "full";
+export type ProjectKind = "app" | "plugin";
+export type StructuredProofKind = "APP_CREATE_DONE" | "PLUGIN_CREATE_DONE";
+
+export type TestRunSummary = {
+	passed: number;
+	failed: number;
+};
 
 export type VerifyOptions = {
 	workdir: string;
 	appName?: string;
 	checks?: VerificationCheck[];
 	profile?: VerificationProfile;
+	projectKind?: ProjectKind;
+	requireStructuredProof?: boolean;
+	structuredProof?: unknown;
 	runId?: string;
 	packageManager?: PackageManager;
 };
@@ -146,7 +158,11 @@ function newRunId(): string {
 function expandProfile(
 	profile: VerificationProfile | undefined,
 	appName: string | undefined,
+	projectKind: ProjectKind,
 ): VerificationCheck[] {
+	if (projectKind === "plugin") {
+		return [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }];
+	}
 	if (profile === "fast" || profile === undefined) {
 		return [{ kind: "typecheck" }, { kind: "lint" }];
 	}
@@ -228,6 +244,20 @@ function combineOutput(stdout: string, stderr: string): string {
 	return `${stdout}\n--- stderr ---\n${stderr}`;
 }
 
+function parseProvenVitestSummary(output: string): TestRunSummary | null {
+	const testsLine = output
+		.split(/\r?\n/)
+		.find((line) => /^\s*Tests\s+/.test(line));
+	if (!testsLine) return null;
+	const failedMatch = /(\d+)\s+failed/.exec(testsLine);
+	const passedMatch = /(\d+)\s+passed/.exec(testsLine);
+	if (!failedMatch && !passedMatch) return null;
+	return {
+		passed: passedMatch ? Number.parseInt(passedMatch[1] ?? "0", 10) : 0,
+		failed: failedMatch ? Number.parseInt(failedMatch[1] ?? "0", 10) : 0,
+	};
+}
+
 async function runTypecheck(
 	dir: string,
 	pm: PackageManager,
@@ -270,7 +300,7 @@ async function runLint(
 	const diagnostics = parseEslintOutput(full);
 	return {
 		kind: "lint",
-		passed: exitCode === 0,
+		passed: exitCode === 0 && diagnostics.length === 0,
 		durationMs: nowMs() - start,
 		output: truncate(full, OUTPUT_INLINE_LIMIT),
 		outputPath,
@@ -325,18 +355,21 @@ async function runTests(
 	const full = combineOutput(stdout, stderr);
 	const outputPath = await persistOutput(dir, "test", full);
 	const summary = parseVitestOutput(full);
+	const provenSummary = parseProvenVitestSummary(full);
 	const diagnostics: Diagnostic[] = summary.failures.map((failure) => ({
 		file: "test",
 		message: failure,
 		severity: "error" as const,
 	}));
+	const failedCount = provenSummary ? provenSummary.failed : summary.failed;
 	return {
 		kind: "test",
-		passed: exitCode === 0,
+		passed: exitCode === 0 && failedCount === 0,
 		durationMs: nowMs() - start,
 		output: truncate(full, OUTPUT_INLINE_LIMIT),
 		outputPath,
 		...(diagnostics.length > 0 ? { diagnostics } : {}),
+		...(provenSummary ? { testSummary: provenSummary } : {}),
 	};
 }
 
@@ -608,11 +641,346 @@ async function runBrowserCheck(
 function isHardFail(kind: VerificationCheckKind): boolean {
 	return (
 		kind === "typecheck" ||
+		kind === "lint" ||
 		kind === "test" ||
 		kind === "build" ||
 		kind === "launch" ||
-		kind === "browser"
+		kind === "browser" ||
+		kind === "structured-proof"
 	);
+}
+
+type ProjectPackageInfo = {
+	projectKind?: ProjectKind;
+};
+
+type StructuredProofClaim = {
+	kind: StructuredProofKind;
+	name: string;
+	files: string[];
+	tests: TestRunSummary;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function readProjectPackage(
+	workdir: string,
+): Promise<ProjectPackageInfo> {
+	try {
+		const raw = await readFile(path.join(workdir, "package.json"), "utf8");
+		const parsed: unknown = JSON.parse(raw);
+		if (!isRecord(parsed)) return {};
+		const elizaos = isRecord(parsed.elizaos) ? parsed.elizaos : null;
+		const projectKind = elizaos
+			? isRecord(elizaos.plugin)
+				? "plugin"
+				: isRecord(elizaos.app)
+					? "app"
+					: undefined
+			: undefined;
+		return {
+			...(projectKind ? { projectKind } : {}),
+		};
+	} catch {
+		return {};
+	}
+}
+
+function projectKindFromProofKind(kind: StructuredProofKind): ProjectKind {
+	return kind === "PLUGIN_CREATE_DONE" ? "plugin" : "app";
+}
+
+function expectedProofKind(projectKind: ProjectKind): StructuredProofKind {
+	return projectKind === "plugin" ? "PLUGIN_CREATE_DONE" : "APP_CREATE_DONE";
+}
+
+function extractStructuredProofKind(
+	structuredProof: unknown,
+): StructuredProofKind | undefined {
+	if (!isRecord(structuredProof)) return undefined;
+	const kind = structuredProof.kind;
+	return kind === "APP_CREATE_DONE" || kind === "PLUGIN_CREATE_DONE"
+		? kind
+		: undefined;
+}
+
+function inferProjectKind(
+	opts: VerifyOptions,
+	packageInfo: ProjectPackageInfo,
+): ProjectKind {
+	if (opts.projectKind) return opts.projectKind;
+	const proofKind = extractStructuredProofKind(opts.structuredProof);
+	if (proofKind) return projectKindFromProofKind(proofKind);
+	if (packageInfo.projectKind) return packageInfo.projectKind;
+	if (opts.appName) return "app";
+	return "app";
+}
+
+function shouldRequireStructuredProof(
+	opts: VerifyOptions,
+	projectKind: ProjectKind,
+): boolean {
+	if (typeof opts.requireStructuredProof === "boolean") {
+		return opts.requireStructuredProof;
+	}
+	if (opts.structuredProof !== undefined) return true;
+	if (projectKind === "plugin") return true;
+	return opts.profile === "full";
+}
+
+function proofField(proof: Record<string, unknown>, field: string): unknown {
+	if (Object.hasOwn(proof, field)) {
+		return proof[field];
+	}
+	const extra = proof.extra;
+	if (isRecord(extra) && Object.hasOwn(extra, field)) {
+		return extra[field];
+	}
+	return undefined;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+	return (
+		typeof value === "number" &&
+		Number.isInteger(value) &&
+		Number.isFinite(value) &&
+		value >= 0
+	);
+}
+
+function parseStructuredProofClaim(
+	raw: unknown,
+	expectedKind: StructuredProofKind,
+): { claim?: StructuredProofClaim; issues: string[] } {
+	const issues: string[] = [];
+	if (!isRecord(raw)) {
+		return {
+			issues: [
+				`Missing ${expectedKind} proof. Re-run verification and emit exactly one ${expectedKind} line.`,
+			],
+		};
+	}
+
+	const kindValue = proofField(raw, "kind");
+	const kind =
+		kindValue === undefined
+			? expectedKind
+			: kindValue === "APP_CREATE_DONE" || kindValue === "PLUGIN_CREATE_DONE"
+				? kindValue
+				: undefined;
+	if (!kind) {
+		issues.push(
+			`structured proof kind must be ${expectedKind}; received ${String(kindValue)}`,
+		);
+	} else if (kind !== expectedKind) {
+		issues.push(
+			`structured proof kind must be ${expectedKind}; received ${kind}`,
+		);
+	}
+
+	const nameValue = proofField(raw, "name");
+	const appNameValue = proofField(raw, "appName");
+	const name =
+		typeof nameValue === "string" && nameValue.trim().length > 0
+			? nameValue.trim()
+			: typeof appNameValue === "string" && appNameValue.trim().length > 0
+				? appNameValue.trim()
+				: undefined;
+	if (!name) {
+		issues.push("structured proof must include a non-empty name or appName");
+	}
+	if (
+		typeof nameValue === "string" &&
+		typeof appNameValue === "string" &&
+		nameValue.trim() !== appNameValue.trim()
+	) {
+		issues.push("structured proof name and appName must match when both exist");
+	}
+
+	const filesValue = proofField(raw, "files");
+	const files =
+		Array.isArray(filesValue) &&
+		filesValue.every((entry) => typeof entry === "string")
+			? filesValue.map((entry) => entry.trim())
+			: undefined;
+	if (!files) {
+		issues.push("structured proof files must be an array of relative paths");
+	} else if (files.length === 0) {
+		issues.push("structured proof files must list at least one changed file");
+	} else if (files.some((entry) => entry.length === 0)) {
+		issues.push("structured proof files must not contain empty paths");
+	}
+
+	const typecheck = proofField(raw, "typecheck");
+	if (typecheck !== "ok") {
+		issues.push('structured proof must include typecheck:"ok"');
+	}
+	const lint = proofField(raw, "lint");
+	if (lint !== "ok") {
+		issues.push('structured proof must include lint:"ok"');
+	}
+	const lintClean = proofField(raw, "lintClean");
+	if (lintClean !== undefined && lintClean !== true) {
+		issues.push("structured proof lintClean must be true when present");
+	}
+
+	const testsValue = proofField(raw, "tests");
+	let tests: TestRunSummary | undefined;
+	if (!isRecord(testsValue)) {
+		issues.push('structured proof must include tests:{"passed":N,"failed":0}');
+	} else {
+		const passed = testsValue.passed;
+		const failed = testsValue.failed;
+		if (!isNonNegativeInteger(passed)) {
+			issues.push(
+				"structured proof tests.passed must be a non-negative integer",
+			);
+		}
+		if (!isNonNegativeInteger(failed)) {
+			issues.push(
+				"structured proof tests.failed must be a non-negative integer",
+			);
+		}
+		if (isNonNegativeInteger(passed) && isNonNegativeInteger(failed)) {
+			tests = { passed, failed };
+		}
+	}
+	const legacyTestsPassed = proofField(raw, "testsPassed");
+	if (
+		legacyTestsPassed !== undefined &&
+		(!isNonNegativeInteger(legacyTestsPassed) ||
+			(tests && legacyTestsPassed !== tests.passed))
+	) {
+		issues.push("structured proof testsPassed must match tests.passed");
+	}
+
+	if (!kind || !name || !files || !tests || issues.length > 0) {
+		return { issues };
+	}
+	return { claim: { kind, name, files, tests }, issues };
+}
+
+async function validateClaimedFiles(
+	workdir: string,
+	files: string[],
+): Promise<string[]> {
+	const issues: string[] = [];
+	const root = path.resolve(workdir);
+	for (const file of files) {
+		if (path.isAbsolute(file)) {
+			issues.push(`claimed file ${file} must be relative to the project root`);
+			continue;
+		}
+		const resolved = path.resolve(root, file);
+		const relative = path.relative(root, resolved);
+		if (relative.startsWith("..") || path.isAbsolute(relative)) {
+			issues.push(`claimed file ${file} resolves outside the project root`);
+			continue;
+		}
+		try {
+			const info = await stat(resolved);
+			if (!info.isFile()) {
+				issues.push(`claimed file ${file} is not a regular file`);
+			} else if (info.size === 0) {
+				issues.push(`claimed file ${file} is empty`);
+			}
+		} catch {
+			issues.push(`claimed file ${file} does not exist`);
+		}
+	}
+	return issues;
+}
+
+function checkResultFor(
+	checks: CheckResult[],
+	kind: VerificationCheckKind,
+): CheckResult | undefined {
+	return checks.find((check) => check.kind === kind);
+}
+
+function validateProofAgainstChecks(
+	claim: StructuredProofClaim,
+	checks: CheckResult[],
+): string[] {
+	const issues: string[] = [];
+	const typecheck = checkResultFor(checks, "typecheck");
+	if (!typecheck) {
+		issues.push(
+			'typecheck check did not run, so typecheck:"ok" cannot be proven',
+		);
+	} else if (!typecheck.passed) {
+		issues.push('typecheck check failed, so typecheck:"ok" is false');
+	}
+
+	const lint = checkResultFor(checks, "lint");
+	if (!lint) {
+		issues.push('lint check did not run, so lint:"ok" cannot be proven');
+	} else if (!lint.passed) {
+		issues.push('lint check failed, so lint:"ok" is false');
+	}
+
+	const test = checkResultFor(checks, "test");
+	if (!test) {
+		issues.push("test check did not run, so tests.passed cannot be proven");
+	} else if (!test.passed) {
+		issues.push("test check failed, so tests.failed must not be 0");
+	}
+	if (claim.tests.failed !== 0) {
+		issues.push("structured proof tests.failed must be 0");
+	}
+	if (test?.testSummary) {
+		if (test.testSummary.failed !== 0) {
+			issues.push(
+				`test output reported ${test.testSummary.failed} failed tests`,
+			);
+		}
+		if (claim.tests.passed !== test.testSummary.passed) {
+			issues.push(
+				`structured proof tests.passed=${claim.tests.passed} does not match verified test output passed=${test.testSummary.passed}`,
+			);
+		}
+	} else {
+		issues.push(
+			"Cannot prove tests.passed because the test output did not contain a Vitest Tests summary line",
+		);
+	}
+	return issues;
+}
+
+async function runStructuredProofCheck(
+	dir: string,
+	workdir: string,
+	structuredProof: unknown,
+	expectedKind: StructuredProofKind,
+	checks: CheckResult[],
+): Promise<CheckResult> {
+	const start = nowMs();
+	const parsed = parseStructuredProofClaim(structuredProof, expectedKind);
+	const issues = [...parsed.issues];
+	if (parsed.claim) {
+		issues.push(...(await validateClaimedFiles(workdir, parsed.claim.files)));
+		issues.push(...validateProofAgainstChecks(parsed.claim, checks));
+	}
+	const passed = issues.length === 0;
+	const output = passed
+		? `${expectedKind} proof accepted.`
+		: `Structured proof failed:\n${issues.map((issue) => `- ${issue}`).join("\n")}`;
+	const outputPath = await persistOutput(dir, "structured-proof", output);
+	const diagnostics: Diagnostic[] = issues.map((message) => ({
+		file: "structured-proof",
+		message,
+		severity: "error" as const,
+	}));
+	return {
+		kind: "structured-proof",
+		passed,
+		durationMs: nowMs() - start,
+		output: truncate(output, OUTPUT_INLINE_LIMIT),
+		outputPath,
+		...(diagnostics.length > 0 ? { diagnostics } : {}),
+	};
 }
 
 function summarizeDiagnostic(diag: Diagnostic): string {
@@ -620,7 +988,10 @@ function summarizeDiagnostic(diag: Diagnostic): string {
 	return `${diag.file}${loc} — ${diag.message}`;
 }
 
-function buildRetryPrompt(checks: CheckResult[]): string {
+function buildRetryPrompt(
+	checks: CheckResult[],
+	proofKind: StructuredProofKind,
+): string {
 	const failed = checks.filter((c) => !c.passed);
 	if (failed.length === 0) {
 		return "Verification passed. No retry needed.";
@@ -650,7 +1021,10 @@ function buildRetryPrompt(checks: CheckResult[]): string {
 	}
 	lines.push("");
 	lines.push(
-		"Please fix the issues above and re-emit APP_CREATE_DONE when verified.",
+		"After fixing the issues, rerun `bun run typecheck`, `bun run lint`, and `bun run test`, then re-emit exactly one structured completion line:",
+	);
+	lines.push(
+		`${proofKind} {"name":"<package-name>","files":["src/index.ts"],"testsPassed":<exact passed count>,"lintClean":true,"typecheck":"ok","lint":"ok","tests":{"passed":<exact passed count>,"failed":0},"description":"<one factual sentence>"}`,
 	);
 	const text = lines.join("\n");
 	return truncate(text, RETRY_PROMPT_LIMIT);
@@ -687,11 +1061,27 @@ export class AppVerificationService extends Service {
 	}
 
 	async verifyApp(opts: VerifyOptions): Promise<VerificationResult> {
+		return this.verifyProject(opts);
+	}
+
+	async verifyPlugin(opts: VerifyOptions): Promise<VerificationResult> {
+		return this.verifyProject({
+			...opts,
+			projectKind: "plugin",
+			requireStructuredProof: opts.requireStructuredProof ?? true,
+		});
+	}
+
+	async verifyProject(opts: VerifyOptions): Promise<VerificationResult> {
 		const start = nowMs();
 		const runId = opts.runId ?? newRunId();
 		const dir = await ensureVerificationDir(runId);
 		const pm = opts.packageManager ?? detectPackageManager(opts.workdir);
-		const checks = opts.checks ?? expandProfile(opts.profile, opts.appName);
+		const packageInfo = await readProjectPackage(opts.workdir);
+		const projectKind = inferProjectKind(opts, packageInfo);
+		const proofKind = expectedProofKind(projectKind);
+		const checks =
+			opts.checks ?? expandProfile(opts.profile, opts.appName, projectKind);
 		const results: CheckResult[] = [];
 		const launchCtx: LaunchContext = { viewerUrl: null };
 		let screenshot: VerificationResult["screenshot"] | undefined;
@@ -759,6 +1149,18 @@ export class AppVerificationService extends Service {
 			}
 		}
 
+		if (shouldRequireStructuredProof(opts, projectKind)) {
+			results.push(
+				await runStructuredProofCheck(
+					dir,
+					opts.workdir,
+					opts.structuredProof,
+					proofKind,
+					results,
+				),
+			);
+		}
+
 		// If the pipeline did not run a browser check but a desktop screenshot
 		// is available via the dev API, capture it as supplementary evidence.
 		if (!screenshot) {
@@ -778,22 +1180,20 @@ export class AppVerificationService extends Service {
 			}
 		}
 
-		const verdict: "pass" | "fail" = results.every(
-			(r) => r.passed || r.kind === "lint",
-		)
+		const verdict: "pass" | "fail" = results.every((r) => r.passed)
 			? "pass"
 			: "fail";
 
 		const result: VerificationResult = {
 			verdict,
 			checks: results,
-			retryablePromptForChild: buildRetryPrompt(results),
+			retryablePromptForChild: buildRetryPrompt(results, proofKind),
 			durationMs: nowMs() - start,
 			runId,
 			...(screenshot ? { screenshot } : {}),
 		};
 		logger.info(
-			`[AppVerificationService] verifyApp runId=${runId} verdict=${verdict} checks=${results.length} durationMs=${result.durationMs}`,
+			`[AppVerificationService] verifyProject runId=${runId} kind=${projectKind} verdict=${verdict} checks=${results.length} durationMs=${result.durationMs}`,
 		);
 		return result;
 	}
