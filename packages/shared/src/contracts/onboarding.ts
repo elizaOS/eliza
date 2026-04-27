@@ -5,13 +5,13 @@
 import { isTruthyEnvValue } from "../env-utils.impl.js";
 import type {
   DeploymentTargetConfig,
-  LinkedAccountsConfig,
+  LinkedAccountFlagsConfig,
   ServiceRouteConfig,
   ServiceRoutingConfig,
 } from "./service-routing.js";
 import {
   normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountsConfig,
+  normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
 } from "./service-routing.js";
 
@@ -527,6 +527,14 @@ export type SubscriptionCredentialSource =
 
 export interface SubscriptionProviderStatus {
   provider: string;
+  /**
+   * Stable per-account ID. `"default"` for legacy single-account
+   * installs; CLI/setup-token-derived rows use synthetic IDs like
+   * `"claude-code-cli"`, `"codex-cli"`, `"setup-token"`.
+   */
+  accountId: string;
+  /** User-facing label for this account. */
+  label: string;
   configured: boolean;
   valid: boolean;
   expiresAt: number | null;
@@ -1051,10 +1059,11 @@ export function migrateLegacyRuntimeConfig<T extends Record<string, unknown>>(
 
 export function resolveLinkedAccountsInConfig(
   config: Record<string, unknown> | null | undefined,
-): LinkedAccountsConfig | null {
+): LinkedAccountFlagsConfig | null {
   const root = asConfigRecord(config);
-  const explicit = normalizeLinkedAccountsConfig(root?.linkedAccounts) ?? {};
-  const next: LinkedAccountsConfig = { ...explicit };
+  const explicit =
+    normalizeLinkedAccountFlagsConfig(root?.linkedAccounts) ?? {};
+  const next: LinkedAccountFlagsConfig = { ...explicit };
   const cloud = asConfigRecord(config?.cloud);
   const hasCloudKey = Boolean(normalizeSecretString(cloud?.apiKey));
   const existingCloudAccount = next.elizacloud;

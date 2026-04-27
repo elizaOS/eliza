@@ -51,8 +51,7 @@ export function _resetAuthPairingStateForTests(): void {
 
 function pairingEnabled(): boolean {
   return (
-    Boolean(getCompatApiToken()) &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1"
+    Boolean(getCompatApiToken()) && process.env.ELIZA_PAIRING_DISABLED !== "1"
   );
 }
 

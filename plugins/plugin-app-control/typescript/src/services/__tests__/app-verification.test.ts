@@ -8,7 +8,7 @@
  * or eslint install in the verification target.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -24,12 +24,21 @@ function writePackage(
 	dir: string,
 	scripts: Record<string, string>,
 	name = "fixture-app",
+	elizaos?: Record<string, unknown>,
 ): void {
 	writeFileSync(
 		path.join(dir, "package.json"),
-		JSON.stringify({ name, version: "0.0.0", scripts }, null, 2),
+		JSON.stringify(
+			{ name, version: "0.0.0", scripts, ...(elizaos ? { elizaos } : {}) },
+			null,
+			2,
+		),
 		"utf8",
 	);
+}
+
+function nodeCommand(file: string): string {
+	return `node ${JSON.stringify(file)}`;
 }
 
 let shimCounter = 0;
@@ -61,8 +70,8 @@ describe("AppVerificationService.verifyApp (fast profile)", () => {
 		const workdir = mkdtempSync(path.join(tmpdir(), "verify-pass-"));
 		const passShim = makeNodeShim(workdir, 0, "ok\n");
 		writePackage(workdir, {
-			typecheck: `node ${JSON.stringify(passShim).replace(/^"|"$/g, "")}`,
-			lint: `node ${JSON.stringify(passShim).replace(/^"|"$/g, "")}`,
+			typecheck: nodeCommand(passShim),
+			lint: nodeCommand(passShim),
 		});
 
 		const result = await service.verifyApp({
@@ -90,8 +99,8 @@ describe("AppVerificationService.verifyApp (fast profile)", () => {
 		const failShim = makeNodeShim(workdir, 1, failOutput);
 		const passShim = makeNodeShim(workdir, 0, "ok\n");
 		writePackage(workdir, {
-			typecheck: `node ${JSON.stringify(failShim).replace(/^"|"$/g, "")}`,
-			lint: `node ${JSON.stringify(passShim).replace(/^"|"$/g, "")}`,
+			typecheck: nodeCommand(failShim),
+			lint: nodeCommand(passShim),
 		});
 
 		const result = await service.verifyApp({
@@ -116,28 +125,190 @@ describe("AppVerificationService.verifyApp (fast profile)", () => {
 		expect(result.retryablePromptForChild).toContain("Property 'foo'");
 	}, 30_000);
 
-	it("treats a failing lint as soft-fail (verdict still pass)", async () => {
-		const workdir = mkdtempSync(path.join(tmpdir(), "verify-lint-soft-"));
+	it("treats a failing lint as a hard failure", async () => {
+		const workdir = mkdtempSync(path.join(tmpdir(), "verify-lint-hard-"));
 		const passShim = makeNodeShim(workdir, 0, "ok\n");
 		const lintShim = makeNodeShim(workdir, 1, "noisy lint warnings\n");
 		writePackage(workdir, {
-			typecheck: `node ${JSON.stringify(passShim).replace(/^"|"$/g, "")}`,
-			lint: `node ${JSON.stringify(lintShim).replace(/^"|"$/g, "")}`,
+			typecheck: nodeCommand(passShim),
+			lint: nodeCommand(lintShim),
 		});
 
 		const result = await service.verifyApp({
 			workdir,
 			profile: "fast",
-			runId: "lint-soft-fixture",
+			runId: "lint-hard-fixture",
 			packageManager: "npm",
 		});
 
-		expect(result.verdict).toBe("pass");
+		expect(result.verdict).toBe("fail");
 		const lint = result.checks.find((c) => c.kind === "lint");
 		expect(lint?.passed).toBe(false);
-		// Lint failure must not short-circuit subsequent checks (none here, but
-		// confirms the pipeline did not abort prematurely).
 		expect(result.checks).toHaveLength(2);
+	}, 30_000);
+
+	it("passes structured proof when files and test counts match disk output", async () => {
+		const workdir = mkdtempSync(path.join(tmpdir(), "verify-proof-pass-"));
+		mkdirSync(path.join(workdir, "src"));
+		writeFileSync(
+			path.join(workdir, "src", "index.ts"),
+			"export const ok = true;\n",
+		);
+		const passShim = makeNodeShim(workdir, 0, "ok\n");
+		const testShim = makeNodeShim(
+			workdir,
+			0,
+			[
+				" ✓ tests/index.test.ts (2 tests)",
+				"",
+				" Test Files  1 passed (1)",
+				"      Tests  2 passed (2)",
+				"",
+			].join("\n"),
+		);
+		writePackage(workdir, {
+			typecheck: nodeCommand(passShim),
+			lint: nodeCommand(passShim),
+			test: nodeCommand(testShim),
+		});
+
+		const result = await service.verifyApp({
+			workdir,
+			checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
+			runId: "proof-pass-fixture",
+			packageManager: "npm",
+			requireStructuredProof: true,
+			structuredProof: {
+				kind: "APP_CREATE_DONE",
+				name: "fixture-app",
+				files: ["src/index.ts", "package.json"],
+				testsPassed: 2,
+				lintClean: true,
+				typecheck: "ok",
+				lint: "ok",
+				tests: { passed: 2, failed: 0 },
+			},
+		});
+
+		expect(result.verdict).toBe("pass");
+		const test = result.checks.find((c) => c.kind === "test");
+		expect(test?.testSummary).toEqual({ passed: 2, failed: 0 });
+		const proof = result.checks.find((c) => c.kind === "structured-proof");
+		expect(proof?.passed).toBe(true);
+	}, 30_000);
+
+	it("fails structured proof when claimed files are missing or empty", async () => {
+		const workdir = mkdtempSync(path.join(tmpdir(), "verify-proof-files-"));
+		mkdirSync(path.join(workdir, "src"));
+		writeFileSync(path.join(workdir, "src", "empty.ts"), "");
+		const passShim = makeNodeShim(workdir, 0, "ok\n");
+		const testShim = makeNodeShim(
+			workdir,
+			0,
+			" Test Files  1 passed (1)\n      Tests  1 passed (1)\n",
+		);
+		writePackage(workdir, {
+			typecheck: nodeCommand(passShim),
+			lint: nodeCommand(passShim),
+			test: nodeCommand(testShim),
+		});
+
+		const result = await service.verifyApp({
+			workdir,
+			checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
+			runId: "proof-files-fixture",
+			packageManager: "npm",
+			requireStructuredProof: true,
+			structuredProof: {
+				kind: "APP_CREATE_DONE",
+				name: "fixture-app",
+				files: ["src/empty.ts", "src/missing.ts"],
+				testsPassed: 1,
+				lintClean: true,
+				typecheck: "ok",
+				lint: "ok",
+				tests: { passed: 1, failed: 0 },
+			},
+		});
+
+		expect(result.verdict).toBe("fail");
+		const proof = result.checks.find((c) => c.kind === "structured-proof");
+		expect(proof?.output).toContain("src/empty.ts is empty");
+		expect(proof?.output).toContain("src/missing.ts does not exist");
+	}, 30_000);
+
+	it("fails structured proof when test count cannot be proven", async () => {
+		const workdir = mkdtempSync(path.join(tmpdir(), "verify-proof-count-"));
+		mkdirSync(path.join(workdir, "src"));
+		writeFileSync(
+			path.join(workdir, "src", "index.ts"),
+			"export const ok = true;\n",
+		);
+		const passShim = makeNodeShim(workdir, 0, "ok\n");
+		const testShim = makeNodeShim(workdir, 0, "tests ok\n");
+		writePackage(workdir, {
+			typecheck: nodeCommand(passShim),
+			lint: nodeCommand(passShim),
+			test: nodeCommand(testShim),
+		});
+
+		const result = await service.verifyApp({
+			workdir,
+			checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
+			runId: "proof-count-fixture",
+			packageManager: "npm",
+			requireStructuredProof: true,
+			structuredProof: {
+				kind: "APP_CREATE_DONE",
+				name: "fixture-app",
+				files: ["src/index.ts"],
+				testsPassed: 1,
+				lintClean: true,
+				typecheck: "ok",
+				lint: "ok",
+				tests: { passed: 1, failed: 0 },
+			},
+		});
+
+		expect(result.verdict).toBe("fail");
+		const proof = result.checks.find((c) => c.kind === "structured-proof");
+		expect(proof?.output).toContain("Cannot prove tests.passed");
+	}, 30_000);
+
+	it("uses plugin proof instructions and runs tests for plugin projects", async () => {
+		const workdir = mkdtempSync(path.join(tmpdir(), "verify-plugin-proof-"));
+		const passShim = makeNodeShim(workdir, 0, "ok\n");
+		const testShim = makeNodeShim(
+			workdir,
+			0,
+			" Test Files  1 passed (1)\n      Tests  1 passed (1)\n",
+		);
+		writePackage(
+			workdir,
+			{
+				typecheck: nodeCommand(passShim),
+				lint: nodeCommand(passShim),
+				test: nodeCommand(testShim),
+			},
+			"@elizaos/plugin-fixture",
+			{ plugin: { displayName: "Fixture" } },
+		);
+
+		const result = await service.verifyApp({
+			workdir,
+			profile: "fast",
+			runId: "plugin-proof-fixture",
+			packageManager: "npm",
+		});
+
+		expect(result.verdict).toBe("fail");
+		expect(result.checks.map((check) => check.kind)).toEqual([
+			"typecheck",
+			"lint",
+			"test",
+			"structured-proof",
+		]);
+		expect(result.retryablePromptForChild).toContain("PLUGIN_CREATE_DONE");
 	}, 30_000);
 
 	// Ensure the temp state-dir env stays set across tests (keep the dir alive
