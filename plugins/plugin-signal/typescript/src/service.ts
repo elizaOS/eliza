@@ -20,6 +20,8 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  createSignalEventStream,
+  parseSignalEventData,
   signalCheck,
   signalListContacts,
   signalListGroups,
@@ -112,8 +114,8 @@ function buildSignalCliEnv(): NodeJS.ProcessEnv {
  */
 class SignalApiClient {
   constructor(
-    private baseUrl: string,
-    private accountNumber: string
+    public readonly baseUrl: string,
+    public readonly accountNumber: string
   ) {}
 
   private rpcOptions(timeoutMs?: number): { baseUrl: string; timeoutMs?: number } {
@@ -264,6 +266,7 @@ export class SignalService extends Service implements ISignalService {
   private contactCache: Map<string, SignalContact> = new Map();
   private groupCache: Map<string, SignalGroup> = new Map();
   private pollInterval: NodeJS.Timeout | null = null;
+  private eventStream: ReturnType<typeof createSignalEventStream> | null = null;
   private isPolling = false;
   private daemonProcess: ChildProcess | null = null;
 
@@ -582,7 +585,28 @@ export class SignalService extends Service implements ISignalService {
   }
 
   private startPolling(): void {
-    if (this.pollInterval) return;
+    if (this.pollInterval || this.eventStream) return;
+
+    if (this.client) {
+      this.eventStream = createSignalEventStream({
+        baseUrl: this.client.baseUrl,
+        account: this.client.accountNumber,
+        onEvent: (event) => {
+          const data = parseSignalEventData<unknown>(event.data);
+          if (data !== null) {
+            this.handleSignalEventPayload(data);
+          }
+        },
+        onError: (error) => {
+          this.runtime.logger.error(
+            { src: "plugin:signal", error: String(error) },
+            "Signal event stream error"
+          );
+        },
+      });
+      this.eventStream.start();
+      return;
+    }
 
     this.pollInterval = setInterval(async () => {
       await this.pollMessages();
@@ -593,6 +617,10 @@ export class SignalService extends Service implements ISignalService {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
+    }
+    if (this.eventStream) {
+      this.eventStream.stop();
+      this.eventStream = null;
     }
   }
 
@@ -662,6 +690,33 @@ export class SignalService extends Service implements ISignalService {
       );
     } finally {
       this.isPolling = false;
+    }
+  }
+
+  private handleSignalEventPayload(raw: unknown): void {
+    const payloads = Array.isArray(raw) ? raw : [raw];
+    for (const payload of payloads) {
+      if (!payload || typeof payload !== "object") {
+        continue;
+      }
+      void (async () => {
+        try {
+          const msg = SignalService.unwrapEnvelope(payload as Record<string, unknown>);
+          if (!msg) {
+            this.runtime.logger.warn(
+              { src: "plugin:signal" },
+              "Skipping malformed Signal event (missing sender or timestamp)"
+            );
+            return;
+          }
+          await this.handleIncomingMessage(msg);
+        } catch (error) {
+          this.runtime.logger.error(
+            { src: "plugin:signal", error: String(error) },
+            "Error handling Signal event"
+          );
+        }
+      })();
     }
   }
 
