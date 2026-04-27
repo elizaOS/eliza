@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -14,8 +15,6 @@ function resolveOptionalModuleEntry(specifier: string): string | null {
  * Find the Steward API entry point on disk.
  */
 export async function findStewardEntryPoint(): Promise<string | null> {
-  const fs = await import("node:fs");
-
   const candidates = [
     process.env.STEWARD_ENTRY_POINT,
     resolveOptionalModuleEntry("@stwd/api/embedded"),
