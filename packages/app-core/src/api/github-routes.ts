@@ -9,7 +9,8 @@
  *   POST   /api/github/token   — body `{ token }`. Validates by calling
  *                                 GitHub's `/user` endpoint, then persists
  *                                 the credential record to disk.
- *   DELETE /api/github/token   — clears the saved credential.
+ *   DELETE /api/github/token   — clears the saved credential and returns
+ *                                 `{ connected: false }`.
  *
  * Auth gating sits in front of every handler at the server.ts call site
  * (mirrors `/api/n8n/*`). The handler returns `true` when it owned the
@@ -166,8 +167,7 @@ async function handleGetToken(ctx: GitHubRouteContext): Promise<boolean> {
 
 async function handlePostToken(ctx: GitHubRouteContext): Promise<boolean> {
   const body = await readJsonBody(ctx.req);
-  const token =
-    body && typeof body.token === "string" ? body.token.trim() : "";
+  const token = body && typeof body.token === "string" ? body.token.trim() : "";
   if (token.length === 0) {
     sendJson(ctx, 400, { error: "Missing `token` in request body." });
     return true;
@@ -200,8 +200,7 @@ async function handlePostToken(ctx: GitHubRouteContext): Promise<boolean> {
 async function handleDeleteToken(ctx: GitHubRouteContext): Promise<boolean> {
   await clearCredentials();
   logger.info("[github-routes] cleared saved github token");
-  ctx.res.statusCode = 204;
-  ctx.res.end();
+  sendJson(ctx, 200, { connected: false });
   return true;
 }
 

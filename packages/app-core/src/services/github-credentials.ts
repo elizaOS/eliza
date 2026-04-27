@@ -104,11 +104,11 @@ export async function loadMetadata(): Promise<GitHubCredentialMetadata | null> {
  * parent directory if needed. Overwrites any existing record for the
  * single-user/single-token storage model.
  */
-export async function saveCredentials(
-  creds: GitHubCredentials,
-): Promise<void> {
+export async function saveCredentials(creds: GitHubCredentials): Promise<void> {
   const filePath = getCredentialFilePath();
-  await fs.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  const directory = path.dirname(filePath);
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  await fs.chmod(directory, 0o700);
   // Write to a temp sibling then rename so an interrupted write can never
   // leave a half-written credential file readable by the runtime.
   const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
