@@ -21,11 +21,14 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { _resetFlowRegistry, _registerSyntheticFlow } from "../auth/oauth-flow.js";
+import {
+  _registerSyntheticFlow,
+  _resetFlowRegistry,
+} from "../auth/oauth-flow.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
 import {
-  type AccountsRouteContext,
   _resetAccountsRoutesPoolCache,
+  type AccountsRouteContext,
   handleAccountsRoutes,
 } from "./accounts-routes.js";
 
@@ -97,10 +100,7 @@ describe("handleAccountsRoutes", () => {
   let home: string;
 
   beforeEach(async () => {
-    home = path.join(
-      os.tmpdir(),
-      `accounts-routes-${crypto.randomUUID()}`,
-    );
+    home = path.join(os.tmpdir(), `accounts-routes-${crypto.randomUUID()}`);
     fs.mkdirSync(home, { recursive: true });
     process.env.ELIZA_HOME = home;
     _resetFlowRegistry();
@@ -503,7 +503,11 @@ describe("handleAccountsRoutes", () => {
     const listBody = list.jsonCalls[0].body as {
       providers: Array<{
         providerId: string;
-        accounts: Array<{ id: string; health: string; healthDetail?: { until?: number } }>;
+        accounts: Array<{
+          id: string;
+          health: string;
+          healthDetail?: { until?: number };
+        }>;
       }>;
     };
     const anth = listBody.providers.find(
@@ -652,9 +656,7 @@ describe("handleAccountsRoutes", () => {
       .list("anthropic-subscription")
       .filter((a) => a.id !== newAccountId);
     const livePriority =
-      others.length === 0
-        ? 0
-        : Math.max(...others.map((a) => a.priority)) + 1;
+      others.length === 0 ? 0 : Math.max(...others.map((a) => a.priority)) + 1;
 
     expect(livePriority).toBe(3);
     // And the account list (without explicit upsert) still includes

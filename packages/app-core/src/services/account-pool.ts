@@ -40,8 +40,8 @@ import type {
   LinkedAccountHealth,
   LinkedAccountHealthDetail,
   LinkedAccountProviderId,
-  LinkedAccountUsage,
   LinkedAccountsConfig,
+  LinkedAccountUsage,
 } from "@elizaos/shared";
 import {
   pollAnthropicUsage,

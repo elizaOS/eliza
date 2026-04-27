@@ -22,8 +22,13 @@
  * defence against future shapes.
  */
 
+import type {
+  LinkedAccountConfig,
+  LinkedAccountProviderId,
+} from "@elizaos/shared";
 import {
   Button,
+  cn,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -33,12 +38,7 @@ import {
   Input,
   Label,
   Spinner,
-  cn,
 } from "@elizaos/ui";
-import type {
-  LinkedAccountConfig,
-  LinkedAccountProviderId,
-} from "@elizaos/shared";
 import {
   type FormEvent,
   useCallback,
@@ -538,9 +538,7 @@ export function AddAccountDialog({
               type="submit"
               variant="default"
               disabled={
-                step === "apikey-submitting" ||
-                !label.trim() ||
-                !apiKey.trim()
+                step === "apikey-submitting" || !label.trim() || !apiKey.trim()
               }
               className="h-9"
             >

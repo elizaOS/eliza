@@ -432,9 +432,7 @@ describe("APP create dispatch", () => {
 		expect(result.values?.subMode).toBe("choice");
 		expect(createTask).toHaveBeenCalledTimes(1);
 		expect(messages.some((m) => m.startsWith("[CHOICE:app-create"))).toBe(true);
-		expect(messages.join("\n")).toMatch(
-			/edit-1\s*=\s*Edit existing: Notes/,
-		);
+		expect(messages.join("\n")).toMatch(/edit-1\s*=\s*Edit existing: Notes/);
 		expect(messages.join("\n")).toMatch(/cancel\s*=\s*Cancel/);
 	});
 });

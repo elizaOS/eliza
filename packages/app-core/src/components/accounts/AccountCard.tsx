@@ -12,6 +12,7 @@ import {
   Badge,
   Button,
   Checkbox,
+  cn,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -21,7 +22,6 @@ import {
   Input,
   Spinner,
   StatusBadge,
-  cn,
 } from "@elizaos/ui";
 import { ChevronDown, ChevronUp, Pencil, Trash2 } from "lucide-react";
 import {
@@ -31,8 +31,8 @@ import {
   useEffect,
   useState,
 } from "react";
-import { useApp } from "../../state";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
+import { useApp } from "../../state";
 
 export interface AccountCardProps {
   account: AccountWithCredentialFlag;
@@ -98,7 +98,10 @@ function UsageBar({ label, pct, resetsAt }: UsageBarProps) {
   if (resetIn) titleParts.push(`resets in ${resetIn}`);
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5" title={titleParts.join(" · ")}>
+    <div
+      className="flex min-w-0 items-center gap-1.5"
+      title={titleParts.join(" · ")}
+    >
       <span className="w-9 shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted">
         {label}
       </span>
@@ -321,7 +324,7 @@ export function AccountCard({
           >
             <ChevronDown className="h-3.5 w-3.5" aria-hidden />
           </Button>
-          <label className="ml-1 inline-flex items-center gap-1.5 text-xs text-muted">
+          <div className="ml-1 inline-flex items-center gap-1.5 text-xs text-muted">
             <Checkbox
               checked={account.enabled}
               disabled={saving}
@@ -333,7 +336,7 @@ export function AccountCard({
               })}
             />
             {t("accounts.enabled", { defaultValue: "Enabled" })}
-          </label>
+          </div>
           <Button
             type="button"
             variant="outline"
@@ -368,7 +371,9 @@ export function AccountCard({
             size="sm"
             disabled={saving}
             onClick={() => setConfirmingDelete(true)}
-            aria-label={t("accounts.delete", { defaultValue: "Delete account" })}
+            aria-label={t("accounts.delete", {
+              defaultValue: "Delete account",
+            })}
             title={t("accounts.delete", { defaultValue: "Delete account" })}
             className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
           >
