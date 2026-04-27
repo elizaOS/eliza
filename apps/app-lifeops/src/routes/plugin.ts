@@ -196,12 +196,17 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/connectors/signal/pairing-status" },
   { type: "POST", path: "/api/lifeops/connectors/signal/stop" },
   { type: "POST", path: "/api/lifeops/connectors/signal/disconnect" },
+  { type: "POST", path: "/api/lifeops/connectors/signal/send" },
   // Discord
   { type: "GET", path: "/api/lifeops/connectors/discord/status" },
   { type: "POST", path: "/api/lifeops/connectors/discord/connect" },
   { type: "POST", path: "/api/lifeops/connectors/discord/disconnect" },
+  { type: "POST", path: "/api/lifeops/connectors/discord/send" },
+  { type: "POST", path: "/api/lifeops/connectors/discord/verify" },
   // WhatsApp
   { type: "GET", path: "/api/lifeops/connectors/whatsapp/status" },
+  { type: "POST", path: "/api/lifeops/connectors/whatsapp/send" },
+  { type: "GET", path: "/api/lifeops/connectors/whatsapp/messages" },
   { type: "GET", path: "/api/lifeops/channel-policies" },
   { type: "POST", path: "/api/lifeops/channel-policies" },
   { type: "POST", path: "/api/lifeops/channels/phone-consent" },

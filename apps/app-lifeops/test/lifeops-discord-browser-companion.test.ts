@@ -245,6 +245,14 @@ describe("LifeOps Discord owner connector via browser companion", () => {
       { label: "Alice", channelId: "111" },
       { label: "Bob", channelId: "222", selected: true },
     ]);
+    expect(status.grantedCapabilities).toEqual([
+      "discord.read",
+      "discord.send",
+    ]);
+    expect(status.grant?.capabilities).toEqual([
+      "discord.read",
+      "discord.send",
+    ]);
   });
 
   test("opens Discord through a browser session and uses the session probe once the Discord tab exists", async () => {

@@ -264,6 +264,220 @@ describe("LifeOps route validation", () => {
     expect(json).not.toHaveBeenCalled();
   });
 
+  it("passes Signal sends through to the service", async () => {
+    const sendSignalMessage = vi
+      .spyOn(LifeOpsService.prototype, "sendSignalMessage")
+      .mockResolvedValue({
+        provider: "signal",
+        side: "owner",
+        recipient: "+15551112222",
+        ok: true,
+        timestamp: 1777280000000,
+      });
+    const readJsonBody = vi.fn(async () => ({
+      recipient: "+15551112222",
+      text: "hello",
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/signal/send",
+      {
+        readJsonBody,
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000101",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(sendSignalMessage).toHaveBeenCalledWith({
+      side: undefined,
+      recipient: "+15551112222",
+      text: "hello",
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      {
+        provider: "signal",
+        side: "owner",
+        recipient: "+15551112222",
+        ok: true,
+        timestamp: 1777280000000,
+      },
+      201,
+    );
+  });
+
+  it("rejects non-string Signal recipients at the route boundary", async () => {
+    const sendSignalMessage = vi.spyOn(
+      LifeOpsService.prototype,
+      "sendSignalMessage",
+    );
+    const readJsonBody = vi.fn(async () => ({ recipient: 1, text: "hi" }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/signal/send",
+      {
+        readJsonBody,
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000102",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "recipient is required",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(sendSignalMessage).not.toHaveBeenCalled();
+  });
+
+  it("passes Discord sends through to the service", async () => {
+    const sendDiscordMessage = vi
+      .spyOn(LifeOpsService.prototype, "sendDiscordMessage")
+      .mockResolvedValue({
+        provider: "discord",
+        side: "owner",
+        channelId: "dm-1",
+        ok: true,
+        deliveryStatus: "unknown",
+      });
+    const readJsonBody = vi.fn(async () => ({
+      channelId: "dm-1",
+      text: "hello",
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/discord/send",
+      {
+        readJsonBody,
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000103",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(sendDiscordMessage).toHaveBeenCalledWith({
+      side: undefined,
+      channelId: "dm-1",
+      text: "hello",
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      {
+        provider: "discord",
+        side: "owner",
+        channelId: "dm-1",
+        ok: true,
+        deliveryStatus: "unknown",
+      },
+      201,
+    );
+  });
+
+  it("rejects non-string Discord messages at the route boundary", async () => {
+    const sendDiscordMessage = vi.spyOn(
+      LifeOpsService.prototype,
+      "sendDiscordMessage",
+    );
+    const readJsonBody = vi.fn(async () => ({ channelId: "dm-1", text: 1 }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/discord/send",
+      {
+        readJsonBody,
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000104",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(context.res, "text is required", 400);
+    expect(json).not.toHaveBeenCalled();
+    expect(sendDiscordMessage).not.toHaveBeenCalled();
+  });
+
+  it("passes WhatsApp sends through to the service", async () => {
+    const sendWhatsAppMessage = vi
+      .spyOn(LifeOpsService.prototype, "sendWhatsAppMessage")
+      .mockResolvedValue({ ok: true, messageId: "wa-1" });
+    const readJsonBody = vi.fn(async () => ({
+      to: "14155551212",
+      text: "hello",
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/whatsapp/send",
+      {
+        readJsonBody,
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000105",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(sendWhatsAppMessage).toHaveBeenCalledWith({
+      to: "14155551212",
+      text: "hello",
+      replyToMessageId: undefined,
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      { ok: true, messageId: "wa-1" },
+      201,
+    );
+  });
+
+  it("rejects WhatsApp message limits above the route maximum", async () => {
+    const pullWhatsAppRecent = vi.spyOn(
+      LifeOpsService.prototype,
+      "pullWhatsAppRecent",
+    );
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/whatsapp/messages?limit=501",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "limit must be less than or equal to 500",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(pullWhatsAppRecent).not.toHaveBeenCalled();
+  });
+
   it("rejects string booleans for X DM curation", async () => {
     const readJsonBody = vi.fn(async () => ({
       messageIds: ["dm-1"],
