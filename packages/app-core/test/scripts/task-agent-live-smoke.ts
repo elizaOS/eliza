@@ -68,7 +68,7 @@ const COUNTER_AGENT_TIMEOUT_MS = 10 * 60_000;
 const CODEX_UPDATE_TIMEOUT_MS = 5 * 60_000;
 const CAPTURE_LIMIT = 16 * 1024 * 1024;
 const CODEX_OLD_VERSION_RE = /requires a newer version of Codex/i;
-const COUNTER_TOOLCHAIN_BIN = "../../../node_modules/.bin";
+const COUNTER_TOOLCHAIN_BIN = path.join(process.cwd(), "node_modules", ".bin");
 const COUNTER_TYPECHECK_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/tsc --noEmit -p tsconfig.json`;
 const COUNTER_LINT_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/biome check .`;
 const COUNTER_TEST_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/vitest run --config ./vitest.config.ts`;
@@ -405,6 +405,7 @@ function createMessage(content: Record<string, unknown> = {}) {
   return {
     id: `msg-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     userId: "live-user",
+    entityId: "live-user",
     roomId: "live-room",
     createdAt: Date.now(),
     content,
@@ -454,11 +455,10 @@ function createWorkdir(agentType: Framework, label: string): string {
 }
 
 function createCounterWorkdir(agentType: Framework): string {
+  const baseDir = path.join(os.tmpdir(), "milady-live");
+  fs.mkdirSync(baseDir, { recursive: true });
   return fs.mkdtempSync(
-    path.join(
-      ensureLiveBaseDir(),
-      `agent-orchestrator-${agentType}-counter-app-`,
-    ),
+    path.join(baseDir, `agent-orchestrator-${agentType}-counter-app-`),
   );
 }
 
