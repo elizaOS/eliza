@@ -109,6 +109,17 @@ export {
 	secretsCapability,
 	trustCapability,
 } from "../index.ts";
+// Re-export plugin-manager security helpers (used by other plugins like
+// plugin-app-control to gate owner/admin-only actions without taking a dep
+// on @elizaos/agent, which would create a layer cycle).
+export {
+	createPluginAction,
+	hasAdminAccess,
+	hasOwnerAccess,
+	pluginAction,
+	type PluginMode,
+	type SecurityDeps,
+} from "../plugin-manager/index.ts";
 
 // ============================================================================
 // XML Response Interfaces

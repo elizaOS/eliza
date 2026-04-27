@@ -1,10 +1,5 @@
 import type { Plugin } from "../../types/plugin.ts";
-import { coreStatusAction } from "./actions/coreStatusAction.ts";
-import { listEjectedPluginsAction } from "./actions/listEjectedPluginsAction.ts";
-import {
-	getPluginDetailsAction,
-	searchPluginAction,
-} from "./actions/searchPluginAction.ts";
+import { pluginAction } from "./actions/plugin.ts";
 import { pluginConfigurationStatusProvider } from "./providers/pluginConfigurationStatus.ts";
 import { pluginStateProvider } from "./providers/pluginStateProvider.ts";
 import { registryPluginsProvider } from "./providers/registryPluginsProvider.ts";
@@ -19,9 +14,21 @@ import * as types from "./types.ts";
 export { coreStatusAction } from "./actions/coreStatusAction.ts";
 export { listEjectedPluginsAction } from "./actions/listEjectedPluginsAction.ts";
 export {
+	createPluginAction,
+	pluginAction,
+	type PluginMode,
+} from "./actions/plugin.ts";
+export {
 	getPluginDetailsAction,
 	searchPluginAction,
 } from "./actions/searchPluginAction.ts";
+// Security helpers (re-exported from @elizaos/core for consumers like
+// plugin-app-control).
+export {
+	hasAdminAccess,
+	hasOwnerAccess,
+	type SecurityDeps,
+} from "./security.ts";
 export type { ExtendedRuntime } from "./coreExtensions.ts";
 // Core extensions
 export {
@@ -107,13 +114,8 @@ export { pluginRegistry, types };
 export const pluginManagerPlugin: Plugin = {
 	name: "plugin-manager",
 	description:
-		"Read-only plugin discovery and plugin/core status introspection",
-	actions: [
-		coreStatusAction,
-		getPluginDetailsAction,
-		searchPluginAction,
-		listEjectedPluginsAction,
-	],
+		"Plugin discovery, install, eject/sync, registry search, and creation",
+	actions: [pluginAction],
 	providers: [
 		pluginConfigurationStatusProvider,
 		pluginStateProvider,
