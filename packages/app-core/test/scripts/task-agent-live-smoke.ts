@@ -4,9 +4,9 @@
  * Modes:
  *   sequential   — spawn → write file → reuse session for second task
  *   web          — spawn → fetch reference page → serve generated HTML
- *   counter-app  — scaffold templates/min-app → spawn → child writes counter
- *                  code → emits APP_CREATE_DONE → cross-check claim against
- *                  disk → run AppVerificationService (typecheck + lint + test)
+ *   counter-app  — run the real CLI → child creates a counter app → emits
+ *                  APP_CREATE_DONE → cross-check claim against disk → run
+ *                  AppVerificationService → load via APP load_from_directory
  *
  * Auth requirements (all modes):
  *
@@ -199,7 +199,16 @@ function runCapturedCommand(
         return;
       }
       if (signal || code !== 0) {
-        reject(commandFailure(command, args, state.stdout, state.stderr, code, signal));
+        reject(
+          commandFailure(
+            command,
+            args,
+            state.stdout,
+            state.stderr,
+            code,
+            signal,
+          ),
+        );
         return;
       }
       resolve({ stdout: state.stdout, stderr: state.stderr, output });
@@ -236,12 +245,22 @@ function resolveCodexNpmCommand(): string {
   return "npm";
 }
 
+function resolveActiveCodexPrefix(): string {
+  const codexPath = execFileSync("which", ["codex"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 5_000,
+  }).trim();
+  return path.dirname(path.dirname(codexPath));
+}
+
 async function updateCodexCli(): Promise<string> {
   const before = readCodexVersion();
   const npmCommand = resolveCodexNpmCommand();
+  const codexPrefix = resolveActiveCodexPrefix();
   const update = await runCapturedCommand(
     npmCommand,
-    ["install", "-g", "@openai/codex@latest"],
+    ["install", "-g", "--prefix", codexPrefix, "@openai/codex@latest"],
     {
       timeoutMs: CODEX_UPDATE_TIMEOUT_MS,
       env: { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" },
@@ -249,7 +268,7 @@ async function updateCodexCli(): Promise<string> {
   );
   const after = readCodexVersion();
   return [
-    `command=${npmCommand} install -g @openai/codex@latest`,
+    `command=${npmCommand} install -g --prefix ${codexPrefix} @openai/codex@latest`,
     `before=${before}`,
     `after=${after}`,
     truncateForLog(update.output, 2000),
@@ -344,7 +363,9 @@ function isFrameworkAuthenticated(framework: Framework): boolean {
           : "";
 
     return (
-      !/\bnot logged in\b|\bno stored credentials\b|\bunauthenticated\b/i.test(detail) &&
+      !/\bnot logged in\b|\bno stored credentials\b|\bunauthenticated\b/i.test(
+        detail,
+      ) &&
       framework === "codex" &&
       codexHasStoredAuth()
     );
@@ -799,7 +820,7 @@ function createCounterAppPrompt(input: {
     "3. bun run test",
     "",
     "After all three commands exit zero, emit exactly one final stdout line.",
-    'That final line must start with APP_CREATE_DONE, followed by one space, then a JSON object with fields: appName, files, tests, lint, typecheck.',
+    "That final line must start with APP_CREATE_DONE, followed by one space, then a JSON object with fields: appName, files, tests, lint, typecheck.",
     `The JSON appName field must be "${input.appName}".`,
     "The JSON tests.failed field must be 0, and tests.passed must match the Vitest Tests summary.",
     'The JSON lint and typecheck fields must both be "ok".',
@@ -957,7 +978,10 @@ function assertCounterAppDisk(input: {
     );
   }
   for (const claimed of input.proof.files) {
-    assert.ok(!path.isAbsolute(claimed), `claimed file must be relative: ${claimed}`);
+    assert.ok(
+      !path.isAbsolute(claimed),
+      `claimed file must be relative: ${claimed}`,
+    );
     const full = path.resolve(input.appDir, claimed);
     assert.ok(
       path.relative(input.appDir, full).startsWith("..") === false,
@@ -986,11 +1010,17 @@ function assertCounterAppDisk(input: {
     "__PLUGIN_NAME__",
     "__PLUGIN_DISPLAY_NAME__",
   ]) {
-    assert.ok(!allText.includes(placeholder), `placeholder remains: ${placeholder}`);
+    assert.ok(
+      !allText.includes(placeholder),
+      `placeholder remains: ${placeholder}`,
+    );
   }
 
   const index = fs.readFileSync(path.join(input.appDir, "index.html"), "utf8");
-  const main = fs.readFileSync(path.join(input.appDir, "src", "main.ts"), "utf8");
+  const main = fs.readFileSync(
+    path.join(input.appDir, "src", "main.ts"),
+    "utf8",
+  );
   const counter = fs.readFileSync(
     path.join(input.appDir, "src", "counter.ts"),
     "utf8",
@@ -1085,7 +1115,10 @@ async function runCounterAppSmoke(agentType: Framework): Promise<void> {
     assert.equal(loadResult?.success, true);
     const registered = await appRegistry.list();
     const registeredApp = registered.find((entry) => entry.slug === appSlug);
-    assert.ok(registeredApp, `APP/load_from_directory did not register ${appSlug}`);
+    assert.ok(
+      registeredApp,
+      `APP/load_from_directory did not register ${appSlug}`,
+    );
     assert.equal(registeredApp.canonicalName, appName);
     assert.equal(registeredApp.displayName, displayName);
     assert.equal(path.resolve(registeredApp.directory), path.resolve(appDir));

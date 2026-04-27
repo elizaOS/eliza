@@ -138,7 +138,9 @@ describe("APP load_from_directory", () => {
 		// Decoy: file at top level
 		await writeFile(path.join(scanRoot, "README"), "noise", "utf8");
 
-		const register = vi.fn(async () => {});
+		const register = vi.fn<
+			(entry: AppRegistryEntry, ctx?: Record<string, unknown>) => Promise<void>
+		>(async () => {});
 		const runtime = {
 			getService: vi.fn((type: string) => {
 				if (type === APP_REGISTRY_SERVICE_TYPE) return { register };
@@ -164,7 +166,7 @@ describe("APP load_from_directory", () => {
 		// Two apps registered, decoys skipped.
 		expect(register).toHaveBeenCalledTimes(2);
 
-		const calls = register.mock.calls.map((c) => c[0] as AppRegistryEntry);
+		const calls = register.mock.calls.map((c) => c[0]);
 		const slugs = calls.map((e) => e.slug).sort();
 		expect(slugs).toEqual(["bar-app", "foo"]);
 
