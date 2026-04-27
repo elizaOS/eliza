@@ -47,6 +47,7 @@ interface ExtractedSecrets {
  */
 export const setSecretAction: Action = {
 	name: "SET_SECRET",
+	suppressPostActionContinuation: true,
 	similes: [
 		"STORE_SECRET",
 		"SAVE_SECRET",
@@ -109,6 +110,7 @@ export const setSecretAction: Action = {
 			return {
 				success: false,
 				text: "Refused: secrets can only be set in DMs",
+				data: { actionName: "SET_SECRET" },
 			};
 		}
 
@@ -121,7 +123,11 @@ export const setSecretAction: Action = {
 					action: "SET_SECRET",
 				});
 			}
-			return { success: false, text: "Secrets service not available" };
+			return {
+				success: false,
+				text: "Secrets service not available",
+				data: { actionName: "SET_SECRET" },
+			};
 		}
 
 		// Build state for prompt
@@ -166,7 +172,11 @@ export const setSecretAction: Action = {
 					action: "SET_SECRET",
 				});
 			}
-			return { success: false, text: "Failed to extract secrets from message" };
+			return {
+				success: false,
+				text: "Failed to extract secrets from message",
+				data: { actionName: "SET_SECRET" },
+			};
 		}
 
 		if (!extracted.secrets || extracted.secrets.length === 0) {
@@ -176,7 +186,11 @@ export const setSecretAction: Action = {
 					action: "SET_SECRET",
 				});
 			}
-			return { success: false, text: "No secrets found in message" };
+			return {
+				success: false,
+				text: "No secrets found in message",
+				data: { actionName: "SET_SECRET" },
+			};
 		}
 
 		// Determine storage context
@@ -251,7 +265,11 @@ export const setSecretAction: Action = {
 			});
 		}
 
-		return { success: successful.length > 0, text: responseText };
+		return {
+			success: successful.length > 0,
+			text: responseText,
+			data: { actionName: "SET_SECRET", results },
+		};
 	},
 
 	examples: [

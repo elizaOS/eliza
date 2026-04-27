@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -7,8 +8,24 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import type { FileActionParams } from "../types.js";
-import { resolveActionParams } from "./helpers.js";
+import type { FileActionParams, FileActionResult } from "../types.js";
+import {
+  resolveActionParams,
+  toComputerUseActionResult,
+} from "./helpers.js";
+
+function formatFileResultText(result: FileActionResult): string {
+  if (!result.success) {
+    return `File action failed: ${result.error}`;
+  }
+  return (
+    result.content ??
+    result.message ??
+    (result.items
+      ? `Listed ${result.count ?? result.items.length} filesystem entries.`
+      : "File action completed.")
+  );
+}
 
 export const fileAction: Action = {
   name: "FILE_ACTION",
@@ -130,7 +147,7 @@ export const fileAction: Action = {
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
-  ) => {
+  ): Promise<ActionResult> => {
     const service =
       (runtime.getService("computeruse") as unknown as ComputerUseService) ??
       null;
@@ -147,19 +164,16 @@ export const fileAction: Action = {
     }
 
     const result = await service.executeFileAction(params);
+    const text = formatFileResultText(result);
 
     if (callback) {
-      await callback({
-        text: result.success
-          ? (result.content ??
-            result.message ??
-            (result.items
-              ? `Listed ${result.count ?? result.items.length} filesystem entries.`
-              : "File action completed."))
-          : `File action failed: ${result.error}`,
-      });
+      await callback({ text });
     }
 
-    return result as unknown as any;
+    return toComputerUseActionResult({
+      action: params.action,
+      result,
+      text,
+    });
   },
 };

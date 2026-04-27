@@ -139,6 +139,7 @@ export const processAnalysisAction: Action = {
 export const executeFinalAction: Action = {
 	name: "EXECUTE_FINAL",
 	description: "Executes the final action based on processing results",
+	suppressPostActionContinuation: true,
 
 	validate: async (_runtime: IAgentRuntime, _message: Memory) => true,
 
@@ -166,9 +167,7 @@ export const executeFinalAction: Action = {
 		}
 
 		const execution = {
-			action: processingData.decisions.requiresAction
-				? "RESPOND"
-				: "ACKNOWLEDGE",
+			action: processingData.decisions.requiresAction ? "REPLY" : "ACKNOWLEDGE",
 			message: processingData.decisions.suggestedResponse,
 			metadata: {
 				chainId: options?.chainContext?.chainId,
@@ -189,6 +188,7 @@ export const executeFinalAction: Action = {
 		return {
 			success: true,
 			data: {
+				actionName: "EXECUTE_FINAL",
 				...execution,
 				metadata: {
 					chainId: String(execution.metadata.chainId || ""),
@@ -197,10 +197,6 @@ export const executeFinalAction: Action = {
 				},
 			},
 			text: execution.message,
-			cleanup: () => {
-				// eslint-disable-next-line no-console
-				console.log("[ChainExample] Cleaning up resources...");
-			},
 		};
 	},
 };
@@ -210,6 +206,7 @@ export const createPlanAction: Action = {
 	description:
 		"Creates a comprehensive project plan with multiple phases and tasks",
 	similes: ["PLAN_PROJECT", "GENERATE_PLAN", "MAKE_PLAN", "PROJECT_PLAN"],
+	suppressPostActionContinuation: true,
 
 	validate: async (_runtime: IAgentRuntime, message: Memory) => {
 		const text = message.content.text?.trim() ?? "";

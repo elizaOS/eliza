@@ -103,6 +103,7 @@ export const createTaskAction: Action = {
 	name: "CREATE_TASK",
 	similes: ["CREATE_TRIGGER", "SCHEDULE_TRIGGER", "SCHEDULE_TASK"],
 	description: "Create an autonomous trigger task (interval, once, or cron)",
+	suppressPostActionContinuation: true,
 	examples: [
 		[
 			{
@@ -141,11 +142,24 @@ export const createTaskAction: Action = {
 		callback?: HandlerCallback,
 	): Promise<ActionResult | undefined> => {
 		const text = (message.content.text ?? "").trim().replace(/\s+/g, " ");
-		if (!text) return { success: false, text: "Empty request." };
+		if (!text)
+			return {
+				success: false,
+				text: "Empty request.",
+				data: { actionName: "CREATE_TASK" },
+			};
 		if (!runtime.enableAutonomy)
-			return { success: false, text: "Autonomy is disabled." };
+			return {
+				success: false,
+				text: "Autonomy is disabled.",
+				data: { actionName: "CREATE_TASK" },
+			};
 		if (triggersDisabled(runtime))
-			return { success: false, text: "Triggers are disabled." };
+			return {
+				success: false,
+				text: "Triggers are disabled.",
+				data: { actionName: "CREATE_TASK" },
+			};
 
 		try {
 			const extracted =
@@ -232,7 +246,11 @@ export const createTaskAction: Action = {
 				return {
 					success: true,
 					text: msg,
-					data: { duplicateTaskId: duplicate.id, dedupeKey },
+					data: {
+						actionName: "CREATE_TASK",
+						duplicateTaskId: duplicate.id,
+						dedupeKey,
+					},
 				};
 			}
 
@@ -288,7 +306,14 @@ export const createTaskAction: Action = {
 				success: true,
 				text: msg,
 				values: { triggerId, taskId },
-				data: { triggerId, taskId, triggerType, wakeMode, dedupeKey },
+				data: {
+					actionName: "CREATE_TASK",
+					triggerId,
+					taskId,
+					triggerType,
+					wakeMode,
+					dedupeKey,
+				},
 			};
 		} catch (error) {
 			const msg =
@@ -299,7 +324,11 @@ export const createTaskAction: Action = {
 					action: "CREATE_TASK",
 					metadata: { error: msg },
 				});
-			return { success: false, text: msg };
+			return {
+				success: false,
+				text: msg,
+				data: { actionName: "CREATE_TASK" },
+			};
 		}
 	},
 };

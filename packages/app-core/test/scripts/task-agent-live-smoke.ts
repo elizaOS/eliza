@@ -35,18 +35,12 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { createServer, type Server } from "node:http";
 import fs from "node:fs";
+import { createServer, type Server } from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import {
-  APP_REGISTRY_SERVICE_TYPE,
-  AppRegistryService,
-  AppVerificationService,
-  createAppAction,
-} from "../../../../plugins/plugin-app-control/typescript/src/index.ts";
 import {
   cleanForChat,
   listAgentsAction,
@@ -55,9 +49,15 @@ import {
   spawnAgentAction,
 } from "@elizaos/plugin-agent-orchestrator";
 import {
-  parseStructuredProofDirective,
   type AppStructuredProofClaim,
+  parseStructuredProofDirective,
 } from "../../../../plugins/plugin-agent-orchestrator/src/services/structured-proof-bridge.ts";
+import {
+  APP_REGISTRY_SERVICE_TYPE,
+  AppRegistryService,
+  AppVerificationService,
+  createAppAction,
+} from "../../../../plugins/plugin-app-control/typescript/src/index.ts";
 import { createTestRuntime } from "../helpers/pglite-runtime";
 
 type Framework = "claude" | "codex";
@@ -68,6 +68,12 @@ const COUNTER_AGENT_TIMEOUT_MS = 10 * 60_000;
 const CODEX_UPDATE_TIMEOUT_MS = 5 * 60_000;
 const CAPTURE_LIMIT = 16 * 1024 * 1024;
 const CODEX_OLD_VERSION_RE = /requires a newer version of Codex/i;
+const CLAUDE_AUTH_FAILURE_RE =
+  /\b401\b|\binvalid authentication credentials\b|\bauthentication_error\b|\bfailed to authenticate\b/i;
+const COUNTER_TOOLCHAIN_BIN = path.join(process.cwd(), "node_modules", ".bin");
+const COUNTER_TYPECHECK_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/tsc --noEmit -p tsconfig.json`;
+const COUNTER_LINT_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/biome check .`;
+const COUNTER_TEST_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/vitest run --config ./vitest.config.ts`;
 
 type CapturedCommandResult = {
   stdout: string;
@@ -81,6 +87,17 @@ type CommandFailure = Error & {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
 };
+
+class LiveAuthRequiredError extends Error {
+  constructor(
+    readonly framework: Framework,
+    readonly mode: Mode,
+    reason: string,
+  ) {
+    super(reason);
+    this.name = "LiveAuthRequiredError";
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -222,8 +239,30 @@ function errorDetail(error: unknown): string {
   return JSON.stringify(error);
 }
 
+function liveCommandEnv(): NodeJS.ProcessEnv {
+  const repoBin = path.join(process.cwd(), "node_modules", ".bin");
+  return {
+    ...process.env,
+    CI: process.env.CI ?? "1",
+    FORCE_COLOR: "0",
+    PATH: [repoBin, process.env.PATH].filter(Boolean).join(path.delimiter),
+  };
+}
+
 function isCodexCliTooOldError(error: unknown): boolean {
   return CODEX_OLD_VERSION_RE.test(errorDetail(error));
+}
+
+function isClaudeAuthFailureError(error: unknown): boolean {
+  return CLAUDE_AUTH_FAILURE_RE.test(errorDetail(error));
+}
+
+function claudeNonInteractiveAuthInstructions(): string {
+  return [
+    "Claude Code reports a login, but non-interactive `claude -p` is rejected with 401 invalid credentials.",
+    "Refresh the non-interactive Claude Code auth path by running `claude setup-token` in a terminal, or set a valid `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` for this process.",
+    "After the token is refreshed, rerun the Claude live smoke.",
+  ].join(" ");
 }
 
 function readCodexVersion(): string {
@@ -391,6 +430,7 @@ function createMessage(content: Record<string, unknown> = {}) {
   return {
     id: `msg-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
     userId: "live-user",
+    entityId: "live-user",
     roomId: "live-room",
     createdAt: Date.now(),
     content,
@@ -428,7 +468,7 @@ async function waitFor(
 }
 
 function ensureLiveBaseDir(): string {
-  const baseDir = path.join(process.cwd(), ".tmp-live");
+  const baseDir = path.join(process.cwd(), "tmp-live");
   fs.mkdirSync(baseDir, { recursive: true });
   return baseDir;
 }
@@ -436,6 +476,14 @@ function ensureLiveBaseDir(): string {
 function createWorkdir(agentType: Framework, label: string): string {
   return fs.mkdtempSync(
     path.join(ensureLiveBaseDir(), `agent-orchestrator-${agentType}-${label}-`),
+  );
+}
+
+function createCounterWorkdir(agentType: Framework): string {
+  const baseDir = path.join(os.tmpdir(), "milady-live");
+  fs.mkdirSync(baseDir, { recursive: true });
+  return fs.mkdtempSync(
+    path.join(baseDir, `agent-orchestrator-${agentType}-counter-app-`),
   );
 }
 
@@ -803,7 +851,9 @@ function createCounterAppPrompt(input: {
     "",
     "package.json requirements:",
     '- "type": "module"',
-    '- scripts: "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "biome check .", "test": "vitest run --config ./vitest.config.ts"',
+    `- scripts.typecheck = "${COUNTER_TYPECHECK_SCRIPT}"`,
+    `- scripts.lint = "${COUNTER_LINT_SCRIPT}"`,
+    `- scripts.test = "${COUNTER_TEST_SCRIPT}"`,
     `- elizaos.app.displayName = "${input.displayName}"`,
     `- elizaos.app.slug = "${input.appSlug}"`,
     '- elizaos.app.category = "utility"',
@@ -818,6 +868,7 @@ function createCounterAppPrompt(input: {
     "1. bun run typecheck",
     "2. bun run lint",
     "3. bun run test",
+    "The repo node_modules/.bin directory is already on PATH; do not search the filesystem for tsc, biome, or vitest.",
     "",
     "After all three commands exit zero, emit exactly one final stdout line.",
     "That final line must start with APP_CREATE_DONE, followed by one space, then a JSON object with fields: appName, files, tests, lint, typecheck.",
@@ -833,7 +884,7 @@ async function runCounterAgentCli(
   task: string,
   workdir: string,
 ): Promise<string> {
-  const env = { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" };
+  const env = liveCommandEnv();
   if (agentType === "claude") {
     const model = process.env.MILADY_LIVE_CLAUDE_MODEL?.trim();
     const args = [
@@ -883,6 +934,13 @@ async function runCounterAgentCliWithCodexUpdate(
   try {
     return await runCounterAgentCli(agentType, task, workdir);
   } catch (error) {
+    if (agentType === "claude" && isClaudeAuthFailureError(error)) {
+      throw new LiveAuthRequiredError(
+        agentType,
+        "counter-app",
+        claudeNonInteractiveAuthInstructions(),
+      );
+    }
     if (agentType !== "codex" || !isCodexCliTooOldError(error)) {
       throw error;
     }
@@ -995,6 +1053,11 @@ function assertCounterAppDisk(input: {
 
   const pkg = readJsonObject(path.join(input.appDir, "package.json"));
   assert.equal(pkg.name, input.appName);
+  const scripts = isRecord(pkg.scripts) ? pkg.scripts : null;
+  assert.ok(scripts, "package.json must include scripts");
+  assert.equal(scripts.typecheck, COUNTER_TYPECHECK_SCRIPT);
+  assert.equal(scripts.lint, COUNTER_LINT_SCRIPT);
+  assert.equal(scripts.test, COUNTER_TEST_SCRIPT);
   const elizaos = isRecord(pkg.elizaos) ? pkg.elizaos : null;
   const app = elizaos && isRecord(elizaos.app) ? elizaos.app : null;
   assert.ok(app, "package.json must include elizaos.app metadata");
@@ -1040,7 +1103,7 @@ function assertCounterAppDisk(input: {
  * Real CLI + real LLM smoke for the APP create/load flow.
  */
 async function runCounterAppSmoke(agentType: Framework): Promise<void> {
-  const workdir = createWorkdir(agentType, "counter-app");
+  const workdir = createCounterWorkdir(agentType);
   const appSlug = `counter-live-${agentType}`;
   const appName = `@milady/${appSlug}`;
   const displayName =
@@ -1207,6 +1270,17 @@ try {
   await main();
   process.exit(0);
 } catch (error) {
+  if (error instanceof LiveAuthRequiredError) {
+    console.log(
+      "[task-agent-live-smoke] AUTH_REQUIRED",
+      JSON.stringify({
+        framework: error.framework,
+        mode: error.mode,
+        reason: error.message,
+      }),
+    );
+    process.exit(0);
+  }
   console.error("[task-agent-live-smoke] FAIL");
   console.error(error);
   process.exit(1);

@@ -4,6 +4,7 @@ import {
 	extractPlannerProviderNames,
 	getActionContinuationDecision,
 	resolvePlannerActionName,
+	shouldEmitPlannerPreamble,
 	withActionResultsForPrompt,
 } from "../services/message.ts";
 import type { Action, ActionResult, State } from "../types";
@@ -151,6 +152,23 @@ describe("resolvePlannerActionName", () => {
 			resolvePlannerActionName(runtime, actionLookup, "BOOK_TRAVEL"),
 		).toEqual(["BOOK_TRAVEL"]);
 	});
+
+	it("canonicalizes RESPOND planner output to the registered REPLY action", () => {
+		const runtime = {
+			actions: [buildAction("REPLY", { similes: ["RESPOND"] })],
+			logger: {
+				info: vi.fn(),
+				warn: vi.fn(),
+			},
+		} as Parameters<typeof resolvePlannerActionName>[0];
+		const actionLookup = new Map(
+			runtime.actions.map((action) => [action.name.replace(/_/g, ""), action]),
+		);
+
+		expect(resolvePlannerActionName(runtime, actionLookup, "RESPOND")).toEqual([
+			"REPLY",
+		]);
+	});
 });
 
 describe("withActionResultsForPrompt", () => {
@@ -216,6 +234,22 @@ describe("getActionContinuationDecision", () => {
 		});
 	});
 
+	it("treats RESPOND as terminal REPLY for execution continuation", () => {
+		const decision = getActionContinuationDecision(
+			{
+				actions: [buildAction("REPLY", { similes: ["RESPOND"] })],
+			},
+			{ actions: ["RESPOND"] },
+		);
+
+		expect(decision).toEqual({
+			shouldContinue: false,
+			suppressed: false,
+			continuingActions: [],
+			suppressingActions: [],
+		});
+	});
+
 	it("globally suppresses continuation when any selected action owns the turn", () => {
 		const decision = getActionContinuationDecision(
 			{
@@ -236,5 +270,20 @@ describe("getActionContinuationDecision", () => {
 			continuingActions: ["LOOK_UP_ORDER"],
 			suppressingActions: ["CALL_USER"],
 		});
+	});
+});
+
+describe("shouldEmitPlannerPreamble", () => {
+	it("does not emit a planner preamble for RESPOND because REPLY owns the reply", () => {
+		const runtime = {
+			actions: [buildAction("REPLY", { similes: ["RESPOND"] })],
+		} as Parameters<typeof shouldEmitPlannerPreamble>[0];
+
+		expect(
+			shouldEmitPlannerPreamble(runtime, {
+				text: "I can answer that.",
+				actions: ["RESPOND"],
+			}),
+		).toBe(false);
 	});
 });

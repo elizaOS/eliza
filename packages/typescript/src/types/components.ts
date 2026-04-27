@@ -196,6 +196,12 @@ export interface Action {
 	suppressPostActionContinuation?: boolean;
 
 	/**
+	 * When true, runtime-level action result finalizers must not store this
+	 * action's visible result text in task clipboard state.
+	 */
+	suppressActionResultClipboard?: boolean;
+
+	/**
 	 * Optional input parameters for the action.
 	 * When defined, the LLM will be prompted to extract these parameters from the conversation
 	 * and they will be validated before being passed to the handler via HandlerOptions.parameters.

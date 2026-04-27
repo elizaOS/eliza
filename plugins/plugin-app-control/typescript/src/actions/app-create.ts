@@ -608,6 +608,7 @@ async function createNewApp({
 			success: false,
 			text,
 			values: { mode: "create", name, workdir },
+			data: { suppressActionResultClipboard: true },
 		};
 	}
 
@@ -629,7 +630,14 @@ async function createNewApp({
 			taskStatus: task.status,
 			taskSessionId: task.sessionId,
 		},
-		data: { name, displayName, workdir, task, agents: dispatch.agents },
+		data: {
+			name,
+			displayName,
+			workdir,
+			task,
+			agents: dispatch.agents,
+			suppressActionResultClipboard: true,
+		},
 	};
 }
 
@@ -666,7 +674,7 @@ async function editExistingApp({
 	if (dispatch.dispatched === false) {
 		const text = `Could not dispatch a coding agent to edit ${app.displayName}: ${dispatch.reason}.`;
 		await callback?.({ text });
-		return { success: false, text };
+		return { success: false, text, data: { suppressActionResultClipboard: true } };
 	}
 
 	const task = dispatch.agents[0];
@@ -686,7 +694,13 @@ async function editExistingApp({
 			taskStatus: task.status,
 			taskSessionId: task.sessionId,
 		},
-		data: { app, workdir, task, agents: dispatch.agents },
+		data: {
+			app,
+			workdir,
+			task,
+			agents: dispatch.agents,
+			suppressActionResultClipboard: true,
+		},
 	};
 }
 
