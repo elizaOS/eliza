@@ -11,7 +11,6 @@ import {
   PageLayout,
   PagePanel,
   SidebarContent,
-  SidebarHeader,
   SidebarPanel,
   SidebarScrollRegion,
   Spinner,
@@ -67,8 +66,6 @@ interface SettingsSectionDef {
   icon: LucideIcon;
   description?: string;
   defaultDescription?: string;
-  keywords?: string[];
-  keywordKeys?: string[];
 }
 
 function clampSettingsSidebarWidth(value: number): number {
@@ -116,16 +113,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: User,
     description: "settings.sections.identity.desc",
     defaultDescription: "Name, voice, and system prompt.",
-    keywords: [
-      "identity",
-      "name",
-      "voice",
-      "system prompt",
-      "persona",
-      "instructions",
-      "agent",
-    ],
-    keywordKeys: ["settings.keyword.voice"],
   },
   {
     id: "ai-model",
@@ -134,37 +121,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: Brain,
     description: "settings.sections.aimodel.desc",
     defaultDescription: "Cloud, local, subscriptions, and direct providers.",
-    keywords: [
-      "model",
-      "provider",
-      "billing",
-      "credits",
-      "cloud",
-      "subscription",
-      "openai",
-      "anthropic",
-      "grok",
-      "gemini",
-      "api key",
-      "inference",
-      "llm",
-      "local",
-      "llama",
-      "llama.cpp",
-      "gguf",
-      "download",
-      "offline",
-      "gpu",
-      "vram",
-      "device",
-      "phone",
-    ],
-    keywordKeys: [
-      "settings.keyword.model",
-      "settings.keyword.provider",
-      "settings.keyword.apiKey",
-      "settings.keyword.inference",
-    ],
   },
   {
     id: "appearance",
@@ -173,22 +129,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: Palette,
     description: "settings.sections.appearance.desc",
     defaultDescription: "Language, theme, and content packs.",
-    keywords: [
-      "appearance",
-      "theme",
-      "content pack",
-      "vrm",
-      "avatar",
-      "background",
-      "color scheme",
-      "skin",
-      "character",
-    ],
-    keywordKeys: [
-      "settings.keyword.theme",
-      "settings.keyword.avatar",
-      "settings.keyword.appearance",
-    ],
   },
   {
     id: "capabilities",
@@ -197,24 +137,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: SlidersHorizontal,
     description: "settings.sections.capabilities.desc",
     defaultDescription: "Agent features and automation surfaces.",
-    keywords: [
-      "capabilities",
-      "wallet",
-      "browser",
-      "computer use",
-      "desktop automation",
-      "screenshots",
-      "training",
-      "auto-training",
-      "enable",
-      "disable",
-      "feature",
-    ],
-    keywordKeys: [
-      "settings.keyword.wallet",
-      "settings.keyword.browser",
-      "settings.keyword.training",
-    ],
   },
   {
     id: "apps",
@@ -224,18 +146,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     description: "settings.sections.apps.desc",
     defaultDescription:
       "Installed apps, launching, relaunching, editing, and creating new ones.",
-    keywords: [
-      "apps",
-      "app",
-      "launch",
-      "relaunch",
-      "stop",
-      "edit",
-      "scaffold",
-      "create app",
-      "install",
-      "directory",
-    ],
   },
   {
     id: "wallet-rpc",
@@ -244,18 +154,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: Wallet,
     description: "settings.sections.walletrpc.desc",
     defaultDescription: "Wallet network and RPC providers.",
-    keywords: [
-      "wallet",
-      "rpc",
-      "evm",
-      "solana",
-      "api key",
-      "alchemy",
-      "quicknode",
-      "helius",
-      "birdeye",
-    ],
-    keywordKeys: ["settings.keyword.wallet", "settings.keyword.apiKey"],
   },
   {
     id: "permissions",
@@ -264,16 +162,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: Shield,
     description: "settings.sections.permissions.desc",
     defaultDescription: "Browser and device access.",
-    keywords: [
-      "permissions",
-      "desktop",
-      "filesystem",
-      "security",
-      "microphone permission",
-      "camera permission",
-      "file access",
-    ],
-    keywordKeys: ["settings.keyword.permissions", "settings.keyword.security"],
   },
   {
     id: "security",
@@ -282,16 +170,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: KeyRound,
     description: "settings.sections.security.desc",
     defaultDescription: "Local access, remote password, and sessions.",
-    keywords: [
-      "security",
-      "auth",
-      "password",
-      "remote",
-      "session",
-      "login",
-      "owner",
-    ],
-    keywordKeys: ["settings.keyword.security"],
   },
   {
     id: "updates",
@@ -300,8 +178,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: RefreshCw,
     description: "settings.sections.updates.desc",
     defaultDescription: "Software updates.",
-    keywords: ["updates", "release", "version", "download"],
-    keywordKeys: ["settings.keyword.updates"],
   },
   {
     id: "advanced",
@@ -310,49 +186,8 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: Archive,
     description: "settings.sections.backupReset.desc",
     defaultDescription: "Export, import, and reset.",
-    keywords: [
-      "advanced",
-      "export",
-      "import",
-      "reset",
-      "debug",
-      "backup",
-      "restore",
-      "danger zone",
-      "wipe",
-      "start over",
-    ],
-    keywordKeys: [
-      "settings.keyword.advanced",
-      "settings.keyword.export",
-      "settings.keyword.import",
-      "settings.keyword.reset",
-    ],
   },
 ];
-
-function matchesSettingsSection(
-  section: SettingsSectionDef,
-  query: string,
-  t: (key: string, vars?: Record<string, unknown>) => string,
-): boolean {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
-  const label = t(section.label, { defaultValue: section.defaultLabel });
-  const description = section.description
-    ? t(section.description, { defaultValue: section.defaultDescription })
-    : "";
-  return (
-    label.toLowerCase().includes(normalized) ||
-    description.toLowerCase().includes(normalized) ||
-    (section.keywords ?? []).some((keyword) =>
-      keyword.toLowerCase().includes(normalized),
-    ) ||
-    (section.keywordKeys ?? []).some((key) =>
-      t(key).toLowerCase().includes(normalized),
-    )
-  );
-}
 
 function settingsSectionLabel(
   section: SettingsSectionDef,
@@ -769,7 +604,6 @@ export function SettingsView({
   const [activeSection, setActiveSection] = useState(
     () => initialSection ?? readSettingsHashSection() ?? "identity",
   );
-  const [searchQuery, setSearchQuery] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
     readStoredSettingsSidebarCollapsed,
   );
@@ -825,10 +659,9 @@ export function SettingsView({
   const visibleSections = useMemo(() => {
     return SETTINGS_SECTIONS.filter((section) => {
       if (section.id === "wallet-rpc" && walletEnabled === false) return false;
-      if (!matchesSettingsSection(section, searchQuery, t)) return false;
       return true;
     });
-  }, [searchQuery, t, walletEnabled]);
+  }, [walletEnabled]);
   const visibleSectionIds = useMemo(
     () => new Set(visibleSections.map((section) => section.id)),
     [visibleSections],
@@ -973,9 +806,6 @@ export function SettingsView({
     SETTINGS_SECTIONS.find((section) => section.id === activeSection) ??
     visibleSections[0] ??
     null;
-  const searchLabel = t("settingsview.SearchSettings", {
-    defaultValue: "Search settings",
-  });
 
   const settingsSidebar = (
     <AppPageSidebar
@@ -998,66 +828,47 @@ export function SettingsView({
       mobileMeta={
         activeSectionDef ? settingsSectionLabel(activeSectionDef, t) : undefined
       }
-      header={
-        <SidebarHeader
-          search={{
-            value: searchQuery,
-            onChange: (event) => setSearchQuery(event.target.value),
-            onClear: () => setSearchQuery(""),
-            placeholder: searchLabel,
-            "aria-label": searchLabel,
-            autoComplete: "off",
-            spellCheck: false,
-          }}
-        />
-      }
     >
       <SidebarScrollRegion className="pt-0">
         <SidebarPanel>
-          {visibleSections.length === 0 ? (
-            <SidebarContent.EmptyState className="px-4 py-6">
-              {t("settingsview.NoMatchingSettings")}
-            </SidebarContent.EmptyState>
-          ) : (
-            <nav className="space-y-1.5" aria-label={t("nav.settings")}>
-              {visibleSections.map((section) => {
-                const isActive = activeSection === section.id;
-                const Icon = section.icon;
-                return (
-                  <SidebarContent.Item
-                    key={section.id}
-                    as="div"
-                    active={isActive}
-                    className="gap-2 py-2"
-                    ref={registerSidebarItem(section.id)}
+          <nav className="space-y-1.5" aria-label={t("nav.settings")}>
+            {visibleSections.map((section) => {
+              const isActive = activeSection === section.id;
+              const Icon = section.icon;
+              return (
+                <SidebarContent.Item
+                  key={section.id}
+                  as="div"
+                  active={isActive}
+                  className="gap-2 py-2"
+                  ref={registerSidebarItem(section.id)}
+                >
+                  <SidebarContent.ItemButton
+                    onClick={() => handleSectionChange(section.id)}
+                    aria-current={isActive ? "page" : undefined}
+                    className="items-center gap-2.5"
                   >
-                    <SidebarContent.ItemButton
-                      onClick={() => handleSectionChange(section.id)}
-                      aria-current={isActive ? "page" : undefined}
-                      className="items-center gap-2.5"
+                    <SidebarContent.ItemIcon
+                      active={isActive}
+                      className="mt-0 h-8 w-8 rounded-lg p-1.5"
                     >
-                      <SidebarContent.ItemIcon
-                        active={isActive}
-                        className="mt-0 h-8 w-8 rounded-lg p-1.5"
+                      <Icon className="h-4 w-4" aria-hidden />
+                    </SidebarContent.ItemIcon>
+                    <SidebarContent.ItemBody>
+                      <SidebarContent.ItemTitle
+                        className={cn(
+                          "text-sm leading-5",
+                          isActive ? "font-semibold" : "font-medium",
+                        )}
                       >
-                        <Icon className="h-4 w-4" aria-hidden />
-                      </SidebarContent.ItemIcon>
-                      <SidebarContent.ItemBody>
-                        <SidebarContent.ItemTitle
-                          className={cn(
-                            "text-sm leading-5",
-                            isActive ? "font-semibold" : "font-medium",
-                          )}
-                        >
-                          {settingsSectionLabel(section, t)}
-                        </SidebarContent.ItemTitle>
-                      </SidebarContent.ItemBody>
-                    </SidebarContent.ItemButton>
-                  </SidebarContent.Item>
-                );
-              })}
-            </nav>
-          )}
+                        {settingsSectionLabel(section, t)}
+                      </SidebarContent.ItemTitle>
+                    </SidebarContent.ItemBody>
+                  </SidebarContent.ItemButton>
+                </SidebarContent.Item>
+              );
+            })}
+          </nav>
         </SidebarPanel>
       </SidebarScrollRegion>
     </AppPageSidebar>
@@ -1214,23 +1025,6 @@ export function SettingsView({
           ref={registerContentItem("advanced")}
         >
           <AdvancedSection />
-        </SettingsSection>
-      )}
-
-      {visibleSections.length === 0 && (
-        <SettingsSection
-          id="settings-empty"
-          title={t("settingsview.NoMatchingSettings")}
-          description={t("settings.noMatchingSettingsDescription")}
-          showDescription
-        >
-          <Button
-            variant="outline"
-            className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)+2px)]"
-            onClick={() => setSearchQuery("")}
-          >
-            {t("settingsview.ClearSearch")}
-          </Button>
         </SettingsSection>
       )}
     </>
