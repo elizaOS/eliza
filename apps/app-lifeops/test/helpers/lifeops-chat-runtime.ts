@@ -525,6 +525,23 @@ export function createLifeOpsChatTestRuntime(options: {
           if (/^(select|pragma)\b/i.test(sql)) {
             return sqlite.prepare(sql).all() as Array<Record<string, unknown>>;
           }
+          const sqliteAlterAddColumn = sql.match(
+            /^ALTER TABLE\s+(\S+)\s+ADD COLUMN IF NOT EXISTS\s+(.+)$/i,
+          );
+          if (sqliteAlterAddColumn) {
+            try {
+              sqlite.exec(
+                `ALTER TABLE ${sqliteAlterAddColumn[1]} ADD COLUMN ${sqliteAlterAddColumn[2]}`,
+              );
+            } catch (error) {
+              const message =
+                error instanceof Error ? error.message : String(error);
+              if (!/duplicate column name/i.test(message)) {
+                throw error;
+              }
+            }
+            return [];
+          }
           sqlite.exec(sql);
           return [];
         },
