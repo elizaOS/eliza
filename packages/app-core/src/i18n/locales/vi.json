@@ -12,6 +12,7 @@
   "accounts.add.oauth.codePlaceholder": "Paste the code or redirect URL",
   "accounts.add.oauth.error": "Login failed.",
   "accounts.add.oauth.sessionHint": "Session: {{sessionId}}",
+  "accounts.add.oauth.sseUnreachable": "Lost connection to the OAuth status stream. Try again.",
   "accounts.add.oauth.startFailed": "Failed to start login flow.",
   "accounts.add.oauth.starting": "Starting login flow...",
   "accounts.add.oauth.submitCode": "Submit code",
