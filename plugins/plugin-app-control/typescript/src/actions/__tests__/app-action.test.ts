@@ -268,4 +268,173 @@ describe("APP create dispatch", () => {
 			await rm(repoRoot, { recursive: true, force: true });
 		}
 	});
+
+	it("edit-N choice locates the installed app's source dir and dispatches CREATE_TASK", async () => {
+		const repoRoot = await mkdtemp(path.join(tmpdir(), "milady-app-edit-"));
+		try {
+			const installedApp = {
+				name: "@me/app-notes",
+				displayName: "Notes",
+				pluginName: "@me/app-notes",
+				version: "0.1.0",
+				installedAt: new Date().toISOString(),
+			};
+			const appDir = path.join(repoRoot, "eliza/apps/app-notes");
+			await mkdir(appDir, { recursive: true });
+			await writeFile(
+				path.join(appDir, "package.json"),
+				JSON.stringify({ name: installedApp.name, version: "0.1.0" }),
+				"utf8",
+			);
+
+			const createTaskHandler = vi.fn(
+				async (): Promise<ActionResult> => ({
+					success: true,
+					text: "",
+					data: {
+						agents: [
+							{
+								sessionId: "session-edit-1",
+								agentType: "claude",
+								workdir: appDir,
+								label: "edit-app:@me/app-notes",
+								status: "running",
+							},
+						],
+					},
+				}),
+			);
+			const deleteTask = vi.fn(async () => {});
+			const runtime = {
+				agentId: "agent-1",
+				actions: [{ name: "CREATE_TASK", handler: createTaskHandler }],
+				getTasks: vi.fn(async () => [intentTask("room-edit")]),
+				createTask: vi.fn(async () => "task-id"),
+				deleteTask,
+				useModel: vi.fn(async () => ""),
+			} as unknown as IAgentRuntime;
+			const client = {
+				listInstalledApps: vi.fn(async () => [installedApp]),
+			} as unknown as AppControlClient;
+			const callback = vi.fn(async () => []);
+
+			const result = await runCreate({
+				runtime,
+				client,
+				message: makeMessage("edit-1", "room-edit"),
+				callback,
+				repoRoot,
+			});
+
+			expect(result.success).toBe(true);
+			expect(result.values?.subMode).toBe("edit");
+			expect(result.values?.workdir).toBe(appDir);
+			expect(deleteTask).toHaveBeenCalledTimes(1);
+			expect(createTaskHandler).toHaveBeenCalledTimes(1);
+
+			const handlerOptions = (
+				createTaskHandler.mock.calls[0] as unknown[]
+			)[3] as HandlerOptions;
+			const parameters = handlerOptions.parameters as Record<string, unknown>;
+			expect(parameters.label).toBe("edit-app:@me/app-notes");
+			expect(parameters.task).toContain("Notes");
+			expect(parameters.task).toContain(appDir);
+			expect(parameters.task).toContain(
+				'APP_CREATE_DONE {"appName":"@me/app-notes"',
+			);
+			const validator = parameters.validator as Record<string, unknown>;
+			expect(validator).toMatchObject({
+				service: "app-verification",
+				method: "verifyApp",
+				params: {
+					workdir: appDir,
+					appName: "@me/app-notes",
+					profile: "full",
+				},
+			});
+		} finally {
+			await rm(repoRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("cancel choice deletes the intent task and never dispatches CREATE_TASK", async () => {
+		const createTaskHandler = vi.fn(
+			async (): Promise<ActionResult> => ({
+				success: true,
+				text: "",
+				data: { agents: [] },
+			}),
+		);
+		const deleteTask = vi.fn(async () => {});
+		const runtime = {
+			agentId: "agent-1",
+			actions: [{ name: "CREATE_TASK", handler: createTaskHandler }],
+			getTasks: vi.fn(async () => [intentTask("room-cancel")]),
+			createTask: vi.fn(async () => "task-id"),
+			deleteTask,
+			useModel: vi.fn(async () => ""),
+		} as unknown as IAgentRuntime;
+		const client = {
+			listInstalledApps: vi.fn(async () => []),
+		} as unknown as AppControlClient;
+		const callback = vi.fn(async () => []);
+
+		const result = await runCreate({
+			runtime,
+			client,
+			message: makeMessage("cancel", "room-cancel"),
+			callback,
+			repoRoot: "/tmp/never-touched",
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.values?.subMode).toBe("cancel");
+		expect(deleteTask).toHaveBeenCalledTimes(1);
+		expect(createTaskHandler).not.toHaveBeenCalled();
+	});
+
+	it("first-turn intent emits a [CHOICE:...] block when fuzzy matches exist", async () => {
+		const createTask = vi.fn(async () => "task-intent");
+		const messages: string[] = [];
+		const callback = vi.fn(async (msg: { text?: string }) => {
+			messages.push(msg.text ?? "");
+			return [];
+		});
+		const runtime = {
+			agentId: "agent-1",
+			actions: [],
+			getTasks: vi.fn(async () => []),
+			createTask,
+			deleteTask: vi.fn(async () => {}),
+			useModel: vi.fn(async () => ""),
+		} as unknown as IAgentRuntime;
+		const client = {
+			listInstalledApps: vi.fn(async () => [
+				{
+					name: "@me/app-notes",
+					displayName: "Notes",
+					pluginName: "@me/app-notes",
+					version: "0.1.0",
+					installedAt: new Date().toISOString(),
+				},
+			]),
+		} as unknown as AppControlClient;
+
+		const result = await runCreate({
+			runtime,
+			client,
+			message: makeMessage("build me a notes app", "room-pick"),
+			callback,
+			repoRoot: "/tmp/never-touched",
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.values?.subMode).toBe("choice");
+		expect(createTask).toHaveBeenCalledTimes(1);
+		expect(messages.some((m) => m.startsWith("[CHOICE:app-create"))).toBe(true);
+		expect(messages.join("\n")).toMatch(
+			/edit-1\s*=\s*Edit existing: Notes/,
+		);
+		expect(messages.join("\n")).toMatch(/cancel\s*=\s*Cancel/);
+	});
 });
