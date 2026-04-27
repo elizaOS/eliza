@@ -2605,6 +2605,15 @@ export interface LifeOpsSignalInboundMessage {
   isGroup: boolean;
 }
 
+export interface GetLifeOpsSignalMessagesRequest {
+  limit?: number;
+}
+
+export interface GetLifeOpsSignalMessagesResponse {
+  count: number;
+  messages: LifeOpsSignalInboundMessage[];
+}
+
 export interface LifeOpsDiscordDmPreview {
   channelId: string | null;
   href: string | null;

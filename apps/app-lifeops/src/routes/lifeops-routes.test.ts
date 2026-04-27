@@ -344,6 +344,90 @@ describe("LifeOps route validation", () => {
     expect(sendSignalMessage).not.toHaveBeenCalled();
   });
 
+  it("reads Signal messages through the connector route", async () => {
+    const readSignalInbound = vi
+      .spyOn(LifeOpsService.prototype, "readSignalInbound")
+      .mockResolvedValue([
+        {
+          id: "sig-1",
+          roomId: "room-1",
+          channelId: "+15551112222",
+          threadId: "+15551112222",
+          roomName: "Shaw",
+          speakerName: "Shaw",
+          senderNumber: "+15551112222",
+          senderUuid: null,
+          sourceDevice: null,
+          groupId: null,
+          groupType: null,
+          text: "hello",
+          createdAt: 1777280000000,
+          isInbound: true,
+          isGroup: false,
+        },
+      ]);
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/signal/messages?limit=1",
+      {
+        state: {
+          runtime: {
+            agentId: "00000000-0000-0000-0000-000000000103",
+          } as LifeOpsRouteContext["state"]["runtime"],
+          adminEntityId: null,
+        },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(readSignalInbound).toHaveBeenCalledWith(1);
+    expect(json).toHaveBeenCalledWith(context.res, {
+      count: 1,
+      messages: [
+        {
+          id: "sig-1",
+          roomId: "room-1",
+          channelId: "+15551112222",
+          threadId: "+15551112222",
+          roomName: "Shaw",
+          speakerName: "Shaw",
+          senderNumber: "+15551112222",
+          senderUuid: null,
+          sourceDevice: null,
+          groupId: null,
+          groupType: null,
+          text: "hello",
+          createdAt: 1777280000000,
+          isInbound: true,
+          isGroup: false,
+        },
+      ],
+    });
+  });
+
+  it("rejects Signal message limits above the route maximum", async () => {
+    const readSignalInbound = vi.spyOn(
+      LifeOpsService.prototype,
+      "readSignalInbound",
+    );
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/signal/messages?limit=101",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "limit must be less than or equal to 100",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(readSignalInbound).not.toHaveBeenCalled();
+  });
+
   it("passes Discord sends through to the service", async () => {
     const sendDiscordMessage = vi
       .spyOn(LifeOpsService.prototype, "sendDiscordMessage")

@@ -55,6 +55,7 @@ import type {
   GetLifeOpsGmailUnrespondedRequest,
   GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsInboxRequest,
+  GetLifeOpsSignalMessagesResponse,
   IngestLifeOpsGmailEventRequest,
   LifeOpsActivitySignal,
   LifeOpsBrowserSession,
@@ -686,6 +687,9 @@ declare module "@elizaos/app-core/api/client-base" {
     disconnectSignalConnector(
       data?: DisconnectLifeOpsMessagingConnectorRequest,
     ): Promise<LifeOpsSignalConnectorStatus>;
+    getSignalConnectorMessages(options?: {
+      limit?: number;
+    }): Promise<GetLifeOpsSignalMessagesResponse>;
     sendSignalConnectorMessage(
       data: SendLifeOpsSignalMessageRequest,
     ): Promise<SendLifeOpsSignalMessageResponse>;
@@ -2137,6 +2141,20 @@ ElizaClient.prototype.disconnectSignalConnector = async function (
     method: "POST",
     body: JSON.stringify(data),
   });
+};
+
+ElizaClient.prototype.getSignalConnectorMessages = async function (
+  this: ElizaClient,
+  options = {},
+): Promise<GetLifeOpsSignalMessagesResponse> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) {
+    params.set("limit", String(options.limit));
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch<GetLifeOpsSignalMessagesResponse>(
+    `/api/lifeops/connectors/signal/messages${query}`,
+  );
 };
 
 ElizaClient.prototype.sendSignalConnectorMessage = async function (
