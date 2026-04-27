@@ -204,9 +204,9 @@ describe("shouldRunMetadataActionRescue", () => {
 	it("returns true when actions are only IGNORE / NONE", () => {
 		expect(shouldRunMetadataActionRescue({ actions: ["IGNORE"] })).toBe(true);
 		expect(shouldRunMetadataActionRescue({ actions: ["NONE"] })).toBe(true);
-		expect(
-			shouldRunMetadataActionRescue({ actions: ["IGNORE", "NONE"] }),
-		).toBe(true);
+		expect(shouldRunMetadataActionRescue({ actions: ["IGNORE", "NONE"] })).toBe(
+			true,
+		);
 	});
 
 	it("returns false when REPLY is present (do not override deliberate conversation)", () => {
@@ -235,11 +235,7 @@ describe("shouldRunMetadataActionRescue", () => {
 		// false when REPLY appears alongside garbage.
 		expect(
 			shouldRunMetadataActionRescue({
-				actions: [
-					42 as unknown as string,
-					null as unknown as string,
-					"REPLY",
-				],
+				actions: [42 as unknown as string, null as unknown as string, "REPLY"],
 			}),
 		).toBe(false);
 	});

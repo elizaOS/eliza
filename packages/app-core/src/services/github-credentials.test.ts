@@ -145,6 +145,17 @@ describe("saveCredentials → loadCredentials roundtrip", () => {
     const stat = await fs.stat(path.dirname(getCredentialFilePath()));
     expect((stat.mode & 0o777).toString(8)).toBe("700");
   });
+
+  it("tightens an existing loose parent directory to mode 0700", async () => {
+    const directory = path.dirname(getCredentialFilePath());
+    await fs.mkdir(directory, { recursive: true, mode: 0o755 });
+    await fs.chmod(directory, 0o755);
+    await saveCredentials(
+      buildCredentialsFromUserResponse("t", { login: "u" }, [], 1),
+    );
+    const stat = await fs.stat(directory);
+    expect((stat.mode & 0o777).toString(8)).toBe("700");
+  });
 });
 
 describe("clearCredentials", () => {

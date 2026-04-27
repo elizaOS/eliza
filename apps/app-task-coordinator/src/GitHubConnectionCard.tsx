@@ -1,5 +1,5 @@
-import { Button, client, openExternalUrl } from "@elizaos/app-core";
-import { SettingsControls } from "@elizaos/ui";
+import { client, openExternalUrl } from "@elizaos/app-core";
+import { Button, SettingsControls } from "@elizaos/ui";
 import { CheckCircle2, ExternalLink, Github, Unplug } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -90,7 +90,7 @@ export function GitHubConnectionCard() {
     submitState.kind === "error" ? submitState.message : null;
 
   return (
-    <div className="space-y-3 rounded-2xl border border-border/20 bg-card/14 px-3 py-3">
+    <div className="space-y-3 rounded-lg border border-border/20 bg-card/14 px-3 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <Github className="h-4 w-4 text-muted" aria-hidden />
@@ -116,7 +116,10 @@ export function GitHubConnectionCard() {
       {status?.connected ? (
         <div className="flex flex-col gap-2 text-xs">
           <div className="flex items-center gap-2 text-muted">
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" aria-hidden />
+            <CheckCircle2
+              className="h-3.5 w-3.5 text-emerald-500"
+              aria-hidden
+            />
             <span>
               Connected as{" "}
               <span className="font-medium text-txt">@{status.username}</span>
@@ -152,8 +155,8 @@ export function GitHubConnectionCard() {
       ) : (
         <div className="flex flex-col gap-2 text-xs">
           <p className="text-muted">
-            Paste a personal access token so coding sub-agents can clone
-            private repos, push commits, and open pull requests.
+            Paste a personal access token so coding sub-agents can clone private
+            repos, push commits, and open pull requests.
           </p>
           <button
             type="button"

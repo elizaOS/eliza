@@ -11,7 +11,7 @@
  * - POST surfaces a 400 with a useful message on a 403 from GitHub
  * - POST 400s on an empty body
  * - POST persists scopes parsed from the X-OAuth-Scopes header
- * - DELETE clears the saved record (and is idempotent)
+ * - DELETE clears the saved record and returns a JSON disconnected state
  * - non-GET/POST/DELETE methods get a 405
  *
  * Each test uses a fresh tmp state-dir + an injected `fetch` so no
@@ -24,12 +24,12 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { handleGitHubRoutes } from "./github-routes";
 import {
   buildCredentialsFromUserResponse,
   clearCredentials,
   saveCredentials,
 } from "../services/github-credentials";
+import { handleGitHubRoutes } from "./github-routes";
 
 interface FakeResponseRecord {
   status: number;
@@ -161,10 +161,7 @@ describe("POST /api/github/token", () => {
     const fetchSpy = vi
       .fn()
       .mockResolvedValue(
-        makeUserResponse(
-          { login: "octocat" },
-          { scopes: "repo, read:user" },
-        ),
+        makeUserResponse({ login: "octocat" }, { scopes: "repo, read:user" }),
       );
 
     const { res, captured } = makeFakeRes();
@@ -215,7 +212,9 @@ describe("POST /api/github/token", () => {
       fetch: fetchSpy as unknown as typeof fetch,
     });
     expect(captured.status).toBe(400);
-    expect((captured.body as { error: string }).error).toMatch(/bad credentials/i);
+    expect((captured.body as { error: string }).error).toMatch(
+      /bad credentials/i,
+    );
   });
 
   it("returns 400 when GitHub answers 403", async () => {
@@ -248,7 +247,7 @@ describe("POST /api/github/token", () => {
 });
 
 describe("DELETE /api/github/token", () => {
-  it("clears the saved credential and returns 204", async () => {
+  it("clears the saved credential and returns connected=false", async () => {
     await saveCredentials(
       buildCredentialsFromUserResponse("t", { login: "u" }, [], 1),
     );
@@ -259,7 +258,8 @@ describe("DELETE /api/github/token", () => {
       method: "DELETE",
       pathname: "/api/github/token",
     });
-    expect(captured.status).toBe(204);
+    expect(captured.status).toBe(200);
+    expect(captured.body).toEqual({ connected: false });
     await expect(
       fs.stat(path.join(tempDir, "credentials", "github.json")),
     ).rejects.toThrow();
@@ -274,7 +274,8 @@ describe("DELETE /api/github/token", () => {
       method: "DELETE",
       pathname: "/api/github/token",
     });
-    expect(captured.status).toBe(204);
+    expect(captured.status).toBe(200);
+    expect(captured.body).toEqual({ connected: false });
   });
 });
 
