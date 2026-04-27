@@ -145,6 +145,16 @@ describe("parseWhatsAppWebhookMessages", () => {
           changes: [
             {
               value: {
+                metadata: {
+                  display_phone_number: "+1 555 000 1111",
+                  phone_number_id: "phone-555000111",
+                },
+                contacts: [
+                  {
+                    profile: { name: "Eve WhatsApp" },
+                    wa_id: "15551112222",
+                  },
+                ],
                 messages: [
                   {
                     id: "wamid.aaa",
@@ -171,9 +181,42 @@ describe("parseWhatsAppWebhookMessages", () => {
     expect(messages).toHaveLength(2);
     expect(messages[0].id).toBe("wamid.aaa");
     expect(messages[0].from).toBe("15551112222");
+    expect(messages[0].channelId).toBe("15551112222");
     expect(messages[0].type).toBe("text");
     expect(messages[0].text).toBe("hello!");
+    expect(messages[0].metadata).toEqual({
+      displayPhoneNumber: "+1 555 000 1111",
+      phoneNumberId: "phone-555000111",
+      contactName: "Eve WhatsApp",
+      waId: "15551112222",
+    });
     expect(messages[1].text).toBe("hi");
+  });
+
+  test("rejects messages without a valid WhatsApp timestamp", () => {
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [
+                  {
+                    id: "wamid.bad-timestamp",
+                    from: "15551112222",
+                    timestamp: "not-a-number",
+                    type: "text",
+                    text: { body: "should not ingest" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(parseWhatsAppWebhookMessages(payload)).toEqual([]);
   });
 
   test("returns [] for malformed payloads", () => {
@@ -252,13 +295,17 @@ describe("withWhatsApp mixin", () => {
     process.env.ELIZA_WHATSAPP_API_VERSION = "v21.0";
     process.env.MILADY_MOCK_WHATSAPP_BASE = "http://127.0.0.1:7879";
     let capturedUrl = "";
-    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
-      capturedUrl = typeof input === "string" ? input : input.toString();
-      return new Response(
-        JSON.stringify({ messages: [{ id: "wamid.service" }] }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }) as unknown as typeof fetch;
+    let capturedBody: unknown;
+    global.fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        capturedUrl = typeof input === "string" ? input : input.toString();
+        capturedBody = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({ messages: [{ id: "wamid.service" }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    ) as unknown as typeof fetch;
 
     await expect(
       svc.sendWhatsAppMessage({ to: "+15551112222", text: "service send" }),
@@ -266,6 +313,32 @@ describe("withWhatsApp mixin", () => {
     expect(capturedUrl).toBe(
       "http://127.0.0.1:7879/v21.0/phone-service/messages",
     );
+    expect(capturedBody).toEqual({
+      messaging_product: "whatsapp",
+      to: "+15551112222",
+      type: "text",
+      text: { body: "service send" },
+    });
+  });
+
+  test("sendWhatsAppMessage surfaces Cloud API delivery failures", async () => {
+    process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = "tok-service";
+    process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = "phone-service";
+    process.env.MILADY_MOCK_WHATSAPP_BASE = "http://127.0.0.1:7879";
+    global.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ error: { message: "recipient is not allowed" } }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      svc.sendWhatsAppMessage({ to: "+15551112222", text: "blocked" }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "recipient is not allowed",
+    });
   });
 
   test("ingestWhatsAppWebhook parses payload and returns count", async () => {
