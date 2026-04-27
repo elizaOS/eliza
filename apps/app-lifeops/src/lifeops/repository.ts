@@ -1794,7 +1794,17 @@ export class LifeOpsRepository {
       },
     );
     await LifeOpsRepository.ensureActivitySignalColumns(runtime);
+    await LifeOpsRepository.ensureSchedulingNegotiationColumns(runtime);
     await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
+  }
+
+  static async ensureSchedulingNegotiationColumns(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_scheduling_negotiations ADD COLUMN IF NOT EXISTS accepted_proposal_id TEXT",
+    );
   }
 
   static async ensureActivitySignalColumns(
