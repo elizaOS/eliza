@@ -638,6 +638,27 @@ describe("withIMessage mixin", () => {
       svc.sendIMessage({ to: "+15551112222", text: "hi" }),
     ).rejects.toBeInstanceOf(IMessageBridgeError);
   });
+
+  test("sendIMessage times out when the native bridge hangs", async () => {
+    vi.useFakeTimers();
+    try {
+      const nativeService = {
+        isConnected: vi.fn(() => true),
+        sendMessage: vi.fn(() => new Promise(() => {})),
+      };
+      const svc = createService(nativeService);
+      const pending = svc.sendIMessage({ to: "+15551112222", text: "hi" });
+      const expectation = expect(pending).rejects.toThrow(
+        "native iMessage send timed out",
+      );
+
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      await expectation;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

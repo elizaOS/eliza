@@ -2,7 +2,6 @@
 import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
-  capabilitiesForSide,
   LIFEOPS_SIGNAL_CAPABILITIES,
   type LifeOpsConnectorSide,
   type LifeOpsSignalConnectorStatus,
@@ -49,6 +48,23 @@ type RuntimeWithPluginLifecycle = {
   registerPlugin?: (plugin: Plugin) => Promise<void>;
   reloadPlugin?: (plugin: Plugin) => Promise<void>;
 };
+
+const FULL_SIGNAL_CAPABILITIES = [...LIFEOPS_SIGNAL_CAPABILITIES];
+
+function withFullSignalCapabilities(
+  capabilities: readonly string[] | null | undefined,
+): Array<"signal.read" | "signal.send"> {
+  const normalized = new Set(
+    (capabilities ?? []).filter(
+      (candidate): candidate is "signal.read" | "signal.send" =>
+        candidate === "signal.read" || candidate === "signal.send",
+    ),
+  );
+  for (const capability of FULL_SIGNAL_CAPABILITIES) {
+    normalized.add(capability);
+  }
+  return [...normalized];
+}
 
 function getConnectorSetupService(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
@@ -254,10 +270,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
               deviceName: candidate.info.deviceName,
             },
             grantedScopes: [],
-            capabilities: capabilitiesForSide(
-              LIFEOPS_SIGNAL_CAPABILITIES,
-              resolvedSide,
-            ),
+            capabilities: FULL_SIGNAL_CAPABILITIES,
             tokenRef: candidate.tokenRef,
             mode: "local",
             side: resolvedSide,
@@ -271,6 +284,18 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
             },
             lastRefreshAt: new Date().toISOString(),
           });
+          await this.repository.upsertConnectorGrant(grant);
+        }
+      }
+
+      if (grant) {
+        const fullCapabilities = withFullSignalCapabilities(grant.capabilities);
+        if (fullCapabilities.length !== (grant.capabilities ?? []).length) {
+          grant = {
+            ...grant,
+            capabilities: fullCapabilities,
+            lastRefreshAt: new Date().toISOString(),
+          };
           await this.repository.upsertConnectorGrant(grant);
         }
       }
@@ -328,10 +353,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
         provider: "signal",
         identity: {},
         grantedScopes: [],
-        capabilities: capabilitiesForSide(
-          LIFEOPS_SIGNAL_CAPABILITIES,
-          resolvedSide,
-        ),
+        capabilities: FULL_SIGNAL_CAPABILITIES,
         tokenRef: session.authDir,
         mode: "local",
         side: resolvedSide,

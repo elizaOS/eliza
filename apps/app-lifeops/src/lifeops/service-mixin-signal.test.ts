@@ -46,6 +46,7 @@ type SignalConsumer = {
     connected: boolean;
     inbound: boolean;
     reason: string;
+    grantedCapabilities: string[];
   }>;
   readSignalInbound: (limit?: number) => Promise<
     Array<{
@@ -164,6 +165,7 @@ describe("withSignal consumer surface", () => {
         provider: "signal",
         side: "owner",
         tokenRef: previousAuthDir,
+        capabilities: ["signal.read", "signal.send"],
         identity: expect.objectContaining({
           phoneNumber: "+15550000000",
           uuid: "signal-uuid",
@@ -175,6 +177,59 @@ describe("withSignal consumer surface", () => {
     );
     expect(process.env.SIGNAL_AUTH_DIR).toBe(previousAuthDir);
     expect(process.env.SIGNAL_ACCOUNT_NUMBER).toBe("+15550000000");
+  });
+
+  it("upgrades existing linked Signal grants to bidirectional capabilities", async () => {
+    const authDir = path.join(
+      tmpDir,
+      "lifeops",
+      "signal",
+      "agent-signal",
+      "owner",
+    );
+    fs.mkdirSync(authDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      path.join(authDir, "device-info.json"),
+      JSON.stringify({
+        authDir,
+        phoneNumber: "+15550000000",
+        uuid: "signal-uuid",
+        deviceName: "Milady Mac",
+      }),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    const existingGrant = {
+      id: "grant-1",
+      agentId: "agent-signal",
+      provider: "signal",
+      side: "owner",
+      identity: { phoneNumber: "+15550000000" },
+      grantedScopes: [],
+      capabilities: ["signal.read"],
+      tokenRef: authDir,
+      mode: "local",
+      executionTarget: "local",
+      sourceOfTruth: "local_storage",
+      preferredByAgent: false,
+      cloudConnectionId: null,
+      metadata: {},
+      lastRefreshAt: "2026-04-27T00:00:00.000Z",
+      createdAt: "2026-04-27T00:00:00.000Z",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+    };
+    const service = createService();
+    service.repository.getConnectorGrant.mockResolvedValue(existingGrant);
+
+    const status = await service.getSignalConnectorStatus("owner");
+
+    expect(status.connected).toBe(true);
+    expect(status.grantedCapabilities).toEqual(["signal.read", "signal.send"]);
+    expect(service.repository.upsertConnectorGrant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "grant-1",
+        capabilities: ["signal.read", "signal.send"],
+      }),
+    );
   });
 
   it("reads recent inbound messages from the connected Signal service", async () => {
