@@ -225,11 +225,7 @@ class SignalApiClient {
   async getIdentities(): Promise<
     Array<{ number: string; safety_number: string; trust_level: string }>
   > {
-    return signalRpcRequest(
-      "listIdentities",
-      { account: this.accountNumber },
-      this.rpcOptions()
-    );
+    return signalRpcRequest("listIdentities", { account: this.accountNumber }, this.rpcOptions());
   }
 
   async trustIdentity(
