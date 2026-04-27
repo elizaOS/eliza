@@ -265,20 +265,21 @@ describe("withWhatsApp mixin", () => {
   test("getWhatsAppConnectorStatus reports local QR auth without enabling the plugin", async () => {
     const authDir = path.join(workspaceDir, "lifeops-whatsapp-auth", "default");
     mkdirSync(authDir, { recursive: true });
-    writeFileSync(path.join(authDir, "creds.json"), "{}");
+    writeFileSync(path.join(authDir, "creds.json"), '{"registered":true}');
     svc.runtime.getService.mockReturnValue({ connected: true });
 
     const status = await svc.getWhatsAppConnectorStatus();
 
     expect(status.connected).toBe(true);
     expect(status.localAuthAvailable).toBe(true);
+    expect(status.localAuthRegistered).toBe(true);
     expect(status.serviceConnected).toBe(true);
     expect(status.transport).toBe("baileys");
     expect(status.phoneNumberId).toBeUndefined();
     expect(status.degradations).toEqual([
       expect.objectContaining({
         axis: "delivery-degraded",
-        code: "business_cloud_credentials_missing",
+        code: "local_runtime_unavailable",
       }),
     ]);
     expect(svc.runtime.setSetting).toHaveBeenCalledWith(
@@ -286,6 +287,28 @@ describe("withWhatsApp mixin", () => {
       authDir,
       false,
     );
+  });
+
+  test("getWhatsAppConnectorStatus does not report stale local auth as connected", async () => {
+    const authDir = path.join(workspaceDir, "lifeops-whatsapp-auth", "default");
+    mkdirSync(authDir, { recursive: true });
+    writeFileSync(path.join(authDir, "creds.json"), '{"registered":false}');
+
+    const status = await svc.getWhatsAppConnectorStatus();
+
+    expect(status.connected).toBe(false);
+    expect(status.localAuthAvailable).toBe(true);
+    expect(status.localAuthRegistered).toBe(false);
+    expect(status.serviceConnected).toBe(false);
+    expect(status.outboundReady).toBe(false);
+    expect(status.inboundReady).toBe(false);
+    expect(status.degradations).toEqual([
+      expect.objectContaining({
+        axis: "delivery-degraded",
+        code: "local_auth_unregistered",
+      }),
+    ]);
+    expect(svc.runtime.setSetting).not.toHaveBeenCalled();
   });
 
   test("getWhatsAppConnectorStatus ignores user-facing WhatsApp runtime service", async () => {
@@ -339,7 +362,7 @@ describe("withWhatsApp mixin", () => {
   test("sendWhatsAppMessage uses the local runtime service when only QR auth is available", async () => {
     const authDir = path.join(workspaceDir, "lifeops-whatsapp-auth", "default");
     mkdirSync(authDir, { recursive: true });
-    writeFileSync(path.join(authDir, "creds.json"), "{}");
+    writeFileSync(path.join(authDir, "creds.json"), '{"registered":true}');
     const sendMessage = vi.fn(async () => ({
       messages: [{ id: "wamid.local" }],
     }));
