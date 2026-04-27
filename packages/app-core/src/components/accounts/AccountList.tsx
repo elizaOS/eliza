@@ -61,16 +61,31 @@ export function AccountList({ providerId }: AccountListProps) {
       const self = sorted[index];
       const neighbour = sorted[neighbourIndex];
       if (!self || !neighbour || self.priority === neighbour.priority) return;
-      // Swap priorities. We patch the lower-priority one to a temp
-      // sentinel first to avoid the unique-priority assumption later
-      // consumers might add — for the current pool there's no uniqueness
-      // constraint, so two sequential patches are enough.
+      const selfOriginal = self.priority;
+      const neighbourOriginal = neighbour.priority;
+      // Swap priorities via two sequential PATCHes. There's no atomic
+      // server-side swap, so on failure of the second call we roll the
+      // first one back so the user doesn't end up with two accounts at
+      // the same priority. Worst case a partial-failure leaves the
+      // original ordering with a flash; never a corrupted ordering.
       await accounts.patch(providerId, self.id, {
-        priority: neighbour.priority,
+        priority: neighbourOriginal,
       });
-      await accounts.patch(providerId, neighbour.id, {
-        priority: self.priority,
-      });
+      try {
+        await accounts.patch(providerId, neighbour.id, {
+          priority: selfOriginal,
+        });
+      } catch (err) {
+        try {
+          await accounts.patch(providerId, self.id, {
+            priority: selfOriginal,
+          });
+        } catch {
+          // Rollback failed — refresh will reconcile from server state.
+          void accounts.refresh();
+        }
+        throw err;
+      }
     },
     [accounts, providerId, sorted],
   );

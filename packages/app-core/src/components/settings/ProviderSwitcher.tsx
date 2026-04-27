@@ -1145,13 +1145,18 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 handleSelectSubscription={handleSelectSubscription}
                 loadSubscriptionStatus={loadSubscriptionStatus}
               />
-              <AccountList
-                providerId={
-                  SUBSCRIPTION_PROVIDER_SELECTIONS.find(
-                    (p) => p.id === visibleProviderPanelId,
-                  )?.storedProvider ?? "anthropic-subscription"
-                }
-              />
+              {(() => {
+                const selection = SUBSCRIPTION_PROVIDER_SELECTIONS.find(
+                  (p) => p.id === visibleProviderPanelId,
+                );
+                // The outer `isSubscriptionProviderSelectionId` guard
+                // makes this lookup non-null in practice; the explicit
+                // null check is defensive against future panel ids
+                // that pass the guard but aren't in the selections
+                // table (e.g. a renamed enum left half-migrated).
+                if (!selection) return null;
+                return <AccountList providerId={selection.storedProvider} />;
+              })()}
             </div>
           </div>
         ) : null}
