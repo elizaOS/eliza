@@ -127,6 +127,14 @@ export function AddAccountDialog({
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  // Mirrors the `open` prop in a ref so async paths (`startOAuth` mid-
+  // await) can detect that the dialog was closed before
+  // `client.startAccountOAuth` resolved and immediately cancel the
+  // freshly-created server-side flow.
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   const closeEventSource = useCallback(() => {
     if (eventSourceRef.current) {
@@ -181,10 +189,30 @@ export function AddAccountDialog({
       const source = new EventSource(url);
       eventSourceRef.current = source;
 
+      // EventSource auto-reconnects on transient network blips, which
+      // is fine. But persistent failures (server gone, route 404) just
+      // toggle readyState=2 forever and the user is stuck on "Waiting
+      // for browser…". Surface that after a small grace period so the
+      // user can retry instead of staring at a spinner.
+      let connectedOnce = false;
+      let persistentErrorTimer: ReturnType<typeof setTimeout> | null = null;
+      const cancelPersistentErrorTimer = () => {
+        if (persistentErrorTimer) {
+          clearTimeout(persistentErrorTimer);
+          persistentErrorTimer = null;
+        }
+      };
+
+      source.onopen = () => {
+        connectedOnce = true;
+        cancelPersistentErrorTimer();
+      };
+
       source.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data) as SseFlowState;
           if (data.status === "success" && data.account) {
+            cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
             onCreated(data.account);
@@ -194,6 +222,7 @@ export function AddAccountDialog({
             data.status === "cancelled" ||
             data.status === "timeout"
           ) {
+            cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
             setErrorMessage(
@@ -215,7 +244,28 @@ export function AddAccountDialog({
       };
 
       source.onerror = () => {
-        // Auto-reconnect noise; ignore unless we hit a terminal status.
+        // EventSource readyState: 0=connecting, 1=open, 2=closed.
+        // If we're at 2 and never got an `onopen`, the route is
+        // unreachable. Give the browser ~5s to retry; if it can't
+        // recover, surface the error.
+        if (persistentErrorTimer) return;
+        persistentErrorTimer = setTimeout(() => {
+          persistentErrorTimer = null;
+          if (
+            !connectedOnce &&
+            eventSourceRef.current?.readyState === EventSource.CLOSED
+          ) {
+            closeEventSource();
+            sessionIdRef.current = null;
+            setErrorMessage(
+              t("accounts.add.oauth.sseUnreachable", {
+                defaultValue:
+                  "Lost connection to the OAuth status stream. Try again.",
+              }),
+            );
+            setStep("error");
+          }
+        }, 5_000);
       };
     },
     [closeEventSource, onClose, onCreated, providerId, t],
@@ -234,6 +284,26 @@ export function AddAccountDialog({
       const flow = await client.startAccountOAuth(providerId, {
         label: label.trim(),
       });
+      // The dialog might have been closed between user clicking "Sign
+      // in" and the server returning the flow handle. If so, the
+      // server-side OAuth listener is orphaned — cancel it explicitly
+      // so the loopback port releases immediately instead of timing
+      // out in 5 minutes.
+      if (!openRef.current) {
+        try {
+          await client.cancelAccountOAuth(providerId, {
+            sessionId: flow.sessionId,
+          });
+        } catch {
+          // Best-effort.
+        }
+        try {
+          win?.close();
+        } catch {
+          // Cross-origin — ignore.
+        }
+        return;
+      }
       navigatePreOpenedWindow(win, flow.authUrl);
       sessionIdRef.current = flow.sessionId;
       setSessionId(flow.sessionId);

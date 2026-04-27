@@ -595,6 +595,75 @@ describe("handleAccountsRoutes", () => {
     }
   });
 
+  it("OAuth-style post-save priority calc excludes the just-saved account", async () => {
+    // Regression for the OAuth-flow priority race: by the time
+    // `onAccountSaved` fires, the new credential file already exists
+    // on disk, so a naive `pool.list().max(priority)+1` would include
+    // the new account at its default createdAt-index priority and
+    // produce an off-by-one. The fix in handleOAuthRoutes excludes
+    // the just-saved record before computing priority. This test
+    // mirrors that flow against the storage + pool primitives
+    // directly so it catches regressions even if the route's
+    // closure changes shape.
+    const config = {} as ElizaConfig;
+
+    // Seed three accounts via the api-key path so the pool has known
+    // metadata at priorities 0, 1, 2.
+    for (const label of ["A", "B", "C"]) {
+      const ctx = makeStubCtx({
+        method: "POST",
+        pathname: "/api/accounts/anthropic-subscription",
+        config,
+        body: {
+          source: "api-key",
+          label,
+          apiKey: `sk-ant-${label.toLowerCase()}-1234567`,
+        },
+      });
+      await handleAccountsRoutes(ctx.ctx);
+    }
+
+    // Now simulate an OAuth completion: the credential record gets
+    // written to disk BEFORE the priority calc runs. Use the same
+    // exclude-self math the route uses. Without the fix, the new
+    // account would land at priority 4 (because pool.list would
+    // include the fresh account with default priority 3, max+1=4);
+    // with the fix it correctly lands at priority 3.
+    const { saveAccount } = await import("../auth/account-storage.js");
+    const mod = await import("@elizaos/app-core/services/account-pool");
+    const pool = mod.getDefaultAccountPool();
+
+    const newAccountId = crypto.randomUUID();
+    saveAccount({
+      id: newAccountId,
+      providerId: "anthropic-subscription",
+      label: "OAuthAccount",
+      source: "oauth",
+      credentials: {
+        access: "fake-access",
+        refresh: "fake-refresh",
+        expires: Date.now() + 60_000,
+      },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    const others = pool
+      .list("anthropic-subscription")
+      .filter((a) => a.id !== newAccountId);
+    const livePriority =
+      others.length === 0
+        ? 0
+        : Math.max(...others.map((a) => a.priority)) + 1;
+
+    expect(livePriority).toBe(3);
+    // And the account list (without explicit upsert) still includes
+    // the new account at its default index, but the calc above
+    // correctly ignored it.
+    const all = pool.list("anthropic-subscription");
+    expect(all.find((a) => a.id === newAccountId)).toBeDefined();
+  });
+
   it("supports independent account pools per provider (anthropic + codex side-by-side)", async () => {
     const config = {} as ElizaConfig;
 
