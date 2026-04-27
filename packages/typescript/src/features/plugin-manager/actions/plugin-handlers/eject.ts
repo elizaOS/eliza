@@ -50,7 +50,9 @@ export async function runEject({
 	const text =
 		`Ejected ${result.pluginName} to ${result.ejectedPath} ` +
 		`(commit ${result.upstreamCommit.slice(0, 8)})` +
-		(result.requiresRestart ? "\nRestart required to load the local copy." : "");
+		(result.requiresRestart
+			? "\nRestart required to load the local copy."
+			: "");
 	await callback?.({ text });
 	return {
 		success: true,
