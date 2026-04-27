@@ -478,7 +478,7 @@ async function dispatchUnsubscribeSender(
   const result = await service.unsubscribeEmailSender(INTERNAL_URL, {
     senderEmail: params.senderEmail,
     listId: params.listId ?? null,
-    blockAfter: params.blockAfter ?? true,
+    blockAfter: params.blockAfter ?? false,
     trashExisting: params.trashExisting ?? false,
     confirmed: params.confirmed ?? true,
   });
@@ -881,7 +881,7 @@ export const lifeOpsMutateAction: Action & {
     {
       name: "blockAfter",
       description:
-        "unsubscribe_sender — install a Gmail filter to block future mail. Defaults true.",
+        "unsubscribe_sender — install a Gmail filter to block future mail when local Gmail manage access is available. Defaults false.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -981,7 +981,7 @@ export const lifeOpsMutateAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll send the unsubscribe request, install a Gmail filter, and trash existing messages from that sender.",
+          text: "I'll send the unsubscribe request. I can also try Gmail filter/trash cleanup when local Gmail manage access is available.",
         },
       },
     ],

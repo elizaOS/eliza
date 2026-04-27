@@ -1,11 +1,17 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withSignal } from "./service-mixin-signal.js";
 
 const ORIGINAL_ENV = {
+  ELIZA_OAUTH_DIR: process.env.ELIZA_OAUTH_DIR,
   SIGNAL_ACCOUNT_NUMBER: process.env.SIGNAL_ACCOUNT_NUMBER,
+  SIGNAL_AUTH_DIR: process.env.SIGNAL_AUTH_DIR,
   SIGNAL_HTTP_URL: process.env.SIGNAL_HTTP_URL,
 };
 const ORIGINAL_FETCH = globalThis.fetch;
+let tmpDir: string;
 
 class StubBase {
   runtime: {
@@ -40,13 +46,21 @@ type SignalConsumer = {
     connected: boolean;
     inbound: boolean;
     reason: string;
+    grantedCapabilities: string[];
   }>;
   readSignalInbound: (limit?: number) => Promise<
     Array<{
       id: string;
       roomId: string;
       channelId: string;
+      threadId: string;
+      roomName: string;
       speakerName: string;
+      senderNumber: string | null;
+      senderUuid: string | null;
+      sourceDevice: number | null;
+      groupId: string | null;
+      groupType: string | null;
       text: string;
       createdAt: number;
       isInbound: boolean;
@@ -57,20 +71,37 @@ type SignalConsumer = {
 
 const Composed = withSignal(StubBase as never);
 
-function createService(signalService: unknown = null): StubBase & SignalConsumer {
-  return new (Composed as unknown as new (
-    signalService?: unknown,
-  ) => StubBase & SignalConsumer)(signalService);
+function createService(
+  signalService: unknown = null,
+): StubBase & SignalConsumer {
+  return new (
+    Composed as unknown as new (
+      signalService?: unknown,
+    ) => StubBase & SignalConsumer
+  )(signalService);
 }
 
 describe("withSignal consumer surface", () => {
   beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-signal-"));
+    process.env.ELIZA_OAUTH_DIR = tmpDir;
+    delete process.env.SIGNAL_AUTH_DIR;
     delete process.env.SIGNAL_ACCOUNT_NUMBER;
     delete process.env.SIGNAL_HTTP_URL;
     globalThis.fetch = ORIGINAL_FETCH;
   });
 
   afterEach(() => {
+    if (ORIGINAL_ENV.ELIZA_OAUTH_DIR === undefined) {
+      delete process.env.ELIZA_OAUTH_DIR;
+    } else {
+      process.env.ELIZA_OAUTH_DIR = ORIGINAL_ENV.ELIZA_OAUTH_DIR;
+    }
+    if (ORIGINAL_ENV.SIGNAL_AUTH_DIR === undefined) {
+      delete process.env.SIGNAL_AUTH_DIR;
+    } else {
+      process.env.SIGNAL_AUTH_DIR = ORIGINAL_ENV.SIGNAL_AUTH_DIR;
+    }
     if (ORIGINAL_ENV.SIGNAL_ACCOUNT_NUMBER === undefined) {
       delete process.env.SIGNAL_ACCOUNT_NUMBER;
     } else {
@@ -82,6 +113,7 @@ describe("withSignal consumer surface", () => {
       process.env.SIGNAL_HTTP_URL = ORIGINAL_ENV.SIGNAL_HTTP_URL;
     }
     globalThis.fetch = ORIGINAL_FETCH;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
@@ -94,6 +126,110 @@ describe("withSignal consumer surface", () => {
     expect(status.connected).toBe(false);
     expect(status.inbound).toBe(false);
     expect(status.reason).toBe("disconnected");
+  });
+
+  it("adopts the only linked device for the requested side when the grant is missing", async () => {
+    const previousAuthDir = path.join(
+      tmpDir,
+      "lifeops",
+      "signal",
+      "agent-previous",
+      "owner",
+    );
+    fs.mkdirSync(previousAuthDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      path.join(previousAuthDir, "device-info.json"),
+      JSON.stringify(
+        {
+          authDir: previousAuthDir,
+          phoneNumber: "+15550000000",
+          uuid: "signal-uuid",
+          deviceName: "Milady Mac",
+        },
+        null,
+        2,
+      ),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    const service = createService();
+    service.repository.getConnectorGrant.mockResolvedValue(null);
+
+    const status = await service.getSignalConnectorStatus("owner");
+
+    expect(status.connected).toBe(true);
+    expect(status.inbound).toBe(true);
+    expect(status.reason).toBe("connected");
+    expect(service.repository.upsertConnectorGrant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-signal",
+        provider: "signal",
+        side: "owner",
+        tokenRef: previousAuthDir,
+        capabilities: ["signal.read", "signal.send"],
+        identity: expect.objectContaining({
+          phoneNumber: "+15550000000",
+          uuid: "signal-uuid",
+        }),
+        metadata: expect.objectContaining({
+          adoptedFromAgentId: "agent-previous",
+        }),
+      }),
+    );
+    expect(process.env.SIGNAL_AUTH_DIR).toBe(previousAuthDir);
+    expect(process.env.SIGNAL_ACCOUNT_NUMBER).toBe("+15550000000");
+  });
+
+  it("upgrades existing linked Signal grants to bidirectional capabilities", async () => {
+    const authDir = path.join(
+      tmpDir,
+      "lifeops",
+      "signal",
+      "agent-signal",
+      "owner",
+    );
+    fs.mkdirSync(authDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      path.join(authDir, "device-info.json"),
+      JSON.stringify({
+        authDir,
+        phoneNumber: "+15550000000",
+        uuid: "signal-uuid",
+        deviceName: "Milady Mac",
+      }),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    const existingGrant = {
+      id: "grant-1",
+      agentId: "agent-signal",
+      provider: "signal",
+      side: "owner",
+      identity: { phoneNumber: "+15550000000" },
+      grantedScopes: [],
+      capabilities: ["signal.read"],
+      tokenRef: authDir,
+      mode: "local",
+      executionTarget: "local",
+      sourceOfTruth: "local_storage",
+      preferredByAgent: false,
+      cloudConnectionId: null,
+      metadata: {},
+      lastRefreshAt: "2026-04-27T00:00:00.000Z",
+      createdAt: "2026-04-27T00:00:00.000Z",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+    };
+    const service = createService();
+    service.repository.getConnectorGrant.mockResolvedValue(existingGrant);
+
+    const status = await service.getSignalConnectorStatus("owner");
+
+    expect(status.connected).toBe(true);
+    expect(status.grantedCapabilities).toEqual(["signal.read", "signal.send"]);
+    expect(service.repository.upsertConnectorGrant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "grant-1",
+        capabilities: ["signal.read", "signal.send"],
+      }),
+    );
   });
 
   it("reads recent inbound messages from the connected Signal service", async () => {
@@ -120,7 +256,14 @@ describe("withSignal consumer surface", () => {
         id: "signal-service-1",
         roomId: "room-1",
         channelId: "+15551110001",
+        threadId: "+15551110001",
+        roomName: "Alice",
         speakerName: "Alice",
+        senderNumber: "+15551110001",
+        senderUuid: null,
+        sourceDevice: null,
+        groupId: null,
+        groupType: null,
         text: "Dinner at 7?",
         createdAt: 1_713_340_800_000,
         isInbound: true,
@@ -143,10 +286,13 @@ describe("withSignal consumer surface", () => {
             envelope: {
               sourceNumber: "+15551110002",
               sourceName: "Bob",
+              sourceUuid: "9f5e7ab0-fb18-4a87-a013-4a792de778dd",
+              sourceDevice: 2,
               timestamp: 1_713_340_900_000,
               dataMessage: {
                 timestamp: 1_713_340_900_000,
                 message: "Signal fallback",
+                groupInfo: { groupId: "group-signal-1", type: "DELIVER" },
               },
             },
             account: "+15550000000",
@@ -160,14 +306,34 @@ describe("withSignal consumer surface", () => {
     await expect(service.readSignalInbound(10)).resolves.toEqual([
       {
         id: "signal:+15551110002:1713340900000",
-        roomId: "+15551110002",
-        channelId: "+15551110002",
+        roomId: "group-signal-1",
+        channelId: "group-signal-1",
+        threadId: "group-signal-1",
+        roomName: "Signal group group-signal-1",
         speakerName: "Bob",
+        senderNumber: "+15551110002",
+        senderUuid: "9f5e7ab0-fb18-4a87-a013-4a792de778dd",
+        sourceDevice: 2,
+        groupId: "group-signal-1",
+        groupType: "DELIVER",
         text: "Signal fallback",
         createdAt: 1_713_340_900_000,
         isInbound: true,
-        isGroup: false,
+        isGroup: true,
       },
     ]);
+  });
+
+  it("surfaces signal-cli receive failures instead of returning an empty success", async () => {
+    process.env.SIGNAL_HTTP_URL = "http://127.0.0.1:9000";
+    process.env.SIGNAL_ACCOUNT_NUMBER = "+15550000000";
+    globalThis.fetch = vi.fn(
+      async () => new Response("broken", { status: 503 }),
+    ) as unknown as typeof fetch;
+    const service = createService();
+
+    await expect(service.readSignalInbound(10)).rejects.toThrow(
+      "Signal local receive failed with HTTP 503",
+    );
   });
 });

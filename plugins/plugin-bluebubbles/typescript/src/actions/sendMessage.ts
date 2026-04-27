@@ -5,7 +5,6 @@ import {
 	type Action,
 	type ActionExample,
 	type ActionResult,
-	type Content,
 	composePromptFromState,
 	type HandlerCallback,
 	type IAgentRuntime,
@@ -62,6 +61,7 @@ export const sendMessageAction: Action = {
 	name: "SEND_BLUEBUBBLES_MESSAGE",
 	description: "Send a message via iMessage through BlueBubbles",
 	descriptionCompressed: "Send iMessage via BlueBubbles.",
+	suppressPostActionContinuation: true,
 	similes: [
 		"SEND_IMESSAGE",
 		"TEXT_MESSAGE",
@@ -233,20 +233,15 @@ export const sendMessageAction: Action = {
 
 			logger.info(`Sent BlueBubbles message: ${result.guid}`);
 
-			const content: Content = {
-				text: responseText,
-				source: "bluebubbles",
-				metadata: {
+			return {
+				success: true,
+				data: {
 					messageGuid: result.guid,
 					chatGuid: room.channelId,
+					suppressVisibleCallback: true,
+					suppressActionResultClipboard: true,
 				},
 			};
-
-			if (callback) {
-				await callback(content);
-			}
-
-			return { success: true, text: responseText };
 		} catch (error) {
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);

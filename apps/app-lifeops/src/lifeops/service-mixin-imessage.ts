@@ -19,6 +19,7 @@ import {
   sendIMessage as sendIMessageBridge,
 } from "./imessage-bridge.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import { fail } from "./service-normalize.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -84,6 +85,9 @@ type RuntimeWithPluginLifecycle = {
 };
 
 const NATIVE_IMESSAGE_SERVICE_LOAD_TIMEOUT_MS = 8_000;
+const NATIVE_IMESSAGE_SEND_TIMEOUT_MS = 20_000;
+const NATIVE_IMESSAGE_SEND_TIMEOUT_MESSAGE =
+  "native iMessage send timed out";
 const IMESSAGE_PLUGIN_PACKAGE = "@elizaos/plugin-imessage";
 
 function coerceString(value: unknown): string | undefined {
@@ -136,6 +140,21 @@ async function waitForNativeIMessageService(
   ]);
 
   return Boolean(runtime.getService("imessage"));
+}
+
+async function withNativeIMessageSendTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error(NATIVE_IMESSAGE_SEND_TIMEOUT_MESSAGE)),
+      NATIVE_IMESSAGE_SEND_TIMEOUT_MS,
+    );
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 async function ensureNativeIMessagePluginLoaded(
@@ -430,11 +449,24 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<{ ok: true; messageId?: string }> {
       const nativeService = await getNativeIMessageService(this.runtime);
       if (nativeService) {
-        const result = await nativeService.sendMessage(req.to, req.text, {
-          ...(req.attachmentPaths?.[0]
-            ? { mediaUrl: req.attachmentPaths[0] }
-            : {}),
-        });
+        let result;
+        try {
+          result = await withNativeIMessageSendTimeout(
+            nativeService.sendMessage(req.to, req.text, {
+              ...(req.attachmentPaths?.[0]
+                ? { mediaUrl: req.attachmentPaths[0] }
+                : {}),
+            }),
+          );
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message === NATIVE_IMESSAGE_SEND_TIMEOUT_MESSAGE
+          ) {
+            fail(504, "native iMessage send timed out.");
+          }
+          throw error;
+        }
         if (!result.success) {
           throw new Error(result.error ?? "native iMessage send failed");
         }

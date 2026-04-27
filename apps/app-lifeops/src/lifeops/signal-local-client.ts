@@ -103,6 +103,10 @@ interface SignalCliReceiveResponse {
   account?: string;
 }
 
+function isSignalCliReceiveResponse(value: unknown): value is SignalCliReceiveResponse {
+  return Boolean(value && typeof value === "object");
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -114,10 +118,10 @@ interface SignalCliReceiveResponse {
  * on delivery.  Callers are responsible for persisting returned messages before
  * calling again.
  *
- * Returns an empty array when:
- * - The daemon is unreachable (logged at warn, not thrown).
- * - No messages are pending.
- * - The envelope contains no user-visible text (receipts, syncs, calls).
+ * Returns an empty array when no messages are pending or when envelopes contain
+ * no user-visible text. Transport and protocol failures throw
+ * `SignalLocalClientError` so callers do not confuse degraded Signal with an
+ * empty inbox.
  */
 export async function readSignalInboundMessages(
   config: SignalLocalClientConfig,
@@ -145,10 +149,19 @@ export async function readSignalInboundMessages(
       },
       `[lifeops] Signal local client network failure: ${message}`,
     );
-    return [];
+    throw new SignalLocalClientError(
+      `Signal local receive failed: ${message}`,
+      { status: null, category: "network" },
+    );
   }
 
   if (!response.ok) {
+    const category =
+      response.status === 401 || response.status === 403
+        ? "auth"
+        : response.status === 404
+          ? "not_found"
+          : "unknown";
     logger.warn(
       {
         boundary: "lifeops",
@@ -158,12 +171,15 @@ export async function readSignalInboundMessages(
       },
       `[lifeops] Signal local client HTTP ${response.status}`,
     );
-    return [];
+    throw new SignalLocalClientError(
+      `Signal local receive failed with HTTP ${response.status}`,
+      { status: response.status, category },
+    );
   }
 
-  let body: SignalCliReceiveResponse[];
+  let body: unknown;
   try {
-    body = (await response.json()) as SignalCliReceiveResponse[];
+    body = await response.json();
   } catch {
     logger.warn(
       {
@@ -173,13 +189,21 @@ export async function readSignalInboundMessages(
       },
       "[lifeops] Signal local client returned non-JSON body",
     );
-    return [];
+    throw new SignalLocalClientError("Signal local receive returned non-JSON", {
+      status: response.status,
+      category: "unknown",
+    });
   }
 
-  if (!Array.isArray(body)) return [];
+  if (!Array.isArray(body)) {
+    throw new SignalLocalClientError(
+      "Signal local receive returned an unexpected payload",
+      { status: response.status, category: "unknown" },
+    );
+  }
 
   const messages: LifeOpsSignalInboundMessage[] = [];
-  for (const item of body.slice(0, clampedLimit)) {
+  for (const item of body.filter(isSignalCliReceiveResponse).slice(0, clampedLimit)) {
     const envelope = item.envelope;
     if (!envelope) continue;
 
@@ -187,11 +211,16 @@ export async function readSignalInboundMessages(
     const dataMessage = envelope.dataMessage;
     if (!dataMessage?.message) continue;
 
-    const senderNumber = envelope.sourceNumber ?? envelope.source ?? "";
-    const speakerName = envelope.sourceName ?? senderNumber;
+    const senderNumber = envelope.sourceNumber ?? envelope.source ?? null;
+    const senderUuid = envelope.sourceUuid ?? null;
+    const speakerName = envelope.sourceName ?? senderNumber ?? "Unknown Signal sender";
     const isGroup = Boolean(dataMessage.groupInfo?.groupId);
     const groupId = dataMessage.groupInfo?.groupId ?? null;
-    const channelId = isGroup && groupId ? groupId : senderNumber;
+    const groupType = dataMessage.groupInfo?.type ?? null;
+    const channelId = isGroup && groupId ? groupId : (senderNumber ?? senderUuid ?? "");
+    if (!channelId) continue;
+    const senderKey = senderNumber ?? senderUuid ?? channelId;
+    const roomName = isGroup && groupId ? `Signal group ${groupId}` : speakerName;
 
     // Stable ID: timestamp + sender — signal-cli does not assign message IDs in
     // the receive response, so we derive one from the envelope timestamp.
@@ -201,13 +230,21 @@ export async function readSignalInboundMessages(
         : typeof envelope.timestamp === "number"
           ? envelope.timestamp
           : Date.now();
-    const id = `signal:${senderNumber}:${timestampMs}`;
+    const id = `signal:${senderKey}:${timestampMs}`;
 
     messages.push({
       id,
       roomId: channelId,
       channelId,
+      threadId: channelId,
+      roomName,
       speakerName,
+      senderNumber,
+      senderUuid,
+      sourceDevice:
+        typeof envelope.sourceDevice === "number" ? envelope.sourceDevice : null,
+      groupId,
+      groupType,
       text: dataMessage.message,
       createdAt: timestampMs,
       isInbound: true,

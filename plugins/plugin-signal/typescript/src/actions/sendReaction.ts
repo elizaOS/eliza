@@ -2,7 +2,6 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
-  type Content,
   composePromptFromState,
   type HandlerCallback,
   type HandlerOptions,
@@ -48,6 +47,7 @@ export const sendReaction: Action = {
   similes: ["REACT_SIGNAL", "SIGNAL_REACT", "ADD_SIGNAL_REACTION", "SIGNAL_EMOJI"],
   description: "React to a Signal message with an emoji",
   descriptionCompressed: "React to Signal message.",
+  suppressPostActionContinuation: true,
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (!hasSignalService(runtime)) {
       return false;
@@ -148,12 +148,6 @@ export const sendReaction: Action = {
     }
 
     const actionWord = reactionInfo.remove ? "removed" : "added";
-    const response: Content = {
-      text: `Reaction ${reactionInfo.emoji} ${actionWord} successfully.`,
-      source: message.content.source || "signal",
-    };
-
-    await callback?.(response);
 
     return {
       success: true,
@@ -162,6 +156,8 @@ export const sendReaction: Action = {
         targetTimestamp: reactionInfo.targetTimestamp,
         targetAuthor: reactionInfo.targetAuthor,
         action: actionWord,
+        suppressVisibleCallback: true,
+        suppressActionResultClipboard: true,
       },
     };
   },

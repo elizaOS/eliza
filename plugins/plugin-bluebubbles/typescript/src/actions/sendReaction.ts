@@ -52,6 +52,7 @@ export const sendReactionAction: Action = {
 	similes: ["BLUEBUBBLES_REACT", "BB_REACTION", "IMESSAGE_REACT"],
 	description: "Add or remove a reaction on a message via BlueBubbles",
 	descriptionCompressed: "React on iMessage via BlueBubbles.",
+	suppressPostActionContinuation: true,
 	validate: async (
 		_runtime: IAgentRuntime,
 		message: Memory,
@@ -172,16 +173,17 @@ export const sendReactionAction: Action = {
 			`${reactionInfo.remove ? "Removed" : "Added"} reaction ${reactionInfo.emoji} on ${messageGuid}`,
 		);
 
-		if (callback) {
-			await callback({
-				text: reactionInfo.remove
-					? "Reaction removed."
-					: `Reacted with ${reactionInfo.emoji}.`,
-				source: message.content.source as string,
-			});
-		}
-
-		return { success: true };
+		return {
+			success: true,
+			data: {
+				emoji: reactionInfo.emoji,
+				messageGuid,
+				chatGuid,
+				remove: reactionInfo.remove,
+				suppressVisibleCallback: true,
+				suppressActionResultClipboard: true,
+			},
+		};
 	},
 
 	examples: [

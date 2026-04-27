@@ -246,8 +246,8 @@ function decodeHtmlEntities(value: string): string {
 function htmlToPlainText(value: string): string {
   return decodeHtmlEntities(
     value
-      .replace(/<style[\s\S]*?<\/style\s*>/gi, " ")
-      .replace(/<script[\s\S]*?<\/script\s*>/gi, " ")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style\b[^>]*>/gi, " ")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\b[^>]*>/gi, " ")
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/<\/(?:p|div|section|article|li|tr|table|h[1-6])>/gi, "\n")
       .replace(/<(?:li)[^>]*>/gi, "- ")

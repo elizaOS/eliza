@@ -1,4 +1,5 @@
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import { getRelatedEntityIds } from "../../../identity-clusters.ts";
 import type {
 	Entity,
 	IAgentRuntime,
@@ -28,8 +29,9 @@ const spec = requireProviderSpec("RELATIONSHIPS");
 async function formatRelationships(
 	runtime: IAgentRuntime,
 	relationships: Relationship[],
-	currentEntityId: UUID,
+	currentEntityIds: UUID[],
 ) {
+	const currentEntityIdSet = new Set(currentEntityIds);
 	// Sort relationships by interaction strength (descending)
 	const sortedRelationships = relationships
 		.filter((rel) => rel.metadata?.interactions)
@@ -47,12 +49,17 @@ async function formatRelationships(
 	// Deduplicate target entity IDs to avoid redundant fetches
 	const uniqueEntityIds = Array.from(
 		new Set(
-			sortedRelationships.map(
-				(rel) =>
-					(rel.sourceEntityId === currentEntityId
-						? rel.targetEntityId
-						: rel.sourceEntityId) as UUID,
-			),
+			sortedRelationships
+				.map((rel) => {
+					if (currentEntityIdSet.has(rel.sourceEntityId)) {
+						return rel.targetEntityId as UUID;
+					}
+					if (currentEntityIdSet.has(rel.targetEntityId)) {
+						return rel.sourceEntityId as UUID;
+					}
+					return null;
+				})
+				.filter((id): id is UUID => Boolean(id)),
 		),
 	);
 
@@ -85,11 +92,12 @@ async function formatRelationships(
 	// Format relationships using the entity map
 	const formattedRelationships: string[] = [];
 	for (const rel of sortedRelationships) {
-		const counterpartEntityId = (
-			rel.sourceEntityId === currentEntityId
-				? rel.targetEntityId
-				: rel.sourceEntityId
-		) as UUID;
+		const counterpartEntityId = currentEntityIdSet.has(rel.sourceEntityId)
+			? (rel.targetEntityId as UUID)
+			: currentEntityIdSet.has(rel.targetEntityId)
+				? (rel.sourceEntityId as UUID)
+				: null;
+		if (!counterpartEntityId) continue;
 		const entity = entityMap.get(counterpartEntityId);
 		if (!entity) continue;
 
@@ -119,9 +127,13 @@ const relationshipsProvider: Provider = {
 	description: spec.description,
 	dynamic: spec.dynamic ?? true,
 	get: async (runtime: IAgentRuntime, message: Memory) => {
+		const relatedEntityIds = await getRelatedEntityIds(
+			runtime,
+			message.entityId,
+		);
 		// Get all relationships for the current user
 		const relationships = await runtime.getRelationships({
-			entityIds: [message.entityId],
+			entityIds: relatedEntityIds,
 		});
 
 		if (!relationships || relationships.length === 0) {
@@ -139,7 +151,7 @@ const relationshipsProvider: Provider = {
 		const formattedRelationships = await formatRelationships(
 			runtime,
 			relationships,
-			message.entityId,
+			relatedEntityIds,
 		);
 
 		if (!formattedRelationships) {

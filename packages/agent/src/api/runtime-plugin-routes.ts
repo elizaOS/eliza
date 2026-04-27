@@ -51,6 +51,26 @@ export function matchPluginRoutePath(
   return pSegs.length === pathSegs.length ? params : null;
 }
 
+export function isPublicRuntimePluginRoute(options: {
+  runtime: AgentRuntime | null | undefined;
+  method: string;
+  pathname: string;
+}): boolean {
+  const { runtime, method, pathname } = options;
+  if (!runtime?.routes?.length) return false;
+
+  return (runtime.routes as Route[]).some((route) => {
+    if (
+      route.type === "STATIC" ||
+      route.type !== method ||
+      route.public !== true
+    ) {
+      return false;
+    }
+    return matchPluginRoutePath(route.path, pathname) !== null;
+  });
+}
+
 function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const key of url.searchParams.keys()) {

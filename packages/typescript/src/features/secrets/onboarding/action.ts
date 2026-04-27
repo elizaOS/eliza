@@ -258,6 +258,7 @@ function countUnconfiguredRequired(
  */
 export const updateSettingsAction: Action = {
 	name: "UPDATE_SETTINGS",
+	suppressPostActionContinuation: true,
 	similes: ["UPDATE_SETTING", "SAVE_SETTING", "SET_CONFIGURATION", "CONFIGURE"],
 	description:
 		"Saves a configuration setting during the onboarding process. Use when onboarding with a world owner or admin.",

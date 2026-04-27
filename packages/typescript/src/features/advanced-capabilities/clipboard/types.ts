@@ -75,7 +75,8 @@ export type TaskClipboardSourceType =
 	| "channel"
 	| "conversation_search"
 	| "entity"
-	| "entity_search";
+	| "entity_search"
+	| "action_result";
 
 export interface TaskClipboardItem {
 	/** Stable clipboard item ID exposed to the agent context. */

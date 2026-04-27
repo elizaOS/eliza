@@ -56,6 +56,7 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
+import { LifeOpsRepository } from "./lifeops/repository.js";
 // LifeOps runtime (scheduler task worker + registration)
 import {
   ensureLifeOpsSchedulerTask,
@@ -308,6 +309,14 @@ const rawAppLifeOpsPlugin: Plugin = {
     registerFollowupTrackerWorker(runtime);
 
     registerBlockRuleReconcilerWorker(runtime);
+    scheduleTaskEnsureAfterRuntimeInit({
+      runtime,
+      prefix: "[lifeops]",
+      label: "inbox cache schema",
+      ensure: async () => {
+        await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
+      },
+    });
 
     const lifeOpsSchedulerDisabled = isDisabledByEnv(
       "ELIZA_DISABLE_LIFEOPS_SCHEDULER",

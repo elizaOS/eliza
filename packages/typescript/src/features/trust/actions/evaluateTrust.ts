@@ -13,6 +13,7 @@ import { hasTrustEngine } from "./hasTrustEngine.ts";
 export const evaluateTrustAction: ElizaAction = {
 	name: "EVALUATE_TRUST",
 	description: "Evaluates the trust score and profile for a specified entity",
+	suppressPostActionContinuation: true,
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -145,6 +146,7 @@ export const evaluateTrustAction: ElizaAction = {
 				success: false,
 				text: "Entity name resolution not yet implemented. Please provide entity ID.",
 				error: "Entity name resolution not implemented",
+				data: { actionName: "EVALUATE_TRUST" },
 			};
 		} else {
 			targetEntityId = message.entityId;
@@ -190,6 +192,7 @@ ${dimensionText}
 
 Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
 					data: {
+						actionName: "EVALUATE_TRUST",
 						entityId: trustProfile.entityId,
 						overallTrust: trustProfile.overallTrust,
 						confidence: trustProfile.confidence,
@@ -218,6 +221,7 @@ Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
 					success: true,
 					text: `Trust Level: ${trustLevel} (${trustProfile.overallTrust}/100) based on ${trustProfile.interactionCount} interactions`,
 					data: {
+						actionName: "EVALUATE_TRUST",
 						trustScore: trustProfile.overallTrust,
 						trustLevel,
 						confidence: trustProfile.confidence,
@@ -230,6 +234,7 @@ Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
 				success: false,
 				text: "Failed to evaluate trust. Please try again.",
 				error: error instanceof Error ? error.message : "Unknown error",
+				data: { actionName: "EVALUATE_TRUST" },
 			};
 		}
 	},

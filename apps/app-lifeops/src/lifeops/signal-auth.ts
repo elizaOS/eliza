@@ -32,6 +32,13 @@ export interface SignalLinkedDeviceInfo {
   deviceName: string;
 }
 
+export interface SignalLinkedDeviceCandidate {
+  agentId: string;
+  side: LifeOpsConnectorSide;
+  tokenRef: string;
+  info: SignalLinkedDeviceInfo;
+}
+
 interface StoredPendingSignalPairingSession {
   sessionId: string;
   agentId: string;
@@ -444,17 +451,81 @@ export function readSignalLinkedDeviceInfo(
   if (!fs.existsSync(filePath)) {
     return null;
   }
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const parsed = JSON.parse(raw) as SignalLinkedDeviceInfo;
-  if (!parsed.authDir || !parsed.phoneNumber) {
+  let parsed: Partial<SignalLinkedDeviceInfo>;
+  try {
+    parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch {
+    return null;
+  }
+  if (
+    typeof parsed.authDir !== "string" ||
+    parsed.authDir.trim().length === 0 ||
+    typeof parsed.phoneNumber !== "string" ||
+    parsed.phoneNumber.trim().length === 0
+  ) {
     return null;
   }
   return {
     authDir: parsed.authDir,
-    phoneNumber: parsed.phoneNumber,
-    uuid: parsed.uuid ?? "",
-    deviceName: parsed.deviceName ?? "Eliza Mac",
+    phoneNumber: parsed.phoneNumber.trim(),
+    uuid: typeof parsed.uuid === "string" ? parsed.uuid : "",
+    deviceName:
+      typeof parsed.deviceName === "string" &&
+      parsed.deviceName.trim().length > 0
+        ? parsed.deviceName
+        : "Eliza Mac",
   };
+}
+
+function linkedDeviceCandidate(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+  env: NodeJS.ProcessEnv = process.env,
+): SignalLinkedDeviceCandidate | null {
+  const tokenRef = signalAuthDir(agentId, side, env);
+  const info = readSignalLinkedDeviceInfo(tokenRef);
+  return info
+    ? {
+        agentId,
+        side,
+        tokenRef,
+        info,
+      }
+    : null;
+}
+
+function listLinkedDeviceCandidatesForSide(
+  side: LifeOpsConnectorSide,
+  env: NodeJS.ProcessEnv = process.env,
+): SignalLinkedDeviceCandidate[] {
+  const root = signalStorageRoot(env);
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== "pending")
+    .flatMap((entry) => {
+      const candidate = linkedDeviceCandidate(entry.name, side, env);
+      return candidate ? [candidate] : [];
+    });
+}
+
+export function findSignalLinkedDeviceInfoForSide(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+  env: NodeJS.ProcessEnv = process.env,
+): SignalLinkedDeviceCandidate | null {
+  const exact = linkedDeviceCandidate(agentId, side, env);
+  if (exact) {
+    return exact;
+  }
+
+  const candidates = listLinkedDeviceCandidatesForSide(side, env).filter(
+    (candidate) => candidate.agentId !== agentId,
+  );
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 export function deleteSignalLinkedDevice(tokenRef: string): void {

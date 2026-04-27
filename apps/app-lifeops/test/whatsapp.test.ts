@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { withWhatsApp } from "../src/lifeops/service-mixin-whatsapp.js";
 import { LifeOpsServiceError } from "../src/lifeops/service-types.js";
@@ -10,14 +13,18 @@ import {
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = global.fetch;
+let workspaceDir: string;
 
 beforeEach(() => {
   for (const k of Object.keys(process.env)) {
     if (k.startsWith("ELIZA_WHATSAPP_")) delete process.env[k];
   }
+  workspaceDir = mkdtempSync(path.join(tmpdir(), "lifeops-whatsapp-test-"));
+  process.env.ELIZA_WORKSPACE_DIR = workspaceDir;
 });
 
 afterEach(() => {
+  rmSync(workspaceDir, { recursive: true, force: true });
   process.env = { ...ORIGINAL_ENV };
   global.fetch = ORIGINAL_FETCH;
   vi.restoreAllMocks();
@@ -82,13 +89,15 @@ describe("sendWhatsAppMessage", () => {
 
   test("includes reply context when replying to an inbound message", async () => {
     let capturedBody: unknown;
-    global.fetch = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      capturedBody = JSON.parse(String(init?.body));
-      return new Response(
-        JSON.stringify({ messages: [{ id: "wamid.reply" }] }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }) as unknown as typeof fetch;
+    global.fetch = vi.fn(
+      async (_input: RequestInfo | URL, init?: RequestInit) => {
+        capturedBody = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({ messages: [{ id: "wamid.reply" }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    ) as unknown as typeof fetch;
 
     const result = await sendWhatsAppMessage(
       {
@@ -136,6 +145,16 @@ describe("parseWhatsAppWebhookMessages", () => {
           changes: [
             {
               value: {
+                metadata: {
+                  display_phone_number: "+1 555 000 1111",
+                  phone_number_id: "phone-555000111",
+                },
+                contacts: [
+                  {
+                    profile: { name: "Eve WhatsApp" },
+                    wa_id: "15551112222",
+                  },
+                ],
                 messages: [
                   {
                     id: "wamid.aaa",
@@ -162,9 +181,42 @@ describe("parseWhatsAppWebhookMessages", () => {
     expect(messages).toHaveLength(2);
     expect(messages[0].id).toBe("wamid.aaa");
     expect(messages[0].from).toBe("15551112222");
+    expect(messages[0].channelId).toBe("15551112222");
     expect(messages[0].type).toBe("text");
     expect(messages[0].text).toBe("hello!");
+    expect(messages[0].metadata).toEqual({
+      displayPhoneNumber: "+1 555 000 1111",
+      phoneNumberId: "phone-555000111",
+      contactName: "Eve WhatsApp",
+      waId: "15551112222",
+    });
     expect(messages[1].text).toBe("hi");
+  });
+
+  test("rejects messages without a valid WhatsApp timestamp", () => {
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [
+                  {
+                    id: "wamid.bad-timestamp",
+                    from: "15551112222",
+                    timestamp: "not-a-number",
+                    type: "text",
+                    text: { body: "should not ingest" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(parseWhatsAppWebhookMessages(payload)).toEqual([]);
   });
 
   test("returns [] for malformed payloads", () => {
@@ -189,6 +241,7 @@ describe("withWhatsApp mixin", () => {
         info: vi.fn(),
         warn: vi.fn(),
       },
+      setSetting: vi.fn(),
     };
     ownerEntityId = null;
   }
@@ -196,11 +249,76 @@ describe("withWhatsApp mixin", () => {
   // biome-ignore lint/suspicious/noExplicitAny: mixin stub
   const svc = new (Composed as any)();
 
+  beforeEach(() => {
+    svc.runtime.getService.mockReset();
+    svc.runtime.getService.mockReturnValue(null);
+    svc.runtime.setSetting.mockReset();
+  });
+
   test("getWhatsAppConnectorStatus reports connected: false without creds", async () => {
     const status = await svc.getWhatsAppConnectorStatus();
     expect(status.connected).toBe(false);
     expect(status.provider).toBe("whatsapp");
     expect(typeof status.lastCheckedAt).toBe("string");
+  });
+
+  test("getWhatsAppConnectorStatus reports local QR auth without enabling the plugin", async () => {
+    const authDir = path.join(workspaceDir, "lifeops-whatsapp-auth", "default");
+    mkdirSync(authDir, { recursive: true });
+    writeFileSync(path.join(authDir, "creds.json"), '{"registered":true}');
+    svc.runtime.getService.mockReturnValue({ connected: true });
+
+    const status = await svc.getWhatsAppConnectorStatus();
+
+    expect(status.connected).toBe(true);
+    expect(status.localAuthAvailable).toBe(true);
+    expect(status.localAuthRegistered).toBe(true);
+    expect(status.serviceConnected).toBe(true);
+    expect(status.transport).toBe("baileys");
+    expect(status.phoneNumberId).toBeUndefined();
+    expect(status.degradations).toEqual([
+      expect.objectContaining({
+        axis: "delivery-degraded",
+        code: "local_runtime_unavailable",
+      }),
+    ]);
+    expect(svc.runtime.setSetting).toHaveBeenCalledWith(
+      "WHATSAPP_AUTH_DIR",
+      authDir,
+      false,
+    );
+  });
+
+  test("getWhatsAppConnectorStatus does not report stale local auth as connected", async () => {
+    const authDir = path.join(workspaceDir, "lifeops-whatsapp-auth", "default");
+    mkdirSync(authDir, { recursive: true });
+    writeFileSync(path.join(authDir, "creds.json"), '{"registered":false}');
+
+    const status = await svc.getWhatsAppConnectorStatus();
+
+    expect(status.connected).toBe(false);
+    expect(status.localAuthAvailable).toBe(true);
+    expect(status.localAuthRegistered).toBe(false);
+    expect(status.serviceConnected).toBe(false);
+    expect(status.outboundReady).toBe(false);
+    expect(status.inboundReady).toBe(false);
+    expect(status.degradations).toEqual([
+      expect.objectContaining({
+        axis: "delivery-degraded",
+        code: "local_auth_unregistered",
+      }),
+    ]);
+    expect(svc.runtime.setSetting).not.toHaveBeenCalled();
+  });
+
+  test("getWhatsAppConnectorStatus ignores user-facing WhatsApp runtime service", async () => {
+    svc.runtime.getService.mockReturnValue({ connected: true });
+
+    const status = await svc.getWhatsAppConnectorStatus();
+
+    expect(status.connected).toBe(false);
+    expect(status.serviceConnected).toBe(false);
+    expect(svc.runtime.getService).not.toHaveBeenCalled();
   });
 
   test("sendWhatsAppMessage throws LifeOpsServiceError without creds", async () => {
@@ -215,13 +333,17 @@ describe("withWhatsApp mixin", () => {
     process.env.ELIZA_WHATSAPP_API_VERSION = "v21.0";
     process.env.MILADY_MOCK_WHATSAPP_BASE = "http://127.0.0.1:7879";
     let capturedUrl = "";
-    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
-      capturedUrl = typeof input === "string" ? input : input.toString();
-      return new Response(
-        JSON.stringify({ messages: [{ id: "wamid.service" }] }),
-        { status: 200, headers: { "content-type": "application/json" } },
-      );
-    }) as unknown as typeof fetch;
+    let capturedBody: unknown;
+    global.fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        capturedUrl = typeof input === "string" ? input : input.toString();
+        capturedBody = JSON.parse(String(init?.body));
+        return new Response(
+          JSON.stringify({ messages: [{ id: "wamid.service" }] }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      },
+    ) as unknown as typeof fetch;
 
     await expect(
       svc.sendWhatsAppMessage({ to: "+15551112222", text: "service send" }),
@@ -229,6 +351,55 @@ describe("withWhatsApp mixin", () => {
     expect(capturedUrl).toBe(
       "http://127.0.0.1:7879/v21.0/phone-service/messages",
     );
+    expect(capturedBody).toEqual({
+      messaging_product: "whatsapp",
+      to: "+15551112222",
+      type: "text",
+      text: { body: "service send" },
+    });
+  });
+
+  test("sendWhatsAppMessage uses the local runtime service when only QR auth is available", async () => {
+    const authDir = path.join(workspaceDir, "lifeops-whatsapp-auth", "default");
+    mkdirSync(authDir, { recursive: true });
+    writeFileSync(path.join(authDir, "creds.json"), '{"registered":true}');
+    const sendMessage = vi.fn(async () => ({
+      messages: [{ id: "wamid.local" }],
+    }));
+    svc.runtime.getService.mockReturnValue({
+      connected: true,
+      sendMessage,
+    });
+
+    await expect(
+      svc.sendWhatsAppMessage({ to: "+15551112222", text: "local send" }),
+    ).resolves.toEqual({ ok: true, messageId: "wamid.local" });
+
+    expect(sendMessage).toHaveBeenCalledWith({
+      type: "text",
+      to: "+15551112222",
+      content: "local send",
+    });
+  });
+
+  test("sendWhatsAppMessage surfaces Cloud API delivery failures", async () => {
+    process.env.ELIZA_WHATSAPP_ACCESS_TOKEN = "tok-service";
+    process.env.ELIZA_WHATSAPP_PHONE_NUMBER_ID = "phone-service";
+    process.env.MILADY_MOCK_WHATSAPP_BASE = "http://127.0.0.1:7879";
+    global.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ error: { message: "recipient is not allowed" } }),
+          { status: 400, headers: { "content-type": "application/json" } },
+        ),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      svc.sendWhatsAppMessage({ to: "+15551112222", text: "blocked" }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: "recipient is not allowed",
+    });
   });
 
   test("ingestWhatsAppWebhook parses payload and returns count", async () => {

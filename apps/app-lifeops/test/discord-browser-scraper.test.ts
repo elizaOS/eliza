@@ -1,16 +1,16 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { JSDOM } from "jsdom";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   captureDiscordDeliveryStatus,
   closeDiscordTab,
+  type DiscordMessageSearchResult,
   discordBrowserWorkspaceAvailable,
   discordPartitionFor,
   ensureDiscordTab,
   probeDiscordDocumentState,
   probeDiscordTab,
   searchDiscordMessages,
-  type DiscordMessageSearchResult,
 } from "../src/lifeops/discord-browser-scraper.js";
 
 interface RecordedRequest {
@@ -24,7 +24,10 @@ interface BridgeFixture {
   baseUrl: string;
   token: string;
   requests: RecordedRequest[];
-  tabs: Map<string, { id: string; url: string; partition: string; title?: string }>;
+  tabs: Map<
+    string,
+    { id: string; url: string; partition: string; title?: string }
+  >;
   evalResult: unknown;
   close: () => Promise<void>;
 }
@@ -47,10 +50,14 @@ function send(
 
 async function startFakeBridge(): Promise<BridgeFixture> {
   const token = "test-token";
+  const tabs = new Map<
+    string,
+    { id: string; url: string; partition: string; title?: string }
+  >();
   const fixture: Partial<BridgeFixture> = {
     token,
     requests: [],
-    tabs: new Map(),
+    tabs,
     evalResult: null,
   };
   let tabCounter = 1;
@@ -73,7 +80,7 @@ async function startFakeBridge(): Promise<BridgeFixture> {
     }
 
     if (url.pathname === "/tabs" && req.method === "GET") {
-      send(res, 200, { tabs: Array.from(fixture.tabs!.values()) });
+      send(res, 200, { tabs: Array.from(tabs.values()) });
       return;
     }
     if (url.pathname === "/tabs" && req.method === "POST") {
@@ -86,7 +93,7 @@ async function startFakeBridge(): Promise<BridgeFixture> {
           typeof payload.partition === "string" ? payload.partition : "",
         title: typeof payload.title === "string" ? payload.title : undefined,
       };
-      fixture.tabs!.set(id, tab);
+      tabs.set(id, tab);
       send(res, 200, { tab });
       return;
     }
@@ -102,25 +109,24 @@ async function startFakeBridge(): Promise<BridgeFixture> {
     const action = match[2];
 
     if (!action && req.method === "DELETE") {
-      const existed = fixture.tabs!.delete(tabId);
+      const existed = tabs.delete(tabId);
       send(res, existed ? 200 : 404, { closed: existed });
       return;
     }
     if (action === "show" && req.method === "POST") {
-      const tab = fixture.tabs!.get(tabId);
+      const tab = tabs.get(tabId);
       send(res, tab ? 200 : 404, tab ? { tab } : { error: "not found" });
       return;
     }
     if (action === "navigate" && req.method === "POST") {
-      const tab = fixture.tabs!.get(tabId);
+      const tab = tabs.get(tabId);
       if (!tab) {
         send(res, 404, { error: "not found" });
         return;
       }
-      const nextUrl =
-        (body as { url?: string } | null)?.url ?? tab.url;
-      fixture.tabs!.set(tabId, { ...tab, url: nextUrl });
-      send(res, 200, { tab: fixture.tabs!.get(tabId) });
+      const nextUrl = (body as { url?: string } | null)?.url ?? tab.url;
+      tabs.set(tabId, { ...tab, url: nextUrl });
+      send(res, 200, { tab: tabs.get(tabId) });
       return;
     }
     if (action === "eval" && req.method === "POST") {
@@ -430,6 +436,7 @@ describe("searchDiscordMessages (fake bridge)", () => {
         id: "123456789012345678",
         content: "the quick brown fox",
         authorName: "alice",
+        guildId: "444",
         channelId: "999",
         timestamp: "2026-04-17T10:00:00.000Z",
         deliveryStatus: "unknown",
@@ -475,22 +482,45 @@ describe("searchDiscordMessages (fake bridge)", () => {
     });
   });
 
-  test("returns empty array when eval result is not an array", async () => {
+  test("fails when search injection does not report success", async () => {
     bridge.tabs.set("tab_search2", {
       id: "tab_search2",
       url: "https://discord.com/channels/@me",
       partition: "lifeops-discord-agent-1-owner",
     });
-    // Bridge always returns null — search injection may fail, results panel empty.
     bridge.evalResult = null;
 
-    const results = await searchDiscordMessages({
-      tabId: "tab_search2",
-      query: "no results expected",
-      env: process.env,
+    await expect(
+      searchDiscordMessages({
+        tabId: "tab_search2",
+        query: "no results expected",
+        env: process.env,
+      }),
+    ).rejects.toThrow(/search injection failed/i);
+  });
+
+  test("fails when search results eval does not return an array", async () => {
+    bridge.tabs.set("tab_search4", {
+      id: "tab_search4",
+      url: "https://discord.com/channels/@me",
+      partition: "lifeops-discord-agent-1-owner",
+    });
+    let evalCallCount = 0;
+    Object.defineProperty(bridge, "evalResult", {
+      get() {
+        evalCallCount += 1;
+        return evalCallCount === 1 ? { injected: true } : null;
+      },
+      configurable: true,
     });
 
-    expect(results).toEqual([]);
+    await expect(
+      searchDiscordMessages({
+        tabId: "tab_search4",
+        query: "malformed results",
+        env: process.env,
+      }),
+    ).rejects.toThrow(/invalid result/i);
   });
 
   test("rejects empty query string", async () => {
@@ -548,6 +578,7 @@ describe("captureDiscordDeliveryStatus (fake bridge)", () => {
         id: "111111111111111111",
         content: "sent message",
         authorName: null,
+        guildId: null,
         channelId: "555",
         timestamp: "2026-04-17T09:00:00.000Z",
         deliveryStatus: "sent",
@@ -556,6 +587,7 @@ describe("captureDiscordDeliveryStatus (fake bridge)", () => {
         id: "222222222222222222",
         content: "sending in progress",
         authorName: null,
+        guildId: null,
         channelId: "555",
         timestamp: "2026-04-17T09:01:00.000Z",
         deliveryStatus: "sending",
@@ -564,6 +596,7 @@ describe("captureDiscordDeliveryStatus (fake bridge)", () => {
         id: "333333333333333333",
         content: "failed to send",
         authorName: null,
+        guildId: null,
         channelId: "555",
         timestamp: "2026-04-17T09:02:00.000Z",
         deliveryStatus: "failed",
@@ -599,6 +632,22 @@ describe("captureDiscordDeliveryStatus (fake bridge)", () => {
     });
 
     expect(results).toEqual([]);
+  });
+
+  test("fails when delivery status eval does not return an array", async () => {
+    bridge.tabs.set("tab_delivery3", {
+      id: "tab_delivery3",
+      url: "https://discord.com/channels/@me",
+      partition: "lifeops-discord-agent-1-owner",
+    });
+    bridge.evalResult = null;
+
+    await expect(
+      captureDiscordDeliveryStatus({
+        tabId: "tab_delivery3",
+        env: process.env,
+      }),
+    ).rejects.toThrow(/invalid result/i);
   });
 });
 

@@ -25,6 +25,9 @@
 
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
+import { readAssignments } from "./assignments";
+import { localInferenceEngine } from "./engine";
+import type { HandlerRegistration } from "./handler-registry";
 import { handlerRegistry } from "./handler-registry";
 import { policyEngine } from "./routing-policy";
 import { readRoutingPreferences } from "./routing-preferences";
@@ -70,6 +73,50 @@ function modelTypeToSlot(modelType: string): AgentModelSlot | null {
   return null;
 }
 
+function shouldForceLocalInference(
+  policy: string,
+  preferredProvider: string | null,
+): boolean {
+  return (
+    policy === "prefer-local" || preferredProvider === "milady-local-inference"
+  );
+}
+
+export function filterUnavailableLocalInferenceCandidates(
+  candidates: HandlerRegistration[],
+  localInferenceAvailable: boolean,
+  forceLocalInference: boolean,
+): HandlerRegistration[] {
+  if (forceLocalInference || localInferenceAvailable) {
+    return candidates;
+  }
+
+  return candidates.filter(
+    (candidate) => candidate.provider !== "milady-local-inference",
+  );
+}
+
+export async function filterUnavailableLocalInference(
+  slot: AgentModelSlot,
+  policy: string,
+  preferredProvider: string | null,
+  candidates: HandlerRegistration[],
+): Promise<HandlerRegistration[]> {
+  const hasLocalInference = candidates.some(
+    (candidate) => candidate.provider === "milady-local-inference",
+  );
+  if (!hasLocalInference) {
+    return candidates;
+  }
+
+  const assignments = await readAssignments();
+  return filterUnavailableLocalInferenceCandidates(
+    candidates,
+    Boolean(assignments[slot]) || localInferenceEngine.hasLoadedModel(),
+    shouldForceLocalInference(policy, preferredProvider),
+  );
+}
+
 function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
   return async (runtime, params) => {
     const modelType = slotToModelType(slot);
@@ -83,9 +130,11 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
     const preferred = prefs.preferredProvider[slot] ?? null;
 
     // Ask the policy engine which handler to dispatch to.
-    const candidates = handlerRegistry.getForTypeExcluding(
-      modelType,
-      ROUTER_PROVIDER,
+    const candidates = await filterUnavailableLocalInference(
+      slot,
+      policy,
+      preferred,
+      handlerRegistry.getForTypeExcluding(modelType, ROUTER_PROVIDER),
     );
     const pick = policyEngine.pickProvider({
       modelType,

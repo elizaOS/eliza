@@ -9,11 +9,6 @@ import {
 } from "react";
 import type { PluginInfo } from "../../api";
 import { client } from "../../api";
-import {
-  ensurePluginManagerAllowed,
-  getPluginManagerBlockReason,
-  PLUGIN_MANAGER_UNAVAILABLE_ERROR,
-} from "../../runtime/plugin-manager-guard";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 
@@ -467,50 +462,15 @@ function PluginListView({
     });
   }, []);
 
+  // The plugin manager capability ships built-in with @elizaos/core, so no
+  // preflight enable / restart is required before invoking lifecycle tasks.
   const runWithPluginManager = useCallback(
     async (
       _pluginName: string,
-      notices: { prepare: string; recover: string },
+      _notices: { prepare: string; recover: string },
       task: () => Promise<unknown>,
-    ) => {
-      const restartForPluginManager = async (message: string) => {
-        const pluginManagerGuard = await ensurePluginManagerAllowed();
-        const pluginManagerBlockReason =
-          getPluginManagerBlockReason(pluginManagerGuard);
-        if (pluginManagerBlockReason) {
-          throw new Error(pluginManagerBlockReason);
-        }
-        setActionNotice(message, "success");
-        await client.restartAndWait(120_000);
-      };
-
-      let restartedForPluginManager = false;
-      const pluginManagerGuard = await ensurePluginManagerAllowed();
-      const pluginManagerBlockReason =
-        getPluginManagerBlockReason(pluginManagerGuard);
-      if (pluginManagerBlockReason) {
-        throw new Error(pluginManagerBlockReason);
-      }
-      if (pluginManagerGuard === "enabled") {
-        await restartForPluginManager(notices.prepare);
-        restartedForPluginManager = true;
-      }
-
-      try {
-        return await task();
-      } catch (err) {
-        if (
-          err instanceof Error &&
-          err.message.includes(PLUGIN_MANAGER_UNAVAILABLE_ERROR) &&
-          !restartedForPluginManager
-        ) {
-          await restartForPluginManager(notices.recover);
-          return await task();
-        }
-        throw err;
-      }
-    },
-    [setActionNotice],
+    ) => task(),
+    [],
   );
 
   const completePluginLifecycleRestart = useCallback(

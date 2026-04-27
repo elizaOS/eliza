@@ -1,4 +1,5 @@
 import type http from "node:http";
+import { Readable } from "node:stream";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -53,30 +54,10 @@ function makeResponseCollector() {
 }
 
 function makeReq(url: string, body?: unknown): http.IncomingMessage {
-  const handlers = new Map<string, Array<(arg?: unknown) => void>>();
-  const req = {
-    url,
-    on(event: string, fn: (arg?: unknown) => void) {
-      const list = handlers.get(event) ?? [];
-      list.push(fn);
-      handlers.set(event, list);
-      return req;
-    },
-  } as unknown as http.IncomingMessage;
-
-  // Defer body emission to next tick so handlers attach first.
-  setImmediate(() => {
-    if (body !== undefined) {
-      const buf = Buffer.from(JSON.stringify(body), "utf-8");
-      handlers.get("data")?.forEach((fn) => {
-        fn(buf);
-      });
-    }
-    handlers.get("end")?.forEach((fn) => {
-      fn();
-    });
-  });
-
+  const chunks =
+    body === undefined ? [] : [Buffer.from(JSON.stringify(body), "utf-8")];
+  const req = Readable.from(chunks) as http.IncomingMessage;
+  req.url = url;
   return req;
 }
 

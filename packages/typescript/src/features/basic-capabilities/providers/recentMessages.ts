@@ -1,5 +1,6 @@
 import { getEntityDetails } from "../../../entities.ts";
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import { getRelatedEntityIds } from "../../../identity-clusters.ts";
 import type {
 	CustomMetadata,
 	Entity,
@@ -112,17 +113,22 @@ const getRecentInteractions = async (
 	targetEntityId: UUID,
 	excludeRoomId: UUID,
 ): Promise<Memory[]> => {
-	// Find all rooms where sourceEntityId and targetEntityId are participants
-	const rooms = await runtime.getRoomsForParticipants([
-		sourceEntityId,
-		targetEntityId,
-	]);
+	const sourceEntityIds = await getRelatedEntityIds(runtime, sourceEntityId);
+	const roomsByIdentity = await Promise.all(
+		sourceEntityIds.map((entityId) =>
+			runtime.getRoomsForParticipants([entityId, targetEntityId]),
+		),
+	);
+	const rooms = Array.from(new Set(roomsByIdentity.flat()));
+	const otherRooms = rooms.filter((room) => room !== excludeRoomId);
+	if (otherRooms.length === 0) {
+		return [];
+	}
 
 	// Check the existing memories in the database
 	return runtime.getMemoriesByRoomIds({
 		tableName: "messages",
-		// filter out the current room id from rooms
-		roomIds: rooms.filter((room) => room !== excludeRoomId),
+		roomIds: otherRooms,
 		limit: 20,
 	});
 };

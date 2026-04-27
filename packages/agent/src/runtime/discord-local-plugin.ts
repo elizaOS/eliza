@@ -1137,6 +1137,7 @@ export class DiscordLocalService extends Service {
       worldId,
       worldName: guild?.name ?? "Discord Direct Messages",
       userName: message.author?.username ?? undefined,
+      userId: message.author?.id as UUID | undefined,
       name:
         message.author?.global_name ?? message.author?.username ?? undefined,
       source: DISCORD_LOCAL_SERVICE_NAME,
@@ -1200,11 +1201,43 @@ export class DiscordLocalService extends Service {
       : Date.now();
     memory.metadata = {
       ...(memory.metadata ?? {}),
+      source: DISCORD_LOCAL_SERVICE_NAME,
+      provider: "discord",
+      timestamp: memory.createdAt,
       entityName:
         message.author?.global_name ?? message.author?.username ?? roomName,
       entityUserName: message.author?.username ?? undefined,
       entityAvatarUrl: buildDiscordAvatarUrl(message.author),
       fromId: message.author?.id ?? undefined,
+      sourceId: entityId,
+      sender: {
+        id: message.author?.id ?? undefined,
+        name:
+          message.author?.global_name ?? message.author?.username ?? roomName,
+        username: message.author?.username ?? undefined,
+      },
+      [DISCORD_LOCAL_SERVICE_NAME]: {
+        id: message.author?.id ?? undefined,
+        userId: message.author?.id ?? undefined,
+        username: message.author?.username ?? undefined,
+        userName: message.author?.username ?? undefined,
+        name:
+          message.author?.global_name ?? message.author?.username ?? roomName,
+        messageId: message.id,
+        channelId,
+        guildId: guildId ?? undefined,
+      },
+      discord: {
+        id: message.author?.id ?? undefined,
+        userId: message.author?.id ?? undefined,
+        username: message.author?.username ?? undefined,
+        userName: message.author?.username ?? undefined,
+        name:
+          message.author?.global_name ?? message.author?.username ?? roomName,
+        messageId: message.id,
+        channelId,
+        guildId: guildId ?? undefined,
+      },
       discordChannelId: channelId,
       discordMessageId: message.id,
       ...(guildId ? { discordServerId: guildId } : {}),

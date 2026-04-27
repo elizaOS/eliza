@@ -26,8 +26,7 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 import os from "node:os";
 import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { DropService } from "@elizaos/app-elizamaker/drop-service";
-import { setElizaMakerDropService } from "@elizaos/app-elizamaker/drop-service-registry";
+import { DropService, setElizaMakerDropService } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
 import {
   normalizeJsonRpcUrl,
@@ -146,6 +145,7 @@ import {
   normalizeTriggerDraft,
 } from "../triggers/scheduling.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
+import { handleAccountsRoutes } from "./accounts-routes.js";
 import { handleAgentAdminRoutes } from "./agent-admin-routes.js";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.js";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
@@ -209,7 +209,10 @@ import { handleProviderSwitchRoutes } from "./provider-switch-routes.js";
 import { handleRegistryRoutes } from "./registry-routes.js";
 import { RegistryService } from "./registry-service.js";
 import { handleRelationshipsRoutes } from "./relationships-routes.js";
-import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.js";
+import {
+  isPublicRuntimePluginRoute,
+  tryHandleRuntimePluginRoute,
+} from "./runtime-plugin-routes.js";
 import { handleSandboxRoute } from "./sandbox-routes.js";
 import {
   cloneWithoutBlockedObjectKeys,
@@ -1281,6 +1284,11 @@ async function handleRequest(
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
     !pathname.startsWith("/api/browser-bridge/companions/") &&
+    !isPublicRuntimePluginRoute({
+      runtime: state.runtime,
+      method,
+      pathname,
+    }) &&
     !isAuthorized(req)
   ) {
     json(res, { error: "Unauthorized" }, 401);
@@ -1371,6 +1379,22 @@ async function handleRequest(
       loadSubscriptionAuth: async () =>
         (await import("../auth/index.js")) as never,
     } as never)
+  ) {
+    return;
+  }
+
+  if (
+    await handleAccountsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+      state: { config: state.config },
+      saveConfig: saveElizaConfig,
+    })
   ) {
     return;
   }

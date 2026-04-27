@@ -51,8 +51,11 @@ export type TelegramDeliveryStatus = "delivered_read" | "sent" | "unknown";
 export interface TelegramMessageSearchResult {
   id: string | null;
   dialogId: string | null;
+  threadId: string | null;
   dialogTitle: string | null;
   username: string | null;
+  peerId: string | null;
+  senderId: string | null;
   content: string;
   timestamp: string | null;
   outgoing: boolean;
@@ -360,6 +363,42 @@ function readOutboxMaxId(dialog: TelegramDialogLike | null): number | null {
   return parseNumericId(dialog?.dialog?.readOutboxMaxId);
 }
 
+function firstNonEmptyTelegramId(values: unknown[]): string | null {
+  for (const value of values) {
+    const serialized = serializeTelegramId(value);
+    if (serialized.length > 0) {
+      return serialized;
+    }
+  }
+  return null;
+}
+
+function messagePeerId(message: TelegramMessageLike): string | null {
+  const peer = message.peerId;
+  return firstNonEmptyTelegramId([
+    peer?.userId,
+    peer?.chatId,
+    peer?.channelId,
+  ]);
+}
+
+function messageSenderId(message: TelegramMessageLike): string | null {
+  return firstNonEmptyTelegramId([message.fromId?.userId]);
+}
+
+function findDialogForMessage(
+  message: TelegramMessageLike,
+  dialogs: ReadonlyArray<TelegramDialogLike>,
+): TelegramDialogLike | null {
+  const peerId = messagePeerId(message);
+  if (!peerId) {
+    return null;
+  }
+  return (
+    dialogs.find((dialog) => serializeTelegramId(dialog.id) === peerId) ?? null
+  );
+}
+
 function isGlobalSearchScope(scope?: string): boolean {
   const normalized = scope?.trim().toLowerCase();
   return (
@@ -406,8 +445,13 @@ export async function sendTelegramAccountMessage(args: {
     );
     const entity = await resolveTelegramTarget(client, args.target, dialogs);
     const sent = await client.sendMessage(entity, { message: args.message });
+    const messageId =
+      sent?.id !== undefined ? serializeTelegramId(sent.id) : "";
+    if (messageId.length === 0) {
+      throw new Error("Telegram send did not return a message id.");
+    }
     return {
-      messageId: sent?.id !== undefined ? serializeTelegramId(sent.id) : null,
+      messageId,
     };
   });
 }
@@ -443,25 +487,33 @@ export async function searchTelegramMessages(args: {
     return messages
       .filter((message): message is TelegramMessageLike => Boolean(message))
       .slice(0, limit)
-      .map((message) => ({
-        id:
-          message.id !== undefined
-            ? serializeTelegramId(message.id) || null
-            : null,
-        dialogId:
-          dialog?.id !== undefined
-            ? serializeTelegramId(dialog.id) || null
-            : null,
-        dialogTitle: dialog ? normalizeDialogTitle(dialog) : null,
-        username:
-          typeof dialog?.entity?.username === "string" &&
-          dialog.entity.username.trim().length > 0
-            ? dialog.entity.username.trim()
-            : null,
-        content: normalizeMessageContent(message),
-        timestamp: toIsoDate(message.date),
-        outgoing: message.out === true,
-      }));
+      .map((message) => {
+        const messageDialog = dialog ?? findDialogForMessage(message, dialogs);
+        const dialogId =
+          messageDialog?.id !== undefined
+            ? serializeTelegramId(messageDialog.id) || null
+            : null;
+        const username =
+          typeof messageDialog?.entity?.username === "string" &&
+          messageDialog.entity.username.trim().length > 0
+            ? messageDialog.entity.username.trim()
+            : null;
+        return {
+          id:
+            message.id !== undefined
+              ? serializeTelegramId(message.id) || null
+              : null,
+          dialogId,
+          threadId: dialogId,
+          dialogTitle: messageDialog ? normalizeDialogTitle(messageDialog) : null,
+          username,
+          peerId: messagePeerId(message),
+          senderId: messageSenderId(message),
+          content: normalizeMessageContent(message),
+          timestamp: toIsoDate(message.date),
+          outgoing: message.out === true,
+        };
+      });
   });
 }
 
@@ -581,7 +633,12 @@ export async function verifyTelegramLocalConnector(args: {
     try {
       const entity = await resolveTelegramTarget(client, target, dialogs);
       const sent = await client.sendMessage(entity, { message });
-      messageId = sent?.id !== undefined ? serializeTelegramId(sent.id) : null;
+      const sentMessageId =
+        sent?.id !== undefined ? serializeTelegramId(sent.id) : "";
+      if (sentMessageId.length === 0) {
+        throw new Error("Telegram send did not return a message id.");
+      }
+      messageId = sentMessageId;
     } catch (error) {
       sendError = error instanceof Error ? error.message : String(error);
     }

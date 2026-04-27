@@ -598,7 +598,9 @@ function dedupeQueries(values: Array<string | undefined>): string[] {
   const seen = new Set<string>();
   for (const value of values) {
     const query =
-      typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+      typeof value === "string"
+        ? value.slice(0, 10_000).trim().replace(/\s+/g, " ")
+        : "";
     if (!query) {
       continue;
     }
