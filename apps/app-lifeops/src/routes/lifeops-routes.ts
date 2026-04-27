@@ -1698,7 +1698,9 @@ export async function handleLifeOpsRoutes(
         chatId: url.searchParams.get("chatId")?.trim() || undefined,
         since: url.searchParams.get("since")?.trim() || undefined,
         limit:
-          parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit") ??
+          parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
+            max: 250,
+          }) ??
           undefined,
       };
       const messages = await service.readIMessages(query);
