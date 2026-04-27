@@ -4,12 +4,18 @@
  * The HTTP surface this exposes (under `/api/accounts/...`) is the
  * source of truth for the React settings page. It joins three sources:
  *
- *   - the on-disk credential records under `~/.eliza/auth/...`
+ *   - on-disk credential records under `~/.eliza/auth/...`
  *     (`account-storage.ts`),
- *   - the live `LinkedAccountConfig` rows in `milady.json` (which own
- *     `label`, `enabled`, `priority`, `health`, etc.),
+ *   - rich `LinkedAccountConfig` records (label / enabled / priority /
+ *     health / usage) owned by `AccountPool` in
+ *     `@elizaos/app-core/services/account-pool`,
  *   - the in-flight OAuth flow registry (`auth/oauth-flow.ts`) used by
  *     the `oauth/start` + SSE `oauth/status` + `oauth/cancel` trio.
+ *
+ * The pool is the SINGLE source of truth for `LinkedAccountConfig`. We
+ * never touch `config.linkedAccounts` from these routes — that field
+ * still holds the legacy `LinkedAccountFlagsConfig` (elizacloud
+ * is-linked flags) shape for unrelated consumers.
  *
  * Provider-level account selection strategy lives in a dedicated
  * top-level config key, `accountStrategies` (see `applyStrategyPatch`
@@ -47,6 +53,46 @@ import type {
   ServiceRouteAccountStrategy,
 } from "../contracts/service-routing.js";
 import type { RouteRequestContext } from "./route-helpers.js";
+
+// ─── Account pool (single source of truth) ──────────────────────────
+//
+// All `LinkedAccountConfig` records (label / enabled / priority / health /
+// usage) are owned by `@elizaos/app-core/services/account-pool`. We hit
+// it via dynamic import to avoid a cyclic package dep — app-core depends
+// on agent, not the other way around. The promise is cached at module
+// scope so we pay the import cost once per process.
+
+interface PoolFacade {
+  list(providerId?: string): LinkedAccountConfig[];
+  get(accountId: string): LinkedAccountConfig | null;
+  upsert(account: LinkedAccountConfig): Promise<void>;
+  deleteMetadata(providerId: string, accountId: string): Promise<void>;
+  refreshUsage(
+    accountId: string,
+    accessToken: string,
+    opts?: { codexAccountId?: string },
+  ): Promise<void>;
+}
+
+let cachedPoolPromise: Promise<PoolFacade> | null = null;
+
+async function getPool(): Promise<PoolFacade> {
+  if (!cachedPoolPromise) {
+    const moduleId = "@elizaos/app-core/services/account-pool";
+    cachedPoolPromise = (async () => {
+      const mod = (await import(/* @vite-ignore */ moduleId)) as {
+        getDefaultAccountPool: () => PoolFacade;
+      };
+      return mod.getDefaultAccountPool();
+    })();
+  }
+  return cachedPoolPromise;
+}
+
+/** Test-only: drop the cached pool reference between tests. */
+export function _resetAccountsRoutesPoolCache(): void {
+  cachedPoolPromise = null;
+}
 
 // ─── Provider id mapping ────────────────────────────────────────────
 
@@ -130,94 +176,15 @@ const strategyPatchSchema = z.object({
   strategy: z.enum(STRATEGY_VALUES),
 });
 
-// ─── Config helpers ─────────────────────────────────────────────────
+// ─── Strategy helpers ───────────────────────────────────────────────
 
-/**
- * Rich linked-account record map, stored at `config.linkedAccounts[id]`.
- *
- * Note on the dual-shape: the `linkedAccounts` field in the on-disk
- * `milady.json` ALSO holds legacy `LinkedAccountFlagConfig` entries for
- * providers like `elizacloud` / `cloud`. The legacy keys are
- * provider-name strings, while the multi-account keys are uuid v4s, so
- * they don't collide at runtime. We treat the dict as a union and only
- * touch entries we own (those whose value is a `LinkedAccountConfig`).
- */
-function readLinkedAccountsRecord(
-  config: ElizaConfig,
-): Record<string, LinkedAccountConfig | unknown> {
-  return (config.linkedAccounts ?? {}) as Record<
-    string,
-    LinkedAccountConfig | unknown
-  >;
-}
-
-function isRichLinkedAccount(value: unknown): value is LinkedAccountConfig {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
-  return (
-    typeof v.id === "string" &&
-    typeof v.providerId === "string" &&
-    isLinkedAccountProviderId(v.providerId) &&
-    typeof v.label === "string" &&
-    (v.source === "oauth" || v.source === "api-key") &&
-    typeof v.enabled === "boolean" &&
-    typeof v.priority === "number" &&
-    typeof v.createdAt === "number" &&
-    typeof v.health === "string"
-  );
-}
-
-function listLinkedAccountsForProvider(
-  config: ElizaConfig,
-  providerId: LinkedAccountProviderId,
-): LinkedAccountConfig[] {
-  const record = readLinkedAccountsRecord(config);
-  const out: LinkedAccountConfig[] = [];
-  for (const value of Object.values(record)) {
-    if (!isRichLinkedAccount(value)) continue;
-    if (value.providerId !== providerId) continue;
-    out.push(value);
-  }
-  out.sort((a, b) => a.priority - b.priority);
-  return out;
-}
-
-function nextPriority(
-  config: ElizaConfig,
+function nextPriorityFromPool(
+  pool: PoolFacade,
   providerId: LinkedAccountProviderId,
 ): number {
-  const existing = listLinkedAccountsForProvider(config, providerId);
+  const existing = pool.list(providerId);
   if (existing.length === 0) return 0;
   return Math.max(...existing.map((a) => a.priority)) + 1;
-}
-
-function ensureLinkedAccountsBag(
-  config: ElizaConfig,
-): Record<string, LinkedAccountConfig | unknown> {
-  if (!config.linkedAccounts) {
-    (config as unknown as { linkedAccounts: Record<string, unknown> })
-      .linkedAccounts = {};
-  }
-  return config.linkedAccounts as unknown as Record<
-    string,
-    LinkedAccountConfig | unknown
-  >;
-}
-
-function writeLinkedAccount(
-  config: ElizaConfig,
-  account: LinkedAccountConfig,
-): void {
-  const bag = ensureLinkedAccountsBag(config);
-  (bag as Record<string, LinkedAccountConfig>)[account.id] = account;
-}
-
-function removeLinkedAccount(config: ElizaConfig, accountId: string): void {
-  const bag = config.linkedAccounts;
-  if (!bag) return;
-  if (Object.hasOwn(bag, accountId)) {
-    delete (bag as Record<string, unknown>)[accountId];
-  }
 }
 
 interface AccountStrategiesShape {
@@ -505,11 +472,11 @@ async function handleListAllAccounts(
   ctx: AccountsRouteContext,
 ): Promise<boolean> {
   const { res, json } = ctx;
+  const pool = await getPool();
   const providers = SUPPORTED_PROVIDER_IDS.map((providerId) => {
-    const linkedConfigs = listLinkedAccountsForProvider(
-      ctx.state.config,
-      providerId,
-    );
+    const linkedConfigs = pool
+      .list(providerId)
+      .sort((a, b) => a.priority - b.priority);
     const subscription = asSubscriptionProvider(providerId);
     const onDiskAccounts = subscription
       ? listAccounts(subscription).map((r) => r.id)
@@ -551,6 +518,13 @@ async function handleCreateApiKeyAccount(
     return true;
   }
 
+  // Compute priority BEFORE we save the credential — once `saveAccount`
+  // lands, the pool's auto-assignment in `loadAllAccounts` would slot
+  // the new account at the next default index, which would offset
+  // `nextPriorityFromPool` by one.
+  const pool = await getPool();
+  const priority = nextPriorityFromPool(pool, providerId);
+
   const id = nodeCrypto.randomUUID();
   const now = Date.now();
   const record: AccountCredentialRecord = {
@@ -569,10 +543,8 @@ async function handleCreateApiKeyAccount(
   };
   saveAccount(record);
 
-  const priority = nextPriority(ctx.state.config, providerId);
   const linkedConfig = buildLinkedAccountConfigFromRecord(record, priority);
-  writeLinkedAccount(ctx.state.config, linkedConfig);
-  ctx.saveConfig(ctx.state.config);
+  await pool.upsert(linkedConfig);
 
   json(res, linkedConfig, 201);
   return true;
@@ -604,12 +576,12 @@ async function handleOAuthRoutes(
     // Reserve an accountId and the priority slot up front so the
     // post-save hook lands at a deterministic position.
     const accountId = nodeCrypto.randomUUID();
-    const priority = nextPriority(ctx.state.config, providerId);
+    const pool = await getPool();
+    const priority = nextPriorityFromPool(pool, providerId);
 
     const onAccountSaved = (record: AccountCredentialRecord) => {
       const linkedConfig = buildLinkedAccountConfigFromRecord(record, priority);
-      writeLinkedAccount(ctx.state.config, linkedConfig);
-      ctx.saveConfig(ctx.state.config);
+      void pool.upsert(linkedConfig);
     };
 
     const startFlow =
@@ -753,8 +725,9 @@ async function handlePatchAccount(
     error(res, parsed.error.issues[0]?.message ?? "Invalid body", 400);
     return true;
   }
-  const existing = readLinkedAccountsRecord(ctx.state.config)[accountId];
-  if (!isRichLinkedAccount(existing) || existing.providerId !== providerId) {
+  const pool = await getPool();
+  const existing = pool.get(accountId);
+  if (!existing || existing.providerId !== providerId) {
     error(res, "Account not found", 404);
     return true;
   }
@@ -768,8 +741,7 @@ async function handlePatchAccount(
       ? { priority: parsed.data.priority }
       : {}),
   };
-  writeLinkedAccount(ctx.state.config, next);
-  ctx.saveConfig(ctx.state.config);
+  await pool.upsert(next);
 
   // Mirror label changes onto the on-disk credential so listAccounts()
   // and the runtime keep reading the same name.
@@ -793,8 +765,8 @@ async function handleDeleteAccount(
   accountId: string,
 ): Promise<boolean> {
   const { res, json } = ctx;
-  removeLinkedAccount(ctx.state.config, accountId);
-  ctx.saveConfig(ctx.state.config);
+  const pool = await getPool();
+  await pool.deleteMetadata(providerId, accountId);
   const subscription = asSubscriptionProvider(providerId);
   if (subscription) {
     deleteAccount(subscription, accountId);
@@ -819,9 +791,10 @@ async function handleTestAccount(
     json(res, { ok: false, error: "No credential available" });
     return true;
   }
-  const linked = readLinkedAccountsRecord(ctx.state.config)[accountId];
+  const pool = await getPool();
+  const linked = pool.get(accountId);
   const codexAccountId =
-    isRichLinkedAccount(linked) && linked.providerId === "openai-codex"
+    linked?.providerId === "openai-codex"
       ? linked.organizationId
       : undefined;
   const probe =
@@ -852,8 +825,9 @@ async function handleRefreshUsage(
     error(res, `Usage refresh not supported for ${providerId}`, 501);
     return true;
   }
-  const linked = readLinkedAccountsRecord(ctx.state.config)[accountId];
-  if (!isRichLinkedAccount(linked) || linked.providerId !== providerId) {
+  const pool = await getPool();
+  const linked = pool.get(accountId);
+  if (!linked || linked.providerId !== providerId) {
     error(res, "Account not found", 404);
     return true;
   }
@@ -863,21 +837,24 @@ async function handleRefreshUsage(
     return true;
   }
 
-  // Prefer WS2's pool when it's loaded — it owns the canonical
-  // `pollAnthropicUsage` / `pollCodexUsage` calls plus the in-memory
-  // health/cooldown cache. Falls back to an inline 1-token probe when
-  // the pool isn't reachable (e.g. tests, leaner installs).
-  const poolResult = await tryRefreshViaPool({
-    accountId,
-    accessToken,
-    codexAccountId: linked.organizationId,
-  });
-  if (poolResult.ok) {
-    const refreshed = readLinkedAccountsRecord(ctx.state.config)[accountId];
-    if (isRichLinkedAccount(refreshed)) {
+  // Drive the canonical `pollAnthropicUsage` / `pollCodexUsage` through
+  // the pool — same singleton used by the runtime, so health flips and
+  // usage snapshots are consistent across UI and inference paths. Falls
+  // back to an inline 1-token probe only if the pool throws (network
+  // failure to the provider's usage endpoint, etc.).
+  try {
+    await pool.refreshUsage(accountId, accessToken, {
+      ...(linked.organizationId
+        ? { codexAccountId: linked.organizationId }
+        : {}),
+    });
+    const refreshed = pool.get(accountId);
+    if (refreshed) {
       json(res, { account: refreshed, source: "pool" });
       return true;
     }
+  } catch (err) {
+    logger.debug(`[accounts] pool.refreshUsage failed: ${String(err)}`);
   }
 
   const probe =
@@ -895,46 +872,8 @@ async function handleRefreshUsage(
           ...(probe.error ? { lastError: probe.error } : {}),
         },
   };
-  writeLinkedAccount(ctx.state.config, next);
-  ctx.saveConfig(ctx.state.config);
+  await pool.upsert(next);
   json(res, { account: next, probe, source: "inline-probe" });
   return true;
 }
 
-/**
- * Try to drive the usage refresh through WS2's `AccountPool` singleton
- * if it's loaded. The pool lives in `@elizaos/app-core` (which depends
- * on `@elizaos/agent`, not the other way around), so we resolve it via
- * a runtime dynamic import to avoid a cyclic dependency. Returns
- * `{ ok: false }` if the pool can't be loaded — caller then falls back
- * to the inline probe.
- */
-async function tryRefreshViaPool(args: {
-  accountId: string;
-  accessToken: string;
-  codexAccountId?: string;
-}): Promise<{ ok: boolean }> {
-  try {
-    // The dynamic import resolves at runtime only; bundlers / tsc
-    // don't follow it as a hard edge.
-    const moduleId = "@elizaos/app-core/services/account-pool";
-    const mod = (await import(/* @vite-ignore */ moduleId)) as {
-      getDefaultAccountPool?: () => {
-        refreshUsage: (
-          accountId: string,
-          accessToken: string,
-          opts?: { codexAccountId?: string },
-        ) => Promise<void>;
-      };
-    };
-    if (!mod.getDefaultAccountPool) return { ok: false };
-    const pool = mod.getDefaultAccountPool();
-    await pool.refreshUsage(args.accountId, args.accessToken, {
-      ...(args.codexAccountId ? { codexAccountId: args.codexAccountId } : {}),
-    });
-    return { ok: true };
-  } catch (err) {
-    logger.debug(`[accounts] pool refreshUsage unavailable: ${String(err)}`);
-    return { ok: false };
-  }
-}

@@ -65,6 +65,11 @@ export interface AccountPoolDeps {
   readAccounts: () => Record<string, LinkedAccountConfig>;
   /** Persist a single account's mutated fields. */
   writeAccount: (account: LinkedAccountConfig) => Promise<void>;
+  /** Remove the metadata overlay for an account. */
+  deleteAccount?: (
+    providerId: PoolProviderId,
+    accountId: string,
+  ) => Promise<void>;
 }
 
 export interface SelectInput {
@@ -188,6 +193,33 @@ export class AccountPool {
       default:
         return [...eligible].sort(byPriorityThenAge)[0] ?? null;
     }
+  }
+
+  // CRUD — used by accounts-routes.ts as the single source of truth for
+  // LinkedAccountConfig records. Both reads and writes go through here so
+  // changes from the HTTP API and from runtime mutations (markRateLimited,
+  // refreshUsage, recordCall) stay consistent.
+
+  list(providerId?: PoolProviderId): LinkedAccountConfig[] {
+    const all = Object.values(this.deps.readAccounts());
+    if (!providerId) return all;
+    return all.filter((a) => a.providerId === providerId);
+  }
+
+  get(accountId: string): LinkedAccountConfig | null {
+    return this.deps.readAccounts()[accountId] ?? null;
+  }
+
+  async upsert(account: LinkedAccountConfig): Promise<void> {
+    await this.deps.writeAccount(account);
+  }
+
+  async deleteMetadata(
+    providerId: PoolProviderId,
+    accountId: string,
+  ): Promise<void> {
+    if (!this.deps.deleteAccount) return;
+    await this.deps.deleteAccount(providerId, accountId);
   }
 
   // Mutations.
@@ -476,6 +508,18 @@ async function persistAccount(account: LinkedAccountConfig): Promise<void> {
   writeMetaStore(store);
 }
 
+async function deleteAccountMeta(
+  providerId: PoolProviderId,
+  accountId: string,
+): Promise<void> {
+  const store = readMetaStore();
+  const bucket = store[providerId];
+  if (!bucket) return;
+  if (!(accountId in bucket)) return;
+  delete bucket[accountId];
+  writeMetaStore(store);
+}
+
 /**
  * Symbol-keyed shim contract consumed by plugin-anthropic's
  * `credential-store.ts`. Kept narrow so the plugin doesn't have to import
@@ -550,6 +594,7 @@ export function getDefaultAccountPool(): AccountPool {
     cachedDefaultPool = new AccountPool({
       readAccounts: () => loadAllAccounts(),
       writeAccount: persistAccount,
+      deleteAccount: deleteAccountMeta,
     });
     installAnthropicShim(cachedDefaultPool);
     installOrchestratorShim(cachedDefaultPool);
