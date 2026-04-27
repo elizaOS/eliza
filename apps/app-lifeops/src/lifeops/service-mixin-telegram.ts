@@ -42,6 +42,15 @@ import {
 } from "./telegram-local-client.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 
+function isLifeOpsTelegramCapability(
+  value: unknown,
+): value is LifeOpsTelegramCapability {
+  return (
+    typeof value === "string" &&
+    (LIFEOPS_TELEGRAM_CAPABILITIES as readonly string[]).includes(value)
+  );
+}
+
 /** @internal */
 export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
   class LifeOpsTelegramServiceMixin extends Base {
@@ -75,7 +84,7 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
         : retryableAuthState ?? pendingSession?.state ?? "idle";
 
       const capabilities: LifeOpsTelegramCapability[] = grant
-        ? [...LIFEOPS_TELEGRAM_CAPABILITIES]
+        ? grant.capabilities.filter(isLifeOpsTelegramCapability)
         : [];
 
       return {
@@ -280,6 +289,9 @@ export function withTelegram<TBase extends Constructor<LifeOpsServiceBase>>(Base
       const status = await this.getTelegramConnectorStatus(side);
       if (!status.connected || !status.grant?.tokenRef) {
         fail(409, "Telegram connector is not connected.");
+      }
+      if (!status.grantedCapabilities.includes("telegram.read")) {
+        fail(403, "Telegram connector is missing read permission.");
       }
       if (!status.grantedCapabilities.includes("telegram.send")) {
         fail(403, "Telegram connector is missing send permission.");

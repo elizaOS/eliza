@@ -141,6 +141,26 @@ describe("sendTelegramAccountMessage", () => {
       message: "On my way",
     });
   });
+
+  it("fails instead of reporting success when Telegram returns no sent message id", async () => {
+    const client = buildClient({
+      getDialogs: vi.fn(async () => [{ id: 7, title: "Carol" }]),
+      sendMessage: vi.fn(async () => ({})),
+    });
+
+    await expect(
+      sendTelegramAccountMessage({
+        tokenRef: "token-ref",
+        target: "Carol",
+        message: "On my way",
+        deps: {
+          loadSessionString: () => "session-data",
+          readStoredToken: () => buildStoredToken(),
+          createClient: () => client,
+        },
+      }),
+    ).rejects.toThrow("Telegram send did not return a message id.");
+  });
 });
 
 describe("verifyTelegramLocalConnector", () => {
@@ -179,6 +199,31 @@ describe("verifyTelegramLocalConnector", () => {
       "LifeOps Telegram verification 2026-04-17T05:00:00.000Z",
     );
     expect(result.send.messageId).toBe("99");
+  });
+
+  it("marks send verification failed when Telegram returns no message id", async () => {
+    const fixedNow = new Date("2026-04-17T05:00:00.000Z");
+    const client = buildClient({
+      getDialogs: vi.fn(async () => [{ id: 1, title: "Saved Messages" }]),
+      sendMessage: vi.fn(async () => ({})),
+    });
+
+    const result = await verifyTelegramLocalConnector({
+      tokenRef: "token-ref",
+      deps: {
+        now: () => fixedNow,
+        loadSessionString: () => "session-data",
+        readStoredToken: () => buildStoredToken(),
+        createClient: () => client,
+      },
+    });
+
+    expect(result.read.ok).toBe(true);
+    expect(result.send.ok).toBe(false);
+    expect(result.send.error).toBe(
+      "Telegram send did not return a message id.",
+    );
+    expect(result.send.messageId).toBeNull();
   });
 });
 
@@ -222,14 +267,68 @@ describe("searchTelegramMessages", () => {
       {
         id: "101",
         dialogId: "7",
+        threadId: "7",
         dialogTitle: "Carol",
         username: "carol",
+        peerId: null,
+        senderId: null,
         content: "needle in a haystack",
         timestamp: "2026-04-17T06:00:00.000Z",
         outgoing: true,
       },
     ]);
     expect(client.getMessages).toHaveBeenCalledWith(target, {
+      search: "needle",
+      limit: 10,
+    });
+  });
+
+  it("preserves dialog/thread metadata for global Telegram search hits", async () => {
+    const client = buildClient({
+      getDialogs: vi.fn(async () => [
+        {
+          id: 7,
+          title: "Carol",
+          entity: { username: "carol" },
+        },
+      ]),
+      getMessages: vi.fn(async () => [
+        {
+          id: 101,
+          message: "needle in a haystack",
+          date: new Date("2026-04-17T06:00:00.000Z"),
+          out: false,
+          peerId: { userId: 7 },
+          fromId: { userId: 7001 },
+        },
+      ]),
+    });
+
+    const results = await searchTelegramMessages({
+      tokenRef: "token-ref",
+      query: "needle",
+      deps: {
+        loadSessionString: () => "session-data",
+        readStoredToken: () => buildStoredToken(),
+        createClient: () => client,
+      },
+    });
+
+    expect(results).toEqual([
+      {
+        id: "101",
+        dialogId: "7",
+        threadId: "7",
+        dialogTitle: "Carol",
+        username: "carol",
+        peerId: "7",
+        senderId: "7001",
+        content: "needle in a haystack",
+        timestamp: "2026-04-17T06:00:00.000Z",
+        outgoing: false,
+      },
+    ]);
+    expect(client.getMessages).toHaveBeenCalledWith(undefined, {
       search: "needle",
       limit: 10,
     });
