@@ -281,17 +281,20 @@ export class SignalService extends Service implements ISignalService {
         shouldIgnoreGroupMessages: false,
         allowedGroups: undefined,
         blockedNumbers: undefined,
+        autoReply: false,
       };
     }
   }
 
   private loadSettings(): SignalSettings {
     const ignoreGroups = this.runtime.getSetting("SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES");
+    const autoReply = this.runtime.getSetting("SIGNAL_AUTO_REPLY");
 
     return {
       shouldIgnoreGroupMessages: ignoreGroups === "true" || ignoreGroups === true,
       allowedGroups: undefined,
       blockedNumbers: undefined,
+      autoReply: autoReply === "true" || autoReply === true,
     };
   }
 
@@ -784,8 +787,14 @@ export class SignalService extends Service implements ISignalService {
       room = await this.ensureRoomExists(msg.sender, msg.groupId);
     }
 
-    // Process the message through the agent
-    await this.processMessage(memory, room, msg.sender, msg.groupId);
+    // Inbound messages are always ingested (memory + MESSAGE_RECEIVED event)
+    // so the user can read history and dispatch sends through LifeOps. The
+    // agent only auto-generates a reply when SIGNAL_AUTO_REPLY is explicitly
+    // enabled — default-off prevents the runtime from speaking on the user's
+    // behalf to real Signal contacts.
+    if (this.settings.autoReply) {
+      await this.processMessage(memory, room, msg.sender, msg.groupId);
+    }
   }
 
   private async handleReaction(msg: SignalMessage): Promise<void> {
