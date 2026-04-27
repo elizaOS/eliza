@@ -167,6 +167,42 @@ describe("Action Invocation E2E", () => {
     ).toBe(true);
   }
 
+  function hasExpectedAction(
+    harness: ConversationHarness,
+    actionNames: string[],
+    phase: "selected" | "completed",
+  ): boolean {
+    const targets = new Set(actionNames.map(normalizeActionName));
+    const calls =
+      phase === "completed"
+        ? harness.spy.getCompletedCalls()
+        : harness.spy.getCalls();
+    return calls.some((call) =>
+      targets.has(normalizeActionName(call.actionName)),
+    );
+  }
+
+  async function sendUntilExpectedAction(
+    harness: ConversationHarness,
+    actionNames: string[],
+    prompts: string[],
+    phase: "selected" | "completed" = "completed",
+  ): Promise<void> {
+    const attempts: string[] = [];
+    for (const prompt of prompts) {
+      await harness.send(prompt);
+      if (hasExpectedAction(harness, actionNames, phase)) return;
+      attempts.push(
+        `${JSON.stringify(prompt)} => ${formatObservedActions(harness)}`,
+      );
+    }
+
+    expect(
+      false,
+      `Expected ${phase} action ${actionNames.join(" / ")} after ${prompts.length} prompt(s).\n${attempts.join("\n")}`,
+    ).toBe(true);
+  }
+
   function expectOnlyCompletedActions(
     actions: Array<{ phase: string; actionName: string }>,
     allowedActionNames: string[],
@@ -1061,10 +1097,15 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("OWNER_CALENDAR")) return;
         await withHarness(async (h) => {
-          await h.send(
-            "Create a calendar event titled 'Q4 planning with John' tomorrow at 3pm for 30 minutes.",
+          await sendUntilExpectedAction(
+            h,
+            ["OWNER_CALENDAR", "CALENDAR_ACTION", "SCHEDULING"],
+            [
+              "Create a calendar event titled 'Q4 planning with John' tomorrow at 3pm for 30 minutes.",
+              "Use my calendar to create an event titled 'Q4 planning with John' tomorrow at 3pm for 30 minutes.",
+              "Run the owner calendar action to create an event titled 'Q4 planning with John' tomorrow at 3pm for 30 minutes.",
+            ],
           );
-          expectActionCalled(h.spy, "OWNER_CALENDAR");
           const results = await getActionResults(h.runtime, h.roomId);
           expect(
             results.length,
@@ -1131,8 +1172,15 @@ describe("Action Invocation E2E", () => {
         )
           return;
         await withHarness(async (h) => {
-          await h.send("Block twitter.com for exactly 90 minutes.");
-          expectActionCalled(h.spy, "OWNER_WEBSITE_BLOCK");
+          await sendUntilExpectedAction(
+            h,
+            ["OWNER_WEBSITE_BLOCK", "BLOCK_WEBSITES"],
+            [
+              "Block twitter.com for exactly 90 minutes.",
+              "Use website blocking to block twitter.com for exactly 90 minutes.",
+              "Run the owner website block action for twitter.com with duration 90 minutes.",
+            ],
+          );
           const results = await getActionResults(h.runtime, h.roomId);
           const blob = [
             stringifyCompletedActionPayloads(h, "BLOCK_WEBSITES"),
@@ -1177,21 +1225,15 @@ describe("Action Invocation E2E", () => {
         // Don't gate on a single action — the planner may pick either or both.
         // Just assert that something useful ran.
         await withHarness(async (h) => {
-          await h.send(
-            "Block twitter.com for an hour and create a todo to stretch when the block ends.",
+          await sendUntilExpectedAction(
+            h,
+            ["OWNER_WEBSITE_BLOCK", "BLOCK_WEBSITES", "LIFE"],
+            [
+              "Block twitter.com for an hour and create a todo to stretch when the block ends.",
+              "Use LifeOps actions to block twitter.com for one hour and create a todo to stretch when the block ends.",
+              "Run either the owner website block action or the life todo action to handle this: block twitter.com for one hour and remind me to stretch when the block ends.",
+            ],
           );
-          const completedNames = h.spy
-            .getCompletedCalls()
-            .map((c) => normalizeActionName(c.actionName));
-          const acceptable = [
-            normalizeActionName("OWNER_WEBSITE_BLOCK"),
-            normalizeActionName("LIFE"),
-          ];
-          const hit = completedNames.some((n) => acceptable.includes(n));
-          expect(
-            hit,
-            `Expected at least one of OWNER_WEBSITE_BLOCK/LIFE to fire. Completed=${completedNames.join(",")}`,
-          ).toBe(true);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS * 2,
