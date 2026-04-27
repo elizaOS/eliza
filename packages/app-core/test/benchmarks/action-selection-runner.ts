@@ -262,6 +262,7 @@ function pickObservedAction(
     phase: "started" | "completed";
     actionName: string;
     actionStatus?: string;
+    actionConfirmationPending?: boolean;
   }>,
   phase: "started" | "completed",
   expected: string | null,
@@ -274,7 +275,11 @@ function pickObservedAction(
       if (
         opts?.requireSuccessfulCompletion &&
         phase === "completed" &&
-        record.actionStatus !== "completed"
+        record.actionStatus !== "completed" &&
+        // Actions whose intended terminal state is "user must confirm" return
+        // success: false (so actionStatus is "failed"), but selection +
+        // execution were both correct. Score them as completed.
+        record.actionConfirmationPending !== true
       ) {
         return false;
       }
@@ -545,11 +550,25 @@ async function seedBenchmarkCaseFixtures(
         });
       }
     }
+    if (process.env.MILADY_BENCHMARK_DEBUG_OAUTH === "1") {
+      const fsModule = await import("node:fs");
+      fsModule.appendFileSync(
+        "/tmp/bench_oauth_debug.log",
+        `[seed-relationships] agentId=${runtime.agentId} ok\n`,
+      );
+    }
     runtime.logger?.debug?.(
       { src: "benchmark", userEntityId },
       "seedBenchmarkCaseFixtures: relationship seeded",
     );
   } catch (error) {
+    if (process.env.MILADY_BENCHMARK_DEBUG_OAUTH === "1") {
+      const fsModule = await import("node:fs");
+      fsModule.appendFileSync(
+        "/tmp/bench_oauth_debug.log",
+        `[seed-relationships-FAIL] agentId=${runtime.agentId} error=${String(error)}\n`,
+      );
+    }
     // Relationships plugin may not be loaded in every benchmark variant.
     runtime.logger?.debug?.(
       { src: "benchmark", userEntityId, error: String(error) },
