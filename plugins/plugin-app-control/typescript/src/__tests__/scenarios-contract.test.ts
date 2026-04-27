@@ -24,13 +24,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock(
-	"@elizaos/scenario-schema",
-	() => ({
-		scenario: <T>(value: T) => value,
-	}),
-	{ virtual: true },
-);
+vi.mock("@elizaos/scenario-schema", () => ({
+	scenario: <T>(value: T) => value,
+}));
 
 type FinalCheck = {
 	type?: string;
@@ -116,41 +112,45 @@ async function loadScenario(file: string): Promise<LoadedScenario> {
 }
 
 describe("APP scenarios — contract", () => {
-	it.each(EXPECTED)(
-		"$file parses, declares the right id, plugin, action, and keywords",
-		async ({ file, id, expectAction, expectKeywords }) => {
-			const raw = await readFile(path.join(SCENARIOS_DIR, file), "utf8");
-			const scen = await loadScenario(file);
+	it.each(
+		EXPECTED,
+	)("$file parses, declares the right id, plugin, action, and keywords", async ({
+		file,
+		id,
+		expectAction,
+		expectKeywords,
+	}) => {
+		const raw = await readFile(path.join(SCENARIOS_DIR, file), "utf8");
+		const scen = await loadScenario(file);
 
-			expect(scen).toBeDefined();
-			expect(scen.id).toBe(id);
-			expect(typeof scen.title).toBe("string");
-			expect(scen.title?.length ?? 0).toBeGreaterThan(0);
-			expect(Array.isArray(scen.turns)).toBe(true);
-			expect((scen.turns?.length ?? 0)).toBeGreaterThan(0);
-			expect(Array.isArray(scen.finalChecks)).toBe(true);
-			expect((scen.finalChecks?.length ?? 0)).toBeGreaterThan(0);
+		expect(scen).toBeDefined();
+		expect(scen.id).toBe(id);
+		expect(typeof scen.title).toBe("string");
+		expect(scen.title?.length ?? 0).toBeGreaterThan(0);
+		expect(Array.isArray(scen.turns)).toBe(true);
+		expect(scen.turns?.length ?? 0).toBeGreaterThan(0);
+		expect(Array.isArray(scen.finalChecks)).toBe(true);
+		expect(scen.finalChecks?.length ?? 0).toBeGreaterThan(0);
 
-			// requires.plugins should reference the canonical plugin name.
-			expect(scen.requires?.plugins ?? []).toContain(
-				"@elizaos/plugin-app-control",
-			);
+		// requires.plugins should reference the canonical plugin name.
+		expect(scen.requires?.plugins ?? []).toContain(
+			"@elizaos/plugin-app-control",
+		);
 
-			// At least one finalCheck must reference our action.
-			const referencesAction = (scen.finalChecks ?? []).some(
-				(c) => c.actionName === expectAction,
-			);
-			expect(referencesAction).toBe(true);
+		// At least one finalCheck must reference our action.
+		const referencesAction = (scen.finalChecks ?? []).some(
+			(c) => c.actionName === expectAction,
+		);
+		expect(referencesAction).toBe(true);
 
-			// At least one expected keyword appears in the source — guards
-			// against a scenario that accidentally swaps verbs.
-			const lowered = raw.toLowerCase();
-			const matchedKeyword = expectKeywords.some((k) =>
-				lowered.includes(k.toLowerCase()),
-			);
-			expect(matchedKeyword).toBe(true);
-		},
-	);
+		// At least one expected keyword appears in the source — guards
+		// against a scenario that accidentally swaps verbs.
+		const lowered = raw.toLowerCase();
+		const matchedKeyword = expectKeywords.some((k) =>
+			lowered.includes(k.toLowerCase()),
+		);
+		expect(matchedKeyword).toBe(true);
+	});
 
 	it("scenario inventory matches the expected catalog (no orphans, no missing)", async () => {
 		const fs = await import("node:fs/promises");
