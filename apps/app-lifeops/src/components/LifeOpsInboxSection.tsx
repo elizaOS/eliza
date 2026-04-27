@@ -4,8 +4,8 @@ import {
   Input,
   openExternalUrl,
   Spinner,
-  useMediaQuery,
   useApp,
+  useMediaQuery,
 } from "@elizaos/app-core";
 import {
   LIFEOPS_INBOX_CHANNELS,
@@ -288,14 +288,12 @@ function ThreadRow({
   const style = styleFor(message.channel);
   const subject = message.subject?.trim() || `${style.label} message`;
   const score = group.maxPriorityScore ?? message.priorityScore ?? 0;
-  const category =
-    group.priorityCategory ?? message.priorityCategory ?? null;
+  const category = group.priorityCategory ?? message.priorityCategory ?? null;
   const isImportant =
     score >= IMPORTANT_PRIORITY_SCORE_THRESHOLD || category === "important";
   const isPlanning = category === "planning";
   const missedAge = computeMissedAgeMs(message);
-  const isMissed =
-    missedAge !== null && score >= MISSED_MIN_PRIORITY;
+  const isMissed = missedAge !== null && score >= MISSED_MIN_PRIORITY;
   const senderLabel =
     group.chatType === "group" && typeof group.participantCount === "number"
       ? `${message.sender.displayName} (${group.participantCount})`
@@ -634,7 +632,9 @@ function ReaderPane({
                           {itemStyle.icon}
                           {itemStyle.label}
                         </span>
-                        {item.sender.email ? <span>{item.sender.email}</span> : null}
+                        {item.sender.email ? (
+                          <span>{item.sender.email}</span>
+                        ) : null}
                       </div>
                     </div>
                     <span className="shrink-0 text-[11px] tabular-nums text-muted">
@@ -703,18 +703,14 @@ function InboxUnsubscribeButton({
 
   const onClick = useCallback(async () => {
     if (!senderEmail) return;
-    if (
-      !window.confirm(
-        `Unsubscribe from ${senderEmail} and create a Gmail filter that auto-trashes future mail?`,
-      )
-    ) {
+    if (!window.confirm(`Send an unsubscribe request to ${senderEmail}?`)) {
       return;
     }
     setState("working");
     try {
       const result = await client.unsubscribeLifeOpsEmailSender({
         senderEmail,
-        blockAfter: true,
+        blockAfter: false,
         trashExisting: false,
         confirmed: true,
       });
@@ -747,7 +743,7 @@ function InboxUnsubscribeButton({
       className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
       disabled={state === "working" || state === "done"}
       onClick={() => void onClick()}
-      title={`Send RFC 8058 one-click unsubscribe to ${senderEmail} and create a Gmail filter`}
+      title={`Send RFC 8058 one-click unsubscribe to ${senderEmail}`}
     >
       {label}
     </Button>
@@ -827,9 +823,7 @@ function InboxListPane({
                   (message) => message.id === selectedMessageId,
                 )
               }
-              onSelect={() =>
-                onSelect({ messageId: group.latestMessage.id })
-              }
+              onSelect={() => onSelect({ messageId: group.latestMessage.id })}
               onReply={() => onReply(group.latestMessage)}
               showAccountSubtitle={showGmailAccountSubtitles}
             />
@@ -943,8 +937,9 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   const selectedMessage =
     (selectedMessageId ? messageById.get(selectedMessageId) : null) ?? null;
   const selectedThread =
-    (selectedMessageId ? threadGroupByMessageId.get(selectedMessageId) : null) ??
-    null;
+    (selectedMessageId
+      ? threadGroupByMessageId.get(selectedMessageId)
+      : null) ?? null;
 
   // Distinct Gmail accounts visible in the current feed. Only show the chip
   // group when more than one Gmail account has produced messages.

@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { withWhatsApp } from "../src/lifeops/service-mixin-whatsapp.js";
 import { LifeOpsServiceError } from "../src/lifeops/service-types.js";
@@ -10,14 +13,18 @@ import {
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = global.fetch;
+let workspaceDir: string;
 
 beforeEach(() => {
   for (const k of Object.keys(process.env)) {
     if (k.startsWith("ELIZA_WHATSAPP_")) delete process.env[k];
   }
+  workspaceDir = mkdtempSync(path.join(tmpdir(), "lifeops-whatsapp-test-"));
+  process.env.ELIZA_WORKSPACE_DIR = workspaceDir;
 });
 
 afterEach(() => {
+  rmSync(workspaceDir, { recursive: true, force: true });
   process.env = { ...ORIGINAL_ENV };
   global.fetch = ORIGINAL_FETCH;
   vi.restoreAllMocks();
@@ -203,6 +210,25 @@ describe("withWhatsApp mixin", () => {
     expect(status.connected).toBe(false);
     expect(status.provider).toBe("whatsapp");
     expect(typeof status.lastCheckedAt).toBe("string");
+  });
+
+  test("getWhatsAppConnectorStatus reports local QR auth without enabling the plugin", async () => {
+    const authDir = path.join(workspaceDir, "whatsapp-auth", "default");
+    mkdirSync(authDir, { recursive: true });
+    writeFileSync(path.join(authDir, "creds.json"), "{}");
+    svc.runtime.getService.mockReturnValue({ connected: true });
+
+    const status = await svc.getWhatsAppConnectorStatus();
+
+    expect(status.connected).toBe(true);
+    expect(status.phoneNumberId).toBeUndefined();
+    expect(status.degradations).toEqual([
+      expect.objectContaining({
+        axis: "delivery-degraded",
+        code: "business_cloud_credentials_missing",
+      }),
+    ]);
+    expect(svc.runtime.getService).not.toHaveBeenCalled();
   });
 
   test("getWhatsAppConnectorStatus ignores user-facing WhatsApp runtime service", async () => {

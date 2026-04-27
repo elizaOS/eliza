@@ -9,15 +9,13 @@ const {
   openLifeOpsChatMock,
   useInboxMock,
   useMediaQueryMock,
-} = vi.hoisted(
-  () => ({
-    unsubscribeLifeOpsEmailSenderMock: vi.fn(),
-    openExternalUrlMock: vi.fn(),
-    openLifeOpsChatMock: vi.fn(),
-    useInboxMock: vi.fn(),
-    useMediaQueryMock: vi.fn(() => true),
-  }),
-);
+} = vi.hoisted(() => ({
+  unsubscribeLifeOpsEmailSenderMock: vi.fn(),
+  openExternalUrlMock: vi.fn(),
+  openLifeOpsChatMock: vi.fn(),
+  useInboxMock: vi.fn(),
+  useMediaQueryMock: vi.fn(() => true),
+}));
 
 vi.mock("@elizaos/app-core", () => ({
   Button: "button",
@@ -192,11 +190,11 @@ describe("LifeOpsInboxSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
 
     expect(confirmSpy).toHaveBeenCalledWith(
-      "Unsubscribe from michael@example.test and create a Gmail filter that auto-trashes future mail?",
+      "Send an unsubscribe request to michael@example.test?",
     );
     expect(unsubscribeLifeOpsEmailSenderMock).toHaveBeenCalledWith({
       senderEmail: "michael@example.test",
-      blockAfter: true,
+      blockAfter: false,
       trashExisting: false,
       confirmed: true,
     });

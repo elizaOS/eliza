@@ -38,6 +38,11 @@ export interface WhatsAppRouteDeps {
   }) => WhatsAppPairingSessionLike;
 }
 
+interface WhatsAppAccountBody {
+  accountId?: string;
+  configurePlugin?: boolean;
+}
+
 const MAX_BODY_BYTES = 1_048_576;
 export const MAX_PAIRING_SESSIONS = 10;
 
@@ -50,6 +55,10 @@ async function readJsonBody<T = Record<string, unknown>>(
 
 function json(res: ServerResponse, data: unknown, status = 200): void {
   sendJson(res, data, status);
+}
+
+function shouldConfigurePlugin(body: WhatsAppAccountBody | null): boolean {
+  return body?.configurePlugin !== false;
 }
 
 export async function handleWhatsAppRoute(
@@ -126,7 +135,8 @@ export async function handleWhatsAppRoute(
   }
 
   if (method === "POST" && pathname === "/api/whatsapp/pair") {
-    const body = await readJsonBody<{ accountId?: string }>(req, res);
+    const body = await readJsonBody<WhatsAppAccountBody>(req, res);
+    const configurePlugin = shouldConfigurePlugin(body);
     let accountId: string;
     try {
       accountId = deps.sanitizeAccountId(
@@ -164,23 +174,33 @@ export async function handleWhatsAppRoute(
         state.broadcastWs?.({ ...event });
 
         if (event.status === "connected") {
-          if (!state.config.connectors) state.config.connectors = {};
-          state.config.connectors.whatsapp = {
-            ...((state.config.connectors.whatsapp as
-              | Record<string, unknown>
-              | undefined) ?? {}),
-            authDir,
-            enabled: true,
-          };
-          // Auto-populate owner contact so LifeOps can deliver reminders
+          let configChanged = false;
+          if (configurePlugin) {
+            if (!state.config.connectors) state.config.connectors = {};
+            state.config.connectors.whatsapp = {
+              ...((state.config.connectors.whatsapp as
+                | Record<string, unknown>
+                | undefined) ?? {}),
+              authDir,
+              enabled: true,
+            };
+            configChanged = true;
+          }
+
           const phoneNumber = event.phoneNumber;
-          setOwnerContact(
-            state.config as Parameters<typeof setOwnerContact>[0],
-            {
-              source: "whatsapp",
-              channelId: phoneNumber ?? undefined,
-            },
-          );
+          configChanged =
+            setOwnerContact(
+              state.config as Parameters<typeof setOwnerContact>[0],
+              {
+                source: "whatsapp",
+                channelId: phoneNumber ?? undefined,
+              },
+            ) || configChanged;
+
+          if (!configChanged) {
+            return;
+          }
+
           try {
             state.saveConfig();
           } catch {
@@ -246,7 +266,7 @@ export async function handleWhatsAppRoute(
   }
 
   if (method === "POST" && pathname === "/api/whatsapp/pair/stop") {
-    const body = await readJsonBody<{ accountId?: string }>(req, res);
+    const body = await readJsonBody<WhatsAppAccountBody>(req, res);
     let accountId: string;
     try {
       accountId = deps.sanitizeAccountId(
@@ -270,7 +290,8 @@ export async function handleWhatsAppRoute(
   }
 
   if (method === "POST" && pathname === "/api/whatsapp/disconnect") {
-    const body = await readJsonBody<{ accountId?: string }>(req, res);
+    const body = await readJsonBody<WhatsAppAccountBody>(req, res);
+    const configurePlugin = shouldConfigurePlugin(body);
     let accountId: string;
     try {
       accountId = deps.sanitizeAccountId(
@@ -308,7 +329,7 @@ export async function handleWhatsAppRoute(
       }
     }
 
-    if (state.config.connectors) {
+    if (configurePlugin && state.config.connectors) {
       delete state.config.connectors.whatsapp;
       try {
         state.saveConfig();
