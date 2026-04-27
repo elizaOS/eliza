@@ -389,6 +389,239 @@ async function waitForDiscordCdpReady(
   return latest;
 }
 
+/**
+ * Send a message to a Discord channel by driving the user's Discord Desktop
+ * app through CDP. The local-execution path uses the user's own Discord
+ * client, so the send appears as if the user typed it. This avoids the bot
+ * REST path returning "Missing Access" on channels the bot is not a member
+ * of (which is most DMs), and matches the same trust model as reads.
+ */
+export async function sendDiscordViaDesktopCdp(args: {
+  channelId: string;
+  text: string;
+  env?: NodeJS.ProcessEnv;
+}): Promise<{
+  ok: boolean;
+  navigatedTo: string | null;
+  error: string | null;
+}> {
+  const status = await getDiscordDesktopCdpStatus(args.env);
+  if (!status.cdpAvailable || !status.webSocketDebuggerUrl) {
+    return {
+      ok: false,
+      navigatedTo: null,
+      error:
+        status.lastError ??
+        "Discord Desktop CDP is not available; cannot send.",
+    };
+  }
+
+  const channelUrl = `https://discord.com/channels/@me/${args.channelId}`;
+  try {
+    await runDiscordCdpSendScript({
+      webSocketDebuggerUrl: status.webSocketDebuggerUrl,
+      channelUrl,
+      text: args.text,
+    });
+    return { ok: true, navigatedTo: channelUrl, error: null };
+  } catch (error) {
+    return {
+      ok: false,
+      navigatedTo: channelUrl,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+interface CdpRpcEnvelope {
+  id: number;
+  method: string;
+  params?: unknown;
+}
+
+async function runDiscordCdpSendScript(args: {
+  webSocketDebuggerUrl: string;
+  channelUrl: string;
+  text: string;
+}): Promise<void> {
+  const WebSocketConstructor = globalThis.WebSocket;
+  if (!WebSocketConstructor) {
+    throw new Error("WebSocket is not available in this runtime");
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const socket = new WebSocketConstructor(args.webSocketDebuggerUrl);
+    let nextId = 1;
+    const pending = new Map<
+      number,
+      { resolve: (value: unknown) => void; reject: (error: Error) => void }
+    >();
+
+    const overall = setTimeout(() => {
+      cleanup();
+      reject(new Error("Discord CDP send timed out"));
+    }, 25_000);
+
+    const cleanup = () => {
+      clearTimeout(overall);
+      for (const { reject: rej } of pending.values()) {
+        rej(new Error("Discord CDP socket closed"));
+      }
+      pending.clear();
+      try {
+        socket.close();
+      } catch {
+        // ignore
+      }
+    };
+
+    const rpc = (method: string, params: unknown = {}): Promise<unknown> =>
+      new Promise<unknown>((resolveRpc, rejectRpc) => {
+        const id = nextId++;
+        pending.set(id, {
+          resolve: resolveRpc,
+          reject: rejectRpc,
+        });
+        const envelope: CdpRpcEnvelope = { id, method, params };
+        socket.send(JSON.stringify(envelope));
+      });
+
+    socket.addEventListener("message", (event: MessageEvent) => {
+      let payload: {
+        id?: number;
+        error?: { message?: string };
+        result?: unknown;
+      };
+      try {
+        payload = JSON.parse(String(event.data)) as typeof payload;
+      } catch {
+        return;
+      }
+      if (typeof payload.id !== "number") return;
+      const callback = pending.get(payload.id);
+      if (!callback) return;
+      pending.delete(payload.id);
+      if (payload.error) {
+        callback.reject(
+          new Error(payload.error.message ?? `CDP error id=${payload.id}`),
+        );
+        return;
+      }
+      callback.resolve(payload.result);
+    });
+
+    socket.addEventListener("error", () => {
+      cleanup();
+      reject(new Error("Discord CDP websocket failed"));
+    });
+
+    socket.addEventListener("close", () => {
+      cleanup();
+    });
+
+    const sleep = (ms: number) =>
+      new Promise<void>((r) => setTimeout(r, ms));
+
+    socket.addEventListener("open", async () => {
+      try {
+        // Ensure the page is on the target channel. Setting location.href
+        // works inside Discord's renderer where Page.navigate isn't always
+        // available without enabling Page domain.
+        const navigateExpr = `(() => {
+          const target = ${JSON.stringify(args.channelUrl)};
+          if (location.href !== target) {
+            location.href = target;
+            return "navigated";
+          }
+          return "already";
+        })()`;
+        await rpc("Runtime.evaluate", {
+          expression: navigateExpr,
+          returnByValue: true,
+        });
+        // Give Discord's SPA router time to settle on the channel.
+        await sleep(900);
+
+        // Wait until the message editor exists and is focusable. Discord's
+        // editor uses Slate.js with a slate-editor div + role="textbox".
+        const focusResult = (await rpc("Runtime.evaluate", {
+          expression: `
+            (async () => {
+              const start = Date.now();
+              while (Date.now() - start < 6000) {
+                const el = document.querySelector(
+                  'div[role="textbox"][data-slate-editor="true"]'
+                );
+                if (el) {
+                  el.scrollIntoView({ block: "end" });
+                  el.focus();
+                  if (document.activeElement === el) {
+                    return { ok: true, focused: true };
+                  }
+                  // Click as fallback to force focus.
+                  const r = el.getBoundingClientRect();
+                  const ev = new MouseEvent("mousedown", {
+                    bubbles: true,
+                    clientX: r.x + r.width / 2,
+                    clientY: r.y + r.height / 2,
+                  });
+                  el.dispatchEvent(ev);
+                  el.focus();
+                  if (document.activeElement === el) {
+                    return { ok: true, focused: true };
+                  }
+                }
+                await new Promise((r) => setTimeout(r, 150));
+              }
+              return { ok: false, focused: false };
+            })()
+          `,
+          awaitPromise: true,
+          returnByValue: true,
+        })) as { result?: { result?: { value?: { ok?: boolean } } } };
+
+        const focusValue = (focusResult?.result as
+          | { value?: { ok?: boolean } }
+          | undefined)?.value;
+        if (!focusValue?.ok) {
+          throw new Error(
+            "Could not focus the Discord message editor for the channel.",
+          );
+        }
+
+        // Insert text via CDP — bypasses Slate's keystroke rules but the
+        // editor still emits proper input events on Input.insertText.
+        await rpc("Input.insertText", { text: args.text });
+        await sleep(250);
+
+        // Press Enter to send (no Shift modifier so it sends, not newline).
+        await rpc("Input.dispatchKeyEvent", {
+          type: "keyDown",
+          key: "Enter",
+          code: "Enter",
+          windowsVirtualKeyCode: 13,
+          nativeVirtualKeyCode: 13,
+        });
+        await rpc("Input.dispatchKeyEvent", {
+          type: "keyUp",
+          key: "Enter",
+          code: "Enter",
+          windowsVirtualKeyCode: 13,
+          nativeVirtualKeyCode: 13,
+        });
+
+        // Brief settle for the local echo so callers can observe delivery.
+        await sleep(700);
+        cleanup();
+        resolve();
+      } catch (error) {
+        cleanup();
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  });
+}
+
 export async function relaunchDiscordDesktopForCdp(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<DiscordDesktopCdpStatus> {
