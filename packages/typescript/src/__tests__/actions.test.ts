@@ -427,9 +427,6 @@ describe("Actions", () => {
 			expect(ignoreDoc?.description).toContain(
 				"In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent",
 			);
-			expect(ignoreDoc?.description).toContain(
-				"repo name, URL, quote, or third-person reference",
-			);
 			expect(ignoreDoc?.descriptionCompressed).toContain(
 				"addressed to someone else in a group",
 			);

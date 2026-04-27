@@ -207,7 +207,7 @@ liveDescribe("shouldRespond live", () => {
 	);
 
 	it(
-		"ignores a group request addressed to another bot with Eliza in a repo name",
+		"ignores a group request addressed to another bot",
 		async () => {
 			const result = await classify(
 				[
