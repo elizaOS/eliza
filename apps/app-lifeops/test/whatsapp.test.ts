@@ -213,7 +213,7 @@ describe("withWhatsApp mixin", () => {
   });
 
   test("getWhatsAppConnectorStatus reports local QR auth without enabling the plugin", async () => {
-    const authDir = path.join(workspaceDir, "whatsapp-auth", "default");
+    const authDir = path.join(workspaceDir, "lifeops-whatsapp-auth", "default");
     mkdirSync(authDir, { recursive: true });
     writeFileSync(path.join(authDir, "creds.json"), "{}");
     svc.runtime.getService.mockReturnValue({ connected: true });

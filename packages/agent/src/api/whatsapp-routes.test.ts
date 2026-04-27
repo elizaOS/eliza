@@ -81,23 +81,27 @@ function makeState(config: WhatsAppRouteState["config"]): WhatsAppRouteState {
 function makeDeps(
   eventFactory?: (accountId: string) => WhatsAppPairingEventLike,
 ): WhatsAppRouteDeps {
+  const createWhatsAppPairingSession = vi.fn<
+    WhatsAppRouteDeps["createWhatsAppPairingSession"]
+  >(({ accountId, onEvent }) => {
+    const status = eventFactory?.(accountId).status ?? "idle";
+    return {
+      start: vi.fn(async () => {
+        const event = eventFactory?.(accountId);
+        if (event) {
+          onEvent(event);
+        }
+      }),
+      stop: vi.fn(),
+      getStatus: vi.fn(() => status ?? "idle"),
+    };
+  });
+
   return {
     sanitizeAccountId: (accountId) => accountId,
     whatsappAuthExists: vi.fn(() => false),
     whatsappLogout: vi.fn(async () => {}),
-    createWhatsAppPairingSession: ({ accountId, onEvent }) => {
-      const status = eventFactory?.(accountId).status ?? "idle";
-      return {
-        start: vi.fn(async () => {
-          const event = eventFactory?.(accountId);
-          if (event) {
-            onEvent(event);
-          }
-        }),
-        stop: vi.fn(),
-        getStatus: vi.fn(() => status ?? "idle"),
-      };
-    },
+    createWhatsAppPairingSession,
   };
 }
 
@@ -122,6 +126,7 @@ describe("WhatsApp pairing routes", () => {
     const handled = await handleWhatsAppRoute(
       makeReq("/api/whatsapp/pair", {
         accountId: "default",
+        authScope: "lifeops",
         configurePlugin: false,
       }),
       res,
@@ -134,6 +139,15 @@ describe("WhatsApp pairing routes", () => {
     expect(handled).toBe(true);
     expect(getStatus()).toBe(200);
     expect(readBody<{ ok: boolean }>().ok).toBe(true);
+    expect(deps.createWhatsAppPairingSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        authDir: path.join(
+          state.workspaceDir,
+          "lifeops-whatsapp-auth",
+          "default",
+        ),
+      }),
+    );
     expect(config.connectors?.whatsapp).toEqual(existingConnectorConfig);
     expect(
       (
@@ -190,6 +204,7 @@ describe("WhatsApp pairing routes", () => {
     const handled = await handleWhatsAppRoute(
       makeReq("/api/whatsapp/disconnect", {
         accountId: "default",
+        authScope: "lifeops",
         configurePlugin: false,
       }),
       res,
@@ -202,10 +217,7 @@ describe("WhatsApp pairing routes", () => {
     expect(handled).toBe(true);
     expect(readBody<{ ok: boolean }>().ok).toBe(true);
     expect(config.connectors?.whatsapp).toEqual(existingConnectorConfig);
-    expect(deps.whatsappLogout).toHaveBeenCalledWith(
-      state.workspaceDir,
-      "default",
-    );
+    expect(deps.whatsappLogout).not.toHaveBeenCalled();
     expect(state.saveConfig).not.toHaveBeenCalled();
   });
 });

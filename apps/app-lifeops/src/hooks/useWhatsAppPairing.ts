@@ -27,7 +27,10 @@ const WHATSAPP_PAIRING_STATUSES: Record<WhatsAppPairingStatus, true> = {
   error: true,
 };
 
-const LIFEOPS_WHATSAPP_PAIRING_OPTIONS = { configurePlugin: false } as const;
+const LIFEOPS_WHATSAPP_PAIRING_OPTIONS = {
+  authScope: "lifeops",
+  configurePlugin: false,
+} as const;
 
 function isWhatsAppPairingStatus(
   value: unknown,
@@ -50,7 +53,7 @@ export function useWhatsAppPairing(accountId = "default") {
   useEffect(() => {
     let cancelled = false;
     void client
-      .getWhatsAppStatus(accountId)
+      .getWhatsAppStatus(accountId, LIFEOPS_WHATSAPP_PAIRING_OPTIONS)
       .then((response) => {
         if (!cancelled && response.authExists) {
           setState((previous) => ({
@@ -77,7 +80,11 @@ export function useWhatsAppPairing(accountId = "default") {
 
   useEffect(() => {
     const unbindQr = client.onWsEvent("whatsapp-qr", (data) => {
-      if (data.accountId !== accountId || typeof data.qrDataUrl !== "string") {
+      if (
+        data.accountId !== accountId ||
+        data.authScope !== "lifeops" ||
+        typeof data.qrDataUrl !== "string"
+      ) {
         return;
       }
       const qrDataUrl = data.qrDataUrl;
@@ -92,6 +99,7 @@ export function useWhatsAppPairing(accountId = "default") {
     const unbindStatus = client.onWsEvent("whatsapp-status", (data) => {
       if (
         data.accountId !== accountId ||
+        data.authScope !== "lifeops" ||
         !isWhatsAppPairingStatus(data.status)
       ) {
         return;
@@ -151,7 +159,10 @@ export function useWhatsAppPairing(accountId = "default") {
 
   const stopPairing = useCallback(async () => {
     try {
-      await client.stopWhatsAppPairing(accountId);
+      await client.stopWhatsAppPairing(
+        accountId,
+        LIFEOPS_WHATSAPP_PAIRING_OPTIONS,
+      );
       setState({
         status: "idle",
         qrDataUrl: null,
