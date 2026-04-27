@@ -362,13 +362,17 @@ function fingerprint(secret: string): string {
  * Match diagnostics that mean "n8n binary is not installed/resolvable" rather
  * than a real runtime fault. Users without n8n installed shouldn't see warn-
  * level spam every supervisor retry — those lines belong at debug.
+ *
+ * Patterns are intentionally narrow so generic "X not found" messages from a
+ * running n8n instance keep their warn level.
  */
-const BINARY_MISSING_PATTERNS: RegExp[] = [
-  /\bnot found\b/i, // sh: 1: n8n: not found, command not found, ENOENT "not found"
-  /not found on PATH/i, // preflightBinary error string
-  /exited with code 127\b/i, // npx/sh exit code for "command not found"
+const BINARY_MISSING_PATTERNS = [
+  /^sh:\s*\d+:\s*\S+:\s*not found$/i, // sh: 1: n8n: not found
+  /:\s*command not found$/i, // bash/zsh "command not found"
+  /\bnot found on PATH\b/i, // preflightBinary error string
+  /\bexited with code 127\b/i, // npx/sh exit code for "command not found"
 ];
-function isBinaryMissing(message: string): boolean {
+export function isBinaryMissingMessage(message: string): boolean {
   return BINARY_MISSING_PATTERNS.some((re) => re.test(message));
 }
 
@@ -707,7 +711,7 @@ export class N8nSidecar {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           await this.clearNpmCacheAfterJsonParseFailure();
-          if (isBinaryMissing(msg)) {
+          if (isBinaryMissingMessage(msg)) {
             logger.debug(`[n8n-sidecar] start attempt failed: ${msg}`);
           } else {
             logger.warn(`[n8n-sidecar] start attempt failed: ${msg}`);
@@ -826,7 +830,7 @@ export class N8nSidecar {
         // "binary not found" lines are user-config noise, not runtime faults,
         // so they go to debug.
         if (stream === "stderr") {
-          if (isBinaryMissing(trimmed)) {
+          if (isBinaryMissingMessage(trimmed)) {
             logger.debug(`[n8n-sidecar:stderr] ${trimmed}`);
           } else {
             logger.warn(`[n8n-sidecar:stderr] ${trimmed}`);
