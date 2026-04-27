@@ -464,10 +464,10 @@ const emptyBrowserBridgePackageStatus = {
 };
 
 const stubCharacter = {
-  name: "Chen",
-  username: "chen",
+  name: "Eliza",
+  username: "eliza",
   bio: ["A concise local assistant for UI smoke tests."],
-  system: "You are Chen, a concise assistant for UI smoke tests.",
+  system: "You are Eliza, a concise assistant for UI smoke tests.",
   adjectives: ["focused", "direct"],
   topics: [],
   style: {
@@ -1016,7 +1016,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/character") {
-    sendJson(req, res, 200, { character: stubCharacter, agentName: "Chen" });
+    sendJson(req, res, 200, { character: stubCharacter, agentName: "Eliza" });
     return;
   }
 

@@ -26,6 +26,7 @@ const localPackages = [
   "eliza/packages/plugin-browser-bridge",
   "eliza/packages/native-plugins/activity-tracker",
   "eliza/plugins/plugin-cron/typescript",
+  "eliza/plugins/plugin-sql/typescript",
   "eliza/plugins/plugin-telegram",
 ];
 
@@ -42,8 +43,18 @@ function resolveSourceExportPath(packageDir, exportPath) {
     .replace("./dist/", "./src/")
     .replace(/\.d\.ts$/, ".ts")
     .replace(/\.js$/, ".ts");
-  return pathExists(path.join(packageDir, sourcePath))
-    ? sourcePath
+  if (pathExists(path.join(packageDir, sourcePath))) {
+    return sourcePath;
+  }
+
+  const rootEntrypointPath = exportPath
+    .replace("./dist/node/", "./")
+    .replace("./dist/browser/", "./")
+    .replace("./dist/", "./")
+    .replace(/\.d\.ts$/, ".ts")
+    .replace(/\.js$/, ".ts");
+  return pathExists(path.join(packageDir, rootEntrypointPath))
+    ? rootEntrypointPath
     : exportPath;
 }
 

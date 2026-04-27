@@ -71,9 +71,7 @@ export function recordLaunchAttempt(record: LaunchAttemptRecord): void {
   saveAll([record, ...existing].slice(0, MAX));
 }
 
-export function getLaunchHistoryForApp(
-  appName: string,
-): LaunchAttemptRecord[] {
+export function getLaunchHistoryForApp(appName: string): LaunchAttemptRecord[] {
   return loadAll().filter((record) => record.appName === appName);
 }
 

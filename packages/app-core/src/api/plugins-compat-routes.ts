@@ -422,6 +422,14 @@ function resolvePersistedPluginEnabled(
   return pluginEnabled;
 }
 
+export function resolveCompatPluginEnabledForList(
+  active: boolean,
+  persistedEnabled: boolean | undefined,
+  advancedCapabilityEnabled?: boolean,
+): boolean {
+  return advancedCapabilityEnabled ?? persistedEnabled ?? active;
+}
+
 function shortPluginIdFromNpmName(npmName: string | null): string | null {
   if (!npmName || typeof npmName !== "string") {
     return null;
@@ -1001,18 +1009,18 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
     const active =
       advancedCapabilityStatus?.isActive ??
       isPluginLoaded(pluginId, entry.npmName, loadedNames);
-    const enabled =
-      advancedCapabilityStatus?.enabled ??
-      (active ||
-        Boolean(
-          resolvePersistedPluginEnabled(
-            pluginId,
-            category,
-            entry.npmName,
-            configEntries,
-            configRecord,
-          ),
-        ));
+    const persistedEnabled = resolvePersistedPluginEnabled(
+      pluginId,
+      category,
+      entry.npmName,
+      configEntries,
+      configRecord,
+    );
+    const enabled = resolveCompatPluginEnabledForList(
+      active,
+      persistedEnabled,
+      advancedCapabilityStatus?.enabled,
+    );
     const validationErrors = parameters
       .filter((parameter) => parameter.required && !parameter.isSet)
       .map((parameter) => ({

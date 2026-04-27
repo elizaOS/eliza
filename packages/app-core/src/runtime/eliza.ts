@@ -49,7 +49,6 @@ import { resolveServerOnlyPort, syncResolvedApiPort } from "@elizaos/shared";
 import { isNativeServerPlatform } from "../platform/is-native-server.js";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
-import { ensurePluginManagerAllowed } from "./plugin-manager-guard.js";
 import type { EmbeddingProgressCallback } from "./embedding-manager-support.js";
 import {
   DEFAULT_MODELS_DIR,
@@ -65,6 +64,7 @@ import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
 } from "./ensure-text-to-speech-handler.js";
+import { ensurePluginManagerAllowed } from "./plugin-manager-guard.js";
 import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
@@ -765,9 +765,7 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
           // Memory that satisfies the event-bus contract; the
           // trigger-event-bridge only reads roomId / source / kind.
           try {
-            const telegramRoomId = stringToUuid(
-              `telegram:${chatId}`,
-            ) as UUID;
+            const telegramRoomId = stringToUuid(`telegram:${chatId}`) as UUID;
             const entityId = stringToUuid(
               `telegram-user:${username}:${chatId}`,
             ) as UUID;

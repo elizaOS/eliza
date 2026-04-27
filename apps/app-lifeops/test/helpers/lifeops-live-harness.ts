@@ -599,7 +599,7 @@ export async function startLifeOpsLiveRuntime(options?: {
               typeof assistantConfig.name === "string" &&
               assistantConfig.name.trim().length > 0
                 ? assistantConfig.name
-                : "Chen",
+                : "Eliza",
           },
         },
         plugins: {

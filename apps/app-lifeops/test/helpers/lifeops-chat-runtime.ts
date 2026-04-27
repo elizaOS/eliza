@@ -400,7 +400,7 @@ export function createLifeOpsChatTestRuntime(options: {
     agentId: options.agentId,
     actions: options.actions ?? [],
     character: {
-      name: options.characterName ?? "Chen",
+      name: options.characterName ?? "Eliza",
       postExamples: ["Sure."],
     } as AgentRuntime["character"],
     logger:
