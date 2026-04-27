@@ -44,7 +44,12 @@ function claudeHasDeterministicAuth(): boolean {
     return true;
   }
 
-  return fs.existsSync(path.join(os.homedir(), ".claude", ".credentials.json"));
+  // Accept either the per-app credentials file or the OAuth-token file at
+  // ~/.claude.json — same set the live e2e wrapper accepts.
+  return (
+    fs.existsSync(path.join(os.homedir(), ".claude", ".credentials.json")) ||
+    fs.existsSync(path.join(os.homedir(), ".claude.json"))
+  );
 }
 
 function isFrameworkAuthenticated(framework: Framework): boolean {
@@ -532,12 +537,10 @@ const APP_CREATE_DONE_RE = /APP_CREATE_DONE\s+(\{[\s\S]*?\})/m;
  * cycle, plus ~10s for the verification.
  */
 async function runCounterAppSmoke(agentType: Framework): Promise<void> {
-  const repoRoot = path.resolve(
-    path.dirname(path.dirname(path.dirname(import.meta.dirname))),
-    "..",
-    "..",
-  );
-  const templateSrc = path.join(repoRoot, "templates", "min-app");
+  // import.meta.dirname → .../eliza/packages/app-core/test/scripts
+  // 4 levels up reaches the eliza repo root where templates/min-app lives.
+  const elizaRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+  const templateSrc = path.join(elizaRoot, "templates", "min-app");
   if (!fs.existsSync(templateSrc)) {
     throw new Error(
       `min-app template not found at ${templateSrc} — re-check repo layout`,
