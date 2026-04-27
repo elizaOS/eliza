@@ -44,8 +44,27 @@ export async function runLaunch({
 		return { success: false, text, data: { candidates } };
 	}
 
+	if (resolution.kind === "none") {
+		const text = `No installed app matches "${target}". Try \`mode=list\` to see what's available, or \`mode=create\` to scaffold a new one.`;
+		await callback?.({ text });
+		return { success: false, text, data: { target } };
+	}
+
 	const appName = resolution.match?.name ?? target;
-	const result = await client.launchApp(appName);
+	let result: Awaited<ReturnType<AppControlClient["launchApp"]>>;
+	try {
+		result = await client.launchApp(appName);
+	} catch (err) {
+		// Don't propagate — a thrown launch (HTTP 4xx/5xx, network error,
+		// race with concurrent uninstall) must not crash the planner turn.
+		const message = err instanceof Error ? err.message : String(err);
+		const text = `Failed to launch ${appName}: ${message}`;
+		logger.warn(
+			`[plugin-app-control] APP/launch ${appName} failed: ${message}`,
+		);
+		await callback?.({ text });
+		return { success: false, text, error: message };
+	}
 	const runId = result.run?.runId ?? null;
 	const text = runId
 		? `Launched ${result.displayName}. Run ID: ${runId}.`

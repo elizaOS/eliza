@@ -184,11 +184,7 @@ const SCREEN_SHELL_CLASS =
 const SCREEN_CARD_CLASS =
   "relative z-10 w-full max-w-[520px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-xl";
 
-export function LoginView({
-  onLoginSuccess,
-  loginFn,
-  reason,
-}: LoginViewProps) {
+export function LoginView({ onLoginSuccess, loginFn, reason }: LoginViewProps) {
   const remotePasswordMissing = reason === "remote_password_not_configured";
 
   return (

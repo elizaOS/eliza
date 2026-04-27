@@ -4,6 +4,11 @@ import {
   useApp,
   useRenderGuard,
 } from "@elizaos/app-core";
+// Static import: CharacterEditor is statically re-exported by app-core's
+// browser entry, so the previous lazy() was eagerly merged back into the
+// main chunk. Drop the wrapper to silence the dynamic↔static collision
+// warning and remove the unnecessary Suspense boundary overhead.
+import { CharacterEditor } from "@elizaos/app-core/components/character/CharacterEditor";
 import { usePtySessions } from "@elizaos/app-core/state/PtySessionsContext";
 import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 import {
@@ -20,12 +25,6 @@ import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { EmotePicker } from "./EmotePicker";
 import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
-
-// Static import: CharacterEditor is statically re-exported by app-core's
-// browser entry, so the previous lazy() was eagerly merged back into the
-// main chunk. Drop the wrapper to silence the dynamic↔static collision
-// warning and remove the unnecessary Suspense boundary overhead.
-import { CharacterEditor } from "@elizaos/app-core/components/character/CharacterEditor";
 
 const COMPANION_UI_REVEAL_FALLBACK_MS = 1400;
 const COMPANION_DOCK_HEIGHT = "min(42vh, 24rem)";

@@ -326,25 +326,22 @@ export function AppsView() {
    * `subPath` is appended after the slug so `/apps/<slug>/details` shows
    * the details page instead of launching directly.
    */
-  const pushAppsUrl = useCallback(
-    (slug?: string, subPath?: "details") => {
-      try {
-        const path = slug
-          ? subPath
-            ? `/apps/${slug}/${subPath}`
-            : `/apps/${slug}`
-          : "/apps";
-        if (shouldUseHashNavigation()) {
-          window.location.hash = path;
-        } else {
-          window.history.replaceState(null, "", path);
-        }
-      } catch {
-        /* ignore — sandboxed iframe or SSR */
+  const pushAppsUrl = useCallback((slug?: string, subPath?: "details") => {
+    try {
+      const path = slug
+        ? subPath
+          ? `/apps/${slug}/${subPath}`
+          : `/apps/${slug}`
+        : "/apps";
+      if (shouldUseHashNavigation()) {
+        window.location.hash = path;
+      } else {
+        window.history.replaceState(null, "", path);
       }
-    },
-    [],
-  );
+    } catch {
+      /* ignore — sandboxed iframe or SSR */
+    }
+  }, []);
 
   // Track the current `/apps/<slug>/details` slug for the details-page
   // routing. Listens to hashchange + popstate so back/forward navigation
@@ -357,9 +354,7 @@ export function AppsView() {
   useEffect(() => {
     const handle = () => {
       const parsed = parseAppsRoute(getCurrentAppsPath());
-      setAppsDetailsSlug(
-        parsed.action === "details" ? parsed.slug : null,
-      );
+      setAppsDetailsSlug(parsed.action === "details" ? parsed.slug : null);
     };
     window.addEventListener("hashchange", handle);
     window.addEventListener("popstate", handle);
@@ -896,6 +891,7 @@ export function AppsView() {
       setState,
       setTab,
       t,
+      isAppWindow,
     ],
   );
 
@@ -1203,9 +1199,7 @@ export function AppsView() {
               className="h-3.5 w-3.5 accent-accent"
               checked={appWindowLaunchEnabled}
               onChange={(event) =>
-                handleAppWindowLaunchEnabledChange(
-                  event.currentTarget.checked,
-                )
+                handleAppWindowLaunchEnabledChange(event.currentTarget.checked)
               }
             />
             <span>Open apps in windows</span>

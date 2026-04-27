@@ -23,6 +23,8 @@ export interface SubscriptionStatusProps {
   resolvedSelectedId: string | null;
   subscriptionStatus: Array<{
     provider: string;
+    accountId: string;
+    label: string;
     configured: boolean;
     valid: boolean;
     expiresAt: number | null;

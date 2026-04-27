@@ -158,7 +158,7 @@ export type ExecToolConfig = {
     enabled?: boolean;
     /**
      * Optional allowlist of model ids that can use apply_patch.
-     * Accepts either raw ids (e.g. "gpt-5.4") or full ids (e.g. "openai/gpt-5.4").
+     * Accepts either raw ids (e.g. "gpt-5.5") or full ids (e.g. "openai/gpt-5.5").
      */
     allowModels?: string[];
   };
