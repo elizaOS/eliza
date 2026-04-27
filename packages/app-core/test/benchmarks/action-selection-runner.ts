@@ -437,6 +437,30 @@ async function seedBenchmarkCaseFixtures(
   runtime: AgentRuntime,
   userEntityId: string,
 ): Promise<void> {
+  // 1) Ensure the LifeOps plugin schema (incl. life_scheduling_negotiations,
+  //    life_scheduling_proposals, life_connector_grants, life_relationships)
+  //    is migrated against the per-case PGLite adapter. Idempotent — safe to
+  //    call even when the runtime already ran plugin migrations at boot.
+  try {
+    const { LifeOpsRepository } = (await import(
+      // @ts-expect-error — workspace package resolved at runtime
+      "@elizaos/app-lifeops/lifeops/repository"
+    )) as {
+      LifeOpsRepository: {
+        bootstrapSchema?: (r: AgentRuntime) => Promise<void>;
+      };
+    };
+    if (typeof LifeOpsRepository.bootstrapSchema === "function") {
+      await LifeOpsRepository.bootstrapSchema(runtime);
+    }
+  } catch (error) {
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, error: String(error) },
+      "seedBenchmarkCaseFixtures: lifeops schema bootstrap skipped",
+    );
+  }
+
+  // 2) Seed a David relationship row used by relationship-flow benchmark cases.
   try {
     const now = new Date().toISOString();
     const { LifeOpsRepository } = await import(
@@ -454,7 +478,16 @@ async function seedBenchmarkCaseFixtures(
             rel: Record<string, unknown>,
           ) => Promise<unknown>;
         }
-      ).upsertRelationship({
+      const upsert = (
+        repo as unknown as {
+          upsertRelationship: (
+            rel: Record<string, unknown>,
+          ) => Promise<unknown>;
+        }
+      ).upsertRelationship.bind(repo);
+
+      // Generic personal contact (used by rel-* and follow-up cases).
+      await upsert({
         id: crypto.randomUUID(),
         agentId: runtime.agentId,
         name: "David",
@@ -470,12 +503,103 @@ async function seedBenchmarkCaseFixtures(
         createdAt: now,
         updatedAt: now,
       });
+
+      // Counterparty fixtures referenced by scheduling cases. Without
+      // these, OWNER_CALENDAR(negotiate_start) fails downstream with
+      // SCHEDULING_NO_COUNTERPARTY_CONTACT because the design-team /
+      // Marco / engineering-discord references can't resolve to a known
+      // relationship row.
+      const counterparties = [
+        {
+          name: "design team",
+          primaryChannel: "email" as const,
+          primaryHandle: "design@example.com",
+          email: "design@example.com",
+          relationshipType: "team",
+        },
+        {
+          name: "Marco",
+          primaryChannel: "email" as const,
+          primaryHandle: "marco@example.com",
+          email: "marco@example.com",
+          relationshipType: "colleague",
+        },
+        {
+          name: "Sarah",
+          primaryChannel: "email" as const,
+          primaryHandle: "sarah@example.com",
+          email: "sarah@example.com",
+          relationshipType: "colleague",
+        },
+      ];
+      for (const cp of counterparties) {
+        await upsert({
+          id: crypto.randomUUID(),
+          agentId: runtime.agentId,
+          name: cp.name,
+          primaryChannel: cp.primaryChannel,
+          primaryHandle: cp.primaryHandle,
+          email: cp.email,
+          phone: null,
+          notes: "benchmark fixture",
+          tags: ["benchmark", "counterparty"],
+          relationshipType: cp.relationshipType,
+          lastContactedAt: null,
+          metadata: {},
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
     }
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId },
+      "seedBenchmarkCaseFixtures: relationship seeded",
+    );
   } catch (error) {
     // Relationships plugin may not be loaded in every benchmark variant.
     runtime.logger?.debug?.(
       { src: "benchmark", userEntityId, error: String(error) },
       "seedBenchmarkCaseFixtures: relationship seed skipped",
+    );
+  }
+
+  // 3) Seed a Google OAuth connector grant + token file so calendar/inbox
+  //    cases can reach the mock Google server. The mock's
+  //    `refreshGoogleTokensFromSeededGrants` reads plain-JSON files under
+  //    `${MILADY_STATE_DIR}/credentials/lifeops/google/...` and indexes them
+  //    by `accessToken`. The lifeops handler reads the same file via
+  //    `readStoredGoogleTokenFile`, which transparently supports legacy
+  //    plaintext tokens, so a single plain-JSON write satisfies both sides.
+  try {
+    const seedModule = (await import(
+      // @ts-expect-error — path resolved at runtime relative to repo root
+      "../../../../../test/mocks/helpers/seed-grants.ts"
+    )) as {
+      seedGoogleConnectorGrant: (
+        runtime: AgentRuntime,
+        opts?: {
+          capabilities?: string[];
+          email?: string;
+          grantId?: string;
+          side?: "owner" | "agent";
+        },
+      ) => Promise<void>;
+    };
+    await seedModule.seedGoogleConnectorGrant(runtime, {
+      grantId: `bench-google-${runtime.agentId}`,
+      email: "owner@example.test",
+    });
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, agentId: runtime.agentId },
+      "seedBenchmarkCaseFixtures: google connector grant seeded",
+    );
+  } catch (error) {
+    // Mock seed helper not on disk in non-mocked benchmark runs, or lifeops
+    // package not available. Either way: not fatal — only the calendar/inbox
+    // cases will be affected.
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, error: String(error) },
+      "seedBenchmarkCaseFixtures: google grant seed skipped",
     );
   }
 }
