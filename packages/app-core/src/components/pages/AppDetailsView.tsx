@@ -7,6 +7,12 @@
  */
 
 import {
+  Pin,
+  PinOff,
+  Settings as SettingsIcon,
+  TriangleAlert,
+} from "lucide-react";
+import {
   type JSX,
   useCallback,
   useEffect,
@@ -14,24 +20,30 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  Pin,
-  PinOff,
-  Settings as SettingsIcon,
-  TriangleAlert,
-} from "lucide-react";
-import { type RegistryAppInfo } from "../../api";
-import { useRegistryCatalog } from "../apps/useRegistryCatalog";
+import type { RegistryAppInfo } from "../../api";
 import { invokeDesktopBridgeRequest } from "../../bridge";
 import { useApp } from "../../state/useApp";
+import { getWidgetComponent } from "../../widgets/registry";
+import type { PluginWidgetDeclaration } from "../../widgets/types";
+import {
+  isWidgetVisible,
+  loadChatSidebarVisibility,
+  saveChatSidebarVisibility,
+  widgetVisibilityKey,
+} from "../../widgets/visibility";
 import { findAppBySlug, getAppSlug } from "../apps/helpers";
 import {
   getInternalToolAppDescriptors,
   getInternalToolAppHasDetailsPage,
-  getInternalToolAppTargetTab,
   getInternalToolApps,
+  getInternalToolAppTargetTab,
   isInternalToolApp,
 } from "../apps/internal-tool-apps";
+import {
+  getLaunchHistoryForApp,
+  type LaunchAttemptRecord,
+  recordLaunchAttempt,
+} from "../apps/launch-history";
 import {
   getAllOverlayApps,
   isOverlayApp,
@@ -44,19 +56,7 @@ import {
   savePerAppConfig,
   subscribePerAppConfig,
 } from "../apps/per-app-config";
-import {
-  getLaunchHistoryForApp,
-  type LaunchAttemptRecord,
-  recordLaunchAttempt,
-} from "../apps/launch-history";
-import {
-  isWidgetVisible,
-  loadChatSidebarVisibility,
-  saveChatSidebarVisibility,
-  widgetVisibilityKey,
-} from "../../widgets/visibility";
-import { getWidgetComponent } from "../../widgets/registry";
-import type { PluginWidgetDeclaration } from "../../widgets/types";
+import { useRegistryCatalog } from "../apps/useRegistryCatalog";
 
 interface AppDetailsViewProps {
   slug: string;
@@ -196,11 +196,7 @@ function WidgetPreview({
   }
   return (
     <div className="rounded-md border border-border/40 bg-card/30 p-3">
-      <Component
-        pluginId={pluginId}
-        events={[]}
-        clearEvents={() => {}}
-      />
+      <Component pluginId={pluginId} events={[]} clearEvents={() => {}} />
     </div>
   );
 }
@@ -235,7 +231,9 @@ export function AppDetailsView({
       const merged: PerAppConfig = {
         launchMode: next.launchMode ?? config.launchMode,
         alwaysOnTop:
-          next.alwaysOnTop !== undefined ? next.alwaysOnTop : config.alwaysOnTop,
+          next.alwaysOnTop !== undefined
+            ? next.alwaysOnTop
+            : config.alwaysOnTop,
         settings: next.settings ?? config.settings,
       };
       setConfig(merged);
@@ -500,9 +498,7 @@ export function AppDetailsView({
                   </span>
                   <span
                     className={
-                      entry.succeeded
-                        ? "text-accent"
-                        : "text-destructive"
+                      entry.succeeded ? "text-accent" : "text-destructive"
                     }
                   >
                     {entry.succeeded ? "OK" : "FAILED"}
@@ -659,4 +655,3 @@ export function appNeedsDetailsPage(name: string): boolean {
   }
   return false;
 }
-

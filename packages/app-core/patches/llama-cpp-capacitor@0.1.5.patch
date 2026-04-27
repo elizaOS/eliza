@@ -37,3 +37,21 @@ index 772361a..c76814f 100644
      }
      
      compileOptions {
+diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
+index 0000000..0000001 100644
+--- a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
++++ b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
+@@ -315,8 +315,11 @@
+             System.loadLibrary(libraryName);
+             Log.i(TAG, "Successfully loaded llama-cpp native library: " + libraryName);
+         } catch (UnsatisfiedLinkError e) {
+-            Log.e(TAG, "Failed to load llama-cpp native library: " + e.getMessage());
+-            throw e;
++            // Don't re-throw — the plugin's static initializer would crash
++            // the entire host app even when llama-cpp isn't actually used.
++            // Native API calls will fail later with their own errors; that's
++            // the appropriate failure surface, not a process-level kill.
++            Log.e(TAG, "Failed to load llama-cpp native library (continuing without on-device inference): " + e.getMessage());
+         }
+     }
+ 

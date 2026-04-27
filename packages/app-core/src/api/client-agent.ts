@@ -87,12 +87,6 @@ import {
   mapTaskThreadsToCodingAgentSessions,
 } from "./client-types";
 
-type RolodexGraphQuery = RelationshipsGraphQuery;
-type RolodexGraphSnapshot = RelationshipsGraphSnapshot;
-type RolodexGraphStats = RelationshipsGraphStats;
-type RolodexPersonDetail = RelationshipsPersonDetail;
-type RolodexPersonSummary = RelationshipsPersonSummary;
-
 // ---------------------------------------------------------------------------
 // Module-level helpers
 // ---------------------------------------------------------------------------
@@ -440,12 +434,6 @@ declare module "./client-base" {
       targetEntityId: string,
       evidence?: Record<string, unknown>,
     ): Promise<{ id: string; status: string }>;
-    getRolodexGraph(query?: RolodexGraphQuery): Promise<RolodexGraphSnapshot>;
-    getRolodexPeople(query?: RolodexGraphQuery): Promise<{
-      people: RolodexPersonSummary[];
-      stats: RolodexGraphStats;
-    }>;
-    getRolodexPerson(id: string): Promise<RolodexPersonDetail>;
     getCharacter(): Promise<{
       character: CharacterData;
       agentName: string;
@@ -1014,14 +1002,16 @@ ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
     );
     return res.status;
   } catch {
-    // Back-compat for older runtimes that still expose the legacy restart path.
-    const legacy = await this.fetch<{ status: AgentStatus }>(
-      "/api@elizaos/agent/restart",
-      {
-        method: "POST",
-      },
-    );
-    return legacy.status;
+    // Back-compat for older runtimes that still expose only the process-level
+    // restart endpoint.
+    await this.fetch<{ ok: boolean }>("/api/restart", { method: "POST" });
+    return {
+      state: "restarting",
+      agentName: "Eliza",
+      model: undefined,
+      uptime: undefined,
+      startedAt: undefined,
+    };
   }
 };
 
@@ -1747,27 +1737,6 @@ ElizaClient.prototype.proposeRelationshipsLink = async function (
     },
   );
   return response.data;
-};
-
-ElizaClient.prototype.getRolodexGraph = async function (
-  this: ElizaClient,
-  query,
-) {
-  return this.getRelationshipsGraph(query);
-};
-
-ElizaClient.prototype.getRolodexPeople = async function (
-  this: ElizaClient,
-  query,
-) {
-  return this.getRelationshipsPeople(query);
-};
-
-ElizaClient.prototype.getRolodexPerson = async function (
-  this: ElizaClient,
-  id,
-) {
-  return this.getRelationshipsPerson(id);
 };
 
 ElizaClient.prototype.getCharacter = async function (this: ElizaClient) {

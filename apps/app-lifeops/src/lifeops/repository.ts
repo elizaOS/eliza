@@ -153,11 +153,9 @@ export interface LifeOpsScheduleInsightRecord extends LifeOpsScheduleInsight {
   updatedAt: string;
 }
 
-export interface LifeOpsScheduleObservationRecord
-  extends LifeOpsScheduleObservation {}
+export interface LifeOpsScheduleObservationRecord extends LifeOpsScheduleObservation {}
 
-export interface LifeOpsScheduleMergedStateRecord
-  extends LifeOpsScheduleMergedState {}
+export interface LifeOpsScheduleMergedStateRecord extends LifeOpsScheduleMergedState {}
 
 export type LifeOpsPersistedSleepEpisodeSource =
   | LifeOpsSleepCycleEvidence["source"]
@@ -1725,6 +1723,13 @@ function parseDossier(row: Record<string, unknown>): LifeOpsDossier {
   };
 }
 
+function isMissingInboxCacheTableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /no such table: life_inbox_messages|relation ["']?life_inbox_messages["']? does not exist|undefined table/i.test(
+    message,
+  );
+}
+
 export class LifeOpsRepository {
   /**
    * Per-agent counter for telemetry-mirror failures inside
@@ -1768,6 +1773,43 @@ export class LifeOpsRepository {
         force: process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true",
         dryRun: false,
       },
+    );
+    await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
+  }
+
+  static async ensureInboxCacheIndexes(runtime: IAgentRuntime): Promise<void> {
+    try {
+      await executeRawSql(
+        runtime,
+        "SELECT 1 FROM life_inbox_messages WHERE 1=0",
+      );
+    } catch (error) {
+      if (isMissingInboxCacheTableError(error)) {
+        return;
+      }
+      throw error;
+    }
+
+    await executeRawSql(
+      runtime,
+      `DELETE FROM life_inbox_messages
+        WHERE id IN (
+          SELECT id
+            FROM (
+              SELECT id,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY agent_id, channel, external_id
+                       ORDER BY updated_at DESC, cached_at DESC, id DESC
+                     ) AS row_number
+                FROM life_inbox_messages
+            ) ranked
+           WHERE row_number > 1
+        )`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_inbox_messages_agent_channel_external
+         ON life_inbox_messages (agent_id, channel, external_id)`,
     );
   }
 

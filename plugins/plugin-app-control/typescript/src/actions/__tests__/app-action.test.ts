@@ -4,10 +4,20 @@
  * Multi-turn validate semantics for the unified APP action.
  */
 
-import type { IAgentRuntime, Memory, Task } from "@elizaos/core";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import type {
+	ActionResult,
+	HandlerOptions,
+	IAgentRuntime,
+	Memory,
+	Task,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
+import type { AppControlClient } from "../../client/api.js";
 import { createAppAction } from "../app.js";
-import { APP_CREATE_INTENT_TAG } from "../app-create.js";
+import { APP_CREATE_INTENT_TAG, runCreate } from "../app-create.js";
 
 interface FakeRuntimeOptions {
 	tasks?: Task[];
@@ -161,10 +171,101 @@ describe("APP action validate (multi-turn)", () => {
 		expect(result).toBe(false);
 	});
 
-	it("registers all legacy single-purpose action names as similes", () => {
+	it("registers only canonical management similes", () => {
 		const action = createAppAction({});
-		expect(action.similes).toContain("LAUNCH_APP");
-		expect(action.similes).toContain("CLOSE_APP");
-		expect(action.similes).toContain("LIST_RUNNING_APPS");
+		expect(action.similes).toEqual(["APP_CONTROL", "MANAGE_APPS"]);
+	});
+});
+
+describe("APP create dispatch", () => {
+	it("passes verifier policy through CREATE_TASK parameters with canonical completion proof", async () => {
+		const repoRoot = await mkdtemp(path.join(tmpdir(), "milady-app-create-"));
+		try {
+			const templateDir = path.join(repoRoot, "eliza/templates/min-app");
+			await mkdir(templateDir, { recursive: true });
+			await writeFile(
+				path.join(templateDir, "package.json"),
+				'{"name":"__APP_NAME__","displayName":"__APP_DISPLAY_NAME__"}\n',
+				"utf8",
+			);
+
+			const createTaskResult: ActionResult = {
+				success: true,
+				text: "",
+				data: {
+					agents: [
+						{
+							sessionId: "session-app-1",
+							agentType: "codex",
+							workdir: "/tmp/task-workdir",
+							label: "create-app:note-taker",
+							status: "running",
+						},
+					],
+				},
+			};
+			const createTaskHandler = vi.fn(async () => createTaskResult);
+			const runtime = {
+				agentId: "agent-1",
+				actions: [{ name: "CREATE_TASK", handler: createTaskHandler }],
+				getTasks: vi.fn(async () => []),
+				createTask: vi.fn(async () => "task-id"),
+				deleteTask: vi.fn(async () => {}),
+				useModel: vi.fn(
+					async () => "name: note-taker\ndisplayName: Note Taker",
+				),
+			} as unknown as IAgentRuntime;
+			const client = {
+				listInstalledApps: vi.fn(async () => []),
+			} as unknown as AppControlClient;
+			const callback = vi.fn(async () => []);
+
+			const result = await runCreate({
+				runtime,
+				client,
+				message: makeMessage("build me a note taking app"),
+				callback,
+				repoRoot,
+			});
+
+			expect(result.success).toBe(true);
+			expect(result.text).toContain("Task session session-app-1 is running");
+			expect(createTaskHandler).toHaveBeenCalledTimes(1);
+
+			const handlerOptions = (
+				createTaskHandler.mock.calls[0] as unknown[]
+			)[3] as HandlerOptions;
+			const parameters = handlerOptions.parameters as Record<string, unknown>;
+			expect(parameters.task).toContain(
+				'APP_CREATE_DONE {"appName":"note-taker"',
+			);
+			expect(parameters.task).toContain("bun run typecheck");
+			expect(parameters.task).toContain("bun run lint");
+			expect(parameters.task).toContain("bun run test");
+			expect(parameters).toMatchObject({
+				label: "create-app:note-taker",
+				approvalPreset: "permissive",
+				onVerificationFail: "retry",
+			});
+			expect(parameters.agentType).toBeUndefined();
+			expect(parameters.env).toBeUndefined();
+			expect(
+				(handlerOptions as Record<string, unknown>).validator,
+			).toBeUndefined();
+			expect((handlerOptions as Record<string, unknown>).env).toBeUndefined();
+			expect(JSON.stringify(handlerOptions)).not.toContain("ANTHROPIC_MODEL");
+
+			const validator = parameters.validator as Record<string, unknown>;
+			expect(validator).toMatchObject({
+				service: "app-verification",
+				method: "verifyApp",
+				params: {
+					appName: "note-taker",
+					profile: "full",
+				},
+			});
+		} finally {
+			await rm(repoRoot, { recursive: true, force: true });
+		}
 	});
 });

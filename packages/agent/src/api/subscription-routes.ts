@@ -3,6 +3,11 @@ import type { AnthropicFlow } from "../auth/anthropic.js";
 import type { CodexFlow } from "../auth/openai-codex.js";
 import type { OAuthCredentials } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
+import type {
+  LinkedAccountConfig,
+  LinkedAccountHealth,
+  LinkedAccountUsage,
+} from "../contracts/service-routing.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 
 type AuthModule = typeof import("../auth/index");
@@ -49,7 +54,31 @@ export async function handleSubscriptionRoutes(
   if (method === "GET" && pathname === "/api/subscription/status") {
     try {
       const { getSubscriptionStatus } = await loadSubscriptionAuth();
-      json(res, { providers: getSubscriptionStatus() });
+      const baseRows = getSubscriptionStatus();
+      // Join each per-account row with its rich LinkedAccountConfig
+      // entry from `milady.json` (priority, enabled, health, usage).
+      // CLI / setup-token / Claude Code rows have synthetic accountIds
+      // and no config-level row — they pass through unchanged so the
+      // UI's existing `find(s => s.provider === ...)` keeps working.
+      const linkedAccounts = readRichLinkedAccounts(state.config);
+      const rows = baseRows.map((row) => {
+        const linked = linkedAccounts[row.accountId];
+        if (!linked || linked.providerId !== row.provider) return row;
+        const enriched: typeof row & {
+          priority: number;
+          enabled: boolean;
+          health: LinkedAccountHealth;
+          usage?: LinkedAccountUsage;
+        } = {
+          ...row,
+          priority: linked.priority,
+          enabled: linked.enabled,
+          health: linked.health,
+          ...(linked.usage ? { usage: linked.usage } : {}),
+        };
+        return enriched;
+      });
+      json(res, { providers: rows });
     } catch (err) {
       logger.error(`[api] Failed to get subscription status: ${String(err)}`);
       error(res, "Failed to get subscription status", 500);
@@ -272,4 +301,36 @@ export async function handleSubscriptionRoutes(
   }
 
   return false;
+}
+
+/**
+ * Read rich `LinkedAccountConfig` rows out of the dual-shape
+ * `linkedAccounts` config bag. Skips legacy
+ * `LinkedAccountFlagConfig` entries (provider-name keys like
+ * `elizacloud`) — those are filtered out by the shape check.
+ */
+function readRichLinkedAccounts(
+  config: ElizaConfig,
+): Record<string, LinkedAccountConfig> {
+  const bag = config.linkedAccounts as
+    | Record<string, unknown>
+    | undefined;
+  if (!bag) return {};
+  const out: Record<string, LinkedAccountConfig> = {};
+  for (const [key, value] of Object.entries(bag)) {
+    if (!value || typeof value !== "object") continue;
+    const candidate = value as Partial<LinkedAccountConfig>;
+    if (
+      typeof candidate.id === "string" &&
+      typeof candidate.providerId === "string" &&
+      typeof candidate.label === "string" &&
+      typeof candidate.enabled === "boolean" &&
+      typeof candidate.priority === "number" &&
+      typeof candidate.createdAt === "number" &&
+      typeof candidate.health === "string"
+    ) {
+      out[key] = candidate as LinkedAccountConfig;
+    }
+  }
+  return out;
 }
