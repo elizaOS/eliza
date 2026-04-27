@@ -273,7 +273,7 @@ export function StartupShell() {
       className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden"
     >
       <img
-        src={resolveAppAssetUrl("splash-bg.jpg")}
+        src={resolveAppAssetUrl("splash-bg.png")}
         alt=""
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
