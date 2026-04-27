@@ -359,6 +359,20 @@ function fingerprint(secret: string): string {
 }
 
 /**
+ * Match diagnostics that mean "n8n binary is not installed/resolvable" rather
+ * than a real runtime fault. Users without n8n installed shouldn't see warn-
+ * level spam every supervisor retry — those lines belong at debug.
+ */
+const BINARY_MISSING_PATTERNS: RegExp[] = [
+  /\bnot found\b/i, // sh: 1: n8n: not found, command not found, ENOENT "not found"
+  /not found on PATH/i, // preflightBinary error string
+  /exited with code 127\b/i, // npx/sh exit code for "command not found"
+];
+function isBinaryMissing(message: string): boolean {
+  return BINARY_MISSING_PATTERNS.some((re) => re.test(message));
+}
+
+/**
  * Extract the n8n-auth cookie from a `Response` for re-use on subsequent
  * calls. Returns a ready-to-send `Cookie:` header value, or null if the
  * response didn't set one. Tolerates fetch implementations that expose
@@ -693,7 +707,11 @@ export class N8nSidecar {
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           await this.clearNpmCacheAfterJsonParseFailure();
-          logger.warn(`[n8n-sidecar] start attempt failed: ${msg}`);
+          if (isBinaryMissing(msg)) {
+            logger.debug(`[n8n-sidecar] start attempt failed: ${msg}`);
+          } else {
+            logger.warn(`[n8n-sidecar] start attempt failed: ${msg}`);
+          }
           this.cancelRetryResetTimer();
           this.setState({
             status: "starting",
@@ -805,8 +823,14 @@ export class N8nSidecar {
         this.recordOutput(`[${stream}] ${trimmed}`);
         // Surface n8n errors at warn so they land in the dev-server log even
         // when debug is off — the sidecar was silent before when n8n died.
+        // "binary not found" lines are user-config noise, not runtime faults,
+        // so they go to debug.
         if (stream === "stderr") {
-          logger.warn(`[n8n-sidecar:stderr] ${trimmed}`);
+          if (isBinaryMissing(trimmed)) {
+            logger.debug(`[n8n-sidecar:stderr] ${trimmed}`);
+          } else {
+            logger.warn(`[n8n-sidecar:stderr] ${trimmed}`);
+          }
         } else {
           logger.debug(`[n8n-sidecar:stdout] ${trimmed}`);
         }
