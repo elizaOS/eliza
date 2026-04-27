@@ -510,6 +510,63 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
 
       return [];
     }
+
+    async sendSignalMessage(request: {
+      side?: LifeOpsConnectorSide;
+      recipient: string;
+      text: string;
+    }): Promise<{
+      provider: "signal";
+      side: LifeOpsConnectorSide;
+      recipient: string;
+      ok: true;
+      timestamp: number;
+    }> {
+      const normalizedSide =
+        normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
+      const recipient = request.recipient.trim();
+      const text = request.text.trim();
+      if (!recipient) {
+        fail(400, "recipient is required");
+      }
+      if (!text) {
+        fail(400, "text is required");
+      }
+
+      const status = await this.getSignalConnectorStatus(normalizedSide);
+      if (!status.connected) {
+        fail(409, "Signal is not connected.");
+      }
+      if (!status.grantedCapabilities.includes("signal.send")) {
+        fail(403, "Signal send capability is not granted.");
+      }
+
+      const signalService = this.runtime.getService("signal") as
+        | {
+            sendMessage?: (
+              recipient: string,
+              text: string,
+            ) => Promise<{ timestamp?: number }>;
+          }
+        | null;
+      if (typeof signalService?.sendMessage !== "function") {
+        fail(503, "Signal send service is not available.");
+      }
+
+      const result = await signalService.sendMessage(recipient, text);
+      const timestamp =
+        typeof result.timestamp === "number" && Number.isFinite(result.timestamp)
+          ? result.timestamp
+          : Date.now();
+
+      return {
+        provider: "signal",
+        side: normalizedSide,
+        recipient,
+        ok: true,
+        timestamp,
+      };
+    }
   }
 
   return LifeOpsSignalServiceMixin;
