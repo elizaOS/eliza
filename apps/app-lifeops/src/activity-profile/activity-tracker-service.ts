@@ -85,6 +85,7 @@ export class ActivityTrackerService extends Service {
     }
 
     try {
+      await LifeOpsRepository.bootstrapSchema(this.runtime);
       this.handle = startActivityCollector({
         onEvent: (event) => {
           this.enqueueEvent(event);
@@ -117,7 +118,7 @@ export class ActivityTrackerService extends Service {
       const message = err instanceof Error ? err.message : String(err);
       logger.warn(
         { err: message },
-        "[activity-tracker] Failed to start macOS collector; reports will be empty until resolved.",
+        "[activity-tracker] Failed to initialize macOS collector; reports will be empty until resolved.",
       );
     }
   }
