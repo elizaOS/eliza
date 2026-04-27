@@ -810,6 +810,7 @@ function nativeModuleStubPlugin(): Plugin {
     "@elizaos/plugin-sql",
     "@elizaos/plugin-agent-skills",
     "@elizaos/plugin-agent-orchestrator",
+    "@elizaos/plugin-whatsapp",
   ]);
   if (!IS_CAPACITOR_MOBILE_BUILD) {
     // Mobile-only Capacitor llama.cpp runtime. Web/Electrobun builds stub it,
@@ -1716,6 +1717,9 @@ export default defineConfig({
       "@puppeteer/browsers",
       // Native LLM embedding — uses node-llama-cpp, never runs in browser
       "@elizaos/plugin-local-embedding",
+      // Node-only connector; LifeOps server services may dynamically import it,
+      // but the renderer must not parse its Baileys/qrcode-terminal graph.
+      "@elizaos/plugin-whatsapp",
     ],
   },
   build: {
