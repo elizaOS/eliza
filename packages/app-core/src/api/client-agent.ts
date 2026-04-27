@@ -1005,7 +1005,13 @@ ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
     // Back-compat for older runtimes that still expose only the process-level
     // restart endpoint.
     await this.fetch<{ ok: boolean }>("/api/restart", { method: "POST" });
-    return this.getStatus();
+    return {
+      state: "restarting",
+      agentName: "Eliza",
+      model: undefined,
+      uptime: undefined,
+      startedAt: undefined,
+    };
   }
 };
 
