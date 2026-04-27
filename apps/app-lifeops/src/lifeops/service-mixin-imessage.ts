@@ -1,5 +1,7 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
+import { execFile } from "node:child_process";
 import { basename } from "node:path";
+import { promisify } from "node:util";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -88,7 +90,11 @@ const NATIVE_IMESSAGE_SERVICE_LOAD_TIMEOUT_MS = 8_000;
 const NATIVE_IMESSAGE_SEND_TIMEOUT_MS = 20_000;
 const NATIVE_IMESSAGE_SEND_TIMEOUT_MESSAGE =
   "native iMessage send timed out";
+const IMESSAGE_URL_HANDOFF_TIMEOUT_MS = 12_000;
+const IMESSAGE_URL_HANDOFF_SETTLE_MS = 700;
+const IMESSAGE_URL_HANDOFF_CONFIRM_TIMEOUT_MS = 12_000;
 const IMESSAGE_PLUGIN_PACKAGE = "@elizaos/plugin-imessage";
+const execFileAsync = promisify(execFile);
 
 function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") {
@@ -118,6 +124,33 @@ function normalizeHostPlatform(): LifeOpsIMessageConnectorStatus["hostPlatform"]
     process.platform === "win32"
     ? process.platform
     : "unknown";
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function messagesUrlFor(to: string, text: string): string {
+  return `sms:${to}?body=${encodeURIComponent(text)}`;
+}
+
+async function pressMessagesReturn(): Promise<void> {
+  await execFileAsync(
+    "/usr/bin/osascript",
+    [
+      "-e",
+      'tell application "Messages" to activate',
+      "-e",
+      "delay 0.2",
+      "-e",
+      'tell application "System Events"',
+      "-e",
+      "keystroke return",
+      "-e",
+      "end tell",
+    ],
+    { timeout: IMESSAGE_URL_HANDOFF_TIMEOUT_MS },
+  );
 }
 
 async function waitForNativeIMessageService(
@@ -459,21 +492,66 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
             }),
           );
         } catch (error) {
-          if (
-            error instanceof Error &&
-            error.message === NATIVE_IMESSAGE_SEND_TIMEOUT_MESSAGE
-          ) {
-            fail(504, "native iMessage send timed out.");
-          }
-          throw error;
+          return this.sendIMessageViaMessagesUrl(req, error);
         }
         if (!result.success) {
-          throw new Error(result.error ?? "native iMessage send failed");
+          return this.sendIMessageViaMessagesUrl(
+            req,
+            new Error(result.error ?? "native iMessage send failed"),
+          );
         }
         return { ok: true, messageId: result.messageId };
       }
 
       return sendIMessageBridge(req, resolveLifeOpsIMessageBridgeConfig());
+    }
+
+    async sendIMessageViaMessagesUrl(
+      req: IMessageSendRequest,
+      cause: unknown,
+    ): Promise<{ ok: true; messageId?: string }> {
+      if (req.attachmentPaths?.length) {
+        throw cause instanceof Error ? cause : new Error(String(cause));
+      }
+      if (!req.text.trim()) {
+        fail(400, "text is required");
+      }
+
+      try {
+        await execFileAsync("/usr/bin/open", [
+          messagesUrlFor(req.to, req.text),
+        ], {
+          timeout: IMESSAGE_URL_HANDOFF_TIMEOUT_MS,
+        });
+        await sleep(IMESSAGE_URL_HANDOFF_SETTLE_MS);
+        await pressMessagesReturn();
+
+        const deadline = Date.now() + IMESSAGE_URL_HANDOFF_CONFIRM_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+          const messages = await this.readIMessages({ limit: 25 });
+          const sent = [...messages]
+            .reverse()
+            .find((message) => message.isFromMe && message.text === req.text);
+          if (sent) {
+            return { ok: true, messageId: sent.id };
+          }
+          await sleep(500);
+        }
+
+        fail(
+          504,
+          "iMessage URL handoff sent no confirmable chat.db message.",
+        );
+      } catch (error) {
+        const causeMessage =
+          cause instanceof Error ? cause.message : String(cause);
+        const fallbackMessage =
+          error instanceof Error ? error.message : String(error);
+        fail(
+          502,
+          `native iMessage send failed (${causeMessage}); URL handoff failed (${fallbackMessage}).`,
+        );
+      }
     }
 
     async readIMessages(opts: {

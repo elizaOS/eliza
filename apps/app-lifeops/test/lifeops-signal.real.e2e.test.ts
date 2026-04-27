@@ -144,6 +144,82 @@ async function startSignalHttpStub(
     const method = (req.method ?? "GET").toUpperCase();
     const pathname = decodeURIComponent(url.pathname);
 
+    if (method === "POST" && pathname === "/api/v1/rpc") {
+      const body = await readJsonFromRequest(req);
+      const rpcId =
+        typeof body.id === "string" || typeof body.id === "number"
+          ? body.id
+          : null;
+      const params =
+        body.params && typeof body.params === "object"
+          ? (body.params as Record<string, unknown>)
+          : {};
+
+      const rpcResult = (result: unknown) =>
+        sendJson(res, {
+          jsonrpc: "2.0",
+          id: rpcId,
+          result,
+        });
+
+      switch (body.method) {
+        case "listContacts":
+          rpcResult([
+            {
+              number: SIGNAL_PHONE,
+              uuid: SIGNAL_UUID,
+              name: "Dana",
+              profileName: "Dana",
+              color: "blue",
+              blocked: false,
+            },
+          ]);
+          return;
+        case "listGroups":
+        case "receive":
+          rpcResult([]);
+          return;
+        case "send": {
+          const payload: SignalSendPayload = {
+            message:
+              typeof params.message === "string" ? params.message : undefined,
+            number:
+              typeof params.account === "string" ? params.account : undefined,
+            recipients: Array.isArray(params.recipients)
+              ? params.recipients.filter(
+                  (recipient): recipient is string =>
+                    typeof recipient === "string",
+                )
+              : undefined,
+          };
+          sendPayloads.push(payload);
+          if (options.failSend) {
+            sendJson(res, {
+              jsonrpc: "2.0",
+              id: rpcId,
+              error: {
+                code: 503,
+                message: "Signal delivery failed in test stub",
+              },
+            });
+            return;
+          }
+          rpcResult({ timestamp: Date.now() });
+          return;
+        }
+        default:
+          sendJson(res, {
+            jsonrpc: "2.0",
+            id: rpcId,
+            error: {
+              code: -32601,
+              message: `Unsupported Signal RPC method: ${String(body.method)}`,
+            },
+          });
+          return;
+      }
+    }
+
     if (method === "GET" && pathname === `/v1/contacts/${SIGNAL_ACCOUNT}`) {
       sendJson(res, {
         contacts: [
