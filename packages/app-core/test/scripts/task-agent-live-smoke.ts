@@ -428,7 +428,7 @@ async function waitFor(
 }
 
 function ensureLiveBaseDir(): string {
-  const baseDir = path.join(process.cwd(), ".tmp-live");
+  const baseDir = path.join(process.cwd(), "tmp-live");
   fs.mkdirSync(baseDir, { recursive: true });
   return baseDir;
 }
@@ -436,6 +436,15 @@ function ensureLiveBaseDir(): string {
 function createWorkdir(agentType: Framework, label: string): string {
   return fs.mkdtempSync(
     path.join(ensureLiveBaseDir(), `agent-orchestrator-${agentType}-${label}-`),
+  );
+}
+
+function createCounterWorkdir(agentType: Framework): string {
+  return fs.mkdtempSync(
+    path.join(
+      ensureLiveBaseDir(),
+      `agent-orchestrator-${agentType}-counter-app-`,
+    ),
   );
 }
 
@@ -1040,7 +1049,7 @@ function assertCounterAppDisk(input: {
  * Real CLI + real LLM smoke for the APP create/load flow.
  */
 async function runCounterAppSmoke(agentType: Framework): Promise<void> {
-  const workdir = createWorkdir(agentType, "counter-app");
+  const workdir = createCounterWorkdir(agentType);
   const appSlug = `counter-live-${agentType}`;
   const appName = `@milady/${appSlug}`;
   const displayName =
