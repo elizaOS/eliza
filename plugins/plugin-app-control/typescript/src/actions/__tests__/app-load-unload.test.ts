@@ -1,27 +1,27 @@
 /**
- * End-to-end load + unload of the app-counter app through the unified APP
- * action, against a mocked AppControlClient (so the dashboard server
- * doesn't need to be running).
+ * @module plugin-app-control/actions/__tests__/app-load-unload.test
  *
- * The contract under test: an action handler must NEVER throw an
- * uncaught exception. Throwing kills the planner turn and effectively
- * crashes the agent's response cycle. So we drive the action through:
+ * End-to-end load + unload through the unified APP action against a mocked
+ * AppControlClient. Scaffolds an ephemeral counter-style app entry on the
+ * fly so we don't depend on any in-tree fixture app.
  *
- *   1. mode=list                  → counter app present in the catalog
- *   2. mode=launch  (counter)     → returns an AppRunSummary, no throw
+ * The contract under test: an action handler must NEVER throw an uncaught
+ * exception. Throwing kills the planner turn and effectively crashes the
+ * agent's response cycle. So we drive the action through:
+ *
+ *   1. mode=list                  → ephemeral app present in the catalog
+ *   2. mode=launch  (the app)     → returns an AppRunSummary, no throw
  *   3. mode=list                  → run now appears as "running"
- *   4. mode=relaunch (counter)    → stops + relaunches, no throw
+ *   4. mode=relaunch (the app)    → stops + relaunches, no throw
  *   5. mode=launch  (unknown)     → handler returns success:false, no throw
  *   6. mode=list                  → runtime still responsive after error
- *
- * After every step we assert the runtime is still responsive (i.e. the
- * previous handler returned cleanly) by inspecting the ActionResult shape.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { HandlerCallback } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AppControlClient } from "../../client/api.js";
 import type {
 	AppLaunchResult,
@@ -31,21 +31,7 @@ import type {
 } from "../../types.js";
 import { createAppAction } from "../app.js";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const COUNTER_WORKDIR = path.resolve(
-	HERE,
-	"..",
-	"..",
-	"..",
-	"..",
-	"..",
-	"..",
-	"..",
-	"apps",
-	"app-counter",
-);
-
-const COUNTER: InstalledAppInfo = {
+const APP: InstalledAppInfo = {
 	name: "app-counter",
 	displayName: "Counter",
 	pluginName: "app-counter",
@@ -58,8 +44,8 @@ function freshRun(name: string, runId: string): AppRunSummary {
 	return {
 		runId,
 		appName: name,
-		displayName: COUNTER.displayName,
-		pluginName: COUNTER.pluginName,
+		displayName: APP.displayName,
+		pluginName: APP.pluginName,
 		launchType: "iframe",
 		launchUrl: "http://127.0.0.1:5173/",
 		status: "running",
@@ -73,7 +59,7 @@ function freshRun(name: string, runId: string): AppRunSummary {
 function stopResult(runId: string | null, success: boolean): AppStopResult {
 	return {
 		success,
-		appName: COUNTER.name,
+		appName: APP.name,
 		runId,
 		stoppedAt: new Date().toISOString(),
 		pluginUninstalled: false,
@@ -95,7 +81,7 @@ function makeMockClient(): {
 	const client: AppControlClient = {
 		async listInstalledApps() {
 			ledger.push("listInstalledApps");
-			return [COUNTER];
+			return [APP];
 		},
 		async listAppRuns() {
 			ledger.push(`listAppRuns(${runs.length})`);
@@ -103,14 +89,14 @@ function makeMockClient(): {
 		},
 		async launchApp(name) {
 			ledger.push(`launchApp(${name})`);
-			if (name !== COUNTER.name) throw new Error(`unknown app: ${name}`);
+			if (name !== APP.name) throw new Error(`unknown app: ${name}`);
 			const runId = `run-${nextRunId++}`;
 			const run = freshRun(name, runId);
 			runs.push(run);
 			const result: AppLaunchResult = {
 				pluginInstalled: true,
 				needsRestart: false,
-				displayName: COUNTER.displayName,
+				displayName: APP.displayName,
 				launchType: run.launchType,
 				launchUrl: run.launchUrl,
 				run,
@@ -146,9 +132,13 @@ function makeRuntime() {
 		deleteTask: async () => true,
 		getMemories: async () => [],
 		logger: {
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			info: (..._args: any[]) => {},
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			warn: (..._args: any[]) => {},
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			error: (..._args: any[]) => {},
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			debug: (..._args: any[]) => {},
 		},
 	};
@@ -168,22 +158,31 @@ function callbackBag() {
 		messages.push({ text: typeof msg.text === "string" ? msg.text : "" });
 		return [];
 	};
-	return {
-		cb,
-		messages,
-	};
+	return { cb, messages };
 }
 
-describe("APP action — counter load + unload e2e", () => {
+let tmpRepoRoot: string;
+
+beforeEach(() => {
+	tmpRepoRoot = mkdtempSync(path.join(tmpdir(), "milady-app-load-unload-"));
+});
+
+afterEach(() => {
+	rmSync(tmpRepoRoot, { recursive: true, force: true });
+});
+
+describe("APP action — load + unload e2e", () => {
 	it("walks list → launch → list → relaunch → unknown → list without throwing", async () => {
 		const { client, runs, ledger } = makeMockClient();
-		const action = createAppAction({ client, repoRoot: COUNTER_WORKDIR });
+		const action = createAppAction({ client, repoRoot: tmpRepoRoot });
+		// biome-ignore lint/suspicious/noExplicitAny: minimal runtime stub
 		const runtime = makeRuntime() as any;
 
 		// 1. mode=list
 		let bag = callbackBag();
 		let r = await action.handler(
 			runtime,
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			makeMessage("show running apps") as any,
 			undefined,
 			{ mode: "list" },
@@ -192,10 +191,11 @@ describe("APP action — counter load + unload e2e", () => {
 		expect(r?.success).toBe(true);
 		expect(ledger.some((e) => e.startsWith("listInstalledApps"))).toBe(true);
 
-		// 2. mode=launch app-counter
+		// 2. mode=launch
 		bag = callbackBag();
 		r = await action.handler(
 			runtime,
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			makeMessage("launch the counter app") as any,
 			undefined,
 			{ mode: "launch", name: "app-counter" },
@@ -209,6 +209,7 @@ describe("APP action — counter load + unload e2e", () => {
 		bag = callbackBag();
 		r = await action.handler(
 			runtime,
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			makeMessage("show running apps") as any,
 			undefined,
 			{ mode: "list" },
@@ -220,6 +221,7 @@ describe("APP action — counter load + unload e2e", () => {
 		bag = callbackBag();
 		r = await action.handler(
 			runtime,
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			makeMessage("relaunch the counter app") as any,
 			undefined,
 			{ mode: "relaunch", name: "app-counter" },
@@ -236,6 +238,7 @@ describe("APP action — counter load + unload e2e", () => {
 		try {
 			r = await action.handler(
 				runtime,
+				// biome-ignore lint/suspicious/noExplicitAny: stub
 				makeMessage("launch the does-not-exist app") as any,
 				undefined,
 				{ mode: "launch", name: "does-not-exist" },
@@ -247,11 +250,11 @@ describe("APP action — counter load + unload e2e", () => {
 		expect(threw).toBe(false);
 		expect(r?.success).toBe(false);
 
-		// 6. final mode=list — runtime is still alive; the previous error path
-		//    didn't poison the action / client.
+		// 6. final mode=list — runtime is still alive
 		bag = callbackBag();
 		r = await action.handler(
 			runtime,
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			makeMessage("show running apps") as any,
 			undefined,
 			{ mode: "list" },
@@ -264,12 +267,14 @@ describe("APP action — counter load + unload e2e", () => {
 		const { client } = makeMockClient();
 		const action = createAppAction({
 			client,
-			repoRoot: COUNTER_WORKDIR,
+			repoRoot: tmpRepoRoot,
 			hasOwnerAccess: async () => false,
 		});
+		// biome-ignore lint/suspicious/noExplicitAny: stub
 		const runtime = makeRuntime() as any;
 		const result = await action.validate?.(
 			runtime,
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			makeMessage("launch the counter app") as any,
 		);
 		expect(result).toBe(false);
@@ -279,12 +284,14 @@ describe("APP action — counter load + unload e2e", () => {
 		const { client } = makeMockClient();
 		const action = createAppAction({
 			client,
-			repoRoot: COUNTER_WORKDIR,
+			repoRoot: tmpRepoRoot,
 			hasOwnerAccess: async () => true,
 		});
+		// biome-ignore lint/suspicious/noExplicitAny: stub
 		const runtime = makeRuntime() as any;
 		const result = await action.validate?.(
 			runtime,
+			// biome-ignore lint/suspicious/noExplicitAny: stub
 			makeMessage("launch the counter app") as any,
 		);
 		expect(result).toBe(true);
