@@ -29,7 +29,6 @@ import { startCodexLogin } from "./openai-codex.js";
 import type { SubscriptionProvider } from "./types.js";
 import {
   type AnthropicOAuthCredentials,
-  type AnthropicOAuthFlowHandle,
   startAnthropicOAuthFlowRaw,
 } from "./vendor/pi-oauth/anthropic-login.js";
 
