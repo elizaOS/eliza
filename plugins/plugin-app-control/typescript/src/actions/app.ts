@@ -150,38 +150,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 
 	return {
 		name: "APP",
-		similes: [
-			// Legacy single-purpose action names — preserved as similes so
-			// older callers still resolve.
-			"LAUNCH_APP",
-			"CLOSE_APP",
-			"LIST_RUNNING_APPS",
-			// Generic verbs.
-			"OPEN_APP",
-			"START_APP",
-			"RUN_APP",
-			"STOP_APP",
-			"EXIT_APP",
-			"KILL_APP",
-			"QUIT_APP",
-			"SHUTDOWN_APP",
-			"LIST_APPS",
-			"SHOW_RUNNING_APPS",
-			"RUNNING_APPS",
-			"ACTIVE_APPS",
-			// Create / scaffold variants.
-			"CREATE_APP",
-			"BUILD_APP",
-			"MAKE_APP",
-			"SCAFFOLD_APP",
-			"NEW_APP",
-			// Load.
-			"LOAD_APPS_FROM_DIRECTORY",
-			"REGISTER_APPS",
-			// Relaunch.
-			"RELAUNCH_APP",
-			"RESTART_APP",
-		],
+		similes: ["APP_CONTROL", "MANAGE_APPS"],
 		description:
 			"Unified app control. mode=launch starts a registered app; mode=relaunch stops then launches (optionally with verify); mode=list shows installed + running runs; mode=load_from_directory registers apps from an absolute folder; mode=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
 

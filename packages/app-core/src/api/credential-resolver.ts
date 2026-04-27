@@ -15,7 +15,9 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { getAccessToken, listProviderAccounts } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
+import { getDefaultAccountPool } from "../services/account-pool.js";
 
 // ── File/Keychain readers ────────────────────────────────────────────
 
@@ -205,6 +207,55 @@ export function resolveProviderCredential(
     }
   }
   return null;
+}
+
+/**
+ * Multi-account credential resolution. When the install has any
+ * `LinkedAccountConfig` records for the requested provider, the pool
+ * picks one (priority by default, with health-aware skipping) and we
+ * return its access token via WS1's `getAccessToken`. When no accounts
+ * are configured, falls back to the legacy single-source resolver.
+ *
+ * `sessionKey` (optional) keeps repeated calls in the same logical
+ * session glued to the same account so token refreshes and rate-limit
+ * tracking stay coherent.
+ */
+export async function resolveProviderCredentialMulti(
+  providerId: string,
+  opts?: { sessionKey?: string; exclude?: string[] },
+): Promise<ResolvedCredential | null> {
+  const subscriptionMatch =
+    providerId === "anthropic-subscription" || providerId === "openai-codex";
+  if (subscriptionMatch) {
+    const accounts = listProviderAccounts(providerId);
+    if (accounts.length > 0) {
+      const pool = getDefaultAccountPool();
+      const account = await pool.select({
+        providerId,
+        sessionKey: opts?.sessionKey,
+        exclude: opts?.exclude,
+      });
+      if (account) {
+        const token = await getAccessToken(providerId, account.id);
+        if (token) {
+          const envVar =
+            providerId === "openai-codex"
+              ? "OPENAI_API_KEY"
+              : "ANTHROPIC_API_KEY";
+          logger.info(
+            `[credential-resolver] Multi-account: serving ${providerId} from "${account.label}" (${account.id})`,
+          );
+          return {
+            providerId,
+            envVar,
+            apiKey: token,
+            authType: "subscription",
+          };
+        }
+      }
+    }
+  }
+  return resolveProviderCredential(providerId);
 }
 
 /**

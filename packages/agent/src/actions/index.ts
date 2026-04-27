@@ -1,5 +1,4 @@
 export * from "./agent-inbox.js";
-export * from "./app-control.js";
 export * from "./configure-plugin.js";
 export * from "./connector-control.js";
 export * from "./context-signal.js";

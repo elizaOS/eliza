@@ -1,3 +1,4 @@
+export * from "./accounts-routes.js";
 export * from "./agent-admin-routes.js";
 export * from "./agent-lifecycle-routes.js";
 export * from "./agent-model.js";
