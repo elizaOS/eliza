@@ -108,13 +108,13 @@ function loadInitialAppWindowAlwaysOnTop(): boolean {
 }
 
 function loadInitialAppWindowLaunchEnabled(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined") return true;
   try {
     return (
-      window.localStorage.getItem(APP_WINDOW_LAUNCH_ENABLED_KEY) === "true"
+      window.localStorage.getItem(APP_WINDOW_LAUNCH_ENABLED_KEY) !== "false"
     );
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -326,25 +326,22 @@ export function AppsView() {
    * `subPath` is appended after the slug so `/apps/<slug>/details` shows
    * the details page instead of launching directly.
    */
-  const pushAppsUrl = useCallback(
-    (slug?: string, subPath?: "details") => {
-      try {
-        const path = slug
-          ? subPath
-            ? `/apps/${slug}/${subPath}`
-            : `/apps/${slug}`
-          : "/apps";
-        if (shouldUseHashNavigation()) {
-          window.location.hash = path;
-        } else {
-          window.history.replaceState(null, "", path);
-        }
-      } catch {
-        /* ignore — sandboxed iframe or SSR */
+  const pushAppsUrl = useCallback((slug?: string, subPath?: "details") => {
+    try {
+      const path = slug
+        ? subPath
+          ? `/apps/${slug}/${subPath}`
+          : `/apps/${slug}`
+        : "/apps";
+      if (shouldUseHashNavigation()) {
+        window.location.hash = path;
+      } else {
+        window.history.replaceState(null, "", path);
       }
-    },
-    [],
-  );
+    } catch {
+      /* ignore — sandboxed iframe or SSR */
+    }
+  }, []);
 
   // Track the current `/apps/<slug>/details` slug for the details-page
   // routing. Listens to hashchange + popstate so back/forward navigation
@@ -357,9 +354,7 @@ export function AppsView() {
   useEffect(() => {
     const handle = () => {
       const parsed = parseAppsRoute(getCurrentAppsPath());
-      setAppsDetailsSlug(
-        parsed.action === "details" ? parsed.slug : null,
-      );
+      setAppsDetailsSlug(parsed.action === "details" ? parsed.slug : null);
     };
     window.addEventListener("hashchange", handle);
     window.addEventListener("popstate", handle);
@@ -744,10 +739,11 @@ export function AppsView() {
       // button on AppDetailsView is what eventually calls the bridge or
       // navigates inline. Skip when we're already inside an app window
       // (the slug lives there, not in the main shell).
-      if (!isAppWindow && appNeedsDetailsPage(app.name)) {
+      if (!isAppWindow && appNeedsDetailsPage(app)) {
         const slug = getAppSlug(app.name);
         pushRecentApp(app.name);
         setState("appsSubTab", "browse");
+        setAppsDetailsSlug(slug);
         pushAppsUrl(slug, "details");
         return;
       }
@@ -892,6 +888,7 @@ export function AppsView() {
       openRunInDesktopWindow,
       pushAppsUrl,
       pushRecentApp,
+      isAppWindow,
       setActionNotice,
       setState,
       setTab,
@@ -1203,9 +1200,7 @@ export function AppsView() {
               className="h-3.5 w-3.5 accent-accent"
               checked={appWindowLaunchEnabled}
               onChange={(event) =>
-                handleAppWindowLaunchEnabledChange(
-                  event.currentTarget.checked,
-                )
+                handleAppWindowLaunchEnabledChange(event.currentTarget.checked)
               }
             />
             <span>Open apps in windows</span>
@@ -1268,7 +1263,10 @@ export function AppsView() {
         {appsDetailsSlug ? (
           <AppDetailsView
             slug={appsDetailsSlug}
-            onLaunched={() => pushAppsUrl()}
+            onLaunched={() => {
+              setAppsDetailsSlug(null);
+              pushAppsUrl();
+            }}
           />
         ) : (
           <>
