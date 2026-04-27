@@ -48,6 +48,7 @@ export const processKnowledgeAction: Action = {
 	name: "PROCESS_KNOWLEDGE",
 	description:
 		"Process and store knowledge from a file path or text content into the knowledge base",
+	suppressPostActionContinuation: true,
 
 	similes: [],
 
@@ -150,7 +151,11 @@ export const processKnowledgeAction: Action = {
 					if (callback) {
 						await callback(response);
 					}
-					return;
+					return {
+						success: false,
+						text: response.text,
+						data: { actionName: "PROCESS_KNOWLEDGE" },
+					};
 				}
 
 				const fileName = path.basename(filePath);
@@ -187,7 +192,11 @@ export const processKnowledgeAction: Action = {
 					if (callback) {
 						await callback(response);
 					}
-					return;
+					return {
+						success: false,
+						text: response.text,
+						data: { actionName: "PROCESS_KNOWLEDGE" },
+					};
 				}
 
 				const title = deriveKnowledgeTitle(
@@ -227,7 +236,11 @@ export const processKnowledgeAction: Action = {
 			if (callback) {
 				await callback(response);
 			}
-			return { success: true, text: response.text };
+			return {
+				success: true,
+				text: response.text,
+				data: { actionName: "PROCESS_KNOWLEDGE" },
+			};
 		} catch (error) {
 			logger.error({ error }, "Error in PROCESS_KNOWLEDGE action");
 
@@ -240,7 +253,9 @@ export const processKnowledgeAction: Action = {
 			}
 			return {
 				success: false,
+				text: errorResponse.text,
 				error: error instanceof Error ? error.message : String(error),
+				data: { actionName: "PROCESS_KNOWLEDGE" },
 			};
 		}
 	},
@@ -249,6 +264,7 @@ export const processKnowledgeAction: Action = {
 export const searchKnowledgeAction: Action = {
 	name: "SEARCH_KNOWLEDGE",
 	description: "Search the knowledge base for specific information",
+	suppressPostActionContinuation: true,
 
 	similes: [
 		"search knowledge",
@@ -340,7 +356,11 @@ export const searchKnowledgeAction: Action = {
 				if (callback) {
 					await callback(response);
 				}
-				return;
+				return {
+					success: false,
+					text: response.text,
+					data: { actionName: "SEARCH_KNOWLEDGE" },
+				};
 			}
 
 			const searchMessage: Memory = {
@@ -372,7 +392,11 @@ export const searchKnowledgeAction: Action = {
 			if (callback) {
 				await callback(response);
 			}
-			return { success: true, text: response.text };
+			return {
+				success: true,
+				text: response.text,
+				data: { actionName: "SEARCH_KNOWLEDGE" },
+			};
 		} catch (error) {
 			logger.error({ error }, "Error in SEARCH_KNOWLEDGE action");
 
@@ -385,7 +409,9 @@ export const searchKnowledgeAction: Action = {
 			}
 			return {
 				success: false,
+				text: errorResponse.text,
 				error: error instanceof Error ? error.message : String(error),
+				data: { actionName: "SEARCH_KNOWLEDGE" },
 			};
 		}
 	},
@@ -468,7 +494,7 @@ export const ingestKnowledgeFromUrlAction: Action = {
 				text,
 				success: false,
 				values: { error: "missing_url" },
-				data: { action: "INGEST_KNOWLEDGE_FROM_URL" },
+				data: { actionName: "INGEST_KNOWLEDGE_FROM_URL" },
 			};
 		}
 
@@ -532,7 +558,7 @@ export const ingestKnowledgeFromUrlAction: Action = {
 					filename,
 				},
 				data: {
-					action: "INGEST_KNOWLEDGE_FROM_URL",
+					actionName: "INGEST_KNOWLEDGE_FROM_URL",
 					ingestData: {
 						documentId: result.clientDocumentId,
 						fragmentCount: result.fragmentCount,
@@ -557,7 +583,7 @@ export const ingestKnowledgeFromUrlAction: Action = {
 				values: {
 					error: error instanceof Error ? error.message : String(error),
 				},
-				data: { action: "INGEST_KNOWLEDGE_FROM_URL" },
+				data: { actionName: "INGEST_KNOWLEDGE_FROM_URL" },
 			};
 		}
 	},
@@ -650,7 +676,7 @@ export const updateKnowledgeDocumentAction: Action = {
 				text: errMsg,
 				success: false,
 				values: { error: "invalid_document_id" },
-				data: { action: "UPDATE_KNOWLEDGE_DOCUMENT" },
+				data: { actionName: "UPDATE_KNOWLEDGE_DOCUMENT" },
 			};
 		}
 
@@ -661,7 +687,7 @@ export const updateKnowledgeDocumentAction: Action = {
 				text: errMsg,
 				success: false,
 				values: { error: "missing_text" },
-				data: { action: "UPDATE_KNOWLEDGE_DOCUMENT" },
+				data: { actionName: "UPDATE_KNOWLEDGE_DOCUMENT" },
 			};
 		}
 
@@ -692,7 +718,7 @@ export const updateKnowledgeDocumentAction: Action = {
 					fragmentCount: result.fragmentCount,
 				},
 				data: {
-					action: "UPDATE_KNOWLEDGE_DOCUMENT",
+					actionName: "UPDATE_KNOWLEDGE_DOCUMENT",
 					updateData: {
 						documentId: result.documentId,
 						fragmentCount: result.fragmentCount,
@@ -712,7 +738,7 @@ export const updateKnowledgeDocumentAction: Action = {
 				values: {
 					error: error instanceof Error ? error.message : String(error),
 				},
-				data: { action: "UPDATE_KNOWLEDGE_DOCUMENT" },
+				data: { actionName: "UPDATE_KNOWLEDGE_DOCUMENT" },
 			};
 		}
 	},
@@ -798,7 +824,7 @@ export const deleteKnowledgeDocumentAction: Action = {
 				text: errMsg,
 				success: false,
 				values: { error: "invalid_document_id" },
-				data: { action: "DELETE_KNOWLEDGE_DOCUMENT" },
+				data: { actionName: "DELETE_KNOWLEDGE_DOCUMENT" },
 			};
 		}
 
@@ -818,7 +844,7 @@ export const deleteKnowledgeDocumentAction: Action = {
 					text: errMsg,
 					success: false,
 					values: { error: "not_found" },
-					data: { action: "DELETE_KNOWLEDGE_DOCUMENT" },
+					data: { actionName: "DELETE_KNOWLEDGE_DOCUMENT" },
 				};
 			}
 
@@ -856,7 +882,7 @@ export const deleteKnowledgeDocumentAction: Action = {
 					deletedFragments: relatedFragmentIds.length,
 				},
 				data: {
-					action: "DELETE_KNOWLEDGE_DOCUMENT",
+					actionName: "DELETE_KNOWLEDGE_DOCUMENT",
 					deleteData: {
 						documentId,
 						deletedFragments: relatedFragmentIds.length,
@@ -876,7 +902,7 @@ export const deleteKnowledgeDocumentAction: Action = {
 				values: {
 					error: error instanceof Error ? error.message : String(error),
 				},
-				data: { action: "DELETE_KNOWLEDGE_DOCUMENT" },
+				data: { actionName: "DELETE_KNOWLEDGE_DOCUMENT" },
 			};
 		}
 	},

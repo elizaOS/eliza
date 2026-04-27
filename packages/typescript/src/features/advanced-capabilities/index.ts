@@ -26,6 +26,7 @@ import {
 	readAttachmentAction,
 	readFileAction,
 	removeFromClipboardAction,
+	saveAttachmentToClipboardAction,
 } from "./clipboard/index.ts";
 import {
 	experienceEvaluator,
@@ -99,6 +100,7 @@ export const advancedActions = [
 	clipboardAppendAction,
 	readFileAction,
 	readAttachmentAction,
+	saveAttachmentToClipboardAction,
 	removeFromClipboardAction,
 	// Form actions
 	formRestoreAction,

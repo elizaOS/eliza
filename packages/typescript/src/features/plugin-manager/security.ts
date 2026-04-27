@@ -65,7 +65,9 @@ function isAgentSelf(context: AccessContext): boolean {
 
 async function isCanonicalOwner(
 	context: AccessContext,
-	resolveOwnerFn: NonNullable<SecurityDeps["resolveCanonicalOwnerIdForMessage"]>,
+	resolveOwnerFn: NonNullable<
+		SecurityDeps["resolveCanonicalOwnerIdForMessage"]
+	>,
 ): Promise<boolean> {
 	try {
 		const ownerId = await resolveOwnerFn(context.runtime, context.message);

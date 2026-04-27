@@ -112,6 +112,19 @@ function createRuntime(agentId: string) {
               actor TEXT NOT NULL DEFAULT 'agent',
               created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS life_activity_signals (
+              id TEXT PRIMARY KEY,
+              agent_id TEXT NOT NULL,
+              source TEXT NOT NULL,
+              platform TEXT NOT NULL DEFAULT '',
+              state TEXT NOT NULL,
+              observed_at TEXT NOT NULL,
+              idle_state TEXT,
+              idle_time_seconds INTEGER,
+              on_battery BOOLEAN,
+              metadata_json TEXT NOT NULL DEFAULT '{}',
+              created_at TEXT NOT NULL
+            );
           `,
         },
       ],

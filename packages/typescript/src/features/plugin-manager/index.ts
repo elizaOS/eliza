@@ -15,20 +15,13 @@ export { coreStatusAction } from "./actions/coreStatusAction.ts";
 export { listEjectedPluginsAction } from "./actions/listEjectedPluginsAction.ts";
 export {
 	createPluginAction,
-	pluginAction,
 	type PluginMode,
+	pluginAction,
 } from "./actions/plugin.ts";
 export {
 	getPluginDetailsAction,
 	searchPluginAction,
 } from "./actions/searchPluginAction.ts";
-// Security helpers (re-exported from @elizaos/core for consumers like
-// plugin-app-control).
-export {
-	hasAdminAccess,
-	hasOwnerAccess,
-	type SecurityDeps,
-} from "./security.ts";
 export type { ExtendedRuntime } from "./coreExtensions.ts";
 // Core extensions
 export {
@@ -48,6 +41,13 @@ export {
 	keywordsFromPluginNames,
 	PLUGIN_MANAGER_BASE_KEYWORDS,
 } from "./providers/relevance.ts";
+// Security helpers (re-exported from @elizaos/core for consumers like
+// plugin-app-control).
+export {
+	hasAdminAccess,
+	hasOwnerAccess,
+	type SecurityDeps,
+} from "./security.ts";
 export type {
 	CoreEjectResult,
 	CoreReinjectResult,

@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -7,8 +8,22 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import type { BrowserActionParams } from "../types.js";
-import { buildScreenshotAttachment, resolveActionParams } from "./helpers.js";
+import type { BrowserActionParams, BrowserActionResult } from "../types.js";
+import {
+  buildScreenshotAttachment,
+  resolveActionParams,
+  toComputerUseActionResult,
+} from "./helpers.js";
+
+function formatBrowserResultText(result: BrowserActionResult): string {
+  return result.success
+    ? (result.content ?? "Browser action completed.")
+    : result.permissionDenied
+      ? `Browser action failed because ${result.permissionType} permission is missing.`
+      : result.approvalRequired
+        ? `Browser action is waiting for approval (${result.approvalId}).`
+        : `Browser action failed: ${result.error}`;
+}
 
 export const browserAction: Action = {
   name: "BROWSER_ACTION",
@@ -151,7 +166,7 @@ export const browserAction: Action = {
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
-  ) => {
+  ): Promise<ActionResult> => {
     const service =
       (runtime.getService("computeruse") as unknown as ComputerUseService) ??
       null;
@@ -168,35 +183,34 @@ export const browserAction: Action = {
     }
 
     const result = await service.executeBrowserAction(params);
+    const text = formatBrowserResultText(result);
 
     if (callback) {
       if (result.screenshot) {
         await callback({
-          text: result.content ?? "Browser screenshot captured.",
+          text:
+            result.content ??
+            (params.action === "screenshot"
+              ? "Browser screenshot captured."
+              : text),
           attachments: [
-            {
-              id: `browser-screenshot-${Date.now()}`,
-              url: `data:image/png;base64,${result.screenshot}`,
+            buildScreenshotAttachment({
+              idPrefix: "browser-screenshot",
+              screenshot: result.screenshot,
               title: "Browser Screenshot",
-              source: "computeruse",
               description: "Browser viewport capture",
-              contentType: "image" as const,
-            },
+            }),
           ],
         });
       } else {
-        await callback({
-          text: result.success
-            ? (result.content ?? "Browser action completed.")
-            : result.permissionDenied
-              ? `Browser action failed because ${result.permissionType} permission is missing.`
-              : result.approvalRequired
-                ? `Browser action is waiting for approval (${result.approvalId}).`
-                : `Browser action failed: ${result.error}`,
-        });
+        await callback({ text });
       }
     }
 
-    return result as unknown as any;
+    return toComputerUseActionResult({
+      action: params.action,
+      result,
+      text,
+    });
   },
 };

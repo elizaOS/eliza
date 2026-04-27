@@ -43,6 +43,7 @@ interface SecretOperation {
  */
 export const manageSecretAction: Action = {
 	name: "MANAGE_SECRET",
+	suppressPostActionContinuation: true,
 	similes: [
 		"SECRET_MANAGEMENT",
 		"HANDLE_SECRET",
@@ -102,6 +103,7 @@ export const manageSecretAction: Action = {
 			return {
 				success: false,
 				text: "Refused: secrets can only be managed in DMs",
+				data: { actionName: "MANAGE_SECRET" },
 			};
 		}
 
@@ -114,7 +116,11 @@ export const manageSecretAction: Action = {
 					action: "MANAGE_SECRET",
 				});
 			}
-			return { success: false, text: "Secrets service not available" };
+			return {
+				success: false,
+				text: "Secrets service not available",
+				data: { actionName: "MANAGE_SECRET" },
+			};
 		}
 
 		// Build state for prompt
@@ -158,6 +164,7 @@ export const manageSecretAction: Action = {
 			return {
 				success: false,
 				text: "Failed to extract operation from message",
+				data: { actionName: "MANAGE_SECRET" },
 			};
 		}
 
@@ -296,7 +303,11 @@ export const manageSecretAction: Action = {
 			});
 		}
 
-		return { success: true, text: responseText };
+		return {
+			success: true,
+			text: responseText,
+			data: { actionName: "MANAGE_SECRET", operation },
+		};
 	},
 
 	examples: [

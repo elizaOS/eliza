@@ -12,6 +12,7 @@ import { hasTrustEngine } from "./hasTrustEngine.ts";
 export const recordTrustInteractionAction: ElizaAction = {
 	name: "RECORD_TRUST_INTERACTION",
 	description: "Records a trust-affecting interaction between entities",
+	suppressPostActionContinuation: true,
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -133,6 +134,7 @@ export const recordTrustInteractionAction: ElizaAction = {
 				success: false,
 				text: "Could not parse trust interaction details. Please provide type and optionally: targetEntityId, impact, description",
 				error: "Invalid or missing interaction type",
+				data: { actionName: "RECORD_TRUST_INTERACTION" },
 			};
 		}
 
@@ -155,6 +157,7 @@ export const recordTrustInteractionAction: ElizaAction = {
 				success: false,
 				text: `Invalid interaction type. Valid types are: ${validTypes.join(", ")}`,
 				error: "Invalid evidence type provided",
+				data: { actionName: "RECORD_TRUST_INTERACTION" },
 			};
 		}
 
@@ -196,6 +199,7 @@ export const recordTrustInteractionAction: ElizaAction = {
 				success: true,
 				text: `Trust interaction recorded: ${matchedType} with impact ${interaction.impact > 0 ? "+" : ""}${interaction.impact}`,
 				data: {
+					actionName: "RECORD_TRUST_INTERACTION",
 					interaction,
 					success: true,
 				},
@@ -209,6 +213,7 @@ export const recordTrustInteractionAction: ElizaAction = {
 				success: false,
 				text: "Failed to record trust interaction. Please try again.",
 				error: error instanceof Error ? error.message : "Unknown error",
+				data: { actionName: "RECORD_TRUST_INTERACTION" },
 			};
 		}
 	},

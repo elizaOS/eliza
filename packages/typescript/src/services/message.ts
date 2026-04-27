@@ -121,6 +121,25 @@ const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
 
+function canonicalPlannerControlActionName(actionName: string): string | null {
+	const normalized = normalizeActionIdentifier(actionName);
+	switch (normalized) {
+		case "REPLY":
+		case "RESPOND":
+			return "REPLY";
+		case "IGNORE":
+			return "IGNORE";
+		case "STOP":
+			return "STOP";
+		default:
+			return null;
+	}
+}
+
+function isReplyActionIdentifier(actionName: string): boolean {
+	return canonicalPlannerControlActionName(actionName) === "REPLY";
+}
+
 function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -372,8 +391,9 @@ function normalizePlannerActions(
 			return [];
 		}
 
-		if (PLANNER_CONTROL_ACTIONS.has(normalized)) {
-			return [actionName];
+		const controlActionName = canonicalPlannerControlActionName(actionName);
+		if (controlActionName) {
+			return [controlActionName];
 		}
 
 		const resolvedAction = resolveRuntimeAction(actionLookup, actionName);
@@ -440,8 +460,9 @@ export function resolvePlannerActionName(
 		return [];
 	}
 
-	if (PLANNER_CONTROL_ACTIONS.has(normalized)) {
-		return [actionName];
+	const controlActionName = canonicalPlannerControlActionName(actionName);
+	if (controlActionName) {
+		return [controlActionName];
 	}
 
 	const lookup =
@@ -1119,7 +1140,7 @@ export function isSimpleReplyResponse(
 		responseContent?.actions &&
 		responseContent.actions.length === 1 &&
 		typeof responseContent.actions[0] === "string" &&
-		responseContent.actions[0].toUpperCase() === "REPLY"
+		isReplyActionIdentifier(responseContent.actions[0])
 	);
 }
 
@@ -2329,7 +2350,10 @@ export function getActionContinuationDecision(
 			continue;
 		}
 
-		const canonicalAction = resolvedAction?.name ?? action;
+		const canonicalAction =
+			resolvedAction?.name ??
+			canonicalPlannerControlActionName(action) ??
+			action;
 		if (
 			!TERMINAL_ACTION_IDENTIFIERS.has(
 				normalizeActionIdentifier(canonicalAction),
@@ -2393,7 +2417,11 @@ export function shouldEmitPlannerPreamble(
 		return false;
 	}
 
-	const normalizedFirstAction = normalizeActionIdentifier(firstAction);
+	const canonicalFirstAction =
+		resolvedAction?.name ??
+		canonicalPlannerControlActionName(firstAction) ??
+		firstAction;
+	const normalizedFirstAction = normalizeActionIdentifier(canonicalFirstAction);
 
 	return (
 		normalizedFirstAction !== normalizeActionIdentifier("REPLY") &&
@@ -2408,7 +2436,7 @@ export function shouldEmitPlannerPreamble(
 // alongside explicit delegation produces duplicate user-visible noise:
 // "Created task X" message followed by the actual delegated result.
 const PASSIVE_TURN_ACTIONS = new Set(
-	["REPLY", "MANAGE_TASKS"].map(normalizeActionIdentifier),
+	["REPLY", "RESPOND", "MANAGE_TASKS"].map(normalizeActionIdentifier),
 );
 
 export function stripReplyWhenActionOwnsTurn(
@@ -2474,7 +2502,7 @@ function getLatestVisibleReplyText(
 			typeof result?.data?.actionName === "string"
 				? result.data.actionName
 				: "";
-		if (normalizeActionIdentifier(actionName) !== "REPLY") {
+		if (!isReplyActionIdentifier(actionName)) {
 			continue;
 		}
 
@@ -2529,7 +2557,7 @@ function shouldWaitForUserAfterIncompleteReflection(
 			typeof result?.data?.actionName === "string"
 				? result.data.actionName
 				: "";
-		return normalizeActionIdentifier(actionName) === "REPLY";
+		return isReplyActionIdentifier(actionName);
 	});
 }
 
@@ -6138,7 +6166,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				responseContent.actions,
 			);
 			// Suppress any direct planner answer; the REPLY action should generate final output.
-			if (responseContent.actions.some((a) => a.toUpperCase() === "REPLY")) {
+			if (responseContent.actions.some((a) => isReplyActionIdentifier(a))) {
 				responseContent.text = "";
 			}
 		}
