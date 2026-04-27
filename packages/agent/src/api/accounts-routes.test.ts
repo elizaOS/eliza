@@ -377,12 +377,6 @@ describe("handleAccountsRoutes", () => {
   it("oauth/status streams synthetic flow updates over SSE", async () => {
     const writes: string[] = [];
     const emitter = new EventEmitter();
-    const req = Object.assign(emitter, {
-      method: "GET",
-      headers: { host: "localhost" },
-      url: "/api/accounts/anthropic-subscription/oauth/status",
-      socket: { remoteAddress: "127.0.0.1" },
-    }) as unknown as http.IncomingMessage;
 
     let ended = false;
     const res = {
@@ -405,11 +399,20 @@ describe("handleAccountsRoutes", () => {
       needsCodeSubmission: true,
     });
 
+    // The handler reads sessionId off req.url — not from the route-helper
+    // query bag — so we have to bake it into the EventEmitter req we pass.
+    Object.assign(emitter, {
+      method: "GET",
+      headers: { host: "localhost" },
+      url: `/api/accounts/anthropic-subscription/oauth/status?sessionId=${sessionId}`,
+      socket: { remoteAddress: "127.0.0.1" },
+    });
+    const req = emitter as unknown as http.IncomingMessage;
+
     const { ctx } = makeStubCtx({
       method: "GET",
       pathname: "/api/accounts/anthropic-subscription/oauth/status",
       config: {} as ElizaConfig,
-      query: { sessionId },
       res,
       req,
     });

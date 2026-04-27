@@ -24,9 +24,7 @@ function mkAccount(
   };
 }
 
-function mkDeps(
-  accounts: LinkedAccountConfig[],
-): AccountPoolDeps & {
+function mkDeps(accounts: LinkedAccountConfig[]): AccountPoolDeps & {
   current: () => Record<string, LinkedAccountConfig>;
   writes: LinkedAccountConfig[];
 } {
@@ -347,18 +345,15 @@ describe("AccountPool refreshUsage", () => {
   });
 
   it("calls Anthropic probe and writes usage on success", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ five_hour: { utilization: 0.4 } }),
-      } as unknown as Response),
-    );
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ five_hour: { utilization: 0.4 } }),
+    } as unknown as Response);
 
     const deps = mkDeps([mkAccount("a")]);
     const pool = new AccountPool(deps);
-    await pool.refreshUsage("a", "tok");
+    await pool.refreshUsage("a", "tok", { fetch: fetchMock });
 
     const written = deps.writes.at(-1);
     expect(written?.usage?.sessionPct).toBeCloseTo(40, 5);
@@ -366,9 +361,7 @@ describe("AccountPool refreshUsage", () => {
   });
 
   it("Codex probe requires organizationId; throws otherwise", async () => {
-    const deps = mkDeps([
-      mkAccount("a", { providerId: "openai-codex" }),
-    ]);
+    const deps = mkDeps([mkAccount("a", { providerId: "openai-codex" })]);
     const pool = new AccountPool(deps);
     await expect(pool.refreshUsage("a", "tok")).rejects.toThrow(
       /organizationId/,

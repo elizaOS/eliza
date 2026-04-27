@@ -612,20 +612,17 @@ async function handleOAuthRoutes(
       ctx.saveConfig(ctx.state.config);
     };
 
-    let handle;
+    const startFlow =
+      subscription === "anthropic-subscription"
+        ? startAnthropicOAuthFlow
+        : startCodexOAuthFlow;
+    let handle: Awaited<ReturnType<typeof startFlow>>;
     try {
-      handle =
-        subscription === "anthropic-subscription"
-          ? await startAnthropicOAuthFlow({
-              label: parsed.data.label,
-              accountId,
-              onAccountSaved,
-            })
-          : await startCodexOAuthFlow({
-              label: parsed.data.label,
-              accountId,
-              onAccountSaved,
-            });
+      handle = await startFlow({
+        label: parsed.data.label,
+        accountId,
+        onAccountSaved,
+      });
     } catch (err) {
       logger.error(
         `[accounts] Failed to start ${providerId} OAuth flow: ${String(err)}`,

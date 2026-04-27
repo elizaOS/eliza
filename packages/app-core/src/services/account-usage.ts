@@ -38,6 +38,7 @@ export interface UsageEntry {
 
 const ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+type FetchLike = typeof fetch;
 
 function utilizationToPct(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
@@ -86,8 +87,9 @@ interface AnthropicUsagePayload {
  */
 export async function pollAnthropicUsage(
   accessToken: string,
+  fetchImpl: FetchLike = fetch,
 ): Promise<UsageSnapshot> {
-  const res = await fetch(ANTHROPIC_USAGE_URL, {
+  const res = await fetchImpl(ANTHROPIC_USAGE_URL, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -146,8 +148,9 @@ interface CodexUsagePayload {
 export async function pollCodexUsage(
   accessToken: string,
   accountId: string,
+  fetchImpl: FetchLike = fetch,
 ): Promise<UsageSnapshot> {
-  const res = await fetch(CODEX_USAGE_URL, {
+  const res = await fetchImpl(CODEX_USAGE_URL, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${accessToken}`,

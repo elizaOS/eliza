@@ -5,14 +5,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   pollAnthropicUsage,
   pollCodexUsage,
@@ -54,9 +47,7 @@ describe("pollAnthropicUsage", () => {
         },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const snap = await pollAnthropicUsage("test-token");
+    const snap = await pollAnthropicUsage("test-token", fetchMock);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
@@ -73,20 +64,17 @@ describe("pollAnthropicUsage", () => {
 
   it("handles legacy flat response shape (utilization 0..1, epoch-seconds reset)", async () => {
     const epochSeconds = 1893456000; // 2030-01-01
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse({
-          body: {
-            five_hour_utilization: 0.5,
-            five_hour_resets_at: epochSeconds,
-            seven_day_utilization: 0.1,
-          },
-        }),
-      ),
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        body: {
+          five_hour_utilization: 0.5,
+          five_hour_resets_at: epochSeconds,
+          seven_day_utilization: 0.1,
+        },
+      }),
     );
 
-    const snap = await pollAnthropicUsage("tok");
+    const snap = await pollAnthropicUsage("tok", fetchMock);
     expect(snap.sessionPct).toBeCloseTo(50, 5);
     expect(snap.weeklyPct).toBeCloseTo(10, 5);
     // Epoch-seconds normalized to ms.
@@ -94,14 +82,11 @@ describe("pollAnthropicUsage", () => {
   });
 
   it("throws on HTTP error including the status code", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse({ ok: false, status: 429, body: {} }),
-      ),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ ok: false, status: 429, body: {} }));
 
-    await expect(pollAnthropicUsage("tok")).rejects.toThrow(/429/);
+    await expect(pollAnthropicUsage("tok", fetchMock)).rejects.toThrow(/429/);
   });
 });
 
@@ -126,9 +111,11 @@ describe("pollCodexUsage", () => {
         },
       }),
     );
-    vi.stubGlobal("fetch", fetchMock);
-
-    const snap = await pollCodexUsage("codex-token", "openai-acct-123");
+    const snap = await pollCodexUsage(
+      "codex-token",
+      "openai-acct-123",
+      fetchMock,
+    );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
@@ -144,13 +131,12 @@ describe("pollCodexUsage", () => {
   });
 
   it("throws on HTTP error", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse({ ok: false, status: 401, body: {} }),
-      ),
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ ok: false, status: 401, body: {} }));
+    await expect(pollCodexUsage("tok", "acct", fetchMock)).rejects.toThrow(
+      /401/,
     );
-    await expect(pollCodexUsage("tok", "acct")).rejects.toThrow(/401/);
   });
 });
 
