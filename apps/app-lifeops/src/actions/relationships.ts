@@ -100,6 +100,13 @@ async function resolveRelationshipIdByName(
   }
 
   const relationships = await service.listRelationships({ limit: 200 });
+  if (process.env.MILADY_BENCHMARK_DEBUG_OAUTH === "1") {
+    const fsModule = await import("node:fs");
+    fsModule.appendFileSync(
+      "/tmp/bench_oauth_debug.log",
+      `[resolveRelationshipIdByName] needle=${needle} count=${relationships.length} names=${JSON.stringify(relationships.map((r) => r.name))}\n`,
+    );
+  }
   const exactMatch =
     relationships.find(
       (relationship) => normalizeLookup(relationship.name) === needle,

@@ -232,10 +232,12 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
                 }
               })()
             : await (async () => {
-                const accessToken = await ensureFreshGoogleAccessToken(
-                  grant.tokenRef ??
-                    fail(409, "Google Calendar token reference is missing."),
-                );
+                const accessToken = (
+                  await ensureFreshGoogleAccessToken(
+                    grant.tokenRef ??
+                      fail(409, "Google Calendar token reference is missing."),
+                  )
+                ).accessToken;
                 return listGoogleCalendars({ accessToken });
               })();
         for (const entry of entries) {

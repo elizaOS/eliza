@@ -97,10 +97,23 @@ describe("action selection benchmark", () => {
 
       const runtimeFactory = await createBenchmarkRuntimeFactory();
 
+      const filterRaw = process.env.MILADY_BENCHMARK_FILTER?.trim();
+      const filterIds = filterRaw
+        ? new Set(
+            filterRaw
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          )
+        : null;
+      const cases = filterIds
+        ? ACTION_BENCHMARK_CASES.filter((c) => filterIds.has(c.id))
+        : ACTION_BENCHMARK_CASES;
+
       try {
         const report = await runActionSelectionBenchmark({
           createCaseRuntime: runtimeFactory.createCaseRuntime,
-          cases: ACTION_BENCHMARK_CASES,
+          cases,
           trajectoryDir: BENCHMARK_TRAJECTORY_DIR,
           timeoutMsPerCase: 180_000,
         });
@@ -112,7 +125,7 @@ describe("action selection benchmark", () => {
 
         // Benchmark is informational — accuracy is the metric, not the
         // pass/fail criterion. Only assert the report is structurally valid.
-        expect(report.total).toBe(ACTION_BENCHMARK_CASES.length);
+        expect(report.total).toBe(cases.length);
         expect(report.accuracy).toBeGreaterThanOrEqual(0);
         expect(report.accuracy).toBeLessThanOrEqual(1);
       } finally {
