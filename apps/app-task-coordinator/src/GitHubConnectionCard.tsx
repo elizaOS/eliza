@@ -1,6 +1,11 @@
 import { client, openExternalUrl } from "@elizaos/app-core";
 import { Button, SettingsControls } from "@elizaos/ui";
-import { CheckCircle2, ExternalLink, Github, Unplug } from "lucide-react";
+import {
+  CheckCircle2,
+  ExternalLink,
+  GitPullRequest,
+  Unplug,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 /**
@@ -93,7 +98,7 @@ export function GitHubConnectionCard() {
     <div className="space-y-3 rounded-lg border border-border/20 bg-card/14 px-3 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <Github className="h-4 w-4 text-muted" aria-hidden />
+          <GitPullRequest className="h-4 w-4 text-muted" aria-hidden />
           <span className="text-sm font-medium text-txt">GitHub</span>
           {status?.connected ? (
             <span
@@ -180,7 +185,7 @@ export function GitHubConnectionCard() {
               autoComplete="off"
             />
             <Button
-              variant="primary"
+              variant="default"
               size="sm"
               onClick={() => void handleConnect()}
               disabled={submitting || draft.trim().length === 0}
