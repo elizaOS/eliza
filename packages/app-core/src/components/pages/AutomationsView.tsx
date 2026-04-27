@@ -77,6 +77,7 @@ import {
 import { useWorkflowGenerationState } from "../../hooks/useWorkflowGenerationState";
 import {
   dispatchFocusConnector,
+  prettyCredName,
   providerFromCredType,
   useApp,
 } from "../../state";
@@ -196,26 +197,6 @@ function prefillPageChat(text: string, options?: { select?: boolean }): void {
       },
     }),
   );
-}
-
-/**
- * Display name for an n8n credential type. Backend emits raw credential type
- * IDs (e.g. `slackApi`, `gmailOAuth2`); the missing-credentials banner shows
- * users a friendly service name. Falls back to the raw type if unmapped.
- */
-const CRED_TYPE_LABELS: Record<string, string> = {
-  gmailOAuth2: "Gmail",
-  gmailOAuth2Api: "Gmail",
-  slackApi: "Slack",
-  slackOAuth2Api: "Slack",
-  discordApi: "Discord",
-  discordBotApi: "Discord",
-  discordWebhookApi: "Discord",
-  telegramApi: "Telegram",
-};
-
-function prettyCredName(credType: string): string {
-  return CRED_TYPE_LABELS[credType] ?? credType;
 }
 
 function buildWorkflowCopyRequest(
