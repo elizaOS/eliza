@@ -17,7 +17,6 @@ import {
 } from "./actions/checkin.js";
 import { lifeOpsComputerUseAction } from "./actions/computer-use.js";
 import { crossChannelSendAction } from "./actions/cross-channel-send.js";
-import { publishDeviceIntentAction } from "./actions/device-bus.js";
 import { dossierAction } from "./actions/dossier.js";
 import { emailUnsubscribeAction } from "./actions/email-unsubscribe.js";
 import { healthAction } from "./actions/health.js";
@@ -237,7 +236,6 @@ const rawAppLifeOpsPlugin: Plugin = {
     ownerScheduleAction,
     crossChannelSendAction,
     searchAcrossChannelsAction,
-    publishDeviceIntentAction,
     intentSyncAction,
     passwordManagerAction,
     requestFieldFillAction,
