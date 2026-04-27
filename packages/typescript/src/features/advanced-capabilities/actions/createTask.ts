@@ -103,6 +103,7 @@ export const createTaskAction: Action = {
 	name: "CREATE_TASK",
 	similes: ["CREATE_TRIGGER", "SCHEDULE_TRIGGER", "SCHEDULE_TASK"],
 	description: "Create an autonomous trigger task (interval, once, or cron)",
+	suppressPostActionContinuation: true,
 	examples: [
 		[
 			{

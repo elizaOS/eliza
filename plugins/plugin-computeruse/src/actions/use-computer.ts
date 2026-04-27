@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -8,7 +9,11 @@ import type {
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import type { ComputerActionResult, DesktopActionParams } from "../types.js";
-import { buildScreenshotAttachment, resolveActionParams } from "./helpers.js";
+import {
+  buildScreenshotAttachment,
+  resolveActionParams,
+  toComputerUseActionResult,
+} from "./helpers.js";
 
 const MOCK_SCREENSHOT_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+R4QAAAAASUVORK5CYII=";
@@ -105,18 +110,35 @@ function buildMockDesktopResult(
   };
 }
 
+function formatDesktopResultText(
+  params: DesktopActionParams,
+  result: ComputerActionResult,
+): string {
+  if (!result.success) {
+    if (result.permissionDenied) {
+      return `Desktop action failed because ${result.permissionType} permission is missing.`;
+    }
+    if (result.approvalRequired) {
+      return `Desktop action "${params.action}" is waiting for approval (${result.approvalId}).`;
+    }
+    return `Desktop action failed: ${result.error}`;
+  }
+
+  if (params.action === "screenshot") {
+    return result.message ?? "Here is the current screen.";
+  }
+  return result.message ?? `Completed ${params.action}.`;
+}
+
 async function deliverResult(
   params: DesktopActionParams,
   result: ComputerActionResult,
+  text: string,
   callback?: HandlerCallback,
 ): Promise<void> {
   if (!callback) return;
   await callback({
-    text: result.success
-      ? params.action === "screenshot"
-        ? (result.message ?? "Here is the current screen.")
-        : (result.message ?? `Completed ${params.action}.`)
-      : `Desktop action failed: ${result.error}`,
+    text,
     ...(result.screenshot
       ? {
           attachments: [
@@ -274,7 +296,7 @@ export const useComputerAction: Action = {
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
-  ) => {
+  ): Promise<ActionResult> => {
     const params = resolveActionParams<DesktopActionParams>(message, options);
     params.action ??= "screenshot";
 
@@ -284,46 +306,24 @@ export const useComputerAction: Action = {
         return { success: false, error: "ComputerUseService not available" };
       }
       const mockResult = buildMockDesktopResult(params);
-      await deliverResult(params, mockResult, callback);
-      return mockResult as unknown as any;
-    }
-
-    const result = await service.executeDesktopAction(params);
-    await deliverResult(params, result, callback);
-
-    if (callback) {
-      const text = result.success
-        ? params.action === "screenshot"
-          ? "Here is the current screen."
-          : `Action "${params.action}" completed successfully.`
-        : result.permissionDenied
-          ? `Action failed because ${result.permissionType} permission is missing.`
-          : result.approvalRequired
-            ? `Action "${params.action}" is waiting for approval (${result.approvalId}).`
-            : `Action failed: ${result.error}`;
-
-      await callback({
+      const text = formatDesktopResultText(params, mockResult);
+      await deliverResult(params, mockResult, text, callback);
+      return toComputerUseActionResult({
+        action: params.action,
+        result: mockResult,
         text,
-        ...(result.screenshot
-          ? {
-              attachments: [
-                {
-                  id: `screenshot-${Date.now()}`,
-                  url: `data:image/png;base64,${result.screenshot}`,
-                  title: "Screenshot",
-                  source: "computeruse",
-                  description: `Screen capture after ${params.action}`,
-                  contentType: "image" as const,
-                },
-              ],
-            }
-          : {}),
+        suppressClipboard: true,
       });
     }
 
-    return {
-      success: result.success,
-      data: { screenshot: !!result.screenshot },
-    };
+    const result = await service.executeDesktopAction(params);
+    const text = formatDesktopResultText(params, result);
+    await deliverResult(params, result, text, callback);
+    return toComputerUseActionResult({
+      action: params.action,
+      result,
+      text,
+      suppressClipboard: true,
+    });
   },
 };

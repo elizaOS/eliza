@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -7,8 +8,17 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import type { TerminalActionParams } from "../types.js";
-import { resolveActionParams } from "./helpers.js";
+import type { TerminalActionParams, TerminalActionResult } from "../types.js";
+import {
+  resolveActionParams,
+  toComputerUseActionResult,
+} from "./helpers.js";
+
+function formatTerminalResultText(result: TerminalActionResult): string {
+  return result.success
+    ? (result.output ?? result.message ?? "Terminal action completed.")
+    : `Terminal action failed: ${result.error}`;
+}
 
 export const terminalAction: Action = {
   name: "TERMINAL_ACTION",
@@ -23,6 +33,8 @@ export const terminalAction: Action = {
     "Execute terminal commands and manage lightweight terminal sessions through the computer-use service. This includes connect, execute, read, type, clear, close, and the upstream execute_command alias.\n\n" +
     "Why this exists: it gives the agent shell access through the same safety and approval layer as the other computer-use tools.",
   descriptionCompressed: "Execute terminal commands or manage sessions.",
+  suppressPostActionContinuation: true,
+  suppressActionResultClipboard: true,
   parameters: [
     {
       name: "action",
@@ -100,7 +112,7 @@ export const terminalAction: Action = {
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
-  ) => {
+  ): Promise<ActionResult> => {
     const service =
       (runtime.getService("computeruse") as unknown as ComputerUseService) ??
       null;
@@ -120,15 +132,17 @@ export const terminalAction: Action = {
     }
 
     const result = await service.executeTerminalAction(params);
+    const text = formatTerminalResultText(result);
 
     if (callback) {
-      await callback({
-        text: result.success
-          ? (result.output ?? result.message ?? "Terminal action completed.")
-          : `Terminal action failed: ${result.error}`,
-      });
+      await callback({ text });
     }
 
-    return result as unknown as any;
+    return toComputerUseActionResult({
+      action: params.action,
+      result,
+      text,
+      suppressClipboard: true,
+    });
   },
 };

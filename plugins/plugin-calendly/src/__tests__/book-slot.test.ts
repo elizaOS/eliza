@@ -209,7 +209,29 @@ describe("LIST_CALENDLY_EVENT_TYPES", () => {
 });
 
 describe("CANCEL_CALENDLY_BOOKING", () => {
-  it("cancels and extracts the UUID + reason from the message", async () => {
+  it("requires confirmation before canceling", async () => {
+    const stub = buildStub(true);
+    const runtime = buildRuntime(stub);
+    const result = (await runHandler(
+      cancelBookingAction,
+      runtime,
+      buildMessage(
+        "Cancel scheduled_events/11111111-2222-3333-4444-555555555555 because I need to travel",
+      ),
+    )) as {
+      success: false;
+      requiresConfirmation: true;
+      data: { requiresConfirmation: boolean; uuid: string; reason?: string };
+    };
+    expect(result.success).toBe(false);
+    expect(result.requiresConfirmation).toBe(true);
+    expect(result.data.requiresConfirmation).toBe(true);
+    expect(result.data.uuid).toBe("11111111-2222-3333-4444-555555555555");
+    expect(result.data.reason).toBe("I need to travel");
+    expect(stub.cancelBooking).not.toHaveBeenCalled();
+  });
+
+  it("cancels when confirmed and extracts the UUID + reason from the message", async () => {
     const stub = buildStub(true);
     stub.cancelBooking.mockResolvedValue(undefined);
     const runtime = buildRuntime(stub);
@@ -219,6 +241,7 @@ describe("CANCEL_CALENDLY_BOOKING", () => {
       buildMessage(
         "Cancel scheduled_events/11111111-2222-3333-4444-555555555555 because I need to travel",
       ),
+      { confirmed: true },
     )) as { success: true; data: { uuid: string; reason?: string } };
     expect(result.success).toBe(true);
     expect(result.data.uuid).toBe("11111111-2222-3333-4444-555555555555");

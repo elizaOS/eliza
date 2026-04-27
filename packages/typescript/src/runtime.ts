@@ -3062,9 +3062,19 @@ export class AgentRuntime implements IAgentRuntime {
 						result !== null &&
 						("values" in result || "data" in result || "text" in result)
 					) {
+						const resultData =
+							typeof result.data === "object" &&
+							result.data !== null &&
+							!Array.isArray(result.data)
+								? result.data
+								: {};
 						// Ensure success field exists with default true
 						actionResult = {
 							...result,
+							data: {
+								actionName: action.name,
+								...resultData,
+							},
 							success: "success" in result ? result.success : true, // Default to true if not specified
 						} as ActionResult;
 					} else {
