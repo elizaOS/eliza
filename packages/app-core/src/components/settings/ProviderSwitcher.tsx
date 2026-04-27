@@ -383,7 +383,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         const elizaCloudEnabledCfg =
           llmText?.transport === "cloud-proxy" && providerId === "elizacloud";
         const defaults = {
-          nano: "openai/gpt-5.4-nano",
+          nano: "openai/gpt-5.5-nano",
           small: "minimax/minimax-m2.7",
           medium: "anthropic/claude-sonnet-4.6",
           large: "moonshotai/kimi-k2.5",

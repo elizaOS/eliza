@@ -233,7 +233,7 @@ function createInitialState(cloudOnly?: boolean): OnboardingState {
     apiKey: "",
     voiceProvider: "",
     voiceApiKey: "",
-    nanoModel: "openai/gpt-5.4-nano",
+    nanoModel: "openai/gpt-5.5-nano",
     smallModel: "minimax/minimax-m2.7",
     mediumModel: "anthropic/claude-sonnet-4.6",
     largeModel: "anthropic/claude-opus-4-7",
