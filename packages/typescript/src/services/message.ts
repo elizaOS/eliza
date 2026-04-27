@@ -6911,6 +6911,44 @@ Output ONLY the continuation, starting immediately after the last character abov
 							? result.text
 							: undefined,
 				});
+
+				// Break the multi-step loop when the action returned a terminal
+				// "needs human confirmation" signal. Without this, actions that
+				// return { requiresConfirmation: true } cause the planner to
+				// re-fire the same plan every iteration. Confirmation must come
+				// from the next user message — there is nothing the agent can
+				// do to supply it on its own.
+				const resultValuesForConfirm =
+					result &&
+					"values" in result &&
+					typeof result.values === "object" &&
+					result.values !== null
+						? (result.values as Record<string, unknown>)
+						: null;
+				const resultDataForConfirm =
+					result &&
+					"data" in result &&
+					typeof result.data === "object" &&
+					result.data !== null
+						? (result.data as Record<string, unknown>)
+						: null;
+				const requiresConfirmation =
+					resultValuesForConfirm?.requiresConfirmation === true ||
+					resultDataForConfirm?.requiresConfirmation === true ||
+					resultValuesForConfirm?.error === "CONFIRMATION_REQUIRED" ||
+					resultDataForConfirm?.error === "CONFIRMATION_REQUIRED";
+				if (requiresConfirmation) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							iteration: iterationCount,
+							action,
+						},
+						"Action returned requiresConfirmation — terminating multi-step loop until next user message",
+					);
+					break;
+				}
 			}
 		}
 
