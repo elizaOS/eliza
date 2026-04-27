@@ -2,12 +2,14 @@
  * Round-trip CRUD + OAuth-flow tests for `handleAccountsRoutes`.
  *
  * Each test runs against a fresh tmp `ELIZA_HOME` so the per-account
- * credential store is isolated, and against an in-memory `ElizaConfig`
- * snapshot that we mutate via the `saveConfig` callback. Network
- * calls (Anthropic / OpenAI token exchange + usage probes) are not
- * exercised here — `oauth/start` is asserted to return a valid
- * `{ sessionId, authUrl }` and the SSE stream is driven via the
- * synthetic-flow registry helper.
+ * credential store AND the `_pool-metadata.json` overlay are
+ * isolated. `LinkedAccountConfig` data lives in the AccountPool now,
+ * not in `ElizaConfig.linkedAccounts`, so the `state.config` we hand
+ * the route handler is mostly opaque — the pool reads/writes the
+ * metadata file directly. Network calls (Anthropic / OpenAI token
+ * exchange + usage probes) are not exercised here — `oauth/start` is
+ * asserted to return a valid `{ sessionId, authUrl }` and the SSE
+ * stream is driven via the synthetic-flow registry helper.
  */
 
 import crypto from "node:crypto";
@@ -23,6 +25,7 @@ import { _resetFlowRegistry, _registerSyntheticFlow } from "../auth/oauth-flow.j
 import type { ElizaConfig } from "../config/types.eliza.js";
 import {
   type AccountsRouteContext,
+  _resetAccountsRoutesPoolCache,
   handleAccountsRoutes,
 } from "./accounts-routes.js";
 
