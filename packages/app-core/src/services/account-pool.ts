@@ -135,9 +135,10 @@ export class AccountPool {
     input: SelectInput,
   ): LinkedAccountConfig[] {
     const exclude = new Set(input.exclude ?? []);
-    const explicit = input.accountIds && input.accountIds.length > 0
-      ? new Set(input.accountIds)
-      : null;
+    const explicit =
+      input.accountIds && input.accountIds.length > 0
+        ? new Set(input.accountIds)
+        : null;
     const now = Date.now();
 
     return Object.values(all).filter((account) => {
@@ -214,14 +215,14 @@ export class AccountPool {
   async refreshUsage(
     accountId: string,
     accessToken: string,
-    opts?: { codexAccountId?: string },
+    opts?: { codexAccountId?: string; fetch?: typeof fetch },
   ): Promise<void> {
     const account = this.deps.readAccounts()[accountId];
     if (!account) return;
 
     let usage: LinkedAccountUsage;
     if (account.providerId === "anthropic-subscription") {
-      usage = await pollAnthropicUsage(accessToken);
+      usage = await pollAnthropicUsage(accessToken, opts?.fetch);
     } else if (account.providerId === "openai-codex") {
       const codexAccountId = opts?.codexAccountId ?? account.organizationId;
       if (!codexAccountId) {
@@ -229,7 +230,7 @@ export class AccountPool {
           `[AccountPool] Codex usage probe needs the OpenAI account_id (account ${accountId} has no organizationId).`,
         );
       }
-      usage = await pollCodexUsage(accessToken, codexAccountId);
+      usage = await pollCodexUsage(accessToken, codexAccountId, opts?.fetch);
     } else {
       // No probe defined for direct API providers.
       return;
@@ -354,10 +355,7 @@ interface PoolMetaFields {
   usage?: LinkedAccountUsage;
 }
 
-type PoolMetaStore = Record<
-  PoolProviderId,
-  Record<string, PoolMetaFields>
->;
+type PoolMetaStore = Record<PoolProviderId, Record<string, PoolMetaFields>>;
 
 function authRoot(): string {
   return path.join(
@@ -430,9 +428,7 @@ function recordToLinked(
       : {}),
     ...(meta?.healthDetail ? { healthDetail: meta.healthDetail } : {}),
     ...(meta?.usage ? { usage: meta.usage } : {}),
-    ...(record.organizationId
-      ? { organizationId: record.organizationId }
-      : {}),
+    ...(record.organizationId ? { organizationId: record.organizationId } : {}),
     ...(record.userId ? { userId: record.userId } : {}),
     ...(record.email ? { email: record.email } : {}),
   };
@@ -629,9 +625,8 @@ function installSubscriptionSelectorShim(pool: AccountPool): void {
       return account?.id ?? null;
     },
   };
-  (globalThis as Record<symbol, unknown>)[
-    SUBSCRIPTION_SELECTOR_SHIM_SYMBOL
-  ] = shim;
+  (globalThis as Record<symbol, unknown>)[SUBSCRIPTION_SELECTOR_SHIM_SYMBOL] =
+    shim;
 }
 
 /**
