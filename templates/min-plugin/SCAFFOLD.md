@@ -39,16 +39,19 @@ All three must exit zero. If one fails, fix it. Do not silence errors with `as a
 After verification passes, emit a single line on stdout:
 
 ```
-PLUGIN_CREATE_DONE {"name":"<__PLUGIN_NAME__>","files":["<list>"],"testsPassed":<n>,"lintClean":true,"description":"<one factual sentence>"}
+PLUGIN_CREATE_DONE {"pluginName":"<__PLUGIN_NAME__>","files":["<list>"],"tests":{"passed":<n>,"failed":0},"lint":"ok","typecheck":"ok","description":"<one factual sentence>"}
 ```
 
 Field contract (all required except `description`):
 
-- `name` — string, the npm-style package name you used in `package.json`.
+- `pluginName` — string, the npm-style package name you used in `package.json`.
 - `files` — array of repo-relative paths you created or modified.
-- `testsPassed` — non-negative number of tests that passed in step 4.
-- `lintClean` — boolean. `true` only when `bun run lint` exited zero with no warnings.
+- `tests` — object with the exact Vitest count: `passed` is the verified passed count and `failed` must be `0`.
+- `lint` — literal `"ok"`, only after `bun run lint` exits zero.
+- `typecheck` — literal `"ok"`, only after `bun run typecheck` exits zero.
 - `description` — optional one-sentence summary of what the plugin does.
+
+Do not emit legacy fields such as `name`, `testsPassed`, or `lintClean`; the orchestrator rejects them.
 
 The orchestrator will cross-check the claims against disk and the verification log. If anything you assert does not match reality, it will retry you with a structured failure report (capped by `MILADY_APP_VERIFICATION_MAX_RETRIES`, default `3`).
 

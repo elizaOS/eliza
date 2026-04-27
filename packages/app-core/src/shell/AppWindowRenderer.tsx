@@ -15,7 +15,6 @@ import {
   type LazyExoticComponent,
   lazy,
   Suspense,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -27,11 +26,7 @@ import {
   client,
   type RegistryAppInfo,
 } from "../api";
-import {
-  findAppBySlug,
-  getAppSlug,
-} from "../components/apps/helpers";
-import { useRegistryCatalog } from "../components/apps/useRegistryCatalog";
+import { findAppBySlug, getAppSlug } from "../components/apps/helpers";
 import {
   getInternalToolAppDescriptors,
   getInternalToolAppTargetTab,
@@ -41,16 +36,13 @@ import {
   getOverlayApp,
   isOverlayApp,
 } from "../components/apps/overlay-app-registry";
+import { useRegistryCatalog } from "../components/apps/useRegistryCatalog";
 import {
   resolveEmbeddedViewerUrl,
   resolvePostMessageTargetOrigin,
   resolveViewerReadyEventType,
   shouldUseEmbeddedAppViewer,
 } from "../components/apps/viewer-auth";
-import type { Tab } from "../navigation";
-import { useApp } from "../state/useApp";
-import { openExternalUrl } from "../utils";
-
 // Static imports for the internal-tool views. WHY not React.lazy: each of
 // these is also statically imported by the main shell (App.tsx + tab
 // routers + DetachedShellRoot), so a `lazy(() => import(...))` here would
@@ -69,6 +61,9 @@ import { SkillsView } from "../components/pages/SkillsView";
 import { TasksPageView } from "../components/pages/TasksPageView";
 import { TrajectoriesView } from "../components/pages/TrajectoriesView";
 import { FineTuningView } from "../components/training/injected";
+import type { Tab } from "../navigation";
+import { useApp } from "../state/useApp";
+import { openExternalUrl } from "../utils";
 
 interface AppWindowRendererProps {
   slug: string;
@@ -102,7 +97,11 @@ function lazyNamedView<
   });
 }
 
-function AppWindowSuspense({ children }: { children: JSX.Element }): JSX.Element {
+function AppWindowSuspense({
+  children,
+}: {
+  children: JSX.Element;
+}): JSX.Element {
   return (
     <Suspense
       fallback={
@@ -158,10 +157,7 @@ function LifeOpsAppWindowView(): JSX.Element {
   // Lazy-load it the same way the main shell does.
   const LifeOpsLazy = useMemo(
     () =>
-      lazyNamedView(
-        () => import("@elizaos/app-lifeops/ui"),
-        "LifeOpsPageView",
-      ),
+      lazyNamedView(() => import("@elizaos/app-lifeops/ui"), "LifeOpsPageView"),
     [],
   );
   return (
@@ -189,11 +185,7 @@ function AppWindowSpinner({ label }: { label: string }): JSX.Element {
   );
 }
 
-function AppWindowFrame({
-  children,
-}: {
-  children: JSX.Element;
-}): JSX.Element {
+function AppWindowFrame({ children }: { children: JSX.Element }): JSX.Element {
   return (
     <div className="flex h-screen min-h-0 w-screen flex-col overflow-hidden bg-bg text-txt">
       {children}
@@ -210,11 +202,7 @@ function exitAppWindow(): void {
   }
 }
 
-function OverlayAppWindowView({
-  appName,
-}: {
-  appName: string;
-}): JSX.Element {
+function OverlayAppWindowView({ appName }: { appName: string }): JSX.Element {
   const overlay = getOverlayApp(appName);
   const { uiTheme, t } = useApp();
 
@@ -243,11 +231,7 @@ interface RegistryRunState {
   message: string | null;
 }
 
-function RegistryAppWindowView({
-  slug,
-}: {
-  slug: string;
-}): JSX.Element {
+function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
   const { t } = useApp();
   const { catalog, error: catalogError } = useRegistryCatalog();
   const [runState, setRunState] = useState<RegistryRunState>({
@@ -256,7 +240,7 @@ function RegistryAppWindowView({
     launchUrl: null,
     message: null,
   });
-  const [retryCounter, setRetryCounter] = useState(0);
+  const [_retryCounter, setRetryCounter] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const authSentRef = useRef(false);
 
@@ -338,7 +322,7 @@ function RegistryAppWindowView({
     return () => {
       cancelled = true;
     };
-  }, [resolvedApp, retryCounter, t]);
+  }, [resolvedApp, t]);
 
   // postMessage auth handshake — mirrors GameViewOverlay / GameView.
   const run = runState.run;
@@ -382,13 +366,7 @@ function RegistryAppWindowView({
     return () => {
       window.removeEventListener("message", onMessage);
     };
-  }, [
-    authMessage,
-    requiresAuth,
-    runState.status,
-    targetOrigin,
-    useEmbedded,
-  ]);
+  }, [authMessage, requiresAuth, runState.status, targetOrigin, useEmbedded]);
 
   if (catalogError) {
     return <AppWindowError message={catalogError} />;
@@ -535,4 +513,3 @@ function resolveOverlayAppNameFromSlug(slug: string): string | null {
   }
   return null;
 }
-
