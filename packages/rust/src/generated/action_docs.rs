@@ -87,7 +87,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "IGNORE",
-      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
+      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent, even if the agent name appears incidentally in a repo name, URL, quote, or third-person reference. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
       "similes": [
         "STOP_TALKING",
         "STOP_CHATTING",
@@ -199,7 +199,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           }
         ]
       ],
-      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, or both sides said goodbye. Don't use if user engaged directly or needs error info."
+      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, addressed to someone else in a group, or both sides said goodbye. Don't use if user engaged directly or needs error info."
     },
     {
       "name": "NONE",
@@ -1456,7 +1456,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "IGNORE",
-      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
+      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent, even if the agent name appears incidentally in a repo name, URL, quote, or third-person reference. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
       "similes": [
         "STOP_TALKING",
         "STOP_CHATTING",
@@ -1568,7 +1568,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           }
         ]
       ],
-      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, or both sides said goodbye. Don't use if user engaged directly or needs error info."
+      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, addressed to someone else in a group, or both sides said goodbye. Don't use if user engaged directly or needs error info."
     },
     {
       "name": "NONE",
