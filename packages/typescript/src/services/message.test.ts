@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { IAgentRuntime, Memory, State } from "../types";
 import { stringToUuid } from "../utils";
-import { DefaultMessageService, extractPlannerActionNames } from "./message.ts";
+import {
+	DefaultMessageService,
+	extractPlannerActionNames,
+	shouldRunMetadataActionRescue,
+} from "./message.ts";
 
 // Tests for DISABLE_MEMORY_CREATION and ALLOW_MEMORY_SOURCE_IDS logic
 describe("MessageService memory persistence logic", () => {
@@ -187,5 +191,56 @@ describe("DefaultMessageService action-result cache lifecycle", () => {
 
 		expect(result.didRespond).toBe(false);
 		expect(stateCache.has(`${messageId}_action_results`)).toBe(false);
+	});
+});
+
+describe("shouldRunMetadataActionRescue", () => {
+	it("returns true when no actions are present", () => {
+		expect(shouldRunMetadataActionRescue({ actions: [] })).toBe(true);
+		expect(shouldRunMetadataActionRescue(null)).toBe(true);
+		expect(shouldRunMetadataActionRescue(undefined)).toBe(true);
+	});
+
+	it("returns true when actions are only IGNORE / NONE", () => {
+		expect(shouldRunMetadataActionRescue({ actions: ["IGNORE"] })).toBe(true);
+		expect(shouldRunMetadataActionRescue({ actions: ["NONE"] })).toBe(true);
+		expect(
+			shouldRunMetadataActionRescue({ actions: ["IGNORE", "NONE"] }),
+		).toBe(true);
+	});
+
+	it("returns false when REPLY is present (do not override deliberate conversation)", () => {
+		expect(shouldRunMetadataActionRescue({ actions: ["REPLY"] })).toBe(false);
+		expect(shouldRunMetadataActionRescue({ actions: ["RESPOND"] })).toBe(false);
+		expect(
+			shouldRunMetadataActionRescue({ actions: ["reply"] /* lowercase */ }),
+		).toBe(false);
+	});
+
+	it("returns false when a non-passive action is present (already routed)", () => {
+		expect(shouldRunMetadataActionRescue({ actions: ["CREATE_TASK"] })).toBe(
+			false,
+		);
+		expect(shouldRunMetadataActionRescue({ actions: ["SPAWN_AGENT"] })).toBe(
+			false,
+		);
+		expect(
+			shouldRunMetadataActionRescue({ actions: ["REPLY", "CREATE_TASK"] }),
+		).toBe(false);
+	});
+
+	it("ignores non-string entries in the actions array", () => {
+		// The runtime occasionally feeds in malformed planner output; the gate
+		// must not crash on numbers / objects / nulls and must still answer
+		// false when REPLY appears alongside garbage.
+		expect(
+			shouldRunMetadataActionRescue({
+				actions: [
+					42 as unknown as string,
+					null as unknown as string,
+					"REPLY",
+				],
+			}),
+		).toBe(false);
 	});
 });
