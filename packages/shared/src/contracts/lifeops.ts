@@ -2706,11 +2706,9 @@ export type LifeOpsTelegramAuthState =
 export interface LifeOpsWhatsAppConnectorStatus {
   provider: "whatsapp";
   /**
-   * `connected` here means LifeOps can see either WhatsApp Business Cloud API
-   * credentials or a local QR-paired auth state. It does not imply a live
-   * network probe has been performed. A live send can still fail if the
-   * upstream token/session has been revoked. Callers that need true liveness
-   * must catch errors from the actual send/receive methods.
+   * `connected` means at least one WhatsApp transport is live enough for
+   * inbound or outbound work. A local auth file by itself is not connected until
+   * the Baileys runtime service is actually online.
    */
   connected: boolean;
   /**
@@ -2720,6 +2718,7 @@ export interface LifeOpsWhatsAppConnectorStatus {
   inbound: true;
   phoneNumberId?: string;
   localAuthAvailable?: boolean;
+  localAuthRegistered?: boolean | null;
   serviceConnected?: boolean;
   outboundReady?: boolean;
   inboundReady?: boolean;

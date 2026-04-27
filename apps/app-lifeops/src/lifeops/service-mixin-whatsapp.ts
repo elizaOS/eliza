@@ -33,19 +33,45 @@ type WhatsAppRuntimeServiceLike = {
   }) => Promise<{ messages?: Array<{ id?: string }> }>;
 };
 
-function localWhatsAppAuthDir(): string | null {
-  const workspaceDir = resolveDefaultAgentWorkspaceDir();
-  const lifeOpsAuthDir = path.join(
-    workspaceDir,
-    "lifeops-whatsapp-auth",
-    "default",
-  );
-  if (fs.existsSync(path.join(lifeOpsAuthDir, "creds.json"))) {
-    return lifeOpsAuthDir;
+type LocalWhatsAppAuthState = {
+  authDir: string;
+  registered: boolean | null;
+};
+
+function readLocalWhatsAppAuthState(
+  authDir: string,
+): LocalWhatsAppAuthState | null {
+  const credsPath = path.join(authDir, "creds.json");
+  if (!fs.existsSync(credsPath)) {
+    return null;
   }
 
+  try {
+    const parsed = JSON.parse(fs.readFileSync(credsPath, "utf8")) as unknown;
+    if (parsed && typeof parsed === "object" && "registered" in parsed) {
+      const registered = (parsed as { registered?: unknown }).registered;
+      return {
+        authDir,
+        registered: typeof registered === "boolean" ? registered : null,
+      };
+    }
+    return { authDir, registered: null };
+  } catch {
+    return { authDir, registered: false };
+  }
+}
+
+function localWhatsAppAuthState(): LocalWhatsAppAuthState | null {
+  const workspaceDir = resolveDefaultAgentWorkspaceDir();
+  const lifeOpsAuth = readLocalWhatsAppAuthState(
+    path.join(workspaceDir, "lifeops-whatsapp-auth", "default"),
+  );
+  if (lifeOpsAuth) return lifeOpsAuth;
+
   if (whatsappAuthExists(workspaceDir, "default")) {
-    return path.join(workspaceDir, "whatsapp-auth", "default");
+    return readLocalWhatsAppAuthState(
+      path.join(workspaceDir, "whatsapp-auth", "default"),
+    );
   }
 
   return null;
@@ -119,11 +145,15 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
     async getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus> {
       const creds = readWhatsAppCredentialsFromEnv();
       const hasCloudCredentials = creds !== null;
-      const authDir = localWhatsAppAuthDir();
-      const hasLocalAuth = authDir !== null;
+      const localAuth = localWhatsAppAuthState();
+      const authDir = localAuth?.authDir ?? null;
+      const hasLocalAuth = localAuth !== null;
+      const localAuthReady = Boolean(
+        localAuth && localAuth.registered !== false,
+      );
       let pluginLoadError: string | null = null;
 
-      if (authDir) {
+      if (authDir && localAuthReady) {
         setWhatsAppRuntimeEnv(authDir);
         this.runtime.setSetting?.("WHATSAPP_AUTH_DIR", authDir, false);
         if (!getWhatsAppRuntimeService(this.runtime)) {
@@ -136,9 +166,10 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
         }
       }
 
-      const runtimeService = authDir
-        ? getWhatsAppRuntimeService(this.runtime)
-        : null;
+      const runtimeService =
+        authDir && localAuthReady
+          ? getWhatsAppRuntimeService(this.runtime)
+          : null;
       const serviceConnected = Boolean(runtimeService?.connected);
       const localOutboundReady = Boolean(
         runtimeService?.sendMessage && serviceConnected,
@@ -147,10 +178,11 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
       const inboundReady = hasCloudCredentials || serviceConnected;
       const status: LifeOpsWhatsAppConnectorStatus = {
         provider: "whatsapp",
-        connected: hasCloudCredentials || hasLocalAuth,
+        connected: outboundReady || inboundReady,
         inbound: true,
         ...(creds?.phoneNumberId ? { phoneNumberId: creds.phoneNumberId } : {}),
         localAuthAvailable: hasLocalAuth,
+        localAuthRegistered: localAuth?.registered ?? null,
         serviceConnected,
         outboundReady,
         inboundReady,
@@ -165,12 +197,20 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
       const degradations: NonNullable<
         LifeOpsWhatsAppConnectorStatus["degradations"]
       > = [];
-      if (!outboundReady && hasLocalAuth) {
+      if (localAuth?.registered === false) {
         degradations.push({
           axis: "delivery-degraded",
-          code: "business_cloud_credentials_missing",
+          code: "local_auth_unregistered",
           message:
-            "WhatsApp is paired locally, but the local WhatsApp runtime send service is not ready yet.",
+            "WhatsApp local credentials are present, but Baileys marks the session unregistered. Re-pair WhatsApp locally before send/receive can work.",
+          retryable: true,
+        });
+      } else if (!outboundReady && hasLocalAuth) {
+        degradations.push({
+          axis: "delivery-degraded",
+          code: "local_runtime_unavailable",
+          message:
+            "WhatsApp local auth is present, but the local WhatsApp runtime send service is not ready yet.",
           retryable: true,
         });
       }
@@ -207,7 +247,9 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
         }
       }
 
-      const authDir = localWhatsAppAuthDir();
+      const localAuth = localWhatsAppAuthState();
+      const authDir =
+        localAuth && localAuth.registered !== false ? localAuth.authDir : null;
       if (authDir) {
         setWhatsAppRuntimeEnv(authDir);
         this.runtime.setSetting?.("WHATSAPP_AUTH_DIR", authDir, false);
