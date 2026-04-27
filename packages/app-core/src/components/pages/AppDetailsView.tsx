@@ -9,6 +9,7 @@
 import {
   Pin,
   PinOff,
+  Rocket,
   Settings as SettingsIcon,
   TriangleAlert,
 } from "lucide-react";
@@ -149,6 +150,10 @@ function formatTimestamp(value: number): string {
   } catch {
     return String(value);
   }
+}
+
+function formatLabel(value: string): string {
+  return value.replaceAll("-", " ");
 }
 
 function SectionHeader({ children }: { children: string }): JSX.Element {
@@ -407,11 +412,21 @@ export function AppDetailsView({
   const isInternal = resolved.source === "internal-tool";
   const supportsInlineMode = isInternal || resolved.source === "overlay";
   const DetailExtension = getAppDetailExtension(resolved.info);
+  const activeRun = recentRuns[0] ?? null;
+  const latestFailure = history.find((entry) => !entry.succeeded);
+  const viewerUrl = resolved.info.viewer?.url ?? resolved.info.launchUrl;
+  const launchTarget = viewerUrl ?? resolved.windowPath;
+  const sessionMode = resolved.info.session?.mode;
+  const sessionFeatures = resolved.info.session?.features ?? [];
+  const launchModeLabel =
+    config.launchMode === "inline" && supportsInlineMode
+      ? "Main window"
+      : "Dedicated window";
 
   return (
     <div className="device-layout mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 lg:px-6">
       {/* Header */}
-      <header className="flex flex-col gap-3 border-b border-border/35 pb-5 sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex flex-col gap-3 border-b border-border/35 pb-5">
         <div className="flex items-center gap-4">
           {resolved.info.heroImage ? (
             <img
@@ -441,17 +456,149 @@ export function AppDetailsView({
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleLaunch}
-          disabled={launching}
-          className="rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {launching
-            ? "Launching…"
-            : `Launch ${resolved.info.displayName ?? "App"}`}
-        </button>
       </header>
+
+      <section
+        data-testid="app-launch-panel"
+        className="flex flex-col gap-4 rounded-lg border border-border/45 bg-card/30 p-4"
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <SectionHeader>Launch</SectionHeader>
+            <p className="text-xs text-muted">
+              {activeRun
+                ? `${activeRun.displayName} is ${activeRun.status}.`
+                : "Ready to launch."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleLaunch}
+            disabled={launching}
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
+            {launching
+              ? "Launching..."
+              : `Launch ${resolved.info.displayName ?? "App"}`}
+          </button>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="min-w-0 border-l border-border/35 pl-3">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
+              Run
+            </div>
+            <div className="truncate text-sm font-medium text-foreground">
+              {activeRun?.status ?? "Ready"}
+            </div>
+          </div>
+          <div className="min-w-0 border-l border-border/35 pl-3">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
+              Window
+            </div>
+            <div className="truncate text-sm font-medium text-foreground">
+              {launchModeLabel}
+            </div>
+          </div>
+          <div className="min-w-0 border-l border-border/35 pl-3">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
+              Target
+            </div>
+            <div
+              className="truncate text-sm font-medium text-foreground"
+              title={launchTarget}
+            >
+              {viewerUrl ? "Viewer" : "App route"}
+            </div>
+          </div>
+          <div className="min-w-0 border-l border-border/35 pl-3">
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
+              Session
+            </div>
+            <div className="truncate text-sm font-medium text-foreground">
+              {sessionMode ? formatLabel(sessionMode) : "Not declared"}
+            </div>
+          </div>
+        </div>
+
+        {sessionFeatures.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {sessionFeatures.map((feature) => (
+              <span
+                key={feature}
+                className="rounded-full border border-border/60 bg-card/50 px-2 py-0.5 text-xs text-muted"
+              >
+                {formatLabel(feature)}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {latestFailure ? (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-muted">
+            <span className="font-medium text-destructive">Last failure: </span>
+            {latestFailure.errorMessage ?? "Launch failed."}
+          </div>
+        ) : null}
+
+        <fieldset className="flex flex-col gap-2 rounded-md border border-border/40 bg-bg/20 p-3">
+          <legend className="px-1 text-xs uppercase tracking-[0.14em] text-muted">
+            <SettingsIcon className="mr-1 inline h-3 w-3" /> Launch Destination
+          </legend>
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="radio"
+              checked={config.launchMode === "window"}
+              onChange={() => updateConfig({ launchMode: "window" })}
+              className="h-3.5 w-3.5 accent-accent"
+            />
+            <span>Dedicated window</span>
+          </label>
+          <label
+            className={`flex items-center gap-2 text-sm ${
+              supportsInlineMode
+                ? "cursor-pointer"
+                : "cursor-not-allowed opacity-50"
+            }`}
+          >
+            <input
+              type="radio"
+              checked={config.launchMode === "inline"}
+              disabled={!supportsInlineMode}
+              onChange={() => updateConfig({ launchMode: "inline" })}
+              className="h-3.5 w-3.5 accent-accent"
+            />
+            <span>
+              Main window{!supportsInlineMode ? " (not supported)" : ""}
+            </span>
+          </label>
+        </fieldset>
+
+        <label
+          className={`inline-flex items-center gap-2 self-start rounded-full border border-border/60 bg-bg/20 px-3 py-1.5 text-xs ${
+            config.launchMode === "window"
+              ? "cursor-pointer"
+              : "cursor-not-allowed opacity-50"
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={config.alwaysOnTop}
+            disabled={config.launchMode !== "window"}
+            onChange={(event) =>
+              updateConfig({ alwaysOnTop: event.currentTarget.checked })
+            }
+            className="h-3.5 w-3.5 accent-accent"
+          />
+          {config.alwaysOnTop ? (
+            <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+          ) : (
+            <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
+          )}
+          <span>Keep this app's window on top</span>
+        </label>
+      </section>
 
       {/* Description + Capabilities */}
       <section className="flex flex-col gap-3">
@@ -582,67 +729,6 @@ export function AppDetailsView({
           </ul>
         </section>
       ) : null}
-
-      {/* Config */}
-      <section className="flex flex-col gap-3">
-        <SectionHeader>Config</SectionHeader>
-        <fieldset className="flex flex-col gap-2 rounded-md border border-border/40 bg-card/30 p-3">
-          <legend className="px-1 text-xs uppercase tracking-[0.14em] text-muted">
-            <SettingsIcon className="mr-1 inline h-3 w-3" /> Launch Mode
-          </legend>
-          <label className="flex cursor-pointer items-center gap-2 text-sm">
-            <input
-              type="radio"
-              checked={config.launchMode === "window"}
-              onChange={() => updateConfig({ launchMode: "window" })}
-              className="h-3.5 w-3.5 accent-accent"
-            />
-            <span>Open in dedicated window</span>
-          </label>
-          <label
-            className={`flex items-center gap-2 text-sm ${
-              supportsInlineMode
-                ? "cursor-pointer"
-                : "cursor-not-allowed opacity-50"
-            }`}
-          >
-            <input
-              type="radio"
-              checked={config.launchMode === "inline"}
-              disabled={!supportsInlineMode}
-              onChange={() => updateConfig({ launchMode: "inline" })}
-              className="h-3.5 w-3.5 accent-accent"
-            />
-            <span>
-              Replace current view in main window
-              {!supportsInlineMode ? " (not supported for this app)" : ""}
-            </span>
-          </label>
-        </fieldset>
-        <label
-          className={`inline-flex items-center gap-2 self-start rounded-full border border-border/60 bg-card/40 px-3 py-1.5 text-xs ${
-            config.launchMode === "window"
-              ? "cursor-pointer"
-              : "cursor-not-allowed opacity-50"
-          }`}
-        >
-          <input
-            type="checkbox"
-            checked={config.alwaysOnTop}
-            disabled={config.launchMode !== "window"}
-            onChange={(event) =>
-              updateConfig({ alwaysOnTop: event.currentTarget.checked })
-            }
-            className="h-3.5 w-3.5 accent-accent"
-          />
-          {config.alwaysOnTop ? (
-            <Pin className="h-3.5 w-3.5" aria-hidden="true" />
-          ) : (
-            <PinOff className="h-3.5 w-3.5" aria-hidden="true" />
-          )}
-          <span>Keep this app's window on top</span>
-        </label>
-      </section>
     </div>
   );
 }

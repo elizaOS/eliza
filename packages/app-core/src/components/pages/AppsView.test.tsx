@@ -226,6 +226,10 @@ describe("AppsView", () => {
   it("routes game apps to the details page before launching", async () => {
     render(<AppsView />);
 
+    expect(
+      screen.queryByRole("checkbox", { name: "Open apps in windows" }),
+    ).toBeNull();
+
     const launchButton = await screen.findByRole("button", {
       name: "Open Defense of the Agents",
     });
@@ -240,6 +244,7 @@ describe("AppsView", () => {
 
     expect(clientMock.launchApp).not.toHaveBeenCalled();
     expect(invokeDesktopBridgeRequestMock).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("app-launch-panel")).toBeTruthy();
   });
 
   it("opens lightweight route apps in desktop windows by default", async () => {
@@ -273,25 +278,5 @@ describe("AppsView", () => {
     );
     expect(clientMock.launchApp).not.toHaveBeenCalled();
     expect(window.location.pathname).toBe("/apps/plugin-viewer");
-  });
-
-  it("honors the opt-out preference for lightweight desktop windows", async () => {
-    window.localStorage.setItem("milady:apps:window:launch-enabled", "false");
-    clientMock.listCatalogApps.mockResolvedValue([]);
-
-    render(<AppsView />);
-
-    const launchButton = await screen.findByRole("button", {
-      name: "Open Plugin Viewer",
-    });
-
-    fireEvent.click(launchButton);
-
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(invokeDesktopBridgeRequestMock).not.toHaveBeenCalled();
   });
 });
