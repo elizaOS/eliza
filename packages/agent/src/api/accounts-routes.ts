@@ -573,15 +573,34 @@ async function handleOAuthRoutes(
       return true;
     }
 
-    // Reserve an accountId and the priority slot up front so the
-    // post-save hook lands at a deterministic position.
+    // Reserve an accountId up front so the OAuth flow can wire it
+    // into the credential record before any token exchange completes.
+    // Priority is computed AT SAVE TIME, not now: pre-allocating leaks
+    // a stale priority if two users start parallel OAuth flows before
+    // either completes (both would get the same number). Computing in
+    // the post-save hook is monotonic regardless of concurrency since
+    // the on-disk credential file appears strictly before the hook
+    // fires.
     const accountId = nodeCrypto.randomUUID();
     const pool = await getPool();
-    const priority = nextPriorityFromPool(pool, providerId);
 
-    const onAccountSaved = (record: AccountCredentialRecord) => {
-      const linkedConfig = buildLinkedAccountConfigFromRecord(record, priority);
-      void pool.upsert(linkedConfig);
+    const onAccountSaved = async (record: AccountCredentialRecord) => {
+      // Exclude the just-saved record from the priority calc — its
+      // credential file already exists on disk so `pool.list` would
+      // include it at a default priority (createdAt-sorted index),
+      // which would push the new max one too high.
+      const others = pool
+        .list(providerId)
+        .filter((a) => a.id !== record.id);
+      const livePriority =
+        others.length === 0
+          ? 0
+          : Math.max(...others.map((a) => a.priority)) + 1;
+      const linkedConfig = buildLinkedAccountConfigFromRecord(
+        record,
+        livePriority,
+      );
+      await pool.upsert(linkedConfig);
     };
 
     const startFlow =
