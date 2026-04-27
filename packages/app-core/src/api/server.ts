@@ -132,6 +132,7 @@ import { handleComputerUseCompatRoutes } from "./computer-use-compat-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
+import { handleGitHubRoutes } from "./github-routes";
 import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
@@ -827,6 +828,22 @@ async function handleCompatRoute(
       config: loadElizaConfig(),
       runtime: state.current,
       json: (_res, body, status = 200) => {
+        sendJsonResponse(res, status, body);
+      },
+    });
+  }
+
+  // GitHub PAT routes — power the "GitHub" connection card in Settings →
+  // Coding Agents. Auth sits in front so the saved token never leaves
+  // the loopback boundary unauthenticated.
+  if (url.pathname === "/api/github/token") {
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    return handleGitHubRoutes({
+      req,
+      res,
+      method,
+      pathname: url.pathname,
+      json: (status, body) => {
         sendJsonResponse(res, status, body);
       },
     });
