@@ -3826,24 +3826,47 @@ export class DefaultMessageService implements IMessageService {
 			state = result.state;
 			mode = result.mode;
 
-			// Race check before we send anything
+			// Race check before we send anything.
+			//
+			// When a newer message arrives in the same room while we were
+			// generating a response, the default behavior is to drop the older
+			// response so the bot only replies to the freshest input.
+			//
+			// Exception: keep the response when the planner picked an explicit
+			// REPLY/RESPOND action. That's a deliberate conversational signal
+			// (often a direct @-mention) and dropping it leaves the user looking
+			// at silence on a tagged message, which the character contract
+			// treats as a bug. The newer message will get its own turn through
+			// the normal pipeline; sending the older REPLY first does not
+			// duplicate either response.
 			const currentResponseId = agentResponses.get(message.roomId);
 			if (currentResponseId !== responseId && !opts.keepExistingResponses) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						agentId: runtime.agentId,
-						roomId: message.roomId,
-					},
-					"Response discarded - newer message being processed",
-				);
-				return {
-					didRespond: false,
-					responseContent: null,
-					responseMessages: [],
-					state,
-					mode: "none",
-				};
+				if (hasExplicitReplyIntent(responseContent)) {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							roomId: message.roomId,
+						},
+						"Race detected but keeping response (explicit REPLY for an addressed message)",
+					);
+				} else {
+					runtime.logger.info(
+						{
+							src: "service:message",
+							agentId: runtime.agentId,
+							roomId: message.roomId,
+						},
+						"Response discarded - newer message being processed",
+					);
+					return {
+						didRespond: false,
+						responseContent: null,
+						responseMessages: [],
+						state,
+						mode: "none",
+					};
+				}
 			}
 
 			if (responseContent && message.id) {
