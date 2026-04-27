@@ -1,3 +1,5 @@
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+import { whatsappAuthExists } from "@elizaos/agent/services/whatsapp-pairing";
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared/contracts/lifeops";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
@@ -12,6 +14,10 @@ import {
   type WhatsAppSendRequest,
 } from "./whatsapp-client.js";
 
+function hasLocalWhatsAppPairingAuth(): boolean {
+  return whatsappAuthExists(resolveDefaultAgentWorkspaceDir(), "default");
+}
+
 /** @internal */
 export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
@@ -19,13 +25,29 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
   class LifeOpsWhatsAppServiceMixin extends Base {
     async getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus> {
       const creds = readWhatsAppCredentialsFromEnv();
-      return {
+      const hasCloudCredentials = creds !== null;
+      const hasLocalAuth = hasLocalWhatsAppPairingAuth();
+      const status: LifeOpsWhatsAppConnectorStatus = {
         provider: "whatsapp",
-        connected: creds !== null,
+        connected: hasCloudCredentials || hasLocalAuth,
         inbound: true,
         ...(creds?.phoneNumberId ? { phoneNumberId: creds.phoneNumberId } : {}),
         lastCheckedAt: new Date().toISOString(),
       };
+
+      if (!hasCloudCredentials && hasLocalAuth) {
+        status.degradations = [
+          {
+            axis: "delivery-degraded",
+            code: "business_cloud_credentials_missing",
+            message:
+              "WhatsApp is paired locally. Outbound Cloud API sends still require ELIZA_WHATSAPP_ACCESS_TOKEN and ELIZA_WHATSAPP_PHONE_NUMBER_ID.",
+            retryable: true,
+          },
+        ];
+      }
+
+      return status;
     }
 
     async sendWhatsAppMessage(

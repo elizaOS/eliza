@@ -27,6 +27,8 @@ const WHATSAPP_PAIRING_STATUSES: Record<WhatsAppPairingStatus, true> = {
   error: true,
 };
 
+const LIFEOPS_WHATSAPP_PAIRING_OPTIONS = { configurePlugin: false } as const;
+
 function isWhatsAppPairingStatus(
   value: unknown,
 ): value is WhatsAppPairingStatus {
@@ -127,7 +129,10 @@ export function useWhatsAppPairing(accountId = "default") {
       error: null,
     });
     try {
-      const result = await client.startWhatsAppPairing(accountId);
+      const result = await client.startWhatsAppPairing(
+        accountId,
+        LIFEOPS_WHATSAPP_PAIRING_OPTIONS,
+      );
       if (!result.ok) {
         setState((previous) => ({
           ...previous,
@@ -164,7 +169,10 @@ export function useWhatsAppPairing(accountId = "default") {
 
   const disconnect = useCallback(async () => {
     try {
-      await client.disconnectWhatsApp(accountId);
+      await client.disconnectWhatsApp(
+        accountId,
+        LIFEOPS_WHATSAPP_PAIRING_OPTIONS,
+      );
       setState({
         status: "idle",
         qrDataUrl: null,

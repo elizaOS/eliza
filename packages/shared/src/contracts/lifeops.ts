@@ -2692,11 +2692,11 @@ export type LifeOpsTelegramAuthState =
 export interface LifeOpsWhatsAppConnectorStatus {
   provider: "whatsapp";
   /**
-   * `connected` here means LifeOps-specific Cloud API credentials are present.
-   * It does NOT reflect the user-facing WhatsApp connector session and does not
-   * imply a live network probe has been performed. A live send can still fail if
-   * the upstream token has been revoked. Callers that need true liveness must
-   * catch errors from the actual send/receive methods.
+   * `connected` here means LifeOps can see either WhatsApp Business Cloud API
+   * credentials or a local QR-paired auth state. It does not imply a live
+   * network probe has been performed. A live send can still fail if the
+   * upstream token/session has been revoked. Callers that need true liveness
+   * must catch errors from the actual send/receive methods.
    */
   connected: boolean;
   /**

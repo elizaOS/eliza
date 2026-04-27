@@ -2668,7 +2668,7 @@ export async function handleLifeOpsRoutes(
       const requestUrl = ctx.url;
       const result = await service.unsubscribeEmailSender(requestUrl, {
         senderEmail: body.senderEmail,
-        blockAfter: body.blockAfter ?? true,
+        blockAfter: body.blockAfter ?? false,
         trashExisting: body.trashExisting ?? false,
         confirmed: body.confirmed ?? false,
       });

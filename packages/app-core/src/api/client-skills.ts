@@ -277,7 +277,10 @@ declare module "./client-base" {
       serviceConnected: boolean;
       servicePhone: string | null;
     }>;
-    startWhatsAppPairing(accountId?: string): Promise<{
+    startWhatsAppPairing(
+      accountId?: string,
+      options?: { configurePlugin?: boolean },
+    ): Promise<{
       ok: boolean;
       accountId: string;
       status: string;
@@ -288,7 +291,10 @@ declare module "./client-base" {
       accountId: string;
       status: string;
     }>;
-    disconnectWhatsApp(accountId?: string): Promise<{
+    disconnectWhatsApp(
+      accountId?: string,
+      options?: { configurePlugin?: boolean },
+    ): Promise<{
       ok: boolean;
       accountId: string;
     }>;
@@ -1110,10 +1116,11 @@ ElizaClient.prototype.getWhatsAppStatus = async function (
 ElizaClient.prototype.startWhatsAppPairing = async function (
   this: ElizaClient,
   accountId = "default",
+  options = {},
 ) {
   return this.fetch("/api/whatsapp/pair", {
     method: "POST",
-    body: JSON.stringify({ accountId }),
+    body: JSON.stringify({ ...options, accountId }),
   });
 };
 
@@ -1130,10 +1137,11 @@ ElizaClient.prototype.stopWhatsAppPairing = async function (
 ElizaClient.prototype.disconnectWhatsApp = async function (
   this: ElizaClient,
   accountId = "default",
+  options = {},
 ) {
   return this.fetch("/api/whatsapp/disconnect", {
     method: "POST",
-    body: JSON.stringify({ accountId }),
+    body: JSON.stringify({ ...options, accountId }),
   });
 };
 
