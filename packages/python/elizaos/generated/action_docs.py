@@ -6,7 +6,9 @@ DO NOT EDIT - Generated from packages/prompts/specs/**.
 from __future__ import annotations
 
 import json
+
 from typing import Literal, TypedDict
+
 
 JsonSchemaType = Literal["string", "number", "boolean", "object", "array"]
 ActionDocParameterExampleValue = str | int | float | bool | None
@@ -17,8 +19,8 @@ class ActionDocParameterSchema(TypedDict, total=False):
     description: str
     default: ActionDocParameterExampleValue
     enum: list[str]
-    properties: dict[str, ActionDocParameterSchema]
-    items: ActionDocParameterSchema
+    properties: dict[str, "ActionDocParameterSchema"]
+    items: "ActionDocParameterSchema"
     minimum: float
     maximum: float
     pattern: str
@@ -2830,17 +2832,6 @@ _ALL_ACTION_DOCS_JSON = """{
       "descriptionCompressed": "Generate image from conversation context. Use to visualize or illustrate."
     },
     {
-      "name": "ACKNOWLEDGE_SKILL_FINDINGS",
-      "description": "Acknowledge a skill's security findings so the skill can be enabled. Optionally enables the skill in the same step. Blocked skills cannot be acknowledged.",
-      "parameters": [],
-      "similes": [
-        "ACKNOWLEDGE_SKILL",
-        "DISMISS_SKILL_FINDINGS",
-        "ACK_SKILL_SCAN",
-        "APPROVE_SKILL_FINDINGS"
-      ]
-    },
-    {
       "name": "ADD_TO_PLAYLIST",
       "description": "Add music to a playlist. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
       "parameters": [],
@@ -2918,16 +2909,6 @@ _ALL_ACTION_DOCS_JSON = """{
       ]
     },
     {
-      "name": "CREATE_SKILL",
-      "description": "Create a new workspace skill from a name and optional description or source body. Writes SKILL.md to the workspace skills directory and re-discovers skills.",
-      "parameters": [],
-      "similes": [
-        "NEW_SKILL",
-        "SCAFFOLD_SKILL",
-        "MAKE_SKILL"
-      ]
-    },
-    {
       "name": "DELETE_MESSAGE",
       "description": "Delete a message from a Discord channel",
       "parameters": [],
@@ -2993,16 +2974,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "MODIFY_MESSAGE",
         "CHANGE_MESSAGE",
         "EDIT_DISCORD_MESSAGE"
-      ]
-    },
-    {
-      "name": "EDIT_SKILL",
-      "description": "Replace a skill's SKILL.md body. Bundled or plugin skills are copied into the workspace first so the edit produces a writable copy.",
-      "parameters": [],
-      "similes": [
-        "UPDATE_SKILL",
-        "MODIFY_SKILL",
-        "WRITE_SKILL_SOURCE"
       ]
     },
     {
@@ -3482,17 +3453,6 @@ _ALL_ACTION_DOCS_JSON = """{
         "UNPAUSE",
         "UNPAUSE_MUSIC",
         "CONTINUE_MUSIC"
-      ]
-    },
-    {
-      "name": "REVIEW_SKILL_FINDINGS",
-      "description": "Return the security scan report for a skill, including manifest and file findings, severity totals, and acknowledgment state.",
-      "parameters": [],
-      "similes": [
-        "VIEW_SKILL_SCAN",
-        "GET_SKILL_FINDINGS",
-        "INSPECT_SKILL_SECURITY",
-        "REVIEW_SKILL_SCAN"
       ]
     },
     {

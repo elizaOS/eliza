@@ -660,8 +660,8 @@ function isLikelyOpenAiTextModel(value: string | undefined): boolean {
  * Normalize known-bad provider compatibility shims before plugin resolution.
  *
  * A common failure mode is routing the OpenAI plugin through Groq's
- * OpenAI-compatible base URL while leaving OpenAI defaults (`gpt-5.4`,
- * `gpt-5.4-mini`) in place. Structured XML/object generation then fails during
+ * OpenAI-compatible base URL while leaving OpenAI defaults (`gpt-5.5`,
+ * `gpt-5.5-mini`) in place. Structured XML/object generation then fails during
  * message handling because Groq does not serve those model IDs.
  *
  * When we can confidently detect that state, rewrite the effective runtime
@@ -1443,7 +1443,7 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
       }
     | undefined;
   if (effectivelyEnabled) {
-    const nano = llmText?.nanoModel || models?.nano || "openai/gpt-5.4-nano";
+    const nano = llmText?.nanoModel || models?.nano || "openai/gpt-5.5-nano";
     const small =
       llmText?.smallModel || models?.small || "minimax/minimax-m2.7";
     const medium = llmText?.mediumModel || models?.medium || small;
