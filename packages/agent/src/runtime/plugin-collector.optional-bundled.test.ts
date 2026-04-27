@@ -115,6 +115,26 @@ describe("optional core plugins (require explicit opt-in)", () => {
     expect(names.has("@elizaos/plugin-discord")).toBe(false);
   });
 
+  it("respects connector plugin enabled: false even when connector config and allow list are present", () => {
+    const names = collectPluginNames({
+      cloud: { enabled: false },
+      connectors: {
+        whatsapp: {
+          authDir: "/tmp/milady-test-whatsapp-auth",
+          enabled: false,
+        },
+      },
+      plugins: {
+        allow: ["whatsapp", "@elizaos/plugin-whatsapp"],
+        entries: {
+          whatsapp: { enabled: false },
+        },
+      },
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-whatsapp")).toBe(false);
+  });
+
   it("local inference mode blocks remote model providers while keeping local providers", () => {
     process.env.OPENAI_API_KEY = "sk-test";
     process.env.OLLAMA_BASE_URL = "http://localhost:11434";
