@@ -48,6 +48,7 @@ import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { CloudDashboard } from "../pages/ElizaCloudDashboard";
+import { AccountList } from "../accounts/AccountList";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import {
   buildCloudModelSchema,
@@ -1143,6 +1144,13 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 setOpenaiConnected={setOpenaiConnected}
                 handleSelectSubscription={handleSelectSubscription}
                 loadSubscriptionStatus={loadSubscriptionStatus}
+              />
+              <AccountList
+                providerId={
+                  SUBSCRIPTION_PROVIDER_SELECTIONS.find(
+                    (p) => p.id === visibleProviderPanelId,
+                  )?.storedProvider ?? "anthropic-subscription"
+                }
               />
             </div>
           </div>
