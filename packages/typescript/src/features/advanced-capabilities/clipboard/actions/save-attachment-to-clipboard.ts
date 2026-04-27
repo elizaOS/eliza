@@ -60,6 +60,8 @@ export const saveAttachmentToClipboardAction: Action = {
 	],
 	description:
 		"Save a stored conversation attachment into bounded task clipboard state. Use after an action produces an attachment that should remain available for chained work.",
+	suppressActionResultClipboard: true,
+	suppressPostActionContinuation: true,
 	validate: async (runtime, message, _state) => {
 		if (resolveAttachmentId(message, undefined)) {
 			return true;
@@ -89,7 +91,11 @@ export const saveAttachmentToClipboardAction: Action = {
 					actions: ["SAVE_ATTACHMENT_TO_CLIPBOARD_FAILED"],
 					source: message.content.source,
 				});
-				return { success: false, text };
+				return {
+					success: false,
+					text,
+					data: { actionName: "SAVE_ATTACHMENT_TO_CLIPBOARD" },
+				};
 			}
 
 			const title = resolveTitle(message, options);
@@ -147,11 +153,12 @@ export const saveAttachmentToClipboardAction: Action = {
 				actions: ["SAVE_ATTACHMENT_TO_CLIPBOARD_FAILED"],
 				source: message.content.source,
 			});
-			return {
-				success: false,
-				text: "Failed to save attachment to clipboard",
-				error: errorMessage,
-			};
+				return {
+					success: false,
+					text: "Failed to save attachment to clipboard",
+					error: errorMessage,
+					data: { actionName: "SAVE_ATTACHMENT_TO_CLIPBOARD" },
+				};
 		}
 	},
 	parameters: [

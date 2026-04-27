@@ -58,6 +58,7 @@ export const updateContactAction: Action = {
 	name: spec.name,
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
+	suppressPostActionContinuation: true,
 	examples: (spec.examples ?? []) as ActionExample[][],
 
 	validate: async (
@@ -78,7 +79,7 @@ export const updateContactAction: Action = {
 		state?: State,
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
-	): Promise<ActionResult | undefined> => {
+	): Promise<ActionResult> => {
 		try {
 			const relationshipsService = runtime.getService(
 				"relationships",
@@ -115,7 +116,11 @@ export const updateContactAction: Action = {
 				await callback?.({
 					text: "I couldn't understand the update request. Please try again.",
 				});
-				return;
+				return {
+					success: false,
+					text: "I couldn't understand the update request. Please try again.",
+					data: { actionName: "UPDATE_CONTACT" },
+				};
 			}
 
 			const contactName = parsed.contactName?.trim();
@@ -124,7 +129,11 @@ export const updateContactAction: Action = {
 				await callback?.({
 					text: "I couldn't determine which contact to update. Please specify the contact name.",
 				});
-				return;
+				return {
+					success: false,
+					text: "I couldn't determine which contact to update. Please specify the contact name.",
+					data: { actionName: "UPDATE_CONTACT" },
+				};
 			}
 
 			// Find the contact entity
@@ -136,7 +145,11 @@ export const updateContactAction: Action = {
 				await callback?.({
 					text: `I couldn't find a contact named "${contactName}" in the relationships.`,
 				});
-				return;
+				return {
+					success: false,
+					text: `I couldn't find a contact named "${contactName}" in the relationships.`,
+					data: { actionName: "UPDATE_CONTACT" },
+				};
 			}
 
 			const contact = contacts[0];
@@ -240,8 +253,9 @@ export const updateContactAction: Action = {
 						categoriesStr: updateData.categories?.join(",") ?? "",
 						tagsStr: updateData.tags?.join(",") ?? "",
 					},
-					data: {
-						success: true,
+						data: {
+							actionName: "UPDATE_CONTACT",
+							success: true,
 						updatedFieldsStr: Object.keys(updateData).join(","),
 					},
 					text: responseText,
@@ -258,6 +272,12 @@ export const updateContactAction: Action = {
 				text: "I encountered an error while updating the contact. Please try again.",
 				error: error instanceof Error ? error.message : "Unknown error",
 			});
+			return {
+				success: false,
+				text: "I encountered an error while updating the contact. Please try again.",
+				error: error instanceof Error ? error.message : String(error),
+				data: { actionName: "UPDATE_CONTACT" },
+			};
 		}
 	},
 };

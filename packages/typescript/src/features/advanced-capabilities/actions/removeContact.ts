@@ -37,6 +37,7 @@ export const removeContactAction: Action = {
 	name: spec.name,
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
+	suppressPostActionContinuation: true,
 	examples: (spec.examples ?? []) as ActionExample[][],
 
 	validate: async (
@@ -57,7 +58,7 @@ export const removeContactAction: Action = {
 		state?: State,
 		_options?: HandlerOptions,
 		callback?: HandlerCallback,
-	): Promise<ActionResult | undefined> => {
+	): Promise<ActionResult> => {
 		try {
 			const relationshipsService = runtime.getService(
 				"relationships",
@@ -94,7 +95,11 @@ export const removeContactAction: Action = {
 				await callback?.({
 					text: "I couldn't determine which contact to remove. Please specify the contact name.",
 				});
-				return;
+				return {
+					success: false,
+					text: "I couldn't determine which contact to remove. Please specify the contact name.",
+					data: { actionName: "REMOVE_CONTACT" },
+				};
 			}
 
 			const confirmed = parsed.confirmed?.trim().toLowerCase();
@@ -102,7 +107,11 @@ export const removeContactAction: Action = {
 				await callback?.({
 					text: `To remove ${parsed.contactName} from your contacts, please confirm by saying "yes, remove ${parsed.contactName}".`,
 				});
-				return;
+				return {
+					success: false,
+					text: `To remove ${parsed.contactName} from your contacts, please confirm by saying "yes, remove ${parsed.contactName}".`,
+					data: { actionName: "REMOVE_CONTACT", confirmationRequired: true },
+				};
 			}
 
 			const contacts = await relationshipsService.searchContacts({
@@ -113,7 +122,11 @@ export const removeContactAction: Action = {
 				await callback?.({
 					text: `I couldn't find a contact named "${parsed.contactName}" in the relationships.`,
 				});
-				return;
+				return {
+					success: false,
+					text: `I couldn't find a contact named "${parsed.contactName}" in the relationships.`,
+					data: { actionName: "REMOVE_CONTACT" },
+				};
 			}
 
 			const contact = contacts[0];
@@ -131,12 +144,12 @@ export const removeContactAction: Action = {
 
 				logger.info(`[RemoveContact] Removed contact ${contact.entityId}`);
 
-				return {
-					success: true,
-					values: { contactId: contact.entityId },
-					data: { success: true },
-					text: responseText,
-				};
+					return {
+						success: true,
+						values: { contactId: contact.entityId },
+						data: { actionName: "REMOVE_CONTACT", success: true },
+						text: responseText,
+					};
 			} else {
 				throw new Error("Failed to remove contact");
 			}
@@ -149,6 +162,12 @@ export const removeContactAction: Action = {
 				text: "I encountered an error while removing the contact. Please try again.",
 				error: error instanceof Error ? error.message : "Unknown error",
 			});
+			return {
+				success: false,
+				text: "I encountered an error while removing the contact. Please try again.",
+				error: error instanceof Error ? error.message : String(error),
+				data: { actionName: "REMOVE_CONTACT" },
+			};
 		}
 	},
 };
