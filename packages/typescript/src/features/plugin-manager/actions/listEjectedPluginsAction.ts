@@ -8,6 +8,7 @@ import type { EjectedPluginInfo } from "../types.ts";
 export const listEjectedPluginsAction: Action = {
 	name: "LIST_EJECTED_PLUGINS",
 	description: "List all ejected plugins currently being managed locally",
+	suppressPostActionContinuation: true,
 	similes: [
 		"list ejected",
 		"show ejected plugins",
@@ -40,9 +41,14 @@ export const listEjectedPluginsAction: Action = {
 		) as PluginManagerService;
 
 		if (!pluginManagerService) {
+			const text = "Plugin manager service not available";
 			if (callback)
-				await callback({ text: "Plugin manager service not available" });
-			return undefined;
+				await callback({ text, actions: ["LIST_EJECTED_PLUGINS"] });
+			return {
+				success: false,
+				text,
+				data: { actionName: "LIST_EJECTED_PLUGINS" },
+			};
 		}
 
 		try {
@@ -50,20 +56,41 @@ export const listEjectedPluginsAction: Action = {
 				await pluginManagerService.listEjectedPlugins();
 
 			if (plugins.length === 0) {
-				if (callback) await callback({ text: "No ejected plugins found." });
+				const text = "No ejected plugins found.";
+				if (callback)
+					await callback({ text, actions: ["LIST_EJECTED_PLUGINS"] });
+				return {
+					success: true,
+					text,
+					data: { actionName: "LIST_EJECTED_PLUGINS", plugins },
+				};
 			} else {
 				const list = plugins
 					.map((p) => `- ${p.name} (v${p.version}) at ${p.path}`)
 					.join("\n");
-				if (callback) await callback({ text: `Ejected Plugins:\n${list}` });
+				const text = `Ejected Plugins:\n${list}`;
+				if (callback)
+					await callback({ text, actions: ["LIST_EJECTED_PLUGINS"] });
+				return {
+					success: true,
+					text,
+					data: { actionName: "LIST_EJECTED_PLUGINS", plugins },
+				};
 			}
 		} catch (error) {
+			const text = `Error listing ejected plugins: ${error instanceof Error ? error.message : String(error)}`;
 			if (callback)
 				await callback({
-					text: `Error listing ejected plugins: ${error instanceof Error ? error.message : String(error)}`,
+					text,
+					actions: ["LIST_EJECTED_PLUGINS"],
 				});
+			return {
+				success: false,
+				text,
+				error: error instanceof Error ? error.message : String(error),
+				data: { actionName: "LIST_EJECTED_PLUGINS" },
+			};
 		}
-		return undefined;
 	},
 
 	validate: async (

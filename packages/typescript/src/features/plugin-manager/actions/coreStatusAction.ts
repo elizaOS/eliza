@@ -11,6 +11,7 @@ export const coreStatusAction: Action = {
 	name: "CORE_STATUS",
 	description: "Check thestatus of the @elizaos/core package (ejected or npm)",
 	similes: ["core status", "check core", "is core ejected", "elizaos status"],
+	suppressPostActionContinuation: true,
 
 	examples: [
 		[
@@ -37,9 +38,14 @@ export const coreStatusAction: Action = {
 		) as CoreManagerService;
 
 		if (!coreManagerService) {
+			const text = "Core manager service not available";
 			if (callback)
-				await callback({ text: "Core manager service not available" });
-			return undefined;
+				await callback({ text, actions: ["CORE_STATUS"] });
+			return {
+				success: false,
+				text,
+				data: { actionName: "CORE_STATUS" },
+			};
 		}
 
 		try {
@@ -62,14 +68,26 @@ export const coreStatusAction: Action = {
 				msg = `Core is using NPM package (v${status.npmVersion}). Not ejected.`;
 			}
 
-			if (callback) await callback({ text: msg });
+			if (callback) await callback({ text: msg, actions: ["CORE_STATUS"] });
+			return {
+				success: true,
+				text: msg,
+				data: { actionName: "CORE_STATUS", status },
+			};
 		} catch (error) {
+			const text = `Error checking core status: ${error instanceof Error ? error.message : String(error)}`;
 			if (callback)
 				await callback({
-					text: `Error checking core status: ${error instanceof Error ? error.message : String(error)}`,
+					text,
+					actions: ["CORE_STATUS"],
 				});
+			return {
+				success: false,
+				text,
+				error: error instanceof Error ? error.message : String(error),
+				data: { actionName: "CORE_STATUS" },
+			};
 		}
-		return undefined;
 	},
 
 	validate: async (

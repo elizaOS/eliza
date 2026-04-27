@@ -215,9 +215,10 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 		return ownerCheck(runtime, message);
 	};
 
-	return {
-		name: "PLUGIN",
-		similes: [
+		return {
+			name: "PLUGIN",
+			suppressPostActionContinuation: true,
+			similes: [
 			"PLUGIN_CONTROL",
 			"MANAGE_PLUGINS",
 			// Legacy single-purpose action names — preserved as similes so

@@ -2,7 +2,6 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
-  type Content,
   composePromptFromState,
   type HandlerCallback,
   type HandlerOptions,
@@ -45,6 +44,7 @@ export const sendMessage: Action = {
   similes: ["SEND_SIGNAL_MESSAGE", "TEXT_SIGNAL", "MESSAGE_SIGNAL", "SIGNAL_TEXT"],
   description: "Send a message to a Signal contact or group",
   descriptionCompressed: "Send Signal message.",
+  suppressPostActionContinuation: true,
   validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
     if (!hasSignalService(runtime)) {
       return false;
@@ -144,11 +144,6 @@ export const sendMessage: Action = {
       result = await signalService.sendMessage(targetRecipient, messageInfo.text);
     }
 
-    const response: Content = {
-      text: "Message sent successfully.",
-      source: message.content.source || "signal",
-    };
-
     runtime.logger.debug(
       {
         src: "plugin:signal:action:send-message",
@@ -158,13 +153,13 @@ export const sendMessage: Action = {
       "[SIGNAL_SEND_MESSAGE] Message sent successfully"
     );
 
-    await callback?.(response);
-
     return {
       success: true,
       data: {
         timestamp: result.timestamp,
         recipient: targetRecipient,
+        suppressVisibleCallback: true,
+        suppressActionResultClipboard: true,
       },
     };
   },

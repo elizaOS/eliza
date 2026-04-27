@@ -97,6 +97,13 @@ export interface CalendlyWebhookEvent {
 
 export type CalendlyActionResult<T = unknown> =
   | { success: true; data: T }
+  | {
+      success: false;
+      requiresConfirmation: true;
+      preview: string;
+      text: string;
+      data: T & { requiresConfirmation: true; preview: string };
+    }
   | { success: false; error: string };
 
 export interface BookingLinkQuery {

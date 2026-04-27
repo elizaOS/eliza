@@ -35,18 +35,12 @@
 
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
-import { createServer, type Server } from "node:http";
 import fs from "node:fs";
+import { createServer, type Server } from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
-import {
-  APP_REGISTRY_SERVICE_TYPE,
-  AppRegistryService,
-  AppVerificationService,
-  createAppAction,
-} from "../../../../plugins/plugin-app-control/typescript/src/index.ts";
 import {
   cleanForChat,
   listAgentsAction,
@@ -55,9 +49,15 @@ import {
   spawnAgentAction,
 } from "@elizaos/plugin-agent-orchestrator";
 import {
-  parseStructuredProofDirective,
   type AppStructuredProofClaim,
+  parseStructuredProofDirective,
 } from "../../../../plugins/plugin-agent-orchestrator/src/services/structured-proof-bridge.ts";
+import {
+  APP_REGISTRY_SERVICE_TYPE,
+  AppRegistryService,
+  AppVerificationService,
+  createAppAction,
+} from "../../../../plugins/plugin-app-control/typescript/src/index.ts";
 import { createTestRuntime } from "../helpers/pglite-runtime";
 
 type Framework = "claude" | "codex";
@@ -68,6 +68,8 @@ const COUNTER_AGENT_TIMEOUT_MS = 10 * 60_000;
 const CODEX_UPDATE_TIMEOUT_MS = 5 * 60_000;
 const CAPTURE_LIMIT = 16 * 1024 * 1024;
 const CODEX_OLD_VERSION_RE = /requires a newer version of Codex/i;
+const CLAUDE_AUTH_FAILURE_RE =
+  /\b401\b|\binvalid authentication credentials\b|\bauthentication_error\b|\bfailed to authenticate\b/i;
 const COUNTER_TOOLCHAIN_BIN = path.join(process.cwd(), "node_modules", ".bin");
 const COUNTER_TYPECHECK_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/tsc --noEmit -p tsconfig.json`;
 const COUNTER_LINT_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/biome check .`;
@@ -85,6 +87,17 @@ type CommandFailure = Error & {
   exitCode: number | null;
   signal: NodeJS.Signals | null;
 };
+
+class LiveAuthRequiredError extends Error {
+  constructor(
+    readonly framework: Framework,
+    readonly mode: Mode,
+    reason: string,
+  ) {
+    super(reason);
+    this.name = "LiveAuthRequiredError";
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -238,6 +251,18 @@ function liveCommandEnv(): NodeJS.ProcessEnv {
 
 function isCodexCliTooOldError(error: unknown): boolean {
   return CODEX_OLD_VERSION_RE.test(errorDetail(error));
+}
+
+function isClaudeAuthFailureError(error: unknown): boolean {
+  return CLAUDE_AUTH_FAILURE_RE.test(errorDetail(error));
+}
+
+function claudeNonInteractiveAuthInstructions(): string {
+  return [
+    "Claude Code reports a login, but non-interactive `claude -p` is rejected with 401 invalid credentials.",
+    "Refresh the non-interactive Claude Code auth path by running `claude setup-token` in a terminal, or set a valid `ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` for this process.",
+    "After the token is refreshed, rerun the Claude live smoke.",
+  ].join(" ");
 }
 
 function readCodexVersion(): string {
@@ -909,6 +934,13 @@ async function runCounterAgentCliWithCodexUpdate(
   try {
     return await runCounterAgentCli(agentType, task, workdir);
   } catch (error) {
+    if (agentType === "claude" && isClaudeAuthFailureError(error)) {
+      throw new LiveAuthRequiredError(
+        agentType,
+        "counter-app",
+        claudeNonInteractiveAuthInstructions(),
+      );
+    }
     if (agentType !== "codex" || !isCodexCliTooOldError(error)) {
       throw error;
     }
@@ -1238,6 +1270,17 @@ try {
   await main();
   process.exit(0);
 } catch (error) {
+  if (error instanceof LiveAuthRequiredError) {
+    console.log(
+      "[task-agent-live-smoke] AUTH_REQUIRED",
+      JSON.stringify({
+        framework: error.framework,
+        mode: error.mode,
+        reason: error.message,
+      }),
+    );
+    process.exit(0);
+  }
   console.error("[task-agent-live-smoke] FAIL");
   console.error(error);
   process.exit(1);
