@@ -5,9 +5,12 @@
 
 import type {
   AllPermissionsState,
+  LinkedAccountConfig,
+  LinkedAccountProviderId,
   OnboardingConnectorConfig as ConnectorConfig,
   OnboardingOptions,
   PermissionState,
+  ServiceRouteAccountStrategy,
   SubscriptionStatusResponse,
   SystemPermissionId,
 } from "@elizaos/shared";
@@ -195,6 +198,47 @@ export type BootstrapExchangeResult =
   | BootstrapExchangeFailure;
 
 // ---------------------------------------------------------------------------
+// Multi-account routes (WS3) — surfaced under `/api/accounts/*` and the
+// per-provider `/api/providers/:providerId/strategy` endpoint. The on-disk
+// `LinkedAccountConfig` records are joined with a `hasCredential` flag so
+// the UI can spot orphan metadata.
+// ---------------------------------------------------------------------------
+
+export type AccountStrategy = ServiceRouteAccountStrategy;
+
+export interface AccountWithCredentialFlag extends LinkedAccountConfig {
+  hasCredential: boolean;
+}
+
+export interface AccountsListProvider {
+  providerId: LinkedAccountProviderId;
+  strategy: AccountStrategy;
+  accounts: AccountWithCredentialFlag[];
+}
+
+export interface AccountsListResponse {
+  providers: AccountsListProvider[];
+}
+
+export interface AccountTestResult {
+  ok: boolean;
+  latencyMs?: number;
+  status?: number;
+  error?: string;
+}
+
+export interface AccountRefreshUsageResult {
+  account: LinkedAccountConfig;
+  source: "pool" | "inline-probe";
+}
+
+export interface AccountOAuthStartResult {
+  sessionId: string;
+  authUrl: string;
+  needsCodeSubmission: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
 
@@ -290,6 +334,44 @@ declare module "./client-base" {
     updateConfig(
       patch: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
+    listAccounts(): Promise<AccountsListResponse>;
+    createApiKeyAccount(
+      providerId: LinkedAccountProviderId,
+      body: { label: string; apiKey: string },
+    ): Promise<LinkedAccountConfig>;
+    patchAccount(
+      providerId: LinkedAccountProviderId,
+      accountId: string,
+      body: Partial<{ label: string; enabled: boolean; priority: number }>,
+    ): Promise<LinkedAccountConfig>;
+    deleteAccount(
+      providerId: LinkedAccountProviderId,
+      accountId: string,
+    ): Promise<{ deleted: boolean }>;
+    testAccount(
+      providerId: LinkedAccountProviderId,
+      accountId: string,
+    ): Promise<AccountTestResult>;
+    refreshAccountUsage(
+      providerId: LinkedAccountProviderId,
+      accountId: string,
+    ): Promise<AccountRefreshUsageResult>;
+    startAccountOAuth(
+      providerId: LinkedAccountProviderId,
+      body: { label: string },
+    ): Promise<AccountOAuthStartResult>;
+    submitAccountOAuthCode(
+      providerId: LinkedAccountProviderId,
+      body: { sessionId: string; code: string },
+    ): Promise<{ accepted: boolean }>;
+    cancelAccountOAuth(
+      providerId: LinkedAccountProviderId,
+      body: { sessionId: string },
+    ): Promise<{ cancelled: boolean }>;
+    patchProviderStrategy(
+      providerId: LinkedAccountProviderId,
+      body: { strategy: AccountStrategy },
+    ): Promise<{ providerId: LinkedAccountProviderId; strategy: AccountStrategy }>;
     uploadCustomVrm(file: File): Promise<void>;
     hasCustomVrm(): Promise<boolean>;
     uploadCustomBackground(file: File): Promise<void>;
@@ -2485,5 +2567,131 @@ ElizaClient.prototype.saveStreamSettings = async function (
   return this.fetch("/api/stream/settings", {
     method: "POST",
     body: JSON.stringify({ settings }),
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Multi-account routes (WS3)
+// ---------------------------------------------------------------------------
+
+ElizaClient.prototype.listAccounts = async function (this: ElizaClient) {
+  return this.fetch<AccountsListResponse>("/api/accounts");
+};
+
+ElizaClient.prototype.createApiKeyAccount = async function (
+  this: ElizaClient,
+  providerId,
+  body,
+) {
+  return this.fetch<LinkedAccountConfig>(
+    `/api/accounts/${encodeURIComponent(providerId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ source: "api-key", ...body }),
+    },
+  );
+};
+
+ElizaClient.prototype.patchAccount = async function (
+  this: ElizaClient,
+  providerId,
+  accountId,
+  body,
+) {
+  return this.fetch<LinkedAccountConfig>(
+    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
+};
+
+ElizaClient.prototype.deleteAccount = async function (
+  this: ElizaClient,
+  providerId,
+  accountId,
+) {
+  return this.fetch<{ deleted: boolean }>(
+    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
+  );
+};
+
+ElizaClient.prototype.testAccount = async function (
+  this: ElizaClient,
+  providerId,
+  accountId,
+) {
+  return this.fetch<AccountTestResult>(
+    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}/test`,
+    { method: "POST" },
+  );
+};
+
+ElizaClient.prototype.refreshAccountUsage = async function (
+  this: ElizaClient,
+  providerId,
+  accountId,
+) {
+  return this.fetch<AccountRefreshUsageResult>(
+    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}/refresh-usage`,
+    { method: "POST" },
+  );
+};
+
+ElizaClient.prototype.startAccountOAuth = async function (
+  this: ElizaClient,
+  providerId,
+  body,
+) {
+  return this.fetch<AccountOAuthStartResult>(
+    `/api/accounts/${encodeURIComponent(providerId)}/oauth/start`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+};
+
+ElizaClient.prototype.submitAccountOAuthCode = async function (
+  this: ElizaClient,
+  providerId,
+  body,
+) {
+  return this.fetch<{ accepted: boolean }>(
+    `/api/accounts/${encodeURIComponent(providerId)}/oauth/submit-code`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+};
+
+ElizaClient.prototype.cancelAccountOAuth = async function (
+  this: ElizaClient,
+  providerId,
+  body,
+) {
+  return this.fetch<{ cancelled: boolean }>(
+    `/api/accounts/${encodeURIComponent(providerId)}/oauth/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+};
+
+ElizaClient.prototype.patchProviderStrategy = async function (
+  this: ElizaClient,
+  providerId,
+  body,
+) {
+  return this.fetch<{
+    providerId: LinkedAccountProviderId;
+    strategy: AccountStrategy;
+  }>(`/api/providers/${encodeURIComponent(providerId)}/strategy`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
   });
 };
