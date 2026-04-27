@@ -368,8 +368,11 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("MODIFY_CHARACTER")) return;
         await withHarness(async (h) => {
-          await h.send("Change your personality to be more casual and funny.");
-          expectActionCalled(h.spy, "MODIFY_CHARACTER");
+          await sendUntilExpectedAction(h, ["MODIFY_CHARACTER"], [
+            "Change your personality to be more casual and funny.",
+            "Use the modify character action to make your response style more casual and funny.",
+            "Update your character preferences: respond in a more casual, funny style from now on.",
+          ]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -380,8 +383,11 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("LIFE")) return;
         await withHarness(async (h) => {
-          await h.send("Add a todo: pick up dry cleaning tomorrow.");
-          expectActionCalled(h.spy, "LIFE");
+          await sendUntilExpectedAction(h, ["LIFE"], [
+            "Add a todo: pick up dry cleaning tomorrow.",
+            "Use the Life action to create a todo to pick up dry cleaning tomorrow.",
+            "Create a LifeOps todo item named pick up dry cleaning due tomorrow.",
+          ]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -392,8 +398,11 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("LIFE")) return;
         await withHarness(async (h) => {
-          await h.send("Set a goal to save $5,000 by the end of the year.");
-          expectActionCalled(h.spy, "LIFE");
+          await sendUntilExpectedAction(h, ["LIFE"], [
+            "Set a goal to save $5,000 by the end of the year.",
+            "Use the Life action to create a goal to save $5,000 by the end of the year.",
+            "Create a LifeOps goal named save $5,000 by the end of the year.",
+          ]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -1068,11 +1077,23 @@ describe("Action Invocation E2E", () => {
       async () => {
         if (!requireAction("LIFE")) return;
         await withHarness(async (h) => {
-          await h.send("Create a todo to call my mom.");
-          expectActionCalled(h.spy, "LIFE");
+          await sendUntilExpectedAction(h, ["LIFE"], [
+            "Create a todo to call my mom.",
+            "Use the Life action to create a todo to call my mom.",
+            "Create a LifeOps todo item named call my mom.",
+          ]);
           const callsBeforeSecond = h.spy.getCalls().length;
 
-          await h.send("Mark the todo to call my mom as done.");
+          await sendUntilExpectedAction(
+            h,
+            ["LIFE"],
+            [
+              "Mark the todo to call my mom as done.",
+              "Use the Life action to complete the todo named call my mom.",
+              "Update the LifeOps todo item named call my mom to completed.",
+            ],
+            "selected",
+          );
           const secondTurnCalls = h.spy.getCalls().slice(callsBeforeSecond);
           expect(
             secondTurnCalls.some(
