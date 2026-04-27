@@ -31,6 +31,7 @@ import {
   saveChatSidebarVisibility,
   widgetVisibilityKey,
 } from "../../widgets/visibility";
+import { getAppDetailExtension } from "../apps/extensions/registry";
 import { findAppBySlug, getAppSlug } from "../apps/helpers";
 import {
   getInternalToolAppDescriptors,
@@ -405,6 +406,7 @@ export function AppDetailsView({
 
   const isInternal = resolved.source === "internal-tool";
   const supportsInlineMode = isInternal || resolved.source === "overlay";
+  const DetailExtension = getAppDetailExtension(resolved.info);
 
   return (
     <div className="device-layout mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 lg:px-6">
@@ -459,6 +461,13 @@ export function AppDetailsView({
         ) : null}
         <ChipList items={resolved.info.capabilities ?? []} />
       </section>
+
+      {DetailExtension ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeader>Details</SectionHeader>
+          <DetailExtension app={resolved.info} />
+        </section>
+      ) : null}
 
       {/* Recent runs */}
       {recentRuns.length > 0 ? (
@@ -643,15 +652,25 @@ export function AppDetailsView({
  * page? Used by AppsView.handleLaunch to decide whether to navigate to
  * /apps/<slug>/details or call openAppRouteWindow directly.
  *
- * Only apps that explicitly declare `hasDetailsPage: true` (today: a
- * handful of internal tools with real config / runtime knobs) route
- * through the details page. Catalog and overlay apps launch directly —
- * launching is the primary action; the user only needs the extra step
- * when there's config worth touching first.
+ * Internal tools opt in with `hasDetailsPage`; catalog apps opt in through
+ * launch metadata that implies setup, runtime control, or a heavier session.
  */
-export function appNeedsDetailsPage(name: string): boolean {
+export function appNeedsDetailsPage(app: RegistryAppInfo | string): boolean {
+  const name = typeof app === "string" ? app : app.name;
   if (isInternalToolApp(name)) {
     return getInternalToolAppHasDetailsPage(name);
+  }
+  if (typeof app === "string") {
+    return false;
+  }
+  if (app.uiExtension?.detailPanelId) {
+    return true;
+  }
+  if (app.session) {
+    return true;
+  }
+  if (app.category.trim().toLowerCase() === "game") {
+    return true;
   }
   return false;
 }
