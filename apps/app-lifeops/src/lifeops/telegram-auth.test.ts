@@ -122,6 +122,8 @@ const ENV_KEYS = [
   "ELIZA_TOKEN_ENCRYPTION_KEY",
   "ELIZA_TELEGRAM_API_ID",
   "ELIZA_TELEGRAM_API_HASH",
+  "TELEGRAM_ACCOUNT_APP_ID",
+  "TELEGRAM_ACCOUNT_APP_HASH",
 ] as const;
 
 let tmpDir: string;
@@ -185,6 +187,8 @@ beforeEach(() => {
     .toString("base64");
   process.env.ELIZA_TELEGRAM_API_ID = "12345";
   process.env.ELIZA_TELEGRAM_API_HASH = "hash-123";
+  delete process.env.TELEGRAM_ACCOUNT_APP_ID;
+  delete process.env.TELEGRAM_ACCOUNT_APP_HASH;
 });
 
 afterEach(() => {
@@ -274,6 +278,55 @@ describe("Telegram auth storage", () => {
     const restored = readStoredTelegramToken(tokenRef);
     expect(restored?.apiHash).toBe("legacy-hash");
     expect(restored?.phone).toBe("+15550001111");
+  });
+
+  it("finds a single stored token for a side when the current agent has no token", async () => {
+    const { findStoredTelegramTokenForSide } = await import(
+      "./telegram-auth.js"
+    );
+    const tokenRef = path.join("agent-legacy", "owner", "local.json");
+    const filePath = telegramTokenPath(tokenRef);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(filePath, JSON.stringify(LEGACY_TOKEN, null, 2), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+
+    const candidate = findStoredTelegramTokenForSide("agent-current", "owner");
+
+    expect(candidate?.agentId).toBe("agent-legacy");
+    expect(candidate?.tokenRef).toBe(tokenRef);
+    expect(candidate?.token.phone).toBe("+15550001111");
+  });
+
+  it("does not guess between multiple stored tokens for the same side", async () => {
+    const { findStoredTelegramTokenForSide } = await import(
+      "./telegram-auth.js"
+    );
+    for (const agentId of ["agent-one", "agent-two"]) {
+      const tokenRef = path.join(agentId, "owner", "local.json");
+      const filePath = telegramTokenPath(tokenRef);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+      fs.writeFileSync(
+        filePath,
+        JSON.stringify({ ...LEGACY_TOKEN, agentId }, null, 2),
+        { encoding: "utf8", mode: 0o600 },
+      );
+    }
+
+    expect(findStoredTelegramTokenForSide("agent-current", "owner")).toBeNull();
+  });
+
+  it("uses Telegram account env credentials when LifeOps-specific aliases are absent", async () => {
+    const { hasManagedTelegramCredentials } = await import(
+      "./telegram-auth.js"
+    );
+    delete process.env.ELIZA_TELEGRAM_API_ID;
+    delete process.env.ELIZA_TELEGRAM_API_HASH;
+    process.env.TELEGRAM_ACCOUNT_APP_ID = "67890";
+    process.env.TELEGRAM_ACCOUNT_APP_HASH = "account-hash";
+
+    expect(hasManagedTelegramCredentials()).toBe(true);
   });
 
   it("rejects malformed connector tokens instead of treating auth as valid", async () => {

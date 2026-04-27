@@ -2719,6 +2719,11 @@ export interface LifeOpsWhatsAppConnectorStatus {
    */
   inbound: true;
   phoneNumberId?: string;
+  localAuthAvailable?: boolean;
+  serviceConnected?: boolean;
+  outboundReady?: boolean;
+  inboundReady?: boolean;
+  transport?: "cloudapi" | "baileys" | "unconfigured";
   lastCheckedAt: string;
   degradations?: LifeOpsConnectorDegradation[];
 }

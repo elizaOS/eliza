@@ -47,12 +47,18 @@ function getWhatsAppBaseUrl(): string {
 export function readWhatsAppCredentialsFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): WhatsAppCredentials | null {
-  const accessToken = env.ELIZA_WHATSAPP_ACCESS_TOKEN?.trim();
-  const phoneNumberId = env.ELIZA_WHATSAPP_PHONE_NUMBER_ID?.trim();
+  const accessToken = (
+    env.ELIZA_WHATSAPP_ACCESS_TOKEN ?? env.WHATSAPP_ACCESS_TOKEN
+  )?.trim();
+  const phoneNumberId = (
+    env.ELIZA_WHATSAPP_PHONE_NUMBER_ID ?? env.WHATSAPP_PHONE_NUMBER_ID
+  )?.trim();
   if (!accessToken || !phoneNumberId) {
     return null;
   }
-  const apiVersion = env.ELIZA_WHATSAPP_API_VERSION?.trim() || undefined;
+  const apiVersion =
+    (env.ELIZA_WHATSAPP_API_VERSION ?? env.WHATSAPP_API_VERSION)?.trim() ||
+    undefined;
   return {
     accessToken,
     phoneNumberId,

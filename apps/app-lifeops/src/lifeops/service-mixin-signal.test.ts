@@ -1,11 +1,17 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { withSignal } from "./service-mixin-signal.js";
 
 const ORIGINAL_ENV = {
+  ELIZA_OAUTH_DIR: process.env.ELIZA_OAUTH_DIR,
   SIGNAL_ACCOUNT_NUMBER: process.env.SIGNAL_ACCOUNT_NUMBER,
+  SIGNAL_AUTH_DIR: process.env.SIGNAL_AUTH_DIR,
   SIGNAL_HTTP_URL: process.env.SIGNAL_HTTP_URL,
 };
 const ORIGINAL_FETCH = globalThis.fetch;
+let tmpDir: string;
 
 class StubBase {
   runtime: {
@@ -64,20 +70,37 @@ type SignalConsumer = {
 
 const Composed = withSignal(StubBase as never);
 
-function createService(signalService: unknown = null): StubBase & SignalConsumer {
-  return new (Composed as unknown as new (
-    signalService?: unknown,
-  ) => StubBase & SignalConsumer)(signalService);
+function createService(
+  signalService: unknown = null,
+): StubBase & SignalConsumer {
+  return new (
+    Composed as unknown as new (
+      signalService?: unknown,
+    ) => StubBase & SignalConsumer
+  )(signalService);
 }
 
 describe("withSignal consumer surface", () => {
   beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "milady-signal-"));
+    process.env.ELIZA_OAUTH_DIR = tmpDir;
+    delete process.env.SIGNAL_AUTH_DIR;
     delete process.env.SIGNAL_ACCOUNT_NUMBER;
     delete process.env.SIGNAL_HTTP_URL;
     globalThis.fetch = ORIGINAL_FETCH;
   });
 
   afterEach(() => {
+    if (ORIGINAL_ENV.ELIZA_OAUTH_DIR === undefined) {
+      delete process.env.ELIZA_OAUTH_DIR;
+    } else {
+      process.env.ELIZA_OAUTH_DIR = ORIGINAL_ENV.ELIZA_OAUTH_DIR;
+    }
+    if (ORIGINAL_ENV.SIGNAL_AUTH_DIR === undefined) {
+      delete process.env.SIGNAL_AUTH_DIR;
+    } else {
+      process.env.SIGNAL_AUTH_DIR = ORIGINAL_ENV.SIGNAL_AUTH_DIR;
+    }
     if (ORIGINAL_ENV.SIGNAL_ACCOUNT_NUMBER === undefined) {
       delete process.env.SIGNAL_ACCOUNT_NUMBER;
     } else {
@@ -89,6 +112,7 @@ describe("withSignal consumer surface", () => {
       process.env.SIGNAL_HTTP_URL = ORIGINAL_ENV.SIGNAL_HTTP_URL;
     }
     globalThis.fetch = ORIGINAL_FETCH;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
@@ -101,6 +125,56 @@ describe("withSignal consumer surface", () => {
     expect(status.connected).toBe(false);
     expect(status.inbound).toBe(false);
     expect(status.reason).toBe("disconnected");
+  });
+
+  it("adopts the only linked device for the requested side when the grant is missing", async () => {
+    const previousAuthDir = path.join(
+      tmpDir,
+      "lifeops",
+      "signal",
+      "agent-previous",
+      "owner",
+    );
+    fs.mkdirSync(previousAuthDir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      path.join(previousAuthDir, "device-info.json"),
+      JSON.stringify(
+        {
+          authDir: previousAuthDir,
+          phoneNumber: "+15550000000",
+          uuid: "signal-uuid",
+          deviceName: "Milady Mac",
+        },
+        null,
+        2,
+      ),
+      { encoding: "utf8", mode: 0o600 },
+    );
+    const service = createService();
+    service.repository.getConnectorGrant.mockResolvedValue(null);
+
+    const status = await service.getSignalConnectorStatus("owner");
+
+    expect(status.connected).toBe(true);
+    expect(status.inbound).toBe(true);
+    expect(status.reason).toBe("connected");
+    expect(service.repository.upsertConnectorGrant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-signal",
+        provider: "signal",
+        side: "owner",
+        tokenRef: previousAuthDir,
+        identity: expect.objectContaining({
+          phoneNumber: "+15550000000",
+          uuid: "signal-uuid",
+        }),
+        metadata: expect.objectContaining({
+          adoptedFromAgentId: "agent-previous",
+        }),
+      }),
+    );
+    expect(process.env.SIGNAL_AUTH_DIR).toBe(previousAuthDir);
+    expect(process.env.SIGNAL_ACCOUNT_NUMBER).toBe("+15550000000");
   });
 
   it("reads recent inbound messages from the connected Signal service", async () => {
@@ -198,8 +272,9 @@ describe("withSignal consumer surface", () => {
   it("surfaces signal-cli receive failures instead of returning an empty success", async () => {
     process.env.SIGNAL_HTTP_URL = "http://127.0.0.1:9000";
     process.env.SIGNAL_ACCOUNT_NUMBER = "+15550000000";
-    globalThis.fetch = vi.fn(async () => new Response("broken", { status: 503 })) as
-      unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () => new Response("broken", { status: 503 }),
+    ) as unknown as typeof fetch;
     const service = createService();
 
     await expect(service.readSignalInbound(10)).rejects.toThrow(
