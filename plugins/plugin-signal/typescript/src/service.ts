@@ -19,7 +19,15 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { signalCheck } from "./rpc";
+import {
+  signalCheck,
+  signalListContacts,
+  signalListGroups,
+  signalRpcRequest,
+  signalSend,
+  signalSendReaction,
+  signalSendTyping,
+} from "./rpc";
 
 type MessageService = Pick<IMessageService, "handleMessage">;
 
@@ -108,41 +116,8 @@ class SignalApiClient {
     private accountNumber: string
   ) {}
 
-  private async request<T>(
-    method: string,
-    endpoint: string,
-    body?: Record<string, unknown>,
-    allowEmptyResponse = false
-  ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-    const options: RequestInit = {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    };
-
-    if (body) {
-      options.body = JSON.stringify(body);
-    }
-
-    const response = await fetch(url, options);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Signal API error: ${response.status} - ${errorText}`);
-    }
-
-    const text = await response.text();
-    if (!text) {
-      if (allowEmptyResponse) return {} as T;
-      throw new Error(`Signal API returned empty response for ${method} ${endpoint}`);
-    }
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      throw new Error(`Signal API returned invalid JSON: ${text.slice(0, 200)}`);
-    }
+  private rpcOptions(timeoutMs?: number): { baseUrl: string; timeoutMs?: number } {
+    return timeoutMs ? { baseUrl: this.baseUrl, timeoutMs } : { baseUrl: this.baseUrl };
   }
 
   async sendMessage(
@@ -150,22 +125,16 @@ class SignalApiClient {
     message: string,
     options?: SignalMessageSendOptions
   ): Promise<{ timestamp: number }> {
-    const body: Record<string, unknown> = {
-      message,
-      number: this.accountNumber,
-      recipients: [recipient],
-    };
-
-    if (options?.attachments) {
-      body.base64_attachments = options.attachments;
-    }
-
-    if (options?.quote) {
-      body.quote_timestamp = options.quote.timestamp;
-      body.quote_author = options.quote.author;
-    }
-
-    return this.request<{ timestamp: number }>("POST", "/v2/send", body);
+    return signalSend(
+      {
+        account: this.accountNumber,
+        recipients: [recipient],
+        message,
+        ...(options?.attachments ? { attachments: options.attachments } : {}),
+        ...(options?.quote ? { quote: options.quote } : {}),
+      },
+      this.rpcOptions()
+    );
   }
 
   async sendGroupMessage(
@@ -173,17 +142,15 @@ class SignalApiClient {
     message: string,
     options?: SignalMessageSendOptions
   ): Promise<{ timestamp: number }> {
-    const body: Record<string, unknown> = {
-      message,
-      number: this.accountNumber,
-      recipients: [`group.${groupId}`],
-    };
-
-    if (options?.attachments) {
-      body.base64_attachments = options.attachments;
-    }
-
-    return this.request<{ timestamp: number }>("POST", "/v2/send", body);
+    return signalSend(
+      {
+        account: this.accountNumber,
+        groupId,
+        message,
+        ...(options?.attachments ? { attachments: options.attachments } : {}),
+      },
+      this.rpcOptions()
+    );
   }
 
   async sendReaction(
@@ -193,31 +160,25 @@ class SignalApiClient {
     targetAuthor: string,
     remove = false
   ): Promise<void> {
-    await this.request(
-      "POST",
-      `/v1/reactions/${this.accountNumber}`,
+    await signalSendReaction(
       {
+        account: this.accountNumber,
         recipient,
-        reaction: emoji,
-        target_author: targetAuthor,
-        timestamp: targetTimestamp,
+        emoji,
+        targetAuthor,
+        targetTimestamp,
         remove,
       },
-      true
+      this.rpcOptions()
     );
   }
 
   async getContacts(): Promise<SignalContact[]> {
-    const result = await this.request<{ contacts: SignalContact[] }>(
-      "GET",
-      `/v1/contacts/${this.accountNumber}`
-    );
-    return result.contacts || [];
+    return signalListContacts(this.accountNumber, this.rpcOptions()) as Promise<SignalContact[]>;
   }
 
   async getGroups(): Promise<SignalGroup[]> {
-    const result = await this.request<SignalGroup[]>("GET", `/v1/groups/${this.accountNumber}`);
-    return result || [];
+    return signalListGroups(this.accountNumber, this.rpcOptions()) as Promise<SignalGroup[]>;
   }
 
   async getGroup(groupId: string): Promise<SignalGroup | null> {
@@ -226,54 +187,63 @@ class SignalApiClient {
   }
 
   async receive(): Promise<SignalMessage[]> {
-    const result = await this.request<SignalMessage[]>("GET", `/v1/receive/${this.accountNumber}`);
-    return result || [];
+    return signalRpcRequest<SignalMessage[]>(
+      "receive",
+      { account: this.accountNumber },
+      this.rpcOptions(1_500)
+    ).catch((error) => {
+      if (error instanceof Error && error.name === "AbortError") {
+        return [];
+      }
+      throw error;
+    });
   }
 
   async sendTyping(recipient: string, stop = false): Promise<void> {
-    await this.request(
-      "PUT",
-      `/v1/typing-indicator/${this.accountNumber}`,
+    await signalSendTyping(
       {
+        account: this.accountNumber,
         recipient,
         stop,
       },
-      true
+      this.rpcOptions()
     );
   }
 
   async setProfile(name: string, about?: string): Promise<void> {
-    await this.request(
-      "PUT",
-      `/v1/profiles/${this.accountNumber}`,
+    await signalRpcRequest(
+      "setProfile",
       {
+        account: this.accountNumber,
         name,
         about: about || "",
       },
-      true
+      this.rpcOptions()
     );
   }
 
   async getIdentities(): Promise<
     Array<{ number: string; safety_number: string; trust_level: string }>
   > {
-    const result = await this.request<
-      Array<{ number: string; safety_number: string; trust_level: string }>
-    >("GET", `/v1/identities/${this.accountNumber}`);
-    return result || [];
+    return signalRpcRequest(
+      "listIdentities",
+      { account: this.accountNumber },
+      this.rpcOptions()
+    );
   }
 
   async trustIdentity(
     number: string,
     trustLevel: "TRUSTED_VERIFIED" | "TRUSTED_UNVERIFIED" | "UNTRUSTED"
   ): Promise<void> {
-    await this.request(
-      "PUT",
-      `/v1/identities/${this.accountNumber}/trust/${number}`,
+    await signalRpcRequest(
+      "trustIdentity",
       {
-        trust_level: trustLevel,
+        account: this.accountNumber,
+        number,
+        trustLevel,
       },
-      true
+      this.rpcOptions()
     );
   }
 }
