@@ -1944,6 +1944,48 @@ function hasNonPassiveAction(
 	);
 }
 
+/**
+ * Returns true when the planner deliberately chose to converse — i.e. the
+ * response actions list contains REPLY (or its alias RESPOND).
+ *
+ * REPLY is a deliberate signal that the LLM judged the message as
+ * conversation, not a delegated task. The metadata-overlap rescue path
+ * must respect this and not promote REPLY to a privileged action like
+ * OWNER_INBOX or MANAGE_ISSUES based on incidental keyword overlap with
+ * those actions' example text. Without this gate, a chitchat message
+ * containing common scheduling/workflow words ("workflow", "policy",
+ * "follow up", "friday", "2026") gets force-routed into a role-gated
+ * action and the user sees "Permission denied: only the owner or admin
+ * may use inbox actions" in response to plain conversation.
+ */
+function hasExplicitReplyIntent(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	const replyId = normalizeActionIdentifier("REPLY");
+	const respondId = normalizeActionIdentifier("RESPOND");
+	return (
+		responseContent?.actions?.some((actionName) => {
+			if (typeof actionName !== "string") return false;
+			const id = normalizeActionIdentifier(actionName);
+			return id === replyId || id === respondId;
+		}) ?? false
+	);
+}
+
+/**
+ * Gate for the metadata-rescue path that promotes a passive (REPLY/NONE)
+ * response to a privileged action based on keyword overlap. Run only when
+ * the planner produced no real action AND no explicit REPLY — i.e. when
+ * we genuinely have nothing to say.
+ */
+export function shouldRunMetadataActionRescue(
+	responseContent: Pick<Content, "actions"> | null | undefined,
+): boolean {
+	if (hasNonPassiveAction(responseContent)) return false;
+	if (hasExplicitReplyIntent(responseContent)) return false;
+	return true;
+}
+
 function shouldAttemptActionRescue(
 	runtime: Pick<IAgentRuntime, "actions">,
 	message: Memory,
@@ -5984,7 +6026,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 			}
 		}
 
-		if (!hasNonPassiveAction(responseContent)) {
+		if (shouldRunMetadataActionRescue(responseContent)) {
 			const metadataSuggestion = suggestOwnedActionFromMetadata(
 				runtime,
 				message,
