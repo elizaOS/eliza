@@ -116,8 +116,8 @@ export {
 	createPluginAction,
 	hasAdminAccess,
 	hasOwnerAccess,
-	pluginAction,
 	type PluginMode,
+	pluginAction,
 	type SecurityDeps,
 } from "../plugin-manager/index.ts";
 
