@@ -474,6 +474,7 @@ export function ConfigPageView({
             <Button
               variant="default"
               size="sm"
+              data-testid="wallet-rpc-save"
               className="text-xs-tight"
               onClick={() => {
                 void handleWalletSaveAll();
@@ -597,6 +598,7 @@ export function ConfigPageView({
             <Button
               variant="default"
               size="sm"
+              data-testid="wallet-rpc-save"
               className="text-xs-tight"
               onClick={() => {
                 void handleWalletSaveAll();
