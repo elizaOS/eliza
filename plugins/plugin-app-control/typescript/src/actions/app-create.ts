@@ -674,7 +674,11 @@ async function editExistingApp({
 	if (dispatch.dispatched === false) {
 		const text = `Could not dispatch a coding agent to edit ${app.displayName}: ${dispatch.reason}.`;
 		await callback?.({ text });
-		return { success: false, text, data: { suppressActionResultClipboard: true } };
+		return {
+			success: false,
+			text,
+			data: { suppressActionResultClipboard: true },
+		};
 	}
 
 	const task = dispatch.agents[0];
