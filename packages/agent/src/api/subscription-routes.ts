@@ -60,7 +60,7 @@ export async function handleSubscriptionRoutes(
       // CLI / setup-token / Claude Code rows have synthetic accountIds
       // and no config-level row — they pass through unchanged so the
       // UI's existing `find(s => s.provider === ...)` keeps working.
-      const linkedAccounts = readRichLinkedAccounts(state.config);
+      const linkedAccounts = await readRichLinkedAccountsFromPool();
       const rows = baseRows.map((row) => {
         const linked = linkedAccounts[row.accountId];
         if (!linked || linked.providerId !== row.provider) return row;
@@ -304,33 +304,32 @@ export async function handleSubscriptionRoutes(
 }
 
 /**
- * Read rich `LinkedAccountConfig` rows out of the dual-shape
- * `linkedAccounts` config bag. Skips legacy
- * `LinkedAccountFlagConfig` entries (provider-name keys like
- * `elizacloud`) — those are filtered out by the shape check.
+ * Read rich `LinkedAccountConfig` rows from the AccountPool singleton.
+ * The pool is the single source of truth — it joins on-disk credential
+ * records with the metadata overlay file. Loaded via dynamic import
+ * because `@elizaos/app-core` depends on `@elizaos/agent`, not the
+ * other way around.
  */
-function readRichLinkedAccounts(
-  config: ElizaConfig,
-): Record<string, LinkedAccountConfig> {
-  const bag = config.linkedAccounts as
-    | Record<string, unknown>
-    | undefined;
-  if (!bag) return {};
-  const out: Record<string, LinkedAccountConfig> = {};
-  for (const [key, value] of Object.entries(bag)) {
-    if (!value || typeof value !== "object") continue;
-    const candidate = value as Partial<LinkedAccountConfig>;
-    if (
-      typeof candidate.id === "string" &&
-      typeof candidate.providerId === "string" &&
-      typeof candidate.label === "string" &&
-      typeof candidate.enabled === "boolean" &&
-      typeof candidate.priority === "number" &&
-      typeof candidate.createdAt === "number" &&
-      typeof candidate.health === "string"
-    ) {
-      out[key] = candidate as LinkedAccountConfig;
+async function readRichLinkedAccountsFromPool(): Promise<
+  Record<string, LinkedAccountConfig>
+> {
+  try {
+    const moduleId = "@elizaos/app-core/services/account-pool";
+    const mod = (await import(/* @vite-ignore */ moduleId)) as {
+      getDefaultAccountPool: () => {
+        list(): LinkedAccountConfig[];
+      };
+    };
+    const pool = mod.getDefaultAccountPool();
+    const out: Record<string, LinkedAccountConfig> = {};
+    for (const account of pool.list()) {
+      out[account.id] = account;
     }
+    return out;
+  } catch (err) {
+    logger.debug(
+      `[subscription] account pool unavailable: ${String(err)}`,
+    );
+    return {};
   }
-  return out;
 }

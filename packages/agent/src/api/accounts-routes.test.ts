@@ -96,7 +96,7 @@ const ORIGINAL_ELIZA_HOME = process.env.ELIZA_HOME;
 describe("handleAccountsRoutes", () => {
   let home: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     home = path.join(
       os.tmpdir(),
       `accounts-routes-${crypto.randomUUID()}`,
@@ -104,9 +104,14 @@ describe("handleAccountsRoutes", () => {
     fs.mkdirSync(home, { recursive: true });
     process.env.ELIZA_HOME = home;
     _resetFlowRegistry();
+    _resetAccountsRoutesPoolCache();
+    // Drop the pool's own module-level singleton so it picks up the
+    // new ELIZA_HOME on first read.
+    const mod = await import("@elizaos/app-core/services/account-pool");
+    mod.__resetDefaultAccountPoolForTests();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     if (ORIGINAL_ELIZA_HOME === undefined) {
       delete process.env.ELIZA_HOME;
     } else {
@@ -116,6 +121,9 @@ describe("handleAccountsRoutes", () => {
       fs.rmSync(home, { recursive: true, force: true });
     }
     _resetFlowRegistry();
+    _resetAccountsRoutesPoolCache();
+    const mod = await import("@elizaos/app-core/services/account-pool");
+    mod.__resetDefaultAccountPoolForTests();
   });
 
   it("returns false for unrelated paths", async () => {
@@ -462,5 +470,46 @@ describe("handleAccountsRoutes", () => {
     });
     expect(await handleAccountsRoutes(ctx)).toBe(true);
     expect(jsonCalls[0].body).toEqual({ cancelled: false });
+  });
+
+  it("pool.markRateLimited is visible to GET /api/accounts (proves single source of truth)", async () => {
+    const config = {} as ElizaConfig;
+    const create = makeStubCtx({
+      method: "POST",
+      pathname: "/api/accounts/anthropic-subscription",
+      config,
+      body: {
+        source: "api-key",
+        label: "Throttled",
+        apiKey: "sk-ant-throttle-1234567",
+      },
+    });
+    await handleAccountsRoutes(create.ctx);
+    const created = create.jsonCalls[0].body as { id: string };
+
+    // Simulate the runtime flipping the account into a rate-limited
+    // cooldown — this is what `plugin-anthropic`'s 429 handler does.
+    const mod = await import("@elizaos/app-core/services/account-pool");
+    const pool = mod.getDefaultAccountPool();
+    const untilMs = Date.now() + 5 * 60_000;
+    await pool.markRateLimited(created.id, untilMs, "test");
+
+    const list = makeStubCtx({
+      method: "GET",
+      pathname: "/api/accounts",
+      config,
+    });
+    await handleAccountsRoutes(list.ctx);
+    const listBody = list.jsonCalls[0].body as {
+      providers: Array<{
+        providerId: string;
+        accounts: Array<{ id: string; health: string; healthDetail?: { until?: number } }>;
+      }>;
+    };
+    const anth = listBody.providers.find(
+      (p) => p.providerId === "anthropic-subscription",
+    );
+    expect(anth?.accounts[0]?.health).toBe("rate-limited");
+    expect(anth?.accounts[0]?.healthDetail?.until).toBe(untilMs);
   });
 });
