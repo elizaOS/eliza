@@ -100,13 +100,18 @@ function tokenize(value: string): string[] {
 		.filter((token) => token.length > 1 && !STOP_WORDS.has(token));
 }
 
-function deriveNames(intent: string): { packageName: string; displayName: string } {
+function deriveNames(intent: string): {
+	packageName: string;
+	displayName: string;
+} {
 	const tokens = tokenize(intent).slice(0, 4);
 	const rawSlug = tokens.join("-") || "runtime-plugin";
 	const slug = KEBAB_RE.test(rawSlug) ? rawSlug : "runtime-plugin";
 	const bareName = slug.startsWith("plugin-") ? slug : `plugin-${slug}`;
 	const displayName = tokens.length
-		? tokens.map((token) => token.charAt(0).toUpperCase() + token.slice(1)).join(" ")
+		? tokens
+				.map((token) => token.charAt(0).toUpperCase() + token.slice(1))
+				.join(" ")
 		: "Runtime Plugin";
 	return { packageName: `@elizaos/${bareName}`, displayName };
 }
@@ -166,7 +171,9 @@ async function findFreePluginDir(
 		candidate = path.join(pluginsDir, `${baseName}-${suffix}`);
 		suffix += 1;
 		if (suffix > 50) {
-			throw new Error(`Could not find a free plugin directory for ${packageName}`);
+			throw new Error(
+				`Could not find a free plugin directory for ${packageName}`,
+			);
 		}
 	}
 	return candidate;
@@ -259,7 +266,9 @@ async function dispatchCodingAgent({
 	pluginName: string;
 	callback?: HandlerCallback;
 }): Promise<DispatchResult> {
-	const createTask = runtime.actions?.find((action) => action.name === "CREATE_TASK");
+	const createTask = runtime.actions?.find(
+		(action) => action.name === "CREATE_TASK",
+	);
 	if (!createTask) {
 		return { dispatched: false, reason: "CREATE_TASK action not registered" };
 	}
@@ -370,7 +379,10 @@ function renderChoiceBlock(
 	choiceId: string,
 	matches: readonly PluginMatch[],
 ): string {
-	const lines = [`[CHOICE:plugin-create id=${choiceId}]`, "new = Create new plugin"];
+	const lines = [
+		`[CHOICE:plugin-create id=${choiceId}]`,
+		"new = Create new plugin",
+	];
 	matches.forEach((match, idx) => {
 		lines.push(`edit-${idx + 1} = Edit existing: ${match.plugin.name}`);
 	});
@@ -381,7 +393,9 @@ function renderChoiceBlock(
 async function listKnownPlugins(
 	runtime: IAgentRuntime,
 ): Promise<EjectedPluginInfo[]> {
-	const service = runtime.getService("plugin_manager") as PluginManagerService | null;
+	const service = runtime.getService(
+		"plugin_manager",
+	) as PluginManagerService | null;
 	if (!service) return [];
 	const loaded = service.getAllPlugins().map((plugin) => ({
 		name: plugin.name,
@@ -475,7 +489,9 @@ async function deleteIntentTask(
 	runtime: IAgentRuntime,
 	taskId: string,
 ): Promise<void> {
-	await runtime.deleteTask(taskId as `${string}-${string}-${string}-${string}-${string}`);
+	await runtime.deleteTask(
+		taskId as `${string}-${string}-${string}-${string}-${string}`,
+	);
 }
 
 async function createNewPlugin({
@@ -533,7 +549,13 @@ async function createNewPlugin({
 			taskStatus: task.status,
 			taskSessionId: task.sessionId,
 		},
-		data: { name: packageName, displayName, workdir, task, agents: dispatch.agents },
+		data: {
+			name: packageName,
+			displayName,
+			workdir,
+			task,
+			agents: dispatch.agents,
+		},
 	};
 }
 
@@ -614,7 +636,11 @@ export async function runCreate({
 		if (normalized === "cancel") {
 			const text = "Canceled. No plugin changes made.";
 			await callback?.({ text });
-			return { success: true, text, values: { mode: "create", subMode: "cancel" } };
+			return {
+				success: true,
+				text,
+				values: { mode: "create", subMode: "cancel" },
+			};
 		}
 		if (normalized === "new") {
 			return createNewPlugin({
@@ -632,7 +658,8 @@ export async function runCreate({
 		const plugins = await listKnownPlugins(runtime);
 		const target = plugins.find(
 			(plugin) =>
-				plugin.name === choice?.pluginName || plugin.path === choice?.pluginPath,
+				plugin.name === choice?.pluginName ||
+				plugin.path === choice?.pluginPath,
 		);
 		if (!target) {
 			const text = `Plugin edit target "${normalized}" is no longer available.`;
@@ -668,7 +695,9 @@ export async function runCreate({
 	}
 
 	const plugins = await listKnownPlugins(runtime);
-	const matches = rankMatches(intent, plugins).filter((match) => match.plugin.path);
+	const matches = rankMatches(intent, plugins).filter(
+		(match) => match.plugin.path,
+	);
 	if (matches.length === 0) {
 		return createNewPlugin({ runtime, intent, repoRoot, callback });
 	}
@@ -690,7 +719,10 @@ export async function runCreate({
 		intentCreatedAt: new Date().toISOString(),
 	});
 
-	const text = renderChoiceBlock(`plugin-create-${Date.now().toString(36)}`, matches);
+	const text = renderChoiceBlock(
+		`plugin-create-${Date.now().toString(36)}`,
+		matches,
+	);
 	await callback?.({ text });
 	return {
 		success: true,
