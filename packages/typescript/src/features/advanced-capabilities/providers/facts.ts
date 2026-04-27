@@ -1,4 +1,5 @@
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
+import { getRelatedEntityIds } from "../../../identity-clusters.ts";
 import type {
 	FactKind,
 	FactMetadata,
@@ -234,7 +235,11 @@ const factsProvider: Provider = {
 		// re-ranks by `confidence × timeWeight(kind, age)` immediately
 		// afterward, so adding a lexical filter on top would just hide
 		// otherwise-relevant facts.
-		const [roomFacts, entityFacts] = await Promise.all([
+		const relatedEntityIds = await getRelatedEntityIds(
+			runtime,
+			message.entityId,
+		);
+		const [roomFacts, ...entityFactPools] = await Promise.all([
 			runtime.searchMemories({
 				tableName: "facts",
 				embedding,
@@ -242,14 +247,16 @@ const factsProvider: Provider = {
 				worldId: message.worldId,
 				limit: CANDIDATE_POOL_PER_SEARCH,
 			}),
-			runtime.searchMemories({
-				embedding,
-				tableName: "facts",
-				roomId: message.roomId,
-				entityId: message.entityId,
-				limit: CANDIDATE_POOL_PER_SEARCH,
-			}),
+			...relatedEntityIds.map((entityId) =>
+				runtime.searchMemories({
+					embedding,
+					tableName: "facts",
+					entityId,
+					limit: CANDIDATE_POOL_PER_SEARCH,
+				}),
+			),
 		]);
+		const entityFacts = entityFactPools.flat();
 
 		const dedupedPool = dedupeById([...roomFacts, ...entityFacts]);
 		const { durable: durableCandidates, current: currentCandidates } =
