@@ -441,7 +441,7 @@ export const messageHandlerTemplate = `task: Generate dialog and actions for {{a
 context:
 {{providers}}
 
-rules[21]:
+rules[22]:
 - think briefly, then respond
 - always include a <thought> field, even for direct replies
 - actions execute in listed order
@@ -450,6 +450,7 @@ rules[21]:
 - set simple=true only when the planner's text should be sent directly as the final reply without running REPLY again
 - if actions are REPLY-only and you want the REPLY action to generate the final user-facing message, set simple=false
 - use IGNORE or STOP only by themselves
+- in group conversations, choose IGNORE if the latest message is addressed to someone else and not to {{agentName}}
 - include providers only when needed
 - use only action and provider names that appear in the listed runtime surface; never invent new action names, provider names, benchmark ids, or paraphrased tool labels
 - when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
@@ -1028,12 +1029,13 @@ export const shouldRespondTemplate = `task: Decide whether {{agentName}} should 
 context:
 {{providers}}
 
-rules[6]:
+rules[7]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
 - prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
 - request to stop or be quiet directed at {{agentName}} -> STOP
 - if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- in group conversations, if the latest message is addressed to someone else and not to {{agentName}}, IGNORE
 - if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
 
 available_contexts:
@@ -1074,12 +1076,13 @@ context:
 available_contexts:
 {{availableContexts}}
 
-rules[6]:
+rules[7]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
 - prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
 - request to stop or be quiet directed at {{agentName}} -> STOP
 - if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- in group conversations, if the latest message is addressed to someone else and not to {{agentName}}, IGNORE
 - if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
 
 context_routing:

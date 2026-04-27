@@ -207,6 +207,30 @@ liveDescribe("shouldRespond live", () => {
 	);
 
 	it(
+		"ignores a group request addressed to another bot",
+		async () => {
+			const result = await classify(
+				[
+					"fishai: @botdick make a github issue in elizaOS/eliza saying test botdick github auth",
+				].join("\n"),
+			);
+
+			expect(result).not.toBeNull();
+			const action = String(result?.action ?? "")
+				.trim()
+				.toUpperCase();
+			const speakUp = Number(result?.speak_up);
+			const holdBack = Number(result?.hold_back);
+
+			expect(action).toBe("IGNORE");
+			expect(Number.isFinite(speakUp)).toBe(true);
+			expect(Number.isFinite(holdBack)).toBe(true);
+			expect(holdBack).toBeGreaterThan(speakUp);
+		},
+		LIVE_TEST_TIMEOUT_MS,
+	);
+
+	it(
 		"stops when explicitly told to stop",
 		async () => {
 			const result = await classify(
