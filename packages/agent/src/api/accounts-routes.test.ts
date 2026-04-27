@@ -512,4 +512,159 @@ describe("handleAccountsRoutes", () => {
     expect(anth?.accounts[0]?.health).toBe("rate-limited");
     expect(anth?.accounts[0]?.healthDetail?.until).toBe(untilMs);
   });
+
+  it("supports adding multiple accounts to the same provider with distinct ids and ascending priorities", async () => {
+    const config = {} as ElizaConfig;
+
+    // Add three accounts in sequence — covers the realistic UI flow
+    // of a user adding several Anthropic subscriptions to a rotation
+    // pool.
+    const labels = ["Personal", "Work", "Side project"];
+    const created: Array<{ id: string; priority: number; label: string }> = [];
+    for (const label of labels) {
+      const ctx = makeStubCtx({
+        method: "POST",
+        pathname: "/api/accounts/anthropic-subscription",
+        config,
+        body: {
+          source: "api-key",
+          label,
+          apiKey: `sk-ant-${label.toLowerCase().replace(/\s/g, "-")}-1234567`,
+        },
+      });
+      expect(await handleAccountsRoutes(ctx.ctx)).toBe(true);
+      expect(ctx.errorCalls).toEqual([]);
+      const body = ctx.jsonCalls[0].body as {
+        id: string;
+        priority: number;
+        label: string;
+      };
+      created.push(body);
+    }
+
+    // All three got distinct uuid-shaped ids.
+    const ids = new Set(created.map((c) => c.id));
+    expect(ids.size).toBe(3);
+    for (const c of created) {
+      expect(c.id).toMatch(/^[0-9a-f-]{36}$/);
+    }
+
+    // Priorities incremented monotonically (0, 1, 2).
+    expect(created.map((c) => c.priority)).toEqual([0, 1, 2]);
+    expect(created.map((c) => c.label)).toEqual(labels);
+
+    // GET surfaces all three under the same provider, sorted by priority.
+    const list = makeStubCtx({
+      method: "GET",
+      pathname: "/api/accounts",
+      config,
+    });
+    await handleAccountsRoutes(list.ctx);
+    const listBody = list.jsonCalls[0].body as {
+      providers: Array<{
+        providerId: string;
+        accounts: Array<{
+          id: string;
+          label: string;
+          priority: number;
+          enabled: boolean;
+          hasCredential: boolean;
+        }>;
+      }>;
+    };
+    const anth = listBody.providers.find(
+      (p) => p.providerId === "anthropic-subscription",
+    );
+    expect(anth?.accounts).toHaveLength(3);
+    expect(anth?.accounts.map((a) => a.label)).toEqual(labels);
+    expect(anth?.accounts.map((a) => a.priority)).toEqual([0, 1, 2]);
+    expect(anth?.accounts.every((a) => a.enabled === true)).toBe(true);
+    expect(anth?.accounts.every((a) => a.hasCredential === true)).toBe(true);
+
+    // Each account has its own on-disk credential file (not aliasing).
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    for (const c of created) {
+      const credPath = path.join(
+        home,
+        "auth",
+        "anthropic-subscription",
+        `${c.id}.json`,
+      );
+      expect(fs.existsSync(credPath)).toBe(true);
+    }
+  });
+
+  it("supports independent account pools per provider (anthropic + codex side-by-side)", async () => {
+    const config = {} as ElizaConfig;
+
+    const addAccount = async (
+      providerId: "anthropic-subscription" | "openai-codex",
+      label: string,
+      apiKey: string,
+    ) => {
+      const ctx = makeStubCtx({
+        method: "POST",
+        pathname: `/api/accounts/${providerId}`,
+        config,
+        body: { source: "api-key", label, apiKey },
+      });
+      await handleAccountsRoutes(ctx.ctx);
+      return ctx.jsonCalls[0].body as { id: string; priority: number };
+    };
+
+    const a1 = await addAccount(
+      "anthropic-subscription",
+      "Anthropic A",
+      "sk-ant-aa-1234567",
+    );
+    const a2 = await addAccount(
+      "anthropic-subscription",
+      "Anthropic B",
+      "sk-ant-bb-1234567",
+    );
+    const c1 = await addAccount(
+      "openai-codex",
+      "Codex A",
+      "sk-codex-aa-1234567",
+    );
+    const c2 = await addAccount(
+      "openai-codex",
+      "Codex B",
+      "sk-codex-bb-1234567",
+    );
+
+    // Both providers' pools start at priority 0 and increment
+    // independently.
+    expect(a1.priority).toBe(0);
+    expect(a2.priority).toBe(1);
+    expect(c1.priority).toBe(0);
+    expect(c2.priority).toBe(1);
+    expect(new Set([a1.id, a2.id, c1.id, c2.id]).size).toBe(4);
+
+    const list = makeStubCtx({
+      method: "GET",
+      pathname: "/api/accounts",
+      config,
+    });
+    await handleAccountsRoutes(list.ctx);
+    const listBody = list.jsonCalls[0].body as {
+      providers: Array<{
+        providerId: string;
+        accounts: Array<{ id: string }>;
+      }>;
+    };
+    const anth = listBody.providers.find(
+      (p) => p.providerId === "anthropic-subscription",
+    );
+    const codex = listBody.providers.find(
+      (p) => p.providerId === "openai-codex",
+    );
+    expect(anth?.accounts.map((a) => a.id).sort()).toEqual(
+      [a1.id, a2.id].sort(),
+    );
+    expect(codex?.accounts.map((a) => a.id).sort()).toEqual(
+      [c1.id, c2.id].sort(),
+    );
+  });
 });
