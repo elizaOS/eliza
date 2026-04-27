@@ -19,7 +19,6 @@ export {
   handleCloudStatusRoutes,
 } from "./cloud-status-routes.js";
 export * from "./compat-utils.js";
-export * from "./connector-cred-types.js";
 export * from "./connector-health.js";
 export * from "./credit-detection.js";
 export * from "./database.js";

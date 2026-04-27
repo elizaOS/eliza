@@ -177,7 +177,7 @@ import { handleCodingAgentsFallback } from "./coding-agents-fallback-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
-import { credTypesForConnector } from "./connector-cred-types.js";
+import { credTypesForConnector } from "@elizaos/shared";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
