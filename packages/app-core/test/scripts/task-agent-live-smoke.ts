@@ -1,3 +1,38 @@
+/**
+ * Live smoke runner for the task-agent orchestrator.
+ *
+ * Modes:
+ *   sequential   — spawn → write file → reuse session for second task
+ *   web          — spawn → fetch reference page → serve generated HTML
+ *   counter-app  — scaffold templates/min-app → spawn → child writes counter
+ *                  code → emits APP_CREATE_DONE → cross-check claim against
+ *                  disk → run AppVerificationService (typecheck + lint + test)
+ *
+ * Auth requirements (all modes):
+ *
+ *   The spawned PTY child needs credentials Claude Code can actually use to
+ *   reach the Anthropic API. The host CLI's `claude auth status` working is
+ *   NOT sufficient — that goes through the keychain-managed refresh flow
+ *   which doesn't transfer to a forked PTY process.
+ *
+ *   What works (in priority order):
+ *     1. ANTHROPIC_API_KEY env / runtime setting — bypasses OAuth entirely.
+ *        spawn-agent forwards this. This is the recommended path for CI.
+ *     2. A configured account-pool shim (multi-account Milady setups). The
+ *        shim picks a fresh token per spawn.
+ *     3. CLAUDE_CODE_OAUTH_TOKEN env / runtime setting — forwarded by the
+ *        spawn-agent fallback added in plugin-agent-orchestrator commit
+ *        332a2a4. NOTE: a stale or session-bound OAuth token will be
+ *        forwarded but rejected by the Anthropic API with 401. If that
+ *        happens, refresh by running `claude logout && claude login` and
+ *        re-export the token, OR fall back to ANTHROPIC_API_KEY.
+ *
+ * Run with:
+ *   ORCHESTRATOR_LIVE=1 bun packages/app-core/scripts/run-node-tsx.mjs \
+ *     packages/app-core/test/scripts/task-agent-live-smoke.ts \
+ *     --framework <claude|codex> --mode <sequential|web|counter-app>
+ */
+
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";
 import { createServer, type Server } from "node:http";
