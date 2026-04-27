@@ -217,7 +217,23 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 
 	return {
 		name: "PLUGIN",
-		similes: ["PLUGIN_CONTROL", "MANAGE_PLUGINS"],
+		similes: [
+			"PLUGIN_CONTROL",
+			"MANAGE_PLUGINS",
+			// Legacy single-purpose action names — preserved as similes so
+			// callers that still dispatch by these names resolve to PLUGIN
+			// without breaking. Covers both the prior workspace plugin's
+			// names and the prior built-in capability's names.
+			"INSTALL_PLUGIN",
+			"EJECT_PLUGIN",
+			"SYNC_PLUGIN",
+			"REINJECT_PLUGIN",
+			"LIST_EJECTED_PLUGINS",
+			"SEARCH_PLUGIN",
+			"SEARCH_PLUGINS",
+			"CORE_STATUS",
+			"GET_PLUGIN_DETAILS",
+		],
 
 		description:
 			"Unified plugin control. mode=install installs from registry; mode=eject clones a registry plugin locally; mode=sync pulls upstream into an ejected plugin; mode=reinject removes the local copy; mode=list shows loaded/installed; mode=list_ejected shows ejected; mode=search queries the registry; mode=core_status reports @elizaos/core ejection state; mode=create runs the multi-turn create-or-edit flow that scaffolds from the min-plugin template and dispatches a coding agent with AppVerificationService validator.",
