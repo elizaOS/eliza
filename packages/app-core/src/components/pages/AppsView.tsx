@@ -50,7 +50,6 @@ const APPS_SIDEBAR_COLLAPSED_KEY = "milady:apps:sidebar:collapsed";
 const APPS_SIDEBAR_DEFAULT_WIDTH = 240;
 const APPS_SIDEBAR_MIN_WIDTH = 200;
 const APPS_SIDEBAR_MAX_WIDTH = 520;
-const APP_WINDOW_LAUNCH_ENABLED_KEY = "milady:apps:window:launch-enabled";
 const APP_WINDOW_ALWAYS_ON_TOP_KEY = "milady:apps:window:always-on-top";
 const APP_WINDOW_HEARTBEAT_MS = 15_000;
 
@@ -104,17 +103,6 @@ function loadInitialAppWindowAlwaysOnTop(): boolean {
     return window.localStorage.getItem(APP_WINDOW_ALWAYS_ON_TOP_KEY) === "true";
   } catch {
     return false;
-  }
-}
-
-function loadInitialAppWindowLaunchEnabled(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    return (
-      window.localStorage.getItem(APP_WINDOW_LAUNCH_ENABLED_KEY) !== "false"
-    );
-  } catch {
-    return true;
   }
 }
 
@@ -213,9 +201,6 @@ export function AppsView() {
   const [sidebarWidth, setSidebarWidth] = useState<number>(
     loadInitialSidebarWidth,
   );
-  const [appWindowLaunchEnabled, setAppWindowLaunchEnabled] = useState<boolean>(
-    loadInitialAppWindowLaunchEnabled,
-  );
   const [appWindowAlwaysOnTop] = useState<boolean>(
     loadInitialAppWindowAlwaysOnTop,
   );
@@ -239,18 +224,6 @@ export function AppsView() {
     setSidebarWidth(clamped);
     try {
       window.localStorage.setItem(APPS_SIDEBAR_WIDTH_KEY, String(clamped));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  // Upstream re-added handleAppWindowAlwaysOnTopChange but we removed the
-  // global toggle UI on this branch — keep only the launch-enabled handler
-  // upstream added (which still has UI in the catalog grid header).
-  const handleAppWindowLaunchEnabledChange = useCallback((next: boolean) => {
-    setAppWindowLaunchEnabled(next);
-    try {
-      window.localStorage.setItem(APP_WINDOW_LAUNCH_ENABLED_KEY, String(next));
     } catch {
       /* ignore */
     }
@@ -559,9 +532,7 @@ export function AppsView() {
 
   const openAppRouteWindow = useCallback(
     async (app: RegistryAppInfo): Promise<boolean> => {
-      // Upstream gate: opt-in toggle for the per-app native window
-      // experience (lives in the catalog grid header).
-      if (!appWindowLaunchEnabled || isAppWindow || !isElectrobunRuntime()) {
+      if (isAppWindow || !isElectrobunRuntime()) {
         return false;
       }
 
@@ -653,7 +624,6 @@ export function AppsView() {
       return true;
     },
     [
-      appWindowLaunchEnabled,
       appWindowAlwaysOnTop,
       isAppWindow,
       pushAppsUrl,
@@ -750,20 +720,11 @@ export function AppsView() {
 
       // In Electrobun, try to open the app's dedicated native window via
       // `openAppRouteWindow` — slug-deduped + per-app bounds, Ghost-style.
-      // The helper itself respects the user's `appWindowLaunchEnabled`
-      // toggle: when off it returns false, and we fall through to the
-      // web-style launch path (catalog → client.launchApp + iframe-attach;
-      // internal tool → setTab; overlay → activeOverlayApp). That gives
-      // the toggle a real opt-out semantics instead of bricking launches.
       if (isElectrobunRuntime()) {
         const openedRouteWindow = await openAppRouteWindow(app).catch(
           () => false,
         );
         if (openedRouteWindow) return;
-        // openAppRouteWindow returned false → either the toggle is off,
-        // we're already inside an app window, or the bridge declined.
-        // Continue to the web-fallback paths below so the click isn't a
-        // dead-end.
       }
 
       // Web fallback: internal tools switch tabs in the shell.
@@ -1183,30 +1144,6 @@ export function AppsView() {
       contentClassName="![scrollbar-width:none] [&::-webkit-scrollbar]:!hidden"
     >
       <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
-        {/* Header keeps the upstream "Open apps in windows" launch-enabled
-            toggle but drops the per-launch "Keep new windows on top" one
-            (the per-window pin in the running-windows list below covers
-            that case without cluttering the header). */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/35 pb-3">
-          <div className="min-w-0">
-            <h2 className="text-xs-tight font-semibold uppercase tracking-[0.18em] text-accent">
-              App Windows
-            </h2>
-          </div>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:text-foreground">
-            <input
-              type="checkbox"
-              aria-label="Open apps in windows"
-              className="h-3.5 w-3.5 accent-accent"
-              checked={appWindowLaunchEnabled}
-              onChange={(event) =>
-                handleAppWindowLaunchEnabledChange(event.currentTarget.checked)
-              }
-            />
-            <span>Open apps in windows</span>
-          </label>
-        </div>
-
         {appWindows.length > 0 ? (
           <section
             data-testid="app-window-controls"
