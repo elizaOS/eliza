@@ -6932,11 +6932,30 @@ Output ONLY the continuation, starting immediately after the last character abov
 					result.data !== null
 						? (result.data as Record<string, unknown>)
 						: null;
+				// Recognize any confirmation-required signal an action might use:
+				// the canonical `requiresConfirmation: true` flag (in either values
+				// or data) plus the legacy error codes that some handlers still
+				// return (NOT_CONFIRMED, REQUIRES_CONFIRMATION, AWAITING_CONFIRMATION).
+				const confirmErrorCodes = new Set([
+					"CONFIRMATION_REQUIRED",
+					"NOT_CONFIRMED",
+					"REQUIRES_CONFIRMATION",
+					"AWAITING_CONFIRMATION",
+					"NEEDS_CONFIRMATION",
+				]);
+				const valuesError =
+					typeof resultValuesForConfirm?.error === "string"
+						? resultValuesForConfirm.error
+						: "";
+				const dataError =
+					typeof resultDataForConfirm?.error === "string"
+						? resultDataForConfirm.error
+						: "";
 				const requiresConfirmation =
 					resultValuesForConfirm?.requiresConfirmation === true ||
 					resultDataForConfirm?.requiresConfirmation === true ||
-					resultValuesForConfirm?.error === "CONFIRMATION_REQUIRED" ||
-					resultDataForConfirm?.error === "CONFIRMATION_REQUIRED";
+					confirmErrorCodes.has(valuesError) ||
+					confirmErrorCodes.has(dataError);
 				if (requiresConfirmation) {
 					runtime.logger.info(
 						{
