@@ -2565,8 +2565,22 @@ export interface LifeOpsSignalInboundMessage {
   roomId: string;
   /** Signal channel ID (typically the sender's phone number or group ID). */
   channelId: string;
+  /** Stable per-conversation key used for reply routing. */
+  threadId: string;
+  /** Human-readable conversation name when known. */
+  roomName: string;
   /** Display name of the sender. */
   speakerName: string;
+  /** Sender phone number when signal-cli exposes one. */
+  senderNumber: string | null;
+  /** Sender UUID when signal-cli exposes one. */
+  senderUuid: string | null;
+  /** Sender device ID when signal-cli exposes one. */
+  sourceDevice: number | null;
+  /** Signal group ID for group messages. */
+  groupId: string | null;
+  /** Signal group event/type when signal-cli exposes one. */
+  groupType: string | null;
   /** Plain-text body of the message. */
   text: string;
   /** Unix millisecond timestamp of the message. */

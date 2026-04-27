@@ -237,7 +237,22 @@ describe("Integration: Signal inbound read", () => {
         expect(typeof msg.id).toBe("string");
         expect(typeof msg.roomId).toBe("string");
         expect(typeof msg.channelId).toBe("string");
+        expect(typeof msg.threadId).toBe("string");
+        expect(typeof msg.roomName).toBe("string");
         expect(typeof msg.speakerName).toBe("string");
+        expect(
+          msg.senderNumber === null || typeof msg.senderNumber === "string",
+        ).toBe(true);
+        expect(msg.senderUuid === null || typeof msg.senderUuid === "string").toBe(
+          true,
+        );
+        expect(
+          msg.sourceDevice === null || typeof msg.sourceDevice === "number",
+        ).toBe(true);
+        expect(msg.groupId === null || typeof msg.groupId === "string").toBe(true);
+        expect(msg.groupType === null || typeof msg.groupType === "string").toBe(
+          true,
+        );
         expect(typeof msg.text).toBe("string");
         expect(typeof msg.createdAt).toBe("number");
         expect(typeof msg.isInbound).toBe("boolean");
