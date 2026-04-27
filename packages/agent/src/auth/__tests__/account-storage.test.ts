@@ -157,7 +157,8 @@ describe("account-storage", () => {
   });
 
   it("deleteAccount is idempotent", async () => {
-    const { saveAccount, deleteAccount, loadAccount } = await importFreshModule();
+    const { saveAccount, deleteAccount, loadAccount } =
+      await importFreshModule();
     const provider: SubscriptionProvider = "openai-codex";
     saveAccount({
       id: "x",

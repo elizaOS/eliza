@@ -94,7 +94,7 @@ describe("APP load_from_directory", () => {
 		});
 
 		let threw = false;
-		let result;
+		let result: Awaited<ReturnType<typeof runLoadFromDirectory>> | undefined;
 		try {
 			result = await runLoadFromDirectory({
 				runtime,

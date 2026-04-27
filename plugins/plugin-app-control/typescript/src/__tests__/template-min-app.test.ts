@@ -19,8 +19,8 @@ import {
 	existsSync,
 	mkdirSync,
 	mkdtempSync,
-	readFileSync,
 	readdirSync,
+	readFileSync,
 	rmSync,
 	statSync,
 	writeFileSync,
@@ -174,12 +174,10 @@ describe.skipIf(skip)(
 				);
 			}
 			expect(result.verdict).toBe("pass");
-			expect(
-				result.checks.find((c) => c.kind === "typecheck")?.passed,
-			).toBe(true);
-			expect(result.checks.find((c) => c.kind === "lint")?.passed).toBe(
+			expect(result.checks.find((c) => c.kind === "typecheck")?.passed).toBe(
 				true,
 			);
+			expect(result.checks.find((c) => c.kind === "lint")?.passed).toBe(true);
 		}, 120_000);
 
 		it("scaffolded test suite passes when included in the verification pipeline", async () => {
@@ -191,11 +189,7 @@ describe.skipIf(skip)(
 			const result = await service.verifyApp({
 				workdir: scaffoldDir,
 				appName: "scaffold-test-app",
-				checks: [
-					{ kind: "typecheck" },
-					{ kind: "lint" },
-					{ kind: "test" },
-				],
+				checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
 				runId: "template-min-app-with-tests",
 			});
 
@@ -211,9 +205,7 @@ describe.skipIf(skip)(
 				);
 			}
 			expect(result.verdict).toBe("pass");
-			expect(result.checks.find((c) => c.kind === "test")?.passed).toBe(
-				true,
-			);
+			expect(result.checks.find((c) => c.kind === "test")?.passed).toBe(true);
 		}, 240_000);
 	},
 );
@@ -257,11 +249,7 @@ describe.skipIf(skip)(
 			const result = await service.verifyApp({
 				workdir: scaffoldDir,
 				appName: "scaffold-validation-plugin",
-				checks: [
-					{ kind: "typecheck" },
-					{ kind: "lint" },
-					{ kind: "test" },
-				],
+				checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
 				// Plugin verifyApp normally requires the agent to emit a
 				// PLUGIN_CREATE_DONE structured-proof line; for template
 				// validation we're not running an agent that emits one,
@@ -282,15 +270,11 @@ describe.skipIf(skip)(
 				);
 			}
 			expect(result.verdict).toBe("pass");
-			expect(
-				result.checks.find((c) => c.kind === "typecheck")?.passed,
-			).toBe(true);
-			expect(result.checks.find((c) => c.kind === "lint")?.passed).toBe(
+			expect(result.checks.find((c) => c.kind === "typecheck")?.passed).toBe(
 				true,
 			);
-			expect(result.checks.find((c) => c.kind === "test")?.passed).toBe(
-				true,
-			);
+			expect(result.checks.find((c) => c.kind === "lint")?.passed).toBe(true);
+			expect(result.checks.find((c) => c.kind === "test")?.passed).toBe(true);
 		}, 240_000);
 	},
 );

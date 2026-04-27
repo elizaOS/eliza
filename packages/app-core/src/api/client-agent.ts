@@ -5,9 +5,9 @@
 
 import type {
   AllPermissionsState,
+  OnboardingConnectorConfig as ConnectorConfig,
   LinkedAccountConfig,
   LinkedAccountProviderId,
-  OnboardingConnectorConfig as ConnectorConfig,
   OnboardingOptions,
   PermissionState,
   ServiceRouteAccountStrategy,
@@ -371,7 +371,10 @@ declare module "./client-base" {
     patchProviderStrategy(
       providerId: LinkedAccountProviderId,
       body: { strategy: AccountStrategy },
-    ): Promise<{ providerId: LinkedAccountProviderId; strategy: AccountStrategy }>;
+    ): Promise<{
+      providerId: LinkedAccountProviderId;
+      strategy: AccountStrategy;
+    }>;
     uploadCustomVrm(file: File): Promise<void>;
     hasCustomVrm(): Promise<boolean>;
     uploadCustomBackground(file: File): Promise<void>;

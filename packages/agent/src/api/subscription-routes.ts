@@ -327,9 +327,7 @@ async function readRichLinkedAccountsFromPool(): Promise<
     }
     return out;
   } catch (err) {
-    logger.debug(
-      `[subscription] account pool unavailable: ${String(err)}`,
-    );
+    logger.debug(`[subscription] account pool unavailable: ${String(err)}`);
     return {};
   }
 }

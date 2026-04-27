@@ -21,13 +21,13 @@ import { useApp } from "../../state";
 // WidgetHost.tsx chunk-level cycle. The barrel still works fine for
 // resolveWidgetsForSlot — only WidgetHost participates in the cycle.
 import { resolveWidgetsForSlot } from "../../widgets";
-import { WidgetHost } from "../../widgets/WidgetHost";
 import { useChatSidebarVisibility } from "../../widgets/useChatSidebarVisibility";
 import {
   APPS_SECTION_VISIBILITY_KEY,
   isWidgetVisible,
   type VisibilityCandidate,
 } from "../../widgets/visibility";
+import { WidgetHost } from "../../widgets/WidgetHost";
 import { AppsSection } from "./AppsSection";
 import {
   buildAppsSectionVisibilityCandidate,

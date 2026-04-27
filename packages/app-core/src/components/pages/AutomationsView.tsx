@@ -62,11 +62,11 @@ import {
 } from "react";
 import { client } from "../../api";
 import {
-  isMissingCredentialsResponse,
   type AutomationListResponse,
   type AutomationNodeDescriptor,
   type AutomationItem as CatalogAutomationItem,
   type Conversation,
+  isMissingCredentialsResponse,
   type N8nStatusResponse,
   type N8nWorkflow,
   type N8nWorkflowMissingCredential,

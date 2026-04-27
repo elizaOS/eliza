@@ -46,9 +46,9 @@ import {
 } from "../../providers";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
+import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { CloudDashboard } from "../pages/ElizaCloudDashboard";
-import { AccountList } from "../accounts/AccountList";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import {
   buildCloudModelSchema,
