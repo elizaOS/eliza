@@ -1,4 +1,4 @@
-import { exec, execFile } from "node:child_process";
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
@@ -21,7 +21,6 @@ const CACHE_DURATION = 3_600_000; // 1 hour
 // ---------------------------------------------------------------------------
 
 const LOCAL_PLUGINS_DIR = "plugins";
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
