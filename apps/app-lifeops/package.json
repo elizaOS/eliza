@@ -55,6 +55,7 @@
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-telegram": "workspace:*",
+    "@elizaos/plugin-whatsapp": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "drizzle-orm": "^0.45.1",

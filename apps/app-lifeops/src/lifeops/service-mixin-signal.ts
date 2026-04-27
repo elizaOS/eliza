@@ -1,5 +1,6 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import type { Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   capabilitiesForSide,
   LIFEOPS_SIGNAL_CAPABILITIES,
@@ -9,31 +10,27 @@ import {
   type LifeOpsSignalPairingStatus,
   type StartLifeOpsSignalPairingResponse,
 } from "@elizaos/shared";
-import { logger } from "@elizaos/core";
 import { createLifeOpsConnectorGrant } from "./repository.js";
+import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import { fail } from "./service-normalize.js";
+import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
 import {
-  fail,
-} from "./service-normalize.js";
-import {
-  normalizeOptionalConnectorSide,
-} from "./service-normalize-connector.js";
-import {
-  startSignalPairing as startSignalPairingFlow,
+  deleteSignalLinkedDevice,
+  findSignalLinkedDeviceInfoForSide,
   getSignalPairingStatus as getSignalPairingStatusFlow,
   getSignalPairingStatusForSide,
-  stopSignalPairing as stopSignalPairingFlow,
   readSignalLinkedDeviceInfo,
-  deleteSignalLinkedDevice,
+  startSignalPairing as startSignalPairingFlow,
+  stopSignalPairing as stopSignalPairingFlow,
 } from "./signal-auth.js";
-import {
-  removeSignalConnectorConfig,
-  upsertSignalConnectorConfig,
-} from "./signal-runtime-config.js";
 import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,
 } from "./signal-local-client.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import {
+  removeSignalConnectorConfig,
+  upsertSignalConnectorConfig,
+} from "./signal-runtime-config.js";
 
 type ConnectorSetupServiceLike = {
   getConfig(): Record<string, unknown>;
@@ -56,7 +53,9 @@ type RuntimeWithPluginLifecycle = {
 function getConnectorSetupService(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
 ): ConnectorSetupServiceLike | null {
-  return runtime.getService("connector-setup") as ConnectorSetupServiceLike | null;
+  return runtime.getService(
+    "connector-setup",
+  ) as ConnectorSetupServiceLike | null;
 }
 
 function setSignalRuntimeEnv(
@@ -79,7 +78,8 @@ function setSignalRuntimeEnv(
 async function ensureSignalPluginLoaded(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
 ): Promise<boolean> {
-  const runtimeWithLifecycle = runtime as typeof runtime & RuntimeWithPluginLifecycle;
+  const runtimeWithLifecycle = runtime as typeof runtime &
+    RuntimeWithPluginLifecycle;
   if (
     typeof runtimeWithLifecycle.registerPlugin !== "function" &&
     typeof runtimeWithLifecycle.reloadPlugin !== "function"
@@ -88,8 +88,9 @@ async function ensureSignalPluginLoaded(
   }
 
   const mod = await import("@elizaos/plugin-signal");
-  const plugin = (mod.default ??
-    (mod as { plugin?: Plugin }).plugin) as Plugin | undefined;
+  const plugin = (mod.default ?? (mod as { plugin?: Plugin }).plugin) as
+    | Plugin
+    | undefined;
   if (!plugin) {
     return false;
   }
@@ -98,7 +99,10 @@ async function ensureSignalPluginLoaded(
     typeof runtimeWithLifecycle.getPluginOwnership === "function"
       ? runtimeWithLifecycle.getPluginOwnership("signal")
       : null;
-  if (existingOwnership && typeof runtimeWithLifecycle.reloadPlugin === "function") {
+  if (
+    existingOwnership &&
+    typeof runtimeWithLifecycle.reloadPlugin === "function"
+  ) {
     await runtimeWithLifecycle.reloadPlugin(plugin);
     return true;
   }
@@ -112,18 +116,16 @@ async function ensureSignalPluginLoaded(
 }
 
 /** @internal */
-export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: TBase) {
+export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
+  Base: TBase,
+) {
   class LifeOpsSignalServiceMixin extends Base {
     lifeOpsSignalServiceConnected(): boolean {
-      const signalService = this.runtime.getService("signal") as
-        | {
-            getAccountNumber?: () => string | null;
-            isServiceConnected?: () => boolean;
-          }
-        | null;
-      return Boolean(
-        signalService?.isServiceConnected?.(),
-      );
+      const signalService = this.runtime.getService("signal") as {
+        getAccountNumber?: () => string | null;
+        isServiceConnected?: () => boolean;
+      } | null;
+      return Boolean(signalService?.isServiceConnected?.());
     }
 
     lifeOpsSignalServiceRegistered(): boolean {
@@ -222,17 +224,56 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
     ): Promise<LifeOpsSignalConnectorStatus> {
       const resolvedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
-      const grant = await this.repository.getConnectorGrant(
+      let grant = await this.repository.getConnectorGrant(
         this.agentId(),
         "signal",
         "local",
         resolvedSide,
       );
-      const pairing = getSignalPairingStatusForSide(this.agentId(), resolvedSide);
+      const pairing = getSignalPairingStatusForSide(
+        this.agentId(),
+        resolvedSide,
+      );
 
       let connected = false;
       let reason: LifeOpsSignalConnectorStatus["reason"] = "disconnected";
       let identity: LifeOpsSignalConnectorStatus["identity"] = null;
+
+      if (!grant) {
+        const candidate = findSignalLinkedDeviceInfoForSide(
+          this.agentId(),
+          resolvedSide,
+        );
+        if (candidate) {
+          grant = createLifeOpsConnectorGrant({
+            agentId: this.agentId(),
+            provider: "signal",
+            identity: {
+              phoneNumber: candidate.info.phoneNumber,
+              uuid: candidate.info.uuid,
+              deviceName: candidate.info.deviceName,
+            },
+            grantedScopes: [],
+            capabilities: capabilitiesForSide(
+              LIFEOPS_SIGNAL_CAPABILITIES,
+              resolvedSide,
+            ),
+            tokenRef: candidate.tokenRef,
+            mode: "local",
+            side: resolvedSide,
+            metadata: {
+              adoptedFromAgentId:
+                candidate.agentId === this.agentId() ? null : candidate.agentId,
+              adoptedTokenRef:
+                candidate.tokenRef === candidate.info.authDir
+                  ? null
+                  : candidate.info.authDir,
+            },
+            lastRefreshAt: new Date().toISOString(),
+          });
+          await this.repository.upsertConnectorGrant(grant);
+        }
+      }
 
       if (grant?.tokenRef) {
         const deviceInfo = readSignalLinkedDeviceInfo(grant.tokenRef);
@@ -287,7 +328,10 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         provider: "signal",
         identity: {},
         grantedScopes: [],
-        capabilities: capabilitiesForSide(LIFEOPS_SIGNAL_CAPABILITIES, resolvedSide),
+        capabilities: capabilitiesForSide(
+          LIFEOPS_SIGNAL_CAPABILITIES,
+          resolvedSide,
+        ),
         tokenRef: session.authDir,
         mode: "local",
         side: resolvedSide,
@@ -314,9 +358,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
       return getSignalPairingStatusFlow(sessionId);
     }
 
-    stopSignalPairing(
-      side?: LifeOpsConnectorSide,
-    ): LifeOpsSignalPairingStatus {
+    stopSignalPairing(side?: LifeOpsConnectorSide): LifeOpsSignalPairingStatus {
       const resolvedSide =
         normalizeOptionalConnectorSide(side, "side") ?? "owner";
       const result = stopSignalPairingFlow(this.agentId(), resolvedSide);
@@ -366,7 +408,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
         reason: "disconnected",
         identity: null,
         grantedCapabilities: [],
-        inbound: true,
+        inbound: false,
         pairing: null,
         grant: null,
       };
@@ -392,9 +434,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
     ): Promise<LifeOpsSignalInboundMessage[]> {
       type SignalServiceLike = {
         isServiceConnected?: () => boolean;
-        getRecentMessages?: (
-          limit?: number,
-        ) => Promise<
+        getRecentMessages?: (limit?: number) => Promise<
           Array<{
             id: string;
             roomId: string;
@@ -408,7 +448,9 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(Base: 
           }>
         >;
       };
-      const signalService = this.runtime.getService("signal") as SignalServiceLike | null;
+      const signalService = this.runtime.getService(
+        "signal",
+      ) as SignalServiceLike | null;
       const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
 
       // Primary path: use the Signal service's in-memory message store.

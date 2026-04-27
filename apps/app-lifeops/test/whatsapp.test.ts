@@ -241,12 +241,19 @@ describe("withWhatsApp mixin", () => {
         info: vi.fn(),
         warn: vi.fn(),
       },
+      setSetting: vi.fn(),
     };
     ownerEntityId = null;
   }
   const Composed = withWhatsApp(StubBase as never);
   // biome-ignore lint/suspicious/noExplicitAny: mixin stub
   const svc = new (Composed as any)();
+
+  beforeEach(() => {
+    svc.runtime.getService.mockReset();
+    svc.runtime.getService.mockReturnValue(null);
+    svc.runtime.setSetting.mockReset();
+  });
 
   test("getWhatsAppConnectorStatus reports connected: false without creds", async () => {
     const status = await svc.getWhatsAppConnectorStatus();
@@ -264,6 +271,9 @@ describe("withWhatsApp mixin", () => {
     const status = await svc.getWhatsAppConnectorStatus();
 
     expect(status.connected).toBe(true);
+    expect(status.localAuthAvailable).toBe(true);
+    expect(status.serviceConnected).toBe(true);
+    expect(status.transport).toBe("baileys");
     expect(status.phoneNumberId).toBeUndefined();
     expect(status.degradations).toEqual([
       expect.objectContaining({
@@ -271,7 +281,11 @@ describe("withWhatsApp mixin", () => {
         code: "business_cloud_credentials_missing",
       }),
     ]);
-    expect(svc.runtime.getService).not.toHaveBeenCalled();
+    expect(svc.runtime.setSetting).toHaveBeenCalledWith(
+      "WHATSAPP_AUTH_DIR",
+      authDir,
+      false,
+    );
   });
 
   test("getWhatsAppConnectorStatus ignores user-facing WhatsApp runtime service", async () => {
@@ -280,6 +294,7 @@ describe("withWhatsApp mixin", () => {
     const status = await svc.getWhatsAppConnectorStatus();
 
     expect(status.connected).toBe(false);
+    expect(status.serviceConnected).toBe(false);
     expect(svc.runtime.getService).not.toHaveBeenCalled();
   });
 
@@ -318,6 +333,29 @@ describe("withWhatsApp mixin", () => {
       to: "+15551112222",
       type: "text",
       text: { body: "service send" },
+    });
+  });
+
+  test("sendWhatsAppMessage uses the local runtime service when only QR auth is available", async () => {
+    const authDir = path.join(workspaceDir, "lifeops-whatsapp-auth", "default");
+    mkdirSync(authDir, { recursive: true });
+    writeFileSync(path.join(authDir, "creds.json"), "{}");
+    const sendMessage = vi.fn(async () => ({
+      messages: [{ id: "wamid.local" }],
+    }));
+    svc.runtime.getService.mockReturnValue({
+      connected: true,
+      sendMessage,
+    });
+
+    await expect(
+      svc.sendWhatsAppMessage({ to: "+15551112222", text: "local send" }),
+    ).resolves.toEqual({ ok: true, messageId: "wamid.local" });
+
+    expect(sendMessage).toHaveBeenCalledWith({
+      type: "text",
+      to: "+15551112222",
+      content: "local send",
     });
   });
 
