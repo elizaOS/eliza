@@ -302,6 +302,10 @@ function callbackContentHasVisibleOutput(content: Content): boolean {
 	return Array.isArray(content.attachments) && content.attachments.length > 0;
 }
 
+function suppressesVisibleActionResult(actionResult: ActionResult | undefined) {
+	return actionResult?.data?.suppressVisibleCallback === true;
+}
+
 function safeActionResultFilePart(value: string | undefined): string {
 	const normalized =
 		value?.trim().replace(/[^a-zA-Z0-9._-]/g, "_") || "unknown";
@@ -2957,6 +2961,11 @@ export class AgentRuntime implements IAgentRuntime {
 					typeof actionResult?.text === "string"
 						? actionResult.text.trim()
 						: "";
+				const suppressVisibleActionText =
+					suppressesVisibleActionResult(actionResult);
+				const visibleActionText = suppressVisibleActionText
+					? ""
+					: (actionResult?.text ?? "");
 
 				await this.emitEvent(EventType.ACTION_COMPLETED, {
 					messageId: actionId,
@@ -2964,7 +2973,7 @@ export class AgentRuntime implements IAgentRuntime {
 					world: message.worldId,
 					content: {
 						// Use action's actual text, not status message (prevents overwriting streamed content)
-						text: actionResult?.text || "",
+						text: visibleActionText,
 						actions: [action.name],
 						actionStatus: statusText,
 						actionId: actionId,
@@ -2978,6 +2987,7 @@ export class AgentRuntime implements IAgentRuntime {
 				if (
 					callback &&
 					actionText &&
+					!suppressVisibleActionText &&
 					!storedCallbackData.some((content) =>
 						callbackContentHasVisibleOutput(content),
 					)
@@ -3007,7 +3017,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 				// Only persist action memories when the handler returned a real user-facing
 				// message. Placeholder bookkeeping text is internal runtime state, not chat.
-				if (actionText) {
+				if (actionText && !suppressVisibleActionText) {
 					const actionMemory: Memory = {
 						id: actionId,
 						entityId: this.agentId,

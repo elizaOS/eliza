@@ -2305,44 +2305,61 @@ const TERMINAL_ACTION_IDENTIFIERS = new Set(
 	].map(normalizeActionIdentifier),
 );
 
+export type ActionContinuationDecision = {
+	shouldContinue: boolean;
+	suppressed: boolean;
+	continuingActions: string[];
+	suppressingActions: string[];
+};
+
+export function getActionContinuationDecision(
+	runtime: Pick<IAgentRuntime, "actions">,
+	responseContent: Content | null | undefined,
+): ActionContinuationDecision {
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const continuingActions: string[] = [];
+	const suppressingActions: string[] = [];
+
+	for (const action of responseContent?.actions ?? []) {
+		if (typeof action !== "string") continue;
+
+		const resolvedAction = resolveRuntimeAction(actionLookup, action);
+		if (resolvedAction?.suppressPostActionContinuation) {
+			suppressingActions.push(resolvedAction.name);
+			continue;
+		}
+
+		const canonicalAction = resolvedAction?.name ?? action;
+		if (
+			!TERMINAL_ACTION_IDENTIFIERS.has(
+				normalizeActionIdentifier(canonicalAction),
+			)
+		) {
+			continuingActions.push(canonicalAction);
+		}
+	}
+
+	const suppressed = suppressingActions.length > 0;
+	return {
+		shouldContinue: !suppressed && continuingActions.length > 0,
+		suppressed,
+		continuingActions,
+		suppressingActions,
+	};
+}
+
 function shouldContinueAfterActions(
 	runtime: IAgentRuntime,
 	responseContent: Content | null | undefined,
 ): boolean {
-	// Async background/task actions handle their own follow-up and should not
-	// trigger an immediate continuation loop from the main message service.
-	const actionLookup = buildRuntimeActionLookup(runtime);
-	return !!responseContent?.actions?.some((action) => {
-		if (typeof action !== "string") return false;
-
-		const resolvedAction = resolveRuntimeAction(actionLookup, action);
-		if (resolvedAction?.suppressPostActionContinuation) {
-			return false;
-		}
-
-		const canonicalAction = resolvedAction?.name ?? action;
-		return !TERMINAL_ACTION_IDENTIFIERS.has(
-			normalizeActionIdentifier(canonicalAction),
-		);
-	});
+	return getActionContinuationDecision(runtime, responseContent).shouldContinue;
 }
 
 function suppressesPostActionContinuation(
 	runtime: IAgentRuntime,
 	responseContent: Content | null | undefined,
 ): boolean {
-	if (!responseContent?.actions?.length) {
-		return false;
-	}
-
-	const actionLookup = buildRuntimeActionLookup(runtime);
-	return responseContent.actions.some((action) => {
-		if (typeof action !== "string") return false;
-		return (
-			resolveRuntimeAction(actionLookup, action)
-				?.suppressPostActionContinuation === true
-		);
-	});
+	return getActionContinuationDecision(runtime, responseContent).suppressed;
 }
 
 /**

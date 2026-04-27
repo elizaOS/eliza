@@ -129,4 +129,58 @@ describe("AgentRuntime.processActions parameter validation", () => {
 			},
 		});
 	});
+
+	it("keeps suppressed action result text available for prompts without visible callback", async () => {
+		const runtime = new AgentRuntime({
+			adapter: new InMemoryDatabaseAdapter(),
+			character: TEST_CHARACTER,
+			logLevel: "error",
+		});
+		const action: Action = {
+			name: "SHELL_COMMAND",
+			description: "Run a shell command.",
+			validate: async () => true,
+			handler: async () => ({
+				success: true,
+				text: "Command output for the follow-up LLM response.",
+				data: {
+					actionName: "SHELL_COMMAND",
+					suppressVisibleCallback: true,
+				},
+			}),
+		};
+		runtime.actions.push(action);
+		vi.spyOn(runtime, "composeState").mockResolvedValue(EMPTY_STATE);
+		const createMemory = vi
+			.spyOn(runtime, "createMemory")
+			.mockResolvedValue(stringToUuid("memory-3"));
+		const callback = vi.fn(async () => []);
+		const message = buildTestMessage(runtime.agentId);
+
+		await runtime.processActions(
+			message,
+			[
+				{
+					content: {
+						actions: ["SHELL_COMMAND"],
+					},
+				},
+			],
+			EMPTY_STATE,
+			callback,
+		);
+
+		expect(callback).not.toHaveBeenCalled();
+		expect(createMemory).not.toHaveBeenCalled();
+		expect(runtime.getActionResults(message.id)).toEqual([
+			expect.objectContaining({
+				success: true,
+				text: "Command output for the follow-up LLM response.",
+				data: expect.objectContaining({
+					actionName: "SHELL_COMMAND",
+					suppressVisibleCallback: true,
+				}),
+			}),
+		]);
+	});
 });
