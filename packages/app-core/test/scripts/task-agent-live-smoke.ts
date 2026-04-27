@@ -664,56 +664,73 @@ async function runCounterAppSmoke(agentType: Framework): Promise<void> {
       undefined,
     );
     assert.equal(spawnResult?.success, true);
-    const sessionId = String(spawnResult?.data?.sessionId);
-    assert.ok(sessionId, "spawn returned no sessionId");
-    await waitForTrackedSession(runtime, sessionId, agentType);
-
-    const taskEventStart = events.length;
+    const initialSessionId = String(spawnResult?.data?.sessionId);
+    assert.ok(initialSessionId, "spawn returned no sessionId");
+    // Note: we deliberately do NOT call waitForTrackedSession here. The
+    // orchestrator's auth-recovery may rotate the session id mid-flight
+    // (see SwarmCoordinator's "claude recovery N" path); binding the test
+    // to one id loses the recovered session. Instead, poll all active
+    // sessions for the sentinel below.
 
     let proofClaim: Record<string, unknown> | null = null;
 
     await waitFor(
       async () => {
-        const sessionInfo = service.getSession(sessionId);
-        if (!sessionInfo) {
-          throw new Error("session disappeared before completing");
-        }
-        const recentLoginRequired = events.findLast(
-          (entry) => entry.event === "login_required",
-        );
-        if (recentLoginRequired) {
-          const details = recentLoginRequired.data as {
-            instructions?: string;
-          };
-          throw new Error(
-            details.instructions || "framework authentication is required",
-          );
-        }
-        if (
-          sessionInfo.status === "stopped" ||
-          sessionInfo.status === "error"
-        ) {
-          const output = await service.getSessionOutput(sessionId, 400);
-          throw new Error(
-            `session ended early with status ${sessionInfo.status}. Output: ${output.slice(-1200)}`,
-          );
-        }
-        const rawOutput = await service.getSessionOutput(sessionId);
-        const cleaned = cleanForChat(rawOutput);
-        const match = cleaned.match(APP_CREATE_DONE_RE) ??
-          rawOutput.match(APP_CREATE_DONE_RE);
-        if (!match) {
-          return (
-            sessionInfo.status === "completed" ||
-            sawTaskCompletion(events, taskEventStart)
-          );
-        }
-        try {
-          proofClaim = JSON.parse(match[1]) as Record<string, unknown>;
-        } catch {
+        const sessions = await service.listSessions();
+        if (sessions.length === 0) {
+          // Orchestrator may have stopped all sessions. If we already
+          // captured a task_complete event in any of them, treat as done
+          // (the cross-check will fail if no proof was actually emitted).
           return false;
         }
-        return true;
+
+        // Find any active session (current or rotated) with output we can
+        // scan for the sentinel.
+        for (const s of sessions) {
+          const rawOutput = await service.getSessionOutput(s.id).catch(() => "");
+          if (!rawOutput) continue;
+          const cleaned = cleanForChat(rawOutput);
+          const match =
+            cleaned.match(APP_CREATE_DONE_RE) ??
+            rawOutput.match(APP_CREATE_DONE_RE);
+          if (match) {
+            try {
+              const parsed = JSON.parse(match[1]) as Record<string, unknown>;
+              // Ignore the prompt-echo: the prompt itself contains the
+              // sentinel template with literal "<exact passed count>"
+              // string. Real proof has integer tests.passed.
+              const tests = parsed.tests as
+                | Record<string, unknown>
+                | undefined;
+              const passedRaw = tests?.passed;
+              if (typeof passedRaw === "number") {
+                proofClaim = parsed;
+                return true;
+              }
+            } catch {
+              // not JSON yet; keep polling
+            }
+          }
+        }
+
+        // If every session has stopped, fail with the most recent output
+        // so we can debug.
+        const allStopped = sessions.every(
+          (s) => s.status === "stopped" || s.status === "error",
+        );
+        if (allStopped) {
+          const last = sessions[sessions.length - 1];
+          const output = last
+            ? await service
+                .getSessionOutput(last.id, 400)
+                .catch(() => "<output unavailable>")
+            : "<no sessions>";
+          throw new Error(
+            `all spawned sessions ended without emitting a real APP_CREATE_DONE proof. Last output (tail):\n${output.slice(-1500)}`,
+          );
+        }
+
+        return false;
       },
       12 * 60 * 1000,
       4_000,
