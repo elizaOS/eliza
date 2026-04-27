@@ -5,6 +5,20 @@ import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 
 describe("LifeOps inbox cache schema repair", () => {
+  it("does not require the optional inbox cache table in partial test schemas", async () => {
+    const runtime = createLifeOpsChatTestRuntime({
+      agentId: "inbox-cache-schema-partial-agent",
+      useModel: async () => {
+        throw new Error("useModel should not be called");
+      },
+      handleTurn: async () => ({ text: "ok" }),
+    });
+
+    await expect(
+      LifeOpsRepository.ensureInboxCacheIndexes(runtime),
+    ).resolves.toBeUndefined();
+  });
+
   it("adds the inbox-cache conflict index for legacy tables", async () => {
     const runtime = createLifeOpsChatTestRuntime({
       agentId: "inbox-cache-schema-agent",
