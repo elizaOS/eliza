@@ -145,6 +145,7 @@ import {
   normalizeTriggerDraft,
 } from "../triggers/scheduling.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
+import { handleAccountsRoutes } from "./accounts-routes.js";
 import { handleAgentAdminRoutes } from "./agent-admin-routes.js";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.js";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
@@ -208,7 +209,10 @@ import { handleProviderSwitchRoutes } from "./provider-switch-routes.js";
 import { handleRegistryRoutes } from "./registry-routes.js";
 import { RegistryService } from "./registry-service.js";
 import { handleRelationshipsRoutes } from "./relationships-routes.js";
-import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.js";
+import {
+  isPublicRuntimePluginRoute,
+  tryHandleRuntimePluginRoute,
+} from "./runtime-plugin-routes.js";
 import { handleSandboxRoute } from "./sandbox-routes.js";
 import {
   cloneWithoutBlockedObjectKeys,
@@ -222,7 +226,6 @@ import {
 import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
-import { handleAccountsRoutes } from "./accounts-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
@@ -1281,6 +1284,11 @@ async function handleRequest(
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
     !pathname.startsWith("/api/browser-bridge/companions/") &&
+    !isPublicRuntimePluginRoute({
+      runtime: state.runtime,
+      method,
+      pathname,
+    }) &&
     !isAuthorized(req)
   ) {
     json(res, { error: "Unauthorized" }, 401);
