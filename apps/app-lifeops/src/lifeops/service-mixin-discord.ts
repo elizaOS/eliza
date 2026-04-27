@@ -37,6 +37,7 @@ import {
   type DiscordDesktopCdpStatus,
   getDiscordDesktopCdpStatus,
   relaunchDiscordDesktopForCdp,
+  sendDiscordViaDesktopCdp,
 } from "./discord-desktop-cdp.js";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
@@ -1375,14 +1376,29 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           "channelId is required because no active Discord channel or DM is selected.",
         );
       }
-      if (typeof this.runtime.sendMessageToTarget !== "function") {
-        fail(503, "Discord send handler is not available.");
+      // Local-execution grants (Discord Desktop via CDP) drive the user's
+      // own Discord client through CDP instead of the bot REST API. This is
+      // necessary because Discord bots cannot DM users they don't share a
+      // server with, so the bot path returns "Missing Access" for the DMs
+      // the LifeOps inbox surfaces. CDP send appears to recipients as the
+      // user's own message, matching the same trust model as reads.
+      if (status.grant?.executionTarget === "local") {
+        const result = await sendDiscordViaDesktopCdp({ channelId, text });
+        if (!result.ok) {
+          fail(
+            502,
+            result.error ?? "Discord Desktop send failed.",
+          );
+        }
+      } else {
+        if (typeof this.runtime.sendMessageToTarget !== "function") {
+          fail(503, "Discord send handler is not available.");
+        }
+        await this.runtime.sendMessageToTarget(
+          { source: "discord", channelId },
+          { text, source: "lifeops" },
+        );
       }
-
-      await this.runtime.sendMessageToTarget(
-        { source: "discord", channelId },
-        { text, source: "lifeops" },
-      );
 
       let deliveryStatus: "sent" | "sending" | "failed" | "unknown" = "unknown";
       if (status.tabId) {
