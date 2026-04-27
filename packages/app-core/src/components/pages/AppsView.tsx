@@ -108,13 +108,13 @@ function loadInitialAppWindowAlwaysOnTop(): boolean {
 }
 
 function loadInitialAppWindowLaunchEnabled(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined") return true;
   try {
     return (
-      window.localStorage.getItem(APP_WINDOW_LAUNCH_ENABLED_KEY) === "true"
+      window.localStorage.getItem(APP_WINDOW_LAUNCH_ENABLED_KEY) !== "false"
     );
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -739,10 +739,11 @@ export function AppsView() {
       // button on AppDetailsView is what eventually calls the bridge or
       // navigates inline. Skip when we're already inside an app window
       // (the slug lives there, not in the main shell).
-      if (!isAppWindow && appNeedsDetailsPage(app.name)) {
+      if (!isAppWindow && appNeedsDetailsPage(app)) {
         const slug = getAppSlug(app.name);
         pushRecentApp(app.name);
         setState("appsSubTab", "browse");
+        setAppsDetailsSlug(slug);
         pushAppsUrl(slug, "details");
         return;
       }
@@ -887,6 +888,7 @@ export function AppsView() {
       openRunInDesktopWindow,
       pushAppsUrl,
       pushRecentApp,
+      isAppWindow,
       setActionNotice,
       setState,
       setTab,
@@ -1262,7 +1264,10 @@ export function AppsView() {
         {appsDetailsSlug ? (
           <AppDetailsView
             slug={appsDetailsSlug}
-            onLaunched={() => pushAppsUrl()}
+            onLaunched={() => {
+              setAppsDetailsSlug(null);
+              pushAppsUrl();
+            }}
           />
         ) : (
           <>
