@@ -171,11 +171,9 @@ describe("APP action validate (multi-turn)", () => {
 		expect(result).toBe(false);
 	});
 
-	it("registers all legacy single-purpose action names as similes", () => {
+	it("registers only canonical management similes", () => {
 		const action = createAppAction({});
-		expect(action.similes).toContain("LAUNCH_APP");
-		expect(action.similes).toContain("CLOSE_APP");
-		expect(action.similes).toContain("LIST_RUNNING_APPS");
+		expect(action.similes).toEqual(["APP_CONTROL", "MANAGE_APPS"]);
 	});
 });
 

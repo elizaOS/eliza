@@ -222,6 +222,7 @@ import {
 import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
+import { handleAccountsRoutes } from "./accounts-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
@@ -1370,6 +1371,22 @@ async function handleRequest(
       loadSubscriptionAuth: async () =>
         (await import("../auth/index.js")) as never,
     } as never)
+  ) {
+    return;
+  }
+
+  if (
+    await handleAccountsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+      state: { config: state.config },
+      saveConfig: saveElizaConfig,
+    })
   ) {
     return;
   }

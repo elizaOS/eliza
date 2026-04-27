@@ -531,11 +531,27 @@ export async function applySubscriptionCredentials(config?: {
 
   // ── OpenAI Codex subscription → set OPENAI_API_KEY ────────────────────
   //
-  // For now, the FIRST configured Codex account wins. WS2's AccountPool
-  // will replace this with priority/health-aware selection.
+  // Account selection goes through the WS2 AccountPool when its shim is
+  // installed (via `app-core`'s `getDefaultAccountPool()` accessor). The
+  // shim is symbol-keyed on `globalThis` so this package doesn't need to
+  // depend on `@elizaos/app-core`. When the shim is absent (e.g. agent
+  // running without app-core), we fall back to the lowest-createdAt
+  // account, which is stable for single-account installs.
   const codexAccounts = listProviderAccounts("openai-codex");
   if (codexAccounts.length > 0) {
-    const primary = codexAccounts[0];
+    const selectorSymbol = Symbol.for(
+      "milady.account-pool.subscription-selector.v1",
+    );
+    const selector = (globalThis as Record<symbol, unknown>)[selectorSymbol] as
+      | { pickAccountId(providerId: SubscriptionProvider): Promise<string | null> }
+      | undefined;
+    let chosenId: string | null = null;
+    if (selector) {
+      chosenId = await selector.pickAccountId("openai-codex");
+    }
+    const primary =
+      codexAccounts.find((a) => a.id === chosenId) ??
+      codexAccounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
     const codexToken = await getAccessToken("openai-codex", primary.id);
     if (codexToken) {
       process.env.OPENAI_API_KEY = codexToken;

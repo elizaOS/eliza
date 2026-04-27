@@ -31,6 +31,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   type AccountCredentialRecord,
+  getAccessToken as getSubscriptionAccessToken,
   listProviderAccounts,
   type SubscriptionProvider,
 } from "@elizaos/agent";
@@ -479,6 +480,65 @@ async function persistAccount(account: LinkedAccountConfig): Promise<void> {
   writeMetaStore(store);
 }
 
+/**
+ * Symbol-keyed shim contract consumed by plugin-anthropic's
+ * `credential-store.ts`. Kept narrow so the plugin doesn't have to import
+ * the full pool surface (or the rest of `@elizaos/app-core`).
+ */
+const ANTHROPIC_POOL_SHIM_SYMBOL: unique symbol = Symbol.for(
+  "milady.account-pool.anthropic.v1",
+);
+
+interface AnthropicPoolShim {
+  selectAnthropicSubscription(opts?: {
+    sessionKey?: string;
+    exclude?: string[];
+  }): Promise<{ id: string; expiresAt: number } | null>;
+  getAccessToken(
+    providerId: "anthropic-subscription",
+    accountId: string,
+  ): Promise<string | null>;
+  markInvalid(accountId: string, detail?: string): Promise<void>;
+  markRateLimited(
+    accountId: string,
+    untilMs: number,
+    detail?: string,
+  ): Promise<void>;
+}
+
+/**
+ * Shim used by plugin-agent-orchestrator. The orchestrator can't depend on
+ * `@elizaos/app-core`, so it discovers the pool via this symbol on
+ * `globalThis`. Returns the picked account + access token in one shot
+ * because the orchestrator only needs to inject the env vars and forget.
+ */
+const ORCHESTRATOR_POOL_SHIM_SYMBOL: unique symbol = Symbol.for(
+  "milady.account-pool.orchestrator.v1",
+);
+
+interface OrchestratorPoolShim {
+  pickAnthropicTokenForSpawn(opts: {
+    sessionKey: string;
+  }): Promise<{ accessToken: string; accountId: string } | null>;
+  markRateLimited(accountId: string, untilMs: number, detail?: string): void;
+  markInvalid(accountId: string, detail?: string): void;
+  markNeedsReauth(accountId: string, detail?: string): void;
+}
+
+/**
+ * Shim used by `applySubscriptionCredentials` in `@elizaos/agent` to pick
+ * the active Codex account when applying `OPENAI_API_KEY`. Lives behind
+ * a symbol so the agent package doesn't need to depend on app-core.
+ */
+const SUBSCRIPTION_SELECTOR_SHIM_SYMBOL: unique symbol = Symbol.for(
+  "milady.account-pool.subscription-selector.v1",
+);
+
+interface SubscriptionSelectorShim {
+  /** Pick an enabled, healthy account; returns its id or null. */
+  pickAccountId(providerId: SubscriptionProvider): Promise<string | null>;
+}
+
 let cachedDefaultPool: AccountPool | null = null;
 
 /**
@@ -495,8 +555,83 @@ export function getDefaultAccountPool(): AccountPool {
       readAccounts: () => loadAllAccounts(),
       writeAccount: persistAccount,
     });
+    installAnthropicShim(cachedDefaultPool);
+    installOrchestratorShim(cachedDefaultPool);
+    installSubscriptionSelectorShim(cachedDefaultPool);
   }
   return cachedDefaultPool;
+}
+
+/**
+ * Install the `globalThis`-keyed shim that plugin-anthropic's
+ * credential-store reads. Idempotent — repeated installs replace the
+ * previous shim.
+ */
+function installAnthropicShim(pool: AccountPool): void {
+  if (typeof globalThis === "undefined") return;
+  const shim: AnthropicPoolShim = {
+    selectAnthropicSubscription: async (opts) => {
+      const account = await pool.select({
+        providerId: "anthropic-subscription",
+        sessionKey: opts?.sessionKey,
+        exclude: opts?.exclude,
+      });
+      if (!account) return null;
+      // expiresAt is sourced from the underlying credential blob via
+      // `loadCredentials`; we cache it on the cached account record's
+      // lastUsedAt is independent. The plugin only uses expiresAt as a
+      // hint for cache TTL, so an Infinity fallback is acceptable.
+      return { id: account.id, expiresAt: Number.POSITIVE_INFINITY };
+    },
+    getAccessToken: (providerId, accountId) =>
+      getSubscriptionAccessToken(providerId, accountId),
+    markInvalid: (accountId, detail) => pool.markInvalid(accountId, detail),
+    markRateLimited: (accountId, untilMs, detail) =>
+      pool.markRateLimited(accountId, untilMs, detail),
+  };
+  (globalThis as Record<symbol, unknown>)[ANTHROPIC_POOL_SHIM_SYMBOL] = shim;
+}
+
+function installOrchestratorShim(pool: AccountPool): void {
+  if (typeof globalThis === "undefined") return;
+  const shim: OrchestratorPoolShim = {
+    pickAnthropicTokenForSpawn: async ({ sessionKey }) => {
+      const account = await pool.select({
+        providerId: "anthropic-subscription",
+        sessionKey,
+      });
+      if (!account) return null;
+      const token = await getSubscriptionAccessToken(
+        "anthropic-subscription",
+        account.id,
+      );
+      if (!token) return null;
+      return { accessToken: token, accountId: account.id };
+    },
+    markRateLimited: (accountId, untilMs, detail) => {
+      void pool.markRateLimited(accountId, untilMs, detail);
+    },
+    markInvalid: (accountId, detail) => {
+      void pool.markInvalid(accountId, detail);
+    },
+    markNeedsReauth: (accountId, detail) => {
+      void pool.markNeedsReauth(accountId, detail);
+    },
+  };
+  (globalThis as Record<symbol, unknown>)[ORCHESTRATOR_POOL_SHIM_SYMBOL] = shim;
+}
+
+function installSubscriptionSelectorShim(pool: AccountPool): void {
+  if (typeof globalThis === "undefined") return;
+  const shim: SubscriptionSelectorShim = {
+    pickAccountId: async (providerId) => {
+      const account = await pool.select({ providerId });
+      return account?.id ?? null;
+    },
+  };
+  (globalThis as Record<symbol, unknown>)[
+    SUBSCRIPTION_SELECTOR_SHIM_SYMBOL
+  ] = shim;
 }
 
 /**

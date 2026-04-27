@@ -2643,18 +2643,6 @@ export const allActionsSpec = {
 			similes: ["/commands", "/cmds"],
 		},
 		{
-			name: "CORE_STATUS",
-			description:
-				"Check thestatus of the @elizaos/core package (ejected or npm)",
-			parameters: [],
-			similes: [
-				"core status",
-				"check core",
-				"is core ejected",
-				"elizaos status",
-			],
-		},
-		{
 			name: "DELETE_MESSAGE",
 			description: "Delete a message from a Discord channel",
 			parameters: [],
@@ -2780,18 +2768,6 @@ export const allActionsSpec = {
 				"hibernate agent",
 				"pause agent",
 				"stop cloud agent",
-			],
-		},
-		{
-			name: "GET_PLUGIN_DETAILS",
-			description:
-				"Get detailed information about a specific plugin including features, dependencies, and usage.",
-			parameters: [],
-			similes: [
-				"tell me more about",
-				"show details for",
-				"plugin info",
-				"plugin details",
 			],
 		},
 		{
@@ -3180,19 +3156,6 @@ export const allActionsSpec = {
 						},
 					},
 				},
-			],
-		},
-		{
-			name: "SEARCH_PLUGINS",
-			description:
-				"Search for plugins in the ElizaOS registry by functionality, features, and natural language descriptions.",
-			parameters: [],
-			similes: [
-				"search for plugins",
-				"find plugins",
-				"look for plugins",
-				"discover plugins",
-				"search registry",
 			],
 		},
 		{
