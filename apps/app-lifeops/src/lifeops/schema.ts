@@ -1241,6 +1241,7 @@ export const lifeSchedulingNegotiations = pgTable(
     state: text("state").notNull(),
     durationMinutes: integer("duration_minutes").notNull().default(30),
     timezone: text("timezone").notNull(),
+    acceptedProposalId: text("accepted_proposal_id"),
     metadataJson: text("metadata_json").notNull().default("{}"),
     startedAt: text("started_at").notNull(),
     finalizedAt: text("finalized_at"),
