@@ -61,16 +61,18 @@ import {
   useState,
 } from "react";
 import { client } from "../../api";
-import type {
-  AutomationListResponse,
-  AutomationNodeDescriptor,
-  AutomationItem as CatalogAutomationItem,
-  Conversation,
-  N8nStatusResponse,
-  N8nWorkflow,
-  N8nWorkflowWriteRequest,
-  TriggerSummary,
-  WorkbenchTask,
+import {
+  isMissingCredentialsResponse,
+  type AutomationListResponse,
+  type AutomationNodeDescriptor,
+  type AutomationItem as CatalogAutomationItem,
+  type Conversation,
+  type N8nStatusResponse,
+  type N8nWorkflow,
+  type N8nWorkflowMissingCredential,
+  type N8nWorkflowWriteRequest,
+  type TriggerSummary,
+  type WorkbenchTask,
 } from "../../api/client";
 import { useWorkflowGenerationState } from "../../hooks/useWorkflowGenerationState";
 import { useApp } from "../../state";
@@ -190,6 +192,26 @@ function prefillPageChat(text: string, options?: { select?: boolean }): void {
       },
     }),
   );
+}
+
+/**
+ * Display name for an n8n credential type. Backend emits raw credential type
+ * IDs (e.g. `slackApi`, `gmailOAuth2`); the missing-credentials banner shows
+ * users a friendly service name. Falls back to the raw type if unmapped.
+ */
+const CRED_TYPE_LABELS: Record<string, string> = {
+  gmailOAuth2: "Gmail",
+  gmailOAuth2Api: "Gmail",
+  slackApi: "Slack",
+  slackOAuth2Api: "Slack",
+  discordApi: "Discord",
+  discordBotApi: "Discord",
+  discordWebhookApi: "Discord",
+  telegramApi: "Telegram",
+};
+
+function prettyCredName(credType: string): string {
+  return CRED_TYPE_LABELS[credType] ?? credType;
 }
 
 function buildWorkflowCopyRequest(
@@ -4150,7 +4172,7 @@ function AutomationsSidebarChat({
 }
 
 function AutomationsLayout() {
-  const { activeConversationId, conversations } = useApp();
+  const { activeConversationId, conversations, setTab } = useApp();
   const ctx = useAutomationsViewContext();
   const {
     closeEditor,
@@ -4208,6 +4230,9 @@ function AutomationsLayout() {
     });
   }, []);
   const [pageNotice, setPageNotice] = useState<string | null>(null);
+  const [missingCredentials, setMissingCredentials] = useState<
+    N8nWorkflowMissingCredential[] | null
+  >(null);
   const [workflowBusyId, setWorkflowBusyId] = useState<string | null>(null);
   const [workflowOpsBusy, setWorkflowOpsBusy] = useState(false);
   const [activeWorkflowConversation, setActiveWorkflowConversation] =
@@ -4562,25 +4587,30 @@ function AutomationsLayout() {
       conversation?: Conversation | null;
       bridgeConversationId?: string | null;
       workflowId?: string | null;
-    }): Promise<N8nWorkflow> => {
+    }): Promise<N8nWorkflow | null> => {
       setWorkflowOpsBusy(true);
       setPageNotice(null);
+      setMissingCredentials(null);
       try {
-        const workflow = await client.generateN8nWorkflow({
+        const result = await client.generateN8nWorkflow({
           prompt,
           ...(title?.trim() ? { name: title.trim() } : {}),
           ...(workflowId ? { workflowId } : {}),
         });
+        if (isMissingCredentialsResponse(result)) {
+          setMissingCredentials(result.missingCredentials);
+          return null;
+        }
         if (conversation) {
           await bindConversationToWorkflow(
             conversation,
-            workflow,
+            result,
             bridgeConversationId,
           );
         }
         await ctx.refreshAutomations();
-        selectWorkflowById(workflow.id);
-        return workflow;
+        selectWorkflowById(result.id);
+        return result;
       } finally {
         setWorkflowOpsBusy(false);
       }
@@ -5230,6 +5260,52 @@ function AutomationsLayout() {
             ← Back
           </button>
         ) : null}
+
+        {missingCredentials && missingCredentials.length > 0 && (
+          <PagePanel
+            variant="padded"
+            className="mb-4 border border-warn/40 bg-warn-subtle"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-warn">
+                  Workflow needs {missingCredentials.length} credential
+                  {missingCredentials.length === 1 ? "" : "s"}
+                </p>
+                <p className="text-xs text-muted">
+                  Connect{" "}
+                  {missingCredentials
+                    .map((cred) => prettyCredName(cred.credType))
+                    .join(", ")}{" "}
+                  to activate this workflow.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {missingCredentials.map((cred) => (
+                    <Button
+                      key={cred.credType}
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setTab("settings");
+                        setMissingCredentials(null);
+                      }}
+                    >
+                      Connect {prettyCredName(cred.credType)} →
+                    </Button>
+                  ))}
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted hover:text-txt"
+                onClick={() => setMissingCredentials(null)}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </PagePanel>
+        )}
 
         {(pageNotice || combinedError) && (
           <PagePanel
