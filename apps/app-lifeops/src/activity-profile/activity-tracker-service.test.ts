@@ -1,9 +1,11 @@
 import { type IAgentRuntime, logger } from "@elizaos/core";
-import type {
-  ActivityCollectorEvent,
-  ActivityCollectorExit,
+import {
+  type ActivityCollectorEvent,
+  type ActivityCollectorExit,
+  startActivityCollector,
 } from "@elizaos/native-activity-tracker";
 import { describe, expect, test, vi } from "vitest";
+import { LifeOpsRepository } from "../lifeops/repository.js";
 import { insertActivityEvent } from "./activity-tracker-repo.js";
 import { ActivityTrackerService } from "./activity-tracker-service.js";
 
@@ -47,6 +49,39 @@ function activityEvent(ts: number, appName: string): ActivityCollectorEvent {
 }
 
 describe("ActivityTrackerService", () => {
+  test("bootstraps LifeOps schema before starting the collector", async () => {
+    capturedOnEvent = null;
+    capturedOnExit = null;
+    capturedOnFatal = null;
+    vi.mocked(startActivityCollector).mockClear();
+
+    let resolveBootstrap: (() => void) | null = null;
+    const bootstrapSpy = vi
+      .spyOn(LifeOpsRepository, "bootstrapSchema")
+      .mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveBootstrap = resolve;
+          }),
+      );
+
+    try {
+      const startPromise = ActivityTrackerService.start(runtime);
+      await Promise.resolve();
+
+      expect(bootstrapSpy).toHaveBeenCalledWith(runtime);
+      expect(startActivityCollector).not.toHaveBeenCalled();
+
+      resolveBootstrap?.();
+      const service = await startPromise;
+
+      expect(startActivityCollector).toHaveBeenCalledOnce();
+      await service.stop();
+    } finally {
+      bootstrapSpy.mockRestore();
+    }
+  });
+
   test("serializes activity writes and waits for them on stop", async () => {
     capturedOnEvent = null;
     capturedOnExit = null;
