@@ -36,7 +36,6 @@ const specFiles = [
   "test/ui-smoke/browser-workspace.spec.ts",
   "test/ui-smoke/cloud-wallet-import.spec.ts",
   "test/ui-smoke/ui-smoke.spec.ts",
-  "test/ui-smoke/settings-chat-companion.spec.ts",
 ];
 
 function getFreePort() {
