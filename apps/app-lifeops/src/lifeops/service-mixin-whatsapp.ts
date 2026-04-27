@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
 import { whatsappAuthExists } from "@elizaos/agent/services/whatsapp-pairing";
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared/contracts/lifeops";
@@ -15,7 +17,12 @@ import {
 } from "./whatsapp-client.js";
 
 function hasLocalWhatsAppPairingAuth(): boolean {
-  return whatsappAuthExists(resolveDefaultAgentWorkspaceDir(), "default");
+  const workspaceDir = resolveDefaultAgentWorkspaceDir();
+  return (
+    fs.existsSync(
+      path.join(workspaceDir, "lifeops-whatsapp-auth", "default", "creds.json"),
+    ) || whatsappAuthExists(workspaceDir, "default")
+  );
 }
 
 /** @internal */
