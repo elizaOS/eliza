@@ -1769,6 +1769,31 @@ export class LifeOpsRepository {
         dryRun: false,
       },
     );
+    await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
+  }
+
+  static async ensureInboxCacheIndexes(runtime: IAgentRuntime): Promise<void> {
+    await executeRawSql(
+      runtime,
+      `DELETE FROM life_inbox_messages
+        WHERE id IN (
+          SELECT id
+            FROM (
+              SELECT id,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY agent_id, channel, external_id
+                       ORDER BY updated_at DESC, cached_at DESC, id DESC
+                     ) AS row_number
+                FROM life_inbox_messages
+            ) ranked
+           WHERE row_number > 1
+        )`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_inbox_messages_agent_channel_external
+         ON life_inbox_messages (agent_id, channel, external_id)`,
+    );
   }
 
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
