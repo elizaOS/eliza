@@ -16,6 +16,7 @@ import { itIf } from "../../../../test/helpers/conditional-tests.ts";
 import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,
+  SignalLocalClientError,
   type SignalLocalClientConfig,
 } from "../src/lifeops/signal-local-client.js";
 
@@ -153,13 +154,16 @@ describe("signal-local-client: readSignalInboundMessages (stub)", () => {
     }
   });
 
-  it("returns empty array when daemon is unreachable", async () => {
+  it("throws when daemon is unreachable", async () => {
     const config: SignalLocalClientConfig = {
       httpUrl: "http://127.0.0.1:19999", // nothing listening here
       accountNumber: "+15550000000",
     };
-    const messages = await readSignalInboundMessages(config);
-    expect(messages).toEqual([]);
+    await expect(readSignalInboundMessages(config)).rejects.toMatchObject({
+      name: "SignalLocalClientError",
+      category: "network",
+      status: null,
+    });
   });
 
   it("returns empty array when stub returns empty JSON array", async () => {
@@ -197,6 +201,13 @@ describe("signal-local-client: readSignalInboundMessages (stub)", () => {
     expect(msg.isInbound).toBe(true);
     expect(msg.isGroup).toBe(false);
     expect(msg.channelId).toBe("+15551110001");
+    expect(msg.threadId).toBe("+15551110001");
+    expect(msg.roomName).toBe("Alice");
+    expect(msg.senderNumber).toBe("+15551110001");
+    expect(msg.senderUuid).toBeNull();
+    expect(msg.sourceDevice).toBeNull();
+    expect(msg.groupId).toBeNull();
+    expect(msg.groupType).toBeNull();
   });
 
   it("parses a group message with groupId as channelId", async () => {
@@ -219,6 +230,11 @@ describe("signal-local-client: readSignalInboundMessages (stub)", () => {
     const msg = messages[0];
     expect(msg.isGroup).toBe(true);
     expect(msg.channelId).toBe("group-abc-123");
+    expect(msg.threadId).toBe("group-abc-123");
+    expect(msg.roomName).toBe("Signal group group-abc-123");
+    expect(msg.senderNumber).toBe("+15551110001");
+    expect(msg.groupId).toBe("group-abc-123");
+    expect(msg.groupType).toBe("UPDATE");
     expect(msg.text).toBe("Group message");
   });
 
@@ -252,12 +268,67 @@ describe("signal-local-client: readSignalInboundMessages (stub)", () => {
       expect(msg.id.length).toBeGreaterThan(0);
       expect(typeof msg.roomId).toBe("string");
       expect(typeof msg.channelId).toBe("string");
+      expect(typeof msg.threadId).toBe("string");
+      expect(typeof msg.roomName).toBe("string");
       expect(typeof msg.speakerName).toBe("string");
+      expect(
+        msg.senderNumber === null || typeof msg.senderNumber === "string",
+      ).toBe(true);
+      expect(msg.senderUuid === null || typeof msg.senderUuid === "string").toBe(
+        true,
+      );
+      expect(
+        msg.sourceDevice === null || typeof msg.sourceDevice === "number",
+      ).toBe(true);
+      expect(msg.groupId === null || typeof msg.groupId === "string").toBe(true);
+      expect(msg.groupType === null || typeof msg.groupType === "string").toBe(
+        true,
+      );
       expect(typeof msg.text).toBe("string");
       expect(typeof msg.createdAt).toBe("number");
       expect(typeof msg.isInbound).toBe("boolean");
       expect(typeof msg.isGroup).toBe("boolean");
     }
+  });
+
+  it("throws SignalLocalClientError when the daemon returns HTTP failure", async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "daemon exploded" }));
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Failed to resolve stub port");
+    }
+    stub = {
+      port: address.port,
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      close: async () => {
+        await new Promise<void>((resolve, reject) => {
+          server.close((err) => (err ? reject(err) : resolve()));
+        });
+      },
+    };
+
+    const config: SignalLocalClientConfig = {
+      httpUrl: stub.baseUrl,
+      accountNumber: "+15550000000",
+    };
+
+    await expect(readSignalInboundMessages(config)).rejects.toBeInstanceOf(
+      SignalLocalClientError,
+    );
+    await expect(readSignalInboundMessages(config)).rejects.toMatchObject({
+      status: 500,
+      category: "unknown",
+    });
   });
 });
 

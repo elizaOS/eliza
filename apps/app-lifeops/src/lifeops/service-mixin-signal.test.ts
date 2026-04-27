@@ -46,7 +46,14 @@ type SignalConsumer = {
       id: string;
       roomId: string;
       channelId: string;
+      threadId: string;
+      roomName: string;
       speakerName: string;
+      senderNumber: string | null;
+      senderUuid: string | null;
+      sourceDevice: number | null;
+      groupId: string | null;
+      groupType: string | null;
       text: string;
       createdAt: number;
       isInbound: boolean;
@@ -120,7 +127,14 @@ describe("withSignal consumer surface", () => {
         id: "signal-service-1",
         roomId: "room-1",
         channelId: "+15551110001",
+        threadId: "+15551110001",
+        roomName: "Alice",
         speakerName: "Alice",
+        senderNumber: "+15551110001",
+        senderUuid: null,
+        sourceDevice: null,
+        groupId: null,
+        groupType: null,
         text: "Dinner at 7?",
         createdAt: 1_713_340_800_000,
         isInbound: true,
@@ -143,10 +157,13 @@ describe("withSignal consumer surface", () => {
             envelope: {
               sourceNumber: "+15551110002",
               sourceName: "Bob",
+              sourceUuid: "9f5e7ab0-fb18-4a87-a013-4a792de778dd",
+              sourceDevice: 2,
               timestamp: 1_713_340_900_000,
               dataMessage: {
                 timestamp: 1_713_340_900_000,
                 message: "Signal fallback",
+                groupInfo: { groupId: "group-signal-1", type: "DELIVER" },
               },
             },
             account: "+15550000000",
@@ -160,14 +177,33 @@ describe("withSignal consumer surface", () => {
     await expect(service.readSignalInbound(10)).resolves.toEqual([
       {
         id: "signal:+15551110002:1713340900000",
-        roomId: "+15551110002",
-        channelId: "+15551110002",
+        roomId: "group-signal-1",
+        channelId: "group-signal-1",
+        threadId: "group-signal-1",
+        roomName: "Signal group group-signal-1",
         speakerName: "Bob",
+        senderNumber: "+15551110002",
+        senderUuid: "9f5e7ab0-fb18-4a87-a013-4a792de778dd",
+        sourceDevice: 2,
+        groupId: "group-signal-1",
+        groupType: "DELIVER",
         text: "Signal fallback",
         createdAt: 1_713_340_900_000,
         isInbound: true,
-        isGroup: false,
+        isGroup: true,
       },
     ]);
+  });
+
+  it("surfaces signal-cli receive failures instead of returning an empty success", async () => {
+    process.env.SIGNAL_HTTP_URL = "http://127.0.0.1:9000";
+    process.env.SIGNAL_ACCOUNT_NUMBER = "+15550000000";
+    globalThis.fetch = vi.fn(async () => new Response("broken", { status: 503 })) as
+      unknown as typeof fetch;
+    const service = createService();
+
+    await expect(service.readSignalInbound(10)).rejects.toThrow(
+      "Signal local receive failed with HTTP 503",
+    );
   });
 });
