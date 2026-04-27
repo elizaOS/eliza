@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-alpha.416",
+  "version": "2.0.0-alpha.417",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
