@@ -276,6 +276,28 @@ describe("Telegram auth storage", () => {
     expect(restored?.phone).toBe("+15550001111");
   });
 
+  it("rejects malformed connector tokens instead of treating auth as valid", async () => {
+    const { readStoredTelegramToken } = await import("./telegram-auth.js");
+    const tokenRef = path.join("agent-bad", "owner", "local.json");
+    const filePath = telegramTokenPath(tokenRef);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(
+      filePath,
+      JSON.stringify(
+        {
+          provider: "telegram",
+          agentId: "agent-bad",
+          side: "owner",
+        },
+        null,
+        2,
+      ),
+      { encoding: "utf8", mode: 0o600 },
+    );
+
+    expect(readStoredTelegramToken(tokenRef)).toBeNull();
+  });
+
   it("reads legacy plaintext pending auth session files", async () => {
     const sessionId = "legacy-session";
     const filePath = path.join(telegramRoot(), "pending", `${sessionId}.json`);

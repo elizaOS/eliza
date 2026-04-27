@@ -785,6 +785,31 @@ export function findPendingTelegramAuthSession(
 // Credential management
 // ---------------------------------------------------------------------------
 
+function isStoredTelegramConnectorToken(
+  value: unknown,
+): value is StoredTelegramConnectorToken {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const token = value as Partial<StoredTelegramConnectorToken>;
+  return (
+    token.provider === "telegram" &&
+    typeof token.agentId === "string" &&
+    (token.side === "owner" || token.side === "agent") &&
+    typeof token.sessionString === "string" &&
+    typeof token.apiId === "number" &&
+    typeof token.apiHash === "string" &&
+    typeof token.phone === "string" &&
+    Boolean(token.identity) &&
+    typeof token.identity === "object" &&
+    typeof token.identity.id === "string" &&
+    typeof token.identity.username === "string" &&
+    typeof token.identity.firstName === "string" &&
+    typeof token.createdAt === "string" &&
+    typeof token.updatedAt === "string"
+  );
+}
+
 export function readStoredTelegramToken(
   tokenRef: string,
 ): StoredTelegramConnectorToken | null {
@@ -795,10 +820,10 @@ export function readStoredTelegramToken(
   const parsed = JSON.parse(
     readTelegramStoragePayload(filePath),
   ) as Partial<StoredTelegramConnectorToken>;
-  if (!parsed || typeof parsed !== "object" || parsed.provider !== "telegram") {
+  if (!isStoredTelegramConnectorToken(parsed)) {
     return null;
   }
-  return parsed as StoredTelegramConnectorToken;
+  return parsed;
 }
 
 export function deleteStoredTelegramToken(tokenRef: string): void {
