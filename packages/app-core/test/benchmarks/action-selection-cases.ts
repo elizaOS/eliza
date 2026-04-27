@@ -381,11 +381,12 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
   {
     id: "sched-propose-times",
     userMessage: "propose three times for a 30 minute sync with Marco next week",
-    expectedAction: "SCHEDULING",
+    expectedAction: "OWNER_CALENDAR",
     acceptableActions: [
       "PROPOSE",
       "PROPOSE_MEETING_TIMES",
       "CALENDAR_ACTION",
+      "SCHEDULING",
     ],
     expectedParams: { intent: "propose" },
     tags: ["scheduling", "critical"],

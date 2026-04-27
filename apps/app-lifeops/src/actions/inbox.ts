@@ -155,13 +155,14 @@ async function resolveSubactionPlan(
   messageText: string,
   state: State | undefined,
 ): Promise<InboxSubactionPlan> {
-  const hasExplicitExecutionTarget =
-    params.entryId !== undefined ||
-    params.target !== undefined ||
-    params.messageText !== undefined ||
-    params.confirmed !== undefined;
-
-  if (params.subaction && hasExplicitExecutionTarget) {
+  // Trust planner-supplied subaction. The OWNER_INBOX umbrella runs the
+  // shared LLM extractor before delegating here, so by the time we see a
+  // `params.subaction` value it has been chosen by the action planner AND
+  // confirmed (or filled in) by the LLM-based param extractor. Re-running
+  // a third LLM classifier here drops correct hints (the previous
+  // "non-binding" framing caused inbox-digest to be re-classified as
+  // respond and never complete).
+  if (params.subaction) {
     return {
       subaction: params.subaction,
       shouldAct: true,
