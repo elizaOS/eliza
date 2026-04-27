@@ -22,9 +22,8 @@
  *
  * The provisioned API key is never returned to the UI.
  *
- * Context shape matches other app-core compat routes
- * (cloud-status-routes.ts): `{ req, res, method, pathname, config, runtime,
- * json }`. The sidecar instance is read from the module-level singleton in
+ * Context shape is `{ req, res, method, pathname, config, runtime, json }`.
+ * The sidecar instance is read from the module-level singleton in
  * services/n8n-sidecar.ts rather than being threaded through state.
  */
 
@@ -152,10 +151,6 @@ export interface N8nRoutesConfigLike {
     status?: N8nSidecarStatus;
   };
 }
-
-// Back-compat aliases for the previous module export names.
-export type N8nStatusConfigLike = N8nRoutesConfigLike;
-export type N8nStatusRouteContext = N8nRouteContext;
 
 export interface N8nRouteContext
   extends RouteRequestMeta,
@@ -766,114 +761,6 @@ function normalizeWorkflowWritePayload(body: Record<string, unknown>): {
   };
 }
 
-function inferWorkflowName(prompt: string, requestedName?: string): string {
-  if (requestedName?.trim()) {
-    return requestedName.trim().slice(0, 80);
-  }
-  const compact = prompt.replace(/\s+/g, " ").trim();
-  const withoutSchedule = compact.replace(
-    /^(when|whenever|every|daily|weekly|hourly|on)\b[:,\s-]*/i,
-    "",
-  );
-  const title = withoutSchedule.slice(0, 58).trim() || "Generated workflow";
-  return title[0] ? `${title[0].toUpperCase()}${title.slice(1)}` : title;
-}
-
-function labelFromStep(step: string, index: number): string {
-  const cleaned = step
-    .replace(/\s+/g, " ")
-    .replace(/^(then|and|after that|next)\b[:,\s-]*/i, "")
-    .trim();
-  if (!cleaned) return `Step ${index + 1}`;
-  const label = cleaned
-    .split(" ")
-    .slice(0, 6)
-    .join(" ")
-    .replace(/[.?!,;:]$/g, "");
-  return label[0]?.toUpperCase()
-    ? `${label[0].toUpperCase()}${label.slice(1)}`
-    : label;
-}
-
-function promptToWorkflowSteps(prompt: string): string[] {
-  const parts = prompt
-    .replace(/\s+/g, " ")
-    .split(/\b(?:then|after that|next)\b|[.;]\s*/i)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length > 1) return parts.slice(0, 6);
-
-  const byAnd = prompt
-    .replace(/\s+/g, " ")
-    .split(/\s+\band\b\s+/i)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return (byAnd.length > 1 ? byAnd : [prompt.trim()]).slice(0, 6);
-}
-
-function buildFallbackWorkflowFromPrompt(
-  prompt: string,
-  requestedName?: string,
-): N8nWorkflowWritePayload {
-  const steps = promptToWorkflowSteps(prompt);
-  const nodes: N8nWorkflowWriteNode[] = [
-    {
-      name: "Start",
-      type: "n8n-nodes-base.manualTrigger",
-      typeVersion: 1,
-      position: [0, 0],
-      parameters: {},
-    },
-    ...steps.map((step, index) => ({
-      name: labelFromStep(step, index),
-      type: "n8n-nodes-base.noOp",
-      typeVersion: 1,
-      position: [260 * (index + 1), 0] as [number, number],
-      parameters: {},
-      notes: step,
-      notesInFlow: true,
-    })),
-  ];
-
-  const connections: N8nWorkflowConnections = {};
-  for (let index = 0; index < nodes.length - 1; index++) {
-    connections[nodes[index].name] = {
-      main: [[{ node: nodes[index + 1].name, type: "main", index: 0 }]],
-    };
-  }
-
-  return {
-    name: inferWorkflowName(prompt, requestedName),
-    nodes,
-    connections,
-    settings: {},
-  };
-}
-
-async function generateWorkflowPayload(
-  ctx: N8nRouteContext,
-  prompt: string,
-  name?: string,
-): Promise<N8nWorkflowWritePayload> {
-  const service = ctx.runtime?.getService?.("n8n_workflow") as
-    | { generateWorkflowDraft?: (prompt: string) => Promise<unknown> }
-    | undefined;
-  if (typeof service?.generateWorkflowDraft === "function") {
-    const generated = await service.generateWorkflowDraft(prompt);
-    const normalized = normalizeWorkflowWritePayload({
-      ...(asRecord(generated) ?? {}),
-      ...(name?.trim() ? { name: name.trim() } : {}),
-    });
-    if (normalized.payload) return normalized.payload;
-    logger.warn(
-      { error: normalized.error },
-      "[n8n-routes] generated workflow payload was invalid; using fallback builder",
-    );
-  }
-
-  return buildFallbackWorkflowFromPrompt(prompt, name);
-}
-
 function propagateError(
   ctx: N8nRouteContext,
   upstream: { status: number; body: unknown },
@@ -979,8 +866,7 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
 
   // --- Workflow generation / creation --------------------------------------
   if (method === "POST" && pathname === "/api/n8n/workflows/generate") {
-    const sidecar = await resolveSidecarForRequest(ctx, native);
-    return handleGenerateWorkflow(ctx, sidecar, native);
+    return handleGenerateWorkflow(ctx);
   }
 
   if (method === "POST" && pathname === "/api/n8n/workflows") {
@@ -1015,10 +901,6 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
 
   return false;
 }
-
-// Backwards-compat named export so the old import symbol still works for any
-// out-of-tree caller that imports it. Prefer `handleN8nRoutes` in new code.
-export const handleN8nStatusRoutes = handleN8nRoutes;
 
 async function handleStatus(
   ctx: N8nRouteContext,
@@ -1236,11 +1118,7 @@ async function handleUpdateWorkflow(
   );
 }
 
-async function handleGenerateWorkflow(
-  ctx: N8nRouteContext,
-  sidecar: N8nSidecar | null,
-  native: boolean,
-): Promise<boolean> {
+async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
   if (!body) return true;
 
@@ -1253,14 +1131,6 @@ async function handleGenerateWorkflow(
   const name = readOptionalString(body, "name");
   const workflowId = readOptionalString(body, "workflowId");
 
-  // Prefer the plugin's `deployWorkflow` pipeline so generated workflows go
-  // through credential resolution server-side. Without this, the LLM emits
-  // `credentials: { gmailOAuth2: { id: "{{CREDENTIAL_ID}}" } }` and the
-  // placeholder reaches n8n raw — n8n then crashes on
-  // `Cannot read properties of undefined (reading 'execute')` whenever the
-  // user tries to activate or run the workflow because no real credential id
-  // exists for the lookup. The fallback proxy chain only runs when the
-  // plugin's workflow service isn't registered (test/CI shapes).
   const service = ctx.runtime?.getService?.("n8n_workflow") as
     | {
         generateWorkflowDraft?: (prompt: string) => Promise<{
@@ -1280,101 +1150,36 @@ async function handleGenerateWorkflow(
       }
     | undefined;
   if (
-    typeof service?.generateWorkflowDraft === "function" &&
-    typeof service?.deployWorkflow === "function" &&
-    typeof service?.getWorkflow === "function"
+    typeof service?.generateWorkflowDraft !== "function" ||
+    typeof service.deployWorkflow !== "function" ||
+    typeof service.getWorkflow !== "function"
   ) {
-    // Two-phase try blocks. The OUTER try wraps only operations that have NOT
-    // yet committed a side effect to n8n — generateWorkflowDraft (LLM call,
-    // pure) and deployWorkflow (the write). Failures here can safely fall
-    // through to the legacy proxy path because no workflow has been written
-    // yet. Once deployWorkflow returns successfully, the workflow IS in n8n
-    // and any further failure (e.g. the follow-up getWorkflow read) must NOT
-    // re-enter the legacy path — that path would re-invoke the LLM and POST
-    // a new workflow OR PUT-overwrite the just-deployed one with unresolved
-    // `{{CREDENTIAL_ID}}` placeholders.
-    let deployed:
-      | {
-          id: string;
-          name: string;
-          active: boolean;
-          missingCredentials: Array<{ credType: string; authUrl?: string }>;
-        }
-      | undefined;
-    try {
-      const draft = await service.generateWorkflowDraft(prompt);
-      if (name?.trim()) {
-        (draft as Record<string, unknown>).name = name.trim();
-      }
-      if (workflowId) {
-        (draft as Record<string, unknown>).id = workflowId;
-      }
-      // The plugin's deployWorkflow → getUserTagName → getEntityById(userId)
-      // requires a real UUID; passing "local" makes the entity lookup throw
-      // "Failed query: ... where entities.id in ($1)" because pg rejects the
-      // non-UUID string. Use the runtime's agentId — it's always a valid
-      // entity in Milady local and gives a stable per-agent tag for n8n
-      // credential mapping.
-      const userId = resolveAgentId(ctx);
-      deployed = await service.deployWorkflow(
-        draft as Record<string, unknown>,
-        userId,
-      );
-    } catch (err) {
-      logger.warn(
-        {
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "[n8n-routes] generate/deploy path failed before commit; falling back to direct proxy",
-      );
-      // Pre-deploy failure — deploy never committed. Legacy proxy fallback
-      // is safe here.
-    }
-
-    if (deployed) {
-      if (deployed.missingCredentials.length > 0) {
-        sendJson(ctx, 200, {
-          ...deployed,
-          warning: "missing credentials",
-        });
-        return true;
-      }
-      // Deploy succeeded — the workflow is committed in n8n. Try to enrich
-      // the response with the full workflow body, but on failure return the
-      // deploy summary instead of falling through (see comment above on why
-      // the legacy path would corrupt the just-deployed workflow).
-      let full: Record<string, unknown> | undefined;
-      try {
-        full = await service.getWorkflow(deployed.id);
-      } catch (readErr) {
-        logger.warn(
-          {
-            err: readErr instanceof Error ? readErr.message : String(readErr),
-            deployedId: deployed.id,
-          },
-          "[n8n-routes] follow-up getWorkflow failed after successful deploy; returning deploy summary",
-        );
-      }
-      sendJson(ctx, 200, full ?? deployed);
-      return true;
-    }
+    sendJson(ctx, 503, { error: "n8n workflow service unavailable" });
+    return true;
   }
 
-  // Legacy proxy fallback — used when the workflow service isn't available
-  // (e.g. plugin disabled in tests). Generated workflows from this path
-  // ship to n8n with `{{CREDENTIAL_ID}}` placeholders unresolved.
-  const payload = await generateWorkflowPayload(ctx, prompt, name);
+  const draft = await service.generateWorkflowDraft(prompt);
+  if (name?.trim()) {
+    (draft as Record<string, unknown>).name = name.trim();
+  }
   if (workflowId) {
-    return writeWorkflow(
-      ctx,
-      "PUT",
-      `/${encodeURIComponent(workflowId)}`,
-      payload,
-      sidecar,
-      native,
-    );
+    (draft as Record<string, unknown>).id = workflowId;
   }
-  return writeWorkflow(ctx, "POST", "", payload, sidecar, native);
+  const userId = resolveAgentId(ctx);
+  const deployed = await service.deployWorkflow(
+    draft as Record<string, unknown>,
+    userId,
+  );
+  if (deployed.missingCredentials.length > 0) {
+    sendJson(ctx, 200, {
+      ...deployed,
+      warning: "missing credentials",
+    });
+    return true;
+  }
+  const full = await service.getWorkflow(deployed.id);
+  sendJson(ctx, 200, full);
+  return true;
 }
 
 async function handleToggleWorkflow(
