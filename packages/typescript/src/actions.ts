@@ -496,7 +496,23 @@ function extractXmlChildren(
 		const closeIdx = searchStart - closeSeq.length;
 		const innerRaw = xml.slice(startTagEnd + 1, closeIdx).trim();
 
-		pairs.push({ key: tag, value: innerRaw });
+		// LLM-tolerance: if the tag is a generic `<param name="X">value</param>`,
+		// prefer the `name` attribute as the key. Some planners emit attribute-
+		// named params instead of tag-named ones, and the canonical handler
+		// expects key=actual-param-name not key="param".
+		let resolvedKey = tag;
+		if (tag.toLowerCase() === "param") {
+			const nameAttrMatch = startTagText.match(
+				/\bname\s*=\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_-]+))/,
+			);
+			const candidate =
+				nameAttrMatch?.[1] ?? nameAttrMatch?.[2] ?? nameAttrMatch?.[3];
+			if (candidate && candidate.length > 0) {
+				resolvedKey = candidate;
+			}
+		}
+
+		pairs.push({ key: resolvedKey, value: innerRaw });
 		i = searchStart;
 	}
 
