@@ -328,6 +328,8 @@ const ACTION_RESULT_CLIPBOARD_TEXT_PATTERN =
 	/\b(copy|save|store|keep|persist|put)\b[\s\S]{0,80}\b(?:to|in|into|on)?\s*(?:the\s*)?clipboard\b/i;
 const CLIPBOARD_ACTION_RESULT_TEXT_PATTERN =
 	/\bclipboard\b[\s\S]{0,80}\b(copy|save|store|keep|persist)\b/i;
+const ACTION_RESULT_CLIPBOARD_NEGATION_PATTERN =
+	/\b(?:do\s+not|don't|dont|never|without)\b[\s\S]{0,80}\b(copy|save|store|keep|persist|put)\b[\s\S]{0,80}\bclipboard\b/i;
 
 type ActionResultClipboardStatus = {
 	text: string;
@@ -379,6 +381,10 @@ function messageRequestsActionResultClipboard(message: Memory): boolean {
 
 	const text = message.content.text;
 	if (typeof text !== "string" || !text.trim()) {
+		return false;
+	}
+
+	if (ACTION_RESULT_CLIPBOARD_NEGATION_PATTERN.test(text)) {
 		return false;
 	}
 

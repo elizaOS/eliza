@@ -385,4 +385,41 @@ describe("AgentRuntime.processActions parameter validation", () => {
 		);
 		expect(items).toHaveLength(0);
 	});
+
+	it("does not infer clipboard intent from negative wording", async () => {
+		const runtime = await buildRuntimeWithClipboard();
+		const action: Action = {
+			name: "NEGATED_REPORT",
+			description: "Generate a report.",
+			validate: async () => true,
+			handler: async () => ({
+				success: true,
+				text: "Negated report",
+				data: { actionName: "NEGATED_REPORT" },
+			}),
+		};
+		runtime.actions.push(action);
+		vi.spyOn(runtime, "composeState").mockResolvedValue(EMPTY_STATE);
+		vi.spyOn(runtime, "createMemory").mockResolvedValue(
+			stringToUuid("memory-8"),
+		);
+		const callback = vi.fn(async () => []);
+		const message = buildTestMessage(runtime.agentId, {
+			text: "Run the report but do not copy it to clipboard",
+		});
+
+		await runtime.processActions(
+			message,
+			[{ content: { actions: ["NEGATED_REPORT"] } }],
+			EMPTY_STATE,
+			callback,
+		);
+
+		expect(callback).toHaveBeenCalledTimes(1);
+		expect(callback.mock.calls[0]?.[0]?.text).toBe("Negated report");
+		const items = await createTaskClipboardService(runtime).listItems(
+			message.entityId,
+		);
+		expect(items).toHaveLength(0);
+	});
 });
