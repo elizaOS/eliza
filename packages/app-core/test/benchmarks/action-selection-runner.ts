@@ -472,12 +472,6 @@ async function seedBenchmarkCaseFixtures(
       typeof (repo as unknown as { upsertRelationship?: unknown })
         .upsertRelationship === "function"
     ) {
-      await (
-        repo as unknown as {
-          upsertRelationship: (
-            rel: Record<string, unknown>,
-          ) => Promise<unknown>;
-        }
       const upsert = (
         repo as unknown as {
           upsertRelationship: (
