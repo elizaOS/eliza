@@ -112,16 +112,13 @@ describe("findOwnedActionCorrectionFromMetadata", () => {
 			"CREATE_AUTOMATION",
 			"SCHEDULE_AUTOMATION",
 			"CREATE_RECURRING",
-		])(
-			"treats %s as explicit intent (no override to LIFE)",
-			(actionName) => {
-				const result = findOwnedActionCorrectionFromMetadata(
-					runtime,
-					{ content: { text: "every 9 minutes write a ping log entry" } },
-					{ actions: [actionName] },
-				);
-				expect(result).toBeNull();
-			},
-		);
+		])("treats %s as explicit intent (no override to LIFE)", (actionName) => {
+			const result = findOwnedActionCorrectionFromMetadata(
+				runtime,
+				{ content: { text: "every 9 minutes write a ping log entry" } },
+				{ actions: [actionName] },
+			);
+			expect(result).toBeNull();
+		});
 	});
 });

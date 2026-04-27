@@ -8,6 +8,7 @@ const telegramAuthMocks = vi.hoisted(() => ({
   cancelTelegramAuth: vi.fn(),
   deleteStoredTelegramToken: vi.fn(),
   findPendingTelegramAuthSession: vi.fn(),
+  findStoredTelegramTokenForSide: vi.fn(),
   hasManagedTelegramCredentials: vi.fn(),
   inferRetryableTelegramAuthState: vi.fn(),
   readStoredTelegramToken: vi.fn(),
@@ -31,7 +32,10 @@ vi.mock("./telegram-auth.js", () => ({
   deleteStoredTelegramToken: telegramAuthMocks.deleteStoredTelegramToken,
   findPendingTelegramAuthSession:
     telegramAuthMocks.findPendingTelegramAuthSession,
-  hasManagedTelegramCredentials: telegramAuthMocks.hasManagedTelegramCredentials,
+  findStoredTelegramTokenForSide:
+    telegramAuthMocks.findStoredTelegramTokenForSide,
+  hasManagedTelegramCredentials:
+    telegramAuthMocks.hasManagedTelegramCredentials,
   inferRetryableTelegramAuthState:
     telegramAuthMocks.inferRetryableTelegramAuthState,
   readStoredTelegramToken: telegramAuthMocks.readStoredTelegramToken,
@@ -46,7 +50,8 @@ vi.mock("./telegram-local-client.js", () => ({
   sendTelegramAccountMessage: telegramClientMocks.sendTelegramAccountMessage,
   telegramLocalSessionAvailable:
     telegramClientMocks.telegramLocalSessionAvailable,
-  verifyTelegramLocalConnector: telegramClientMocks.verifyTelegramLocalConnector,
+  verifyTelegramLocalConnector:
+    telegramClientMocks.verifyTelegramLocalConnector,
 }));
 
 const TOKEN_REF = "agent-telegram/owner/local.json";
@@ -78,13 +83,18 @@ function buildStoredToken(): StoredTelegramConnectorToken {
   };
 }
 
-function buildGrant(): LifeOpsConnectorGrant {
+function buildGrant(
+  capabilities: Array<"telegram.read" | "telegram.send"> = [
+    "telegram.read",
+    "telegram.send",
+  ],
+): LifeOpsConnectorGrant {
   return createLifeOpsConnectorGrant({
     agentId: "agent-telegram",
     provider: "telegram",
     identity: { id: "telegram-user-1", username: "carol" },
     grantedScopes: [],
-    capabilities: ["telegram.read", "telegram.send"],
+    capabilities,
     tokenRef: TOKEN_REF,
     mode: "local",
     side: "owner",
@@ -109,9 +119,7 @@ class StubBase {
 }
 
 type TelegramConsumer = {
-  getTelegramConnectorStatus: (
-    side?: "owner" | "agent",
-  ) => Promise<{
+  getTelegramConnectorStatus: (side?: "owner" | "agent") => Promise<{
     connected: boolean;
     reason: string;
     grantedCapabilities: string[];
@@ -133,6 +141,12 @@ type TelegramConsumer = {
     target: string;
     messageIds: string[];
   }) => Promise<unknown[]>;
+  verifyTelegramConnector: (request: {
+    side?: "owner" | "agent";
+    recentLimit?: number;
+    sendTarget?: string;
+    sendMessage?: string;
+  }) => Promise<unknown>;
 };
 
 const Composed = withTelegram(StubBase as never);
@@ -145,6 +159,7 @@ describe("withTelegram consumer surface", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     telegramAuthMocks.findPendingTelegramAuthSession.mockReturnValue(null);
+    telegramAuthMocks.findStoredTelegramTokenForSide.mockReturnValue(null);
     telegramAuthMocks.hasManagedTelegramCredentials.mockReturnValue(false);
     telegramAuthMocks.inferRetryableTelegramAuthState.mockReturnValue(null);
     telegramAuthMocks.readStoredTelegramToken.mockReturnValue(null);
@@ -165,7 +180,9 @@ describe("withTelegram consumer surface", () => {
   it("reports connected when grant, stored token, and local session are present", async () => {
     const service = createService();
     service.repository.getConnectorGrant.mockResolvedValue(buildGrant());
-    telegramAuthMocks.readStoredTelegramToken.mockReturnValue(buildStoredToken());
+    telegramAuthMocks.readStoredTelegramToken.mockReturnValue(
+      buildStoredToken(),
+    );
     telegramClientMocks.telegramLocalSessionAvailable.mockReturnValue(true);
 
     const status = await service.getTelegramConnectorStatus("owner");
@@ -181,10 +198,49 @@ describe("withTelegram consumer surface", () => {
     );
   });
 
+  it("adopts the only stored token for the requested side when the grant is missing", async () => {
+    const service = createService();
+    const storedToken = buildStoredToken();
+    service.repository.getConnectorGrant.mockResolvedValue(null);
+    telegramAuthMocks.findStoredTelegramTokenForSide.mockReturnValue({
+      agentId: "agent-previous",
+      side: "owner",
+      tokenRef: "agent-previous/owner/local.json",
+      token: storedToken,
+    });
+    telegramClientMocks.telegramLocalSessionAvailable.mockReturnValue(true);
+
+    const status = await service.getTelegramConnectorStatus("owner");
+
+    expect(status.connected).toBe(true);
+    expect(status.reason).toBe("connected");
+    expect(status.grantedCapabilities).toEqual(
+      expect.arrayContaining(["telegram.read", "telegram.send"]),
+    );
+    expect(service.repository.upsertConnectorGrant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-telegram",
+        provider: "telegram",
+        side: "owner",
+        tokenRef: "agent-previous/owner/local.json",
+        identity: expect.objectContaining({
+          id: "telegram-user-1",
+          phone: "+15551234567",
+        }),
+        metadata: expect.objectContaining({
+          adoptedFromAgentId: "agent-previous",
+          phone: "+15551234567",
+        }),
+      }),
+    );
+  });
+
   it("sends through the Telegram local client with the connected token ref", async () => {
     const service = createService();
     service.repository.getConnectorGrant.mockResolvedValue(buildGrant());
-    telegramAuthMocks.readStoredTelegramToken.mockReturnValue(buildStoredToken());
+    telegramAuthMocks.readStoredTelegramToken.mockReturnValue(
+      buildStoredToken(),
+    );
     telegramClientMocks.telegramLocalSessionAvailable.mockReturnValue(true);
     telegramClientMocks.sendTelegramAccountMessage.mockResolvedValue({
       messageId: "88",
@@ -196,17 +252,40 @@ describe("withTelegram consumer surface", () => {
         message: "On my way",
       }),
     ).resolves.toEqual({ ok: true, messageId: "88" });
-    expect(telegramClientMocks.sendTelegramAccountMessage).toHaveBeenCalledWith({
-      tokenRef: TOKEN_REF,
-      target: "Carol",
-      message: "On my way",
-    });
+    expect(telegramClientMocks.sendTelegramAccountMessage).toHaveBeenCalledWith(
+      {
+        tokenRef: TOKEN_REF,
+        target: "Carol",
+        message: "On my way",
+      },
+    );
+  });
+
+  it("does not report outbound success when the local Telegram send fails", async () => {
+    const service = createService();
+    service.repository.getConnectorGrant.mockResolvedValue(buildGrant());
+    telegramAuthMocks.readStoredTelegramToken.mockReturnValue(
+      buildStoredToken(),
+    );
+    telegramClientMocks.telegramLocalSessionAvailable.mockReturnValue(true);
+    telegramClientMocks.sendTelegramAccountMessage.mockRejectedValue(
+      new Error("Telegram send did not return a message id."),
+    );
+
+    await expect(
+      service.sendTelegramMessage({
+        target: "Carol",
+        message: "On my way",
+      }),
+    ).rejects.toThrow("Telegram send did not return a message id.");
   });
 
   it("routes search and read-receipt lookups through the same connected token ref", async () => {
     const service = createService();
     service.repository.getConnectorGrant.mockResolvedValue(buildGrant());
-    telegramAuthMocks.readStoredTelegramToken.mockReturnValue(buildStoredToken());
+    telegramAuthMocks.readStoredTelegramToken.mockReturnValue(
+      buildStoredToken(),
+    );
     telegramClientMocks.telegramLocalSessionAvailable.mockReturnValue(true);
     telegramClientMocks.searchTelegramMessages.mockResolvedValue([
       { id: "101", content: "needle" },
@@ -240,5 +319,26 @@ describe("withTelegram consumer surface", () => {
       target: "Carol",
       messageIds: ["101"],
     });
+  });
+
+  it("requires read permission before running Telegram connector verification", async () => {
+    const service = createService();
+    service.repository.getConnectorGrant.mockResolvedValue(
+      buildGrant(["telegram.send"]),
+    );
+    telegramAuthMocks.readStoredTelegramToken.mockReturnValue(
+      buildStoredToken(),
+    );
+    telegramClientMocks.telegramLocalSessionAvailable.mockReturnValue(true);
+
+    await expect(
+      service.verifyTelegramConnector({
+        sendTarget: "me",
+        sendMessage: "self-test",
+      }),
+    ).rejects.toThrow("Telegram connector is missing read permission.");
+    expect(
+      telegramClientMocks.verifyTelegramLocalConnector,
+    ).not.toHaveBeenCalled();
   });
 });

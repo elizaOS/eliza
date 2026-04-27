@@ -39,6 +39,7 @@ export const searchContactsAction: Action = {
 	name: spec.name,
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
+	suppressPostActionContinuation: true,
 	examples: (spec.examples ?? []) as ActionExample[][],
 
 	validate: async (
@@ -228,6 +229,7 @@ export const searchContactsAction: Action = {
 				criteria,
 			},
 			data: {
+				actionName: "SEARCH_CONTACTS",
 				count: contactDetails.length,
 				criteria,
 				contacts: contactDetails.map((d) => ({

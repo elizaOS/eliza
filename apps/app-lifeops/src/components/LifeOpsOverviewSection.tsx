@@ -11,7 +11,7 @@ import type {
   LifeOpsOverview,
   LifeOpsScheduleInsight,
   LifeOpsXConnectorStatus,
-} from "@elizaos/shared";
+} from "@elizaos/shared/contracts/lifeops";
 import {
   ArrowRight,
   AtSign,
@@ -163,6 +163,15 @@ const CHANNEL_ORDER: LifeOpsInboxChannel[] = [
   "whatsapp",
   "x_dm",
 ];
+
+function useGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 5) return "Still up";
+  if (hour < 12) return "Morning";
+  if (hour < 17) return "Afternoon";
+  if (hour < 22) return "Evening";
+  return "Wind-down";
+}
 
 function formatFullDate(date: Date): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -425,10 +434,12 @@ function MetricCell({
   tone?: string;
 }) {
   return (
-    <div className="min-w-0 border-l border-border/12 px-3 py-2 first:border-l-0">
-      <div className="truncate text-[10px] font-medium text-muted">{label}</div>
+    <div className="min-w-0 border-t border-border/12 px-3 py-2 first:border-t-0 sm:border-l sm:border-t-0 sm:first:border-l-0">
+      <div className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </div>
       <div
-        className={`mt-1 truncate text-sm font-semibold tabular-nums sm:text-lg ${tone ?? "text-txt"}`}
+        className={`mt-1 truncate text-lg font-semibold tabular-nums ${tone ?? "text-txt"}`}
       >
         {value}
       </div>
@@ -677,6 +688,7 @@ export function LifeOpsOverviewSection({
   const { t } = useApp();
   const { select } = useLifeOpsSelection();
   const today = useMemo(() => new Date(), []);
+  const greeting = useGreeting();
   const capabilities = useLifeOpsCapabilitiesStatus();
   const googleConnector = useGoogleLifeOpsConnector({
     includeAccounts: false,
@@ -1019,8 +1031,8 @@ export function LifeOpsOverviewSection({
       <header className="border-b border-border/20 pb-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-xs font-medium text-muted">
-              {formatFullDate(today)}
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+              {greeting} / {formatFullDate(today)}
             </div>
             <h1 className="mt-2 max-w-4xl text-2xl font-semibold leading-tight text-txt sm:text-3xl">
               {buildHeadline({
@@ -1058,7 +1070,7 @@ export function LifeOpsOverviewSection({
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 overflow-hidden rounded-lg border border-border/16 bg-card/10">
+        <div className="mt-4 grid overflow-hidden rounded-lg border border-border/16 bg-card/10 sm:grid-cols-3">
           <MetricCell
             label="Sleep"
             value={sleepStatusLabel(schedule)}
@@ -1102,7 +1114,7 @@ export function LifeOpsOverviewSection({
             </span>
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-txt">
-                {hasAnyOverviewAccess ? "Partial" : "Connect"}
+                {hasAnyOverviewAccess ? "Partial overview" : "Connect a source"}
               </div>
             </div>
           </div>

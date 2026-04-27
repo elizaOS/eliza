@@ -1698,8 +1698,9 @@ export async function handleLifeOpsRoutes(
         chatId: url.searchParams.get("chatId")?.trim() || undefined,
         since: url.searchParams.get("since")?.trim() || undefined,
         limit:
-          parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit") ??
-          undefined,
+          parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
+            max: 250,
+          }) ?? undefined,
       };
       const messages = await service.readIMessages(query);
       json(res, { messages, count: messages.length });
@@ -2668,7 +2669,7 @@ export async function handleLifeOpsRoutes(
       const requestUrl = ctx.url;
       const result = await service.unsubscribeEmailSender(requestUrl, {
         senderEmail: body.senderEmail,
-        blockAfter: body.blockAfter ?? true,
+        blockAfter: body.blockAfter ?? false,
         trashExisting: body.trashExisting ?? false,
         confirmed: body.confirmed ?? false,
       });

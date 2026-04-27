@@ -18,6 +18,7 @@ import {
 
 export const requestSecretAction: Action = {
 	name: "REQUEST_SECRET",
+	suppressPostActionContinuation: true,
 	similes: [
 		"ASK_FOR_SECRET",
 		"REQUIRE_SECRET",
@@ -67,7 +68,11 @@ export const requestSecretAction: Action = {
 				logger.warn(
 					"[RequestSecret] Failed to extract secret key from context",
 				);
-				return { success: false };
+				return {
+					success: false,
+					text: "Failed to identify the required secret.",
+					data: { actionName: "REQUEST_SECRET" },
+				};
 			}
 
 			const key = result.key.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
@@ -86,8 +91,12 @@ export const requestSecretAction: Action = {
 
 				if (exists) {
 					const text = `The secret '${key}' is already available. You can use it now.`;
-					if (callback) callback({ text, action: "REQUEST_SECRET" });
-					return { success: true, text };
+					if (callback) await callback({ text, action: "REQUEST_SECRET" });
+					return {
+						success: true,
+						text,
+						data: { actionName: "REQUEST_SECRET", key, exists: true },
+					};
 				}
 			}
 
@@ -106,10 +115,19 @@ export const requestSecretAction: Action = {
 				});
 			}
 
-			return { success: true, text };
+			return {
+				success: true,
+				text,
+				data: { actionName: "REQUEST_SECRET", key, exists: false },
+			};
 		} catch (error) {
 			logger.error("[RequestSecret] Error:", String(error));
-			return { success: false, text: "Failed to process secret request" };
+			return {
+				success: false,
+				text: "Failed to process secret request",
+				error: error instanceof Error ? error.message : String(error),
+				data: { actionName: "REQUEST_SECRET" },
+			};
 		}
 	},
 

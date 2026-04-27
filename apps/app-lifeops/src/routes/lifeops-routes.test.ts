@@ -178,6 +178,22 @@ describe("LifeOps route validation", () => {
     expect(json).not.toHaveBeenCalled();
   });
 
+  it("caps iMessage message reads at the route boundary", async () => {
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/imessage/messages?limit=251",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "limit must be less than or equal to 250",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("rejects mismatched connector side values before dispatch", async () => {
     const readJsonBody = vi.fn(async () => ({ side: "agent" }));
     const { context, error, json } = createContext(
@@ -306,20 +322,22 @@ describe("LifeOps route validation", () => {
   });
 
   it("passes inbox cache controls through to the service", async () => {
-    const getInbox = vi.spyOn(LifeOpsService.prototype, "getInbox").mockResolvedValue({
-      messages: [],
-      channelCounts: {
-        gmail: { total: 0, unread: 0 },
-        discord: { total: 0, unread: 0 },
-        telegram: { total: 0, unread: 0 },
-        signal: { total: 0, unread: 0 },
-        imessage: { total: 0, unread: 0 },
-        whatsapp: { total: 0, unread: 0 },
-        sms: { total: 0, unread: 0 },
-        x_dm: { total: 0, unread: 0 },
-      },
-      fetchedAt: "2026-04-22T12:00:00.000Z",
-    });
+    const getInbox = vi
+      .spyOn(LifeOpsService.prototype, "getInbox")
+      .mockResolvedValue({
+        messages: [],
+        channelCounts: {
+          gmail: { total: 0, unread: 0 },
+          discord: { total: 0, unread: 0 },
+          telegram: { total: 0, unread: 0 },
+          signal: { total: 0, unread: 0 },
+          imessage: { total: 0, unread: 0 },
+          whatsapp: { total: 0, unread: 0 },
+          sms: { total: 0, unread: 0 },
+          x_dm: { total: 0, unread: 0 },
+        },
+        fetchedAt: "2026-04-22T12:00:00.000Z",
+      });
     const { context, error, json } = createContext(
       "GET",
       "/api/lifeops/inbox?channels=gmail,telegram&limit=25&cacheMode=refresh&cacheLimit=1200&groupByThread=true",

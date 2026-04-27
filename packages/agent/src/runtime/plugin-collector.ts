@@ -484,10 +484,9 @@ export function collectPluginNames(
     pluginsToLoad.delete("@elizaos/plugin-shell");
   }
 
-  for (const optionalCore of OPTIONAL_CORE_PLUGINS) {
-    const resolved = resolvePluginPackageAlias(optionalCore);
-    if (isPluginExplicitlyDisabled(resolved)) {
-      pluginsToLoad.delete(resolved);
+  for (const pluginName of Array.from(pluginsToLoad)) {
+    if (isPluginExplicitlyDisabled(pluginName)) {
+      pluginsToLoad.delete(pluginName);
     }
   }
 

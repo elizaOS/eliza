@@ -1,12 +1,14 @@
 /**
- * Shared pool of Japanese agent names for onboarding.
+ * Shared pool of agent names for onboarding.
  *
  * Used by both the CLI first-run flow (eliza.ts) and the
  * web UI API server (api/server.ts).
  */
 
-/** Pool of Japanese names to randomly sample from during onboarding. */
-export const AGENT_NAME_POOL: readonly string[] = [
+export const DEFAULT_AGENT_NAME = "Eliza";
+
+/** Pool of names to sample from during onboarding after the default option. */
+const RANDOM_AGENT_NAME_POOL: readonly string[] = [
   "Reimu",
   "Sakuya",
   "Yukari",
@@ -21,7 +23,6 @@ export const AGENT_NAME_POOL: readonly string[] = [
   "Suika",
   "Koishi",
   "Nue",
-  "Chen",
   "Mokou",
   "Satori",
   "Remilia",
@@ -64,13 +65,22 @@ export const AGENT_NAME_POOL: readonly string[] = [
   "Kira",
 ];
 
-/** Pick `count` unique random names from the pool using Fisher-Yates shuffle. */
+export const AGENT_NAME_POOL: readonly string[] = [
+  DEFAULT_AGENT_NAME,
+  ...RANDOM_AGENT_NAME_POOL,
+];
+
+/** Pick `count` unique names, keeping the default agent name first. */
 export function pickRandomNames(count: number): string[] {
   const clamped = Math.max(0, Math.min(count, AGENT_NAME_POOL.length));
-  const pool = [...AGENT_NAME_POOL];
+  if (clamped === 0) {
+    return [];
+  }
+
+  const pool = [...RANDOM_AGENT_NAME_POOL];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  return pool.slice(0, clamped);
+  return [DEFAULT_AGENT_NAME, ...pool.slice(0, clamped - 1)];
 }

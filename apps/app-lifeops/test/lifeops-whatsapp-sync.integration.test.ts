@@ -4,30 +4,36 @@
  * No live WhatsApp credentials are required. The test exercises the in-process
  * buffer that `ingestWhatsAppWebhook()` populates, and verifies that
  * `syncWhatsAppInbound()` drains it with correct deduplication.
- *
- * Set `SKIP_REASON` to skip with a documented reason.
  */
-import { describe, expect, it, beforeEach } from "vitest";
+
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { LifeOpsService } from "../src/lifeops/service.js";
 import {
   drainWhatsAppInboundBuffer,
   parseAndBufferWhatsAppWebhookMessages,
 } from "../src/lifeops/whatsapp-client.js";
-import { LifeOpsService } from "../src/lifeops/service.js";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach } from "vitest";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
-const SKIP_REASON = process.env.SKIP_REASON?.trim();
-
-function makeWebhookPayload(messages: Array<{ id: string; from: string; body: string }>) {
+function makeWebhookPayload(
+  messages: Array<{ id: string; from: string; body: string }>,
+) {
   return {
     entry: [
       {
         changes: [
           {
             value: {
+              metadata: {
+                display_phone_number: "+1 555 000 1111",
+                phone_number_id: "phone-sync",
+              },
+              contacts: messages.map((m) => ({
+                profile: { name: `WhatsApp ${m.from}` },
+                wa_id: m.from,
+              })),
               messages: messages.map((m) => ({
                 id: m.id,
                 from: m.from,
@@ -66,12 +72,16 @@ describe("Integration: WhatsApp inbound sync", () => {
 
   afterEach(async () => {
     drainWhatsAppInboundBuffer();
-    if (runtime) { await runtime.cleanup(); runtime = undefined; }
+    if (runtime) {
+      await runtime.cleanup();
+      runtime = undefined;
+    }
     if (prevOAuthDir === undefined) delete process.env.ELIZA_OAUTH_DIR;
     else process.env.ELIZA_OAUTH_DIR = prevOAuthDir;
     if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
     else process.env.ELIZA_STATE_DIR = prevStateDir;
-    if (prevDisableProactive === undefined) delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+    if (prevDisableProactive === undefined)
+      delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
     else process.env.ELIZA_DISABLE_PROACTIVE_AGENT = prevDisableProactive;
     await rm(oauthDir, { recursive: true, force: true });
   });
@@ -108,6 +118,15 @@ describe("Integration: WhatsApp inbound sync", () => {
     const ids = sync.messages.map((m) => m.id);
     expect(ids).toContain("wamid.001");
     expect(ids).toContain("wamid.002");
+    expect(sync.messages[0]).toMatchObject({
+      channelId: "+15551110001",
+      metadata: {
+        displayPhoneNumber: "+1 555 000 1111",
+        phoneNumberId: "phone-sync",
+        contactName: "WhatsApp +15551110001",
+        waId: "+15551110001",
+      },
+    });
   });
 
   it("deduplicates messages with the same id across multiple ingests", async () => {

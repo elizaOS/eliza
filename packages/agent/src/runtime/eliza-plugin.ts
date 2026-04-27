@@ -8,7 +8,6 @@
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
-import { launchAppAction, stopAppAction } from "../actions/app-control.js";
 import { browserSessionAction } from "../actions/browser-session.js";
 import {
   executeDatabaseQueryAction,
@@ -258,8 +257,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     actions: [
       restartAction,
-      launchAppAction,
-      stopAppAction,
       sendAdminMessageAction,
       terminalAction,
       createTriggerTaskAction,

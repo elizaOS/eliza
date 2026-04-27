@@ -32,6 +32,7 @@ function hasPluginDetailsIntent(text: string): boolean {
 
 export const searchPluginAction: Action = {
 	name: "SEARCH_PLUGINS",
+	suppressPostActionContinuation: true,
 	similes: [
 		"search for plugins",
 		"find plugins",
@@ -41,7 +42,7 @@ export const searchPluginAction: Action = {
 	],
 
 	description:
-		"Search for plugins in the ElizaOS registry by functionality, features, and natural language descriptions.",
+		"Search for plugins in the elizaOS registry by functionality, features, and natural language descriptions.",
 
 	examples: [
 		[
@@ -78,13 +79,19 @@ export const searchPluginAction: Action = {
 		const query = extractSearchQuery(message.content?.text || "");
 
 		if (!query) {
+			const text =
+				'Please specify what kind of functionality or features you\'re looking for in a plugin.\n\nFor example:\n- "Search for plugins that handle blockchain transactions"\n- "Find plugins for social media integration"\n- "Look for plugins that can process images"';
 			if (callback) {
 				await callback({
-					text: 'Please specify what kind of functionality or features you\'re looking for in a plugin.\n\nFor example:\n- "Search for plugins that handle blockchain transactions"\n- "Find plugins for social media integration"\n- "Look for plugins that can process images"',
+					text,
 					actions: ["SEARCH_PLUGINS"],
 				});
 			}
-			return undefined;
+			return {
+				success: false,
+				text,
+				data: { actionName: "SEARCH_PLUGINS" },
+			};
 		}
 
 		logger.info(`[searchPluginAction] Searching for: "${query}"`);
@@ -92,13 +99,18 @@ export const searchPluginAction: Action = {
 		const results = await searchPluginsByContent(query);
 
 		if (results.length === 0) {
+			const text = `No plugins found matching "${query}".\n\nTry different keywords like: "database", "api", "blockchain", "twitter", "discord", "solana"`;
 			if (callback) {
 				await callback({
-					text: `No plugins found matching "${query}".\n\nTry different keywords like: "database", "api", "blockchain", "twitter", "discord", "solana"`,
+					text,
 					actions: ["SEARCH_PLUGINS"],
 				});
 			}
-			return undefined;
+			return {
+				success: true,
+				text,
+				data: { actionName: "SEARCH_PLUGINS", query, results },
+			};
 		}
 
 		let responseText = `Found ${results.length} plugin${results.length > 1 ? "s" : ""} matching "${query}":\n\n`;
@@ -151,7 +163,11 @@ export const searchPluginAction: Action = {
 			});
 		}
 
-		return undefined;
+		return {
+			success: true,
+			text: responseText,
+			data: { actionName: "SEARCH_PLUGINS", query, results },
+		};
 	},
 };
 
@@ -197,6 +213,7 @@ function extractSearchQuery(text: string): string | null {
 
 export const getPluginDetailsAction: Action = {
 	name: "GET_PLUGIN_DETAILS",
+	suppressPostActionContinuation: true,
 	similes: [
 		"tell me more about",
 		"show details for",
@@ -238,12 +255,19 @@ export const getPluginDetailsAction: Action = {
 		const pluginMatch = text.match(/@?([\w-]+\/plugin-[\w-]+|plugin-[\w-]+)/i);
 
 		if (!pluginMatch) {
+			const responseText =
+				'Please specify which plugin you\'d like to know more about.\n\nExample: "Tell me more about @elizaos/plugin-solana"';
 			if (callback) {
 				await callback({
-					text: 'Please specify which plugin you\'d like to know more about.\n\nExample: "Tell me more about @elizaos/plugin-solana"',
+					text: responseText,
+					actions: ["GET_PLUGIN_DETAILS"],
 				});
 			}
-			return undefined;
+			return {
+				success: false,
+				text: responseText,
+				data: { actionName: "GET_PLUGIN_DETAILS" },
+			};
 		}
 
 		let pluginName = pluginMatch[1];
@@ -254,12 +278,18 @@ export const getPluginDetailsAction: Action = {
 		const details = await getPluginDetails(pluginName);
 
 		if (!details) {
+			const responseText = `Plugin "${pluginName}" not found in the registry.\n\nTry searching for plugins first: "search for [functionality]"`;
 			if (callback) {
 				await callback({
-					text: `Plugin "${pluginName}" not found in the registry.\n\nTry searching for plugins first: "search for [functionality]"`,
+					text: responseText,
+					actions: ["GET_PLUGIN_DETAILS"],
 				});
 			}
-			return undefined;
+			return {
+				success: false,
+				text: responseText,
+				data: { actionName: "GET_PLUGIN_DETAILS", pluginName },
+			};
 		}
 
 		let responseText = `**${details.name}** Details:\n\n`;
@@ -290,9 +320,14 @@ export const getPluginDetailsAction: Action = {
 		if (callback) {
 			await callback({
 				text: responseText,
+				actions: ["GET_PLUGIN_DETAILS"],
 			});
 		}
 
-		return undefined;
+		return {
+			success: true,
+			text: responseText,
+			data: { actionName: "GET_PLUGIN_DETAILS", pluginName, details },
+		};
 	},
 };

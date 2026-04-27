@@ -285,6 +285,7 @@ export function ConfigPageView({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
         <Button
           variant="ghost"
+          data-testid="wallet-rpc-mode-cloud"
           onClick={() => handleModeChange("cloud")}
           className={`relative flex flex-col items-start gap-1.5 rounded-xl border-2 p-4 text-left transition-all h-auto !whitespace-normal ${
             rpcMode === "cloud"
@@ -473,6 +474,7 @@ export function ConfigPageView({
             <Button
               variant="default"
               size="sm"
+              data-testid="wallet-rpc-save"
               className="text-xs-tight"
               onClick={() => {
                 void handleWalletSaveAll();
@@ -596,6 +598,7 @@ export function ConfigPageView({
             <Button
               variant="default"
               size="sm"
+              data-testid="wallet-rpc-save"
               className="text-xs-tight"
               onClick={() => {
                 void handleWalletSaveAll();

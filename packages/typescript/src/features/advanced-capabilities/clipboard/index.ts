@@ -7,6 +7,7 @@ import { clipboardReadAction } from "./actions/read.ts";
 import { readAttachmentAction } from "./actions/read-attachment.ts";
 import { readFileAction } from "./actions/read-file.ts";
 import { removeFromClipboardAction } from "./actions/remove-from-clipboard.ts";
+import { saveAttachmentToClipboardAction } from "./actions/save-attachment-to-clipboard.ts";
 import { clipboardSearchAction } from "./actions/search.ts";
 // Actions
 import { clipboardWriteAction } from "./actions/write.ts";
@@ -24,6 +25,7 @@ import { clipboardProvider } from "./providers/clipboard.ts";
  * Actions:
  * - READ_FILE: Read a local text file for the current task
  * - READ_ATTACHMENT: Read a stored attachment by attachment ID
+ * - SAVE_ATTACHMENT_TO_CLIPBOARD: Save a stored attachment into task clipboard state
  * - REMOVE_FROM_CLIPBOARD: Clear bounded working-memory state
  * - CLIPBOARD_WRITE: Create a new clipboard entry
  * - CLIPBOARD_READ: Read a specific entry by ID
@@ -45,6 +47,7 @@ export const clipboardPlugin: Plugin = {
 	actions: [
 		readFileAction,
 		readAttachmentAction,
+		saveAttachmentToClipboardAction,
 		removeFromClipboardAction,
 		clipboardWriteAction,
 		clipboardReadAction,
@@ -82,6 +85,7 @@ export { clipboardReadAction } from "./actions/read.ts";
 export { readAttachmentAction } from "./actions/read-attachment.ts";
 export { readFileAction } from "./actions/read-file.ts";
 export { removeFromClipboardAction } from "./actions/remove-from-clipboard.ts";
+export { saveAttachmentToClipboardAction } from "./actions/save-attachment-to-clipboard.ts";
 export { clipboardSearchAction } from "./actions/search.ts";
 // Export actions
 export { clipboardWriteAction } from "./actions/write.ts";

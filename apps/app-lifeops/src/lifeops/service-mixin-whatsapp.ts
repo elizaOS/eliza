@@ -1,6 +1,8 @@
-// @ts-nocheck — mixin: type safety is enforced on the composed class
 import fs from "node:fs";
 import path from "node:path";
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+import { whatsappAuthExists } from "@elizaos/agent/services/whatsapp-pairing";
+import type { Plugin } from "@elizaos/core";
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared/contracts/lifeops";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
@@ -15,128 +17,124 @@ import {
   type WhatsAppSendRequest,
 } from "./whatsapp-client.js";
 
-type ConnectorSetupServiceLike = {
-  getConfig(): Record<string, unknown>;
-  getWorkspaceDir?: () => string;
+type RuntimeWithPluginLifecycle = {
+  getPluginOwnership?: (pluginName: string) => { plugin: Plugin } | null;
+  registerPlugin?: (plugin: Plugin) => Promise<void>;
+  reloadPlugin?: (plugin: Plugin) => Promise<void>;
 };
 
 type WhatsAppRuntimeServiceLike = {
   connected?: boolean;
-  phoneNumber?: string | null;
-  config?: {
-    transport?: "baileys" | "cloudapi";
-    authDir?: string;
-    phoneNumberId?: string;
-  } | null;
+  sendMessage?: (message: {
+    type: "text";
+    to: string;
+    content: string;
+    replyToMessageId?: string;
+  }) => Promise<{ messages?: Array<{ id?: string }> }>;
 };
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : null;
+type LocalWhatsAppAuthState = {
+  authDir: string;
+  registered: boolean | null;
+};
+
+function readLocalWhatsAppAuthState(
+  authDir: string,
+): LocalWhatsAppAuthState | null {
+  const credsPath = path.join(authDir, "creds.json");
+  if (!fs.existsSync(credsPath)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(credsPath, "utf8")) as unknown;
+    if (parsed && typeof parsed === "object" && "registered" in parsed) {
+      const registered = (parsed as { registered?: unknown }).registered;
+      return {
+        authDir,
+        registered: typeof registered === "boolean" ? registered : null,
+      };
+    }
+    return { authDir, registered: null };
+  } catch {
+    return { authDir, registered: false };
+  }
 }
 
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : null;
-}
-
-function readRuntimeSetting(
-  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
-  key: string,
-): string | null {
-  const getter = runtime as typeof runtime & {
-    getSetting?: (settingKey: string) => unknown;
-  };
-  return (
-    nonEmptyString(getter.getSetting?.(key)) ?? nonEmptyString(process.env[key])
+function localWhatsAppAuthState(): LocalWhatsAppAuthState | null {
+  const workspaceDir = resolveDefaultAgentWorkspaceDir();
+  const lifeOpsAuth = readLocalWhatsAppAuthState(
+    path.join(workspaceDir, "lifeops-whatsapp-auth", "default"),
   );
-}
+  if (lifeOpsAuth) return lifeOpsAuth;
 
-function getConnectorSetupService(
-  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
-): ConnectorSetupServiceLike | null {
-  const service = runtime.getService("connector-setup");
-  if (!service || typeof service !== "object") {
-    return null;
-  }
-  const candidate = service as ConnectorSetupServiceLike;
-  return typeof candidate.getConfig === "function" ? candidate : null;
-}
-
-function readWhatsAppConfigAuthDir(
-  config: Record<string, unknown>,
-): string | null {
-  const connectors = asRecord(config.connectors);
-  const whatsapp = asRecord(connectors?.whatsapp);
-  if (!whatsapp) {
-    return null;
-  }
-
-  const directAuthDir =
-    nonEmptyString(whatsapp.authDir) ?? nonEmptyString(whatsapp.sessionPath);
-  if (directAuthDir) {
-    return directAuthDir;
-  }
-
-  const accounts = asRecord(whatsapp.accounts);
-  if (!accounts) {
-    return null;
-  }
-
-  for (const account of Object.values(accounts)) {
-    const accountConfig = asRecord(account);
-    if (!accountConfig || accountConfig.enabled === false) {
-      continue;
-    }
-    const accountAuthDir =
-      nonEmptyString(accountConfig.authDir) ??
-      nonEmptyString(accountConfig.sessionPath);
-    if (accountAuthDir) {
-      return accountAuthDir;
-    }
+  if (whatsappAuthExists(workspaceDir, "default")) {
+    return readLocalWhatsAppAuthState(
+      path.join(workspaceDir, "whatsapp-auth", "default"),
+    );
   }
 
   return null;
 }
 
-function whatsappAuthExists(authDir: string | null): boolean {
-  if (!authDir) {
-    return false;
-  }
-  return fs.existsSync(path.join(authDir, "creds.json"));
+function getWhatsAppRuntimeService(
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+): WhatsAppRuntimeServiceLike | null {
+  const service = runtime.getService(
+    "whatsapp",
+  ) as WhatsAppRuntimeServiceLike | null;
+  return service && typeof service === "object" ? service : null;
 }
 
-function resolveWhatsAppLocalAuthDir(args: {
-  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"];
-  setupService: ConnectorSetupServiceLike | null;
-  whatsappService: WhatsAppRuntimeServiceLike | null;
+function setWhatsAppRuntimeEnv(authDir: string): void {
+  process.env.WHATSAPP_AUTH_DIR = authDir;
+}
+
+async function ensureWhatsAppPluginLoaded(
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+): Promise<boolean> {
+  const runtimeWithLifecycle = runtime as typeof runtime &
+    RuntimeWithPluginLifecycle;
+  if (
+    typeof runtimeWithLifecycle.registerPlugin !== "function" &&
+    typeof runtimeWithLifecycle.reloadPlugin !== "function"
+  ) {
+    return false;
+  }
+
+  const mod = await import("@elizaos/plugin-whatsapp");
+  const plugin = (mod.default ?? (mod as { plugin?: Plugin }).plugin) as
+    | Plugin
+    | undefined;
+  if (!plugin) {
+    return false;
+  }
+
+  const existingOwnership =
+    typeof runtimeWithLifecycle.getPluginOwnership === "function"
+      ? runtimeWithLifecycle.getPluginOwnership("whatsapp")
+      : null;
+  if (
+    existingOwnership &&
+    typeof runtimeWithLifecycle.reloadPlugin === "function"
+  ) {
+    await runtimeWithLifecycle.reloadPlugin(plugin);
+    return true;
+  }
+
+  if (typeof runtimeWithLifecycle.registerPlugin === "function") {
+    await runtimeWithLifecycle.registerPlugin(plugin);
+    return true;
+  }
+
+  return false;
+}
+
+function messageIdFromWhatsAppResponse(result: {
+  messages?: Array<{ id?: string }>;
 }): string | null {
-  const serviceAuthDir = nonEmptyString(args.whatsappService?.config?.authDir);
-  if (serviceAuthDir) {
-    return serviceAuthDir;
-  }
-
-  const settingAuthDir =
-    readRuntimeSetting(args.runtime, "WHATSAPP_AUTH_DIR") ??
-    readRuntimeSetting(args.runtime, "WHATSAPP_SESSION_PATH") ??
-    readRuntimeSetting(args.runtime, "ELIZA_WHATSAPP_SESSION_PATH");
-  if (settingAuthDir) {
-    return settingAuthDir;
-  }
-
-  const configAuthDir = args.setupService
-    ? readWhatsAppConfigAuthDir(args.setupService.getConfig())
-    : null;
-  if (configAuthDir) {
-    return configAuthDir;
-  }
-
-  const workspaceDir = args.setupService?.getWorkspaceDir?.();
-  return workspaceDir
-    ? path.join(workspaceDir, "whatsapp-auth", "default")
-    : null;
+  const id = result.messages?.[0]?.id;
+  return typeof id === "string" && id.length > 0 ? id : null;
 }
 
 /** @internal */
@@ -146,47 +144,142 @@ export function withWhatsApp<TBase extends Constructor<LifeOpsServiceBase>>(
   class LifeOpsWhatsAppServiceMixin extends Base {
     async getWhatsAppConnectorStatus(): Promise<LifeOpsWhatsAppConnectorStatus> {
       const creds = readWhatsAppCredentialsFromEnv();
-      const whatsappService = this.runtime.getService(
-        "whatsapp",
-      ) as WhatsAppRuntimeServiceLike | null;
-      const setupService = getConnectorSetupService(this.runtime);
-      const localAuthDir = resolveWhatsAppLocalAuthDir({
-        runtime: this.runtime,
-        setupService,
-        whatsappService,
-      });
-      const localAuthExists = whatsappAuthExists(localAuthDir);
-      const serviceConnected = Boolean(whatsappService?.connected);
-      return {
+      const hasCloudCredentials = creds !== null;
+      const localAuth = localWhatsAppAuthState();
+      const authDir = localAuth?.authDir ?? null;
+      const hasLocalAuth = localAuth !== null;
+      const localAuthReady = Boolean(
+        localAuth && localAuth.registered !== false,
+      );
+      let pluginLoadError: string | null = null;
+
+      if (authDir && localAuthReady) {
+        setWhatsAppRuntimeEnv(authDir);
+        this.runtime.setSetting?.("WHATSAPP_AUTH_DIR", authDir, false);
+        if (!getWhatsAppRuntimeService(this.runtime)) {
+          try {
+            await ensureWhatsAppPluginLoaded(this.runtime);
+          } catch (error) {
+            pluginLoadError =
+              error instanceof Error ? error.message : String(error);
+          }
+        }
+      }
+
+      const runtimeService =
+        authDir && localAuthReady
+          ? getWhatsAppRuntimeService(this.runtime)
+          : null;
+      const serviceConnected = Boolean(runtimeService?.connected);
+      const localOutboundReady = Boolean(
+        runtimeService?.sendMessage && serviceConnected,
+      );
+      const outboundReady = hasCloudCredentials || localOutboundReady;
+      const inboundReady = hasCloudCredentials || serviceConnected;
+      const status: LifeOpsWhatsAppConnectorStatus = {
         provider: "whatsapp",
-        connected: creds !== null || localAuthExists || serviceConnected,
+        connected: outboundReady || inboundReady,
         inbound: true,
         ...(creds?.phoneNumberId ? { phoneNumberId: creds.phoneNumberId } : {}),
+        localAuthAvailable: hasLocalAuth,
+        localAuthRegistered: localAuth?.registered ?? null,
+        serviceConnected,
+        outboundReady,
+        inboundReady,
+        transport: hasCloudCredentials
+          ? "cloudapi"
+          : hasLocalAuth
+            ? "baileys"
+            : "unconfigured",
         lastCheckedAt: new Date().toISOString(),
       };
+
+      const degradations: NonNullable<
+        LifeOpsWhatsAppConnectorStatus["degradations"]
+      > = [];
+      if (localAuth?.registered === false) {
+        degradations.push({
+          axis: "delivery-degraded",
+          code: "local_auth_unregistered",
+          message:
+            "WhatsApp local credentials are present, but Baileys marks the session unregistered. Re-pair WhatsApp locally before send/receive can work.",
+          retryable: true,
+        });
+      } else if (!outboundReady && hasLocalAuth) {
+        degradations.push({
+          axis: "delivery-degraded",
+          code: "local_runtime_unavailable",
+          message:
+            "WhatsApp local auth is present, but the local WhatsApp runtime send service is not ready yet.",
+          retryable: true,
+        });
+      }
+      if (pluginLoadError) {
+        degradations.push({
+          axis: "delivery-degraded",
+          code: "local_runtime_unavailable",
+          message: pluginLoadError,
+          retryable: true,
+        });
+      }
+      if (degradations.length > 0) {
+        status.degradations = degradations;
+      }
+
+      return status;
     }
 
     async sendWhatsAppMessage(
       req: WhatsAppSendRequest,
     ): Promise<{ ok: true; messageId: string }> {
       const creds = readWhatsAppCredentialsFromEnv();
-      if (!creds) {
-        fail(
-          400,
-          "WhatsApp is not configured. Set ELIZA_WHATSAPP_ACCESS_TOKEN and ELIZA_WHATSAPP_PHONE_NUMBER_ID.",
-        );
-      }
-      try {
-        return await sendWhatsAppMessageRequest(creds, req);
-      } catch (error) {
-        if (error instanceof WhatsAppError) {
-          fail(
-            error.status >= 400 && error.status < 600 ? error.status : 502,
-            error.message,
-          );
+      if (creds) {
+        try {
+          return await sendWhatsAppMessageRequest(creds, req);
+        } catch (error) {
+          if (error instanceof WhatsAppError) {
+            fail(
+              error.status >= 400 && error.status < 600 ? error.status : 502,
+              error.message,
+            );
+          }
+          throw error;
         }
-        throw error;
       }
+
+      const localAuth = localWhatsAppAuthState();
+      const authDir =
+        localAuth && localAuth.registered !== false ? localAuth.authDir : null;
+      if (authDir) {
+        setWhatsAppRuntimeEnv(authDir);
+        this.runtime.setSetting?.("WHATSAPP_AUTH_DIR", authDir, false);
+        let runtimeService = getWhatsAppRuntimeService(this.runtime);
+        if (!runtimeService?.sendMessage) {
+          await ensureWhatsAppPluginLoaded(this.runtime);
+          runtimeService = getWhatsAppRuntimeService(this.runtime);
+        }
+
+        if (runtimeService?.sendMessage) {
+          const result = await runtimeService.sendMessage({
+            type: "text",
+            to: req.to,
+            content: req.text,
+            ...(req.replyToMessageId
+              ? { replyToMessageId: req.replyToMessageId }
+              : {}),
+          });
+          const messageId = messageIdFromWhatsAppResponse(result);
+          if (!messageId) {
+            fail(502, "WhatsApp local send did not return a message id.");
+          }
+          return { ok: true, messageId };
+        }
+      }
+
+      fail(
+        400,
+        "WhatsApp is not configured. Pair WhatsApp locally or set ELIZA_WHATSAPP_ACCESS_TOKEN and ELIZA_WHATSAPP_PHONE_NUMBER_ID.",
+      );
     }
 
     async ingestWhatsAppWebhook(

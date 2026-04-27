@@ -525,7 +525,8 @@ main{display:grid;grid-template-rows:auto 1fr auto;min-height:100vh}
     sessionId: params.get("sessionId") || "",
     token: params.get("token") || "",
     running: false,
-    timer: 0
+    timer: 0,
+    frameObjectUrl: ""
   };
   const dot = document.getElementById("dot");
   const status = document.getElementById("status");
@@ -569,28 +570,50 @@ main{display:grid;grid-template-rows:auto 1fr auto;min-height:100vh}
   function disconnect(label) {
     state.running = false;
     clearTimeout(state.timer);
+    if (state.frameObjectUrl) {
+      URL.revokeObjectURL(state.frameObjectUrl);
+      state.frameObjectUrl = "";
+    }
     frame.removeAttribute("src");
     frame.style.display = "none";
     empty.style.display = "block";
     setStatus(label, "");
   }
 
-  function loadFrame() {
-    if (!state.running) return;
-    const src = endpoint("/api/apps/screenshare/session/" + encodeURIComponent(state.sessionId) + "/frame?token=" + encodeURIComponent(state.token) + "&t=" + Date.now());
-    frame.src = src;
+  async function readErrorMessage(response) {
+    const body = await response.clone().json().catch(() => null);
+    if (body && typeof body.error === "string" && body.error.trim()) {
+      return body.error.trim();
+    }
+    const text = await response.text().catch(() => "");
+    return text.trim() || "Frame unavailable";
   }
 
-  frame.addEventListener("load", () => {
+  async function loadFrame() {
     if (!state.running) return;
-    setStatus("Streaming", "live");
-    state.timer = window.setTimeout(loadFrame, 500);
-  });
-  frame.addEventListener("error", () => {
-    if (!state.running) return;
-    setStatus("Frame unavailable", "err");
-    state.timer = window.setTimeout(loadFrame, 1500);
-  });
+    const src = endpoint("/api/apps/screenshare/session/" + encodeURIComponent(state.sessionId) + "/frame?token=" + encodeURIComponent(state.token) + "&t=" + Date.now());
+    try {
+      const response = await fetch(src, {
+        headers: { "X-Screenshare-Token": state.token }
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      const blob = await response.blob();
+      if (!state.running) return;
+      if (state.frameObjectUrl) {
+        URL.revokeObjectURL(state.frameObjectUrl);
+      }
+      state.frameObjectUrl = URL.createObjectURL(blob);
+      frame.src = state.frameObjectUrl;
+      setStatus("Streaming", "live");
+      state.timer = window.setTimeout(loadFrame, 500);
+    } catch (err) {
+      if (!state.running) return;
+      setStatus(err instanceof Error ? err.message : "Frame unavailable", "err");
+      state.timer = window.setTimeout(loadFrame, 1500);
+    }
+  }
 
   async function sendInput(payload) {
     if (!state.sessionId || !state.token) return;

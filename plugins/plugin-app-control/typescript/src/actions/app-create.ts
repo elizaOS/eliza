@@ -282,6 +282,63 @@ interface DispatchInput {
 	callback?: HandlerCallback;
 }
 
+interface TaskAgentStatus {
+	sessionId: string;
+	agentType: string;
+	workdir: string;
+	label: string;
+	status: string;
+	workspaceId?: string;
+	branch?: string;
+	error?: string;
+}
+
+type DispatchResult =
+	| { dispatched: true; agents: TaskAgentStatus[] }
+	| { dispatched: false; reason: string };
+
+function readStringField(
+	source: Record<string, unknown>,
+	key: string,
+): string | undefined {
+	const value = source[key];
+	return typeof value === "string" && value.trim().length > 0
+		? value
+		: undefined;
+}
+
+function readTaskAgents(result: ActionResult | undefined): TaskAgentStatus[] {
+	const agents = result?.data?.agents;
+	if (!Array.isArray(agents)) return [];
+
+	return agents.flatMap((agent): TaskAgentStatus[] => {
+		if (!agent || typeof agent !== "object" || Array.isArray(agent)) {
+			return [];
+		}
+		const record = agent as Record<string, unknown>;
+		const sessionId = readStringField(record, "sessionId");
+		const agentType = readStringField(record, "agentType");
+		const workdir = readStringField(record, "workdir");
+		const label = readStringField(record, "label");
+		const status = readStringField(record, "status");
+		if (!sessionId || !agentType || !workdir || !label || !status) {
+			return [];
+		}
+		return [
+			{
+				sessionId,
+				agentType,
+				workdir,
+				label,
+				status,
+				workspaceId: readStringField(record, "workspaceId"),
+				branch: readStringField(record, "branch"),
+				error: readStringField(record, "error"),
+			},
+		];
+	});
+}
+
 async function dispatchCodingAgent({
 	runtime,
 	prompt,
@@ -289,7 +346,7 @@ async function dispatchCodingAgent({
 	workdir,
 	appName,
 	callback,
-}: DispatchInput): Promise<{ dispatched: boolean; reason?: string }> {
+}: DispatchInput): Promise<DispatchResult> {
 	const createTask = runtime.actions?.find((a) => a.name === "CREATE_TASK");
 	if (!createTask) {
 		return { dispatched: false, reason: "CREATE_TASK action not registered" };
@@ -302,39 +359,52 @@ async function dispatchCodingAgent({
 		content: { text: prompt },
 	} as unknown as Memory;
 
-	const handlerOptions = {
+	const handlerOptions: HandlerOptions = {
 		parameters: {
 			task: prompt,
-			agentType: "claude",
 			label,
 			approvalPreset: "permissive",
+			validator: {
+				service: "app-verification",
+				method: "verifyApp",
+				params: { workdir, appName, profile: "full" },
+			},
+			onVerificationFail: "retry",
 		},
-		// Non-standard fields read by Agent E's CREATE_TASK extension. Passed
-		// through HandlerOptions because Agent E reads them off the same
-		// `options` arg the action handler receives.
-		workdir,
-		env: { ANTHROPIC_MODEL: "claude-opus-4-7" },
-		recommendedSkills: ["eliza-app-development", "elizaos", "eliza-cloud"],
-		validator: {
-			service: "app-verification",
-			method: "verifyApp",
-			params: { workdir, appName, profile: "full" as const },
-		},
-	} as unknown as HandlerOptions;
+	};
 
-	await createTask.handler(
+	const result = await createTask.handler(
 		runtime,
 		fakeMessage,
 		undefined,
 		handlerOptions,
 		callback,
 	);
+	if (!result?.success) {
+		return {
+			dispatched: false,
+			reason:
+				result?.text ??
+				(typeof result?.error === "string"
+					? result.error
+					: "CREATE_TASK failed to start"),
+		};
+	}
 
-	return { dispatched: true };
+	const agents = readTaskAgents(result);
+	if (agents.length === 0) {
+		return {
+			dispatched: false,
+			reason: "CREATE_TASK did not return a tracked task status",
+		};
+	}
+
+	return { dispatched: true, agents };
 }
 
 function buildCreatePrompt(
 	intent: string,
+	appName: string,
 	displayName: string,
 	workdir: string,
 ): string {
@@ -342,14 +412,19 @@ function buildCreatePrompt(
 		`You are building a brand-new Milady app called "${displayName}".`,
 		`The user's intent: ${intent}`,
 		"",
-		`The app's source lives in ${workdir} — already scaffolded from the min-app template.`,
-		"Read SCAFFOLD.md in the workdir for the directory layout and conventions.",
+		`The app source directory is ${workdir}. It has already been scaffolded from the min-app template.`,
+		"Work in that source directory, not in the task agent's scratch directory.",
+		"Read SCAFFOLD.md in the source directory for layout and conventions. The completion line below is canonical if SCAFFOLD.md disagrees.",
 		"Edit and add files as needed to implement the user's intent.",
 		"",
-		"When implementation is finished and `bun run typecheck`, `bun run lint`, and `bun run test` are clean, emit a final line of the form:",
-		`APP_CREATE_DONE {"name":"<kebab-name>","files":["<rel/path>","..."],"testsPassed":<n>,"lintClean":true}`,
+		"Before signaling completion, run these commands from the source directory in order:",
+		"1. bun run typecheck",
+		"2. bun run lint",
+		"3. bun run test",
 		"",
-		"Do not stop until verification passes. Do not skip tests.",
+		"After all three commands pass, emit exactly one completion line in this canonical schema:",
+		`APP_CREATE_DONE {"appName":"${appName}","files":["src/App.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}`,
+		"Use files changed or added relative to the source directory. Do not emit legacy fields such as name, testsPassed, or lintClean.",
 	].join("\n");
 }
 
@@ -366,8 +441,14 @@ function buildEditPrompt(
 		"Read SCAFFOLD.md or AGENTS.md in the workdir if present, otherwise read README.md.",
 		"Implement the requested change minimally — do not refactor unrelated code.",
 		"",
-		"When `bun run typecheck`, `bun run lint`, and `bun run test` are clean, emit a final line of the form:",
-		`APP_CREATE_DONE {"name":"${app.name}","files":["<rel/path>","..."],"testsPassed":<n>,"lintClean":true}`,
+		"Before signaling completion, run these commands from the source directory in order:",
+		"1. bun run typecheck",
+		"2. bun run lint",
+		"3. bun run test",
+		"",
+		"After all three commands pass, emit exactly one completion line in this canonical schema:",
+		`APP_CREATE_DONE {"appName":"${app.name}","files":["src/App.tsx"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}`,
+		"Use files changed or added relative to the source directory. Do not emit legacy fields such as name, testsPassed, or lintClean.",
 	].join("\n");
 }
 
@@ -510,7 +591,7 @@ async function createNewApp({
 		[DISPLAY_NAME_PLACEHOLDER]: displayName,
 	});
 
-	const prompt = buildCreatePrompt(intent, displayName, workdir);
+	const prompt = buildCreatePrompt(intent, name, displayName, workdir);
 	const dispatch = await dispatchCodingAgent({
 		runtime,
 		prompt,
@@ -520,20 +601,22 @@ async function createNewApp({
 		callback,
 	});
 
-	if (!dispatch.dispatched) {
+	if (dispatch.dispatched === false) {
 		const text = `Scaffolded ${displayName} at ${workdir}, but could not dispatch a coding agent: ${dispatch.reason}.`;
 		await callback?.({ text });
 		return {
 			success: false,
 			text,
 			values: { mode: "create", name, workdir },
+			data: { suppressActionResultClipboard: true },
 		};
 	}
 
-	const text = `Scaffolded ${displayName} at ${workdir} and spawned a coding agent in the background. I'll verify when it's done.`;
+	const task = dispatch.agents[0];
+	const text = `Started app create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification will run when it emits APP_CREATE_DONE.`;
 	await callback?.({ text });
 	logger.info(
-		`[plugin-app-control] APP/create new name=${name} workdir=${workdir} dir=${appDirName}`,
+		`[plugin-app-control] APP/create new name=${name} workdir=${workdir} dir=${appDirName} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
@@ -544,8 +627,17 @@ async function createNewApp({
 			name,
 			displayName,
 			workdir,
+			taskStatus: task.status,
+			taskSessionId: task.sessionId,
 		},
-		data: { name, displayName, workdir },
+		data: {
+			name,
+			displayName,
+			workdir,
+			task,
+			agents: dispatch.agents,
+			suppressActionResultClipboard: true,
+		},
 	};
 }
 
@@ -579,16 +671,21 @@ async function editExistingApp({
 		callback,
 	});
 
-	if (!dispatch.dispatched) {
+	if (dispatch.dispatched === false) {
 		const text = `Could not dispatch a coding agent to edit ${app.displayName}: ${dispatch.reason}.`;
 		await callback?.({ text });
-		return { success: false, text };
+		return {
+			success: false,
+			text,
+			data: { suppressActionResultClipboard: true },
+		};
 	}
 
-	const text = `Spawned a coding agent to edit ${app.displayName} at ${workdir}. I'll verify when it's done.`;
+	const task = dispatch.agents[0];
+	const text = `Started app edit task for ${app.displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}; verification will run when it emits APP_CREATE_DONE.`;
 	await callback?.({ text });
 	logger.info(
-		`[plugin-app-control] APP/create edit appName=${app.name} workdir=${workdir}`,
+		`[plugin-app-control] APP/create edit appName=${app.name} workdir=${workdir} session=${task.sessionId}`,
 	);
 	return {
 		success: true,
@@ -598,8 +695,16 @@ async function editExistingApp({
 			subMode: "edit",
 			name: app.name,
 			workdir,
+			taskStatus: task.status,
+			taskSessionId: task.sessionId,
 		},
-		data: { app, workdir },
+		data: {
+			app,
+			workdir,
+			task,
+			agents: dispatch.agents,
+			suppressActionResultClipboard: true,
+		},
 	};
 }
 

@@ -60,10 +60,12 @@ const ConnectorsPageView = lazyNamedView(
   () => import("../components/pages/ConnectorsPageView"),
   "ConnectorsPageView",
 );
+
 // Static import: PluginsPageView is statically imported by App.tsx and
 // AppWindowRenderer; a lazy() here can't move it into a separate chunk
 // and just adds a wasted Suspense boundary.
 import { PluginsPageView } from "../components/pages/PluginsPageView";
+
 const SettingsView = lazyNamedView(
   () => import("../components/pages/SettingsView"),
   "SettingsView",

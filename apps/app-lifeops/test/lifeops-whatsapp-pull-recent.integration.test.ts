@@ -4,18 +4,17 @@
  * Tests the peek-based pull method that mirrors the webhook parser without
  * draining the buffer. No live WhatsApp credentials are required — all tests
  * use the in-process inbound buffer directly.
- *
- * Set `SKIP_REASON` to skip all tests with a documented reason.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
+
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { LifeOpsService } from "../src/lifeops/service.js";
 import {
   drainWhatsAppInboundBuffer,
   parseAndBufferWhatsAppWebhookMessages,
 } from "../src/lifeops/whatsapp-client.js";
-import { LifeOpsService } from "../src/lifeops/service.js";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 function makeWebhookPayload(
@@ -27,6 +26,14 @@ function makeWebhookPayload(
         changes: [
           {
             value: {
+              metadata: {
+                display_phone_number: "+1 555 000 1111",
+                phone_number_id: "phone-pull",
+              },
+              contacts: messages.map((m) => ({
+                profile: { name: `WhatsApp ${m.from}` },
+                wa_id: m.from,
+              })),
               messages: messages.map((m) => ({
                 id: m.id,
                 from: m.from,
@@ -178,8 +185,15 @@ describe("Integration: WhatsApp pullWhatsAppRecent", () => {
     const msg = drained[0];
     expect(msg.id).toBe("wamid.shape.001");
     expect(msg.from).toBe("+15551110001");
+    expect(msg.channelId).toBe("+15551110001");
     expect(msg.type).toBe("text");
     expect(msg.text).toBe("Shape test");
     expect(typeof msg.timestamp).toBe("string");
+    expect(msg.metadata).toEqual({
+      displayPhoneNumber: "+1 555 000 1111",
+      phoneNumberId: "phone-pull",
+      contactName: "WhatsApp +15551110001",
+      waId: "+15551110001",
+    });
   });
 });

@@ -14,11 +14,11 @@ import {
   deriveOnboardingCredentialPersistencePlan,
   getDefaultStylePreset,
   getStylePresets,
-  type LinkedAccountsConfig,
+  type LinkedAccountFlagsConfig,
   migrateLegacyRuntimeConfig,
   normalizeCharacterLanguage,
   normalizeDeploymentTargetConfig,
-  normalizeLinkedAccountsConfig,
+  normalizeLinkedAccountFlagsConfig,
   normalizeOnboardingCredentialInputs,
   normalizeServiceRoutingConfig,
   type ServiceRoutingConfig,
@@ -327,8 +327,8 @@ export function deriveCompatOnboardingReplayBody(
   );
   const deploymentTarget: DeploymentTargetConfig | undefined =
     explicitDeploymentTarget ?? undefined;
-  const linkedAccounts: LinkedAccountsConfig | undefined =
-    normalizeLinkedAccountsConfig(body.linkedAccounts) ?? undefined;
+  const linkedAccounts: LinkedAccountFlagsConfig | undefined =
+    normalizeLinkedAccountFlagsConfig(body.linkedAccounts) ?? undefined;
   const serviceRouting: ServiceRoutingConfig | undefined =
     normalizeServiceRoutingConfig(body.serviceRouting) ?? undefined;
   const isCloudMode = deploymentTarget?.runtime === "cloud";

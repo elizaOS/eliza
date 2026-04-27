@@ -412,6 +412,7 @@ export interface MessageMetadata
 
 	/** Telegram-specific metadata */
 	telegram?: {
+		userId?: string | number;
 		chatId?: string | number;
 		messageId?: string;
 		threadId?: string | number;
@@ -487,7 +488,7 @@ export interface MessageMetadata
 	entityUserName?: string;
 	/** Whether the sender is a bot */
 	fromBot?: boolean;
-	/** Platform-specific sender ID (e.g., Telegram chat.id) */
+	/** Platform-specific sender ID */
 	fromId?: string | number;
 	/** Source entity UUID */
 	sourceId?: string;

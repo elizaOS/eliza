@@ -1,28 +1,29 @@
 /**
- * Real owner/admin role gating for the APP action.
+ * Real owner/admin role gating for the PLUGIN action.
  *
- * Mirrors `hasOwnerAccess` / `hasAdminAccess` from
- * `@elizaos/agent/security/access`, but only depends on `@elizaos/core` so
- * this plugin doesn't have to take a dep on `@elizaos/agent` (which would
- * create a layer cycle).
+ * Lives in core so other plugins (and the built-in pluginManagerCapability)
+ * can import it without taking a dep on `@elizaos/agent` (which would
+ * create a layer cycle — `@elizaos/agent` already depends on this
+ * capability).
  *
- * Behavior matches the canonical helper exactly:
+ * Behavior:
  *   - missing runtime/message context → allow (auth is handled elsewhere)
  *   - sender is the agent itself → allow
  *   - sender is the canonical owner → allow
- *   - otherwise: check the sender role and require `isOwner` (for owner
- *     gate) or `isOwner || isAdmin` (for admin gate)
+ *   - otherwise: check the sender role via `checkSenderRole` and require
+ *     `isOwner` (for owner gate) or `isOwner || isAdmin` (for admin gate)
  *
  * Role-checker functions are injectable so tests can substitute fakes
- * without monkey-patching the `@elizaos/core` module.
+ * without monkey-patching the module (bun's `mock.module` persists across
+ * test files in the same run, which would contaminate unrelated suites).
  */
 
 import {
 	checkSenderRole as defaultCheckSenderRole,
 	resolveCanonicalOwnerIdForMessage as defaultResolveCanonicalOwnerIdForMessage,
-	type IAgentRuntime,
-	type Memory,
-} from "@elizaos/core";
+} from "../../roles.ts";
+import type { Memory } from "../../types/memory.ts";
+import type { IAgentRuntime } from "../../types/runtime.ts";
 
 type SenderRole = { isOwner?: boolean; isAdmin?: boolean } | null | undefined;
 

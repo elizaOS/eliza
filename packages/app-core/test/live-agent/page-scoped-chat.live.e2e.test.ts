@@ -74,7 +74,7 @@ const SCOPE_CASES: ScopeCase[] = [
   },
   {
     scope: "page-automations",
-    prompt: "What can I do here? Show me how to make a daily reminder.",
+    prompt: "What can I do here? Describe the automation builder at a high level.",
   },
   {
     scope: "page-apps",

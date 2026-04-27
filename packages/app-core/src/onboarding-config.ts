@@ -2,7 +2,7 @@ import {
   buildDefaultElizaCloudServiceRouting,
   buildElizaCloudServiceRoute,
   type DeploymentTargetConfig,
-  type LinkedAccountsConfig,
+  type LinkedAccountFlagsConfig,
   normalizeOnboardingProviderId,
   type OnboardingCredentialInputs,
   type OnboardingLocalProviderId,
@@ -59,7 +59,7 @@ export interface OnboardingFeatureSetup {
 
 export interface BuildOnboardingRuntimeConfigResult {
   deploymentTarget: DeploymentTargetConfig;
-  linkedAccounts: LinkedAccountsConfig | undefined;
+  linkedAccounts: LinkedAccountFlagsConfig | undefined;
   serviceRouting: ServiceRoutingConfig | undefined;
   credentialInputs: OnboardingCredentialInputs | undefined;
   needsProviderSetup: boolean;
@@ -116,7 +116,7 @@ export function buildOnboardingRuntimeConfig(
   const actionPlannerModel = trimToUndefined(
     args.onboardingActionPlannerModel ?? "",
   );
-  const linkedAccounts: LinkedAccountsConfig = {};
+  const linkedAccounts: LinkedAccountFlagsConfig = {};
   const cloudApiKey = trimToUndefined(args.onboardingCloudApiKey);
   if (cloudApiKey) {
     linkedAccounts.elizacloud = {

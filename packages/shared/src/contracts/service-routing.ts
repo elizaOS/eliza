@@ -8,12 +8,89 @@ export type LinkedAccountSource =
   | "credentials"
   | "subscription";
 
-export type LinkedAccountConfig = {
+/**
+ * Legacy "is this provider linked" flag stored in `milady.json` under
+ * `linkedAccounts.{providerId}` (e.g. `linkedAccounts.elizacloud`).
+ *
+ * Predates the multi-account credential system. Kept for the
+ * config-on-disk shape — actual per-account credential records live
+ * in `~/.eliza/auth/{providerId}/{accountId}.json` (see
+ * `account-storage.ts`) and are surfaced via the richer
+ * {@link LinkedAccountConfig} below.
+ */
+export type LinkedAccountFlagConfig = {
   status?: LinkedAccountStatus;
   source?: LinkedAccountSource;
   userId?: string;
   organizationId?: string;
 };
+
+export type LinkedAccountFlagsConfig = Record<string, LinkedAccountFlagConfig>;
+
+/**
+ * Restricted set of provider IDs that can own multi-account credential
+ * records. Cloud-managed providers (`elizacloud`, etc.) use the legacy
+ * {@link LinkedAccountFlagConfig} flag instead.
+ */
+export type LinkedAccountProviderId =
+  | "anthropic-subscription"
+  | "openai-codex"
+  | "anthropic-api"
+  | "openai-api";
+
+export type LinkedAccountAccountSource = "oauth" | "api-key";
+
+export type LinkedAccountHealth =
+  | "ok"
+  | "rate-limited"
+  | "needs-reauth"
+  | "invalid"
+  | "unknown";
+
+export interface LinkedAccountHealthDetail {
+  /** epoch ms — when this state expires (e.g. rate-limit reset) */
+  until?: number;
+  lastError?: string;
+  /** epoch ms */
+  lastChecked?: number;
+}
+
+export interface LinkedAccountUsage {
+  /** 0–100, current 5h window (Anthropic) or primary window (Codex) */
+  sessionPct?: number;
+  /** 0–100, 7-day (Anthropic only) */
+  weeklyPct?: number;
+  /** epoch ms */
+  resetsAt?: number;
+  /** epoch ms — when this snapshot was last refreshed */
+  refreshedAt: number;
+}
+
+/**
+ * First-class linked-account record. One per credential set —
+ * surfaced by the accounts CRUD API (WS3) and the AccountPool service
+ * (WS2). The on-disk credential blob is intentionally not part of this
+ * type (callers consume it via `account-storage.ts`).
+ */
+export interface LinkedAccountConfig {
+  id: string;
+  providerId: LinkedAccountProviderId;
+  label: string;
+  source: LinkedAccountAccountSource;
+  enabled: boolean;
+  /** lower = higher priority */
+  priority: number;
+  /** epoch ms */
+  createdAt: number;
+  /** epoch ms */
+  lastUsedAt?: number;
+  health: LinkedAccountHealth;
+  healthDetail?: LinkedAccountHealthDetail;
+  usage?: LinkedAccountUsage;
+  organizationId?: string;
+  userId?: string;
+  email?: string;
+}
 
 export type LinkedAccountsConfig = Record<string, LinkedAccountConfig>;
 
@@ -26,10 +103,25 @@ export type ServiceCapability =
 
 export type ServiceTransport = "direct" | "cloud-proxy" | "remote";
 
+export type ServiceRouteAccountStrategy =
+  | "priority"
+  | "round-robin"
+  | "least-used"
+  | "quota-aware";
+
 export type ServiceRouteConfig = {
   backend?: string;
   transport?: ServiceTransport;
+  /**
+   * Backcompat shorthand for `accountIds: [accountId]`. Prefer
+   * `accountIds` for new callers; the runtime treats both forms as
+   * equivalent when only one of them is set.
+   */
   accountId?: string;
+  /** Pool of account IDs eligible to serve this capability. */
+  accountIds?: string[];
+  /** Default `"priority"` when `accountIds` has more than one entry. */
+  strategy?: ServiceRouteAccountStrategy;
   primaryModel?: string;
   nanoModel?: string;
   smallModel?: string;
@@ -206,9 +298,20 @@ function normalizeServiceTransport(
     : undefined;
 }
 
-export function normalizeLinkedAccountConfig(
+function normalizeServiceRouteAccountStrategy(
   value: unknown,
-): LinkedAccountConfig | null {
+): ServiceRouteAccountStrategy | undefined {
+  return value === "priority" ||
+    value === "round-robin" ||
+    value === "least-used" ||
+    value === "quota-aware"
+    ? value
+    : undefined;
+}
+
+export function normalizeLinkedAccountFlagConfig(
+  value: unknown,
+): LinkedAccountFlagConfig | null {
   const account = asRecord(value);
   if (!account) {
     return null;
@@ -231,18 +334,18 @@ export function normalizeLinkedAccountConfig(
   };
 }
 
-export function normalizeLinkedAccountsConfig(
+export function normalizeLinkedAccountFlagsConfig(
   value: unknown,
-): LinkedAccountsConfig | null {
+): LinkedAccountFlagsConfig | null {
   const accounts = asRecord(value);
   if (!accounts) {
     return null;
   }
 
-  const normalizedEntries: Array<[string, LinkedAccountConfig]> = [];
+  const normalizedEntries: Array<[string, LinkedAccountFlagConfig]> = [];
   for (const [accountId, accountValue] of Object.entries(accounts)) {
     const trimmedAccountId = accountId.trim();
-    const normalizedAccount = normalizeLinkedAccountConfig(accountValue);
+    const normalizedAccount = normalizeLinkedAccountFlagConfig(accountValue);
     if (!trimmedAccountId || !normalizedAccount) {
       continue;
     }
@@ -252,6 +355,186 @@ export function normalizeLinkedAccountsConfig(
   const normalized = Object.fromEntries(normalizedEntries);
 
   return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+/**
+ * @deprecated Use {@link normalizeLinkedAccountFlagConfig}. Retained
+ * as a re-export so older imports keep compiling during the WS1→WS3
+ * migration; will be removed once all callers move to the flag-typed
+ * helpers (still WS3).
+ */
+export const normalizeLinkedAccountConfig = normalizeLinkedAccountFlagConfig;
+
+/**
+ * @deprecated Use {@link normalizeLinkedAccountFlagsConfig}.
+ */
+export const normalizeLinkedAccountsConfig = normalizeLinkedAccountFlagsConfig;
+
+function isLinkedAccountProviderId(
+  value: unknown,
+): value is LinkedAccountProviderId {
+  return (
+    value === "anthropic-subscription" ||
+    value === "openai-codex" ||
+    value === "anthropic-api" ||
+    value === "openai-api"
+  );
+}
+
+function normalizeLinkedAccountAccountSource(
+  value: unknown,
+): LinkedAccountAccountSource | undefined {
+  return value === "oauth" || value === "api-key" ? value : undefined;
+}
+
+function normalizeLinkedAccountHealth(
+  value: unknown,
+): LinkedAccountHealth | undefined {
+  return value === "ok" ||
+    value === "rate-limited" ||
+    value === "needs-reauth" ||
+    value === "invalid" ||
+    value === "unknown"
+    ? value
+    : undefined;
+}
+
+function normalizeLinkedAccountHealthDetail(
+  value: unknown,
+): LinkedAccountHealthDetail | undefined {
+  const detail = asRecord(value);
+  if (!detail) return undefined;
+  const until =
+    typeof detail.until === "number" && Number.isFinite(detail.until)
+      ? detail.until
+      : undefined;
+  const lastError = readTrimmedString(detail, "lastError");
+  const lastChecked =
+    typeof detail.lastChecked === "number" &&
+    Number.isFinite(detail.lastChecked)
+      ? detail.lastChecked
+      : undefined;
+  if (until === undefined && !lastError && lastChecked === undefined) {
+    return undefined;
+  }
+  return {
+    ...(until !== undefined ? { until } : {}),
+    ...(lastError ? { lastError } : {}),
+    ...(lastChecked !== undefined ? { lastChecked } : {}),
+  };
+}
+
+function normalizeLinkedAccountUsage(
+  value: unknown,
+): LinkedAccountUsage | undefined {
+  const usage = asRecord(value);
+  if (!usage) return undefined;
+  const refreshedAt =
+    typeof usage.refreshedAt === "number" && Number.isFinite(usage.refreshedAt)
+      ? usage.refreshedAt
+      : undefined;
+  if (refreshedAt === undefined) return undefined;
+  const sessionPct =
+    typeof usage.sessionPct === "number" && Number.isFinite(usage.sessionPct)
+      ? usage.sessionPct
+      : undefined;
+  const weeklyPct =
+    typeof usage.weeklyPct === "number" && Number.isFinite(usage.weeklyPct)
+      ? usage.weeklyPct
+      : undefined;
+  const resetsAt =
+    typeof usage.resetsAt === "number" && Number.isFinite(usage.resetsAt)
+      ? usage.resetsAt
+      : undefined;
+  return {
+    refreshedAt,
+    ...(sessionPct !== undefined ? { sessionPct } : {}),
+    ...(weeklyPct !== undefined ? { weeklyPct } : {}),
+    ...(resetsAt !== undefined ? { resetsAt } : {}),
+  };
+}
+
+export function normalizeLinkedAccountRecord(
+  value: unknown,
+): LinkedAccountConfig | null {
+  const record = asRecord(value);
+  if (!record) return null;
+
+  const id = readTrimmedString(record, "id");
+  const providerId = isLinkedAccountProviderId(record.providerId)
+    ? record.providerId
+    : null;
+  const label = readTrimmedString(record, "label");
+  const source = normalizeLinkedAccountAccountSource(record.source);
+  const createdAt =
+    typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
+      ? record.createdAt
+      : null;
+  const enabled = typeof record.enabled === "boolean" ? record.enabled : null;
+  const priority =
+    typeof record.priority === "number" && Number.isFinite(record.priority)
+      ? record.priority
+      : null;
+  const health = normalizeLinkedAccountHealth(record.health);
+
+  if (
+    !id ||
+    !providerId ||
+    !label ||
+    !source ||
+    createdAt === null ||
+    enabled === null ||
+    priority === null ||
+    !health
+  ) {
+    return null;
+  }
+
+  const lastUsedAt =
+    typeof record.lastUsedAt === "number" && Number.isFinite(record.lastUsedAt)
+      ? record.lastUsedAt
+      : undefined;
+  const healthDetail = normalizeLinkedAccountHealthDetail(record.healthDetail);
+  const usage = normalizeLinkedAccountUsage(record.usage);
+  const organizationId = readTrimmedString(record, "organizationId");
+  const userId = readTrimmedString(record, "userId");
+  const email = readTrimmedString(record, "email");
+
+  return {
+    id,
+    providerId,
+    label,
+    source,
+    enabled,
+    priority,
+    createdAt,
+    health,
+    ...(lastUsedAt !== undefined ? { lastUsedAt } : {}),
+    ...(healthDetail ? { healthDetail } : {}),
+    ...(usage ? { usage } : {}),
+    ...(organizationId ? { organizationId } : {}),
+    ...(userId ? { userId } : {}),
+    ...(email ? { email } : {}),
+  };
+}
+
+export function normalizeLinkedAccountsRecords(
+  value: unknown,
+): LinkedAccountsConfig | null {
+  const records = asRecord(value);
+  if (!records) return null;
+
+  const out: LinkedAccountsConfig = {};
+  for (const [id, raw] of Object.entries(records)) {
+    const trimmedId = id.trim();
+    if (!trimmedId) continue;
+    const normalized = normalizeLinkedAccountRecord(raw);
+    if (!normalized) continue;
+    if (normalized.id !== trimmedId) continue;
+    out[trimmedId] = normalized;
+  }
+
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 export function normalizeServiceRouteConfig(
@@ -265,6 +548,20 @@ export function normalizeServiceRouteConfig(
   const backend = readTrimmedString(route, "backend");
   const transport = normalizeServiceTransport(route.transport);
   const accountId = readTrimmedString(route, "accountId");
+  const accountIdsRaw = Array.isArray(route.accountIds)
+    ? (route.accountIds as unknown[])
+    : null;
+  const accountIds = accountIdsRaw
+    ? Array.from(
+        new Set(
+          accountIdsRaw
+            .filter((entry): entry is string => typeof entry === "string")
+            .map((entry) => entry.trim())
+            .filter((entry) => entry.length > 0),
+        ),
+      )
+    : undefined;
+  const strategy = normalizeServiceRouteAccountStrategy(route.strategy);
   const primaryModel = readTrimmedString(route, "primaryModel");
   const nanoModel = readTrimmedString(route, "nanoModel");
   const smallModel = readTrimmedString(route, "smallModel");
@@ -286,6 +583,8 @@ export function normalizeServiceRouteConfig(
     !backend &&
     !transport &&
     !accountId &&
+    (!accountIds || accountIds.length === 0) &&
+    !strategy &&
     !primaryModel &&
     !nanoModel &&
     !smallModel &&
@@ -307,6 +606,8 @@ export function normalizeServiceRouteConfig(
     ...(backend ? { backend } : {}),
     ...(transport ? { transport } : {}),
     ...(accountId ? { accountId } : {}),
+    ...(accountIds && accountIds.length > 0 ? { accountIds } : {}),
+    ...(strategy ? { strategy } : {}),
     ...(primaryModel ? { primaryModel } : {}),
     ...(nanoModel ? { nanoModel } : {}),
     ...(smallModel ? { smallModel } : {}),

@@ -153,11 +153,9 @@ export interface LifeOpsScheduleInsightRecord extends LifeOpsScheduleInsight {
   updatedAt: string;
 }
 
-export interface LifeOpsScheduleObservationRecord
-  extends LifeOpsScheduleObservation {}
+export interface LifeOpsScheduleObservationRecord extends LifeOpsScheduleObservation {}
 
-export interface LifeOpsScheduleMergedStateRecord
-  extends LifeOpsScheduleMergedState {}
+export interface LifeOpsScheduleMergedStateRecord extends LifeOpsScheduleMergedState {}
 
 export type LifeOpsPersistedSleepEpisodeSource =
   | LifeOpsSleepCycleEvidence["source"]
@@ -1725,6 +1723,32 @@ function parseDossier(row: Record<string, unknown>): LifeOpsDossier {
   };
 }
 
+function isMissingInboxCacheTableError(error: unknown): boolean {
+  const message = errorMessagesWithCauses(error).join("\n");
+  return /no such table: life_inbox_messages|relation ["']?life_inbox_messages["']? does not exist|undefined table/i.test(
+    message,
+  );
+}
+
+function errorMessagesWithCauses(error: unknown): string[] {
+  const messages: string[] = [];
+  let current: unknown = error;
+  while (current && typeof current === "object") {
+    if (current instanceof Error) {
+      messages.push(current.message);
+    }
+    const cause = (current as { cause?: unknown }).cause;
+    if (!cause || cause === current) {
+      break;
+    }
+    current = cause;
+  }
+  if (messages.length === 0) {
+    messages.push(String(error));
+  }
+  return messages;
+}
+
 export class LifeOpsRepository {
   /**
    * Per-agent counter for telemetry-mirror failures inside
@@ -1768,6 +1792,69 @@ export class LifeOpsRepository {
         force: process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true",
         dryRun: false,
       },
+    );
+    await LifeOpsRepository.ensureActivitySignalColumns(runtime);
+    await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
+  }
+
+  static async ensureActivitySignalColumns(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT ''",
+    );
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS idle_state TEXT",
+    );
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS idle_time_seconds INTEGER",
+    );
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS on_battery BOOLEAN",
+    );
+    await executeRawSql(
+      runtime,
+      "CREATE INDEX IF NOT EXISTS idx_life_activity_signals_agent ON life_activity_signals (agent_id, observed_at)",
+    );
+  }
+
+  static async ensureInboxCacheIndexes(runtime: IAgentRuntime): Promise<void> {
+    try {
+      await executeRawSql(
+        runtime,
+        "SELECT 1 FROM life_inbox_messages WHERE 1=0",
+      );
+    } catch (error) {
+      if (isMissingInboxCacheTableError(error)) {
+        return;
+      }
+      throw error;
+    }
+
+    await executeRawSql(
+      runtime,
+      `DELETE FROM life_inbox_messages
+        WHERE id IN (
+          SELECT id
+            FROM (
+              SELECT id,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY agent_id, channel, external_id
+                       ORDER BY updated_at DESC, cached_at DESC, id DESC
+                     ) AS row_number
+                FROM life_inbox_messages
+            ) ranked
+           WHERE row_number > 1
+        )`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_inbox_messages_agent_channel_external
+         ON life_inbox_messages (agent_id, channel, external_id)`,
     );
   }
 

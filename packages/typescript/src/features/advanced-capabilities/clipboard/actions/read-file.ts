@@ -182,6 +182,7 @@ export const readFileAction: Action = {
 	similes: ["OPEN_FILE", "LOAD_FILE"],
 	description:
 		"Read a local text file for the current task. Returns the file content so the agent can reference it. Set addToClipboard=true to keep the read result in bounded task clipboard state.",
+	suppressPostActionContinuation: true,
 	validate: async (_runtime, message) => {
 		if (
 			typeof message.content.filePath === "string" ||
@@ -251,8 +252,10 @@ export const readFileAction: Action = {
 				success: true,
 				text: responseText,
 				data: {
+					actionName: "READ_FILE",
 					...result,
 					clipboard: clipboardResult,
+					suppressActionResultClipboard: clipboardResult.requested,
 				},
 			};
 		} catch (error) {
@@ -270,6 +273,7 @@ export const readFileAction: Action = {
 				success: false,
 				text: "Failed to read file",
 				error: errorMessage,
+				data: { actionName: "READ_FILE" },
 			};
 		}
 	},

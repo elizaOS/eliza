@@ -8,7 +8,10 @@ import {
   isRoutePaymentWrapped,
 } from "../../middleware/x402/payment-wrapper.ts";
 import { readJsonBody } from "../http-helpers.ts";
-import { tryHandleRuntimePluginRoute } from "../runtime-plugin-routes.ts";
+import {
+  isPublicRuntimePluginRoute,
+  tryHandleRuntimePluginRoute,
+} from "../runtime-plugin-routes.ts";
 
 function captureResponseBody(res: ServerResponse): { text: Promise<string> } {
   const chunks: string[] = [];
@@ -40,6 +43,39 @@ function captureResponseBody(res: ServerResponse): { text: Promise<string> } {
 describe("tryHandleRuntimePluginRoute + x402", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+  });
+
+  it("identifies public runtime plugin routes before the global API auth gate", () => {
+    const runtime = {
+      routes: [
+        {
+          type: "GET",
+          path: "/api/lifeops/connectors/x/success",
+          public: true,
+          handler: async () => undefined,
+        },
+        {
+          type: "POST",
+          path: "/api/lifeops/connectors/x/start",
+          handler: async () => undefined,
+        },
+      ],
+    } as unknown as AgentRuntime;
+
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "GET",
+        pathname: "/api/lifeops/connectors/x/success",
+      }),
+    ).toBe(true);
+    expect(
+      isPublicRuntimePluginRoute({
+        runtime,
+        method: "POST",
+        pathname: "/api/lifeops/connectors/x/start",
+      }),
+    ).toBe(false);
   });
 
   it("parses JSON request bodies before dispatching plugin routes", async () => {

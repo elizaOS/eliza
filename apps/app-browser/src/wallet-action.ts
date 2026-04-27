@@ -28,10 +28,10 @@ type StewardApprovalRequest = {
 };
 
 const ADDRESS_RE = /\b0x[a-fA-F0-9]{40}\b/;
-const CHAIN_ID_RE = /\bchain(?:\s*id)?\s*:?\s*(\d+)\b/i;
-const DATA_RE = /\b(?:data|calldata)\s*:?\s*(0x[a-fA-F0-9]+)\b/i;
+const CHAIN_ID_RE = /\bchain(?:[ \t]{0,4}id)?[ \t]{0,4}:?[ \t]{0,4}(\d+)\b/i;
+const DATA_RE = /\b(?:data|calldata)[ \t]{0,4}:?[ \t]{0,4}(0x[a-fA-F0-9]+)\b/i;
 const TX_ID_RE = /\b(tx[\w:-]+)\b/i;
-const VALUE_RE = /\bvalue(?:\s*\(wei\))?\s*:?\s*(\d+)\b/i;
+const VALUE_RE = /\bvalue(?:[ \t]{0,4}\(wei\))?[ \t]{0,4}:?[ \t]{0,4}(\d+)\b/i;
 
 const MAX_MESSAGE_TEXT_LENGTH = 8192;
 
@@ -141,8 +141,8 @@ function parseApprovalRequest(
   }
 
   const reasonFromParams = normalizeString(params.reason);
-  const reasonMatch = text.match(/\breason\s*:?\s*(.+)$/i);
-  const becauseMatch = text.match(/\bbecause\s+(.+)$/i);
+  const reasonMatch = text.match(/\breason[ \t]{0,4}:?[ \t]{0,4}(.+)$/i);
+  const becauseMatch = text.match(/\bbecause[ \t]{1,4}(.+)$/i);
 
   return {
     txId,

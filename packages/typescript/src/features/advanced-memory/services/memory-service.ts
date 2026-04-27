@@ -1,3 +1,7 @@
+import {
+	getRelatedEntityIds,
+	resolvePrimaryEntityId,
+} from "../../../identity-clusters.ts";
 import { logger } from "../../../logger.ts";
 import {
 	type IAgentRuntime,
@@ -27,6 +31,13 @@ const TEXT_GENERATION_MODEL_TYPES = new Set<TextGenerationModelType>([
 	ModelType.TEXT_REASONING_LARGE,
 	ModelType.TEXT_COMPLETION,
 ]);
+
+function memoryCreatedAtMs(memory: LongTermMemory): number {
+	const value = memory.createdAt;
+	const timestamp =
+		value instanceof Date ? value.getTime() : new Date(value).getTime();
+	return Number.isFinite(timestamp) ? timestamp : 0;
+}
 
 function resolveConfiguredTextGenerationModelType(
 	value: string | boolean | number | null,
@@ -382,9 +393,13 @@ export class MemoryService extends Service {
 			"id" | "createdAt" | "updatedAt" | "accessCount"
 		>,
 	): Promise<LongTermMemory> {
+		const entityId = await resolvePrimaryEntityId(
+			this.runtime,
+			memory.entityId,
+		);
 		const stored = await (
 			await this.requireStorage("store long-term memory")
-		).storeLongTermMemory(memory);
+		).storeLongTermMemory({ ...memory, entityId });
 		logger.info(
 			{ src: "service:memory" },
 			`Stored long-term memory: ${stored.category} for entity ${stored.entityId}`,
@@ -400,10 +415,20 @@ export class MemoryService extends Service {
 		if (limit <= 0) return [];
 		const storage = await this.getStorage();
 		if (!storage) return [];
-		return storage.getLongTermMemories(this.runtime.agentId, entityId, {
-			category,
-			limit,
-		});
+		const entityIds = await getRelatedEntityIds(this.runtime, entityId);
+		const memories = (
+			await Promise.all(
+				entityIds.map((relatedEntityId) =>
+					storage.getLongTermMemories(this.runtime.agentId, relatedEntityId, {
+						category,
+						limit,
+					}),
+				),
+			)
+		).flat();
+		return memories
+			.sort((left, right) => memoryCreatedAtMs(right) - memoryCreatedAtMs(left))
+			.slice(0, limit);
 	}
 
 	async updateLongTermMemory(

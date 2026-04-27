@@ -25,6 +25,7 @@ export const resetSessionAction: Action = {
 	similes: ["CLEAR_HISTORY", "NEW_SESSION", "FORGET", "START_OVER", "RESET"],
 	description:
 		"Resets the conversation session by creating a compaction point. Messages before this point will not be included in future context. Use when the user wants to start fresh or clear conversation history.",
+	suppressPostActionContinuation: true,
 
 	validate: async (
 		runtime: IAgentRuntime,

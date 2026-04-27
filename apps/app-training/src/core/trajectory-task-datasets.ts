@@ -173,8 +173,21 @@ function clampTrajectoryText(text: string): string {
 }
 
 function stripContextRoutingPrompt(prompt: string): string {
-  return clampTrajectoryText(prompt)
-    .replace(/\ncontext_routing:[\s\S]*?\ndecision_note:/m, "\ndecision_note:")
+  const clamped = clampTrajectoryText(prompt);
+  // Find first context_routing: and the next decision_note: after it via
+  // string indexOf to avoid polynomial backtracking on inputs containing
+  // many repeated 'context_routing:' segments.
+  const startMarker = "\ncontext_routing:";
+  const endMarker = "\ndecision_note:";
+  let stripped = clamped;
+  const startIdx = stripped.indexOf(startMarker);
+  if (startIdx !== -1) {
+    const endIdx = stripped.indexOf(endMarker, startIdx + startMarker.length);
+    if (endIdx !== -1) {
+      stripped = stripped.slice(0, startIdx) + stripped.slice(endIdx);
+    }
+  }
+  return stripped
     .replace(/\n- primaryContext:[^\n]*/g, "")
     .replace(/\n- secondaryContexts:[^\n]*/g, "")
     .replace(/\n- evidenceTurnIds:[^\n]*/g, "")

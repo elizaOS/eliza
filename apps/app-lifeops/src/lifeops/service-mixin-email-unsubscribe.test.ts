@@ -1,5 +1,5 @@
 import type { LifeOpsConnectorGrant } from "@elizaos/app-lifeops/contracts";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "./service.js";
 
 function runtime() {
@@ -51,6 +51,10 @@ function subscriptionHeader(id: string, fromEmail: string) {
 }
 
 describe("LifeOps email subscription scan", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("scans every cloud-managed Gmail grant using cloud connection ids", async () => {
     const service = new LifeOpsService(runtime());
     vi.spyOn(service.repository, "listConnectorGrants").mockResolvedValue([
@@ -80,5 +84,51 @@ describe("LifeOps email subscription scan", () => {
     ]);
     expect(result.summary.scannedMessageCount).toBe(2);
     expect(result.summary.uniqueSenderCount).toBe(2);
+  });
+
+  it("unsubscribes cloud-managed Gmail senders without Gmail manage scopes", async () => {
+    const service = new LifeOpsService(runtime());
+    const grant = cloudGrant(
+      "grant-1",
+      "cloud-connection-1",
+      "one@example.test",
+    );
+    vi.spyOn(service, "requireGoogleGmailGrant").mockResolvedValue(grant);
+    vi.spyOn(
+      service.googleManagedClient,
+      "getGmailSubscriptionHeaders",
+    ).mockResolvedValue({
+      headers: [subscriptionHeader("medium", "newsletters@medium.com")],
+      syncedAt: "2026-04-22T12:00:00.000Z",
+    });
+    const createRecord = vi
+      .spyOn(service.repository, "createEmailUnsubscribe")
+      .mockResolvedValue();
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("", { status: 200 }));
+
+    const result = await service.unsubscribeEmailSender(
+      new URL("http://localhost/api/lifeops/email-unsubscribe/unsubscribe"),
+      {
+        senderEmail: "newsletters@medium.com",
+        confirmed: true,
+      },
+    );
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://example.test/unsubscribe/medium",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(result.record.status).toBe("succeeded");
+    expect(result.record.filterCreated).toBe(false);
+    expect(createRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        senderEmail: "newsletters@medium.com",
+        method: "http_one_click",
+        status: "succeeded",
+        filterCreated: false,
+      }),
+    );
   });
 });

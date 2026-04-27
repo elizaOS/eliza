@@ -43,6 +43,7 @@ export const scheduleFollowUpAction: Action = {
 	description: spec.description,
 	similes: spec.similes ? [...spec.similes] : [],
 	examples: (spec.examples ?? []) as ActionExample[][],
+	suppressPostActionContinuation: true,
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -206,6 +207,7 @@ export const scheduleFollowUpAction: Action = {
 				taskId: task.id ?? "",
 			},
 			data: {
+				actionName: "SCHEDULE_FOLLOW_UP",
 				contactId: entityId,
 				contactName: resolvedContactName,
 				scheduledAt: scheduledAt.toISOString(),

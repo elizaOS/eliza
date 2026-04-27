@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { listContacts } from "../src/actions/listContacts";
 import { readRecentMessages } from "../src/actions/readRecentMessages";
 import { sendMessage } from "../src/actions/sendMessage";
+import { sendReaction } from "../src/actions/sendReaction";
 import { SignalService } from "../src/service";
 
 function createMessage(text: string, source = "dashboard"): Memory {
@@ -41,6 +42,92 @@ describe("@elizaos/plugin-signal action validation", () => {
     const message = createMessage("Show me my Signal contacts");
 
     await expect(listContacts.validate(runtime, message)).resolves.toBe(true);
+  });
+});
+
+describe("@elizaos/plugin-signal terminal actions", () => {
+  it("does not callback a generic success message after sending", async () => {
+    const service = {
+      isServiceConnected: vi.fn(() => true),
+      sendMessage: vi.fn(async () => ({ timestamp: 123 })),
+    };
+    const runtime = {
+      ...createRuntime(service),
+      getRoom: vi.fn(async () => ({
+        channelId: "+15551234567",
+        metadata: {},
+      })),
+      useModel: vi.fn(async () => JSON.stringify({ text: "Hello", recipient: "current" })),
+      logger: { debug: vi.fn() },
+    } as unknown as IAgentRuntime;
+    const callback = vi.fn(async () => []);
+
+    const result = await sendMessage.handler(
+      runtime,
+      createMessage("Reply on Signal"),
+      { values: {}, data: {}, text: "" },
+      undefined,
+      callback
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          timestamp: 123,
+          recipient: "+15551234567",
+          suppressVisibleCallback: true,
+          suppressActionResultClipboard: true,
+        }),
+      })
+    );
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("does not callback a generic success message after reacting", async () => {
+    const service = {
+      isServiceConnected: vi.fn(() => true),
+      sendReaction: vi.fn(async () => undefined),
+    };
+    const runtime = {
+      ...createRuntime(service),
+      getRoom: vi.fn(async () => ({
+        channelId: "+15551234567",
+        metadata: {},
+      })),
+      useModel: vi.fn(async () =>
+        JSON.stringify({
+          emoji: "👍",
+          targetTimestamp: 123,
+          targetAuthor: "+15557654321",
+          remove: false,
+        })
+      ),
+    } as unknown as IAgentRuntime;
+    const callback = vi.fn(async () => []);
+
+    const result = await sendReaction.handler(
+      runtime,
+      createMessage("React on Signal", "signal"),
+      { values: {}, data: {}, text: "" },
+      undefined,
+      callback
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          emoji: "👍",
+          targetTimestamp: 123,
+          targetAuthor: "+15557654321",
+          action: "added",
+          suppressVisibleCallback: true,
+          suppressActionResultClipboard: true,
+        }),
+      })
+    );
+    expect(callback).not.toHaveBeenCalled();
   });
 });
 

@@ -277,7 +277,7 @@ function cleanBundledCounterparty(value: string): string {
 export function extractBundledMeetingCounterparties(
   messageText: string,
 ): string[] {
-  const trimmed = messageText.trim().slice(0, 10_000);
+  const trimmed = messageText.trim().slice(0, 4096);
   if (trimmed.length === 0) {
     return [];
   }

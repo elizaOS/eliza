@@ -123,7 +123,7 @@ function selectSurface(params: Record<string, unknown>): ComputerUseSurface {
 
   if (
     readNormalizedStringParam(params, "path") ||
-    ["read", "write", "list", "delete", "move", "copy", "file"].includes(action)
+    ["read", "write", "list", "delete", "move", "copy", "mkdir", "file"].includes(action)
   ) {
     return "file";
   }

@@ -2178,7 +2178,7 @@ async function completeLocalProviderOnboarding(page: Page) {
     (await pageContainsText(page, LIVE_PROVIDER_LABEL));
 
   if (!alreadyOnProviderGrid) {
-    await waitForAnyText(page, ["Continue", "Chen"], 60_000);
+    await waitForAnyText(page, ["Continue", "Eliza"], 60_000);
     await clickAnyText(page, ["Continue"]);
   }
   await waitForAnyText(
