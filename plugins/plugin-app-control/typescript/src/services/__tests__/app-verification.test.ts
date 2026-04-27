@@ -180,10 +180,8 @@ describe("AppVerificationService.verifyApp (fast profile)", () => {
 			requireStructuredProof: true,
 			structuredProof: {
 				kind: "APP_CREATE_DONE",
-				name: "fixture-app",
+				appName: "fixture-app",
 				files: ["src/index.ts", "package.json"],
-				testsPassed: 2,
-				lintClean: true,
 				typecheck: "ok",
 				lint: "ok",
 				tests: { passed: 2, failed: 0 },
@@ -195,6 +193,51 @@ describe("AppVerificationService.verifyApp (fast profile)", () => {
 		expect(test?.testSummary).toEqual({ passed: 2, failed: 0 });
 		const proof = result.checks.find((c) => c.kind === "structured-proof");
 		expect(proof?.passed).toBe(true);
+	}, 30_000);
+
+	it("rejects legacy structured proof fields", async () => {
+		const workdir = mkdtempSync(path.join(tmpdir(), "verify-proof-legacy-"));
+		mkdirSync(path.join(workdir, "src"));
+		writeFileSync(
+			path.join(workdir, "src", "index.ts"),
+			"export const ok = true;\n",
+		);
+		const passShim = makeNodeShim(workdir, 0, "ok\n");
+		const testShim = makeNodeShim(
+			workdir,
+			0,
+			" Test Files  1 passed (1)\n      Tests  1 passed (1)\n",
+		);
+		writePackage(workdir, {
+			typecheck: nodeCommand(passShim),
+			lint: nodeCommand(passShim),
+			test: nodeCommand(testShim),
+		});
+
+		const result = await service.verifyApp({
+			workdir,
+			checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
+			runId: "proof-legacy-fixture",
+			packageManager: "npm",
+			requireStructuredProof: true,
+			structuredProof: {
+				kind: "APP_CREATE_DONE",
+				name: "fixture-app",
+				appName: "fixture-app",
+				files: ["src/index.ts"],
+				testsPassed: 1,
+				lintClean: true,
+				typecheck: "ok",
+				lint: "ok",
+				tests: { passed: 1, failed: 0 },
+			},
+		});
+
+		expect(result.verdict).toBe("fail");
+		const proof = result.checks.find((c) => c.kind === "structured-proof");
+		expect(proof?.output).toContain("legacy field name");
+		expect(proof?.output).toContain("legacy field testsPassed");
+		expect(proof?.output).toContain("legacy field lintClean");
 	}, 30_000);
 
 	it("fails structured proof when claimed files are missing or empty", async () => {
@@ -221,10 +264,8 @@ describe("AppVerificationService.verifyApp (fast profile)", () => {
 			requireStructuredProof: true,
 			structuredProof: {
 				kind: "APP_CREATE_DONE",
-				name: "fixture-app",
+				appName: "fixture-app",
 				files: ["src/empty.ts", "src/missing.ts"],
-				testsPassed: 1,
-				lintClean: true,
 				typecheck: "ok",
 				lint: "ok",
 				tests: { passed: 1, failed: 0 },
@@ -260,10 +301,8 @@ describe("AppVerificationService.verifyApp (fast profile)", () => {
 			requireStructuredProof: true,
 			structuredProof: {
 				kind: "APP_CREATE_DONE",
-				name: "fixture-app",
+				appName: "fixture-app",
 				files: ["src/index.ts"],
-				testsPassed: 1,
-				lintClean: true,
 				typecheck: "ok",
 				lint: "ok",
 				tests: { passed: 1, failed: 0 },
