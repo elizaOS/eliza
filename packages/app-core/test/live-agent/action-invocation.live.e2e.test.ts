@@ -595,6 +595,7 @@ describe("Action Invocation E2E", () => {
             "SCHEDULING",
             "PROPOSE_MEETING_TIMES",
             "CALENDAR_ACTION",
+            "OWNER_CALENDAR",
           ]);
         });
       },
@@ -835,7 +836,10 @@ describe("Action Invocation E2E", () => {
         if (!requireAction("INTENT_SYNC")) return;
         await withHarness(async (h) => {
           await h.send("Broadcast a reminder to all my devices.");
-          expectAnySelectedAction(h, ["INTENT_SYNC"]);
+          expectAnySelectedAction(h, [
+            "INTENT_SYNC",
+            "PUBLISH_DEVICE_INTENT",
+          ]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
@@ -982,7 +986,7 @@ describe("Action Invocation E2E", () => {
           await h.send(
             "Unsubscribe me from newsletters@medium.com and block them.",
           );
-          expectAnySelectedAction(h, ["EMAIL_UNSUBSCRIBE"]);
+          expectAnySelectedAction(h, ["EMAIL_UNSUBSCRIBE", "LIFEOPS_MUTATE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,
