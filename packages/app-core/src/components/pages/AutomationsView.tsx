@@ -75,7 +75,11 @@ import {
   type WorkbenchTask,
 } from "../../api/client";
 import { useWorkflowGenerationState } from "../../hooks/useWorkflowGenerationState";
-import { useApp } from "../../state";
+import {
+  dispatchFocusConnector,
+  providerFromCredType,
+  useApp,
+} from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 // Direct sub-path import: `widgets/index.ts` re-exports `WidgetHost` while
@@ -5287,6 +5291,9 @@ function AutomationsLayout() {
                       variant="outline"
                       onClick={() => {
                         setTab("settings");
+                        dispatchFocusConnector(
+                          providerFromCredType(cred.credType),
+                        );
                         setMissingCredentials(null);
                       }}
                     >
