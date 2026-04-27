@@ -173,11 +173,11 @@ export const updateRoleAction: ElizaAction = {
 			await callback?.({
 				text: "I couldn't find the world. This action only works in a world.",
 			});
-				return {
+			return {
+				success: false,
+				data: {
+					actionName: "UPDATE_ROLE",
 					success: false,
-					data: {
-						actionName: "UPDATE_ROLE",
-						success: false,
 					error: "World not found",
 				},
 			};
@@ -258,11 +258,11 @@ export const updateRoleAction: ElizaAction = {
 				actions: ["UPDATE_ROLE"],
 				source: "discord",
 			});
-				return {
+			return {
+				success: false,
+				data: {
+					actionName: "UPDATE_ROLE",
 					success: false,
-					data: {
-						actionName: "UPDATE_ROLE",
-						success: false,
 					message: "No valid role assignments found",
 				},
 			};
@@ -314,11 +314,11 @@ export const updateRoleAction: ElizaAction = {
 			logger.info(`Updated roles in world metadata for server ${serverId}`);
 		}
 
-			return {
+		return {
+			success: worldUpdated,
+			data: {
+				actionName: "UPDATE_ROLE",
 				success: worldUpdated,
-				data: {
-					actionName: "UPDATE_ROLE",
-					success: worldUpdated,
 				updatedRoles,
 				totalProcessed: result.length,
 				totalUpdated: updatedRoles.length,

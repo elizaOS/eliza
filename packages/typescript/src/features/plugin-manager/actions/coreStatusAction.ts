@@ -39,8 +39,7 @@ export const coreStatusAction: Action = {
 
 		if (!coreManagerService) {
 			const text = "Core manager service not available";
-			if (callback)
-				await callback({ text, actions: ["CORE_STATUS"] });
+			if (callback) await callback({ text, actions: ["CORE_STATUS"] });
 			return {
 				success: false,
 				text,

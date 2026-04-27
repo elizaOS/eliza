@@ -42,8 +42,7 @@ export const listEjectedPluginsAction: Action = {
 
 		if (!pluginManagerService) {
 			const text = "Plugin manager service not available";
-			if (callback)
-				await callback({ text, actions: ["LIST_EJECTED_PLUGINS"] });
+			if (callback) await callback({ text, actions: ["LIST_EJECTED_PLUGINS"] });
 			return {
 				success: false,
 				text,

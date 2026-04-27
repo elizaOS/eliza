@@ -391,10 +391,10 @@ function normalizePlannerActions(
 			return [];
 		}
 
-			const controlActionName = canonicalPlannerControlActionName(actionName);
-			if (controlActionName) {
-				return [controlActionName];
-			}
+		const controlActionName = canonicalPlannerControlActionName(actionName);
+		if (controlActionName) {
+			return [controlActionName];
+		}
 
 		const resolvedAction = resolveRuntimeAction(actionLookup, actionName);
 		if (resolvedAction) {
@@ -2351,7 +2351,9 @@ export function getActionContinuationDecision(
 		}
 
 		const canonicalAction =
-			resolvedAction?.name ?? canonicalPlannerControlActionName(action) ?? action;
+			resolvedAction?.name ??
+			canonicalPlannerControlActionName(action) ??
+			action;
 		if (
 			!TERMINAL_ACTION_IDENTIFIERS.has(
 				normalizeActionIdentifier(canonicalAction),
@@ -6164,7 +6166,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 				responseContent.actions,
 			);
 			// Suppress any direct planner answer; the REPLY action should generate final output.
-			if (responseContent.actions.some((a) => a.toUpperCase() === "REPLY")) {
+			if (responseContent.actions.some((a) => isReplyActionIdentifier(a))) {
 				responseContent.text = "";
 			}
 		}

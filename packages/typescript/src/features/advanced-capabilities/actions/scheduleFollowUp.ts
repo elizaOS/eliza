@@ -207,6 +207,7 @@ export const scheduleFollowUpAction: Action = {
 				taskId: task.id ?? "",
 			},
 			data: {
+				actionName: "SCHEDULE_FOLLOW_UP",
 				contactId: entityId,
 				contactName: resolvedContactName,
 				scheduledAt: scheduledAt.toISOString(),

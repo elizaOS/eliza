@@ -150,7 +150,8 @@ function inferMode(
 	const trimmed = text.trim();
 	if (!trimmed) return null;
 
-	if (CORE_NOUN.test(trimmed) && STATUS_NOUN.test(trimmed)) return "core_status";
+	if (CORE_NOUN.test(trimmed) && STATUS_NOUN.test(trimmed))
+		return "core_status";
 
 	if (LIST_VERBS.test(trimmed) && EJECTED_NOUN.test(trimmed))
 		return "list_ejected";
@@ -159,7 +160,8 @@ function inferMode(
 	if (REINJECT_VERBS.test(trimmed)) return "reinject";
 	if (EJECT_VERBS.test(trimmed)) return "eject";
 	if (SYNC_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "sync";
-	if (INSTALL_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "install";
+	if (INSTALL_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed))
+		return "install";
 	if (SEARCH_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "search";
 
 	if (CREATE_VERBS.test(trimmed) && PLUGIN_NOUN.test(trimmed)) return "create";
@@ -215,10 +217,10 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 		return ownerCheck(runtime, message);
 	};
 
-		return {
-			name: "PLUGIN",
-			suppressPostActionContinuation: true,
-			similes: [
+	return {
+		name: "PLUGIN",
+		suppressPostActionContinuation: true,
+		similes: [
 			"PLUGIN_CONTROL",
 			"MANAGE_PLUGINS",
 			// Legacy single-purpose action names — preserved as similes so
@@ -357,10 +359,13 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 
 			logger.info(`[plugin-manager] PLUGIN mode=${mode}`);
 
-			const name = readStringOption(options, "name") ?? extractNameFromText(text);
+			const name =
+				readStringOption(options, "name") ?? extractNameFromText(text);
 			const source = readSourceOption(options);
 			const query =
-				readStringOption(options, "query") ?? extractQueryFromText(text) ?? text;
+				readStringOption(options, "query") ??
+				extractQueryFromText(text) ??
+				text;
 
 			switch (mode) {
 				case "install":

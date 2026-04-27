@@ -34,7 +34,6 @@ export const terminalAction: Action = {
     "Why this exists: it gives the agent shell access through the same safety and approval layer as the other computer-use tools.",
   descriptionCompressed: "Execute terminal commands or manage sessions.",
   suppressPostActionContinuation: true,
-  suppressActionResultClipboard: true,
   parameters: [
     {
       name: "action",

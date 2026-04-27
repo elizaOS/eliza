@@ -21,6 +21,7 @@ export const replyAction = {
 	name: spec.name,
 	similes: spec.similes ? [...spec.similes] : [],
 	description: spec.description,
+	suppressPostActionContinuation: true,
 	validate: async (_runtime: IAgentRuntime) => {
 		return true;
 	},

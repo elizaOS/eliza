@@ -253,9 +253,9 @@ export const updateContactAction: Action = {
 						categoriesStr: updateData.categories?.join(",") ?? "",
 						tagsStr: updateData.tags?.join(",") ?? "",
 					},
-						data: {
-							actionName: "UPDATE_CONTACT",
-							success: true,
+					data: {
+						actionName: "UPDATE_CONTACT",
+						success: true,
 						updatedFieldsStr: Object.keys(updateData).join(","),
 					},
 					text: responseText,

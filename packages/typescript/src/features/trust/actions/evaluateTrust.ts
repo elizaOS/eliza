@@ -142,12 +142,12 @@ export const evaluateTrustAction: ElizaAction = {
 		if (requestData?.entityId) {
 			targetEntityId = requestData.entityId as UUID;
 		} else if (requestData?.entityName) {
-				return {
-					success: false,
-					text: "Entity name resolution not yet implemented. Please provide entity ID.",
-					error: "Entity name resolution not implemented",
-					data: { actionName: "EVALUATE_TRUST" },
-				};
+			return {
+				success: false,
+				text: "Entity name resolution not yet implemented. Please provide entity ID.",
+				error: "Entity name resolution not implemented",
+				data: { actionName: "EVALUATE_TRUST" },
+			};
 		} else {
 			targetEntityId = message.entityId;
 		}
@@ -191,9 +191,9 @@ Trust Dimensions:
 ${dimensionText}
 
 Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
-						data: {
-							actionName: "EVALUATE_TRUST",
-							entityId: trustProfile.entityId,
+					data: {
+						actionName: "EVALUATE_TRUST",
+						entityId: trustProfile.entityId,
 						overallTrust: trustProfile.overallTrust,
 						confidence: trustProfile.confidence,
 						interactionCount: trustProfile.interactionCount,
@@ -220,9 +220,9 @@ Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
 				return {
 					success: true,
 					text: `Trust Level: ${trustLevel} (${trustProfile.overallTrust}/100) based on ${trustProfile.interactionCount} interactions`,
-						data: {
-							actionName: "EVALUATE_TRUST",
-							trustScore: trustProfile.overallTrust,
+					data: {
+						actionName: "EVALUATE_TRUST",
+						trustScore: trustProfile.overallTrust,
 						trustLevel,
 						confidence: trustProfile.confidence,
 					},
@@ -232,10 +232,10 @@ Last Updated: ${new Date(trustProfile.lastCalculated).toLocaleString()}`,
 			logger.error({ error }, "[EvaluateTrust] Error evaluating trust:");
 			return {
 				success: false,
-					text: "Failed to evaluate trust. Please try again.",
-					error: error instanceof Error ? error.message : "Unknown error",
-					data: { actionName: "EVALUATE_TRUST" },
-				};
+				text: "Failed to evaluate trust. Please try again.",
+				error: error instanceof Error ? error.message : "Unknown error",
+				data: { actionName: "EVALUATE_TRUST" },
+			};
 		}
 	},
 

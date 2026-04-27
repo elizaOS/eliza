@@ -144,12 +144,12 @@ export const removeContactAction: Action = {
 
 				logger.info(`[RemoveContact] Removed contact ${contact.entityId}`);
 
-					return {
-						success: true,
-						values: { contactId: contact.entityId },
-						data: { actionName: "REMOVE_CONTACT", success: true },
-						text: responseText,
-					};
+				return {
+					success: true,
+					values: { contactId: contact.entityId },
+					data: { actionName: "REMOVE_CONTACT", success: true },
+					text: responseText,
+				};
 			} else {
 				throw new Error("Failed to remove contact");
 			}
