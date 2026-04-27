@@ -2738,17 +2738,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "descriptionCompressed": "Generate image from conversation context. Use to visualize or illustrate."
     },
     {
-      "name": "ACKNOWLEDGE_SKILL_FINDINGS",
-      "description": "Acknowledge a skill's security findings so the skill can be enabled. Optionally enables the skill in the same step. Blocked skills cannot be acknowledged.",
-      "parameters": [],
-      "similes": [
-        "ACKNOWLEDGE_SKILL",
-        "DISMISS_SKILL_FINDINGS",
-        "ACK_SKILL_SCAN",
-        "APPROVE_SKILL_FINDINGS"
-      ]
-    },
-    {
       "name": "ADD_TO_PLAYLIST",
       "description": "Add music to a playlist. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
       "parameters": [],
@@ -2812,27 +2801,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       "similes": [
         "/commands",
         "/cmds"
-      ]
-    },
-    {
-      "name": "CORE_STATUS",
-      "description": "Check thestatus of the @elizaos/core package (ejected or npm)",
-      "parameters": [],
-      "similes": [
-        "core status",
-        "check core",
-        "is core ejected",
-        "elizaos status"
-      ]
-    },
-    {
-      "name": "CREATE_SKILL",
-      "description": "Create a new workspace skill from a name and optional description or source body. Writes SKILL.md to the workspace skills directory and re-discovers skills.",
-      "parameters": [],
-      "similes": [
-        "NEW_SKILL",
-        "SCAFFOLD_SKILL",
-        "MAKE_SKILL"
       ]
     },
     {
@@ -2904,16 +2872,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
-      "name": "EDIT_SKILL",
-      "description": "Replace a skill's SKILL.md body. Bundled or plugin skills are copied into the workspace first so the edit produces a writable copy.",
-      "parameters": [],
-      "similes": [
-        "UPDATE_SKILL",
-        "MODIFY_SKILL",
-        "WRITE_SKILL_SOURCE"
-      ]
-    },
-    {
       "name": "FETCH_FEED_TOP",
       "description": "Fetch the home timeline from X and return the top-N tweets ranked by engagement (likes + retweets * 2).",
       "parameters": [],
@@ -2981,17 +2939,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "hibernate agent",
         "pause agent",
         "stop cloud agent"
-      ]
-    },
-    {
-      "name": "GET_PLUGIN_DETAILS",
-      "description": "Get detailed information about a specific plugin including features, dependencies, and usage.",
-      "parameters": [],
-      "similes": [
-        "tell me more about",
-        "show details for",
-        "plugin info",
-        "plugin details"
       ]
     },
     {
@@ -3393,17 +3340,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
-      "name": "REVIEW_SKILL_FINDINGS",
-      "description": "Return the security scan report for a skill, including manifest and file findings, severity totals, and acknowledgment state.",
-      "parameters": [],
-      "similes": [
-        "VIEW_SKILL_SCAN",
-        "GET_SKILL_FINDINGS",
-        "INSPECT_SKILL_SECURITY",
-        "REVIEW_SKILL_SCAN"
-      ]
-    },
-    {
       "name": "SAVE_PLAYLIST",
       "description": "Save the current music queue as a playlist for the user. Works best in DMs to avoid flooding group chats.",
       "parameters": [
@@ -3437,18 +3373,6 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
             }
           }
         }
-      ]
-    },
-    {
-      "name": "SEARCH_PLUGINS",
-      "description": "Search for plugins in the ElizaOS registry by functionality, features, and natural language descriptions.",
-      "parameters": [],
-      "similes": [
-        "search for plugins",
-        "find plugins",
-        "look for plugins",
-        "discover plugins",
-        "search registry"
       ]
     },
     {

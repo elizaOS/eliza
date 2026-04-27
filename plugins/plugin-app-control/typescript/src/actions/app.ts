@@ -57,7 +57,7 @@ const LIST_VERBS =
 const CREATE_VERBS =
 	/\b(create|build|make|new|scaffold|generate|spin up)\b.*?\b(app|application|game|tool|widget|dashboard)\b/i;
 const PLUGIN_ONLY = /\bplugin\b/i;
-const APP_NOUN = /\b(app|application|mini)\b/i;
+const APP_NOUN = /\b(app|apps|application|applications|mini)\b/i;
 const LOAD_FROM_DIR =
 	/\b(load|register|import|scan)\b.*\b(directory|folder|dir|path)\b/i;
 
@@ -126,45 +126,31 @@ const KEYWORD_HEURISTIC =
 // (imported above), which uses `checkSenderRole` from `@elizaos/core`.
 // Defined in ./security so this plugin doesn't need an `@elizaos/agent` dep.
 
+function hasAccessContext(runtime: IAgentRuntime, message: Memory): boolean {
+	return (
+		typeof runtime.agentId === "string" &&
+		runtime.agentId.length > 0 &&
+		typeof message.entityId === "string" &&
+		message.entityId.length > 0
+	);
+}
+
 export function createAppAction(deps: AppActionDeps = {}): Action {
 	const clientFactory = () => deps.client ?? createAppControlClient();
 	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
 	const repoRoot = deps.repoRoot ?? defaultRepoRoot();
 
+	const canManageApps = async (
+		runtime: IAgentRuntime,
+		message: Memory,
+	): Promise<boolean> => {
+		if (!hasAccessContext(runtime, message)) return false;
+		return ownerCheck(runtime, message);
+	};
+
 	return {
 		name: "APP",
-		similes: [
-			// Legacy single-purpose action names — preserved as similes so
-			// older callers still resolve.
-			"LAUNCH_APP",
-			"CLOSE_APP",
-			"LIST_RUNNING_APPS",
-			// Generic verbs.
-			"OPEN_APP",
-			"START_APP",
-			"RUN_APP",
-			"STOP_APP",
-			"EXIT_APP",
-			"KILL_APP",
-			"QUIT_APP",
-			"SHUTDOWN_APP",
-			"LIST_APPS",
-			"SHOW_RUNNING_APPS",
-			"RUNNING_APPS",
-			"ACTIVE_APPS",
-			// Create / scaffold variants.
-			"CREATE_APP",
-			"BUILD_APP",
-			"MAKE_APP",
-			"SCAFFOLD_APP",
-			"NEW_APP",
-			// Load.
-			"LOAD_APPS_FROM_DIRECTORY",
-			"REGISTER_APPS",
-			// Relaunch.
-			"RELAUNCH_APP",
-			"RESTART_APP",
-		],
+		similes: ["APP_CONTROL", "MANAGE_APPS"],
 		description:
 			"Unified app control. mode=launch starts a registered app; mode=relaunch stops then launches (optionally with verify); mode=list shows installed + running runs; mode=load_from_directory registers apps from an absolute folder; mode=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
 
@@ -246,7 +232,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			runtime: IAgentRuntime,
 			message: Memory,
 		): Promise<boolean> => {
-			if (!(await ownerCheck(runtime, message))) return false;
+			if (!(await canManageApps(runtime, message))) return false;
 			const text = message.content?.text ?? "";
 
 			// Multi-turn follow-up: short reply matches a pending intent task.
@@ -267,6 +253,12 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			options?: Record<string, unknown>,
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
+			if (!(await canManageApps(runtime, message))) {
+				const text = "Permission denied: only the owner may manage apps.";
+				await callback?.({ text });
+				return { success: false, text };
+			}
+
 			const client = clientFactory();
 			const text = message.content?.text ?? "";
 

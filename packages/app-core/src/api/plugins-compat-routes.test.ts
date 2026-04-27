@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   analyzePluginStateDrift,
   resolveAdvancedCapabilityCompatStatus,
+  resolveCompatPluginEnabledForList,
 } from "./plugins-compat-routes";
 
 describe("analyzePluginStateDrift", () => {
@@ -154,5 +155,9 @@ describe("analyzePluginStateDrift", () => {
     );
 
     expect(status).toEqual({ enabled: true, isActive: true });
+  });
+
+  it("uses explicit persisted disable over active runtime state in plugin list", () => {
+    expect(resolveCompatPluginEnabledForList(true, false)).toBe(false);
   });
 });

@@ -494,10 +494,15 @@ function SearchableSelectInner({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // Close on scroll of any ancestor (position shifts)
+  // Close on page/ancestor scroll because the fixed-position portal would
+  // drift, but keep the menu open while its own options list scrolls.
   useEffect(() => {
     if (!open) return;
-    const handler = () => {
+    const handler = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && dropdownRef.current?.contains(target)) {
+        return;
+      }
       setOpen(false);
       setFilter("");
     };
@@ -560,7 +565,7 @@ function SearchableSelectInner({
               />
             </div>
             {/* Options list */}
-            <div className="overflow-y-auto max-h-[220px]">
+            <div className="overflow-y-auto overscroll-contain max-h-[220px]">
               {!props.required && (
                 <Button
                   type="button"

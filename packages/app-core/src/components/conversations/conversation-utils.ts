@@ -117,10 +117,10 @@ export function estimateTokenCost(
 ): string {
   const normalizedModel = (model ?? "").toLowerCase();
   const pricingByMillion: Record<string, [number, number]> = {
-    "gpt-5.4-pro": [30.0, 180.0],
-    "gpt-5.4-mini": [0.75, 4.5],
-    "gpt-5.4-nano": [0.2, 1.25],
-    "gpt-5.4": [2.5, 15.0],
+    "gpt-5.5-pro": [30.0, 180.0],
+    "gpt-5.5-mini": [0.75, 4.5],
+    "gpt-5.5-nano": [0.2, 1.25],
+    "gpt-5.5": [2.5, 15.0],
     "gpt-4.1": [2.0, 8.0],
     "gpt-4o": [2.5, 10.0],
     "gpt-4": [30.0, 60.0],

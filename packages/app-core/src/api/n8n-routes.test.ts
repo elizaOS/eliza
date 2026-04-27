@@ -799,13 +799,12 @@ describe("n8n write workflows", () => {
     expect(init.method).toBe("PUT");
   });
 
-  it("generates a runnable fallback graph when no plugin service is registered", async () => {
-    const fetchImpl = vi.fn(async (_url, init) => {
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return mockResponse({
-        body: { id: "generated", active: false, ...body },
-      });
-    }) as unknown as typeof fetch;
+  it("returns 503 when no workflow service is registered", async () => {
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({
+        body: { id: "unexpected" },
+      }),
+    ) as unknown as typeof fetch;
     const sidecar = makeSidecarStub(
       { status: "ready", host: "http://127.0.0.1:5678" },
       "k",
@@ -822,21 +821,9 @@ describe("n8n write workflows", () => {
       },
     });
 
-    expect(status).toBe(200);
-    expect(payload).toMatchObject({ id: "generated" });
-
-    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
-      .mock.calls;
-    const [, init] = calls[0] as [string, RequestInit];
-    const forwarded = JSON.parse(String(init.body)) as {
-      nodes: Array<{ type: string; name: string }>;
-      connections: Record<string, unknown>;
-    };
-    expect(forwarded.nodes[0]?.type).toBe("n8n-nodes-base.manualTrigger");
-    expect(
-      forwarded.nodes.some((node) => node.type === "n8n-nodes-base.noOp"),
-    ).toBe(true);
-    expect(Object.keys(forwarded.connections).length).toBeGreaterThan(0);
+    expect(status).toBe(503);
+    expect(payload).toEqual({ error: "n8n workflow service unavailable" });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 
@@ -1101,7 +1088,10 @@ describe("n8n POST /api/n8n/workflows/generate", () => {
       active: false,
       nodeCount: 0,
       missingCredentials: [
-        { credType: "gmailOAuth2", authUrl: "milady://settings/connectors/gmail" },
+        {
+          credType: "gmailOAuth2",
+          authUrl: "milady://settings/connectors/gmail",
+        },
       ],
     };
     const generateWorkflowDraft = vi.fn(async () => draft);

@@ -26,8 +26,7 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 import os from "node:os";
 import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { DropService } from "@elizaos/app-elizamaker/drop-service";
-import { setElizaMakerDropService } from "@elizaos/app-elizamaker/drop-service-registry";
+import { DropService, setElizaMakerDropService } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
 import {
   normalizeJsonRpcUrl,
@@ -223,6 +222,7 @@ import {
 import { applySignalQrOverride } from "./signal-routes.js";
 import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
+import { handleAccountsRoutes } from "./accounts-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
@@ -1371,6 +1371,22 @@ async function handleRequest(
       loadSubscriptionAuth: async () =>
         (await import("../auth/index.js")) as never,
     } as never)
+  ) {
+    return;
+  }
+
+  if (
+    await handleAccountsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+      state: { config: state.config },
+      saveConfig: saveElizaConfig,
+    })
   ) {
     return;
   }
