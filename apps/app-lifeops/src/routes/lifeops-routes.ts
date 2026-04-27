@@ -1700,8 +1700,7 @@ export async function handleLifeOpsRoutes(
         limit:
           parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
             max: 250,
-          }) ??
-          undefined,
+          }) ?? undefined,
       };
       const messages = await service.readIMessages(query);
       json(res, { messages, count: messages.length });
