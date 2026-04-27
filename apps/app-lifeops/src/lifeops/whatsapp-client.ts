@@ -9,10 +9,17 @@ export interface WhatsAppCredentials {
 export interface WhatsAppMessage {
   id: string;
   from: string;
+  channelId: string;
   timestamp: string;
   type: "text" | "image" | "audio" | "document" | "unknown";
   text?: string;
   mediaId?: string;
+  metadata?: {
+    displayPhoneNumber?: string;
+    phoneNumberId?: string;
+    contactName?: string;
+    waId?: string;
+  };
 }
 
 export interface WhatsAppSendRequest {
@@ -87,7 +94,8 @@ export async function sendWhatsAppMessage(
 
   if (!response.ok) {
     const errorMessage =
-      body.error?.message ?? `WhatsApp request failed with HTTP ${response.status}`;
+      body.error?.message ??
+      `WhatsApp request failed with HTTP ${response.status}`;
     logger.warn(
       {
         boundary: "lifeops",
@@ -112,10 +120,28 @@ export async function sendWhatsAppMessage(
 }
 
 function mapMessageType(raw: unknown): WhatsAppMessage["type"] {
-  if (raw === "text" || raw === "image" || raw === "audio" || raw === "document") {
+  if (
+    raw === "text" ||
+    raw === "image" ||
+    raw === "audio" ||
+    raw === "document"
+  ) {
     return raw;
   }
   return "unknown";
+}
+
+function whatsappTimestampToIso(raw: unknown): string | null {
+  const value =
+    typeof raw === "string" && raw.trim().length > 0 ? Number(raw) : raw;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return new Date(value * 1000).toISOString();
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +211,9 @@ export function peekWhatsAppInboundBuffer(): WhatsAppMessage[] {
   return [...inboundBuffer.values()];
 }
 
-export function parseWhatsAppWebhookMessages(payload: unknown): WhatsAppMessage[] {
+export function parseWhatsAppWebhookMessages(
+  payload: unknown,
+): WhatsAppMessage[] {
   if (!payload || typeof payload !== "object") {
     return [];
   }
@@ -203,6 +231,37 @@ export function parseWhatsAppWebhookMessages(payload: unknown): WhatsAppMessage[
       if (!change || typeof change !== "object") continue;
       const value = (change as { value?: unknown }).value;
       if (!value || typeof value !== "object") continue;
+      const webhookValue = value as {
+        metadata?: {
+          display_phone_number?: unknown;
+          phone_number_id?: unknown;
+        };
+        contacts?: unknown;
+        messages?: unknown;
+      };
+      const rawContacts = webhookValue.contacts;
+      const contactByWaId = new Map<string, { name?: string; waId?: string }>();
+      if (Array.isArray(rawContacts)) {
+        for (const contact of rawContacts) {
+          if (!contact || typeof contact !== "object") continue;
+          const c = contact as {
+            profile?: { name?: unknown };
+            wa_id?: unknown;
+          };
+          const waId = optionalString(c.wa_id);
+          if (!waId) continue;
+          contactByWaId.set(waId, {
+            name: optionalString(c.profile?.name),
+            waId,
+          });
+        }
+      }
+      const displayPhoneNumber = optionalString(
+        webhookValue.metadata?.display_phone_number,
+      );
+      const phoneNumberId = optionalString(
+        webhookValue.metadata?.phone_number_id,
+      );
       const rawMessages = (value as { messages?: unknown }).messages;
       if (!Array.isArray(rawMessages)) continue;
       for (const msg of rawMessages) {
@@ -218,19 +277,8 @@ export function parseWhatsAppWebhookMessages(payload: unknown): WhatsAppMessage[
           document?: { id?: unknown };
         };
         if (typeof m.id !== "string" || typeof m.from !== "string") continue;
-
-        // WhatsApp timestamps are unix seconds as string; convert to ISO.
-        let isoTimestamp: string;
-        if (typeof m.timestamp === "string") {
-          const asNumber = Number(m.timestamp);
-          isoTimestamp = Number.isFinite(asNumber)
-            ? new Date(asNumber * 1000).toISOString()
-            : new Date().toISOString();
-        } else if (typeof m.timestamp === "number") {
-          isoTimestamp = new Date(m.timestamp * 1000).toISOString();
-        } else {
-          isoTimestamp = new Date().toISOString();
-        }
+        const isoTimestamp = whatsappTimestampToIso(m.timestamp);
+        if (!isoTimestamp) continue;
 
         const type = mapMessageType(m.type);
         const text =
@@ -245,14 +293,23 @@ export function parseWhatsAppWebhookMessages(payload: unknown): WhatsAppMessage[
               : type === "document" && typeof m.document?.id === "string"
                 ? m.document.id
                 : undefined;
+        const contact = contactByWaId.get(m.from);
+        const metadata = {
+          ...(displayPhoneNumber ? { displayPhoneNumber } : {}),
+          ...(phoneNumberId ? { phoneNumberId } : {}),
+          ...(contact?.name ? { contactName: contact.name } : {}),
+          ...(contact?.waId ? { waId: contact.waId } : {}),
+        };
 
         messages.push({
           id: m.id,
           from: m.from,
+          channelId: m.from,
           timestamp: isoTimestamp,
           type,
           ...(text !== undefined ? { text } : {}),
           ...(mediaId !== undefined ? { mediaId } : {}),
+          ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
         });
       }
     }
