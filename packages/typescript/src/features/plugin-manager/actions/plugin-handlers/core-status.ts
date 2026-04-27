@@ -42,11 +42,15 @@ export async function runCoreStatus({
 		lines.push(`Commit: ${status.commitHash || "unknown"}`);
 		lines.push(`Local changes: ${status.localChanges ? "yes" : "no"}`);
 		if (status.upstream) {
-			lines.push(`Upstream: ${status.upstream.gitUrl}#${status.upstream.branch}`);
+			lines.push(
+				`Upstream: ${status.upstream.gitUrl}#${status.upstream.branch}`,
+			);
 			lines.push(`Last sync: ${status.upstream.lastSyncAt || "never"}`);
 		}
 	} else {
-		lines.push(`Core is using NPM package (v${status.npmVersion}). Not ejected.`);
+		lines.push(
+			`Core is using NPM package (v${status.npmVersion}). Not ejected.`,
+		);
 	}
 
 	const text = lines.join("\n");

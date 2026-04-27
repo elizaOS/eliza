@@ -154,8 +154,8 @@ const secretsCapability = {
 
 import {
 	CoreManagerService,
-	pluginAction,
 	PluginManagerService,
+	pluginAction,
 	pluginConfigurationStatusProvider,
 	pluginStateProvider,
 	registryPluginsProvider,
