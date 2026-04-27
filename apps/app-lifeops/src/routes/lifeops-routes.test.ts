@@ -178,6 +178,22 @@ describe("LifeOps route validation", () => {
     expect(json).not.toHaveBeenCalled();
   });
 
+  it("caps iMessage message reads at the route boundary", async () => {
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/imessage/messages?limit=251",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "limit must be less than or equal to 250",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("rejects mismatched connector side values before dispatch", async () => {
     const readJsonBody = vi.fn(async () => ({ side: "agent" }));
     const { context, error, json } = createContext(
