@@ -68,6 +68,10 @@ const COUNTER_AGENT_TIMEOUT_MS = 10 * 60_000;
 const CODEX_UPDATE_TIMEOUT_MS = 5 * 60_000;
 const CAPTURE_LIMIT = 16 * 1024 * 1024;
 const CODEX_OLD_VERSION_RE = /requires a newer version of Codex/i;
+const COUNTER_TOOLCHAIN_BIN = "../../../node_modules/.bin";
+const COUNTER_TYPECHECK_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/tsc --noEmit -p tsconfig.json`;
+const COUNTER_LINT_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/biome check .`;
+const COUNTER_TEST_SCRIPT = `${COUNTER_TOOLCHAIN_BIN}/vitest run --config ./vitest.config.ts`;
 
 type CapturedCommandResult = {
   stdout: string;
@@ -220,6 +224,16 @@ function errorDetail(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
   return JSON.stringify(error);
+}
+
+function liveCommandEnv(): NodeJS.ProcessEnv {
+  const repoBin = path.join(process.cwd(), "node_modules", ".bin");
+  return {
+    ...process.env,
+    CI: process.env.CI ?? "1",
+    FORCE_COLOR: "0",
+    PATH: [repoBin, process.env.PATH].filter(Boolean).join(path.delimiter),
+  };
 }
 
 function isCodexCliTooOldError(error: unknown): boolean {
@@ -812,7 +826,9 @@ function createCounterAppPrompt(input: {
     "",
     "package.json requirements:",
     '- "type": "module"',
-    '- scripts: "typecheck": "tsc --noEmit -p tsconfig.json", "lint": "biome check .", "test": "vitest run --config ./vitest.config.ts"',
+    `- scripts.typecheck = "${COUNTER_TYPECHECK_SCRIPT}"`,
+    `- scripts.lint = "${COUNTER_LINT_SCRIPT}"`,
+    `- scripts.test = "${COUNTER_TEST_SCRIPT}"`,
     `- elizaos.app.displayName = "${input.displayName}"`,
     `- elizaos.app.slug = "${input.appSlug}"`,
     '- elizaos.app.category = "utility"',
@@ -827,6 +843,7 @@ function createCounterAppPrompt(input: {
     "1. bun run typecheck",
     "2. bun run lint",
     "3. bun run test",
+    "The repo node_modules/.bin directory is already on PATH; do not search the filesystem for tsc, biome, or vitest.",
     "",
     "After all three commands exit zero, emit exactly one final stdout line.",
     "That final line must start with APP_CREATE_DONE, followed by one space, then a JSON object with fields: appName, files, tests, lint, typecheck.",
@@ -842,7 +859,7 @@ async function runCounterAgentCli(
   task: string,
   workdir: string,
 ): Promise<string> {
-  const env = { ...process.env, CI: process.env.CI ?? "1", FORCE_COLOR: "0" };
+  const env = liveCommandEnv();
   if (agentType === "claude") {
     const model = process.env.MILADY_LIVE_CLAUDE_MODEL?.trim();
     const args = [
@@ -1004,6 +1021,11 @@ function assertCounterAppDisk(input: {
 
   const pkg = readJsonObject(path.join(input.appDir, "package.json"));
   assert.equal(pkg.name, input.appName);
+  const scripts = isRecord(pkg.scripts) ? pkg.scripts : null;
+  assert.ok(scripts, "package.json must include scripts");
+  assert.equal(scripts.typecheck, COUNTER_TYPECHECK_SCRIPT);
+  assert.equal(scripts.lint, COUNTER_LINT_SCRIPT);
+  assert.equal(scripts.test, COUNTER_TEST_SCRIPT);
   const elizaos = isRecord(pkg.elizaos) ? pkg.elizaos : null;
   const app = elizaos && isRecord(elizaos.app) ? elizaos.app : null;
   assert.ok(app, "package.json must include elizaos.app metadata");
