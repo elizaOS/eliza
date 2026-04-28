@@ -61,15 +61,19 @@ export interface ConnectorConfigLike {
  * Cred types this provider considers when filtering `supportedCredentials`
  * before returning them to the plugin. Hosts that can satisfy a different
  * set should pass their own filter via `credProvider.resolve()`.
+ *
+ * Kept in sync with `CRED_TYPE_FACTS` below — every entry here must also
+ * have a `CRED_TYPE_FACTS[type]` entry, otherwise it silently drops at the
+ * `!meta` guard in `computeSupportedCredentials` (Greptile P1 caught
+ * `discordWebhookApi` and `googleOAuth2Api` previously listed here without
+ * fact entries).
  */
 const MILADY_SUPPORTED_CRED_TYPES: ReadonlySet<string> = new Set([
   "discordApi",
   "discordBotApi",
-  "discordWebhookApi",
   "telegramApi",
   "gmailOAuth2",
   "gmailOAuth2Api",
-  "googleOAuth2Api",
   "googleSheetsOAuth2Api",
   "googleCalendarOAuth2Api",
   "googleDriveOAuth2Api",
