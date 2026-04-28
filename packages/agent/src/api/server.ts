@@ -205,6 +205,20 @@ import type { PTYService } from "./parse-action-block.js";
 import { handlePermissionRoutes } from "./permissions-routes.js";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.js";
 import { handlePluginRoutes } from "./plugin-routes.js";
+import {
+  type ClassifyContext,
+  createColdStrategy,
+  createHotStrategy,
+  defaultClassifier,
+  DefaultRuntimeOperationManager,
+  getDefaultHealthChecker,
+  getDefaultRepository,
+  type RuntimeOperationManager,
+} from "../runtime/operations/index.js";
+import {
+  resolvePreferredProviderId,
+  resolvePrimaryModel,
+} from "../runtime/eliza.js";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.js";
 import { handleRegistryRoutes } from "./registry-routes.js";
 import { RegistryService } from "./registry-service.js";
@@ -1044,6 +1058,46 @@ const clearPairing = _clearPairing;
 /** Guard against concurrent provider switch requests (P0 §3). */
 let providerSwitchInProgress = false;
 
+/**
+ * Lazy per-process runtime operation manager. Constructed on first
+ * request because it needs the per-server `state` reference + the
+ * `onRestart` closure. Cached so subsequent requests see the same
+ * active-op slot and execution chain.
+ */
+let cachedRuntimeOperationManager: RuntimeOperationManager | null = null;
+
+function getOrCreateRuntimeOperationManager(
+  state: ServerState,
+  restartRuntime: (reason: string) => Promise<boolean>,
+): RuntimeOperationManager {
+  if (cachedRuntimeOperationManager) {
+    return cachedRuntimeOperationManager;
+  }
+  const repository = getDefaultRepository();
+  const healthChecker = getDefaultHealthChecker();
+  const coldStrategy = createColdStrategy({
+    restartRuntime: async (reason) => {
+      const ok = await restartRuntime(reason);
+      if (!ok) return null;
+      return state.runtime;
+    },
+  });
+  const hotStrategy = createHotStrategy({});
+  const classifyContext = (): ClassifyContext => ({
+    currentProvider: resolvePreferredProviderId(state.config),
+    currentPrimaryModel: resolvePrimaryModel(state.config),
+  });
+  cachedRuntimeOperationManager = new DefaultRuntimeOperationManager({
+    repository,
+    runtime: () => state.runtime,
+    classifyContext,
+    classifier: defaultClassifier,
+    healthChecker,
+    strategies: { cold: coldStrategy, hot: hotStrategy },
+  });
+  return cachedRuntimeOperationManager;
+}
+
 // PluginConfigMutationRejection, resolvePluginConfigMutationRejections,
 // WalletExportRejection, resolveWalletExportRejection
 // extracted to server-helpers-plugin.ts and server-helpers-wallet.ts respectively.
@@ -1323,6 +1377,10 @@ async function handleRequest(
   };
 
   // ── POST /api/provider/switch (extracted to provider-switch-routes.ts) ──
+  const runtimeOperationManager = getOrCreateRuntimeOperationManager(
+    state,
+    restartRuntime,
+  );
   if (
     await handleProviderSwitchRoutes({
       req,
@@ -1339,7 +1397,7 @@ async function handleRequest(
       setProviderSwitchInProgress: (v: boolean) => {
         providerSwitchInProgress = v;
       },
-      restartRuntime,
+      runtimeOperationManager,
     })
   ) {
     return;

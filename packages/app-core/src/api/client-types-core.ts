@@ -207,7 +207,7 @@ export interface ConnectionStateInfo {
   disconnectedAt: number | null;
 }
 
-export type ApiErrorKind = "timeout" | "network" | "http";
+export type ApiErrorKind = "timeout" | "network" | "http" | "parse";
 
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;

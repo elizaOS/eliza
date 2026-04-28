@@ -334,7 +334,27 @@ export class ElizaClient {
       },
       options,
     );
-    return res.json() as Promise<T>;
+    if (res.status === 204) {
+      return undefined as T;
+    }
+    const text = await res.text();
+    if (text === "") {
+      return undefined as T;
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch (err) {
+      throw new ApiError({
+        kind: "parse",
+        path,
+        status: res.status,
+        message:
+          err instanceof Error
+            ? `Invalid JSON response: ${err.message}`
+            : "Invalid JSON response",
+        cause: err,
+      });
+    }
   }
 
   // --- WebSocket ---
