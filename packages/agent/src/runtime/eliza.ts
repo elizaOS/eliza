@@ -4499,6 +4499,14 @@ export async function startInCloudMode(
 }
 
 const isDirectRun = (() => {
+  // Mobile (bundled) builds set MILADY_DISABLE_DIRECT_RUN=1 via Bun's
+  // `--define`. After bundling, `import.meta.url` and `process.argv[1]`
+  // collapse to the same bundle path, so this check spuriously matches and
+  // the runtime self-invokes a SECOND `startEliza()` alongside the CLI's
+  // primary one. The second invocation lacks `{ serverOnly: true }` and
+  // drops into the readline chat loop, which closes on stdin EOF and tears
+  // the whole process down.
+  if (process.env.MILADY_DISABLE_DIRECT_RUN === "1") return false;
   const scriptArg = process.argv[1];
   if (!scriptArg) return false;
   const normalised = path.resolve(scriptArg);

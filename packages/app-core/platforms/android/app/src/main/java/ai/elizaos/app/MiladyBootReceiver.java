@@ -27,6 +27,7 @@ public class MiladyBootReceiver extends BroadcastReceiver {
         // apps at runtime, no-ops cleanly otherwise.
         allowUsageStatsAppOp(context);
         GatewayConnectionService.start(context);
+        MiladyAgentService.start(context);
     }
 
     private static void allowUsageStatsAppOp(Context context) {
