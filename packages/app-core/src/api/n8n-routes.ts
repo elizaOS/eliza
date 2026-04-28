@@ -610,6 +610,142 @@ function readOptionalNumber(
     : undefined;
 }
 
+/**
+ * Shape of the routing block we hand to the n8n workflow service so the
+ * generator can target "this channel" / "back to here" without the user
+ * naming an ID. Mirrors the upstream `TriggerContext` in
+ * `@elizaos/plugin-n8n-workflow` — duplicated here so this route doesn't
+ * import from the plugin (the host already has its own copy in the
+ * runtime context provider, and the LLM ultimately reads it as a
+ * `## Runtime Facts` line, not via the plugin's prompt builder).
+ */
+interface TriggerContext {
+  source?: string;
+  discord?: { channelId?: string; guildId?: string; threadId?: string };
+  telegram?: { chatId?: string | number; threadId?: string | number };
+  slack?: { channelId?: string; teamId?: string };
+  resolvedNames?: { channel?: string; server?: string };
+}
+
+/**
+ * Read the originating conversation's tail inbound message metadata and
+ * derive a `TriggerContext`. Reads both the canonical
+ * `metadata.discord.{channelId,guildId,messageId}` /
+ * `metadata.telegram.{chatId,threadId}` blocks AND the flat
+ * `discordChannelId` / `discordServerId` / `discordMessageId` fields the
+ * upstream Discord plugin currently writes (pre-existing schema gap —
+ * canonical wins when present, flat is the fallback so nothing today
+ * breaks).
+ *
+ * Returns `undefined` when the conversation has no inbound platform
+ * metadata or the runtime can't read memories.
+ */
+async function buildTriggerContextFromConversation(
+  runtime: AgentRuntime | undefined,
+  roomId: string,
+): Promise<TriggerContext | undefined> {
+  if (!runtime || typeof runtime.getMemories !== "function") return undefined;
+  let memories: Array<{
+    entityId?: string;
+    metadata?: Record<string, unknown>;
+  }>;
+  try {
+    memories = (await runtime.getMemories({
+      roomId: roomId as never,
+      tableName: "messages",
+      count: 12,
+    } as Parameters<typeof runtime.getMemories>[0])) as Array<{
+      entityId?: string;
+      metadata?: Record<string, unknown>;
+    }>;
+  } catch (err) {
+    logger.debug?.(
+      `[n8n-routes] buildTriggerContextFromConversation: getMemories threw: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return undefined;
+  }
+  if (!Array.isArray(memories) || memories.length === 0) return undefined;
+
+  // Tail inbound = most recent memory whose entityId is NOT the agent.
+  // `runtime.getMemories` typically returns most-recent-first; defensively
+  // handle either order.
+  const inbound = memories.find(
+    (m) => m.entityId && m.entityId !== runtime.agentId,
+  );
+  if (!inbound?.metadata) return undefined;
+
+  const meta = inbound.metadata as Record<string, unknown>;
+  const discord = (meta.discord ?? {}) as Record<string, unknown>;
+  const telegram = (meta.telegram ?? {}) as Record<string, unknown>;
+  const slack = (meta.slack ?? {}) as Record<string, unknown>;
+
+  // Canonical wins; flat fields are the legacy de-facto shape.
+  const discordChannelId =
+    (typeof discord.channelId === "string" ? discord.channelId : undefined) ??
+    (typeof meta.discordChannelId === "string"
+      ? meta.discordChannelId
+      : undefined);
+  const discordGuildId =
+    (typeof discord.guildId === "string" ? discord.guildId : undefined) ??
+    (typeof meta.discordServerId === "string"
+      ? meta.discordServerId
+      : undefined);
+  const discordThreadId =
+    typeof discord.threadId === "string" ? discord.threadId : undefined;
+
+  const telegramChatId =
+    (typeof telegram.chatId === "string" || typeof telegram.chatId === "number"
+      ? telegram.chatId
+      : undefined) ??
+    (typeof meta.fromId === "string" || typeof meta.fromId === "number"
+      ? (meta.fromId as string | number)
+      : undefined);
+  const telegramThreadId =
+    typeof telegram.threadId === "string" ||
+    typeof telegram.threadId === "number"
+      ? (telegram.threadId as string | number)
+      : undefined;
+
+  const slackChannelId =
+    typeof slack.channelId === "string" ? slack.channelId : undefined;
+  const slackTeamId =
+    typeof slack.teamId === "string" ? slack.teamId : undefined;
+
+  if (discordChannelId) {
+    return {
+      source: "discord",
+      discord: {
+        ...(discordChannelId ? { channelId: discordChannelId } : {}),
+        ...(discordGuildId ? { guildId: discordGuildId } : {}),
+        ...(discordThreadId ? { threadId: discordThreadId } : {}),
+      },
+    };
+  }
+  if (telegramChatId !== undefined) {
+    return {
+      source: "telegram",
+      telegram: {
+        chatId: telegramChatId,
+        ...(telegramThreadId !== undefined
+          ? { threadId: telegramThreadId }
+          : {}),
+      },
+    };
+  }
+  if (slackChannelId) {
+    return {
+      source: "slack",
+      slack: {
+        channelId: slackChannelId,
+        ...(slackTeamId ? { teamId: slackTeamId } : {}),
+      },
+    };
+  }
+  return undefined;
+}
+
 function readPosition(value: unknown): [number, number] | null {
   return Array.isArray(value) &&
     value.length >= 2 &&
@@ -1130,10 +1266,14 @@ async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
 
   const name = readOptionalString(body, "name");
   const workflowId = readOptionalString(body, "workflowId");
+  const bridgeConversationId = readOptionalString(body, "bridgeConversationId");
 
   const service = ctx.runtime?.getService?.("n8n_workflow") as
     | {
-        generateWorkflowDraft?: (prompt: string) => Promise<{
+        generateWorkflowDraft?: (
+          prompt: string,
+          opts?: { triggerContext?: TriggerContext },
+        ) => Promise<{
           id?: string;
           [k: string]: unknown;
         }>;
@@ -1158,7 +1298,14 @@ async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
     return true;
   }
 
-  const draft = await service.generateWorkflowDraft(prompt);
+  const triggerContext = bridgeConversationId
+    ? await buildTriggerContextFromConversation(ctx.runtime, bridgeConversationId)
+    : undefined;
+
+  const draft = await service.generateWorkflowDraft(
+    prompt,
+    triggerContext ? { triggerContext } : undefined,
+  );
   if (name?.trim()) {
     (draft as Record<string, unknown>).name = name.trim();
   }
