@@ -15,6 +15,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VerificationRoomBridgeService } from "../verification-room-bridge.js";
 
@@ -271,5 +272,51 @@ describe("VerificationRoomBridgeService", () => {
 		await service.stop();
 		expect(coord.listeners.length).toBe(0);
 		expect(coord.unsubscribed).toBe(1);
+	});
+
+	it("stop() handles a non-function unsubscribe gracefully", async () => {
+		const { runtime } = createRuntime(coord);
+		const service = await VerificationRoomBridgeService.start(runtime);
+		// Force the stored unsubscribe into an invalid runtime shape — what
+		// would happen if a future coordinator surface returned an object
+		// instead of the documented `() => void`.
+		(service as unknown as { unsubscribe: unknown }).unsubscribe = {
+			not: "callable",
+		};
+		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		await expect(service.stop()).resolves.toBeUndefined();
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"[VerificationRoomBridge] stored unsubscribe was not a function",
+			),
+		);
+		// Field cleared so a second stop() is a no-op.
+		expect(
+			(service as unknown as { unsubscribe: unknown }).unsubscribe,
+		).toBeNull();
+		warnSpy.mockRestore();
+	});
+
+	it("stop() handles an unsubscribe that throws", async () => {
+		const { runtime } = createRuntime(coord);
+		const service = await VerificationRoomBridgeService.start(runtime);
+		const boom = new Error("coordinator exploded");
+		(service as unknown as { unsubscribe: () => void }).unsubscribe = () => {
+			throw boom;
+		};
+		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+		await expect(service.stop()).resolves.toBeUndefined();
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining(
+				"[VerificationRoomBridge] unsubscribe threw during stop()",
+			),
+		);
+		expect(warnSpy).toHaveBeenCalledWith(
+			expect.stringContaining("coordinator exploded"),
+		);
+		expect(
+			(service as unknown as { unsubscribe: unknown }).unsubscribe,
+		).toBeNull();
+		warnSpy.mockRestore();
 	});
 });
