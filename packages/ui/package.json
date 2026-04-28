@@ -84,7 +84,7 @@
     "@types/react-dom": "^19.0.0",
     "storybook": "8.6.17",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "author": "elizaOS Team",
   "engines": {

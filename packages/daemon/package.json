@@ -37,7 +37,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.2",
-    "typescript": "^5.7.3",
+    "typescript": "^6.0.3",
     "vitest": "^2.1.8"
   },
   "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"

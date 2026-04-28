@@ -37,7 +37,7 @@
         "lerna": "9.0.3",
         "react-test-renderer": "^19.0.0",
         "turbo": "^2.7.4",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
         "vitest": "^4.0.17",
       },
     },
@@ -65,7 +65,7 @@
         "@types/react-dom": "^19.0.0",
         "@types/three": "^0.182.0",
         "tailwindcss": "^4.1.18",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -123,10 +123,10 @@
         "@types/node": "^25.0.3",
         "@types/pg": "^8.15.2",
         "@types/ws": "^8.18.1",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
       },
       "peerDependencies": {
-        "@elizaos/core": "2.0.0-alpha.22",
+        "@elizaos/core": "workspace:*",
         "@elizaos/signal-native": "*",
       },
       "optionalPeers": [
@@ -160,7 +160,7 @@
       "name": "@elizaos/computeruse",
       "version": "2.0.0-alpha.43",
       "dependencies": {
-        "@mediar-ai/kv": "^0.23.30",
+        "@mediar-ai/kv": "workspace:*",
       },
       "devDependencies": {
         "@napi-rs/cli": "^2.18.4",
@@ -186,7 +186,7 @@
         "@types/node": "^20.11.5",
         "jest": "^29.7.0",
         "ts-jest": "^29.4.5",
-        "typescript": "^5.3.3",
+        "typescript": "^6.0.3",
       },
     },
     "packages/computeruse/packages/workflow": {
@@ -202,7 +202,7 @@
         "@types/node": "^20.11.5",
         "jest": "^29.7.0",
         "ts-jest": "^29.4.5",
-        "typescript": "^5.3.3",
+        "typescript": "^6.0.3",
       },
       "peerDependencies": {
         "@elizaos/computeruse": "workspace:*",
@@ -214,7 +214,7 @@
       "devDependencies": {
         "@biomejs/biome": "^1.9.4",
         "@types/node": "^22.10.2",
-        "typescript": "^5.7.3",
+        "typescript": "^6.0.3",
         "vitest": "^2.1.8",
       },
     },
@@ -235,7 +235,7 @@
       },
       "devDependencies": {
         "@types/node": "^25.0.3",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
         "vitest": "^4.0.17",
       },
     },
@@ -260,7 +260,7 @@
         "@types/react-dom": "^19.0.0",
         "@vitejs/plugin-react": "^5.1.3",
         "tailwindcss": "^4.1.18",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
         "vite": "^5.4.21",
         "vitest": "^2.1.9",
       },
@@ -273,7 +273,7 @@
       },
       "devDependencies": {
         "@types/node": "^25.0.3",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
       },
     },
     "packages/prompts": {
@@ -322,7 +322,7 @@
         "@types/bun": "^1.3.5",
         "@types/express": "^4.17.21",
         "@types/node": "^25.0.3",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
         "vitest": "^4.0.17",
       },
     },
@@ -338,7 +338,7 @@
       "devDependencies": {
         "@types/node": "^24.10.0",
         "bun-types": "^1.3.2",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
       },
     },
     "packages/tui": {
@@ -392,7 +392,7 @@
         "@vitest/coverage-v8": "^4.0.0",
         "esbuild": "^0.25.0",
         "sharp": "^0.33.0",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
         "vitest": "^4.0.0",
       },
     },
@@ -430,7 +430,7 @@
         "@types/react-dom": "^19.0.0",
         "storybook": "8.6.17",
         "tailwindcss": "^4.1.18",
-        "typescript": "^5.9.3",
+        "typescript": "^6.0.3",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -3911,7 +3911,7 @@
 
     "typedarray": ["typedarray@0.0.6", "", {}, "sha512-/aCDEGatGvZ2BIk+HmLf4ifCJFwvKFNb9/JeZPMulfgFracn9QFcAf5GO8B/mweUjSoblS5In0cWhqpfs/5PQA=="],
 
-    "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+    "typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "uc.micro": ["uc.micro@2.1.0", "", {}, "sha512-ARDJmphmdvUk6Glw7y9DQ2bFkKBHwQHLi2lsaH6PPmz/Ka9sFOBsBluozhDltWmnv9u/cF6Rt87znRTPV+yp/A=="],
 
@@ -4096,8 +4096,6 @@
     "@elizaos/autonomous/@elizaos/plugin-openai": ["@elizaos/plugin-openai@2.0.0-alpha.16", "", { "dependencies": { "@ai-sdk/openai": "^3.0.9", "ai": "^6.0.30", "js-tiktoken": "^1.0.21", "undici": "^7.16.0" }, "peerDependencies": { "@elizaos/core": "2.0.0-alpha.114", "zod": "^4.3.6" } }, "sha512-l4WaO5/m/Urx+j3/3nUrJ75kFTop7Ct6CbSRqCuhsrMdqE/GE83RrghmOu60IvWpex45P4Gx5mhSsras9+30gg=="],
 
     "@elizaos/autonomous/@elizaos/plugin-sql": ["@elizaos/plugin-sql@2.0.0-alpha.19", "", { "dependencies": { "@electric-sql/pglite": "^0.3.3", "@elizaos/core": "workspace:*", "@neondatabase/serverless": "^1.0.2", "dotenv": "^17.2.3", "drizzle-kit": "^0.31.8", "drizzle-orm": "^0.45.1", "pg": "^8.16.3", "uuid": "^13.0.0" } }, "sha512-LKHzdcD/yMDEZJ2MzJUwIDbYScAlp/oDc3O5x6Byd1Z10VrkWbKIU26+aAPuqTQwlTJMfvddY6u/I9lRxeGyIw=="],
-
-    "@elizaos/computeruse/@mediar-ai/kv": ["@mediar-ai/kv@0.23.51", "", { "dependencies": { "ioredis": "^5.3.2" } }, "sha512-7tDiy/s4Y8QPa+JtIbkuSh/GXtDEHIYNBQDdaMRaJBNNHXHEg2PRfkd/JzYgFxokd6FMrjXTbEBRcBrCcVQMPg=="],
 
     "@elizaos/computeruse-nodejs/@elizaos/computeruse-darwin-arm64": ["@elizaos/computeruse-darwin-arm64@0.24.20", "", { "os": "darwin", "cpu": "arm64" }, "sha512-0O8RogosGSjZgD+ybioSJtl2yUnbKbUy6A4DvFC3iY7j9oqVIZlN9P0Aut7NUDzuSgDP2nqxdZd3Z0gYpyqzAg=="],
 
@@ -4568,6 +4566,8 @@
     "lerna/chalk": ["chalk@4.1.0", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-qwx12AxXe2Q5xQ43Ac//I6v5aXTipYrSESdOgzrN+9XjgEpyjpKuvSGaN4qE93f7TQTlerQQ8S+EQ0EyDoVL1A=="],
 
     "lerna/dedent": ["dedent@1.5.3", "", { "peerDependencies": { "babel-plugin-macros": "^3.1.0" }, "optionalPeers": ["babel-plugin-macros"] }, "sha512-NHQtfOOW68WD8lgypbLA5oT+Bt0xXJhiYvoR6SmmNXZfpzOGXwdKWmcwG8N7PwVVWV3eF/68nmD9BaJSsTBhyQ=="],
+
+    "lerna/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "lerna/uuid": ["uuid@11.1.0", "", { "bin": { "uuid": "dist/esm/bin/uuid" } }, "sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A=="],
 
