@@ -65,6 +65,10 @@ export interface ActionBenchmarkResult {
   registeredActions?: string[];
   /** First ~200 chars of the agent reply, when available. */
   responseText?: string;
+  /** When runsPerCase > 1, the 1-based run index this result came from. */
+  runIndex?: number;
+  /** When runsPerCase > 1, total runs scheduled for this case. */
+  runsPerCase?: number;
 }
 
 export interface ActionBenchmarkLatencyStats {
@@ -79,6 +83,16 @@ export interface ActionBenchmarkTagStats {
   accuracy: number;
 }
 
+export interface CaseReliability {
+  caseId: string;
+  expectedAction: string | null;
+  runs: number;
+  passes: number;
+  passRate: number;
+  /** Per-run actual action (null if no action picked or run errored). */
+  actuals: Array<string | null>;
+}
+
 export interface ActionBenchmarkReport {
   total: number;
   passed: number;
@@ -86,6 +100,10 @@ export interface ActionBenchmarkReport {
   accuracy: number;
   byTag: Record<string, ActionBenchmarkTagStats>;
   latency: ActionBenchmarkLatencyStats;
+  /** Per-case reliability when runsPerCase > 1. */
+  reliability?: CaseReliability[];
+  /** Number of independent runs scheduled per case. */
+  runsPerCase?: number;
   failures: ActionBenchmarkResult[];
   results: ActionBenchmarkResult[];
 }
@@ -111,6 +129,13 @@ export interface ActionBenchmarkRunOptions {
   trajectoryDir?: string;
   /** Force trajectory capture even when the env flag is not set. */
   forceTrajectoryCapture?: boolean;
+  /**
+   * Number of independent runs per case. Defaults to 1. When > 1, the
+   * report includes a reliability table bucketed by pass-rate (0/N, 1/N,
+   * 2/N, …, N/N) so deterministic-broken cases are distinguished from
+   * stochastic flakes. Override via `MILADY_BENCHMARK_RUNS_PER_CASE`.
+   */
+  runsPerCase?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -872,6 +897,17 @@ export async function runActionSelectionBenchmark(
     await fs.rm(trajectoryDir, { recursive: true, force: true });
   }
 
+  const runsPerCaseEnv = (() => {
+    const raw =
+      typeof process !== "undefined"
+        ? process.env.MILADY_BENCHMARK_RUNS_PER_CASE
+        : undefined;
+    if (!raw) return undefined;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  })();
+  const runsPerCase = Math.max(1, opts.runsPerCase ?? runsPerCaseEnv ?? 1);
+
   const sharedRegisteredActions =
     opts.runtime?.actions.map((a) => a.name) ?? [];
 
@@ -922,12 +958,51 @@ export async function runActionSelectionBenchmark(
   const results: ActionBenchmarkResult[] = [];
   const throttleMs = caseThrottleMs();
 
+  // Expand cases by runsPerCase so each repetition gets its own trajectory
+  // file and result row. We clone the case with a suffixed id when N > 1
+  // so the recording harness writes to per-run paths without clobbering.
+  type ScheduledCase = {
+    case: ActionBenchmarkCase;
+    runIndex: number;
+    originalId: string;
+  };
+  const scheduled: ScheduledCase[] = [];
+  for (const tc of opts.cases) {
+    if (runsPerCase === 1) {
+      scheduled.push({ case: tc, runIndex: 1, originalId: tc.id });
+      continue;
+    }
+    for (let i = 1; i <= runsPerCase; i += 1) {
+      scheduled.push({
+        case: { ...tc, id: `${tc.id}#run${i}` },
+        runIndex: i,
+        originalId: tc.id,
+      });
+    }
+  }
+
+  const stampReliability = (
+    item: ScheduledCase,
+    result: ActionBenchmarkResult,
+  ): ActionBenchmarkResult => {
+    if (runsPerCase === 1) return result;
+    return {
+      ...result,
+      runIndex: item.runIndex,
+      runsPerCase,
+      // Restore the original case id so reliability grouping + tag stats
+      // work on the natural case identity, not the synthetic per-run id.
+      case: { ...result.case, id: item.originalId },
+    };
+  };
+
   if (concurrency === 1) {
     let first = true;
-    for (const tc of opts.cases) {
+    for (const item of scheduled) {
       if (!first && throttleMs > 0) await sleep(throttleMs);
       first = false;
-      results.push(await runOneWithRetries(tc));
+      const res = await runOneWithRetries(item.case);
+      results.push(stampReliability(item, res));
     }
   } else {
     let cursor = 0;
@@ -935,13 +1010,13 @@ export async function runActionSelectionBenchmark(
     for (let i = 0; i < concurrency; i += 1) {
       workers.push(
         (async () => {
-          while (cursor < opts.cases.length) {
+          while (cursor < scheduled.length) {
             const myIdx = cursor;
             cursor += 1;
-            const tc = opts.cases[myIdx];
-            if (!tc) break;
-            const res = await runOneWithRetries(tc);
-            results[myIdx] = res;
+            const item = scheduled[myIdx];
+            if (!item) break;
+            const res = await runOneWithRetries(item.case);
+            results[myIdx] = stampReliability(item, res);
           }
         })(),
       );
@@ -977,6 +1052,35 @@ export async function runActionSelectionBenchmark(
       ? 0
       : latencies.reduce((sum, v) => sum + v, 0) / latencies.length;
 
+  let reliability: CaseReliability[] | undefined;
+  if (runsPerCase > 1) {
+    const grouped = new Map<string, ActionBenchmarkResult[]>();
+    for (const r of results) {
+      const id = r.case.id;
+      const bucket = grouped.get(id) ?? [];
+      bucket.push(r);
+      grouped.set(id, bucket);
+    }
+    reliability = [...grouped.entries()]
+      .map(([caseId, runs]) => {
+        const passes = runs.filter((r) => r.pass).length;
+        const expectedAction = runs[0]?.case.expectedAction ?? null;
+        const actuals = runs.map((r) => r.actualAction);
+        return {
+          caseId,
+          expectedAction,
+          runs: runs.length,
+          passes,
+          passRate: runs.length === 0 ? 0 : passes / runs.length,
+          actuals,
+        };
+      })
+      .sort((a, b) => {
+        if (a.passRate !== b.passRate) return a.passRate - b.passRate;
+        return a.caseId.localeCompare(b.caseId);
+      });
+  }
+
   return {
     total: results.length,
     passed,
@@ -988,6 +1092,8 @@ export async function runActionSelectionBenchmark(
       p50: percentile(latencies, 50),
       p95: percentile(latencies, 95),
     },
+    reliability,
+    runsPerCase: runsPerCase > 1 ? runsPerCase : undefined,
     failures: results.filter((r) => !r.pass),
     results,
   };
@@ -1076,6 +1182,65 @@ export function formatBenchmarkReportMarkdown(
     `**Execution Accuracy:** ${(report.total === 0 ? 0 : (executionPassed / report.total) * 100).toFixed(1)}% (${executionPassed}/${report.total})`,
   );
   lines.push("");
+
+  if (report.reliability && report.runsPerCase && report.runsPerCase > 1) {
+    const N = report.runsPerCase;
+    const buckets = new Map<number, typeof report.reliability>();
+    for (let i = 0; i <= N; i += 1) buckets.set(i, []);
+    for (const r of report.reliability) {
+      const bucket = buckets.get(r.passes);
+      if (bucket) bucket.push(r);
+    }
+    lines.push(`## Reliability (${N} runs per case)`);
+    lines.push("");
+    lines.push("| Pass-rate | Cases | % of total |");
+    lines.push("| --- | ---: | ---: |");
+    for (let i = N; i >= 0; i -= 1) {
+      const bucket = buckets.get(i) ?? [];
+      const pct =
+        report.reliability.length === 0
+          ? 0
+          : (bucket.length / report.reliability.length) * 100;
+      lines.push(
+        `| ${i}/${N} | ${bucket.length} | ${pct.toFixed(1)}% |`,
+      );
+    }
+    lines.push("");
+    const flaky = report.reliability.filter(
+      (r) => r.passes > 0 && r.passes < N,
+    );
+    const broken = report.reliability.filter((r) => r.passes === 0);
+    if (broken.length > 0) {
+      lines.push(`### Deterministic broken (0/${N})`);
+      lines.push("");
+      lines.push("| Case | Expected | Actuals across runs |");
+      lines.push("| --- | --- | --- |");
+      for (const r of broken) {
+        const actuals = r.actuals
+          .map((a) => a ?? "(none)")
+          .join(" \\| ");
+        lines.push(
+          `| ${r.caseId} | ${r.expectedAction ?? "(none)"} | ${actuals} |`,
+        );
+      }
+      lines.push("");
+    }
+    if (flaky.length > 0) {
+      lines.push(`### Flaky (1..${N - 1}/${N})`);
+      lines.push("");
+      lines.push("| Case | Pass-rate | Expected | Actuals across runs |");
+      lines.push("| --- | ---: | --- | --- |");
+      for (const r of flaky) {
+        const actuals = r.actuals
+          .map((a) => a ?? "(none)")
+          .join(" \\| ");
+        lines.push(
+          `| ${r.caseId} | ${r.passes}/${r.runs} | ${r.expectedAction ?? "(none)"} | ${actuals} |`,
+        );
+      }
+      lines.push("");
+    }
+  }
 
   lines.push("## By tag");
   lines.push("");

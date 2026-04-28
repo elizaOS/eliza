@@ -30,7 +30,7 @@ export function LandingHeader() {
       transition={{ duration: 0.3 }}
     >
       <div className="flex h-16 items-center justify-between w-full pl-4">
-        <Link href="/" className="flex items-center gap-3">
+        <Link to="/" className="flex items-center gap-3">
           <ElizaLogo className="h-5 sm:h-6 invert shrink-0" />
         </Link>
 
@@ -45,7 +45,7 @@ export function LandingHeader() {
             className="rounded-md bg-[#FF5800] text-white hover:bg-[#FF5800]/90 font-[family-name:var(--font-inter)]"
             asChild
           >
-            <Link href="/get-started">Get started</Link>
+            <Link to="/get-started">Get started</Link>
           </Button>
 
           {/* QR Code popup on hover (desktop only) */}

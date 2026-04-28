@@ -45,10 +45,10 @@
         "./plugins/plugin-lifeops-browser/src/*"
       ],
       "@elizaos/plugin-browser-bridge": [
-        "./packages/plugin-browser-bridge/src/index.ts"
+        "./plugins/plugin-browser-bridge/src/index.ts"
       ],
       "@elizaos/plugin-browser-bridge/*": [
-        "./packages/plugin-browser-bridge/src/*"
+        "./plugins/plugin-browser-bridge/src/*"
       ],
       "@elizaos/app-core": ["./packages/app-core/src/index.ts"],
       "@elizaos/app-core/*": ["./packages/app-core/src/*"],

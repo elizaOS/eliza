@@ -15,10 +15,8 @@
  */
 
 
-import { useState, useEffect, useCallback, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
-import dynamic from "next/dynamic";
+import { useState, useEffect, useCallback } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   MessageCircle,
@@ -36,11 +34,7 @@ import {
   buildFullPhoneNumber,
 } from "@/components/login/phone-number-input";
 import { useAuth, getAuthToken, type TelegramAuthData } from "@/lib/context/auth-context";
-
-const ShaderBackground = dynamic(
-  () => import("@/components/ShaderBackground/ShaderBackground"),
-  { ssr: false },
-);
+import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
 
 // ============================================================================
 // Constants
@@ -145,19 +139,19 @@ function AppleMessagesIcon({ className }: { className?: string }) {
 // ============================================================================
 
 function getTelegramBotUsername(): string {
-  return process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || "ElizaCloudBot";
+  return import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "ElizaCloudBot";
 }
 
 function getTelegramBotId(): string {
-  return (process.env.NEXT_PUBLIC_TELEGRAM_BOT_ID || "").trim();
+  return (import.meta.env.VITE_TELEGRAM_BOT_ID || "").trim();
 }
 
 function getWhatsAppNumber(): string {
-  return process.env.NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER || ELIZA_PHONE_NUMBER;
+  return import.meta.env.VITE_WHATSAPP_PHONE_NUMBER || ELIZA_PHONE_NUMBER;
 }
 
 function getDiscordClientId(): string {
-  return (process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID || "").trim();
+  return (import.meta.env.VITE_DISCORD_CLIENT_ID || "").trim();
 }
 
 function getDiscordBotApplicationId(): string {
@@ -249,9 +243,9 @@ function SuccessRedirect({
 // Inner Component that uses searchParams (needs Suspense boundary)
 // ============================================================================
 
-function GetStartedPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+export default function GetStartedPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const {
     isAuthenticated,
     isLoading: authLoading,
@@ -350,9 +344,9 @@ function GetStartedPageContent() {
   // or an unprocessed Discord callback code is present in the URL).
   useEffect(() => {
     if (!authLoading && isAuthenticated && !suppressRedirect && !guideParam && !isLinkMode && !discordCode) {
-      router.replace("/connected");
+      navigate("/connected", { replace: true });
     }
-  }, [isAuthenticated, authLoading, router, suppressRedirect, guideParam, isLinkMode, discordCode]);
+  }, [isAuthenticated, authLoading, navigate, suppressRedirect, guideParam, isLinkMode, discordCode]);
 
   // Handle query params: method shortcut, Discord OAuth callback, or guide revisit
   useEffect(() => {
@@ -467,7 +461,7 @@ function GetStartedPageContent() {
     if (step === "TELEGRAM_OAUTH") {
       if (isLinkMode) {
         // In link mode, go back to connected page
-        router.push("/connected");
+        navigate("/connected");
       } else {
         setStep("SELECT_METHOD");
         setSelectedMethod(null);
@@ -479,14 +473,14 @@ function GetStartedPageContent() {
       setPhoneError(null);
     } else if (step === "IMESSAGE_DIRECT" || step === "WHATSAPP_DIRECT") {
       if (isLinkMode) {
-        router.push("/connected");
+        navigate("/connected");
       } else {
         setStep("SELECT_METHOD");
         setSelectedMethod(null);
       }
     } else if (step === "DISCORD_CALLBACK" || step === "DISCORD_PHONE_INPUT") {
       if (isLinkMode) {
-        router.push("/connected");
+        navigate("/connected");
       } else {
         setStep("SELECT_METHOD");
         setSelectedMethod(null);
@@ -496,10 +490,10 @@ function GetStartedPageContent() {
       }
     } else if (step === "DISCORD_SETUP_GUIDE") {
       // Can't go back from guide - go to connected
-      router.push("/connected");
+      navigate("/connected");
     } else if (step === "SUCCESS") {
       // Can't go back from success - redirect to connected
-      router.push("/connected");
+      navigate("/connected");
     }
   };
 
@@ -566,7 +560,7 @@ function GetStartedPageContent() {
     if (result.success) {
       if (isLinkMode) {
         // In link mode, go back to connected page after linking
-        router.replace("/connected");
+        navigate("/connected", { replace: true });
       } else {
         setStep("SUCCESS");
       }
@@ -588,7 +582,7 @@ function GetStartedPageContent() {
     }
 
     setIsSubmittingPhone(false);
-  }, [pendingTelegramData, hasPhoneNumber, getFullPhoneNumber, loginWithTelegram, isLinkMode, router]);
+  }, [pendingTelegramData, hasPhoneNumber, getFullPhoneNumber, loginWithTelegram, isLinkMode, navigate]);
 
   // ============================================================================
   // Discord Handlers
@@ -652,7 +646,7 @@ function GetStartedPageContent() {
     if (result.success) {
       if (isLinkMode) {
         // In link mode, go back to connected page after linking
-        router.replace("/connected");
+        navigate("/connected", { replace: true });
       } else {
         setStep("DISCORD_SETUP_GUIDE");
       }
@@ -670,7 +664,7 @@ function GetStartedPageContent() {
     }
 
     setIsDiscordLoading(false);
-  }, [pendingDiscordCode, pendingDiscordState, loginWithDiscord, isLinkMode, router]);
+  }, [pendingDiscordCode, pendingDiscordState, loginWithDiscord, isLinkMode, navigate]);
 
   // Auto-skip phone input when linking Discord to an account that already has a phone number.
   // This prevents showing the "Add your phone number" screen to users who already
@@ -731,7 +725,7 @@ function GetStartedPageContent() {
    * Navigate to dashboard
    */
   const handleContinueToConnected = () => {
-    router.push("/connected");
+    navigate("/connected");
   };
 
   // ============================================================================
@@ -791,7 +785,7 @@ function GetStartedPageContent() {
             </button>
           ) : (
             <Link
-              href="/"
+              to="/"
               className="inline-flex items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors"
             >
               <ArrowLeft className="size-4" />
@@ -1335,18 +1329,3 @@ function GetStartedPageContent() {
   );
 }
 
-// ============================================================================
-// Page Component with Suspense boundary for useSearchParams
-// ============================================================================
-
-export default function GetStartedPage() {
-  return (
-    <Suspense fallback={
-      <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
-        <div className="text-white/60 animate-pulse">Loading...</div>
-      </main>
-    }>
-      <GetStartedPageContent />
-    </Suspense>
-  );
-}
