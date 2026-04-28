@@ -412,9 +412,11 @@ function handleDeepLink(url: string): void {
   if (connectorMatch) {
     window.location.hash = "#settings";
     const provider = connectorMatch[1].toLowerCase();
-    // Defer one tick so the hash change settles and SettingsView mounts before
-    // we dispatch — otherwise the listener isn't subscribed yet.
-    queueMicrotask(() => dispatchFocusConnector(provider));
+    // Fires the focus event immediately AND stashes `provider` in a module
+    // ref. SettingsView drains the stash on mount, so this works whether the
+    // settings tab is already mounted (event delivery) or is mounting in
+    // response to the hash change above (drain-on-mount).
+    dispatchFocusConnector(provider);
     return;
   }
 

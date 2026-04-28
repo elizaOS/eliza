@@ -39,7 +39,21 @@ export function providerFromCredType(credType: string): string {
   return CRED_TYPE_TO_PROVIDER[credType] ?? credType.toLowerCase();
 }
 
+/**
+ * Pending provider stash. The dispatcher writes here unconditionally so a
+ * SettingsView that has not yet mounted can drain it on mount (and drop the
+ * timing race against React's render scheduler). The event still fires for
+ * the case where SettingsView is already mounted and listening — first
+ * delivery wins; the drain on mount is the fallback.
+ *
+ * Module-scoped because it bridges call sites that don't share React context
+ * (`apps/app/src/main.tsx` URL handler ↔ AutomationsView click handler ↔
+ * SettingsView mount).
+ */
+let pendingFocusProvider: string | null = null;
+
 export function dispatchFocusConnector(provider: string): void {
+  pendingFocusProvider = provider;
   if (typeof window === "undefined") return;
   window.dispatchEvent(
     new CustomEvent<SettingsFocusConnectorDetail>(
@@ -47,4 +61,15 @@ export function dispatchFocusConnector(provider: string): void {
       { detail: { provider } },
     ),
   );
+}
+
+/**
+ * Read and clear the pending focus target. Called by SettingsView on mount
+ * so the focus survives a render cycle when the dispatch happened before
+ * the listener was registered.
+ */
+export function consumePendingFocusProvider(): string | null {
+  const provider = pendingFocusProvider;
+  pendingFocusProvider = null;
+  return provider;
 }
