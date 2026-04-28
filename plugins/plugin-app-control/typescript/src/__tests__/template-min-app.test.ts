@@ -142,7 +142,12 @@ describe.skipIf(skip)(
 			expect(pluginRaw).toContain("__APP_NAME__");
 		});
 
-		it("scaffolds + typechecks + lints clean under profile=fast", async () => {
+		// Single full-pipeline run (typecheck + lint + test) is a strict
+		// superset of the old "fast profile" run, so we don't pay for the
+		// scaffold/tsc/biome cold-start twice. If you need to debug just
+		// typecheck+lint, run with `--testNamePattern` and a custom checks
+		// override locally.
+		it("scaffolds + typechecks + lints + tests clean", async () => {
 			copyTemplateAndReplace(APP_TEMPLATE_DIR, scaffoldDir, {
 				__APP_NAME__: "scaffold-validation-app",
 				__APP_DISPLAY_NAME__: "Scaffold Validation App",
@@ -158,8 +163,8 @@ describe.skipIf(skip)(
 			const result = await service.verifyApp({
 				workdir: scaffoldDir,
 				appName: "scaffold-validation-app",
-				profile: "fast",
-				runId: "template-min-app-fast",
+				checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
+				runId: "template-min-app-with-tests",
 			});
 
 			if (result.verdict !== "pass") {
@@ -178,33 +183,6 @@ describe.skipIf(skip)(
 				true,
 			);
 			expect(result.checks.find((c) => c.kind === "lint")?.passed).toBe(true);
-		}, 120_000);
-
-		it("scaffolded test suite passes when included in the verification pipeline", async () => {
-			copyTemplateAndReplace(APP_TEMPLATE_DIR, scaffoldDir, {
-				__APP_NAME__: "scaffold-test-app",
-				__APP_DISPLAY_NAME__: "Scaffold Test App",
-			});
-
-			const result = await service.verifyApp({
-				workdir: scaffoldDir,
-				appName: "scaffold-test-app",
-				checks: [{ kind: "typecheck" }, { kind: "lint" }, { kind: "test" }],
-				runId: "template-min-app-with-tests",
-			});
-
-			if (result.verdict !== "pass") {
-				const summary = result.checks
-					.map(
-						(c) =>
-							`  - ${c.kind}: ${c.passed ? "pass" : "FAIL"} (${c.durationMs}ms)`,
-					)
-					.join("\n");
-				throw new Error(
-					`min-app template failed verification with tests.\nChecks:\n${summary}\n\nRetryable prompt:\n${result.retryablePromptForChild}`,
-				);
-			}
-			expect(result.verdict).toBe("pass");
 			expect(result.checks.find((c) => c.kind === "test")?.passed).toBe(true);
 		}, 240_000);
 	},
