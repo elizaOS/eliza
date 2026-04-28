@@ -7,7 +7,7 @@ import {
   type BrowserBridgePermissionState,
   type BrowserBridgeSettings,
   type UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser-bridge";
+} from "../../../../plugins/plugin-browser-bridge/src/index.js";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,

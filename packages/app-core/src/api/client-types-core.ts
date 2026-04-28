@@ -368,7 +368,7 @@ export interface ExtensionStatus {
   safariAppPath?: string | null;
   safariPackagePath?: string | null;
   releaseManifest?:
-    | import("@elizaos/plugin-browser-bridge/contracts").BrowserBridgeCompanionReleaseManifest
+    | import("../../../../plugins/plugin-browser-bridge/src/contracts").BrowserBridgeCompanionReleaseManifest
     | null;
 }
 

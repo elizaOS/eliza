@@ -5,7 +5,7 @@ import {
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "../../../../../plugins/plugin-browser-bridge/src/contracts.js";
 import {
   Button,
   Input,
