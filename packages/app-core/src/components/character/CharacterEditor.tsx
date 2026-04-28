@@ -1,4 +1,4 @@
-import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import { getStylePresets } from "@elizaos/shared";
 import type { CharacterData } from "../../api/client";
 import { client } from "../../api/client";
 import {

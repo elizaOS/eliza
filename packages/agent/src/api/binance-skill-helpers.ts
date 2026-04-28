@@ -110,7 +110,8 @@ export function isBalanceIntent(input: string): boolean {
  */
 export function extractXmlParams(block: string): Record<string, string> {
   const params: Record<string, string> = {};
-  const pairs = block.matchAll(
+  const safeBlock = block.length > 100_000 ? block.slice(0, 100_000) : block;
+  const pairs = safeBlock.matchAll(
     /<([A-Za-z_][A-Za-z0-9_-]*)>\s*([^<]+?)\s*<\/\1>/g,
   );
   for (const [, key, val] of pairs) {
@@ -161,10 +162,12 @@ export function parseFallbackActionBlocks(
     }
 
     for (const [, block = ""] of xmlActionMatches) {
-      const nameMatch = block.match(/<name>\s*([A-Za-z0-9_]+)\s*<\/name>/i);
+      const safeBlock =
+        block.length > 100_000 ? block.slice(0, 100_000) : block;
+      const nameMatch = safeBlock.match(/<name>\s*([A-Za-z0-9_]+)\s*<\/name>/i);
       if (!nameMatch) continue;
       const params: Record<string, string> = {};
-      const paramsMatch = block.match(/<params>([\s\S]*?)<\/params>/i);
+      const paramsMatch = safeBlock.match(/<params>([\s\S]*?)<\/params>/i);
       if (paramsMatch?.[1]) {
         Object.assign(params, extractXmlParams(paramsMatch[1]));
       }
@@ -483,6 +486,9 @@ function extractDirectBinanceSearchKeyword(userText: string): string | null {
   const quoted = extractQuotedUserText(userText);
   if (quoted) return quoted;
 
+  const safeText =
+    userText.length > 10_000 ? userText.slice(0, 10_000) : userText;
+
   const patterns = [
     /\bsearch(?: for)?\s+(.+?)(?:\s+on\s+(?:bsc|bnb|solana|sol|base|eth|ethereum)\b|$)/i,
     /\bfind\s+(.+?)(?:\s+on\s+(?:bsc|bnb|solana|sol|base|eth|ethereum)\b|$)/i,
@@ -490,12 +496,12 @@ function extractDirectBinanceSearchKeyword(userText: string): string | null {
     /\bfor\s+(.+?)(?:\s+on\s+(?:bsc|bnb|solana|sol|base|eth|ethereum)\b|$)/i,
   ];
   for (const pattern of patterns) {
-    const match = userText.match(pattern);
+    const match = safeText.match(pattern);
     const value = match?.[1]?.trim();
     if (value) return value.replace(/\s+/g, " ").trim();
   }
 
-  const cleaned = userText
+  const cleaned = safeText
     .replace(/\b(binance-[a-z0-9-]+)\b/gi, " ")
     .replace(
       /\b(use|run|show|tell|give|fetch|pull|get|search|find|lookup|look up|query|token|info|market|data|detail|details|price|please|me|and)\b/gi,

@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { getRecentMessagesData } from "@elizaos/shared";
 
 // Match any speaker prefix pattern: "word:" or "word word:" at the start of a line.
 // This is language-agnostic — strips any short prefix label followed by a colon,

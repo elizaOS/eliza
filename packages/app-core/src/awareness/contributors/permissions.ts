@@ -4,8 +4,7 @@
  * operational boundaries (Layer 2 of the 3-layer permission model).
  */
 
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type { AwarenessContributor } from "@elizaos/agent/contracts";
+import { type AwarenessContributor, loadElizaConfig } from "@elizaos/agent";
 import type { IAgentRuntime } from "@elizaos/core";
 
 type AutomationMode = "connectors-only" | "full";

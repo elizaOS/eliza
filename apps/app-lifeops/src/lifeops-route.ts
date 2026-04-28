@@ -28,9 +28,9 @@ export type LifeOpsRouteSection =
   | "calendar"
   | "messages"
   | "mail"
-  | "payments";
+  | "money";
 
-const LIFEOPS_SECTIONS: readonly LifeOpsRouteSection[] = [
+export const LIFEOPS_ROUTE_SECTIONS: readonly LifeOpsRouteSection[] = [
   "overview",
   "sleep",
   "screen-time",
@@ -39,7 +39,7 @@ const LIFEOPS_SECTIONS: readonly LifeOpsRouteSection[] = [
   "calendar",
   "messages",
   "mail",
-  "payments",
+  "money",
 ] as const;
 
 export interface LifeOpsRouteState {
@@ -59,7 +59,8 @@ const AUTOMATIONS_TRIGGER_KEY = "automations.trigger";
 
 function isSection(value: string | null): value is LifeOpsRouteSection {
   return (
-    value !== null && (LIFEOPS_SECTIONS as readonly string[]).includes(value)
+    value !== null &&
+    (LIFEOPS_ROUTE_SECTIONS as readonly string[]).includes(value)
   );
 }
 

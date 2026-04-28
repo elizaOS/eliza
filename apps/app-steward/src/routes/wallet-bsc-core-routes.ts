@@ -71,7 +71,7 @@ export async function handleWalletBscCoreRoutes(
       resolveTradePermissionMode: resolveTradePermissionMode as never,
       isAgentAutomationRequest,
       canUseLocalTradeExecution: canUseLocalTradeExecution as never,
-      saveElizaConfig,
+      saveElizaConfig: saveElizaConfig as never,
     },
   });
 }

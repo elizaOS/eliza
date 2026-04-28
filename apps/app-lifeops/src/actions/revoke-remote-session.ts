@@ -2,6 +2,7 @@
  * REVOKE_REMOTE_SESSION — control-plane action for T9a.
  */
 
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -10,10 +11,9 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
 import {
-  RemoteSessionError,
   getRemoteSessionService,
+  RemoteSessionError,
 } from "../remote/remote-session-service.js";
 
 const ACTION_NAME = "REVOKE_REMOTE_SESSION";
@@ -39,8 +39,7 @@ export const revokeRemoteSessionAction: Action = {
   parameters: [
     {
       name: "sessionId",
-      description:
-        "Session id returned by the REMOTE_DESKTOP start subaction.",
+      description: "Session id returned by the REMOTE_DESKTOP start subaction.",
       required: true,
       schema: { type: "string" as const },
     },

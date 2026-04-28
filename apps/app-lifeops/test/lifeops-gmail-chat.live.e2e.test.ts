@@ -16,8 +16,10 @@ import {
 } from "../../../../test/helpers/live-provider";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 import { saveEnv } from "../../../../test/helpers/test-utils";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import {
+  createElizaPlugin,
+  resolveOAuthDir,
+} from "@elizaos/agent";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,

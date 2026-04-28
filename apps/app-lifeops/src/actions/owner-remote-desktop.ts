@@ -8,6 +8,8 @@
  * underlying logic.
  */
 
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -16,11 +18,10 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
-import { remoteDesktopAction } from "./remote-desktop.js";
-import { startRemoteSessionAction } from "./start-remote-session.js";
-import { revokeRemoteSessionAction } from "./revoke-remote-session.js";
 import { listRemoteSessionsAction } from "./list-remote-sessions.js";
+import { remoteDesktopAction } from "./remote-desktop.js";
+import { revokeRemoteSessionAction } from "./revoke-remote-session.js";
+import { startRemoteSessionAction } from "./start-remote-session.js";
 
 const ACTION_NAME = "OWNER_REMOTE_DESKTOP";
 
@@ -38,7 +39,13 @@ interface OwnerRemoteDesktopParameters {
 function coerceSubaction(value: unknown): Subaction | undefined {
   if (typeof value !== "string") return undefined;
   const n = value.trim().toLowerCase();
-  if (n === "start" || n === "end" || n === "status" || n === "list" || n === "revoke") {
+  if (
+    n === "start" ||
+    n === "end" ||
+    n === "status" ||
+    n === "list" ||
+    n === "revoke"
+  ) {
     return n;
   }
   return undefined;
@@ -70,19 +77,22 @@ export const ownerRemoteDesktopAction: Action = {
   parameters: [
     {
       name: "subaction",
-      description: "Required. One of: start, end, status, list, revoke.",
-      required: true,
+      description:
+        "One of: start, end, status, list, revoke. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {
       name: "intent",
-      description: "Freeform owner intent / reason for the session. Logged for audit.",
+      description:
+        "Freeform owner intent / reason for the session. Logged for audit.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "sessionId",
-      description: "Session id — required for status, end, and revoke subactions.",
+      description:
+        "Session id — required for status, end, and revoke subactions.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -112,7 +122,9 @@ export const ownerRemoteDesktopAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Start a remote session with pairing code 482193, confirmed." },
+        content: {
+          text: "Start a remote session with pairing code 482193, confirmed.",
+        },
       },
       {
         name: "{{agentName}}",
@@ -166,8 +178,19 @@ export const ownerRemoteDesktopAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerRemoteDesktopParameters;
+    const params =
+      (await extractActionParamsViaLlm<OwnerRemoteDesktopParameters>({
+        runtime,
+        message,
+        state,
+        actionName: ACTION_NAME,
+        actionDescription: ownerRemoteDesktopAction.description ?? "",
+        paramSchema: ownerRemoteDesktopAction.parameters ?? [],
+        existingParams: rawParams,
+        requiredFields: ["subaction"],
+      })) as OwnerRemoteDesktopParameters;
     const subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       return {

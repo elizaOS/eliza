@@ -3,14 +3,11 @@
  * trading profile, registry (ERC-8004), drop/mint, whitelist, twitter verify.
  */
 
-import type { DropStatus, MintResult } from "@elizaos/agent/contracts/drop";
-import type { VerificationResult } from "@elizaos/agent/contracts/verification";
 import type {
   BrowserWorkspaceSolanaMessageSignatureResult,
+  BrowserWorkspaceSolanaTransactionResult,
   BrowserWorkspaceWalletMessageSignatureResult,
   BrowserWorkspaceWalletTransactionResult,
-} from "@elizaos/app-steward/browser-workspace-wallet";
-import type {
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -30,8 +27,11 @@ import type {
   StewardWalletAddressesResponse,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-} from "@elizaos/app-steward/types";
+} from "@elizaos/app-steward";
 import type {
+  DropStatus,
+  MintResult,
+  VerificationResult,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -41,7 +41,7 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import { ElizaClient } from "./client-base";
 import type {
   ApplyProductionWalletDefaultsResponse,
@@ -145,6 +145,12 @@ declare module "./client-base" {
       message?: string;
       messageBase64?: string;
     }): Promise<BrowserWorkspaceSolanaMessageSignatureResult>;
+    sendBrowserSolanaTransaction(request: {
+      transactionBase64: string;
+      cluster?: "mainnet" | "devnet" | "testnet";
+      broadcast?: boolean;
+      description?: string;
+    }): Promise<BrowserWorkspaceSolanaTransactionResult>;
     sendBrowserWalletTransaction(
       request: StewardSignRequest,
     ): Promise<BrowserWorkspaceWalletTransactionResult>;
@@ -426,6 +432,16 @@ ElizaClient.prototype.signBrowserSolanaMessage = async function (
   request,
 ) {
   return this.fetch("/api/wallet/browser-solana-sign-message", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+};
+
+ElizaClient.prototype.sendBrowserSolanaTransaction = async function (
+  this: ElizaClient,
+  request,
+) {
+  return this.fetch("/api/wallet/browser-solana-transaction", {
     method: "POST",
     body: JSON.stringify(request),
   });

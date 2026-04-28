@@ -11,7 +11,7 @@
     "declaration": false,
     "noEmit": true,
     "baseUrl": "../../",
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
       "@elizaos/app-lifeops/*": ["./apps/app-lifeops/src/*"],
@@ -42,6 +42,12 @@
       "@elizaos/app-companion/*": ["./apps/app-companion/src/*"],
       "@elizaos/app-elizamaker": ["./apps/app-elizamaker/src/index.ts"],
       "@elizaos/app-elizamaker/*": ["./apps/app-elizamaker/src/*"],
+      "@elizaos/capacitor-appblocker": [
+        "./packages/native-plugins/appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "./packages/native-plugins/mobile-signals/src/index.ts"
+      ],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
       "@elizaos/skills": ["./packages/skills/src/index.ts"],

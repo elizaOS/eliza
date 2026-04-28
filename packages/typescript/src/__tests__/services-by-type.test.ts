@@ -202,10 +202,7 @@ describe("Service Type System", () => {
 			});
 
 			expect(runtime.routes.map((route) => route.path)).toEqual(
-				expect.arrayContaining([
-					"/api/raw-route",
-					"/route-plugin/status",
-				]),
+				expect.arrayContaining(["/api/raw-route", "/route-plugin/status"]),
 			);
 		});
 

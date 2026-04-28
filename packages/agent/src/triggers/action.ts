@@ -15,7 +15,7 @@ import {
 import {
   findKeywordTermMatch,
   getValidationKeywordTerms,
-} from "@elizaos/shared/validation-keywords";
+} from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.js";
 import { parsePositiveInteger } from "../utils/number-parsing.js";
 import {
@@ -136,17 +136,33 @@ function scheduleText(
   return `on cron ${summary.cronExpression ?? "* * * * *"}`;
 }
 
+const EVERY_N_UNIT_PATTERN =
+  /\bevery\s+\d+\s*(second|minute|hour|day|week|month)s?\b/i;
+
 export function looksLikeTriggerIntent(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) {
     return false;
   }
 
-  return findKeywordTermMatch(trimmed, TRIGGER_INTENT_TERMS) !== undefined;
+  if (findKeywordTermMatch(trimmed, TRIGGER_INTENT_TERMS) !== undefined) {
+    return true;
+  }
+
+  return EVERY_N_UNIT_PATTERN.test(trimmed);
 }
 
 export const createTriggerTaskAction: Action = {
   name: CREATE_TRIGGER_TASK_ACTION,
+  // SET_REMINDER is deliberately absent: it collides with LIFE's same simile
+  // (life.ts:2499) and LIFE owns the user-facing reminder/alarm concept.
+  // CREATE_TRIGGER_TASK is for programmatic scheduled jobs (cron, interval,
+  // agent-owned heartbeats), not LifeOps reminders. When both actions share
+  // a simile, runtime.processActions (runtime.ts:2400-2440) resolves it via
+  // first-match iteration order, so the collision was dispatching user
+  // reminder intents to whichever action registered first — a race the
+  // planner's validate-time gating cannot override (processActions does not
+  // re-validate at dispatch, per runtime.ts:2473).
   similes: [
     "CREATE_TRIGGER",
     "SCHEDULE_TRIGGER",
@@ -155,7 +171,6 @@ export const createTriggerTaskAction: Action = {
     "SCHEDULE_HEARTBEAT",
     "CREATE_AUTOMATION",
     "SCHEDULE_AUTOMATION",
-    "SET_REMINDER",
     "CREATE_CRON",
     "CREATE_RECURRING",
   ],

@@ -1,8 +1,7 @@
-import { type ChildProcess, execFile, spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { promisify } from "node:util";
 import {
   ChannelType,
   type Character,
@@ -20,7 +19,17 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { signalCheck } from "./rpc";
+import {
+  createSignalEventStream,
+  parseSignalEventData,
+  signalCheck,
+  signalListContacts,
+  signalListGroups,
+  signalRpcRequest,
+  signalSend,
+  signalSendReaction,
+  signalSendTyping,
+} from "./rpc";
 
 type MessageService = Pick<IMessageService, "handleMessage">;
 
@@ -34,6 +43,7 @@ const getMessageService = (runtime: IAgentRuntime): MessageService | null => {
   return null;
 };
 
+import { missingSignalCliMessage, resolveSignalCliExecutable } from "./pairing-service";
 import {
   getSignalContactDisplayName,
   type ISignalService,
@@ -53,13 +63,11 @@ import {
   type SignalSettings,
 } from "./types";
 
-const execFileAsync = promisify(execFile);
 export const DEFAULT_SIGNAL_HTTP_HOST = "127.0.0.1";
 export const DEFAULT_SIGNAL_HTTP_PORT = 8080;
 const DEFAULT_SIGNAL_DAEMON_STARTUP_TIMEOUT_MS = 30_000;
 export const DEFAULT_SIGNAL_CLI_PATH = "signal-cli";
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
-const COMMON_SIGNAL_CLI_PATHS = ["/opt/homebrew/bin/signal-cli", "/usr/local/bin/signal-cli"];
 
 /**
  * signal-cli uses `$HOME/.local/share/signal-cli` as its default data
@@ -84,35 +92,6 @@ function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/+$/, "");
 }
 
-async function resolveSignalCliPath(cliPath: string): Promise<string | null> {
-  const trimmed = cliPath.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (trimmed.includes("/") || trimmed.startsWith(".")) {
-    return fs.existsSync(trimmed) ? trimmed : null;
-  }
-
-  try {
-    const { stdout } = await execFileAsync("/usr/bin/which", [trimmed]);
-    const resolved = stdout.trim();
-    return resolved.length > 0 ? resolved : null;
-  } catch {
-    if (trimmed !== DEFAULT_SIGNAL_CLI_PATH) {
-      return null;
-    }
-
-    for (const candidate of COMMON_SIGNAL_CLI_PATHS) {
-      if (fs.existsSync(candidate)) {
-        return candidate;
-      }
-    }
-
-    return null;
-  }
-}
-
 function buildSignalCliEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   const javaHome =
@@ -135,45 +114,12 @@ function buildSignalCliEnv(): NodeJS.ProcessEnv {
  */
 class SignalApiClient {
   constructor(
-    private baseUrl: string,
-    private accountNumber: string
+    public readonly baseUrl: string,
+    public readonly accountNumber: string
   ) {}
 
-  private async request<T>(
-    method: string,
-    endpoint: string,
-    body?: Record<string, unknown>,
-    allowEmptyResponse = false
-  ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-    const options: RequestInit = {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    };
-
-    if (body) {
-      options.body = JSON.stringify(body);
-    }
-
-    const response = await fetch(url, options);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Signal API error: ${response.status} - ${errorText}`);
-    }
-
-    const text = await response.text();
-    if (!text) {
-      if (allowEmptyResponse) return {} as T;
-      throw new Error(`Signal API returned empty response for ${method} ${endpoint}`);
-    }
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      throw new Error(`Signal API returned invalid JSON: ${text.slice(0, 200)}`);
-    }
+  private rpcOptions(timeoutMs?: number): { baseUrl: string; timeoutMs?: number } {
+    return timeoutMs ? { baseUrl: this.baseUrl, timeoutMs } : { baseUrl: this.baseUrl };
   }
 
   async sendMessage(
@@ -181,22 +127,16 @@ class SignalApiClient {
     message: string,
     options?: SignalMessageSendOptions
   ): Promise<{ timestamp: number }> {
-    const body: Record<string, unknown> = {
-      message,
-      number: this.accountNumber,
-      recipients: [recipient],
-    };
-
-    if (options?.attachments) {
-      body.base64_attachments = options.attachments;
-    }
-
-    if (options?.quote) {
-      body.quote_timestamp = options.quote.timestamp;
-      body.quote_author = options.quote.author;
-    }
-
-    return this.request<{ timestamp: number }>("POST", "/v2/send", body);
+    return signalSend(
+      {
+        account: this.accountNumber,
+        recipients: [recipient],
+        message,
+        ...(options?.attachments ? { attachments: options.attachments } : {}),
+        ...(options?.quote ? { quote: options.quote } : {}),
+      },
+      this.rpcOptions()
+    );
   }
 
   async sendGroupMessage(
@@ -204,17 +144,15 @@ class SignalApiClient {
     message: string,
     options?: SignalMessageSendOptions
   ): Promise<{ timestamp: number }> {
-    const body: Record<string, unknown> = {
-      message,
-      number: this.accountNumber,
-      recipients: [`group.${groupId}`],
-    };
-
-    if (options?.attachments) {
-      body.base64_attachments = options.attachments;
-    }
-
-    return this.request<{ timestamp: number }>("POST", "/v2/send", body);
+    return signalSend(
+      {
+        account: this.accountNumber,
+        groupId,
+        message,
+        ...(options?.attachments ? { attachments: options.attachments } : {}),
+      },
+      this.rpcOptions()
+    );
   }
 
   async sendReaction(
@@ -224,31 +162,25 @@ class SignalApiClient {
     targetAuthor: string,
     remove = false
   ): Promise<void> {
-    await this.request(
-      "POST",
-      `/v1/reactions/${this.accountNumber}`,
+    await signalSendReaction(
       {
+        account: this.accountNumber,
         recipient,
-        reaction: emoji,
-        target_author: targetAuthor,
-        timestamp: targetTimestamp,
+        emoji,
+        targetAuthor,
+        targetTimestamp,
         remove,
       },
-      true
+      this.rpcOptions()
     );
   }
 
   async getContacts(): Promise<SignalContact[]> {
-    const result = await this.request<{ contacts: SignalContact[] }>(
-      "GET",
-      `/v1/contacts/${this.accountNumber}`
-    );
-    return result.contacts || [];
+    return signalListContacts(this.accountNumber, this.rpcOptions()) as Promise<SignalContact[]>;
   }
 
   async getGroups(): Promise<SignalGroup[]> {
-    const result = await this.request<SignalGroup[]>("GET", `/v1/groups/${this.accountNumber}`);
-    return result || [];
+    return signalListGroups(this.accountNumber, this.rpcOptions()) as Promise<SignalGroup[]>;
   }
 
   async getGroup(groupId: string): Promise<SignalGroup | null> {
@@ -257,54 +189,59 @@ class SignalApiClient {
   }
 
   async receive(): Promise<SignalMessage[]> {
-    const result = await this.request<SignalMessage[]>("GET", `/v1/receive/${this.accountNumber}`);
-    return result || [];
+    return signalRpcRequest<SignalMessage[]>(
+      "receive",
+      { account: this.accountNumber },
+      this.rpcOptions(1_500)
+    ).catch((error) => {
+      if (error instanceof Error && error.name === "AbortError") {
+        return [];
+      }
+      throw error;
+    });
   }
 
   async sendTyping(recipient: string, stop = false): Promise<void> {
-    await this.request(
-      "PUT",
-      `/v1/typing-indicator/${this.accountNumber}`,
+    await signalSendTyping(
       {
+        account: this.accountNumber,
         recipient,
         stop,
       },
-      true
+      this.rpcOptions()
     );
   }
 
   async setProfile(name: string, about?: string): Promise<void> {
-    await this.request(
-      "PUT",
-      `/v1/profiles/${this.accountNumber}`,
+    await signalRpcRequest(
+      "setProfile",
       {
+        account: this.accountNumber,
         name,
         about: about || "",
       },
-      true
+      this.rpcOptions()
     );
   }
 
   async getIdentities(): Promise<
     Array<{ number: string; safety_number: string; trust_level: string }>
   > {
-    const result = await this.request<
-      Array<{ number: string; safety_number: string; trust_level: string }>
-    >("GET", `/v1/identities/${this.accountNumber}`);
-    return result || [];
+    return signalRpcRequest("listIdentities", { account: this.accountNumber }, this.rpcOptions());
   }
 
   async trustIdentity(
     number: string,
     trustLevel: "TRUSTED_VERIFIED" | "TRUSTED_UNVERIFIED" | "UNTRUSTED"
   ): Promise<void> {
-    await this.request(
-      "PUT",
-      `/v1/identities/${this.accountNumber}/trust/${number}`,
+    await signalRpcRequest(
+      "trustIdentity",
       {
-        trust_level: trustLevel,
+        account: this.accountNumber,
+        number,
+        trustLevel,
       },
-      true
+      this.rpcOptions()
     );
   }
 }
@@ -329,6 +266,7 @@ export class SignalService extends Service implements ISignalService {
   private contactCache: Map<string, SignalContact> = new Map();
   private groupCache: Map<string, SignalGroup> = new Map();
   private pollInterval: NodeJS.Timeout | null = null;
+  private eventStream: ReturnType<typeof createSignalEventStream> | null = null;
   private isPolling = false;
   private daemonProcess: ChildProcess | null = null;
 
@@ -566,9 +504,12 @@ export class SignalService extends Service implements ISignalService {
       return;
     }
 
-    const resolvedCliPath = await resolveSignalCliPath(cliPath);
+    const resolvedCliPath = await resolveSignalCliExecutable({
+      cliPath,
+      env: process.env,
+    });
     if (!resolvedCliPath) {
-      throw new Error(`signal-cli executable not found for ${cliPath}`);
+      throw new Error(missingSignalCliMessage(cliPath));
     }
 
     fs.mkdirSync(authDir, { recursive: true });
@@ -644,7 +585,28 @@ export class SignalService extends Service implements ISignalService {
   }
 
   private startPolling(): void {
-    if (this.pollInterval) return;
+    if (this.pollInterval || this.eventStream) return;
+
+    if (this.client) {
+      this.eventStream = createSignalEventStream({
+        baseUrl: this.client.baseUrl,
+        account: this.client.accountNumber,
+        onEvent: (event) => {
+          const data = parseSignalEventData<unknown>(event.data);
+          if (data !== null) {
+            this.handleSignalEventPayload(data);
+          }
+        },
+        onError: (error) => {
+          this.runtime.logger.error(
+            { src: "plugin:signal", error: String(error) },
+            "Signal event stream error"
+          );
+        },
+      });
+      this.eventStream.start();
+      return;
+    }
 
     this.pollInterval = setInterval(async () => {
       await this.pollMessages();
@@ -655,6 +617,10 @@ export class SignalService extends Service implements ISignalService {
     if (this.pollInterval) {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
+    }
+    if (this.eventStream) {
+      this.eventStream.stop();
+      this.eventStream = null;
     }
   }
 
@@ -727,6 +693,33 @@ export class SignalService extends Service implements ISignalService {
     }
   }
 
+  private handleSignalEventPayload(raw: unknown): void {
+    const payloads = Array.isArray(raw) ? raw : [raw];
+    for (const payload of payloads) {
+      if (!payload || typeof payload !== "object") {
+        continue;
+      }
+      void (async () => {
+        try {
+          const msg = SignalService.unwrapEnvelope(payload as Record<string, unknown>);
+          if (!msg) {
+            this.runtime.logger.warn(
+              { src: "plugin:signal" },
+              "Skipping malformed Signal event (missing sender or timestamp)"
+            );
+            return;
+          }
+          await this.handleIncomingMessage(msg);
+        } catch (error) {
+          this.runtime.logger.error(
+            { src: "plugin:signal", error: String(error) },
+            "Error handling Signal event"
+          );
+        }
+      })();
+    }
+  }
+
   private async handleIncomingMessage(msg: SignalMessage): Promise<void> {
     // Handle reactions separately
     if (msg.reaction) {
@@ -759,6 +752,7 @@ export class SignalService extends Service implements ISignalService {
       roomId,
       worldId,
       worldName: "Signal",
+      userId: msg.sender as unknown as UUID,
       userName: displayName,
       name: displayName,
       source: "signal",
@@ -879,6 +873,34 @@ export class SignalService extends Service implements ISignalService {
         name: displayName,
         ...(media.length > 0 ? { attachments: media } : {}),
       },
+      metadata: {
+        type: "message",
+        source: "signal",
+        provider: "signal",
+        timestamp: msg.timestamp,
+        entityName: displayName,
+        entityUserName: msg.sender,
+        fromBot: false,
+        fromId: msg.sender,
+        sourceId: entityId,
+        chatType: msg.groupId ? ChannelType.GROUP : ChannelType.DM,
+        messageIdFull: String(msg.timestamp),
+        sender: {
+          id: msg.sender,
+          name: displayName,
+          username: msg.sender,
+        },
+        signal: {
+          id: msg.sender,
+          userId: msg.sender,
+          username: msg.sender,
+          userName: msg.sender,
+          name: displayName,
+          senderId: msg.sender,
+          groupId: msg.groupId,
+          timestamp: msg.timestamp,
+        },
+      } as unknown as Memory["metadata"],
       createdAt: msg.timestamp,
     };
 

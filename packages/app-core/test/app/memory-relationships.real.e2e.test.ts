@@ -1,31 +1,22 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import { existsSync } from "node:fs";
-import fs from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
 } from "node:http";
+import fs from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { type Browser, type Page } from "puppeteer-core";
+import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { resolveLiveBrowserExecutable } from "../../../../../test/helpers/browser-executable";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import {
-  closePuppeteerBrowser,
-  launchPuppeteerBrowserWithRetry,
-} from "../helpers/browser-launch";
-import {
-  buildIsolatedLiveProviderEnv,
-  selectLiveProvider,
-} from "../../../../../test/helpers/live-provider";
 import { buildOnboardingRuntimeConfig } from "../../src/onboarding-config";
-import { resolveNodeCmd } from "../scripts/managed-test-command.mjs";
+import { describeIf } from "../helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../helpers/live-provider";
 
 const DEFAULT_UI_URL = stripTrailingSlash(
   process.env.ELIZA_LIVE_UI_URL ??
@@ -41,28 +32,21 @@ const API_TOKEN =
   process.env.ELIZA_API_TOKEN?.trim() ??
   process.env.ELIZA_API_TOKEN?.trim() ??
   "";
-const LIVE_BROWSER = resolveLiveBrowserExecutable();
-const CHROME_PATH = LIVE_BROWSER.executablePath;
+const CHROME_PATH =
+  process.env.ELIZA_CHROME_PATH ??
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
-const LIVE_BROWSER_SUITE_ENABLED =
-  process.env.MILADY_LIVE_BROWSER_SUITE === "1";
-const CHROME_AVAILABLE = CHROME_PATH !== null && existsSync(CHROME_PATH);
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
+const CHROME_AVAILABLE = existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
-  (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
+  (LIVE_TESTS_ENABLED && selectLiveProvider("groq")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);
 const ARTIFACT_DIR = path.resolve(
   import.meta.dirname,
   "../../../../.tmp/live-memory-relationships-e2e",
 );
-const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
 const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
 const READY_TIMEOUT_MS = 120_000;
 
@@ -114,18 +98,15 @@ type StartedStack = {
 };
 
 let browser: Browser | null = null;
-let browserProfileDir: string | null = null;
 let liveStack: StartedStack | null = null;
 let uiUrl = DEFAULT_UI_URL;
 let apiUrl = DEFAULT_API_URL;
 
-const describeLive = describeIf(
-  LIVE_TESTS_ENABLED && LIVE_BROWSER_SUITE_ENABLED && CHROME_AVAILABLE,
-);
+const describeLive = describeIf(LIVE_TESTS_ENABLED && CHROME_AVAILABLE);
 
 if (LIVE_TESTS_ENABLED && !CHROME_AVAILABLE) {
   console.info(
-    `[live-memory-relationships] Browser executable unavailable via ${LIVE_BROWSER.source}; suite unavailable until a real browser is installed or ELIZA_CHROME_PATH is set.`,
+    `[live-memory-relationships] Chrome not found at ${CHROME_PATH}; suite unavailable until a real browser is installed there or ELIZA_CHROME_PATH is set.`,
   );
 }
 
@@ -144,7 +125,7 @@ describeLive("Live memory + relationships browser E2E", () => {
     apiUrl = stripTrailingSlash(liveStack.apiBase);
     await ensureHttpOk(`${uiUrl}/`);
     await ensureHttpOk(`${apiUrl}/api/status`);
-    browser = await launchPuppeteerBrowserWithRetry({
+    browser = await puppeteer.launch({
       executablePath: CHROME_PATH,
       headless: true,
       protocolTimeout: 180_000,
@@ -157,7 +138,7 @@ describeLive("Live memory + relationships browser E2E", () => {
   }, 120_000);
 
   afterAll(async () => {
-    await closePuppeteerBrowser(browser);
+    await browser?.close();
     await stopRealStack(liveStack);
     liveStack = null;
   }, 30_000);
@@ -284,40 +265,6 @@ function ensureBrowser(current: Browser | null): Browser {
 
 function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
-}
-
-async function launchMemoryBrowser(userDataDir: string): Promise<Browser> {
-  if (!CHROME_PATH) {
-    throw new Error(
-      `Memory browser executable unavailable via ${LIVE_BROWSER.source}.`,
-    );
-  }
-
-  let lastError: unknown = null;
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await puppeteer.launch({
-        executablePath: CHROME_PATH,
-        headless: true,
-        protocolTimeout: 180_000,
-        userDataDir,
-        args: [
-          "--disable-background-timer-throttling",
-          "--disable-renderer-backgrounding",
-          "--disable-dev-shm-usage",
-          "--use-angle=swiftshader",
-        ],
-      });
-    } catch (error) {
-      lastError = error;
-      await sleep(1000 * (attempt + 1));
-    }
-  }
-
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("Failed to launch memory browser");
 }
 
 async function ensureHttpOk(url: string): Promise<void> {
@@ -634,15 +581,17 @@ async function proxyUiRequest(args: {
   if (!filePath && !isAssetRequest) {
     filePath = path.join(APP_DIST_DIR, "index.html");
   }
-  if (!filePath) {
-    throw new Error(
-      `Missing built UI asset for ${requestUrl.pathname} in ${APP_DIST_DIR}`,
-    );
+
+  let body: Buffer;
+  try {
+    body = await fs.readFile(filePath ?? path.join(APP_DIST_DIR, "index.html"));
+  } catch {
+    body = await fs.readFile(path.join(APP_DIST_DIR, "index.html"));
+    filePath = path.join(APP_DIST_DIR, "index.html");
   }
-  const body = await fs.readFile(filePath);
 
   args.response.writeHead(200, {
-    "Content-Type": contentTypeFor(filePath),
+    "Content-Type": contentTypeFor(filePath ?? path.join(APP_DIST_DIR, "index.html")),
   });
   args.response.end(body);
 }
@@ -659,14 +608,11 @@ async function startUiProxyServer(args: {
         response,
       });
     } catch (error) {
+      console.error("[memory-relationships e2e] proxy error:", error);
       response.writeHead(500, {
         "Content-Type": "application/json; charset=utf-8",
       });
-      response.end(
-        JSON.stringify({
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      response.end(JSON.stringify({ error: "Internal proxy error" }));
     }
   });
 
@@ -876,27 +822,23 @@ async function startRealStack(): Promise<StartedStack> {
     throw new Error("A live provider is required to start the live stack.");
   }
 
-  const stateDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), "eliza-memory-live-"),
-  );
+  const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-memory-live-"));
   const apiPort = await getFreePort();
   const uiPort = await getFreePort();
   const apiBase = `http://127.0.0.1:${apiPort}`;
 
   const apiChild = spawn(
-    resolveNodeCmd(),
+    "node",
     [
-      "--import",
-      "tsx",
-      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/dev-server.ts"),
+      path.join(REPO_ROOT, "eliza/packages/app-core/scripts/run-node-tsx.mjs"),
+      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/eliza.ts"),
     ],
     {
       cwd: REPO_ROOT,
       env: {
-        ...buildIsolatedLiveProviderEnv(process.env, LIVE_PROVIDER),
+        ...process.env,
+        ...LIVE_PROVIDER.env,
         ALLOW_NO_DATABASE: "",
-        CHECK_SHOULD_RESPOND: "false",
-        CONVERSATION_LENGTH: "20",
         FORCE_COLOR: "0",
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),

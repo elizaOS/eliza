@@ -14,22 +14,17 @@
  *   node …/dev-ui.mjs --ui-only                                # Vite only (API assumed running)
  */
 import { execFileSync, execSync, spawn } from "node:child_process";
-import {
-  existsSync,
-  readFileSync,
-  realpathSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createConnection } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import * as JSON5Module from "json5";
 import {
   resolveDesktopApiPort,
   resolveDesktopUiPort,
 } from "@elizaos/shared/runtime-env";
+import * as JSON5Module from "json5";
 import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import { coerceBoolean } from "./lib/dev-ui-onchain.mjs";
@@ -113,7 +108,7 @@ const _capacitorPluginNamesPath = resolveCapacitorPluginNamesPath(
   process.cwd(),
 );
 const { CAPACITOR_PLUGIN_NAMES, NATIVE_PLUGINS_ROOT } = await import(
-  pathToFileURL(_capacitorPluginNamesPath).href,
+  pathToFileURL(_capacitorPluginNamesPath).href
 );
 
 syncElizaEnvAliases();
@@ -142,11 +137,7 @@ function getCliName() {
       if (pkg.name) {
         let name = pkg.name;
         if (name.startsWith("@")) name = name.split("/")[1];
-        if (
-          name === "elizaai" ||
-          name === "eliza-ai" ||
-          name.includes("eliza")
-        )
+        if (name === "elizaai" || name === "eliza-ai" || name.includes("eliza"))
           return "eliza";
         if (name === "elizaos" || name.includes("eliza")) return "eliza";
         return name;
@@ -712,12 +703,7 @@ try {
   });
 } catch (error) {
   process.env.ELIZA_VISION_DEPS_STATUS = "degraded";
-  console.warn(
-    buildVisionDepsFailureMessage(
-      error,
-      visionDepsRetryCommand,
-    ),
-  );
+  console.warn(buildVisionDepsFailureMessage(error, visionDepsRetryCommand));
 }
 
 if (!uiOnly) {
@@ -727,6 +713,15 @@ if (!uiOnly) {
 let apiProcess = null;
 let viteProcess = null;
 let shuttingDown = false;
+// Track API restart attempts so we don't hot-loop on a crashing API. When
+// /api/restart, the agent's RESTART action, or any other in-process bounce
+// fires `process.exit(0)`/`process.exit(75)`, the supervisor below re-spawns
+// the API. If it exits again within RESTART_BACKOFF_WINDOW_MS, that counts
+// toward the streak.
+const RESTART_BACKOFF_WINDOW_MS = 10_000;
+const RESTART_BACKOFF_LIMIT = 5;
+let apiRestartStreak = 0;
+let lastApiExitAt = 0;
 
 function terminateChild(proc, signal = "SIGTERM") {
   if (!proc) return;
@@ -840,8 +835,9 @@ function startVite() {
   viteProcess.stdout.on("data", (data) => {
     const text = data.toString();
     if (text.includes("ready")) {
+      const securitySettingsUrl = `http://localhost:${UI_PORT}/settings#security`;
       console.log(
-        `\n  ${green(logPrefix)} ${orange(`http://localhost:${UI_PORT}/`)}\n`,
+        `\n  ${green(logPrefix)} ${orange(`http://localhost:${UI_PORT}/`)}\n  ${green(logPrefix)} ${dim("Local access: no password required on this machine")}\n  ${green(logPrefix)} ${dim(`Security settings: ${securitySettingsUrl}`)}\n`,
       );
     }
   });
@@ -915,54 +911,86 @@ if (uiOnly) {
         devServerEntry,
       ];
   const childEnv = createDevChildEnv(process.env);
-  apiProcess = spawn(apiCmd[0], apiCmd.slice(1), {
+  const apiSpawnEnv = extendNodePathEnv(
+    {
+      ...childEnv,
+      NODE_ENV: "development",
+      ELIZA_NAMESPACE: cliName,
+      ELIZA_API_PORT: String(API_PORT),
+      ELIZA_UI_PORT: String(UI_PORT),
+      ELIZA_PORT: String(UI_PORT),
+      ELIZA_HEADLESS: "1",
+      ELIZA_DEV_AUTH_BYPASS: "1",
+      LOG_LEVEL: devLogLevel,
+    },
     cwd,
-    env: extendNodePathEnv(
-      {
-        ...childEnv,
-        NODE_ENV: "development",
-        ELIZA_NAMESPACE: cliName,
-        ELIZA_API_PORT: String(API_PORT),
-        ELIZA_UI_PORT: String(UI_PORT),
-        ELIZA_PORT: String(UI_PORT),
-        ELIZA_HEADLESS: "1",
-        ELIZA_DEV_AUTH_BYPASS: "1",
-        LOG_LEVEL: devLogLevel,
-      },
+  );
+
+  function startApi() {
+    apiProcess = spawn(apiCmd[0], apiCmd.slice(1), {
       cwd,
-    ),
-    stdio: ["inherit", "pipe", "pipe"],
-  });
-
-  apiProcess.on("error", (err) => {
-    console.error(
-      `  ${green(logPrefix)} Failed to start API server: ${err.message}`,
-    );
-    cleanup(1);
-  });
-
-  if (quietApiLogs) {
-    apiProcess.stderr.on("data", createErrorFilter(process.stderr));
-    apiProcess.stdout.on("data", () => {});
-  } else if (verboseApiLogs) {
-    apiProcess.stderr.on("data", (data) => {
-      process.stderr.write(data);
+      env: apiSpawnEnv,
+      stdio: ["inherit", "pipe", "pipe"],
     });
-    apiProcess.stdout.on("data", (data) => {
-      process.stdout.write(data);
+
+    apiProcess.on("error", (err) => {
+      console.error(
+        `  ${green(logPrefix)} Failed to start API server: ${err.message}`,
+      );
+      cleanup(1);
     });
-  } else {
-    apiProcess.stderr.on("data", createStartupFilter(process.stderr));
-    apiProcess.stdout.on("data", createStartupFilter(process.stdout));
+
+    if (quietApiLogs) {
+      apiProcess.stderr.on("data", createErrorFilter(process.stderr));
+      apiProcess.stdout.on("data", () => {});
+    } else if (verboseApiLogs) {
+      apiProcess.stderr.on("data", (data) => {
+        process.stderr.write(data);
+      });
+      apiProcess.stdout.on("data", (data) => {
+        process.stdout.write(data);
+      });
+    } else {
+      apiProcess.stderr.on("data", createStartupFilter(process.stderr));
+      apiProcess.stdout.on("data", createStartupFilter(process.stdout));
+    }
+
+    apiProcess.on("exit", (code) => {
+      if (shuttingDown) return;
+      const now = Date.now();
+      if (now - lastApiExitAt < RESTART_BACKOFF_WINDOW_MS) {
+        apiRestartStreak += 1;
+      } else {
+        apiRestartStreak = 1;
+      }
+      lastApiExitAt = now;
+      apiProcess = null;
+
+      if (apiRestartStreak > RESTART_BACKOFF_LIMIT) {
+        console.error(
+          `\n  ${green(logPrefix)} API exited with code ${code} ${apiRestartStreak} times in ${
+            RESTART_BACKOFF_WINDOW_MS / 1000
+          }s — giving up. Fix the underlying issue and restart the dev process.`,
+        );
+        cleanup(code ?? 1);
+        return;
+      }
+
+      // The agent's RESTART action and `/api/restart` both bounce the
+      // server with `process.exit(0)` (and the CLI runner uses 75 as the
+      // dedicated restart exit code). Bun's `--watch` reload also exits
+      // cleanly. Treat any non-shutdown exit as "please restart me" and
+      // re-spawn — that's what the renderer is already polling for.
+      console.log(
+        `\n  ${green(logPrefix)} API exited with code ${code} — relaunching (attempt ${apiRestartStreak}/${RESTART_BACKOFF_LIMIT})…`,
+      );
+      setTimeout(() => {
+        if (!shuttingDown) startApi();
+      }, 400);
+    });
   }
 
-  apiProcess.on("exit", (code) => {
-    if (shuttingDown) return;
-    if (code !== 0) {
-      console.error(`\n  ${green(logPrefix)} Server exited with code ${code}`);
-      cleanup(code ?? 1);
-    }
-  });
+  startApi();
 
   const startTime = Date.now();
   let phase = "port";

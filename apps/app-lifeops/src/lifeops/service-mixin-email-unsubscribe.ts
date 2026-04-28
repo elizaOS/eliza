@@ -1,11 +1,7 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 
 import crypto from "node:crypto";
-import type {
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsConnectorGrant } from "@elizaos/shared";
 import {
   createGmailFilterForSender,
   extractListUnsubscribeOptions,
@@ -26,7 +22,10 @@ import type {
   EmailUnsubscribeScanRequest,
   EmailUnsubscribeStatus,
 } from "./email-unsubscribe-types.js";
-import { resolveGoogleExecutionTarget } from "./google-connector-gateway.js";
+import {
+  resolveGoogleExecutionTarget,
+  resolveGoogleGrants,
+} from "./google-connector-gateway.js";
 import { ensureFreshGoogleAccessToken } from "./google-oauth.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {
@@ -35,7 +34,11 @@ import {
   normalizeOptionalString,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import { hasGoogleGmailManageCapability } from "./service-normalize-calendar.js";
+import {
+  hasGoogleGmailManageCapability,
+  hasGoogleGmailSendCapability,
+  hasGoogleGmailTriageCapability,
+} from "./service-normalize-calendar.js";
 
 const DEFAULT_SCAN_MAX_MESSAGES = 200;
 const MAX_SENDERS_RETURNED = 200;
@@ -147,32 +150,15 @@ function aggregateSenders(
     .slice(0, MAX_SENDERS_RETURNED);
 }
 
+function managedGoogleGrantId(grant: LifeOpsConnectorGrant): string {
+  return grant.cloudConnectionId ?? grant.id;
+}
+
 /** @internal */
 export function withEmailUnsubscribe<
   TBase extends Constructor<LifeOpsServiceBase>,
 >(Base: TBase) {
   class LifeOpsEmailUnsubscribeMixin extends Base {
-    async requireGmailManageGrant(args: {
-      requestUrl: URL;
-      mode?: LifeOpsConnectorMode;
-      side?: LifeOpsConnectorSide;
-      grantId?: string;
-    }): Promise<LifeOpsConnectorGrant> {
-      const grant = await this.requireGoogleGmailGrant(
-        args.requestUrl,
-        args.mode,
-        args.side,
-        args.grantId,
-      );
-      if (!hasGoogleGmailManageCapability(grant)) {
-        fail(
-          403,
-          "Gmail auto-unsubscribe requires gmail.modify + gmail.settings.basic access. Reconnect Google and grant the 'Manage subscriptions' capability.",
-        );
-      }
-      return grant;
-    }
-
     async accessTokenForGrant(grant: LifeOpsConnectorGrant): Promise<string> {
       if (resolveGoogleExecutionTarget(grant) === "cloud") {
         fail(
@@ -186,16 +172,55 @@ export function withEmailUnsubscribe<
       return token.accessToken;
     }
 
+    async readSubscriptionHeadersForGrant(args: {
+      grant: LifeOpsConnectorGrant;
+      query: string;
+      maxMessages: number;
+    }): Promise<GmailSubscriptionMessageHeaders[]> {
+      if (resolveGoogleExecutionTarget(args.grant) === "cloud") {
+        return (
+          await this.googleManagedClient.getGmailSubscriptionHeaders({
+            side: args.grant.side,
+            grantId: managedGoogleGrantId(args.grant),
+            query: args.query,
+            maxResults: args.maxMessages,
+          })
+        ).headers;
+      }
+      return fetchGmailSubscriptionHeaders({
+        accessToken: await this.accessTokenForGrant(args.grant),
+        query: args.query,
+        maxMessages: args.maxMessages,
+      });
+    }
+
+    async sendMailtoForGrant(args: {
+      grant: LifeOpsConnectorGrant;
+      mailto: NonNullable<ReturnType<typeof parseMailtoUnsubscribe>>;
+    }): Promise<void> {
+      if (!hasGoogleGmailSendCapability(args.grant)) {
+        fail(403, "Mailto unsubscribe requires Gmail send access.");
+      }
+      if (resolveGoogleExecutionTarget(args.grant) === "cloud") {
+        await this.googleManagedClient.sendGmailMessage({
+          side: args.grant.side,
+          grantId: managedGoogleGrantId(args.grant),
+          to: [args.mailto.recipient],
+          subject: args.mailto.subject ?? "unsubscribe",
+          bodyText: args.mailto.body ?? "unsubscribe",
+        });
+        return;
+      }
+      await sendMailtoUnsubscribeEmail({
+        accessToken: await this.accessTokenForGrant(args.grant),
+        mailto: args.mailto,
+      });
+    }
+
     async scanEmailSubscriptions(
       requestUrl: URL,
       request: EmailUnsubscribeScanRequest = {},
     ): Promise<EmailSubscriptionScanResult> {
-      const grant = await this.requireGoogleGmailGrant(
-        requestUrl,
-        undefined,
-        undefined,
-        undefined,
-      );
       const query =
         normalizeOptionalString(request.query) ??
         "(category:promotions OR category:updates OR list:* OR unsubscribe) newer_than:180d";
@@ -208,20 +233,62 @@ export function withEmailUnsubscribe<
             : DEFAULT_SCAN_MAX_MESSAGES,
         ),
       );
-      const headers =
-        resolveGoogleExecutionTarget(grant) === "cloud"
-          ? (
-              await this.googleManagedClient.getGmailSubscriptionHeaders({
-                side: grant.side,
-                query,
-                maxResults: maxMessages,
-              })
-            ).headers
-          : await fetchGmailSubscriptionHeaders({
-              accessToken: await this.accessTokenForGrant(grant),
-              query,
-              maxMessages,
-            });
+      const allGrants = (
+        await this.repository.listConnectorGrants(this.agentId())
+      ).filter((grant) => grant.provider === "google");
+      let grants = resolveGoogleGrants({ grants: allGrants }).filter((grant) =>
+        hasGoogleGmailTriageCapability(grant),
+      );
+      if (grants.length === 0) {
+        grants = [
+          await this.requireGoogleGmailGrant(
+            requestUrl,
+            undefined,
+            undefined,
+            undefined,
+          ),
+        ];
+      }
+
+      const results = await Promise.allSettled(
+        grants.map(async (grant) => ({
+          grant,
+          headers: await this.readSubscriptionHeadersForGrant({
+            grant,
+            query,
+            maxMessages,
+          }),
+        })),
+      );
+
+      const headers: GmailSubscriptionMessageHeaders[] = [];
+      let successfulScans = 0;
+      let firstFailure: unknown = null;
+      for (let index = 0; index < results.length; index += 1) {
+        const result = results[index];
+        if (result.status === "fulfilled") {
+          successfulScans += 1;
+          headers.push(...result.value.headers);
+          continue;
+        }
+        firstFailure ??= result.reason;
+        const grant = grants[index];
+        this.logLifeOpsWarn(
+          "email_subscription_scan",
+          `gmail scan unavailable: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`,
+          {
+            grantId: grant?.id,
+            side: grant?.side,
+            mode: grant?.mode,
+          },
+        );
+      }
+      if (successfulScans === 0 && firstFailure) {
+        fail(
+          409,
+          `Gmail subscription scan failed: ${firstFailure instanceof Error ? firstFailure.message : String(firstFailure)}`,
+        );
+      }
       const senders = aggregateSenders(headers);
       const syncedAt = new Date().toISOString();
       return {
@@ -260,16 +327,19 @@ export function withEmailUnsubscribe<
         fail(409, "Email unsubscribe requires explicit confirmation.");
       }
       const blockAfter =
-        normalizeOptionalBoolean(request.blockAfter, "blockAfter") ?? true;
+        normalizeOptionalBoolean(request.blockAfter, "blockAfter") ?? false;
       const trashExisting =
         normalizeOptionalBoolean(request.trashExisting, "trashExisting") ??
         false;
 
-      const grant = await this.requireGmailManageGrant({ requestUrl });
-      const accessToken = await this.accessTokenForGrant(grant);
-
-      const headers = await fetchGmailSubscriptionHeaders({
-        accessToken,
+      const grant = await this.requireGoogleGmailGrant(
+        requestUrl,
+        undefined,
+        undefined,
+        undefined,
+      );
+      const headers = await this.readSubscriptionHeadersForGrant({
+        grant,
         query: `from:${senderEmail}`,
         maxMessages: 25,
       });
@@ -319,10 +389,7 @@ export function withEmailUnsubscribe<
           errorMessage = "Could not parse mailto: unsubscribe header.";
         } else {
           try {
-            await sendMailtoUnsubscribeEmail({
-              accessToken,
-              mailto: parsed,
-            });
+            await this.sendMailtoForGrant({ grant, mailto: parsed });
             status = "succeeded";
             method = "mailto";
           } catch (error) {
@@ -340,13 +407,17 @@ export function withEmailUnsubscribe<
 
       let filterCreated = false;
       let filterId: string | null = null;
+      const canManageGmail =
+        resolveGoogleExecutionTarget(grant) !== "cloud" &&
+        hasGoogleGmailManageCapability(grant);
       if (
         blockAfter &&
+        canManageGmail &&
         (status === "succeeded" || status === "manual_required")
       ) {
         try {
           const filterResult = await createGmailFilterForSender({
-            accessToken,
+            accessToken: await this.accessTokenForGrant(grant),
             fromAddress: senderEmail,
             trash: true,
           });
@@ -360,10 +431,25 @@ export function withEmailUnsubscribe<
             }`,
           );
         }
+      } else if (blockAfter && !canManageGmail) {
+        this.logLifeOpsWarn(
+          "email_unsubscribe_filter",
+          "Skipped Gmail filter creation because the connected Google grant does not include local Gmail manage access.",
+          {
+            grantId: grant.id,
+            mode: grant.mode,
+            side: grant.side,
+          },
+        );
       }
 
       let threadsTrashed = 0;
-      if (trashExisting && (status === "succeeded" || filterCreated)) {
+      if (
+        trashExisting &&
+        canManageGmail &&
+        (status === "succeeded" || filterCreated)
+      ) {
+        const accessToken = await this.accessTokenForGrant(grant);
         const uniqueThreadIds = Array.from(new Set(sender.allThreadIds));
         for (const threadId of uniqueThreadIds) {
           try {

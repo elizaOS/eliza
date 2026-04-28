@@ -2,10 +2,25 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	extractPlannerActionNames,
 	extractPlannerProviderNames,
+	getActionContinuationDecision,
 	resolvePlannerActionName,
+	shouldEmitPlannerPreamble,
 	withActionResultsForPrompt,
 } from "../services/message.ts";
-import type { ActionResult, State } from "../types";
+import type { Action, ActionResult, State } from "../types";
+
+function buildAction(
+	name: string,
+	options: Pick<Action, "similes" | "suppressPostActionContinuation"> = {},
+): Action {
+	return {
+		name,
+		description: name,
+		validate: async () => true,
+		handler: async () => undefined,
+		...options,
+	};
+}
 
 describe("extractPlannerActionNames", () => {
 	it("parses bare XML action entries without nested <name> tags", () => {
@@ -137,6 +152,23 @@ describe("resolvePlannerActionName", () => {
 			resolvePlannerActionName(runtime, actionLookup, "BOOK_TRAVEL"),
 		).toEqual(["BOOK_TRAVEL"]);
 	});
+
+	it("canonicalizes RESPOND planner output to the registered REPLY action", () => {
+		const runtime = {
+			actions: [buildAction("REPLY", { similes: ["RESPOND"] })],
+			logger: {
+				info: vi.fn(),
+				warn: vi.fn(),
+			},
+		} as Parameters<typeof resolvePlannerActionName>[0];
+		const actionLookup = new Map(
+			runtime.actions.map((action) => [action.name.replace(/_/g, ""), action]),
+		);
+
+		expect(resolvePlannerActionName(runtime, actionLookup, "RESPOND")).toEqual([
+			"REPLY",
+		]);
+	});
 });
 
 describe("withActionResultsForPrompt", () => {
@@ -166,5 +198,92 @@ describe("withActionResultsForPrompt", () => {
 		expect(updated.values.actionResults).toContain("10. ACTION_10 - succeeded");
 		expect(updated.values.actionResults).not.toContain("OLD_ACTION");
 		expect(updated.data.actionResults).toBe(actionResults);
+	});
+});
+
+describe("getActionContinuationDecision", () => {
+	it("continues after non-terminal actions", () => {
+		const decision = getActionContinuationDecision(
+			{
+				actions: [buildAction("LOOK_UP_ORDER")],
+			},
+			{ actions: ["LOOK_UP_ORDER"] },
+		);
+
+		expect(decision).toEqual({
+			shouldContinue: true,
+			suppressed: false,
+			continuingActions: ["LOOK_UP_ORDER"],
+			suppressingActions: [],
+		});
+	});
+
+	it("does not continue after terminal-only actions", () => {
+		const decision = getActionContinuationDecision(
+			{
+				actions: [buildAction("REPLY")],
+			},
+			{ actions: ["REPLY"] },
+		);
+
+		expect(decision).toEqual({
+			shouldContinue: false,
+			suppressed: false,
+			continuingActions: [],
+			suppressingActions: [],
+		});
+	});
+
+	it("treats RESPOND as terminal REPLY for execution continuation", () => {
+		const decision = getActionContinuationDecision(
+			{
+				actions: [buildAction("REPLY", { similes: ["RESPOND"] })],
+			},
+			{ actions: ["RESPOND"] },
+		);
+
+		expect(decision).toEqual({
+			shouldContinue: false,
+			suppressed: false,
+			continuingActions: [],
+			suppressingActions: [],
+		});
+	});
+
+	it("globally suppresses continuation when any selected action owns the turn", () => {
+		const decision = getActionContinuationDecision(
+			{
+				actions: [
+					buildAction("LOOK_UP_ORDER"),
+					buildAction("CALL_USER", {
+						similes: ["PHONE_OWNER"],
+						suppressPostActionContinuation: true,
+					}),
+				],
+			},
+			{ actions: ["LOOK_UP_ORDER", "PHONE_OWNER"] },
+		);
+
+		expect(decision).toEqual({
+			shouldContinue: false,
+			suppressed: true,
+			continuingActions: ["LOOK_UP_ORDER"],
+			suppressingActions: ["CALL_USER"],
+		});
+	});
+});
+
+describe("shouldEmitPlannerPreamble", () => {
+	it("does not emit a planner preamble for RESPOND because REPLY owns the reply", () => {
+		const runtime = {
+			actions: [buildAction("REPLY", { similes: ["RESPOND"] })],
+		} as Parameters<typeof shouldEmitPlannerPreamble>[0];
+
+		expect(
+			shouldEmitPlannerPreamble(runtime, {
+				text: "I can answer that.",
+				actions: ["RESPOND"],
+			}),
+		).toBe(false);
 	});
 });

@@ -20,6 +20,8 @@
   },
   "dependencies": {
     "@noble/curves": "^2.0.1",
+    "@simplewebauthn/browser": "^13.0.0",
+    "@solana/web3.js": "^1.98.4",
     "@stwd/sdk": "^0.8.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",

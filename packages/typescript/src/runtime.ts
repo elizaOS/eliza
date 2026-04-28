@@ -16,6 +16,7 @@ import {
 import { parseActionParams, validateActionParams } from "./actions";
 import { ensureConnection as ensureConnectionStandalone } from "./connection";
 import { InMemoryDatabaseAdapter } from "./database/inMemoryAdapter";
+import { createTaskClipboardService } from "./features/advanced-capabilities/clipboard/services/taskClipboardService";
 import { createAdvancedMemoryPlugin } from "./features/advanced-memory/index";
 import {
 	type CapabilityConfig,
@@ -300,6 +301,136 @@ function callbackContentHasVisibleOutput(content: Content): boolean {
 		return true;
 	}
 	return Array.isArray(content.attachments) && content.attachments.length > 0;
+}
+
+function suppressesVisibleActionResult(actionResult: ActionResult | undefined) {
+	return actionResult?.data?.suppressVisibleCallback === true;
+}
+
+const ACTION_RESULT_CLIPBOARD_FLAGS = [
+	"addToClipboard",
+	"copyToClipboard",
+	"persistToClipboard",
+	"saveToClipboard",
+] as const;
+const ACTION_RESULT_CLIPBOARD_SUPPRESS_FLAGS = [
+	"suppressActionResultClipboard",
+	"suppressClipboard",
+] as const;
+const TERMINAL_ACTION_RESULT_NAMES = new Set([
+	"REPLY",
+	"RESPOND",
+	"IGNORE",
+	"STOP",
+	"NONE",
+]);
+const ACTION_RESULT_CLIPBOARD_TEXT_PATTERN =
+	/\b(copy|save|store|keep|persist|put)\b[\s\S]{0,80}\b(?:to|in|into|on)?\s*(?:the\s*)?clipboard\b/i;
+const CLIPBOARD_ACTION_RESULT_TEXT_PATTERN =
+	/\bclipboard\b[\s\S]{0,80}\b(copy|save|store|keep|persist)\b/i;
+const ACTION_RESULT_CLIPBOARD_NEGATION_PATTERN =
+	/\b(?:do\s+not|don't|dont|never|without)\b[\s\S]{0,80}\b(copy|save|store|keep|persist|put)\b[\s\S]{0,80}\bclipboard\b/i;
+
+type ActionResultClipboardStatus = {
+	text: string;
+};
+
+function isTruthyClipboardFlag(value: unknown): boolean {
+	if (value === true) {
+		return true;
+	}
+	if (typeof value === "string") {
+		return /^(true|1|yes|y|on)$/i.test(value.trim());
+	}
+	return false;
+}
+
+function normalizeActionResultName(value: string): string {
+	return value
+		.trim()
+		.replace(/[\s-]+/g, "_")
+		.toUpperCase();
+}
+
+function isTerminalActionResultName(actionName: string): boolean {
+	return TERMINAL_ACTION_RESULT_NAMES.has(
+		normalizeActionResultName(actionName),
+	);
+}
+
+function contentHasTruthyFlag(
+	content: Content,
+	flags: readonly string[],
+): boolean {
+	return flags.some((flag) => isTruthyClipboardFlag(content[flag]));
+}
+
+function actionResultDataHasTruthyFlag(
+	actionResult: ActionResult | undefined,
+	flags: readonly string[],
+): boolean {
+	return flags.some((flag) =>
+		isTruthyClipboardFlag(actionResult?.data?.[flag]),
+	);
+}
+
+function messageRequestsActionResultClipboard(message: Memory): boolean {
+	if (contentHasTruthyFlag(message.content, ACTION_RESULT_CLIPBOARD_FLAGS)) {
+		return true;
+	}
+
+	const text = message.content.text;
+	if (typeof text !== "string" || !text.trim()) {
+		return false;
+	}
+
+	if (ACTION_RESULT_CLIPBOARD_NEGATION_PATTERN.test(text)) {
+		return false;
+	}
+
+	return (
+		ACTION_RESULT_CLIPBOARD_TEXT_PATTERN.test(text) ||
+		CLIPBOARD_ACTION_RESULT_TEXT_PATTERN.test(text)
+	);
+}
+
+function actionResultRequestsClipboard(
+	actionResult: ActionResult | undefined,
+): boolean {
+	return actionResultDataHasTruthyFlag(
+		actionResult,
+		ACTION_RESULT_CLIPBOARD_FLAGS,
+	);
+}
+
+function suppressesActionResultClipboard(
+	action: Action,
+	actionResult: ActionResult | undefined,
+): boolean {
+	return (
+		action.suppressActionResultClipboard === true ||
+		actionResultDataHasTruthyFlag(
+			actionResult,
+			ACTION_RESULT_CLIPBOARD_SUPPRESS_FLAGS,
+		)
+	);
+}
+
+function stringFromContent(value: unknown): string | null {
+	return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function resolveActionResultClipboardTitle(
+	message: Memory,
+	action: Action,
+	actionResult: ActionResult | undefined,
+): string {
+	return (
+		stringFromContent(actionResult?.data?.clipboardTitle) ??
+		stringFromContent(message.content.clipboardTitle) ??
+		stringFromContent(message.content.title) ??
+		`${action.name} result`
+	);
 }
 
 function safeActionResultFilePart(value: string | undefined): string {
@@ -1239,7 +1370,9 @@ export class AgentRuntime implements IAgentRuntime {
 					: `/${route.path}`;
 				this.routes.push({
 					...route,
-					path: route.rawPath ? routePath : `/${pluginToRegister.name}${routePath}`,
+					path: route.rawPath
+						? routePath
+						: `/${pluginToRegister.name}${routePath}`,
 				});
 			}
 		}
@@ -2324,6 +2457,89 @@ export class AgentRuntime implements IAgentRuntime {
 		return trimActionResultForPromptState(actionResult, references);
 	}
 
+	private async maybeStoreActionResultClipboard(params: {
+		message: Memory;
+		action: Action;
+		actionId: UUID;
+		actionText: string;
+		actionResult?: ActionResult;
+	}): Promise<ActionResultClipboardStatus | null> {
+		const requested =
+			messageRequestsActionResultClipboard(params.message) ||
+			actionResultRequestsClipboard(params.actionResult);
+
+		if (!requested) {
+			return null;
+		}
+
+		if (
+			isTerminalActionResultName(params.action.name) ||
+			suppressesActionResultClipboard(params.action, params.actionResult)
+		) {
+			return null;
+		}
+
+		if (!params.actionText.trim()) {
+			return {
+				text: `No ${params.action.name} result text was available to copy to clipboard.`,
+			};
+		}
+
+		const entityId =
+			typeof params.message.entityId === "string"
+				? params.message.entityId
+				: undefined;
+
+		try {
+			const service = createTaskClipboardService(this as IAgentRuntime);
+			const { item, replaced, snapshot } = await service.addItem(
+				{
+					title: resolveActionResultClipboardTitle(
+						params.message,
+						params.action,
+						params.actionResult,
+					),
+					content: params.actionText,
+					sourceType: "action_result",
+					sourceId: params.actionId,
+					sourceLabel: params.action.name,
+				},
+				entityId,
+			);
+			if (params.actionResult) {
+				params.actionResult.data = {
+					...(params.actionResult.data ?? {}),
+					actionResultClipboard: {
+						id: item.id,
+						title: item.title,
+						replaced,
+						count: snapshot.items.length,
+						maxItems: snapshot.maxItems,
+					},
+				};
+			}
+			const verb = replaced ? "Updated" : "Copied";
+			return {
+				text: `${verb} ${params.action.name} result to clipboard item ${item.id}: ${item.title}. Clipboard usage: ${snapshot.items.length}/${snapshot.maxItems}.`,
+			};
+		} catch (error) {
+			const reason = error instanceof Error ? error.message : String(error);
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					action: params.action.name,
+					actionId: params.actionId,
+					error: reason,
+				},
+				"Failed to store action result in task clipboard",
+			);
+			return {
+				text: `Could not copy ${params.action.name} result to clipboard: ${reason}`,
+			};
+		}
+	}
+
 	async processActions(
 		message: Memory,
 		responses: Memory[],
@@ -2846,9 +3062,19 @@ export class AgentRuntime implements IAgentRuntime {
 						result !== null &&
 						("values" in result || "data" in result || "text" in result)
 					) {
+						const resultData =
+							typeof result.data === "object" &&
+							result.data !== null &&
+							!Array.isArray(result.data)
+								? result.data
+								: {};
 						// Ensure success field exists with default true
 						actionResult = {
 							...result,
+							data: {
+								actionName: action.name,
+								...resultData,
+							},
 							success: "success" in result ? result.success : true, // Default to true if not specified
 						} as ActionResult;
 					} else {
@@ -2955,6 +3181,26 @@ export class AgentRuntime implements IAgentRuntime {
 					typeof actionResult?.text === "string"
 						? actionResult.text.trim()
 						: "";
+				const visibleCallbackText = storedCallbackData.find((content) =>
+					callbackContentHasVisibleOutput(content),
+				)?.text;
+				const actionTextForClipboard =
+					actionText ||
+					(typeof visibleCallbackText === "string"
+						? visibleCallbackText.trim()
+						: "");
+				const suppressVisibleActionText =
+					suppressesVisibleActionResult(actionResult);
+				const clipboardStatus = await this.maybeStoreActionResultClipboard({
+					message,
+					action,
+					actionId,
+					actionText: actionTextForClipboard,
+					actionResult,
+				});
+				const visibleActionText = suppressVisibleActionText
+					? ""
+					: (actionResult?.text ?? "");
 
 				await this.emitEvent(EventType.ACTION_COMPLETED, {
 					messageId: actionId,
@@ -2962,7 +3208,7 @@ export class AgentRuntime implements IAgentRuntime {
 					world: message.worldId,
 					content: {
 						// Use action's actual text, not status message (prevents overwriting streamed content)
-						text: actionResult?.text || "",
+						text: visibleActionText,
 						actions: [action.name],
 						actionStatus: statusText,
 						actionId: actionId,
@@ -2973,18 +3219,55 @@ export class AgentRuntime implements IAgentRuntime {
 					},
 				});
 
-				if (
-					callback &&
-					actionText &&
-					!storedCallbackData.some((content) =>
-						callbackContentHasVisibleOutput(content),
-					)
-				) {
-					storedCallbackData.push({
-						text: actionText,
-						source: "action",
-						action: action.name,
-					});
+				if (callback) {
+					const visibleActionCallbackIndex = storedCallbackData.findIndex(
+						(content) => callbackContentHasVisibleOutput(content),
+					);
+					if (actionText && !suppressVisibleActionText) {
+						if (visibleActionCallbackIndex === -1) {
+							storedCallbackData.push({
+								text: clipboardStatus
+									? `${actionText}\n\n${clipboardStatus.text}`
+									: actionText,
+								source: "action",
+								action: action.name,
+							});
+						} else if (clipboardStatus) {
+							const visibleCallback =
+								storedCallbackData[visibleActionCallbackIndex];
+							if (
+								visibleCallback &&
+								typeof visibleCallback.text === "string" &&
+								visibleCallback.text.trim()
+							) {
+								visibleCallback.text = `${visibleCallback.text.trim()}\n\n${clipboardStatus.text}`;
+							} else {
+								storedCallbackData.push({
+									text: clipboardStatus.text,
+									source: "action",
+									action: action.name,
+								});
+							}
+						}
+					} else if (clipboardStatus) {
+						if (visibleActionCallbackIndex === -1) {
+							storedCallbackData.push({
+								text: clipboardStatus.text,
+								source: "action",
+								action: action.name,
+							});
+						} else {
+							const visibleCallback =
+								storedCallbackData[visibleActionCallbackIndex];
+							if (
+								visibleCallback &&
+								typeof visibleCallback.text === "string" &&
+								visibleCallback.text.trim()
+							) {
+								visibleCallback.text = `${visibleCallback.text.trim()}\n\n${clipboardStatus.text}`;
+							}
+						}
+					}
 				}
 
 				if (callback) {
@@ -3005,7 +3288,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 				// Only persist action memories when the handler returned a real user-facing
 				// message. Placeholder bookkeeping text is internal runtime state, not chat.
-				if (actionText) {
+				if (actionText && !suppressVisibleActionText) {
 					const actionMemory: Memory = {
 						id: actionId,
 						entityId: this.agentId,

@@ -13,6 +13,12 @@
       ]
     },
     {
+      "name": "APP_CREATE",
+      "description": "Multi-turn create-an-app flow: searches existing apps, asks the user new/edit/cancel, then dispatches a coding agent and verifies the output.",
+      "parameters": [],
+      "similes": ["CREATE_APP", "BUILD_APP", "MAKE_APP", "SCAFFOLD_APP"]
+    },
+    {
       "name": "BLUEBUBBLES_SEND_REACTION",
       "description": "Add or remove a reaction on a message via BlueBubbles",
       "parameters": [],
@@ -213,6 +219,17 @@
         "SHOW_TASK_AGENTS",
         "LIST_SUB_AGENTS",
         "SHOW_TASK_STATUS"
+      ]
+    },
+    {
+      "name": "LIST_EJECTED_PLUGINS",
+      "description": "List all ejected plugins currently being managed locally",
+      "parameters": [],
+      "similes": [
+        "list ejected",
+        "show ejected plugins",
+        "which plugins are ejected",
+        "list local plugins"
       ]
     },
     {

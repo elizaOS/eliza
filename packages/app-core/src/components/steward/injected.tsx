@@ -1,9 +1,9 @@
-import { useBootConfig } from "../../config";
 import type {
   StewardApprovalQueueProps,
   StewardLogoProps,
   StewardTransactionHistoryProps,
 } from "../../config/boot-config";
+import { useBootConfig } from "../../config/boot-config-react";
 
 export function StewardLogo(props: StewardLogoProps) {
   const { stewardLogo: StewardLogoComponent } = useBootConfig();

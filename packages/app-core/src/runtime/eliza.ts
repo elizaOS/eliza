@@ -5,30 +5,26 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { resolveUserPath } from "@elizaos/agent/config/paths";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+import {
+  loadElizaConfig,
+  resolveDefaultAgentWorkspaceDir,
+  resolveUserPath,
+} from "@elizaos/agent";
 import {
   type BootElizaRuntimeOptions,
   type StartElizaOptions,
   applyCloudConfigToEnv as upstreamApplyCloudConfigToEnv,
   applyN8nConfigToEnv as upstreamApplyN8nConfigToEnv,
   bootElizaRuntime as upstreamBootElizaRuntime,
-  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
-  collectPluginNames as upstreamCollectPluginNames,
   configureLocalEmbeddingPlugin as upstreamConfigureLocalEmbeddingPlugin,
   shutdownRuntime as upstreamShutdownRuntime,
   startEliza as upstreamStartEliza,
 } from "@elizaos/agent/runtime/eliza";
 import {
-  type AgentRuntime,
-  AutonomyService,
-  ChannelType,
-  logger,
-  ModelType,
-  type Plugin,
-  stringToUuid,
-} from "@elizaos/core";
+  CHANNEL_PLUGIN_MAP as upstreamChannelPluginMap,
+  collectPluginNames as upstreamCollectPluginNames,
+} from "@elizaos/agent/runtime/plugin-collector";
+import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 
 export {
   CUSTOM_PLUGINS_DIRNAME,
@@ -36,11 +32,20 @@ export {
   scanDropInPlugins,
 } from "@elizaos/agent/runtime/plugin-types";
 
-import { getLastFailedPluginNames } from "@elizaos/agent/runtime/plugin-resolver";
 import {
-  resolveServerOnlyPort,
-  syncResolvedApiPort,
-} from "@elizaos/shared/runtime-env";
+  type AgentRuntime,
+  AutonomyService,
+  ChannelType,
+  EventType,
+  logger,
+  type Memory,
+  ModelType,
+  type Plugin,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+
+import { resolveServerOnlyPort, syncResolvedApiPort } from "@elizaos/shared";
 import { isNativeServerPlatform } from "../platform/is-native-server.js";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
@@ -500,6 +505,12 @@ async function repairRuntimeAfterBoot(
   // call via resolveN8nMode, so this does not depend on autostart readiness.
   await ensureN8nDispatchService(runtime);
 
+  // Subscribe the trigger event bridge to the runtime event bus so
+  // event-kind triggers fire on real MESSAGE_RECEIVED / REACTION_RECEIVED /
+  // etc. emissions. Runs after N8N_DISPATCH so workflow-kind event
+  // triggers can dispatch immediately on first emit.
+  await ensureTriggerEventBridge(runtime);
+
   return runtime;
 }
 
@@ -520,6 +531,11 @@ let _n8nAutoStart: {
 // leaking closures that hold a stale runtime reference.
 let _n8nDispatch: { execute: (workflowId: string) => Promise<unknown> } | null =
   null;
+
+// Module-level handle for the trigger event bridge. Reset across
+// hot-reloads so we never leave two handler sets racing the runtime's
+// event bus.
+let _triggerEventBridge: { stop: () => void } | null = null;
 
 async function ensureN8nAuthBridge(runtime: AgentRuntime): Promise<void> {
   if (_n8nAuthBridge) {
@@ -612,6 +628,30 @@ async function ensureN8nDispatchService(runtime: AgentRuntime): Promise<void> {
   } catch (err) {
     logger.warn(
       `[eliza] Failed to register n8n dispatch service: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function ensureTriggerEventBridge(runtime: AgentRuntime): Promise<void> {
+  if (_triggerEventBridge) {
+    try {
+      _triggerEventBridge.stop();
+    } catch {
+      /* ignore */
+    }
+    _triggerEventBridge = null;
+  }
+  try {
+    const { startTriggerEventBridge } = await import(
+      "../services/trigger-event-bridge.js"
+    );
+    _triggerEventBridge = startTriggerEventBridge(runtime);
+    logger.info("[eliza] trigger event bridge armed");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to start trigger event bridge: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -714,6 +754,48 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
           logger.info(
             `[eliza] Telegram message from @${username}: ${text.substring(0, 80)}`,
           );
+
+          // Surface the inbound Telegram message on the runtime event bus so
+          // event-kind triggers can fire on real Telegram messages via the
+          // trigger-event-bridge → executeTriggerTask path. Without this hop
+          // the chat reply goes through useModel directly and bypasses
+          // messageService entirely, so triggers that filter on
+          // MESSAGE_RECEIVED never see Telegram traffic. Build a minimal
+          // Memory that satisfies the event-bus contract; the
+          // trigger-event-bridge only reads roomId / source / kind.
+          try {
+            const telegramRoomId = stringToUuid(`telegram:${chatId}`) as UUID;
+            const entityId = stringToUuid(
+              `telegram-user:${username}:${chatId}`,
+            ) as UUID;
+            const memory: Memory = {
+              // Use the same `username` value (with first_name fallback) that
+              // entityId is derived from — using ctx.message.from?.username
+              // here would give an empty string for users with no Telegram
+              // username, making `id` and `entityId` disagree for the same
+              // sender.
+              id: stringToUuid(
+                `telegram:${chatId}:${username}:${Date.now()}`,
+              ) as UUID,
+              entityId,
+              agentId: runtime.agentId,
+              roomId: telegramRoomId,
+              content: {
+                text,
+                source: "telegram",
+              },
+              createdAt: Date.now(),
+            };
+            await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+              runtime,
+              message: memory,
+              source: "telegram",
+            });
+          } catch (emitErr) {
+            logger.warn(
+              `[eliza] Telegram MESSAGE_RECEIVED emit failed: ${emitErr instanceof Error ? emitErr.message : String(emitErr)}`,
+            );
+          }
 
           let history = chatHistories.get(chatId);
           if (!history) {
@@ -1003,16 +1085,18 @@ function getPgliteDataDirFromError(err: unknown): string | null {
     }
   }
 
-  for (const message of collectErrorMessages(err)) {
+  for (const rawMessage of collectErrorMessages(err)) {
+    const message =
+      rawMessage.length > 4096 ? rawMessage.slice(0, 4096) : rawMessage;
     const retryPathMatch = message.match(
-      /before retrying:\s*([^\n]+?)(?:\s*$|\.)/,
+      /before retrying:[ \t]{0,16}([^\n]{1,1024}?)(?:[ \t]*$|\.)/,
     );
     if (retryPathMatch?.[1]) {
       return retryPathMatch[1].trim();
     }
 
     const initPathMatch = message.match(
-      /PGlite initialization failed for (.+?):/i,
+      /PGlite initialization failed for ([^:\n]{1,1024}):/i,
     );
     if (initPathMatch?.[1]) {
       return initPathMatch[1].trim();
@@ -1319,6 +1403,16 @@ export async function startEliza(
             /* ignore */
           }
           _n8nAuthBridge = null;
+        }
+        // Stop the trigger event bridge so its event handlers do not
+        // fire against the runtime after shutdown begins.
+        if (_triggerEventBridge) {
+          try {
+            _triggerEventBridge.stop();
+          } catch {
+            /* ignore */
+          }
+          _triggerEventBridge = null;
         }
         // Stop the n8n sidecar if it was started during this session. The
         // singleton is lazily constructed, so this is a no-op when n8n was

@@ -9,7 +9,7 @@
  * Usage: node scripts/css-coverage.mjs [--json]
  */
 
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -91,10 +91,20 @@ function isUsed(selector, searchDirs) {
   }
 
   // Search in TSX/TS/JSX/JS files for usage
-  const dirs = searchDirs.map((d) => resolve(ROOT, d)).join(" ");
+  const dirs = searchDirs.map((d) => resolve(ROOT, d));
   try {
-    execSync(
-      `rg -l --type-add 'src:*.{ts,tsx,js,jsx,css}' -t src -F "${searchTerm}" ${dirs}`,
+    execFileSync(
+      "rg",
+      [
+        "-l",
+        "--type-add",
+        "src:*.{ts,tsx,js,jsx,css}",
+        "-t",
+        "src",
+        "-F",
+        searchTerm,
+        ...dirs,
+      ],
       { stdio: "pipe", timeout: 5000 },
     );
     return true;

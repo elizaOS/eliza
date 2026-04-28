@@ -13,10 +13,14 @@ import {
   groupAppsForCatalog,
   isHiddenFromAppsView,
 } from "./helpers";
-import { getInternalToolApps } from "./internal-tool-apps";
+import {
+  getInternalToolAppHasDetailsPage,
+  getInternalToolApps,
+} from "./internal-tool-apps";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const upstreamAppsDir = path.resolve(here, "../../../../../apps");
+const rendererPublicDir = path.resolve(upstreamAppsDir, "app/public");
 
 function makeCatalogCandidate(
   name: string,
@@ -59,6 +63,44 @@ function readUpstreamAppPackageNames(): string[] {
     });
 }
 
+function readUpstreamAppPackages(): Array<{
+  dir: string;
+  name: string;
+  packageJson: {
+    elizaos?: {
+      app?: {
+        heroImage?: unknown;
+      };
+    };
+  };
+}> {
+  return fs
+    .readdirSync(upstreamAppsDir)
+    .sort()
+    .flatMap((entry) => {
+      const packageJsonPath = path.join(upstreamAppsDir, entry, "package.json");
+      if (!fs.existsSync(packageJsonPath)) {
+        return [];
+      }
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"));
+      return typeof packageJson.name === "string"
+        ? [
+            {
+              dir: path.dirname(packageJsonPath),
+              name: packageJson.name,
+              packageJson,
+            },
+          ]
+        : [];
+    });
+}
+
+function isPackageLocalHeroPath(value: string): boolean {
+  return !/^(https?:|data:image\/|blob:|file:|capacitor:|electrobun:|app:|\/)/i.test(
+    value,
+  );
+}
+
 describe("apps catalog coverage", () => {
   afterEach(() => {
     setBootConfig(DEFAULT_BOOT_CONFIG);
@@ -73,7 +115,7 @@ describe("apps catalog coverage", () => {
       filterAppsForCatalog(
         upstreamPackageNames
           .filter((name) => !injectedCatalogNames.has(name))
-          .map(makeCatalogCandidate),
+          .map((name) => makeCatalogCandidate(name)),
         { showAllApps: true },
       ).map((app) => app.name),
     );
@@ -95,9 +137,63 @@ describe("apps catalog coverage", () => {
     );
     expect(
       filterAppsForCatalog(
-        APPS_VIEW_HIDDEN_APP_NAMES.map(makeCatalogCandidate),
+        APPS_VIEW_HIDDEN_APP_NAMES.map((name) => makeCatalogCandidate(name)),
       ).map((app) => app.name),
     ).toEqual([]);
+  });
+
+  it("backs every upstream catalog app package with a package-local hero", () => {
+    const missing = readUpstreamAppPackages()
+      .filter(({ name }) => name !== "@elizaos/app")
+      .flatMap(({ dir, name, packageJson }) => {
+        const heroImage = packageJson.elizaos?.app?.heroImage;
+        if (typeof heroImage !== "string" || !heroImage.trim()) {
+          return [{ name, reason: "missing elizaos.app.heroImage" }];
+        }
+        if (!isPackageLocalHeroPath(heroImage)) {
+          return [{ name, reason: `non-local hero path: ${heroImage}` }];
+        }
+        const heroPath = path.resolve(dir, heroImage);
+        const packageRoot = `${path.resolve(dir)}${path.sep}`;
+        if (!heroPath.startsWith(packageRoot)) {
+          return [{ name, reason: `hero escapes package: ${heroImage}` }];
+        }
+        if (!fs.existsSync(heroPath)) {
+          return [{ name, reason: `missing file: ${heroImage}` }];
+        }
+        return [];
+      });
+
+    expect(missing).toEqual([]);
+  });
+
+  it("points every internal tool app at an existing hero source", () => {
+    const missing = getInternalToolApps().flatMap((app) => {
+      const heroImage = app.heroImage?.trim();
+      if (!heroImage) {
+        return [{ name: app.name, reason: "missing heroImage" }];
+      }
+      if (heroImage.startsWith("/api/apps/hero/")) {
+        return [];
+      }
+      if (heroImage.startsWith("/app-heroes/")) {
+        const publicPath = path.join(rendererPublicDir, heroImage.slice(1));
+        return fs.existsSync(publicPath)
+          ? []
+          : [{ name: app.name, reason: `missing static file: ${heroImage}` }];
+      }
+      return [
+        { name: app.name, reason: `unsupported hero source: ${heroImage}` },
+      ];
+    });
+
+    expect(missing).toEqual([]);
+  });
+
+  it("launches LifeOps directly instead of routing through app details", () => {
+    expect(getInternalToolAppHasDetailsPage("@elizaos/app-lifeops")).toBe(
+      false,
+    );
   });
 
   it("hides non-primary game apps and the finance section by default", () => {

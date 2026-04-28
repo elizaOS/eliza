@@ -5,7 +5,7 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsXConnectorStatus,
   LifeOpsXPostResponse,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
 
 function formatError(cause: unknown, fallback: string): string {

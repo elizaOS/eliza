@@ -28,12 +28,13 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import { requestRestart } from "@elizaos/agent/runtime";
 import {
   getPluginInfo,
+  loadElizaConfig,
   type RegistryPluginInfo,
-} from "@elizaos/agent/services/registry-client";
+  requestRestart,
+  saveElizaConfig,
+} from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import { createSerialise } from "../utils/serialise";
 
@@ -627,10 +628,20 @@ async function remoteBranchExists(
   gitUrl: string,
   branch: string,
 ): Promise<boolean> {
+  assertValidGitUrl(gitUrl);
+  if (!VALID_BRANCH.test(branch)) return false;
   try {
     const { stdout } = await execFileAsync(
       "git",
-      ["ls-remote", "--heads", gitUrl, branch],
+      [
+        "-c",
+        "protocol.file.allow=never",
+        "ls-remote",
+        "--heads",
+        "--",
+        gitUrl,
+        branch,
+      ],
       { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
     );
     return stdout.trim().length > 0;
@@ -643,10 +654,11 @@ async function remoteBranchExists(
 }
 
 async function listRemoteBranches(gitUrl: string): Promise<string[]> {
+  assertValidGitUrl(gitUrl);
   try {
     const { stdout } = await execFileAsync(
       "git",
-      ["ls-remote", "--heads", gitUrl],
+      ["-c", "protocol.file.allow=never", "ls-remote", "--heads", "--", gitUrl],
       { env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
     );
     const branches: string[] = [];
@@ -707,7 +719,11 @@ async function gitCloneInstall(
   targetDir: string,
   onProgress?: ProgressCallback,
 ): Promise<void> {
+  assertValidGitUrl(info.gitUrl);
   const branch = await resolveGitBranch(info);
+  if (!VALID_BRANCH.test(branch)) {
+    throw new Error(`Refusing unsafe git branch: ${branch}`);
+  }
 
   const tempDir = path.join(path.dirname(targetDir), `temp-${Date.now()}`);
 
@@ -717,12 +733,15 @@ async function gitCloneInstall(
     await execFileAsync(
       "git",
       [
+        "-c",
+        "protocol.file.allow=never",
         "clone",
         "--branch",
         branch,
         "--single-branch",
         "--depth",
         "1",
+        "--",
         info.gitUrl,
         tempDir,
       ],

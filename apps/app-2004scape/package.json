@@ -22,7 +22,31 @@
   },
   "elizaos": {
     "app": {
-      "heroImage": "assets/hero.png"
+      "heroImage": "assets/hero.png",
+      "launchType": "connect",
+      "launchUrl": "/api/apps/2004scape/viewer",
+      "uiExtension": {
+        "detailPanelId": "2004scape-operator-dashboard"
+      },
+      "viewer": {
+        "url": "/api/apps/2004scape/viewer",
+        "embedParams": {
+          "bot": "",
+          "password": ""
+        },
+        "postMessageAuth": true,
+        "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"
+      },
+      "session": {
+        "mode": "spectate-and-steer",
+        "features": [
+          "commands",
+          "telemetry",
+          "pause",
+          "resume",
+          "suggestions"
+        ]
+      }
     }
   }
 }

@@ -1,4 +1,5 @@
-import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent";
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type Action,
   type ActionExample,
@@ -159,7 +160,7 @@ export const twilioCallAction: Action = {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
   ): Promise<ActionResult> => {
     if (!(await hasAdminAccess(runtime, message))) {
@@ -181,8 +182,18 @@ export const twilioCallAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as TwilioCallParameters;
+    const params = (await extractActionParamsViaLlm<TwilioCallParameters>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: twilioCallAction.description ?? "",
+      paramSchema: twilioCallAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["to", "message"],
+    })) as TwilioCallParameters;
     const to = coerceString(params.to);
     const messageBody = coerceString(params.message);
     const confirmed = coerceBool(params.confirmed);
@@ -328,6 +339,26 @@ function normalizeLookup(value: string): string {
     .trim();
 }
 
+function messageText(message: Memory): string {
+  return typeof message.content?.text === "string" ? message.content.text : "";
+}
+
+function isStandingOwnerCallPolicy(message: Memory): boolean {
+  const text = normalizeLookup(messageText(message));
+  if (!text) {
+    return false;
+  }
+  const isConditional =
+    /\b(if|when|whenever)\b/.test(text) ||
+    /\bget stuck\b/.test(text) ||
+    /\bblocked\b/.test(text);
+  const mentionsCall = /\b(call|phone|dial)\b/.test(text);
+  const mentionsBlockedWork =
+    /\b(stuck|blocked|jam|jams|unblock)\b/.test(text) &&
+    /\b(browser|computer|desktop|remote|workflow|machine)\b/.test(text);
+  return isConditional && mentionsCall && mentionsBlockedWork;
+}
+
 function getPendingCallCacheKey(roomId: string, actionName: string): string {
   return `lifeops:twilio-call:pending:${actionName}:${roomId}`;
 }
@@ -379,6 +410,10 @@ async function enqueueCallApprovalRequest(args: {
   to?: string;
   body: string;
 }): Promise<string | null> {
+  if (typeof args.runtime.createTask !== "function") {
+    return null;
+  }
+
   return await args.runtime.createTask({
     name: `${args.actionName}_${Date.now()}`,
     description:
@@ -407,6 +442,44 @@ async function enqueueCallApprovalRequest(args: {
       },
     },
   });
+}
+
+function buildCallUserPolicyAcknowledgement(
+  userText: string,
+): ActionResult | null {
+  const normalized = userText.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  const isStandingEscalationPolicy =
+    /\bif\b/u.test(normalized) &&
+    /\b(?:stuck|blocked|jammed|jams|unblock|can't continue|cannot continue)\b/u.test(
+      normalized,
+    ) &&
+    /\b(?:browser|computer|desktop|screen|remote workflow|on my machine)\b/u.test(
+      normalized,
+    ) &&
+    /\b(?:call me|phone me|ring me|dial me)\b/u.test(normalized);
+
+  if (!isStandingEscalationPolicy) {
+    return null;
+  }
+
+  return {
+    text: "If I get stuck in the browser or on your computer, I'll escalate by phone so you can jump in and unblock it. I will still require confirmation before placing an actual call.",
+    success: true,
+    values: {
+      success: true,
+      policyRecorded: true,
+    },
+    data: {
+      actionName: "CALL_USER",
+      policyRecorded: true,
+      policyType: "stuck_computer_phone_escalation",
+      channel: "phone_call",
+    },
+  };
 }
 
 function isE164PhoneNumber(value: string): boolean {
@@ -526,36 +599,6 @@ function deliveryToResult(
   };
 }
 
-function looksLikeStandingCallPolicy(text: string): boolean {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-  return (
-    /\b(?:if|when|whenever)\b/u.test(normalized) &&
-    /\b(?:call|phone|dial)\b/u.test(normalized) &&
-    /\b(?:stuck|blocked|jam(?:s|med)?|browser|computer|workflow|unblock)\b/u.test(
-      normalized,
-    )
-  );
-}
-
-function buildCallUserPolicyAcknowledgement(text: string): string {
-  const normalized = text.trim().toLowerCase();
-  let context = "while working remotely";
-  if (/\bbrowser\b/u.test(normalized) && /\bcomputer\b/u.test(normalized)) {
-    context = "in the browser or on your computer";
-  } else if (/\bbrowser\b/u.test(normalized)) {
-    context = "in the browser";
-  } else if (/\bcomputer\b/u.test(normalized)) {
-    context = "on your computer";
-  } else if (/\bworkflow\b/u.test(normalized)) {
-    context = "when a remote workflow gets stuck";
-  }
-
-  return `If I get stuck ${context}, I'll escalate by phone and call you so you can jump in and unblock it. I've recorded that escalation path for when it's needed.`;
-}
-
 export const callUserAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
@@ -601,13 +644,28 @@ export const callUserAction: Action & {
       ((options as HandlerOptions | undefined)?.parameters as
         | CallUserParameters
         | undefined) ?? {};
-    const userText =
-      typeof message.content?.text === "string" ? message.content.text : "";
-    if (params.confirmed !== true && looksLikeStandingCallPolicy(userText)) {
+    const policyAcknowledgement = buildCallUserPolicyAcknowledgement(
+      typeof message.content?.text === "string" ? message.content.text : "",
+    );
+    if (policyAcknowledgement) {
+      return policyAcknowledgement;
+    }
+
+    const pendingDraft = await readPendingCallDraft(
+      runtime,
+      message.roomId,
+      "CALL_USER",
+    );
+
+    if (params.confirmed !== true && isStandingOwnerCallPolicy(message)) {
       return {
-        text: buildCallUserPolicyAcknowledgement(userText),
+        text: "Recorded. If I get stuck in the browser or on your computer, I'll escalate by phone so you can jump in to unblock it.",
         success: true,
-        values: { success: true, policyRecorded: true },
+        values: {
+          success: true,
+          policyRecorded: true,
+          channel: "phone_call",
+        },
         data: {
           actionName: "CALL_USER",
           policyRecorded: true,
@@ -615,11 +673,6 @@ export const callUserAction: Action & {
         },
       };
     }
-    const pendingDraft = await readPendingCallDraft(
-      runtime,
-      message.roomId,
-      "CALL_USER",
-    );
 
     if (params.confirmed !== true) {
       logger.info({ action: "CALL_USER" }, "[CALL_USER] confirmation required");
@@ -701,7 +754,10 @@ export const callUserAction: Action & {
     const result = deliveryToResult(delivery, to, "CALL_USER");
     if (result.success) {
       await clearPendingCallDraft(runtime, message.roomId, "CALL_USER");
-      if (pendingDraft?.approvalTaskId) {
+      if (
+        pendingDraft?.approvalTaskId &&
+        typeof runtime.deleteTask === "function"
+      ) {
         await runtime.deleteTask(pendingDraft.approvalTaskId as never);
       }
     }
@@ -789,7 +845,7 @@ export const callExternalAction: Action & {
     return hasOwnerAccess(runtime, message);
   },
 
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+  handler: async (runtime, message, state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         text: "",
@@ -799,10 +855,20 @@ export const callExternalAction: Action & {
       };
     }
 
-    const params =
+    const rawParams =
       ((options as HandlerOptions | undefined)?.parameters as
         | CallExternalParameters
         | undefined) ?? {};
+    const params = (await extractActionParamsViaLlm<CallExternalParameters>({
+      runtime,
+      message,
+      state,
+      actionName: "CALL_EXTERNAL",
+      actionDescription: callExternalAction.description ?? "",
+      paramSchema: callExternalAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["to"],
+    })) as CallExternalParameters;
     const pendingDraft = await readPendingCallDraft(
       runtime,
       message.roomId,

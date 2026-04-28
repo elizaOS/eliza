@@ -3,14 +3,6 @@ import type { DeviceBridgeStatus as DeviceStatus } from "../../api/client-local-
 import { resolveApiUrl } from "../../utils/asset-url";
 import { getElizaApiToken } from "../../utils/eliza-globals";
 
-/**
- * Thin status strip showing whether a paired mobile device is currently
- * attached to the agent. Visible in the Local Models settings panel when
- * the device-bridge feature is enabled server-side.
- *
- * Subscribes to the `/api/local-inference/device/stream` SSE endpoint so
- * the badge reflects connect/disconnect events in real time.
- */
 export function DeviceBridgeStatusBar() {
   const [status, setStatus] = useState<DeviceStatus | null>(null);
 
@@ -49,15 +41,18 @@ export function DeviceBridgeStatusBar() {
       : "No paired device";
 
   return (
-    <div className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3 text-sm">
+    <div
+      className="flex items-center gap-2 rounded-lg border border-border bg-card/60 px-2 py-1.5 text-xs"
+      title={label}
+    >
       <span
         className={`inline-flex h-2 w-2 rounded-full ${dotClass}`}
         aria-hidden
       />
       <span className="flex-1 truncate">{label}</span>
       {status.loadedPath && (
-        <span className="text-xs text-muted-foreground truncate max-w-[40%]">
-          model: {status.loadedPath.split(/[/\\]/).pop()}
+        <span className="max-w-[40%] truncate text-muted">
+          {status.loadedPath.split(/[/\\]/).pop()}
         </span>
       )}
     </div>

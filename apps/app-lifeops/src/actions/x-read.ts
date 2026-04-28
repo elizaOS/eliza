@@ -18,7 +18,7 @@ import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
   LifeOpsXFeedType,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";

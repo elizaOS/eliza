@@ -1,11 +1,15 @@
-import { Badge, Button, useApp } from "@elizaos/app-core";
-import { isElectrobunRuntime } from "@elizaos/app-core/bridge/electrobun-runtime";
 import {
-  getMobileSignalsPlugin,
+  Badge,
+  Button,
+  isElectrobunRuntime,
+  isNative,
+  useApp,
+} from "@elizaos/app-core";
+import {
+  MobileSignals,
   type MobileSignalsPermissionStatus,
   type MobileSignalsSetupAction,
-} from "@elizaos/app-core/bridge/native-plugins";
-import { isNative } from "@elizaos/app-core/platform";
+} from "@elizaos/capacitor-mobile-signals";
 import {
   Activity,
   Monitor,
@@ -110,7 +114,7 @@ export function MobileSignalsSetupCard() {
       return null;
     }
     try {
-      return getMobileSignalsPlugin();
+      return MobileSignals;
     } catch {
       return null;
     }
@@ -196,7 +200,8 @@ export function MobileSignalsSetupCard() {
     [plugin, refresh, t],
   );
 
-  const actions = permissionStatus?.setupActions ?? [];
+  const actions: MobileSignalsSetupAction[] =
+    permissionStatus?.setupActions ?? [];
   const needsRequest = actions.some(
     (action) => action.status !== "ready" && action.canRequest,
   );
@@ -267,7 +272,7 @@ export function MobileSignalsSetupCard() {
 
       {nativeMobile && actions.length > 0 ? (
         <div className="grid gap-2 border-t border-border/60 px-4 py-3 md:grid-cols-2">
-          {actions.map((action) => {
+          {actions.map((action: MobileSignalsSetupAction) => {
             const badge = actionBadge(action, t);
             const canAct =
               action.status !== "ready" &&

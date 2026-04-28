@@ -87,8 +87,8 @@ const NAV_GROUPS: NavGroup[] = [
         dotColor: "bg-amber-400",
       },
       {
-        id: "payments",
-        label: "Payments",
+        id: "money",
+        label: "Money",
         icon: <CreditCard className="h-4 w-4" aria-hidden />,
         dotColor: "bg-green-400",
       },

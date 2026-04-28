@@ -1,19 +1,15 @@
 import {
+  buildDefaultElizaCloudServiceRouting,
+  buildElizaCloudServiceRoute,
+  type DeploymentTargetConfig,
+  type LinkedAccountFlagsConfig,
   normalizeOnboardingProviderId,
   type OnboardingCredentialInputs,
   type OnboardingLocalProviderId,
   requiresAdditionalRuntimeProvider,
-} from "@elizaos/shared/contracts/onboarding";
-import type {
-  DeploymentTargetConfig,
-  LinkedAccountsConfig,
-  ServiceRouteConfig,
-  ServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing";
-import {
-  buildDefaultElizaCloudServiceRouting,
-  buildElizaCloudServiceRoute,
-} from "@elizaos/shared/contracts/service-routing";
+  type ServiceRouteConfig,
+  type ServiceRoutingConfig,
+} from "@elizaos/shared";
 import {
   isElizaCloudOnboardingTarget,
   type OnboardingServerTarget,
@@ -63,7 +59,7 @@ export interface OnboardingFeatureSetup {
 
 export interface BuildOnboardingRuntimeConfigResult {
   deploymentTarget: DeploymentTargetConfig;
-  linkedAccounts: LinkedAccountsConfig | undefined;
+  linkedAccounts: LinkedAccountFlagsConfig | undefined;
   serviceRouting: ServiceRoutingConfig | undefined;
   credentialInputs: OnboardingCredentialInputs | undefined;
   needsProviderSetup: boolean;
@@ -120,7 +116,7 @@ export function buildOnboardingRuntimeConfig(
   const actionPlannerModel = trimToUndefined(
     args.onboardingActionPlannerModel ?? "",
   );
-  const linkedAccounts: LinkedAccountsConfig = {};
+  const linkedAccounts: LinkedAccountFlagsConfig = {};
   const cloudApiKey = trimToUndefined(args.onboardingCloudApiKey);
   if (cloudApiKey) {
     linkedAccounts.elizacloud = {

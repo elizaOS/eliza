@@ -111,8 +111,9 @@ export function createApiServer() {
 
       sendText(res, 404, "Not found");
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      sendJson(res, 500, { error: msg } satisfies ApiError);
+      // Log full error server-side; do not leak details (including stack) to client.
+      console.error("[capacitor-backend] request failed", e);
+      sendJson(res, 500, { error: "Internal Server Error" } satisfies ApiError);
     }
   });
 }

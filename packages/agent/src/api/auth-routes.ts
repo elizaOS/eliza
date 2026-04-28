@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { resolveApiToken } from "@elizaos/shared/runtime-env";
+import { resolveApiToken } from "@elizaos/shared";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import type { RouteRequestContext } from "./route-helpers.js";
 

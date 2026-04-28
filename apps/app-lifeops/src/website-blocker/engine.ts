@@ -1615,7 +1615,7 @@ async function writeHostsFileContentWithElevation(
 }
 
 function normalizeWebsiteTarget(rawTarget: string): string | null {
-  const trimmed = rawTarget.trim().replace(/[),.!?]+$/g, "");
+  const trimmed = rawTarget.slice(0, 4096).trim().replace(/[),.!?]{1,64}$/g, "");
   if (!trimmed) return null;
 
   let hostname = trimmed;
@@ -1676,9 +1676,10 @@ function normalizeStringList(
       }
     }
     return trimmed
+      .slice(0, 10_000)
       .split(/[,\n]/)
-      .map((item) => item.trim())
-      .map((item) => item.replace(/^[\[\]'"]+|[\[\]'"]+$/g, ""))
+      .map((item) => item.trim().slice(0, 1024))
+      .map((item) => item.replace(/^[\[\]'"]{1,32}|[\[\]'"]{1,32}$/g, ""))
       .filter((item) => item.length > 0);
   }
 

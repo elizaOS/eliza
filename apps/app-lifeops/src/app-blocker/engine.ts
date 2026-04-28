@@ -1,9 +1,10 @@
 import {
-  getAppBlockerPlugin,
   type AppBlockerPermissionResult,
+  type AppBlockerPluginLike,
   type AppBlockerStatus,
   type BlockAppsOptions,
   type BlockAppsResult,
+  getAppBlockerPlugin,
   type InstalledApp,
   type SelectAppsResult,
   type UnblockAppsResult,
@@ -12,7 +13,7 @@ import {
 const STATUS_CACHE_TTL_MS = 5_000;
 let statusCache: { expiresAt: number; value: AppBlockerStatus } | null = null;
 
-function getPlugin() {
+function getPlugin(): AppBlockerPluginLike {
   const plugin = getAppBlockerPlugin();
   if (!plugin || typeof plugin.getStatus !== "function") {
     throw new Error(

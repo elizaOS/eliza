@@ -7,6 +7,8 @@ import {
 import { logger } from "../../logger";
 import type {
 	Action,
+	ActionExample,
+	ActionResult,
 	Content,
 	HandlerCallback,
 	HandlerOptions,
@@ -17,6 +19,7 @@ import type {
 } from "../../types";
 import { addKnowledgeFromFilePath } from "./docs-loader.ts";
 import { KnowledgeService } from "./service.ts";
+import { fetchKnowledgeFromUrl, isYouTubeUrl } from "./url-ingest.ts";
 import { createKnowledgeNoteFilename, deriveKnowledgeTitle } from "./utils.ts";
 
 type ExtendedValidator = (
@@ -45,6 +48,7 @@ export const processKnowledgeAction: Action = {
 	name: "PROCESS_KNOWLEDGE",
 	description:
 		"Process and store knowledge from a file path or text content into the knowledge base",
+	suppressPostActionContinuation: true,
 
 	similes: [],
 
@@ -147,7 +151,11 @@ export const processKnowledgeAction: Action = {
 					if (callback) {
 						await callback(response);
 					}
-					return;
+					return {
+						success: false,
+						text: response.text,
+						data: { actionName: "PROCESS_KNOWLEDGE" },
+					};
 				}
 
 				const fileName = path.basename(filePath);
@@ -184,7 +192,11 @@ export const processKnowledgeAction: Action = {
 					if (callback) {
 						await callback(response);
 					}
-					return;
+					return {
+						success: false,
+						text: response.text,
+						data: { actionName: "PROCESS_KNOWLEDGE" },
+					};
 				}
 
 				const title = deriveKnowledgeTitle(
@@ -224,7 +236,11 @@ export const processKnowledgeAction: Action = {
 			if (callback) {
 				await callback(response);
 			}
-			return { success: true, text: response.text };
+			return {
+				success: true,
+				text: response.text,
+				data: { actionName: "PROCESS_KNOWLEDGE" },
+			};
 		} catch (error) {
 			logger.error({ error }, "Error in PROCESS_KNOWLEDGE action");
 
@@ -237,7 +253,9 @@ export const processKnowledgeAction: Action = {
 			}
 			return {
 				success: false,
+				text: errorResponse.text,
 				error: error instanceof Error ? error.message : String(error),
+				data: { actionName: "PROCESS_KNOWLEDGE" },
 			};
 		}
 	},
@@ -246,6 +264,7 @@ export const processKnowledgeAction: Action = {
 export const searchKnowledgeAction: Action = {
 	name: "SEARCH_KNOWLEDGE",
 	description: "Search the knowledge base for specific information",
+	suppressPostActionContinuation: true,
 
 	similes: [
 		"search knowledge",
@@ -337,7 +356,11 @@ export const searchKnowledgeAction: Action = {
 				if (callback) {
 					await callback(response);
 				}
-				return;
+				return {
+					success: false,
+					text: response.text,
+					data: { actionName: "SEARCH_KNOWLEDGE" },
+				};
 			}
 
 			const searchMessage: Memory = {
@@ -369,7 +392,11 @@ export const searchKnowledgeAction: Action = {
 			if (callback) {
 				await callback(response);
 			}
-			return { success: true, text: response.text };
+			return {
+				success: true,
+				text: response.text,
+				data: { actionName: "SEARCH_KNOWLEDGE" },
+			};
 		} catch (error) {
 			logger.error({ error }, "Error in SEARCH_KNOWLEDGE action");
 
@@ -382,10 +409,542 @@ export const searchKnowledgeAction: Action = {
 			}
 			return {
 				success: false,
+				text: errorResponse.text,
 				error: error instanceof Error ? error.message : String(error),
+				data: { actionName: "SEARCH_KNOWLEDGE" },
 			};
 		}
 	},
 };
 
-export const knowledgeActions = [processKnowledgeAction, searchKnowledgeAction];
+type IngestKnowledgeFromUrlParameters = {
+	url?: string;
+	includeImageDescriptions?: unknown;
+};
+
+type UpdateKnowledgeDocumentParameters = {
+	documentId?: string;
+	text?: string;
+};
+
+type DeleteKnowledgeDocumentParameters = {
+	documentId?: string;
+};
+
+function isUuid(value: string): value is UUID {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+		value,
+	);
+}
+
+export const ingestKnowledgeFromUrlAction: Action = {
+	name: "INGEST_KNOWLEDGE_FROM_URL",
+	similes: [
+		"FETCH_KNOWLEDGE_FROM_URL",
+		"IMPORT_KNOWLEDGE_FROM_URL",
+		"LOAD_KNOWLEDGE_FROM_URL",
+		"ADD_KNOWLEDGE_FROM_URL",
+		"INGEST_URL",
+	],
+	description:
+		"Fetches the content of a URL and stores it in the agent's knowledge base. Use this when the user wants to add a webpage, article, or downloadable document to knowledge by providing a link.",
+	suppressPostActionContinuation: true,
+	parameters: [
+		{
+			name: "url",
+			description:
+				"Absolute URL of the page or file to fetch and ingest into the knowledge base.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "includeImageDescriptions",
+			description:
+				"When true, request image-description extraction from the upstream pipeline. Stored as a metadata flag on the document.",
+			required: false,
+			schema: { type: "boolean" as const },
+		},
+	],
+
+	validate: async (
+		runtime: IAgentRuntime,
+		_message: Memory,
+		_state?: State,
+	): Promise<boolean> => {
+		const service = runtime.getService(KnowledgeService.serviceType);
+		return Boolean(service);
+	},
+
+	handler: async (
+		runtime: IAgentRuntime,
+		_message: Memory,
+		_state?: State,
+		options?: HandlerOptions,
+		callback?: HandlerCallback,
+	): Promise<ActionResult> => {
+		const params = (options?.parameters ??
+			{}) as IngestKnowledgeFromUrlParameters;
+		const url = params.url?.trim();
+		const includeImageDescriptions = params.includeImageDescriptions === true;
+
+		if (!url) {
+			const text = "I need a URL to ingest into the knowledge base.";
+			await callback?.({ text });
+			return {
+				text,
+				success: false,
+				values: { error: "missing_url" },
+				data: { actionName: "INGEST_KNOWLEDGE_FROM_URL" },
+			};
+		}
+
+		try {
+			const service = runtime.getService<KnowledgeService>(
+				KnowledgeService.serviceType,
+			);
+			if (!service) {
+				throw new Error("Knowledge service not available");
+			}
+
+			const fetched = await fetchKnowledgeFromUrl(url, {
+				includeImageDescriptions,
+			});
+			const { filename, mimeType } = fetched;
+			const isYouTube = isYouTubeUrl(url);
+			const isTextBacked = fetched.contentType !== "binary";
+
+			const result = await service.addKnowledge({
+				agentId: runtime.agentId,
+				worldId: runtime.agentId,
+				roomId: runtime.agentId,
+				entityId: runtime.agentId,
+				clientDocumentId: "" as UUID,
+				contentType: mimeType,
+				originalFilename: filename,
+				content: fetched.content,
+				metadata: {
+					url,
+					source: isYouTube ? "youtube" : "url",
+					filename,
+					originalFilename: filename,
+					fileType: mimeType,
+					contentType: mimeType,
+					textBacked: isTextBacked,
+					includeImageDescriptions,
+					...(fetched.contentType === "transcript"
+						? { isYouTubeTranscript: true }
+						: {}),
+				},
+			});
+
+			const summaryLabel =
+				fetched.contentType === "transcript"
+					? "transcript"
+					: fetched.contentType === "html"
+						? "page"
+						: "document";
+			const text = `Ingested ${summaryLabel} from ${url}. Stored as ${filename} with ${result.fragmentCount} fragment(s).`;
+			await callback?.({
+				text,
+				actions: ["INGEST_KNOWLEDGE_FROM_URL"],
+			});
+
+			return {
+				text,
+				success: true,
+				values: {
+					documentId: result.clientDocumentId,
+					fragmentCount: result.fragmentCount,
+					filename,
+				},
+				data: {
+					actionName: "INGEST_KNOWLEDGE_FROM_URL",
+					ingestData: {
+						documentId: result.clientDocumentId,
+						fragmentCount: result.fragmentCount,
+						filename,
+						url,
+						contentType: mimeType,
+						kind: fetched.contentType,
+						isYouTubeTranscript: fetched.contentType === "transcript",
+					},
+				},
+			};
+		} catch (error) {
+			logger.error(
+				{ error: error instanceof Error ? error.message : String(error) },
+				"Error in INGEST_KNOWLEDGE_FROM_URL action",
+			);
+			const text = `I couldn't ingest that URL: ${error instanceof Error ? error.message : String(error)}`;
+			await callback?.({ text });
+			return {
+				text,
+				success: false,
+				values: {
+					error: error instanceof Error ? error.message : String(error),
+				},
+				data: { actionName: "INGEST_KNOWLEDGE_FROM_URL" },
+			};
+		}
+	},
+
+	examples: [
+		[
+			{
+				name: "user",
+				content: {
+					text: "Add https://example.com/docs/getting-started to your knowledge base.",
+				},
+			},
+			{
+				name: "assistant",
+				content: {
+					text: "I'll fetch that URL and add it to my knowledge base.",
+					actions: ["INGEST_KNOWLEDGE_FROM_URL"],
+				},
+			},
+		],
+		[
+			{
+				name: "user",
+				content: {
+					text: "Ingest the article at https://blog.example.com/post-1 into knowledge.",
+				},
+			},
+			{
+				name: "assistant",
+				content: {
+					text: "Fetching the article and indexing it into my knowledge base.",
+					actions: ["INGEST_KNOWLEDGE_FROM_URL"],
+				},
+			},
+		],
+	] as ActionExample[][],
+};
+
+export const updateKnowledgeDocumentAction: Action = {
+	name: "UPDATE_KNOWLEDGE_DOCUMENT",
+	similes: [
+		"EDIT_KNOWLEDGE_DOCUMENT",
+		"REPLACE_KNOWLEDGE_DOCUMENT",
+		"UPDATE_DOCUMENT_CONTENT",
+		"REWRITE_KNOWLEDGE_DOCUMENT",
+	],
+	description:
+		"Replaces the text content of an existing knowledge document and re-fragments it. Use this when the user wants to revise the body of a previously-stored document by id.",
+	suppressPostActionContinuation: true,
+	parameters: [
+		{
+			name: "documentId",
+			description: "UUID of the knowledge document to update.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+		{
+			name: "text",
+			description: "New full text content of the document.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+	],
+
+	validate: async (
+		runtime: IAgentRuntime,
+		_message: Memory,
+		_state?: State,
+	): Promise<boolean> => {
+		const service = runtime.getService(KnowledgeService.serviceType);
+		return Boolean(service);
+	},
+
+	handler: async (
+		runtime: IAgentRuntime,
+		_message: Memory,
+		_state?: State,
+		options?: HandlerOptions,
+		callback?: HandlerCallback,
+	): Promise<ActionResult> => {
+		const params = (options?.parameters ??
+			{}) as UpdateKnowledgeDocumentParameters;
+		const documentId = params.documentId?.trim();
+		const text = typeof params.text === "string" ? params.text : "";
+
+		if (!documentId || !isUuid(documentId)) {
+			const errMsg = "I need a valid documentId (UUID) to update the document.";
+			await callback?.({ text: errMsg });
+			return {
+				text: errMsg,
+				success: false,
+				values: { error: "invalid_document_id" },
+				data: { actionName: "UPDATE_KNOWLEDGE_DOCUMENT" },
+			};
+		}
+
+		if (!text.trim()) {
+			const errMsg = "I need non-empty text to update the document.";
+			await callback?.({ text: errMsg });
+			return {
+				text: errMsg,
+				success: false,
+				values: { error: "missing_text" },
+				data: { actionName: "UPDATE_KNOWLEDGE_DOCUMENT" },
+			};
+		}
+
+		try {
+			const service = runtime.getService<KnowledgeService>(
+				KnowledgeService.serviceType,
+			);
+			if (!service) {
+				throw new Error("Knowledge service not available");
+			}
+
+			const result = await service.updateKnowledgeDocument({
+				documentId: documentId as UUID,
+				content: text,
+			});
+
+			const summary = `Updated document ${result.documentId}. Re-fragmented into ${result.fragmentCount} piece(s).`;
+			await callback?.({
+				text: summary,
+				actions: ["UPDATE_KNOWLEDGE_DOCUMENT"],
+			});
+
+			return {
+				text: summary,
+				success: true,
+				values: {
+					documentId: result.documentId,
+					fragmentCount: result.fragmentCount,
+				},
+				data: {
+					actionName: "UPDATE_KNOWLEDGE_DOCUMENT",
+					updateData: {
+						documentId: result.documentId,
+						fragmentCount: result.fragmentCount,
+					},
+				},
+			};
+		} catch (error) {
+			logger.error(
+				{ error: error instanceof Error ? error.message : String(error) },
+				"Error in UPDATE_KNOWLEDGE_DOCUMENT action",
+			);
+			const errMsg = `I couldn't update the document: ${error instanceof Error ? error.message : String(error)}`;
+			await callback?.({ text: errMsg });
+			return {
+				text: errMsg,
+				success: false,
+				values: {
+					error: error instanceof Error ? error.message : String(error),
+				},
+				data: { actionName: "UPDATE_KNOWLEDGE_DOCUMENT" },
+			};
+		}
+	},
+
+	examples: [
+		[
+			{
+				name: "user",
+				content: {
+					text: "Update document 123e4567-e89b-12d3-a456-426614174000 with the revised text.",
+				},
+			},
+			{
+				name: "assistant",
+				content: {
+					text: "I'll replace the document content and re-index its fragments.",
+					actions: ["UPDATE_KNOWLEDGE_DOCUMENT"],
+				},
+			},
+		],
+		[
+			{
+				name: "user",
+				content: {
+					text: "Replace the body of knowledge doc 7f8a3b2c-9d10-4e5f-bc12-345678901234 with the new copy.",
+				},
+			},
+			{
+				name: "assistant",
+				content: {
+					text: "Updating that document's text and re-fragmenting it now.",
+					actions: ["UPDATE_KNOWLEDGE_DOCUMENT"],
+				},
+			},
+		],
+	] as ActionExample[][],
+};
+
+export const deleteKnowledgeDocumentAction: Action = {
+	name: "DELETE_KNOWLEDGE_DOCUMENT",
+	similes: [
+		"REMOVE_KNOWLEDGE_DOCUMENT",
+		"DELETE_DOCUMENT",
+		"DROP_KNOWLEDGE_DOCUMENT",
+		"FORGET_KNOWLEDGE_DOCUMENT",
+	],
+	description:
+		"Deletes a knowledge document and all its fragments by document id. Use this when the user wants to remove a previously-stored document from the knowledge base.",
+	suppressPostActionContinuation: true,
+	parameters: [
+		{
+			name: "documentId",
+			description: "UUID of the knowledge document to delete.",
+			required: true,
+			schema: { type: "string" as const },
+		},
+	],
+
+	validate: async (
+		runtime: IAgentRuntime,
+		_message: Memory,
+		_state?: State,
+	): Promise<boolean> => {
+		const service = runtime.getService(KnowledgeService.serviceType);
+		return Boolean(service);
+	},
+
+	handler: async (
+		runtime: IAgentRuntime,
+		_message: Memory,
+		_state?: State,
+		options?: HandlerOptions,
+		callback?: HandlerCallback,
+	): Promise<ActionResult> => {
+		const params = (options?.parameters ??
+			{}) as DeleteKnowledgeDocumentParameters;
+		const documentId = params.documentId?.trim();
+
+		if (!documentId || !isUuid(documentId)) {
+			const errMsg = "I need a valid documentId (UUID) to delete the document.";
+			await callback?.({ text: errMsg });
+			return {
+				text: errMsg,
+				success: false,
+				values: { error: "invalid_document_id" },
+				data: { actionName: "DELETE_KNOWLEDGE_DOCUMENT" },
+			};
+		}
+
+		try {
+			const service = runtime.getService<KnowledgeService>(
+				KnowledgeService.serviceType,
+			);
+			if (!service) {
+				throw new Error("Knowledge service not available");
+			}
+
+			const existing = await runtime.getMemoryById(documentId as UUID);
+			if (!existing) {
+				const errMsg = `Knowledge document ${documentId} not found.`;
+				await callback?.({ text: errMsg });
+				return {
+					text: errMsg,
+					success: false,
+					values: { error: "not_found" },
+					data: { actionName: "DELETE_KNOWLEDGE_DOCUMENT" },
+				};
+			}
+
+			const fragments = await runtime.getMemories({
+				tableName: "knowledge",
+				agentId: runtime.agentId,
+				roomId: existing.roomId,
+				count: 10_000,
+			});
+			const relatedFragmentIds = fragments
+				.filter((fragment) => {
+					const meta = fragment.metadata as Record<string, unknown> | undefined;
+					return meta?.documentId === documentId;
+				})
+				.map((fragment) => fragment.id)
+				.filter((id): id is UUID => typeof id === "string");
+
+			for (const fragmentId of relatedFragmentIds) {
+				await service.deleteMemory(fragmentId);
+			}
+
+			await service.deleteMemory(documentId as UUID);
+
+			const summary = `Deleted document ${documentId} and ${relatedFragmentIds.length} fragment(s).`;
+			await callback?.({
+				text: summary,
+				actions: ["DELETE_KNOWLEDGE_DOCUMENT"],
+			});
+
+			return {
+				text: summary,
+				success: true,
+				values: {
+					documentId,
+					deletedFragments: relatedFragmentIds.length,
+				},
+				data: {
+					actionName: "DELETE_KNOWLEDGE_DOCUMENT",
+					deleteData: {
+						documentId,
+						deletedFragments: relatedFragmentIds.length,
+					},
+				},
+			};
+		} catch (error) {
+			logger.error(
+				{ error: error instanceof Error ? error.message : String(error) },
+				"Error in DELETE_KNOWLEDGE_DOCUMENT action",
+			);
+			const errMsg = `I couldn't delete the document: ${error instanceof Error ? error.message : String(error)}`;
+			await callback?.({ text: errMsg });
+			return {
+				text: errMsg,
+				success: false,
+				values: {
+					error: error instanceof Error ? error.message : String(error),
+				},
+				data: { actionName: "DELETE_KNOWLEDGE_DOCUMENT" },
+			};
+		}
+	},
+
+	examples: [
+		[
+			{
+				name: "user",
+				content: {
+					text: "Delete document 123e4567-e89b-12d3-a456-426614174000 from my knowledge base.",
+				},
+			},
+			{
+				name: "assistant",
+				content: {
+					text: "I'll remove that document and its fragments from the knowledge base.",
+					actions: ["DELETE_KNOWLEDGE_DOCUMENT"],
+				},
+			},
+		],
+		[
+			{
+				name: "user",
+				content: {
+					text: "Forget knowledge doc 7f8a3b2c-9d10-4e5f-bc12-345678901234.",
+				},
+			},
+			{
+				name: "assistant",
+				content: {
+					text: "Deleting that document from knowledge.",
+					actions: ["DELETE_KNOWLEDGE_DOCUMENT"],
+				},
+			},
+		],
+	] as ActionExample[][],
+};
+
+export const knowledgeActions = [
+	processKnowledgeAction,
+	searchKnowledgeAction,
+	ingestKnowledgeFromUrlAction,
+	updateKnowledgeDocumentAction,
+	deleteKnowledgeDocumentAction,
+];

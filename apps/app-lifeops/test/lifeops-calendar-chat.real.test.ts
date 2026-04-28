@@ -22,7 +22,9 @@ import {
   type RealTestRuntimeResult,
 } from "./helpers/runtime.js";
 import { saveEnv } from "../../../../test/helpers/test-utils";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import {
+  resolveOAuthDir,
+} from "@elizaos/agent";
 import {
   addDaysToLocalDate,
   buildUtcDateFromLocalParts,

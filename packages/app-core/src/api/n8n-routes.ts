@@ -22,13 +22,12 @@
  *
  * The provisioned API key is never returned to the UI.
  *
- * Context shape matches other app-core compat routes
- * (cloud-status-routes.ts): `{ req, res, method, pathname, config, runtime,
- * json }`. The sidecar instance is read from the module-level singleton in
+ * Context shape is `{ req, res, method, pathname, config, runtime, json }`.
+ * The sidecar instance is read from the module-level singleton in
  * services/n8n-sidecar.ts rather than being threaded through state.
  */
 
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent/api";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { isNativeServerPlatform } from "../platform/is-native-server";
@@ -152,10 +151,6 @@ export interface N8nRoutesConfigLike {
     status?: N8nSidecarStatus;
   };
 }
-
-// Back-compat aliases for the previous module export names.
-export type N8nStatusConfigLike = N8nRoutesConfigLike;
-export type N8nStatusRouteContext = N8nRouteContext;
 
 export interface N8nRouteContext
   extends RouteRequestMeta,
@@ -766,114 +761,6 @@ function normalizeWorkflowWritePayload(body: Record<string, unknown>): {
   };
 }
 
-function inferWorkflowName(prompt: string, requestedName?: string): string {
-  if (requestedName?.trim()) {
-    return requestedName.trim().slice(0, 80);
-  }
-  const compact = prompt.replace(/\s+/g, " ").trim();
-  const withoutSchedule = compact.replace(
-    /^(when|whenever|every|daily|weekly|hourly|on)\b[:,\s-]*/i,
-    "",
-  );
-  const title = withoutSchedule.slice(0, 58).trim() || "Generated workflow";
-  return title[0] ? `${title[0].toUpperCase()}${title.slice(1)}` : title;
-}
-
-function labelFromStep(step: string, index: number): string {
-  const cleaned = step
-    .replace(/\s+/g, " ")
-    .replace(/^(then|and|after that|next)\b[:,\s-]*/i, "")
-    .trim();
-  if (!cleaned) return `Step ${index + 1}`;
-  const label = cleaned
-    .split(" ")
-    .slice(0, 6)
-    .join(" ")
-    .replace(/[.?!,;:]$/g, "");
-  return label[0]?.toUpperCase()
-    ? `${label[0].toUpperCase()}${label.slice(1)}`
-    : label;
-}
-
-function promptToWorkflowSteps(prompt: string): string[] {
-  const parts = prompt
-    .replace(/\s+/g, " ")
-    .split(/\b(?:then|after that|next)\b|[.;]\s*/i)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  if (parts.length > 1) return parts.slice(0, 6);
-
-  const byAnd = prompt
-    .replace(/\s+/g, " ")
-    .split(/\s+\band\b\s+/i)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return (byAnd.length > 1 ? byAnd : [prompt.trim()]).slice(0, 6);
-}
-
-function buildFallbackWorkflowFromPrompt(
-  prompt: string,
-  requestedName?: string,
-): N8nWorkflowWritePayload {
-  const steps = promptToWorkflowSteps(prompt);
-  const nodes: N8nWorkflowWriteNode[] = [
-    {
-      name: "Start",
-      type: "n8n-nodes-base.manualTrigger",
-      typeVersion: 1,
-      position: [0, 0],
-      parameters: {},
-    },
-    ...steps.map((step, index) => ({
-      name: labelFromStep(step, index),
-      type: "n8n-nodes-base.noOp",
-      typeVersion: 1,
-      position: [260 * (index + 1), 0] as [number, number],
-      parameters: {},
-      notes: step,
-      notesInFlow: true,
-    })),
-  ];
-
-  const connections: N8nWorkflowConnections = {};
-  for (let index = 0; index < nodes.length - 1; index++) {
-    connections[nodes[index].name] = {
-      main: [[{ node: nodes[index + 1].name, type: "main", index: 0 }]],
-    };
-  }
-
-  return {
-    name: inferWorkflowName(prompt, requestedName),
-    nodes,
-    connections,
-    settings: {},
-  };
-}
-
-async function generateWorkflowPayload(
-  ctx: N8nRouteContext,
-  prompt: string,
-  name?: string,
-): Promise<N8nWorkflowWritePayload> {
-  const service = ctx.runtime?.getService?.("n8n_workflow") as
-    | { generateWorkflowDraft?: (prompt: string) => Promise<unknown> }
-    | undefined;
-  if (typeof service?.generateWorkflowDraft === "function") {
-    const generated = await service.generateWorkflowDraft(prompt);
-    const normalized = normalizeWorkflowWritePayload({
-      ...(asRecord(generated) ?? {}),
-      ...(name?.trim() ? { name: name.trim() } : {}),
-    });
-    if (normalized.payload) return normalized.payload;
-    logger.warn(
-      { error: normalized.error },
-      "[n8n-routes] generated workflow payload was invalid; using fallback builder",
-    );
-  }
-
-  return buildFallbackWorkflowFromPrompt(prompt, name);
-}
-
 function propagateError(
   ctx: N8nRouteContext,
   upstream: { status: number; body: unknown },
@@ -979,8 +866,7 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
 
   // --- Workflow generation / creation --------------------------------------
   if (method === "POST" && pathname === "/api/n8n/workflows/generate") {
-    const sidecar = await resolveSidecarForRequest(ctx, native);
-    return handleGenerateWorkflow(ctx, sidecar, native);
+    return handleGenerateWorkflow(ctx);
   }
 
   if (method === "POST" && pathname === "/api/n8n/workflows") {
@@ -1015,10 +901,6 @@ export async function handleN8nRoutes(ctx: N8nRouteContext): Promise<boolean> {
 
   return false;
 }
-
-// Backwards-compat named export so the old import symbol still works for any
-// out-of-tree caller that imports it. Prefer `handleN8nRoutes` in new code.
-export const handleN8nStatusRoutes = handleN8nRoutes;
 
 async function handleStatus(
   ctx: N8nRouteContext,
@@ -1236,11 +1118,7 @@ async function handleUpdateWorkflow(
   );
 }
 
-async function handleGenerateWorkflow(
-  ctx: N8nRouteContext,
-  sidecar: N8nSidecar | null,
-  native: boolean,
-): Promise<boolean> {
+async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
   const body = await readCompatJsonBody(ctx.req, ctx.res);
   if (!body) return true;
 
@@ -1252,18 +1130,56 @@ async function handleGenerateWorkflow(
 
   const name = readOptionalString(body, "name");
   const workflowId = readOptionalString(body, "workflowId");
-  const payload = await generateWorkflowPayload(ctx, prompt, name);
-  if (workflowId) {
-    return writeWorkflow(
-      ctx,
-      "PUT",
-      `/${encodeURIComponent(workflowId)}`,
-      payload,
-      sidecar,
-      native,
-    );
+
+  const service = ctx.runtime?.getService?.("n8n_workflow") as
+    | {
+        generateWorkflowDraft?: (prompt: string) => Promise<{
+          id?: string;
+          [k: string]: unknown;
+        }>;
+        deployWorkflow?: (
+          workflow: Record<string, unknown>,
+          userId: string,
+        ) => Promise<{
+          id: string;
+          name: string;
+          active: boolean;
+          missingCredentials: Array<{ credType: string; authUrl?: string }>;
+        }>;
+        getWorkflow?: (id: string) => Promise<Record<string, unknown>>;
+      }
+    | undefined;
+  if (
+    typeof service?.generateWorkflowDraft !== "function" ||
+    typeof service.deployWorkflow !== "function" ||
+    typeof service.getWorkflow !== "function"
+  ) {
+    sendJson(ctx, 503, { error: "n8n workflow service unavailable" });
+    return true;
   }
-  return writeWorkflow(ctx, "POST", "", payload, sidecar, native);
+
+  const draft = await service.generateWorkflowDraft(prompt);
+  if (name?.trim()) {
+    (draft as Record<string, unknown>).name = name.trim();
+  }
+  if (workflowId) {
+    (draft as Record<string, unknown>).id = workflowId;
+  }
+  const userId = resolveAgentId(ctx);
+  const deployed = await service.deployWorkflow(
+    draft as Record<string, unknown>,
+    userId,
+  );
+  if (deployed.missingCredentials.length > 0) {
+    sendJson(ctx, 200, {
+      ...deployed,
+      warning: "missing credentials",
+    });
+    return true;
+  }
+  const full = await service.getWorkflow(deployed.id);
+  sendJson(ctx, 200, full);
+  return true;
 }
 
 async function handleToggleWorkflow(

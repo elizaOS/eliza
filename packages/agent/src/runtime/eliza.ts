@@ -59,8 +59,19 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
-import * as pluginAppCompanion from "@elizaos/app-companion/plugin";
-import * as pluginAppLifeops from "@elizaos/app-lifeops/plugin";
+// `@elizaos/app-lifeops` and `@elizaos/app-companion` are NOT eagerly imported
+// here. Both packages transitively import from `@elizaos/agent` (e.g.
+// `hasOwnerAccess` from this package's barrel) — a top-level static import
+// would form a module-init cycle that leaves named exports of the app-lifeops
+// actions array as `undefined`, crashing `runtime.registerPlugin` when it
+// iterates `plugin.actions`.
+//
+// Both apps still resolve at plugin-load time via headless dynamic-import
+// entrypoints in `plugin-resolver.ts`, after the static module graph has fully
+// evaluated, so the cycle never forms and browser-only UI exports stay out of
+// the agent process.
+// Keep this here as a single sentinel: if we ever need a static reference,
+// add `as const` data only — never an `import * as` of an app-* package.
 import {
   AgentRuntime,
   AutonomyService,
@@ -83,30 +94,26 @@ import {
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginAnthropic from "@elizaos/plugin-anthropic";
-import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge/plugin";
+import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
 import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
 import {
-  isElizaSettingsDebugEnabled,
-  settingsDebugCloudSummary,
-} from "@elizaos/shared";
-import { resolveElizaCloudTopology } from "@elizaos/shared/contracts";
-import {
+  getDefaultStylePreset,
   getOnboardingProviderOption,
+  isElizaSettingsDebugEnabled,
   migrateLegacyRuntimeConfig,
+  normalizeCharacterLanguage,
   normalizeOnboardingProviderId,
   resolveDeploymentTargetInConfig,
+  resolveElizaCloudTopology,
+  resolveServerOnlyPort,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts/onboarding";
-import {
-  getDefaultStylePreset,
-  normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared/onboarding-presets";
-import { resolveServerOnlyPort } from "@elizaos/shared/runtime-env";
+  settingsDebugCloudSummary,
+} from "@elizaos/shared";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
@@ -327,8 +334,9 @@ Object.assign(STATIC_ELIZA_PLUGINS, {
     ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
     : {}),
   // trust: now built-in core capability (ENABLE_TRUST)
-  "@elizaos/app-lifeops": pluginAppLifeops,
-  "@elizaos/app-companion": pluginAppCompanion,
+  // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
+  // omitted from the static map — see the comment near the top of this file.
+  // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
   "@elizaos/plugin-browser-bridge": pluginBrowserBridge,
   "@elizaos/plugin-discord-local": discordLocalPlugin,
   // personality: now built-in advanced capability (advancedCapabilities: true)
@@ -652,8 +660,8 @@ function isLikelyOpenAiTextModel(value: string | undefined): boolean {
  * Normalize known-bad provider compatibility shims before plugin resolution.
  *
  * A common failure mode is routing the OpenAI plugin through Groq's
- * OpenAI-compatible base URL while leaving OpenAI defaults (`gpt-5.4`,
- * `gpt-5.4-mini`) in place. Structured XML/object generation then fails during
+ * OpenAI-compatible base URL while leaving OpenAI defaults (`gpt-5.5`,
+ * `gpt-5.5-mini`) in place. Structured XML/object generation then fails during
  * message handling because Groq does not serve those model IDs.
  *
  * When we can confidently detect that state, rewrite the effective runtime
@@ -985,12 +993,13 @@ function ensureTrajectoryLoggerEnabled(
 async function installPromptOptimizationLayer(
   runtime: AgentRuntime,
   context: string,
+  config?: ElizaConfig,
 ): Promise<void> {
   try {
     const { installPromptOptimizations } = await import(
       "./prompt-optimization.js"
     );
-    installPromptOptimizations(runtime);
+    installPromptOptimizations(runtime, config);
   } catch (err) {
     logger.warn(
       `[eliza] Failed to install prompt optimizations (${context}): ${err instanceof Error ? err.message : err}`,
@@ -1001,10 +1010,11 @@ async function installPromptOptimizationLayer(
 async function prepareRuntimeForTrajectoryCapture(
   runtime: AgentRuntime,
   context: string,
+  config?: ElizaConfig,
 ): Promise<void> {
   await waitForTrajectoriesService(runtime, context);
   ensureTrajectoryLoggerEnabled(runtime, context);
-  await installPromptOptimizationLayer(runtime, context);
+  await installPromptOptimizationLayer(runtime, context, config);
 }
 
 // ---------------------------------------------------------------------------
@@ -1433,12 +1443,12 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
       }
     | undefined;
   if (effectivelyEnabled) {
-    const nano = llmText?.nanoModel || models?.nano || "openai/gpt-5.4-nano";
+    const nano = llmText?.nanoModel || models?.nano || "openai/gpt-5.5-nano";
     const small =
       llmText?.smallModel || models?.small || "minimax/minimax-m2.7";
     const medium = llmText?.mediumModel || models?.medium || small;
     const large =
-      llmText?.largeModel || models?.large || "anthropic/claude-sonnet-4.6";
+      llmText?.largeModel || models?.large || "anthropic/claude-opus-4-7";
     const mega = llmText?.megaModel || models?.mega || large;
     const responseHandlerModel =
       llmText?.responseHandlerModel || llmText?.shouldRespondModel;
@@ -1570,7 +1580,10 @@ export function applyN8nConfigToEnv(
     const rawBase = cloud.baseUrl ?? "https://www.elizacloud.ai";
     // Strip trailing /api/v1 (or /api/v1/) plus any trailing slashes so we can
     // build `${siteUrl}/api/v1/agents/${agentId}/n8n` without duplication.
-    const siteUrl = rawBase.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
+    const safeBase = rawBase.length > 8192 ? rawBase.slice(0, 8192) : rawBase;
+    const siteUrl = safeBase
+      .replace(/\/api\/v1\/?$/, "")
+      .replace(/\/{1,1024}$/, "");
     const gateway = `${siteUrl}/api/v1/agents/${agentId}/n8n`;
     if (!process.env.N8N_HOST) process.env.N8N_HOST = gateway;
     if (!process.env.N8N_API_KEY) process.env.N8N_API_KEY = cloud.apiKey;
@@ -3009,7 +3022,7 @@ export async function startEliza(
           ? ` | data dir: ${pgliteDir}`
           : "") +
         (dbProvider === "postgres" && postgresUrl
-          ? ` | connection: ${postgresUrl.replace(/:\/\/([^:]+):([^@]+)@/, "://$1:***@")}`
+          ? ` | connection: ${(postgresUrl.length > 4096 ? postgresUrl.slice(0, 4096) : postgresUrl).replace(/:\/\/([^:@]{1,1024}):([^@]{1,1024})@/, "://$1:***@")}`
           : ""),
     );
   }
@@ -3651,7 +3664,7 @@ export async function startEliza(
   const initializeRuntimeServices = async (): Promise<void> => {
     try {
       const { stewardEvmPreBoot } = await import(
-        "../services/steward-evm-bridge.js"
+        "@elizaos/app-steward/services/steward-evm-bridge"
       );
       await stewardEvmPreBoot(runtime);
     } catch (err) {
@@ -3674,7 +3687,11 @@ export async function startEliza(
     // 8. Initialize the runtime (registers remaining plugins, starts services)
     assertPersistentDatabaseRequired(runtime);
     await runtime.initialize();
-    await prepareRuntimeForTrajectoryCapture(runtime, "runtime.initialize()");
+    await prepareRuntimeForTrajectoryCapture(
+      runtime,
+      "runtime.initialize()",
+      config,
+    );
 
     // 8a. Apply role gating to wallet plugins (EVM, Solana) — admin-only actions.
     try {
@@ -3738,7 +3755,7 @@ export async function startEliza(
 
     try {
       const { stewardEvmPostBoot } = await import(
-        "../services/steward-evm-bridge.js"
+        "@elizaos/app-steward/services/steward-evm-bridge"
       );
       await stewardEvmPostBoot(runtime);
     } catch (err) {
@@ -4095,7 +4112,7 @@ export async function startEliza(
           }
           try {
             const { stewardEvmPreBoot: preBootHR } = await import(
-              "../services/steward-evm-bridge.js"
+              "@elizaos/app-steward/services/steward-evm-bridge"
             );
             await preBootHR(newRuntime);
           } catch {
@@ -4106,11 +4123,12 @@ export async function startEliza(
           await prepareRuntimeForTrajectoryCapture(
             newRuntime,
             "hot-reload runtime.initialize()",
+            config,
           );
 
           try {
             const { stewardEvmPostBoot: postBootHR } = await import(
-              "../services/steward-evm-bridge.js"
+              "@elizaos/app-steward/services/steward-evm-bridge"
             );
             await postBootHR(newRuntime);
           } catch {

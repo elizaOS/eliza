@@ -1,4 +1,4 @@
-import { hasAdminAccess } from "@elizaos/agent";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionResult,
@@ -8,13 +8,13 @@ import type {
   State,
 } from "@elizaos/core";
 import type {
+  BrowserBridgeActionKind,
+  BrowserBridgeKind,
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
-  BrowserBridgeActionKind,
-  BrowserBridgeKind,
   UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "./contracts/index.js";
 import { LifeOpsService, LifeOpsServiceError } from "./lifeops/service.js";
 
 type BrowserCommand =
@@ -117,9 +117,7 @@ function inferCommandFromMessage(text: string): BrowserCommand | null {
   return null;
 }
 
-function commandToActionKind(
-  command: BrowserCommand,
-): BrowserBridgeActionKind {
+function commandToActionKind(command: BrowserCommand): BrowserBridgeActionKind {
   switch (command) {
     case "start":
       return "open";

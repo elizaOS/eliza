@@ -121,6 +121,9 @@ async function appendLlmCall(
   const completionTokens = toOptionalNumber(params.completionTokens);
   if (promptTokens !== undefined) call.promptTokens = promptTokens;
   if (completionTokens !== undefined) call.completionTokens = completionTokens;
+  if (typeof params.tokenUsageEstimated === "boolean") {
+    call.tokenUsageEstimated = params.tokenUsageEstimated;
+  }
 
   step.llmCalls.push(call);
   trajectory.startTime = Math.min(trajectory.startTime, now);
@@ -337,7 +340,10 @@ function buildTrajectoryWhereClauses(options: TrajectoryListOptions): string[] {
     }
   }
   if (options.search) {
-    const searchPattern = `%${options.search.toLowerCase().replace(/[%_]/g, "\\$&")}%`;
+    const searchPattern = `%${options.search
+      .toLowerCase()
+      .replace(/\\/g, "\\\\")
+      .replace(/[%_]/g, "\\$&")}%`;
     const quotedPattern = sqlQuote(searchPattern);
     whereClauses.push(
       `(

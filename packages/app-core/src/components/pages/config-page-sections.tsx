@@ -3,16 +3,18 @@
  * Extracted from ConfigPageView.tsx.
  */
 
-import { normalizeOnboardingProviderId } from "@elizaos/shared/contracts";
-import { WALLET_RPC_PROVIDER_OPTIONS } from "@elizaos/shared/contracts/wallet";
+import {
+  normalizeOnboardingProviderId,
+  WALLET_RPC_PROVIDER_OPTIONS,
+} from "@elizaos/shared";
 import { Button, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import {
   ConfigRenderer,
   defaultRegistry,
-  type JsonSchemaObject,
-} from "../../config";
+} from "../../components/config-ui/config-renderer";
+import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useApp } from "../../state";
 import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 

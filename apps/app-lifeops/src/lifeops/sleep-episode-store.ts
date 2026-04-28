@@ -1,4 +1,4 @@
-import type { LifeOpsSleepCycleEvidenceSource, LifeOpsSleepCycleType } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsSleepCycleEvidenceSource, LifeOpsSleepCycleType } from "@elizaos/shared";
 import {
   createLifeOpsSleepEpisode,
   type LifeOpsRepository,

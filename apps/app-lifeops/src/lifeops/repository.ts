@@ -1,5 +1,20 @@
 import crypto from "node:crypto";
+import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import {
+  type BrowserBridgeCompanionStatus,
+  type BrowserBridgePageContext,
+  type BrowserBridgePermissionState,
+  type BrowserBridgeSettings,
+  type BrowserBridgeTabSummary,
+  browserBridgeSchema,
+} from "@elizaos/plugin-browser-bridge";
+import type {
+  LifeOpsXDm,
+  LifeOpsXFeedItem,
+  LifeOpsXFeedType,
+  LifeOpsXSyncState,
+} from "@elizaos/shared/contracts/lifeops-extensions";
 import type {
   LifeOpsActivitySignal,
   LifeOpsAuditEvent,
@@ -21,6 +36,8 @@ import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalLink,
   LifeOpsHealthSignal,
+  LifeOpsInboxChannel,
+  LifeOpsInboxMessage,
   LifeOpsMessageChannel,
   LifeOpsNegotiationState,
   LifeOpsOccurrence,
@@ -48,22 +65,7 @@ import type {
   LifeOpsUnclearReason,
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRun,
-} from "@elizaos/app-lifeops/contracts";
-import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  BrowserBridgeCompanionStatus,
-  BrowserBridgePageContext,
-  BrowserBridgePermissionState,
-  BrowserBridgeSettings,
-  BrowserBridgeTabSummary,
-} from "@elizaos/plugin-browser-bridge/contracts";
-import { browserBridgeSchema } from "@elizaos/plugin-browser-bridge/schema";
-import type {
-  LifeOpsXDm,
-  LifeOpsXFeedItem,
-  LifeOpsXFeedType,
-  LifeOpsXSyncState,
-} from "@elizaos/shared/contracts/lifeops-extensions";
+} from "../contracts/index.js";
 import type {
   EmailUnsubscribeMethod,
   EmailUnsubscribeRecord,
@@ -151,11 +153,9 @@ export interface LifeOpsScheduleInsightRecord extends LifeOpsScheduleInsight {
   updatedAt: string;
 }
 
-export interface LifeOpsScheduleObservationRecord
-  extends LifeOpsScheduleObservation {}
+export interface LifeOpsScheduleObservationRecord extends LifeOpsScheduleObservation {}
 
-export interface LifeOpsScheduleMergedStateRecord
-  extends LifeOpsScheduleMergedState {}
+export interface LifeOpsScheduleMergedStateRecord extends LifeOpsScheduleMergedState {}
 
 export type LifeOpsPersistedSleepEpisodeSource =
   | LifeOpsSleepCycleEvidence["source"]
@@ -173,6 +173,12 @@ export interface LifeOpsSleepEpisodeRecord {
   evidence: LifeOpsSleepCycleEvidence[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
+  cachedAt: string;
+  updatedAt: string;
+  priorityFlags: string[];
 }
 
 function isoNow(): string {
@@ -833,6 +839,69 @@ function parseGmailMessageSummary(
     metadata: parseJsonRecord(row.metadata_json),
     syncedAt: toText(row.synced_at),
     updatedAt: toText(row.updated_at),
+  };
+}
+
+function parseCachedInboxMessage(
+  row: Record<string, unknown>,
+): LifeOpsCachedInboxMessage {
+  const channel = toText(row.channel) as LifeOpsInboxChannel;
+  const externalId = toText(row.external_id);
+  const priorityScore =
+    row.priority_score === null || row.priority_score === undefined
+      ? undefined
+      : toNumber(row.priority_score);
+  const priorityCategory =
+    row.priority_category === null || row.priority_category === undefined
+      ? undefined
+      : toText(row.priority_category);
+  const participantCount =
+    row.participant_count === null || row.participant_count === undefined
+      ? undefined
+      : toNumber(row.participant_count);
+  const sourceRef = parseJsonRecord(row.source_ref_json);
+  const flags = parseJsonArray<string>(row.priority_flags_json).filter(
+    (flag): flag is string => typeof flag === "string",
+  );
+  return {
+    id: toText(row.id),
+    channel,
+    sender: {
+      id: toText(row.sender_id),
+      displayName: toText(row.sender_display),
+      email: row.sender_email ? toText(row.sender_email) : null,
+      avatarUrl: null,
+    },
+    subject: row.subject ? toText(row.subject) : null,
+    snippet: toText(row.snippet),
+    receivedAt: toText(row.received_at),
+    unread: toBoolean(row.is_unread),
+    deepLink: row.deep_link ? toText(row.deep_link) : null,
+    sourceRef: {
+      channel:
+        typeof sourceRef.channel === "string"
+          ? (sourceRef.channel as LifeOpsInboxChannel)
+          : channel,
+      externalId:
+        typeof sourceRef.externalId === "string"
+          ? sourceRef.externalId
+          : externalId,
+    },
+    threadId: row.thread_id ? toText(row.thread_id) : undefined,
+    chatType: toText(row.chat_type, "dm") as LifeOpsInboxMessage["chatType"],
+    participantCount,
+    gmailAccountId: row.gmail_account_id
+      ? toText(row.gmail_account_id)
+      : undefined,
+    gmailAccountEmail: row.gmail_account_email
+      ? toText(row.gmail_account_email)
+      : undefined,
+    priorityScore,
+    priorityCategory:
+      priorityCategory as LifeOpsInboxMessage["priorityCategory"],
+    cachedAt: toText(row.cached_at),
+    updatedAt: toText(row.updated_at),
+    priorityFlags: flags,
   };
 }
 
@@ -1654,6 +1723,32 @@ function parseDossier(row: Record<string, unknown>): LifeOpsDossier {
   };
 }
 
+function isMissingInboxCacheTableError(error: unknown): boolean {
+  const message = errorMessagesWithCauses(error).join("\n");
+  return /no such table: life_inbox_messages|relation ["']?life_inbox_messages["']? does not exist|undefined table/i.test(
+    message,
+  );
+}
+
+function errorMessagesWithCauses(error: unknown): string[] {
+  const messages: string[] = [];
+  let current: unknown = error;
+  while (current && typeof current === "object") {
+    if (current instanceof Error) {
+      messages.push(current.message);
+    }
+    const cause = (current as { cause?: unknown }).cause;
+    if (!cause || cause === current) {
+      break;
+    }
+    current = cause;
+  }
+  if (messages.length === 0) {
+    messages.push(String(error));
+  }
+  return messages;
+}
+
 export class LifeOpsRepository {
   /**
    * Per-agent counter for telemetry-mirror failures inside
@@ -1697,6 +1792,69 @@ export class LifeOpsRepository {
         force: process.env.ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS === "true",
         dryRun: false,
       },
+    );
+    await LifeOpsRepository.ensureActivitySignalColumns(runtime);
+    await LifeOpsRepository.ensureInboxCacheIndexes(runtime);
+  }
+
+  static async ensureActivitySignalColumns(
+    runtime: IAgentRuntime,
+  ): Promise<void> {
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT ''",
+    );
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS idle_state TEXT",
+    );
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS idle_time_seconds INTEGER",
+    );
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS on_battery BOOLEAN",
+    );
+    await executeRawSql(
+      runtime,
+      "CREATE INDEX IF NOT EXISTS idx_life_activity_signals_agent ON life_activity_signals (agent_id, observed_at)",
+    );
+  }
+
+  static async ensureInboxCacheIndexes(runtime: IAgentRuntime): Promise<void> {
+    try {
+      await executeRawSql(
+        runtime,
+        "SELECT 1 FROM life_inbox_messages WHERE 1=0",
+      );
+    } catch (error) {
+      if (isMissingInboxCacheTableError(error)) {
+        return;
+      }
+      throw error;
+    }
+
+    await executeRawSql(
+      runtime,
+      `DELETE FROM life_inbox_messages
+        WHERE id IN (
+          SELECT id
+            FROM (
+              SELECT id,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY agent_id, channel, external_id
+                       ORDER BY updated_at DESC, cached_at DESC, id DESC
+                     ) AS row_number
+                FROM life_inbox_messages
+            ) ranked
+           WHERE row_number > 1
+        )`,
+    );
+    await executeRawSql(
+      runtime,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_inbox_messages_agent_channel_external
+         ON life_inbox_messages (agent_id, channel, external_id)`,
     );
   }
 
@@ -2737,10 +2895,7 @@ export class LifeOpsRepository {
     return row ? parsePaymentSource(row) : null;
   }
 
-  async deletePaymentSource(
-    agentId: string,
-    sourceId: string,
-  ): Promise<void> {
+  async deletePaymentSource(agentId: string, sourceId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
       `DELETE FROM life_payment_transactions
@@ -2752,6 +2907,18 @@ export class LifeOpsRepository {
       `DELETE FROM life_payment_sources
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(sourceId)}`,
+    );
+  }
+
+  async deletePaymentTransactionById(
+    agentId: string,
+    transactionId: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM life_payment_transactions
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND id = ${sqlQuote(transactionId)}`,
     );
   }
 
@@ -3064,6 +3231,49 @@ export class LifeOpsRepository {
 
   async upsertConnectorGrant(grant: LifeOpsConnectorGrant): Promise<void> {
     const identityEmail = deriveConnectorIdentityEmail(grant.identity);
+    const logicalIdentityClause =
+      identityEmail === null
+        ? "identity_email IS NULL"
+        : `identity_email = ${sqlQuote(identityEmail)}`;
+    const existingRows = await executeRawSql(
+      this.runtime,
+      `SELECT id, created_at
+         FROM life_connector_grants
+        WHERE agent_id = ${sqlQuote(grant.agentId)}
+          AND provider = ${sqlQuote(grant.provider)}
+          AND side = ${sqlQuote(grant.side)}
+          AND mode = ${sqlQuote(grant.mode)}
+          AND ${logicalIdentityClause}
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1`,
+    );
+    const existingRow = existingRows[0] ?? null;
+    const targetId = existingRow ? toText(existingRow.id, grant.id) : grant.id;
+    const createdAt = existingRow
+      ? toText(existingRow.created_at, grant.createdAt)
+      : grant.createdAt;
+
+    if (existingRow) {
+      await executeRawSql(
+        this.runtime,
+        `UPDATE life_connector_grants
+            SET identity_json = ${sqlJson(grant.identity)},
+                identity_email = ${sqlText(identityEmail)},
+                granted_scopes_json = ${sqlJson(grant.grantedScopes)},
+                capabilities_json = ${sqlJson(grant.capabilities)},
+                token_ref = ${sqlText(grant.tokenRef)},
+                execution_target = ${sqlQuote(grant.executionTarget)},
+                source_of_truth = ${sqlQuote(grant.sourceOfTruth)},
+                preferred_by_agent = ${sqlBoolean(grant.preferredByAgent)},
+                cloud_connection_id = ${sqlText(grant.cloudConnectionId)},
+                metadata_json = ${sqlJson(grant.metadata)},
+                last_refresh_at = ${sqlText(grant.lastRefreshAt)},
+                updated_at = ${sqlQuote(grant.updatedAt)}
+          WHERE id = ${sqlQuote(targetId)}`,
+      );
+      return;
+    }
+
     await executeRawSql(
       this.runtime,
       `INSERT INTO life_connector_grants (
@@ -3073,7 +3283,7 @@ export class LifeOpsRepository {
         preferred_by_agent, cloud_connection_id, metadata_json,
         last_refresh_at, created_at, updated_at
       ) VALUES (
-        ${sqlQuote(grant.id)},
+        ${sqlQuote(targetId)},
         ${sqlQuote(grant.agentId)},
         ${sqlQuote(grant.provider)},
         ${sqlQuote(grant.side)},
@@ -3089,10 +3299,13 @@ export class LifeOpsRepository {
         ${sqlText(grant.cloudConnectionId)},
         ${sqlJson(grant.metadata)},
         ${sqlText(grant.lastRefreshAt)},
-        ${sqlQuote(grant.createdAt)},
+        ${sqlQuote(createdAt)},
         ${sqlQuote(grant.updatedAt)}
       )
-      ON CONFLICT(agent_id, provider, side, mode, identity_email) DO UPDATE SET
+      ON CONFLICT(id) DO UPDATE SET
+        agent_id = excluded.agent_id,
+        provider = excluded.provider,
+        side = excluded.side,
         identity_json = excluded.identity_json,
         identity_email = excluded.identity_email,
         granted_scopes_json = excluded.granted_scopes_json,
@@ -3104,6 +3317,7 @@ export class LifeOpsRepository {
         cloud_connection_id = excluded.cloud_connection_id,
         metadata_json = excluded.metadata_json,
         last_refresh_at = excluded.last_refresh_at,
+        created_at = life_connector_grants.created_at,
         updated_at = excluded.updated_at`,
     );
   }
@@ -3133,6 +3347,7 @@ export class LifeOpsRepository {
           AND provider = ${sqlQuote(provider)}
           AND side = ${sqlQuote(side)}
           AND mode = ${sqlQuote(mode)}
+        ORDER BY updated_at DESC, created_at DESC
         LIMIT 1`,
     );
     const row = rows[0];
@@ -3547,6 +3762,108 @@ export class LifeOpsRepository {
     );
     const row = rows[0];
     return row ? parseGmailMessageSummary(row) : null;
+  }
+
+  async upsertCachedInboxMessages(
+    agentId: string,
+    messages: readonly LifeOpsInboxMessage[],
+  ): Promise<void> {
+    if (messages.length === 0) return;
+    const now = isoNow();
+    for (const message of messages) {
+      await executeRawSql(
+        this.runtime,
+        `INSERT INTO life_inbox_messages (
+          id, agent_id, channel, external_id, thread_id, sender_id,
+          sender_display, sender_email, subject, snippet, received_at,
+          is_unread, deep_link, source_ref_json, chat_type, participant_count,
+          gmail_account_id, gmail_account_email, priority_score,
+          priority_category, priority_flags_json, cached_at, updated_at
+        ) VALUES (
+          ${sqlQuote(message.id)},
+          ${sqlQuote(agentId)},
+          ${sqlQuote(message.channel)},
+          ${sqlQuote(message.sourceRef.externalId)},
+          ${sqlText(message.threadId)},
+          ${sqlQuote(message.sender.id)},
+          ${sqlQuote(message.sender.displayName)},
+          ${sqlText(message.sender.email)},
+          ${sqlText(message.subject)},
+          ${sqlQuote(message.snippet)},
+          ${sqlQuote(message.receivedAt)},
+          ${sqlBoolean(message.unread)},
+          ${sqlText(message.deepLink)},
+          ${sqlJson(message.sourceRef)},
+          ${sqlQuote(message.chatType ?? "dm")},
+          ${sqlInteger(message.participantCount)},
+          ${sqlText(message.gmailAccountId)},
+          ${sqlText(message.gmailAccountEmail)},
+          ${sqlInteger(message.priorityScore)},
+          ${sqlText(message.priorityCategory)},
+          ${sqlJson([])},
+          ${sqlQuote(now)},
+          ${sqlQuote(now)}
+        )
+        ON CONFLICT(agent_id, channel, external_id) DO UPDATE SET
+          id = excluded.id,
+          thread_id = excluded.thread_id,
+          sender_id = excluded.sender_id,
+          sender_display = excluded.sender_display,
+          sender_email = excluded.sender_email,
+          subject = excluded.subject,
+          snippet = excluded.snippet,
+          received_at = excluded.received_at,
+          is_unread = excluded.is_unread,
+          deep_link = excluded.deep_link,
+          source_ref_json = excluded.source_ref_json,
+          chat_type = excluded.chat_type,
+          participant_count = excluded.participant_count,
+          gmail_account_id = excluded.gmail_account_id,
+          gmail_account_email = excluded.gmail_account_email,
+          priority_score = COALESCE(excluded.priority_score, life_inbox_messages.priority_score),
+          priority_category = COALESCE(excluded.priority_category, life_inbox_messages.priority_category),
+          priority_flags_json = CASE
+            WHEN excluded.priority_score IS NULL THEN life_inbox_messages.priority_flags_json
+            ELSE excluded.priority_flags_json
+          END,
+          cached_at = excluded.cached_at,
+          updated_at = excluded.updated_at`,
+      );
+    }
+  }
+
+  async listCachedInboxMessages(
+    agentId: string,
+    options?: {
+      channels?: readonly LifeOpsInboxChannel[];
+      maxResults?: number;
+      gmailAccountId?: string;
+    },
+  ): Promise<LifeOpsCachedInboxMessage[]> {
+    const channelClause =
+      options?.channels && options.channels.length > 0
+        ? `AND channel IN (${options.channels
+            .map((channel) => sqlQuote(channel))
+            .join(", ")})`
+        : "";
+    const gmailAccountClause = options?.gmailAccountId
+      ? `AND gmail_account_id = ${sqlQuote(options.gmailAccountId)}`
+      : "";
+    const limit =
+      options?.maxResults !== undefined && Number.isFinite(options.maxResults)
+        ? Math.max(1, Math.floor(options.maxResults))
+        : 500;
+    const rows = await executeRawSql(
+      this.runtime,
+      `SELECT *
+         FROM life_inbox_messages
+        WHERE agent_id = ${sqlQuote(agentId)}
+          ${channelClause}
+          ${gmailAccountClause}
+        ORDER BY received_at DESC
+        LIMIT ${sqlInteger(limit)}`,
+    );
+    return rows.map(parseCachedInboxMessage);
   }
 
   async deleteGmailMessages(

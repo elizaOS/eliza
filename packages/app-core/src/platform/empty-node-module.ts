@@ -21,4 +21,25 @@ export const WritableStream =
 export const TransformStream =
   typeof globalThis !== "undefined" ? globalThis.TransformStream : class {};
 
+// @elizaos/agent browser fallback
+export const createIntegrationTelemetrySpan = () => ({
+  success: () => {},
+  failure: () => {},
+});
+export const hasAdminAccess = async () => false;
+export const hasOwnerAccess = async () => false;
+export const hasPrivateAccess = async () => false;
+export const extractActionParamsViaLlm = async () => ({});
+export const loadElizaConfig = () => ({
+  agents: {},
+  meta: {},
+  ui: {},
+});
+
+export class TelegramClient {}
+export const Api = {};
+export class StringSession {
+  constructor(public value = "") {}
+}
+
 export default {};

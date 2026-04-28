@@ -39,7 +39,7 @@ import type { AgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
 import {
   expandConnectorSourceFilter,
   normalizeConnectorSource,
-} from "@elizaos/shared/connectors";
+} from "@elizaos/shared";
 import { cacheDiscordAvatarUrl } from "./discord-avatar-cache.js";
 import type { RouteHelpers } from "./route-helpers.js";
 
@@ -72,11 +72,35 @@ const DEFAULT_INBOX_SOURCES = expandConnectorSourceFilter(
  * Hard ceiling on the number of rooms we scan per request. Large
  * deployments can accumulate hundreds of connector rooms; scanning all
  * of them on every request would make the endpoint scale quadratically
- * with history. 200 rooms × limit-per-request messages is enough for a
- * 100-message inbox view under realistic usage.
+ * with history. 2000 rooms covers heavy deployments and leaves headroom
+ * for internal worlds (autonomy/self-talk) without crowding out real
+ * connector channels.
  */
-const MAX_ROOMS_SCANNED = 200;
+const MAX_ROOMS_SCANNED = 2000;
 const ORPHAN_ROOM_MEMORY_SCAN_LIMIT = 10_000;
+
+/**
+ * Worlds we never want to surface in the connector chats sidebar. These
+ * are internal scratch worlds (autonomy-service self-talk, advanced
+ * memory, relationships graph) that contain hundreds of synthetic rooms
+ * the user never interacts with directly. Including them used to consume
+ * the entire room-scan budget and drown out real connector channels.
+ */
+const INTERNAL_WORLD_IDS = new Set<string>([
+  "00000000-0000-0000-0000-000000000001", // Autonomy World
+]);
+const INTERNAL_WORLD_NAME_MARKERS = [
+  "advanced memory",
+  "relationships world",
+  "autonomy world",
+];
+
+function isInternalWorld(world: { id?: string; name?: string }): boolean {
+  if (world.id && INTERNAL_WORLD_IDS.has(world.id.toLowerCase())) return true;
+  const name = world.name?.toLowerCase().trim();
+  if (!name) return false;
+  return INTERNAL_WORLD_NAME_MARKERS.some((marker) => name === marker);
+}
 
 /**
  * How many memories we ask the database for per room. We over-fetch
@@ -1025,6 +1049,10 @@ async function collectAgentWorlds(
   const worldsById = new Map<UUID, World>();
   for (const world of worlds) {
     if (!world.id) continue;
+    // Skip internal scratch worlds — autonomy self-talk, advanced memory,
+    // relationships graph. These accumulate hundreds of synthetic rooms
+    // that crowd real connector channels out of the room-scan budget.
+    if (isInternalWorld(world)) continue;
     worldsById.set(world.id, world);
   }
   return worldsById;

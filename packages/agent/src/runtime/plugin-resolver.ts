@@ -58,6 +58,15 @@ type GlobalWithLastFailedPluginNames = typeof globalThis & {
   [LAST_FAILED_PLUGIN_NAMES]?: string[];
 };
 
+const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
+  "@elizaos/app-companion",
+  "@elizaos/app-elizamaker",
+  "@elizaos/app-lifeops",
+  "@elizaos/app-shopify",
+  "@elizaos/app-steward",
+  "@elizaos/app-vincent",
+]);
+
 // ---------------------------------------------------------------------------
 // Helpers (private)
 // ---------------------------------------------------------------------------
@@ -79,6 +88,16 @@ function isBenignOptionalPluginFailure(msg: string): boolean {
 function redactUserSegments(filepath: string): string {
   // Replace /Users/<name>/ or /home/<name>/ with /Users/<redacted>/ etc.
   return filepath.replace(/\/(Users|home)\/[^/]+\//g, "/$1/<redacted>/");
+}
+
+export function resolveRuntimePluginImportSpecifier(
+  pluginName: string,
+): string {
+  if (pluginName.startsWith("@elizaos/plugin-")) {
+    return resolveElizaPluginImportSpecifier(pluginName);
+  }
+
+  return runtimePluginImportSpecifier(pluginName);
 }
 
 function sanitizePluginCacheSegment(value: string): string {
@@ -293,18 +312,28 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
     return null;
   }
 
-  const pluginSegmentMatch = pluginName.match(/^@[^/]+\/(plugin-[^/]+)$/);
-  const pluginSegment = pluginSegmentMatch?.[1];
-  if (!pluginSegment) return null;
+  const packageSegmentMatch = pluginName.match(
+    /^@[^/]+\/((?:app|plugin)-[^/]+)$/,
+  );
+  const packageSegment = packageSegmentMatch?.[1];
+  if (!packageSegment) return null;
 
   for (const workspaceRoot of resolveWorkspaceRoots()) {
     const candidates = uniquePaths([
-      path.join(workspaceRoot, "plugins", pluginSegment, "typescript"),
-      path.join(workspaceRoot, "plugins", pluginSegment),
-      path.join(workspaceRoot, "eliza", "plugins", pluginSegment, "typescript"),
-      path.join(workspaceRoot, "eliza", "plugins", pluginSegment),
-      path.join(workspaceRoot, "eliza", "packages", pluginSegment),
-      path.join(workspaceRoot, "packages", pluginSegment),
+      path.join(workspaceRoot, "plugins", packageSegment, "typescript"),
+      path.join(workspaceRoot, "plugins", packageSegment),
+      path.join(workspaceRoot, "apps", packageSegment),
+      path.join(
+        workspaceRoot,
+        "eliza",
+        "plugins",
+        packageSegment,
+        "typescript",
+      ),
+      path.join(workspaceRoot, "eliza", "plugins", packageSegment),
+      path.join(workspaceRoot, "eliza", "apps", packageSegment),
+      path.join(workspaceRoot, "eliza", "packages", packageSegment),
+      path.join(workspaceRoot, "packages", packageSegment),
     ]);
 
     for (const candidate of candidates) {
@@ -315,6 +344,16 @@ function getWorkspacePluginOverridePath(pluginName: string): string | null {
   }
 
   return null;
+}
+
+function runtimePluginExportSubpath(pluginName: string): string {
+  return RUNTIME_APP_PLUGIN_SUBPATHS.has(pluginName) ? "./plugin" : ".";
+}
+
+function runtimePluginImportSpecifier(pluginName: string): string {
+  return RUNTIME_APP_PLUGIN_SUBPATHS.has(pluginName)
+    ? `${pluginName}/plugin`
+    : pluginName;
 }
 
 async function hasNonSymlinkWorkspaceNodeModulesPackage(
@@ -420,6 +459,7 @@ function wrapPluginWithErrorBoundary(
 export async function importPluginModuleFromPath(
   installPath: string,
   packageName: string,
+  exportSubpath = ".",
 ): Promise<PluginModuleShape> {
   const absPath = path.resolve(installPath);
 
@@ -452,7 +492,7 @@ export async function importPluginModuleFromPath(
   // Resolve entry point from a staged filesystem snapshot so reloads pick up
   // updated relative modules and bundled dependencies instead of reusing the
   // previous ESM module graph from the original path.
-  const entryPoint = await resolvePackageEntry(stagedPkgRoot);
+  const entryPoint = await resolvePackageEntry(stagedPkgRoot, exportSubpath);
   return (await import(pathToFileURL(entryPoint).href)) as PluginModuleShape;
 }
 
@@ -551,7 +591,11 @@ async function linkAncestorNodeModulesIfNeeded(params: {
     return;
   }
 
-  await fs.symlink(ancestorNodeModules, stagedNodeModulesPath, "dir");
+  await fs.mkdir(stagedNodeModulesPath, { recursive: true });
+  await linkMissingPackagesFromNodeModules({
+    sourceNodeModulesDir: ancestorNodeModules,
+    targetNodeModulesDir: stagedNodeModulesPath,
+  });
 }
 
 async function linkMissingPackagesFromNodeModules(params: {
@@ -978,6 +1022,7 @@ export async function resolvePlugins(
     const installRecord = installRecords[pluginName];
     const workspaceOverridePath = getWorkspacePluginOverridePath(pluginName);
     const staticElizaPlugin = await resolveStaticElizaPlugin(pluginName);
+    const exportSubpath = runtimePluginExportSubpath(pluginName);
 
     const importOfficialPluginFromNodeModules =
       async (): Promise<PluginModuleShape> =>
@@ -1008,6 +1053,7 @@ export async function resolvePlugins(
         mod = await importPluginModuleFromPath(
           ejectedRecord.installPath,
           pluginName,
+          exportSubpath,
         );
       } else if (staticElizaPlugin) {
         // Prefer statically imported official plugins over workspace staging.
@@ -1031,6 +1077,7 @@ export async function resolvePlugins(
             mod = await importPluginModuleFromPath(
               workspaceOverridePath,
               pluginName,
+              exportSubpath,
             );
           }
         } else {
@@ -1044,6 +1091,7 @@ export async function resolvePlugins(
           mod = await importPluginModuleFromPath(
             workspaceOverridePath,
             pluginName,
+            exportSubpath,
           );
         }
       } else if (installRecord?.installPath) {
@@ -1061,6 +1109,7 @@ export async function resolvePlugins(
             mod = await importPluginModuleFromPath(
               installRecord.installPath,
               pluginName,
+              exportSubpath,
             );
           }
         } else {
@@ -1069,6 +1118,7 @@ export async function resolvePlugins(
             mod = await importPluginModuleFromPath(
               installRecord.installPath,
               pluginName,
+              exportSubpath,
             );
           } catch (installErr) {
             logger.warn(
@@ -1077,7 +1127,9 @@ export async function resolvePlugins(
             const staticMod = await resolveStaticElizaPlugin(pluginName);
             mod = staticMod
               ? (staticMod as PluginModuleShape)
-              : ((await import(pluginName)) as PluginModuleShape);
+              : ((await import(
+                  runtimePluginImportSpecifier(pluginName)
+                )) as PluginModuleShape);
             if (repairBrokenInstallRecord(config, pluginName)) {
               repairedInstallRecords.add(pluginName);
             }
@@ -1094,7 +1146,9 @@ export async function resolvePlugins(
         // node_modules resolution).
         mod = staticElizaPlugin
           ? (staticElizaPlugin as PluginModuleShape)
-          : ((await import(pluginName)) as PluginModuleShape);
+          : ((await import(
+              runtimePluginImportSpecifier(pluginName)
+            )) as PluginModuleShape);
       }
 
       const pluginInstance = findRuntimePluginExport(mod);

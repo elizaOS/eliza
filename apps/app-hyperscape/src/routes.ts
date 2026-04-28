@@ -1,18 +1,22 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type {
+  AppLaunchDiagnostic,
+  AppLaunchPreparation,
+  AppLaunchResult,
   AppLaunchSessionContext,
   AppRunSessionContext,
   AppSessionJsonValue,
   AppSessionState,
-  AppLaunchResult,
-} from "@elizaos/shared/contracts/apps";
+  AppViewerAuthMessage,
+} from "@elizaos/shared";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const FETCH_TIMEOUT_MS = 8_000;
+const HYPERSCAPE_WALLET_AUTH_TIMEOUT_MS = 5_000;
 const THOUGHTS_LIMIT = 5;
 const HYPERSCAPE_SESSION_MODE = "spectate-and-steer" as const;
 
@@ -22,6 +26,22 @@ const HYPERSCAPE_SESSION_MODE = "spectate-and-steer" as const;
 
 function normalizeStringSetting(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function resolveSettingLike(
+  runtime: IAgentRuntime | null | undefined,
+  key: string,
+): string | undefined {
+  const fromRuntime =
+    typeof runtime?.getSetting === "function" ? runtime.getSetting(key) : null;
+  if (typeof fromRuntime === "string" && fromRuntime.trim().length > 0) {
+    return fromRuntime.trim();
+  }
+  const fromEnv = process.env[key];
+  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
+    return fromEnv.trim();
+  }
+  return undefined;
 }
 
 function resolveApiBase(runtime: IAgentRuntime | null): string | null {
@@ -82,6 +102,155 @@ function resolveCharacterId(
       ? runtime.getSetting("HYPERSCAPE_CHARACTER_ID")
       : null,
   );
+}
+
+function normalizeAbsoluteHttpUrl(raw: string | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    return raw.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function persistCredential(
+  runtime: IAgentRuntime | null,
+  key: "HYPERSCAPE_AUTH_TOKEN" | "HYPERSCAPE_CHARACTER_ID",
+  value: string,
+  secret = false,
+): void {
+  if (!runtime) {
+    return;
+  }
+
+  try {
+    runtime.setSetting?.(key, value, secret);
+  } catch (err) {
+    logger.error(`[hyperscape] Failed to persist credential "${key}": ${err}`);
+  }
+
+  const character = runtime.character as {
+    settings?: { secrets?: Record<string, string> };
+    secrets?: Record<string, string>;
+  };
+  if (!character.settings) {
+    character.settings = {};
+  }
+  if (!character.settings.secrets) {
+    character.settings.secrets = {};
+  }
+  character.settings.secrets[key] = value;
+  if (!character.secrets) {
+    character.secrets = {};
+  }
+  character.secrets[key] = value;
+}
+
+function resolveApiBaseUrl(runtime: IAgentRuntime | null): string | null {
+  const configuredUrl = resolveSettingLike(runtime, "HYPERSCAPE_API_URL");
+  const normalized = normalizeAbsoluteHttpUrl(configuredUrl);
+  if (configuredUrl && !normalized) {
+    logger.warn(
+      "[hyperscape] Ignoring invalid HYPERSCAPE_API_URL; expected an absolute http/https URL.",
+    );
+  }
+  return normalized;
+}
+
+async function resolveRuntimeEvmAddress(
+  runtime: IAgentRuntime,
+): Promise<string | null> {
+  let agent: unknown;
+  try {
+    if (typeof runtime.getAgent === "function" && runtime.agentId) {
+      agent = await runtime.getAgent(runtime.agentId);
+    }
+  } catch {
+    agent = null;
+  }
+  const walletAddresses =
+    agent && typeof agent === "object"
+      ? (agent as { walletAddresses?: { evm?: string } }).walletAddresses
+      : undefined;
+  const evm = walletAddresses?.evm?.trim();
+  if (evm) {
+    return evm;
+  }
+
+  const existingPk =
+    resolveSettingLike(runtime, "EVM_PRIVATE_KEY")?.trim() ||
+    process.env.EVM_PRIVATE_KEY?.trim();
+  if (!existingPk) {
+    return null;
+  }
+  const walletApiModule = "@elizaos/agent/api/wallet";
+  const { deriveEvmAddress } = (await import(
+    /* webpackIgnore: true */ walletApiModule
+  )) as {
+    deriveEvmAddress: (privateKey: string) => string;
+  };
+  return deriveEvmAddress(existingPk);
+}
+
+async function prepareWalletAuthFromRuntime(
+  runtime: IAgentRuntime | null,
+): Promise<void> {
+  if (!runtime) {
+    return;
+  }
+  if (resolveSettingLike(runtime, "HYPERSCAPE_AUTH_TOKEN")) {
+    return;
+  }
+  const base = resolveApiBaseUrl(runtime);
+  if (!base) {
+    return;
+  }
+  const evm = await resolveRuntimeEvmAddress(runtime);
+  if (!evm) {
+    logger.info(
+      "[hyperscape] Skipping wallet auth: no EVM address or EVM_PRIVATE_KEY is available.",
+    );
+    return;
+  }
+  try {
+    const walletAuthUrl = new URL("/api/agents/wallet-auth", `${base}/`);
+    const res = await fetch(walletAuthUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        walletAddress: evm,
+        walletType: "evm",
+        agentName: runtime.character?.name,
+        agentId: runtime.agentId,
+      }),
+      signal: AbortSignal.timeout(HYPERSCAPE_WALLET_AUTH_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+      return;
+    }
+    const data = (await res.json()) as {
+      success?: unknown;
+      authToken?: unknown;
+      characterId?: unknown;
+    };
+    if (data.success !== true || typeof data.authToken !== "string") {
+      return;
+    }
+    persistCredential(runtime, "HYPERSCAPE_AUTH_TOKEN", data.authToken, true);
+    if (typeof data.characterId === "string" && data.characterId.trim()) {
+      persistCredential(
+        runtime,
+        "HYPERSCAPE_CHARACTER_ID",
+        data.characterId.trim(),
+      );
+    }
+  } catch {
+    // Viewer can still load without auth when the external API is unavailable.
+  }
 }
 
 async function fetchJson<T = unknown>(url: string): Promise<T | null> {
@@ -258,6 +427,55 @@ function buildSession(
 // ---------------------------------------------------------------------------
 // Exported route module interface (AppRouteModule)
 // ---------------------------------------------------------------------------
+
+export async function prepareLaunch(ctx: {
+  runtime: IAgentRuntime | null;
+}): Promise<AppLaunchPreparation> {
+  await prepareWalletAuthFromRuntime(ctx.runtime ?? null);
+  return {};
+}
+
+export async function resolveViewerAuthMessage(ctx: {
+  runtime: IAgentRuntime | null;
+}): Promise<AppViewerAuthMessage | null> {
+  const runtime = ctx.runtime ?? null;
+  const authToken = resolveSettingLike(runtime, "HYPERSCAPE_AUTH_TOKEN");
+  if (!authToken) {
+    return null;
+  }
+  const agentId =
+    typeof runtime?.agentId === "string" && runtime.agentId.trim().length > 0
+      ? runtime.agentId.trim()
+      : undefined;
+  if (!agentId) {
+    return null;
+  }
+  const characterId =
+    resolveSettingLike(runtime, "HYPERSCAPE_CHARACTER_ID") ?? agentId;
+  return {
+    type: "HYPERSCAPE_AUTH",
+    authToken,
+    agentId,
+    characterId,
+    followEntity: characterId,
+  };
+}
+
+export async function collectLaunchDiagnostics(ctx: {
+  viewer: AppLaunchResult["viewer"] | null;
+}): Promise<AppLaunchDiagnostic[]> {
+  if (ctx.viewer?.postMessageAuth && !ctx.viewer.authMessage) {
+    return [
+      {
+        code: "hyperscape-auth-unavailable",
+        severity: "error",
+        message:
+          "Hyperscape postMessage auth requires HYPERSCAPE_AUTH_TOKEN and a runtime agent id.",
+      },
+    ];
+  }
+  return [];
+}
 
 export async function resolveLaunchSession(
   ctx: AppLaunchSessionContext,

@@ -35,7 +35,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 12;
+export const PAGE_SCOPE_VERSION = 13;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -53,9 +53,9 @@ export interface PageScopeIntroCopy {
 export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   "page-browser": {
     title: "Browser chat",
-    body: "Use me to work with the browser workspace. User Tabs are writable; Agent Tabs and App Tabs are read-only context. I can open, navigate, refresh, snapshot, show, hide, or close User Tabs and explain what is currently open everywhere else.",
+    body: "Use me to drive the browser while you watch. I narrate each step here as a short status line; you confirm transactions in the wallet sheet. User Tabs are writable; Agent Tabs and App Tabs are read-only context.",
     systemAddendum:
-      "You are answering inside the Browser view. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate User Tabs: open them, navigate them, refresh them, snapshot them, show or hide them, and close them. Agent Tabs and App Tabs are read-only context: you may inspect, summarize, or reference them, but do not navigate, click, type into, refresh, close, or otherwise mutate them. Recommend the next browser action based on live tab and bridge state. Offer to answer questions about the current page, forms, tabs, or browser setup. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.",
+      "You are answering inside the Browser view in watch mode: the user is watching a visible cursor move and the browser tab paint live as you work. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate User Tabs: open them, navigate them, refresh them, snapshot them, show or hide them, and close them. Agent Tabs and App Tabs are read-only context — never navigate, click, type into, refresh, close, or otherwise mutate them. When you take a browser action, recommend and prefer the realistic-* BROWSER_SESSION subactions (realistic-click, realistic-fill, realistic-type, realistic-press) with watchMode:true so the cursor moves visibly and pointer/keyboard events fire faithfully on React-controlled inputs. Emit a short status line in chat BEFORE each concrete action — for example 'Navigating to four.meme', 'Choosing token name: $WAGMI', 'Filling description', 'Submitting — please confirm in your wallet'. Keep narration to one line per step. Never auto-sign transactions; the user confirms each one in the wallet approval sheet. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.",
   },
   "page-character": {
     title: "Character chat",
@@ -67,13 +67,13 @@ export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
     title: "Automations",
     body: "Use me to create or inspect a task or n8n workflow. Tell me the trigger, timing, and result.",
     systemAddendum:
-      "You are answering inside the Automations view. The user can create tasks and n8n workflows, attach either one to a schedule or event, configure wake mode, max runs, and enabled state, browse templates, inspect existing automations, and troubleshoot failed runs. Treat tasks as simple prompt-driven automations and workflows as multi-step n8n pipelines. Recommend the smaller task shape unless the user clearly needs a multi-step pipeline. Use createTriggerTaskAction and manageTasksAction when the request is concrete. Reference live tasks and workflows in context by display name. Never fabricate automation names.",
+      "You are answering inside the Automations view. The user can create tasks and n8n workflows, attach either one to a schedule or event, configure wake mode, max runs, and enabled state, browse templates, inspect existing automations, and troubleshoot failed runs. Treat tasks as simple prompt-driven automations and workflows as multi-step n8n pipelines. Recommend the smaller task shape unless the user clearly needs a multi-step pipeline. When the user describes a concrete automation, dispatch it via the planner's <actions> field using <action><name>CREATE_TRIGGER_TASK</name></action> for scheduled or event tasks, or <action><name>MANAGE_TASKS</name></action> for task list operations. Reference live tasks and workflows in context by display name. Never fabricate automation names.",
   },
   "page-apps": {
     title: "Apps chat",
     body: "Use me to browse the catalog, compare apps, launch an app, stop a running app, open a live viewer, inspect run health, and manage favorites or recent apps. Recommended: describe the outcome you want, and I'll suggest the right app or launch it. Ask me about any catalog item or running app.",
     systemAddendum:
-      "You are answering inside the Apps view. The user can browse the catalog, compare apps by category and capability, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Recommend the best app or next run-management action based on live catalog and run state. Use launchAppAction and stopAppAction when the request is concrete. Refer to apps by display name and never invent app names.",
+      "You are answering inside the Apps view. The user can browse the catalog, compare apps by category and capability, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Recommend the best app or next run-management action based on live catalog and run state. Use APP with mode launch, relaunch, list, load_from_directory, or create when the request is concrete. Refer to apps by display name and never invent app names.",
   },
   "page-connectors": {
     title: "Connectors chat",

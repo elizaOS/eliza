@@ -13,7 +13,6 @@ import type {
 } from "@elizaos/core";
 import { LifeOpsService } from "../lifeops/service.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
-import { looksLikeScreenTimeReflection } from "./non-actionable-request.js";
 
 type Subaction =
   | "summary"
@@ -37,10 +36,6 @@ function getParams(options: HandlerOptions | undefined): ScreenTimeParameters {
     | ScreenTimeParameters
     | undefined;
   return params ?? {};
-}
-
-function messageText(message: Memory): string {
-  return (message?.content?.text ?? "").toString().toLowerCase();
 }
 
 function todayIso(): string {
@@ -73,9 +68,6 @@ export const screenTimeAction: Action = {
   description:
     "Query screen time summaries (per app, per website, daily). Use this for quantitative usage questions like 'how much screen time have I used today?', 'break down my screen time by app this week', or 'which websites did I spend the most time on?'. Do not use this when the user is only reflecting or venting like 'I spend too much time on my phone' unless they actually ask for the numbers. Subactions: summary, today, weekly, weekly_average_by_app, by_app, by_website.",
   validate: async (runtime, message) => {
-    if (looksLikeScreenTimeReflection(messageText(message))) {
-      return false;
-    }
     return hasLifeOpsAccess(runtime, message);
   },
   handler: async (

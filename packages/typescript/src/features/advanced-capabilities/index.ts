@@ -26,6 +26,7 @@ import {
 	readAttachmentAction,
 	readFileAction,
 	removeFromClipboardAction,
+	saveAttachmentToClipboardAction,
 } from "./clipboard/index.ts";
 import {
 	experienceEvaluator,
@@ -43,7 +44,12 @@ import {
 // Personality imports
 import {
 	characterEvolutionEvaluator,
+	manageMessageExamplesAction,
+	managePostExamplesAction,
+	manageStyleRulesAction,
 	modifyCharacterAction,
+	persistCharacterAction,
+	setVoiceConfigAction,
 	userPersonalityProvider,
 } from "./personality/index.ts";
 
@@ -94,11 +100,17 @@ export const advancedActions = [
 	clipboardAppendAction,
 	readFileAction,
 	readAttachmentAction,
+	saveAttachmentToClipboardAction,
 	removeFromClipboardAction,
 	// Form actions
 	formRestoreAction,
 	// Personality actions
 	modifyCharacterAction,
+	setVoiceConfigAction,
+	manageStyleRulesAction,
+	manageMessageExamplesAction,
+	managePostExamplesAction,
+	persistCharacterAction,
 ];
 
 /**

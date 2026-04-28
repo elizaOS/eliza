@@ -1,12 +1,12 @@
 import type http from "node:http";
-import { logger } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
-import { saveElizaConfig } from "../config/config.js";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.js";
 import {
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountsConfig,
@@ -26,6 +26,12 @@ export interface ConfigRouteContext {
   pathname: string;
   url: URL;
   config: ElizaConfig;
+  /**
+   * Live runtime, when available. Used by POST /api/config/reload to apply
+   * hot-reloadable fields (character.name/system/bio, env-derived API keys,
+   * feature flags) to the running agent without a full restart.
+   */
+  runtime?: AgentRuntime | null;
   // Helpers from server.ts
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
@@ -58,8 +64,174 @@ export interface ConfigRouteContext {
 // ---------------------------------------------------------------------------
 
 /**
- * Handle configuration routes (GET/PUT /api/config, GET /api/config/schema).
- * Returns `true` if the request was handled.
+ * Hot-reloadable top-level config keys. Replacing these in `state.config`
+ * is sufficient because downstream readers (TTS routes, feature-flag
+ * checks, character-derived prompts) read `state.config` live on each
+ * request. Anything not listed here either has no live consumer or
+ * requires a full runtime rebuild.
+ */
+const HOT_RELOADABLE_TOP_KEYS = new Set<string>([
+  "agents",
+  "ui",
+  "messages", // TTS lives under messages.tts
+  "features",
+  "linkedAccounts",
+  "serviceRouting",
+  "deploymentTarget",
+  "cloud",
+  "permissions",
+]);
+
+/** Top-level keys whose change forces a full runtime restart. */
+const RESTART_REQUIRED_TOP_KEYS = new Set<string>([
+  "plugins",
+  "providers",
+  "models",
+  "database",
+]);
+
+/** Env-var keys that hold provider API credentials we sync into process.env. */
+const PROVIDER_ENV_KEYS = [
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_GENERATIVE_AI_API_KEY",
+  "GROQ_API_KEY",
+  "XAI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "AI_GATEWAY_API_KEY",
+  "AI_GATEWAY_BASE_URL",
+  "AI_GATEWAY_SMALL_MODEL",
+  "AI_GATEWAY_LARGE_MODEL",
+  "AI_GATEWAY_EMBEDDING_MODEL",
+  "AI_GATEWAY_EMBEDDING_DIMENSIONS",
+  "OLLAMA_BASE_URL",
+] as const;
+
+interface ReloadDiff {
+  applied: string[];
+  requiresRestart: string[];
+}
+
+/**
+ * Compute which top-level keys differ between the current in-memory config
+ * and a freshly-loaded copy from disk, and bucket them into hot-reloadable
+ * vs restart-required.
+ */
+function computeReloadDiff(
+  current: Record<string, unknown>,
+  next: Record<string, unknown>,
+): ReloadDiff {
+  const applied: string[] = [];
+  const requiresRestart: string[] = [];
+  const allKeys = new Set<string>([
+    ...Object.keys(current),
+    ...Object.keys(next),
+  ]);
+  for (const key of allKeys) {
+    const a = JSON.stringify(current[key] ?? null);
+    const b = JSON.stringify(next[key] ?? null);
+    if (a === b) continue;
+    if (RESTART_REQUIRED_TOP_KEYS.has(key)) {
+      requiresRestart.push(key);
+    } else if (HOT_RELOADABLE_TOP_KEYS.has(key)) {
+      applied.push(key);
+    } else if (key === "env") {
+      // env changes are partly hot (provider API keys) — treat as applied.
+      applied.push(key);
+    } else {
+      // Unknown / unmapped top keys: treat as applied (state.config is the
+      // single source of truth and is read live by most consumers).
+      applied.push(key);
+    }
+  }
+  return { applied, requiresRestart };
+}
+
+/**
+ * Apply a freshly-loaded config to `state.config` in place, then re-build
+ * the runtime character so name/system/bio/style updates land immediately.
+ * Provider API keys are synced into process.env so the next model call
+ * picks them up.
+ */
+async function applyReloadedConfig(params: {
+  state: ElizaConfig;
+  next: ElizaConfig;
+  runtime: AgentRuntime | null | undefined;
+  blockedEnvKeys: Set<string>;
+}): Promise<void> {
+  const { state, next, runtime, blockedEnvKeys } = params;
+
+  // Replace top-level keys in the live state.config with the loaded values.
+  const stateRecord = state as unknown as Record<string, unknown>;
+  const nextRecord = next as unknown as Record<string, unknown>;
+  for (const key of Object.keys(stateRecord)) {
+    if (!(key in nextRecord)) {
+      delete stateRecord[key];
+    }
+  }
+  for (const [key, value] of Object.entries(nextRecord)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") {
+      continue;
+    }
+    stateRecord[key] = value;
+  }
+
+  // Sync provider API keys into process.env (the runtime reads them at
+  // request time via getSetting → process.env).
+  const envSection = nextRecord.env as
+    | (Record<string, unknown> & { vars?: Record<string, unknown> })
+    | undefined;
+  const envVars =
+    envSection?.vars && typeof envSection.vars === "object"
+      ? (envSection.vars as Record<string, unknown>)
+      : undefined;
+  for (const key of PROVIDER_ENV_KEYS) {
+    if (blockedEnvKeys.has(key.toUpperCase())) continue;
+    const value =
+      typeof envVars?.[key] === "string"
+        ? (envVars[key] as string)
+        : typeof envSection?.[key] === "string"
+          ? (envSection[key] as string)
+          : undefined;
+    if (typeof value === "string" && value.trim()) {
+      process.env[key] = value.trim();
+    }
+  }
+
+  // Re-derive character fields from the freshly-loaded config and apply
+  // them to the live runtime. This propagates renames, system prompt
+  // edits, bio/style updates, and topic/adjective changes.
+  if (runtime) {
+    const { buildCharacterFromConfig } = await import("../runtime/eliza.js");
+    const rebuilt = buildCharacterFromConfig(next);
+    const character = runtime.character as unknown as Record<string, unknown>;
+    const HOT_CHARACTER_FIELDS = [
+      "name",
+      "username",
+      "system",
+      "bio",
+      "topics",
+      "adjectives",
+      "style",
+      "messageExamples",
+      "postExamples",
+      "settings",
+    ] as const;
+    const rebuiltRecord = rebuilt as unknown as Record<string, unknown>;
+    for (const field of HOT_CHARACTER_FIELDS) {
+      const value = rebuiltRecord[field];
+      if (value !== undefined) {
+        character[field] = value;
+      }
+    }
+  }
+}
+
+/**
+ * Handle configuration routes (GET/PUT /api/config, GET /api/config/schema,
+ * POST /api/config/reload). Returns `true` if the request was handled.
  */
 export async function handleConfigRoutes(
   ctx: ConfigRouteContext,
@@ -70,6 +242,7 @@ export async function handleConfigRoutes(
     method,
     pathname,
     config,
+    runtime,
     json,
     error,
     readJsonBody,
@@ -88,6 +261,46 @@ export async function handleConfigRoutes(
     const { buildConfigSchema } = await import("../config/schema.js");
     const result = buildConfigSchema();
     json(res, result);
+    return true;
+  }
+
+  // ── POST /api/config/reload ──────────────────────────────────────────────
+  // Re-read milady.json from disk and apply hot-reloadable fields to the
+  // running runtime. Returns the list of fields applied and any fields that
+  // still require a full restart (plugin list, provider/model registry,
+  // database adapter).
+  if (method === "POST" && pathname === "/api/config/reload") {
+    let next: ElizaConfig;
+    try {
+      next = loadElizaConfig();
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      error(res, `Config reload failed: ${detail}`, 400);
+      return true;
+    }
+
+    const currentRecord = config as unknown as Record<string, unknown>;
+    const nextRecord = next as unknown as Record<string, unknown>;
+    const diff = computeReloadDiff(currentRecord, nextRecord);
+
+    await applyReloadedConfig({
+      state: config,
+      next,
+      runtime,
+      blockedEnvKeys: BLOCKED_ENV_KEYS,
+    });
+
+    if (isElizaSettingsDebugEnabled()) {
+      logger.debug(
+        `[eliza][settings][api] POST /api/config/reload applied=[${diff.applied.join(",")}] requiresRestart=[${diff.requiresRestart.join(",")}]`,
+      );
+    }
+
+    json(res, {
+      reloaded: true,
+      applied: diff.applied,
+      requiresRestart: diff.requiresRestart,
+    });
     return true;
   }
 

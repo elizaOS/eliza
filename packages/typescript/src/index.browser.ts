@@ -15,6 +15,14 @@ export * from "./entities";
 export * from "./features/advanced-memory";
 export { AutonomyService } from "./features/autonomy/index";
 export { createBasicCapabilitiesPlugin } from "./features/basic-capabilities/index";
+export {
+	__setKnowledgeUrlFetchImplForTests,
+	type FetchedKnowledgeUrl,
+	type FetchedKnowledgeUrlKind,
+	type FetchKnowledgeFromUrlOptions,
+	fetchKnowledgeFromUrl,
+	isYouTubeUrl,
+} from "./features/knowledge/index";
 export * from "./logger";
 export * from "./memory";
 export * from "./prompts";
@@ -54,6 +62,12 @@ export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 // Export browser-compatible utilities
 export * from "./utils/environment";
+
+export function resolveStateDir(): string {
+	return "/.milady";
+}
+
+export async function runPluginMigrations(): Promise<void> {}
 
 // Browser-specific exports or stubs for Node-only features
 export const isBrowser = true;

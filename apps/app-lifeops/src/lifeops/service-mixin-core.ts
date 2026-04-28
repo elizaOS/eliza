@@ -1,6 +1,15 @@
 import crypto from "node:crypto";
 import { getAgentEventService } from "@elizaos/agent/runtime/agent-event-service";
 import { resolveOwnerEntityId } from "@elizaos/agent/runtime/owner-entity";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
+  BROWSER_BRIDGE_KINDS,
+  type BrowserBridgeAction,
+  type BrowserBridgeCompanionStatus,
+  type BrowserBridgeSettings,
+  type UpsertBrowserBridgeCompanionRequest,
+} from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsAuditEvent,
   LifeOpsAuditEventType,
@@ -9,20 +18,12 @@ import type {
   LifeOpsOwnership,
   LifeOpsOwnershipInput,
   LifeOpsWorkflowDefinition,
-} from "@elizaos/app-lifeops/contracts";
-import { type IAgentRuntime, logger } from "@elizaos/core";
-import type {
-  BrowserBridgeAction,
-  BrowserBridgeCompanionStatus,
-  BrowserBridgeSettings,
-  UpsertBrowserBridgeCompanionRequest,
-} from "@elizaos/plugin-browser-bridge/contracts";
-import {
-  BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,
-  BROWSER_BRIDGE_KINDS,
-} from "@elizaos/plugin-browser-bridge/contracts";
+} from "../contracts/index.js";
 import type { computeAdaptiveWindowPolicy } from "./defaults.js";
-import { GoogleManagedClient } from "./google-managed-client.js";
+import {
+  GoogleManagedClient,
+  resolveManagedGoogleCloudConfig,
+} from "./google-managed-client.js";
 import {
   createBrowserBridgeCompanionStatus,
   createLifeOpsAuditEvent,
@@ -171,8 +172,12 @@ export class LifeOpsServiceBase {
     options: LifeOpsServiceOptions = {},
   ) {
     this.repository = new LifeOpsRepository(runtime);
-    this.googleManagedClient = new GoogleManagedClient();
-    this.xManagedClient = new XManagedClient();
+    const resolveManagedCloudConfig = () =>
+      resolveManagedGoogleCloudConfig(runtime);
+    this.googleManagedClient = new GoogleManagedClient(
+      resolveManagedCloudConfig,
+    );
+    this.xManagedClient = new XManagedClient(resolveManagedCloudConfig);
     this.scheduleSyncClient = new LifeOpsScheduleSyncClient();
     this.explicitOwnerEntityIdValue =
       normalizeOptionalString(options.ownerEntityId) ?? null;

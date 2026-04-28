@@ -3,44 +3,44 @@ import fs from "node:fs";
 import http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { handleCloudBillingRoute } from "@elizaos/agent/api/cloud-billing-routes";
-import { handleCloudCompatRoute } from "@elizaos/agent/api/cloud-compat-routes";
-import { clearPersistedOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
-// Override the wallet export rejection function with the hardened version
-// that adds rate limiting, audit logging, and a forced confirmation delay.
 import {
   AGENT_EVENT_ALLOWED_STREAMS,
   CONFIG_WRITE_ALLOWED_TOP_KEYS,
   type ConversationMeta,
+  clearPersistedOnboardingConfig,
   cloneWithoutBlockedObjectKeys,
   discoverInstalledPlugins,
   discoverPluginsFromManifest,
   extractAuthToken,
   fetchWithTimeoutGuard,
+  handleCloudBillingRoute,
+  handleCloudCompatRoute,
+  initStewardWalletCache,
   isAllowedHost,
   isAuthorized,
   normalizeWsClientId,
   persistConversationRoomTitle,
+  resolveDefaultAgentWorkspaceDir,
   resolveMcpServersRejection,
   resolvePluginConfigMutationRejections,
+  resolveUserPath,
   routeAutonomyTextToUser,
   streamResponseBodyWithByteLimit,
   startApiServer as upstreamStartApiServer,
   validateMcpServerConfig,
-} from "@elizaos/agent/api/server";
-import { initStewardWalletCache } from "@elizaos/agent/api/wallet";
+} from "@elizaos/agent";
 import {
   type ElizaConfig,
   loadElizaConfig,
   saveElizaConfig,
-} from "@elizaos/agent/config/config";
-import { resolveUserPath } from "@elizaos/agent/config/paths";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent/providers/workspace";
+} from "@elizaos/agent/config";
+// Override the wallet export rejection function with the hardened version
+// that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/onboarding";
+import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import {
-  ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
+  ensureRouteAuthorized,
   getCompatApiToken,
 } from "./auth";
 import { handleAutomationsCompatRoutes } from "./automations-compat-routes";
@@ -122,7 +122,9 @@ import {
   sanitizeIdentifier,
   sqlLiteral,
 } from "../utils/sql-compat";
+import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
+import { handleAuthSessionRoutes } from "./auth-session-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleCloudRoute } from "./cloud-routes";
 import { handleCloudStatusRoutes } from "./cloud-status-routes";
@@ -701,6 +703,65 @@ function resolveCloudConfig(runtime?: unknown): ElizaConfig {
   return config;
 }
 
+function buildCloudLoginSyncPatch(
+  config: ElizaConfig,
+): Record<string, unknown> | null {
+  const cloud =
+    config.cloud && typeof config.cloud === "object"
+      ? (config.cloud as Record<string, unknown>)
+      : undefined;
+  const apiKey = typeof cloud?.apiKey === "string" ? cloud.apiKey.trim() : "";
+  if (!apiKey) {
+    return null;
+  }
+
+  const nextCloud: Record<string, unknown> = { apiKey };
+  const baseUrl =
+    typeof cloud?.baseUrl === "string" ? cloud.baseUrl.trim() : "";
+  if (baseUrl) {
+    nextCloud.baseUrl = baseUrl;
+  }
+
+  return {
+    cloud: nextCloud,
+    linkedAccounts: {
+      elizacloud: { status: "linked", source: "api-key" },
+    },
+  };
+}
+
+async function syncCloudLoginToUpstreamConfigState(
+  req: Pick<http.IncomingMessage, "headers">,
+  config: ElizaConfig,
+): Promise<void> {
+  const cloudLoginPatch = buildCloudLoginSyncPatch(config);
+  if (!cloudLoginPatch) {
+    return;
+  }
+
+  if (isElizaSettingsDebugEnabled()) {
+    logger.debug(
+      `[eliza][settings][compat] cloud login → loopback PUT /api/config patch=${JSON.stringify(sanitizeForSettingsDebug(cloudLoginPatch))}`,
+    );
+  }
+
+  try {
+    await compatLoopbackRequest(req, "/api/config", {
+      method: "PUT",
+      body: JSON.stringify(cloudLoginPatch),
+    });
+    if (isElizaSettingsDebugEnabled()) {
+      logger.debug("[eliza][settings][compat] cloud login loopback sync OK");
+    }
+  } catch (err) {
+    logger.warn(
+      `[eliza][cloud/login] Failed to sync cloud login to upstream state: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
 async function handleCompatRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -712,7 +773,7 @@ async function handleCompatRoute(
   // Eliza Cloud thin-client proxy (compat agents, jobs, …) — was missing from the
   // compat wrapper, so the dashboard saw 404 on `/api/cloud/compat/agents`.
   if (url.pathname.startsWith("/api/cloud/compat/")) {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     return handleCloudCompatRoute(req, res, url.pathname, method, {
@@ -725,7 +786,7 @@ async function handleCompatRoute(
   // API key persisted during login is always available, even if the
   // upstream's in-memory state.config hasn't been refreshed.
   if (url.pathname.startsWith("/api/cloud/billing/")) {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     return handleCloudBillingRoute(req, res, url.pathname, method, {
@@ -736,6 +797,15 @@ async function handleCompatRoute(
 
   // Dev observability routes — extracted to dev-compat-routes.ts
   if (await handleDevCompatRoutes(req, res, state)) return true;
+
+  // Bootstrap-token exchange (P0 cloud-provisioned auth) — must precede the
+  // legacy auth-pairing handler so the dedicated rate-limited route owns
+  // `/api/auth/bootstrap/exchange`.
+  if (await handleAuthBootstrapRoutes(req, res, state)) return true;
+
+  // P1 session routes: setup, login/password, logout, me, sessions list/revoke.
+  // These own cookie + CSRF lifecycle for the dashboard.
+  if (await handleAuthSessionRoutes(req, res, state)) return true;
 
   // Auth / pairing / onboarding status — extracted to auth-pairing-compat-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
@@ -748,7 +818,7 @@ async function handleCompatRoute(
   // handler reads the sidecar singleton from services/n8n-sidecar via
   // peekN8nSidecar(), so no construction happens just from a status probe.
   if (url.pathname.startsWith("/api/n8n/")) {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     return handleN8nRoutes({
       req,
       res,
@@ -765,7 +835,7 @@ async function handleCompatRoute(
   if (await handleComputerUseCompatRoutes(req, res, state)) return true;
 
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     return await _handleCloudTtsPreviewRoute(req, res);
   }
 
@@ -800,7 +870,10 @@ async function handleCompatRoute(
       method === "GET" &&
       url.pathname === "/api/cloud/status";
 
-    if (!isCloudStatusExempt && !ensureCompatApiAuthorized(req, res)) {
+    if (
+      !isCloudStatusExempt &&
+      !(await ensureRouteAuthorized(req, res, state))
+    ) {
       return true;
     }
 
@@ -828,6 +901,15 @@ async function handleCompatRoute(
       runtime: state.current,
       cloudManager: null,
     });
+
+    if (
+      handled &&
+      ((method === "POST" && url.pathname === "/api/cloud/login/persist") ||
+        (method === "GET" &&
+          url.pathname.startsWith("/api/cloud/login/status")))
+    ) {
+      await syncCloudLoginToUpstreamConfigState(req, config);
+    }
 
     // After disconnect, sync the cloud disable into the upstream's in-memory
     // state.config via a loopback PUT /api/config. Without this, the next
@@ -940,7 +1022,7 @@ async function handleCompatRoute(
   if (await handlePluginsCompatRoutes(req, res, state)) return true;
 
   // Catalog routes — registry SoT projections (apps, plugins, connectors)
-  if (await handleCatalogRoutes(req, res)) return true;
+  if (await handleCatalogRoutes(req, res, state)) return true;
 
   if (await handleOnboardingCompatRoute(req, res, state)) return true;
 
@@ -950,7 +1032,7 @@ async function handleCompatRoute(
     method === "GET" &&
     url.pathname.match(/^\/api\/plugins\/([^/]+)\/ui-spec$/);
   if (uiSpecMatch) {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
     const { buildPluginConfigUiSpec } = await import(
       "../config/plugin-ui-spec"
@@ -973,7 +1055,7 @@ async function handleCompatRoute(
   // The app runs a single agent; expose it under an `agents` array so older
   // health probes and desktop callers can use the same response shape.
   if (method === "GET" && url.pathname === "/api/agents") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     const config = loadElizaConfig();
@@ -995,7 +1077,7 @@ async function handleCompatRoute(
   }
 
   if (method === "GET" && url.pathname === "/api/config") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -1007,8 +1089,7 @@ async function handleCompatRoute(
     return true;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) return true;
-  return handleDatabaseRowsCompatRoute(req, res, state.current);
+  return handleDatabaseRowsCompatRoute(req, res, state);
 }
 
 export async function handleMiladyCompatRoute(
@@ -1053,7 +1134,11 @@ export function patchHttpCreateServerForCompat(
       // only when Origin is absent so we never reflect an arbitrary Origin.
       const originHeader = req.headers.origin ?? "";
       // Build allowed origins from configured ports (API, UI, gateway, home)
-      const corsAllowedPorts = getCorsAllowedPorts();
+      const corsAllowedPorts = new Set(getCorsAllowedPorts());
+      const localPort = req.socket.localPort;
+      if (typeof localPort === "number") {
+        corsAllowedPorts.add(String(localPort));
+      }
       const allowOrigin = (() => {
         if (originHeader !== "") {
           return isAllowedLocalOrigin(originHeader, corsAllowedPorts)
@@ -1070,6 +1155,12 @@ export function patchHttpCreateServerForCompat(
         }
       })();
 
+      if (originHeader !== "" && !allowOrigin) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "cors_origin_denied" }));
+        return;
+      }
+
       if (allowOrigin) {
         res.setHeader("Access-Control-Allow-Origin", allowOrigin);
         res.setHeader(
@@ -1078,7 +1169,7 @@ export function patchHttpCreateServerForCompat(
         );
         res.setHeader(
           "Access-Control-Allow-Headers",
-          "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token",
+          "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Milady-CSRF",
         );
         res.setHeader("Access-Control-Allow-Credentials", "true");
       }

@@ -26,12 +26,15 @@ describe("Prompts", () => {
 			expect(shouldRespondTemplate).toContain("secondaryContexts:");
 			expect(shouldRespondTemplate).toContain("evidenceTurnIds:");
 
-			expect(shouldRespondTemplate).toContain("rules[6]:");
+			expect(shouldRespondTemplate).toContain("rules[7]:");
 			expect(shouldRespondTemplate).toContain(
 				"direct mention of {{agentName}}",
 			);
 			expect(shouldRespondTemplate).toContain(
 				"request to stop or be quiet directed at {{agentName}} -> STOP",
+			);
+			expect(shouldRespondTemplate).toContain(
+				"in group conversations, if the latest message is addressed to someone else and not to {{agentName}}, IGNORE",
 			);
 			expect(shouldRespondTemplate).toContain("decision_note:");
 			expect(shouldRespondTemplate).toContain(
@@ -71,6 +74,9 @@ describe("Prompts", () => {
 			);
 			expect(messageHandlerTemplate).toContain(
 				"if actions are REPLY-only and you want the REPLY action to generate the final user-facing message, set simple=false",
+			);
+			expect(messageHandlerTemplate).toContain(
+				"in group conversations, choose IGNORE if the latest message is addressed to someone else and not to {{agentName}}",
 			);
 		});
 
@@ -124,7 +130,6 @@ describe("Prompts", () => {
 			expect(reflectionEvaluatorTemplate).toContain(
 				'task_completion_reason: "The request is still incomplete because the needed action has not happened yet."',
 			);
-			expect(reflectionEvaluatorTemplate).toContain("facts[0]:");
 			expect(reflectionEvaluatorTemplate).toContain("relationships[0]:");
 			expect(reflectionEvaluatorTemplate).toContain("tags[0]: dm_interaction");
 			expect(reflectionEvaluatorTemplate).toContain(
@@ -134,10 +139,17 @@ describe("Prompts", () => {
 				"Always include `task_completed` and `task_completion_reason`.",
 			);
 			expect(reflectionEvaluatorTemplate).toContain(
-				"omit all facts[...] entries",
-			);
-			expect(reflectionEvaluatorTemplate).toContain(
 				"omit all relationships[...] entries",
+			);
+			// Phase 4 cleanup: reflection.ts no longer extracts facts. The
+			// `{{knownFacts}}` block, the "Extract only durable new facts"
+			// instruction, and the `facts[...]` indexed output should all be
+			// gone. `factExtractorEvaluator` owns extraction now.
+			expect(reflectionEvaluatorTemplate).not.toContain("{{knownFacts}}");
+			expect(reflectionEvaluatorTemplate).not.toContain("# Known Facts:");
+			expect(reflectionEvaluatorTemplate).not.toContain("facts[0]:");
+			expect(reflectionEvaluatorTemplate).not.toContain(
+				"Extract only durable new facts",
 			);
 		});
 	});

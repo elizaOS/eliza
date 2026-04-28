@@ -4,6 +4,7 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { isIP } from "node:net";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
@@ -11,7 +12,9 @@ import {
   resolveApiSecurityConfig,
   resolveApiToken,
   setApiToken,
-} from "@elizaos/shared/runtime-env";
+  type WalletExportRejection,
+  type WalletExportRequestBody,
+} from "@elizaos/shared";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { sendJsonError } from "./http-helpers.js";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.js";
@@ -22,13 +25,19 @@ import type { ConversationMeta } from "./server-helpers.js";
 // ---------------------------------------------------------------------------
 
 export function extractAuthToken(req: http.IncomingMessage): string | null {
-  const auth =
+  const rawAuth =
     typeof req.headers.authorization === "string"
-      ? req.headers.authorization.trim()
+      ? req.headers.authorization
       : "";
-  if (auth) {
-    const match = /^Bearer\s+(.+)$/i.exec(auth);
-    if (match?.[1]) return match[1].trim();
+  const auth =
+    rawAuth.length > 8192 ? rawAuth.slice(0, 8192).trim() : rawAuth.trim();
+  if (
+    auth &&
+    auth.length >= 7 &&
+    auth.slice(0, 7).toLowerCase() === "bearer "
+  ) {
+    const token = auth.slice(7).trim();
+    if (token) return token;
   }
 
   const header =
@@ -55,6 +64,165 @@ export function tokenMatches(expected: string, provided: string): boolean {
 
 export function getConfiguredApiToken(): string | undefined {
   return resolveApiToken(process.env) ?? undefined;
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
+}
+
+const CLIENT_IP_PROXY_HEADERS = new Set([
+  "forwarded",
+  "forwarded-for",
+  "x-forwarded",
+  "x-forwarded-for",
+  "x-original-forwarded-for",
+  "x-real-ip",
+  "x-client-ip",
+  "x-forwarded-client-ip",
+  "x-cluster-client-ip",
+  "cf-connecting-ip",
+  "true-client-ip",
+  "fastly-client-ip",
+  "x-appengine-user-ip",
+  "x-azure-clientip",
+]);
+
+function headerValues(value: string | string[] | undefined): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  return [];
+}
+
+function isClientIpProxyHeaderName(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return (
+    CLIENT_IP_PROXY_HEADERS.has(normalized) ||
+    normalized.endsWith("-client-ip") ||
+    normalized.endsWith("-connecting-ip") ||
+    normalized.endsWith("-real-ip")
+  );
+}
+
+function extractForwardedForCandidates(raw: string): string[] {
+  const candidates: string[] = [];
+  const pattern = /(?:^|[;,])\s*for=(?:"([^"]*)"|([^;,]*))/gi;
+  for (const match of raw.matchAll(pattern)) {
+    candidates.push(match[1] ?? match[2] ?? "");
+  }
+  return candidates;
+}
+
+function extractProxyClientAddressCandidates(
+  headerName: string,
+  raw: string,
+): string[] {
+  if (headerName === "forwarded") {
+    return extractForwardedForCandidates(raw);
+  }
+
+  const forwardedCandidates = raw.toLowerCase().includes("for=")
+    ? extractForwardedForCandidates(raw)
+    : [];
+  if (forwardedCandidates.length > 0) return forwardedCandidates;
+
+  return raw.split(",");
+}
+
+function stripMatchingQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function isNeutralProxyClientAddress(raw: string): boolean {
+  const normalized = stripMatchingQuotes(raw).trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === "unknown" ||
+    normalized === "null" ||
+    normalized.startsWith("_")
+  );
+}
+
+function normalizeProxyClientIp(raw: string): string | null {
+  let normalized = stripMatchingQuotes(raw).trim();
+  if (!normalized) return null;
+
+  if (normalized.startsWith("[")) {
+    const close = normalized.indexOf("]");
+    if (close > 0) {
+      normalized = normalized.slice(1, close);
+    }
+  } else {
+    const ipv4HostPort = /^(\d{1,3}(?:\.\d{1,3}){3})(?::\d+)$/.exec(normalized);
+    if (ipv4HostPort?.[1]) {
+      normalized = ipv4HostPort[1];
+    }
+  }
+
+  const zoneIndex = normalized.indexOf("%");
+  if (zoneIndex >= 0) {
+    normalized = normalized.slice(0, zoneIndex);
+  }
+
+  normalized = normalized.trim().toLowerCase();
+  return isIP(normalized) ? normalized : null;
+}
+
+function isLoopbackProxyClientIp(ip: string): boolean {
+  const normalized = ip.trim().toLowerCase();
+  return (
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    normalized.startsWith("127.") ||
+    normalized.startsWith("::ffff:127.") ||
+    normalized.startsWith("::ffff:0:127.")
+  );
+}
+
+function proxyClientHeaderBlocksLocalTrust(
+  headers: http.IncomingHttpHeaders,
+): boolean {
+  for (const [rawName, rawValue] of Object.entries(headers)) {
+    const headerName = rawName.toLowerCase();
+    if (!isClientIpProxyHeaderName(headerName)) continue;
+
+    for (const value of headerValues(rawValue)) {
+      for (const candidate of extractProxyClientAddressCandidates(
+        headerName,
+        value,
+      )) {
+        if (isNeutralProxyClientAddress(candidate)) continue;
+        const ip = normalizeProxyClientIp(candidate);
+        if (!ip || !isLoopbackProxyClientIp(ip)) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function isLoopbackRemoteAddress(
+  remoteAddress: string | null | undefined,
+): boolean {
+  if (!remoteAddress) return false;
+  const normalized = remoteAddress.trim().toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    normalized === "::ffff:127.0.0.1" ||
+    normalized === "::ffff:0:127.0.0.1"
+  );
 }
 
 export function isLoopbackBindHost(host: string): boolean {
@@ -98,6 +266,49 @@ export function isLoopbackBindHost(host: string): boolean {
   return false;
 }
 
+function isTrustedLocalOrigin(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "null") return true;
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      parsed.protocol === "file:" ||
+      parsed.protocol === "app:" ||
+      parsed.protocol === "tauri:" ||
+      parsed.protocol === "capacitor:" ||
+      parsed.protocol === "capacitor-electron:" ||
+      parsed.protocol === "electrobun:"
+    ) {
+      return true;
+    }
+    return isLoopbackBindHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function isTrustedLocalRequest(req: http.IncomingMessage): boolean {
+  if (isCloudProvisionedContainer()) return false;
+  if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
+  if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
+
+  const host = firstHeaderValue(req.headers.host);
+  if (host && !isLoopbackBindHost(host)) return false;
+
+  const secFetchSite = firstHeaderValue(
+    req.headers["sec-fetch-site"],
+  )?.toLowerCase();
+  if (secFetchSite === "cross-site") return false;
+
+  const origin = firstHeaderValue(req.headers.origin);
+  if (origin && !isTrustedLocalOrigin(origin)) return false;
+
+  const referer = firstHeaderValue(req.headers.referer);
+  if (!origin && referer && !isTrustedLocalOrigin(referer)) return false;
+
+  return true;
+}
+
 export function ensureApiTokenForBindHost(host: string): void {
   if (resolveApiSecurityConfig(process.env).disableAutoApiToken) {
     return;
@@ -127,8 +338,10 @@ export function ensureApiTokenForBindHost(host: string): void {
 }
 
 export function isAuthorized(req: http.IncomingMessage): boolean {
+  if (isTrustedLocalRequest(req)) return true;
+
   const expected = getConfiguredApiToken();
-  if (!expected) return !isCloudProvisionedContainer();
+  if (!expected) return false;
   const provided = extractAuthToken(req);
   if (!provided) return false;
   return tokenMatches(expected, provided);
@@ -177,11 +390,6 @@ export function resolvePluginConfigMutationRejections(
 // ---------------------------------------------------------------------------
 // Wallet export rejection
 // ---------------------------------------------------------------------------
-
-import type {
-  WalletExportRejection,
-  WalletExportRequestBody,
-} from "@elizaos/shared/contracts";
 
 export type { WalletExportRejection };
 

@@ -32,6 +32,13 @@ const experiences: CharacterExperienceRecord[] = [
     correctedBelief:
       "A swap requires source, destination, amount, slippage, and route confirmation.",
     relatedExperienceIds: ["exp-2"],
+    sourceMessageIds: ["msg-1", "msg-2", "msg-3"],
+    sourceRoomId: "room-wallet-review",
+    sourceTriggerMessageId: "msg-3",
+    sourceTrajectoryStepId: "trajectory-step-wallet",
+    extractionMethod: "experience_evaluator",
+    extractionReason:
+      "The interaction corrected an unsafe assumption about wallet swap readiness.",
   },
   {
     id: "exp-2",
@@ -96,9 +103,11 @@ describe("CharacterExperienceWorkspace", () => {
       />,
     );
 
-    expect(screen.getByText("No experiences recorded yet.")).toBeTruthy();
     expect(
-      screen.getByText(/confidence, importance, source context/i),
+      screen.getByText(/I\s+haven.+t\s+learned\s+anything\s+yet\./),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Each lesson lands with the context that produced it/i),
     ).toBeTruthy();
   });
 
@@ -134,6 +143,17 @@ describe("CharacterExperienceWorkspace", () => {
     expect(screen.queryByTestId("experience-row-exp-1")).toBeNull();
     expect(screen.getAllByText(/Supersedes/).length).toBeGreaterThan(0);
     expect(screen.getByText(/exp-2/)).toBeTruthy();
+  });
+
+  it("shows provenance for review and evidence replay", () => {
+    renderWorkspace();
+
+    expect(screen.getByText("Evidence source")).toBeTruthy();
+    expect(screen.getByText("experience_evaluator")).toBeTruthy();
+    expect(screen.getByText("room-wallet-...")).toBeTruthy();
+    expect(screen.getByText("3 captured")).toBeTruthy();
+    expect(screen.getByText("trajectory-s...")).toBeTruthy();
+    expect(screen.getByText(/corrected an unsafe assumption/i)).toBeTruthy();
   });
 
   it("saves edited learning, ranking, and tags for the selected experience", () => {

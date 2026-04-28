@@ -38,11 +38,27 @@ export type SubscriptionAutomationStep =
       label: string;
     };
 
+export type SubscriptionCancellationCapability =
+  | {
+      kind: "executable_playbook";
+      label: "Executable cancellation playbook";
+      executionSurface: "browser_steps";
+      manualFallback: false;
+    }
+  | {
+      kind: "management_url_manual_fallback";
+      label: "Management URL manual fallback";
+      executionSurface: "management_url";
+      manualFallback: true;
+      reason: "no_verified_click_flow";
+    };
+
 export interface LifeOpsSubscriptionPlaybook {
   key: string;
   serviceName: string;
   aliases: string[];
   executorPreference: LifeOpsSubscriptionExecutor;
+  cancellationCapability: SubscriptionCancellationCapability;
   managementUrl: string;
   managementPath?: string;
   auditDomains: string[];
@@ -114,12 +130,34 @@ const GENERIC_CANCELLATION_MARKERS = [
   "your plan ends",
 ];
 
+const EXECUTABLE_PLAYBOOK_CAPABILITY = {
+  kind: "executable_playbook",
+  label: "Executable cancellation playbook",
+  executionSurface: "browser_steps",
+  manualFallback: false,
+} as const satisfies SubscriptionCancellationCapability;
+
+const MANAGEMENT_URL_MANUAL_FALLBACK_CAPABILITY = {
+  kind: "management_url_manual_fallback",
+  label: "Management URL manual fallback",
+  executionSurface: "management_url",
+  manualFallback: true,
+  reason: "no_verified_click_flow",
+} as const satisfies SubscriptionCancellationCapability;
+
+function cancellationCapabilityForSteps(
+  steps: SubscriptionAutomationStep[] | undefined,
+): SubscriptionCancellationCapability {
+  return steps && steps.length > 0
+    ? { ...EXECUTABLE_PLAYBOOK_CAPABILITY }
+    : { ...MANAGEMENT_URL_MANUAL_FALLBACK_CAPABILITY };
+}
+
 /**
- * Build a playbook for services where the cancellation flow is behind login
- * and retention offers, so we open the management URL and then hand off to
- * the user_browser / needs_login path. This covers the long tail of popular
- * subscriptions (Netflix, Spotify, news sites, meal kits, etc.) without
- * trying to fully automate every flow — which is brittle and breaks often.
+ * Build a management-URL-only playbook for services where the cancellation
+ * flow is behind login, retention offers, or app-store ownership. This covers
+ * the long tail of popular subscriptions without pretending URL knowledge is
+ * the same as a verified click-flow.
  */
 function definePlaybook(
   partial: Pick<
@@ -152,6 +190,7 @@ function definePlaybook(
     serviceName: partial.serviceName,
     aliases: partial.aliases,
     executorPreference: partial.executorPreference ?? "user_browser",
+    cancellationCapability: cancellationCapabilityForSteps(partial.steps),
     managementUrl,
     managementPath: partial.managementPath,
     auditDomains: partial.auditDomains,
@@ -182,6 +221,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
         "play subscriptions",
       ],
       executorPreference: "agent_browser",
+      cancellationCapability: { ...EXECUTABLE_PLAYBOOK_CAPABILITY },
       managementUrl: withFixtureOverride(
         "/stores/google-play",
         "https://play.google.com/store/account/subscriptions",
@@ -229,6 +269,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
         "apple services",
       ],
       executorPreference: "agent_browser",
+      cancellationCapability: { ...EXECUTABLE_PLAYBOOK_CAPABILITY },
       managementUrl: withFixtureOverride(
         "/stores/apple-subscriptions",
         "https://account.apple.com/account/manage/section/subscriptions",
@@ -266,80 +307,6 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
       },
     },
     {
-      key: "netflix",
-      serviceName: "Netflix",
-      aliases: ["netflix", "netflix subscription", "netflix billing"],
-      executorPreference: "agent_browser",
-      managementUrl: withFixtureOverride(
-        "/services/netflix",
-        "https://www.netflix.com/manageaccount",
-      ),
-      managementPath: "/services/netflix",
-      auditDomains: ["netflix.com"],
-      auditSubjectKeywords: ["netflix", "membership", "receipt", "billing"],
-      loginMarkers: [...GENERIC_LOGIN_MARKERS],
-      mfaMarkers: [...GENERIC_MFA_MARKERS],
-      phoneOnlyMarkers: ["call us to cancel"],
-      chatOnlyMarkers: ["chat with support to cancel"],
-      cancellationMarkers: ["subscription canceled"],
-      steps: [
-        {
-          kind: "open",
-          url: withFixtureOverride(
-            "/services/netflix",
-            "https://www.netflix.com/manageaccount",
-          ),
-        },
-        { kind: "wait_text", text: "Subscriptions" },
-        { kind: "click_text", text: "Cancel subscription" },
-        { kind: "wait_text", text: "Confirm cancellation" },
-        { kind: "click_text", text: "Confirm cancellation", destructive: true },
-        { kind: "wait_text", text: "subscription canceled" },
-        { kind: "screenshot", label: "netflix-cancelled" },
-      ],
-      companionSelectors: {
-        cancel: "[data-lifeops-action='cancel-subscription']",
-        confirm: "[data-lifeops-action='confirm-cancellation']",
-      },
-    },
-    {
-      key: "hulu",
-      serviceName: "Hulu",
-      aliases: ["hulu", "hulu subscription", "hulu billing"],
-      executorPreference: "agent_browser",
-      managementUrl: withFixtureOverride(
-        "/services/hulu",
-        "https://secure.hulu.com/account",
-      ),
-      managementPath: "/services/hulu",
-      auditDomains: ["hulu.com"],
-      auditSubjectKeywords: ["hulu", "subscription", "receipt", "billing"],
-      loginMarkers: [...GENERIC_LOGIN_MARKERS],
-      mfaMarkers: [...GENERIC_MFA_MARKERS],
-      phoneOnlyMarkers: ["call us to cancel"],
-      chatOnlyMarkers: ["chat with support to cancel"],
-      cancellationMarkers: ["subscription canceled"],
-      steps: [
-        {
-          kind: "open",
-          url: withFixtureOverride(
-            "/services/hulu",
-            "https://secure.hulu.com/account",
-          ),
-        },
-        { kind: "wait_text", text: "Subscriptions" },
-        { kind: "click_text", text: "Cancel subscription" },
-        { kind: "wait_text", text: "Confirm cancellation" },
-        { kind: "click_text", text: "Confirm cancellation", destructive: true },
-        { kind: "wait_text", text: "subscription canceled" },
-        { kind: "screenshot", label: "hulu-cancelled" },
-      ],
-      companionSelectors: {
-        cancel: "[data-lifeops-action='cancel-subscription']",
-        confirm: "[data-lifeops-action='confirm-cancellation']",
-      },
-    },
-    {
       key: "fixture_streaming",
       serviceName: "Fixture Streaming",
       aliases: [
@@ -348,6 +315,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
         "test streaming",
       ],
       executorPreference: "agent_browser",
+      cancellationCapability: { ...EXECUTABLE_PLAYBOOK_CAPABILITY },
       managementUrl: withFixtureOverride(
         "/services/fixture-streaming",
         "https://example.com/account/subscription",
@@ -392,6 +360,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
         "test sign-in handoff",
       ],
       executorPreference: "agent_browser",
+      cancellationCapability: { ...EXECUTABLE_PLAYBOOK_CAPABILITY },
       managementUrl: withFixtureOverride(
         "/services/login-required",
         "https://example.com/account/subscription",
@@ -421,6 +390,7 @@ export const LIFEOPS_SUBSCRIPTION_PLAYBOOKS: readonly LifeOpsSubscriptionPlayboo
       serviceName: "Fixture Phone Only",
       aliases: ["fixture phone only", "test phone only"],
       executorPreference: "agent_browser",
+      cancellationCapability: { ...EXECUTABLE_PLAYBOOK_CAPABILITY },
       managementUrl: withFixtureOverride(
         "/services/phone-only",
         "https://example.com/account/subscription",

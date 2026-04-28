@@ -13,6 +13,7 @@
  */
 import { Electroview } from "electrobun/view";
 import type { RpcMessageListener } from "../types.js";
+import { getBrowserTabsRendererImpl } from "./browser-tabs-renderer-registry.js";
 import { ensureElectrobunGlobal } from "./electrobun-stub.js";
 
 type RendererRequestHandler = (params: unknown) => Promise<unknown>;
@@ -111,7 +112,20 @@ function handleWildcardMessage(messageName: unknown, payload: unknown): void {
 const rpc = Electroview.defineRPC({
   maxRequestTime: 600_000,
   handlers: {
-    requests: {},
+    requests: {
+      browserWorkspaceRendererEvaluate: (params: {
+        id: string;
+        script: string;
+        timeoutMs: number;
+      }) =>
+        getBrowserTabsRendererImpl().evaluate(
+          params.id,
+          params.script,
+          params.timeoutMs,
+        ),
+      browserWorkspaceRendererGetTabRect: (params: { id: string }) =>
+        getBrowserTabsRendererImpl().getTabRect(params.id),
+    },
     messages: {
       "*": handleWildcardMessage,
     },

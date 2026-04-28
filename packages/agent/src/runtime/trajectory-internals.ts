@@ -18,7 +18,7 @@ import {
   type IAgentRuntime,
   ModelType,
 } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared/type-guards";
+import { asRecord } from "@elizaos/shared";
 
 export { asRecord };
 
@@ -65,6 +65,7 @@ export type PersistedLlmCall = {
   latencyMs: number;
   promptTokens?: number;
   completionTokens?: number;
+  tokenUsageEstimated?: boolean;
 };
 
 export type PersistedProviderAccess = {
@@ -466,30 +467,34 @@ export function extractInsightsFromResponse(
   purpose: string,
 ): string[] {
   const insights: string[] = [];
-  const decisionPattern = /DECISION:\s*(.+?)(?:\n|$)/gi;
+  const safeResponse =
+    response.length > 100_000 ? response.slice(0, 100_000) : response;
+  const decisionPattern = /DECISION:[ \t]{0,1024}([^\n]{1,1024})/gi;
   let match: RegExpExecArray | null;
-  match = decisionPattern.exec(response);
+  match = decisionPattern.exec(safeResponse);
   while (match !== null) {
     const decision = match[1];
     if (decision) {
       insights.push(decision.trim());
     }
-    match = decisionPattern.exec(response);
+    match = decisionPattern.exec(safeResponse);
   }
-  const keyDecisionPattern = /"keyDecision"\s*:\s*"([^"]+)"/g;
-  match = keyDecisionPattern.exec(response);
+  const keyDecisionPattern = /"keyDecision"\s{0,32}:\s{0,32}"([^"]{1,1024})"/g;
+  match = keyDecisionPattern.exec(safeResponse);
   while (match !== null) {
     const keyDecision = match[1];
     if (keyDecision) {
       insights.push(keyDecision.trim());
     }
-    match = keyDecisionPattern.exec(response);
+    match = keyDecisionPattern.exec(safeResponse);
   }
   if (
     (purpose === "turn-complete" || purpose === "coordination") &&
     insights.length === 0
   ) {
-    const reasoningMatch = response.match(/"reasoning"\s*:\s*"([^"]{20,200})"/);
+    const reasoningMatch = safeResponse.match(
+      /"reasoning"\s{0,32}:\s{0,32}"([^"]{20,200})"/,
+    );
     const reasoning = reasoningMatch?.[1];
     if (reasoning) insights.push(reasoning.trim());
   }

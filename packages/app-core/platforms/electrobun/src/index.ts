@@ -5,12 +5,13 @@ import path from "node:path";
 import {
   resolveApiToken,
   resolveDesktopApiPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import Electrobun, {
   ApplicationMenu,
   BrowserView,
   BrowserWindow,
   BuildConfig,
+  Session,
   Updater,
   Utils,
   WGPU,
@@ -25,6 +26,8 @@ import {
 import {
   buildApplicationMenu,
   EMPTY_HEARTBEAT_MENU_SNAPSHOT,
+  findAppMenuEntryBySlug,
+  getAppMenuEntries,
   type HeartbeatMenuSnapshot,
   parseSettingsWindowAction,
 } from "./application-menu";
@@ -55,6 +58,11 @@ import {
   getStartupDiagnosticsSnapshot,
   getStartupStatusPath,
 } from "./native/agent";
+import {
+  type DesktopSession,
+  installDesktopSessionCookies,
+  loadOrCreateDesktopSession,
+} from "./native/auth-bridge";
 import { getDesktopManager } from "./native/desktop";
 import { disposeNativeModules, initializeNativeModules } from "./native/index";
 import {
@@ -76,7 +84,9 @@ import { mergeRuntimePermissionStates } from "./runtime-permissions";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
 import { recordStartupPhase, resolveStartupBundlePath } from "./startup-trace";
 import {
+  type BoundsStore,
   isDetachedSurface,
+  type ManagedWindowFrame,
   type ManagedWindowLike,
   SurfaceWindowManager,
 } from "./surface-windows";
@@ -629,6 +639,83 @@ function scheduleStateSave(statePath: string, win: BrowserWindow): void {
       );
     } catch {}
   }, 500);
+}
+
+/**
+ * Per-slug app-window bounds persistence. Survives across launches so an
+ * app re-opened later restores to the user's last position+size.
+ *
+ * **WHY a separate file from `window-state.json`**: the main window is
+ * singleton (one record); app windows are slug-keyed (one record per app).
+ * Mixing them would couple unrelated lifecycles.
+ */
+function createAppWindowBoundsStore(): BoundsStore {
+  const storePath = path.join(
+    Utils.paths.userData,
+    "app-window-bounds.json",
+  );
+  type Blob = Record<string, ManagedWindowFrame>;
+  let cache: Blob | null = null;
+
+  function isFrame(value: unknown): value is ManagedWindowFrame {
+    if (!value || typeof value !== "object") return false;
+    const f = value as Record<string, unknown>;
+    return (
+      typeof f.x === "number" &&
+      typeof f.y === "number" &&
+      typeof f.width === "number" &&
+      typeof f.height === "number" &&
+      f.width >= 200 &&
+      f.height >= 200 &&
+      f.x > -16000 &&
+      f.y > -16000
+    );
+  }
+
+  function readCache(): Blob {
+    if (cache) return cache;
+    try {
+      if (fs.existsSync(storePath)) {
+        const raw = JSON.parse(fs.readFileSync(storePath, "utf8")) as unknown;
+        if (raw && typeof raw === "object") {
+          const next: Blob = {};
+          for (const [slug, frame] of Object.entries(raw)) {
+            if (isFrame(frame)) next[slug] = frame;
+          }
+          cache = next;
+          return next;
+        }
+      }
+    } catch {
+      /* ignore — corrupt or missing file just yields empty cache */
+    }
+    cache = {};
+    return cache;
+  }
+
+  function writeCache(): void {
+    if (!cache) return;
+    try {
+      const dir = path.dirname(storePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(storePath, JSON.stringify(cache), "utf8");
+    } catch {
+      /* ignore — bounds save must never break the window */
+    }
+  }
+
+  return {
+    load: (slug) => {
+      const blob = readCache();
+      return blob[slug] ?? null;
+    },
+    save: (slug, frame) => {
+      if (!isFrame(frame)) return;
+      const blob = readCache();
+      blob[slug] = frame;
+      writeCache();
+    },
+  };
 }
 
 let currentWindow: BrowserWindow | null = null;
@@ -1415,6 +1502,68 @@ async function syncPermissionsToRestApi(
   }
 }
 
+// Tracks whether the desktop loopback session has already been primed for the
+// current process lifetime. The bridge is idempotent on disk, but cookie jar
+// writes are cheap and we don't need to repeat them on every status tick.
+let desktopSessionPrimed = false;
+
+/**
+ * Best-effort: mint (or reuse) a loopback-only desktop session and install the
+ * cookies into the main window's session jar so the renderer's first /api
+ * request is already authenticated. Failure is silent — the renderer falls
+ * back to the standard login flow.
+ *
+ * Loopback-only enforcement is implemented server-side: the auth-context
+ * resolver MUST refuse a session marked loopback-only on a non-loopback
+ * request. The bridge does not — and cannot — be that boundary.
+ */
+async function primeDesktopSessionAuth(
+  apiBase: string,
+  rendererOrigin: string,
+): Promise<void> {
+  if (desktopSessionPrimed) return;
+  let session: DesktopSession | null;
+  try {
+    session = await loadOrCreateDesktopSession({ apiBase });
+  } catch (err) {
+    console.warn(
+      "[Main] Desktop auth bridge failed:",
+      err instanceof Error ? err.message : err,
+    );
+    return;
+  }
+  if (!session) {
+    console.log(
+      "[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
+    );
+    return;
+  }
+
+  try {
+    const partition = resolveMainWindowPartition(process.env);
+    const electrobunSession =
+      partition !== null
+        ? Session.fromPartition(partition)
+        : Session.defaultSession;
+    const installer = electrobunSession.cookies as {
+      set: Parameters<typeof installDesktopSessionCookies>[0]["set"];
+    };
+    const touched = installDesktopSessionCookies(installer, session, {
+      apiOrigin: apiBase,
+      rendererOrigin,
+    });
+    desktopSessionPrimed = true;
+    console.log(
+      `[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
+    );
+  } catch (err) {
+    console.warn(
+      "[Main] Desktop auth cookie install failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 async function _startAgent(win: BrowserWindow): Promise<void> {
   const runtimeResolution = resolveDesktopRuntimeMode(
     process.env as Record<string, string | undefined>,
@@ -1439,15 +1588,19 @@ async function _startAgent(win: BrowserWindow): Promise<void> {
     const status = await agent.start();
 
     if (status.state === "running" && status.port) {
-      const apiToken = resolveApiToken(process.env) ?? undefined;
-      pushApiBaseToRenderer(
-        win,
-        resolveRendererFacingApiBase(
-          process.env as Record<string, string | undefined>,
-          status.port,
-        ),
-        apiToken,
+      const apiBase = `http://127.0.0.1:${status.port}`;
+      const rendererBase = resolveRendererFacingApiBase(
+        process.env as Record<string, string | undefined>,
+        status.port,
       );
+      // Mint or reload the loopback desktop session and install the
+      // session+csrf cookies on the webview's cookie jar BEFORE we tell the
+      // renderer to start hitting /api. This is the desktop trust path: if
+      // the bridge succeeds, the renderer skips the login UI; if it fails,
+      // the renderer behaves like a remote browser (password-required).
+      await primeDesktopSessionAuth(apiBase, rendererBase);
+      const apiToken = resolveApiToken(process.env) ?? undefined;
+      pushApiBaseToRenderer(win, rendererBase, apiToken);
       setAgentReady(true);
       // Sync real OS permission states to the REST API so the renderer
       // can display them and capability toggles can unlock.
@@ -1612,6 +1765,40 @@ async function setupUpdater(): Promise<void> {
             });
           });
         }
+      } else if (
+        action?.startsWith("apps:") ||
+        action?.startsWith("tray-app-")
+      ) {
+        // Both shapes resolve to the same flow:
+        //   1. Look up the app entry by slug.
+        //   2. If the app declares hasDetailsPage, focus the main window
+        //      and tell the renderer to navigate to /apps/<slug>/details
+        //      (where the user can review config + click Launch).
+        //   3. Otherwise, open or focus its dedicated native window
+        //      directly (zero-config viewers / overlays).
+        // WHY two prefixes: `apps:<slug>` is what `buildAppsMenu` emits
+        // for the OS menu bar; `tray-app-<slug>` is what the tray icons
+        // emit. Both arrive here.
+        const slug = action.startsWith("apps:")
+          ? action.slice("apps:".length)
+          : action.slice("tray-app-".length);
+        const entry = findAppMenuEntryBySlug(slug);
+        if (entry) {
+          if (entry.hasDetailsPage) {
+            // Restore main window first so the renderer route is visible.
+            void restoreWindow();
+            sendToActiveRenderer("desktopAppDetailsRequested", {
+              slug: entry.slug,
+            });
+          } else {
+            void getDesktopManager().openAppWindow({
+              slug: entry.slug,
+              title: entry.displayName,
+              path: entry.windowPath,
+              alwaysOnTop: false,
+            });
+          }
+        }
       } else if (action === "restart-agent") {
         getAgentManager()
           .restart()
@@ -1637,6 +1824,19 @@ async function setupUpdater(): Promise<void> {
       },
     );
 
+    // Route tray app entries (`tray-app-<slug>`) into the same handler as the
+    // OS menu bar. WHY: the desktop manager forwards every tray click to the
+    // renderer, but spawning native windows must happen on the bun side.
+    Electrobun.events.on(
+      "tray-clicked",
+      (e: { data?: { action?: string } }) => {
+        const action = e?.data?.action;
+        if (typeof action === "string" && action.startsWith("tray-app-")) {
+          void handleApplicationMenuAction(action);
+        }
+      },
+    );
+
     Electrobun.events.on("context-menu-clicked", (action: string) => {
       if (action === "check-for-updates") {
         triggerManualUpdateCheck();
@@ -1653,9 +1853,61 @@ async function setupUpdater(): Promise<void> {
   }
 }
 
+/**
+ * Handle a `<scheme>://...` deep link. Recognized routes:
+ *   - `<scheme>://apps/<slug>` → open or focus the matching app window
+ *   - anything else → forward to renderer as a generic share target so
+ *     in-app handlers (share-into-chat, etc.) can react.
+ *
+ * The URL scheme itself is configured at build time (electrobun.config.ts:
+ * `urlSchemes`, sourced from `ELIZA_URL_SCHEME`) — this handler does not
+ * care which scheme is used; it only routes by host + pathname.
+ */
+function handleDeepLink(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    sendToActiveRenderer("shareTargetReceived", { url });
+    return;
+  }
+
+  // `<scheme>://apps/<slug>` → URL parses host="apps", pathname="/<slug>"
+  if (parsed.host === "apps") {
+    const slug = parsed.pathname
+      .replace(/^\/+/, "")
+      .replace(/[?#].*$/, "")
+      .split("/")[0];
+    if (slug) {
+      const entry = findAppMenuEntryBySlug(slug);
+      if (entry) {
+        // Mirror the menu/tray handler: apps with a details page get a config
+        // review screen instead of a direct window so deep links and clicks
+        // produce identical UX.
+        if (entry.hasDetailsPage) {
+          void restoreWindow();
+          sendToActiveRenderer("desktopAppDetailsRequested", {
+            slug: entry.slug,
+          });
+        } else {
+          void getDesktopManager().openAppWindow({
+            slug: entry.slug,
+            title: entry.displayName,
+            path: entry.windowPath,
+            alwaysOnTop: false,
+          });
+        }
+        return;
+      }
+    }
+  }
+
+  sendToActiveRenderer("shareTargetReceived", { url });
+}
+
 function setupDeepLinks(): void {
   Electrobun.events.on("open-url", (url: string) => {
-    sendToActiveRenderer("shareTargetReceived", { url });
+    handleDeepLink(url);
   });
 }
 
@@ -1861,6 +2113,17 @@ async function main(): Promise<void> {
   cleanupFns.push(
     getAgentManager().onStatusChange((status) => {
       if (status.port) {
+        // The agent rebound to a different loopback port (or recovered from a
+        // crash) — the cookies we installed during _startAgent were scoped to
+        // the old origin. Re-prime so the renderer's next /api request stays
+        // authenticated.
+        desktopSessionPrimed = false;
+        const apiBase = `http://127.0.0.1:${status.port}`;
+        const rendererBase = resolveRendererFacingApiBase(
+          process.env as Record<string, string | undefined>,
+          status.port,
+        );
+        void primeDesktopSessionAuth(apiBase, rendererBase);
         if (currentWindow) {
           injectApiBase(currentWindow);
         }
@@ -1907,6 +2170,7 @@ async function main(): Promise<void> {
       sendManagedWindowsChanged();
       setupApplicationMenu();
     },
+    boundsStore: createAppWindowBoundsStore(),
   });
   // Set up app menu after the window (and its message loop) exists.
   setupApplicationMenu();
@@ -1974,19 +2238,17 @@ async function main(): Promise<void> {
       tooltip: BRAND.appName,
       title: BRAND.appName,
       menu: [
-        { id: "tray-open-chat", label: "Open Chat", type: "normal" },
-        { id: "tray-open-plugins", label: "Open Plugins", type: "normal" },
-        {
-          id: "tray-open-desktop-workspace",
-          label: "Open Desktop Workspace",
-          type: "normal",
-        },
-        {
-          id: "tray-open-voice-controls",
-          label: "Open Voice Controls",
-          type: "normal",
-        },
-        { id: "sep1", type: "separator" },
+        { id: "tray-show-window", label: "Show Window", type: "normal" },
+        { id: "sep-apps", type: "separator" },
+        // One entry per known app — clicks dispatch to handleApplicationMenuAction
+        // via the bun-side `tray-clicked` listener below, which then opens (or
+        // focuses) the dedicated native window for that app.
+        ...getAppMenuEntries().map((entry) => ({
+          id: `tray-app-${entry.slug}`,
+          label: entry.displayName,
+          type: "normal" as const,
+        })),
+        { id: "sep-lifecycle", type: "separator" },
         {
           id: "tray-toggle-lifecycle",
           label: "Start/Stop Agent",
@@ -1997,20 +2259,7 @@ async function main(): Promise<void> {
           label: "Restart Agent",
           type: "normal",
         },
-        {
-          id: "tray-notify",
-          label: "Send Test Notification",
-          type: "normal",
-        },
-        { id: "sep2", type: "separator" },
-        { id: "tray-show-window", label: "Show Window", type: "normal" },
-        { id: "tray-hide-window", label: "Hide Window", type: "normal" },
-        {
-          id: "tray-floating-chat",
-          label: "Floating Chat",
-          type: "normal",
-        },
-        { id: "sep3", type: "separator" },
+        { id: "sep-quit", type: "separator" },
         { id: "quit", label: "Quit", type: "normal" },
       ],
     });

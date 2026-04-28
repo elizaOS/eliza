@@ -1,3 +1,4 @@
+export * from "./character-catalog";
 export * from "./components/avatar/MathEnvironment";
 export * from "./components/avatar/mixamoVRMRigMap";
 export * from "./components/avatar/retargetMixamoFbxToVrm";
@@ -13,6 +14,7 @@ export * from "./components/avatar/VrmFootShadow";
 export * from "./components/avatar/VrmTeleportEffect";
 export * from "./components/avatar/VrmViewer";
 export * from "./components/avatar/vector-browser-three";
+export * from "./components/avatar/vector-browser-utils";
 export * from "./components/avatar/vrm-desktop-energy";
 export * from "./components/chat/ChatAvatar";
 export * from "./components/companion/CompanionAppView";
@@ -31,3 +33,5 @@ export * from "./components/companion/scene-overlay-bridge";
 export * from "./components/companion/shared-companion-scene-context";
 export * from "./components/companion/VrmStage";
 export * from "./components/companion/walletUtils";
+export * from "./emotes";
+export * from "./vrm-assets";

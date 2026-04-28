@@ -1,4 +1,4 @@
-import type { LifeOpsBrowserSession } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsBrowserSession } from "@elizaos/shared";
 
 export type BrowserTaskArtifact = {
   kind: string;

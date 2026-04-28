@@ -3,10 +3,21 @@
 // Knowledge*, Memory*, MCP*, Share*
 // ---------------------------------------------------------------------------
 
-import type {
-  ConversationMetadata,
-  ConversationScope,
-} from "@elizaos/agent/api/server-types";
+import type { ConversationMetadata, ConversationScope } from "@elizaos/agent";
+
+export type {
+  ScratchpadCreateTopicRequest,
+  ScratchpadDeleteTopicResponse,
+  ScratchpadReplaceTopicRequest,
+  ScratchpadSearchResponse,
+  ScratchpadSummaryPreviewRequest,
+  ScratchpadSummaryPreviewResponse,
+  ScratchpadTopicDto,
+  ScratchpadTopicMatchDto,
+  ScratchpadTopicResponse,
+  ScratchpadTopicSearchResultDto,
+  ScratchpadTopicsListResponse,
+} from "@elizaos/shared/contracts";
 
 // Conversations
 export interface Conversation {
@@ -423,6 +434,43 @@ export interface N8nWorkflow {
   lastExecutionAt?: string;
   /** Connection graph. Present on single-workflow GET; absent on list. */
   connections?: N8nConnectionMap;
+}
+
+/**
+ * One missing credential entry on a workflow generate response. `authUrl` is
+ * a `milady://settings/connectors/<provider>` deep-link the UI may surface.
+ */
+export interface N8nWorkflowMissingCredential {
+  credType: string;
+  authUrl?: string;
+}
+
+/**
+ * Returned by `POST /api/n8n/workflows/generate` when the deployed workflow
+ * references credentials the user hasn't connected yet. Carries the deployed
+ * workflow's identity plus the list of unmet credential requirements so the
+ * UI can render a CTA banner.
+ */
+export interface N8nWorkflowMissingCredentialsResponse {
+  id: string;
+  name: string;
+  active: boolean;
+  missingCredentials: N8nWorkflowMissingCredential[];
+  warning: "missing credentials";
+}
+
+export type N8nWorkflowGenerateResponse =
+  | N8nWorkflow
+  | N8nWorkflowMissingCredentialsResponse;
+
+export function isMissingCredentialsResponse(
+  res: N8nWorkflowGenerateResponse,
+): res is N8nWorkflowMissingCredentialsResponse {
+  const candidate = res as N8nWorkflowMissingCredentialsResponse;
+  return (
+    candidate.warning === "missing credentials" &&
+    Array.isArray(candidate.missingCredentials)
+  );
 }
 
 export interface N8nWorkflowWriteNode {

@@ -22,15 +22,15 @@ console.log(`${getLogPrefix()} Script starting...`);
  *        (or via the dev script: bun run dev)
  */
 import process from "node:process";
-import { setRestartHandler } from "@elizaos/agent/runtime/restart";
+import { setRestartHandler } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { colorizeDevSettingsStartupBanner } from "@elizaos/shared/dev-settings-banner-style";
 import {
+  colorizeDevSettingsStartupBanner,
   resolveApiToken,
   resolveDesktopApiPort,
   syncResolvedApiPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import { startApiServer } from "../api/server";
 import { formatApiDevSettingsBannerText } from "./api-dev-settings-banner.js";
 import {

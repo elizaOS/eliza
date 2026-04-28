@@ -1,10 +1,11 @@
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/agent/api";
 import {
   type RegistryRouteContext as AutonomousRegistryRouteContext,
+  classifyRegistryPluginRelease,
   handleRegistryRoutes as handleAutonomousRegistryRoutes,
-} from "@elizaos/agent/api/registry-routes";
-import { classifyRegistryPluginRelease } from "@elizaos/agent/runtime";
-import type { PluginManagerLike } from "@elizaos/agent/services/plugin-manager-types";
+  type PluginManagerLike,
+  type RouteHelpers,
+  type RouteRequestMeta,
+} from "@elizaos/agent";
 
 export interface RegistryRouteContext
   extends RouteRequestMeta,

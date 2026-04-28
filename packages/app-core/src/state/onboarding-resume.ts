@@ -6,7 +6,7 @@ import {
   resolveDeploymentTargetInConfig,
   resolveLinkedAccountsInConfig,
   resolveServiceRoutingInConfig,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
 import type { BuildOnboardingConnectionArgs } from "../onboarding-config";
 import { asRecord } from "./config-readers";

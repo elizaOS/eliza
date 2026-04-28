@@ -511,8 +511,7 @@ export function DatabaseView({
                           </MetaPill>
                         )}
                         <MetaPill>
-                          {tableData.total.toLocaleString()}{" "}
-                          {t("common.rows")}
+                          {tableData.total.toLocaleString()} {t("common.rows")}
                         </MetaPill>
                       </div>
                     </div>

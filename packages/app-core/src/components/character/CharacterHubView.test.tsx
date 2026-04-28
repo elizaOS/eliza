@@ -289,7 +289,7 @@ describe("CharacterHubView experience tab", () => {
       expect(clientMock.deleteExperience).toHaveBeenCalledWith("exp-1");
     });
     expect(
-      await screen.findByText("No experiences recorded yet."),
+      await screen.findByText(/I\s+haven.+t\s+learned\s+anything\s+yet\./),
     ).toBeTruthy();
   });
 });

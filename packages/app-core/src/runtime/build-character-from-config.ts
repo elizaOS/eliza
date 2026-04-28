@@ -1,11 +1,11 @@
-import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@elizaos/agent/runtime/eliza";
+import { buildCharacterFromConfig as upstreamBuildCharacterFromConfig } from "@elizaos/agent";
 import {
   getDefaultStylePreset,
   normalizeCharacterLanguage,
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared/onboarding-presets";
+} from "@elizaos/shared";
 import { normalizeCharacterMessageExamples } from "../utils/character-message-examples.js";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 

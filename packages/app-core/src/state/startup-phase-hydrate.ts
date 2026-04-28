@@ -18,7 +18,9 @@ import { prefetchVrmToCache } from "../components/companion/injected";
 import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
 import {
   COMPANION_ENABLED,
+  getWindowNavigationPath,
   isRouteRootPath,
+  shouldUseHashNavigation,
   type Tab,
   tabFromPath,
 } from "../navigation";
@@ -140,14 +142,6 @@ function shouldNotifyDesktopForAssistantEvent(
   return payload.source === "lifeops-reminder";
 }
 
-function getNavigationPathFromWindow(): string {
-  if (typeof window === "undefined") return "/";
-  if (window.location.protocol === "file:") {
-    return window.location.hash.replace(/^#/, "") || "/";
-  }
-  return window.location.pathname || "/";
-}
-
 const DEFAULT_LANDING_TAB: Tab = "chat";
 
 /**
@@ -254,7 +248,7 @@ export async function runHydrating(
   await deps.fetchAutonomyReplay();
 
   // Tab routing
-  const navPath = getNavigationPathFromWindow();
+  const navPath = getWindowNavigationPath();
   const urlTab = tabFromPath(navPath);
   const isRoot = isRouteRootPath(navPath);
   const shouldCharSelect =
@@ -636,11 +630,9 @@ export function bindReadyPhase(
   );
 
   // Navigation listener
-  const isFile =
-    typeof window !== "undefined" && window.location.protocol === "file:";
-  const navEvt = isFile ? "hashchange" : "popstate";
+  const navEvt = shouldUseHashNavigation() ? "hashchange" : "popstate";
   const handleNav = () => {
-    const t = tabFromPath(getNavigationPathFromWindow());
+    const t = tabFromPath(getWindowNavigationPath());
     if (t) depsRef.current?.setTabRaw(t);
   };
   if (typeof window !== "undefined") window.addEventListener(navEvt, handleNav);

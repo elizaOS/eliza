@@ -370,16 +370,31 @@ export function repairBrokenInstallRecord(
 
 /** Read package.json exports/main to find the importable entry file. */
 /** @internal Exported for testing. */
-export async function resolvePackageEntry(pkgRoot: string): Promise<string> {
+export async function resolvePackageEntry(
+  pkgRoot: string,
+  exportSubpath = ".",
+): Promise<string> {
   const fallback = path.join(pkgRoot, "dist", "index");
+  const subpath = exportSubpath.replace(/^\.\//, "");
   const fallbackCandidates = [
-    fallback,
-    path.join(pkgRoot, "index"),
-    path.join(pkgRoot, "index.mjs"),
-    path.join(pkgRoot, "index.ts"),
-    path.join(pkgRoot, "src", "index"),
-    path.join(pkgRoot, "src", "index.mjs"),
-    path.join(pkgRoot, "src", "index.ts"),
+    ...(exportSubpath === "."
+      ? [
+          fallback,
+          path.join(pkgRoot, "index"),
+          path.join(pkgRoot, "index.mjs"),
+          path.join(pkgRoot, "index.ts"),
+          path.join(pkgRoot, "src", "index"),
+          path.join(pkgRoot, "src", "index.mjs"),
+          path.join(pkgRoot, "src", "index.ts"),
+        ]
+      : [
+          path.join(pkgRoot, subpath),
+          path.join(pkgRoot, `${subpath}.mjs`),
+          path.join(pkgRoot, `${subpath}.ts`),
+          path.join(pkgRoot, "src", subpath),
+          path.join(pkgRoot, "src", `${subpath}.mjs`),
+          path.join(pkgRoot, "src", `${subpath}.ts`),
+        ]),
   ];
 
   const chooseExisting = (...paths: string[]): string => {
@@ -402,10 +417,13 @@ export async function resolvePackageEntry(pkgRoot: string): Promise<string> {
       exports?: Record<string, string | Record<string, string>> | string;
     };
 
-    if (typeof pkg.exports === "object" && pkg.exports["."] !== undefined) {
-      const dot = pkg.exports["."];
+    if (
+      typeof pkg.exports === "object" &&
+      pkg.exports[exportSubpath] !== undefined
+    ) {
+      const entry = pkg.exports[exportSubpath];
       const resolved =
-        typeof dot === "string" ? dot : dot.import || dot.default;
+        typeof entry === "string" ? entry : entry.import || entry.default;
       if (typeof resolved === "string") {
         return chooseExisting(
           path.resolve(pkgRoot, resolved),
@@ -413,13 +431,13 @@ export async function resolvePackageEntry(pkgRoot: string): Promise<string> {
         );
       }
     }
-    if (typeof pkg.exports === "string") {
+    if (exportSubpath === "." && typeof pkg.exports === "string") {
       return chooseExisting(
         path.resolve(pkgRoot, pkg.exports),
         ...fallbackCandidates,
       );
     }
-    if (pkg.main) {
+    if (exportSubpath === "." && pkg.main) {
       return chooseExisting(
         path.resolve(pkgRoot, pkg.main),
         ...fallbackCandidates,

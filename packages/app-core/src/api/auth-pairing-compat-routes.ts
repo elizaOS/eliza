@@ -1,21 +1,20 @@
 import crypto from "node:crypto";
 import type http from "node:http";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import {
-  ensureCompatApiAuthorized,
-  getCompatApiToken,
-  tokenMatches,
-} from "./auth";
+import { loadElizaConfig } from "@elizaos/agent";
+import { logger } from "@elizaos/core";
+import { ensureRouteAuthorized, getCompatApiToken, tokenMatches } from "./auth";
 import {
   type CompatRuntimeState,
+  getCompatDrizzleDb,
   hasCompatPersistedOnboardingState,
+  isTrustedLocalRequest,
   readCompatJsonBody,
 } from "./compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "./response";
-import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
+import { isCloudProvisioned } from "./server-onboarding-compat";
 
 // ---------------------------------------------------------------------------
 // Pairing state & helpers
@@ -44,11 +43,15 @@ if (typeof pairingSweepTimer === "object" && "unref" in pairingSweepTimer) {
   pairingSweepTimer.unref();
 }
 
+export function _resetAuthPairingStateForTests(): void {
+  pairingCode = null;
+  pairingExpiresAt = 0;
+  pairingAttempts.clear();
+}
+
 function pairingEnabled(): boolean {
   return (
-    Boolean(getCompatApiToken()) &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1" &&
-    process.env.ELIZA_PAIRING_DISABLED !== "1"
+    Boolean(getCompatApiToken()) && process.env.ELIZA_PAIRING_DISABLED !== "1"
   );
 }
 
@@ -57,10 +60,9 @@ function normalizePairingCode(code: string): string {
 }
 
 function generatePairingCode(): string {
-  const bytes = crypto.randomBytes(12);
   let raw = "";
-  for (let i = 0; i < bytes.length; i += 1) {
-    raw += PAIRING_ALPHABET[bytes[i] % PAIRING_ALPHABET.length];
+  for (let i = 0; i < 12; i += 1) {
+    raw += PAIRING_ALPHABET[crypto.randomInt(0, PAIRING_ALPHABET.length)];
   }
   return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
 }
@@ -74,7 +76,7 @@ function ensurePairingCode(): string | null {
   if (!pairingCode || now > pairingExpiresAt) {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
-    console.warn(`[api] Pairing code: ${pairingCode} (valid for 10 minutes)`);
+    logger.warn(`[api] Pairing code: ${pairingCode} (valid for 10 minutes)`);
   }
 
   return pairingCode;
@@ -112,46 +114,66 @@ function rateLimitPairing(ip: string | null): boolean {
 export async function handleAuthPairingCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  _state: CompatRuntimeState,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
 
   // ── GET /api/onboarding/status ──────────────────────────────────────
+  // Cloud-provisioned containers used to skip auth here entirely. That
+  // bypass is gone: callers now need a trusted local request, a valid
+  // cookie session, an allowed legacy bearer, or a bootstrap exchange.
   if (method === "GET" && url.pathname === "/api/onboarding/status") {
-    // Cloud-provisioned containers always report onboarding complete and
-    // skip auth so the SPA can read this before pairing/token exchange.
-    if (_isCloudProvisioned()) {
-      sendJsonResponse(res, 200, { complete: true, cloudProvisioned: true });
-      return true;
-    }
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     const config = loadElizaConfig();
     sendJsonResponse(res, 200, {
       complete: hasCompatPersistedOnboardingState(config),
+      // Metadata only — no auth implication. The client uses this to decide
+      // whether to show the bootstrap-token wizard step. Auth is enforced by
+      // the exchange endpoint itself; this flag never grants access.
+      cloudProvisioned: isCloudProvisioned(),
     });
     return true;
   }
 
   // ── GET /api/auth/status ────────────────────────────────────────────
+  // This is a public probe so unauthenticated clients can decide whether
+  // to show pairing UI. The response leaks no secrets — only whether auth
+  // is configured and whether pairing is currently open.
   if (method === "GET" && url.pathname === "/api/auth/status") {
-    if (_isCloudProvisioned()) {
-      sendJsonResponse(res, 200, {
-        required: false,
-        pairingEnabled: false,
-        expiresAt: null,
-      });
-      return true;
+    const localAccess = isTrustedLocalRequest(req);
+    const db = getCompatDrizzleDb(state);
+    let passwordConfigured = false;
+    if (db) {
+      const { AuthStore } = await import("../services/auth-store");
+      const owner = (
+        await new AuthStore(
+          db as ConstructorParameters<typeof AuthStore>[0],
+        ).listIdentitiesByKind("owner")
+      )[0];
+      passwordConfigured = Boolean(owner?.passwordHash);
     }
-    const required = Boolean(getCompatApiToken());
+    const bootstrapRequired = isCloudProvisioned();
+    const tokenRequired = Boolean(getCompatApiToken());
+    const loginRequired = !localAccess && !tokenRequired && !bootstrapRequired;
+    const required =
+      !localAccess &&
+      (tokenRequired ||
+        passwordConfigured ||
+        bootstrapRequired ||
+        loginRequired);
     const enabled = pairingEnabled();
     if (enabled) {
       ensurePairingCode();
     }
     sendJsonResponse(res, 200, {
       required,
+      loginRequired,
+      bootstrapRequired: required && bootstrapRequired && !tokenRequired,
+      localAccess,
+      passwordConfigured,
       pairingEnabled: enabled,
       expiresAt: enabled ? pairingExpiresAt : null,
     });

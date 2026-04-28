@@ -6,17 +6,15 @@
  * in styles.css — changing CSS vars automatically updates Tailwind tokens.
  */
 
-import type {
-  ThemeColorSet,
-  ThemeDefinition,
-  ThemeFonts,
-} from "@elizaos/shared/contracts/theme";
 import {
+  BUILTIN_THEMES,
   THEME_CSS_VAR_MAP,
   THEME_FONT_CSS_VARS,
   THEME_FONT_LINK_ID,
-} from "@elizaos/shared/contracts/theme";
-import { BUILTIN_THEMES } from "@elizaos/shared/themes/presets";
+  type ThemeColorSet,
+  type ThemeDefinition,
+  type ThemeFonts,
+} from "@elizaos/shared";
 
 /**
  * Apply a theme's color set for the given mode to the document root.

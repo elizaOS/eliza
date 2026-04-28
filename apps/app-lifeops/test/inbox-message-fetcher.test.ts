@@ -1,6 +1,10 @@
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
-import { fetchChatMessages } from "../src/inbox/message-fetcher.js";
+import {
+  fetchChatMessages,
+  fetchGmailMessages,
+  type GmailInboxSource,
+} from "../src/inbox/message-fetcher.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-000000000002" as UUID;
@@ -79,6 +83,47 @@ describe("fetchChatMessages", () => {
 
     await expect(fetchChatMessages(runtime, {})).rejects.toThrow(
       "world store offline",
+    );
+  });
+});
+
+describe("fetchGmailMessages", () => {
+  test("passes the requested limit through to Gmail triage for cache warming", async () => {
+    const source: GmailInboxSource = {
+      getGoogleConnectorStatus: vi.fn(async () => ({
+        provider: "google",
+        side: "owner",
+        mode: "oauth",
+        defaultMode: "oauth",
+        availableModes: ["oauth"],
+        executionTarget: "local",
+        sourceOfTruth: "local_storage",
+        configured: true,
+        connected: true,
+        reason: "connected",
+        grantedCapabilities: ["google.gmail.triage"],
+        missingCapabilities: [],
+        identity: null,
+        authUrl: null,
+      })),
+      getGmailTriage: vi.fn(async () => ({
+        messages: [],
+        source: "cache",
+        syncedAt: null,
+        summary: {
+          totalCount: 0,
+          unreadCount: 0,
+          importantCount: 0,
+          replyNeededCount: 0,
+        },
+      })),
+    };
+
+    await fetchGmailMessages(source, { limit: 1200, grantId: "grant-1" });
+
+    expect(source.getGmailTriage).toHaveBeenCalledWith(
+      expect.any(URL),
+      { grantId: "grant-1", maxResults: 1200 },
     );
   });
 });

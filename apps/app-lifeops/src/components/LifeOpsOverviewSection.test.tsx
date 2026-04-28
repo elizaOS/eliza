@@ -1,19 +1,19 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type {
   LifeOpsCapabilitiesStatus,
   LifeOpsGoogleConnectorStatus,
   LifeOpsInboxMessage,
   LifeOpsOverview,
   LifeOpsXConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   LifeOpsScreenTimeSummary,
   LifeOpsSocialHabitSummary,
 } from "../api/client-lifeops.js";
-import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   calendarState,
@@ -58,6 +58,10 @@ const {
         vi.fn<() => Promise<LifeOpsScreenTimeSummary>>(),
       getLifeOpsSocialHabitSummary:
         vi.fn<() => Promise<LifeOpsSocialHabitSummary>>(),
+      getLifeOpsScreenTimeBreakdown:
+        vi.fn<() => Promise<{ totalSeconds: number }>>(),
+      listBrowserBridgeCompanions:
+        vi.fn<() => Promise<{ companions: unknown[] }>>(),
     },
     googleConnectorState: {
       actionPending: false,
@@ -383,6 +387,10 @@ beforeEach(() => {
   clientMock.getLifeOpsSocialHabitSummary.mockRejectedValue(
     new Error("Social unavailable."),
   );
+  clientMock.getLifeOpsScreenTimeBreakdown.mockResolvedValue({
+    totalSeconds: 0,
+  });
+  clientMock.listBrowserBridgeCompanions.mockResolvedValue({ companions: [] });
 });
 
 afterEach(() => {
@@ -461,7 +469,7 @@ describe("LifeOpsOverviewSection", () => {
     );
 
     expect(screen.queryByText("Set up LifeOps")).toBeNull();
-    expect(screen.getByText("Overview is partial.")).toBeTruthy();
+    expect(screen.getByText("Partial overview")).toBeTruthy();
     expect(screen.getByText("Upcoming")).toBeTruthy();
     expect(screen.getAllByText("Reminders").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Sleep").length).toBeGreaterThan(0);
@@ -469,7 +477,9 @@ describe("LifeOpsOverviewSection", () => {
     expect(screen.queryByText("Priority Mail")).toBeNull();
     expect(screen.queryByText("Work")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open LifeOps settings" }),
+    );
 
     expect(onNavigate).toHaveBeenCalledWith("setup");
   });
@@ -524,9 +534,9 @@ describe("LifeOpsOverviewSection", () => {
     );
 
     expect(screen.queryByText("Set up LifeOps")).toBeNull();
-    expect(screen.getByText("Overview needs access.")).toBeTruthy();
+    expect(screen.getAllByText("Connect a source").length).toBeGreaterThan(0);
     expect(
-      screen.getByText("Add some access to populate Overview"),
+      screen.getByText("Open Settings"),
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));

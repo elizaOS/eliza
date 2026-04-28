@@ -11,6 +11,7 @@ export const requestElevationAction: ElizaAction = {
 	name: "REQUEST_ELEVATION",
 	description:
 		"Request temporary elevation of permissions for a specific action",
+	suppressPostActionContinuation: true,
 
 	validate: async (
 		runtime: IAgentRuntime,
@@ -117,6 +118,7 @@ export const requestElevationAction: ElizaAction = {
 				success: false,
 				text: 'Please specify the action you need elevated permissions for. Example: "I need to manage roles to help moderate the channel"',
 				error: "No action specified",
+				data: { actionName: "REQUEST_ELEVATION" },
 			};
 		}
 
@@ -155,6 +157,7 @@ export const requestElevationAction: ElizaAction = {
 
 Please use these permissions responsibly. All actions will be logged for audit.`,
 					data: {
+						actionName: "REQUEST_ELEVATION",
 						approved: true,
 						expiresAt: result.ttl ? Date.now() + result.ttl : undefined,
 						method: result.method,
@@ -173,6 +176,7 @@ Please use these permissions responsibly. All actions will be logged for audit.`
 					success: false,
 					text: denialMessage,
 					data: {
+						actionName: "REQUEST_ELEVATION",
 						approved: false,
 						reason: result.reason,
 						currentTrust: trustProfile.overallTrust,
@@ -188,6 +192,7 @@ Please use these permissions responsibly. All actions will be logged for audit.`
 				success: false,
 				text: "Failed to process elevation request. Please try again.",
 				error: error instanceof Error ? error.message : "Unknown error",
+				data: { actionName: "REQUEST_ELEVATION" },
 			};
 		}
 	},

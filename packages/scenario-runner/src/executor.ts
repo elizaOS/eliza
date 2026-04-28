@@ -504,12 +504,10 @@ async function startScenarioApiServer(
         if (!res.headersSent) {
           res.statusCode = 500;
           res.setHeader("Content-Type", "application/json; charset=utf-8");
-          res.end(
-            JSON.stringify({
-              error: error instanceof Error ? error.message : String(error),
-            }),
-          );
+          res.end(JSON.stringify({ error: "Internal Server Error" }));
         }
+        // Log full error server-side for diagnostics; do not expose to client.
+        console.error("[scenario-runner] route handler error", error);
       }
       return;
     }
@@ -562,7 +560,8 @@ function resolveNowToken(token: string, baseNow: Date): string | null {
 }
 
 function addClockOffset(baseNow: Date, offset: string): Date {
-  const resolved = resolveNowToken(`now${offset}`, baseNow);
+  const normalizedOffset = /^[+-]/.test(offset) ? offset : `+${offset}`;
+  const resolved = resolveNowToken(`now${normalizedOffset}`, baseNow);
   if (resolved === null) {
     throw new Error(`unsupported clock offset '${offset}'`);
   }
@@ -571,7 +570,7 @@ function addClockOffset(baseNow: Date, offset: string): Date {
 
 function resolveScenarioTemplates(value: unknown, currentNow: Date): unknown {
   if (typeof value === "string") {
-    return value.replace(/\{\{([^}]+)\}\}/g, (fullMatch, rawToken) => {
+    return value.replace(/\{\{([^{}]{1,256})\}\}/g, (fullMatch, rawToken) => {
       const token = String(rawToken).trim();
       const resolved = resolveNowToken(token, currentNow);
       if (resolved === null) {
@@ -683,7 +682,7 @@ async function resolveTemplateString(args: {
   apiServer: ScenarioApiServer;
   variables: ScenarioVariableState;
 }): Promise<string> {
-  const matches = Array.from(args.value.matchAll(/\{\{([^}]+)\}\}/g));
+  const matches = Array.from(args.value.matchAll(/\{\{([^{}]{1,256})\}\}/g));
   if (matches.length === 0) {
     return args.value;
   }
@@ -1057,6 +1056,8 @@ async function executeApiTurn(args: {
 }): Promise<{
   apiStatus: number;
   apiBody: unknown;
+  statusCode: number;
+  responseBody: unknown;
   responseText: string;
   durationMs: number;
 }> {
@@ -1115,10 +1116,70 @@ async function executeApiTurn(args: {
   return {
     apiStatus: response.status,
     apiBody: responseBody,
+    statusCode: response.status,
+    responseBody,
     responseText:
       typeof responseBody === "string"
         ? responseBody
         : JSON.stringify(responseBody ?? ""),
+    durationMs: Date.now() - startedAt,
+  };
+}
+
+async function executeTickTurn(args: {
+  turn: ScenarioTurn;
+  apiServer: ScenarioApiServer;
+  variables: ScenarioVariableState;
+  turnTimeoutMs: number;
+  runtime: AgentRuntime;
+}): Promise<{
+  statusCode: number;
+  responseBody: unknown;
+  responseText: string;
+  durationMs: number;
+}> {
+  const worker =
+    typeof args.turn.worker === "string" && args.turn.worker.trim().length > 0
+      ? args.turn.worker.trim()
+      : null;
+  if (worker !== "lifeops_scheduler") {
+    throw new Error(
+      `[executor] tick turn '${args.turn.name}' has unsupported worker '${worker ?? "(missing)"}'`,
+    );
+  }
+
+  const options = await resolveTemplateValue({
+    value: args.turn.options ?? {},
+    apiServer: args.apiServer,
+    variables: args.variables,
+  });
+  const now =
+    typeof args.turn.now === "string"
+      ? await resolveTemplateString({
+          value: args.turn.now,
+          apiServer: args.apiServer,
+          variables: args.variables,
+        })
+      : undefined;
+  const startedAt = Date.now();
+  const { executeLifeOpsSchedulerTask } = await import(
+    "@elizaos/app-lifeops/lifeops/runtime"
+  );
+  const result = await withTimeout(
+    executeLifeOpsSchedulerTask(args.runtime, {
+      ...(asRecord(options) ?? {}),
+      ...(now ? { now } : {}),
+    }),
+    typeof args.turn.timeoutMs === "number"
+      ? args.turn.timeoutMs
+      : args.turnTimeoutMs,
+    `tick(${args.turn.name})`,
+  );
+  const responseBody = { success: true, ...result };
+  return {
+    statusCode: 200,
+    responseBody,
+    responseText: JSON.stringify(responseBody),
     durationMs: Date.now() - startedAt,
   };
 }
@@ -1143,10 +1204,10 @@ async function runTurnAssertions(
 
   if (typeof turn.assertResponse === "function") {
     const result =
-      kind === "api"
+      kind === "api" || kind === "tick"
         ? await (
             turn.assertResponse as (status: number, body: unknown) => unknown
-          )(execution.apiStatus ?? 0, execution.apiBody)
+          )(execution.statusCode ?? 0, execution.responseBody)
         : await (
             turn.assertResponse as (text: string) => unknown
           )(execution.responseText ?? "");
@@ -1351,6 +1412,7 @@ export async function runScenario(
 
     const seedResult = await runCustomSeeds(scenario, runtime, ctx, logicalNow);
     logicalNow = seedResult.now;
+    variables.baseNow = new Date(logicalNow);
     ctx.now = logicalNow.toISOString();
     if (seedResult.error) {
       report.status = "failed";
@@ -1405,7 +1467,7 @@ export async function runScenario(
 
     for (const turn of scenario.turns) {
       const kind = typeof turn.kind === "string" ? turn.kind : "message";
-      if (kind !== "message" && kind !== "api") {
+      if (kind !== "message" && kind !== "api" && kind !== "tick") {
         report.turns.push({
           name: turn.name,
           kind,
@@ -1433,6 +1495,17 @@ export async function runScenario(
                 turnTimeoutMs: opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
               })),
             }
+          : kind === "tick"
+            ? {
+                actionsCalled: [],
+                ...(await executeTickTurn({
+                  turn,
+                  apiServer: apiServer!,
+                  variables,
+                  turnTimeoutMs: opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                  runtime,
+                })),
+              }
           : {
               actionsCalled: [],
               ...(await executeMessageTurn(

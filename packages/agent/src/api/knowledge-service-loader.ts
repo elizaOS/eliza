@@ -5,4 +5,4 @@ export {
   type KnowledgeLoadFailReason,
   type KnowledgeServiceLike,
   type KnowledgeServiceResult,
-} from "@elizaos/app-knowledge/service-loader";
+} from "@elizaos/app-knowledge";

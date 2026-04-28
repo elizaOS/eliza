@@ -33,6 +33,7 @@ describeIf(LIVE)("Shopify API live route coverage", () => {
     runtime = await startLiveRuntimeServer({
       tempPrefix: "eliza-shopify-api-",
       loggingLevel: "warn",
+      pluginsAllow: ["@elizaos/app-shopify"],
       env: {
         SHOPIFY_STORE_DOMAIN: undefined,
         SHOPIFY_ACCESS_TOKEN: undefined,

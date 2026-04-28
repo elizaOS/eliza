@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   extractPlugin,
   type PluginModuleShape,
-} from "@elizaos/agent/test-support/test-helpers";
+} from "@elizaos/agent";
 
 type PluginCategory =
   | "ai-provider"
@@ -51,20 +51,36 @@ export type LocalWorkspacePlugin = {
   requiredEnvKeys: string[];
 };
 
-const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-);
+function findWorkspaceRoot(startDir: string): string {
+  let current = path.resolve(startDir);
+  while (true) {
+    if (fs.existsSync(path.join(current, "plugins.json"))) {
+      return current;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return path.resolve(
+        startDir,
+        "..",
+        "..",
+        "..",
+        "..",
+        "..",
+      );
+    }
+    current = parent;
+  }
+}
+
+const REPO_ROOT = findWorkspaceRoot(import.meta.dirname);
 const PLUGIN_MANIFEST_PATH = path.join(REPO_ROOT, "plugins.json");
 
 let cachedPluginsPromise: Promise<LocalWorkspacePlugin[]> | null = null;
 
 function readPluginManifest(): PluginManifest {
+  if (!fs.existsSync(PLUGIN_MANIFEST_PATH)) {
+    return { plugins: [] };
+  }
   return JSON.parse(
     fs.readFileSync(PLUGIN_MANIFEST_PATH, "utf8"),
   ) as PluginManifest;
@@ -72,6 +88,9 @@ function readPluginManifest(): PluginManifest {
 
 function findPackageRoot(dirName: string): string | null {
   const candidates = [
+    path.join(REPO_ROOT, "plugins", dirName, "typescript"),
+    path.join(REPO_ROOT, "plugins", dirName),
+    path.join(REPO_ROOT, "packages", dirName),
     path.join(REPO_ROOT, "eliza", "plugins", dirName, "typescript"),
     path.join(REPO_ROOT, "eliza", "plugins", dirName),
     path.join(REPO_ROOT, "eliza", "packages", dirName),

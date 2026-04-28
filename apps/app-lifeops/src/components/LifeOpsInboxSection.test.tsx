@@ -9,15 +9,13 @@ const {
   openLifeOpsChatMock,
   useInboxMock,
   useMediaQueryMock,
-} = vi.hoisted(
-  () => ({
-    unsubscribeLifeOpsEmailSenderMock: vi.fn(),
-    openExternalUrlMock: vi.fn(),
-    openLifeOpsChatMock: vi.fn(),
-    useInboxMock: vi.fn(),
-    useMediaQueryMock: vi.fn(() => true),
-  }),
-);
+} = vi.hoisted(() => ({
+  unsubscribeLifeOpsEmailSenderMock: vi.fn(),
+  openExternalUrlMock: vi.fn(),
+  openLifeOpsChatMock: vi.fn(),
+  useInboxMock: vi.fn(),
+  useMediaQueryMock: vi.fn(() => true),
+}));
 
 vi.mock("@elizaos/app-core", () => ({
   Button: "button",
@@ -67,40 +65,60 @@ afterEach(() => {
   useMediaQueryMock.mockReturnValue(true);
 });
 
+// Single Gmail message used across the tests below. The component now consumes
+// `threadGroups` for its primary list, so each fixture wraps the message into a
+// group with totalCount: 1.
+const SAMPLE_GMAIL_MESSAGE = {
+  id: "msg-1",
+  channel: "gmail" as const,
+  deepLink: null,
+  receivedAt: "2026-04-22T12:00:00.000Z",
+  sender: {
+    avatarUrl: null,
+    displayName: "Fluhr, Michael",
+    email: "michael@example.test",
+    id: "sender-1",
+  },
+  snippet: "Hey Seb, Yes, this is in progress.",
+  sourceRef: {
+    channel: "gmail" as const,
+    externalId: "msg-1",
+  },
+  subject: "Fluhr, Michael",
+  unread: true,
+  chatType: "dm" as const,
+  threadId: "thread-1",
+};
+
+function gmailFeedFixture(message = SAMPLE_GMAIL_MESSAGE) {
+  return {
+    channel: "all" as const,
+    error: null,
+    loading: false,
+    messages: [message],
+    threadGroups: [
+      {
+        threadId: message.threadId ?? message.id,
+        channel: message.channel,
+        chatType: message.chatType ?? "dm",
+        latestMessage: message,
+        totalCount: 1,
+        unreadCount: message.unread ? 1 : 0,
+        messages: [message],
+      },
+    ],
+    refresh: vi.fn(),
+    searchQuery: "",
+    setChannel: vi.fn(),
+    setSearchQuery: vi.fn(),
+  };
+}
+
 describe("LifeOpsInboxSection", () => {
   it("keeps compact inboxes in list mode until a message is selected", () => {
     const onSelect = vi.fn();
 
-    useInboxMock.mockReturnValue({
-      channel: "all",
-      error: null,
-      loading: false,
-      messages: [
-        {
-          id: "msg-1",
-          channel: "gmail",
-          deepLink: null,
-          receivedAt: "2026-04-22T12:00:00.000Z",
-          sender: {
-            avatarUrl: null,
-            displayName: "Fluhr, Michael",
-            email: "michael@example.test",
-            id: "sender-1",
-          },
-          snippet: "Hey Seb, Yes, this is in progress.",
-          sourceRef: {
-            channel: "gmail",
-            externalId: "msg-1",
-          },
-          subject: "Fluhr, Michael",
-          unread: true,
-        },
-      ],
-      refresh: vi.fn(),
-      searchQuery: "",
-      setChannel: vi.fn(),
-      setSearchQuery: vi.fn(),
-    });
+    useInboxMock.mockReturnValue(gmailFeedFixture());
 
     render(
       <LifeOpsInboxSection
@@ -121,36 +139,12 @@ describe("LifeOpsInboxSection", () => {
   });
 
   it("routes chat actions through the LifeOps chat launcher for the selected message", () => {
-    useInboxMock.mockReturnValue({
-      channel: "all",
-      error: null,
-      loading: false,
-      messages: [
-        {
-          id: "msg-1",
-          channel: "gmail",
-          deepLink: "https://mail.google.com/mail/u/0/#inbox/msg-1",
-          receivedAt: "2026-04-22T12:00:00.000Z",
-          sender: {
-            avatarUrl: null,
-            displayName: "Fluhr, Michael",
-            email: "michael@example.test",
-            id: "sender-1",
-          },
-          snippet: "Hey Seb, Yes, this is in progress.",
-          sourceRef: {
-            channel: "gmail",
-            externalId: "msg-1",
-          },
-          subject: "Fluhr, Michael",
-          unread: true,
-        },
-      ],
-      refresh: vi.fn(),
-      searchQuery: "",
-      setChannel: vi.fn(),
-      setSearchQuery: vi.fn(),
-    });
+    useInboxMock.mockReturnValue(
+      gmailFeedFixture({
+        ...SAMPLE_GMAIL_MESSAGE,
+        deepLink: "https://mail.google.com/mail/u/0/#inbox/msg-1",
+      }),
+    );
 
     render(
       <LifeOpsInboxSection
@@ -177,36 +171,12 @@ describe("LifeOpsInboxSection", () => {
       },
     });
 
-    useInboxMock.mockReturnValue({
-      channel: "all",
-      error: null,
-      loading: false,
-      messages: [
-        {
-          id: "msg-1",
-          channel: "gmail",
-          deepLink: "https://mail.google.com/mail/u/0/#inbox/msg-1",
-          receivedAt: "2026-04-22T12:00:00.000Z",
-          sender: {
-            avatarUrl: null,
-            displayName: "Fluhr, Michael",
-            email: "michael@example.test",
-            id: "sender-1",
-          },
-          snippet: "Hey Seb, Yes, this is in progress.",
-          sourceRef: {
-            channel: "gmail",
-            externalId: "msg-1",
-          },
-          subject: "Fluhr, Michael",
-          unread: true,
-        },
-      ],
-      refresh: vi.fn(),
-      searchQuery: "",
-      setChannel: vi.fn(),
-      setSearchQuery: vi.fn(),
-    });
+    useInboxMock.mockReturnValue(
+      gmailFeedFixture({
+        ...SAMPLE_GMAIL_MESSAGE,
+        deepLink: "https://mail.google.com/mail/u/0/#inbox/msg-1",
+      }),
+    );
 
     render(
       <LifeOpsInboxSection
@@ -220,11 +190,11 @@ describe("LifeOpsInboxSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unsubscribe" }));
 
     expect(confirmSpy).toHaveBeenCalledWith(
-      "Unsubscribe from michael@example.test and create a filter to auto-trash future mail?",
+      "Send an unsubscribe request to michael@example.test?",
     );
     expect(unsubscribeLifeOpsEmailSenderMock).toHaveBeenCalledWith({
       senderEmail: "michael@example.test",
-      blockAfter: true,
+      blockAfter: false,
       trashExisting: false,
       confirmed: true,
     });

@@ -7,12 +7,17 @@
       "outputs": ["dist/**"]
     },
     "@elizaos/agent#build": {
-      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build"],
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "@elizaos/plugin-pdf#build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },
     "@elizaos/app-core#build": {
       "dependsOn": ["@elizaos/core#build", "@elizaos/agent#build", "@elizaos/shared#build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/ui#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-pdf#build"],
       "env": ["LOG_LEVEL"],
       "outputs": ["dist/**"]
     },

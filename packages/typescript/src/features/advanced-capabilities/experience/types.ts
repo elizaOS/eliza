@@ -75,6 +75,15 @@ export interface Experience {
 	// Memory integration
 	embedding?: number[]; // For semantic search
 	memoryIds?: UUID[]; // Related memory IDs
+
+	// Provenance for review and evidence replay
+	sourceMessageIds?: UUID[]; // Conversation messages used as extraction evidence
+	sourceRoomId?: UUID; // Room where the evidence was observed
+	sourceTriggerMessageId?: UUID; // Agent message that triggered extraction
+	sourceTrajectoryId?: string; // Full trajectory, when available
+	sourceTrajectoryStepId?: string; // Active trajectory step, when available
+	extractionMethod?: string; // e.g. experience_evaluator or record_experience_action
+	extractionReason?: string; // LLM/self-reflection rationale for the memory
 }
 
 export interface ExperienceQuery {

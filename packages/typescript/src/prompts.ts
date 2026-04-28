@@ -441,7 +441,7 @@ export const messageHandlerTemplate = `task: Generate dialog and actions for {{a
 context:
 {{providers}}
 
-rules[21]:
+rules[22]:
 - think briefly, then respond
 - always include a <thought> field, even for direct replies
 - actions execute in listed order
@@ -450,6 +450,7 @@ rules[21]:
 - set simple=true only when the planner's text should be sent directly as the final reply without running REPLY again
 - if actions are REPLY-only and you want the REPLY action to generate the final user-facing message, set simple=false
 - use IGNORE or STOP only by themselves
+- in group conversations, choose IGNORE if the latest message is addressed to someone else and not to {{agentName}}
 - include providers only when needed
 - use only action and provider names that appear in the listed runtime surface; never invent new action names, provider names, benchmark ids, or paraphrased tool labels
 - when the user asks about uploaded files, documents, prior uploads, or knowledge-base contents, call the relevant providers before replying instead of asking the user to resend the material
@@ -460,6 +461,7 @@ rules[21]:
 - for live status questions or remaining-work queries, do not answer from recent conversation alone; call the relevant action/provider to refresh state, and do not pair it with a speculative REPLY that guesses the result
 - when an action will fetch the state and produce the final grounded answer, do not add REPLY just to say "checking", "let me look", or similar filler; use the action alone and leave text empty
 - when the user asks you to create, store, remember, schedule, remind, upload, follow up, route, escalate, or set a standing policy, choose the matching action instead of handling it in prose only
+- when the request names an external integration (Gmail, Discord, Slack, Telegram, GitHub, Google Sheets, Google Calendar, Google Drive, Notion, etc.) AND describes data movement between services or scheduled invocation of an external API, prefer CREATE_N8N_WORKFLOW; reserve CREATE_TRIGGER_TASK for self-driven scheduled prompts to the agent itself with no external API calls
 - for standing or future-condition requests like "if/when X, do Y", still choose the action that records, queues, or routes that behavior on the first turn
 - if a matching action can own the task and ask the missing follow-up itself, still select that action and put the clarification in text; do not reply in prose alone
 - when the user defines a durable preference, recurring block, escalation policy, upload policy, approval-gated workflow, or multi-device reminder rule, select the owning action even if some implementation details are still missing
@@ -682,7 +684,7 @@ IMPORTANT: Your response must ONLY contain the TOON document above. Do not inclu
 
 export const POST_CREATION_TEMPLATE = postCreationTemplate;
 
-export const reflectionEvaluatorTemplate = `# Task: Generate Agent Reflection, Extract Facts and Relationships
+export const reflectionEvaluatorTemplate = `# Task: Generate Agent Reflection and Extract Relationships
 
 # Examples:
 {{evaluationExamples}}
@@ -700,29 +702,20 @@ Message Sender: {{senderName}} (ID: {{senderId}})
 
 {{recentMessages}}
 
-# Known Facts:
-{{knownFacts}}
-
 # Latest Action Results:
 {{actionResults}}
 
 # Instructions:
 1. Generate a self-reflective thought on the conversation about your performance and interaction quality.
-2. Extract only durable new facts from the conversation.
-  - Prefer facts about the current user/sender that will still matter in a week: identity, stable preferences, recurring collaborators, durable setup, long-term projects, or ongoing constraints.
-  - Do NOT extract temporary status updates, current debugging/work items, one-off session metrics, isolated praise/complaints, or facts that are only true right now.
-  - If a fact would feel stale, irrelevant, or surprising to store a week from now, skip it.
-  - When in doubt, omit the fact.
-3. Identify and describe relationships between entities.
+2. Identify and describe relationships between entities.
   - The sourceEntityId is the UUID of the entity initiating the interaction.
   - The targetEntityId is the UUID of the entity being interacted with.
   - Relationships are one-direction, so a friendship would be two entity relationships where each entity is both the source and the target of the other.
   - Use exact UUIDs from the entities-in-room list only. Never invent placeholders, names, handles, or email addresses in sourceEntityId or targetEntityId.
-4. It is normal to return no facts when nothing durable was learned.
-5. Always decide whether the user's task or request is actually complete right now.
+3. Always decide whether the user's task or request is actually complete right now.
   - Set \`task_completed: true\` only if the user no longer needs additional action or follow-up from you in this turn.
   - If you asked a clarifying question, an action failed, work is still pending, or you only partially completed the request, set \`task_completed: false\`.
-6. Always include a short \`task_completion_reason\` grounded in the conversation and action results.
+4. Always include a short \`task_completion_reason\` grounded in the conversation and action results.
 
 Output:
 TOON only. Return exactly one TOON document. No prose before or after it. No <think>.
@@ -731,24 +724,133 @@ Use indexed TOON fields exactly like this:
 thought: "a self-reflective thought on the conversation"
 task_completed: false
 task_completion_reason: "The request is still incomplete because the needed action has not happened yet."
-facts[0]:
-  claim: durable factual statement
-  type: fact
-  in_bio: false
-  already_known: false
 relationships[0]:
   sourceEntityId: entity_initiating_interaction
   targetEntityId: entity_being_interacted_with
   tags[0]: dm_interaction
 
-For additional entries, increment the index: facts[1], relationships[1], tags[1], etc.
+For additional entries, increment the index: relationships[1], tags[1], etc.
 Always include \`task_completed\` and \`task_completion_reason\`.
-If there are no durable new facts, omit all facts[...] entries.
 If there are no relationships, omit all relationships[...] entries.
 
 IMPORTANT: Your response must ONLY contain the TOON document above. Do not include any text, thinking, or reasoning before or after it.`;
 
 export const REFLECTION_EVALUATOR_TEMPLATE = reflectionEvaluatorTemplate;
+
+export const factExtractionTemplate = `# Task: Classify and extract facts from this message
+
+You maintain a two-store fact memory for an AI assistant. For each message you decide what to insert, strengthen, decay, or contradict in that memory. You return a single JSON object with an \`ops\` array — nothing else.
+
+## The two stores
+
+**durable** — stable identity-level claims that will still matter in a year. Categories:
+- identity: where someone lives, name preferences, demographics ("lives in Berlin", "born 1990")
+- health: lasting conditions, allergies, recurring patterns ("flat cortisol curve", "allergic to penicillin", "always struggles in mornings")
+- relationship: persistent people in their life ("has a sister Mia", "married to Alex")
+- life_event: dated milestones ("founded $company in 2024", "moved to Berlin in 2023")
+- business_role: long-term roles ("senior engineer at $company since 2024")
+- preference: stable likes/dislikes ("prefers concise answers", "dislikes group calls")
+- goal: long-arc objectives ("wants to launch indie product by 2027")
+
+**current** — time-bound state about right now or the near term. Categories:
+- feeling: short-term emotional state ("anxious this morning", "excited about launch")
+- physical_state: short-term body state ("low energy this week", "headache today")
+- working_on: active task ("debugging auth flow", "drafting Q4 plan")
+- going_through: ongoing life situation ("navigating divorce", "recovering from surgery")
+- schedule_context: near-term schedule ("traveling to Tokyo next week", "deadline Friday")
+
+If a claim feels stale or surprising to retrieve a year from now, it is **current**, not durable. When in doubt, prefer current.
+
+## Operations
+
+- \`add_durable\`: insert a new durable fact. Always include \`claim\`, \`category\`, \`structured_fields\`. Optionally \`verification_status\` (default \`self_reported\`) and \`reason\`.
+- \`add_current\`: insert a new current fact. Always include \`claim\`, \`category\`, \`structured_fields\`. Optionally \`valid_at\` (ISO timestamp; defaults to now if omitted) and \`reason\`.
+- \`strengthen\`: an existing fact in the retrieved list is restated or reaffirmed. Include the existing \`factId\` and a short \`reason\`. **Do not add_* a duplicate.**
+- \`decay\`: an existing current fact looks resolved or no longer mentioned. Include \`factId\` and \`reason\`.
+- \`contradict\`: an existing fact is directly contradicted by the message. Include \`factId\`, \`reason\`, and \`proposedText\` if the user supplied a replacement.
+
+If the message is small talk or asks a question without supplying any new claim, return \`{"ops": []}\`. Empty output is the right answer most of the time.
+
+## Dedup rule (read this twice)
+
+Before emitting \`add_durable\` or \`add_current\`, scan the **Known durable facts** and **Known current facts** lists below. If a similar claim already exists, emit \`strengthen\` with that fact's \`factId\` instead of inserting a duplicate. Reword paraphrases also count as matches — match on meaning, not surface form.
+
+## Examples
+
+### Example 1 — durable health
+Message: "I have a flat cortisol curve confirmed via lab"
+\`\`\`json
+{"ops":[{"op":"add_durable","claim":"flat cortisol curve","category":"health","structured_fields":{"condition":"flat cortisol curve","source":"lab"},"verification_status":"confirmed"}]}
+\`\`\`
+
+### Example 2 — current feeling
+Message: "I'm anxious this morning"
+\`\`\`json
+{"ops":[{"op":"add_current","claim":"anxious this morning","category":"feeling","structured_fields":{"emotion":"anxious","window":"morning"}}]}
+\`\`\`
+
+### Example 3 — current working_on
+Message: "Currently debugging the auth flow"
+\`\`\`json
+{"ops":[{"op":"add_current","claim":"debugging the auth flow","category":"working_on","structured_fields":{"task":"debugging","subject":"auth flow"}}]}
+\`\`\`
+
+### Example 4 — current going_through
+Message: "I'm going through a divorce"
+\`\`\`json
+{"ops":[{"op":"add_current","claim":"navigating a divorce","category":"going_through","structured_fields":{"situation":"divorce"}}]}
+\`\`\`
+
+### Example 5 — durable life_event
+Message: "I founded Acme Corp in 2024"
+\`\`\`json
+{"ops":[{"op":"add_durable","claim":"founded Acme Corp in 2024","category":"life_event","structured_fields":{"event":"founded company","company":"Acme Corp","year":2024}},{"op":"add_durable","claim":"founder of Acme Corp","category":"business_role","structured_fields":{"role":"founder","company":"Acme Corp","since":2024}}]}
+\`\`\`
+
+### Example 6 — durable identity
+Message: "I live in Berlin"
+\`\`\`json
+{"ops":[{"op":"add_durable","claim":"lives in Berlin","category":"identity","structured_fields":{"location":"Berlin"}}]}
+\`\`\`
+
+### Example 7 — dedup as strengthen
+Known durable facts include: \`[fact_abc] (durable.identity) lives in Berlin\`
+Message: "Berlin's been treating me well"
+\`\`\`json
+{"ops":[{"op":"strengthen","factId":"fact_abc","reason":"user reaffirmed living in Berlin"}]}
+\`\`\`
+
+### Example 8 — contradict
+Known durable facts include: \`[fact_abc] (durable.identity) lives in Berlin\`
+Message: "Actually I moved to Tokyo last month"
+\`\`\`json
+{"ops":[{"op":"contradict","factId":"fact_abc","proposedText":"lives in Tokyo","reason":"user moved to Tokyo, contradicts Berlin"},{"op":"add_durable","claim":"moved to Tokyo last month","category":"life_event","structured_fields":{"event":"relocation","to":"Tokyo"}}]}
+\`\`\`
+
+## Inputs
+
+# Current Context
+Agent Name: {{agentName}}
+Message Sender: {{senderName}} (ID: {{senderId}})
+Now: {{now}}
+
+# Recent Messages
+{{recentMessages}}
+
+# Known durable facts (top similarity matches; format: [factId] (durable.category) claim)
+{{knownDurable}}
+
+# Known current facts (top similarity matches; format: [factId] (current.category, since <validAt>) claim)
+{{knownCurrent}}
+
+# Latest message (this is what you are extracting from)
+{{message}}
+
+## Output
+
+Return exactly one JSON object: \`{"ops":[...]}\`. No code fences, no markdown, no prose, no XML, no \`<think>\`. If nothing should change, return \`{"ops":[]}\`.`;
+
+export const FACT_EXTRACTION_TEMPLATE = factExtractionTemplate;
 
 export const reflectionTemplate = `# Task: Reflect on recent agent behavior and interactions.
 
@@ -927,12 +1029,13 @@ export const shouldRespondTemplate = `task: Decide whether {{agentName}} should 
 context:
 {{providers}}
 
-rules[6]:
+rules[7]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
 - prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
 - request to stop or be quiet directed at {{agentName}} -> STOP
 - if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- in group conversations, if the latest message is addressed to someone else and not to {{agentName}}, IGNORE
 - if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
 
 available_contexts:
@@ -973,12 +1076,13 @@ context:
 available_contexts:
 {{availableContexts}}
 
-rules[6]:
+rules[7]:
 - direct mention of {{agentName}} -> RESPOND
 - different assistant name or talking to someone else -> IGNORE unless {{agentName}} is also directly addressed
 - prior participation by {{agentName}} in the thread is not enough by itself; the newest message must still clearly expect {{agentName}} -> otherwise IGNORE
 - request to stop or be quiet directed at {{agentName}} -> STOP
 - if multiple people are mentioned and {{agentName}} is one of the addressees -> RESPOND
+- in group conversations, if the latest message is addressed to someone else and not to {{agentName}}, IGNORE
 - if unsure whether the speaker is talking to {{agentName}}, prefer IGNORE over hallucinating relevance
 
 context_routing:

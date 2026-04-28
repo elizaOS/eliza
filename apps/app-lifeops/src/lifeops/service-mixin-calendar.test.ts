@@ -3,8 +3,9 @@ import type {
   LifeOpsCalendarFeed,
   LifeOpsCalendarSummary,
   LifeOpsConnectorGrant,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { describe, expect, it, vi } from "vitest";
+import { ManagedGoogleClientError } from "./google-managed-client.js";
 import { LifeOpsService } from "./service.js";
 import { mergeAggregatedCalendarFeedEvents } from "./service-mixin-calendar.js";
 import { LifeOpsServiceError } from "./service-types.js";
@@ -78,6 +79,21 @@ function feed(
 function runtime() {
   return {
     agentId: "agent-calendar-service",
+    getTasks: vi.fn(async () => [
+      {
+        id: "lifeops-task",
+        name: "LIFEOPS_SCHEDULER",
+        metadata: {
+          lifeopsScheduler: { kind: "runtime_runner" },
+          calendarFeedPreferences: {
+            calendarFeedIncludes: {
+              "grant-1:primary": true,
+            },
+          },
+        },
+      },
+    ]),
+    updateTask: vi.fn(async () => undefined),
   } as unknown as ConstructorParameters<typeof LifeOpsService>[0];
 }
 
@@ -178,6 +194,30 @@ describe("mergeAggregatedCalendarFeedEvents", () => {
 });
 
 describe("LifeOps calendar feed fallback", () => {
+  it("returns the primary calendar when managed calendar discovery is missing", async () => {
+    const service = new LifeOpsService(runtime());
+    vi.spyOn(service.repository, "listConnectorGrants").mockResolvedValue([
+      grant(),
+    ]);
+    vi.spyOn(service.googleManagedClient, "listCalendars").mockRejectedValue(
+      new ManagedGoogleClientError(404, "missing managed calendar-list route"),
+    );
+
+    const calendars = await service.listCalendars(
+      new URL("http://localhost/api/lifeops/calendar/calendars"),
+      { side: "owner", mode: "cloud_managed" },
+    );
+
+    expect(calendars).toEqual([
+      expect.objectContaining({
+        calendarId: "primary",
+        grantId: "grant-1",
+        accountEmail: "owner@example.test",
+        includeInFeed: true,
+      }),
+    ]);
+  });
+
   it("falls back to primary aggregation when no calendars can be listed", async () => {
     const service = new LifeOpsService(runtime());
     vi.spyOn(service, "listCalendars").mockResolvedValue([]);

@@ -79,7 +79,7 @@ describe("ConfigPageView", () => {
       <ConfigPageView embedded onWalletSaveSuccess={onWalletSaveSuccess} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "apikeyconfig.save" }));
+    fireEvent.click(screen.getByRole("button", { name: "common.save" }));
 
     await waitFor(() => {
       expect(handleWalletApiKeySave).toHaveBeenCalledWith(
@@ -107,7 +107,7 @@ describe("ConfigPageView", () => {
       <ConfigPageView embedded onWalletSaveSuccess={onWalletSaveSuccess} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "apikeyconfig.save" }));
+    fireEvent.click(screen.getByRole("button", { name: "common.save" }));
 
     await waitFor(() => {
       expect(handleWalletApiKeySave).toHaveBeenCalledTimes(1);
@@ -132,7 +132,7 @@ describe("ConfigPageView", () => {
 
     render(<ConfigPageView embedded />);
 
-    fireEvent.click(screen.getByRole("button", { name: "apikeyconfig.save" }));
+    fireEvent.click(screen.getByRole("button", { name: "common.save" }));
 
     await waitFor(() => {
       expect(handleWalletApiKeySave).toHaveBeenCalledWith(

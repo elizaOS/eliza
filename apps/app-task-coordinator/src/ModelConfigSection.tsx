@@ -4,8 +4,8 @@ import {
   SelectContent,
   SelectItem,
   SelectValue,
-} from "@elizaos/ui/components/ui/select";
-import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
+  SettingsControls,
+} from "@elizaos/ui";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import type {
   AgentTab,

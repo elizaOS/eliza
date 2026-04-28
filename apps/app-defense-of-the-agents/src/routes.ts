@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
@@ -6,7 +7,7 @@ import type {
   AppRunSessionContext,
   AppSessionActionResult,
   AppSessionState,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 
 const APP_NAME = "@elizaos/app-defense-of-the-agents";
 const APP_DISPLAY_NAME = "Defense of the Agents";
@@ -830,7 +831,7 @@ async function registerAgent(ctx: SessionContext): Promise<string> {
   } catch (err) {
     // 409 = agent name already taken. Try re-registering with a suffixed name.
     if (err instanceof Error && err.message.includes("409")) {
-      const suffixed = `${ctx.agentName}${Math.random().toString(36).slice(2, 6)}`;
+      const suffixed = `${ctx.agentName}${randomBytes(2).toString("hex")}`;
       const retryResponse = await fetchJson<DefenseRegistrationResponse>(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

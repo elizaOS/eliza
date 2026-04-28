@@ -1,3 +1,5 @@
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -13,12 +15,11 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
 import { gmailAction } from "./gmail.js";
 import { inboxAction } from "./inbox.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
-import { searchAcrossChannelsAction } from "./search-across-channels.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import { searchAcrossChannelsAction } from "./search-across-channels.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -219,8 +220,7 @@ async function resolveOwnerInboxPlanWithLlm(args: {
 
 function missingSubactionResult(): ActionResult {
   return {
-    text:
-      "missing subaction; choose triage|digest|respond|needs_response|search|read_message|draft_reply|send_reply|cross_channel_search",
+    text: "missing subaction; choose triage|digest|respond|needs_response|search|read_message|draft_reply|send_reply|cross_channel_search",
     success: false,
     values: { success: false, error: "MISSING_SUBACTION" },
     data: { actionName: ACTION_NAME },
@@ -239,7 +239,12 @@ function inferImplicitChannel(
   ) {
     return "gmail";
   }
-  if (params.messageId || params.senderQuery || params.subjectQuery || params.labelQuery) {
+  if (
+    params.messageId ||
+    params.senderQuery ||
+    params.subjectQuery ||
+    params.labelQuery
+  ) {
     return "gmail";
   }
   return null;
@@ -418,7 +423,17 @@ export const ownerInboxAction: Action & {
     options: HandlerOptions | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const params = (options?.parameters ?? {}) as OwnerInboxParams;
+    const rawParams = (options?.parameters ?? {}) as OwnerInboxParams;
+    const params = await extractActionParamsViaLlm<OwnerInboxParams>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerInboxAction.description ?? "",
+      paramSchema: ownerInboxAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    });
     const body = messageText(message);
     let subaction = normalizeSubaction(params.subaction);
     let channel = normalizeChannel(params.channel);
@@ -778,7 +793,7 @@ export const ownerInboxAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "# Daily Inbox Summary — Friday, April 18, 2026\n\n## Urgent (2)\n- Discord DM from Alice: \"Are we meeting tomorrow?\"\n- Gmail from ops@acme: \"Prod incident — need eyes\"",
+          text: '# Daily Inbox Summary — Friday, April 18, 2026\n\n## Urgent (2)\n- Discord DM from Alice: "Are we meeting tomorrow?"\n- Gmail from ops@acme: "Prod incident — need eyes"',
         },
       },
     ],
@@ -806,7 +821,7 @@ export const ownerInboxAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "Cross-channel search for \"Frontier Tower\" — 12 hits across Gmail, Telegram, and Calendar.",
+          text: 'Cross-channel search for "Frontier Tower" — 12 hits across Gmail, Telegram, and Calendar.',
         },
       },
     ],

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 /**
  * Post-install setup for @elizaos/plugin-browser:
  *
@@ -69,8 +69,14 @@ if (!existsSync(stagehandIndex) && existsSync(stagehandSrc)) {
     }
     // Resolve tsc: prefer local node_modules/.bin, then pnpm dlx, then npx
     const localTsc = join(stagehandDir, "node_modules", ".bin", "tsc");
-    const tscCmd = existsSync(localTsc) ? localTsc : "pnpm exec tsc";
-    execSync(tscCmd, { cwd: stagehandDir, stdio: "inherit" });
+    if (existsSync(localTsc)) {
+      execFileSync(localTsc, [], { cwd: stagehandDir, stdio: "inherit" });
+    } else {
+      execFileSync("pnpm", ["exec", "tsc"], {
+        cwd: stagehandDir,
+        stdio: "inherit",
+      });
+    }
     console.log("[link-browser-server] Stagehand server built successfully");
   } catch (err) {
     console.error(

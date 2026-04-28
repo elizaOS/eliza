@@ -10,7 +10,8 @@ const INDEXED_TOON_KEY_RE =
 
 function stripFencedBlock(text: string): string {
 	const trimmed = text.trim();
-	const fenced = trimmed.match(/^```(?:toon|json)?\s*([\s\S]*?)\s*```$/i);
+	const safe = trimmed.length > 100_000 ? trimmed.slice(0, 100_000) : trimmed;
+	const fenced = safe.match(/^```(?:toon|json)?\s*([\s\S]*?)\s*```$/i);
 	return fenced?.[1]?.trim() ?? trimmed;
 }
 

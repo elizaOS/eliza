@@ -1,3 +1,4 @@
+import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
 import type {
   Action,
   ActionExample,
@@ -19,7 +20,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import {
@@ -29,12 +30,11 @@ import {
   getZonedDateParts,
 } from "../lifeops/time.js";
 import {
-  computeCreateEventTravelBuffer,
   type CreateEventTravelIntent,
+  computeCreateEventTravelBuffer,
   resolveCreateEventTravelIntent,
 } from "../travel-time/calendar-create.js";
 import { TravelTimeUnavailableError } from "../travel-time/service.js";
-import { renderGroundedActionReply } from "@elizaos/agent/actions";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
 import {
   calendarReadUnavailableMessage,
@@ -52,7 +52,6 @@ import {
   messageText,
   toActionData,
 } from "./lifeops-google-helpers.js";
-import { looksLikeCalendarObservation } from "./non-actionable-request.js";
 
 type CalendarSubaction =
   | "feed"
@@ -366,9 +365,7 @@ function buildCalendarReplyOnlyFallback(
   }
 }
 
-function normalizeCalendarReadSubaction(
-  value: unknown,
-): CalendarReadSubaction {
+function normalizeCalendarReadSubaction(value: unknown): CalendarReadSubaction {
   if (
     value === "feed" ||
     value === "next_event" ||
@@ -444,7 +441,10 @@ async function disambiguateCalendarReadPlanWithLlm(args: {
   intent: string;
   recentConversation: string;
   candidateSubaction: CalendarSubaction | null;
-}): Promise<{ subaction: CalendarReadSubaction; tripLocation?: string } | null> {
+}): Promise<{
+  subaction: CalendarReadSubaction;
+  tripLocation?: string;
+} | null> {
   const prompt = [
     "Resolve this calendar read intent.",
     "The user may speak in any language.",
@@ -1634,7 +1634,10 @@ function resolveCalendarWindow(
     };
   }
 
-  const explicitDateWindow = resolveExplicitCalendarDateWindow(intent, timeZone);
+  const explicitDateWindow = resolveExplicitCalendarDateWindow(
+    intent,
+    timeZone,
+  );
   if (explicitDateWindow) {
     return {
       request: {
@@ -1779,18 +1782,34 @@ export async function extractCalendarPlanWithLlm(
   // day whenever local-midnight crosses the UTC day line.
   const localDateParts = getZonedDateParts(now, timeZone);
   const todayLocal = addDaysToLocalDate(
-    { year: localDateParts.year, month: localDateParts.month, day: localDateParts.day },
+    {
+      year: localDateParts.year,
+      month: localDateParts.month,
+      day: localDateParts.day,
+    },
     0,
   );
   const tomorrowLocal = addDaysToLocalDate(
-    { year: localDateParts.year, month: localDateParts.month, day: localDateParts.day },
+    {
+      year: localDateParts.year,
+      month: localDateParts.month,
+      day: localDateParts.day,
+    },
     1,
   );
   const yesterdayLocal = addDaysToLocalDate(
-    { year: localDateParts.year, month: localDateParts.month, day: localDateParts.day },
+    {
+      year: localDateParts.year,
+      month: localDateParts.month,
+      day: localDateParts.day,
+    },
     -1,
   );
-  const formatLocalDate = (parts: { year: number; month: number; day: number }) =>
+  const formatLocalDate = (parts: {
+    year: number;
+    month: number;
+    day: number;
+  }) =>
     `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
   const localDateAnchors = [
     `yesterday = ${formatLocalDate(yesterdayLocal)}`,
@@ -1983,7 +2002,7 @@ async function inferCalendarSearchQueriesWithLlm(args: {
     "Extract up to 3 short calendar search queries for a calendar lookup request.",
     "The user may speak in any language.",
     "Return ONLY valid JSON with exactly this field:",
-    '  queries: array of up to 3 short strings',
+    "  queries: array of up to 3 short strings",
     "Prefer noun phrases and exact dates that would help match calendar event titles, descriptions, locations, attendees, or travel itineraries.",
     "When the request is about a flight or travel itinerary, include the travel phrase and destination if present.",
     "When the request asks what event is on a specific date, include the date itself as a query, for example april 19 or 2026-04-19.",
@@ -2080,10 +2099,7 @@ function resolveCreateEventDurationMinutes(args: {
     if (extractedDuration > 0) {
       return extractedDuration;
     }
-    if (
-      isShortPreparation &&
-      (hasExplicitStartAt || hasExplicitWindowPreset)
-    ) {
+    if (isShortPreparation && (hasExplicitStartAt || hasExplicitWindowPreset)) {
       return MIN_CREATE_EVENT_DURATION_MINUTES;
     }
     return undefined;
@@ -3057,12 +3073,10 @@ export const calendarAction: Action & {
     "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
     "DO NOT use this action to propose or suggest candidate meeting times to send to someone — use PROPOSE_MEETING_TIMES for requests like 'propose three times for a 30 min sync with X', 'suggest meeting slots', or 'find times that work next week'. CALENDAR_ACTION.create_event is only for booking a single known time on your own calendar. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
-  descriptionCompressed: "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
+  descriptionCompressed:
+    "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
-    if (looksLikeCalendarObservation(messageText(message))) {
-      return false;
-    }
     return hasLifeOpsAccess(runtime, message);
   },
   handler: async (
@@ -3088,40 +3102,6 @@ export const calendarAction: Action & {
     const params = rawParams ?? ({} as CalendarActionParams);
     const intent = resolveCalendarIntentInput(params.intent, message);
 
-    // Multi-slot proposal requests ("propose three times for a 30 min sync",
-    // "suggest a few slots next week") belong to PROPOSE_MEETING_TIMES, not
-    // CALENDAR_ACTION. Detect that intent here and hand it off rather than
-    // collapsing to a single create_event that always lacks a concrete time.
-    const combinedIntentText = `${intent ?? ""} ${messageText(message) ?? ""}`.toLowerCase();
-    const looksLikeMultiSlotProposal =
-      /\b(propose|suggest|offer|share|send)\b[^.]*\b(\d+|a few|some|several|multiple|three|two|four|five)\b[^.]*\b(times?|slots?|options?|windows?)\b/.test(
-        combinedIntentText,
-      ) ||
-      /\bfind\b[^.]*\b(times?|slots?)\b[^.]*\b(that work|for)\b/.test(
-        combinedIntentText,
-      ) ||
-      /\bwhen (is|am i) free\b/.test(combinedIntentText);
-    if (looksLikeMultiSlotProposal) {
-      const handoffText =
-        "I'll propose concrete candidate slots based on your availability and meeting preferences.";
-      await callback?.({
-        text: handoffText,
-        source: "action",
-        action: "CALENDAR_ACTION",
-      });
-      return {
-        success: false,
-        text: handoffText,
-        values: {
-          success: false,
-          error: "USE_PROPOSE_MEETING_TIMES",
-        },
-        data: {
-          actionName: "CALENDAR_ACTION",
-          handoff: "PROPOSE_MEETING_TIMES",
-        },
-      };
-    }
     const details = normalizeCalendarDetails(params.details);
     const planningTimeZone = resolveCalendarTimeZone(details);
     const llmPlan = await extractCalendarPlanWithLlm(
@@ -3322,12 +3302,8 @@ export const calendarAction: Action & {
           inferredTitle,
           intent,
         });
-        const {
-          title,
-          resolvedStartAt,
-          resolvedWindowPreset,
-          request,
-        } = createEventBuild;
+        const { title, resolvedStartAt, resolvedWindowPreset, request } =
+          createEventBuild;
         let travelIntent = createEventBuild.travelIntent;
         const calendarLookup = {
           getCalendarFeed: service.getCalendarFeed.bind(service),
@@ -3996,14 +3972,15 @@ export const calendarAction: Action & {
                 }),
               });
             }
-            const recoveredReadPlan =
-              await disambiguateCalendarReadPlanWithLlm({
+            const recoveredReadPlan = await disambiguateCalendarReadPlanWithLlm(
+              {
                 runtime,
                 currentMessage: currentMessageText,
                 intent,
                 recentConversation,
                 candidateSubaction: "search_events",
-              });
+              },
+            );
             if (recoveredReadPlan?.subaction === "feed") {
               const fallback = formatCalendarFeed(feed, label);
               return respond({

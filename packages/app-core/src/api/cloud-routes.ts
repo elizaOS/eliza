@@ -1,20 +1,20 @@
 import type http from "node:http";
+import type { ElizaConfig } from "@elizaos/agent";
 import {
   type CloudRouteState as AutonomousCloudRouteState,
+  applyCanonicalOnboardingConfig,
+  type CloudManager,
+  createIntegrationTelemetrySpan,
   handleCloudRoute as handleAutonomousCloudRoute,
-} from "@elizaos/agent/api/cloud-routes";
-import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
-import { normalizeCloudSiteUrl } from "@elizaos/agent/cloud/base-url";
-import type { CloudManager } from "@elizaos/agent/cloud/cloud-manager";
-import { validateCloudBaseUrl } from "@elizaos/agent/cloud/validate-url";
-import type { ElizaConfig } from "@elizaos/agent/config/config";
-import { saveElizaConfig } from "@elizaos/agent/config/config";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics";
+  normalizeCloudSiteUrl,
+  saveElizaConfig,
+  validateCloudBaseUrl,
+} from "@elizaos/agent";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   isCloudInferenceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-} from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 import { isTimeoutError } from "../utils/errors";
 import {
   disconnectCloudConnection,
@@ -184,7 +184,7 @@ async function persistCloudLoginStatus(args: {
 function toAutonomousState(state: CloudRouteState): AutonomousCloudRouteState {
   return {
     ...state,
-    saveConfig: saveElizaConfig,
+    saveConfig: () => saveElizaConfig(state.config),
     createTelemetrySpan: createIntegrationTelemetrySpan,
   };
 }
@@ -208,7 +208,7 @@ export async function handleCloudRoute(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("[cloud/disconnect] failed", err);
+      logger.error(`[cloud/disconnect] failed: ${message}`);
       sendJson(res, 500, { ok: false, error: message });
       return true;
     }

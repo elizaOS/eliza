@@ -37,8 +37,9 @@ const SUSPICIOUS_PATTERNS = [
  */
 export function detectSuspiciousPatterns(content: string): string[] {
 	const matches: string[] = [];
+	const safe = content.length > 100_000 ? content.slice(0, 100_000) : content;
 	for (const pattern of SUSPICIOUS_PATTERNS) {
-		if (pattern.test(content)) {
+		if (pattern.test(safe)) {
 			matches.push(pattern.source);
 		}
 	}

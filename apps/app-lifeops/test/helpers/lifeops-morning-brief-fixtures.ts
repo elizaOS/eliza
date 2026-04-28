@@ -1,7 +1,11 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import {
+  extractPlugin,
+  type PluginModuleShape,
+  resolveOAuthDir,
+} from "@elizaos/agent";
 import type {
   AgentRuntime,
   Memory,
@@ -9,8 +13,6 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { ChannelType, createMessageMemory, logger } from "@elizaos/core";
-import type { PluginModuleShape } from "@elizaos/agent/test-support/test-helpers";
-import { extractPlugin } from "@elizaos/agent/test-support/test-helpers";
 import {
   createApprovalQueue,
 } from "../../src/lifeops/approval-queue.js";

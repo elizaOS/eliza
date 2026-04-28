@@ -15,7 +15,7 @@ export function IMessageStatusPanel() {
       : null;
   const isSendOnly = status?.sendOnly === true;
   const canReadMessages =
-    status?.connected === true && status?.chatDbAvailable !== false;
+    status?.connected === true && status?.chatDbAvailable === true;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -96,7 +96,7 @@ export function IMessageStatusPanel() {
                 })
               : t("pluginsview.IMessageNotConnected", {
                   defaultValue:
-                    "iMessage is not connected. Set the CLI path above and ensure Full Disk Access is granted to your terminal.",
+                    "iMessage is not connected. Milady uses the native macOS Messages bridge on this machine.",
                 })}
         </div>
         {error ? <div className="text-danger">{error}</div> : null}
@@ -105,6 +105,9 @@ export function IMessageStatusPanel() {
         ) : null}
         {status?.chatDbPath ? (
           <div className="text-muted">Database: {status.chatDbPath}</div>
+        ) : null}
+        {status?.bridgeType ? (
+          <div className="text-muted">Bridge: {status.bridgeType}</div>
         ) : null}
         {permissionAction ? (
           <ol className="list-decimal space-y-1 pl-4 text-muted">

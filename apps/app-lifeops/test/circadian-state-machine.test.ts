@@ -1,7 +1,7 @@
 import type {
   LifeOpsActivitySignal,
   LifeOpsCircadianState,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import type { LifeOpsCircadianStateRow } from "../src/lifeops/repository.js";
 import {

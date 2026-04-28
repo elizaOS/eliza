@@ -1,3 +1,4 @@
+import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
 import type {
   Action,
   ActionResult,
@@ -7,7 +8,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { ModelType, parseJSONObjectFromText } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { getRecentMessagesData } from "@elizaos/shared";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
@@ -22,7 +23,7 @@ import type {
   SetLifeOpsReminderPreferenceRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   buildNativeAppleReminderMetadata,
   type NativeAppleReminderLikeKind,
@@ -38,7 +39,10 @@ import {
   getZonedDateParts,
 } from "../lifeops/time.js";
 import { gmailAction } from "./gmail.js";
-import { renderGroundedActionReply } from "@elizaos/agent/actions";
+import {
+  extractConversationMetadataFromRoom,
+  isPageScopedConversationMetadata,
+} from "@elizaos/agent/api/conversation-metadata";
 import {
   type ExtractedLifeMissingField,
   type ExtractedLifeOperation,
@@ -73,15 +77,8 @@ import {
   toActionData,
   weekRange,
 } from "./lifeops-google-helpers.js";
-import {
-  looksLikeCodingTaskRequest,
-  looksLikeGoalAdviceOnly,
-  looksLikeRelationshipFollowUpRequest,
-} from "./non-actionable-request.js";
-import {
-  extractExplicitTimeZoneFromText,
-  normalizeExplicitTimeZoneToken,
-} from "./timezone-normalization.js";
+import { looksLikeCodingTaskRequest } from "./non-actionable-request.js";
+import { normalizeExplicitTimeZoneToken } from "./timezone-normalization.js";
 
 // ── Types ─────────────────────────────────────────────
 
@@ -172,12 +169,6 @@ function normalizeLifeTimeZoneToken(
   value: string | null | undefined,
 ): string | null {
   return normalizeExplicitTimeZoneToken(value);
-}
-
-function extractLifeTimeZoneFromText(
-  value: string | null | undefined,
-): string | null {
-  return extractExplicitTimeZoneFromText(value);
 }
 
 type DeferredLifeGoalDraft = {
@@ -526,9 +517,7 @@ function stateMessageDrafts(state: State | undefined): DeferredLifeDraft[] {
   return drafts;
 }
 
-function stateRecentMessageEntries(
-  state: State | undefined,
-) : Memory[] {
+function stateRecentMessageEntries(state: State | undefined): Memory[] {
   if (!state || typeof state !== "object") {
     return [];
   }
@@ -536,9 +525,7 @@ function stateRecentMessageEntries(
   return getRecentMessagesData(state);
 }
 
-function isDeferredLifeDraftMessageEntry(
-  item: Memory,
-): boolean {
+function isDeferredLifeDraftMessageEntry(item: Memory): boolean {
   const content =
     item.content && typeof item.content === "object"
       ? (item.content as Record<string, unknown>)
@@ -939,7 +926,10 @@ async function resolveOccurrence(
       normalizeTitle(o.title).startsWith(normalized),
     );
     if (startsWithMatches.length === 1) {
-      return { match: startsWithMatches.at(0) ?? null, ambiguousCandidates: [] };
+      return {
+        match: startsWithMatches.at(0) ?? null,
+        ambiguousCandidates: [],
+      };
     }
     if (startsWithMatches.length > 1) {
       return {
@@ -1059,7 +1049,9 @@ async function resolveOccurrenceWithIntentFallback(args: {
 }
 
 function summarizeCadence(cadence: LifeOpsCadence): string {
-  const cadenceWindows = Array.isArray((cadence as { windows?: unknown }).windows)
+  const cadenceWindows = Array.isArray(
+    (cadence as { windows?: unknown }).windows,
+  )
     ? ((cadence as { windows: string[] }).windows ?? []).filter(
         (windowName) =>
           typeof windowName === "string" && windowName.trim().length > 0,
@@ -1379,20 +1371,6 @@ function buildSingleDailySlot(
   };
 }
 
-function addYearsToLocalDate(
-  dateOnly: { year: number; month: number; day: number },
-  yearDelta: number,
-): { year: number; month: number; day: number } {
-  const utcDate = new Date(
-    Date.UTC(dateOnly.year + yearDelta, dateOnly.month - 1, dateOnly.day, 12),
-  );
-  return {
-    year: utcDate.getUTCFullYear(),
-    month: utcDate.getUTCMonth() + 1,
-    day: utcDate.getUTCDate(),
-  };
-}
-
 function buildCustomTimeWindowPolicy(
   minuteOfDay: number,
   timeZone: string,
@@ -1468,15 +1446,7 @@ function parseTimeOfDayToken(token: string): number | null {
   return parseClockToken(normalized);
 }
 
-function resolveAlarmDayOffset(intent: string): number | null {
-  const lower = normalizeLifeInputText(intent).toLowerCase();
-  if (/\btomorrow\b/.test(lower)) return 1;
-  if (/\b(today|tonight)\b/.test(lower)) return 0;
-  return null;
-}
-
 function buildOneOffDueAtFromMinuteOfDay(args: {
-  intent?: string;
   minuteOfDay: number;
   now?: Date;
   timeZone?: string;
@@ -1490,20 +1460,6 @@ function buildOneOffDueAtFromMinuteOfDay(args: {
     day: nowParts.day,
   };
 
-  const explicitDate =
-    typeof args.intent === "string"
-      ? parseExplicitLocalDateForLifeRequest(args.intent, timeZone, now)
-      : null;
-  if (explicitDate) {
-    localDate = explicitDate;
-  }
-
-  const explicitDayOffset =
-    typeof args.intent === "string" ? resolveAlarmDayOffset(args.intent) : null;
-  if (explicitDate === null && explicitDayOffset !== null) {
-    localDate = addDaysToLocalDate(localDate, explicitDayOffset);
-  }
-
   const buildCandidate = () =>
     buildUtcDateFromLocalParts(timeZone, {
       ...localDate,
@@ -1514,158 +1470,11 @@ function buildOneOffDueAtFromMinuteOfDay(args: {
 
   let candidate = buildCandidate();
   if (candidate.getTime() <= now.getTime()) {
-    if (explicitDate && !explicitDate.explicitYear) {
-      localDate = addYearsToLocalDate(localDate, 1);
-      candidate = buildCandidate();
-    } else if (explicitDate === null && explicitDayOffset === null) {
-      localDate = addDaysToLocalDate(localDate, 1);
-      candidate = buildCandidate();
-    }
+    localDate = addDaysToLocalDate(localDate, 1);
+    candidate = buildCandidate();
   }
 
   return candidate.toISOString();
-}
-
-function parseExplicitLocalDateForLifeRequest(
-  value: string,
-  timeZone: string,
-  now = new Date(),
-): { year: number; month: number; day: number; explicitYear: boolean } | null {
-  const normalized = normalizeLifeInputText(value).toLowerCase();
-  const localToday = getZonedDateParts(now, timeZone);
-  const monthMap: Record<string, number> = {
-    january: 1,
-    jan: 1,
-    february: 2,
-    feb: 2,
-    march: 3,
-    mar: 3,
-    april: 4,
-    apr: 4,
-    may: 5,
-    june: 6,
-    jun: 6,
-    july: 7,
-    jul: 7,
-    august: 8,
-    aug: 8,
-    september: 9,
-    sept: 9,
-    sep: 9,
-    october: 10,
-    oct: 10,
-    november: 11,
-    nov: 11,
-    december: 12,
-    dec: 12,
-  };
-  const weekdayMap: Record<string, number> = {
-    sunday: 0,
-    sun: 0,
-    monday: 1,
-    mon: 1,
-    tuesday: 2,
-    tue: 2,
-    tues: 2,
-    wednesday: 3,
-    wed: 3,
-    thursday: 4,
-    thu: 4,
-    thur: 4,
-    thurs: 4,
-    friday: 5,
-    fri: 5,
-    saturday: 6,
-    sat: 6,
-  };
-
-  const isoMatch = normalized.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
-  if (isoMatch) {
-    return {
-      year: Number(isoMatch[1]),
-      month: Number(isoMatch[2]),
-      day: Number(isoMatch[3]),
-      explicitYear: true,
-    };
-  }
-
-  const monthNameMatch = normalized.match(
-    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/i,
-  );
-  if (monthNameMatch) {
-    const monthToken = monthNameMatch[1];
-    if (!monthToken) {
-      return null;
-    }
-    const month = monthMap[monthToken.toLowerCase().replace(/\./g, "")];
-    if (month === undefined) {
-      return null;
-    }
-    return {
-      year: monthNameMatch[3] ? Number(monthNameMatch[3]) : localToday.year,
-      month,
-      day: Number(monthNameMatch[2]),
-      explicitYear: Boolean(monthNameMatch[3]),
-    };
-  }
-
-  const numericMatch = normalized.match(
-    /\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b/,
-  );
-  if (numericMatch) {
-    const yearRaw = numericMatch[3];
-    const year =
-      yearRaw === undefined
-        ? localToday.year
-        : yearRaw.length === 2
-          ? 2000 + Number(yearRaw)
-          : Number(yearRaw);
-    return {
-      year,
-      month: Number(numericMatch[1]),
-      day: Number(numericMatch[2]),
-      explicitYear: Boolean(yearRaw),
-    };
-  }
-
-  const weekdayMatch = normalized.match(
-    /\b(?:(this|next)\s+)?(sun(?:day)?|mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:r(?:s(?:day)?)?)?|fri(?:day)?|sat(?:urday)?)\b/i,
-  );
-  if (!weekdayMatch) {
-    return null;
-  }
-
-  const weekdayToken = weekdayMatch[2]?.toLowerCase();
-  const targetWeekday = weekdayToken ? weekdayMap[weekdayToken] : undefined;
-  if (targetWeekday === undefined) {
-    return null;
-  }
-
-  const qualifier = weekdayMatch[1]?.toLowerCase() ?? "";
-  const currentWeekday = new Date(
-    Date.UTC(
-      localToday.year,
-      Math.max(0, localToday.month - 1),
-      localToday.day,
-      12,
-    ),
-  ).getUTCDay();
-  let delta = (targetWeekday - currentWeekday + 7) % 7;
-  if (qualifier === "next") {
-    delta = delta === 0 ? 7 : delta + 7;
-  }
-  const resolved = addDaysToLocalDate(
-    {
-      year: localToday.year,
-      month: localToday.month,
-      day: localToday.day,
-    },
-    delta,
-  );
-  return {
-    ...resolved,
-    explicitYear: false,
-  };
 }
 
 function mergeMetadataRecords(
@@ -1686,7 +1495,9 @@ function extractExplicitDailySlots(intent: string): LifeOpsDailySlot[] {
     ...intent.matchAll(/\b(\d{1,2}(?::\d{2})?\s*(?:am|pm)|noon|midnight)\b/gi),
   ]
     .map((match) => match[1])
-    .filter((token): token is string => typeof token === "string" && token.length > 0);
+    .filter(
+      (token): token is string => typeof token === "string" && token.length > 0,
+    );
   const seen = new Set<number>();
   const slots: LifeOpsDailySlot[] = [];
   for (const [index, token] of tokens.entries()) {
@@ -1945,7 +1756,6 @@ function buildCadenceFromLlmParams(
         cadence: {
           kind: "once",
           dueAt: buildOneOffDueAtFromMinuteOfDay({
-            intent: context?.intent,
             minuteOfDay: timeOfDayMinute,
             now: context?.now,
             timeZone: effectiveTimeZone,
@@ -2428,7 +2238,10 @@ function formatWeeklyGoalReview(args: {
   ];
   if (args.atRisk.length > 0) {
     parts.push(
-      `Drifting: ${args.atRisk.slice(0, 3).map((review) => review.goal.title).join(", ")}.`,
+      `Drifting: ${args.atRisk
+        .slice(0, 3)
+        .map((review) => review.goal.title)
+        .join(", ")}.`,
     );
   }
   if (args.needsAttention.length > 0) {
@@ -2451,6 +2264,25 @@ function formatWeeklyGoalReview(args: {
 }
 
 // ── Main action ───────────────────────────────────────
+
+// LIFE belongs to the LifeOps surface (home chat / page-lifeops /
+// app-lifeops direct rooms). On foreign page-* scopes the action set is
+// scoped to that surface (page-automations → CREATE_TRIGGER_TASK,
+// page-browser → browser actions, etc.). When LIFE stays eligible on those
+// scopes its long description contaminates the ACTION_PLANNER candidate
+// list, driving the LLM to mimic the life-param-extractor JSON schema and
+// producing envelopes the planner's XML parse cannot read.
+async function isForeignPageScope(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<boolean> {
+  const room = await runtime.getRoom(message.roomId);
+  const metadata = extractConversationMetadataFromRoom(room);
+  if (!isPageScopedConversationMetadata(metadata)) {
+    return false;
+  }
+  return metadata?.scope !== "page-lifeops";
+}
 
 export const lifeAction: Action & {
   suppressPostActionContinuation?: boolean;
@@ -2500,23 +2332,34 @@ export const lifeAction: Action & {
     "DO NOT use this action for pre-event asset checklists, questions like 'what slides, bio, title, or portal assets do I still owe before the event', document-signing workflows, collecting updated ID copies, or cancellation-fee warning/escalation policies — use OWNER_INBOX, PUBLISH_DEVICE_INTENT, OWNER_CALENDAR, or LIFEOPS_COMPUTER_USE instead. " +
     "DO NOT use this action for browser/portal/file workflows on the owner's machine — use LIFEOPS_COMPUTER_USE instead. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action or fall back to advice-only chat when the user wants real LifeOps follow-through.",
-  descriptionCompressed: "LifeOps: manage habits, goals, reminders, alarms, escalation. Create/edit/complete/snooze items. Query active status.",
+  descriptionCompressed:
+    "LifeOps: manage habits, goals, reminders, alarms, escalation. Create/edit/complete/snooze items. Query active status.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
-    const text = messageText(message);
-    if (
-      looksLikeGoalAdviceOnly(text) ||
-      looksLikeRelationshipFollowUpRequest(text) ||
-      // Coding prompts share LifeOps verbs ("make", "create", "add") so
-      // the action selector can still pick LIFE. Decline here to let
-      // plugin-agent-orchestrator's CREATE_TASK take the route.
-      looksLikeCodingTaskRequest(text)
-    ) {
+    // Coding prompts share LifeOps verbs ("make", "create", "add") so
+    // the action selector can still pick LIFE. Decline here to let
+    // plugin-agent-orchestrator's CREATE_TASK take the route.
+    if (looksLikeCodingTaskRequest(messageText(message))) {
+      return false;
+    }
+    if (await isForeignPageScope(runtime, message)) {
       return false;
     }
     return hasLifeOpsAccess(runtime, message);
   },
   handler: async (runtime, message, state, options) => {
+    // Defense-in-depth at dispatch time: validate() above excludes LIFE
+    // from the ACTION_PLANNER candidate list on foreign page-* scopes, but
+    // runtime.processActions dispatches by name/simile WITHOUT re-calling
+    // validate. When the LLM emits LIFE or a LIFE simile directly, the
+    // handler still fires. This guard mirrors validate()'s scope check so
+    // LIFE stays a no-op on foreign page-* scopes regardless of how it got
+    // dispatched. Returns empty text so the runtime callback does not
+    // render a user-visible message — any streamed tokens from the outer
+    // LLM reply already landed before this handler runs.
+    if (await isForeignPageScope(runtime, message)) {
+      return { success: false, text: "" };
+    }
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const fallback =
         "Life management is restricted to the owner, explicitly granted users, and the agent.";
@@ -2821,13 +2664,12 @@ export const lifeAction: Action & {
               (editingDeferredDefinitionDraft || !hadExplicitCadence) &&
               llmPlan.cadenceKind
             ) {
-              const llmCadenceTimeZone =
-                normalizeLifeTimeZoneToken(
-                  detailString(details, "timeZone") ??
-                    llmPlan.timeZone ??
-                    deferredDefinitionDraft?.request.timezone ??
-                    windowPolicy?.timezone,
-                ) ?? extractLifeTimeZoneFromText(intent);
+              const llmCadenceTimeZone = normalizeLifeTimeZoneToken(
+                detailString(details, "timeZone") ??
+                  llmPlan.timeZone ??
+                  deferredDefinitionDraft?.request.timezone ??
+                  windowPolicy?.timezone,
+              );
               const llmCadence = buildCadenceFromLlmParams(llmPlan, {
                 intent,
                 timeZone: llmCadenceTimeZone ?? undefined,
@@ -2851,13 +2693,12 @@ export const lifeAction: Action & {
             }
           }
         }
-        const resolvedTimeZone =
-          normalizeLifeTimeZoneToken(
-            detailString(details, "timeZone") ??
-              llmPlan?.timeZone ??
-              deferredDefinitionDraft?.request.timezone ??
-              windowPolicy?.timezone,
-          ) ?? extractLifeTimeZoneFromText(intent);
+        const resolvedTimeZone = normalizeLifeTimeZoneToken(
+          detailString(details, "timeZone") ??
+            llmPlan?.timeZone ??
+            deferredDefinitionDraft?.request.timezone ??
+            windowPolicy?.timezone,
+        );
         const timedRequestKind = llmRequestKind;
         const nativeAppleMetadata =
           timedRequestKind && cadence?.kind === "once"
@@ -2957,7 +2798,6 @@ export const lifeAction: Action & {
               deferredDefinitionDraft?.request.reminderPlan ??
               buildDefaultReminderPlan(`${title} reminder`),
             timezone:
-              extractLifeTimeZoneFromText(intent) ??
               normalizeLifeTimeZoneToken(llmPlan?.timeZone) ??
               normalizeLifeTimeZoneToken(
                 resolvedTimeZone ?? deferredDefinitionDraft?.request.timezone,
@@ -3024,7 +2864,6 @@ export const lifeAction: Action & {
             definitionDraft.intent || definitionDraft.request.title,
           cadence: definitionDraft.request.cadence,
           timezone:
-            extractLifeTimeZoneFromText(definitionDraft.intent) ??
             normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
             definitionDraft.request.timezone,
           priority: definitionDraft.request.priority,
@@ -3087,7 +2926,9 @@ export const lifeAction: Action & {
         const when: "today" | "tomorrow" | "this_week" =
           whenRaw === "tomorrow"
             ? "tomorrow"
-            : whenRaw === "this_week" || whenRaw === "this week" || whenRaw === "week"
+            : whenRaw === "this_week" ||
+                whenRaw === "this week" ||
+                whenRaw === "week"
               ? "this_week"
               : "today";
         const range =
@@ -3325,8 +3166,9 @@ export const lifeAction: Action & {
           title: goalDraft.request.title,
           description: goalDraft.request.description,
           successCriteria:
-            (goalDraft.request.successCriteria as Record<string, unknown> | undefined) ??
-            null,
+            (goalDraft.request.successCriteria as
+              | Record<string, unknown>
+              | undefined) ?? null,
         });
         if (
           shouldRequireLifeCreateConfirmation({
@@ -3391,8 +3233,9 @@ export const lifeAction: Action & {
           title: created.goal.title,
           description: created.goal.description,
           successCriteria:
-            (created.goal.successCriteria as Record<string, unknown> | undefined) ??
-            null,
+            (created.goal.successCriteria as
+              | Record<string, unknown>
+              | undefined) ?? null,
         });
         const experienceSummary = formatGoalExperienceLoopSummary(
           createdExperienceLoop,

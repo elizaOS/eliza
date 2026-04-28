@@ -1,3 +1,10 @@
+import {
+  approveStewardWalletRequest,
+  getStewardWalletUnavailableMessage,
+  rejectStewardWalletRequest,
+  signWithStewardWallet,
+  type StewardSignResponse,
+} from "@elizaos/app-steward";
 import type {
   Action,
   ActionExample,
@@ -5,13 +12,6 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import {
-  approveStewardWalletRequest,
-  getStewardWalletUnavailableMessage,
-  rejectStewardWalletRequest,
-  signWithStewardWallet,
-} from "@elizaos/agent/services/steward-wallet";
-import type { StewardSignResponse } from "@elizaos/app-steward/types/steward";
 
 type StewardSignActionRequest = {
   to: string;
@@ -28,13 +28,19 @@ type StewardApprovalRequest = {
 };
 
 const ADDRESS_RE = /\b0x[a-fA-F0-9]{40}\b/;
-const CHAIN_ID_RE = /\bchain(?:\s*id)?\s*:?\s*(\d+)\b/i;
-const DATA_RE = /\b(?:data|calldata)\s*:?\s*(0x[a-fA-F0-9]+)\b/i;
+const CHAIN_ID_RE = /\bchain(?:[ \t]{0,4}id)?[ \t]{0,4}:?[ \t]{0,4}(\d+)\b/i;
+const DATA_RE = /\b(?:data|calldata)[ \t]{0,4}:?[ \t]{0,4}(0x[a-fA-F0-9]+)\b/i;
 const TX_ID_RE = /\b(tx[\w:-]+)\b/i;
-const VALUE_RE = /\bvalue(?:\s*\(wei\))?\s*:?\s*(\d+)\b/i;
+const VALUE_RE = /\bvalue(?:[ \t]{0,4}\(wei\))?[ \t]{0,4}:?[ \t]{0,4}(\d+)\b/i;
+
+const MAX_MESSAGE_TEXT_LENGTH = 8192;
 
 function getMessageText(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  const raw =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  return raw.length > MAX_MESSAGE_TEXT_LENGTH
+    ? raw.slice(0, MAX_MESSAGE_TEXT_LENGTH)
+    : raw;
 }
 
 function normalizeString(value: unknown): string | undefined {
@@ -135,8 +141,8 @@ function parseApprovalRequest(
   }
 
   const reasonFromParams = normalizeString(params.reason);
-  const reasonMatch = text.match(/\breason\s*:?\s*(.+)$/i);
-  const becauseMatch = text.match(/\bbecause\s+(.+)$/i);
+  const reasonMatch = text.match(/\breason[ \t]{0,4}:?[ \t]{0,4}(.+)$/i);
+  const becauseMatch = text.match(/\bbecause[ \t]{1,4}(.+)$/i);
 
   return {
     txId,
@@ -149,7 +155,8 @@ export const signWithElizaWalletAction: Action = {
   name: "SIGN_WITH_ELIZA_WALLET",
   description:
     "Send a transaction through the Eliza Steward-managed wallet while browsing. Use this when the user or agent needs the Eliza wallet to sign and optionally broadcast a transaction.",
-  descriptionCompressed: "Send transaction through Eliza Steward wallet while browsing.",
+  descriptionCompressed:
+    "Send transaction through Eliza Steward wallet while browsing.",
   similes: [
     "sign transaction with wallet",
     "send with steward wallet",

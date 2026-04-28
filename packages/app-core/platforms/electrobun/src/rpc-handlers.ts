@@ -15,6 +15,7 @@ import { resolveDesktopRuntimeMode } from "./api-base";
 import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
 import { postCloudDisconnectFromMain } from "./cloud-disconnect-from-main";
+import { formatRendererDiagnosticLine } from "./diagnostic-format";
 import { getFloatingChatManager } from "./floating-chat-window";
 import { getAgentManager } from "./native/agent";
 import { getBrowserWorkspaceManager } from "./native/browser-workspace";
@@ -97,6 +98,8 @@ async function syncPermissionsToRestApi(
 type ElectrobunRpcWithHandlers = {
   // biome-ignore lint/suspicious/noExplicitAny: Electrobun doesn't export a typed setRequestHandler interface; individual handlers are typed at call-sites
   setRequestHandler?: (handlers: Record<string, (params: any) => any>) => void;
+  // biome-ignore lint/suspicious/noExplicitAny: bun→renderer request proxy; methods typed at call-sites
+  request?: Record<string, (params: any) => Promise<any>>;
 };
 
 export {
@@ -121,6 +124,17 @@ export function registerRpcHandlers(
 
   const agent = getAgentManager();
   const browserWorkspace = getBrowserWorkspaceManager();
+  const rendererRequest = rpc?.request;
+  if (rendererRequest) {
+    browserWorkspace.setRendererCaller({
+      evaluate: (params) =>
+        rendererRequest.browserWorkspaceRendererEvaluate(params),
+      getTabRect: (params) =>
+        rendererRequest.browserWorkspaceRendererGetTabRect(params),
+    });
+  } else {
+    browserWorkspace.setRendererCaller(null);
+  }
   const camera = getCameraManager();
   const canvas = getCanvasManager();
   const desktop = getDesktopManager();
@@ -402,11 +416,16 @@ export function registerRpcHandlers(
       );
     },
     desktopOpenAppWindow: async (params: {
+      slug?: string;
       title: string;
       path: string;
       alwaysOnTop?: boolean;
     }) =>
       desktop.openAppWindow({
+        slug:
+          typeof params.slug === "string" && params.slug.length > 0
+            ? params.slug
+            : undefined,
         title: params.title.trim() || getBrandConfig().appName,
         path: normalizeRendererRoutePath(params.path),
         alwaysOnTop: params.alwaysOnTop === true,

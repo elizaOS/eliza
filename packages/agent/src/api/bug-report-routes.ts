@@ -91,7 +91,14 @@ interface BugReportBody {
 }
 
 export function sanitize(input: string, maxLen = 10_000): string {
-  return input.replace(/<[^>]*>/g, "").slice(0, maxLen);
+  const clipped = input.length > maxLen ? input.slice(0, maxLen) : input;
+  let prev = clipped;
+  let next = prev.replace(/<[^<>]{0,1024}>/g, "");
+  while (next !== prev) {
+    prev = next;
+    next = prev.replace(/<[^<>]{0,1024}>/g, "");
+  }
+  return next.replace(/[<>]/g, "").slice(0, maxLen);
 }
 
 function redactSecrets(input: string, maxLen = 10_000): string {

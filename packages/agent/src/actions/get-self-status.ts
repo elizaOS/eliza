@@ -10,8 +10,10 @@
  */
 
 import type { Action, ActionExample, HandlerOptions } from "@elizaos/core";
-import type { AwarenessRegistry } from "@elizaos/shared/awareness";
-import { getGlobalAwarenessRegistry } from "@elizaos/shared/awareness";
+import {
+  type AwarenessRegistry,
+  getGlobalAwarenessRegistry,
+} from "@elizaos/shared";
 
 const VALID_MODULES = [
   "all",

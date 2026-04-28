@@ -89,6 +89,7 @@ import {
   detectIMessageBackend,
   getIMessageDeliveryStatus,
   IMessageBridgeError,
+  readIMessages,
   searchIMessages,
   sendIMessage,
 } from "../src/lifeops/imessage-bridge.js";
@@ -226,6 +227,98 @@ describe("sendIMessage", () => {
     expect(urls.some((u) => u.includes("/api/v1/message/text"))).toBe(true);
   });
 
+  test("bluebubbles backend resolves a plain handle to the matching chat guid before send", async () => {
+    let sentBody: Record<string, unknown> | null = null;
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/v1/server/info")) {
+        return new Response(
+          JSON.stringify({
+            data: { private_api: true, helper_connected: true },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/chat/query")) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                guid: "iMessage;-;+15551112222",
+                displayName: "Alice",
+                participants: [{ address: "+15551112222" }],
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/message/text")) {
+        sentBody = JSON.parse((init?.body as string | undefined) ?? "{}");
+        return new Response(
+          JSON.stringify({ data: { guid: "msg-guid-plain-handle" } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not mocked", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      sendIMessage(
+        { to: "+15551112222", text: "arriving in 10" },
+        {
+          preferredBackend: "bluebubbles",
+          bluebubblesUrl: "http://127.0.0.1:1234",
+          bluebubblesPassword: "pw",
+        },
+      ),
+    ).resolves.toEqual({ ok: true, messageId: "msg-guid-plain-handle" });
+
+    expect(sentBody).toEqual(
+      expect.objectContaining({
+        chatGuid: "iMessage;-;+15551112222",
+        message: "arriving in 10",
+        method: "private-api",
+      }),
+    );
+    expect(typeof sentBody?.tempGuid).toBe("string");
+  });
+
+  test("bluebubbles backend requires a returned message guid", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/v1/server/info")) {
+        return new Response(
+          JSON.stringify({
+            data: { private_api: true, helper_connected: true },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/message/text")) {
+        return new Response(JSON.stringify({ data: { text: "accepted" } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not mocked", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      sendIMessage(
+        { to: "iMessage;-;+15551112222", text: "hi from bb" },
+        {
+          preferredBackend: "bluebubbles",
+          bluebubblesUrl: "http://127.0.0.1:1234",
+          bluebubblesPassword: "pw",
+        },
+      ),
+    ).rejects.toMatchObject({
+      backend: "bluebubbles",
+      message: "BlueBubbles /api/v1/message/text returned message without guid",
+    });
+  });
+
   test("bluebubbles backend rejects malformed JSON responses with bridge context", async () => {
     global.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === "string" ? input : input.toString();
@@ -259,6 +352,86 @@ describe("sendIMessage", () => {
       backend: "bluebubbles",
       message: "BlueBubbles /api/v1/message/text returned non-JSON body",
     });
+  });
+});
+
+describe("readIMessages — BlueBubbles backend", () => {
+  test("preserves inbound and outbound ids, chat ids, handles, direction, and text", async () => {
+    let queryBody: Record<string, unknown> | null = null;
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/v1/server/info")) {
+        return new Response(
+          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/message/query")) {
+        queryBody = JSON.parse((init?.body as string | undefined) ?? "{}");
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                guid: "bb-inbound-1",
+                text: "incoming iMessage text",
+                handle: { address: "+15551112222" },
+                chatGuid: "iMessage;-;+15551112222",
+                chats: [{ guid: "iMessage;-;+15551112222" }],
+                isFromMe: false,
+                dateCreated: Date.parse("2026-04-17T18:30:00.000Z"),
+              },
+              {
+                guid: "bb-outbound-1",
+                text: "outbound reply text",
+                handle: null,
+                chatGuid: "iMessage;-;+15551112222",
+                chats: [{ guid: "iMessage;-;+15551112222" }],
+                isFromMe: true,
+                dateCreated: Date.parse("2026-04-17T18:31:00.000Z"),
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not mocked", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    const messages = await readIMessages(
+      { limit: 2, since: "2026-04-17T18:00:00.000Z" },
+      {
+        preferredBackend: "bluebubbles",
+        bluebubblesUrl: "http://127.0.0.1:5678",
+        bluebubblesPassword: "pw",
+      },
+    );
+
+    expect(queryBody).toEqual({
+      limit: 2,
+      after: Date.parse("2026-04-17T18:00:00.000Z"),
+    });
+    expect(messages).toEqual([
+      {
+        id: "bb-inbound-1",
+        fromHandle: "+15551112222",
+        toHandles: [],
+        text: "incoming iMessage text",
+        isFromMe: false,
+        sentAt: "2026-04-17T18:30:00.000Z",
+        chatId: "iMessage;-;+15551112222",
+        attachments: undefined,
+      },
+      {
+        id: "bb-outbound-1",
+        fromHandle: "me",
+        toHandles: ["+15551112222"],
+        text: "outbound reply text",
+        isFromMe: true,
+        sentAt: "2026-04-17T18:31:00.000Z",
+        chatId: "iMessage;-;+15551112222",
+        attachments: undefined,
+      },
+    ]);
   });
 });
 
@@ -352,6 +525,24 @@ describe("withIMessage mixin", () => {
     await expect(
       svc.sendIMessage({ to: "+15551112222", text: "hi" }),
     ).resolves.toEqual({ ok: true, messageId: "native-message-1" });
+    await expect(
+      svc.searchIMessages({ query: "hello", limit: 1 }),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: "row-1",
+        text: "hello native",
+      }),
+    ]);
+    await expect(
+      svc.getIMessageDeliveryStatus(["native-message-1"]),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        messageId: "native-message-1",
+        status: "unknown",
+        isRead: null,
+        isDelivered: null,
+      }),
+    ]);
     expect(nativeService.sendMessage).toHaveBeenCalledWith(
       "+15551112222",
       "hi",
@@ -359,11 +550,114 @@ describe("withIMessage mixin", () => {
     );
   });
 
+  test("uses the configured bridge for reads when native Messages is send-only", async () => {
+    const previousUrl = process.env.ELIZA_BLUEBUBBLES_URL;
+    const previousPassword = process.env.ELIZA_BLUEBUBBLES_PASSWORD;
+    process.env.ELIZA_BLUEBUBBLES_URL = "http://127.0.0.1:5678";
+    process.env.ELIZA_BLUEBUBBLES_PASSWORD = "pw";
+
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/v1/server/info")) {
+        return new Response(
+          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/message/query")) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                guid: "bb-msg-1",
+                text: "read through bridge",
+                handle: { address: "+15551114444" },
+                chatGuid: "iMessage;-;+15551114444",
+                chats: [{ guid: "iMessage;-;+15551114444" }],
+                isFromMe: false,
+                dateCreated: Date.parse("2026-04-17T18:30:00.000Z"),
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response("not mocked", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    try {
+      const nativeService = {
+        isConnected: vi.fn(() => true),
+        getStatus: vi.fn(() => ({
+          available: true,
+          connected: true,
+          chatDbAvailable: false,
+          sendOnly: true,
+          chatDbPath: "/Users/test/Library/Messages/chat.db",
+          reason: "Full Disk Access is required to read chat.db.",
+          permissionAction: null,
+        })),
+        sendMessage: vi.fn(async () => ({ success: true })),
+        getMessages: vi.fn(async () => []),
+      };
+      const svc = createService(nativeService);
+
+      await expect(svc.getIMessageConnectorStatus()).resolves.toMatchObject({
+        available: true,
+        connected: true,
+        bridgeType: "bluebubbles",
+        sendMode: "private-api",
+      });
+      await expect(svc.readIMessages({ limit: 1 })).resolves.toEqual([
+        expect.objectContaining({
+          id: "bb-msg-1",
+          fromHandle: "+15551114444",
+          chatId: "iMessage;-;+15551114444",
+          isFromMe: false,
+          text: "read through bridge",
+        }),
+      ]);
+      expect(nativeService.getMessages).not.toHaveBeenCalled();
+    } finally {
+      if (previousUrl === undefined) {
+        delete process.env.ELIZA_BLUEBUBBLES_URL;
+      } else {
+        process.env.ELIZA_BLUEBUBBLES_URL = previousUrl;
+      }
+      if (previousPassword === undefined) {
+        delete process.env.ELIZA_BLUEBUBBLES_PASSWORD;
+      } else {
+        process.env.ELIZA_BLUEBUBBLES_PASSWORD = previousPassword;
+      }
+    }
+  });
+
   test("sendIMessage surfaces the bridge error when no backend exists", async () => {
     const svc = createService();
     await expect(
       svc.sendIMessage({ to: "+15551112222", text: "hi" }),
     ).rejects.toBeInstanceOf(IMessageBridgeError);
+  });
+
+  test("sendIMessage times out when the native bridge hangs", async () => {
+    vi.useFakeTimers();
+    try {
+      const nativeService = {
+        isConnected: vi.fn(() => true),
+        sendMessage: vi.fn(() => new Promise(() => {})),
+      };
+      const svc = createService(nativeService);
+      const pending = svc.sendIMessage({ to: "+15551112222", text: "hi" });
+      const expectation = expect(pending).rejects.toThrow(
+        "native iMessage send timed out",
+      );
+
+      await vi.advanceTimersByTimeAsync(20_000);
+
+      await expectation;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -547,10 +841,41 @@ describe("getIMessageDeliveryStatus", () => {
     const readResult = results.find((r) => r.messageId === "read-msg");
     expect(readResult?.status).toBe("delivered_read");
     expect(readResult?.isRead).toBe(true);
+    expect(typeof readResult?.checkedAt).toBe("string");
 
     const sentResult = results.find((r) => r.messageId === "sent-msg");
     expect(sentResult?.status).toBe("delivered");
     expect(sentResult?.isDelivered).toBe(true);
+  });
+
+  test("BlueBubbles backend surfaces delivery metadata lookup failures", async () => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.includes("/api/v1/server/info")) {
+        return new Response(
+          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.includes("/api/v1/message/missing-msg")) {
+        return new Response(JSON.stringify({ message: "message not found" }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("not mocked", { status: 500 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      getIMessageDeliveryStatus(["missing-msg"], {
+        preferredBackend: "bluebubbles",
+        bluebubblesUrl: "http://127.0.0.1:5678",
+        bluebubblesPassword: "pw",
+      }),
+    ).rejects.toMatchObject({
+      backend: "bluebubbles",
+      message: "BlueBubbles /api/v1/message/missing-msg returned HTTP 404",
+    });
   });
 
   test("returns empty array for empty message ID list", async () => {

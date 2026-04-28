@@ -3,7 +3,7 @@
  * guards, and wallet export rejection wrappers.
  */
 import type http from "node:http";
-import { resolveWalletExportRejection as upstreamResolveWalletExportRejection } from "@elizaos/agent/api/server";
+import { resolveWalletExportRejection as upstreamResolveWalletExportRejection } from "@elizaos/agent";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 
 import { mirrorCompatHeaders } from "./server-cloud-tts";
@@ -17,11 +17,7 @@ import {
 // ---------------------------------------------------------------------------
 
 function normalizeCompatReason(reason: string): string {
-  return reason
-    .replaceAll("ELIZA_WALLET_EXPORT_TOKEN", "ELIZA_WALLET_EXPORT_TOKEN")
-    .replaceAll("ELIZA_TERMINAL_RUN_TOKEN", "ELIZA_TERMINAL_RUN_TOKEN")
-    .replaceAll("X-Eliza-Export-Token", "X-Eliza-Export-Token")
-    .replaceAll("X-Eliza-Terminal-Token", "X-Eliza-Terminal-Token");
+  return reason;
 }
 
 export function normalizeCompatRejection<

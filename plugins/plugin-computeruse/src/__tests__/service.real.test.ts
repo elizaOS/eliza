@@ -34,10 +34,14 @@ try {
 function createMockRuntime(
   settings: Record<string, string> = {},
 ): IAgentRuntime {
+  const merged: Record<string, string> = {
+    COMPUTER_USE_APPROVAL_MODE: "full_control",
+    ...settings,
+  };
   return {
     character: {},
     getSetting(key: string) {
-      return settings[key] ?? undefined;
+      return merged[key] ?? undefined;
     },
     getService() {
       return null;

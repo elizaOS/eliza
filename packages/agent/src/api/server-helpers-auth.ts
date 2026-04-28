@@ -4,6 +4,8 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
+import { isIP } from "node:net";
+import { logger } from "@elizaos/core";
 import {
   isNullOriginAllowed,
   resolveAllowedHosts,
@@ -13,7 +15,7 @@ import {
   resolveApiToken,
   setApiToken,
   stripOptionalHostPort,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { sweepExpiredEntries } from "./memory-bounds.js";
 
@@ -153,7 +155,7 @@ export function applyCors(
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Browser-Bridge-Companion-Id, X-Eliza-Browser-Companion-Id",
+      "Content-Type, Authorization, X-Eliza-Token, X-Api-Key, X-Eliza-Export-Token, X-Eliza-Client-Id, X-Eliza-Terminal-Token, X-Eliza-UI-Language, X-Browser-Bridge-Companion-Id, X-Eliza-Browser-Companion-Id, X-Milady-CSRF",
     );
   }
 
@@ -182,13 +184,19 @@ export function getConfiguredApiToken(): string | undefined {
 }
 
 export function extractAuthToken(req: http.IncomingMessage): string | null {
-  const auth =
+  const rawAuth =
     typeof req.headers.authorization === "string"
-      ? req.headers.authorization.trim()
+      ? req.headers.authorization
       : "";
-  if (auth) {
-    const match = /^Bearer\s+(.+)$/i.exec(auth);
-    if (match?.[1]) return match[1].trim();
+  const auth =
+    rawAuth.length > 8192 ? rawAuth.slice(0, 8192).trim() : rawAuth.trim();
+  if (
+    auth &&
+    auth.length >= 7 &&
+    auth.slice(0, 7).toLowerCase() === "bearer "
+  ) {
+    const token = auth.slice(7).trim();
+    if (token) return token;
   }
 
   const header =
@@ -202,9 +210,213 @@ export function extractAuthToken(req: http.IncomingMessage): string | null {
   return null;
 }
 
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
+}
+
+const CLIENT_IP_PROXY_HEADERS = new Set([
+  "forwarded",
+  "forwarded-for",
+  "x-forwarded",
+  "x-forwarded-for",
+  "x-original-forwarded-for",
+  "x-real-ip",
+  "x-client-ip",
+  "x-forwarded-client-ip",
+  "x-cluster-client-ip",
+  "cf-connecting-ip",
+  "true-client-ip",
+  "fastly-client-ip",
+  "x-appengine-user-ip",
+  "x-azure-clientip",
+]);
+
+function headerValues(value: string | string[] | undefined): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  return [];
+}
+
+function isClientIpProxyHeaderName(name: string): boolean {
+  const normalized = name.toLowerCase();
+  return (
+    CLIENT_IP_PROXY_HEADERS.has(normalized) ||
+    normalized.endsWith("-client-ip") ||
+    normalized.endsWith("-connecting-ip") ||
+    normalized.endsWith("-real-ip")
+  );
+}
+
+function extractForwardedForCandidates(raw: string): string[] {
+  const candidates: string[] = [];
+  const pattern = /(?:^|[;,])\s*for=(?:"([^"]*)"|([^;,]*))/gi;
+  for (const match of raw.matchAll(pattern)) {
+    candidates.push(match[1] ?? match[2] ?? "");
+  }
+  return candidates;
+}
+
+function extractProxyClientAddressCandidates(
+  headerName: string,
+  raw: string,
+): string[] {
+  if (headerName === "forwarded") {
+    return extractForwardedForCandidates(raw);
+  }
+
+  const forwardedCandidates = raw.toLowerCase().includes("for=")
+    ? extractForwardedForCandidates(raw)
+    : [];
+  if (forwardedCandidates.length > 0) return forwardedCandidates;
+
+  return raw.split(",");
+}
+
+function stripMatchingQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function isNeutralProxyClientAddress(raw: string): boolean {
+  const normalized = stripMatchingQuotes(raw).trim().toLowerCase();
+  return (
+    !normalized ||
+    normalized === "unknown" ||
+    normalized === "null" ||
+    normalized.startsWith("_")
+  );
+}
+
+function normalizeProxyClientIp(raw: string): string | null {
+  let normalized = stripMatchingQuotes(raw).trim();
+  if (!normalized) return null;
+
+  if (normalized.startsWith("[")) {
+    const close = normalized.indexOf("]");
+    if (close > 0) {
+      normalized = normalized.slice(1, close);
+    }
+  } else {
+    const ipv4HostPort = /^(\d{1,3}(?:\.\d{1,3}){3})(?::\d+)$/.exec(normalized);
+    if (ipv4HostPort?.[1]) {
+      normalized = ipv4HostPort[1];
+    }
+  }
+
+  const zoneIndex = normalized.indexOf("%");
+  if (zoneIndex >= 0) {
+    normalized = normalized.slice(0, zoneIndex);
+  }
+
+  normalized = normalized.trim().toLowerCase();
+  return isIP(normalized) ? normalized : null;
+}
+
+function isLoopbackProxyClientIp(ip: string): boolean {
+  const normalized = ip.trim().toLowerCase();
+  return (
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    normalized.startsWith("127.") ||
+    normalized.startsWith("::ffff:127.") ||
+    normalized.startsWith("::ffff:0:127.")
+  );
+}
+
+function proxyClientHeaderBlocksLocalTrust(
+  headers: http.IncomingHttpHeaders,
+): boolean {
+  for (const [rawName, rawValue] of Object.entries(headers)) {
+    const headerName = rawName.toLowerCase();
+    if (!isClientIpProxyHeaderName(headerName)) continue;
+
+    for (const value of headerValues(rawValue)) {
+      for (const candidate of extractProxyClientAddressCandidates(
+        headerName,
+        value,
+      )) {
+        if (isNeutralProxyClientAddress(candidate)) continue;
+        const ip = normalizeProxyClientIp(candidate);
+        if (!ip || !isLoopbackProxyClientIp(ip)) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function isLoopbackRemoteAddress(
+  remoteAddress: string | null | undefined,
+): boolean {
+  if (!remoteAddress) return false;
+  const normalized = remoteAddress.trim().toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "0:0:0:0:0:0:0:1" ||
+    normalized === "::ffff:127.0.0.1" ||
+    normalized === "::ffff:0:127.0.0.1"
+  );
+}
+
+function isTrustedLocalOrigin(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed === "null") return true;
+  try {
+    const parsed = new URL(trimmed);
+    if (
+      parsed.protocol === "file:" ||
+      parsed.protocol === "app:" ||
+      parsed.protocol === "tauri:" ||
+      parsed.protocol === "capacitor:" ||
+      parsed.protocol === "capacitor-electron:" ||
+      parsed.protocol === "electrobun:"
+    ) {
+      return true;
+    }
+    return isLoopbackBindHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+export function isTrustedLocalRequest(req: http.IncomingMessage): boolean {
+  if (isCloudProvisionedContainer()) return false;
+  if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
+  if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
+
+  const host = firstHeaderValue(req.headers.host);
+  if (host && !isLoopbackBindHost(host)) return false;
+
+  const secFetchSite = firstHeaderValue(
+    req.headers["sec-fetch-site"],
+  )?.toLowerCase();
+  if (secFetchSite === "cross-site") return false;
+
+  const origin = firstHeaderValue(req.headers.origin);
+  if (origin && !isTrustedLocalOrigin(origin)) return false;
+
+  const referer = firstHeaderValue(req.headers.referer);
+  if (!origin && referer && !isTrustedLocalOrigin(referer)) return false;
+
+  return true;
+}
+
 export function isAuthorized(req: http.IncomingMessage): boolean {
+  if (isTrustedLocalRequest(req)) return true;
+
   const expected = getConfiguredApiToken();
-  if (!expected) return !isCloudProvisionedContainer();
+  if (!expected) return false;
   const provided = extractAuthToken(req);
   if (!provided) return false;
   return tokenMatches(expected, provided);
@@ -272,16 +484,16 @@ export function ensureApiTokenForBindHost(host: string): void {
   setApiToken(process.env, generated);
 
   if (cloudProvisioned) {
-    console.warn(
+    logger.warn(
       "[eliza-api] Steward-managed cloud container started without ELIZA_API_TOKEN/ELIZA_API_TOKEN; generated a temporary inbound API token for this process.",
     );
   } else {
-    console.warn(
+    logger.warn(
       `[eliza-api] ELIZA_API_BIND/ELIZA_API_BIND=${host} is non-loopback and ELIZA_API_TOKEN/ELIZA_API_TOKEN is unset.`,
     );
   }
   const tokenFingerprint = `${generated.slice(0, 4)}...${generated.slice(-4)}`;
-  console.warn(
+  logger.warn(
     `[eliza-api] Generated temporary API token (${tokenFingerprint}) for this process. Set ELIZA_API_TOKEN or ELIZA_API_TOKEN explicitly to override.`,
   );
 }
@@ -311,10 +523,9 @@ export function normalizePairingCode(code: string): string {
 }
 
 function generatePairingCode(): string {
-  const bytes = crypto.randomBytes(8);
   let raw = "";
-  for (let i = 0; i < bytes.length; i++) {
-    raw += PAIRING_ALPHABET[bytes[i] % PAIRING_ALPHABET.length];
+  for (let i = 0; i < 8; i++) {
+    raw += PAIRING_ALPHABET[crypto.randomInt(0, PAIRING_ALPHABET.length)];
   }
   return `${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
 }
@@ -325,7 +536,7 @@ export function ensurePairingCode(): string | null {
   if (!pairingCode || now > pairingExpiresAt) {
     pairingCode = generatePairingCode();
     pairingExpiresAt = now + PAIRING_TTL_MS;
-    console.warn(
+    logger.warn(
       `[eliza-api] Pairing code: ${pairingCode} (valid for 10 minutes)`,
     );
   }
@@ -370,12 +581,6 @@ export function normalizeWsClientId(value: unknown): string | null {
   if (!trimmed) return null;
   if (!SAFE_WS_CLIENT_ID_RE.test(trimmed)) return null;
   return trimmed;
-}
-
-function firstHeaderValue(value: string | string[] | undefined): string | null {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
-  return null;
 }
 
 export function resolveTerminalRunClientId(

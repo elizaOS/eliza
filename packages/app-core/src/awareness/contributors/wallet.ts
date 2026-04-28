@@ -3,14 +3,16 @@
  * signer mode, and trade permissions. Never exposes private keys.
  */
 
-import { getWalletAddresses } from "@elizaos/agent/api/wallet";
-import { resolveWalletRpcReadiness } from "@elizaos/agent/api/wallet-rpc";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type { AwarenessContributor } from "@elizaos/agent/contracts";
+import {
+  type AwarenessContributor,
+  getWalletAddresses,
+  loadElizaConfig,
+  resolveWalletRpcReadiness,
+} from "@elizaos/agent";
 import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
-} from "@elizaos/app-steward/routes/server-wallet-trade";
+} from "@elizaos/app-steward";
 import type { IAgentRuntime } from "@elizaos/core";
 
 function shorten(address: string | null): string | null {

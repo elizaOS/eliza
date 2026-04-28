@@ -17,15 +17,18 @@
 
 import fs from "node:fs";
 import type http from "node:http";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
-import { checkRateLimit, type RateLimitConfig } from "@elizaos/agent/api";
 import type { ReadJsonBodyOptions } from "@elizaos/agent/api/http-helpers";
+import {
+  checkRateLimit,
+  type RateLimitConfig,
+} from "@elizaos/agent/api/rate-limiter";
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
+import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
-} from "@elizaos/shared/contracts/lifeops";
-import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
+} from "@elizaos/shared";
 import {
   BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
   type CreateBrowserBridgeCompanionAutoPairRequest,
@@ -352,12 +355,11 @@ export async function handleBrowserBridgeRoutes(
     });
   }
 
-  if (
-    method === "POST" &&
-    pathname === "/api/browser-bridge/companions/pair"
-  ) {
-    const body =
-      await readJsonBody<CreateBrowserBridgeCompanionPairingRequest>(req, res);
+  if (method === "POST" && pathname === "/api/browser-bridge/companions/pair") {
+    const body = await readJsonBody<CreateBrowserBridgeCompanionPairingRequest>(
+      req,
+      res,
+    );
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(
@@ -384,10 +386,7 @@ export async function handleBrowserBridgeRoutes(
       return true;
     }
     const body =
-      await readJsonBody<CreateBrowserBridgeCompanionAutoPairRequest>(
-        req,
-        res,
-      );
+      await readJsonBody<CreateBrowserBridgeCompanionAutoPairRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(
@@ -460,10 +459,7 @@ export async function handleBrowserBridgeRoutes(
     });
   }
 
-  if (
-    method === "POST" &&
-    pathname === "/api/browser-bridge/companions/sync"
-  ) {
+  if (method === "POST" && pathname === "/api/browser-bridge/companions/sync") {
     const body = await readJsonBody<SyncBrowserBridgeStateRequest>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
@@ -485,7 +481,9 @@ export async function handleBrowserBridgeRoutes(
 
   if (method === "GET" && pathname === "/api/browser-bridge/tabs") {
     return runRoute(ctx, async (service) => {
-      json(res, { tabs: await service.listBrowserTabs(ctx.state.adminEntityId) });
+      json(res, {
+        tabs: await service.listBrowserTabs(ctx.state.adminEntityId),
+      });
     });
   }
 

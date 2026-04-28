@@ -484,17 +484,13 @@ export function CloudDashboard() {
     cloudBalanceNumber !== null ? cloudBalanceNumber.toFixed(2) : null;
   const currencyPrefix = cloudCurrency === "USD" ? "$" : `${cloudCurrency} `;
 
-  /* ── Disconnected: single-button connect view ────────────────────────── */
   if (!elizaCloudConnected) {
     return (
-      <div className="mx-auto flex max-w-sm flex-col items-center px-4 py-10 text-center">
-        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-accent/20 bg-accent/10">
-          <Zap className="h-6 w-6 text-txt" />
-        </div>
+      <div className="mx-auto flex max-w-sm flex-wrap items-center justify-center gap-2 px-3 py-5 text-center">
         <Button
           variant="default"
           size="sm"
-          className="rounded-xl px-6 py-2.5 text-sm font-semibold"
+          className="h-8 rounded-lg px-3 text-xs font-semibold"
           onClick={() => void handleCloudLogin()}
           disabled={elizaCloudLoginBusy}
         >
@@ -509,7 +505,7 @@ export function CloudDashboard() {
         </Button>
         <Button
           variant="link"
-          className="mt-3 h-auto p-0 text-xs text-muted"
+          className="h-8 px-2 text-xs text-muted"
           onClick={() => void openExternalUrl(ELIZA_CLOUD_WEB_URL)}
         >
           {t("elizaclouddashboard.LearnMore")}
@@ -518,14 +514,13 @@ export function CloudDashboard() {
     );
   }
 
-  /* ── Overview (default view): account + balance + actions ────────────── */
   const overviewContent = (
-    <div className="px-4 py-3 sm:px-5 sm:py-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="px-3 py-2 sm:px-4">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <CreditCard className="h-4 w-4 shrink-0 text-muted" aria-hidden />
           <span
-            className={`text-lg font-semibold tracking-tight tabular-nums ${creditStatusColor}`}
+            className={`text-base font-semibold tracking-tight tabular-nums ${creditStatusColor}`}
           >
             {currencyPrefix}
             {formattedBalance ?? (
@@ -537,16 +532,54 @@ export function CloudDashboard() {
           )}
         </div>
         <span
-          className={`shrink-0 rounded-full border px-2 py-0.5 text-2xs font-semibold uppercase tracking-wider ${statusChipClass}`}
+          className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-wider ${statusChipClass}`}
         >
           {creditStatusTone}
         </span>
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <Button
+            variant="default"
+            size="sm"
+            className="h-8 rounded-lg px-2.5 text-xs font-semibold"
+            onClick={goBilling}
+          >
+            <CreditCard className="mr-1.5 h-3.5 w-3.5" />
+            {t("elizaclouddashboard.TopUpCredits", {
+              defaultValue: "Top up credits",
+            })}
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 rounded-lg"
+            onClick={handleRefresh}
+            disabled={refreshing || billingLoading}
+            aria-label={t("common.refresh")}
+            title={t("common.refresh")}
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
+            />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-lg border-danger/30 px-2.5 text-danger text-xs hover:bg-danger/10"
+            onClick={() => void handleCloudDisconnect()}
+            disabled={cloudDisconnecting}
+          >
+            {cloudDisconnecting
+              ? t("providerswitcher.disconnecting")
+              : t("common.disconnect")}
+          </Button>
+        </div>
       </div>
 
       {elizaCloudAuthRejected && (
         <div
           role="alert"
-          className="mb-5 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+          className="mt-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
         >
           {t("notice.elizaCloudAuthRejected")}
         </div>
@@ -555,88 +588,46 @@ export function CloudDashboard() {
       {billingError && (
         <div
           role="alert"
-          className="mb-5 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+          className="mt-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
         >
           {billingError}
         </div>
       )}
 
-      <dl className="mb-3 space-y-1 text-xs">
-        <div className="flex items-center justify-between gap-3">
-          <dt className="text-muted">
-            {t("common.account", { defaultValue: "Account" })}
-          </dt>
-          <dd className="min-w-0">
-            {accountIdDisplay.mono ? (
-              <code className="truncate font-mono text-txt">
-                {accountIdDisplay.text}
-              </code>
-            ) : (
-              <span className="truncate text-txt">{accountIdDisplay.text}</span>
-            )}
-          </dd>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <dt className="text-muted">
-            {t("elizaclouddashboard.AutoTopUp", {
-              defaultValue: "Auto top-up",
-            })}
-          </dt>
-          <dd className="text-txt">
-            {billingAutoTopUp.enabled
-              ? t("elizaclouddashboard.OnAmount", {
-                  defaultValue:
-                    "On · $" + "{{amount}}" + " when below $" + "{{threshold}}",
-                  amount: Number(autoTopUpForm.amount).toFixed(0),
-                  threshold: Number(autoTopUpForm.threshold).toFixed(0),
-                })
-              : t("elizaclouddashboard.Off", { defaultValue: "Off" })}
-          </dd>
-        </div>
-      </dl>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="default"
-          size="sm"
-          className="rounded-lg font-semibold"
-          onClick={goBilling}
+      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+        <span
+          className="inline-flex max-w-full items-center rounded-md border border-border/50 bg-bg/55 px-2 py-1 text-muted"
+          title={t("common.account", { defaultValue: "Account" })}
         >
-          <CreditCard className="mr-1.5 h-3.5 w-3.5" />
-          {t("elizaclouddashboard.TopUpCredits", {
-            defaultValue: "Top up credits",
+          {accountIdDisplay.mono ? (
+            <code className="truncate font-mono text-txt">
+              {accountIdDisplay.text}
+            </code>
+          ) : (
+            <span className="truncate text-txt">{accountIdDisplay.text}</span>
+          )}
+        </span>
+        <span
+          className="inline-flex items-center rounded-md border border-border/50 bg-bg/55 px-2 py-1 text-muted"
+          title={t("elizaclouddashboard.AutoTopUp", {
+            defaultValue: "Auto top-up",
           })}
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          className="h-8 w-8 rounded-lg"
-          onClick={handleRefresh}
-          disabled={refreshing || billingLoading}
-          aria-label={t("common.refresh")}
-          title={t("common.refresh")}
         >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`}
-          />
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="rounded-lg border-danger/30 text-danger hover:bg-danger/10"
-          onClick={() => void handleCloudDisconnect()}
-          disabled={cloudDisconnecting}
-        >
-          {cloudDisconnecting
-            ? t("providerswitcher.disconnecting")
-            : t("common.disconnect")}
-        </Button>
+          {billingAutoTopUp.enabled
+            ? t("elizaclouddashboard.OnAmount", {
+                defaultValue:
+                  "Auto $" + "{{amount}}" + " below $" + "{{threshold}}",
+                amount: Number(autoTopUpForm.amount).toFixed(0),
+                threshold: Number(autoTopUpForm.threshold).toFixed(0),
+              })
+            : t("elizaclouddashboard.AutoTopUpOff", {
+                defaultValue: "Auto top-up off",
+              })}
+        </span>
       </div>
     </div>
   );
 
-  /* ── Billing (payment) flip view ─────────────────────────────────────── */
   const billingContent = (
     <div className="px-5 py-6 sm:px-6">
       <div className="mb-5 flex items-center gap-2">

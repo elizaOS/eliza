@@ -1,13 +1,13 @@
 import type {
   BrowserBridgePermissionState,
   BrowserBridgeSettings,
-} from "@elizaos/plugin-browser-bridge/contracts"
+} from "@elizaos/plugin-browser-bridge"
 import type {
   LifeOpsReminderIntensity,
   LifeOpsReminderStep,
   LifeOpsReminderUrgency,
   LifeOpsWorkflowPermissionPolicy,
-} from "@elizaos/app-lifeops/contracts"
+} from "../contracts/index.js"
 
 export const MAX_OVERVIEW_OCCURRENCES = 8
 export const MAX_OVERVIEW_REMINDERS = 6
@@ -18,6 +18,7 @@ export const GOOGLE_GMAIL_CACHE_TTL_MS = 5 * 60 * 1000
 export const GOOGLE_PRIMARY_CALENDAR_ID = "primary"
 export const GOOGLE_GMAIL_MAILBOX = "me"
 export const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12
+export const MAX_GMAIL_TRIAGE_MAX_RESULTS = 5000
 export const DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS = 30
 export const DEFAULT_GMAIL_SEARCH_SCAN_LIMIT = 50
 export const DEFAULT_GMAIL_SEARCH_CACHE_SCAN_LIMIT = 200

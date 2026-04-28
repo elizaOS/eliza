@@ -154,14 +154,11 @@ const secretsCapability = {
 
 import {
 	CoreManagerService,
-	coreStatusAction,
-	getPluginDetailsAction,
-	listEjectedPluginsAction,
 	PluginManagerService,
+	pluginAction,
 	pluginConfigurationStatusProvider,
 	pluginStateProvider,
 	registryPluginsProvider,
-	searchPluginAction,
 } from "./plugin-manager/index.ts";
 
 const pluginManagerCapability = {
@@ -170,12 +167,7 @@ const pluginManagerCapability = {
 		pluginStateProvider,
 		registryPluginsProvider,
 	] as Provider[],
-	actions: [
-		coreStatusAction,
-		searchPluginAction,
-		getPluginDetailsAction,
-		listEjectedPluginsAction,
-	] as Action[],
+	actions: [pluginAction] as Action[],
 	services: [
 		{
 			serviceType: "plugin_manager",
@@ -194,10 +186,17 @@ const pluginManagerCapability = {
 
 // ─── Knowledge & trajectories (native RAG / run logging) ──────────────────────
 
-export type { KnowledgePluginConfig } from "./knowledge/index.ts";
+export type {
+	FetchedKnowledgeUrl,
+	FetchedKnowledgeUrlKind,
+	FetchKnowledgeFromUrlOptions,
+	KnowledgePluginConfig,
+} from "./knowledge/index.ts";
 export {
 	createKnowledgePlugin,
 	documentsProvider,
+	fetchKnowledgeFromUrl,
+	isYouTubeUrl,
 	KnowledgeService,
 	knowledgeActions,
 	knowledgePlugin,

@@ -1,4 +1,4 @@
-import { hasAdminAccess } from "@elizaos/agent";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   IAgentRuntime,
   Memory,
@@ -6,7 +6,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import type { LifeOpsBrowserSession } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsBrowserSession } from "@elizaos/shared";
 import { LifeOpsService } from "./lifeops/service.js";
 
 function formatSettingsLine(

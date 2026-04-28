@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
   TravelTimeService,
   type CalendarEventLookupLike,

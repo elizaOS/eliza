@@ -6,6 +6,7 @@
 
 import type {
   Action,
+  ActionResult,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -13,8 +14,30 @@ import type {
   State,
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import type { WindowActionParams } from "../types.js";
-import { resolveActionParams } from "./helpers.js";
+import type { WindowActionParams, WindowActionResult } from "../types.js";
+import {
+  resolveActionParams,
+  toComputerUseActionResult,
+} from "./helpers.js";
+
+function formatWindowResultText(
+  params: WindowActionParams,
+  result: WindowActionResult,
+): string {
+  if (result.windows) {
+    const windowText =
+      result.windows.length > 0
+        ? result.windows.map((w) => `[${w.id}] ${w.app} - ${w.title}`).join("\n")
+        : "No visible windows found.";
+    return `Open windows:\n${windowText}`;
+  }
+
+  return result.success
+    ? (result.message ?? `Window ${params.action} completed.`)
+    : result.approvalRequired
+      ? `Window action is waiting for approval (${result.approvalId}).`
+      : `Window action failed: ${result.error}`;
+}
 
 export const manageWindowAction: Action = {
   name: "MANAGE_WINDOW",
@@ -115,7 +138,7 @@ export const manageWindowAction: Action = {
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
-  ) => {
+  ): Promise<ActionResult> => {
     const service =
       (runtime.getService("computeruse") as unknown as ComputerUseService) ??
       null;
@@ -127,27 +150,17 @@ export const manageWindowAction: Action = {
     params.action ??= "list";
 
     const result = await service.executeWindowAction(params);
+    const text = formatWindowResultText(params, result);
 
     if (callback) {
-      if (result.windows) {
-        const windowText =
-          result.windows.length > 0
-            ? result.windows
-                .map((w) => `[${w.id}] ${w.app} — ${w.title}`)
-                .join("\n")
-            : "No visible windows found.";
-        await callback({ text: `Open windows:\n${windowText}` });
-      } else {
-        await callback({
-          text: result.success
-            ? (result.message ?? `Window ${params.action} completed.`)
-            : result.approvalRequired
-              ? `Window action is waiting for approval (${result.approvalId}).`
-              : `Window action failed: ${result.error}`,
-        });
-      }
+      await callback({ text });
     }
 
-    return result as unknown as any;
+    return toComputerUseActionResult({
+      action: params.action,
+      result,
+      text,
+      suppressClipboard: true,
+    });
   },
 };

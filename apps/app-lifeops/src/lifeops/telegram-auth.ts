@@ -1,12 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { logger } from "@elizaos/core";
-import type {
-  LifeOpsConnectorSide,
-} from "@elizaos/shared/contracts/lifeops";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
-
+import { logger } from "@elizaos/core";
 // Re-export the real GramJS auth session from plugin-telegram.
 // The plugin's TelegramAccountAuthSession handles the full MTProto flow:
 //   provisioning → code → 2FA → session persistence.
@@ -16,12 +12,16 @@ import {
   type TelegramAccountAuthSessionLike,
   type TelegramAccountAuthSnapshot,
   type TelegramAccountConnectorConfig,
-} from "../../../../plugins/plugin-telegram/src/account-auth-service.ts";
+} from "@elizaos/plugin-telegram/account-auth-service";
+import type { LifeOpsConnectorSide } from "@elizaos/shared";
+import {
+  decryptTokenEnvelope,
+  encryptTokenPayload,
+  isEncryptedTokenEnvelope,
+  resolveTokenEncryptionKey,
+} from "./token-encryption.js";
 
-export type {
-  TelegramAccountAuthSnapshot,
-  TelegramAccountConnectorConfig,
-};
+export type { TelegramAccountAuthSnapshot, TelegramAccountConnectorConfig };
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,6 +77,13 @@ export interface StoredTelegramConnectorToken {
   updatedAt: string;
 }
 
+export interface StoredTelegramConnectorTokenCandidate {
+  agentId: string;
+  side: LifeOpsConnectorSide;
+  tokenRef: string;
+  token: StoredTelegramConnectorToken;
+}
+
 interface StoredPendingTelegramAuthSession {
   sessionId: string;
   agentId: string;
@@ -124,7 +131,7 @@ function resolveApiId(
   env: NodeJS.ProcessEnv = process.env,
 ): number | null {
   if (explicit !== undefined && explicit > 0) return explicit;
-  const envValue = env.ELIZA_TELEGRAM_API_ID;
+  const envValue = env.ELIZA_TELEGRAM_API_ID ?? env.TELEGRAM_ACCOUNT_APP_ID;
   if (envValue) {
     const parsed = Number.parseInt(envValue, 10);
     if (Number.isFinite(parsed) && parsed > 0) return parsed;
@@ -138,7 +145,7 @@ function resolveApiHash(
   env: NodeJS.ProcessEnv = process.env,
 ): string | null {
   if (explicit && explicit.length > 0) return explicit;
-  const envValue = env.ELIZA_TELEGRAM_API_HASH;
+  const envValue = env.ELIZA_TELEGRAM_API_HASH ?? env.TELEGRAM_ACCOUNT_APP_HASH;
   if (envValue && envValue.length > 0) return envValue;
   return null;
 }
@@ -146,16 +153,17 @@ function resolveApiHash(
 export function hasManagedTelegramCredentials(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  return resolveApiId(undefined, env) !== null && resolveApiHash(undefined, env) !== null;
+  return (
+    resolveApiId(undefined, env) !== null &&
+    resolveApiHash(undefined, env) !== null
+  );
 }
 
 // ---------------------------------------------------------------------------
 // Storage helpers
 // ---------------------------------------------------------------------------
 
-function telegramStorageRoot(
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+function telegramStorageRoot(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveOAuthDir(env), "lifeops", "telegram");
 }
 
@@ -201,6 +209,57 @@ function ensureTokenStorageDir(dir: string): void {
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 }
 
+function readTelegramStoragePayload(
+  filePath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const rawFileContents = fs.readFileSync(filePath, "utf-8");
+  const parsedRaw = JSON.parse(rawFileContents);
+  if (!isEncryptedTokenEnvelope(parsedRaw)) {
+    return rawFileContents;
+  }
+  const key = resolveTokenEncryptionKey(telegramStorageRoot(env), env);
+  return decryptTokenEnvelope(parsedRaw, key);
+}
+
+function writeTelegramStoragePayload(
+  filePath: string,
+  payload: StoredPendingTelegramAuthSession | StoredTelegramConnectorToken,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  ensureTokenStorageDir(path.dirname(filePath));
+  const key = resolveTokenEncryptionKey(telegramStorageRoot(env), env);
+  const envelope = encryptTokenPayload(JSON.stringify(payload), key);
+  fs.writeFileSync(filePath, JSON.stringify(envelope, null, 2), {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  try {
+    fs.chmodSync(filePath, 0o600);
+  } catch {
+    // Non-fatal on platforms without chmod semantics.
+  }
+}
+
+function decodePendingTelegramSession(
+  rawJson: string,
+  sessionId: string,
+): StoredPendingTelegramAuthSession | null {
+  const parsed = JSON.parse(rawJson) as StoredPendingTelegramAuthSession;
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    parsed.sessionId === sessionId &&
+    typeof parsed.agentId === "string" &&
+    (parsed.side === "owner" || parsed.side === "agent") &&
+    typeof parsed.phone === "string" &&
+    typeof parsed.createdAt === "string"
+  ) {
+    return parsed;
+  }
+  return null;
+}
+
 function writePendingTelegramSession(
   session: PendingTelegramAuthSession,
   env: NodeJS.ProcessEnv = process.env,
@@ -215,11 +274,7 @@ function writePendingTelegramSession(
     createdAt: session.createdAt,
   };
   const filePath = resolvePendingSessionPath(session.sessionId, env);
-  ensureTokenStorageDir(path.dirname(filePath));
-  fs.writeFileSync(filePath, JSON.stringify(stored, null, 2), {
-    encoding: "utf8",
-    mode: 0o600,
-  });
+  writeTelegramStoragePayload(filePath, stored, env);
 }
 
 function deletePendingTelegramSession(
@@ -238,19 +293,12 @@ function readPendingTelegramSession(
     return null;
   }
   try {
-    const parsed = JSON.parse(
-      fs.readFileSync(filePath, "utf8"),
-    ) as StoredPendingTelegramAuthSession;
-    if (
-      parsed &&
-      typeof parsed === "object" &&
-      parsed.sessionId === sessionId &&
-      typeof parsed.agentId === "string" &&
-      (parsed.side === "owner" || parsed.side === "agent") &&
-      typeof parsed.phone === "string" &&
-      typeof parsed.createdAt === "string"
-    ) {
-      return parsed;
+    const decoded = decodePendingTelegramSession(
+      readTelegramStoragePayload(filePath, env),
+      sessionId,
+    );
+    if (decoded) {
+      return decoded;
     }
   } catch {
     // Invalid files are discarded below.
@@ -295,7 +343,10 @@ function cleanupExpiredSessions(): void {
     }
   }
   for (const session of listPendingTelegramSessions()) {
-    if (now - new Date(session.createdAt).getTime() > TELEGRAM_AUTH_SESSION_TTL_MS) {
+    if (
+      now - new Date(session.createdAt).getTime() >
+      TELEGRAM_AUTH_SESSION_TTL_MS
+    ) {
       deletePendingTelegramSession(session.sessionId);
     }
   }
@@ -320,7 +371,9 @@ function clearPendingSessionsForSide(
 }
 
 /** Map plugin-telegram's status names to LifeOps auth state names. */
-function mapSnapshotStatus(snapshot: TelegramAccountAuthSnapshot): TelegramAuthState {
+function mapSnapshotStatus(
+  snapshot: TelegramAccountAuthSnapshot,
+): TelegramAuthState {
   switch (snapshot.status) {
     case "idle":
       return "idle";
@@ -400,10 +453,11 @@ function persistRetryableTelegramAuthState(
   session.state = nextState;
   session.error = error;
 
-  const authSessionInternal = session.authSession as TelegramAccountAuthSessionLike & {
-    snapshot?: TelegramAccountAuthSnapshot;
-    persistAuthState?: () => void;
-  };
+  const authSessionInternal =
+    session.authSession as TelegramAccountAuthSessionLike & {
+      snapshot?: TelegramAccountAuthSnapshot;
+      persistAuthState?: () => void;
+    };
   if (authSessionInternal.snapshot) {
     authSessionInternal.snapshot.status = pluginStatusForRetryState(nextState);
     authSessionInternal.snapshot.error = error;
@@ -507,8 +561,7 @@ export async function startTelegramAuth(args: {
 
   // Start the real auth flow. If credentials are provided, it goes straight
   // to Telegram code. If not, it starts provisioning via my.telegram.org.
-  const credentials =
-    apiId && apiHash ? { apiId, apiHash } : null;
+  const credentials = apiId && apiHash ? { apiId, apiHash } : null;
 
   try {
     const snapshot = await authSession.start({
@@ -520,8 +573,7 @@ export async function startTelegramAuth(args: {
     session.identity = mapSnapshotIdentity(snapshot);
   } catch (error) {
     session.state = "error";
-    session.error =
-      error instanceof Error ? error.message : String(error);
+    session.error = error instanceof Error ? error.message : String(error);
   }
 
   return session;
@@ -657,7 +709,6 @@ export async function submitTelegramAuthPassword(
 }
 
 function persistTelegramToken(session: PendingTelegramAuthSession): void {
-  const snapshot = session.authSession.getSnapshot();
   const connectorConfig = session.authSession.getResolvedConnectorConfig();
   const now = new Date().toISOString();
 
@@ -668,7 +719,9 @@ function persistTelegramToken(session: PendingTelegramAuthSession): void {
     // The session string is persisted by TelegramAccountAuthSession
     // in ~/.eliza/telegram-account/session.txt — we store the path reference.
     sessionString: connectorConfig?.appId ? "persisted" : "",
-    apiId: connectorConfig ? Number(connectorConfig.appId) : (session.apiId ?? 0),
+    apiId: connectorConfig
+      ? Number(connectorConfig.appId)
+      : (session.apiId ?? 0),
     apiHash: connectorConfig?.appHash ?? session.apiHash ?? "",
     phone: session.phone,
     identity: session.identity ?? { id: "", username: "", firstName: "" },
@@ -679,10 +732,7 @@ function persistTelegramToken(session: PendingTelegramAuthSession): void {
 
   const tokenRef = buildTelegramTokenRef(session.agentId, session.side);
   const tokenPath = resolveTokenPath(tokenRef);
-  ensureTokenStorageDir(path.dirname(tokenPath));
-  fs.writeFileSync(tokenPath, JSON.stringify(token, null, 2), {
-    mode: 0o600,
-  });
+  writeTelegramStoragePayload(tokenPath, token);
 }
 
 export function getTelegramAuthStatus(
@@ -742,19 +792,100 @@ export function findPendingTelegramAuthSession(
 // Credential management
 // ---------------------------------------------------------------------------
 
+function isStoredTelegramConnectorToken(
+  value: unknown,
+): value is StoredTelegramConnectorToken {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const token = value as Partial<StoredTelegramConnectorToken>;
+  return (
+    token.provider === "telegram" &&
+    typeof token.agentId === "string" &&
+    (token.side === "owner" || token.side === "agent") &&
+    typeof token.sessionString === "string" &&
+    typeof token.apiId === "number" &&
+    typeof token.apiHash === "string" &&
+    typeof token.phone === "string" &&
+    Boolean(token.identity) &&
+    typeof token.identity === "object" &&
+    typeof token.identity.id === "string" &&
+    typeof token.identity.username === "string" &&
+    typeof token.identity.firstName === "string" &&
+    typeof token.createdAt === "string" &&
+    typeof token.updatedAt === "string"
+  );
+}
+
 export function readStoredTelegramToken(
   tokenRef: string,
+  env: NodeJS.ProcessEnv = process.env,
 ): StoredTelegramConnectorToken | null {
-  const filePath = resolveTokenPath(tokenRef);
+  const filePath = resolveTokenPath(tokenRef, env);
   if (!fs.existsSync(filePath)) {
     return null;
   }
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const parsed = JSON.parse(raw) as Partial<StoredTelegramConnectorToken>;
-  if (!parsed || typeof parsed !== "object" || parsed.provider !== "telegram") {
+  let parsed: Partial<StoredTelegramConnectorToken>;
+  try {
+    parsed = JSON.parse(readTelegramStoragePayload(filePath, env));
+  } catch {
     return null;
   }
-  return parsed as StoredTelegramConnectorToken;
+  if (!isStoredTelegramConnectorToken(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function storedTelegramTokenCandidate(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+  env: NodeJS.ProcessEnv = process.env,
+): StoredTelegramConnectorTokenCandidate | null {
+  const tokenRef = buildTelegramTokenRef(agentId, side);
+  const token = readStoredTelegramToken(tokenRef, env);
+  return token
+    ? {
+        agentId,
+        side,
+        tokenRef,
+        token,
+      }
+    : null;
+}
+
+function listStoredTelegramTokenCandidatesForSide(
+  side: LifeOpsConnectorSide,
+  env: NodeJS.ProcessEnv = process.env,
+): StoredTelegramConnectorTokenCandidate[] {
+  const root = telegramStorageRoot(env);
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== "pending")
+    .flatMap((entry) => {
+      const candidate = storedTelegramTokenCandidate(entry.name, side, env);
+      return candidate ? [candidate] : [];
+    });
+}
+
+export function findStoredTelegramTokenForSide(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+  env: NodeJS.ProcessEnv = process.env,
+): StoredTelegramConnectorTokenCandidate | null {
+  const exact = storedTelegramTokenCandidate(agentId, side, env);
+  if (exact) {
+    return exact;
+  }
+
+  const candidates = listStoredTelegramTokenCandidatesForSide(side, env).filter(
+    (candidate) => candidate.agentId !== agentId,
+  );
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 export function deleteStoredTelegramToken(tokenRef: string): void {

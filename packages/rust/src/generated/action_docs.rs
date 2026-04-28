@@ -87,7 +87,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "IGNORE",
-      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
+      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
       "similes": [
         "STOP_TALKING",
         "STOP_CHATTING",
@@ -199,7 +199,7 @@ pub const CORE_ACTION_DOCS_JSON: &str = r#"{
           }
         ]
       ],
-      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, or both sides said goodbye. Don't use if user engaged directly or needs error info."
+      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, addressed to someone else in a group, or both sides said goodbye. Don't use if user engaged directly or needs error info."
     },
     {
       "name": "NONE",
@@ -1456,7 +1456,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
     },
     {
       "name": "IGNORE",
-      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
+      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
       "similes": [
         "STOP_TALKING",
         "STOP_CHATTING",
@@ -1568,7 +1568,7 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
           }
         ]
       ],
-      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, or both sides said goodbye. Don't use if user engaged directly or needs error info."
+      "descriptionCompressed": "Ignore user. Use when aggressive, creepy, conversation ended, addressed to someone else in a group, or both sides said goodbye. Don't use if user engaged directly or needs error info."
     },
     {
       "name": "NONE",
@@ -2749,6 +2749,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
       ]
     },
     {
+      "name": "APP_CREATE",
+      "description": "Multi-turn create-an-app flow: searches existing apps, asks the user new/edit/cancel, then dispatches a coding agent and verifies the output.",
+      "parameters": [],
+      "similes": [
+        "CREATE_APP",
+        "BUILD_APP",
+        "MAKE_APP",
+        "SCAFFOLD_APP"
+      ]
+    },
+    {
       "name": "BLUEBUBBLES_SEND_REACTION",
       "description": "Add or remove a reaction on a message via BlueBubbles",
       "parameters": [],
@@ -2983,6 +2994,17 @@ pub const ALL_ACTION_DOCS_JSON: &str = r#"{
         "SHOW_TASK_AGENTS",
         "LIST_SUB_AGENTS",
         "SHOW_TASK_STATUS"
+      ]
+    },
+    {
+      "name": "LIST_EJECTED_PLUGINS",
+      "description": "List all ejected plugins currently being managed locally",
+      "parameters": [],
+      "similes": [
+        "list ejected",
+        "show ejected plugins",
+        "which plugins are ejected",
+        "list local plugins"
       ]
     },
     {

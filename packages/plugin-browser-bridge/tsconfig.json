@@ -10,7 +10,7 @@
 		"allowJs": false,
 		"jsx": "react-jsx",
 		"skipLibCheck": true,
-		"ignoreDeprecations": "6.0",
+		"ignoreDeprecations": "5.0",
 		"allowSyntheticDefaultImports": true,
 		"strict": false,
 		"useUnknownInCatchVariables": false,
@@ -60,6 +60,30 @@
 			],
 			"@elizaos/shared/*": [
 				"../shared/src/*"
+			],
+			"@elizaos/app-core": [
+				"../app-core/src/index.ts"
+			],
+			"@elizaos/app-core/*": [
+				"../app-core/src/*"
+			],
+			"@elizaos/app-lifeops": [
+				"../../apps/app-lifeops/src/index.ts"
+			],
+			"@elizaos/app-lifeops/*": [
+				"../../apps/app-lifeops/src/*"
+			],
+			"@elizaos/app-companion": [
+				"../../apps/app-companion/src/index.ts"
+			],
+			"@elizaos/app-companion/*": [
+				"../../apps/app-companion/src/*"
+			],
+			"@elizaos/capacitor-appblocker": [
+				"../native-plugins/appblocker/src/index.ts"
+			],
+			"@elizaos/capacitor-mobile-signals": [
+				"../native-plugins/mobile-signals/src/index.ts"
 			]
 		}
 	},
@@ -67,7 +91,8 @@
 		"src/**/*.test.ts"
 	],
 	"include": [
-		"src"
+		"src",
+		"../../apps/app-companion/src/ambient-modules.d.ts"
 	],
 	"references": []
 }

@@ -6,6 +6,7 @@
  * existing handlers in screen-time.ts and activity-report.ts.
  */
 
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionExample,
@@ -14,14 +15,13 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { screenTimeAction } from "./screen-time.js";
 import {
   getActivityReportAction,
   getTimeOnAppAction,
   getTimeOnSiteAction,
 } from "./activity-report.js";
 import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
-import { looksLikeScreenTimeReflection } from "./non-actionable-request.js";
+import { screenTimeAction } from "./screen-time.js";
 
 const ACTION_NAME = "OWNER_SCREEN_TIME";
 
@@ -73,10 +73,6 @@ function coerceSubaction(value: unknown): Subaction | undefined {
   return undefined;
 }
 
-function messageText(message: Memory): string {
-  return (message?.content?.text ?? "").toString().toLowerCase();
-}
-
 export const ownerScreenTimeAction: Action = {
   name: ACTION_NAME,
   similes: [
@@ -106,9 +102,6 @@ export const ownerScreenTimeAction: Action = {
     "Do NOT use it to block apps or websites (OWNER_APP_BLOCK / OWNER_WEBSITE_BLOCK) or to start remote sessions (OWNER_REMOTE_DESKTOP).",
 
   validate: async (runtime, message) => {
-    if (looksLikeScreenTimeReflection(messageText(message))) {
-      return false;
-    }
     return hasLifeOpsAccess(runtime, message);
   },
 
@@ -116,13 +109,14 @@ export const ownerScreenTimeAction: Action = {
     {
       name: "subaction",
       description:
-        "Required. One of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site.",
-      required: true,
+        "One of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {
       name: "intent",
-      description: "Free-form user intent string (logged, not used for dispatch).",
+      description:
+        "Free-form user intent string (logged, not used for dispatch).",
       required: false,
       schema: { type: "string" as const },
     },
@@ -242,8 +236,18 @@ export const ownerScreenTimeAction: Action = {
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerScreenTimeParameters;
+    const params = (await extractActionParamsViaLlm<OwnerScreenTimeParameters & Record<string, unknown>>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerScreenTimeAction.description ?? "",
+      paramSchema: ownerScreenTimeAction.parameters ?? [],
+      existingParams: rawParams as Record<string, unknown>,
+      requiredFields: ["subaction"],
+    })) as OwnerScreenTimeParameters;
     const subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       const text =

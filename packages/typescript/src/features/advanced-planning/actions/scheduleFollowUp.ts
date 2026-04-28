@@ -80,6 +80,7 @@ IMPORTANT: Your response must ONLY contain the TOON document above. Do not inclu
 export const scheduleFollowUpAction: Action = {
 	name: "SCHEDULE_FOLLOW_UP",
 	description: "Schedule a follow-up reminder for a contact",
+	suppressPostActionContinuation: true,
 	similes: [
 		"follow up with",
 		"remind me to contact",
@@ -292,6 +293,7 @@ export const scheduleFollowUpAction: Action = {
 				taskId: task.id ?? "",
 			},
 			data: {
+				actionName: "SCHEDULE_FOLLOW_UP",
 				contactId: entityId,
 				contactName: parsedResponse.contactName ?? "",
 				scheduledAt: scheduledAt.toISOString(),

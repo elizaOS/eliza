@@ -4,8 +4,8 @@ import {
   SelectContent,
   SelectItem,
   SelectValue,
-} from "@elizaos/ui/components/ui/select";
-import { SettingsControls } from "@elizaos/ui/components/ui/settings-controls";
+  SettingsControls,
+} from "@elizaos/ui";
 import { useState } from "react";
 import {
   type AgentSelectionStrategy,

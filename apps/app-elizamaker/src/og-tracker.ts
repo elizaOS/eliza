@@ -10,7 +10,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/agent/config/paths";
+import {
+  resolveStateDir,
+} from "@elizaos/agent";
 
 const OG_FILENAME = ".og";
 

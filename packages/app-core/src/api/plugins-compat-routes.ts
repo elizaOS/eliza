@@ -4,21 +4,18 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  applyPluginRuntimeMutation,
-  type PluginRuntimeApplyResult,
-} from "@elizaos/agent/api/plugin-runtime-apply";
-import {
-  findPrimaryEnvKey,
-  readBundledPluginPackageMetadata,
-} from "@elizaos/agent/api/server";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import {
   type AdvancedCapabilityPluginId,
+  applyPluginRuntimeMutation,
+  findPrimaryEnvKey,
   isAdvancedCapabilityPluginId,
+  loadElizaConfig,
+  type PluginRuntimeApplyResult,
+  readBundledPluginPackageMetadata,
   resolveAdvancedCapabilitiesEnabled,
-} from "@elizaos/agent/runtime/advanced-capabilities-config";
+  saveElizaConfig,
+} from "@elizaos/agent";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { asRecord } from "@elizaos/shared/type-guards";
+import { asRecord } from "@elizaos/shared";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars";
 import {
   CONNECTOR_PLUGINS,
@@ -26,8 +23,8 @@ import {
 } from "../config/plugin-auto-enable";
 import { entriesToLegacyManifest, loadRegistry } from "../registry";
 import {
-  ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
+  ensureRouteAuthorized,
 } from "./auth";
 import {
   type CompatRuntimeState,
@@ -257,11 +254,11 @@ function normalizePluginCategory(value: string | undefined): PluginCategory {
 }
 
 function normalizePluginId(rawName: string): string {
-  return rawName
-    .replace(/^@[^/]+\/plugin-/, "")
-    .replace(/^@[^/]+\/app-/, "")
-    .replace(/^@[^/]+\//, "")
-    .replace(/^(plugin|app)-/, "");
+  const scopedPackage = rawName.match(/^@[^/]+\/(?:plugin|app)-(.+)$/);
+  if (scopedPackage) {
+    return scopedPackage[1] ?? rawName;
+  }
+  return rawName.replace(/^@[^/]+\//, "").replace(/^(plugin|app)-/, "");
 }
 
 function resolveCompatConfigKey(
@@ -423,6 +420,14 @@ function resolvePersistedPluginEnabled(
   }
 
   return pluginEnabled;
+}
+
+export function resolveCompatPluginEnabledForList(
+  active: boolean,
+  persistedEnabled: boolean | undefined,
+  advancedCapabilityEnabled?: boolean,
+): boolean {
+  return advancedCapabilityEnabled ?? persistedEnabled ?? active;
 }
 
 function shortPluginIdFromNpmName(npmName: string | null): string | null {
@@ -1004,18 +1009,18 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
     const active =
       advancedCapabilityStatus?.isActive ??
       isPluginLoaded(pluginId, entry.npmName, loadedNames);
-    const enabled =
-      advancedCapabilityStatus?.enabled ??
-      (active ||
-        Boolean(
-          resolvePersistedPluginEnabled(
-            pluginId,
-            category,
-            entry.npmName,
-            configEntries,
-            configRecord,
-          ),
-        ));
+    const persistedEnabled = resolvePersistedPluginEnabled(
+      pluginId,
+      category,
+      entry.npmName,
+      configEntries,
+      configRecord,
+    );
+    const enabled = resolveCompatPluginEnabledForList(
+      active,
+      persistedEnabled,
+      advancedCapabilityStatus?.enabled,
+    );
     const validationErrors = parameters
       .filter((parameter) => parameter.required && !parameter.isSet)
       .map((parameter) => ({
@@ -1348,7 +1353,7 @@ export async function handlePluginsCompatRoutes(
   }
 
   if (method === "GET" && url.pathname === "/api/plugins") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -1362,7 +1367,7 @@ export async function handlePluginsCompatRoutes(
   }
 
   if (method === "GET" && url.pathname === "/api/plugins/diagnostics") {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     const diagnostics = buildPluginDriftDiagnostics(state.current);
@@ -1372,7 +1377,7 @@ export async function handlePluginsCompatRoutes(
   }
 
   if (method === "PUT" && url.pathname.startsWith("/api/plugins/")) {
-    if (!ensureCompatApiAuthorized(req, res)) {
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
 
@@ -1433,7 +1438,7 @@ export async function handlePluginsCompatRoutes(
   const testMatch =
     method === "POST" && url.pathname.match(/^\/api\/plugins\/([^/]+)\/test$/);
   if (testMatch) {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const testPluginId = normalizePluginId(decodeURIComponent(testMatch[1]));
     const startMs = Date.now();
 
@@ -1489,7 +1494,7 @@ export async function handlePluginsCompatRoutes(
     method === "POST" &&
     url.pathname.match(/^\/api\/plugins\/([^/]+)\/reveal$/);
   if (revealMatch) {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const revealBody = await readCompatJsonBody(req, res);
     if (revealBody == null) return true;
     const key = (revealBody.key as string)?.trim();

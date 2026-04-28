@@ -53,73 +53,12 @@ const LOCAL_APP_OVERRIDES: Readonly<Record<string, LocalAppOverride>> = {
       features: ["commands", "telemetry", "pause", "resume", "suggestions"],
     },
   },
-  "@elizaos/app-hyperscape": {
-    runtimePlugin: "@hyperscape/plugin-hyperscape",
-    uiExtension: {
-      detailPanelId: "hyperscape-embedded-agents",
-    },
-    session: {
-      mode: "spectate-and-steer",
-      features: ["commands", "telemetry", "pause", "resume", "suggestions"],
-    },
-  },
-  "@elizaos/app-babylon": {
-    displayName: "Babylon",
-    category: "game",
-    launchType: "url",
-    launchUrl: "{BABYLON_CLIENT_URL}",
-    capabilities: [
-      "trades",
-      "prediction-markets",
-      "social",
-      "team-chat",
-      "autonomous",
-    ],
-    uiExtension: {
-      detailPanelId: "babylon-operator-dashboard",
-    },
-    viewer: {
-      url: "{BABYLON_CLIENT_URL}",
-      embedParams: { embedded: "true" },
-      postMessageAuth: true,
-      sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
-    },
-    session: {
-      mode: "spectate-and-steer",
-      features: ["commands", "telemetry", "pause", "resume"],
-    },
-  },
   "@elizaos/app-hyperfy": {
     launchType: "connect",
     launchUrl: "http://localhost:3003",
     viewer: {
       url: "http://localhost:3003",
       sandbox: LOCAL_APP_DEFAULT_SANDBOX,
-    },
-  },
-  "@elizaos/app-2004scape": {
-    launchType: "connect",
-    launchUrl: "/api/apps/2004scape/viewer",
-    uiExtension: {
-      detailPanelId: "2004scape-operator-dashboard",
-    },
-    viewer: {
-      url: "/api/apps/2004scape/viewer",
-      embedParams: {
-        bot: "",
-        password: "",
-      },
-      postMessageAuth: true,
-      sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
-    },
-    session: {
-      mode: "spectate-and-steer",
-      features: ["commands", "telemetry", "pause", "resume", "suggestions"],
-    },
-  },
-  "@elizaos/app-defense-of-the-agents": {
-    uiExtension: {
-      detailPanelId: "defense-agent-control",
     },
   },
 };

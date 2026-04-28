@@ -28,6 +28,7 @@ import {
 import { subscribeDesktopBridgeEvent } from "./bridge/electrobun-rpc";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
+import { LoginView } from "./components/auth/LoginView";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
 import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
 import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
@@ -47,7 +48,7 @@ import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,
 } from "./components/workspace/AppWorkspaceChrome";
-import { useBootConfig } from "./config";
+import { useBootConfig } from "./config/boot-config-react";
 import {
   BugReportProvider,
   useBugReportState,
@@ -55,6 +56,7 @@ import {
   useStreamPopoutNavigation,
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
+import { useAuthStatus } from "./hooks/useAuthStatus";
 import {
   APPS_ENABLED,
   isAndroidPhoneSurfaceEnabled,
@@ -90,10 +92,27 @@ function lazyNamedView<
   });
 }
 
-const CharacterEditor = lazyNamedView(
-  () => import("./components/character/CharacterEditor"),
-  "CharacterEditor",
-);
+// Static imports for views that AppWindowRenderer (and DetachedShellRoot)
+// also import statically. WHY not lazy here: a `lazy()` for a module that
+// any other importer pulls eagerly is folded back into the main chunk by
+// Rollup with a warning, since the dynamic boundary can't actually defer
+// load. Going all-static makes the load path honest. If you want true
+// route-level splitting back, lift `lazy()` to a single owning call site.
+import { CharacterEditor } from "./components/character/CharacterEditor";
+import { DatabasePageView } from "./components/pages/DatabasePageView";
+import { InventoryView } from "./components/pages/InventoryView";
+import { LogsPageView } from "./components/pages/LogsPageView";
+import { MemoryViewerView } from "./components/pages/MemoryViewerView";
+import { PluginsPageView } from "./components/pages/PluginsPageView";
+import { RelationshipsView } from "./components/pages/RelationshipsView";
+import { RuntimeView } from "./components/pages/RuntimeView";
+import { SkillsView } from "./components/pages/SkillsView";
+import { TasksPageView } from "./components/pages/TasksPageView";
+import { TrajectoriesView } from "./components/pages/TrajectoriesView";
+import { FineTuningView } from "./components/training/injected";
+
+// True lazy boundaries: these views are only imported here, so Rollup can
+// honour the split into separate chunks.
 const AppsPageView = lazyNamedView(
   () => import("./components/pages/AppsPageView"),
   "AppsPageView",
@@ -114,29 +133,9 @@ const ContactsPageView = lazyNamedView(
   () => import("./components/pages/MiladyOsAppsView"),
   "ContactsPageView",
 );
-const DatabasePageView = lazyNamedView(
-  () => import("./components/pages/DatabasePageView"),
-  "DatabasePageView",
-);
 const DesktopWorkspaceSection = lazyNamedView(
   () => import("./components/settings/DesktopWorkspaceSection"),
   "DesktopWorkspaceSection",
-);
-const FineTuningView = lazyNamedView(
-  () => import("./components/training/injected"),
-  "FineTuningView",
-);
-const InventoryView = lazyNamedView(
-  () => import("./components/pages/InventoryView"),
-  "InventoryView",
-);
-const LogsPageView = lazyNamedView(
-  () => import("./components/pages/LogsPageView"),
-  "LogsPageView",
-);
-const MemoryViewerView = lazyNamedView(
-  () => import("./components/pages/MemoryViewerView"),
-  "MemoryViewerView",
 );
 const MessagesPageView = lazyNamedView(
   () => import("./components/pages/MiladyOsAppsView"),
@@ -146,37 +145,13 @@ const PhonePageView = lazyNamedView(
   () => import("./components/pages/MiladyOsAppsView"),
   "PhonePageView",
 );
-const PluginsPageView = lazyNamedView(
-  () => import("./components/pages/PluginsPageView"),
-  "PluginsPageView",
-);
-const RelationshipsView = lazyNamedView(
-  () => import("./components/pages/RelationshipsView"),
-  "RelationshipsView",
-);
-const RuntimeView = lazyNamedView(
-  () => import("./components/pages/RuntimeView"),
-  "RuntimeView",
-);
 const SettingsView = lazyNamedView(
   () => import("./components/pages/SettingsView"),
   "SettingsView",
 );
-const SkillsView = lazyNamedView(
-  () => import("./components/pages/SkillsView"),
-  "SkillsView",
-);
 const StreamView = lazyNamedView(
   () => import("./components/pages/StreamView"),
   "StreamView",
-);
-const TasksPageView = lazyNamedView(
-  () => import("./components/pages/TasksPageView"),
-  "TasksPageView",
-);
-const TrajectoriesView = lazyNamedView(
-  () => import("./components/pages/TrajectoriesView"),
-  "TrajectoriesView",
 );
 
 function LazyViewBoundary({ children }: { children: ReactNode }) {
@@ -588,6 +563,14 @@ export function App() {
 
   const isPopout = useIsPopout();
   const companionShellVisible = activeOverlayApp !== null;
+
+  // Auth gate — only active after the coordinator reaches "ready".
+  // During onboarding / pairing / startup phases the StartupShell handles
+  // its own gate (bootstrap step), so we skip the check.
+  const isCoordinatorReady = startupCoordinator.phase === "ready";
+  const { state: authState, refetch: refetchAuth } = useAuthStatus({
+    skip: !isCoordinatorReady || isPopout,
+  });
   // Don't initialize the 3D scene while the system is still booting — this
   // prevents VrmEngine's Three.js setup from blocking the JS thread and
   // delaying WebSocket agent-status updates (which would freeze the loader).
@@ -1124,6 +1107,34 @@ export function App() {
         <BugReportModal />
       </BugReportProvider>
     );
+  }
+
+  // Auth gate — when the coordinator is ready, check /api/auth/me.
+  // "loading" phase: wait (fall through to the coordinator's own "ready" render).
+  // "unauthenticated": render LoginView.
+  // "authenticated": proceed to the main shell.
+  // "server_unavailable": treat as unauthenticated (fail closed).
+  if (isCoordinatorReady && !isPopout) {
+    if (
+      authState.phase === "unauthenticated" ||
+      authState.phase === "server_unavailable"
+    ) {
+      return (
+        <BugReportProvider value={bugReport}>
+          <LoginView
+            onLoginSuccess={refetchAuth}
+            reason={
+              authState.phase === "unauthenticated"
+                ? authState.reason
+                : undefined
+            }
+          />
+          <BugReportModal />
+        </BugReportProvider>
+      );
+    }
+    // While loading the auth state we allow the main shell to continue
+    // rendering (avoids a flash of login screen on refresh when cookies are valid).
   }
 
   // Coordinator is at "ready" — the app shell renders. No legacy onboarding

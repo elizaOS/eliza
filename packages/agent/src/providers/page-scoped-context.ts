@@ -8,19 +8,15 @@ import type {
 import { logger, stringToUuid } from "@elizaos/core";
 import type {
   AppRunSummary,
-  RegistryAppInfo,
-} from "@elizaos/shared/contracts/apps";
-import type {
   LifeOpsCapabilitiesStatus,
   LifeOpsInbox,
   LifeOpsOverview,
-} from "@elizaos/shared/contracts/lifeops";
-import type {
+  RegistryAppInfo,
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
   WalletTradingProfileResponse,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
   isPageScopedConversationMetadata,
@@ -43,9 +39,9 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
   "page-character":
     "The user is in the Character view. The Character hub is organized into Overview, Personality, Knowledge, Experience, and Relationships. Name, voice, and system prompt live in Settings > Identity; Personality focuses on bio, style rules, message examples, and evolution history; Knowledge holds uploaded and learned knowledge; Experience surfaces durable learnings the agent recorded; Relationships shows the full relationship graph, facts, memories, and user-scoped personality preferences. When the user asks what to do, explain the relevant hub section, recommend the next improvement from live state, and offer to draft exact copy. Guide the user to the relevant section rather than fabricate a generic setter action.",
   "page-automations":
-    "The user is in the Automations view. They can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode (inject_now / schedule_at / interval), max-runs, and enabled state; browse templates; inspect existing automations; and troubleshoot failed runs. Action vocabulary: createTriggerTaskAction, manageTasksAction. When the user asks what to do, recommend trigger vs task vs workflow based on the event, schedule, and desired result. Triggers and workflows already in the system are listed in live state below; reference them by display name when answering.",
+    "The user is in the Automations view. They can create coordinator-text triggers, one-off tasks, recurring tasks, and n8n workflows; set cron or interval schedules; configure wake mode (inject_now / schedule_at / interval), max-runs, and enabled state; browse templates; inspect existing automations; and troubleshoot failed runs. Action vocabulary: createTriggerTaskAction, updateTriggerTaskAction, deleteTriggerTaskAction, runTriggerNowAction, createWorkflowAction, deleteWorkflowAction, toggleWorkflowActiveAction, promoteTaskToWorkflowAction, manageTasksAction. When the user asks what to do, recommend trigger vs task vs workflow based on the event, schedule, and desired result. Triggers and workflows already in the system are listed in live state below; reference them by display name when answering.",
   "page-apps":
-    "The user is in the Apps view. They can browse and compare catalog apps, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Action vocabulary: launchAppAction, stopAppAction. When the user asks what to do, recommend an app or run-management action from the live catalog and running app state. Refer to apps by display name and never invent app names.",
+    "The user is in the Apps view. They can browse and compare catalog apps, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Action vocabulary: APP with mode launch, relaunch, list, load_from_directory, or create. When the user asks what to do, recommend an app or run-management action from the live catalog and running app state. Refer to apps by display name and never invent app names.",
   "page-connectors":
     "The user is in the Connectors view. They can inspect connector availability, authentication state, setup requirements, webhook readiness, and integration health. When the user asks what to do, recommend the smallest connector setup or troubleshooting action that fits the visible state. Never invent connected accounts, permissions, webhook state, or delivery results.",
   "page-plugins":

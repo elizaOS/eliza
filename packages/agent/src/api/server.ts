@@ -26,13 +26,17 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 import os from "node:os";
 import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { DropService, handleDropRoutes } from "@elizaos/app-elizamaker";
+import { DropService, setElizaMakerDropService } from "@elizaos/app-elizamaker";
 import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
 import {
   normalizeJsonRpcUrl,
   probeJsonRpcEndpoint,
   TxService,
 } from "@elizaos/app-steward/api/tx-service";
+import {
+  ensurePrivyWalletsForCustomUser,
+  isPrivyWalletProvisioningEnabled,
+} from "@elizaos/app-steward/services/privy-wallets";
 import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/api/coordinator-wiring";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
@@ -42,19 +46,25 @@ import { wireCoordinatorBridgesWhenReady } from "@elizaos/app-task-coordinator/a
 //   updateWalletTradeLedgerEntryStatus,
 // } from "./wallet-trading-profile.js";
 // Phase 2 extraction: Website-blocker routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
-import { handleTrainingRoutes } from "@elizaos/app-training/routes/training";
-import { handleTrajectoryRoute } from "@elizaos/app-training/routes/trajectory";
+import {
+  handleTrainingRoutes,
+  handleTrajectoryRoute,
+} from "@elizaos/app-training/routes";
 import {
   type AgentRuntime,
   type IAgentRuntime,
   logger,
+  type Route,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import {
+  getStylePresets,
+  normalizeCharacterLanguage,
   resolveApiBindHost,
   resolveServerOnlyPort,
-} from "@elizaos/shared/runtime-env";
+  resolveStylePresetByAvatarIndex,
+} from "@elizaos/shared";
 import { type WebSocket, WebSocketServer } from "ws";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.js";
 import {
@@ -67,6 +77,7 @@ import { isStreamingDestinationConfigured } from "../config/plugin-auto-enable.j
 import { CharacterSchema } from "../config/zod-schema.js";
 // ONBOARDING_CLOUD_PROVIDER_OPTIONS, ONBOARDING_PROVIDER_CATALOG moved to server-helpers-config.ts
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.js";
+import { validateX402Startup } from "../middleware/x402/startup-validator.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
 import {
   type AgentEventPayloadLike,
@@ -97,10 +108,6 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-import {
-  ensurePrivyWalletsForCustomUser,
-  isPrivyWalletProvisioningEnabled,
-} from "../services/privy-wallets.js";
 // signal-pairing: SignalPairingSession, sanitizeAccountId, signalLogout extracted to @elizaos/plugin-signal
 import { signalAuthExists } from "../services/signal-pairing.js";
 import { streamManager } from "../services/stream-manager.js";
@@ -111,6 +118,12 @@ import {
   telegramAccountAuthStateExists,
   telegramAccountSessionExists,
 } from "../services/telegram-account-auth.js";
+import {
+  sanitizeAccountId as sanitizeWhatsAppAccountId,
+  WhatsAppPairingSession,
+  whatsappAuthExists,
+  whatsappLogout,
+} from "../services/whatsapp-pairing.js";
 // Telegram account auth: moved to @elizaos/plugin-telegram (account-setup-routes + account-auth-service).
 // WhatsApp pairing: route handlers moved to @elizaos/plugin-whatsapp.
 import {
@@ -132,6 +145,7 @@ import {
   normalizeTriggerDraft,
 } from "../triggers/scheduling.js";
 import { parseClampedInteger } from "../utils/number-parsing.js";
+import { handleAccountsRoutes } from "./accounts-routes.js";
 import { handleAgentAdminRoutes } from "./agent-admin-routes.js";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes.js";
 import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.js";
@@ -155,7 +169,6 @@ import {
 } from "./chat-routes.js";
 import { handleCloudBillingRoute } from "./cloud-billing-routes.js";
 import { handleCloudCompatRoute } from "./cloud-compat-routes.js";
-import { handleCloudFeaturesRoute } from "./cloud-features-routes.js";
 import { isCloudProvisionedContainer } from "./cloud-provisioning.js";
 import { handleCloudRelayRoute } from "./cloud-relay-routes.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
@@ -196,7 +209,10 @@ import { handleProviderSwitchRoutes } from "./provider-switch-routes.js";
 import { handleRegistryRoutes } from "./registry-routes.js";
 import { RegistryService } from "./registry-service.js";
 import { handleRelationshipsRoutes } from "./relationships-routes.js";
-import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.js";
+import {
+  isPublicRuntimePluginRoute,
+  tryHandleRuntimePluginRoute,
+} from "./runtime-plugin-routes.js";
 import { handleSandboxRoute } from "./sandbox-routes.js";
 import {
   cloneWithoutBlockedObjectKeys,
@@ -212,7 +228,6 @@ import { discoverSkills } from "./skill-discovery-helpers.js";
 import { handleSkillsRoutes } from "./skills-routes.js";
 import { handleSubscriptionRoutes } from "./subscription-routes.js";
 import { handleTelegramAccountRoute } from "./telegram-account-routes.js";
-import { handleTravelProviderRelayRoute } from "./travel-provider-relay-routes.js";
 import { handleTriggerRoutes } from "./trigger-routes.js";
 import { handleTtsRoutes } from "./tts-routes.js";
 import { handleUpdateRoutes } from "./update-routes.js";
@@ -231,9 +246,10 @@ import {
 } from "./wallet-capability.js";
 import { handleWalletRoutes } from "./wallet-routes.js";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.js";
-// handleWhatsAppRoute moved to @elizaos/plugin-whatsapp setup-routes.
-// applyWhatsAppQrOverride is still used by plugin-status routes.
-import { applyWhatsAppQrOverride } from "./whatsapp-routes.js";
+import {
+  applyWhatsAppQrOverride,
+  handleWhatsAppRoute,
+} from "./whatsapp-routes.js";
 import { handleWorkbenchRoutes } from "./workbench-routes.js";
 import { handleXRelayRoute } from "./x-relay-routes.js";
 
@@ -250,7 +266,6 @@ export {
 
 type OnboardingRouteArg = Parameters<typeof handleOnboardingRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
-type DropRouteArg = Parameters<typeof handleDropRoutes>[0];
 type TtsRouteArg = Parameters<typeof handleTtsRoutes>[0];
 type PermissionsExtraRouteArg = Parameters<
   typeof handlePermissionsExtraRoutes
@@ -495,12 +510,6 @@ function _persistDeletedConversationIdsToState(ids: Set<string>): void {
   fs.renameSync(tmpFilePath, filePath);
 }
 
-function readOGCodeFromState(): string | null {
-  const filePath = path.join(resolveStateDir(), OG_FILENAME);
-  if (!fs.existsSync(filePath)) return null;
-  return fs.readFileSync(filePath, "utf-8").trim();
-}
-
 function initializeOGCodeInState(): void {
   const dir = resolveStateDir();
   const filePath = path.join(dir, OG_FILENAME);
@@ -671,6 +680,37 @@ function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
   });
 }
 
+function sanitizeFavoriteAppList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const apps: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") continue;
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    apps.push(trimmed);
+  }
+  return apps;
+}
+
+function readFavoriteAppsFromConfig(config: ElizaConfig): string[] {
+  const ui = (config.ui ?? {}) as Record<string, unknown>;
+  return sanitizeFavoriteAppList(ui.favoriteApps);
+}
+
+function writeFavoriteAppsToConfig(
+  config: ElizaConfig,
+  apps: string[],
+): string[] {
+  const sanitized = sanitizeFavoriteAppList(apps);
+  const ui = (config.ui ?? {}) as Record<string, unknown>;
+  ui.favoriteApps = sanitized;
+  config.ui = ui as ElizaConfig["ui"];
+  saveElizaConfig(config);
+  return sanitized;
+}
+
 // Config redaction, skill validation extracted to server-helpers-config.ts
 // isBlockedObjectKey, redactDeep, redactConfigSecrets, isRedactedSecretValue,
 // stripRedactedPlaceholderValuesDeep imported from server-helpers-config.ts above.
@@ -695,11 +735,6 @@ const resolveMcpServersRejection = _resolveMcpServersRejection;
 // Onboarding / config helpers — extracted to server-helpers-config.ts
 // ---------------------------------------------------------------------------
 
-import {
-  getStylePresets,
-  normalizeCharacterLanguage,
-  resolveStylePresetByAvatarIndex,
-} from "@elizaos/shared/onboarding-presets";
 import { pickRandomNames } from "../runtime/onboarding-names.js";
 
 import {
@@ -992,6 +1027,14 @@ const rejectWebSocketUpgrade = _rejectWebSocketUpgrade;
 const isWebSocketAuthorized = _isWebSocketAuthorized;
 const getConfiguredApiToken = _getConfiguredApiToken;
 const pairingEnabled = _pairingEnabled;
+
+function isLifeOpsCloudPluginRoute(pathname: string): boolean {
+  return (
+    pathname === "/api/cloud/features" ||
+    pathname === "/api/cloud/features/sync" ||
+    pathname.startsWith("/api/cloud/travel-providers/")
+  );
+}
 const ensurePairingCode = _ensurePairingCode;
 const normalizePairingCode = _normalizePairingCode;
 const rateLimitPairing = _rateLimitPairing;
@@ -1119,7 +1162,6 @@ async function handleRequest(
     });
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
   const _registryService = state.registryService;
-  const dropService = state.dropService;
 
   const canonicalizeRestartReason = (reason: string): string => {
     if (
@@ -1242,6 +1284,11 @@ async function handleRequest(
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
     !pathname.startsWith("/api/browser-bridge/companions/") &&
+    !isPublicRuntimePluginRoute({
+      runtime: state.runtime,
+      method,
+      pathname,
+    }) &&
     !isAuthorized(req)
   ) {
     json(res, { error: "Unauthorized" }, 401);
@@ -1332,6 +1379,22 @@ async function handleRequest(
       loadSubscriptionAuth: async () =>
         (await import("../auth/index.js")) as never,
     } as never)
+  ) {
+    return;
+  }
+
+  if (
+    await handleAccountsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+      state: { config: state.config },
+      saveConfig: saveElizaConfig,
+    })
   ) {
     return;
   }
@@ -1751,6 +1814,13 @@ async function handleRequest(
       pathname,
       url,
       logBuffer: state.logBuffer,
+      clearLogBuffer: () => {
+        const previous = state.logBuffer.length;
+        state.logBuffer.length = 0;
+        return previous;
+      },
+      readJsonBody,
+      error,
       eventBuffer: state.eventBuffer,
       initSse: initSseFromChatRoutes,
       writeSseJson: writeSseJsonFromChatRoutes,
@@ -1911,29 +1981,6 @@ async function handleRequest(
         >(ensurePrivyWalletsForCustomUser),
         RegistryService,
       },
-    })
-  ) {
-    return;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  //  Drop / Mint / Whitelist Routes (extracted to drop-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
-  if (
-    await handleDropRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      json,
-      error,
-      readJsonBody,
-      dropService,
-      agentName: state.agentName,
-      getWalletAddresses:
-        coerce<DropRouteArg["getWalletAddresses"]>(getWalletAddresses),
-      readOGCodeFromState,
     })
   ) {
     return;
@@ -2141,7 +2188,11 @@ async function handleRequest(
   // ═══════════════════════════════════════════════════════════════════════
   // Config routes (extracted to config-routes.ts)
   // ═══════════════════════════════════════════════════════════════════════
-  if (pathname === "/api/config" || pathname === "/api/config/schema") {
+  if (
+    pathname === "/api/config" ||
+    pathname === "/api/config/schema" ||
+    pathname === "/api/config/reload"
+  ) {
     if (
       await handleConfigRoutes({
         req,
@@ -2150,6 +2201,7 @@ async function handleRequest(
         pathname,
         url,
         config: state.config,
+        runtime: state.runtime,
         json,
         error,
         readJsonBody,
@@ -2259,31 +2311,23 @@ async function handleRequest(
   // @elizaos/app-steward plugin routes. See apps/app-steward/src/plugin.ts.
   // ═══════════════════════════════════════════════════════════════════════
 
+  if (
+    isLifeOpsCloudPluginRoute(pathname) &&
+    (await tryHandleRuntimePluginRoute({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      runtime: state.runtime,
+      isAuthorized: () => isAuthorized(req),
+    }))
+  ) {
+    return;
+  }
+
   // ── Cloud routes (/api/cloud/*) ─────────────────────────────────────────
   if (pathname.startsWith("/api/cloud/")) {
-    // Cloud-managed feature flag sync — must run before the generic
-    // cloud passthrough so /api/cloud/features hits the local upserter.
-    const featuresHandled = await handleCloudFeaturesRoute(
-      req,
-      res,
-      pathname,
-      method,
-      { config: state.config, runtime: state.runtime },
-    );
-    if (featuresHandled) return;
-
-    // Travel-provider relay — must run before the generic cloud
-    // passthrough so provider-specific billing paths are hit instead of
-    // the bare Cloud proxy.
-    const travelProviderHandled = await handleTravelProviderRelayRoute(
-      req,
-      res,
-      pathname,
-      method,
-      { config: state.config, runtime: state.runtime },
-    );
-    if (travelProviderHandled) return;
-
     const xRelayHandled = await handleXRelayRoute(req, res, pathname, method, {
       config: state.config,
       runtime: state.runtime,
@@ -2614,6 +2658,10 @@ async function handleRequest(
       json,
       error,
       runtime: state.runtime,
+      favoriteApps: {
+        read: () => readFavoriteAppsFromConfig(state.config),
+        write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
+      },
     })
   ) {
     return;
@@ -2729,6 +2777,32 @@ async function handleRequest(
         activeTerminalRunCount = Math.max(0, activeTerminalRunCount + delta);
       },
     })
+  ) {
+    return;
+  }
+
+  if (
+    await handleWhatsAppRoute(
+      req,
+      res,
+      pathname,
+      method,
+      {
+        whatsappPairingSessions: state.whatsappPairingSessions ?? new Map(),
+        broadcastWs: state.broadcastWs ?? undefined,
+        config: state.config,
+        runtime: state.runtime ?? undefined,
+        saveConfig: () => saveElizaConfig(state.config),
+        workspaceDir: resolveDefaultAgentWorkspaceDir(),
+      },
+      {
+        sanitizeAccountId: sanitizeWhatsAppAccountId,
+        whatsappAuthExists,
+        whatsappLogout,
+        createWhatsAppPairingSession: (options) =>
+          new WhatsAppPairingSession(options),
+      },
+    )
   ) {
     return;
   }
@@ -2960,6 +3034,7 @@ export async function startApiServer(opts?: {
     pendingRestartReasons: [],
     connectorRouteHandlers: [],
     connectorHealthMonitor: null,
+    whatsappPairingSessions: new Map(),
   };
   const trainingServiceCtor = await resolveTrainingServiceCtor();
   const trainingServiceOptions = {
@@ -3373,6 +3448,10 @@ export async function startApiServer(opts?: {
             registryConfig.collectionAddress,
             dropEnabled,
           );
+          setElizaMakerDropService(state.dropService);
+        } else {
+          state.dropService = null;
+          setElizaMakerDropService(null);
         }
 
         addLog(
@@ -4100,8 +4179,28 @@ export async function startApiServer(opts?: {
     registerClientChatSendHandler(opts.runtime, state);
   }
 
+  const assertX402RoutesValid = (rt: AgentRuntime | null | undefined): void => {
+    if (!rt?.routes?.length) return;
+    const agentId =
+      rt.agentId != null && String(rt.agentId).length > 0
+        ? String(rt.agentId)
+        : undefined;
+    const result = validateX402Startup(rt.routes as Route[], rt.character, {
+      agentId,
+    });
+    if (!result.valid) {
+      throw new Error(
+        `x402 configuration invalid:\n${result.errors.map((e) => `  • ${e}`).join("\n")}`,
+      );
+    }
+    for (const w of result.warnings) {
+      logger.warn(`[x402] ${w}`);
+    }
+  };
+
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
+    assertX402RoutesValid(rt);
     state.runtime = rt;
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
@@ -4177,6 +4276,11 @@ export async function startApiServer(opts?: {
   console.log(
     `[eliza-api] Calling server.listen (${Date.now() - apiStartTime}ms)`,
   );
+  try {
+    assertX402RoutesValid(state.runtime);
+  } catch (err) {
+    return Promise.reject(err);
+  }
   return new Promise((resolve, reject) => {
     let currentPort = port;
 

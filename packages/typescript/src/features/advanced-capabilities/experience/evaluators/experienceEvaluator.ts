@@ -12,7 +12,12 @@ import type { State } from "../../../../types/state.ts";
 import { composePrompt } from "../../../../utils.ts";
 import { EXTRACT_EXPERIENCES_TEMPLATE } from "../generated/prompts/typescript/prompts.ts";
 import type { ExperienceService } from "../service";
-import { ExperienceType, OutcomeType } from "../types";
+import { type Experience, ExperienceType, OutcomeType } from "../types";
+import {
+	detectExperienceDomain,
+	findDuplicateExperienceByLearning,
+	sanitizeExperienceText,
+} from "../utils/experienceText.ts";
 
 type ExtractedExperience = {
 	type?: string;
@@ -21,6 +26,15 @@ type ExtractedExperience = {
 	confidence?: number;
 	reasoning?: string;
 };
+
+const EXISTING_EXPERIENCE_LIMIT = 5;
+const PASSIVE_ACTIONS = new Set([
+	"REPLY",
+	"NONE",
+	"NOACTION",
+	"IGNORE",
+	"WAIT",
+]);
 
 export const experienceEvaluator: Evaluator = {
 	name: "EXPERIENCE_EVALUATOR",
@@ -79,6 +93,18 @@ export const experienceEvaluator: Evaluator = {
 		// Only run every 10 messages and only on agent messages
 		if (message.entityId !== runtime.agentId) {
 			return false;
+		}
+
+		const content = asRecord(message.content);
+		if (content && isSimpleReplyOnlyMessage(content)) {
+			return false;
+		}
+
+		if (content && hasNonPassiveAction(content)) {
+			logger.info(
+				"[experienceEvaluator] Triggering experience extraction after actionful agent turn",
+			);
+			return true;
 		}
 
 		// Check cooldown - only extract experiences every 25 messages to reduce token cost
@@ -143,15 +169,17 @@ export const experienceEvaluator: Evaluator = {
 			.map((m: Memory) => m.content.text)
 			.filter(Boolean)
 			.join(" ");
+		const provenance = buildExperienceProvenance(message, recentMessages);
 
-		// NOTE: We intentionally do NOT query existing experiences to embed in the prompt.
-		// That added ~500-1000 tokens per call for dedup the LLM can't reliably do anyway.
-		// Deduplication happens post-extraction via similarity check before recording.
+		const existingExperiences = await experienceService.findSimilarExperiences(
+			conversationContext,
+			EXISTING_EXPERIENCE_LIMIT,
+		);
 
 		const extractionPrompt = composePrompt({
 			state: {
 				conversation_context: conversationContext,
-				existing_experiences: "None",
+				existing_experiences: formatExistingExperiences(existingExperiences),
 			},
 			template: EXTRACT_EXPERIENCES_TEMPLATE,
 		});
@@ -175,42 +203,31 @@ export const experienceEvaluator: Evaluator = {
 			LEARNING: ExperienceType.LEARNING,
 		};
 
+		let recordedCount = 0;
+		let skippedDuplicateCount = 0;
+
 		for (const exp of experiences.slice(0, 3)) {
 			// Max 3 experiences per extraction
+			const rawLearning = exp.learning?.trim();
 			if (
-				!exp.learning ||
+				!rawLearning ||
 				typeof exp.confidence !== "number" ||
 				exp.confidence < threshold
 			) {
 				continue;
 			}
 
-			// Post-extraction dedup: skip if a very similar experience already exists
-			const similar = await experienceService.findSimilarExperiences(
-				exp.learning,
-				1,
+			const sanitizedLearning = sanitizeContext(rawLearning);
+			const duplicate = await findDuplicateExperienceByLearning(
+				experienceService,
+				sanitizedLearning,
 			);
-			if (similar.length > 0) {
-				// If the most similar existing experience shares a lot of the same words,
-				// it's likely a duplicate — skip recording
-				const existingLearning = similar[0].learning.toLowerCase();
-				const newLearning = exp.learning.toLowerCase();
-				const existingWords = new Set(
-					existingLearning.split(/\s+/).filter((w) => w.length > 3),
+			if (duplicate) {
+				skippedDuplicateCount++;
+				logger.debug(
+					`[experienceEvaluator] Skipping duplicate experience: "${sanitizedLearning.substring(0, 80)}..."`,
 				);
-				const newWords = new Set(
-					newLearning.split(/\s+/).filter((w) => w.length > 3),
-				);
-				const overlap = [...newWords].filter((w) =>
-					existingWords.has(w),
-				).length;
-				const union = new Set([...existingWords, ...newWords]).size;
-				if (union > 0 && overlap / union > 0.6) {
-					logger.debug(
-						`[experienceEvaluator] Skipping duplicate experience: "${exp.learning.substring(0, 80)}..."`,
-					);
-					continue;
-				}
+				continue;
 			}
 
 			const normalizedType =
@@ -218,6 +235,13 @@ export const experienceEvaluator: Evaluator = {
 			const experienceType =
 				experienceTypeMap[normalizedType] ?? ExperienceType.LEARNING;
 			const experienceTag = experienceType;
+			const sanitizedContext = sanitizeContext(
+				exp.context || "Conversation analysis",
+			);
+			const sanitizedReason =
+				typeof exp.reasoning === "string" && exp.reasoning.trim().length > 0
+					? sanitizeContext(exp.reasoning)
+					: undefined;
 
 			await experienceService.recordExperience({
 				type: experienceType,
@@ -225,24 +249,32 @@ export const experienceEvaluator: Evaluator = {
 					experienceType === ExperienceType.CORRECTION
 						? OutcomeType.POSITIVE
 						: OutcomeType.NEUTRAL,
-				context: sanitizeContext(exp.context || "Conversation analysis"),
+				context: sanitizedContext,
 				action: "pattern_recognition",
-				result: exp.learning,
-				learning: sanitizeContext(exp.learning),
-				domain: detectDomain(exp.learning),
+				result: sanitizedLearning,
+				learning: sanitizedLearning,
+				domain: detectExperienceDomain(sanitizedLearning),
 				tags: ["extracted", "novel", experienceTag],
 				confidence: Math.min(exp.confidence, 0.9), // Cap confidence
 				importance: 0.8, // High importance for extracted experiences
+				sourceMessageIds: provenance.sourceMessageIds,
+				sourceRoomId: provenance.sourceRoomId,
+				sourceTriggerMessageId: provenance.sourceTriggerMessageId,
+				sourceTrajectoryId: provenance.sourceTrajectoryId,
+				sourceTrajectoryStepId: provenance.sourceTrajectoryStepId,
+				extractionMethod: "experience_evaluator",
+				extractionReason: sanitizedReason,
 			});
 
+			recordedCount++;
 			logger.info(
-				`[experienceEvaluator] Recorded novel experience: ${exp.learning.substring(0, 100)}...`,
+				`[experienceEvaluator] Recorded novel experience: ${sanitizedLearning.substring(0, 100)}...`,
 			);
 		}
 
 		if (experiences.length > 0) {
 			logger.info(
-				`[experienceEvaluator] Extracted ${experiences.length} novel experiences from conversation`,
+				`[experienceEvaluator] Extracted ${experiences.length} candidate experiences, recorded ${recordedCount}, skipped ${skippedDuplicateCount} duplicates`,
 			);
 		} else {
 			logger.debug(
@@ -254,13 +286,73 @@ export const experienceEvaluator: Evaluator = {
 			success: true,
 			data: {
 				extractedCount: experiences.length,
+				recordedCount,
+				skippedDuplicateCount,
 			},
 			values: {
 				extractedCount: experiences.length.toString(),
+				recordedCount: recordedCount.toString(),
+				skippedDuplicateCount: skippedDuplicateCount.toString(),
 			},
 		};
 	},
 };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return typeof value === "object" && value !== null
+		? (value as Record<string, unknown>)
+		: null;
+}
+
+function readStringArray(value: unknown): string[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+
+	return value.filter((item): item is string => typeof item === "string");
+}
+
+function normalizeActionName(name: string): string {
+	return name
+		.trim()
+		.toUpperCase()
+		.replace(/[^A-Z0-9]/g, "");
+}
+
+function hasNonPassiveAction(content: Record<string, unknown>): boolean {
+	const actions = readStringArray(content.actions).map(normalizeActionName);
+	return actions.some((action) => action && !PASSIVE_ACTIONS.has(action));
+}
+
+function isSimpleReplyOnlyMessage(content: Record<string, unknown>): boolean {
+	const conversationMode =
+		typeof content.conversationMode === "string"
+			? content.conversationMode.trim().toLowerCase()
+			: "";
+	if (conversationMode !== "simple") {
+		return false;
+	}
+
+	const actions = readStringArray(content.actions).map(normalizeActionName);
+	return (
+		actions.length === 0 ||
+		actions.every((action) => !action || PASSIVE_ACTIONS.has(action))
+	);
+}
+
+function formatExistingExperiences(experiences: Experience[]): string {
+	if (experiences.length === 0) {
+		return "None";
+	}
+
+	return experiences
+		.map((experience, index) => {
+			const learning = sanitizeExperienceText(experience.learning);
+			const context = sanitizeExperienceText(experience.context);
+			return `${index + 1}. (${experience.type}/${experience.domain}, confidence ${experience.confidence.toFixed(2)}) When ${context}, learned: ${learning}`;
+		})
+		.join("\n");
+}
 
 function parseExtractedExperiences(response: string): ExtractedExperience[] {
 	const jsonMatch = response.match(/\[[\s\S]*\]/);
@@ -290,66 +382,41 @@ function getNumberSetting(
 }
 
 function sanitizeContext(text: string): string {
-	if (!text) return "Unknown context";
-
-	// Remove user-specific details while preserving technical context
-	return text
-		.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, "[EMAIL]") // emails
-		.replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g, "[IP]") // IP addresses
-		.replace(/\/Users\/[^/\s]+/g, "/Users/[USER]") // user directories
-		.replace(/\/home\/[^/\s]+/g, "/home/[USER]") // home directories
-		.replace(/\b[A-Z0-9]{20,}\b/g, "[TOKEN]") // API keys/tokens
-		.replace(
-			/\b(user|person|someone|they)\s+(said|asked|told|mentioned)/gi,
-			"when asked",
-		) // personal references
-		.substring(0, 200); // limit length
+	return sanitizeExperienceText(text);
 }
 
-function detectDomain(text: string): string {
-	const domains: Record<string, string[]> = {
-		shell: ["command", "terminal", "bash", "shell", "execute", "script", "cli"],
-		coding: [
-			"code",
-			"function",
-			"variable",
-			"syntax",
-			"programming",
-			"debug",
-			"typescript",
-			"javascript",
-		],
-		system: [
-			"file",
-			"directory",
-			"process",
-			"memory",
-			"cpu",
-			"system",
-			"install",
-			"package",
-		],
-		network: [
-			"http",
-			"api",
-			"request",
-			"response",
-			"url",
-			"network",
-			"fetch",
-			"curl",
-		],
-		data: ["json", "csv", "database", "query", "data", "sql", "table"],
-		ai: ["model", "llm", "embedding", "prompt", "token", "inference"],
+function buildExperienceProvenance(
+	triggerMessage: Memory,
+	recentMessages: Memory[],
+): Pick<
+	Experience,
+	| "sourceMessageIds"
+	| "sourceRoomId"
+	| "sourceTriggerMessageId"
+	| "sourceTrajectoryId"
+	| "sourceTrajectoryStepId"
+> {
+	const sourceMessageIds = recentMessages
+		.map((recentMessage) => recentMessage.id)
+		.filter((id): id is NonNullable<Memory["id"]> => typeof id === "string");
+
+	return {
+		sourceMessageIds:
+			sourceMessageIds.length > 0 ? sourceMessageIds : undefined,
+		sourceRoomId: triggerMessage.roomId,
+		sourceTriggerMessageId: triggerMessage.id,
+		sourceTrajectoryId: readMetadataString(triggerMessage, "trajectoryId"),
+		sourceTrajectoryStepId: readMetadataString(
+			triggerMessage,
+			"trajectoryStepId",
+		),
 	};
+}
 
-	const lowerText = text.toLowerCase();
-
-	for (const [domain, keywords] of Object.entries(domains)) {
-		if (keywords.some((keyword) => lowerText.includes(keyword))) {
-			return domain;
-		}
-	}
-
-	return "general";
+function readMetadataString(message: Memory, key: string): string | undefined {
+	const metadata = asRecord(message.metadata);
+	const value = metadata?.[key];
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim()
+		: undefined;
 }

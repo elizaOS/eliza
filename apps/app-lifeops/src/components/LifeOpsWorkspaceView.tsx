@@ -20,7 +20,7 @@ import type {
   LifeOpsGmailTriageFeed,
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   type ReactNode,
   useCallback,

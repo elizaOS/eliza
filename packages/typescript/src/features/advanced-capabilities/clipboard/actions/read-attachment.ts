@@ -20,6 +20,7 @@ export const readAttachmentAction: Action = {
 	similes: ["OPEN_ATTACHMENT", "INSPECT_ATTACHMENT"],
 	description:
 		"Read a stored attachment by attachment ID. Use this instead of relying on inline attachment descriptions in the conversation context. Set addToClipboard=true to keep the result in bounded task clipboard state.",
+	suppressPostActionContinuation: true,
 	validate: async (runtime, message) => {
 		const isAttachmentRequest =
 			typeof message.content.attachmentId === "string" ||
@@ -58,7 +59,11 @@ export const readAttachmentAction: Action = {
 						source: message.content.source,
 					});
 				}
-				return { success: false, text: fallback };
+				return {
+					success: false,
+					text: fallback,
+					data: { actionName: "READ_ATTACHMENT" },
+				};
 			}
 
 			const storedContent = result.content.trim();
@@ -116,10 +121,12 @@ export const readAttachmentAction: Action = {
 				success: true,
 				text: responseText,
 				data: {
+					actionName: "READ_ATTACHMENT",
 					attachmentId: result.attachment.id,
 					attachment: result.attachment,
 					content: storedContent,
 					clipboard: clipboardResult,
+					suppressActionResultClipboard: clipboardResult.requested,
 				},
 			};
 		} catch (error) {
@@ -137,6 +144,7 @@ export const readAttachmentAction: Action = {
 				success: false,
 				text: "Failed to read attachment",
 				error: errorMessage,
+				data: { actionName: "READ_ATTACHMENT" },
 			};
 		}
 	},

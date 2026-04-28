@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { Trajectory } from "@elizaos/agent/types";
+import type { Trajectory } from "@elizaos/agent/types/trajectory";
 import type {
   AgentRuntime,
   ChannelType,

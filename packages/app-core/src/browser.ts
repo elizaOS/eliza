@@ -5,26 +5,39 @@
  * that require Node APIs or server-only runtime state.
  */
 
-export type { RestartHandler } from "@elizaos/shared/restart";
+export type { RestartHandler } from "@elizaos/shared";
 export {
   RESTART_EXIT_CODE,
   requestRestart,
   setRestartHandler,
-} from "@elizaos/shared/restart";
+} from "@elizaos/shared";
 export * from "@elizaos/ui";
 export { App } from "./App.tsx";
-export * from "./api/auth.ts";
-export * from "./api/compat-route-shared.ts";
 export * from "./api/index.ts";
 export * from "./api/response.ts";
+export * from "./app-shell/task-coordinator-slots.tsx";
 export * from "./bridge/index.ts";
-export * from "./character-catalog.ts";
 export * from "./chat/index.ts";
+export * from "./components/apps/extensions/registry.ts";
+export * from "./components/apps/extensions/surface.tsx";
+export * from "./components/apps/extensions/types.ts";
 export * from "./components/apps/overlay-app-api.ts";
 export * from "./components/apps/overlay-app-registry.ts";
+export * from "./components/apps/surfaces/GameOperatorShell.tsx";
+export * from "./components/apps/surfaces/registry.ts";
+export * from "./components/apps/surfaces/types.ts";
 export { CharacterEditor } from "./components/character/CharacterEditor.tsx";
 export * from "./components/character/character-greeting.ts";
 export * from "./components/chat/widgets/shared.tsx";
+export * from "./components/config-ui/config-renderer.tsx";
+export {
+  evaluateUiVisibility,
+  getSupportedComponents,
+  runValidation as runUiValidation,
+  sanitizeLinkHref,
+  UiRenderer,
+  type UiRendererProps,
+} from "./components/config-ui/ui-renderer.tsx";
 export { getExplorerTokenUrl } from "./components/inventory/chainConfig.ts";
 // Explicit named re-exports for the wallet helpers that renderer-side
 // modules (e.g. apps/app-companion/.../walletUtils.ts) reach for. The
@@ -41,11 +54,28 @@ export {
 } from "./components/inventory/constants.ts";
 export * from "./components/inventory/index.ts";
 export * from "./components/pages/ChatModalView.tsx";
+export * from "./components/pages/PageScopedChatPane.tsx";
 export { PhoneCompanionApp } from "./components/phone-companion/PhoneCompanionApp.tsx";
+export type { TranslatorFn } from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/ThemeToggle.tsx";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
+export * from "./config/app-config.ts";
+export * from "./config/boot-config.ts";
+export * from "./config/boot-config-react.tsx";
+export type {
+  CompanionInferenceNotice,
+  CompanionSceneStatus,
+} from "./config/boot-config-store.ts";
+export * from "./config/branding.ts";
+export * from "./config/cloud-only.ts";
+export * from "./config/config-catalog.ts";
 export * from "./config/index.ts";
+export {
+  buildPluginConfigUiSpec,
+  buildPluginListUiSpec,
+} from "./config/plugin-ui-spec.ts";
+export * from "./config/ui-spec.ts";
 export * from "./events/index.ts";
 export * from "./hooks/useActivityEvents.ts";
 export * from "./hooks/useBugReport.tsx";
@@ -77,3 +107,4 @@ export * from "./state/index.ts";
 export * from "./types/index.ts";
 export * from "./utils/index.ts";
 export * from "./voice/index.ts";
+export * from "./widgets/index.ts";

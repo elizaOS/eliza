@@ -1,9 +1,15 @@
-export { loadAllScenarios, loadScenarioFile, discoverScenarios } from "./loader.ts";
 export { runScenario } from "./executor.ts";
-export { createScenarioRuntime } from "./runtime-factory.ts";
-export { buildAggregate, writeReport, printStdoutSummary } from "./reporter.ts";
 export { attachInterceptor } from "./interceptor.ts";
 export { judgeTextWithLlm } from "./judge.ts";
+export {
+  discoverScenarios,
+  listScenarioMetadata,
+  loadAllScenarios,
+  loadScenarioFile,
+  loadScenarioMetadataFile,
+} from "./loader.ts";
+export { buildAggregate, printStdoutSummary, writeReport } from "./reporter.ts";
+export { createScenarioRuntime } from "./runtime-factory.ts";
 export type {
   AggregateReport,
   FinalCheckReport,

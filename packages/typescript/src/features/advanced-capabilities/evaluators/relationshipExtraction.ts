@@ -601,6 +601,8 @@ async function updateRelationship(
 function extractMentionedPeople(text: string): MentionedPerson[] {
 	const people: MentionedPerson[] = [];
 
+	const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
+
 	// Pattern for "X is/was/works..."
 	const patterns = [
 		/(\w+ \w+) (?:is|was|works) (?:a|an|the|at|in) ([^.!?]+)/gi,
@@ -609,7 +611,7 @@ function extractMentionedPeople(text: string): MentionedPerson[] {
 	];
 
 	for (const pattern of patterns) {
-		let patternMatch = pattern.exec(text);
+		let patternMatch = pattern.exec(safeText);
 		while (patternMatch !== null) {
 			// Simple name validation
 			if (
@@ -623,7 +625,7 @@ function extractMentionedPeople(text: string): MentionedPerson[] {
 					attributes: {},
 				});
 			}
-			patternMatch = pattern.exec(text);
+			patternMatch = pattern.exec(safeText);
 		}
 	}
 
@@ -841,7 +843,8 @@ async function handleAdminUpdates(
 
 	const updatePattern =
 		/(?:update|set|change)\s+(\w+(?:\s+\w+)*)'?s?\s+(\w+)\s+(?:to|is|=)\s+(.+)/i;
-	const match = text.match(updatePattern);
+	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	const match = safeText.match(updatePattern);
 
 	if (match) {
 		const [, targetName, field, value] = match;

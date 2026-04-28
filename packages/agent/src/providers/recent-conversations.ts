@@ -8,7 +8,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { getValidationKeywordTerms } from "@elizaos/shared/validation-keywords";
+import { getValidationKeywordTerms } from "@elizaos/shared";
 import {
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,

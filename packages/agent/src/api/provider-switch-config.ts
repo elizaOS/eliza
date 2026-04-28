@@ -1,8 +1,8 @@
+import { asNonEmptyString, asRecord } from "@elizaos/shared";
 import {
   applySubscriptionCredentials,
   deleteCredentials,
-} from "@elizaos/agent/auth";
-import { asNonEmptyString, asRecord } from "@elizaos/shared/type-guards";
+} from "../auth/credentials.js";
 import { SUBSCRIPTION_PROVIDER_MAP } from "../auth/types.js";
 import type { ElizaConfig } from "../config/types.eliza.js";
 import {
@@ -21,7 +21,7 @@ import {
 } from "../contracts/onboarding.js";
 import type {
   DeploymentTargetConfig,
-  LinkedAccountsConfig,
+  LinkedAccountFlagsConfig,
   ServiceCapability,
   ServiceRoutingConfig,
 } from "../contracts/service-routing.js";
@@ -37,7 +37,7 @@ type MutableElizaConfig = Partial<ElizaConfig> & {
   models?: Record<string, unknown>;
   wallet?: { rpcProviders?: Record<string, string> };
   deploymentTarget?: DeploymentTargetConfig;
-  linkedAccounts?: LinkedAccountsConfig;
+  linkedAccounts?: LinkedAccountFlagsConfig;
   serviceRouting?: ServiceRoutingConfig;
 };
 
@@ -79,7 +79,7 @@ function ensureModels(config: MutableElizaConfig): Record<string, unknown> {
 
 function ensureLinkedAccounts(
   config: MutableElizaConfig,
-): LinkedAccountsConfig {
+): LinkedAccountFlagsConfig {
   config.linkedAccounts ??= {};
   return config.linkedAccounts;
 }
@@ -104,7 +104,7 @@ function persistDeploymentTarget(
 
 function persistLinkedAccounts(
   config: MutableElizaConfig,
-  linkedAccounts: LinkedAccountsConfig | null | undefined,
+  linkedAccounts: LinkedAccountFlagsConfig | null | undefined,
 ): void {
   if (!linkedAccounts) {
     return;
@@ -162,7 +162,7 @@ export function applyCanonicalOnboardingConfig(
   config: MutableElizaConfig,
   args: {
     deploymentTarget?: DeploymentTargetConfig | null;
-    linkedAccounts?: LinkedAccountsConfig | null;
+    linkedAccounts?: LinkedAccountFlagsConfig | null;
     serviceRouting?: ServiceRoutingConfig | null;
     clearRoutes?: readonly ServiceCapability[];
   },
@@ -405,13 +405,13 @@ const PROVIDER_DEFAULT_MODELS: Record<
     smallKey: "ANTHROPIC_SMALL_MODEL",
     smallVal: "claude-haiku-4-5-20251001",
     largeKey: "ANTHROPIC_LARGE_MODEL",
-    largeVal: "claude-sonnet-4-6",
+    largeVal: "claude-opus-4-7",
   },
   openai: {
     smallKey: "OPENAI_SMALL_MODEL",
-    smallVal: "gpt-5.4-mini",
+    smallVal: "gpt-5.5-mini",
     largeKey: "OPENAI_LARGE_MODEL",
-    largeVal: "gpt-5.4",
+    largeVal: "gpt-5.5",
   },
   google: {
     smallKey: "GOOGLE_SMALL_MODEL",
@@ -834,7 +834,7 @@ export async function applyOnboardingConnectionConfig(
       ? { primaryModel: normalizedConnection.primaryModel }
       : {}),
   });
-  const linkedAccounts: LinkedAccountsConfig | undefined =
+  const linkedAccounts: LinkedAccountFlagsConfig | undefined =
     normalizedConnection.provider === "anthropic-subscription" ||
     normalizedConnection.provider === "openai-subscription"
       ? {

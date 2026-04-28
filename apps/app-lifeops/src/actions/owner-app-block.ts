@@ -6,6 +6,7 @@
  * the existing handlers in app-blocker.ts.
  */
 
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
 import type {
   Action,
   ActionExample,
@@ -20,13 +21,11 @@ import {
 } from "../app-blocker/access.ts";
 import {
   blockAppsAction,
-  unblockAppsAction,
   getAppBlockStatusAction,
+  unblockAppsAction,
 } from "./app-blocker.js";
 
 const ACTION_NAME = "OWNER_APP_BLOCK";
-const OWNER_APP_BLOCK_INTENT_RE =
-  /\b(block|blocking|blocked|unblock|unblocking|shield|app block|block apps|phone apps|focus mode|restrict apps)\b/i;
 
 type Subaction = "block" | "unblock" | "status";
 
@@ -69,18 +68,15 @@ export const ownerAppBlockAction: Action & {
 
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
-    return (
-      access.allowed &&
-      typeof message.content?.text === "string" &&
-      OWNER_APP_BLOCK_INTENT_RE.test(message.content.text)
-    );
+    return access.allowed;
   },
 
   parameters: [
     {
       name: "subaction",
-      description: "Required. One of: block, unblock, status.",
-      required: true,
+      description:
+        "One of: block, unblock, status. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+      required: false,
       schema: { type: "string" as const },
     },
     {
@@ -99,7 +95,8 @@ export const ownerAppBlockAction: Action & {
     },
     {
       name: "durationMinutes",
-      description: "How long to block the apps, in minutes. Omit for indefinite block.",
+      description:
+        "How long to block the apps, in minutes. Omit for indefinite block.",
       required: false,
       schema: { type: "number" as const },
     },
@@ -109,7 +106,9 @@ export const ownerAppBlockAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Block Twitter and Instagram on my phone for 2 hours." },
+        content: {
+          text: "Block Twitter and Instagram on my phone for 2 hours.",
+        },
       },
       {
         name: "{{agentName}}",
@@ -162,8 +161,18 @@ export const ownerAppBlockAction: Action & {
       } as ActionResult;
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerAppBlockParameters;
+    const params = (await extractActionParamsViaLlm<OwnerAppBlockParameters & Record<string, unknown>>({
+      runtime,
+      message,
+      state,
+      actionName: ACTION_NAME,
+      actionDescription: ownerAppBlockAction.description ?? "",
+      paramSchema: ownerAppBlockAction.parameters ?? [],
+      existingParams: rawParams as Record<string, unknown>,
+      requiredFields: ["subaction"],
+    })) as OwnerAppBlockParameters;
     const subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       return {

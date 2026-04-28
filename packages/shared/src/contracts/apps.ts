@@ -231,6 +231,7 @@ export interface AppLaunchPreparation {
   diagnostics?: AppLaunchDiagnostic[];
   launchUrl?: string | null;
   viewer?: Omit<AppViewerConfig, "authMessage"> | null;
+  skipRuntimePluginRegistration?: boolean;
 }
 
 export interface AppLaunchResult {
@@ -334,6 +335,11 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
       slug: "shopify",
       canonicalName: "@elizaos/app-shopify",
       aliases: ["@elizaos/plugin-shopify"],
+    },
+    {
+      slug: "screenshare",
+      canonicalName: "@elizaos/app-screenshare",
+      aliases: [],
     },
     {
       slug: "clawville",

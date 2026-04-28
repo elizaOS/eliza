@@ -47,10 +47,10 @@ const ROLE_GATED_PLUGINS: Readonly<Record<string, RoleGate>> = {
   // Orchestration — spawns agents, PTY sessions, workspaces
   "agent-orchestrator": "admin",
 
-  // Secrets — sets env vars, manages encrypted secrets
-  "@elizaos/plugin-secrets-manager": "owner",
-
-  // Plugin installs / registry — matches plugin `name` from plugin-plugin-manager
+  // Plugin installs / registry — matches built-in pluginManagerCapability `name`.
+  // The secrets capability is also built-in to core; gating happens via the
+  // owner-only PLUGIN action validators rather than a plugin-name map entry
+  // (no dedicated `secrets` plugin name to gate against).
   "plugin-manager": "owner",
 
   // Trust — policy / trust signals (matches plugin `name` from plugin-trust)

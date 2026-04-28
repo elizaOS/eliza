@@ -1,5 +1,4 @@
 import {
-  Badge,
   Button,
   client,
   isElectrobunRuntime,
@@ -9,8 +8,11 @@ import {
 import type {
   LifeOpsOwnerBrowserAccessStatus,
   LifeOpsTelegramAuthState,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import {
+  CheckCircle2,
+  CircleAlert,
+  CircleDashed,
   ExternalLink,
   Loader2,
   MessageCircle,
@@ -26,6 +28,7 @@ import { useIMessageConnector } from "../hooks/useIMessageConnector.js";
 import { useSignalConnector } from "../hooks/useSignalConnector.js";
 import { useTelegramConnector } from "../hooks/useTelegramConnector.js";
 import { useWhatsAppConnector } from "../hooks/useWhatsAppConnector.js";
+import { WhatsAppQrOverlay } from "./WhatsAppQrOverlay.js";
 
 function isIosRuntime(): boolean {
   if (
@@ -42,8 +45,7 @@ function isIosRuntime(): boolean {
 
 const MACOS_FULL_DISK_ACCESS_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
-const WHATSAPP_SETUP_GUIDE_URL =
-  "https://docs.eliza.ai/plugin-setup-guide#whatsapp";
+const LIFEOPS_BROWSER_SETUP_ID = "lifeops-browser-setup";
 
 function ConnectorCardShell({
   icon,
@@ -198,6 +200,9 @@ function inferTelegramRetryState(args: {
 }
 
 function browserAccessTitle(access: LifeOpsOwnerBrowserAccessStatus): string {
+  if (access.source === "discord_desktop") {
+    return "Discord Desktop App";
+  }
   if (access.source === "desktop_browser") {
     return "Milady Desktop Browser";
   }
@@ -208,15 +213,62 @@ function browserAccessTitle(access: LifeOpsOwnerBrowserAccessStatus): string {
 
 function browserAccessBadge(access: LifeOpsOwnerBrowserAccessStatus): {
   label: string;
-  variant: "default" | "secondary" | "outline";
+  tone: "ok" | "warning" | "muted";
 } {
-  if (access.active && access.tabState === "dm_inbox_visible") {
-    return { label: "Using now", variant: "default" };
+  if (isBrowserAccessReady(access)) {
+    return {
+      label: access.tabState === "dm_inbox_visible" ? "Using now" : "Ready",
+      tone: "ok",
+    };
   }
   if (access.active || access.available) {
-    return { label: "Available", variant: "secondary" };
+    return { label: "Available", tone: "warning" };
   }
-  return { label: "Not ready", variant: "outline" };
+  return { label: "Not ready", tone: "muted" };
+}
+
+function isBrowserAccessReady(
+  access: LifeOpsOwnerBrowserAccessStatus,
+): boolean {
+  return (
+    access.canControl &&
+    access.siteAccessOk !== false &&
+    access.nextAction === "none" &&
+    (access.tabState === "dm_inbox_visible" ||
+      access.tabState === "discord_open" ||
+      access.tabState === "background_discord")
+  );
+}
+
+function BrowserAccessStatusIcon({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "ok" | "warning" | "muted";
+}) {
+  const className =
+    tone === "ok"
+      ? "text-emerald-500"
+      : tone === "warning"
+        ? "text-amber-500"
+        : "text-muted/55";
+  const Icon =
+    tone === "ok"
+      ? CheckCircle2
+      : tone === "warning"
+        ? CircleAlert
+        : CircleDashed;
+  return (
+    <span
+      aria-label={label}
+      className={`inline-flex h-5 w-5 items-center justify-center ${className}`}
+      role="img"
+      title={label}
+    >
+      <Icon className="h-4 w-4" aria-hidden />
+    </span>
+  );
 }
 
 function browserAccessSourceLabel(
@@ -227,7 +279,9 @@ function browserAccessSourceLabel(
   }
   return access.source === "desktop_browser"
     ? "Milady Desktop Browser"
-    : "Your Browser";
+    : access.source === "discord_desktop"
+      ? "Discord Desktop"
+      : "Your Browser";
 }
 
 function browserAccessActionLabel(
@@ -254,6 +308,8 @@ function browserAccessActionLabel(
       return "Log In to Discord";
     case "open_desktop_browser":
       return "Open Milady Desktop";
+    case "relaunch_discord":
+      return "Relaunch Discord";
     default:
       return null;
   }
@@ -261,6 +317,24 @@ function browserAccessActionLabel(
 
 function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
   const sourceLabel = browserAccessSourceLabel(access);
+  if (access.source === "discord_desktop") {
+    if (access.nextAction === "relaunch_discord") {
+      return "Relaunch Discord with local agent control enabled. This keeps your existing Discord login.";
+    }
+    if (access.authState === "logged_out") {
+      return "Discord Desktop is controllable, but that session still needs you to log in.";
+    }
+    if (access.tabState === "missing") {
+      return "Discord Desktop control is on, but no Discord page target was found yet.";
+    }
+    if (
+      access.authState === "logged_in" &&
+      access.tabState !== "dm_inbox_visible"
+    ) {
+      return "Discord Desktop is connected, but the DM inbox is not visible yet.";
+    }
+    return "Discord Desktop is ready for local agent control.";
+  }
   if (access.source === "lifeops_browser") {
     if (!access.available && access.nextAction === "enable_browser_access") {
       return access.active
@@ -313,6 +387,44 @@ function browserAccessMessage(access: LifeOpsOwnerBrowserAccessStatus): string {
     return "Milady Desktop Browser sees your Discord session, but not the DM inbox yet.";
   }
   return "Milady Desktop Browser is ready for Discord.";
+}
+
+function focusBrowserSetupPanel(): boolean {
+  if (typeof document === "undefined") {
+    return false;
+  }
+  const element = document.getElementById(LIFEOPS_BROWSER_SETUP_ID);
+  if (!element) {
+    return false;
+  }
+  element.scrollIntoView({ behavior: "smooth", block: "start" });
+  return true;
+}
+
+function browserAccessActionIcon(
+  action: LifeOpsOwnerBrowserAccessStatus["nextAction"],
+) {
+  switch (action) {
+    case "connect_browser":
+    case "open_extension_popup":
+    case "enable_browser_access":
+    case "enable_browser_control":
+      return <Plug2 className="mr-1.5 h-3 w-3" aria-hidden />;
+    case "log_in":
+    case "open_desktop_browser":
+    case "relaunch_discord":
+    case "open_discord":
+    case "open_dm_inbox":
+    case "focus_discord_manually":
+    case "focus_dm_inbox_manually":
+      return action === "relaunch_discord" ? (
+        <RefreshCw className="mr-1.5 h-3 w-3" aria-hidden />
+      ) : (
+        <ExternalLink className="mr-1.5 h-3 w-3" aria-hidden />
+      );
+    default:
+      return null;
+  }
 }
 
 export function SignalConnectorCard() {
@@ -413,23 +525,41 @@ export function SignalConnectorCard() {
 export function DiscordConnectorCard() {
   const discord = useDiscordConnector();
   const { setActionNotice, setTab } = useApp();
-  const isConnected = discord.status?.connected === true;
   const busy = discord.actionPending || discord.loading;
   const username = discord.status?.identity?.username;
   const browserAccess = discord.status?.browserAccess ?? [];
+  const activeDmInboxAccess =
+    browserAccess.find(
+      (access) => access.active && access.tabState === "dm_inbox_visible",
+    ) ?? null;
+  const isConnected =
+    discord.status?.connected === true || Boolean(activeDmInboxAccess);
   const desktopAccess =
     browserAccess.find((access) => access.source === "desktop_browser") ?? null;
+  const discordDesktopAccess =
+    browserAccess.find((access) => access.source === "discord_desktop") ?? null;
+  const dmInboxVisible =
+    discord.status?.dmInbox.visible === true || Boolean(activeDmInboxAccess);
+  const canRelaunchDiscord =
+    discordDesktopAccess?.nextAction === "relaunch_discord";
+  const preferredDiscordDesktopAccess =
+    !dmInboxVisible && canRelaunchDiscord
+      ? discordDesktopAccess
+      : discordDesktopAccess?.active
+        ? discordDesktopAccess
+        : null;
   const preferredAccess =
+    preferredDiscordDesktopAccess ??
     browserAccess.find((access) => access.active) ??
     browserAccess.find((access) => access.available) ??
+    discordDesktopAccess ??
     browserAccess[0] ??
     null;
   const available =
     discord.status?.available === true ||
     browserAccess.some((access) => access.available);
-  const dmInboxVisible = discord.status?.dmInbox.visible === true;
   const visibleDmCount = discord.status?.dmInbox.count ?? 0;
-  const lastError = discord.status?.lastError;
+  const lastError = canRelaunchDiscord ? null : discord.status?.lastError;
   const visibleDmLabels =
     discord.status?.dmInbox.previews
       ?.map((preview) => preview.label)
@@ -438,29 +568,33 @@ export function DiscordConnectorCard() {
   const pairing =
     discord.status?.reason === "pairing" ||
     preferredAccess?.nextAction === "open_discord" ||
-    preferredAccess?.nextAction === "open_dm_inbox";
+    preferredAccess?.nextAction === "open_dm_inbox" ||
+    preferredAccess?.nextAction === "relaunch_discord";
   const authPending =
     discord.status?.reason === "auth_pending" ||
     preferredAccess?.authState === "logged_out";
-  const showConnectButton = available && (!isConnected || !dmInboxVisible);
+  const showConnectButton =
+    (available || canRelaunchDiscord) && (!isConnected || !dmInboxVisible);
   const statusLabel = dmInboxVisible
     ? `Connected • ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
     : authPending
       ? `Log in to Discord in ${browserAccessSourceLabel(preferredAccess)}`
-      : preferredAccess?.nextAction === "enable_browser_control"
-        ? "Enable browser control"
-        : preferredAccess?.nextAction === "connect_browser" ||
-            preferredAccess?.nextAction === "open_extension_popup"
-          ? "Connect Your Browser"
-          : preferredAccess?.nextAction === "open_desktop_browser"
-            ? "Open Milady Desktop"
-            : !available
-              ? "Browser access unavailable"
-              : isConnected
-                ? "Connected, opening DM inbox"
-                : pairing
-                  ? `Opening Discord in ${browserAccessSourceLabel(preferredAccess)}…`
-                  : "Not connected";
+      : preferredAccess?.nextAction === "relaunch_discord"
+        ? "Relaunch Discord"
+        : preferredAccess?.nextAction === "enable_browser_control"
+          ? "Enable browser control"
+          : preferredAccess?.nextAction === "connect_browser" ||
+              preferredAccess?.nextAction === "open_extension_popup"
+            ? "Connect Your Browser"
+            : preferredAccess?.nextAction === "open_desktop_browser"
+              ? "Open Milady Desktop"
+              : !available
+                ? "Browser access unavailable"
+                : isConnected
+                  ? "Connected, opening DM inbox"
+                  : pairing
+                    ? `Opening Discord in ${browserAccessSourceLabel(preferredAccess)}…`
+                    : "Not connected";
   const statusVariant: "ok" | "muted" | "warning" = isConnected
     ? dmInboxVisible
       ? "ok"
@@ -469,7 +603,7 @@ export function DiscordConnectorCard() {
       ? "warning"
       : "muted";
   const browserAccessTones = browserAccess.map((access) =>
-    access.active && access.tabState === "dm_inbox_visible"
+    isBrowserAccessReady(access)
       ? "ok"
       : access.active || access.available
         ? "warning"
@@ -478,7 +612,10 @@ export function DiscordConnectorCard() {
 
   const handleOpenDesktopDiscord = useCallback(async () => {
     try {
-      await client.startDiscordConnector({ side: "owner" });
+      await client.startDiscordConnector({
+        side: "owner",
+        source: "desktop_browser",
+      });
       await discord.refresh();
       setTab("browser");
       setActionNotice(
@@ -497,6 +634,51 @@ export function DiscordConnectorCard() {
     }
   }, [discord, setActionNotice, setTab]);
 
+  const handleBrowserAccessAction = useCallback(
+    async (access: LifeOpsOwnerBrowserAccessStatus) => {
+      if (access.source === "desktop_browser") {
+        await handleOpenDesktopDiscord();
+        return;
+      }
+      if (access.source === "discord_desktop") {
+        await discord.connect("discord_desktop");
+        return;
+      }
+
+      switch (access.nextAction) {
+        case "connect_browser":
+        case "open_extension_popup":
+        case "enable_browser_access":
+        case "enable_browser_control":
+          if (!focusBrowserSetupPanel()) {
+            setTab("browser");
+          }
+          setActionNotice(
+            "Use Guided Browser Setup to connect the browser profile that is already logged in to Discord.",
+            "info",
+            4200,
+          );
+          return;
+        case "focus_discord_manually":
+        case "focus_dm_inbox_manually":
+          setActionNotice(
+            "Open Discord in the connected browser profile, then refresh this card.",
+            "info",
+            4200,
+          );
+          return;
+        case "log_in":
+        case "open_discord":
+        case "open_dm_inbox":
+          await discord.connect(access.source);
+          return;
+        default:
+          await discord.refresh();
+      }
+    },
+    [discord, handleOpenDesktopDiscord, setActionNotice, setTab],
+  );
+
   return (
     <ConnectorCardShell
       icon={<DiscordIcon className="h-5 w-5 shrink-0 text-muted" />}
@@ -508,8 +690,8 @@ export function DiscordConnectorCard() {
         <Button
           size="sm"
           className="h-8 w-8 rounded-xl p-0"
-          disabled={busy || !available}
-          onClick={() => void discord.connect()}
+          disabled={busy || (!available && !canRelaunchDiscord)}
+          onClick={() => void discord.connect(preferredAccess?.source)}
           title={
             browserAccessActionLabel(preferredAccess?.nextAction) ??
             (authPending
@@ -531,7 +713,11 @@ export function DiscordConnectorCard() {
                   : "Connect Discord")
           }
         >
-          <Plug2 className="h-3.5 w-3.5" aria-hidden />
+          {preferredAccess?.nextAction === "relaunch_discord" ? (
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          ) : (
+            <Plug2 className="h-3.5 w-3.5" aria-hidden />
+          )}
         </Button>
       ) : null}
 
@@ -583,7 +769,7 @@ export function DiscordConnectorCard() {
         </div>
       ) : null}
 
-      {!dmInboxVisible && browserAccess.length > 0 ? (
+      {browserAccess.length > 0 ? (
         <details className="rounded-2xl bg-bg/24 px-3 py-2">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
             <span className="text-xs font-semibold text-txt">Sources</span>
@@ -595,6 +781,7 @@ export function DiscordConnectorCard() {
           <div className="mt-2 space-y-2">
             {browserAccess.map((access) => {
               const badge = browserAccessBadge(access);
+              const actionLabel = browserAccessActionLabel(access.nextAction);
               return (
                 <div
                   key={`${access.source}:${access.browser ?? "desktop"}:${access.profileId ?? "default"}`}
@@ -604,9 +791,10 @@ export function DiscordConnectorCard() {
                     <div className="text-xs font-semibold text-txt">
                       {browserAccessTitle(access)}
                     </div>
-                    <Badge variant={badge.variant} className="text-2xs">
-                      {badge.label}
-                    </Badge>
+                    <BrowserAccessStatusIcon
+                      label={badge.label}
+                      tone={badge.tone}
+                    />
                   </div>
                   <div className="mt-1 text-xs text-muted">
                     {browserAccessMessage(access)}
@@ -624,6 +812,24 @@ export function DiscordConnectorCard() {
                           ? " • Discord tab found"
                           : ""}
                   </div>
+                  {actionLabel ? (
+                    <Button
+                      size="sm"
+                      variant={
+                        access.source === "desktop_browser"
+                          ? "outline"
+                          : "default"
+                      }
+                      className="mt-2 h-8 rounded-xl px-3 text-xs font-semibold"
+                      disabled={busy}
+                      onClick={() => void handleBrowserAccessAction(access)}
+                      title={actionLabel}
+                      aria-label={actionLabel}
+                    >
+                      {browserAccessActionIcon(access.nextAction)}
+                      {actionLabel}
+                    </Button>
+                  ) : null}
                 </div>
               );
             })}
@@ -871,34 +1077,21 @@ export function TelegramConnectorCard() {
 
 export function WhatsAppConnectorCard() {
   const whatsapp = useWhatsAppConnector();
-  const { setActionNotice } = useApp();
+  const [pairingOpen, setPairingOpen] = useState(false);
   const isConnected = whatsapp.status?.connected === true;
   const busy = whatsapp.loading;
   const statusLabel = busy
     ? "Checking..."
     : isConnected
       ? "Configured"
-      : "Needs setup";
+      : pairingOpen
+        ? "Pairing"
+        : "Needs setup";
   const statusVariant: "ok" | "muted" | "warning" = isConnected
     ? "ok"
-    : busy
+    : busy || pairingOpen
       ? "warning"
       : "muted";
-
-  const handleOpenSetupGuide = useCallback(async () => {
-    try {
-      await openExternalUrl(WHATSAPP_SETUP_GUIDE_URL);
-      setActionNotice("Opened the WhatsApp setup guide.", "success", 3600);
-    } catch (cause) {
-      setActionNotice(
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Milady could not open the WhatsApp setup guide.",
-        "error",
-        5000,
-      );
-    }
-  }, [setActionNotice]);
 
   return (
     <ConnectorCardShell
@@ -918,13 +1111,14 @@ export function WhatsAppConnectorCard() {
           {!isConnected ? (
             <Button
               size="sm"
-              className="h-8 w-8 rounded-xl p-0"
+              className="h-8 rounded-xl px-3 text-xs font-semibold"
               disabled={busy}
-              onClick={() => void handleOpenSetupGuide()}
-              title="Open setup guide"
-              aria-label="Open setup guide"
+              onClick={() => setPairingOpen((open) => !open)}
+              title={pairingOpen ? "Hide WhatsApp QR" : "Pair WhatsApp"}
+              aria-label={pairingOpen ? "Hide WhatsApp QR" : "Pair WhatsApp"}
             >
-              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+              <QrCode className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              {pairingOpen ? "Hide QR" : "Pair WhatsApp"}
             </Button>
           ) : null}
           <Button
@@ -939,6 +1133,16 @@ export function WhatsAppConnectorCard() {
             <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           </Button>
         </div>
+        {pairingOpen ? (
+          <WhatsAppQrOverlay
+            accountId="default"
+            connectedMessage="WhatsApp is paired. LifeOps will reuse this local session."
+            onConnected={() => {
+              setPairingOpen(false);
+              void whatsapp.refresh();
+            }}
+          />
+        ) : null}
       </div>
 
       {whatsapp.error ? (

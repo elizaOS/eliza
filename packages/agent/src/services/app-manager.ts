@@ -40,10 +40,6 @@ import {
   importAppRouteModule,
 } from "./app-package-modules.js";
 import { readAppRunStore, writeAppRunStore } from "./app-run-store.js";
-import {
-  generateBotPassword,
-  generateBotUsername,
-} from "./credential-words.js";
 import type {
   InstallProgressLike,
   PluginManagerLike,
@@ -73,26 +69,12 @@ export type {
 } from "../contracts/apps.js";
 
 const DEFAULT_VIEWER_SANDBOX = "allow-scripts allow-same-origin allow-popups";
-const RS_2004SCAPE_APP_ROUTE_SLUG = "2004scape";
-const RS_2004SCAPE_AUTH_MESSAGE_TYPE = "RS_2004SCAPE_AUTH";
-const RS_2004SCAPE_BOT_NAME_KEYS = ["RS_SDK_BOT_NAME", "BOT_NAME"] as const;
-const RS_2004SCAPE_BOT_PASSWORD_KEYS = [
-  "RS_SDK_BOT_PASSWORD",
-  "BOT_PASSWORD",
-] as const;
 const DEFAULT_RS_SDK_SERVER_URL = "https://rs-sdk-demo.fly.dev";
-const BABYLON_APP_ROUTE_SLUG = "babylon";
-const LOCAL_DEV_BABYLON_CLIENT_URL = "http://localhost:3000";
-const PRODUCTION_BABYLON_CLIENT_URL = "https://staging.babylon.market";
-const BABYLON_AGENT_SESSION_TOKEN_KEY = "BABYLON_AGENT_SESSION_TOKEN";
-const BABYLON_AGENT_SESSION_EXPIRES_AT_KEY = "BABYLON_AGENT_SESSION_EXPIRES_AT";
 const HYPERSCAPE_APP_ROUTE_SLUG = "hyperscape";
 const LOCAL_DEV_HYPERSCAPE_CLIENT_URL = "http://localhost:3333";
 const PRODUCTION_HYPERSCAPE_CLIENT_URL = "https://hyperscape.gg";
-const HYPERSCAPE_WALLET_AUTH_TIMEOUT_MS = 5_000;
 const SAFE_APP_URL_PROTOCOLS = new Set(["http:", "https:"]);
 const SAFE_APP_TEMPLATE_ENV_KEYS = new Set([
-  "BABYLON_CLIENT_URL",
   "BOT_NAME",
   "HYPERSCAPE_CHARACTER_ID",
   "HYPERSCAPE_CLIENT_URL",
@@ -170,39 +152,8 @@ function isAppRegistryPlugin(
   return hasAppInterface(plugin);
 }
 
-function is2004scapeAppName(appName: string): boolean {
-  return packageNameToAppRouteSlug(appName) === RS_2004SCAPE_APP_ROUTE_SLUG;
-}
-
-function isBabylonAppName(appName: string): boolean {
-  return packageNameToAppRouteSlug(appName) === BABYLON_APP_ROUTE_SLUG;
-}
-
 function isHyperscapeAppName(appName: string): boolean {
   return packageNameToAppRouteSlug(appName) === HYPERSCAPE_APP_ROUTE_SLUG;
-}
-
-/**
- * Quick TCP-level probe to check if the 2004scape game server is reachable.
- * Returns true if a connection can be established within the timeout.
- */
-async function is2004scapeServerReachable(
-  serverUrl: string,
-  timeoutMs = 2000,
-): Promise<boolean> {
-  try {
-    const url = new URL(serverUrl);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const res = await fetch(url.href, {
-      method: "HEAD",
-      signal: controller.signal,
-    }).catch(() => null);
-    clearTimeout(timer);
-    return res !== null;
-  } catch {
-    return false;
-  }
 }
 
 function resolveDisplayViewerInfo(
@@ -577,18 +528,6 @@ function isLocalPlugin(appInfo: RegistryPluginInfo): boolean {
 }
 
 function getTemplateFallbackValue(key: string): string | undefined {
-  if (key === "BABYLON_CLIENT_URL") {
-    const runtimeClientUrl =
-      process.env.BABYLON_CLIENT_URL?.trim() ??
-      process.env.BABYLON_APP_URL?.trim() ??
-      process.env.BABYLON_API_URL?.trim();
-    if (runtimeClientUrl && runtimeClientUrl.length > 0) {
-      return runtimeClientUrl;
-    }
-    return isProductionRuntime()
-      ? PRODUCTION_BABYLON_CLIENT_URL
-      : LOCAL_DEV_BABYLON_CLIENT_URL;
-  }
   if (key === "RS_SDK_BOT_NAME") {
     const runtimeBotName = process.env.BOT_NAME?.trim();
     if (runtimeBotName && runtimeBotName.length > 0) {
@@ -622,408 +561,6 @@ function resolveSettingLike(
     return fromEnv.trim();
   }
   return undefined;
-}
-
-function resolve2004scapeServerUrl(runtime?: IAgentRuntime | null): string {
-  const runtimeUrl = resolveSettingLike(runtime, "RS_SDK_SERVER_URL");
-  if (runtimeUrl) {
-    return runtimeUrl.replace(/\/+$/, "");
-  }
-  return DEFAULT_RS_SDK_SERVER_URL;
-}
-
-function get2004scapeCredentialKeys(
-  key: "RS_SDK_BOT_NAME" | "RS_SDK_BOT_PASSWORD",
-): readonly string[] {
-  return key === "RS_SDK_BOT_NAME"
-    ? RS_2004SCAPE_BOT_NAME_KEYS
-    : RS_2004SCAPE_BOT_PASSWORD_KEYS;
-}
-
-function resolve2004scapeCredential(
-  runtime: IAgentRuntime | null | undefined,
-  key: "RS_SDK_BOT_NAME" | "RS_SDK_BOT_PASSWORD",
-): string | undefined {
-  for (const credentialKey of get2004scapeCredentialKeys(key)) {
-    const value = resolveSettingLike(runtime, credentialKey);
-    if (value) {
-      return value;
-    }
-  }
-  return undefined;
-}
-
-// ---------------------------------------------------------------------------
-// 2004scape credential auto-provisioning
-// ---------------------------------------------------------------------------
-
-function persist2004scapeCredential(
-  runtime: IAgentRuntime | null,
-  key: "RS_SDK_BOT_NAME" | "RS_SDK_BOT_PASSWORD",
-  value: string,
-  secret = false,
-): void {
-  const credentialKeys = get2004scapeCredentialKeys(key);
-  for (const credentialKey of credentialKeys) {
-    process.env[credentialKey] = value;
-  }
-  if (!runtime) return;
-
-  const character = runtime.character as {
-    settings?: { secrets?: Record<string, string> };
-    secrets?: Record<string, string>;
-  };
-  if (!character.settings) {
-    character.settings = {};
-  }
-  if (!character.settings.secrets) {
-    character.settings.secrets = {};
-  }
-  if (!character.secrets) {
-    character.secrets = {};
-  }
-
-  for (const credentialKey of credentialKeys) {
-    try {
-      runtime.setSetting(credentialKey, value, secret);
-    } catch (err) {
-      logger.error(
-        `[app-manager] Failed to persist 2004scape credential "${credentialKey}": ${err}`,
-      );
-    }
-    character.settings.secrets[credentialKey] = value;
-    character.secrets[credentialKey] = value;
-  }
-}
-
-async function prepare2004scapeLaunch(
-  runtime: IAgentRuntime | null,
-): Promise<AppLaunchDiagnostic[]> {
-  const primaryName = resolveSettingLike(runtime, "RS_SDK_BOT_NAME");
-  const compatName = resolveSettingLike(runtime, "BOT_NAME");
-  const primaryPassword = resolveSettingLike(runtime, "RS_SDK_BOT_PASSWORD");
-  const compatPassword = resolveSettingLike(runtime, "BOT_PASSWORD");
-  const agentDisplayName = runtime?.character?.name || "agent";
-  const username =
-    primaryName ?? compatName ?? generateBotUsername(agentDisplayName);
-  const password = primaryPassword ?? compatPassword ?? generateBotPassword();
-
-  const shouldPersistName = primaryName !== username || compatName !== username;
-  const shouldPersistPassword =
-    primaryPassword !== password || compatPassword !== password;
-
-  if (shouldPersistName) {
-    persist2004scapeCredential(runtime, "RS_SDK_BOT_NAME", username);
-  }
-  if (shouldPersistPassword) {
-    persist2004scapeCredential(runtime, "RS_SDK_BOT_PASSWORD", password, true);
-  }
-
-  if (shouldPersistName || shouldPersistPassword) {
-    logger.info(
-      `[app-manager] Prepared 2004scape credentials for "${username}"`,
-    );
-  }
-
-  return [];
-}
-
-// ---------------------------------------------------------------------------
-// Babylon credential auto-provisioning
-// ---------------------------------------------------------------------------
-
-function persistBabylonCredential(
-  runtime: IAgentRuntime | null,
-  key: string,
-  value: string,
-  secret = false,
-): void {
-  process.env[key] = value;
-  if (!runtime) return;
-
-  try {
-    runtime.setSetting(key, value, secret);
-  } catch (err) {
-    logger.error(
-      `[app-manager] Failed to persist Babylon credential "${key}": ${err}`,
-    );
-  }
-
-  const character = runtime.character as {
-    settings?: { secrets?: Record<string, string> };
-    secrets?: Record<string, string>;
-  };
-  if (!character.settings) {
-    character.settings = {};
-  }
-  if (!character.settings.secrets) {
-    character.settings.secrets = {};
-  }
-  character.settings.secrets[key] = value;
-  if (!character.secrets) {
-    character.secrets = {};
-  }
-  character.secrets[key] = value;
-}
-
-function resolveBabylonApiBaseUrl(runtime: IAgentRuntime | null): string {
-  return (
-    resolveSettingLike(runtime, "BABYLON_API_URL") ??
-    resolveSettingLike(runtime, "BABYLON_APP_URL") ??
-    resolveSettingLike(runtime, "BABYLON_CLIENT_URL") ??
-    (isProductionRuntime()
-      ? PRODUCTION_BABYLON_CLIENT_URL
-      : LOCAL_DEV_BABYLON_CLIENT_URL)
-  ).replace(/\/+$/, "");
-}
-
-/**
- * Probe Babylon for dev credentials. In development mode, Babylon generates
- * deterministic credentials from the server hostname. We can discover them
- * by calling the health/auth probe endpoints.
- */
-async function probeBabylonDevCredentials(
-  baseUrl: string,
-): Promise<{ agentId: string; agentSecret: string } | null> {
-  // Try well-known dev agent IDs with common dev secrets
-  const devAgentIds = [
-    "babylon-agent-alice",
-    "babylon-test-agent",
-    "dev-admin-local",
-  ];
-  // Dev secrets are deterministic from hostname — try multiple hostname sources
-  const nodeCrypto = await import("node:crypto");
-  const os = await import("node:os");
-  const hostnames = new Set<string>();
-  // Add all likely hostname sources
-  hostnames.add("localhost");
-  hostnames.add("0.0.0.0");
-  if (process.env.HOSTNAME) hostnames.add(process.env.HOSTNAME);
-  try {
-    hostnames.add(os.hostname());
-  } catch {
-    /* ignore */
-  }
-  const devSecrets: string[] = [];
-  for (const hostname of hostnames) {
-    if (!hostname) continue;
-    const hash = nodeCrypto
-      .createHash("sha256")
-      .update(`babylon-dev:${hostname}:agent`)
-      .digest("hex")
-      .substring(0, 32);
-    devSecrets.push(`dev_agent_${hash}`);
-  }
-
-  for (const agentId of devAgentIds) {
-    for (const agentSecret of devSecrets) {
-      try {
-        const response = await fetch(new URL("/api/agents/auth", baseUrl), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentId, agentSecret }),
-          signal: AbortSignal.timeout(3_000),
-        });
-        if (response.ok) {
-          const data = (await response.json()) as {
-            success?: boolean;
-            sessionToken?: string;
-          };
-          if (data.success || data.sessionToken) {
-            logger.info(
-              `[app-manager] Babylon dev credentials discovered (agentId=${agentId})`,
-            );
-            return { agentId, agentSecret };
-          }
-        }
-      } catch {
-        // Connection failed — Babylon not reachable
-        return null;
-      }
-    }
-  }
-  return null;
-}
-
-async function authenticateBabylonAgentSession(
-  baseUrl: string,
-  agentId: string,
-  agentSecret: string,
-): Promise<{ sessionToken: string; expiresAt?: string } | null> {
-  const response = await fetch(new URL("/api/agents/auth", baseUrl), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      agentId,
-      agentSecret,
-    }),
-    signal: AbortSignal.timeout(3_000),
-  });
-
-  if (!response.ok) {
-    return null;
-  }
-
-  const data = (await response.json()) as {
-    success?: boolean;
-    sessionToken?: string;
-    expiresAt?: string;
-  };
-  if (!data.sessionToken) {
-    return null;
-  }
-
-  return {
-    sessionToken: data.sessionToken,
-    expiresAt:
-      typeof data.expiresAt === "string" && data.expiresAt.trim().length > 0
-        ? data.expiresAt
-        : undefined,
-  };
-}
-
-/**
- * Auto-provision Babylon credentials on app launch.
- *
- * Flow:
- * 1. If BABYLON_AGENT_ID + BABYLON_AGENT_SECRET are already set, skip.
- * 2. In dev mode: probe Babylon for dev credentials and auto-configure.
- * 3. In production: warn the user to set credentials manually.
- */
-async function prepareBabylonLaunch(
-  runtime: IAgentRuntime | null,
-): Promise<AppLaunchDiagnostic[]> {
-  const existingId =
-    resolveSettingLike(runtime, "BABYLON_AGENT_ID") ??
-    process.env.BABYLON_AGENT_ID?.trim();
-  const existingSecret =
-    resolveSettingLike(runtime, "BABYLON_AGENT_SECRET") ??
-    process.env.BABYLON_AGENT_SECRET?.trim();
-
-  // Already configured — nothing to do
-  if (existingId && existingSecret) {
-    // Verify the credentials work by attempting auth
-    const baseUrl = resolveBabylonApiBaseUrl(runtime);
-    try {
-      const session = await authenticateBabylonAgentSession(
-        baseUrl,
-        existingId,
-        existingSecret,
-      );
-      if (session) {
-        persistBabylonCredential(
-          runtime,
-          BABYLON_AGENT_SESSION_TOKEN_KEY,
-          session.sessionToken,
-          true,
-        );
-        if (session.expiresAt) {
-          persistBabylonCredential(
-            runtime,
-            BABYLON_AGENT_SESSION_EXPIRES_AT_KEY,
-            session.expiresAt,
-            true,
-          );
-        }
-        logger.info(
-          `[app-manager] Babylon credentials verified (agentId=${existingId})`,
-        );
-        return [];
-      }
-      return [
-        {
-          code: "babylon-auth-failed",
-          severity: "warning",
-          message:
-            "Babylon credentials are set but authentication failed. Check BABYLON_AGENT_ID and BABYLON_AGENT_SECRET.",
-        },
-      ];
-    } catch {
-      return [
-        {
-          code: "babylon-unreachable",
-          severity: "warning",
-          message: `Cannot reach Babylon at ${baseUrl}. Is the server running?`,
-        },
-      ];
-    }
-  }
-
-  // No credentials — try auto-provisioning in dev mode
-  if (!isProductionRuntime()) {
-    const baseUrl = resolveBabylonApiBaseUrl(runtime);
-
-    // First check if Babylon is even reachable
-    try {
-      await fetch(new URL("/api/health", baseUrl), {
-        signal: AbortSignal.timeout(3_000),
-      });
-    } catch {
-      return [
-        {
-          code: "babylon-unreachable",
-          severity: "warning",
-          message: `Cannot reach Babylon at ${baseUrl}. Start the Babylon dev server and re-launch.`,
-        },
-      ];
-    }
-
-    // Try dev credentials
-    const devCreds = await probeBabylonDevCredentials(baseUrl);
-    if (devCreds) {
-      persistBabylonCredential(runtime, "BABYLON_AGENT_ID", devCreds.agentId);
-      persistBabylonCredential(
-        runtime,
-        "BABYLON_AGENT_SECRET",
-        devCreds.agentSecret,
-        true,
-      );
-      const session = await authenticateBabylonAgentSession(
-        baseUrl,
-        devCreds.agentId,
-        devCreds.agentSecret,
-      );
-      if (session) {
-        persistBabylonCredential(
-          runtime,
-          BABYLON_AGENT_SESSION_TOKEN_KEY,
-          session.sessionToken,
-          true,
-        );
-        if (session.expiresAt) {
-          persistBabylonCredential(
-            runtime,
-            BABYLON_AGENT_SESSION_EXPIRES_AT_KEY,
-            session.expiresAt,
-            true,
-          );
-        }
-      }
-      logger.info(
-        `[app-manager] Auto-provisioned Babylon dev credentials (agentId=${devCreds.agentId})`,
-      );
-      return [];
-    }
-
-    return [
-      {
-        code: "babylon-no-agent-id",
-        severity: "warning",
-        message:
-          "Could not auto-provision Babylon credentials. Set BABYLON_AGENT_ID and BABYLON_AGENT_SECRET in your environment.",
-      },
-    ];
-  }
-
-  // Production without credentials
-  return [
-    {
-      code: "babylon-no-agent-id",
-      severity: "warning",
-      message:
-        "BABYLON_AGENT_ID is not set. Set BABYLON_AGENT_ID and BABYLON_AGENT_SECRET for full Babylon integration.",
-    },
-  ];
 }
 
 function readSafeTemplateEnv(key: string): string | undefined {
@@ -1163,72 +700,6 @@ async function buildViewerAuthMessage(
     );
   }
 
-  if (isHyperscapeAppName(appInfo.name)) {
-    const authToken = resolveSettingLike(runtime, "HYPERSCAPE_AUTH_TOKEN");
-    if (!authToken) {
-      return undefined;
-    }
-    const agentId =
-      typeof runtime?.agentId === "string" && runtime.agentId.trim().length > 0
-        ? runtime.agentId.trim()
-        : undefined;
-    if (!agentId) {
-      return undefined;
-    }
-    const characterId =
-      resolveSettingLike(runtime, "HYPERSCAPE_CHARACTER_ID") ?? agentId;
-    return {
-      type: "HYPERSCAPE_AUTH",
-      authToken,
-      agentId,
-      characterId,
-      followEntity: characterId,
-    };
-  }
-
-  // Babylon auth — passes agent credentials to the viewer iframe
-  if (isBabylonAppName(appInfo.name)) {
-    const agentId =
-      resolveSettingLike(runtime, "BABYLON_AGENT_ID") ??
-      process.env.BABYLON_AGENT_ID?.trim();
-    const sessionToken =
-      resolveSettingLike(runtime, BABYLON_AGENT_SESSION_TOKEN_KEY) ??
-      process.env[BABYLON_AGENT_SESSION_TOKEN_KEY]?.trim();
-    if (!agentId || !sessionToken) {
-      return undefined;
-    }
-    return {
-      type: "BABYLON_AUTH",
-      authToken: sessionToken,
-      sessionToken,
-      agentId,
-      characterId: agentId,
-    };
-  }
-
-  // 2004scape auth - uses auto-provisioned or user-supplied credentials
-  if (is2004scapeAppName(appInfo.name)) {
-    await prepare2004scapeLaunch(runtime ?? null);
-    const username = resolve2004scapeCredential(runtime, "RS_SDK_BOT_NAME");
-    const password = resolve2004scapeCredential(runtime, "RS_SDK_BOT_PASSWORD");
-
-    if (!username || !password) {
-      logger.warn(
-        "[app-manager] 2004scape credentials are unavailable. " +
-          "Launch the app with a live runtime to auto-provision credentials.",
-      );
-      return undefined;
-    }
-
-    return {
-      type: RS_2004SCAPE_AUTH_MESSAGE_TYPE,
-      authToken: username,
-      sessionToken: password,
-      characterId: username,
-      agentId: runtime?.agentId,
-    };
-  }
-
   return undefined;
 }
 
@@ -1320,10 +791,6 @@ function buildAppSession(
   }
   const canSendCommands =
     features.has("commands") || features.has("suggestions");
-  const summary = isBabylonAppName(appInfo.name)
-    ? "Connecting to Babylon..."
-    : "Connecting session...";
-
   const characterId =
     authMessage?.characterId ??
     (isHyperscapeAppName(appInfo.name)
@@ -1342,7 +809,7 @@ function buildAppSession(
     followEntity,
     canSendCommands,
     controls,
-    summary,
+    summary: "Connecting session...",
   };
 }
 
@@ -1416,143 +883,6 @@ async function invokeAppStopRunHook(
   }
 }
 
-function persistHyperscapeCredential(
-  runtime: IAgentRuntime | null,
-  key: "HYPERSCAPE_AUTH_TOKEN" | "HYPERSCAPE_CHARACTER_ID",
-  value: string,
-  secret = false,
-): void {
-  if (!runtime) {
-    return;
-  }
-
-  try {
-    runtime.setSetting?.(key, value, secret);
-  } catch (err) {
-    logger.error(
-      `[app-manager] Failed to persist Hyperscape credential "${key}": ${err}`,
-    );
-  }
-
-  const character = runtime.character as {
-    settings?: { secrets?: Record<string, string> };
-    secrets?: Record<string, string>;
-  };
-  if (!character.settings) {
-    character.settings = {};
-  }
-  if (!character.settings.secrets) {
-    character.settings.secrets = {};
-  }
-  character.settings.secrets[key] = value;
-  if (!character.secrets) {
-    character.secrets = {};
-  }
-  character.secrets[key] = value;
-}
-
-function resolveHyperscapeApiBaseUrl(
-  runtime: IAgentRuntime | null,
-): string | null {
-  const configuredUrl = resolveSettingLike(runtime, "HYPERSCAPE_API_URL");
-  if (!configuredUrl) {
-    return null;
-  }
-
-  const normalized = normalizeSafeAppUrl(configuredUrl);
-  if (!normalized || normalized.startsWith("/")) {
-    logger.warn(
-      "[app-manager] Ignoring invalid HYPERSCAPE_API_URL; expected an absolute http/https URL.",
-    );
-    return null;
-  }
-
-  return normalized.replace(/\/+$/, "");
-}
-
-async function prepareHyperscapeWalletAuthFromRuntime(
-  runtime: IAgentRuntime | null,
-): Promise<void> {
-  if (!runtime) {
-    return;
-  }
-  if (resolveSettingLike(runtime, "HYPERSCAPE_AUTH_TOKEN")) {
-    return;
-  }
-  const base = resolveHyperscapeApiBaseUrl(runtime);
-  if (!base) {
-    return;
-  }
-  let agent: unknown;
-  try {
-    if (typeof runtime.getAgent === "function" && runtime.agentId) {
-      agent = await runtime.getAgent(runtime.agentId);
-    }
-  } catch {
-    agent = null;
-  }
-  const walletAddresses =
-    agent && typeof agent === "object"
-      ? (agent as { walletAddresses?: { evm?: string } }).walletAddresses
-      : undefined;
-  let evm = walletAddresses?.evm?.trim();
-  if (!evm) {
-    const existingPk =
-      resolveSettingLike(runtime, "EVM_PRIVATE_KEY")?.trim() ||
-      process.env.EVM_PRIVATE_KEY?.trim();
-    if (existingPk) {
-      const { deriveEvmAddress } = await import("../api/wallet.js");
-      evm = deriveEvmAddress(existingPk);
-    }
-  }
-  if (!evm) {
-    logger.info(
-      "[app-manager] Skipping Hyperscape wallet auth: no EVM address or EVM_PRIVATE_KEY is available.",
-    );
-    return;
-  }
-  try {
-    const walletAuthUrl = new URL("/api/agents/wallet-auth", `${base}/`);
-    const res = await fetch(walletAuthUrl, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        walletAddress: evm,
-        walletType: "evm",
-        agentName: runtime.character?.name,
-        agentId: runtime.agentId,
-      }),
-      signal: AbortSignal.timeout(HYPERSCAPE_WALLET_AUTH_TIMEOUT_MS),
-    });
-    if (!res.ok) {
-      return;
-    }
-    const data = (await res.json()) as {
-      success?: unknown;
-      authToken?: unknown;
-      characterId?: unknown;
-    };
-    if (data.success !== true || typeof data.authToken !== "string") {
-      return;
-    }
-    persistHyperscapeCredential(
-      runtime,
-      "HYPERSCAPE_AUTH_TOKEN",
-      data.authToken,
-      true,
-    );
-    if (typeof data.characterId === "string" && data.characterId.trim()) {
-      persistHyperscapeCredential(
-        runtime,
-        "HYPERSCAPE_CHARACTER_ID",
-        data.characterId.trim(),
-      );
-    }
-  } catch {
-    // Fixture or network unavailable — viewer may still load without auth.
-  }
-}
-
 async function prepareLaunch(
   appInfo: RegistryAppPlugin,
   launchUrl: string | null,
@@ -1560,67 +890,15 @@ async function prepareLaunch(
 ): Promise<AppLaunchPreparation> {
   const routeModule = await importAppRouteModule(appInfo.name);
 
-  if (isBabylonAppName(appInfo.name)) {
-    const diagnostics = await prepareBabylonLaunch(runtime);
-    const babylonUrl = resolveBabylonApiBaseUrl(runtime);
-    const agentId = resolveSettingLike(runtime, "BABYLON_AGENT_ID");
-    logger.info(
-      `[app-manager] Babylon launch: url=${babylonUrl} agentId=${agentId ?? "(none)"}`,
-    );
-    return { diagnostics };
-  }
-
-  if (is2004scapeAppName(appInfo.name)) {
-    const rsSdkServerUrl = resolve2004scapeServerUrl(runtime);
-    const serverUp = await is2004scapeServerReachable(rsSdkServerUrl);
-    if (!serverUp) {
-      logger.info(
-        `[app-manager] 2004scape server is not reachable at ${rsSdkServerUrl} — skipping plugin registration to avoid noisy SDK errors`,
-      );
-      return {
-        diagnostics: [
-          {
-            code: "2004scape-server-unreachable",
-            severity: "warning",
-            message: `2004scape game server is not running at ${rsSdkServerUrl}. Start the server and re-launch the app.`,
-          },
-        ],
-      };
-    }
-    const routePreparation =
-      typeof routeModule?.prepareLaunch === "function"
-        ? ((await routeModule.prepareLaunch({
-            appName: appInfo.name,
-            launchUrl,
-            runtime,
-            viewer: null,
-          })) ?? {})
-        : {};
-    return {
-      ...routePreparation,
-      diagnostics: [
-        ...(routePreparation.diagnostics ?? []),
-        ...(await prepare2004scapeLaunch(runtime)),
-      ],
-    };
-  }
-
   if (typeof routeModule?.prepareLaunch === "function") {
-    const preparation =
+    return (
       (await routeModule.prepareLaunch({
         appName: appInfo.name,
         launchUrl,
         runtime,
         viewer: null,
-      })) ?? {};
-    if (isHyperscapeAppName(appInfo.name)) {
-      await prepareHyperscapeWalletAuthFromRuntime(runtime);
-    }
-    return preparation;
-  }
-  if (isHyperscapeAppName(appInfo.name)) {
-    await prepareHyperscapeWalletAuthFromRuntime(runtime);
-    return {};
+      })) ?? {}
+    );
   }
 
   return {};
@@ -1712,65 +990,6 @@ function getRuntimePluginCandidates(appInfo: RegistryAppPlugin): string[] {
   );
 }
 
-function collect2004scapeLaunchDiagnostics(
-  appInfo: RegistryAppPlugin,
-  viewer: AppViewerConfig | null,
-  _session: AppSessionState | null,
-  runtime: IAgentRuntime | null,
-): AppLaunchDiagnostic[] {
-  if (!is2004scapeAppName(appInfo.name)) {
-    return [];
-  }
-
-  const diagnostics: AppLaunchDiagnostic[] = [];
-  const botName = resolve2004scapeCredential(runtime, "RS_SDK_BOT_NAME");
-  const botPassword = resolve2004scapeCredential(
-    runtime,
-    "RS_SDK_BOT_PASSWORD",
-  );
-
-  if (!botName || !botPassword) {
-    diagnostics.push({
-      code: "2004scape-credentials-missing",
-      severity: "warning",
-      message:
-        "2004scape bot credentials are not stored yet. The viewer will load without auto-login until launch provisions them.",
-    });
-  }
-
-  if (viewer?.postMessageAuth && !viewer.authMessage) {
-    diagnostics.push({
-      code: "2004scape-auth-unavailable",
-      severity: "error",
-      message:
-        "2004scape auto-sign-in could not resolve stored bot credentials for this run.",
-    });
-  }
-
-  return diagnostics;
-}
-
-function collectHyperscapeLaunchDiagnostics(
-  appInfo: RegistryAppPlugin,
-  viewer: AppViewerConfig | null,
-): AppLaunchDiagnostic[] {
-  if (!isHyperscapeAppName(appInfo.name)) {
-    return [];
-  }
-  const wantsAuth = Boolean(appInfo.viewer?.postMessageAuth);
-  if (wantsAuth && !viewer?.authMessage) {
-    return [
-      {
-        code: "hyperscape-auth-unavailable",
-        severity: "error",
-        message:
-          "Hyperscape postMessage auth requires HYPERSCAPE_AUTH_TOKEN and a runtime agent id.",
-      },
-    ];
-  }
-  return [];
-}
-
 async function collectLaunchDiagnostics(
   appInfo: RegistryAppPlugin,
   viewer: AppViewerConfig | null,
@@ -1784,26 +1003,13 @@ async function collectLaunchDiagnostics(
       ? { ...viewer, postMessageAuth: true }
       : viewer;
   if (typeof routeModule?.collectLaunchDiagnostics === "function") {
-    const pluginDiagnostics = await routeModule.collectLaunchDiagnostics({
+    return routeModule.collectLaunchDiagnostics({
       appName: appInfo.name,
       launchUrl,
       runtime,
       viewer: diagnosticViewer,
       session,
     });
-    if (isHyperscapeAppName(appInfo.name)) {
-      return [
-        ...pluginDiagnostics,
-        ...collectHyperscapeLaunchDiagnostics(appInfo, viewer),
-      ];
-    }
-    return pluginDiagnostics;
-  }
-  if (is2004scapeAppName(appInfo.name)) {
-    return collect2004scapeLaunchDiagnostics(appInfo, viewer, session, runtime);
-  }
-  if (isHyperscapeAppName(appInfo.name)) {
-    return collectHyperscapeLaunchDiagnostics(appInfo, viewer);
   }
   return [];
 }
@@ -2785,13 +1991,8 @@ export class AppManager {
       );
     }
 
-    // Skip runtime plugin registration when the target service is unreachable
-    // (e.g. 2004scape server down) to avoid error-level logs from the SDK init.
     const skipPluginRegistration =
-      is2004scapeAppName(appInfo.name) &&
-      launchPreparationDiagnostics.some(
-        (d) => d.code === "2004scape-server-unreachable",
-      );
+      launchPreparation.skipRuntimePluginRegistration === true;
 
     let runtimePluginRegistered = false;
     if (!skipPluginRegistration) {

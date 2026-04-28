@@ -76,6 +76,43 @@ describe("scenario-runner executor", () => {
       agentId: "00000000-0000-0000-0000-000000000999",
       ensureConnection: vi.fn(async () => undefined),
       createMemory: vi.fn(async () => undefined),
+      getService: vi.fn(() => undefined),
+      setSetting: vi.fn(() => undefined),
+      routes: [
+        {
+          type: "POST",
+          path: "/api/lifeops/workflows",
+          handler: async (req: unknown, res: unknown) => {
+            const request = req as AsyncIterable<Buffer> & { url?: string };
+            const response = res as {
+              statusCode: number;
+              setHeader: (name: string, value: string) => void;
+              end: (body: string) => void;
+            };
+            const chunks: Buffer[] = [];
+            for await (const chunk of request) {
+              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            }
+            const bodyText = Buffer.concat(chunks).toString("utf8");
+            const body = bodyText ? JSON.parse(bodyText) : undefined;
+            apiCalls.push({
+              method: "POST",
+              path: `/api/lifeops/workflows${new URL(request.url ?? "/", "http://127.0.0.1").search}`,
+              body,
+            });
+            response.statusCode = 201;
+            response.setHeader("Content-Type", "application/json");
+            response.end(
+              JSON.stringify({
+                ok: true,
+                method: "POST",
+                path: `/api/lifeops/workflows${new URL(request.url ?? "/", "http://127.0.0.1").search}`,
+                body,
+              }),
+            );
+          },
+        },
+      ],
       actions: [],
     } as unknown as AgentRuntime;
 
@@ -154,7 +191,7 @@ describe("scenario-runner executor", () => {
       },
     );
 
-    expect(report.status).toBe("passed");
+    expect(report.status, JSON.stringify(report, null, 2)).toBe("passed");
     expect(seedTimes).toHaveLength(1);
     expect(apiCalls).toHaveLength(1);
     expect(tickCalls).toHaveLength(1);

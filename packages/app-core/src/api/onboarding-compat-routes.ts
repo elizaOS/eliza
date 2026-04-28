@@ -1,17 +1,18 @@
 import type http from "node:http";
-import { applyCanonicalOnboardingConfig } from "@elizaos/agent/api/provider-switch-config";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import {
+  applyCanonicalOnboardingConfig,
+  loadElizaConfig,
+  saveElizaConfig,
+} from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import {
   migrateLegacyRuntimeConfig,
-  normalizeOnboardingProviderId,
-} from "@elizaos/shared/contracts/onboarding";
-import {
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountsConfig,
+  normalizeOnboardingProviderId,
   normalizeServiceRoutingConfig,
-} from "@elizaos/shared/contracts/service-routing";
-import { ensureCompatApiAuthorized } from "./auth";
+} from "@elizaos/shared";
+import { ensureRouteAuthorized } from "./auth";
 import { getCloudSecret } from "./cloud-secrets";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
@@ -105,7 +106,7 @@ export async function handleOnboardingCompatRoute(
     return false;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) {
+  if (!(await ensureRouteAuthorized(req, res, state))) {
     return true;
   }
 

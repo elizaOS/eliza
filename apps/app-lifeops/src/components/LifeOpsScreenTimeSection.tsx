@@ -1,7 +1,11 @@
 import { client } from "@elizaos/app-core";
 import {
   AppWindow,
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
   AtSign,
+  CalendarRange,
   Eye,
   Globe2,
   Loader2,
@@ -13,7 +17,7 @@ import {
   Share2,
   Smartphone,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   LifeOpsScreenTimeBreakdown,
   LifeOpsSocialHabitSummary,
@@ -27,6 +31,82 @@ import {
   StackedBar,
   startOfLocalDayIso,
 } from "./LifeOpsHabitVisuals.js";
+
+type RangeKey = "today" | "this-week" | "7d" | "30d";
+
+const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
+  { key: "today", label: "Today" },
+  { key: "this-week", label: "This Week" },
+  { key: "7d", label: "Last 7d" },
+  { key: "30d", label: "Last 30d" },
+];
+
+const CACHE_TTL_MS = 30_000;
+
+type Period = { since: string; until: string };
+
+function startOfLocalDay(date: Date): Date {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function addDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function computeRange(range: RangeKey): Period {
+  const now = new Date();
+  const until = now.toISOString();
+  if (range === "today") {
+    return { since: startOfLocalDay(now).toISOString(), until };
+  }
+  if (range === "this-week") {
+    const startToday = startOfLocalDay(now);
+    const dayOfWeek = startToday.getDay(); // Sunday = 0
+    const since = addDays(startToday, -dayOfWeek);
+    return { since: since.toISOString(), until };
+  }
+  if (range === "7d") {
+    const since = addDays(startOfLocalDay(now), -6);
+    return { since: since.toISOString(), until };
+  }
+  const since = addDays(startOfLocalDay(now), -29);
+  return { since: since.toISOString(), until };
+}
+
+function computePriorRange(range: RangeKey): Period | null {
+  if (range === "today") return null;
+  const current = computeRange(range);
+  const sinceMs = Date.parse(current.since);
+  const untilMs = Date.parse(current.until);
+  const span = untilMs - sinceMs;
+  return {
+    since: new Date(sinceMs - span).toISOString(),
+    until: current.since,
+  };
+}
+
+function enumerateDays(period: Period): Date[] {
+  const days: Date[] = [];
+  const start = startOfLocalDay(new Date(Date.parse(period.since)));
+  const endMs = Date.parse(period.until);
+  let cursor = start;
+  while (cursor.getTime() <= endMs) {
+    days.push(cursor);
+    cursor = addDays(cursor, 1);
+  }
+  return days;
+}
+
+function formatDayLabel(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "numeric",
+    day: "numeric",
+  }).format(date);
+}
 
 function socialServiceSeconds(
   summary: LifeOpsSocialHabitSummary | null,
@@ -46,40 +126,210 @@ function sourceTone(state: "live" | "partial" | "unwired"): string {
   }
 }
 
-export function LifeOpsScreenTimeSection() {
-  const [breakdown, setBreakdown] = useState<LifeOpsScreenTimeBreakdown | null>(
-    null,
+function deltaPercent(current: number, prior: number): number | null {
+  if (prior <= 0) {
+    return current > 0 ? null : 0;
+  }
+  return Math.round(((current - prior) / prior) * 100);
+}
+
+function DeltaBadge({ percent }: { percent: number | null }) {
+  if (percent === null) {
+    return (
+      <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-muted">
+        <ArrowRight className="h-3 w-3" aria-hidden />
+        new
+      </div>
+    );
+  }
+  const Icon = percent > 0 ? ArrowUp : percent < 0 ? ArrowDown : ArrowRight;
+  const magnitude = Math.abs(percent);
+  return (
+    <div className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-muted">
+      <Icon className="h-3 w-3" aria-hidden />
+      {magnitude}% vs prior
+    </div>
   );
-  const [social, setSocial] = useState<LifeOpsSocialHabitSummary | null>(null);
+}
+
+function HistoryStrip({
+  days,
+}: {
+  days: Array<{ date: Date; totalSeconds: number }>;
+}) {
+  const maxSeconds = days.reduce(
+    (max, day) => (day.totalSeconds > max ? day.totalSeconds : max),
+    0,
+  );
+  return (
+    <div className="flex items-end gap-1.5 overflow-x-auto py-2">
+      {days.map((day) => {
+        const ratio = maxSeconds > 0 ? day.totalSeconds / maxSeconds : 0;
+        const heightPct = Math.max(2, Math.round(ratio * 100));
+        return (
+          <div
+            key={day.date.toISOString()}
+            className="flex min-w-[18px] flex-1 flex-col items-center gap-1"
+            title={`${formatDayLabel(day.date)} - ${formatDurationSeconds(day.totalSeconds)}`}
+          >
+            <div className="flex h-20 w-full items-end">
+              <div
+                className="w-full rounded-sm bg-cyan-400/70"
+                style={{ height: `${heightPct}%` }}
+              />
+            </div>
+            <div className="text-[10px] font-medium tabular-nums text-muted">
+              {formatDayLabel(day.date)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+type CacheEntry<T> = { value: T; fetchedAt: number };
+
+type RangeData = {
+  breakdown: LifeOpsScreenTimeBreakdown;
+  social: LifeOpsSocialHabitSummary;
+};
+
+type PriorData = {
+  breakdown: LifeOpsScreenTimeBreakdown;
+  social: LifeOpsSocialHabitSummary;
+};
+
+type HistoryData = Array<{ date: Date; totalSeconds: number }>;
+
+async function fetchRangeData(period: Period): Promise<RangeData> {
+  const [breakdown, social] = await Promise.all([
+    client.getLifeOpsScreenTimeBreakdown({
+      since: period.since,
+      until: period.until,
+      topN: 16,
+    }),
+    client.getLifeOpsSocialHabitSummary({
+      since: period.since,
+      until: period.until,
+      topN: 12,
+    }),
+  ]);
+  return { breakdown, social };
+}
+
+async function fetchHistoryData(period: Period): Promise<HistoryData> {
+  const days = enumerateDays(period);
+  const now = Date.now();
+  const results = await Promise.all(
+    days.map(async (date) => {
+      const dayStart = startOfLocalDay(date);
+      const dayEnd = addDays(dayStart, 1);
+      const sinceIso = dayStart.toISOString();
+      const untilIso = new Date(
+        Math.min(dayEnd.getTime(), now),
+      ).toISOString();
+      const breakdown = await client.getLifeOpsScreenTimeBreakdown({
+        since: sinceIso,
+        until: untilIso,
+        topN: 1,
+      });
+      return { date: dayStart, totalSeconds: breakdown.totalSeconds };
+    }),
+  );
+  return results;
+}
+
+export function LifeOpsScreenTimeSection() {
+  const [range, setRange] = useState<RangeKey>("today");
+  const [data, setData] = useState<RangeData | null>(null);
+  const [priorData, setPriorData] = useState<PriorData | null>(null);
+  const [history, setHistory] = useState<HistoryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const since = startOfLocalDayIso();
-      const until = new Date().toISOString();
-      const [breakdownResult, socialResult] = await Promise.all([
-        client.getLifeOpsScreenTimeBreakdown({ since, until, topN: 16 }),
-        client.getLifeOpsSocialHabitSummary({ since, until, topN: 12 }),
-      ]);
-      setBreakdown(breakdownResult);
-      setSocial(socialResult);
-    } catch (cause) {
-      setError(
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Screen time failed to load.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const dataCache = useRef<Map<RangeKey, CacheEntry<RangeData>>>(new Map());
+  const priorCache = useRef<Map<RangeKey, CacheEntry<PriorData>>>(new Map());
+  const historyCache = useRef<Map<RangeKey, CacheEntry<HistoryData>>>(
+    new Map(),
+  );
+
+  const load = useCallback(
+    async (key: RangeKey, force = false) => {
+      setLoading(true);
+      setError(null);
+      const now = Date.now();
+      const cached = dataCache.current.get(key);
+      const cachedPrior = priorCache.current.get(key);
+      const cachedHistory = historyCache.current.get(key);
+      const fresh = (entry: CacheEntry<unknown> | undefined) =>
+        entry !== undefined && now - entry.fetchedAt < CACHE_TTL_MS;
+
+      if (
+        !force &&
+        fresh(cached) &&
+        (key === "today" || fresh(cachedPrior)) &&
+        (key === "today" || fresh(cachedHistory))
+      ) {
+        setData(cached!.value);
+        setPriorData(cachedPrior?.value ?? null);
+        setHistory(cachedHistory?.value ?? null);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const period = computeRange(key);
+        const priorPeriod = computePriorRange(key);
+        const [rangeData, priorRangeData, historyData] = await Promise.all([
+          fetchRangeData(period),
+          priorPeriod ? fetchRangeData(priorPeriod) : Promise.resolve(null),
+          key === "today"
+            ? Promise.resolve(null)
+            : fetchHistoryData(period),
+        ]);
+        const stamp = Date.now();
+        dataCache.current.set(key, { value: rangeData, fetchedAt: stamp });
+        if (priorRangeData) {
+          priorCache.current.set(key, {
+            value: priorRangeData,
+            fetchedAt: stamp,
+          });
+        } else {
+          priorCache.current.delete(key);
+        }
+        if (historyData) {
+          historyCache.current.set(key, {
+            value: historyData,
+            fetchedAt: stamp,
+          });
+        } else {
+          historyCache.current.delete(key);
+        }
+        setData(rangeData);
+        setPriorData(priorRangeData);
+        setHistory(historyData);
+      } catch (cause) {
+        setError(
+          cause instanceof Error && cause.message.trim().length > 0
+            ? cause.message.trim()
+            : "Screen time failed to load.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void load(range);
+  }, [load, range]);
+
+  const breakdown = data?.breakdown ?? null;
+  const social = data?.social ?? null;
+  const priorBreakdown = priorData?.breakdown ?? null;
+  const priorSocial = priorData?.social ?? null;
 
   const totalSeconds = breakdown?.totalSeconds ?? 0;
   const appSeconds =
@@ -146,13 +396,45 @@ export function LifeOpsScreenTimeSection() {
     sessionBuckets.length > 0 ||
     hasMessageActivity;
 
+  const showDeltas = range !== "today" && priorData !== null;
+  const priorTotalSeconds = priorBreakdown?.totalSeconds ?? 0;
+  const priorAppSeconds =
+    priorBreakdown?.bySource.find((item) => item.key === "app")
+      ?.totalSeconds ?? 0;
+  const priorWebSeconds =
+    priorBreakdown?.bySource.find((item) => item.key === "website")
+      ?.totalSeconds ?? 0;
+  const priorPhoneSeconds =
+    priorBreakdown?.byDevice.find((item) => item.key === "phone")
+      ?.totalSeconds ?? 0;
+  const priorSocialSeconds = priorSocial?.totalSeconds ?? 0;
+  const priorYoutubeSeconds = socialServiceSeconds(priorSocial, "youtube");
+  const priorXSeconds = socialServiceSeconds(priorSocial, "x");
+  const priorMessageOpened = priorSocial?.messages.opened ?? 0;
+
+  const totalLabel = useMemo(() => {
+    switch (range) {
+      case "today":
+        return "Today";
+      case "this-week":
+        return "This Week";
+      case "7d":
+        return "Last 7d";
+      case "30d":
+        return "Last 30d";
+    }
+  }, [range]);
+
   const metricTiles = [
     {
-      key: "today",
+      key: "total",
       icon: <Monitor />,
       value: formatDurationSeconds(totalSeconds),
-      label: "Today",
+      label: totalLabel,
       visible: totalSeconds > 0,
+      delta: showDeltas
+        ? deltaPercent(totalSeconds, priorTotalSeconds)
+        : undefined,
     },
     {
       key: "apps",
@@ -160,6 +442,9 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(appSeconds),
       label: "Apps",
       visible: appSeconds > 0,
+      delta: showDeltas
+        ? deltaPercent(appSeconds, priorAppSeconds)
+        : undefined,
     },
     {
       key: "web",
@@ -167,6 +452,9 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(webSeconds),
       label: "Web",
       visible: webSeconds > 0,
+      delta: showDeltas
+        ? deltaPercent(webSeconds, priorWebSeconds)
+        : undefined,
     },
     {
       key: "phone",
@@ -174,6 +462,9 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(phoneSeconds),
       label: "Phone",
       visible: phoneSeconds > 0,
+      delta: showDeltas
+        ? deltaPercent(phoneSeconds, priorPhoneSeconds)
+        : undefined,
     },
     {
       key: "social",
@@ -181,6 +472,9 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(socialSeconds),
       label: "Social",
       visible: socialSeconds > 0,
+      delta: showDeltas
+        ? deltaPercent(socialSeconds, priorSocialSeconds)
+        : undefined,
     },
     {
       key: "youtube",
@@ -188,6 +482,9 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(youtubeSeconds),
       label: "YouTube",
       visible: youtubeSeconds > 0,
+      delta: showDeltas
+        ? deltaPercent(youtubeSeconds, priorYoutubeSeconds)
+        : undefined,
     },
     {
       key: "x",
@@ -195,6 +492,9 @@ export function LifeOpsScreenTimeSection() {
       value: formatDurationSeconds(xSeconds),
       label: "X",
       visible: xSeconds > 0,
+      delta: showDeltas
+        ? deltaPercent(xSeconds, priorXSeconds)
+        : undefined,
     },
     {
       key: "opened",
@@ -202,8 +502,13 @@ export function LifeOpsScreenTimeSection() {
       value: String(messageOpened),
       label: "Opened",
       visible: messageOpened > 0,
+      delta: showDeltas
+        ? deltaPercent(messageOpened, priorMessageOpened)
+        : undefined,
     },
   ].filter((item) => item.visible);
+
+  const showHistory = range !== "today" && history !== null && history.length > 0;
 
   return (
     <div className="space-y-4" data-testid="lifeops-screen-time-section">
@@ -218,7 +523,7 @@ export function LifeOpsScreenTimeSection() {
           aria-label="Refresh screen time"
           title="Refresh"
           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/20 bg-bg/30 text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
-          onClick={() => void load()}
+          onClick={() => void load(range, true)}
           disabled={loading}
         >
           <RefreshCw
@@ -227,6 +532,35 @@ export function LifeOpsScreenTimeSection() {
           />
         </button>
       </header>
+
+      <div
+        className="flex flex-wrap gap-2"
+        role="tablist"
+        aria-label="Date range"
+      >
+        {RANGE_OPTIONS.map((option) => {
+          const active = option.key === range;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => setRange(option.key)}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors ${
+                active
+                  ? "border-accent/40 bg-accent/15 text-txt"
+                  : "border-border/20 bg-bg/30 text-muted hover:border-accent/30 hover:text-txt"
+              }`}
+            >
+              {option.key === range ? (
+                <CalendarRange className="h-3 w-3" aria-hidden />
+              ) : null}
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
 
       {error ? (
         <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
@@ -244,7 +578,7 @@ export function LifeOpsScreenTimeSection() {
       {!loading && !error && (breakdown || social) && !hasUsage ? (
         <HabitPanel title="Screen Time" icon={<Monitor />}>
           <div className="py-3 text-sm text-muted">
-            No screen activity today.
+            No screen activity in this range.
           </div>
         </HabitPanel>
       ) : (
@@ -258,14 +592,26 @@ export function LifeOpsScreenTimeSection() {
               }
             >
               {metricTiles.map((tile) => (
-                <MetricTile
-                  key={tile.key}
-                  icon={tile.icon}
-                  value={tile.value}
-                  label={tile.label}
-                />
+                <div key={tile.key} className="min-w-0">
+                  <MetricTile
+                    icon={tile.icon}
+                    value={tile.value}
+                    label={tile.label}
+                  />
+                  {tile.delta !== undefined ? (
+                    <div className="px-3">
+                      <DeltaBadge percent={tile.delta} />
+                    </div>
+                  ) : null}
+                </div>
               ))}
             </div>
+          ) : null}
+
+          {showHistory ? (
+            <HabitPanel title="Daily History" icon={<CalendarRange />}>
+              <HistoryStrip days={history!} />
+            </HabitPanel>
           ) : null}
 
           {categories.length > 0 ? (
@@ -278,7 +624,7 @@ export function LifeOpsScreenTimeSection() {
                 <DonutChart
                   items={categories}
                   totalSeconds={totalSeconds}
-                  label="Today"
+                  label={totalLabel}
                 />
                 <div className="min-w-0 flex-1">
                   <StackedBar items={categories} totalSeconds={totalSeconds} />

@@ -11,10 +11,10 @@ import {
   Gamepad2,
   MessageSquare,
   Monitor,
-  PencilLine,
   Phone,
   Radio,
   Settings,
+  UserRound,
   Wallet,
 } from "lucide-react";
 
@@ -195,7 +195,7 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
   {
     label: "Character",
     tabs: ["character", "character-select", "knowledge"],
-    icon: PencilLine,
+    icon: UserRound,
     description: "Avatar identity, style, examples, and knowledge",
   },
   {
@@ -420,6 +420,12 @@ const APPS_SUB_TABS: Record<string, Tab> = {
   runtime: "runtime",
   database: "database",
   logs: "logs",
+  // Internal-tool window targets that hit non-`/apps/` shell tabs. The window
+  // path is `/apps/<slug>` so the route stays consistent with other internal
+  // tools, but the renderer mounts the tab the original `targetTab` pointed
+  // at (e.g. wallet for steward, chat for elizamaker).
+  inventory: "inventory",
+  elizamaker: "chat",
   // Note: "companion" is intentionally NOT here — /apps/companion is an app slug
   // that AppsView auto-launches as an overlay, not a tool tab.
 };

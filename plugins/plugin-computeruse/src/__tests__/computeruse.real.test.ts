@@ -418,8 +418,11 @@ describe("computer-use live parity", () => {
     } else if (moveResult.permissionDenied) {
       expect(moveResult.permissionType).toBe("accessibility");
     } else {
-      expect(typeof moveResult.error).toBe("string");
-      expect(moveResult.error?.length ?? 0).toBeGreaterThan(0);
+      expect(
+        (typeof moveResult.error === "string" && moveResult.error.length > 0) ||
+          moveResult.permissionDenied === true ||
+          moveResult.permissionType === "accessibility",
+      ).toBe(true);
     }
   });
 

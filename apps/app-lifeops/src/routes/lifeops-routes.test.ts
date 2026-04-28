@@ -30,7 +30,10 @@ function createContext(
       headers: {},
       socket: { remoteAddress: "127.0.0.1" },
     } as unknown as http.IncomingMessage,
-    res: {} as http.ServerResponse,
+    res: {
+      writeHead: vi.fn(),
+      end: vi.fn(),
+    } as unknown as http.ServerResponse,
     method,
     pathname: url.pathname,
     url,
@@ -57,6 +60,107 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("LifeOps route auth + rate limits", () => {
+  it("returns 503 when the agent runtime is not available (state-changing)", async () => {
+    const readJsonBody = vi.fn(async () => ({
+      to: "+15551112222",
+      text: "hi",
+    }));
+    const { context, error, json } = createContext(
+      "POST",
+      "/api/lifeops/connectors/imessage/send",
+      {
+        readJsonBody,
+        state: { runtime: null, adminEntityId: null },
+      },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "Agent runtime is not available",
+      503,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 when the agent runtime is not available (read)", async () => {
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/app-state",
+      { state: { runtime: null, adminEntityId: null } },
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "Agent runtime is not available",
+      503,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      path: "/api/lifeops/smart-features/settings",
+      maxAllowed: 60,
+      body: { emailClassifierEnabled: true },
+      mockService: null,
+      runtimePatch: {
+        setSetting: vi.fn(),
+      },
+    },
+    {
+      path: "/api/lifeops/money/bills/mark-paid",
+      maxAllowed: 30,
+      body: { billId: "bill-1" },
+      mockService: "markBillPaid" as const,
+      runtimePatch: {},
+    },
+    {
+      path: "/api/lifeops/money/bills/snooze",
+      maxAllowed: 30,
+      body: { billId: "bill-1", days: 7 },
+      mockService: "snoozeBill" as const,
+      runtimePatch: {},
+    },
+  ])("rate-limits new write route $path", async (scenario) => {
+    const agentId = `00000000-0000-0000-0000-${String(Math.trunc(Math.random() * 1_000_000)).padStart(12, "0")}`;
+    const routeRuntime = {
+      ...runtime,
+      agentId,
+      ...scenario.runtimePatch,
+    } as LifeOpsRouteContext["state"]["runtime"];
+    const readJsonBody = vi.fn(async () => scenario.body);
+    if (scenario.mockService) {
+      vi.spyOn(
+        LifeOpsService.prototype,
+        scenario.mockService,
+      ).mockResolvedValue(
+        scenario.mockService === "snoozeBill"
+          ? { ok: true, dueDate: "2026-05-01" }
+          : { ok: true },
+      );
+    }
+    const { context } = createContext("POST", scenario.path, {
+      readJsonBody,
+      state: { runtime: routeRuntime, adminEntityId: null },
+    });
+
+    for (let i = 0; i < scenario.maxAllowed; i += 1) {
+      await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    }
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(context.res.writeHead).toHaveBeenCalledWith(429, {
+      "Retry-After": expect.any(String),
+    });
+    expect(context.res.end).toHaveBeenCalledWith(
+      expect.stringContaining("Rate limit exceeded"),
+    );
+  });
+});
+
 describe("LifeOps route validation", () => {
   it("rejects malformed positive integer query values", async () => {
     const { context, error, json } = createContext(
@@ -69,6 +173,22 @@ describe("LifeOps route validation", () => {
     expect(error).toHaveBeenCalledWith(
       context.res,
       "limit must be a positive integer",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("caps iMessage message reads at the route boundary", async () => {
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/connectors/imessage/messages?limit=251",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "limit must be less than or equal to 250",
       400,
     );
     expect(json).not.toHaveBeenCalled();
@@ -199,6 +319,67 @@ describe("LifeOps route validation", () => {
     );
     expect(json).not.toHaveBeenCalled();
     expect(getXDmDigest).not.toHaveBeenCalled();
+  });
+
+  it("passes inbox cache controls through to the service", async () => {
+    const getInbox = vi
+      .spyOn(LifeOpsService.prototype, "getInbox")
+      .mockResolvedValue({
+        messages: [],
+        channelCounts: {
+          gmail: { total: 0, unread: 0 },
+          discord: { total: 0, unread: 0 },
+          telegram: { total: 0, unread: 0 },
+          signal: { total: 0, unread: 0 },
+          imessage: { total: 0, unread: 0 },
+          whatsapp: { total: 0, unread: 0 },
+          sms: { total: 0, unread: 0 },
+          x_dm: { total: 0, unread: 0 },
+        },
+        fetchedAt: "2026-04-22T12:00:00.000Z",
+      });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/inbox?channels=gmail,telegram&limit=25&cacheMode=refresh&cacheLimit=1200&groupByThread=true",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(getInbox).toHaveBeenCalledWith({
+      limit: 25,
+      channels: ["gmail", "telegram"],
+      groupByThread: true,
+      chatTypeFilter: undefined,
+      maxParticipants: undefined,
+      gmailAccountId: undefined,
+      missedOnly: undefined,
+      sortByPriority: undefined,
+      cacheMode: "refresh",
+      cacheLimit: 1200,
+    });
+    expect(json).toHaveBeenCalledWith(
+      context.res,
+      expect.objectContaining({ messages: [] }),
+    );
+  });
+
+  it("rejects invalid inbox cache modes before service dispatch", async () => {
+    const getInbox = vi.spyOn(LifeOpsService.prototype, "getInbox");
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/inbox?cacheMode=forever",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "cacheMode must be one of: read-through, refresh, cache-only",
+      400,
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(getInbox).not.toHaveBeenCalled();
   });
 
   it("passes Gmail recommendation query inputs through to the service", async () => {

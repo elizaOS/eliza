@@ -1,9 +1,9 @@
 import { deriveAgentVaultId } from "@elizaos/app-core/security/agent-vault-id";
+import type { SecureStoreSecretKind } from "@elizaos/app-core/security/platform-secure-store";
 import {
   createNodePlatformSecureStore,
   isWalletOsStoreReadEnabled,
 } from "@elizaos/app-core/security/platform-secure-store-node";
-import type { SecureStoreSecretKind } from "@elizaos/app-core/security/platform-secure-store";
 import { logger } from "@elizaos/core";
 
 const WALLET_ENV_PAIRS: [keyof NodeJS.ProcessEnv, SecureStoreSecretKind][] = [

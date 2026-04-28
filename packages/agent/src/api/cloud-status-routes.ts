@@ -1,9 +1,9 @@
 import type { AgentRuntime, Service } from "@elizaos/core";
 import {
+  isCloudInferenceSelectedInConfig,
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,
-} from "@elizaos/shared/contracts";
-import { isCloudInferenceSelectedInConfig } from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 import { resolveCloudApiBaseUrl as resolveCanonicalCloudApiBaseUrl } from "../cloud/base-url.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
@@ -45,6 +45,25 @@ function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
   );
 }
 
+/**
+ * Coerce an Eliza Cloud `balance` field into a number. The cloud API
+ * returns `balance` as `string | number` — string when upstream is using
+ * fixed-precision decimals, number when arithmetic'd. Treat both as the
+ * same dollar amount.
+ */
+function coerceCloudBalance(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseFloat(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 async function fetchCloudCreditsByApiKey(
   baseUrl: string,
   apiKey: string,
@@ -77,14 +96,12 @@ async function fetchCloudCreditsByApiKey(
     throw new Error(message);
   }
 
-  const rawBalance =
-    typeof creditResponse.balance === "number"
-      ? creditResponse.balance
-      : typeof (creditResponse.data as Record<string, unknown>)?.balance ===
-          "number"
-        ? ((creditResponse.data as Record<string, unknown>).balance as number)
-        : undefined;
-  return typeof rawBalance === "number" ? rawBalance : null;
+  const balance =
+    coerceCloudBalance(creditResponse.balance) ??
+    coerceCloudBalance(
+      (creditResponse.data as Record<string, unknown> | undefined)?.balance,
+    );
+  return balance;
 }
 
 export async function handleCloudStatusRoutes(
@@ -190,19 +207,16 @@ export async function handleCloudStatusRoutes(
     const client = cloudAuth.getClient();
     const creditResponse =
       await client.get<Record<string, unknown>>("/credits/balance");
-    const rawBalance =
-      typeof creditResponse?.balance === "number"
-        ? creditResponse.balance
-        : typeof (creditResponse?.data as Record<string, unknown>)?.balance ===
-            "number"
-          ? ((creditResponse.data as Record<string, unknown>).balance as number)
-          : undefined;
-    if (typeof rawBalance !== "number") {
+    const balance =
+      coerceCloudBalance(creditResponse?.balance) ??
+      coerceCloudBalance(
+        (creditResponse?.data as Record<string, unknown> | undefined)?.balance,
+      );
+    if (typeof balance !== "number") {
       throw new Error(
         `Unexpected response shape: ${JSON.stringify(creditResponse)}`,
       );
     }
-    const balance = rawBalance;
 
     const low = balance < 2.0;
     const critical = balance < 0.5;

@@ -1,10 +1,14 @@
 import { Button, MetaPill, PagePanel } from "@elizaos/ui";
 import {
+  AtSign,
+  BadgeCheck,
   Brain,
   CalendarClock,
   Crown,
+  FileText,
   Fingerprint,
   Frown,
+  Gauge,
   Globe2,
   Link2,
   Mail,
@@ -13,8 +17,7 @@ import {
   Pencil,
   Phone,
   Smile,
-  Tags,
-  UserRound,
+  Sparkles,
 } from "lucide-react";
 import {
   type ComponentType,
@@ -30,7 +33,7 @@ import type {
   RelationshipsPersonDetail,
   RelationshipsProfile,
 } from "../../../api/client-types-relationships";
-import { formatDateTime } from "../../../utils/format";
+import { formatDateTime, formatShortDate } from "../../../utils/format";
 import { RelationshipsIdentityCluster } from "../RelationshipsIdentityCluster";
 import {
   profilePrimaryValue,
@@ -44,12 +47,18 @@ const PANEL_PREVIEW_LIMIT = 4;
 const CONVERSATION_PREVIEW_LIMIT = 2;
 const MESSAGE_PREVIEW_LIMIT = 3;
 const TEXT_PREVIEW_LENGTH = 420;
+const SOURCE_PREFIX_PATTERN =
+  /^\[(?:discord|telegram|slack|twitter|x|gmail|email|message)[^\]]*\]\s*/i;
 
 function boundedText(value: string, maxLength = TEXT_PREVIEW_LENGTH): string {
   const trimmed = value.trim();
   return trimmed.length > maxLength
     ? `${trimmed.slice(0, maxLength - 1)}...`
     : trimmed;
+}
+
+function cleanPreviewText(value: string, maxLength = TEXT_PREVIEW_LENGTH) {
+  return boundedText(value.replace(SOURCE_PREFIX_PATTERN, ""), maxLength);
 }
 
 function visibleItems<T>(items: T[], limit = PANEL_PREVIEW_LIMIT): T[] {
@@ -70,11 +79,11 @@ function MoreItems({
   if (count <= 0) return null;
 
   return (
-    <details className="mt-3 rounded-xl border border-border/24 bg-card/24 px-3 py-2">
-      <summary className="cursor-pointer text-xs-tight font-semibold text-muted transition hover:text-txt">
-        Show {count} more
+    <details>
+      <summary className="inline-flex cursor-pointer list-none items-center rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt">
+        +{count}
       </summary>
-      <div className="mt-3 space-y-3">{children}</div>
+      <div className="mt-2 space-y-2">{children}</div>
     </details>
   );
 }
@@ -88,20 +97,6 @@ function resolvePrimaryAvatar(
     }
   }
   return null;
-}
-
-function listValue(values: string[], fallback: string): string {
-  return values.length > 0 ? values.join(", ") : fallback;
-}
-
-function personSummary(person: RelationshipsDisplayPerson): string {
-  if (person.isOwner) {
-    return "Primary owner profile for app chat and linked connectors.";
-  }
-  if (person.aliases.length > 0) {
-    return `Known as ${person.aliases.join(", ")}.`;
-  }
-  return "No alternate aliases recorded.";
 }
 
 function relationshipCounterpartName(
@@ -135,6 +130,58 @@ function sentimentAriaLabel(sentiment: string): string {
   if (sentiment === "positive") return "Positive sentiment";
   if (sentiment === "negative") return "Negative sentiment";
   return "Neutral sentiment";
+}
+
+function sourceTypeIcon(
+  sourceType: string,
+): ComponentType<{ className?: string }> {
+  if (sourceType === "memory") return Brain;
+  if (sourceType === "contact") return AtSign;
+  if (sourceType === "claim") return BadgeCheck;
+  if (sourceType === "message") return MessageCircle;
+  return Sparkles;
+}
+
+function IconPill({
+  icon: Icon,
+  children,
+  ariaLabel,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  children?: ReactNode;
+  ariaLabel?: string;
+}) {
+  return (
+    <MetaPill compact>
+      <span
+        role="img"
+        aria-label={ariaLabel ?? "icon"}
+        className="inline-flex items-center gap-1"
+      >
+        <Icon className="h-3 w-3" />
+        {children}
+      </span>
+    </MetaPill>
+  );
+}
+
+function PanelMarker({
+  icon: Icon,
+  count,
+  label,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  count: number;
+  label: string;
+}) {
+  return (
+    <div className="mb-2 flex justify-end">
+      <MetaPill compact aria-label={`${label} count`} title={label}>
+        <Icon className="mr-1 h-3 w-3" />
+        {count}
+      </MetaPill>
+    </div>
+  );
 }
 
 function findOwnerEdge(
@@ -246,21 +293,6 @@ function OwnerNameEditor({
   );
 }
 
-function DetailLabel({
-  icon: Icon,
-  children,
-}: {
-  icon: ComponentType<{ className?: string }>;
-  children: ReactNode;
-}) {
-  return (
-    <div className="flex items-center gap-2 text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-      <Icon className="h-3.5 w-3.5 text-accent" />
-      {children}
-    </div>
-  );
-}
-
 function ProfileCard({
   person,
   profile,
@@ -277,33 +309,95 @@ function ProfileCard({
       : null);
 
   return (
-    <div className="rounded-xl border border-border/24 bg-card/35 px-3 py-3">
-      <div className="flex items-start gap-3">
-        {profile.avatarUrl ? (
-          <img
-            src={profile.avatarUrl}
-            alt=""
-            className="mt-0.5 h-10 w-10 rounded-full border border-border/24 object-cover"
-          />
-        ) : null}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-              {profileSourceLabel(profile.source)}
-            </div>
-            {profile.canonical ? <MetaPill compact>Primary</MetaPill> : null}
-          </div>
-          <div className="mt-1 text-sm font-semibold text-txt">
-            {primaryValue}
-          </div>
-          {secondary ? (
-            <div className="mt-1 text-xs leading-5 text-muted">
-              {profile.handle ? `Handle ${secondary}` : `Profile ${secondary}`}
-            </div>
-          ) : null}
-        </div>
-      </div>
+    <li className="flex min-w-0 items-center gap-2 rounded-lg border border-border/24 bg-card/30 px-2.5 py-1.5 text-xs">
+      {profile.avatarUrl ? (
+        <img
+          src={profile.avatarUrl}
+          alt=""
+          className="h-7 w-7 shrink-0 rounded-full border border-border/24 object-cover"
+        />
+      ) : (
+        <AtSign className="h-3 w-3 shrink-0 text-accent" />
+      )}
+      <span className="shrink-0 rounded-full bg-card/60 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-[0.1em] text-muted">
+        {profileSourceLabel(profile.source)}
+      </span>
+      <span className="min-w-0 truncate font-semibold text-txt">
+        {primaryValue}
+      </span>
+      {secondary ? (
+        <span className="ml-auto min-w-0 truncate text-muted">{secondary}</span>
+      ) : null}
+      {profile.canonical ? (
+        <BadgeCheck className="h-3 w-3 shrink-0 text-accent" />
+      ) : null}
+    </li>
+  );
+}
+
+function ProfilesPanel({ person }: { person: RelationshipsDisplayPerson }) {
+  return (
+    <ul className="space-y-1.5">
+      {person.profiles.map((profile) => (
+        <ProfileCard
+          key={`${profile.source}:${profile.entityId}`}
+          person={person}
+          profile={profile}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function PanelEmpty({
+  icon: Icon,
+  children,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-1 py-2 text-sm text-muted">
+      <Icon className="h-4 w-4 text-muted/70" />
+      <span>{children}</span>
     </div>
+  );
+}
+
+function formatCompactDate(value: string | number | undefined): string {
+  return formatShortDate(value, { fallback: "—" });
+}
+
+function renderInlineSpeaker(speaker: string, text: string, maxLength: number) {
+  return (
+    <>
+      <span className="font-semibold text-muted">{speaker}: </span>
+      {cleanPreviewText(text, maxLength)}
+    </>
+  );
+}
+
+function DataPanel({
+  label,
+  icon,
+  count,
+  children,
+}: {
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  count: number;
+  children: ReactNode;
+}) {
+  return (
+    <PagePanel
+      as="section"
+      variant="surface"
+      aria-label={label}
+      className="px-3 py-3"
+    >
+      <PanelMarker icon={icon} count={count} label={label} />
+      {children}
+    </PagePanel>
   );
 }
 
@@ -325,32 +419,30 @@ export function RelationshipsPersonSummaryPanel({
   const avatarUrl = resolvePrimaryAvatar(person);
   const contacts = topContacts(person);
   const hasProfiles = person.profiles.length > 0;
-  const hasCategories = person.categories.length > 0;
-  const hasTags = person.tags.length > 0;
   const ownerEdge = findOwnerEdge(person, ownerGroupId);
   const ownerLabel = ownerDisplayName ?? "Owner";
 
+  const labels = [...person.categories, ...person.tags];
+
   return (
-    <PagePanel variant="padded" className={compact ? "space-y-3" : "space-y-4"}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
+    <PagePanel variant="padded" className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           {avatarUrl ? (
             <img
               src={avatarUrl}
               alt=""
-              className={`${compact ? "h-12 w-12 rounded-xl" : "h-16 w-16 rounded-2xl"} hidden border border-border/24 object-cover shadow-sm sm:block`}
+              className={`${compact ? "h-10 w-10 rounded-xl" : "h-12 w-12 rounded-2xl"} hidden border border-border/24 object-cover shadow-sm sm:block`}
             />
           ) : null}
           <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
+            <div className="flex flex-wrap items-center gap-2">
               {person.isOwner ? (
-                <Crown className="h-3.5 w-3.5 text-accent" />
-              ) : (
-                <UserRound className="h-3.5 w-3.5" />
-              )}
-              {person.isOwner ? "Owner" : "Person"}
-            </div>
-            <div className={compact ? "mt-1" : "mt-2"}>
+                <Crown
+                  className="h-4 w-4 shrink-0 text-accent"
+                  aria-label="Owner"
+                />
+              ) : null}
               {person.isOwner ? (
                 <OwnerNameEditor
                   initialName={person.displayName}
@@ -360,28 +452,56 @@ export function RelationshipsPersonSummaryPanel({
                 />
               ) : (
                 <div
-                  className={`${compact ? "text-xl" : "text-[1.75rem]"} break-words font-semibold leading-tight text-txt`}
+                  className={`${compact ? "text-xl" : "text-2xl"} break-words font-semibold leading-tight text-txt`}
                 >
                   {person.displayName}
                 </div>
               )}
             </div>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-              {personSummary(person)}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+              {person.platforms.length > 0 ? (
+                <span>{person.platforms.join(" · ")}</span>
+              ) : null}
+              {person.lastInteractionAt ? (
+                <span
+                  className="inline-flex items-center gap-1"
+                  title={formatDateTime(person.lastInteractionAt, {
+                    fallback: "No date",
+                  })}
+                >
+                  <CalendarClock className="h-3 w-3" />
+                  {formatCompactDate(person.lastInteractionAt)}
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
-        {onViewMemories ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-7 rounded-full px-3 text-2xs font-semibold tracking-[0.12em]"
-            onClick={() => onViewMemories(person.memberEntityIds)}
-          >
-            View memories
-          </Button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <MetaPill compact>
+            <Fingerprint className="mr-1 h-3 w-3" />
+            {person.memberEntityIds.length}
+          </MetaPill>
+          <MetaPill compact>
+            <Link2 className="mr-1 h-3 w-3" />
+            {person.relationshipCount}
+          </MetaPill>
+          <MetaPill compact>
+            <Brain className="mr-1 h-3 w-3" />
+            {person.factCount}
+          </MetaPill>
+          {onViewMemories ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 rounded-full px-3 text-2xs font-semibold"
+              onClick={() => onViewMemories(person.memberEntityIds)}
+              aria-label="View memories"
+            >
+              <Brain className="h-3.5 w-3.5" />
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {!person.isOwner ? (
@@ -392,129 +512,59 @@ export function RelationshipsPersonSummaryPanel({
         />
       ) : null}
 
-      <div
-        className={
-          compact
-            ? "space-y-3"
-            : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]"
-        }
-      >
-        <PagePanel variant="surface" className="px-4 py-4">
-          <div className="flex items-center justify-between gap-3">
-            <DetailLabel icon={UserRound}>Person info</DetailLabel>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <MetaPill compact>
-                <Fingerprint className="mr-1 h-3 w-3" />
-                {person.memberEntityIds.length}
-              </MetaPill>
-              <MetaPill compact>
-                <Link2 className="mr-1 h-3 w-3" />
-                {person.relationshipCount}
-              </MetaPill>
-              <MetaPill compact>
-                <Brain className="mr-1 h-3 w-3" />
-                {person.factCount}
-              </MetaPill>
-            </div>
-          </div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-border/24 bg-card/30 px-3 py-3">
-              <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                Platforms
-              </div>
-              <div className="mt-1 text-sm font-semibold text-txt">
-                {listValue(person.platforms, "No linked platforms")}
-              </div>
-            </div>
-            <div className="rounded-xl border border-border/24 bg-card/30 px-3 py-3">
-              <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                <CalendarClock className="h-3 w-3 text-accent" />
-                Last interaction
-              </div>
-              <div className="mt-1 text-sm font-semibold text-txt">
-                {formatDateTime(person.lastInteractionAt, {
-                  fallback: "No date",
-                })}
-              </div>
-            </div>
+      {labels.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {labels.map((label) => (
+            <MetaPill key={`label:${label}`} compact>
+              {label}
+            </MetaPill>
+          ))}
+        </div>
+      ) : null}
 
-            {hasCategories || hasTags ? (
-              <div className="sm:col-span-2 rounded-xl border border-border/24 bg-card/30 px-3 py-3">
-                <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                  <Tags className="h-3 w-3 text-accent" />
-                  Labels
-                </div>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {person.categories.map((category) => (
-                    <MetaPill key={`category:${category}`} compact>
-                      {category}
-                    </MetaPill>
-                  ))}
-                  {person.tags.map((tag) => (
-                    <MetaPill key={`tag:${tag}`} compact>
-                      {tag}
-                    </MetaPill>
-                  ))}
-                </div>
+      {contacts.length > 0 ? (
+        <div className="grid gap-1.5 sm:grid-cols-2">
+          {contacts.map((contact) => {
+            const Icon =
+              contact.label === "Phone"
+                ? Phone
+                : contact.label === "Website"
+                  ? Globe2
+                  : Mail;
+            return (
+              <div
+                key={`${contact.label}:${contact.value}`}
+                className="flex items-center gap-2 rounded-lg border border-border/24 bg-card/30 px-2.5 py-1.5 text-xs"
+              >
+                <Icon className="h-3 w-3 shrink-0 text-accent" />
+                <span className="min-w-0 truncate text-txt">
+                  {contact.value}
+                </span>
               </div>
-            ) : null}
+            );
+          })}
+        </div>
+      ) : null}
 
-            {contacts.length > 0 ? (
-              <div className="sm:col-span-2 rounded-xl border border-border/24 bg-card/30 px-3 py-3">
-                <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
-                  <Mail className="h-3 w-3 text-accent" />
-                  Reachability
-                </div>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  {contacts.map((contact) => (
-                    <div
-                      key={`${contact.label}:${contact.value}`}
-                      className="rounded-lg border border-border/24 bg-card/40 px-2.5 py-2"
-                    >
-                      <div className="flex items-center gap-1.5 text-2xs text-muted/70">
-                        {contact.label === "Phone" ? (
-                          <Phone className="h-3 w-3 text-accent" />
-                        ) : contact.label === "Website" ? (
-                          <Globe2 className="h-3 w-3 text-accent" />
-                        ) : (
-                          <Mail className="h-3 w-3 text-accent" />
-                        )}
-                      </div>
-                      <div className="mt-0.5 text-sm font-semibold text-txt">
-                        {contact.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {hasProfiles && !compact ? (
-              <div className="sm:col-span-2">
-                <ProfilesPanel person={person} />
-              </div>
-            ) : null}
-          </div>
-        </PagePanel>
-
-        {compact ? (
-          <details className="rounded-xl border border-border/24 bg-card/24 px-3 py-2">
-            <summary className="cursor-pointer text-xs-tight font-semibold text-muted transition hover:text-txt">
-              Profiles and identity cluster
-            </summary>
-            <div className="mt-3 space-y-3">
-              {hasProfiles ? <ProfilesPanel person={person} /> : null}
-              <PagePanel variant="surface" className="px-4 py-4">
-                <RelationshipsIdentityCluster person={person} />
-              </PagePanel>
-            </div>
-          </details>
-        ) : (
-          <PagePanel variant="surface" className="px-4 py-4">
+      {hasProfiles || person.identities.length > 0 ? (
+        <details className="rounded-xl border border-border/24 bg-card/24 px-3 py-2">
+          <summary
+            className="inline-flex cursor-pointer list-none items-center gap-2 rounded-full text-xs-tight font-semibold text-muted transition hover:text-txt"
+            title="Profiles and identities"
+          >
+            <AtSign className="h-3 w-3" />
+            {person.profiles.length}
+            <Fingerprint className="h-3 w-3" />
+            {person.identities.length}
+          </summary>
+          <div className="mt-3 space-y-3">
+            {hasProfiles ? <ProfilesPanel person={person} /> : null}
             <RelationshipsIdentityCluster person={person} />
-          </PagePanel>
-        )}
-      </div>
+          </div>
+        </details>
+      ) : (
+        <RelationshipsIdentityCluster person={person} />
+      )}
     </PagePanel>
   );
 }
@@ -531,26 +581,28 @@ function OwnerRelationshipSection({
   const sentiment = ownerEdge?.sentiment ?? "neutral";
   const SentimentIcon = sentimentIcon(sentiment);
   const memoryCount = person.relevantMemories.length;
-  const conversationCount = person.recentConversations.length;
   const interactionCount = ownerEdge?.interactionCount ?? 0;
   const strengthPercent = ownerEdge
     ? Math.round(ownerEdge.strength * 100)
     : null;
-  const lastInteraction =
-    ownerEdge?.lastInteractionAt ?? person.lastInteractionAt;
   const types = ownerEdge?.relationshipTypes ?? [];
 
   return (
     <PagePanel
       variant="surface"
-      className="border border-accent/20 bg-accent/[0.04] px-4 py-4"
+      className="border border-accent/20 bg-accent/[0.04] px-3 py-2"
+      title={types.join(", ")}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.14em] text-muted/70">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-txt">
           <Crown className="h-3.5 w-3.5 text-accent" />
-          {ownerLabel} <span aria-hidden>↔</span> {person.displayName}
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+          {ownerLabel}
+          <span className="text-muted" aria-hidden>
+            ↔
+          </span>
+          {person.displayName}
+        </span>
+        <span className="ml-auto flex flex-wrap items-center gap-1.5">
           <span
             role="img"
             aria-label={sentimentAriaLabel(sentiment)}
@@ -567,66 +619,7 @@ function OwnerRelationshipSection({
             <Brain className="mr-1 h-3 w-3" />
             {memoryCount}
           </MetaPill>
-        </div>
-      </div>
-
-      <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <div className="rounded-lg border border-border/24 bg-card/40 px-3 py-2">
-          <div className="flex items-center gap-1.5 text-2xs text-muted/70">
-            <CalendarClock className="h-3 w-3 text-accent" />
-            Last
-          </div>
-          <div className="mt-0.5 text-sm font-semibold text-txt">
-            {formatDateTime(lastInteraction, { fallback: "—" })}
-          </div>
-        </div>
-        <div className="rounded-lg border border-border/24 bg-card/40 px-3 py-2">
-          <div className="flex items-center gap-1.5 text-2xs text-muted/70">
-            <MessageCircle className="h-3 w-3 text-accent" />
-            Conversations
-          </div>
-          <div className="mt-0.5 text-sm font-semibold text-txt">
-            {conversationCount}
-          </div>
-        </div>
-        <div className="rounded-lg border border-border/24 bg-card/40 px-3 py-2">
-          <div className="flex items-center gap-1.5 text-2xs text-muted/70">
-            <Brain className="h-3 w-3 text-accent" />
-            Memories
-          </div>
-          <div className="mt-0.5 text-sm font-semibold text-txt">
-            {memoryCount}
-          </div>
-        </div>
-      </div>
-
-      {types.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {types.map((entry) => (
-            <MetaPill key={`owner-rel:${entry}`} compact>
-              {entry}
-            </MetaPill>
-          ))}
-        </div>
-      ) : null}
-    </PagePanel>
-  );
-}
-
-function ProfilesPanel({ person }: { person: RelationshipsDisplayPerson }) {
-  return (
-    <PagePanel variant="surface" className="sm:col-span-2 px-4 py-4">
-      <div className="text-xs-tight uppercase tracking-[0.14em] text-muted/70">
-        Profiles
-      </div>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {person.profiles.map((profile) => (
-          <ProfileCard
-            key={`${profile.source}:${profile.entityId}`}
-            person={person}
-            profile={profile}
-          />
-        ))}
+        </span>
       </div>
     </PagePanel>
   );
@@ -642,67 +635,45 @@ export function RelationshipsFactsPanel({
 
   const renderFact = (fact: (typeof person.facts)[number]) => {
     const evidenceCount = fact.evidenceMessageIds?.length ?? 0;
+    const SourceIcon = sourceTypeIcon(fact.sourceType);
     return (
       <div
         key={fact.id}
-        className="rounded-xl border border-border/24 bg-card/32 px-3.5 py-3"
+        className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
       >
-        <div className="flex flex-wrap items-center gap-2">
-          <MetaPill compact>{fact.sourceType}</MetaPill>
-          {fact.field ? <MetaPill compact>{fact.field}</MetaPill> : null}
-          {fact.extractedInformation?.scope ? (
-            <MetaPill compact>{fact.extractedInformation.scope}</MetaPill>
-          ) : null}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <IconPill icon={SourceIcon} ariaLabel={`${fact.sourceType} fact`} />
           {typeof fact.confidence === "number" ? (
-            <MetaPill compact>
-              {Math.round(fact.confidence * 100)}% confidence
-            </MetaPill>
+            <IconPill icon={Gauge} ariaLabel="Confidence">
+              {Math.round(fact.confidence * 100)}%
+            </IconPill>
           ) : null}
           {evidenceCount > 0 ? (
-            <MetaPill compact>{evidenceCount} evidence</MetaPill>
+            <IconPill icon={FileText} ariaLabel="Evidence count">
+              {evidenceCount}
+            </IconPill>
           ) : null}
         </div>
         <div className="mt-2 text-sm leading-6 text-txt">
-          {boundedText(fact.text)}
+          {cleanPreviewText(fact.text)}
         </div>
-        <div className="mt-2 text-xs text-muted">
-          {fact.lastReinforced
-            ? `Reinforced ${formatDateTime(fact.lastReinforced, { fallback: "No date" })}`
-            : formatDateTime(fact.updatedAt, {
-                fallback: "No date",
-              })}
-        </div>
-        {fact.provenance?.source ? (
-          <div className="mt-2 text-xs leading-5 text-muted">
-            Source {fact.provenance.source}
-          </div>
-        ) : null}
       </div>
     );
   };
 
   return (
-    <PagePanel variant="surface" className="px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            Facts
-          </div>
-        </div>
-        <MetaPill compact>{person.facts.length}</MetaPill>
-      </div>
-
+    <DataPanel label="Facts" icon={BadgeCheck} count={person.facts.length}>
       {person.facts.length === 0 ? (
-        <p className="mt-4 text-sm leading-6 text-muted">No facts extracted.</p>
+        <PanelEmpty icon={BadgeCheck}>No facts.</PanelEmpty>
       ) : (
-        <div className="mt-4 space-y-3">
+        <div className="space-y-2">
           {shownFacts.map(renderFact)}
           <MoreItems count={overflowCount(person.facts)}>
             {hiddenFacts.map(renderFact)}
           </MoreItems>
         </div>
       )}
-    </PagePanel>
+    </DataPanel>
   );
 }
 
@@ -720,7 +691,7 @@ export function RelationshipsConnectionsPanel({
     return (
       <div
         key={relationship.id}
-        className="rounded-xl border border-border/24 bg-card/32 px-3.5 py-3"
+        className="rounded-xl border border-border/24 bg-card/32 px-3 py-2"
       >
         <div className="flex flex-wrap items-center gap-1.5">
           <span
@@ -731,51 +702,44 @@ export function RelationshipsConnectionsPanel({
             <SentimentIcon className="h-3 w-3" />
             {Math.round(relationship.strength * 100)}%
           </span>
-          <span className="inline-flex items-center gap-1 rounded-full border border-border/24 bg-card/36 px-2 py-0.5 text-2xs font-semibold text-muted">
+          <span className="inline-flex items-center gap-1 text-2xs font-semibold text-muted">
             <MessageCircle className="h-3 w-3" />
             {relationship.interactionCount}
           </span>
-        </div>
-        <div className="mt-2 text-sm font-semibold text-txt">
-          {relationshipCounterpartName(relationship, person.groupId)}
-        </div>
-        <div className="mt-1 text-xs uppercase tracking-[0.12em] text-muted/70">
-          {relationship.relationshipTypes.join(" • ") || "Unlabeled"}
-        </div>
-        <div className="mt-2 text-xs text-muted">
-          Last interaction{" "}
-          {formatDateTime(relationship.lastInteractionAt, {
-            fallback: "No date",
-          })}
+          <span className="ml-1 truncate text-sm font-semibold text-txt">
+            {relationshipCounterpartName(relationship, person.groupId)}
+          </span>
+          <span
+            className="ml-auto inline-flex items-center gap-1 text-2xs text-muted"
+            title={formatDateTime(relationship.lastInteractionAt, {
+              fallback: "No date",
+            })}
+          >
+            <CalendarClock className="h-3 w-3" />
+            {formatCompactDate(relationship.lastInteractionAt)}
+          </span>
         </div>
       </div>
     );
   };
 
   return (
-    <PagePanel variant="surface" className="px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            Relationships
-          </div>
-        </div>
-        <MetaPill compact>{person.relationships.length}</MetaPill>
-      </div>
-
+    <DataPanel
+      label="Relationships"
+      icon={Link2}
+      count={person.relationships.length}
+    >
       {person.relationships.length === 0 ? (
-        <p className="mt-4 text-sm leading-6 text-muted">
-          No relationships recorded.
-        </p>
+        <PanelEmpty icon={Link2}>No relationships.</PanelEmpty>
       ) : (
-        <div className="mt-4 space-y-3">
+        <div className="space-y-2">
           {shownRelationships.map(renderRelationship)}
           <MoreItems count={overflowCount(person.relationships)}>
             {hiddenRelationships.map(renderRelationship)}
           </MoreItems>
         </div>
       )}
-    </PagePanel>
+    </DataPanel>
   );
 }
 
@@ -796,36 +760,37 @@ export function RelationshipsConversationsPanel({
   ) => (
     <div
       key={conversation.roomId}
-      className="rounded-xl border border-border/24 bg-card/32 px-3.5 py-3"
+      className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0 truncate text-sm font-semibold text-txt">
           {conversation.roomName}
         </div>
-        <div className="shrink-0 text-xs-tight text-muted">
-          {formatDateTime(conversation.lastActivityAt, {
+        <div
+          className="inline-flex shrink-0 items-center gap-1 text-2xs text-muted"
+          title={formatDateTime(conversation.lastActivityAt, {
             fallback: "No date",
           })}
+        >
+          <CalendarClock className="h-3 w-3" />
+          {formatCompactDate(conversation.lastActivityAt)}
         </div>
       </div>
 
-      <div className="mt-3 space-y-2">
+      <div className="mt-2 space-y-1.5">
         {conversation.messages
           .slice(0, MESSAGE_PREVIEW_LIMIT)
           .map((message) => (
-            <div key={message.id} className="rounded-xl bg-card/50 px-3 py-2.5">
-              <div className="text-xs-tight font-semibold uppercase tracking-[0.12em] text-muted/70">
-                {message.speaker}
-              </div>
-              <div className="mt-1 text-sm leading-6 text-txt">
-                {boundedText(message.text, 300)}
-              </div>
+            <div
+              key={message.id}
+              className="rounded-lg bg-card/45 px-2.5 py-1.5 text-sm leading-6 text-txt"
+            >
+              {renderInlineSpeaker(message.speaker, message.text, 300)}
             </div>
           ))}
         {conversation.messages.length > MESSAGE_PREVIEW_LIMIT ? (
           <div className="text-xs-tight text-muted">
-            {conversation.messages.length - MESSAGE_PREVIEW_LIMIT} older
-            messages hidden
+            +{conversation.messages.length - MESSAGE_PREVIEW_LIMIT}
           </div>
         ) : null}
       </div>
@@ -833,22 +798,15 @@ export function RelationshipsConversationsPanel({
   );
 
   return (
-    <PagePanel variant="surface" className="px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            Recent conversations
-          </div>
-        </div>
-        <MetaPill compact>{person.recentConversations.length}</MetaPill>
-      </div>
-
+    <DataPanel
+      label="Conversations"
+      icon={MessageCircle}
+      count={person.recentConversations.length}
+    >
       {person.recentConversations.length === 0 ? (
-        <p className="mt-4 text-sm leading-6 text-muted">
-          No conversations linked.
-        </p>
+        <PanelEmpty icon={MessageCircle}>No conversations.</PanelEmpty>
       ) : (
-        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-2 xl:grid-cols-2">
           {shownConversations.map(renderConversation)}
           <div className="xl:col-span-2">
             <MoreItems
@@ -857,14 +815,14 @@ export function RelationshipsConversationsPanel({
                 CONVERSATION_PREVIEW_LIMIT,
               )}
             >
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-2 xl:grid-cols-2">
                 {hiddenConversations.map(renderConversation)}
               </div>
             </MoreItems>
           </div>
         </div>
       )}
-    </PagePanel>
+    </DataPanel>
   );
 }
 
@@ -875,54 +833,55 @@ export function RelationshipsRelevantMemoriesPanel({
 }) {
   const shownMemories = visibleItems(person.relevantMemories);
   const hiddenMemories = person.relevantMemories.slice(PANEL_PREVIEW_LIMIT);
-  const renderMemory = (memory: (typeof person.relevantMemories)[number]) => (
-    <div
-      key={memory.id}
-      className="rounded-xl border border-border/24 bg-card/32 px-3.5 py-3"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <MetaPill compact>{memory.sourceType}</MetaPill>
-        {memory.source ? <MetaPill compact>{memory.source}</MetaPill> : null}
-        {memory.roomName ? (
-          <MetaPill compact>{memory.roomName}</MetaPill>
-        ) : null}
+  const renderMemory = (memory: (typeof person.relevantMemories)[number]) => {
+    const SourceIcon = sourceTypeIcon(memory.sourceType);
+    return (
+      <div
+        key={memory.id}
+        className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
+      >
+        <div className="flex flex-wrap items-center gap-1.5">
+          <IconPill icon={SourceIcon} ariaLabel={memory.sourceType} />
+          {memory.createdAt ? (
+            <span
+              className="ml-auto inline-flex items-center gap-1 text-2xs text-muted"
+              title={formatDateTime(memory.createdAt, {
+                fallback: "No date",
+              })}
+            >
+              <CalendarClock className="h-3 w-3" />
+              {formatCompactDate(memory.createdAt)}
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-1 text-sm leading-6 text-txt">
+          {renderInlineSpeaker(
+            memory.speaker,
+            memory.text,
+            TEXT_PREVIEW_LENGTH,
+          )}
+        </div>
       </div>
-      <div className="mt-2 text-xs-tight font-semibold uppercase tracking-[0.12em] text-muted/70">
-        {memory.speaker}
-      </div>
-      <div className="mt-1 text-sm leading-6 text-txt">
-        {boundedText(memory.text)}
-      </div>
-      <div className="mt-2 text-xs text-muted">
-        {formatDateTime(memory.createdAt, { fallback: "No date" })}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
-    <PagePanel variant="surface" className="px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            Relevant memories
-          </div>
-        </div>
-        <MetaPill compact>{person.relevantMemories.length}</MetaPill>
-      </div>
-
+    <DataPanel
+      label="Memories"
+      icon={Brain}
+      count={person.relevantMemories.length}
+    >
       {person.relevantMemories.length === 0 ? (
-        <p className="mt-4 text-sm leading-6 text-muted">
-          No relevant memories.
-        </p>
+        <PanelEmpty icon={Brain}>No memories.</PanelEmpty>
       ) : (
-        <div className="mt-4 space-y-3">
+        <div className="space-y-2">
           {shownMemories.map(renderMemory)}
           <MoreItems count={overflowCount(person.relevantMemories)}>
             {hiddenMemories.map(renderMemory)}
           </MoreItems>
         </div>
       )}
-    </PagePanel>
+    </DataPanel>
   );
 }
 
@@ -939,58 +898,57 @@ export function RelationshipsUserPreferencesPanel({
   ) => (
     <div
       key={preference.id}
-      className="rounded-xl border border-border/24 bg-card/32 px-3.5 py-3"
+      className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <MetaPill compact>{preference.category ?? "preference"}</MetaPill>
-        {preference.source ? (
-          <MetaPill compact>{preference.source}</MetaPill>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <IconPill icon={Sparkles} ariaLabel="Preference">
+          {preference.category ?? "preference"}
+        </IconPill>
+        {preference.createdAt ? (
+          <span
+            className="ml-auto inline-flex items-center gap-1 text-2xs text-muted"
+            title={formatDateTime(preference.createdAt, {
+              fallback: "No date",
+            })}
+          >
+            <CalendarClock className="h-3 w-3" />
+            {formatCompactDate(preference.createdAt)}
+          </span>
         ) : null}
       </div>
       <div className="mt-2 text-sm leading-6 text-txt">
-        {boundedText(preference.text)}
+        {cleanPreviewText(preference.text)}
       </div>
       {preference.originalRequest ? (
         <details className="mt-2">
-          <summary className="cursor-pointer text-xs leading-5 text-muted transition hover:text-txt">
-            Original request
+          <summary className="inline-flex cursor-pointer list-none items-center rounded-full border border-border/24 bg-card/24 px-2 py-0.5 text-2xs font-semibold text-muted transition hover:text-txt">
+            <FileText className="mr-1 h-3 w-3" />
+            request
           </summary>
           <div className="mt-1 text-xs leading-5 text-muted">
-            {boundedText(preference.originalRequest, 260)}
+            {cleanPreviewText(preference.originalRequest, 260)}
           </div>
         </details>
       ) : null}
-      <div className="mt-2 text-xs text-muted">
-        {formatDateTime(preference.createdAt, {
-          fallback: "No date",
-        })}
-      </div>
     </div>
   );
 
   return (
-    <PagePanel variant="surface" className="px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            Preferences
-          </div>
-        </div>
-        <MetaPill compact>{person.userPersonalityPreferences.length}</MetaPill>
-      </div>
-
+    <DataPanel
+      label="Preferences"
+      icon={Sparkles}
+      count={person.userPersonalityPreferences.length}
+    >
       {person.userPersonalityPreferences.length === 0 ? (
-        <p className="mt-4 text-sm leading-6 text-muted">
-          No preferences learned.
-        </p>
+        <PanelEmpty icon={Sparkles}>No preferences.</PanelEmpty>
       ) : (
-        <div className="mt-4 space-y-3">
+        <div className="space-y-2">
           {shownPreferences.map(renderPreference)}
           <MoreItems count={overflowCount(person.userPersonalityPreferences)}>
             {hiddenPreferences.map(renderPreference)}
           </MoreItems>
         </div>
       )}
-    </PagePanel>
+    </DataPanel>
   );
 }

@@ -18,6 +18,7 @@ const {
     getCloudStatus: vi.fn(),
     getCloudCredits: vi.fn(),
     cloudLogin: vi.fn(),
+    cloudLoginPersist: vi.fn(),
     cloudLoginDirect: vi.fn(),
     cloudLoginPoll: vi.fn(),
     cloudLoginPollDirect: vi.fn(),
@@ -52,6 +53,13 @@ vi.mock("../events", () => ({
 
 vi.mock("../utils", () => ({
   confirmDesktopAction: vi.fn(),
+  isCloudStatusAuthenticated: (
+    connected: boolean,
+    reason: string | null | undefined,
+  ) =>
+    connected &&
+    reason !== "api_key_present_not_authenticated" &&
+    reason !== "api_key_present_runtime_not_started",
   openExternalUrl: openExternalUrlMock,
   yieldMiladyHttpAfterNativeMessageBox:
     yieldMiladyHttpAfterNativeMessageBoxMock,
@@ -79,6 +87,7 @@ describe("useCloudState", () => {
       low: false,
       critical: false,
     });
+    clientMock.cloudLoginPersist.mockResolvedValue({ ok: true });
   });
 
   afterEach(() => {
@@ -142,5 +151,57 @@ describe("useCloudState", () => {
     );
     expect(result.current.elizaCloudLoginBusy).toBe(false);
     expect(result.current.elizaCloudLoginError).toBeNull();
+  });
+
+  it("starts login when cloud status is API-key-only", async () => {
+    clientMock.getCloudStatus.mockResolvedValue({
+      connected: true,
+      enabled: false,
+      hasApiKey: true,
+      reason: "api_key_present_not_authenticated",
+    });
+    clientMock.cloudLogin.mockResolvedValue({
+      ok: true,
+      sessionId: "session-api-key-only",
+      browserUrl:
+        "https://www.elizacloud.ai/auth/cli-login?session=session-api-key-only",
+    });
+
+    const { result } = renderHook(() => useCloudState(createParams()));
+
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+
+    expect(clientMock.cloudLogin).toHaveBeenCalledTimes(1);
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai/auth/cli-login?session=session-api-key-only",
+    );
+  });
+
+  it("uses the same-origin local backend when no explicit API base URL is set", async () => {
+    clientMock.getBaseUrl.mockReturnValue("");
+    clientMock.getCloudStatus.mockResolvedValue({
+      connected: false,
+      enabled: false,
+      hasApiKey: false,
+    });
+    clientMock.cloudLogin.mockResolvedValue({
+      ok: true,
+      sessionId: "session-1",
+      browserUrl: "https://www.elizacloud.ai/auth/cli-login?session=session-1",
+    });
+
+    const { result } = renderHook(() => useCloudState(createParams()));
+
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+
+    expect(clientMock.cloudLogin).toHaveBeenCalledTimes(1);
+    expect(clientMock.cloudLoginDirect).not.toHaveBeenCalled();
+    expect(openExternalUrlMock).toHaveBeenCalledWith(
+      "https://www.elizacloud.ai/auth/cli-login?session=session-1",
+    );
   });
 });

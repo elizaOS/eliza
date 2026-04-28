@@ -1,14 +1,7 @@
-/**
- * InventoryLevelsPanel — location dropdown + SKU/variant table with inline
- * +/- inventory adjustment controls.
- */
-
 import { Button, Skeleton } from "@elizaos/app-core";
 import { Minus, Package, Plus } from "lucide-react";
 import { useState } from "react";
 import type { ShopifyInventoryItem } from "./useShopifyDashboard";
-
-// ── Inventory row ─────────────────────────────────────────────────────────
 
 interface InventoryRowProps {
   item: ShopifyInventoryItem;
@@ -39,7 +32,6 @@ function InventoryRow({ item, onAdjust }: InventoryRowProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/20 bg-card/30 px-3 py-3">
-      {/* Product / variant info */}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold text-txt">
           {item.productTitle}
@@ -58,23 +50,22 @@ function InventoryRow({ item, onAdjust }: InventoryRowProps) {
         ) : null}
       </div>
 
-      {/* Available count */}
-      <div className="shrink-0 text-right">
-        <div className="text-sm font-semibold text-txt">
-          {localAvailable.toLocaleString()}
-        </div>
-        <div className="mt-0.5 text-2xs text-muted">available</div>
+      <div
+        className="flex shrink-0 items-center gap-1.5 text-sm font-semibold text-txt"
+        title="Available"
+      >
+        <Package className="h-3.5 w-3.5 text-muted" aria-hidden />
+        {localAvailable.toLocaleString()}
       </div>
 
-      {/* Incoming */}
-      <div className="shrink-0 text-right">
-        <div className="text-sm font-semibold text-txt">
-          {item.incoming.toLocaleString()}
-        </div>
-        <div className="mt-0.5 text-2xs text-muted">incoming</div>
+      <div
+        className="flex shrink-0 items-center gap-1.5 text-sm font-semibold text-txt"
+        title="Incoming"
+      >
+        <Plus className="h-3.5 w-3.5 text-muted" aria-hidden />
+        {item.incoming.toLocaleString()}
       </div>
 
-      {/* Adjust controls */}
       <div className="flex shrink-0 items-center gap-1">
         <Button
           type="button"
@@ -102,8 +93,6 @@ function InventoryRow({ item, onAdjust }: InventoryRowProps) {
     </div>
   );
 }
-
-// ── Panel ─────────────────────────────────────────────────────────────────
 
 interface InventoryLevelsPanelProps {
   items: ShopifyInventoryItem[];
@@ -143,7 +132,6 @@ export function InventoryLevelsPanel({
 
   return (
     <div className="space-y-3">
-      {/* Location filter */}
       {locations.length > 0 ? (
         <div className="flex items-center gap-2">
           <label
@@ -171,14 +159,12 @@ export function InventoryLevelsPanel({
         </div>
       ) : null}
 
-      {/* Error */}
       {error ? (
         <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
           {error}
         </div>
       ) : null}
 
-      {/* Loading skeletons */}
       {loading && items.length === 0 ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }, (_, i) => i).map((i) => (

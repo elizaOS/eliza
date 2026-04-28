@@ -136,7 +136,7 @@ export interface MobileSignalsHealthSnapshot {
 }
 
 export interface MobileSignalsSnapshot {
-  source: MobileSignalsSource;
+  source: "mobile_device";
   platform: MobileSignalsPlatform;
   state: MobileSignalsState;
   observedAt: number;

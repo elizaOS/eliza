@@ -1,6 +1,121 @@
 import { getBrandConfig } from "./brand-config";
 import type { ManagedWindowSnapshot } from "./surface-windows";
 
+// Mirror of the renderer-side INTERNAL_TOOL_APPS in
+// `packages/app-core/src/components/apps/internal-tool-apps.ts`. The renderer
+// list is the source of truth (it owns hero images, capabilities, ordering);
+// the menu only needs slug + display + windowPath, so we duplicate that
+// minimal slice here to avoid pulling renderer modules into the bun bundle.
+// TODO: if the bun bundler grows safe access to the renderer module graph,
+// import this from there instead.
+export interface AppMenuEntry {
+  readonly slug: string;
+  readonly name: string;
+  readonly displayName: string;
+  readonly windowPath: string;
+  /**
+   * When true, the renderer routes the menu/tray click to the App Details
+   * page (`/apps/<slug>/details`) instead of opening the app window
+   * directly. Mirror of `InternalToolAppDefinition.hasDetailsPage`.
+   */
+  readonly hasDetailsPage: boolean;
+}
+
+const APP_MENU_ENTRIES: readonly AppMenuEntry[] = [
+  {
+    slug: "lifeops",
+    name: "@elizaos/app-lifeops",
+    displayName: "LifeOps",
+    windowPath: "/apps/lifeops",
+    hasDetailsPage: true,
+  },
+  {
+    slug: "plugin-viewer",
+    name: "@elizaos/app-plugin-viewer",
+    displayName: "Plugin Viewer",
+    windowPath: "/apps/plugins",
+    hasDetailsPage: false,
+  },
+  {
+    slug: "skills-viewer",
+    name: "@elizaos/app-skills-viewer",
+    displayName: "Skills Viewer",
+    windowPath: "/apps/skills",
+    hasDetailsPage: false,
+  },
+  {
+    slug: "training",
+    name: "@elizaos/app-training",
+    displayName: "Fine Tuning",
+    windowPath: "/apps/fine-tuning",
+    hasDetailsPage: true,
+  },
+  {
+    slug: "trajectory-viewer",
+    name: "@elizaos/app-trajectory-viewer",
+    displayName: "Trajectory Viewer",
+    windowPath: "/apps/trajectories",
+    hasDetailsPage: false,
+  },
+  {
+    slug: "relationship-viewer",
+    name: "@elizaos/app-relationship-viewer",
+    displayName: "Relationship Viewer",
+    windowPath: "/apps/relationships",
+    hasDetailsPage: false,
+  },
+  {
+    slug: "memory-viewer",
+    name: "@elizaos/app-memory-viewer",
+    displayName: "Memory Viewer",
+    windowPath: "/apps/memories",
+    hasDetailsPage: false,
+  },
+  {
+    slug: "steward",
+    name: "@elizaos/app-steward",
+    displayName: "Steward",
+    windowPath: "/apps/inventory",
+    hasDetailsPage: true,
+  },
+  {
+    slug: "runtime-debugger",
+    name: "@elizaos/app-runtime-debugger",
+    displayName: "Runtime Debugger",
+    windowPath: "/apps/runtime",
+    hasDetailsPage: false,
+  },
+  {
+    slug: "database-viewer",
+    name: "@elizaos/app-database-viewer",
+    displayName: "Database Viewer",
+    windowPath: "/apps/database",
+    hasDetailsPage: false,
+  },
+  {
+    slug: "elizamaker",
+    name: "@elizaos/app-elizamaker",
+    displayName: "ElizaMaker",
+    windowPath: "/apps/elizamaker",
+    hasDetailsPage: true,
+  },
+  {
+    slug: "log-viewer",
+    name: "@elizaos/app-log-viewer",
+    displayName: "Log Viewer",
+    windowPath: "/apps/logs",
+    hasDetailsPage: false,
+  },
+] as const;
+
+export function getAppMenuEntries(): readonly AppMenuEntry[] {
+  return APP_MENU_ENTRIES;
+}
+
+export function findAppMenuEntryBySlug(slug: string): AppMenuEntry | undefined {
+  return APP_MENU_ENTRIES.find((entry) => entry.slug === slug);
+}
+
 /**
  * OS menu bar structure for Electrobun. Each **`action`** is emitted as
  * `application-menu-clicked` and handled in `index.ts`. **Why a pure builder:**
@@ -72,22 +187,6 @@ export const EMPTY_HEARTBEAT_MENU_SNAPSHOT: HeartbeatMenuSnapshot = {
 
 const SETTINGS_ACTION_PREFIX = "open-settings-";
 
-function formatHeartbeatTimestamp(
-  value: number | null,
-  fallback: string,
-): string {
-  if (typeof value !== "number" || Number.isNaN(value) || value <= 0) {
-    return fallback;
-  }
-  return new Date(value).toLocaleString();
-}
-
-function buildHeartbeatStatusLabel(snapshot: HeartbeatMenuSnapshot): string {
-  if (snapshot.loading) return "Status: Loading...";
-  if (snapshot.error) return `Status: ${snapshot.error}`;
-  return "Status: Monitoring";
-}
-
 function buildOpenWindowItems(
   windows: ManagedWindowSnapshot[],
   emptyLabel: string,
@@ -117,54 +216,13 @@ export function parseSettingsWindowAction(
   return tabHint || undefined;
 }
 
-function buildSurfaceMenu(
-  label: string,
-  surface: Extract<
-    ManagedWindowSnapshot["surface"],
-    "chat" | "plugins" | "connectors" | "triggers"
-  >,
-  windows: ManagedWindowSnapshot[],
-  heartbeatSnapshot?: HeartbeatMenuSnapshot,
-): ApplicationMenuItem {
-  const baseItems: ApplicationMenuItem[] = [
-    { label: "Show in Main Window", action: `show-main:${surface}` },
-    { label: `Open New ${label} Window`, action: `new-window:${surface}` },
-  ];
-
-  if (surface === "triggers" && heartbeatSnapshot) {
-    baseItems.push(
-      { label: "Refresh Heartbeats", action: "refresh-heartbeats" },
-      { type: "separator" },
-      { label: buildHeartbeatStatusLabel(heartbeatSnapshot), enabled: false },
-      {
-        label: `Last run: ${formatHeartbeatTimestamp(heartbeatSnapshot.lastRunAtMs, "Never")}`,
-        enabled: false,
-      },
-      {
-        label: `Next run: ${formatHeartbeatTimestamp(heartbeatSnapshot.nextRunAtMs, "Not scheduled")}`,
-        enabled: false,
-      },
-      {
-        label: `Heartbeats: ${heartbeatSnapshot.totalHeartbeats} total, ${heartbeatSnapshot.activeHeartbeats} active`,
-        enabled: false,
-      },
-      {
-        label: `Executions: ${heartbeatSnapshot.totalExecutions} total, ${heartbeatSnapshot.totalFailures} failed`,
-        enabled: false,
-      },
-    );
-  }
-
+function buildAppsMenu(): ApplicationMenuItem {
   return {
-    label,
-    submenu: [
-      ...baseItems,
-      { type: "separator" },
-      ...buildOpenWindowItems(
-        windows,
-        `No open ${label.toLowerCase()} windows`,
-      ),
-    ],
+    label: "Apps",
+    submenu: APP_MENU_ENTRIES.map((entry) => ({
+      label: entry.displayName,
+      action: `apps:${entry.slug}`,
+    })),
   };
 }
 
@@ -219,42 +277,20 @@ function buildCloseWindowMenuItem(isMac: boolean): ApplicationMenuItem {
   };
 }
 
-function buildCloudMenu(windows: ManagedWindowSnapshot[]): ApplicationMenuItem {
-  return {
-    label: "Cloud",
-    submenu: [
-      { label: "Open Cloud Settings", action: "open-settings-cloud" },
-      { type: "separator" },
-      { label: "Open Cloud Window", action: "new-window:cloud" },
-      { type: "separator" },
-      ...buildOpenWindowItems(windows, "No open cloud windows"),
-    ],
-  };
-}
-
-function buildBrowserMenu(
-  windows: ManagedWindowSnapshot[],
-): ApplicationMenuItem {
-  return {
-    label: "Browser",
-    submenu: [
-      { label: "Open Browser Window", action: "new-window:browser" },
-      { type: "separator" },
-      ...buildOpenWindowItems(windows, "No open browser windows"),
-    ],
-  };
-}
-
 export function buildApplicationMenu({
   isMac,
   browserEnabled,
-  heartbeatSnapshot,
   detachedWindows,
   agentReady = true,
 }: {
   isMac: boolean;
   browserEnabled: boolean;
-  heartbeatSnapshot: HeartbeatMenuSnapshot;
+  /**
+   * Heartbeat snapshot — currently unused since the per-surface menus that
+   * displayed live heartbeat counts were folded into the unified Apps menu.
+   * Kept on the signature so existing callers in `index.ts` do not break.
+   */
+  heartbeatSnapshot?: HeartbeatMenuSnapshot;
   detachedWindows: ManagedWindowSnapshot[];
   agentReady?: boolean;
 }): ApplicationMenuItem[] {
@@ -262,24 +298,6 @@ export function buildApplicationMenu({
   const visibleDetachedWindows = browserEnabled
     ? detachedWindows
     : detachedWindows.filter((window) => window.surface !== "browser");
-  const pluginsWindows = visibleDetachedWindows.filter(
-    (window) => window.surface === "plugins",
-  );
-  const chatWindows = visibleDetachedWindows.filter(
-    (window) => window.surface === "chat",
-  );
-  const connectorsWindows = visibleDetachedWindows.filter(
-    (window) => window.surface === "connectors",
-  );
-  const heartbeatWindows = visibleDetachedWindows.filter(
-    (window) => window.surface === "triggers",
-  );
-  const browserWindows = visibleDetachedWindows.filter(
-    (window) => window.surface === "browser",
-  );
-  const cloudWindows = visibleDetachedWindows.filter(
-    (window) => window.surface === "cloud",
-  );
 
   return [
     {
@@ -358,21 +376,7 @@ export function buildApplicationMenu({
       ],
     },
     buildDesktopMenu(),
-    ...(agentReady
-      ? [
-          buildSurfaceMenu("Chat", "chat", chatWindows),
-          buildCloudMenu(cloudWindows),
-          ...(browserEnabled ? [buildBrowserMenu(browserWindows)] : []),
-          buildSurfaceMenu("Plugins", "plugins", pluginsWindows),
-          buildSurfaceMenu("Connectors", "connectors", connectorsWindows),
-          buildSurfaceMenu(
-            "Heartbeats",
-            "triggers",
-            heartbeatWindows,
-            heartbeatSnapshot,
-          ),
-        ]
-      : []),
+    buildAppsMenu(),
     {
       label: "Window",
       submenu: [

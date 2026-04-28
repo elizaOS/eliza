@@ -1,23 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   buildLifeOpsHash,
+  LIFEOPS_ROUTE_SECTIONS,
   type LifeOpsRouteSection,
   parseLifeOpsRoute,
 } from "../lifeops-route.js";
 
 export type LifeOpsSection = LifeOpsRouteSection;
 
-export const LIFEOPS_SECTIONS: LifeOpsSection[] = [
-  "overview",
-  "sleep",
-  "screen-time",
-  "setup",
-  "reminders",
-  "calendar",
-  "messages",
-  "mail",
-  "payments",
-];
+export const LIFEOPS_SECTIONS: LifeOpsSection[] = [...LIFEOPS_ROUTE_SECTIONS];
 
 function isLifeOpsSection(value: unknown): value is LifeOpsSection {
   return (
