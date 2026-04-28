@@ -9,12 +9,17 @@
  * Usage: node scripts/run-mobile-build.mjs <android|android-system|ios|ios-overlay>
  *
  * Phases:
- *   1. Resolve config  — read app.config.ts for appId / appName
- *   2. Build web        — vite build → dist/
- *   3. Capacitor sync   — generate native platform projects
- *   4. Overlay native   — permissions, services, entitlements, Podfile
- *   5. Platform patches — Gradle template, SPM compat, xcconfig
- *   6. Native build     — gradlew / xcodebuild
+ *   1. Resolve config       — read app.config.ts for appId / appName
+ *   2. Build web            — vite build → dist/
+ *   3. Capacitor sync       — generate native platform projects
+ *   4. Overlay native       — permissions, services, entitlements, Podfile
+ *   5. Platform patches     — Gradle template, SPM compat, xcconfig
+ *   5b. Stage Android agent — bun + musl + libstdc++ + libgcc + bundle
+ *                             into apps/app/android/app/src/main/assets/agent/
+ *                             (Android targets only; see
+ *                             scripts/lib/stage-android-agent.mjs and
+ *                             docs/agent-on-mobile.md).
+ *   6. Native build         — gradlew / xcodebuild
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -23,6 +28,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
+import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -51,6 +57,11 @@ const nativePluginsDir = path.join(
   "eliza",
   "packages",
   "native-plugins",
+);
+const androidAgentSpikeDir = path.join(
+  repoRoot,
+  "scripts",
+  "spike-android-agent",
 );
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
@@ -460,6 +471,7 @@ const ANDROID_PERMISSIONS = [
   "ACCESS_BACKGROUND_LOCATION",
   "FOREGROUND_SERVICE",
   "FOREGROUND_SERVICE_DATA_SYNC",
+  "FOREGROUND_SERVICE_SPECIAL_USE",
   "POST_NOTIFICATIONS",
   "WAKE_LOCK",
   // PACKAGE_USAGE_STATS is granted via the privapp-permissions whitelist;
@@ -529,7 +541,9 @@ function patchGradleFileForAgp9(filePath, label) {
 
 function patchNativePluginGradleForAgp9() {
   if (!fs.existsSync(nativePluginsDir)) return;
-  for (const entry of fs.readdirSync(nativePluginsDir, { withFileTypes: true })) {
+  for (const entry of fs.readdirSync(nativePluginsDir, {
+    withFileTypes: true,
+  })) {
     if (!entry.isDirectory()) continue;
     patchGradleFileForAgp9(
       path.join(nativePluginsDir, entry.name, "android", "build.gradle"),
@@ -633,6 +647,7 @@ function overlayAndroid() {
     for (const file of [
       "GatewayConnectionService.java",
       "MainActivity.java",
+      "MiladyAgentService.java",
       "MiladyAssistActivity.java",
       "MiladyBootReceiver.java",
       "MiladyBrowserActivity.java",
@@ -715,6 +730,37 @@ function overlayAndroid() {
     xml = xml.replace(
       "</application>",
       `\n        <service\n            android:name="${gatewayServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="dataSync" />\n    </application>`,
+    );
+    dirty = true;
+
+    // MiladyAgentService — special-use foreground service that owns the
+    // local Eliza agent process. Nested <property> tag carries the Android
+    // 14+ specialUse subtype. Pattern matches both self-closing and
+    // explicit-close forms so re-runs collapse cleanly.
+    const agentServiceName = `${androidPackage}.MiladyAgentService`;
+    const agentServiceSelfClosingPattern =
+      /\n\s*<service\b[^>]*android:name="[^"]*MiladyAgentService"[^>]*\/>\s*/g;
+    const agentServicePairedPattern =
+      /\n\s*<service\b[^>]*android:name="[^"]*MiladyAgentService"[\s\S]*?<\/service>\s*/g;
+    const withoutAgentServiceSelfClose = xml.replace(
+      agentServiceSelfClosingPattern,
+      "\n",
+    );
+    if (withoutAgentServiceSelfClose !== xml) {
+      xml = withoutAgentServiceSelfClose;
+      dirty = true;
+    }
+    const withoutAgentServicePaired = xml.replace(
+      agentServicePairedPattern,
+      "\n",
+    );
+    if (withoutAgentServicePaired !== xml) {
+      xml = withoutAgentServicePaired;
+      dirty = true;
+    }
+    xml = xml.replace(
+      "</application>",
+      `\n        <service\n            android:name="${agentServiceName}"\n            android:exported="false"\n            android:foregroundServiceType="specialUse">\n            <property\n                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"\n                android:value="local-agent-runtime" />\n        </service>\n    </application>`,
     );
     dirty = true;
     for (const component of [
@@ -1492,6 +1538,10 @@ async function buildAndroid() {
 
   patchAndroidGradle();
   overlayAndroid();
+  await stageAndroidAgentRuntime({
+    androidDir,
+    spikeDir: androidAgentSpikeDir,
+  });
 
   const env = {
     ...process.env,
@@ -1573,6 +1623,10 @@ async function buildAndroidSystem() {
 
   patchAndroidGradle();
   overlayAndroid();
+  await stageAndroidAgentRuntime({
+    androidDir,
+    spikeDir: androidAgentSpikeDir,
+  });
 
   const env = {
     ...process.env,

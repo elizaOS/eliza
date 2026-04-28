@@ -36,6 +36,17 @@ export function canRunLocal(): boolean {
   return isDesktopPlatform() || Boolean(import.meta.env.DEV);
 }
 
+/**
+ * True when the platform might host a local agent that the UI can reach over
+ * loopback. Used to decide whether the RuntimeGate's "Local Agent" tile
+ * should run a liveness probe before being shown. Desktop and dev mode
+ * always qualify; Android qualifies because Phase B's `MiladyAgentService`
+ * starts the bundled agent on `127.0.0.1:31337`.
+ */
+export function canHostLocalAgent(): boolean {
+  return canRunLocal() || isAndroid;
+}
+
 export function isWebPlatform(): boolean {
   return detected.platform === "web" && !isElectrobunRuntime();
 }

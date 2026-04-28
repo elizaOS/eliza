@@ -1,0 +1,426 @@
+/**
+ * Phase A staging for the on-device agent runtime on Android.
+ *
+ * Lays the bun binary, the matching musl loader, libstdc++, libgcc, and the
+ * launcher + agent bundle inside the APK assets tree so that
+ * `MiladyAgentService` (Phase B) can copy them out to the app data dir at
+ * first launch and `execve()` bun there. Without this stage the APK ships
+ * with no executable runtime and the local-agent mode cannot start.
+ *
+ * Layout produced under `apps/app/android/app/src/main/assets/agent/`:
+ *
+ *   agent-bundle.js                 (ABI-independent entry point; placeholder
+ *                                    until Phase D replaces it with the real
+ *                                    @elizaos/agent bundle)
+ *   launch.sh                       (ABI-independent device-side launcher,
+ *                                    a parameterised double-fork daemoniser)
+ *   x86_64/bun                      (cuttlefish + x86_64 emulator)
+ *   x86_64/ld-musl-x86_64.so.1
+ *   x86_64/libstdc++.so.6.0.33
+ *   x86_64/libgcc_s.so.1
+ *   arm64-v8a/bun                   (real phones)
+ *   arm64-v8a/ld-musl-aarch64.so.1
+ *   arm64-v8a/libstdc++.so.6.0.33
+ *   arm64-v8a/libgcc_s.so.1
+ *
+ * Downloads are cached under `~/.cache/milady-android-agent/<bun-version>/`
+ * and the staging step is idempotent — already-staged files with the
+ * matching size are left in place.
+ *
+ * Pinned versions (mirrors scripts/spike-android-agent/bootstrap.sh):
+ *   - bun 1.3.13                     proven on the Phase 0 spike
+ *   - Alpine v3.21                   ships gcc 14.2 → libstdc++.so.6.0.33
+ *
+ * The ABI-independent `launch.sh` and `agent-bundle.js` placeholder are
+ * derived from `scripts/spike-android-agent/launch-on-device.sh` and
+ * `scripts/spike-android-agent/server.js` respectively. Phase D replaces
+ * `agent-bundle.js` with the real bundled runtime.
+ */
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+const BUN_VERSION = "1.3.13";
+const ALPINE_BRANCH = "v3.21";
+
+const ABI_TARGETS = [
+  {
+    androidAbi: "x86_64",
+    bunArch: "x64",
+    alpineArch: "x86_64",
+    ldName: "ld-musl-x86_64.so.1",
+  },
+  {
+    androidAbi: "arm64-v8a",
+    bunArch: "aarch64",
+    alpineArch: "aarch64",
+    ldName: "ld-musl-aarch64.so.1",
+  },
+];
+
+const APK_PACKAGES = [
+  { pkg: "musl", file: "musl.apk" },
+  { pkg: "libstdc++", file: "libstdcxx.apk" },
+  { pkg: "libgcc", file: "libgcc.apk" },
+];
+
+/**
+ * Adapted from scripts/spike-android-agent/launch-on-device.sh. The script
+ * ships *inside* the APK and is copied (with executable bit set) into the
+ * app data dir by MiladyAgentService at first launch. It accepts the device
+ * path, ABI-specific musl loader, and listen port as env vars so a single
+ * shell file can drive both ABIs at runtime.
+ */
+const LAUNCH_SCRIPT = `#!/system/bin/sh
+# launch.sh — device-side launcher for the on-device Eliza agent.
+#
+# Staged into the APK by run-mobile-build.mjs and copied to the app's
+# private data dir by MiladyAgentService on first launch. Daemonises bun
+# via a setsid double-fork so the agent survives the service that kicked
+# it off; without that adb shell / Service.onCreate parents reap it.
+#
+# Required env vars:
+#   DEVICE_DIR  Absolute path on the device that holds bun + musl + bundle.
+#   LD_NAME     Per-ABI musl loader filename (ld-musl-{x86_64,aarch64}.so.1).
+#   PORT        Loopback port for Bun.serve() to bind 127.0.0.1 on.
+#
+# Optional:
+#   AGENT_BUNDLE  Defaults to "agent-bundle.js" in DEVICE_DIR.
+#   LOG_FILE      Defaults to "agent.log" in DEVICE_DIR.
+
+DEVICE_DIR=\${DEVICE_DIR:-/data/local/tmp}
+LD_NAME=\${LD_NAME:-ld-musl-x86_64.so.1}
+PORT=\${PORT:-31337}
+AGENT_BUNDLE=\${AGENT_BUNDLE:-agent-bundle.js}
+LOG_FILE=\${LOG_FILE:-\${DEVICE_DIR}/agent.log}
+
+cd "$DEVICE_DIR" || exit 1
+pkill -f "\${DEVICE_DIR}/bun" 2>/dev/null
+sleep 1
+
+(
+  setsid sh -c "exec </dev/null >\\"$LOG_FILE\\" 2>&1; LD_LIBRARY_PATH=\\"$DEVICE_DIR\\" PORT=\\"$PORT\\" exec \\"$DEVICE_DIR/$LD_NAME\\" \\"$DEVICE_DIR/bun\\" \\"$DEVICE_DIR/$AGENT_BUNDLE\\"" &
+) &
+disown 2>/dev/null || true
+exit 0
+`;
+
+function logFor(log) {
+  return (msg) => log(`[mobile-build] ${msg}`);
+}
+
+function run(command, args, { cwd } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("exit", (code, signal) => {
+      if (signal) return reject(new Error(`${command} killed by ${signal}`));
+      if ((code ?? 1) !== 0) {
+        return reject(
+          new Error(
+            `${command} ${args.join(" ")} exited with ${code ?? 1}: ${stderr.trim()}`,
+          ),
+        );
+      }
+      resolve();
+    });
+    child.on("error", reject);
+  });
+}
+
+async function downloadFile(url, targetPath) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} fetching ${url}`);
+  }
+  const buf = Buffer.from(await response.arrayBuffer());
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  fs.writeFileSync(targetPath, buf);
+}
+
+async function ensureBunBinary({ cacheDir, bunArch, log }) {
+  const archCache = path.join(cacheDir, `bun-${bunArch}`);
+  const bunPath = path.join(archCache, "bun");
+  if (fs.existsSync(bunPath) && fs.statSync(bunPath).size > 1_000_000) {
+    return bunPath;
+  }
+  fs.mkdirSync(archCache, { recursive: true });
+  const zipPath = path.join(archCache, "bun.zip");
+  const url = `https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-${bunArch}-musl.zip`;
+  log(`Downloading bun-${BUN_VERSION} (${bunArch}-musl) from ${url}`);
+  await downloadFile(url, zipPath);
+  await run("unzip", ["-q", "-o", zipPath, "-d", archCache]);
+  const extractedDir = path.join(archCache, `bun-linux-${bunArch}-musl`);
+  const extractedBun = path.join(extractedDir, "bun");
+  if (!fs.existsSync(extractedBun)) {
+    throw new Error(`bun zip did not contain bun at ${extractedBun}`);
+  }
+  fs.renameSync(extractedBun, bunPath);
+  fs.rmSync(extractedDir, { recursive: true, force: true });
+  fs.rmSync(zipPath, { force: true });
+  fs.chmodSync(bunPath, 0o755);
+  return bunPath;
+}
+
+/**
+ * Resolve the actual versioned filename of an Alpine package in the branch's
+ * apk index. The package name is regex-escaped because libstdc++ contains a
+ * `+`, which would otherwise eat the trailing characters and over-match.
+ */
+async function resolveAlpineApkUrl({ pkg, alpineArch }) {
+  const indexUrl = `https://dl-cdn.alpinelinux.org/alpine/${ALPINE_BRANCH}/main/${alpineArch}/`;
+  const response = await fetch(indexUrl);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} listing ${indexUrl}`);
+  }
+  const html = await response.text();
+  const escaped = pkg.replace(/[.[\\*^$()+?{|]/g, "\\$&");
+  const re = new RegExp(`(${escaped}-[0-9][^"<\\s]*\\.apk)`);
+  const match = html.match(re);
+  if (!match) {
+    throw new Error(
+      `Could not find ${pkg} apk in alpine ${ALPINE_BRANCH} ${alpineArch} index`,
+    );
+  }
+  return `${indexUrl}${match[1]}`;
+}
+
+async function ensureAlpineApkExtracted({ cacheDir, alpineArch, log }) {
+  const archCache = path.join(cacheDir, `alpine-${alpineArch}`);
+  const extractDir = path.join(archCache, "extract");
+  const sentinel = path.join(archCache, ".extracted");
+  if (
+    fs.existsSync(sentinel) &&
+    fs.existsSync(path.join(extractDir, "lib")) &&
+    fs.existsSync(path.join(extractDir, "usr", "lib"))
+  ) {
+    return extractDir;
+  }
+  fs.mkdirSync(archCache, { recursive: true });
+  fs.rmSync(extractDir, { recursive: true, force: true });
+  fs.mkdirSync(extractDir, { recursive: true });
+  for (const { pkg, file } of APK_PACKAGES) {
+    const apkPath = path.join(archCache, file);
+    if (!fs.existsSync(apkPath)) {
+      const url = await resolveAlpineApkUrl({ pkg, alpineArch });
+      log(`Downloading ${pkg} (${alpineArch}) from ${url}`);
+      await downloadFile(url, apkPath);
+    }
+    // Alpine apks are gzipped tarballs with a small leading signature
+    // section; GNU tar happily skips it and extracts the data section.
+    await run("tar", ["-xzf", apkPath, "-C", extractDir]).catch(() => {
+      // Some apks (notably musl) emit warnings on the signature header but
+      // still extract the data correctly. Re-check via the expected files
+      // below before treating this as a hard failure.
+    });
+  }
+  fs.writeFileSync(sentinel, "ok");
+  return extractDir;
+}
+
+function findLibstdcxxRealFile(extractDir) {
+  const usrLib = path.join(extractDir, "usr", "lib");
+  if (!fs.existsSync(usrLib)) {
+    throw new Error(`libstdc++ extract missing usr/lib in ${extractDir}`);
+  }
+  const candidates = fs
+    .readdirSync(usrLib)
+    .filter((name) => /^libstdc\+\+\.so\.6\.0\.\d+$/.test(name));
+  if (candidates.length === 0) {
+    throw new Error(
+      `Could not find libstdc++.so.6.0.* in ${usrLib} — Alpine ${ALPINE_BRANCH} layout changed?`,
+    );
+  }
+  candidates.sort();
+  return candidates[candidates.length - 1];
+}
+
+function copyIfDifferent(source, target) {
+  if (!fs.existsSync(source)) {
+    throw new Error(`expected source file missing: ${source}`);
+  }
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  if (fs.existsSync(target)) {
+    const a = fs.statSync(source);
+    const b = fs.statSync(target);
+    if (a.size === b.size && a.mtimeMs <= b.mtimeMs) return false;
+  }
+  fs.copyFileSync(source, target);
+  return true;
+}
+
+function writeIfChanged(target, content) {
+  if (fs.existsSync(target)) {
+    const current = fs.readFileSync(target, "utf8");
+    if (current === content) return false;
+  }
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, content, "utf8");
+  return true;
+}
+
+/**
+ * Download (if needed) and stage the on-device agent runtime into the
+ * Android assets tree. Idempotent — safe to run on every gradle invocation.
+ *
+ * Required:
+ *   androidDir  Absolute path to apps/app/android/.
+ *   spikeDir    Absolute path to scripts/spike-android-agent/ (source of
+ *               the placeholder agent-bundle.js until Phase D wires up the
+ *               real @elizaos/agent bundle).
+ *
+ * Optional:
+ *   cacheDir    Defaults to ~/.cache/milady-android-agent/<bun-version>/.
+ *   log         Defaults to console.log.
+ */
+export async function stageAndroidAgentRuntime({
+  androidDir,
+  spikeDir,
+  cacheDir = path.join(
+    os.homedir(),
+    ".cache",
+    "milady-android-agent",
+    `bun-${BUN_VERSION}`,
+  ),
+  log = console.log,
+} = {}) {
+  if (!androidDir)
+    throw new Error("stageAndroidAgentRuntime: androidDir is required");
+  if (!spikeDir)
+    throw new Error("stageAndroidAgentRuntime: spikeDir is required");
+
+  const tlog = logFor(log);
+  fs.mkdirSync(cacheDir, { recursive: true });
+
+  const assetsAgentDir = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "assets",
+    "agent",
+  );
+  fs.mkdirSync(assetsAgentDir, { recursive: true });
+
+  let stagedCount = 0;
+
+  for (const target of ABI_TARGETS) {
+    const { androidAbi, bunArch, alpineArch, ldName } = target;
+    const abiAssetsDir = path.join(assetsAgentDir, androidAbi);
+    fs.mkdirSync(abiAssetsDir, { recursive: true });
+
+    const bunPath = await ensureBunBinary({ cacheDir, bunArch, log: tlog });
+    const extractDir = await ensureAlpineApkExtracted({
+      cacheDir,
+      alpineArch,
+      log: tlog,
+    });
+
+    const libstdcxxFile = findLibstdcxxRealFile(extractDir);
+
+    const sources = [
+      [bunPath, path.join(abiAssetsDir, "bun")],
+      [path.join(extractDir, "lib", ldName), path.join(abiAssetsDir, ldName)],
+      [
+        path.join(extractDir, "usr", "lib", libstdcxxFile),
+        path.join(abiAssetsDir, libstdcxxFile),
+      ],
+      [
+        path.join(extractDir, "usr", "lib", "libgcc_s.so.1"),
+        path.join(abiAssetsDir, "libgcc_s.so.1"),
+      ],
+    ];
+
+    let abiChanges = 0;
+    for (const [src, dst] of sources) {
+      if (copyIfDifferent(src, dst)) abiChanges += 1;
+    }
+    stagedCount += abiChanges;
+    tlog(
+      `Staged ${sources.length} runtime file(s) for ABI ${androidAbi}` +
+        (abiChanges === 0 ? " (cached)" : ` (${abiChanges} updated)`),
+    );
+  }
+
+  // ABI-independent assets: agent-bundle.js + PGlite payload, falling back
+  // to the spike's tiny stub if Phase D hasn't been built yet. Phase D
+  // produces a 33 MB real bundle in eliza/packages/agent/dist-mobile/ via
+  // `bun run --cwd eliza/packages/agent build:mobile`. PGlite at runtime
+  // resolves vector.tar.gz and fuzzystrmatch.tar.gz with `new URL("../X",
+  // import.meta.url)`, so those two files must land ONE DIR ABOVE the
+  // bundle on the device — MiladyAgentService extracts them into the
+  // agent root (../) while the bundle itself sits in agent root (./).
+  // Mirror that by staging vector + fuzzystrmatch in the assets tree at
+  // the same level as agent-bundle.js, leaving relative resolution alone.
+  const distMobileDir = path.resolve(
+    path.dirname(spikeDir),
+    "..",
+    "eliza",
+    "packages",
+    "agent",
+    "dist-mobile",
+  );
+  const distBundle = path.join(distMobileDir, "agent-bundle.js");
+  const spikeServerJs = path.join(spikeDir, "server.js");
+
+  let bundleSrc;
+  if (fs.existsSync(distBundle)) {
+    bundleSrc = distBundle;
+    tlog(
+      `Using Phase D agent bundle (${(fs.statSync(distBundle).size / (1024 * 1024)).toFixed(1)} MB)`,
+    );
+  } else if (fs.existsSync(spikeServerJs)) {
+    bundleSrc = spikeServerJs;
+    tlog(
+      "Using spike placeholder agent-bundle.js — run `bun run --cwd " +
+        "eliza/packages/agent build:mobile` to ship the real agent.",
+    );
+  } else {
+    throw new Error(
+      `No agent bundle source found. Tried: ${distBundle}, ${spikeServerJs}.`,
+    );
+  }
+  const bundleTarget = path.join(assetsAgentDir, "agent-bundle.js");
+  if (copyIfDifferent(bundleSrc, bundleTarget)) stagedCount += 1;
+
+  // PGlite runtime artifacts. Only present when Phase D's build has run.
+  // Skip silently when missing so the spike-bundle path still works.
+  const pgliteAssets = [
+    "pglite.wasm",
+    "pglite.data",
+    "vector.tar.gz",
+    "fuzzystrmatch.tar.gz",
+    "plugins-manifest.json",
+  ];
+  for (const name of pgliteAssets) {
+    const src = path.join(distMobileDir, name);
+    if (!fs.existsSync(src)) continue;
+    const dst = path.join(assetsAgentDir, name);
+    if (copyIfDifferent(src, dst)) stagedCount += 1;
+  }
+
+  const launchTarget = path.join(assetsAgentDir, "launch.sh");
+  if (writeIfChanged(launchTarget, LAUNCH_SCRIPT)) stagedCount += 1;
+
+  tlog(
+    `Staged on-device agent runtime in ${path.relative(androidDir, assetsAgentDir)} ` +
+      `(${stagedCount} file change${stagedCount === 1 ? "" : "s"} this run).`,
+  );
+
+  return { assetsAgentDir, stagedCount };
+}
+
+export const __testables = {
+  BUN_VERSION,
+  ALPINE_BRANCH,
+  ABI_TARGETS,
+  APK_PACKAGES,
+  LAUNCH_SCRIPT,
+};
