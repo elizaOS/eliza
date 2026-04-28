@@ -12,6 +12,7 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type IMessageService,
+  lifeOpsPassiveConnectorsEnabled,
   type Media,
   type Memory,
   type Room,
@@ -282,6 +283,7 @@ export class SignalService extends Service implements ISignalService {
         allowedGroups: undefined,
         blockedNumbers: undefined,
         autoReply: false,
+        receiveMode: "manual",
       };
     }
   }
@@ -289,12 +291,16 @@ export class SignalService extends Service implements ISignalService {
   private loadSettings(): SignalSettings {
     const ignoreGroups = this.runtime.getSetting("SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES");
     const autoReply = this.runtime.getSetting("SIGNAL_AUTO_REPLY");
+    const receiveMode = this.runtime.getSetting("SIGNAL_RECEIVE_MODE");
 
     return {
       shouldIgnoreGroupMessages: ignoreGroups === "true" || ignoreGroups === true,
       allowedGroups: undefined,
       blockedNumbers: undefined,
-      autoReply: autoReply === "true" || autoReply === true,
+      autoReply:
+        !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
+        (autoReply === "true" || autoReply === true),
+      receiveMode: receiveMode === "on-start" ? "on-start" : "manual",
     };
   }
 
@@ -477,8 +483,18 @@ export class SignalService extends Service implements ISignalService {
 
     this.isConnected = true;
 
-    // Start polling for messages
-    this.startPolling();
+    if (this.settings.receiveMode === "on-start") {
+      this.startPolling();
+    } else {
+      this.runtime.logger.info(
+        {
+          src: "plugin:signal",
+          agentId: this.runtime.agentId,
+          receiveMode: this.settings.receiveMode,
+        },
+        "Signal receive polling is manual; LifeOps reads pull from signal-cli directly"
+      );
+    }
   }
 
   private async shutdown(): Promise<void> {
@@ -792,7 +808,7 @@ export class SignalService extends Service implements ISignalService {
     // agent only auto-generates a reply when SIGNAL_AUTO_REPLY is explicitly
     // enabled — default-off prevents the runtime from speaking on the user's
     // behalf to real Signal contacts.
-    if (this.settings.autoReply) {
+    if (this.settings.autoReply && !lifeOpsPassiveConnectorsEnabled(this.runtime)) {
       await this.processMessage(memory, room, msg.sender, msg.groupId);
     }
   }
@@ -1066,10 +1082,7 @@ export class SignalService extends Service implements ISignalService {
         source: "signal",
       },
     });
-    await this.runtime.createMemory(
-      { ...memory, createdAt: args.timestamp },
-      "messages"
-    );
+    await this.runtime.createMemory({ ...memory, createdAt: args.timestamp }, "messages");
   }
 
   async sendReaction(
