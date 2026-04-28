@@ -513,6 +513,14 @@ async function repairRuntimeAfterBoot(
   // triggers can dispatch immediately on first emit.
   await ensureTriggerEventBridge(runtime);
 
+  // Register the n8n runtime-context provider so the patched
+  // `@elizaos/plugin-n8n-workflow` can pull real Discord guild/channel IDs
+  // and the user's Gmail email into the workflow-generation prompt — closing
+  // the placeholder + missing-credentials-block gaps. The plugin treats this
+  // service as advisory; if it isn't registered the prompt simply omits the
+  // facts/credentials sections.
+  await ensureN8nRuntimeContextProvider(runtime);
+
   return runtime;
 }
 
@@ -538,6 +546,11 @@ let _n8nDispatch: { execute: (workflowId: string) => Promise<unknown> } | null =
 // hot-reloads so we never leave two handler sets racing the runtime's
 // event bus.
 let _triggerEventBridge: { stop: () => void } | null = null;
+
+// Module-level handle for the n8n runtime-context provider. Reset across
+// hot-reloads so the previous closure (capturing an outdated config getter)
+// does not survive into the fresh runtime's services map.
+let _n8nRuntimeContextProvider: { stop: () => void } | null = null;
 
 async function ensureN8nAuthBridge(runtime: AgentRuntime): Promise<void> {
   if (_n8nAuthBridge) {
@@ -654,6 +667,56 @@ async function ensureTriggerEventBridge(runtime: AgentRuntime): Promise<void> {
   } catch (err) {
     logger.warn(
       `[eliza] Failed to start trigger event bridge: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function ensureN8nRuntimeContextProvider(
+  runtime: AgentRuntime,
+): Promise<void> {
+  if (_n8nRuntimeContextProvider) {
+    try {
+      _n8nRuntimeContextProvider.stop();
+    } catch {
+      /* ignore */
+    }
+    _n8nRuntimeContextProvider = null;
+  }
+  try {
+    const { startMiladyN8nRuntimeContextProvider } = await import(
+      "../services/n8n-runtime-context-provider.js"
+    );
+    // If a sibling `n8n_credential_provider` is registered (Milady ships one
+    // separately), reach into the runtime services map for its `resolve` so
+    // the context provider can filter `supportedCredentials` to types that
+    // actually have data right now. Optional — without it the context
+    // provider falls back to "config has connector token" heuristics.
+    const credEntries =
+      runtime.services.get("n8n_credential_provider" as never) ?? [];
+    const credProviderInstance = credEntries[0] as
+      | {
+          resolve?: (
+            userId: string,
+            credType: string,
+          ) => Promise<unknown>;
+        }
+      | undefined;
+    const credProvider =
+      credProviderInstance && typeof credProviderInstance.resolve === "function"
+        ? (credProviderInstance as Parameters<
+            typeof startMiladyN8nRuntimeContextProvider
+          >[1]["credProvider"])
+        : undefined;
+    _n8nRuntimeContextProvider = startMiladyN8nRuntimeContextProvider(runtime, {
+      getConfig: () => loadElizaConfig(),
+      credProvider,
+    });
+    logger.info("[eliza] n8n runtime-context provider registered");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to register n8n runtime-context provider: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
