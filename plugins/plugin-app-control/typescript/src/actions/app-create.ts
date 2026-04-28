@@ -21,7 +21,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type {
-	Action,
 	ActionResult,
 	HandlerCallback,
 	HandlerOptions,
@@ -279,6 +278,13 @@ interface DispatchInput {
 	label: string;
 	workdir: string;
 	appName: string;
+	/**
+	 * Room ID to post the verification verdict back to once the orchestrator
+	 * runs the AppVerificationService validator. Forwarded via CREATE_TASK
+	 * metadata into session metadata, then read by the verification room
+	 * bridge service when it filters task_complete / escalation broadcasts.
+	 */
+	originRoomId: string;
 	callback?: HandlerCallback;
 }
 
@@ -345,6 +351,7 @@ async function dispatchCodingAgent({
 	label,
 	workdir,
 	appName,
+	originRoomId,
 	callback,
 }: DispatchInput): Promise<DispatchResult> {
 	const createTask = runtime.actions?.find((a) => a.name === "CREATE_TASK");
@@ -370,6 +377,12 @@ async function dispatchCodingAgent({
 				params: { workdir, appName, profile: "full" },
 			},
 			onVerificationFail: "retry",
+			metadata: {
+				// Carried into session metadata via start-coding-task.ts so the
+				// verification-room-bridge can post the verdict back to the
+				// originating chat room.
+				originRoomId,
+			},
 		},
 	};
 
@@ -565,11 +578,13 @@ async function createNewApp({
 	runtime,
 	intent,
 	repoRoot,
+	originRoomId,
 	callback,
 }: {
 	runtime: IAgentRuntime;
 	intent: string;
 	repoRoot: string;
+	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
 	const { name, displayName } = await extractNames(runtime, intent);
@@ -598,6 +613,7 @@ async function createNewApp({
 		label: `create-app:${name}`,
 		workdir,
 		appName: name,
+		originRoomId,
 		callback,
 	});
 
@@ -646,12 +662,14 @@ async function editExistingApp({
 	intent,
 	app,
 	repoRoot,
+	originRoomId,
 	callback,
 }: {
 	runtime: IAgentRuntime;
 	intent: string;
 	app: InstalledAppInfo;
 	repoRoot: string;
+	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
 	const workdir = await locateInstalledAppWorkdir(repoRoot, app);
@@ -668,6 +686,7 @@ async function editExistingApp({
 		label: `edit-app:${app.name}`,
 		workdir,
 		appName: app.name,
+		originRoomId,
 		callback,
 	});
 
@@ -762,6 +781,7 @@ export async function runCreate({
 				runtime,
 				intent: existing.metadata.intent,
 				repoRoot,
+				originRoomId: roomId,
 				callback,
 			});
 		}
@@ -789,6 +809,7 @@ export async function runCreate({
 			intent: existing.metadata.intent,
 			app: target,
 			repoRoot,
+			originRoomId: roomId,
 			callback,
 		});
 	}
@@ -820,6 +841,7 @@ export async function runCreate({
 			intent,
 			app: target,
 			repoRoot,
+			originRoomId: roomId,
 			callback,
 		});
 	}
@@ -829,7 +851,13 @@ export async function runCreate({
 
 	if (matches.length === 0) {
 		// No fuzzy matches — go straight to create-new.
-		return createNewApp({ runtime, intent, repoRoot, callback });
+		return createNewApp({
+			runtime,
+			intent,
+			repoRoot,
+			originRoomId: roomId,
+			callback,
+		});
 	}
 
 	// Persist intent + render choice block.
@@ -879,18 +907,3 @@ export async function hasPendingIntent(
 	const existing = await findExistingIntentTask(runtime, roomId);
 	return existing !== null;
 }
-
-/**
- * Standalone Action shape — registered indirectly via the unified APP
- * action; exported so tests / callers that prefer the granular surface
- * can still reach it.
- */
-export const appCreateAction: Action = {
-	name: "APP_CREATE",
-	similes: ["CREATE_APP", "BUILD_APP", "MAKE_APP", "SCAFFOLD_APP"],
-	description:
-		"Multi-turn create-an-app flow: searches existing apps, asks the user new/edit/cancel, then dispatches a coding agent and verifies the output.",
-	validate: async () => false,
-	handler: async () => undefined,
-	examples: [],
-};

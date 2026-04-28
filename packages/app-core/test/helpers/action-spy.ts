@@ -1,7 +1,33 @@
-/** Records action lifecycle events so tests can assert which actions ran. */
+/**
+ * Event-based action spy for real-time action tracking during E2E tests.
+ *
+ * Subscribes to `ACTION_STARTED` and `ACTION_COMPLETED` events on an
+ * elizaOS `AgentRuntime` and captures every action invocation for later
+ * assertion. Faster and more reliable than post-hoc database queries.
+ *
+ * @example
+ * ```ts
+ * const spy = new ActionSpy();
+ * spy.attach(runtime);
+ *
+ * // ... trigger some agent interaction ...
+ *
+ * const action = await spy.waitForAction("SEND_MESSAGE", 5000);
+ * expect(action?.actionStatus).not.toBe("failed");
+ *
+ * spy.detach(runtime);
+ * ```
+ */
 import type { ActionEventPayload, IAgentRuntime, UUID } from "@elizaos/core";
 import { EventType } from "@elizaos/core";
 
+/**
+ * One captured action lifecycle event.
+ *
+ * Two phases are recorded: `started` (the runtime selected and began executing
+ * the action) and `completed` (the action's handler returned, success or
+ * failure).
+ */
 export interface ActionSpyCall {
   phase: "started" | "completed";
   actionName: string;
@@ -20,6 +46,12 @@ export interface ActionSpyCall {
   timestamp: number;
   payload: ActionEventPayload;
 }
+
+/**
+ * Backwards-compatible alias for callers that used the older milady-side
+ * `SpiedAction` shape. Prefer `ActionSpyCall` in new code.
+ */
+export type SpiedAction = ActionSpyCall;
 
 function extractActionName(payload: ActionEventPayload): string {
   const first = payload.content?.actions?.[0];
@@ -62,6 +94,7 @@ function detectConfirmationPending(payload: ActionEventPayload): boolean {
   return false;
 }
 
+/** Case- and underscore-insensitive name normalization used for matching. */
 function normalize(name: string): string {
   return name.trim().toUpperCase().replace(/_/g, "");
 }
@@ -70,6 +103,7 @@ export class ActionSpy {
   private started: ActionSpyCall[] = [];
   private completed: ActionSpyCall[] = [];
   private roomIdFilter: UUID | null = null;
+  private attachedRuntime: IAgentRuntime | null = null;
   private startedHandler:
     | ((payload: ActionEventPayload) => Promise<void>)
     | null = null;
@@ -77,15 +111,35 @@ export class ActionSpy {
     | ((payload: ActionEventPayload) => Promise<void>)
     | null = null;
 
+  /** Pending waiters: resolved when a matching completed action arrives. */
+  private waiters: Array<{
+    normalizedName: string;
+    resolve: (action: ActionSpyCall) => void;
+  }> = [];
+
   constructor(roomIdFilter?: UUID) {
     this.roomIdFilter = roomIdFilter ?? null;
   }
 
+  /**
+   * Restrict captured events to a specific room. Pass `null` to clear the
+   * filter and capture every action across the runtime.
+   */
   setRoomFilter(roomId: UUID | null): void {
     this.roomIdFilter = roomId;
   }
 
+  /**
+   * Subscribe to ACTION_STARTED and ACTION_COMPLETED events on the runtime.
+   * If a runtime is already attached, it is detached first.
+   */
   attach(runtime: IAgentRuntime): void {
+    if (this.attachedRuntime) {
+      this.detach();
+    }
+
+    this.attachedRuntime = runtime;
+
     this.startedHandler = async (payload: ActionEventPayload) => {
       if (this.roomIdFilter && payload.roomId !== this.roomIdFilter) {
         return;
@@ -105,7 +159,7 @@ export class ActionSpy {
       if (this.roomIdFilter && payload.roomId !== this.roomIdFilter) {
         return;
       }
-      this.completed.push({
+      const call: ActionSpyCall = {
         phase: "completed",
         actionName: extractActionName(payload),
         actionStatus: payload.content?.actionStatus as string | undefined,
@@ -115,35 +169,55 @@ export class ActionSpy {
         roomId: payload.roomId,
         timestamp: Date.now(),
         payload,
-      });
+      };
+      this.completed.push(call);
+      this.resolveWaiters(call);
     };
     runtime.registerEvent(EventType.ACTION_STARTED, this.startedHandler);
     runtime.registerEvent(EventType.ACTION_COMPLETED, this.completedHandler);
   }
 
-  detach(runtime: IAgentRuntime): void {
+  /**
+   * Unsubscribe from the runtime's event bus. The `runtime` argument is
+   * optional; if omitted, the runtime captured at `attach()` time is used.
+   * Safe to call when not attached.
+   */
+  detach(runtime?: IAgentRuntime): void {
+    const target = runtime ?? this.attachedRuntime;
+    if (!target) return;
     if (this.startedHandler) {
-      runtime.unregisterEvent(EventType.ACTION_STARTED, this.startedHandler);
+      target.unregisterEvent(EventType.ACTION_STARTED, this.startedHandler);
       this.startedHandler = null;
     }
     if (this.completedHandler) {
-      runtime.unregisterEvent(
-        EventType.ACTION_COMPLETED,
-        this.completedHandler,
-      );
+      target.unregisterEvent(EventType.ACTION_COMPLETED, this.completedHandler);
       this.completedHandler = null;
     }
+    this.attachedRuntime = null;
   }
 
+  /** Clear all captured calls and pending waiters. */
   reset(): void {
     this.started = [];
     this.completed = [];
+    this.waiters = [];
   }
 
+  /** Alias for `reset()` retained for callers that used the milady API. */
+  clear(): void {
+    this.reset();
+  }
+
+  /** All captured calls (started + completed) sorted by timestamp ascending. */
   getCalls(): ActionSpyCall[] {
     return [...this.started, ...this.completed].sort(
       (a, b) => a.timestamp - b.timestamp,
     );
+  }
+
+  /** Alias for `getCalls()` retained for callers that used the milady API. */
+  getActions(): ActionSpyCall[] {
+    return this.getCalls();
   }
 
   getStartedCalls(): ActionSpyCall[] {
@@ -154,17 +228,80 @@ export class ActionSpy {
     return [...this.completed];
   }
 
-  wasActionCalled(name: string): boolean {
-    const target = normalize(name);
-    return this.completed.some((c) => normalize(c.actionName) === target);
+  /** Alias for `getCompletedCalls()` for milady-API compatibility. */
+  getCompletedActions(): ActionSpyCall[] {
+    return this.getCompletedCalls();
   }
 
+  /** True if any started or completed call matches the given action name. */
+  wasActionCalled(name: string): boolean {
+    const target = normalize(name);
+    return (
+      this.started.some((c) => normalize(c.actionName) === target) ||
+      this.completed.some((c) => normalize(c.actionName) === target)
+    );
+  }
+
+  /** All matching calls (started + completed) for a given action name. */
   getActionCalls(name: string): ActionSpyCall[] {
     const target = normalize(name);
     return this.getCalls().filter((c) => normalize(c.actionName) === target);
   }
+
+  /**
+   * Return a promise that resolves when a completed action with the given
+   * name is captured, or rejects after `timeoutMs` milliseconds. If a
+   * matching completed action already exists in the buffer, resolves
+   * immediately.
+   */
+  waitForAction(name: string, timeoutMs = 10_000): Promise<ActionSpyCall> {
+    const normalized = normalize(name);
+
+    const existing = this.completed.find(
+      (c) => normalize(c.actionName) === normalized,
+    );
+    if (existing) {
+      return Promise.resolve(existing);
+    }
+
+    return new Promise<ActionSpyCall>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout>;
+      const wrappedResolve = (action: ActionSpyCall) => {
+        clearTimeout(timer);
+        resolve(action);
+      };
+
+      timer = setTimeout(() => {
+        const idx = this.waiters.findIndex((w) => w.resolve === wrappedResolve);
+        if (idx !== -1) this.waiters.splice(idx, 1);
+        reject(
+          new Error(
+            `ActionSpy: timed out waiting for action "${name}" after ${timeoutMs}ms`,
+          ),
+        );
+      }, timeoutMs);
+
+      this.waiters.push({
+        normalizedName: normalized,
+        resolve: wrappedResolve,
+      });
+    });
+  }
+
+  private resolveWaiters(action: ActionSpyCall): void {
+    const normalized = normalize(action.actionName);
+    if (this.waiters.length === 0) return;
+    const remaining: typeof this.waiters = [];
+    const matched: typeof this.waiters = [];
+    for (const w of this.waiters) {
+      if (w.normalizedName === normalized) matched.push(w);
+      else remaining.push(w);
+    }
+    this.waiters = remaining;
+    for (const w of matched) w.resolve(action);
+  }
 }
 
-export function createActionSpy(): ActionSpy {
-  return new ActionSpy();
+export function createActionSpy(roomIdFilter?: UUID): ActionSpy {
+  return new ActionSpy(roomIdFilter);
 }

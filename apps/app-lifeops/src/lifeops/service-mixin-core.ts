@@ -9,7 +9,7 @@ import {
   type BrowserBridgeCompanionStatus,
   type BrowserBridgeSettings,
   type UpsertBrowserBridgeCompanionRequest,
-} from "@elizaos/plugin-browser-bridge";
+} from "../../../../plugins/plugin-browser-bridge/src/index.js";
 import type {
   LifeOpsAuditEvent,
   LifeOpsAuditEventType,

@@ -283,7 +283,16 @@ async function runSubscriptionsAction(
       text:
         planner.response ??
         "Tell me whether you want a subscription audit, a cancellation, or a status check.",
-      data: { error: "AMBIGUOUS_SUBSCRIPTIONS_REQUEST" },
+      values: {
+        success: false,
+        error: "AMBIGUOUS_SUBSCRIPTIONS_REQUEST",
+        requiresConfirmation: true,
+      },
+      data: {
+        actionName: ACTION_NAME,
+        error: "AMBIGUOUS_SUBSCRIPTIONS_REQUEST",
+        requiresConfirmation: true,
+      },
     };
   }
 

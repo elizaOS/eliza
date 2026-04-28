@@ -601,6 +601,42 @@ async function seedBenchmarkCaseFixtures(
       "seedBenchmarkCaseFixtures: google grant seed skipped",
     );
   }
+
+  // 4) Seed an X (Twitter) connector grant + minimal env credentials so
+  //    X_READ's `validate()` resolves to true. Local-mode capability resolution
+  //    requires both a grant row and OAuth env credentials before
+  //    `feedRead`/`dmRead` are reported as available.
+  try {
+    process.env.TWITTER_API_KEY = process.env.TWITTER_API_KEY ?? "bench-x-key";
+    process.env.TWITTER_API_SECRET_KEY =
+      process.env.TWITTER_API_SECRET_KEY ?? "bench-x-secret";
+    process.env.TWITTER_ACCESS_TOKEN =
+      process.env.TWITTER_ACCESS_TOKEN ?? "bench-x-token";
+    process.env.TWITTER_ACCESS_TOKEN_SECRET =
+      process.env.TWITTER_ACCESS_TOKEN_SECRET ?? "bench-x-token-secret";
+    process.env.TWITTER_USER_ID =
+      process.env.TWITTER_USER_ID ?? "bench-x-user-id";
+
+    const seedModule = (await import(
+      // @ts-expect-error — path resolved at runtime relative to repo root
+      "../../../../../test/mocks/helpers/seed-grants.ts"
+    )) as {
+      seedXConnectorGrant: (
+        runtime: AgentRuntime,
+        opts?: { side?: "owner" | "agent"; handle?: string },
+      ) => Promise<void>;
+    };
+    await seedModule.seedXConnectorGrant(runtime, { side: "owner" });
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, agentId: runtime.agentId },
+      "seedBenchmarkCaseFixtures: x connector grant seeded",
+    );
+  } catch (error) {
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, error: String(error) },
+      "seedBenchmarkCaseFixtures: x grant seed skipped",
+    );
+  }
 }
 
 /**
@@ -810,127 +846,6 @@ async function runSingleCaseWithRecording(
   }
 }
 
-async function runSingleCase(
-  runtime: AgentRuntime,
-  tc: ActionBenchmarkCase,
-  timeoutMs: number,
-  registeredActions: string[],
-): Promise<ActionBenchmarkResult> {
-  const started = Date.now();
-  const entityId = resolveBenchmarkOwnerEntityId(runtime);
-  const harness = new ConversationHarness(runtime, {
-    userId: entityId,
-    userName: BENCHMARK_USER_NAME,
-    source: BENCHMARK_SOURCE,
-  });
-
-  try {
-    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
-    await seedBenchmarkCaseFixtures(runtime, entityId);
-    await ensureBenchmarkConversation({
-      runtime,
-      entityId,
-      roomId,
-      worldId,
-    });
-
-    runtime.registerPipelineHook({
-      id: hookId,
-      phase: "outgoing_before_deliver",
-      handler: (_runtime, ctx) => {
-        if (ctx.phase !== "outgoing_before_deliver") return;
-        if (ctx.roomId !== roomId) return;
-        if (capture.firstAction !== null) return;
-        const name = ctx.actionName;
-        if (typeof name === "string" && name.trim().length > 0) {
-          capture.firstAction = name;
-        }
-      },
-    });
-
-    const message = createMessageMemory({
-      id: crypto.randomUUID() as UUID,
-      entityId,
-      roomId: harness.roomId,
-      content: {
-        text: tc.userMessage,
-        source: BENCHMARK_SOURCE,
-        channelType: ChannelType.DM,
-      },
-    });
-
-    const filteredActions = await computeFilteredActions(runtime, message);
-
-    const turn = await harness.send(tc.userMessage, { timeoutMs });
-    const startedAction = pickObservedAction(
-      turn.actions,
-      "started",
-      tc.expectedAction,
-      tc.acceptableActions,
-    );
-    const completedAction = pickObservedAction(
-      turn.actions,
-      "completed",
-      tc.expectedAction,
-      tc.acceptableActions,
-      { requireSuccessfulCompletion: true },
-    );
-    const actualAction = completedAction ?? startedAction;
-    const pass = caseMatches(
-      actualAction,
-      tc.expectedAction,
-      tc.acceptableActions,
-    );
-    const failureMode = determineFailureMode({
-      pass,
-      expected: tc.expectedAction,
-      actual: actualAction,
-      planned: actualAction,
-      filtered: filteredActions,
-      hadError: false,
-    });
-
-    return {
-      case: tc,
-      plannedAction: actualAction,
-      plannedActions: actualAction ? [actualAction] : [],
-      startedAction,
-      completedAction,
-      actualAction,
-      selectionPass: pass,
-      executionPass: pass,
-      pass,
-      latencyMs: Date.now() - started,
-      failureMode,
-      filteredActions,
-      registeredActions,
-      responseText:
-        typeof turn.responseText === "string"
-          ? turn.responseText.slice(0, 200)
-          : undefined,
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      case: tc,
-      plannedAction: null,
-      plannedActions: [],
-      startedAction: null,
-      completedAction: null,
-      actualAction: null,
-      selectionPass: false,
-      executionPass: false,
-      pass: false,
-      latencyMs: Date.now() - started,
-      error: message,
-      failureMode: "error",
-      registeredActions,
-    };
-  } finally {
-    await harness.cleanup();
-  }
-}
-
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.min(
@@ -967,39 +882,25 @@ export async function runActionSelectionBenchmark(
       const handle = await opts.createCaseRuntime();
       const registeredActions = handle.runtime.actions.map((a) => a.name);
       try {
-        return captureEnabled
-          ? await runSingleCaseWithRecording(
-              handle.runtime,
-              tc,
-              timeoutMs,
-              trajectoryDir,
-              registeredActions,
-            )
-          : await runSingleCase(
-              handle.runtime,
-              tc,
-              timeoutMs,
-              registeredActions,
-            );
+        return await runSingleCaseWithRecording(
+          handle.runtime,
+          tc,
+          timeoutMs,
+          captureEnabled ? trajectoryDir : undefined,
+          registeredActions,
+        );
       } finally {
         await handle.cleanup();
       }
     }
 
-    return captureEnabled
-      ? runSingleCaseWithRecording(
-          opts.runtime as AgentRuntime,
-          tc,
-          timeoutMs,
-          trajectoryDir,
-          sharedRegisteredActions,
-        )
-      : runSingleCase(
-          opts.runtime as AgentRuntime,
-          tc,
-          timeoutMs,
-          sharedRegisteredActions,
-        );
+    return runSingleCaseWithRecording(
+      opts.runtime as AgentRuntime,
+      tc,
+      timeoutMs,
+      captureEnabled ? trajectoryDir : undefined,
+      sharedRegisteredActions,
+    );
   };
 
   const runOneWithRetries = async (

@@ -1,0 +1,21 @@
+# actionlint configuration
+# https://github.com/rhysd/actionlint/blob/main/docs/config.md
+
+# All jobs run on GitHub-hosted runners (ubuntu-24.04 / ubuntu-24.04-arm /
+# windows-2025 / macos-15 etc.). If self-hosted runners are introduced,
+# declare their labels here.
+
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      # Optional signing secrets — linter cannot verify repo secrets exist
+      - "Context access might be invalid:.+"
+  .github/workflows/release-electrobun.yml:
+    ignore:
+      - "Context access might be invalid:.+"
+  .github/workflows/android-release.yml:
+    ignore:
+      - "Context access might be invalid:.+"
+  .github/workflows/apple-store-release.yml:
+    ignore:
+      - "Context access might be invalid:.+"
