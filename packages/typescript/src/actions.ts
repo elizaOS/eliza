@@ -212,7 +212,11 @@ function shuffleActions<T>(items: T[], seed = "actions"): T[] {
 
 function formatActionSimiles(action: Action): string | null {
 	const similes = [
-		...new Set((action.similes ?? []).map((simile) => simile.trim())),
+		...new Set(
+			(action.similes ?? [])
+				.filter((simile): simile is string => typeof simile === "string")
+				.map((simile) => simile.trim()),
+		),
 	].filter((simile) => simile.length > 0);
 
 	if (similes.length === 0) {
@@ -224,7 +228,11 @@ function formatActionSimiles(action: Action): string | null {
 
 function formatActionTags(action: Action): string | null {
 	const tags = [
-		...new Set((action.tags ?? []).map((tag) => tag.trim())),
+		...new Set(
+			(action.tags ?? [])
+				.filter((tag): tag is string => typeof tag === "string")
+				.map((tag) => tag.trim()),
+		),
 	].filter((tag) => tag.length > 0 && tag !== "always-include");
 
 	if (tags.length === 0) {
