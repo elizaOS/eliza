@@ -907,4 +907,3 @@ export async function hasPendingIntent(
 	const existing = await findExistingIntentTask(runtime, roomId);
 	return existing !== null;
 }
-
