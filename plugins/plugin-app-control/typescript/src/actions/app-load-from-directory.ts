@@ -17,6 +17,11 @@ import type {
 import { logger } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import {
+	isProtected,
+	type ProtectedAppsResolution,
+	resolveProtectedApps,
+} from "../protected-apps.js";
+import {
 	APP_REGISTRY_SERVICE_TYPE,
 	type AppRegistryEntry,
 	type AppRegistryService,
@@ -108,6 +113,29 @@ export interface RunLoadFromDirectoryInput {
 	message: Memory;
 	options?: Record<string, unknown>;
 	callback?: HandlerCallback;
+	repoRoot: string;
+}
+
+interface RejectedApp {
+	app: DiscoveredApp;
+	matchedOn: string;
+}
+
+function findProtectedMatch(
+	app: DiscoveredApp,
+	resolution: ProtectedAppsResolution,
+): string | null {
+	const candidates: Array<{ kind: string; value: string }> = [
+		{ kind: "packageName", value: app.packageName },
+		{ kind: "slug", value: app.slug },
+		...app.aliases.map((alias) => ({ kind: "alias", value: alias })),
+	];
+	for (const candidate of candidates) {
+		if (isProtected(candidate.value, resolution)) {
+			return `${candidate.kind}=${candidate.value}`;
+		}
+	}
+	return null;
 }
 
 export async function runLoadFromDirectory({
@@ -115,6 +143,7 @@ export async function runLoadFromDirectory({
 	message,
 	options,
 	callback,
+	repoRoot,
 }: RunLoadFromDirectoryInput): Promise<ActionResult> {
 	const directory = readStringOption(options, "directory");
 	if (!directory) {
@@ -146,13 +175,25 @@ export async function runLoadFromDirectory({
 		return { success: true, text, data: { directory, registered: [] } };
 	}
 
-	const registered: AppRegistryEntry[] = [];
+	const protectedApps = await resolveProtectedApps(repoRoot);
 	const requesterEntityId =
 		typeof message.entityId === "string" ? message.entityId : null;
 	const requesterRoomId =
 		typeof message.roomId === "string" ? message.roomId : null;
 
+	const registered: AppRegistryEntry[] = [];
+	const rejected: RejectedApp[] = [];
+
 	for (const app of discovered) {
+		const matchedOn = findProtectedMatch(app, protectedApps);
+		if (matchedOn !== null) {
+			rejected.push({ app, matchedOn });
+			logger.warn(
+				`[plugin-app-control][protected-apps] rejected name=${app.packageName} directory=${app.directory} matched=${matchedOn} requesterEntityId=${requesterEntityId ?? "null"} requesterRoomId=${requesterRoomId ?? "null"}`,
+			);
+			continue;
+		}
+
 		const entry: AppRegistryEntry = {
 			slug: app.slug,
 			canonicalName: app.packageName,
@@ -168,15 +209,28 @@ export async function runLoadFromDirectory({
 	}
 
 	logger.info(
-		`[plugin-app-control] APP/load_from_directory ${directory} registered=${registered.length}`,
+		`[plugin-app-control] APP/load_from_directory ${directory} registered=${registered.length} rejected=${rejected.length}`,
 	);
 
-	const lines = [
-		`Registered ${registered.length} app${registered.length === 1 ? "" : "s"} from ${directory}:`,
-		...registered.map((r) => `  - ${r.displayName} (${r.canonicalName})`),
-		"",
-		"Apps are registered only — none were launched.",
-	];
+	const lines: string[] = [];
+	if (registered.length > 0) {
+		lines.push(
+			`Registered ${registered.length} app${registered.length === 1 ? "" : "s"} from ${directory}:`,
+			...registered.map((r) => `  - ${r.displayName} (${r.canonicalName})`),
+		);
+	} else {
+		lines.push(`Registered 0 apps from ${directory}.`);
+	}
+	if (rejected.length > 0) {
+		const names = rejected.map((r) => r.app.packageName).join(", ");
+		lines.push(
+			"",
+			`Skipped ${rejected.length} protected app${rejected.length === 1 ? "" : "s"}: ${names} (cannot override first-party apps).`,
+		);
+	}
+	if (registered.length > 0) {
+		lines.push("", "Apps are registered only — none were launched.");
+	}
 	const text = lines.join("\n");
 	await callback?.({ text });
 
@@ -187,7 +241,16 @@ export async function runLoadFromDirectory({
 			mode: "load_from_directory",
 			directory,
 			registeredCount: registered.length,
+			rejectedCount: rejected.length,
 		},
-		data: { directory, registered },
+		data: {
+			directory,
+			registered,
+			rejected: rejected.map((r) => ({
+				packageName: r.app.packageName,
+				directory: r.app.directory,
+				matchedOn: r.matchedOn,
+			})),
+		},
 	};
 }

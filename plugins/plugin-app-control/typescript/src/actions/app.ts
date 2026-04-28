@@ -307,6 +307,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 						message,
 						options,
 						callback,
+						repoRoot,
 					});
 				case "create":
 					return runCreate({
