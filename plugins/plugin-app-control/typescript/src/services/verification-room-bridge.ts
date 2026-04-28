@@ -36,8 +36,7 @@ import { randomUUID } from "node:crypto";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 
-export const VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE =
-	"verification-room-bridge";
+export const VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE = "verification-room-bridge";
 
 const APP_VERIFICATION_SERVICE = "app-verification";
 const VERIFY_APP_METHOD = "verifyApp";
@@ -76,9 +75,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readString(record: Record<string, unknown>, key: string): string | undefined {
+function readString(
+	record: Record<string, unknown>,
+	key: string,
+): string | undefined {
 	const value = record[key];
-	return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+	return typeof value === "string" && value.trim().length > 0
+		? value
+		: undefined;
 }
 
 function readNumber(
@@ -86,7 +90,9 @@ function readNumber(
 	key: string,
 ): number | undefined {
 	const value = record[key];
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+	return typeof value === "number" && Number.isFinite(value)
+		? value
+		: undefined;
 }
 
 /**
@@ -118,10 +124,13 @@ function decodeEvent(event: SwarmEventLike): BridgeEventPayload | null {
 		return null;
 	}
 
-	const params = isRecord(validator.params) ? validator.params : null;
+	// Validator params live on the `verification` payload (sibling of the
+	// `validator` descriptor) — that's how swarm-decision-loop.ts emits them.
+	const params = isRecord(verification.params) ? verification.params : null;
 	if (!params) return null;
+	const method = validator.method;
 	const targetName =
-		validator.method === VERIFY_APP_METHOD
+		method === VERIFY_APP_METHOD
 			? readString(params, "appName")
 			: readString(params, "pluginName");
 	if (!targetName) return null;
@@ -135,7 +144,7 @@ function decodeEvent(event: SwarmEventLike): BridgeEventPayload | null {
 	return {
 		originRoomId,
 		verdict,
-		method: validator.method,
+		method,
 		targetName,
 		label: readString(event.data, "label"),
 		workdir: readString(event.data, "workdir"),
