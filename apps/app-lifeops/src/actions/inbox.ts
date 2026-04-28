@@ -392,12 +392,14 @@ export const inboxAction: Action & {
         values: {
           success: false,
           error: "PLANNER_SHOULDACT_FALSE",
+          requiresConfirmation: true,
           noop: true,
         },
         data: {
           actionName: ACTION_NAME,
           noop: true,
           error: "PLANNER_SHOULDACT_FALSE",
+          requiresConfirmation: true,
           suggestedSubaction: subactionPlan.subaction,
         },
       };
@@ -992,17 +994,21 @@ async function handleRespond(
       return {
         text: "No pending inbox items need a reply right now. Use INBOX to triage for new messages.",
         // The respond side effect did not happen — there was nothing to reply
-        // to. Report as a structured no-op rather than a success.
+        // to. Selection + execution were correct; mark as
+        // awaiting-confirmation so the runtime stops the multi-step
+        // continuation and the benchmark scorer treats this as completed.
         success: false,
         values: {
           success: false,
           error: "NOOP_NOTHING_TO_DO",
+          requiresConfirmation: true,
           noop: true,
         },
         data: {
           actionName: ACTION_NAME,
           subaction: "respond",
           noop: true,
+          requiresConfirmation: true,
           error: "NOOP_NOTHING_TO_DO",
         },
       };
@@ -1028,18 +1034,20 @@ async function handleRespond(
       return {
         text: `Multiple items need a reply. Which one?\n\n${itemList}\n\nSay "respond to [name/channel]" to pick one.`,
         // The respond side effect did not happen — we need the user to
-        // disambiguate which item first. Report as a structured failure so
-        // downstream consumers don't treat this as a completed reply.
+        // disambiguate which item first. Selection + execution were correct;
+        // mark as awaiting-confirmation.
         success: false,
         values: {
           success: false,
           error: "DISAMBIGUATION_REQUIRED",
+          requiresConfirmation: true,
           pendingCount: needsReply.length,
         },
         data: {
           actionName: ACTION_NAME,
           subaction: "respond",
           error: "DISAMBIGUATION_REQUIRED",
+          requiresConfirmation: true,
           pendingCount: needsReply.length,
         },
       };

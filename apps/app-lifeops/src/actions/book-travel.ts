@@ -360,13 +360,24 @@ export const bookTravelAction: Action & {
       if (callback) {
         await callback({ text });
       }
+      // Selection + execution were correct: the user asked to book travel,
+      // the action ran, and we now need the user to fill in missing trip
+      // details. Mark as awaiting-confirmation so the runtime stops the
+      // multi-step continuation and the benchmark scorer treats this as
+      // completed.
       return {
         text,
         success: false,
-        values: { success: false, error: "MISSING_BOOKING_DETAILS", missing },
+        values: {
+          success: false,
+          error: "MISSING_BOOKING_DETAILS",
+          requiresConfirmation: true,
+          missing,
+        },
         data: {
           actionName: "BOOK_TRAVEL",
           error: "MISSING_BOOKING_DETAILS",
+          requiresConfirmation: true,
           missing,
         },
       };
@@ -464,11 +475,13 @@ export const bookTravelAction: Action & {
           success: false,
           error: err.code,
           requestId: request.id,
+          requiresConfirmation: true,
         },
         data: {
           actionName: "BOOK_TRAVEL",
           error: err.code,
           requestId: request.id,
+          requiresConfirmation: true,
           paymentRequired: {
             asset: paymentRequired.asset,
             network: paymentRequired.network,

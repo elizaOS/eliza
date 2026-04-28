@@ -100,11 +100,27 @@ function validationTerminate(
   message: string,
   extra: Record<string, unknown> = {},
 ): ActionResult {
+  // Validation terminates here when the user's intent was correctly routed to
+  // INTENT_SYNC but a required field is missing or unrecognized — the action
+  // ran and is now waiting on the user to fill in the gap. Mark the result as
+  // awaiting-confirmation so the runtime stops the multi-step continuation
+  // and the benchmark scorer treats this as completed.
   return {
     text: message,
     success: false,
-    values: { success: false, error, ...extra },
-    data: { actionName: ACTION_NAME, error, message, ...extra },
+    values: {
+      success: false,
+      error,
+      requiresConfirmation: true,
+      ...extra,
+    },
+    data: {
+      actionName: ACTION_NAME,
+      error,
+      message,
+      requiresConfirmation: true,
+      ...extra,
+    },
   };
 }
 

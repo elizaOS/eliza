@@ -331,15 +331,24 @@ async function runSubscriptionsAction(
         summary.cancellation.status === "unsupported_surface" &&
         typeof summary.cancellation.error === "string" &&
         summary.cancellation.error.startsWith(PLAYBOOK_NOT_IMPLEMENTED_ERROR);
+      // Cancellation flows that legitimately stop at a "needs human" handoff
+      // (awaiting confirmation, MFA, retention offer, sign-in, no automated
+      // playbook yet, etc.) are NOT execution failures: the action correctly
+      // reached its terminal pending-confirmation state. Surface that to the
+      // runtime + benchmark scorer via `requiresConfirmation`.
+      const needsHumanHandoff =
+        browserTaskData(summary).needsHuman === true || playbookNotImplemented;
       return {
         success:
           summary.cancellation.status !== "failed" &&
           summary.cancellation.status !== "unsupported_surface",
         text: service.summarizeSubscriptionCancellation(summary),
+        ...(needsHumanHandoff ? { values: { requiresConfirmation: true } } : {}),
         data: {
           cancellation: summary.cancellation,
           candidate: summary.candidate,
           browserTask: browserTaskData(summary),
+          ...(needsHumanHandoff ? { requiresConfirmation: true } : {}),
           ...(playbookNotImplemented
             ? {
                 error: PLAYBOOK_NOT_IMPLEMENTED_ERROR,
