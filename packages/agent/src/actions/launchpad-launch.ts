@@ -30,7 +30,7 @@ import {
   type GeneratedTokenMetadata,
 } from "../services/launchpads/metadata-generator.js";
 import {
-  flapShDevnetProfile,
+  flapShTestnetProfile,
   flapShMainnetProfile,
 } from "../services/launchpads/profiles/flap-sh.js";
 import {
@@ -46,7 +46,7 @@ type LaunchpadKey =
   | "four-meme"
   | "four-meme:testnet"
   | "flap-sh"
-  | "flap-sh:devnet";
+  | "flap-sh:testnet";
 
 interface LaunchpadLaunchParameters {
   /** Which launchpad to drive. */
@@ -73,8 +73,8 @@ function resolveProfile(key: LaunchpadKey): LaunchpadProfile {
       return fourMemeTestnetProfile;
     case "flap-sh":
       return flapShMainnetProfile;
-    case "flap-sh:devnet":
-      return flapShDevnetProfile;
+    case "flap-sh:testnet":
+      return flapShTestnetProfile;
   }
 }
 
@@ -96,7 +96,7 @@ export const launchpadLaunchAction: Action = {
   name: "LAUNCHPAD_LAUNCH",
   similes: ["LAUNCH_TOKEN", "CREATE_MEME_COIN", "LAUNCH_MEME", "LAUNCH_COIN"],
   description:
-    "Drive an in-app browser tab through a launchpad (four.meme on BNB or flap.sh on Solana) to launch a token while the user watches. Generates token metadata + image, fills the form with realistic cursor movement, and stops at the wallet confirmation sheet — the user approves each transaction. Use dryRun: 'stop-before-tx' for testnet/dev runs.",
+    "Drive an in-app browser tab through a launchpad (four.meme or flap.sh, both on BNB Chain) to launch a token while the user watches. Generates token metadata + image, fills the form with realistic cursor movement, and stops at the wallet confirmation sheet — the user approves each transaction. Use dryRun: 'stop-before-tx' for testnet runs.",
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasRoleAccess(runtime, message, "USER"),
   handler: async (runtime, message, _state, options) => {
@@ -106,7 +106,7 @@ export const launchpadLaunchAction: Action = {
       | undefined;
     if (!params?.launchpad) {
       return {
-        text: "LAUNCHPAD_LAUNCH requires a `launchpad` parameter (one of four-meme, four-meme:testnet, flap-sh, flap-sh:devnet).",
+        text: "LAUNCHPAD_LAUNCH requires a `launchpad` parameter (one of four-meme, four-meme:testnet, flap-sh, flap-sh:testnet).",
         success: false,
         values: { success: false, error: "LAUNCHPAD_LAUNCH_BAD_PARAMS" },
       };
@@ -228,11 +228,11 @@ export const launchpadLaunchAction: Action = {
     {
       name: "launchpad",
       description:
-        "Which launchpad to drive: four-meme, four-meme:testnet, flap-sh, flap-sh:devnet",
+        "Which launchpad to drive: four-meme, four-meme:testnet, flap-sh, flap-sh:testnet",
       required: true,
       schema: {
         type: "string" as const,
-        enum: ["four-meme", "four-meme:testnet", "flap-sh", "flap-sh:devnet"],
+        enum: ["four-meme", "four-meme:testnet", "flap-sh", "flap-sh:testnet"],
       },
     },
     {
