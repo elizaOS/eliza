@@ -1,8 +1,7 @@
 
 
 import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
+import { useNavigate } from "react-router-dom";
 import { Copy, Check, LogOut, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +28,7 @@ const IMESSAGE_GREETING = "Hey Eliza, what can you do?";
  * Telegram bot username for direct link
  */
 function getTelegramBotUsername(): string {
-  return process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || "ElizaCloudBot";
+  return import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "ElizaCloudBot";
 }
 
 function TelegramIcon({ className }: { className?: string }) {
@@ -101,11 +100,11 @@ function DiscordIcon({ className }: { className?: string }) {
  * WhatsApp number for Eliza
  */
 function getWhatsAppNumber(): string {
-  return process.env.NEXT_PUBLIC_WHATSAPP_PHONE_NUMBER || IMESSAGE_PHONE_NUMBER;
+  return import.meta.env.VITE_WHATSAPP_PHONE_NUMBER || IMESSAGE_PHONE_NUMBER;
 }
 
 function getDiscordBotApplicationId(): string {
-  return (process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID || "").trim();
+  return (import.meta.env.VITE_DISCORD_CLIENT_ID || "").trim();
 }
 
 /**
@@ -143,7 +142,7 @@ function CrossPlatformNote({ telegramId, discordId, whatsappId, phoneNumber }: {
 }
 
 export default function ConnectedPage() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { user, organization, isAuthenticated, isLoading, logout, linkPhone } = useAuth();
   const [copiedPhone, setCopiedPhone] = useState(false);
   const [copiedTelegram, setCopiedTelegram] = useState(false);
@@ -195,9 +194,9 @@ export default function ConnectedPage() {
    */
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace("/login");
+      navigate("/login", { replace: true });
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, navigate]);
 
   /**
    * Copy phone number to clipboard
@@ -232,7 +231,7 @@ export default function ConnectedPage() {
    */
   const handleLogout = () => {
     logout();
-    router.push("/login");
+    navigate("/login");
   };
 
   /**
@@ -313,7 +312,7 @@ export default function ConnectedPage() {
           <DropdownMenuTrigger asChild>
             <button className="focus:outline-none focus:ring-2 focus:ring-white/20 rounded-full">
               {user.avatar ? (
-                <Image
+                <img
                   src={user.avatar}
                   alt={displayName}
                   width={36}
@@ -354,7 +353,7 @@ export default function ConnectedPage() {
       <div className="w-full max-w-[440px] flex flex-col gap-8">
         {/* Eliza profile image */}
         <div className="flex flex-col items-center">
-          <Image
+          <img
             src="/eliza-app-profile-image.png"
             alt="Eliza"
             width={145}
@@ -413,7 +412,7 @@ export default function ConnectedPage() {
           ) : (
             <Button
               type="button"
-              onClick={() => router.push("/get-started?method=telegram&link=true")}
+              onClick={() => navigate("/get-started?method=telegram&link=true")}
               className="w-full h-[72px] rounded-2xl bg-[#229ED9]/10 hover:bg-[#229ED9]/20 text-white border border-[#229ED9]/30 gap-4 justify-start px-5"
             >
               <div className="w-8 h-8 shrink-0 flex items-center justify-center">
@@ -595,7 +594,7 @@ export default function ConnectedPage() {
                 size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  router.push("/get-started?guide=discord");
+                  navigate("/get-started?guide=discord");
                 }}
                 className="shrink-0 text-white/40 hover:text-white hover:bg-white/10"
                 title="Setup guide"
@@ -606,7 +605,7 @@ export default function ConnectedPage() {
           ) : (
             <Button
               type="button"
-              onClick={() => router.push("/get-started?method=discord&link=true")}
+              onClick={() => navigate("/get-started?method=discord&link=true")}
               className="w-full h-[72px] rounded-2xl bg-[#5865F2]/10 hover:bg-[#5865F2]/20 text-white border border-[#5865F2]/30 gap-4 justify-start px-5"
             >
               <div className="w-8 h-8 shrink-0 flex items-center justify-center">
