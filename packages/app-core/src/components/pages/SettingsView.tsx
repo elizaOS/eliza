@@ -42,6 +42,7 @@ import {
   useState,
 } from "react";
 import {
+  consumePendingFocusProvider,
   SETTINGS_FOCUS_CONNECTOR_EVENT,
   type SettingsFocusConnectorDetail,
   useApp,
@@ -727,28 +728,60 @@ export function SettingsView({
   // (`[data-connector="<provider>"]`) into view and briefly flash it.
   // Providers without a wrapper (e.g. Slack today) gracefully fall through —
   // the section header is still in view.
+  //
+  // Two delivery paths handled here so neither races React's render scheduler:
+  //   1) The dispatcher fires a window event — the listener below catches it
+  //      whenever SettingsView is already mounted at dispatch time.
+  //   2) The dispatcher also stashes the provider in a module-scoped ref. On
+  //      mount, this effect drains it via `consumePendingFocusProvider()` so
+  //      a click that mounted SettingsView (e.g. AutomationsView's "Connect
+  //      Gmail →" button switching to the settings tab) still focuses the
+  //      panel even though the event fired before the listener registered.
+  // Stale-flash guard: keep the latest setTimeout id in a ref and clear the
+  // previous one on each new focus so a double-click does not clip the
+  // second flash short.
+  const flashTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(
+    null,
+  );
   useEffect(() => {
-    function handle(event: Event) {
-      const detail = (event as CustomEvent<SettingsFocusConnectorDetail>).detail;
-      if (!detail?.provider) return;
+    function focusProvider(provider: string) {
+      if (!provider) return;
       setActiveSection("integrations");
       queueContentAlignment("integrations");
       requestAnimationFrame(() => {
         const node = document.querySelector<HTMLElement>(
-          `[data-connector="${CSS.escape(detail.provider)}"]`,
+          `[data-connector="${CSS.escape(provider)}"]`,
         );
         if (!node) return;
         node.scrollIntoView({ behavior: "smooth", block: "start" });
         node.classList.add("connector-flash");
-        window.setTimeout(
-          () => node.classList.remove("connector-flash"),
-          1800,
-        );
+        if (flashTimerRef.current !== null) {
+          clearTimeout(flashTimerRef.current);
+        }
+        flashTimerRef.current = window.setTimeout(() => {
+          node.classList.remove("connector-flash");
+          flashTimerRef.current = null;
+        }, 1800);
       });
     }
+
+    function handle(event: Event) {
+      const detail = (event as CustomEvent<SettingsFocusConnectorDetail>).detail;
+      if (detail?.provider) focusProvider(detail.provider);
+    }
+
+    // Drain any pending provider stashed before this mount.
+    const pending = consumePendingFocusProvider();
+    if (pending) focusProvider(pending);
+
     window.addEventListener(SETTINGS_FOCUS_CONNECTOR_EVENT, handle);
-    return () =>
+    return () => {
       window.removeEventListener(SETTINGS_FOCUS_CONNECTOR_EVENT, handle);
+      if (flashTimerRef.current !== null) {
+        clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = null;
+      }
+    };
   }, [queueContentAlignment]);
 
   const handleSectionChange = useCallback(
