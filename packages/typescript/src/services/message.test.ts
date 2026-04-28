@@ -4,6 +4,7 @@ import { stringToUuid } from "../utils";
 import {
 	DefaultMessageService,
 	extractPlannerActionNames,
+	findOwnedActionCorrectionFromMetadata,
 	shouldRunMetadataActionRescue,
 } from "./message.ts";
 
@@ -238,5 +239,58 @@ describe("shouldRunMetadataActionRescue", () => {
 				actions: [42 as unknown as string, null as unknown as string, "REPLY"],
 			}),
 		).toBe(false);
+	});
+});
+
+describe("findOwnedActionCorrectionFromMetadata — explicit-intent guard", () => {
+	// Production observation (2026-04-28): a user asked the bot to "Build
+	// 'Council' at agent-home /apps/council/ ... Each persona turn is a
+	// cloud-SDK call ... debits user balance ...". The planner correctly
+	// chose CREATE_TASK (delegate to a coding sub-agent). The metadata
+	// corrector then overrode CREATE_TASK with OWNER_CALENDAR because today's
+	// date and incidental dev words ("multi turn", "api carries", "workflow",
+	// "call", "user") overlap-scored OWNER_CALENDAR's example text higher
+	// than CREATE_TASK's. The user saw "Google Calendar is not connected.
+	// Connect Google in LifeOps settings." in response to a code request.
+	//
+	// CREATE_TASK is added to EXPLICIT_INTENT_ACTIONS so the corrector
+	// returns null when the planner picked CREATE_TASK, regardless of how
+	// the keyword-overlap scorer feels about it. Same precedent as
+	// SPAWN_AGENT, the sibling delegation action.
+	const runtime = { actions: [] } as unknown as Pick<IAgentRuntime, "actions">;
+
+	it("returns null for CREATE_TASK regardless of overlap candidates", () => {
+		const message = {
+			content: {
+				text: "Build Council at agent-home /apps/council/. Multi-agent debate room — each persona turn is a cloud-SDK call, carries the affiliate header, debits user balance.",
+			},
+		} as unknown as Pick<Memory, "content">;
+		expect(
+			findOwnedActionCorrectionFromMetadata(runtime, message, {
+				actions: ["CREATE_TASK"],
+			}),
+		).toBeNull();
+	});
+
+	it("returns null for SPAWN_AGENT (sibling delegation action)", () => {
+		const message = {
+			content: { text: "spawn an agent to triage open issues by friday" },
+		} as unknown as Pick<Memory, "content">;
+		expect(
+			findOwnedActionCorrectionFromMetadata(runtime, message, {
+				actions: ["SPAWN_AGENT"],
+			}),
+		).toBeNull();
+	});
+
+	it("returns null for REPLY (filtered out by the passive-action check)", () => {
+		const message = {
+			content: { text: "what's on my calendar tuesday" },
+		} as unknown as Pick<Memory, "content">;
+		expect(
+			findOwnedActionCorrectionFromMetadata(runtime, message, {
+				actions: ["REPLY"],
+			}),
+		).toBeNull();
 	});
 });
