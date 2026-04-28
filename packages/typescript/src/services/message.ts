@@ -1344,6 +1344,12 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 		"CREATE_CRON",
 		"CREATE_RECURRING",
 		"OWNER_RELATIONSHIP",
+		// LIFE picks routine / reminder / todo / habit / goal intents that
+		// frequently mention a verb-noun pair the corrector will mis-rewrite.
+		// "remember to call mom on Sunday" → planner correctly picks LIFE
+		// (a reminder), but the corrector keyword-rescores it to
+		// CALL_EXTERNAL because of "call". Trust the planner's pick.
+		"LIFE",
 	].map(normalizeActionIdentifier),
 );
 
