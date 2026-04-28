@@ -14,12 +14,22 @@ const workflowPath = path.join(
 
 const workflowOnDisk = fs.existsSync(workflowPath);
 
+// The orchestrator-version-source contract only applies to wrapper repos that
+// disable the local eliza workspace before installing published @elizaos/*.
+// Pure elizaOS upstream checkouts run the contract directly against their own
+// workspace and don't need the submodule init / version-pin / fallback-install
+// dance — `scripts/disable-local-eliza-workspace.mjs` is the wrapper-shape
+// marker. Skip when absent.
+const wrapperShape = fs.existsSync(
+  path.join(repoRoot, "scripts", "disable-local-eliza-workspace.mjs"),
+);
+
 function workflowText() {
   return fs.readFileSync(workflowPath, "utf8");
 }
 
 describe("electrobun release workflow drift", () => {
-  it.skipIf(!workflowOnDisk)(
+  it.skipIf(!workflowOnDisk || !wrapperShape)(
     "pins the orchestrator version source before disabling local workspaces and installs fallback deps after",
     () => {
       const workflow = workflowText();
