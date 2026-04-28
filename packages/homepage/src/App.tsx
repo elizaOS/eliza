@@ -3,7 +3,8 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { AuthProvider } from "@/lib/context/auth-context";
 
-const HomePage = lazy(() => import("@/pages/home"));
+const MarketingPage = lazy(() => import("@/pages/marketing"));
+const LeaderboardPage = lazy(() => import("@/pages/leaderboard"));
 const LoginPage = lazy(() => import("@/pages/login"));
 const ConnectedPage = lazy(() => import("@/pages/connected"));
 const GetStartedPage = lazy(() => import("@/pages/get-started"));
@@ -23,7 +24,8 @@ export function App() {
         <BrowserRouter>
           <Suspense fallback={<RouteFallback />}>
             <Routes>
-              <Route path="/" element={<HomePage />} />
+              <Route path="/" element={<MarketingPage />} />
+              <Route path="/leaderboard" element={<LeaderboardPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/connected" element={<ConnectedPage />} />
               <Route path="/get-started" element={<GetStartedPage />} />
