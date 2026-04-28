@@ -2732,6 +2732,21 @@ export const lifeAction: Action & {
                 operation: "create_definition",
               },
             }),
+            // Asking the owner to fill in a missing field — selection +
+            // execution were both correct, terminal state is "needs human
+            // input". Flag so the multi-step loop breaks and the spy
+            // scores this as completed.
+            values: {
+              success: false,
+              error: "MISSING_DEFINITION_FIELD",
+              missingField: "title",
+              requiresConfirmation: true,
+            },
+            data: {
+              actionName: "LIFE",
+              missingField: "title",
+              requiresConfirmation: true,
+            },
           };
         }
         if (!cadence) {
@@ -2750,6 +2765,17 @@ export const lifeAction: Action & {
                 operation: "create_definition",
               },
             }),
+            values: {
+              success: false,
+              error: "MISSING_DEFINITION_FIELD",
+              missingField: "schedule",
+              requiresConfirmation: true,
+            },
+            data: {
+              actionName: "LIFE",
+              missingField: "schedule",
+              requiresConfirmation: true,
+            },
           };
         }
         const kind =
