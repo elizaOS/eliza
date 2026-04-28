@@ -315,6 +315,9 @@ export const bookTravelAction: Action & {
         if (callback) {
           await callback({ text });
         }
+        // FEATURE_NOT_ENABLED is a "needs setup / confirmation" terminal
+        // state — the action correctly identified what to do; the owner
+        // just needs to enable the feature (e.g. sign in to Eliza Cloud).
         return {
           text,
           success: false,
@@ -322,11 +325,13 @@ export const bookTravelAction: Action & {
             success: false,
             error: error.code,
             featureKey: error.featureKey,
+            requiresConfirmation: true,
           },
           data: {
             actionName: "BOOK_TRAVEL",
             error: error.code,
             featureKey: error.featureKey,
+            requiresConfirmation: true,
           },
         };
       }

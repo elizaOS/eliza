@@ -112,16 +112,41 @@ function readDeviceBusConfig(
   return { url, token: readString(DEVICE_BUS_TOKEN_ENV) };
 }
 
+// Errors where the action correctly reached its decision point but the
+// owner needs to fill in a missing parameter or confirm a pending request.
+// Flagging with `requiresConfirmation: true` makes the spy and runner
+// score these as completed (action ran correctly, output is "needs human
+// input"), and breaks the multi-step continuation loop.
+const AUTOFILL_NEEDS_INPUT_ERRORS = new Set([
+  "MISSING_TAB_URL",
+  "INVALID_TAB_URL",
+  "MISSING_DOMAIN",
+  "INVALID_DOMAIN",
+  "INVALID_FIELD_PURPOSE",
+  "CONFIRMATION_REQUIRED",
+  "PERSISTENCE_UNAVAILABLE",
+]);
+
 function failure(
   actionName: string,
   error: string,
   extra?: Record<string, unknown>,
 ): ActionResult {
+  const needsInput = AUTOFILL_NEEDS_INPUT_ERRORS.has(error);
   return {
     text: "",
     success: false,
-    values: { success: false, error },
-    data: { actionName, error, ...(extra ?? {}) },
+    values: {
+      success: false,
+      error,
+      ...(needsInput ? { requiresConfirmation: true } : {}),
+    },
+    data: {
+      actionName,
+      error,
+      ...(needsInput ? { requiresConfirmation: true } : {}),
+      ...(extra ?? {}),
+    },
   };
 }
 
