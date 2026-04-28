@@ -94,7 +94,7 @@ import {
 } from "@elizaos/core";
 import * as pluginAgentSkills from "@elizaos/plugin-agent-skills";
 import * as pluginAnthropic from "@elizaos/plugin-anthropic";
-import * as pluginBrowserBridge from "@elizaos/plugin-browser-bridge";
+import * as pluginBrowserBridge from "eliza/plugins/plugin-browser-bridge/src/index.js";
 import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";

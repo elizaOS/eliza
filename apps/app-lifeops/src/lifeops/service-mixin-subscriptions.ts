@@ -7,7 +7,7 @@ import type {
 import type {
   BrowserBridgeAction,
   BrowserBridgeCompanionStatus,
-} from "@elizaos/plugin-browser-bridge";
+} from "../../../../plugins/plugin-browser-bridge/src/index.js";
 import {
   createLifeOpsSubscriptionAudit,
   createLifeOpsSubscriptionCancellation,

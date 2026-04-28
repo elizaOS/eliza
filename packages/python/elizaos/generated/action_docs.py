@@ -6,7 +6,9 @@ DO NOT EDIT - Generated from packages/prompts/specs/**.
 from __future__ import annotations
 
 import json
+
 from typing import Literal, TypedDict
+
 
 JsonSchemaType = Literal["string", "number", "boolean", "object", "array"]
 ActionDocParameterExampleValue = str | int | float | bool | None
@@ -17,8 +19,8 @@ class ActionDocParameterSchema(TypedDict, total=False):
     description: str
     default: ActionDocParameterExampleValue
     enum: list[str]
-    properties: dict[str, ActionDocParameterSchema]
-    items: ActionDocParameterSchema
+    properties: dict[str, "ActionDocParameterSchema"]
+    items: "ActionDocParameterSchema"
     minimum: float
     maximum: float
     pattern: str
@@ -2831,7 +2833,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "ADD_TO_PLAYLIST",
-      "description": "Add music to a playlist. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
+      "description": "Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
       "parameters": [],
       "similes": [
         "ADD_SONG_TO_PLAYLIST",
@@ -2907,7 +2909,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "DELETE_PLAYLIST",
-      "description": "Delete a saved playlist. Works best in DMs to avoid flooding group chats.",
+      "description": "Delete a saved playlist after confirmed:true. Works best in DMs to avoid flooding group chats.",
       "parameters": [
         {
           "name": "data",
@@ -2942,7 +2944,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "DOWNLOAD_MUSIC",
-      "description": "Download music to the local library without playing it. Requires the configured music fetch service to resolve the track.",
+      "description": "Download music to the local library without playing it. Requires confirmed:true before fetching and saving.",
       "parameters": [],
       "similes": [
         "FETCH_MUSIC",
@@ -3137,7 +3139,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "LOAD_PLAYLIST",
-      "description": "Load a saved playlist and add all tracks to the queue. Works best in DMs to avoid flooding group chats.",
+      "description": "Load a saved playlist and add all tracks to the queue after confirmed:true. Works best in DMs to avoid flooding group chats.",
       "parameters": [
         {
           "name": "data",
@@ -3196,7 +3198,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "MANAGE_SHOPIFY_INVENTORY",
-      "description": "Check inventory levels, adjust stock quantities, and list store locations in Shopify.",
+      "description": "Check inventory levels and list store locations. Stock adjustments require confirmed:true.",
       "parameters": [],
       "similes": [
         "CHECK_INVENTORY",
@@ -3207,7 +3209,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "MANAGE_SHOPIFY_ORDERS",
-      "description": "List recent orders, check specific order status, and mark orders as fulfilled in Shopify.",
+      "description": "List recent orders and check order status. Fulfillment requires confirmed:true.",
       "parameters": [],
       "similes": [
         "LIST_ORDERS",
@@ -3218,7 +3220,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "MANAGE_SHOPIFY_PRODUCTS",
-      "description": "List, search, create, or update products in a connected Shopify store.",
+      "description": "List and search Shopify products. Product creation and updates require confirmed:true.",
       "parameters": [],
       "similes": [
         "LIST_PRODUCTS",
@@ -3283,7 +3285,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "PLAY_MUSIC_QUERY",
-      "description": "Handle any complex music query that requires understanding and research. Supports: artist queries (first single, latest song, similar artists, popular songs, nth album), temporal (80s, 90s, specific years), genre/mood/vibe, activities (workout, study, party), charts/trending, albums, movie/game/TV soundtracks, lyrics/topics, versions (covers, remixes, acoustic, live), and more. Uses Wikipedia, music databases, and web search to find the right music.",
+      "description": "Handle any complex music query that requires understanding and research, then queue the selected track after confirmed:true. Supports: artist queries (first single, latest song, similar artists, popular songs, nth album), temporal (80s, 90s, specific years), genre/mood/vibe, activities (workout, study, party), charts/trending, albums, movie/game/TV soundtracks, lyrics/topics, versions (covers, remixes, acoustic, live), and more. Uses Wikipedia, music databases, and web search to find the right music.",
       "parameters": [],
       "similes": [
         "SMART_PLAY",
@@ -3353,7 +3355,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "QUEUE_MUSIC",
-      "description": "Add a song to the queue for later",
+      "description": "Add a song to the queue for later after confirmed:true.",
       "parameters": [
         {
           "name": "data",
@@ -3433,7 +3435,7 @@ _ALL_ACTION_DOCS_JSON = """{
     },
     {
       "name": "SAVE_PLAYLIST",
-      "description": "Save the current music queue as a playlist for the user. Works best in DMs to avoid flooding group chats.",
+      "description": "Save the current music queue as a playlist for the user after confirmed:true. Works best in DMs to avoid flooding group chats.",
       "parameters": [
         {
           "name": "data",

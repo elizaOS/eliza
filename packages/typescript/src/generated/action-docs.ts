@@ -2586,7 +2586,7 @@ export const allActionsSpec = {
 		{
 			name: "ADD_TO_PLAYLIST",
 			description:
-				"Add music to a playlist. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
+				"Add music to a playlist after confirmed:true. If the track is not already in the library, the configured music fetch service must resolve it first. Creates the playlist if it does not exist.",
 			parameters: [],
 			similes: [
 				"ADD_SONG_TO_PLAYLIST",
@@ -2651,7 +2651,7 @@ export const allActionsSpec = {
 		{
 			name: "DELETE_PLAYLIST",
 			description:
-				"Delete a saved playlist. Works best in DMs to avoid flooding group chats.",
+				"Delete a saved playlist after confirmed:true. Works best in DMs to avoid flooding group chats.",
 			parameters: [
 				{
 					name: "data",
@@ -2683,7 +2683,7 @@ export const allActionsSpec = {
 		{
 			name: "DOWNLOAD_MUSIC",
 			description:
-				"Download music to the local library without playing it. Requires the configured music fetch service to resolve the track.",
+				"Download music to the local library without playing it. Requires confirmed:true before fetching and saving.",
 			parameters: [],
 			similes: [
 				"FETCH_MUSIC",
@@ -2860,7 +2860,7 @@ export const allActionsSpec = {
 		{
 			name: "LOAD_PLAYLIST",
 			description:
-				"Load a saved playlist and add all tracks to the queue. Works best in DMs to avoid flooding group chats.",
+				"Load a saved playlist and add all tracks to the queue after confirmed:true. Works best in DMs to avoid flooding group chats.",
 			parameters: [
 				{
 					name: "data",
@@ -2912,7 +2912,7 @@ export const allActionsSpec = {
 		{
 			name: "MANAGE_SHOPIFY_INVENTORY",
 			description:
-				"Check inventory levels, adjust stock quantities, and list store locations in Shopify.",
+				"Check inventory levels and list store locations. Stock adjustments require confirmed:true.",
 			parameters: [],
 			similes: [
 				"CHECK_INVENTORY",
@@ -2924,14 +2924,14 @@ export const allActionsSpec = {
 		{
 			name: "MANAGE_SHOPIFY_ORDERS",
 			description:
-				"List recent orders, check specific order status, and mark orders as fulfilled in Shopify.",
+				"List recent orders and check order status. Fulfillment requires confirmed:true.",
 			parameters: [],
 			similes: ["LIST_ORDERS", "CHECK_ORDERS", "FULFILL_ORDER", "ORDER_STATUS"],
 		},
 		{
 			name: "MANAGE_SHOPIFY_PRODUCTS",
 			description:
-				"List, search, create, or update products in a connected Shopify store.",
+				"List and search Shopify products. Product creation and updates require confirmed:true.",
 			parameters: [],
 			similes: [
 				"LIST_PRODUCTS",
@@ -2994,7 +2994,7 @@ export const allActionsSpec = {
 		{
 			name: "PLAY_MUSIC_QUERY",
 			description:
-				"Handle any complex music query that requires understanding and research. Supports: artist queries (first single, latest song, similar artists, popular songs, nth album), temporal (80s, 90s, specific years), genre/mood/vibe, activities (workout, study, party), charts/trending, albums, movie/game/TV soundtracks, lyrics/topics, versions (covers, remixes, acoustic, live), and more. Uses Wikipedia, music databases, and web search to find the right music.",
+				"Handle any complex music query that requires understanding and research, then queue the selected track after confirmed:true. Supports: artist queries (first single, latest song, similar artists, popular songs, nth album), temporal (80s, 90s, specific years), genre/mood/vibe, activities (workout, study, party), charts/trending, albums, movie/game/TV soundtracks, lyrics/topics, versions (covers, remixes, acoustic, live), and more. Uses Wikipedia, music databases, and web search to find the right music.",
 			parameters: [],
 			similes: [
 				"SMART_PLAY",
@@ -3061,7 +3061,7 @@ export const allActionsSpec = {
 		},
 		{
 			name: "QUEUE_MUSIC",
-			description: "Add a song to the queue for later",
+			description: "Add a song to the queue for later after confirmed:true.",
 			parameters: [
 				{
 					name: "data",
@@ -3128,7 +3128,7 @@ export const allActionsSpec = {
 		{
 			name: "SAVE_PLAYLIST",
 			description:
-				"Save the current music queue as a playlist for the user. Works best in DMs to avoid flooding group chats.",
+				"Save the current music queue as a playlist for the user after confirmed:true. Works best in DMs to avoid flooding group chats.",
 			parameters: [
 				{
 					name: "data",
