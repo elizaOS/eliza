@@ -125,6 +125,10 @@ const AUTOFILL_NEEDS_INPUT_ERRORS = new Set([
   "INVALID_FIELD_PURPOSE",
   "CONFIRMATION_REQUIRED",
   "PERSISTENCE_UNAVAILABLE",
+  // Feature-flag / setup gates (e.g. browser.automation off) — selection +
+  // execution were correct, owner needs to enable the feature first.
+  "FEATURE_NOT_ENABLED",
+  "FEATURE_DISABLED",
 ]);
 
 function failure(

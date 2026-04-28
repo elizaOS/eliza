@@ -1,0 +1,96 @@
+{
+  "uuid": "00000000-0000-4000-8000-000cloudmgd0",
+  "lastMigration": 33,
+  "name": "Eliza Cloud Managed Google",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3006,
+  "hostname": "127.0.0.1",
+  "routes": [
+    {
+      "uuid": "00000001-0000-4000-8000-000cloudmgd0",
+      "type": "http",
+      "documentation": "Status (stub: not connected so runtime falls back to direct OAuth)",
+      "method": "get",
+      "endpoint": "eliza/google/status",
+      "responses": [
+        {
+          "uuid": "00000002-0000-4000-8000-000cloudmgd0",
+          "body": "{\"connected\":false,\"scopes\":[],\"email\":null}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000003-0000-4000-8000-000cloudmgd0",
+      "type": "http",
+      "documentation": "List accounts (empty)",
+      "method": "get",
+      "endpoint": "eliza/google/accounts",
+      "responses": [
+        {
+          "uuid": "00000004-0000-4000-8000-000cloudmgd0",
+          "body": "[]",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    { "type": "route", "uuid": "00000001-0000-4000-8000-000cloudmgd0" },
+    { "type": "route", "uuid": "00000003-0000-4000-8000-000cloudmgd0" }
+  ],
+  "folders": [],
+  "data": [],
+  "callbacks": [],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [],
+  "proxyReqHeaders": [],
+  "proxyResHeaders": []
+}

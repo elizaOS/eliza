@@ -3691,9 +3691,31 @@ export const lifeAction: Action & {
         if (!target) {
           const weeklyReview = await service.reviewGoalsForWeek();
           if (weeklyReview.summary.totalGoals === 0) {
+            // No goals to review — fall through to overview so todo-list-style
+            // queries like "what's on my todo list today?" still resolve.
+            const overview = await service.getOverview();
+            const userQuery = messageText(message) || intent || "overview";
+            const fallback = formatOverviewForQuery(overview, userQuery);
             return {
-              success: false,
-              text: "I could not find any active goals to review.",
+              success: true,
+              text: await renderLifeActionReply({
+                runtime,
+                message,
+                state,
+                intent: userQuery,
+                scenario: "overview",
+                fallback,
+                context: {
+                  summary: overview.owner.summary,
+                  occurrenceTitles: overview.owner.occurrences
+                    .slice(0, 6)
+                    .map((occurrence) => occurrence.title),
+                  goalTitles: overview.owner.goals
+                    .slice(0, 3)
+                    .map((goal) => goal.title),
+                },
+              }),
+              data: toActionData(overview),
             };
           }
           const fallback = formatWeeklyGoalReview(weeklyReview);

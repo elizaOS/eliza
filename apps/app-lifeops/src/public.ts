@@ -1,5 +1,5 @@
 export { lifeopsPlugin } from "./routes/plugin.js";
-export { getBrowserBridgeCompanionPackageStatus } from "@elizaos/plugin-browser-bridge";
+export { getBrowserBridgeCompanionPackageStatus } from "../../../plugins/plugin-browser-bridge/src/index.js";
 export {
   blockWebsitesAction,
   getSelfControlPermissionState,
