@@ -17,7 +17,9 @@ import {
 } from "@elizaos/shared/contracts/onboarding";
 import { isTimeoutError } from "../utils/errors";
 import {
+  clearCloudAuthService,
   disconnectUnifiedCloudConnection,
+  getCloudAuth,
   type RuntimeCloudLike,
 } from "./cloud-connection";
 import { clearCloudSecrets, scrubCloudSecretsFromEnv } from "./cloud-secrets";
@@ -31,6 +33,9 @@ export interface CloudRouteState {
 }
 
 type CloudRuntimeSecrets = Record<string, string | number | boolean>;
+type ReplaceableCloudManager = NonNullable<CloudRouteState["cloudManager"]> & {
+  replaceApiKey?: (apiKey: string) => Promise<void>;
+};
 
 const CLOUD_LOGIN_POLL_TIMEOUT_MS = 10_000;
 
@@ -84,7 +89,9 @@ async function fetchCloudLoginStatus(
 
 async function persistCloudLoginStatus(args: {
   apiKey: string;
+  organizationId?: string;
   state: CloudRouteState;
+  userId?: string;
   /**
    * From GET `/api/cloud/login/status`: epoch captured before `fetch` so a
    * disconnect during the poll invalidates this result. Omitted for POST
@@ -103,6 +110,10 @@ async function persistCloudLoginStatus(args: {
   }
 
   migrateLegacyRuntimeConfig(args.state.config as Record<string, unknown>);
+  const runtime = args.state.runtime as RuntimeCloudLike | null;
+  const cloudAuth = getCloudAuth(runtime);
+  await clearCloudAuthService(cloudAuth);
+
   const cloud = { ...(args.state.config.cloud ?? {}) } as Record<
     string,
     unknown
@@ -146,15 +157,26 @@ async function persistCloudLoginStatus(args: {
   }
   scrubCloudSecretsFromEnv();
 
-  if (
-    args.state.cloudManager &&
-    !args.state.cloudManager.getClient() &&
-    typeof args.state.cloudManager.init === "function"
+  const cloudManager = args.state
+    .cloudManager as ReplaceableCloudManager | null;
+  if (cloudManager && typeof cloudManager.replaceApiKey === "function") {
+    await cloudManager.replaceApiKey(args.apiKey);
+  } else if (
+    cloudManager &&
+    !cloudManager.getClient() &&
+    typeof cloudManager.init === "function"
   ) {
-    await args.state.cloudManager.init();
+    await cloudManager.init();
   }
 
-  const runtime = args.state.runtime as RuntimeCloudLike | null;
+  if (typeof cloudAuth?.authenticateWithApiKey === "function") {
+    cloudAuth.authenticateWithApiKey({
+      apiKey: args.apiKey,
+      organizationId: args.organizationId,
+      userId: args.userId,
+    });
+  }
+
   if (!runtime || typeof runtime.updateAgent !== "function") {
     return;
   }
@@ -164,12 +186,29 @@ async function persistCloudLoginStatus(args: {
       ...(runtime.character.secrets ?? {}),
       ELIZAOS_CLOUD_API_KEY: args.apiKey,
     };
+    if (args.userId) {
+      nextSecrets.ELIZA_CLOUD_USER_ID = args.userId;
+    } else {
+      delete nextSecrets.ELIZA_CLOUD_USER_ID;
+    }
+    if (args.organizationId) {
+      nextSecrets.ELIZA_CLOUD_ORGANIZATION_ID = args.organizationId;
+    } else {
+      delete nextSecrets.ELIZA_CLOUD_ORGANIZATION_ID;
+    }
     if (cloudInferenceSelected) {
       nextSecrets.ELIZAOS_CLOUD_ENABLED = "true";
     } else {
       delete nextSecrets.ELIZAOS_CLOUD_ENABLED;
     }
     runtime.character.secrets = nextSecrets;
+    if (typeof runtime.setSetting === "function") {
+      runtime.setSetting("ELIZA_CLOUD_USER_ID", args.userId ?? null);
+      runtime.setSetting(
+        "ELIZA_CLOUD_ORGANIZATION_ID",
+        args.organizationId ?? null,
+      );
+    }
     await runtime.updateAgent(runtime.agentId, {
       secrets: { ...nextSecrets },
     });
@@ -227,12 +266,23 @@ export async function handleCloudRoute(
     try {
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
         apiKey?: unknown;
+        organizationId?: unknown;
+        userId?: unknown;
       };
       if (typeof body.apiKey !== "string" || !body.apiKey.trim()) {
         sendJson(res, 400, { ok: false, error: "apiKey is required" });
         return true;
       }
-      await persistCloudLoginStatus({ apiKey: body.apiKey.trim(), state });
+      await persistCloudLoginStatus({
+        apiKey: body.apiKey.trim(),
+        organizationId:
+          typeof body.organizationId === "string"
+            ? body.organizationId.trim()
+            : undefined,
+        state,
+        userId:
+          typeof body.userId === "string" ? body.userId.trim() : undefined,
+      });
       sendJson(res, 200, { ok: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -323,13 +373,17 @@ export async function handleCloudRoute(
     let data: {
       apiKey?: unknown;
       keyPrefix?: unknown;
+      organizationId?: unknown;
       status?: unknown;
+      userId?: unknown;
     };
     try {
       data = (await pollRes.json()) as {
         apiKey?: unknown;
         keyPrefix?: unknown;
+        organizationId?: unknown;
         status?: unknown;
+        userId?: unknown;
       };
     } catch (parseErr) {
       loginPollSpan.failure({ error: parseErr, statusCode: pollRes.status });
@@ -345,13 +399,23 @@ export async function handleCloudRoute(
     if (data.status === "authenticated" && typeof data.apiKey === "string") {
       await persistCloudLoginStatus({
         apiKey: data.apiKey,
+        organizationId:
+          typeof data.organizationId === "string"
+            ? data.organizationId
+            : undefined,
         state,
         epochAtPollStart: epochBeforePoll,
+        userId: typeof data.userId === "string" ? data.userId : undefined,
       });
       sendJson(res, 200, {
         status: "authenticated",
         keyPrefix:
           typeof data.keyPrefix === "string" ? data.keyPrefix : undefined,
+        organizationId:
+          typeof data.organizationId === "string"
+            ? data.organizationId
+            : undefined,
+        userId: typeof data.userId === "string" ? data.userId : undefined,
       });
       return true;
     }
