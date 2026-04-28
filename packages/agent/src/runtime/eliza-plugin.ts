@@ -9,6 +9,7 @@
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService } from "@elizaos/core";
 import { browserSessionAction } from "../actions/browser-session.js";
+import { launchpadLaunchAction } from "../actions/launchpad-launch.js";
 import {
   executeDatabaseQueryAction,
   getTableDataAction,
@@ -273,6 +274,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       webSearchAction,
       extractPageAction,
       browserSessionAction,
+      launchpadLaunchAction,
       readChannelAction,
       searchConversationsAction,
       searchEntityAction,

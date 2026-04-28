@@ -267,6 +267,85 @@ async function signLocalBrowserSolanaMessage(
   };
 }
 
+type SolanaCluster = "mainnet" | "devnet" | "testnet";
+
+function normalizeSolanaCluster(value: unknown): SolanaCluster {
+  if (value === "devnet" || value === "testnet" || value === "mainnet") {
+    return value;
+  }
+  return "mainnet";
+}
+
+function clusterRpcUrl(cluster: SolanaCluster): string {
+  switch (cluster) {
+    case "devnet":
+      return "https://api.devnet.solana.com";
+    case "testnet":
+      return "https://api.testnet.solana.com";
+    default:
+      return "https://api.mainnet-beta.solana.com";
+  }
+}
+
+async function signLocalBrowserSolanaTransaction(
+  body: Record<string, unknown>,
+): Promise<{
+  address: string;
+  mode: "local-key";
+  signedTransactionBase64: string;
+  signature?: string;
+  cluster: SolanaCluster;
+}> {
+  const transactionBase64 = normalizeString(body.transactionBase64);
+  if (!transactionBase64) {
+    throw new Error("transactionBase64 is required.");
+  }
+  const broadcast = normalizeBoolean(body.broadcast, false);
+  const cluster = normalizeSolanaCluster(body.cluster);
+
+  const { address, seed } = resolveLocalSolanaSeed();
+
+  // Lazy import — @solana/web3.js is a transitive dep through
+  // @elizaos/agent and only needed when an actual Solana transaction
+  // signing request lands.
+  const web3 = await import("@solana/web3.js");
+  const { Keypair, VersionedTransaction, Transaction, Connection } = web3;
+
+  const keypair = Keypair.fromSeed(new Uint8Array(seed));
+  const txBytes = Buffer.from(transactionBase64, "base64");
+
+  // Solana transactions have a single-byte version prefix on v0/versioned
+  // transactions (high bit set). Try the versioned path first; fall back to
+  // legacy on parse failure to support both shapes uniformly.
+  let signedBytes: Uint8Array;
+  let broadcastSignature: string | undefined;
+  try {
+    const versioned = VersionedTransaction.deserialize(txBytes);
+    versioned.sign([keypair]);
+    signedBytes = versioned.serialize();
+    if (broadcast) {
+      const conn = new Connection(clusterRpcUrl(cluster), "confirmed");
+      broadcastSignature = await conn.sendRawTransaction(signedBytes);
+    }
+  } catch (_err) {
+    const legacy = Transaction.from(txBytes);
+    legacy.partialSign(keypair);
+    signedBytes = legacy.serialize();
+    if (broadcast) {
+      const conn = new Connection(clusterRpcUrl(cluster), "confirmed");
+      broadcastSignature = await conn.sendRawTransaction(signedBytes);
+    }
+  }
+
+  return {
+    address,
+    mode: "local-key",
+    signedTransactionBase64: Buffer.from(signedBytes).toString("base64"),
+    ...(broadcastSignature ? { signature: broadcastSignature } : {}),
+    cluster,
+  };
+}
+
 export async function handleWalletBrowserCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -279,7 +358,8 @@ export async function handleWalletBrowserCompatRoutes(
     method !== "POST" ||
     (url.pathname !== "/api/wallet/browser-transaction" &&
       url.pathname !== "/api/wallet/browser-sign-message" &&
-      url.pathname !== "/api/wallet/browser-solana-sign-message")
+      url.pathname !== "/api/wallet/browser-solana-sign-message" &&
+      url.pathname !== "/api/wallet/browser-solana-transaction")
   ) {
     return false;
   }
@@ -346,6 +426,31 @@ export async function handleWalletBrowserCompatRoutes(
     }
 
     sendJsonErrorResponse(res, 503, "No browser Solana signer is available.");
+    return true;
+  }
+
+  if (url.pathname === "/api/wallet/browser-solana-transaction") {
+    if (hasLocalSolanaKey) {
+      try {
+        sendJsonResponse(
+          res,
+          200,
+          await signLocalBrowserSolanaTransaction(body),
+        );
+        return true;
+      } catch (error) {
+        const failureMessage =
+          error instanceof Error ? error.message : String(error);
+        sendJsonErrorResponse(res, 503, failureMessage);
+        return true;
+      }
+    }
+
+    sendJsonErrorResponse(
+      res,
+      503,
+      "No browser Solana transaction signer is available.",
+    );
     return true;
   }
 

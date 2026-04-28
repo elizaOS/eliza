@@ -258,6 +258,26 @@ export function resolveCloudConnectionSnapshot(
   };
 }
 
+/**
+ * Coerce an Eliza Cloud `balance` field into a number. The cloud API
+ * returns `balance` as `string | number` (per the Bridge client + config
+ * type definitions) — string when the upstream is using a fixed-precision
+ * decimal, number when it's been arithmetic'd. Treat both as the same
+ * dollar amount; reject anything else as an unexpected response.
+ */
+function coerceCloudBalance(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseFloat(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 async function fetchCloudCreditsByApiKey(
   baseUrl: string,
   apiKey: string,
@@ -301,14 +321,11 @@ async function fetchCloudCreditsByApiKey(
     );
   }
 
-  const rawBalance =
-    typeof creditResponse.balance === "number"
-      ? creditResponse.balance
-      : typeof creditResponse.data?.balance === "number"
-        ? creditResponse.data.balance
-        : undefined;
+  const balance =
+    coerceCloudBalance(creditResponse.balance) ??
+    coerceCloudBalance(creditResponse.data?.balance);
 
-  return typeof rawBalance === "number" ? rawBalance : null;
+  return balance;
 }
 
 /** Configurable credit thresholds. Override via env vars if defaults don't fit. */
@@ -349,11 +366,8 @@ export async function fetchCloudCredits(
         data?: { balance?: unknown };
       };
       const rawBalance =
-        typeof creditResponse?.balance === "number"
-          ? creditResponse.balance
-          : typeof creditResponse?.data?.balance === "number"
-            ? creditResponse.data.balance
-            : undefined;
+        coerceCloudBalance(creditResponse?.balance) ??
+        coerceCloudBalance(creditResponse?.data?.balance);
 
       if (typeof rawBalance === "number") {
         return withCreditFlags(rawBalance);

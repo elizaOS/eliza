@@ -5,7 +5,7 @@
 		"moduleResolution": "bundler",
 		"esModuleInterop": true,
 		"strict": true,
-		"ignoreDeprecations": "6.0",
+		"ignoreDeprecations": "5.0",
 		"skipLibCheck": true,
 		"declaration": true,
 		"declarationMap": true,
