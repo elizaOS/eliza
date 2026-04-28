@@ -65,6 +65,7 @@ import {
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
 } from "./ensure-text-to-speech-handler.js";
 import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
+import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
 
 const AUTONOMY_WORLD_ID = stringToUuid("00000000-0000-0000-0000-000000000001");
 const AUTONOMY_ENTITY_ID = stringToUuid("00000000-0000-0000-0000-000000000002");
@@ -484,10 +485,11 @@ async function repairRuntimeAfterBoot(
     }
   }
 
-  // Ensure Telegram bot is polling. The upstream plugin's bot.launch() is
-  // not awaited and silently fails on bun/Windows. We create a standalone
-  // Telegraf instance with proper lifecycle management.
-  await ensureTelegramBotPolling(runtime);
+  if (shouldStartTelegramStandaloneBot()) {
+    await ensureTelegramBotPolling(runtime);
+  } else {
+    stopTelegramBotPolling("passive-lifeops-connectors");
+  }
 
   // Bridge Eliza Cloud auth transitions → n8n sidecar lifecycle so signing
   // in releases the local sidecar (saves port 5678 + ~200MB) and signing
@@ -661,15 +663,22 @@ async function ensureTriggerEventBridge(runtime: AgentRuntime): Promise<void> {
 // Module-level Telegraf bot reference for lifecycle management across restarts.
 let _telegramBot: { stop: (reason?: string) => void } | null = null;
 
+function stopTelegramBotPolling(reason: string): void {
+  if (!_telegramBot) {
+    return;
+  }
+  try {
+    _telegramBot.stop(reason);
+  } catch {
+    /* ignore */
+  }
+  _telegramBot = null;
+}
+
 async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
   // Stop any previous bot instance
   if (_telegramBot) {
-    try {
-      _telegramBot.stop("restart");
-    } catch {
-      /* ignore */
-    }
-    _telegramBot = null;
+    stopTelegramBotPolling("restart");
     await new Promise((r) => setTimeout(r, 1000));
   }
 
@@ -1367,14 +1376,7 @@ export async function startEliza(
           process.exit(1);
         }, 10_000);
         forceExitTimer.unref?.();
-        // Stop Telegram bot if running (previously registered via separate process.once handlers)
-        if (_telegramBot) {
-          try {
-            _telegramBot.stop("SIGINT");
-          } catch {
-            /* ignore */
-          }
-        }
+        stopTelegramBotPolling("SIGINT");
         if (currentRuntime) {
           await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");
         }

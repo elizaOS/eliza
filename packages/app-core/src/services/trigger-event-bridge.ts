@@ -36,6 +36,7 @@ import {
   type EventPayloadMap,
   EventType,
   type IAgentRuntime,
+  lifeOpsPassiveConnectorsEnabled,
   type Task,
   type UUID,
 } from "@elizaos/core";
@@ -43,6 +44,17 @@ import {
 const DEFAULT_MIN_INTERVAL_MS = 1_000;
 /** TTL for caching trigger task list to avoid repeated DB queries on high-frequency events. */
 const TRIGGER_CACHE_TTL_MS = 500;
+const PASSIVE_CONNECTOR_SOURCES = new Set([
+  "discord",
+  "telegram",
+  "signal",
+  "imessage",
+  "whatsapp",
+  "wechat",
+  "slack",
+  "sms",
+  "x_dm",
+]);
 
 /**
  * Core `EventType`s the bridge subscribes to. Triggers created with an
@@ -94,6 +106,30 @@ function stripRuntimeFields(
     out[key] = value;
   }
   return out;
+}
+
+function readPayloadSource(payload: EventPayload): string | null {
+  const record = payload as unknown as Record<string, unknown>;
+  const message = record.message as Record<string, unknown> | undefined;
+  const content = message?.content as Record<string, unknown> | undefined;
+  const candidates = [record.source, content?.source, message?.source];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim().toLowerCase();
+    }
+  }
+  return null;
+}
+
+function isPassiveConnectorEvent(
+  runtime: AgentRuntime,
+  payload: EventPayload,
+): boolean {
+  if (!lifeOpsPassiveConnectorsEnabled(runtime)) {
+    return false;
+  }
+  const source = readPayloadSource(payload);
+  return source !== null && PASSIVE_CONNECTOR_SOURCES.has(source);
 }
 
 export function startTriggerEventBridge(
@@ -158,6 +194,7 @@ export function startTriggerEventBridge(
   const buildHandler = (eventType: EventType): BridgeHandler => {
     return async (payload: EventPayload) => {
       if (!triggersFeatureEnabled(runtime)) return;
+      if (isPassiveConnectorEvent(runtime, payload)) return;
 
       // Short-circuit: skip DB query if we know (from cached data) there are no triggers for this event type
       if (!hasTriggersForEvent(eventType)) {

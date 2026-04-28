@@ -177,6 +177,16 @@ describe("withSignal consumer surface", () => {
     );
     expect(process.env.SIGNAL_AUTH_DIR).toBe(previousAuthDir);
     expect(process.env.SIGNAL_ACCOUNT_NUMBER).toBe("+15550000000");
+    expect(service.runtime.setSetting).toHaveBeenCalledWith(
+      "SIGNAL_RECEIVE_MODE",
+      "manual",
+      false,
+    );
+    expect(service.runtime.setSetting).toHaveBeenCalledWith(
+      "SIGNAL_AUTO_REPLY",
+      "false",
+      false,
+    );
   });
 
   it("upgrades existing linked Signal grants to bidirectional capabilities", async () => {
@@ -322,6 +332,59 @@ describe("withSignal consumer surface", () => {
         isGroup: true,
       },
     ]);
+  });
+
+  it("falls back to signal-cli HTTP receive when the connected service has no buffered messages", async () => {
+    process.env.SIGNAL_ACCOUNT_NUMBER = "+15550000000";
+    const signalService = {
+      isServiceConnected: vi.fn(() => true),
+      getRecentMessages: vi.fn(async () => []),
+    };
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe(
+        "http://127.0.0.1:8080/v1/receive/%2B15550000000",
+      );
+      return new Response(
+        JSON.stringify([
+          {
+            envelope: {
+              sourceNumber: "+15551110003",
+              sourceName: "Casey",
+              sourceDevice: 1,
+              timestamp: 1_713_341_000_000,
+              dataMessage: {
+                timestamp: 1_713_341_000_000,
+                message: "Passive pull",
+              },
+            },
+            account: "+15550000000",
+          },
+        ]),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as unknown as typeof fetch;
+    const service = createService(signalService);
+
+    await expect(service.readSignalInbound(10)).resolves.toEqual([
+      {
+        id: "signal:+15551110003:1713341000000",
+        roomId: "+15551110003",
+        channelId: "+15551110003",
+        threadId: "+15551110003",
+        roomName: "Casey",
+        speakerName: "Casey",
+        senderNumber: "+15551110003",
+        senderUuid: null,
+        sourceDevice: 1,
+        groupId: null,
+        groupType: null,
+        text: "Passive pull",
+        createdAt: 1_713_341_000_000,
+        isInbound: true,
+        isGroup: false,
+      },
+    ]);
+    expect(signalService.getRecentMessages).toHaveBeenCalledWith(10);
   });
 
   it("surfaces signal-cli receive failures instead of returning an empty success", async () => {

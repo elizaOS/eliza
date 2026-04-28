@@ -179,6 +179,8 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       setSignalRuntimeEnv(authDir, phoneNumber);
       this.runtime.setSetting("SIGNAL_AUTH_DIR", authDir, false);
       this.runtime.setSetting("SIGNAL_ACCOUNT_NUMBER", phoneNumber, false);
+      this.runtime.setSetting("SIGNAL_RECEIVE_MODE", "manual", false);
+      this.runtime.setSetting("SIGNAL_AUTO_REPLY", "false", false);
 
       if (!configChanged && this.lifeOpsSignalServiceRegistered()) {
         return;
@@ -475,35 +477,37 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       ) as SignalServiceLike | null;
       const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
 
-      // Primary path: use the Signal service's in-memory message store.
+      const localClientConfig = readSignalLocalClientConfigFromEnv();
+
+      // Primary path: use the Signal service's in-memory message store when it
+      // exists. In passive LifeOps mode the plugin is connected for send/status
+      // only, so this will usually be empty and the direct pull below owns reads.
       if (signalService?.isServiceConnected?.()) {
         const raw = await signalService.getRecentMessages?.(clampedLimit);
-        if (!raw || raw.length === 0) {
-          return [];
+        if (raw && raw.length > 0) {
+          return raw.map(
+            (entry): LifeOpsSignalInboundMessage => ({
+              id: entry.id,
+              roomId: entry.roomId,
+              channelId: entry.channelId,
+              threadId: entry.channelId || entry.roomId,
+              roomName: entry.roomName,
+              speakerName: entry.speakerName,
+              senderNumber: entry.isGroup ? null : entry.channelId || null,
+              senderUuid: null,
+              sourceDevice: null,
+              groupId: entry.isGroup ? entry.channelId || null : null,
+              groupType: null,
+              text: entry.text,
+              createdAt: entry.createdAt,
+              isInbound: !entry.isFromAgent,
+              isGroup: entry.isGroup,
+            }),
+          );
         }
-        return raw.map(
-          (entry): LifeOpsSignalInboundMessage => ({
-            id: entry.id,
-            roomId: entry.roomId,
-            channelId: entry.channelId,
-            threadId: entry.channelId || entry.roomId,
-            roomName: entry.roomName,
-            speakerName: entry.speakerName,
-            senderNumber: entry.isGroup ? null : entry.channelId || null,
-            senderUuid: null,
-            sourceDevice: null,
-            groupId: entry.isGroup ? entry.channelId || null : null,
-            groupType: null,
-            text: entry.text,
-            createdAt: entry.createdAt,
-            isInbound: !entry.isFromAgent,
-            isGroup: entry.isGroup,
-          }),
-        );
       }
 
-      // Fallback path: read directly from the signal-cli REST API.
-      const localClientConfig = readSignalLocalClientConfigFromEnv();
+      // Passive pull path: read directly from the signal-cli REST API.
       if (localClientConfig) {
         return readSignalInboundMessages(localClientConfig, clampedLimit);
       }
@@ -541,21 +545,20 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(403, "Signal send capability is not granted.");
       }
 
-      const signalService = this.runtime.getService("signal") as
-        | {
-            sendMessage?: (
-              recipient: string,
-              text: string,
-            ) => Promise<{ timestamp?: number }>;
-          }
-        | null;
+      const signalService = this.runtime.getService("signal") as {
+        sendMessage?: (
+          recipient: string,
+          text: string,
+        ) => Promise<{ timestamp?: number }>;
+      } | null;
       if (typeof signalService?.sendMessage !== "function") {
         fail(503, "Signal send service is not available.");
       }
 
       const result = await signalService.sendMessage(recipient, text);
       const timestamp =
-        typeof result.timestamp === "number" && Number.isFinite(result.timestamp)
+        typeof result.timestamp === "number" &&
+        Number.isFinite(result.timestamp)
           ? result.timestamp
           : Date.now();
 

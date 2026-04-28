@@ -122,6 +122,7 @@ describe("startTriggerEventBridge", () => {
 
   afterEach(() => {
     delete process.env.ELIZA_TRIGGERS_ENABLED;
+    delete process.env.MILADY_LIFEOPS_PASSIVE_CONNECTORS;
   });
 
   it("dispatches a matching event-kind trigger exactly once", async () => {
@@ -240,6 +241,59 @@ describe("startTriggerEventBridge", () => {
 
     expect(listTriggers).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch passive LifeOps connector message events", async () => {
+    const runtime = makeRuntime();
+    const trigger = makeTrigger();
+    const task = makeTask(trigger);
+    const dispatch = vi.fn();
+    const listTriggers = vi.fn().mockResolvedValue([task]);
+
+    startTriggerEventBridge(runtime, {
+      events: [EventType.MESSAGE_RECEIVED],
+      dispatch,
+      listTriggers,
+    });
+
+    await invokeHandler(runtime, EventType.MESSAGE_RECEIVED, {
+      source: "imessage",
+      message: {
+        id: "m-passive",
+        content: { source: "imessage", text: "hello" },
+      } as unknown as MessagePayload["message"],
+    });
+
+    expect(listTriggers).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches connector events when passive LifeOps mode is disabled", async () => {
+    process.env.MILADY_LIFEOPS_PASSIVE_CONNECTORS = "0";
+    const runtime = makeRuntime();
+    const trigger = makeTrigger();
+    const task = makeTask(trigger);
+    const dispatch = vi
+      .fn()
+      .mockResolvedValue({ status: "success", taskDeleted: false });
+    const listTriggers = vi.fn().mockResolvedValue([task]);
+
+    startTriggerEventBridge(runtime, {
+      events: [EventType.MESSAGE_RECEIVED],
+      dispatch,
+      listTriggers,
+    });
+
+    await invokeHandler(runtime, EventType.MESSAGE_RECEIVED, {
+      source: "imessage",
+      message: {
+        id: "m-active",
+        content: { source: "imessage", text: "hello" },
+      } as unknown as MessagePayload["message"],
+    });
+
+    expect(listTriggers).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
   it("stop() unregisters every handler", async () => {

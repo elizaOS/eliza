@@ -152,6 +152,7 @@ export interface SignalSettings {
    * route, user-issued chat command). Set SIGNAL_AUTO_REPLY=true to opt in.
    */
   autoReply: boolean;
+  receiveMode: "on-start" | "manual";
 }
 
 export interface SignalMessageSendOptions {

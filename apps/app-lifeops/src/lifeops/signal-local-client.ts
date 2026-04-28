@@ -57,6 +57,7 @@ export class SignalLocalClientError extends Error {
 const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_RECEIVE_LIMIT = 100;
 const DEFAULT_RECEIVE_LIMIT = 25;
+const DEFAULT_SIGNAL_HTTP_URL = "http://127.0.0.1:8080";
 
 /**
  * Read env-based configuration for the signal-cli HTTP client.
@@ -65,9 +66,9 @@ const DEFAULT_RECEIVE_LIMIT = 25;
 export function readSignalLocalClientConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): SignalLocalClientConfig | null {
-  const httpUrl = env.SIGNAL_HTTP_URL?.trim();
+  const httpUrl = env.SIGNAL_HTTP_URL?.trim() || DEFAULT_SIGNAL_HTTP_URL;
   const accountNumber = env.SIGNAL_ACCOUNT_NUMBER?.trim();
-  if (!httpUrl || !accountNumber) return null;
+  if (!accountNumber) return null;
   return { httpUrl, accountNumber };
 }
 
@@ -103,7 +104,9 @@ interface SignalCliReceiveResponse {
   account?: string;
 }
 
-function isSignalCliReceiveResponse(value: unknown): value is SignalCliReceiveResponse {
+function isSignalCliReceiveResponse(
+  value: unknown,
+): value is SignalCliReceiveResponse {
   return Boolean(value && typeof value === "object");
 }
 
@@ -127,7 +130,10 @@ export async function readSignalInboundMessages(
   config: SignalLocalClientConfig,
   limit = DEFAULT_RECEIVE_LIMIT,
 ): Promise<LifeOpsSignalInboundMessage[]> {
-  const clampedLimit = Math.min(Math.max(1, Math.floor(limit)), MAX_RECEIVE_LIMIT);
+  const clampedLimit = Math.min(
+    Math.max(1, Math.floor(limit)),
+    MAX_RECEIVE_LIMIT,
+  );
   const accountEncoded = encodeURIComponent(config.accountNumber);
   const url = `${config.httpUrl.replace(/\/$/, "")}/v1/receive/${accountEncoded}`;
 
@@ -203,7 +209,9 @@ export async function readSignalInboundMessages(
   }
 
   const messages: LifeOpsSignalInboundMessage[] = [];
-  for (const item of body.filter(isSignalCliReceiveResponse).slice(0, clampedLimit)) {
+  for (const item of body
+    .filter(isSignalCliReceiveResponse)
+    .slice(0, clampedLimit)) {
     const envelope = item.envelope;
     if (!envelope) continue;
 
@@ -213,14 +221,17 @@ export async function readSignalInboundMessages(
 
     const senderNumber = envelope.sourceNumber ?? envelope.source ?? null;
     const senderUuid = envelope.sourceUuid ?? null;
-    const speakerName = envelope.sourceName ?? senderNumber ?? "Unknown Signal sender";
+    const speakerName =
+      envelope.sourceName ?? senderNumber ?? "Unknown Signal sender";
     const isGroup = Boolean(dataMessage.groupInfo?.groupId);
     const groupId = dataMessage.groupInfo?.groupId ?? null;
     const groupType = dataMessage.groupInfo?.type ?? null;
-    const channelId = isGroup && groupId ? groupId : (senderNumber ?? senderUuid ?? "");
+    const channelId =
+      isGroup && groupId ? groupId : (senderNumber ?? senderUuid ?? "");
     if (!channelId) continue;
     const senderKey = senderNumber ?? senderUuid ?? channelId;
-    const roomName = isGroup && groupId ? `Signal group ${groupId}` : speakerName;
+    const roomName =
+      isGroup && groupId ? `Signal group ${groupId}` : speakerName;
 
     // Stable ID: timestamp + sender — signal-cli does not assign message IDs in
     // the receive response, so we derive one from the envelope timestamp.
@@ -242,7 +253,9 @@ export async function readSignalInboundMessages(
       senderNumber,
       senderUuid,
       sourceDevice:
-        typeof envelope.sourceDevice === "number" ? envelope.sourceDevice : null,
+        typeof envelope.sourceDevice === "number"
+          ? envelope.sourceDevice
+          : null,
       groupId,
       groupType,
       text: dataMessage.message,
