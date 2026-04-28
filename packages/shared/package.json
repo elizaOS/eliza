@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.0-alpha.475",
+  "version": "2.0.0-alpha.476",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
   "main": "src/index.ts",
