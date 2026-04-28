@@ -886,8 +886,16 @@ export const callExternalAction: Action & {
       return {
         text: "Who should I call, or which saved contact/phone number should I use?",
         success: false,
-        values: { success: false, error: "MISSING_RECIPIENT" },
-        data: { actionName: "CALL_EXTERNAL", error: "MISSING_RECIPIENT" },
+        values: {
+          success: false,
+          error: "MISSING_RECIPIENT",
+          requiresConfirmation: true,
+        },
+        data: {
+          actionName: "CALL_EXTERNAL",
+          error: "MISSING_RECIPIENT",
+          requiresConfirmation: true,
+        },
       };
     }
     if (isPlaceholderOrNonNumeric(to)) {
