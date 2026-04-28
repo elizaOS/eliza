@@ -1,8 +1,7 @@
 
 
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
+import { useNavigate } from "react-router-dom";
 import {
   useSpring,
   useSprings,
@@ -12,19 +11,11 @@ import {
 } from "@react-spring/web";
 import { useDrag } from "@use-gesture/react";
 import { getCountries, getCountryCallingCode } from "libphonenumber-js";
-import type { ModelBHandle } from "@/components/ModelViewers/ModelB";
+import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
+import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import VideoCall from "@/components/VideoCall";
-
-const ShaderBackground = dynamic(
-  () => import("@/components/ShaderBackground/ShaderBackground"),
-  { ssr: false },
-);
-
-const ModelB = dynamic(() => import("@/components/ModelViewers/ModelB"), {
-  ssr: false,
-});
 
 // Get all countries from libphonenumber-js
 const COUNTRY_CODES = getCountries();
@@ -171,8 +162,8 @@ function AnimatedLetters({
   );
 }
 
-export default function Home() {
-  const router = useRouter();
+export default function Leaderboard() {
+  const navigate = useNavigate();
   const modelRef = useRef<ModelBHandle>(null);
   const [platform, setPlatform] = useState<Platform>("imessage");
   const [tryPlatform, setTryPlatform] = useState<Platform>("imessage");
@@ -792,7 +783,7 @@ export default function Home() {
               onClick={() => {
                 // Try to open native Messages, fallback to /get-started if it doesn't work
                 const fallbackTimeout = setTimeout(() => {
-                  router.push("/get-started");
+                  navigate("/get-started");
                 }, 1500);
                 
                 // If page becomes hidden (native app opened), cancel fallback
@@ -917,7 +908,7 @@ export default function Home() {
                 />
                 {/* Try text -- z-[2], above the indicator (z-[1]) */}
                 <animated.button
-                  onClick={() => router.push("/get-started")}
+                  onClick={() => navigate("/get-started")}
                   className="relative z-2 flex items-center justify-center h-full w-full rounded-full text-neutral-900 font-semibold text-base whitespace-nowrap cursor-pointer"
                   style={{ opacity: tryAppearSpring.tryOpacity }}
                 >
