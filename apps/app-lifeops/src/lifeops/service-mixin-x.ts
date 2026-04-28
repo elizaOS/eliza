@@ -11,8 +11,8 @@ import type {
   StartLifeOpsXConnectorRequest,
   StartLifeOpsXConnectorResponse,
   UpsertLifeOpsXConnectorRequest,
-} from "@elizaos/app-lifeops/contracts";
-import { LIFEOPS_X_CAPABILITIES } from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
+import { LIFEOPS_X_CAPABILITIES } from "../contracts/index.js";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import { normalizeOptionalRecord } from "./service-helpers-misc.js";
 import type {

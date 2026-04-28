@@ -1,10 +1,12 @@
 import type http from "node:http";
 import { parseClampedInteger } from "../utils/number-parsing.js";
+import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 interface LogEntryLike {
   timestamp: number;
   level: string;
+  message?: string;
   source: string;
   tags: string[];
 }
@@ -36,6 +38,15 @@ export interface DiagnosticsRouteContext
     Pick<RouteHelpers, "json"> {
   url: URL;
   logBuffer: LogEntryLike[];
+  /** Drop all entries from the in-memory log buffer. Returns count cleared. */
+  clearLogBuffer?: () => number;
+  /** Read JSON body for the export endpoint. */
+  readJsonBody?: <T extends object>(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    options?: ReadJsonBodyOptions,
+  ) => Promise<T | null>;
+  error?: (res: http.ServerResponse, message: string, status?: number) => void;
   eventBuffer: StreamEventEnvelopeLike[];
   relayPort?: number;
   checkRelayReachable?: (relayPort: number) => Promise<boolean>;
@@ -159,6 +170,58 @@ function isTruthyQueryParam(value: string | null): boolean {
   );
 }
 
+interface LogFilter {
+  source?: string;
+  level?: string;
+  tag?: string;
+  sinceMs?: number;
+}
+
+function applyLogFilter(
+  buffer: readonly LogEntryLike[],
+  filter: LogFilter,
+): LogEntryLike[] {
+  let entries: readonly LogEntryLike[] = buffer;
+  const { source, level, tag, sinceMs } = filter;
+  if (source) {
+    entries = entries.filter((entry) => entry.source === source);
+  }
+  if (level) {
+    entries = entries.filter((entry) => entry.level === level);
+  }
+  if (tag) {
+    entries = entries.filter((entry) => entry.tags.includes(tag));
+  }
+  if (sinceMs !== undefined) {
+    entries = entries.filter((entry) => entry.timestamp >= sinceMs);
+  }
+  return entries.slice();
+}
+
+function csvEscape(value: string): string {
+  if (/[",\n\r]/.test(value)) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function logsToCsv(entries: readonly LogEntryLike[]): string {
+  const header = "timestamp,level,source,tags,message";
+  const lines = entries.map((entry) => {
+    const message = typeof entry.message === "string" ? entry.message : "";
+    return [
+      new Date(entry.timestamp).toISOString(),
+      entry.level,
+      entry.source,
+      entry.tags.join("|"),
+      message,
+    ]
+      .map((field) => csvEscape(String(field)))
+      .join(",");
+  });
+  return [header, ...lines].join("\n");
+}
+
 function matchesAuditFilter(
   entry: AuditEntryLike,
   filters: {
@@ -204,34 +267,121 @@ export async function handleDiagnosticsRoutes(
   } = ctx;
 
   if (method === "GET" && pathname === "/api/logs") {
-    let entries = logBuffer;
-
-    const sourceFilter = url.searchParams.get("source");
-    if (sourceFilter) {
-      entries = entries.filter((entry) => entry.source === sourceFilter);
+    const sinceRaw = url.searchParams.get("since");
+    let sinceMs: number | undefined;
+    if (sinceRaw) {
+      const numeric = Number(sinceRaw);
+      if (!Number.isNaN(numeric)) sinceMs = numeric;
     }
-
-    const levelFilter = url.searchParams.get("level");
-    if (levelFilter) {
-      entries = entries.filter((entry) => entry.level === levelFilter);
-    }
-
-    const tagFilter = url.searchParams.get("tag");
-    if (tagFilter) {
-      entries = entries.filter((entry) => entry.tags.includes(tagFilter));
-    }
-
-    const sinceFilter = url.searchParams.get("since");
-    if (sinceFilter) {
-      const sinceTimestamp = Number(sinceFilter);
-      if (!Number.isNaN(sinceTimestamp)) {
-        entries = entries.filter((entry) => entry.timestamp >= sinceTimestamp);
-      }
-    }
+    const entries = applyLogFilter(logBuffer, {
+      source: url.searchParams.get("source") ?? undefined,
+      level: url.searchParams.get("level") ?? undefined,
+      tag: url.searchParams.get("tag") ?? undefined,
+      sinceMs,
+    });
 
     const sources = [...new Set(logBuffer.map((entry) => entry.source))].sort();
     const tags = [...new Set(logBuffer.flatMap((entry) => entry.tags))].sort();
     json(res, { entries: entries.slice(-200), sources, tags });
+    return true;
+  }
+
+  if (method === "DELETE" && pathname === "/api/logs") {
+    const cleared = ctx.clearLogBuffer
+      ? ctx.clearLogBuffer()
+      : ((): number => {
+          const previous = logBuffer.length;
+          logBuffer.length = 0;
+          return previous;
+        })();
+    json(res, { cleared });
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/logs/export") {
+    const errorFn = ctx.error;
+    if (!ctx.readJsonBody || !errorFn) {
+      json(res, { error: "Log export requires JSON body support" }, 500);
+      return true;
+    }
+    const body = await ctx.readJsonBody<{
+      format?: unknown;
+      source?: unknown;
+      level?: unknown;
+      tags?: unknown;
+      since?: unknown;
+      limit?: unknown;
+    }>(req, res);
+    if (!body) return true;
+
+    const formatRaw =
+      typeof body.format === "string" ? body.format.trim().toLowerCase() : "";
+    if (formatRaw !== "json" && formatRaw !== "csv") {
+      errorFn(res, 'format must be "json" or "csv"', 400);
+      return true;
+    }
+
+    let sinceMs: number | undefined;
+    if (typeof body.since === "string" && body.since.trim()) {
+      const numeric = Number(body.since);
+      if (Number.isFinite(numeric)) {
+        sinceMs = numeric;
+      } else {
+        const parsed = Date.parse(body.since);
+        if (Number.isFinite(parsed)) sinceMs = parsed;
+      }
+    } else if (typeof body.since === "number" && Number.isFinite(body.since)) {
+      sinceMs = body.since;
+    }
+
+    let tag: string | undefined;
+    if (Array.isArray(body.tags)) {
+      const first = body.tags.find(
+        (entry): entry is string =>
+          typeof entry === "string" && entry.trim().length > 0,
+      );
+      if (first) tag = first.trim();
+    } else if (typeof body.tags === "string" && body.tags.trim()) {
+      tag = body.tags.trim();
+    }
+
+    let entries = applyLogFilter(logBuffer, {
+      source:
+        typeof body.source === "string" && body.source.trim()
+          ? body.source.trim()
+          : undefined,
+      level:
+        typeof body.level === "string" && body.level.trim()
+          ? body.level.trim()
+          : undefined,
+      tag,
+      sinceMs,
+    });
+
+    if (typeof body.limit === "number" && Number.isFinite(body.limit)) {
+      const cap = Math.max(1, Math.min(10_000, Math.floor(body.limit)));
+      entries = entries.slice(-cap);
+    }
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    if (formatRaw === "json") {
+      const payload = JSON.stringify({ entries }, null, 2);
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Content-Disposition": `attachment; filename="logs-${stamp}.json"`,
+        "Content-Length": Buffer.byteLength(payload, "utf-8"),
+      });
+      res.end(payload);
+      return true;
+    }
+
+    const csv = logsToCsv(entries);
+    res.writeHead(200, {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="logs-${stamp}.csv"`,
+      "Content-Length": Buffer.byteLength(csv, "utf-8"),
+    });
+    res.end(csv);
     return true;
   }
 

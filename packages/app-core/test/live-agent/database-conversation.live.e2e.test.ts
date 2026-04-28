@@ -15,17 +15,19 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { config as loadDotenv } from "dotenv";
-import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describeIf } from "../helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../helpers/live-provider.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../../test/helpers/http.ts";
-import { createLiveRuntimeChildEnv } from "../../../../../test/helpers/live-child-env.ts";
-import { selectLiveProvider } from "../../../../../test/helpers/live-provider.ts";
+} from "../helpers/http.ts";
+import { createLiveRuntimeChildEnv } from "../helpers/live-child-env.ts";
 
+const LIVE =
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(
   import.meta.dirname,
   "..",
@@ -34,10 +36,6 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
-loadDotenv({ path: path.join(REPO_ROOT, ".env") });
-
-const LIVE =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER = selectLiveProvider();
 const LIVE_PROVIDER_PLUGIN_ID = LIVE_PROVIDER?.pluginPackage
   .split("/")
@@ -45,17 +43,18 @@ const LIVE_PROVIDER_PLUGIN_ID = LIVE_PROVIDER?.pluginPackage
   ?.replace(/^plugin-/, "");
 const LIVE_DB_CODEWORD = `db-live-codeword-${Date.now()}`;
 
+try {
+  const { config } = await import("dotenv");
+  config({ path: path.join(REPO_ROOT, ".env") });
+} catch { /* dotenv optional */ }
+
 async function getFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       const addr = server.address();
-      if (!addr || typeof addr === "string") {
-        server.close();
-        reject(new Error("no port"));
-        return;
-      }
+      if (!addr || typeof addr === "string") { server.close(); reject(new Error("no port")); return; }
       server.close((e) => (e ? reject(e) : resolve(addr.port)));
     });
   });
@@ -111,14 +110,10 @@ async function startRuntime(): Promise<Runtime> {
       : [];
 
   await mkdir(stateDir, { recursive: true });
-  await writeFile(
-    configPath,
-    JSON.stringify({
-      logging: { level: "info" },
-      plugins: { allow: allowPlugins },
-    }),
-    "utf8",
-  );
+  await writeFile(configPath, JSON.stringify({
+    logging: { level: "info" },
+    plugins: { allow: allowPlugins },
+  }), "utf8");
 
   const child = spawn("bun", ["run", "start:eliza"], {
     cwd: REPO_ROOT,
@@ -154,9 +149,7 @@ async function startRuntime(): Promise<Runtime> {
           break;
         }
       }
-    } catch {
-      /* not ready */
-    }
+    } catch { /* not ready */ }
     await sleep(1_000);
   }
 
@@ -181,10 +174,7 @@ async function startRuntime(): Promise<Runtime> {
     close: async () => {
       if (child.exitCode == null) {
         child.kill("SIGTERM");
-        await new Promise<void>((r) => {
-          child.once("exit", () => r());
-          setTimeout(() => r(), 10_000);
-        });
+        await new Promise<void>((r) => { child.once("exit", () => r()); setTimeout(() => r(), 10_000); });
         if (child.exitCode == null) child.kill("SIGKILL");
       }
       await rm(tmp, { recursive: true, force: true });
@@ -192,99 +182,91 @@ async function startRuntime(): Promise<Runtime> {
   };
 }
 
-describeIf(LIVE)(
-  "Live: database & conversation roundtrip",
-  () => {
-    let rt: Runtime;
+describeIf(LIVE)("Live: database & conversation roundtrip", () => {
+  let rt: Runtime;
 
-    beforeAll(async () => {
-      rt = await startRuntime();
-    }, 180_000);
-    afterAll(async () => {
-      if (rt) await rt.close();
-    });
+  beforeAll(async () => { rt = await startRuntime(); }, 180_000);
+  afterAll(async () => { if (rt) await rt.close(); });
 
-    it("creates a conversation through the real API", async () => {
-      const res = await createConversation(rt.port, { title: "live db test" });
-      expect(res.status).toBe(200);
-      expect(res.conversationId).toBeTruthy();
-    });
+  it("creates a conversation through the real API", async () => {
+    const res = await createConversation(rt.port, { title: "live db test" });
+    expect(res.status).toBe(200);
+    expect(res.conversationId).toBeTruthy();
+  });
 
-    it("lists conversations after creation", async () => {
-      await createConversation(rt.port, { title: "list test" });
-      const res = await req(rt.port, "GET", "/api/conversations");
-      expect(res.status).toBe(200);
-      const convos = Array.isArray(res.data)
-        ? res.data
-        : Array.isArray(res.data.conversations)
-          ? res.data.conversations
-          : [];
-      expect(convos.length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("posts a message and retrieves it from history", async () => {
-      const { conversationId } = await createConversation(rt.port, {
-        title: "message roundtrip",
-      });
-
-      const msgRes = LIVE_PROVIDER
-        ? await postLiveMessage(
-            rt,
-            conversationId,
-            `Reply with exactly ${LIVE_DB_CODEWORD}`,
-          )
-        : await postLiveMessage(
-            rt,
-            conversationId,
-            "Hello from the live database test",
-          );
-      expect(msgRes.status).toBe(200);
-      if (LIVE_PROVIDER) {
-        const text = msgRes.text;
-        if (isProviderIssueResponse(text)) {
-          console.warn(
-            `[database-conversation-live] provider unavailable, skipping strict assistant assertion\n${rt.logs()}`,
-          );
-        } else {
-          expect(text.length).toBeGreaterThan(0);
-          expect(text).toContain(LIVE_DB_CODEWORD);
-        }
-      }
-
-      const histRes = await req(
-        rt.port,
-        "GET",
-        `/api/conversations/${conversationId}/messages`,
-      );
-      expect(histRes.status).toBe(200);
-      const messages = Array.isArray(histRes.data.messages)
-        ? (histRes.data.messages as Array<{ role?: unknown; text?: unknown }>)
+  it("lists conversations after creation", async () => {
+    await createConversation(rt.port, { title: "list test" });
+    const res = await req(rt.port, "GET", "/api/conversations");
+    expect(res.status).toBe(200);
+    const convos = Array.isArray(res.data)
+      ? res.data
+      : Array.isArray(res.data.conversations)
+        ? res.data.conversations
         : [];
-      expect(messages.length).toBeGreaterThan(0);
+    expect(convos.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("posts a message and retrieves it from history", async () => {
+    const { conversationId } = await createConversation(rt.port, {
+      title: "message roundtrip",
+    });
+
+    const msgRes = LIVE_PROVIDER
+      ? await postLiveMessage(
+          rt,
+          conversationId,
+          `Reply with exactly ${LIVE_DB_CODEWORD}`,
+        )
+      : await postLiveMessage(
+          rt,
+          conversationId,
+          "Hello from the live database test",
+        );
+    expect(msgRes.status).toBe(200);
+    if (LIVE_PROVIDER) {
+      const text = msgRes.text;
+      if (isProviderIssueResponse(text)) {
+        console.warn(
+          `[database-conversation-live] provider unavailable, skipping strict assistant assertion\n${rt.logs()}`,
+        );
+      } else {
+        expect(text.length).toBeGreaterThan(0);
+        expect(text).toContain(LIVE_DB_CODEWORD);
+      }
+    }
+
+    const histRes = await req(
+      rt.port,
+      "GET",
+      `/api/conversations/${conversationId}/messages`,
+    );
+    expect(histRes.status).toBe(200);
+    const messages = Array.isArray(histRes.data.messages)
+      ? (histRes.data.messages as Array<{ role?: unknown; text?: unknown }>)
+      : [];
+    expect(messages.length).toBeGreaterThan(0);
+    expect(
+      messages.some(
+        (message) =>
+          message.role === "user" && typeof message.text === "string",
+      ),
+    ).toBe(true);
+    if (LIVE_PROVIDER && !isProviderIssueResponse(msgRes.text)) {
       expect(
         messages.some(
           (message) =>
-            message.role === "user" && typeof message.text === "string",
+            message.role === "assistant" &&
+            typeof message.text === "string" &&
+            message.text.includes(LIVE_DB_CODEWORD),
         ),
       ).toBe(true);
-      if (LIVE_PROVIDER && !isProviderIssueResponse(msgRes.text)) {
-        expect(
-          messages.some(
-            (message) =>
-              message.role === "assistant" &&
-              typeof message.text === "string" &&
-              message.text.includes(LIVE_DB_CODEWORD),
-          ),
-        ).toBe(true);
-      }
-    });
+    }
+  });
 
-    it("agents endpoint returns agent metadata with database state", async () => {
-      const res = await req(rt.port, "GET", "/api/agents");
-      expect(res.status).toBe(200);
-      const agents = res.data.agents ?? res.data;
-      expect(agents).toBeTruthy();
-    });
-  },
-  300_000,
-);
+  it("agents endpoint returns agent metadata with database state", async () => {
+    const res = await req(rt.port, "GET", "/api/agents");
+    expect(res.status).toBe(200);
+    const agents = res.data.agents ?? res.data;
+    expect(agents).toBeTruthy();
+  });
+}, 300_000);

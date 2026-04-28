@@ -27,6 +27,7 @@ import { withReminders } from "./service-mixin-reminders.js";
 import { withScheduling } from "./service-mixin-scheduling.js";
 import { withScreenTime } from "./service-mixin-screentime.js";
 import { withSignal } from "./service-mixin-signal.js";
+import { withSleep } from "./service-mixin-sleep.js";
 import type { Constructor } from "./service-mixin-core.js";
 import {
   type StatusMixinDependencies,
@@ -80,7 +81,7 @@ const LIFEOPS_WITH_STATUS = withStatus(
   LIFEOPS_WITH_SUBS as LifeOpsSubsCtor & Constructor<StatusMixinDependencies>,
 );
 const LIFEOPS_COMPOSED = withInbox(
-  withScreenTime(LIFEOPS_WITH_STATUS),
+  withSleep(withScreenTime(LIFEOPS_WITH_STATUS)),
 );
 
 class LifeOpsServiceComposed extends LIFEOPS_COMPOSED {}

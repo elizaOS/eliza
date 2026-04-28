@@ -234,7 +234,7 @@ declare module "@elizaos/app-training/core/context-types" {
 }
 
 declare module "@elizaos/app-training/core/context-catalog" {
-  import type { AgentContext } from "@elizaos/app-training/core/context-types";
+  import type { AgentContext } from "@elizaos/app-training";
 
   export type ContextResolutionSource = string;
   export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]>;
@@ -284,6 +284,8 @@ declare module "abitype" {
 
 declare module "@elizaos/plugin-sql" {
   import type { Plugin } from "@elizaos/core";
+  export type { DrizzleDatabase } from "@elizaos/plugin-sql/types";
+  export * from "@elizaos/plugin-sql/schema";
 
   export const PGLITE_ERROR_CODES: {
     ACTIVE_LOCK: string;

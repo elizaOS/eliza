@@ -1523,7 +1523,13 @@ export class TrajectoriesService extends Service {
 			);
 		}
 		if (options.search) {
-			const escaped = options.search.replace(/'/g, "''").replace(/%/g, "\\%");
+			// Single-pass escape so LIKE-wildcard escapes do not introduce
+			// unescaped backslashes (CodeQL js/incomplete-sanitization).
+			const escaped = options.search.replace(/[\\'%_]/g, (ch) => {
+				if (ch === "'") return "''";
+				if (ch === "\\") return "\\\\";
+				return `\\${ch}`;
+			});
 			whereClauses.push(`(
         id ILIKE '%${escaped}%' OR
         agent_id ILIKE '%${escaped}%' OR
@@ -1713,8 +1719,9 @@ export class TrajectoriesService extends Service {
 	}
 
 	private sanitizeZipFolderName(value: string): string {
-		const sanitized = value
-			.trim()
+		const trimmed = value.trim();
+		const safe = trimmed.length > 256 ? trimmed.slice(0, 256) : trimmed;
+		const sanitized = safe
 			.replace(/[^a-zA-Z0-9._-]+/g, "_")
 			.replace(/^_+|_+$/g, "");
 		return sanitized || "trajectory";

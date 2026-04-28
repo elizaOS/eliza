@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
-import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent/runtime";
+import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent";
 import {
   AgentRuntime,
   type Content,
@@ -684,10 +684,9 @@ export async function startBenchmarkServer() {
             }),
           );
         } catch (err: unknown) {
-          const errorMessage = err instanceof Error ? err.message : String(err);
           elizaLogger.error(`[bench] Reset error: ${formatUnknownError(err)}`);
           res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: errorMessage }));
+          res.end(JSON.stringify({ error: "Internal benchmark error" }));
         }
       });
       return;
@@ -797,12 +796,11 @@ export async function startBenchmarkServer() {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ status: "ok", diagnostics }));
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
         elizaLogger.error(
           `[bench] Diagnostics error: ${formatUnknownError(err)}`,
         );
         res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: errorMessage }));
+        res.end(JSON.stringify({ error: "Internal benchmark error" }));
       }
       return;
     }
@@ -970,13 +968,12 @@ export async function startBenchmarkServer() {
             }),
           );
         } catch (err: unknown) {
-          const errorMessage = err instanceof Error ? err.message : String(err);
           // Log full detail server-side but never expose stack traces to clients.
           elizaLogger.error(
             `[bench] Request error: ${formatUnknownError(err)}`,
           );
           res.writeHead(500, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: errorMessage }));
+          res.end(JSON.stringify({ error: "Internal benchmark error" }));
         }
       });
       return;

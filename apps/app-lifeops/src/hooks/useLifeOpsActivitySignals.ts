@@ -1,22 +1,22 @@
 import type {
   CaptureLifeOpsActivitySignalRequest,
   LifeOpsActivitySignal,
-} from "@elizaos/app-lifeops/contracts";
-import { client } from "@elizaos/app-core/api";
-import { isApiError } from "@elizaos/app-core/api/client-types-core";
-import { isElectrobunRuntime } from "@elizaos/app-core/bridge/electrobun-runtime";
+} from "../contracts/index.js";
 import { Capacitor } from "@capacitor/core";
-import {
-  getMobileSignalsPlugin,
-  type MobileSignalsHealthSnapshot,
-  type MobileSignalsSignal,
-  type MobileSignalsSnapshot,
-} from "@elizaos/app-core/bridge/native-plugins";
-import { loadDesktopWorkspaceSnapshot } from "@elizaos/app-core/utils/desktop-workspace";
 import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
-} from "@elizaos/app-core/events";
+  client,
+  isApiError,
+  isElectrobunRuntime,
+  loadDesktopWorkspaceSnapshot,
+} from "@elizaos/app-core";
+import {
+  MobileSignals,
+  type MobileSignalsHealthSnapshot,
+  type MobileSignalsSignal,
+  type MobileSignalsSnapshot,
+} from "@elizaos/capacitor-mobile-signals";
 import { useEffect, useRef } from "react";
 import { dispatchLifeOpsActivitySignalsStatus } from "../events/index.js";
 
@@ -333,7 +333,7 @@ export function useLifeOpsActivitySignals(enabled = true): void {
 
     const mobileSignals =
       isNativeCapacitorRuntime() && !isElectrobunRuntime()
-        ? getMobileSignalsPlugin()
+        ? MobileSignals
         : null;
     let mobileSignalsHandle: { remove: () => Promise<void> } | null = null;
     let mobileSignalsStarted = false;
@@ -378,7 +378,7 @@ export function useLifeOpsActivitySignals(enabled = true): void {
 
       mobileSignalsHandle = await mobileSignals.addListener(
         "signal",
-        (signal) => {
+        (signal: MobileSignalsSignal) => {
           void sendSignal(mapMobileSignal(signal)).catch(reportCaptureError);
         },
       );

@@ -2,7 +2,8 @@ import {
   createGeneratedAppHeroDataUrl,
   getAppHeroMonogram,
   getAppHeroThemeKey,
-} from "@elizaos/shared/app-hero-art";
+} from "@elizaos/shared";
+import { resolveApiUrl, resolveAppAssetUrl } from "../../utils/asset-url";
 import {
   Bot,
   Briefcase,
@@ -20,11 +21,6 @@ export interface AppIdentitySource {
   displayName?: string | null;
   category?: string | null;
   icon?: string | null;
-  /**
-   * URL to a full-card hero image for this app. Declared by the app
-   * itself in `package.json` → `elizaos.app.heroImage` and surfaced via
-   * `RegistryAppInfo.heroImage`; falls back to generated hero art when absent.
-   */
   heroImage?: string | null;
   description?: string | null;
 }
@@ -58,9 +54,29 @@ export function iconImageSource(
       value,
     )
   ) {
-    return value;
+    return resolveRuntimeImageUrl(value);
   }
   return null;
+}
+
+/**
+ * Convert a heroImage/icon src into a runtime-safe URL.
+ *
+ * Root-relative paths fail under non-http origins (electrobun://, file://)
+ * because the page origin isn't the static asset host. Route them through
+ * the appropriate runtime resolver so they hit the API/asset base instead.
+ */
+export function resolveRuntimeImageUrl(value: string): string {
+  // Absolute URLs, data/blob URIs, and custom schemes are already runtime-safe.
+  if (/^(https?:|data:|blob:|file:|capacitor:|electrobun:|app:)/i.test(value)) {
+    return value;
+  }
+  // API-served hero endpoints must hit the API base, not the asset CDN.
+  if (value.startsWith("/api/") || value.startsWith("api/")) {
+    return resolveApiUrl(value.startsWith("/") ? value : `/${value}`);
+  }
+  // Static asset under apps/app/public/ — resolves to CDN base in releases.
+  return resolveAppAssetUrl(value);
 }
 
 function getAppMonogram(app: AppIdentitySource): string {
@@ -94,7 +110,8 @@ function useResolvedAppImageSource(app: AppIdentitySource): {
   imageSrc: string | null;
   handleImageError: () => void;
 } {
-  const heroSrc = app.heroImage?.trim() || null;
+  const heroRaw = app.heroImage?.trim() || null;
+  const heroSrc = heroRaw ? resolveRuntimeImageUrl(heroRaw) : null;
   const iconSrc = iconImageSource(app.icon);
   const generatedSrc = createGeneratedAppHeroDataUrl(app);
   const sourceKey = [
@@ -262,13 +279,6 @@ function getHeroBlobs(seed: number): HeroBlob[] {
   ];
 }
 
-/**
- * Full-card hero visual for an app. Prefers an app-declared hero image
- * (see `AppIdentitySource.heroImage`, sourced from the app's own
- * package.json and served via `/api/apps/hero/<slug>`), then a
- * caller-provided icon URL, then a generated hero image data URL seeded
- * from the app name so each app still gets dedicated art when no asset ships.
- */
 export function AppHero({
   app,
   className = "",
@@ -281,7 +291,6 @@ export function AppHero({
   const palette = getAppPalette(app.name);
   const { imageSrc, handleImageError } = useResolvedAppImageSource(app);
   const Icon = getAppCategoryIcon(app);
-  const monogram = getAppMonogram(app);
   const blobs = getHeroBlobs(hashString(app.name));
   const iconRotation = hashString(app.name) % 24;
 
@@ -347,9 +356,6 @@ export function AppHero({
         <>
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(255,255,255,0.22),transparent_55%)]" />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
-          <div className="absolute left-3 top-3 inline-flex items-center rounded-full border border-white/25 bg-white/15 px-2 py-0.5 text-[0.58rem] font-semibold uppercase tracking-[0.22em] text-white backdrop-blur-sm">
-            {monogram}
-          </div>
         </>
       ) : null}
     </div>

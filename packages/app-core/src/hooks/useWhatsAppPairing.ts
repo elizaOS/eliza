@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../api/client";
 
-export type { WhatsAppPairingStatus } from "@elizaos/agent/services/whatsapp-pairing";
+export type { WhatsAppPairingStatus } from "@elizaos/agent";
 
-import type { WhatsAppPairingStatus } from "@elizaos/agent/services/whatsapp-pairing";
+import type { WhatsAppPairingStatus } from "@elizaos/agent";
 
 interface WhatsAppPairingState {
   status: WhatsAppPairingStatus;

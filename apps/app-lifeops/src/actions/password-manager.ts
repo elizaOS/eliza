@@ -1,19 +1,20 @@
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
-  logger,
   type Action,
   type ActionExample,
   type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
 import {
   injectCredentialToClipboard,
   listPasswordItems,
-  searchPasswordItems,
   type PasswordManagerBridgeConfig,
   type PasswordManagerItem,
+  searchPasswordItems,
 } from "../lifeops/password-manager-bridge.js";
 
 /**
@@ -43,22 +44,6 @@ type PasswordManagerParameters = {
   limit?: number;
 };
 
-function parseLooseParameterString(raw: unknown): Partial<PasswordManagerParameters> {
-  if (typeof raw !== "string") {
-    return {};
-  }
-  const subactionMatch = raw.match(
-    /\bsubaction\s*[:=]\s*["']?([a-z_]+)["']?/i,
-  );
-  const queryMatch = raw.match(/\bquery\s*[:=]\s*["']([^"']+)["']/i);
-  const intentMatch = raw.match(/\bintent\s*[:=]\s*["']([^"']+)["']/i);
-  return {
-    subaction: subactionMatch?.[1],
-    query: queryMatch?.[1],
-    intent: intentMatch?.[1],
-  };
-}
-
 function readConfig(
   runtime: { getSetting?: (key: string) => unknown } | undefined,
 ): PasswordManagerBridgeConfig {
@@ -71,48 +56,6 @@ function readConfig(
   const config: PasswordManagerBridgeConfig = {};
   if (account) config.onePasswordAccount = account;
   return config;
-}
-
-function inferSubactionFromText(
-  text: string,
-): PasswordManagerSubaction | undefined {
-  const lower = text.toLowerCase();
-  if (!lower.trim()) return undefined;
-  // Injection requests usually name an explicit target plus "copy" or "paste"
-  if (/\bcopy\b.*\b(password|secret|token)\b/.test(lower))
-    return "inject_password";
-  if (/\bcopy\b.*\b(username|user|login|email)\b/.test(lower))
-    return "inject_username";
-  if (/\bpaste\b.*\bpassword\b/.test(lower)) return "inject_password";
-  // Listing: "show/list my (saved) logins/passwords/credentials"
-  if (
-    /\b(show|list|see|view|display|what are)\b.*\b(saved|my)?\s*(logins?|passwords?|credentials?|items?|entries|vault)/.test(
-      lower,
-    )
-  ) {
-    return "list";
-  }
-  // Search: "find/lookup my <service> (password|login)"
-  if (
-    /\b(find|look ?up|search|get|fetch|where is|what('?s| is))\b.*\b(password|login|credential|account)\b/.test(
-      lower,
-    ) ||
-    /\bmy\b.*\b(password|login|credential)\b\s+for\b/.test(lower)
-  ) {
-    return "search";
-  }
-  return undefined;
-}
-
-function extractPasswordSearchQuery(text: string): string | undefined {
-  const domainMatch = text.match(/\b([a-z0-9-]+(?:\.[a-z0-9-]+)+)\b/i);
-  if (domainMatch?.[1]) {
-    return domainMatch[1].toLowerCase();
-  }
-  const serviceMatch = text.match(
-    /\b(?:for|about|on|my)\s+([a-z0-9._-]+)(?:\s+(?:login|password|credentials?))?\b/i,
-  );
-  return serviceMatch?.[1];
 }
 
 function describeItems(items: PasswordManagerItem[]): string {
@@ -159,7 +102,10 @@ const examples: ActionExample[][] = [
     },
   ],
   [
-    { name: "{{user1}}", content: { text: "Copy my AWS password to clipboard" } },
+    {
+      name: "{{user1}}",
+      content: { text: "Copy my AWS password to clipboard" },
+    },
     {
       name: "{{agent}}",
       content: {
@@ -201,31 +147,32 @@ export const passwordManagerAction: Action & {
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),
 
-  handler: async (runtime, message, _state, options): Promise<ActionResult> => {
+  handler: async (runtime, message, state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
       return failure("PERMISSION_DENIED");
     }
 
     const rawParameters = (options as HandlerOptions | undefined)?.parameters;
-    const params = {
-      ...parseLooseParameterString(rawParameters),
-      ...((typeof rawParameters === "object" && rawParameters !== null
-        ? (rawParameters as PasswordManagerParameters)
-        : {}) ?? {}),
-    } satisfies PasswordManagerParameters;
+    const rawParams = ((typeof rawParameters === "object" &&
+    rawParameters !== null
+      ? (rawParameters as PasswordManagerParameters)
+      : {}) ?? {}) as PasswordManagerParameters;
+    const params = (await extractActionParamsViaLlm<PasswordManagerParameters>({
+      runtime,
+      message,
+      state,
+      actionName: "PASSWORD_MANAGER",
+      actionDescription: passwordManagerAction.description ?? "",
+      paramSchema: passwordManagerAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["subaction"],
+    })) as PasswordManagerParameters;
 
-    const messageText =
-      typeof message.content?.text === "string" ? message.content.text : "";
-    const rawSubaction = (params.subaction ?? "").toString().trim().toLowerCase();
-    const subaction =
-      rawSubaction || inferSubactionFromText(params.intent ?? messageText) || "";
+    const subaction = (params.subaction ?? "").toString().trim().toLowerCase();
     const config = readConfig(runtime);
 
     if (subaction === "search") {
-      const query =
-        (params.query ?? extractPasswordSearchQuery(params.intent ?? messageText) ?? params.intent ?? messageText)
-          .toString()
-          .trim();
+      const query = (params.query ?? params.intent ?? "").toString().trim();
       if (!query) return failure("MISSING_QUERY");
       const items = await searchPasswordItems(query, config);
       const text = `Saved login items only — passwords remain hidden.\n${describeItems(items)}`;
@@ -270,7 +217,13 @@ export const passwordManagerAction: Action & {
       }
       const result = await injectCredentialToClipboard(itemId, field, config);
       logger.info(
-        { action: "PASSWORD_MANAGER", subaction, itemId, field, fixtureMode: result.fixtureMode === true },
+        {
+          action: "PASSWORD_MANAGER",
+          subaction,
+          itemId,
+          field,
+          fixtureMode: result.fixtureMode === true,
+        },
         `[PASSWORD_MANAGER] Copied ${field} for item ${itemId} to clipboard`,
       );
       const fixtureSuffix = result.fixtureMode
@@ -304,8 +257,7 @@ export const passwordManagerAction: Action & {
   parameters: [
     {
       name: "subaction",
-      description:
-        "One of: search, list, inject_username, inject_password.",
+      description: "One of: search, list, inject_username, inject_password.",
       schema: { type: "string" as const },
     },
     {
@@ -321,7 +273,8 @@ export const passwordManagerAction: Action & {
     },
     {
       name: "itemId",
-      description: "Password manager item id (required for inject_* subactions).",
+      description:
+        "Password manager item id (required for inject_* subactions).",
       schema: { type: "string" as const },
     },
     {

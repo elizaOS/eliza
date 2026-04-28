@@ -6,7 +6,8 @@
  * or an appropriate error/auth event.
  */
 
-import { getStylePresets } from "@elizaos/shared/onboarding-presets";
+import { logger } from "@elizaos/core";
+import { getStylePresets } from "@elizaos/shared";
 import type { OnboardingOptions } from "../api";
 import { client } from "../api";
 import {
@@ -167,7 +168,7 @@ export async function runPollingBackend(
   const deadline = Date.now() + policy.backendTimeoutMs;
   let attempts = 0;
   let lastErr: unknown = null;
-  let latestAuth = {
+  let latestAuth: Awaited<ReturnType<typeof client.getAuthStatus>> = {
     required: false,
     pairingEnabled: false,
     expiresAt: null as number | null,
@@ -185,6 +186,13 @@ export async function runPollingBackend(
       latestAuth = auth;
       if (cancelled.current) return;
       if (auth.required && !client.hasToken()) {
+        if (auth.loginRequired) {
+          deps.setAuthRequired(false);
+          deps.setOnboardingComplete(true);
+          deps.setOnboardingLoading(false);
+          dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+          return;
+        }
         deps.setAuthRequired(true);
         deps.setPairingEnabled(auth.pairingEnabled);
         deps.setPairingExpiresAt(auth.expiresAt);
@@ -194,10 +202,6 @@ export async function runPollingBackend(
       }
       const onboardingStatusRes = await client.getOnboardingStatus();
       const { complete, cloudProvisioned } = onboardingStatusRes;
-      console.log(
-        "[eliza][startup] onboarding status response:",
-        JSON.stringify(onboardingStatusRes),
-      );
       if (cancelled.current) return;
       deps.setOnboardingCloudProvisionedContainer(Boolean(cloudProvisioned));
       let sessionComplete =
@@ -229,21 +233,9 @@ export async function runPollingBackend(
         savePersistedActiveServer(ctx.restoredActiveServer);
       }
       if (!complete && ctx?.shouldPreserveCompletedOnboarding)
-        console.warn(
+        logger.warn(
           "[eliza][startup:init] Preserving completed onboarding despite incomplete backend onboarding status.",
         );
-      console.log(
-        "[eliza][startup] sessionComplete:",
-        sessionComplete,
-        "complete:",
-        complete,
-        "cloudProvisioned:",
-        cloudProvisioned,
-        "persistedConnection:",
-        !!ctx?.persistedActiveServer,
-        "hadPrior:",
-        !!ctx?.hadPriorOnboarding,
-      );
       deps.setOnboardingComplete(sessionComplete);
 
       if (!sessionComplete) {
@@ -328,13 +320,21 @@ export async function runPollingBackend(
         }
         return;
       }
-      console.log(
-        "[eliza][startup] dispatching BACKEND_REACHED onboardingComplete=true",
-      );
       dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
       return;
     } catch (err) {
       const ae = asApiLikeError(err);
+      if (
+        ae?.status === 401 &&
+        latestAuth.loginRequired &&
+        !client.hasToken()
+      ) {
+        deps.setAuthRequired(false);
+        deps.setOnboardingComplete(true);
+        deps.setOnboardingLoading(false);
+        dispatch({ type: "BACKEND_REACHED", onboardingComplete: true });
+        return;
+      }
       if (ae?.status === 401 && client.hasToken()) {
         // On desktop, 401 is transient (port not ready / port changed).
         // Never clear the shell-injected token or show pairing.

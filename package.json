@@ -79,6 +79,7 @@
     "plugins/plugin-sql/typescript",
     "plugins/plugin-ollama/typescript",
     "plugins/plugin-local-ai/typescript",
+    "cloud/packages/sdk",
     "cloud/packages/services/billing"
   ],
   "devDependencies": {

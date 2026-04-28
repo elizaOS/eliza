@@ -7,6 +7,24 @@
 
 import type http from "node:http";
 
+function scrubStackFields(value: unknown): unknown {
+  if (value instanceof Error) {
+    return { error: value.message || "Internal error" };
+  }
+  if (Array.isArray(value)) {
+    return value.map(scrubStackFields);
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (k === "stack" || k === "stackTrace") continue;
+      out[k] = scrubStackFields(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 /** Send a JSON response. No-op if headers already sent. */
 export function sendJson(
   res: http.ServerResponse,
@@ -16,7 +34,7 @@ export function sendJson(
   if (res.headersSent) return;
   res.statusCode = status;
   res.setHeader("content-type", "application/json; charset=utf-8");
-  res.end(JSON.stringify(body));
+  res.end(JSON.stringify(scrubStackFields(body)));
 }
 
 /** Send a JSON `{ error: message }` response. */

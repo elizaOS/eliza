@@ -2,7 +2,8 @@ export type LifeOpsPaymentSourceKind =
   | "csv"
   | "plaid"
   | "manual"
-  | "paypal";
+  | "paypal"
+  | "email";
 
 export type LifeOpsPaymentSourceStatus =
   | "active"
@@ -92,10 +93,46 @@ export interface LifeOpsSpendingSummary {
   }>;
 }
 
+export interface LifeOpsRecurringChargePlaybookHit {
+  merchantNormalized: string;
+  playbookKey: string;
+  serviceName: string;
+  managementUrl: string;
+  executorPreference: "user_browser" | "agent_browser" | "desktop_native";
+}
+
+/**
+ * A bill detected from email (or other source) and surfaced as an upcoming
+ * obligation on the Money dashboard. Backed by a `life_payment_transactions`
+ * row whose `source.kind === "email"` and whose `metadata.dueDate` /
+ * `metadata.sourceMessageId` fields carry the bill-specific data.
+ */
+export interface LifeOpsUpcomingBill {
+  id: string;
+  merchant: string;
+  amountUsd: number;
+  currency: string;
+  dueDate: string;
+  postedAt: string;
+  sourceMessageId: string | null;
+  confidence: number;
+}
+
 export interface LifeOpsPaymentsDashboard {
   sources: LifeOpsPaymentSource[];
   recurring: LifeOpsRecurringCharge[];
+  /**
+   * For every recurring charge whose merchant matches a known cancellation
+   * playbook (Netflix, Spotify, NYT, etc.), this map carries the playbook
+   * descriptor. UI shows a deep-link "Cancel" button only when there is a hit.
+   */
+  recurringPlaybookHits: LifeOpsRecurringChargePlaybookHit[];
   spending: LifeOpsSpendingSummary;
+  /**
+   * Bills extracted from email-classified messages with `dueDate >= now`.
+   * Sorted ascending by `dueDate`. Empty array when no bills are tracked.
+   */
+  upcomingBills: LifeOpsUpcomingBill[];
   gmailSubscriptionAuditId: string | null;
   generatedAt: string;
 }
@@ -140,3 +177,12 @@ export interface SpendingSummaryRequest {
   windowDays?: number | null;
   sourceId?: string | null;
 }
+
+// Money is the user-facing name; Payment* types remain for backwards compat.
+export type LifeOpsMoneyDashboard = LifeOpsPaymentsDashboard;
+export type LifeOpsMoneySource = LifeOpsPaymentSource;
+export type LifeOpsMoneySourceKind = LifeOpsPaymentSourceKind;
+export type LifeOpsMoneySourceStatus = LifeOpsPaymentSourceStatus;
+export type LifeOpsMoneyTransaction = LifeOpsPaymentTransaction;
+export type LifeOpsMoneyDirection = LifeOpsPaymentDirection;
+export type AddMoneySourceRequest = AddPaymentSourceRequest;

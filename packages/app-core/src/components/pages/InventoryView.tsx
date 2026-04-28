@@ -8,7 +8,7 @@ import type {
   WalletMarketPriceSnapshot,
   WalletTradingProfileResponse,
   WalletTradingProfileWindow,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import {
   Button,
   cn,

@@ -21,14 +21,14 @@ import {
   AlertTriangle,
   Archive,
   Brain,
-  Cpu,
   Download,
+  KeyRound,
+  LayoutGrid,
   type LucideIcon,
   Palette,
   RefreshCw,
   Shield,
   SlidersHorizontal,
-  Terminal,
   Upload,
   User,
   Wallet,
@@ -42,13 +42,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { CodingAgentSettingsSection } from "../../app-shell/task-coordinator-slots.js";
 import { useApp } from "../../state";
-import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
+import { SecuritySettingsSection } from "../settings/SecuritySettingsSection";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
 import { ReleaseCenterView } from "./ReleaseCenterView";
@@ -167,45 +167,6 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     ],
   },
   {
-    id: "local-models",
-    label: "settings.sections.localModels.label",
-    defaultLabel: "Local Models",
-    icon: Cpu,
-    description: "settings.sections.localModels.desc",
-    defaultDescription: "Download and assign local models.",
-    keywords: [
-      "local",
-      "llama",
-      "llama.cpp",
-      "gguf",
-      "model",
-      "download",
-      "inference",
-      "offline",
-      "gpu",
-      "vram",
-    ],
-  },
-  {
-    id: "coding-agents",
-    label: "settings.sections.codingagents.label",
-    defaultLabel: "Task Agents",
-    icon: Terminal,
-    description: "settings.codingAgentsDescription",
-    defaultDescription: "Claude Code, Codex, Gemini, and Aider.",
-    keywords: [
-      "codex",
-      "agent",
-      "reasoning",
-      "parallel",
-      "approval",
-      "routing",
-      "provider routing",
-      "task coordinator",
-      "task agents",
-    ],
-  },
-  {
     id: "appearance",
     label: "settings.sections.appearance.label",
     defaultLabel: "Appearance",
@@ -256,6 +217,27 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     ],
   },
   {
+    id: "apps",
+    label: "settings.sections.apps.label",
+    defaultLabel: "Apps",
+    icon: LayoutGrid,
+    description: "settings.sections.apps.desc",
+    defaultDescription:
+      "Installed apps, launching, relaunching, editing, and creating new ones.",
+    keywords: [
+      "apps",
+      "app",
+      "launch",
+      "relaunch",
+      "stop",
+      "edit",
+      "scaffold",
+      "create app",
+      "install",
+      "directory",
+    ],
+  },
+  {
     id: "wallet-rpc",
     label: "settings.sections.walletrpc.label",
     defaultLabel: "Wallet & RPC",
@@ -292,6 +274,24 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
       "file access",
     ],
     keywordKeys: ["settings.keyword.permissions", "settings.keyword.security"],
+  },
+  {
+    id: "security",
+    label: "settings.sections.security.label",
+    defaultLabel: "Security",
+    icon: KeyRound,
+    description: "settings.sections.security.desc",
+    defaultDescription: "Local access, remote password, and sessions.",
+    keywords: [
+      "security",
+      "auth",
+      "password",
+      "remote",
+      "session",
+      "login",
+      "owner",
+    ],
+    keywordKeys: ["settings.keyword.security"],
   },
   {
     id: "updates",
@@ -1095,36 +1095,6 @@ export function SettingsView({
         </SettingsSection>
       )}
 
-      {visibleSectionIds.has("local-models") && (
-        <SettingsSection
-          id="local-models"
-          title={t("settings.sections.localModels.label", {
-            defaultValue: "Local Models",
-          })}
-          description={t("settings.sections.localModels.desc", {
-            defaultValue: "Download and assign local models.",
-          })}
-          ref={registerContentItem("local-models")}
-        >
-          <LocalInferencePanel />
-        </SettingsSection>
-      )}
-
-      {visibleSectionIds.has("coding-agents") && (
-        <SettingsSection
-          id="coding-agents"
-          title={t("settings.sections.codingagents.label", {
-            defaultValue: "Task Agents",
-          })}
-          description={t("settings.codingAgentsDescription", {
-            defaultValue: "Claude Code, Codex, Gemini, and Aider.",
-          })}
-          ref={registerContentItem("coding-agents")}
-        >
-          <CodingAgentSettingsSection />
-        </SettingsSection>
-      )}
-
       {visibleSectionIds.has("appearance") && (
         <SettingsSection
           id="appearance"
@@ -1152,6 +1122,22 @@ export function SettingsView({
           ref={registerContentItem("capabilities")}
         >
           <CapabilitiesSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("apps") && (
+        <SettingsSection
+          id="apps"
+          title={t("settings.sections.apps.label", {
+            defaultValue: "Apps",
+          })}
+          description={t("settings.sections.apps.desc", {
+            defaultValue:
+              "Installed apps, launching, relaunching, editing, and creating new ones.",
+          })}
+          ref={registerContentItem("apps")}
+        >
+          <AppsManagementSection />
         </SettingsSection>
       )}
 
@@ -1183,6 +1169,21 @@ export function SettingsView({
           ref={registerContentItem("permissions")}
         >
           <PermissionsSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("security") && (
+        <SettingsSection
+          id="security"
+          title={t("settings.sections.security.label", {
+            defaultValue: "Security",
+          })}
+          description={t("settings.sections.security.desc", {
+            defaultValue: "Local access, remote password, and sessions.",
+          })}
+          ref={registerContentItem("security")}
+        >
+          <SecuritySettingsSection />
         </SettingsSection>
       )}
 

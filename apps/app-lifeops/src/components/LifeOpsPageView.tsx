@@ -1,4 +1,5 @@
 import {
+  AppWorkspaceChrome,
   Button,
   type CloudOAuthConnection,
   client,
@@ -9,7 +10,6 @@ import {
   useMediaQuery,
 } from "@elizaos/app-core";
 import { PageScopedChatPane } from "@elizaos/app-core/components/pages/PageScopedChatPane";
-import { AppWorkspaceChrome } from "@elizaos/app-core/components/workspace/AppWorkspaceChrome";
 import { Power, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -23,26 +23,16 @@ import {
   dispatchLifeOpsGithubCallbackFromWindowMessage,
   drainLifeOpsGithubCallbacks,
 } from "../platform/lifeops-github.js";
-import { LifeOpsCalendarSection } from "./LifeOpsCalendarSection.js";
-import {
-  LIFEOPS_MAIL_CHANNELS,
-  LIFEOPS_MESSAGE_CHANNELS,
-  LifeOpsInboxSection,
-} from "./LifeOpsInboxSection.js";
 import { LifeOpsXPanel } from "./LifeOpsOperationalPanels";
-import { LifeOpsOverviewSection } from "./LifeOpsOverviewSection.js";
 import type { ManagedAgentGithubEntry } from "./LifeOpsPageSections";
-import { LifeOpsPaymentsSection } from "./LifeOpsPaymentsSection.js";
-import { LifeOpsRemindersSection } from "./LifeOpsRemindersSection.js";
-import { LifeOpsScreenTimeSection } from "./LifeOpsScreenTimeSection.js";
 import {
   type LifeOpsSelection,
   LifeOpsSelectionProvider,
   useLifeOpsSelection,
 } from "./LifeOpsSelectionContext.js";
+import { LifeOpsSectionContent } from "./LifeOpsSectionContent.js";
 import { LifeOpsSettingsSection } from "./LifeOpsSettingsSection";
 import { clearLifeOpsSetupGateDismissed } from "./LifeOpsSetupGate.js";
-import { LifeOpsSleepSection } from "./LifeOpsSleepSection.js";
 import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell.js";
 import { MessagingConnectorGrid } from "./MessagingConnectorCards";
 
@@ -955,37 +945,11 @@ function LifeOpsWorkspaceInner() {
       );
     }
 
-    switch (section) {
-      case "overview":
-        return <LifeOpsOverviewSection onNavigate={navigate} />;
-      case "sleep":
-        return <LifeOpsSleepSection />;
-      case "screen-time":
-        return <LifeOpsScreenTimeSection />;
-      case "calendar":
-        return <LifeOpsCalendarSection />;
-      case "messages":
-        return (
-          <LifeOpsInboxSection
-            channels={LIFEOPS_MESSAGE_CHANNELS}
-            title="Messages"
-            emptyLabel="No messages."
-          />
-        );
-      case "mail":
-        return (
-          <LifeOpsInboxSection
-            channels={LIFEOPS_MAIL_CHANNELS}
-            title="Mail"
-            emptyLabel="No mail."
-          />
-        );
-      case "reminders":
-        return <LifeOpsRemindersSection />;
-      case "payments":
-        return <LifeOpsPaymentsSection />;
-      case "setup":
-        return (
+    return (
+      <LifeOpsSectionContent
+        section={section}
+        navigate={navigate}
+        setupContent={
           <LifeOpsSettingsSectionView
             ownerGithub={ownerGithubSetup}
             agentGithub={agentGithubSetup}
@@ -998,10 +962,9 @@ function LifeOpsWorkspaceInner() {
             disableLifeOpsDisabled={lifeOpsApp.loading || lifeOpsApp.saving}
             t={t}
           />
-        );
-      default:
-        return null;
-    }
+        }
+      />
+    );
   })();
 
   return (

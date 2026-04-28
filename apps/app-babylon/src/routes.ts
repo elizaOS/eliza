@@ -1,20 +1,27 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
+  AppLaunchDiagnostic,
+  AppLaunchPreparation,
   AppLaunchResult,
   AppLaunchSessionContext,
   AppRunSessionContext,
   AppSessionState,
-} from "@elizaos/shared/contracts/apps";
+  AppViewerAuthMessage,
+} from "@elizaos/shared";
 import {
   asRuntimeLike,
   type BabylonConfig,
+  persistBabylonCredential,
   proxyBabylonRequest,
+  resolveBabylonClientUrl,
   resolveBabylonConfig,
   resolveSettingLike,
 } from "./babylon-auth";
 
 const APP_NAME = "@elizaos/app-babylon";
 const APP_DISPLAY_NAME = "Babylon";
+const BABYLON_AGENT_SESSION_TOKEN_KEY = "BABYLON_AGENT_SESSION_TOKEN";
+const BABYLON_AGENT_SESSION_EXPIRES_AT_KEY = "BABYLON_AGENT_SESSION_EXPIRES_AT";
 
 // ---------------------------------------------------------------------------
 // Route context type (mirrors AppPackageRouteContext)
@@ -242,6 +249,198 @@ async function readSessionState(
   return buildSessionState(config);
 }
 
+async function probeBabylonDevCredentials(
+  baseUrl: string,
+): Promise<{ agentId: string; agentSecret: string } | null> {
+  const nodeCrypto = await import("node:crypto");
+  const os = await import("node:os");
+  const agentIds = [
+    "babylon-agent-alice",
+    "babylon-test-agent",
+    "dev-admin-local",
+  ];
+  const hostnames = new Set<string>(["localhost", "0.0.0.0"]);
+  if (process.env.HOSTNAME) hostnames.add(process.env.HOSTNAME);
+  hostnames.add(os.hostname());
+  const secrets = Array.from(hostnames, (hostname) => {
+    const hash = nodeCrypto
+      .createHash("sha256")
+      .update(`babylon-dev:${hostname}:agent`)
+      .digest("hex")
+      .substring(0, 32);
+    return `dev_agent_${hash}`;
+  });
+
+  for (const agentId of agentIds) {
+    for (const agentSecret of secrets) {
+      try {
+        const response = await fetch(new URL("/api/agents/auth", baseUrl), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentId, agentSecret }),
+          signal: AbortSignal.timeout(3_000),
+        });
+        if (!response.ok) continue;
+        const data = (await response.json()) as {
+          success?: boolean;
+          sessionToken?: string;
+        };
+        if (data.success || data.sessionToken) {
+          return { agentId, agentSecret };
+        }
+      } catch {
+        return null;
+      }
+    }
+  }
+  return null;
+}
+
+async function authenticateBabylonAgentSession(
+  baseUrl: string,
+  agentId: string,
+  agentSecret: string,
+): Promise<{ sessionToken: string; expiresAt?: string } | null> {
+  const response = await fetch(new URL("/api/agents/auth", baseUrl), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agentId, agentSecret }),
+    signal: AbortSignal.timeout(3_000),
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = (await response.json()) as {
+    sessionToken?: string;
+    expiresAt?: string;
+  };
+  if (!data.sessionToken) {
+    return null;
+  }
+
+  return {
+    sessionToken: data.sessionToken,
+    expiresAt:
+      typeof data.expiresAt === "string" && data.expiresAt.trim().length > 0
+        ? data.expiresAt
+        : undefined,
+  };
+}
+
+function persistSession(
+  runtime: IAgentRuntime | null,
+  session: { sessionToken: string; expiresAt?: string },
+): void {
+  persistBabylonCredential(
+    runtime,
+    BABYLON_AGENT_SESSION_TOKEN_KEY,
+    session.sessionToken,
+    true,
+  );
+  if (session.expiresAt) {
+    persistBabylonCredential(
+      runtime,
+      BABYLON_AGENT_SESSION_EXPIRES_AT_KEY,
+      session.expiresAt,
+      true,
+    );
+  }
+}
+
+async function prepareBabylonCredentials(
+  runtime: IAgentRuntime | null,
+): Promise<AppLaunchDiagnostic[]> {
+  const config = resolveBabylonConfig(runtime);
+  const existingId = config.agentId;
+  const existingSecret = config.agentSecret;
+
+  if (existingId && existingSecret) {
+    try {
+      const session = await authenticateBabylonAgentSession(
+        config.apiBaseUrl,
+        existingId,
+        existingSecret,
+      );
+      if (session) {
+        persistSession(runtime, session);
+        return [];
+      }
+      return [
+        {
+          code: "babylon-auth-failed",
+          severity: "warning",
+          message:
+            "Babylon credentials are set but authentication failed. Check BABYLON_AGENT_ID and BABYLON_AGENT_SECRET.",
+        },
+      ];
+    } catch {
+      return [
+        {
+          code: "babylon-unreachable",
+          severity: "warning",
+          message: `Cannot reach Babylon at ${config.apiBaseUrl}. Is the server running?`,
+        },
+      ];
+    }
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    try {
+      await fetch(new URL("/api/health", config.apiBaseUrl), {
+        signal: AbortSignal.timeout(3_000),
+      });
+    } catch {
+      return [
+        {
+          code: "babylon-unreachable",
+          severity: "warning",
+          message: `Cannot reach Babylon at ${config.apiBaseUrl}. Start the Babylon dev server and re-launch.`,
+        },
+      ];
+    }
+
+    const devCreds = await probeBabylonDevCredentials(config.apiBaseUrl);
+    if (devCreds) {
+      persistBabylonCredential(runtime, "BABYLON_AGENT_ID", devCreds.agentId);
+      persistBabylonCredential(
+        runtime,
+        "BABYLON_AGENT_SECRET",
+        devCreds.agentSecret,
+        true,
+      );
+      const session = await authenticateBabylonAgentSession(
+        config.apiBaseUrl,
+        devCreds.agentId,
+        devCreds.agentSecret,
+      );
+      if (session) {
+        persistSession(runtime, session);
+      }
+      return [];
+    }
+
+    return [
+      {
+        code: "babylon-no-agent-id",
+        severity: "warning",
+        message:
+          "Could not auto-provision Babylon credentials. Set BABYLON_AGENT_ID and BABYLON_AGENT_SECRET in your environment.",
+      },
+    ];
+  }
+
+  return [
+    {
+      code: "babylon-no-agent-id",
+      severity: "warning",
+      message:
+        "BABYLON_AGENT_ID is not set. Set BABYLON_AGENT_ID and BABYLON_AGENT_SECRET for full Babylon integration.",
+    },
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Session sub-routes (message + control for GameView integration)
 // ---------------------------------------------------------------------------
@@ -279,6 +478,43 @@ export async function refreshRunSession(
 ): Promise<AppLaunchResult["session"]> {
   const config = resolveBabylonConfig(ctx.runtime);
   return readSessionState(config);
+}
+
+export async function prepareLaunch(ctx: {
+  runtime: IAgentRuntime | null;
+}): Promise<AppLaunchPreparation> {
+  const runtime = getRuntime({ runtime: ctx.runtime } as RouteContext);
+  return {
+    diagnostics: await prepareBabylonCredentials(runtime),
+    launchUrl: resolveBabylonClientUrl(runtime),
+    viewer: {
+      url: resolveBabylonClientUrl(runtime),
+      postMessageAuth: true,
+    },
+  };
+}
+
+export async function resolveViewerAuthMessage(ctx: {
+  runtime: IAgentRuntime | null;
+}): Promise<AppViewerAuthMessage | null> {
+  const runtime = getRuntime({ runtime: ctx.runtime } as RouteContext);
+  const config = resolveBabylonConfig(runtime);
+  const agentId = config.agentId;
+  const sessionToken =
+    resolveSettingLike(runtime, BABYLON_AGENT_SESSION_TOKEN_KEY) ??
+    process.env[BABYLON_AGENT_SESSION_TOKEN_KEY]?.trim();
+
+  if (!agentId || !sessionToken) {
+    return null;
+  }
+
+  return {
+    type: "BABYLON_AUTH",
+    authToken: sessionToken,
+    sessionToken,
+    agentId,
+    characterId: agentId,
+  };
 }
 
 /**

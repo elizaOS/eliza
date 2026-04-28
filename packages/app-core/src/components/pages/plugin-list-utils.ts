@@ -78,7 +78,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { PluginInfo, PluginParamDef } from "../../api";
-import type { JsonSchemaObject } from "../../config";
+import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
 import { resolveAppAssetUrl } from "../../utils";
 import { autoLabel } from "../../utils/labels";

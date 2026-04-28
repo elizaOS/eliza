@@ -16,7 +16,7 @@ import type { Memory, State } from "@elizaos/core";
 import {
   collectKeywordTermMatches,
   textIncludesKeywordTerm,
-} from "@elizaos/shared/validation-keywords";
+} from "@elizaos/shared";
 import {
   type ContextSignalKey,
   getContextSignalTerms,

@@ -9,7 +9,13 @@
  * Non-loading phases (error, pairing, onboarding) delegate to their views.
  */
 
-import { useEffect, useRef } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { client } from "../../api";
 import { CONNECT_EVENT } from "../../events";
 import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
@@ -17,6 +23,7 @@ import { applyLaunchConnection } from "../../platform";
 import { useApp } from "../../state";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";
+import { BootstrapStep } from "../onboarding/BootstrapStep";
 import { PairingView } from "./PairingView";
 import { RuntimeGate } from "./RuntimeGate";
 import { StartupFailureView } from "./StartupFailureView";
@@ -50,6 +57,21 @@ function phaseToStatusKey(phase: string): string {
   }
 }
 
+/**
+ * Returns true when the cloud-provisioned bootstrap session has NOT yet been
+ * established for this page load. After a successful exchange the UI writes
+ * sessionStorage["milady_session"] as a renderer-side marker; the server-owned
+ * HttpOnly cookie remains the actual auth boundary.
+ */
+function needsBootstrapSession(): boolean {
+  try {
+    return !sessionStorage.getItem("milady_session");
+  } catch {
+    // sessionStorage unavailable — treat as needing bootstrap (fail closed).
+    return true;
+  }
+}
+
 export function StartupShell() {
   const {
     startupCoordinator,
@@ -66,6 +88,13 @@ export function StartupShell() {
     ? (startupCoordinator.state as { loaded?: boolean }).loaded
     : false;
   const progress = PHASE_PROGRESS[phase] ?? 50;
+
+  // ── Bootstrap gate state ───────────────────────────────────────
+  // Set to true when the server reports cloudProvisioned=true and no
+  // session exists yet. Set to false once the bootstrap exchange succeeds
+  // (onAdvance callback below).
+  const [showBootstrap, setShowBootstrap] = useState(false);
+
   // ── Cloud onboarding skip ──────────────────────────────────────
   // Fallback: if a cloud-provisioned container still reaches onboarding-required
   // (e.g. splash probe didn't fire SPLASH_CLOUD_SKIP), re-check the server here
@@ -142,16 +171,28 @@ export function StartupShell() {
     void client
       .getOnboardingStatus()
       .then((status) => {
-        if (cancelled || !status.cloudProvisioned) {
+        if (cancelled) return;
+
+        if (!status.cloudProvisioned) {
+          // Not a cloud-provisioned container — nothing special to do here.
           return;
         }
-        console.log(
-          "[eliza][startup] Cloud-provisioned container detected at onboarding — skipping wizard",
-        );
+
+        if (needsBootstrapSession()) {
+          // Cloud-provisioned but no session yet. Lock the dashboard and show
+          // the bootstrap wizard step. Fail closed: we do NOT advance.
+          setShowBootstrap(true);
+          return;
+        }
+
+        // Cloud-provisioned and session already established — skip the wizard.
         setState("onboardingComplete", true);
         coordinatorDispatchRef.current({ type: "ONBOARDING_COMPLETE" });
       })
       .catch(() => {
+        // Probe failed — fail closed. If we can't determine cloud status,
+        // keep showBootstrap as false (no special gate) so the user sees
+        // RuntimeGate and can still choose how to connect.
         cloudSkipProbeStartedRef.current = false;
       });
 
@@ -159,6 +200,16 @@ export function StartupShell() {
       cancelled = true;
     };
   }, [phase, setState]);
+
+  // ── Bootstrap advance ──────────────────────────────────────────
+  // Called by BootstrapStep after a successful exchange. The session is
+  // already in sessionStorage at this point. Dispatch ONBOARDING_COMPLETE
+  // so the coordinator moves to "ready" and the main app shell renders.
+  const handleBootstrapAdvance = useCallback(() => {
+    setShowBootstrap(false);
+    setState("onboardingComplete", true);
+    coordinatorDispatchRef.current({ type: "ONBOARDING_COMPLETE" });
+  }, [setState]);
 
   // ── Auto-continue splash ──────────────────────────────────────
   // The deployment chooser now lives inside RuntimeGate. The splash phase
@@ -197,9 +248,16 @@ export function StartupShell() {
     return <PairingView />;
   }
 
-  // Onboarding — minimal runtime gate: pick local / cloud / remote.
-  // Further setup (LLM provider, subscriptions, connectors) happens in chat.
+  // Onboarding — cloud-provisioned containers must exchange their bootstrap
+  // token before reaching RuntimeGate. All other containers go straight through.
   if (phase === "onboarding-required") {
+    if (showBootstrap) {
+      return (
+        <BootstrapGateShell>
+          <BootstrapStep onAdvance={handleBootstrapAdvance} />
+        </BootstrapGateShell>
+      );
+    }
     return <RuntimeGate />;
   }
 
@@ -215,7 +273,7 @@ export function StartupShell() {
       className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden"
     >
       <img
-        src={resolveAppAssetUrl("splash-bg.jpg")}
+        src={resolveAppAssetUrl("splash-bg.png")}
         alt=""
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
@@ -246,6 +304,30 @@ export function StartupShell() {
           >
             {t(phaseToStatusKey(phase))}
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shell wrapper for the bootstrap step — matches the dark visual style of
+ * RuntimeGate so the bootstrap gate feels like part of the same flow.
+ */
+function BootstrapGateShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="relative flex min-h-full w-full flex-col bg-black text-white">
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 overflow-hidden pointer-events-none"
+      >
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),transparent_36%),linear-gradient(180deg,rgba(11,14,20,0.18),rgba(6,7,8,0.56))]" />
+        <div className="absolute left-[-10%] top-[8%] h-[24rem] w-[24rem] rounded-full bg-[rgba(240,185,11,0.1)] blur-[110px]" />
+        <div className="absolute bottom-[-12%] right-[-8%] h-[20rem] w-[20rem] rounded-full bg-[rgba(255,255,255,0.08)] blur-[120px]" />
+      </div>
+      <div className="relative z-10 flex flex-1 items-center justify-center px-4 pb-[max(1.5rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)+3.75rem)] sm:px-6 md:px-8">
+        <div className="flex w-full max-w-[32rem] flex-col items-center gap-4">
+          {children}
         </div>
       </div>
     </div>

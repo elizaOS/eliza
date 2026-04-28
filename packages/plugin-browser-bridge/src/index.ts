@@ -10,9 +10,16 @@
  *   - `@elizaos/plugin-browser-bridge/plugin`
  */
 
+export {
+  browserBridgeActions,
+  browserBridgeInstallAction,
+  browserBridgeOpenManagerAction,
+  browserBridgeRefreshAction,
+  browserBridgeRevealFolderAction,
+} from "./actions.ts";
 export * from "./contracts.ts";
-export * from "./schema.ts";
 export * from "./packaging.ts";
-export * from "./routes.ts";
-export * from "./service.ts";
 export { browserBridgePlugin } from "./plugin.ts";
+export * from "./routes.ts";
+export * from "./schema.ts";
+export * from "./service.ts";

@@ -17,7 +17,9 @@ import {
   selectLiveProvider,
 } from "../../../../test/helpers/live-provider";
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
-import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
+import {
+  createElizaPlugin,
+} from "@elizaos/agent";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", "..", ".env");
 try {

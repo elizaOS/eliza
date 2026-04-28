@@ -95,6 +95,12 @@ describe("ExperienceService", () => {
 			confidence: 0,
 			importance: 0,
 			tags: ["setup"],
+			sourceMessageIds: ["msg-001" as UUID, "msg-002" as UUID],
+			sourceRoomId: "room-001" as UUID,
+			sourceTriggerMessageId: "msg-002" as UUID,
+			sourceTrajectoryStepId: "trajectory-step-001",
+			extractionMethod: "experience_evaluator",
+			extractionReason: "The failed startup revealed a missing setup step.",
 		});
 
 		expect(created.confidence).toBe(0);
@@ -110,6 +116,13 @@ describe("ExperienceService", () => {
 					data: expect.objectContaining({
 						id: created.id,
 						learning: "Install workspace dependencies before starting the app.",
+						sourceMessageIds: ["msg-001", "msg-002"],
+						sourceRoomId: "room-001",
+						sourceTriggerMessageId: "msg-002",
+						sourceTrajectoryStepId: "trajectory-step-001",
+						extractionMethod: "experience_evaluator",
+						extractionReason:
+							"The failed startup revealed a missing setup step.",
 					}),
 				}),
 			}),

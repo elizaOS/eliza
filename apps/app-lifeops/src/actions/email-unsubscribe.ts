@@ -76,8 +76,7 @@ async function runEmailUnsubscribeAction(
   if (!mode) {
     return {
       success: false,
-      text:
-        "Tell me whether you want to scan your inbox for subscriptions, unsubscribe from a specific sender, or view the unsubscribe history.",
+      text: "Tell me whether you want to scan your inbox for subscriptions, unsubscribe from a specific sender, or view the unsubscribe history.",
       data: { error: "AMBIGUOUS_EMAIL_UNSUBSCRIBE_REQUEST" },
     };
   }
@@ -110,7 +109,7 @@ async function runEmailUnsubscribeAction(
       const result = await service.unsubscribeEmailSender(INTERNAL_URL, {
         senderEmail: params.senderEmail,
         listId: params.listId ?? null,
-        blockAfter: params.blockAfter ?? true,
+        blockAfter: params.blockAfter ?? false,
         trashExisting: params.trashExisting ?? false,
         confirmed: params.confirmed ?? false,
       });
@@ -123,9 +122,7 @@ async function runEmailUnsubscribeAction(
       };
     }
     case "history": {
-      const records = await service.listEmailUnsubscribes(
-        params.limit ?? 50,
-      );
+      const records = await service.listEmailUnsubscribes(params.limit ?? 50);
       const summary =
         records.length === 0
           ? "No unsubscribe actions recorded yet."
@@ -165,7 +162,7 @@ const examples: ActionExample[][] = [
     {
       name: "{{agentName}}",
       content: {
-        text: "I'll send the List-Unsubscribe request and create a Gmail filter that auto-trashes future mail from that sender.",
+        text: "I'll send the List-Unsubscribe request. If Gmail manage access is available, I can also add a blocking filter.",
         actions: [ACTION_NAME],
       },
     },

@@ -5,6 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./routes/lifeops-routes", () => ({
   handleLifeOpsRoutes: vi.fn(async () => {}),
 }));
+vi.mock("./routes/cloud-features-routes", () => ({
+  handleCloudFeaturesRoute: vi.fn(async () => true),
+}));
+vi.mock("./routes/travel-provider-relay-routes", () => ({
+  handleTravelProviderRelayRoute: vi.fn(async () => true),
+}));
 vi.mock("./routes/website-blocker-routes", () => ({
   handleWebsiteBlockerRoutes: vi.fn(async () => {}),
 }));
@@ -103,6 +109,29 @@ describe("lifeopsPlugin shape", () => {
 
     expect(paths).toContain("/api/website-blocker");
     expect(paths).toContain("/api/website-blocker/status");
+  });
+
+  it("registers Cloud feature and travel relay routes before generic LifeOps routes", async () => {
+    const routes = await loadRoutes();
+    const routeKeys = routes.map((r) => routeKey(r.type, r.path));
+
+    expect(routeKeys).toContain("GET /api/cloud/features");
+    expect(routeKeys).toContain("POST /api/cloud/features/sync");
+    expect(routeKeys).toContain(
+      "GET /api/cloud/travel-providers/:provider/:providerPath*",
+    );
+    expect(routeKeys).toContain(
+      "POST /api/cloud/travel-providers/:provider/:providerPath*",
+    );
+
+    const firstLifeOpsIndex = routes.findIndex((r) =>
+      r.path.startsWith("/api/lifeops/"),
+    );
+    const lastCloudIndex = routes.findLastIndex((r) =>
+      r.path.startsWith("/api/cloud/"),
+    );
+
+    expect(lastCloudIndex).toBeLessThan(firstLifeOpsIndex);
   });
 
   it("connector callback and success routes are public", async () => {

@@ -1,9 +1,12 @@
-import { registerOperatorSurface } from "@elizaos/app-core/components/apps/surfaces/registry";
-import { registerDetailExtension } from "@elizaos/app-core/components/apps/extensions/registry";
-import { BabylonOperatorSurface } from "./BabylonOperatorSurface.js";
+import {
+  registerDetailExtension,
+  registerOperatorSurface,
+} from "@elizaos/app-core";
 import { BabylonDetailExtension } from "./BabylonDetailExtension.js";
+import { BabylonOperatorSurface } from "./BabylonOperatorSurface.js";
 
 registerOperatorSurface("@elizaos/app-babylon", BabylonOperatorSurface);
 registerDetailExtension("babylon-operator-dashboard", BabylonDetailExtension);
 
-export { BabylonOperatorSurface, BabylonDetailExtension };
+export * from "./babylon-data.js";
+export { BabylonDetailExtension, BabylonOperatorSurface };

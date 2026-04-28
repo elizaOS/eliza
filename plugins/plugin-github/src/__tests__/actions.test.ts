@@ -1,10 +1,8 @@
 /**
  * Unit tests for the 5 GitHub plugin actions.
  *
- * Strategy: build a stub Octokit (structurally typed via `as unknown as
- * Octokit` only at the boundary because the real Octokit type is massive
- * and we exercise a narrow surface). Inject it into GitHubService via
- * `setClientForTesting`, then drive the action handlers directly.
+ * Strategy: build a narrow Octokit-shaped stub, inject it into GitHubService
+ * via `setClientForTesting`, then drive the action handlers directly.
  *
  * Each action is checked for:
  *   - confirmation gate (for destructive actions)
@@ -13,8 +11,7 @@
  */
 
 import type { Action, IAgentRuntime } from "@elizaos/core";
-import type { Octokit } from "@octokit/rest";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { assignIssueAction } from "../actions/assign-issue.js";
 import { createIssueAction } from "../actions/create-issue.js";
 import { listPrsAction } from "../actions/list-prs.js";
@@ -24,29 +21,49 @@ import {
 } from "../actions/notification-triage.js";
 import { reviewPrAction } from "../actions/review-pr.js";
 import { GitHubService } from "../services/github-service.js";
-import { GITHUB_SERVICE_TYPE } from "../types.js";
+import { GITHUB_SERVICE_TYPE, type GitHubOctokitClient } from "../types.js";
 
-interface StubOctokit {
+interface StubOctokit extends GitHubOctokitClient {
   pulls: {
-    list: ReturnType<typeof vi.fn>;
-    createReview: ReturnType<typeof vi.fn>;
+    list: Mock<GitHubOctokitClient["pulls"]["list"]>;
+    createReview: Mock<GitHubOctokitClient["pulls"]["createReview"]>;
   };
-  search: { issuesAndPullRequests: ReturnType<typeof vi.fn> };
+  search: {
+    issuesAndPullRequests: Mock<
+      GitHubOctokitClient["search"]["issuesAndPullRequests"]
+    >;
+  };
   issues: {
-    create: ReturnType<typeof vi.fn>;
-    addAssignees: ReturnType<typeof vi.fn>;
+    create: Mock<GitHubOctokitClient["issues"]["create"]>;
+    addAssignees: Mock<GitHubOctokitClient["issues"]["addAssignees"]>;
   };
   activity: {
-    listNotificationsForAuthenticatedUser: ReturnType<typeof vi.fn>;
+    listNotificationsForAuthenticatedUser: Mock<
+      GitHubOctokitClient["activity"]["listNotificationsForAuthenticatedUser"]
+    >;
   };
 }
 
 function buildStubOctokit(): StubOctokit {
   return {
-    pulls: { list: vi.fn(), createReview: vi.fn() },
-    search: { issuesAndPullRequests: vi.fn() },
-    issues: { create: vi.fn(), addAssignees: vi.fn() },
-    activity: { listNotificationsForAuthenticatedUser: vi.fn() },
+    pulls: {
+      list: vi.fn<GitHubOctokitClient["pulls"]["list"]>(),
+      createReview: vi.fn<GitHubOctokitClient["pulls"]["createReview"]>(),
+    },
+    search: {
+      issuesAndPullRequests:
+        vi.fn<GitHubOctokitClient["search"]["issuesAndPullRequests"]>(),
+    },
+    issues: {
+      create: vi.fn<GitHubOctokitClient["issues"]["create"]>(),
+      addAssignees: vi.fn<GitHubOctokitClient["issues"]["addAssignees"]>(),
+    },
+    activity: {
+      listNotificationsForAuthenticatedUser:
+        vi.fn<
+          GitHubOctokitClient["activity"]["listNotificationsForAuthenticatedUser"]
+        >(),
+    },
   };
 }
 
@@ -69,7 +86,7 @@ async function buildServiceWithClient(
     getSetting: () => undefined,
   } as unknown as IAgentRuntime;
   const service = new GitHubService(bootstrapRuntime);
-  service.setClientForTesting(identity, stub as unknown as Octokit);
+  service.setClientForTesting(identity, stub);
   const runtime = buildRuntime(service);
   return { service, runtime };
 }
@@ -354,6 +371,30 @@ describe("GITHUB_NOTIFICATION_TRIAGE", () => {
 });
 
 describe("service gating", () => {
+  it("initializes user and agent clients through the injectable Octokit factory", async () => {
+    const created: string[] = [];
+    const runtime = {
+      agentId: "a",
+      getSetting: (key: string) =>
+        key === "GITHUB_USER_PAT"
+          ? "user-token"
+          : key === "GITHUB_AGENT_PAT"
+            ? "agent-token"
+            : undefined,
+    } as unknown as IAgentRuntime;
+    const userClient = buildStubOctokit();
+    const agentClient = buildStubOctokit();
+    const service = (await GitHubService.start(runtime, (auth) => {
+      created.push(auth);
+      return auth === "user-token" ? userClient : agentClient;
+    })) as GitHubService;
+
+    expect(created).toEqual(["user-token", "agent-token"]);
+    expect(service.getOctokit("user")).toBe(userClient);
+    expect(service.getOctokit("agent")).toBe(agentClient);
+    await service.stop();
+  });
+
   it("returns error when identity has no configured token", async () => {
     const bootstrapRuntime = {
       agentId: "a",

@@ -167,10 +167,22 @@ describe("BrowserWorkspaceView", () => {
 
     render(<BrowserWorkspaceView />);
 
-    const installButtons = await screen.findAllByRole("button", {
-      name: "Install Agent Browser Bridge",
+    await screen.findByText(/The agent can drive your real Chrome tabs/i);
+
+    let installButton: HTMLButtonElement | undefined;
+    await waitFor(() => {
+      installButton = screen
+        .getAllByRole("button", {
+          name: "Install Agent Browser Bridge",
+        })
+        .find(
+          (button): button is HTMLButtonElement =>
+            button instanceof HTMLButtonElement && !button.disabled,
+        );
+      expect(installButton).toBeDefined();
     });
-    fireEvent.click(installButtons[0]);
+
+    fireEvent.click(installButton);
 
     await waitFor(() => {
       expect(mockClient.fetch).toHaveBeenCalledWith(
@@ -246,7 +258,7 @@ describe("BrowserWorkspaceView", () => {
   });
 
   it("does not render Discord inside the web iframe fallback", async () => {
-    clientMock!.getBrowserWorkspace.mockResolvedValue({
+    getClientMock().getBrowserWorkspace.mockResolvedValue({
       mode: "web",
       tabs: [
         {

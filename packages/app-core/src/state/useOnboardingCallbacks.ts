@@ -10,7 +10,7 @@
  * and applyDetectedProviders.
  */
 
-import { getDefaultStylePreset } from "@elizaos/shared/onboarding-presets";
+import { getDefaultStylePreset } from "@elizaos/shared";
 import { type RefObject, useCallback } from "react";
 import type { StylePreset } from "../api";
 import { ElizaClient, type VoiceConfig } from "../api";

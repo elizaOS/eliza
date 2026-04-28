@@ -67,28 +67,28 @@ export function getModelOptions(): {
     },
     // OpenAI
     {
-      id: "openai/gpt-5.4-pro",
-      name: "GPT-5.4 Pro",
+      id: "openai/gpt-5.5-pro",
+      name: "GPT-5.5 Pro",
       provider: "OpenAI",
-      description: "Highest-precision GPT-5.4 variant.",
+      description: "Highest-precision GPT-5.5 variant.",
     },
     {
-      id: "openai/gpt-5.4",
-      name: "GPT-5.4",
+      id: "openai/gpt-5.5",
+      name: "GPT-5.5",
       provider: "OpenAI",
       description: "Flagship OpenAI model for coding and reasoning.",
     },
     {
-      id: "openai/gpt-5.4-mini",
-      name: "GPT-5.4 Mini",
+      id: "openai/gpt-5.5-mini",
+      name: "GPT-5.5 Mini",
       provider: "OpenAI",
       description: "High-volume OpenAI mini model.",
     },
     {
-      id: "openai/gpt-5.4-nano",
-      name: "GPT-5.4 Nano",
+      id: "openai/gpt-5.5-nano",
+      name: "GPT-5.5 Nano",
       provider: "OpenAI",
-      description: "Cheapest GPT-5.4 tier for fast routing and gating.",
+      description: "Cheapest GPT-5.5 tier for fast routing and gating.",
     },
     // Google
     {

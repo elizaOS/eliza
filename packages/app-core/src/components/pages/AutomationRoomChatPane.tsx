@@ -694,9 +694,7 @@ export function AutomationRoomChatPane({
             aria-label={t("common.send")}
           >
             <Send className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              {t("common.send")}
-            </span>
+            <span className="hidden sm:inline">{t("common.send")}</span>
           </Button>
         )}
       </div>

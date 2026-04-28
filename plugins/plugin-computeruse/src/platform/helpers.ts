@@ -370,3 +370,4 @@ export function currentPlatform(): PlatformOS {
   }
   throw new Error(`Unsupported platform: ${os}`);
 }
+

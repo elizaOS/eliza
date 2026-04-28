@@ -37,11 +37,29 @@ type BrowserSessionParameters = {
     | "state"
     | "tab"
     | "type"
-    | "wait";
+    | "wait"
+    | "realistic-click"
+    | "realistic-fill"
+    | "realistic-type"
+    | "realistic-press"
+    | "cursor-move"
+    | "cursor-hide";
   tabAction?: "close" | "list" | "new" | "switch";
   text?: string;
   timeoutMs?: number;
   url?: string;
+  /** Cursor animation duration (ms) for realistic-* + cursor-* subactions. */
+  cursorDurationMs?: number;
+  /** Per-character delay for realistic-type / realistic-fill (ms). */
+  perCharDelayMs?: number;
+  /** Replace existing input value when filling (vs append). */
+  replace?: boolean;
+  /** Cursor target X (CSS pixels) for cursor-move. */
+  x?: number;
+  /** Cursor target Y (CSS pixels) for cursor-move. */
+  y?: number;
+  /** Hint that the agent is operating in a watch-mode (page-browser) scope. */
+  watchMode?: boolean;
 };
 
 function getMessageText(message: Memory | undefined): string {
@@ -69,12 +87,18 @@ function inferBrowserSubaction(
     return "tab";
   }
 
+  // In watch mode the user is observing the agent drive the browser; prefer
+  // the realistic-* subactions so the cursor moves and pointer events fire
+  // faithfully. Default-mode (no watcher) keeps the leaner click()/value=
+  // path for speed.
+  const watchMode = params?.watchMode === true;
+
   if (params?.selector && params?.text) {
-    return "type";
+    return watchMode ? "realistic-fill" : "type";
   }
 
   if (params?.selector) {
-    return "click";
+    return watchMode ? "realistic-click" : "click";
   }
 
   if (params?.url?.trim() || extractFirstUrl(messageText)) {
@@ -106,6 +130,16 @@ function formatBrowserSessionResult(
   }
 
   if (result.value !== undefined) {
+    if (
+      command.subaction === "cursor-move" &&
+      result.value !== null &&
+      typeof result.value === "object" &&
+      "x" in result.value &&
+      "y" in result.value
+    ) {
+      const cursor = result.value as { x: number; y: number };
+      return `Cursor moved to (${Math.round(cursor.x)}, ${Math.round(cursor.y)}) in ${result.mode} mode.`;
+    }
     const serialized =
       typeof result.value === "string"
         ? result.value
@@ -158,6 +192,11 @@ export const browserSessionAction: Action = {
       text: params?.text,
       timeoutMs: params?.timeoutMs,
       url,
+      cursorDurationMs: params?.cursorDurationMs,
+      perCharDelayMs: params?.perCharDelayMs,
+      replace: params?.replace,
+      x: params?.x,
+      y: params?.y,
     };
 
     try {
@@ -220,6 +259,12 @@ export const browserSessionAction: Action = {
           "tab",
           "type",
           "wait",
+          "realistic-click",
+          "realistic-fill",
+          "realistic-type",
+          "realistic-press",
+          "cursor-move",
+          "cursor-hide",
         ],
       },
     },
@@ -279,6 +324,44 @@ export const browserSessionAction: Action = {
       description: "Script for eval",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "watchMode",
+      description:
+        "Hint that the user is watching; prefers realistic-* subactions for click/fill so the cursor moves visibly and pointer events fire faithfully.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "cursorDurationMs",
+      description: "Cursor animation duration (ms) for realistic-* subactions",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "perCharDelayMs",
+      description: "Per-character delay for realistic-type/realistic-fill (ms)",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "replace",
+      description:
+        "Replace existing input value when filling (vs append) — applies to realistic-fill",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+    {
+      name: "x",
+      description: "Cursor target X (CSS pixels) for cursor-move",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "y",
+      description: "Cursor target Y (CSS pixels) for cursor-move",
+      required: false,
+      schema: { type: "number" as const },
     },
   ],
   examples: [

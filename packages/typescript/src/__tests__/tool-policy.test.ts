@@ -90,10 +90,13 @@ describe("expandToolGroups()", () => {
 
 	it("should expand group:memory to memory tools", () => {
 		const expanded = expandToolGroups(["group:memory"]);
+		expect(expanded).toContain("scratchpad_add");
 		expect(expanded).toContain("scratchpad_search");
 		expect(expanded).toContain("scratchpad_read");
+		expect(expanded).toContain("scratchpad_replace");
+		expect(expanded).toContain("scratchpad_delete");
 		expect(expanded).toContain("read_attachment");
-		expect(expanded).toContain("remove_from_scratchpad");
+		expect(expanded).not.toContain("remove_from_scratchpad");
 		expect(expanded).not.toContain("add_to_scratchpad");
 	});
 
@@ -146,7 +149,9 @@ describe("expandToolGroups()", () => {
 		expect(expanded).toContain("read");
 		expect(expanded).toContain("write");
 		expect(expanded).toContain("exec");
+		expect(expanded).toContain("scratchpad_add");
 		expect(expanded).toContain("scratchpad_search");
+		expect(expanded).toContain("scratchpad_delete");
 		expect(expanded).toContain("web_search");
 		expect(expanded).toContain("browser");
 		expect(expanded).toContain("sessions_list");

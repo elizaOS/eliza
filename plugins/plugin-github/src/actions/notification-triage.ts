@@ -112,8 +112,15 @@ export const notificationTriageAction: Action = {
           all: false,
           per_page: 50,
         });
+      const notifications = resp.data as Array<{
+        id: string;
+        reason?: string | null;
+        repository?: { full_name?: string | null; pushed_at?: string | null };
+        subject?: { title?: string | null; type?: string | null; url?: string | null };
+        updated_at: string;
+      }>;
       const nowMs = Date.now();
-      const triaged: TriagedNotification[] = resp.data.map((n) => {
+      const triaged: TriagedNotification[] = notifications.map((n) => {
         const repoPushedAt = n.repository?.pushed_at ?? null;
         const repoPushedAtMs =
           typeof repoPushedAt === "string" ? Date.parse(repoPushedAt) : null;

@@ -3,7 +3,7 @@
  * share ingest, workbench, trajectories, database.
  */
 
-import type { DatabaseProviderType } from "@elizaos/agent/contracts/config";
+import type { DatabaseProviderType } from "@elizaos/agent";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
@@ -41,6 +41,14 @@ import type {
   MemoryStatsResponse,
   QueryResult,
   QuickContextResponse,
+  ScratchpadCreateTopicRequest,
+  ScratchpadDeleteTopicResponse,
+  ScratchpadReplaceTopicRequest,
+  ScratchpadSearchResponse,
+  ScratchpadSummaryPreviewRequest,
+  ScratchpadSummaryPreviewResponse,
+  ScratchpadTopicResponse,
+  ScratchpadTopicsListResponse,
   ShareIngestItem,
   ShareIngestPayload,
   TableInfo,
@@ -262,6 +270,25 @@ declare module "./client-base" {
     getKnowledgeFragments(
       documentId: string,
     ): Promise<KnowledgeFragmentsResponse>;
+    listScratchpadTopics(): Promise<ScratchpadTopicsListResponse>;
+    createScratchpadTopic(
+      data: ScratchpadCreateTopicRequest,
+    ): Promise<ScratchpadTopicResponse>;
+    getScratchpadTopic(topicId: string): Promise<ScratchpadTopicResponse>;
+    replaceScratchpadTopic(
+      topicId: string,
+      data: ScratchpadReplaceTopicRequest,
+    ): Promise<ScratchpadTopicResponse>;
+    deleteScratchpadTopic(
+      topicId: string,
+    ): Promise<ScratchpadDeleteTopicResponse>;
+    searchScratchpadTopics(
+      query: string,
+      options?: { limit?: number },
+    ): Promise<ScratchpadSearchResponse>;
+    previewScratchpadSummary(
+      data: ScratchpadSummaryPreviewRequest,
+    ): Promise<ScratchpadSummaryPreviewResponse>;
     rememberMemory(text: string): Promise<MemoryRememberResponse>;
     searchMemory(
       query: string,
@@ -904,6 +931,75 @@ ElizaClient.prototype.getKnowledgeFragments = async function (
   return this.fetch(
     `/api/knowledge/fragments/${encodeURIComponent(documentId)}`,
   );
+};
+
+ElizaClient.prototype.listScratchpadTopics = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/knowledge/scratchpad/topics");
+};
+
+ElizaClient.prototype.createScratchpadTopic = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/knowledge/scratchpad/topics", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.getScratchpadTopic = async function (
+  this: ElizaClient,
+  topicId,
+) {
+  return this.fetch(
+    `/api/knowledge/scratchpad/topics/${encodeURIComponent(topicId)}`,
+  );
+};
+
+ElizaClient.prototype.replaceScratchpadTopic = async function (
+  this: ElizaClient,
+  topicId,
+  data,
+) {
+  return this.fetch(
+    `/api/knowledge/scratchpad/topics/${encodeURIComponent(topicId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.deleteScratchpadTopic = async function (
+  this: ElizaClient,
+  topicId,
+) {
+  return this.fetch(
+    `/api/knowledge/scratchpad/topics/${encodeURIComponent(topicId)}`,
+    { method: "DELETE" },
+  );
+};
+
+ElizaClient.prototype.searchScratchpadTopics = async function (
+  this: ElizaClient,
+  query,
+  options?,
+) {
+  const params = new URLSearchParams({ q: query });
+  if (options?.limit !== undefined) params.set("limit", String(options.limit));
+  return this.fetch(`/api/knowledge/scratchpad/search?${params}`);
+};
+
+ElizaClient.prototype.previewScratchpadSummary = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/knowledge/scratchpad/summary-preview", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 ElizaClient.prototype.rememberMemory = async function (

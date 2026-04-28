@@ -13,11 +13,13 @@
  * @module actions/execute-trade
  */
 
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
+  Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -106,15 +108,21 @@ export const executeTradeAction: Action = {
   description:
     "Execute a BSC token trade (buy or sell). Use this when a user asks to " +
     "buy or sell a token on BSC/BNB Chain. The trade is routed through " +
-    "PancakeSwap and respects the current trade permission mode.",
-  descriptionCompressed: "Execute BSC token trade (buy/sell) via PancakeSwap.",
+    "PancakeSwap and respects the current trade permission mode. Requires " +
+    "sender role of ADMIN or OWNER — non-admin senders cannot initiate a " +
+    "trade through this action.",
+  descriptionCompressed:
+    "Execute BSC token trade (buy/sell) via PancakeSwap (admin/owner only).",
 
-  validate: async (runtime: IAgentRuntime) => {
+  validate: async (runtime: IAgentRuntime, message: Memory) => {
     const hasWallet =
       runtime.getSetting("EVM_PRIVATE_KEY") ||
       runtime.getSetting("PRIVY_APP_ID") ||
       runtime.getSetting("STEWARD_API_URL");
-    return Boolean(hasWallet);
+    if (!hasWallet) return false;
+    // Mutating action — gate on admin/owner role. Non-admin senders are
+    // rejected at validate so the action never reaches the handler.
+    return hasAdminAccess(runtime, message);
   },
 
   handler: async (

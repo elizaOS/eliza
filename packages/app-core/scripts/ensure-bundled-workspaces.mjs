@@ -27,7 +27,9 @@ export const BUNDLED_WORKSPACE_BUILDS = [
       "dist",
       "index.js",
     ),
-    args: ["../../../scripts/build-bundled-agent-skills-artifact.mjs"],
+    args: [
+      "../../../packages/app-core/scripts/build-bundled-agent-skills-artifact.mjs",
+    ],
   },
   // Only build workspaces that downstream packaging consumes directly. Building
   // every locally-linked plugin during postinstall makes unrelated plugin

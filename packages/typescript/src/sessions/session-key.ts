@@ -186,10 +186,12 @@ export function normalizeMainKey(value: string | undefined | null): string {
  * @returns Normalized agent ID
  */
 export function normalizeAgentId(value: string | undefined | null): string {
-	const trimmed = (value ?? "").trim();
-	if (!trimmed) {
+	const rawTrimmed = (value ?? "").trim();
+	if (!rawTrimmed) {
 		return DEFAULT_AGENT_ID;
 	}
+	const trimmed =
+		rawTrimmed.length > 1024 ? rawTrimmed.slice(0, 1024) : rawTrimmed;
 	// Keep it path-safe + shell-friendly.
 	if (VALID_ID_RE.test(trimmed)) {
 		return trimmed.toLowerCase();
@@ -222,10 +224,12 @@ export function sanitizeAgentId(value: string | undefined | null): string {
  * @returns Normalized account ID
  */
 export function normalizeAccountId(value: string | undefined | null): string {
-	const trimmed = (value ?? "").trim();
-	if (!trimmed) {
+	const rawTrimmed = (value ?? "").trim();
+	if (!rawTrimmed) {
 		return DEFAULT_ACCOUNT_ID;
 	}
+	const trimmed =
+		rawTrimmed.length > 1024 ? rawTrimmed.slice(0, 1024) : rawTrimmed;
 	if (VALID_ID_RE.test(trimmed)) {
 		return trimmed.toLowerCase();
 	}

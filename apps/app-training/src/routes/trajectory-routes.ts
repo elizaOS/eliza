@@ -38,7 +38,7 @@ import type {
   TrajectoryLlmCall,
   TrajectoryStatus,
   TrajectoryStep,
-} from "@elizaos/agent/types";
+} from "@elizaos/agent/types/trajectory";
 import type { AgentRuntime } from "@elizaos/core";
 
 export type { TrajectoryExportFormat };

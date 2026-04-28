@@ -10,23 +10,32 @@
 // covers the static, declared catalog only.
 
 import type http from "node:http";
-import type { RegistryAppInfo } from "@elizaos/shared/contracts/apps";
+import { resolveAppHeroImage } from "@elizaos/agent";
+import type { RegistryAppInfo } from "@elizaos/shared";
 import { type AppEntry, getApps, loadRegistry } from "../registry";
-import { ensureCompatApiAuthorized } from "./auth";
+import { ensureRouteAuthorized } from "./auth";
+import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 
 function appEntryToRegistryAppInfo(entry: AppEntry): RegistryAppInfo {
   const launchType =
     entry.launch.type === "server-launch" ? "server" : entry.launch.type;
+  const packageName = entry.npmName ?? entry.id;
+  // Resolve heroImage so apps that only declare it in their package.json
+  // (e.g. "assets/hero.png") still surface a working `/api/apps/hero/<slug>`
+  // URL through the catalog. Falls back to generated artwork when nothing is
+  // declared.
+  const heroImage =
+    entry.render.heroImage ?? resolveAppHeroImage(packageName, null);
   return {
-    name: entry.npmName ?? entry.id,
+    name: packageName,
     displayName: entry.name,
     description: entry.description ?? "",
     category: entry.subtype,
     launchType,
     launchUrl: entry.launch.url ?? null,
     icon: entry.render.icon ?? null,
-    heroImage: entry.render.heroImage ?? null,
+    heroImage,
     capabilities: entry.launch.capabilities ?? [],
     stars: 0,
     repository: entry.resources.repository ?? "",
@@ -46,6 +55,7 @@ function appEntryToRegistryAppInfo(entry: AppEntry): RegistryAppInfo {
 export async function handleCatalogRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
+  state: CompatRuntimeState,
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -55,7 +65,7 @@ export async function handleCatalogRoutes(
   }
 
   if (method === "GET" && url.pathname === "/api/catalog/apps") {
-    if (!ensureCompatApiAuthorized(req, res)) return true;
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const apps = getApps(loadRegistry()).filter((a) => a.render.visible);
     sendJsonResponse(res, 200, apps.map(appEntryToRegistryAppInfo));
     return true;

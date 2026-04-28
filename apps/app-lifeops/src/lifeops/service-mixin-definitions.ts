@@ -8,11 +8,11 @@ import type {
   LifeOpsTaskDefinition,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   LIFEOPS_DEFINITION_KINDS,
   LIFEOPS_DEFINITION_STATUSES,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import { createLifeOpsTaskDefinition } from "./repository.js";
 import {
   fail,

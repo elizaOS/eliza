@@ -11,6 +11,7 @@ type DescribeGate = (
 type TestGate = (
   name: string | Function,
   fn: TestCallback,
+  timeout?: number,
 ) => ReturnType<typeof it>;
 
 export function describeIf(condition: boolean): DescribeGate {
@@ -26,16 +27,16 @@ export function describeIf(condition: boolean): DescribeGate {
 
 export function itIf(condition: boolean): TestGate {
   if (condition) {
-    return (name, fn) => it(name, fn);
+    return (name, fn, timeout) => it(name, fn, timeout);
   }
 
-  return (name, fn) => it.skip(name, fn);
+  return (name, fn, timeout) => it.skip(name, fn, timeout);
 }
 
 export function testIf(condition: boolean): TestGate {
   if (condition) {
-    return (name, fn) => test(name, fn);
+    return (name, fn, timeout) => test(name, fn, timeout);
   }
 
-  return (name, fn) => test.skip(name, fn);
+  return (name, fn, timeout) => test.skip(name, fn, timeout);
 }

@@ -1,8 +1,10 @@
 import { requireProviderSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import type {
+	Entity,
 	IAgentRuntime,
 	Memory,
+	Metadata,
 	Provider,
 	ProviderResult,
 	State,
@@ -12,6 +14,70 @@ import { ChannelType } from "../../../types/index.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("ROLES");
+
+type RoleUser = { name: string; username: string; names: string[] };
+type IdentityFields = { name?: string; username?: string; userName?: string };
+
+function isIdentityFields(value: unknown): value is IdentityFields {
+	return value !== null && typeof value === "object";
+}
+
+function getString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim().length > 0
+		? value
+		: undefined;
+}
+
+function getMetadataIdentity(metadata: Metadata | undefined): IdentityFields {
+	if (!metadata) {
+		return {};
+	}
+
+	const sourceOrder = [
+		"default",
+		"discord",
+		"telegram",
+		"twitter",
+		"twitch",
+		"slack",
+	];
+	const candidates: IdentityFields[] = [metadata];
+	for (const source of sourceOrder) {
+		const sourceMetadata = metadata[source];
+		if (isIdentityFields(sourceMetadata)) {
+			candidates.push(sourceMetadata);
+		}
+	}
+	for (const value of Object.values(metadata)) {
+		if (isIdentityFields(value)) {
+			candidates.push(value);
+		}
+	}
+
+	const identity: IdentityFields = {};
+	for (const candidate of candidates) {
+		identity.name ??= getString(candidate.name);
+		identity.username ??=
+			getString(candidate.username) ?? getString(candidate.userName);
+		if (identity.name && identity.username) {
+			return identity;
+		}
+	}
+	return identity;
+}
+
+function getRoleUser(entity: Entity | null | undefined): RoleUser | null {
+	const names = entity?.names?.filter((name) => name.trim().length > 0) ?? [];
+	const metadataIdentity = getMetadataIdentity(entity?.metadata);
+	const name = metadataIdentity.name ?? names[0];
+	const username = metadataIdentity.username ?? names[0];
+
+	if (!name || !username || names.length === 0) {
+		return null;
+	}
+
+	return { name, username, names };
+}
 
 /**
  * Role provider that retrieves roles in the server based on the provided runtime, message, and state.
@@ -124,9 +190,9 @@ export const roleProvider: Provider = {
 		);
 
 		// Group users by role
-		const owners: { name: string; username: string; names: string[] }[] = [];
-		const admins: { name: string; username: string; names: string[] }[] = [];
-		const members: { name: string; username: string; names: string[] }[] = [];
+		const owners: RoleUser[] = [];
+		const admins: RoleUser[] = [];
+		const members: RoleUser[] = [];
 
 		const entityIds = Object.keys(roles) as UUID[];
 		const entities = await Promise.all(
@@ -147,11 +213,9 @@ export const roleProvider: Provider = {
 			const userRole = roles[entityId];
 			const user = entityMap.get(entityId);
 
-			const name = user?.metadata?.name as string;
-			const username = user?.metadata?.username as string;
-			const names = user?.names as string[];
+			const roleUser = getRoleUser(user);
 
-			if (!name || !username || !names) {
+			if (!roleUser) {
 				logger.warn(
 					{
 						src: "plugin:advanced-capabilities:provider:roles",
@@ -163,21 +227,21 @@ export const roleProvider: Provider = {
 				continue;
 			}
 
-			if (seenUsernames.has(username)) {
+			if (seenUsernames.has(roleUser.username)) {
 				continue;
 			}
-			seenUsernames.add(username);
+			seenUsernames.add(roleUser.username);
 
 			// Add to appropriate group
 			switch (userRole) {
 				case "OWNER":
-					owners.push({ name, username, names });
+					owners.push(roleUser);
 					break;
 				case "ADMIN":
-					admins.push({ name, username, names });
+					admins.push(roleUser);
 					break;
 				default:
-					members.push({ name, username, names });
+					members.push(roleUser);
 					break;
 			}
 		}

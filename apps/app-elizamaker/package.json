@@ -8,7 +8,9 @@
   "exports": {
     "./package.json": "./package.json",
     ".": "./src/index.ts",
+    "./plugin": "./src/plugin.ts",
     "./routes/drop-routes": "./src/drop-routes.ts",
+    "./drop-service-registry": "./src/drop-service-registry.ts",
     "./drop-service": "./src/drop-service.ts",
     "./nft-verify": "./src/nft-verify.ts",
     "./twitter-verify": "./src/twitter-verify.ts",

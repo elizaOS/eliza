@@ -17,7 +17,9 @@ describe("life-ops runtime", () => {
 
   it("retries transient task-table startup failures before creating the scheduler task", async () => {
     vi.useFakeTimers();
-    const { ensureLifeOpsSchedulerTask } = await import("../src/lifeops/runtime.js");
+    const { ensureLifeOpsSchedulerTask } = await import(
+      "../src/lifeops/runtime.js"
+    );
 
     const createdTaskId = "lifeops-scheduler-task" as UUID;
     const agentId = "lifeops-runtime-agent" as UUID;
@@ -29,8 +31,12 @@ describe("life-ops runtime", () => {
       getService: vi.fn(() => null),
       updateTask: vi.fn(),
       createTask: vi.fn(async () => createdTaskId),
-      getAgent: vi.fn(async () => ({ id: agentId, name: "LifeOps Test Agent" })),
+      getAgent: vi.fn(async () => ({
+        id: agentId,
+        name: "LifeOps Test Agent",
+      })),
       createAgent: vi.fn(async () => true),
+      runPluginMigrations: vi.fn(async () => {}),
       getTasks: vi.fn(async () => {
         getTasksCallCount += 1;
         if (getTasksCallCount <= 11) {
@@ -41,16 +47,21 @@ describe("life-ops runtime", () => {
     } as unknown as IAgentRuntime;
 
     const taskIdPromise = ensureLifeOpsSchedulerTask(runtime);
-    await vi.runAllTimersAsync();
+    for (let attempt = 0; attempt < 9; attempt += 1) {
+      await vi.advanceTimersByTimeAsync(500);
+    }
 
     await expect(taskIdPromise).resolves.toBe(createdTaskId);
+    expect(runtime.runPluginMigrations).toHaveBeenCalledTimes(2);
     expect(runtime.getTasks).toHaveBeenCalledTimes(13);
     expect(runtime.createTask).toHaveBeenCalledTimes(1);
     expect(runtime.updateTask).not.toHaveBeenCalled();
   });
 
   it("reruns plugin migrations when the tasks table is still missing after init", async () => {
-    const { ensureLifeOpsSchedulerTask } = await import("../src/lifeops/runtime.js");
+    const { ensureLifeOpsSchedulerTask } = await import(
+      "../src/lifeops/runtime.js"
+    );
 
     const createdTaskId = "lifeops-scheduler-task" as UUID;
     const agentId = "lifeops-runtime-agent" as UUID;
@@ -62,7 +73,10 @@ describe("life-ops runtime", () => {
       getService: vi.fn(() => null),
       updateTask: vi.fn(),
       createTask: vi.fn(async () => createdTaskId),
-      getAgent: vi.fn(async () => ({ id: agentId, name: "LifeOps Test Agent" })),
+      getAgent: vi.fn(async () => ({
+        id: agentId,
+        name: "LifeOps Test Agent",
+      })),
       createAgent: vi.fn(async () => true),
       runPluginMigrations: vi.fn(async () => {
         tasksTableReady = true;
@@ -82,14 +96,18 @@ describe("life-ops runtime", () => {
       }),
     } as unknown as IAgentRuntime;
 
-    await expect(ensureLifeOpsSchedulerTask(runtime)).resolves.toBe(createdTaskId);
+    await expect(ensureLifeOpsSchedulerTask(runtime)).resolves.toBe(
+      createdTaskId,
+    );
     expect(runtime.runPluginMigrations).toHaveBeenCalledTimes(1);
     expect(runtime.getTasks).toHaveBeenCalledTimes(3);
     expect(runtime.createTask).toHaveBeenCalledTimes(1);
   });
 
   it("recreates the runtime agent before inserting the scheduler task", async () => {
-    const { ensureLifeOpsSchedulerTask } = await import("../src/lifeops/runtime.js");
+    const { ensureLifeOpsSchedulerTask } = await import(
+      "../src/lifeops/runtime.js"
+    );
 
     const createdTaskId = "lifeops-scheduler-task" as UUID;
     const agentId = "lifeops-runtime-agent" as UUID;
@@ -103,7 +121,9 @@ describe("life-ops runtime", () => {
       createTask: vi.fn(async () => createdTaskId),
       getTasks: vi.fn(async () => []),
       getAgent: vi.fn(async () =>
-        agentExists ? ({ id: agentId, name: "LifeOps Test Agent" } as never) : null,
+        agentExists
+          ? ({ id: agentId, name: "LifeOps Test Agent" } as never)
+          : null,
       ),
       createAgent: vi.fn(async () => {
         agentExists = true;
@@ -111,7 +131,9 @@ describe("life-ops runtime", () => {
       }),
     } as unknown as IAgentRuntime;
 
-    await expect(ensureLifeOpsSchedulerTask(runtime)).resolves.toBe(createdTaskId);
+    await expect(ensureLifeOpsSchedulerTask(runtime)).resolves.toBe(
+      createdTaskId,
+    );
     expect(runtime.getAgent).toHaveBeenCalledTimes(2);
     expect(runtime.createAgent).toHaveBeenCalledWith({
       id: agentId,

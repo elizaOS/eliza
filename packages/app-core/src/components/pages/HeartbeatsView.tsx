@@ -26,7 +26,9 @@ import type { TriggerSummary } from "../../api/client";
 import { useApp } from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
-import { WidgetHost } from "../../widgets";
+// Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
+// chunk-level circular dependency.
+import { WidgetHost } from "../../widgets/WidgetHost";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { HeartbeatForm } from "./HeartbeatForm";
 import {

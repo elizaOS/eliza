@@ -3,8 +3,8 @@
  * custom actions, WhatsApp, agent events.
  */
 
-import type { CustomActionDef } from "@elizaos/agent/contracts/config";
-import { packageNameToAppRouteSlug } from "@elizaos/shared/contracts/apps";
+import type { CustomActionDef } from "@elizaos/agent";
+import { packageNameToAppRouteSlug } from "@elizaos/shared";
 import { ElizaClient } from "./client-base";
 import type {
   AppLaunchResult,
@@ -270,27 +270,49 @@ declare module "./client-base" {
     generateCustomAction(
       prompt: string,
     ): Promise<{ ok: boolean; generated: Record<string, unknown> }>;
-    getWhatsAppStatus(accountId?: string): Promise<{
+    getWhatsAppStatus(
+      accountId?: string,
+      options?: { authScope?: "platform" | "lifeops" },
+    ): Promise<{
       accountId: string;
+      authScope?: "platform" | "lifeops";
       status: string;
       authExists: boolean;
       serviceConnected: boolean;
       servicePhone: string | null;
     }>;
-    startWhatsAppPairing(accountId?: string): Promise<{
+    startWhatsAppPairing(
+      accountId?: string,
+      options?: {
+        configurePlugin?: boolean;
+        authScope?: "platform" | "lifeops";
+      },
+    ): Promise<{
       ok: boolean;
       accountId: string;
+      authScope?: "platform" | "lifeops";
       status: string;
       error?: string;
     }>;
-    stopWhatsAppPairing(accountId?: string): Promise<{
+    stopWhatsAppPairing(
+      accountId?: string,
+      options?: { authScope?: "platform" | "lifeops" },
+    ): Promise<{
       ok: boolean;
       accountId: string;
+      authScope?: "platform" | "lifeops";
       status: string;
     }>;
-    disconnectWhatsApp(accountId?: string): Promise<{
+    disconnectWhatsApp(
+      accountId?: string,
+      options?: {
+        configurePlugin?: boolean;
+        authScope?: "platform" | "lifeops";
+      },
+    ): Promise<{
       ok: boolean;
       accountId: string;
+      authScope?: "platform" | "lifeops";
     }>;
     getSignalStatus(accountId?: string): Promise<{
       accountId: string;
@@ -1101,39 +1123,45 @@ ElizaClient.prototype.generateCustomAction = async function (
 ElizaClient.prototype.getWhatsAppStatus = async function (
   this: ElizaClient,
   accountId = "default",
+  options = {},
 ) {
-  return this.fetch(
-    `/api/whatsapp/status?accountId=${encodeURIComponent(accountId)}`,
-  );
+  const params = new URLSearchParams({ accountId });
+  if (options.authScope) {
+    params.set("authScope", options.authScope);
+  }
+  return this.fetch(`/api/whatsapp/status?${params.toString()}`);
 };
 
 ElizaClient.prototype.startWhatsAppPairing = async function (
   this: ElizaClient,
   accountId = "default",
+  options = {},
 ) {
   return this.fetch("/api/whatsapp/pair", {
     method: "POST",
-    body: JSON.stringify({ accountId }),
+    body: JSON.stringify({ ...options, accountId }),
   });
 };
 
 ElizaClient.prototype.stopWhatsAppPairing = async function (
   this: ElizaClient,
   accountId = "default",
+  options = {},
 ) {
   return this.fetch("/api/whatsapp/pair/stop", {
     method: "POST",
-    body: JSON.stringify({ accountId }),
+    body: JSON.stringify({ ...options, accountId }),
   });
 };
 
 ElizaClient.prototype.disconnectWhatsApp = async function (
   this: ElizaClient,
   accountId = "default",
+  options = {},
 ) {
   return this.fetch("/api/whatsapp/disconnect", {
     method: "POST",
-    body: JSON.stringify({ accountId }),
+    body: JSON.stringify({ ...options, accountId }),
   });
 };
 

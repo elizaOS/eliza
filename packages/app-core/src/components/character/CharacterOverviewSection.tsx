@@ -119,9 +119,9 @@ export function CharacterOverviewSection({
   for (const widget of widgets) {
     widgetMap.set(widget.section, widget);
   }
-  const primary = PRIMARY_SECTIONS.map((section) => widgetMap.get(section)).filter(
-    (widget): widget is CharacterOverviewWidget => widget !== undefined,
-  );
+  const primary = PRIMARY_SECTIONS.map((section) =>
+    widgetMap.get(section),
+  ).filter((widget): widget is CharacterOverviewWidget => widget !== undefined);
   const secondary = widgets.filter(
     (widget) => !PRIMARY_SECTIONS.includes(widget.section),
   );

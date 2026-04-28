@@ -87,7 +87,10 @@ export const assignIssueAction: Action = {
         issue_number: number,
         assignees,
       });
-      const actual = (resp.data.assignees ?? [])
+      const responseData = resp.data as {
+        assignees?: Array<{ login?: string | null } | null>;
+      };
+      const actual = (responseData.assignees ?? [])
         .map((a) => a?.login)
         .filter((x): x is string => typeof x === "string");
       await callback?.({

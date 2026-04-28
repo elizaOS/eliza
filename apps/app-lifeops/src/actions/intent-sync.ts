@@ -1,3 +1,5 @@
+import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -6,18 +8,17 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasAdminAccess } from "@elizaos/agent";
 import {
+  acknowledgeIntent,
+  broadcastIntent,
   LIFE_INTENT_KINDS,
   LIFE_INTENT_PRIORITIES,
   LIFE_INTENT_TARGETS,
-  acknowledgeIntent,
-  broadcastIntent,
-  pruneExpiredIntents,
-  receivePendingIntents,
   type LifeOpsIntentKind,
   type LifeOpsIntentPriority,
   type LifeOpsIntentTargetDevice,
+  pruneExpiredIntents,
+  receivePendingIntents,
 } from "../lifeops/intent-sync.js";
 
 const ACTION_NAME = "INTENT_SYNC";
@@ -29,27 +30,6 @@ const SUBACTIONS = [
   "prune_expired",
 ] as const;
 type Subaction = (typeof SUBACTIONS)[number];
-
-type IntentSyncParameters = {
-  subaction?: string;
-  intent?: string;
-  kind?: string;
-  title?: string;
-  body?: string;
-  target?: string;
-  priority?: string;
-  intentId?: string;
-  deviceId?: string;
-  expiresInMinutes?: number;
-  targetDeviceId?: string;
-  actionUrl?: string;
-};
-
-type NormalizedIntentSyncParameters = IntentSyncParameters &
-  Record<string, unknown> & {
-    subaction?: string;
-    kind?: string;
-  };
 
 function coerceString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -82,19 +62,6 @@ function isPriority(value: string): value is LifeOpsIntentPriority {
   return (LIFE_INTENT_PRIORITIES as readonly string[]).includes(value);
 }
 
-function looksLikeBroadcastPayload(params: NormalizedIntentSyncParameters): boolean {
-  return (
-    coerceString(params.kind) !== undefined ||
-    coerceString(params.title) !== undefined ||
-    coerceString(params.body) !== undefined ||
-    coerceString(params.target) !== undefined ||
-    coerceString(params.targetDeviceId) !== undefined ||
-    coerceString(params.priority) !== undefined ||
-    coerceString(params.actionUrl) !== undefined ||
-    coerceNumber(params.expiresInMinutes) !== undefined
-  );
-}
-
 function fail(
   error: string,
   extra: Record<string, unknown> = {},
@@ -112,6 +79,20 @@ function normalizeParams(
 ): Record<string, unknown> {
   if (!raw || typeof raw !== "object") return {};
   return raw;
+}
+
+function withStructuredBroadcastDefault(
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  if (
+    coerceString(params.subaction) ||
+    coerceString(params.mode) ||
+    coerceString(params.action) ||
+    !coerceString(params.kind)
+  ) {
+    return params;
+  }
+  return { ...params, subaction: "broadcast" };
 }
 
 function validationTerminate(
@@ -272,15 +253,27 @@ export const intentSyncAction: Action & {
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
-    _state,
+    state,
     options,
   ): Promise<ActionResult> => {
     if (!(await hasAdminAccess(runtime, message))) {
       return fail("PERMISSION_DENIED");
     }
 
-    const rawParams = (options as HandlerOptions | undefined)?.parameters;
-    const params = normalizeParams(rawParams);
+    const rawParameters = (options as HandlerOptions | undefined)?.parameters;
+    const normalized = withStructuredBroadcastDefault(
+      normalizeParams(rawParameters),
+    );
+    const params = (await extractActionParamsViaLlm<typeof normalized>({
+      runtime,
+      message,
+      state,
+      actionName: "INTENT_SYNC",
+      actionDescription: intentSyncAction.description ?? "",
+      paramSchema: intentSyncAction.parameters ?? [],
+      existingParams: normalized,
+      requiredFields: ["subaction"],
+    })) as typeof normalized;
 
     let subactionRaw = coerceString(params.subaction);
     let kindRaw = coerceString(params.kind);
@@ -290,9 +283,6 @@ export const intentSyncAction: Action & {
       subactionRaw =
         coerceString((params as Record<string, unknown>).mode) ??
         coerceString((params as Record<string, unknown>).action);
-    }
-    if (!subactionRaw && looksLikeBroadcastPayload(params)) {
-      subactionRaw = "broadcast";
     }
     if (subactionRaw && !isSubaction(subactionRaw) && isKind(subactionRaw)) {
       kindRaw ??= subactionRaw;

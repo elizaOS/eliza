@@ -1,4 +1,12 @@
 import { Button, MetaPill, PagePanel } from "@elizaos/ui";
+import {
+  CalendarClock,
+  Check,
+  FileText,
+  Fingerprint,
+  Gauge,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { client } from "../../../api/client";
 import type {
@@ -73,24 +81,24 @@ export function RelationshipsCandidateMergesPanel({
   };
 
   return (
-    <PagePanel variant="surface" className="px-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs-tight font-semibold uppercase tracking-[0.16em] text-muted/70">
-            Identity merges
-          </div>
-          <div className="mt-2 text-lg font-semibold text-txt">
-            Pending merge proposals
-          </div>
-          <p className="mt-1 text-xs text-muted">
-            Two entities look like the same person. Accept to fold them, reject
-            to leave them separate.
-          </p>
-        </div>
-        <MetaPill compact>{candidates.length}</MetaPill>
+    <PagePanel
+      as="section"
+      variant="surface"
+      aria-label="Identity merges"
+      className="px-3 py-3"
+    >
+      <div className="mb-2 flex justify-end">
+        <MetaPill
+          compact
+          aria-label="Identity merge count"
+          title="Identity merges"
+        >
+          <Fingerprint className="mr-1 h-3 w-3" />
+          {candidates.length}
+        </MetaPill>
       </div>
 
-      <div className="mt-4 space-y-3">
+      <div className="space-y-2">
         {candidates.map((candidate) => {
           const isPending = pending.has(candidate.id);
           const errorMessage = errors.get(candidate.id) ?? null;
@@ -99,17 +107,40 @@ export function RelationshipsCandidateMergesPanel({
           return (
             <div
               key={candidate.id}
-              className="rounded-2xl border border-border/24 bg-card/32 px-3.5 py-3"
+              className="rounded-xl border border-border/24 bg-card/32 px-3 py-2.5"
             >
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <MetaPill compact>
-                  {Math.round(candidate.confidence * 100)}% confidence
+                  <span
+                    role="img"
+                    aria-label="Confidence"
+                    className="inline-flex items-center gap-1"
+                  >
+                    <Gauge className="h-3 w-3" />
+                    {Math.round(candidate.confidence * 100)}%
+                  </span>
                 </MetaPill>
-                <MetaPill compact>{evidenceCount} evidence</MetaPill>
                 <MetaPill compact>
-                  {formatDateTime(candidate.proposedAt, {
-                    fallback: "No date",
-                  })}
+                  <span
+                    role="img"
+                    aria-label="Evidence count"
+                    className="inline-flex items-center gap-1"
+                  >
+                    <FileText className="h-3 w-3" />
+                    {evidenceCount}
+                  </span>
+                </MetaPill>
+                <MetaPill compact>
+                  <span
+                    role="img"
+                    aria-label="Proposed at"
+                    className="inline-flex items-center gap-1"
+                  >
+                    <CalendarClock className="h-3 w-3" />
+                    {formatDateTime(candidate.proposedAt, {
+                      fallback: "No date",
+                    })}
+                  </span>
                 </MetaPill>
               </div>
               <div className="mt-2 text-sm font-semibold text-txt">
@@ -118,34 +149,38 @@ export function RelationshipsCandidateMergesPanel({
                 {personLabel(graph, candidate.entityB)}
               </div>
               {evidenceText !== "No evidence" ? (
-                <div className="mt-1 text-xs leading-5 text-muted">
+                <div className="mt-1 truncate text-xs leading-5 text-muted">
                   {evidenceText}
                 </div>
               ) : null}
               {errorMessage ? (
                 <div className="mt-2 text-xs text-danger">{errorMessage}</div>
               ) : null}
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 <Button
                   type="button"
                   size="sm"
                   variant="default"
+                  className="h-7 gap-1.5 rounded-full px-2.5 text-2xs"
                   disabled={isPending}
                   onClick={() => {
                     void resolveCandidate(candidate, "accept");
                   }}
                 >
-                  {isPending ? "Working…" : "Accept merge"}
+                  <Check className="h-3 w-3" />
+                  {isPending ? "Working…" : "Accept"}
                 </Button>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
+                  className="h-7 gap-1.5 rounded-full px-2.5 text-2xs"
                   disabled={isPending}
                   onClick={() => {
                     void resolveCandidate(candidate, "reject");
                   }}
                 >
+                  <X className="h-3 w-3" />
                   Reject
                 </Button>
               </div>

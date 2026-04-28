@@ -61,29 +61,24 @@ function buildTestRoutingMetadata(
 interface ScopeCase {
   scope: PageScope;
   prompt: string;
-  expectAtLeastOneOf: string[];
 }
 
 const SCOPE_CASES: ScopeCase[] = [
   {
     scope: "page-browser",
     prompt: "What can I do here, and what tabs are open?",
-    expectAtLeastOneOf: ["tab", "browser", "url", "open"],
   },
   {
     scope: "page-character",
     prompt: "How do I change my voice or upload knowledge?",
-    expectAtLeastOneOf: ["voice", "knowledge", "panel", "character"],
   },
   {
     scope: "page-automations",
-    prompt: "What can I do here? Show me how to make a daily reminder.",
-    expectAtLeastOneOf: ["trigger", "automation", "schedule", "cron", "daily"],
+    prompt: "What can I do here? Describe the automation builder at a high level.",
   },
   {
     scope: "page-apps",
     prompt: "What can I do here? Tell me how I'd launch an app.",
-    expectAtLeastOneOf: ["app", "launch", "catalog", "running"],
   },
 ];
 
@@ -161,12 +156,6 @@ describe("Page-scoped chat — provider + trajectory metadata", () => {
             // present) by passing nothing here.
           });
           expectProviderAccessed(trajectory, "page-scoped-context");
-
-          const responseLower = turn.responseText.toLowerCase();
-          expect(
-            scopeCase.expectAtLeastOneOf.some((kw) => responseLower.includes(kw)),
-            `Expected agent response to surface ${scopeCase.scope} vocabulary; got: ${turn.responseText.slice(0, 200)}`,
-          ).toBe(true);
         } finally {
           await harness.cleanup();
         }

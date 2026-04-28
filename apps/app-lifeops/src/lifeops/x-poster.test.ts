@@ -9,6 +9,7 @@ const credentials: XPosterCredentials = {
 };
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
@@ -17,6 +18,53 @@ function stubFetch(response: Response): void {
 }
 
 describe("x-poster strict success validation", () => {
+  test("sendXDm posts to the participant DM endpoint with OAuth auth and returns ids", async () => {
+    let capturedUrl = "";
+    let capturedInit: RequestInit | undefined;
+    vi.stubEnv("MILADY_MOCK_X_BASE", "http://127.0.0.1:7878");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        capturedUrl = typeof input === "string" ? input : input.toString();
+        capturedInit = init;
+        return new Response(
+          JSON.stringify({
+            data: {
+              dm_conversation_id: "conversation-123",
+              dm_event_id: "event-456",
+            },
+          }),
+          {
+            status: 201,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+      }),
+    );
+
+    const result = await sendXDm({
+      participantId: "12345",
+      text: "hello",
+      credentials,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: 201,
+      dmConversationId: "conversation-123",
+      dmEventId: "event-456",
+      category: "success",
+    });
+    expect(capturedUrl).toBe(
+      "http://127.0.0.1:7878/2/dm_conversations/with/12345/messages",
+    );
+    expect(capturedInit?.method).toBe("POST");
+    const headers = capturedInit?.headers as Record<string, string>;
+    expect(headers.Authorization.startsWith("OAuth ")).toBe(true);
+    expect(headers.Authorization).toContain("oauth_signature=");
+    expect(JSON.parse(String(capturedInit?.body))).toEqual({ text: "hello" });
+  });
+
   test("postToX rejects successful responses without a tweet id", async () => {
     stubFetch(
       new Response(JSON.stringify({ data: {} }), {

@@ -1,5 +1,5 @@
 import type http from "node:http";
-import { fetchWithTimeoutGuard } from "@elizaos/agent/api/server";
+import { fetchWithTimeoutGuard } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
 import type {
   WalletMarketMover,
@@ -7,7 +7,7 @@ import type {
   WalletMarketOverviewSource,
   WalletMarketPrediction,
   WalletMarketPriceSnapshot,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import { resolveCloudApiBaseUrl } from "./cloud-connection";
 import { sendJson, sendJsonError } from "./response";
 

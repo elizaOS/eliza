@@ -24,6 +24,7 @@ import type {
   CloudCompatManagedDiscordStatus,
   CloudCompatManagedGithubStatus,
   CloudCredits,
+  CloudLoginPersistResponse,
   CloudLoginPollResponse,
   CloudLoginResponse,
   CloudOAuthConnection,
@@ -87,6 +88,7 @@ declare module "./client-base" {
     ): Promise<CloudBillingCryptoQuoteResponse>;
     cloudLogin(): Promise<CloudLoginResponse>;
     cloudLoginPoll(sessionId: string): Promise<CloudLoginPollResponse>;
+    cloudLoginPersist(apiKey: string): Promise<CloudLoginPersistResponse>;
     cloudDisconnect(): Promise<{ ok: boolean }>;
     getCloudCompatAgents(): Promise<{
       success: boolean;
@@ -415,6 +417,16 @@ ElizaClient.prototype.cloudLoginPoll = async function (
   return this.fetch(
     `/api/cloud/login/status?sessionId=${encodeURIComponent(sessionId)}`,
   );
+};
+
+ElizaClient.prototype.cloudLoginPersist = async function (
+  this: ElizaClient,
+  apiKey,
+) {
+  return this.fetch("/api/cloud/login/persist", {
+    method: "POST",
+    body: JSON.stringify({ apiKey }),
+  });
 };
 
 ElizaClient.prototype.cloudDisconnect = async function (this: ElizaClient) {

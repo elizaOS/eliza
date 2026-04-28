@@ -109,6 +109,17 @@ export {
 	secretsCapability,
 	trustCapability,
 } from "../index.ts";
+// Re-export plugin-manager security helpers (used by other plugins like
+// plugin-app-control to gate owner/admin-only actions without taking a dep
+// on @elizaos/agent, which would create a layer cycle).
+export {
+	createPluginAction,
+	hasAdminAccess,
+	hasOwnerAccess,
+	type PluginMode,
+	pluginAction,
+	type SecurityDeps,
+} from "../plugin-manager/index.ts";
 
 // ============================================================================
 // XML Response Interfaces
@@ -145,6 +156,7 @@ function textContainsAgentName(
 		return false;
 	}
 
+	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
 	return names.some((name) => {
 		const candidate = name?.trim();
 		if (!candidate) {
@@ -155,7 +167,7 @@ function textContainsAgentName(
 			`(^|[^\\p{L}\\p{N}])${escapeRegex(candidate)}(?=$|[^\\p{L}\\p{N}])`,
 			"iu",
 		);
-		return pattern.test(text);
+		return pattern.test(safeText);
 	});
 }
 
@@ -164,7 +176,8 @@ function textContainsUserTag(text: string | undefined): boolean {
 		return false;
 	}
 
-	return /<@!?[^>]+>|@\w+/u.test(text);
+	const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+	return /<@!?[^>]+>|@\w+/u.test(safeText);
 }
 
 // ============================================================================

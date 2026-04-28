@@ -33,7 +33,7 @@ import {
   resolveDesktopApiPort,
   resolveDisableAutoApiToken,
   setApiToken,
-} from "@elizaos/shared/runtime-env";
+} from "@elizaos/shared";
 
 import { resolveDesktopRuntimeMode } from "../api-base";
 import { getBrandConfig } from "../brand-config";
@@ -309,7 +309,6 @@ export function configureDesktopLocalApiAuth(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   const token = ensureDesktopApiToken(env);
-  env.ELIZA_PAIRING_DISABLED = "1";
   env.ELIZA_PAIRING_DISABLED = "1";
   return token;
 }

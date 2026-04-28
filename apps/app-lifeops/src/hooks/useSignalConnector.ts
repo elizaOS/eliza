@@ -3,7 +3,7 @@ import type {
   LifeOpsConnectorSide,
   LifeOpsSignalConnectorStatus,
   LifeOpsSignalPairingStatus,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const PAIRING_POLL_INTERVAL_MS = 2_000;
@@ -129,8 +129,9 @@ export function useSignalConnector(options: UseSignalConnectorOptions = {}) {
     pairingPollSessionIdRef.current = activePairingSessionId;
     pairingPollRef.current = setInterval(async () => {
       try {
-        const nextPairing =
-          await client.getLifeOpsSignalPairingStatus(activePairingSessionId);
+        const nextPairing = await client.getLifeOpsSignalPairingStatus(
+          activePairingSessionId,
+        );
         setPairingStatus(nextPairing);
         setError(pairingStatusError(nextPairing));
         if (!isActivePairingState(nextPairing.state)) {

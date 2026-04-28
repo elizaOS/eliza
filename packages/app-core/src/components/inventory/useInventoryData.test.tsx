@@ -5,7 +5,7 @@ import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useInventoryData } from "./useInventoryData";

@@ -9,7 +9,7 @@ import type {
   LifeOpsOverview,
   LifeOpsOverviewSection,
   LifeOpsScheduleInsight,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { formatMinutesDuration } from "../../../../utils/format-duration.js";
 import { Button } from "@elizaos/ui";
 import {
@@ -33,17 +33,15 @@ import {
 } from "lucide-react";
 import type { PropsWithChildren, ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { client } from "@elizaos/app-core/api";
-import { isApiError } from "@elizaos/app-core/api/client-types-core";
 import {
+  type ChatSidebarWidgetDefinition,
+  type ChatSidebarWidgetProps,
+  client,
   EmptyWidgetState,
+  isApiError,
+  useApp,
   WidgetSection,
-} from "@elizaos/app-core/components/chat/widgets/shared";
-import type {
-  ChatSidebarWidgetDefinition,
-  ChatSidebarWidgetProps,
-} from "@elizaos/app-core/components/chat/widgets/types";
-import { useApp } from "@elizaos/app-core/state";
+} from "@elizaos/app-core";
 import { useDiscordConnector } from "../../../../hooks/useDiscordConnector.js";
 import { useLifeOpsAppState } from "../../../../hooks/useLifeOpsAppState.js";
 import { humanizeLifeOpsLabel } from "../../../lifeops-labels.js";

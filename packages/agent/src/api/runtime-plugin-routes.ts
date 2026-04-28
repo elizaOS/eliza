@@ -5,7 +5,12 @@
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { AgentRuntime, Route } from "@elizaos/core";
+import type { AgentRuntime, PaymentEnabledRoute, Route } from "@elizaos/core";
+import {
+  createPaymentAwareHandler,
+  isRoutePaymentWrapped,
+} from "../middleware/x402/payment-wrapper.ts";
+import { readJsonBody } from "./http-helpers.ts";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
@@ -16,12 +21,23 @@ export function matchPluginRoutePath(
   const norm = (p: string) => p.split("/").filter((s) => s.length > 0);
   const pSegs = norm(pattern);
   const pathSegs = norm(pathname);
-  if (pSegs.length !== pathSegs.length) return null;
   const params: Record<string, string> = {};
   for (let i = 0; i < pSegs.length; i++) {
     const p = pSegs[i];
     const c = pathSegs[i];
-    if (!p || c === undefined) return null;
+    if (!p) return null;
+    if (p.startsWith(":") && p.endsWith("*")) {
+      const key = p.slice(1, -1);
+      const tail = pathSegs.slice(i).join("/");
+      if (!tail) return null;
+      try {
+        params[key] = decodeURIComponent(tail);
+      } catch {
+        params[key] = tail;
+      }
+      return params;
+    }
+    if (c === undefined) return null;
     if (p.startsWith(":")) {
       try {
         params[p.slice(1)] = decodeURIComponent(c);
@@ -32,7 +48,27 @@ export function matchPluginRoutePath(
       return null;
     }
   }
-  return params;
+  return pSegs.length === pathSegs.length ? params : null;
+}
+
+export function isPublicRuntimePluginRoute(options: {
+  runtime: AgentRuntime | null | undefined;
+  method: string;
+  pathname: string;
+}): boolean {
+  const { runtime, method, pathname } = options;
+  if (!runtime?.routes?.length) return false;
+
+  return (runtime.routes as Route[]).some((route) => {
+    if (
+      route.type === "STATIC" ||
+      route.type !== method ||
+      route.public !== true
+    ) {
+      return false;
+    }
+    return matchPluginRoutePath(route.path, pathname) !== null;
+  });
 }
 
 function searchParamsToQuery(url: URL): Record<string, string | string[]> {
@@ -94,17 +130,53 @@ function augmentRequest(
     params?: Record<string, string>;
     protocol?: string;
     path?: string;
+    method?: string;
     get?: (name: string) => string | undefined;
   };
   base.query = query;
   base.params = params;
   base.protocol = proto;
   base.path = url.pathname;
+  base.method = req.method ?? "GET";
   base.get = (name: string) => {
     const v = req.headers[name.toLowerCase()];
     return Array.isArray(v) ? v[0] : v;
   };
   return req;
+}
+
+function requestMayHaveJsonBody(req: IncomingMessage, method: string): boolean {
+  if (method === "GET" || method === "HEAD") {
+    return false;
+  }
+  const contentType = req.headers["content-type"];
+  const contentTypeText = Array.isArray(contentType)
+    ? contentType.join(",")
+    : (contentType ?? "");
+  if (!contentTypeText.toLowerCase().includes("application/json")) {
+    return false;
+  }
+  const contentLength = req.headers["content-length"];
+  if (contentLength === "0") {
+    return false;
+  }
+  return Boolean(contentLength || req.headers["transfer-encoding"]);
+}
+
+async function attachJsonBodyIfPresent(
+  req: IncomingMessage,
+  res: ServerResponse,
+  method: string,
+): Promise<boolean> {
+  if (!requestMayHaveJsonBody(req, method)) {
+    return true;
+  }
+  const body = await readJsonBody(req, res, { requireObject: true });
+  if (body === null) {
+    return false;
+  }
+  (req as IncomingMessage & { body?: unknown }).body = body;
+  return true;
 }
 
 /**
@@ -125,7 +197,8 @@ export async function tryHandleRuntimePluginRoute(options: {
   for (const route of runtime.routes as Route[]) {
     if (route.type === "STATIC") continue;
     if (route.type !== method) continue;
-    if (!route.handler) continue;
+    const handler = route.handler;
+    if (!handler) continue;
 
     const params = matchPluginRoutePath(route.path, pathname);
     if (params === null) continue;
@@ -141,9 +214,17 @@ export async function tryHandleRuntimePluginRoute(options: {
 
     attachExpressResponseHelpers(res);
     augmentRequest(req, url, params);
+    if (!(await attachJsonBodyIfPresent(req, res, method))) {
+      return true;
+    }
+
+    const effectiveHandler =
+      route.x402 != null && !isRoutePaymentWrapped(route)
+        ? createPaymentAwareHandler(route as PaymentEnabledRoute)
+        : handler;
 
     try {
-      await route.handler(req as never, res as never, runtime);
+      await effectiveHandler(req as never, res as never, runtime);
     } catch (err) {
       if (!res.headersSent) {
         res.statusCode = 500;

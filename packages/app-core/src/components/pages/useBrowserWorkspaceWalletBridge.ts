@@ -176,6 +176,12 @@ async function dispatch(
     case "solana_signMessage":
       return handleSolanaSignMessage(request.params, walletState);
 
+    case "solana_signTransaction":
+      return handleSolanaSendTransaction(request.params, walletState, false);
+
+    case "solana_signAndSendTransaction":
+      return handleSolanaSendTransaction(request.params, walletState, true);
+
     case "wallet_switchEthereumChain":
       return handleSwitchChain(request.params, ctx);
 
@@ -189,6 +195,55 @@ async function dispatch(
 
     default:
       return { ok: false, error: "Unsupported browser wallet request." };
+  }
+}
+
+async function handleSolanaSendTransaction(
+  params: unknown,
+  walletState: BrowserWorkspaceWalletState,
+  broadcast: boolean,
+): Promise<HandlerResult> {
+  if (!walletState.solanaTransactionSigningAvailable) {
+    return {
+      ok: false,
+      error:
+        walletState.reason ||
+        "Solana browser wallet transaction signing is unavailable.",
+    };
+  }
+  const p =
+    params && typeof params === "object"
+      ? (params as {
+          transactionBase64?: unknown;
+          cluster?: unknown;
+          description?: unknown;
+        })
+      : null;
+  const transactionBase64 =
+    typeof p?.transactionBase64 === "string" ? p.transactionBase64 : null;
+  if (!transactionBase64) {
+    return {
+      ok: false,
+      error:
+        "Solana browser wallet transaction signing requires transactionBase64.",
+    };
+  }
+  const cluster =
+    p?.cluster === "devnet" || p?.cluster === "testnet" || p?.cluster === "mainnet"
+      ? p.cluster
+      : undefined;
+  const description =
+    typeof p?.description === "string" ? p.description : undefined;
+  try {
+    const result = await client.sendBrowserSolanaTransaction({
+      transactionBase64,
+      broadcast,
+      ...(cluster ? { cluster } : {}),
+      ...(description ? { description } : {}),
+    });
+    return { ok: true, result };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
   }
 }
 

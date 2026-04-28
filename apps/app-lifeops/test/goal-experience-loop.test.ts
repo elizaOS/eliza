@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { LifeOpsOccurrence } from "@elizaos/shared/contracts/lifeops";
+import type { LifeOpsOccurrence } from "@elizaos/shared";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 import {
   createLifeOpsGoalDefinition,
@@ -110,6 +110,19 @@ function createRuntime(agentId: string) {
               inputs_json TEXT NOT NULL DEFAULT '{}',
               decision_json TEXT NOT NULL DEFAULT '{}',
               actor TEXT NOT NULL DEFAULT 'agent',
+              created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS life_activity_signals (
+              id TEXT PRIMARY KEY,
+              agent_id TEXT NOT NULL,
+              source TEXT NOT NULL,
+              platform TEXT NOT NULL DEFAULT '',
+              state TEXT NOT NULL,
+              observed_at TEXT NOT NULL,
+              idle_state TEXT,
+              idle_time_seconds INTEGER,
+              on_battery BOOLEAN,
+              metadata_json TEXT NOT NULL DEFAULT '{}',
               created_at TEXT NOT NULL
             );
           `,

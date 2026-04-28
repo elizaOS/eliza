@@ -1,15 +1,22 @@
 import { Button } from "@elizaos/ui";
-import { ListTodo, Settings } from "lucide-react";
+import { ChevronRight, ListTodo, Settings } from "lucide-react";
 import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
 import { useCallback, useEffect, useMemo } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { useMediaQuery } from "../../hooks";
-import { getTabGroups, type TabGroup } from "../../navigation";
+import { type AuthStatusState, useAuthStatus } from "../../hooks/useAuthStatus";
+import {
+  getTabGroups,
+  isAppsToolTab,
+  type TabGroup,
+  titleForTab,
+} from "../../navigation";
 import {
   isDetachedWindowShell,
   resolveWindowShellRoute,
 } from "../../platform/window-shell";
 import { useApp } from "../../state";
+import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import {
   CompanionInferenceAlertButton as InferenceCloudAlertButton,
@@ -62,6 +69,14 @@ const MOBILE_BOTTOM_NAV_BUTTON_CLASSNAME =
   "group relative inline-flex h-11 w-11 min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-muted transition-colors duration-150 hover:text-txt after:absolute after:inset-x-2 after:top-0 after:h-[2px] after:rounded-b-full after:bg-accent/70 after:opacity-0 after:transition-opacity after:duration-150";
 const MOBILE_BOTTOM_NAV_BUTTON_ACTIVE_CLASSNAME =
   "text-accent after:opacity-100";
+const ACCESS_BADGE_CLASSNAME =
+  "inline-flex h-[2.375rem] max-w-[15rem] shrink-0 items-center gap-1.5 rounded-md border border-border/45 bg-bg/45 px-2 text-[11px] font-medium leading-none text-muted shadow-none";
+
+interface AccessBadgeContent {
+  primary: "Local" | "Remote";
+  secondary?: "Remote password set" | "Remote password off";
+  title: string;
+}
 
 interface HeaderProps {
   mobileCenter?: ReactNode;
@@ -83,6 +98,33 @@ function shouldShowMacDesktopTitleBar(): boolean {
   return !isDetachedWindowShell(route);
 }
 
+function resolveAccessBadgeContent(
+  state: AuthStatusState,
+): AccessBadgeContent | null {
+  const access =
+    state.phase === "authenticated" || state.phase === "unauthenticated"
+      ? state.access
+      : undefined;
+  if (!access) return null;
+
+  if (access.mode === "local") {
+    const secondary = access.passwordConfigured
+      ? "Remote password set"
+      : "Remote password off";
+    return {
+      primary: "Local",
+      secondary,
+      title: `Local access, ${secondary}`,
+    };
+  }
+
+  if (state.phase !== "authenticated") return null;
+  return {
+    primary: "Remote",
+    title: "Remote session",
+  };
+}
+
 export function Header({
   mobileCenter,
   mobileLeft,
@@ -93,6 +135,9 @@ export function Header({
   onToggleTasksPanel,
 }: HeaderProps) {
   const {
+    activeGameRunId,
+    activeOverlayApp,
+    appRuns,
     browserEnabled,
     chatLastUsage,
     conversationMessages,
@@ -115,6 +160,7 @@ export function Header({
     uiTheme,
     walletEnabled,
   } = useApp();
+  const { state: authStatusState } = useAuthStatus({ observeOnly: true });
 
   const isMobileViewport = useMediaQuery(MOBILE_HEADER_MEDIA_QUERY);
   const collapseDesktopNavLabels = useMediaQuery(
@@ -122,6 +168,10 @@ export function Header({
   );
   const showMacDesktopTitleBar = shouldShowMacDesktopTitleBar();
   const showCloudStatus = !hideCloudCredits && !isMobileViewport;
+  const accessBadgeContent = useMemo(
+    () => resolveAccessBadgeContent(authStatusState),
+    [authStatusState],
+  );
   const stopHeaderPointerPropagation = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
       event.stopPropagation();
@@ -195,6 +245,81 @@ export function Header({
     [tabGroups],
   );
 
+  const localizeNavLabel = useCallback(
+    (label: string) =>
+      t(NAV_LABEL_I18N_KEY[label] ?? label, { defaultValue: label }),
+    [t],
+  );
+
+  // ── Active-app breadcrumb ────────────────────────────────────────────
+  // Surfaces "Apps > <AppName>" in the header center so the user knows which
+  // app they're inside. Three sources, in priority order:
+  //
+  //  1. Active game run (`activeGameRunId` resolved against `appRuns`).
+  //  2. Active full-screen overlay app (`activeOverlayApp` resolved against
+  //     the overlay registry — Companion, Shopify, Vincent, etc.).
+  //  3. The current tab is an "apps tool tab" — LifeOps, Plugins, Skills,
+  //     Trajectories, etc. These live at `/apps/<slug>` paths and belong to
+  //     the Apps nav group, so the user mentally treats them as apps.
+  //
+  // Overlay apps render full-screen on top of every tab (App.tsx gates on
+  // `activeOverlayApp !== null`), so the breadcrumb for sources (1) and (2)
+  // is correct regardless of the underlying `tab` value.
+  const activeAppCrumbLabel = useMemo(() => {
+    if (activeGameRunId) {
+      const run = appRuns.find((entry) => entry.runId === activeGameRunId);
+      if (run) {
+        const label = (run.displayName || run.appName).trim();
+        return label.length > 0 ? label : null;
+      }
+    }
+    if (activeOverlayApp) {
+      const overlay = getOverlayApp(activeOverlayApp);
+      if (overlay) {
+        const label = (overlay.displayName || overlay.name).trim();
+        return label.length > 0 ? label : null;
+      }
+      // Registry miss: don't leak the raw slug to the user. Hide the crumb
+      // until the registry resolves the app (or the active app changes).
+      return null;
+    }
+    if (isAppsToolTab(tab)) {
+      // Tool tabs use English titles via titleForTab; localizeNavLabel maps
+      // those to i18n keys when present (e.g. "LifeOps" → "nav.lifeops") and
+      // falls back to the literal label otherwise.
+      const title = titleForTab(tab);
+      const label = localizeNavLabel(title);
+      return label.length > 0 ? label : null;
+    }
+    return null;
+  }, [activeGameRunId, activeOverlayApp, appRuns, localizeNavLabel, tab]);
+
+  // Whether the active crumb originates from an overlay/game run vs a tool
+  // tab. The home-click handler differs between these: overlay/run crumbs
+  // need the state cleared, tool-tab crumbs just navigate.
+  const breadcrumbSourceIsApp = useMemo(() => {
+    if (activeGameRunId) {
+      return appRuns.some((entry) => entry.runId === activeGameRunId);
+    }
+    if (activeOverlayApp) {
+      return getOverlayApp(activeOverlayApp) !== undefined;
+    }
+    return false;
+  }, [activeGameRunId, activeOverlayApp, appRuns]);
+
+  // Breadcrumb "home" click sends the user back to the Apps catalog.
+  // For overlay apps and game runs this also clears the active state — that
+  // mirrors `OverlayAppContext.exitToApps()` ("Navigate back to the apps tab
+  // and close this overlay"). For tool tabs (LifeOps, Plugins, ...) we only
+  // navigate; there's no overlay state to clear.
+  const handleAppCrumbHomeClick = useCallback(() => {
+    if (breadcrumbSourceIsApp) {
+      setState("activeOverlayApp", null);
+      setState("activeGameRunId", "");
+    }
+    setTab("apps");
+  }, [breadcrumbSourceIsApp, setState, setTab]);
+
   const localizeTabGroup = useCallback(
     (group: TabGroup) => ({
       description:
@@ -203,12 +328,55 @@ export function Header({
               defaultValue: group.description,
             })
           : group.description,
-      label: t(NAV_LABEL_I18N_KEY[group.label] ?? group.label, {
-        defaultValue: group.label,
-      }),
+      label: localizeNavLabel(group.label),
     }),
-    [t],
+    [localizeNavLabel, t],
   );
+
+  const breadcrumbNode = useMemo(() => {
+    if (!activeAppCrumbLabel) return null;
+    const appsLabel = localizeNavLabel("Apps");
+    const homeButtonClass = isMobileViewport
+      ? "inline-flex h-11 min-h-11 items-center rounded-[var(--radius-sm)] px-2 font-medium text-muted transition-colors hover:bg-bg-hover/40 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40"
+      : "inline-flex items-center rounded-[var(--radius-sm)] px-1 py-0.5 font-medium text-muted transition-colors hover:bg-bg-hover/40 hover:text-txt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40";
+    return (
+      <nav
+        className="flex min-w-0 items-center gap-1 px-2 text-xs"
+        aria-label={t("aria.breadcrumb", { defaultValue: "Breadcrumb" })}
+        data-testid="header-breadcrumb"
+      >
+        <button
+          type="button"
+          onClick={handleAppCrumbHomeClick}
+          onPointerDown={stopHeaderPointerPropagation}
+          data-testid="header-breadcrumb-home"
+          data-no-camera-drag="true"
+          className={homeButtonClass}
+        >
+          {appsLabel}
+        </button>
+        <ChevronRight
+          className="h-3 w-3 shrink-0 text-muted/60"
+          aria-hidden="true"
+        />
+        <span
+          className="truncate px-1 py-0.5 font-medium text-txt"
+          data-testid="header-breadcrumb-current"
+          aria-current="page"
+          title={activeAppCrumbLabel}
+        >
+          {activeAppCrumbLabel}
+        </span>
+      </nav>
+    );
+  }, [
+    activeAppCrumbLabel,
+    handleAppCrumbHomeClick,
+    isMobileViewport,
+    localizeNavLabel,
+    stopHeaderPointerPropagation,
+    t,
+  ]);
 
   const openCloudBilling = useCallback(() => {
     setState("cloudDashboardView", "billing");
@@ -358,6 +526,26 @@ export function Header({
           dataTestId="header-cloud-status"
         />
       ) : null}
+      {accessBadgeContent ? (
+        <div
+          className={ACCESS_BADGE_CLASSNAME}
+          title={accessBadgeContent.title}
+          data-testid="header-access-badge"
+        >
+          <span className="shrink-0 text-txt">
+            {accessBadgeContent.primary}
+          </span>
+          {accessBadgeContent.secondary ? (
+            <>
+              <span
+                className="h-1 w-1 shrink-0 rounded-full bg-muted/55"
+                aria-hidden="true"
+              />
+              <span className="truncate">{accessBadgeContent.secondary}</span>
+            </>
+          ) : null}
+        </div>
+      ) : null}
       <div className="max-[639px]:hidden">
         <LanguageDropdown
           uiLanguage={uiLanguage}
@@ -411,7 +599,7 @@ export function Header({
                 </div>
                 <div
                   className={
-                    mobileCenter
+                    mobileCenter || breadcrumbNode
                       ? "flex h-[2.375rem] min-w-0 items-center justify-center"
                       : "pointer-events-none h-[2.375rem] min-w-0"
                   }
@@ -420,10 +608,14 @@ export function Header({
                       ? "desktop-window-titlebar-drag-zone"
                       : undefined
                   }
-                  data-no-camera-drag={mobileCenter ? "true" : undefined}
-                  aria-hidden={mobileCenter ? undefined : "true"}
+                  data-no-camera-drag={
+                    mobileCenter || breadcrumbNode ? "true" : undefined
+                  }
+                  aria-hidden={
+                    mobileCenter || breadcrumbNode ? undefined : "true"
+                  }
                 >
-                  {mobileCenter}
+                  {mobileCenter ?? breadcrumbNode}
                 </div>
                 <div
                   className="flex min-w-0 items-center justify-end gap-1"
@@ -484,15 +676,29 @@ export function Header({
                     );
                   })}
                 </nav>
-                <div
-                  className="pointer-events-none h-[2.375rem] w-[clamp(3rem,8vw,8rem)] min-w-0"
-                  data-testid={
-                    showMacDesktopTitleBar
-                      ? "desktop-window-titlebar-drag-zone"
-                      : undefined
-                  }
-                  aria-hidden="true"
-                />
+                {breadcrumbNode ? (
+                  <div
+                    className="flex h-[2.375rem] min-w-0 items-center justify-center"
+                    data-testid={
+                      showMacDesktopTitleBar
+                        ? "desktop-window-titlebar-drag-zone"
+                        : undefined
+                    }
+                    data-no-camera-drag="true"
+                  >
+                    {breadcrumbNode}
+                  </div>
+                ) : (
+                  <div
+                    className="pointer-events-none h-[2.375rem] w-[clamp(3rem,8vw,8rem)] min-w-0"
+                    data-testid={
+                      showMacDesktopTitleBar
+                        ? "desktop-window-titlebar-drag-zone"
+                        : undefined
+                    }
+                    aria-hidden="true"
+                  />
+                )}
                 {rightDesktopControls}
               </>
             )}

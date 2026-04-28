@@ -73,7 +73,7 @@ try {
   if (!skipInstall) {
     run("bun install --ignore-scripts", { cwd: appDir });
   }
-  run(`npx vite build`, { cwd: appDir });
+  run(`bun run build:web`, { cwd: appDir });
 
   console.log("\n=== Build complete! ===");
 } catch (e) {

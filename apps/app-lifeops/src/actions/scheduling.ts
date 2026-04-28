@@ -14,6 +14,7 @@
  *    metadata — no new table).
  */
 
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -28,23 +29,19 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared/contracts/lifeops";
-import { hasAdminAccess } from "@elizaos/agent";
-import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
-  LifeOpsService,
-  LifeOpsServiceError,
-} from "../lifeops/service.js";
-import {
-  normalizeLifeOpsMeetingPreferencesPatch,
-  readLifeOpsMeetingPreferences,
-  updateLifeOpsMeetingPreferences,
   type LifeOpsMeetingPreferences,
   type LifeOpsMeetingPreferencesBlackout,
   type LifeOpsMeetingPreferencesPatch,
+  normalizeLifeOpsMeetingPreferencesPatch,
+  readLifeOpsMeetingPreferences,
+  updateLifeOpsMeetingPreferences,
 } from "../lifeops/owner-profile.js";
+import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { getZonedDateParts } from "../lifeops/time.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 import { inferTimeZoneFromLocationText } from "./timezone-normalization.js";
 
 const MS_PER_MINUTE = 60_000;
@@ -194,7 +191,9 @@ export function computeProposedSlots(args: {
   const tz = preferences.timeZone;
   const busy = buildBusyIntervals(events, preferences.travelBufferMinutes);
 
-  const preferredStart = parseTimeOfDayToMinutes(preferences.preferredStartLocal);
+  const preferredStart = parseTimeOfDayToMinutes(
+    preferences.preferredStartLocal,
+  );
   const preferredEnd = parseTimeOfDayToMinutes(preferences.preferredEndLocal);
 
   const results: ProposedMeetingSlot[] = [];
@@ -268,22 +267,25 @@ function formatSlotsText(slots: readonly ProposedMeetingSlot[]): string {
 
 function cleanBundledCounterparty(value: string): string {
   return value
-    .replace(/^(?:with|for|and|also|maybe|please)\s+/iu, "")
-    .replace(/\s+(?:at|if|while|during|thanks|please)\b.*$/iu, "")
+    .slice(0, 1024)
+    .replace(/^(?:with|for|and|also|maybe|please)\s{1,32}/iu, "")
+    .replace(/\s{1,32}(?:at|if|while|during|thanks|please)\b.{0,1024}$/iu, "")
     .replace(/[.?!,;:]+$/u, "")
     .trim();
 }
 
-export function extractBundledMeetingCounterparties(messageText: string): string[] {
-  const trimmed = messageText.trim();
+export function extractBundledMeetingCounterparties(
+  messageText: string,
+): string[] {
+  const trimmed = messageText.trim().slice(0, 4096);
   if (trimmed.length === 0) {
     return [];
   }
 
   const patterns = [
-    /\bschedule\s+(.+?)(?:\s+at\s+the\s+same\s+time\b|\s+same\s+day\b|\s+if\s+possible\b|[.?!]|$)/iu,
-    /\bbundle\s+(.+?)(?:\s+together\b|\s+on\s+the\s+same\s+day\b|\s+if\s+possible\b|[.?!]|$)/iu,
-    /\bmeetings?\s+with\s+(.+?)(?:\s+on\s+the\s+same\s+day\b|\s+at\s+the\s+same\s+time\b|\s+if\s+possible\b|[.?!]|$)/iu,
+    /\bschedule\s{1,32}(.{1,2048}?)(?:\s{1,32}at\s{1,32}the\s{1,32}same\s{1,32}time\b|\s{1,32}same\s{1,32}day\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
+    /\bbundle\s{1,32}(.{1,2048}?)(?:\s{1,32}together\b|\s{1,32}on\s{1,32}the\s{1,32}same\s{1,32}day\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
+    /\bmeetings?\s{1,32}with\s{1,32}(.{1,2048}?)(?:\s{1,32}on\s{1,32}the\s{1,32}same\s{1,32}day\b|\s{1,32}at\s{1,32}the\s{1,32}same\s{1,32}time\b|\s{1,32}if\s{1,32}possible\b|[.?!]|$)/iu,
   ];
 
   for (const pattern of patterns) {
@@ -293,7 +295,8 @@ export function extractBundledMeetingCounterparties(messageText: string): string
       continue;
     }
     const counterparties = raw
-      .split(/\s*(?:,|&|\band\b)\s*/iu)
+      .slice(0, 2048)
+      .split(/\s{0,32}(?:,|&|\band\b)\s{0,32}/iu)
       .map(cleanBundledCounterparty)
       .filter((value) => value.length > 0);
     if (counterparties.length >= 2) {
@@ -319,16 +322,21 @@ function formatCounterpartyList(counterparties: readonly string[]): string {
 
 function deriveBundleLocationLabel(messageText: string): string | null {
   const lowered = messageText.toLowerCase();
-  const inMatch = /\b(?:in|while i(?:'| a)?m in|while im in)\s+([a-z][a-z\s._-]{1,40}?)(?:\s+(?:for|with|so|and)\b|[,.!?]|$)/iu.exec(
-    lowered,
-  );
+  const inMatch =
+    /\b(?:in|while i(?:'| a)?m in|while im in)\s+([a-z][a-z\s._-]{1,40}?)(?:\s+(?:for|with|so|and)\b|[,.!?]|$)/iu.exec(
+      lowered,
+    );
   const candidate = inMatch?.[1]?.replace(/[_]+/g, " ").trim();
   if (!candidate) {
     return null;
   }
   return candidate
     .split(/\s+/u)
-    .map((part) => (part.length > 0 ? `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}` : part))
+    .map((part) =>
+      part.length > 0
+        ? `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`
+        : part,
+    )
     .join(" ");
 }
 
@@ -345,7 +353,9 @@ export function formatProposedSlotsReply(args: {
   const counterparties = args.context?.counterparties ?? [];
   const locationLabel = args.context?.bundleLocationLabel?.trim();
   const targetLabel = formatCounterpartyList(counterparties);
-  const windowLabel = locationLabel ? `${locationLabel}-time` : args.context?.timeZone;
+  const windowLabel = locationLabel
+    ? `${locationLabel}-time`
+    : args.context?.timeZone;
 
   if (counterparties.length >= 2) {
     if (args.slots.length === 0) {
@@ -394,10 +404,7 @@ export const proposeMeetingTimesAction: Action & {
     "BULK_RESCHEDULE_MEETINGS",
     "RESCHEDULE_MEETINGS",
   ],
-  tags: [
-    "meeting slots",
-    "reschedule options",
-  ],
+  tags: ["meeting slots", "reschedule options"],
   description:
     "Propose concrete meeting time slots to offer to another person. This is " +
     "the dedicated action for any 'propose N times', 'suggest N slots', " +
@@ -951,7 +958,9 @@ async function resolveSchedulingPlanWithLlm(args: {
     })
   ).join("\n");
   const currentMessage =
-    typeof args.message.content?.text === "string" ? args.message.content.text : "";
+    typeof args.message.content?.text === "string"
+      ? args.message.content.text
+      : "";
   const prompt = [
     "Plan the scheduling negotiation action for this request.",
     "The user may speak in any language.",
@@ -1020,9 +1029,12 @@ async function resolveSchedulingPlanWithLlm(args: {
   }
 }
 
-function formatNegotiationSummary(
-  n: { id: string; subject: string; state: string; durationMinutes: number },
-): string {
+function formatNegotiationSummary(n: {
+  id: string;
+  subject: string;
+  state: string;
+  durationMinutes: number;
+}): string {
   return `Negotiation ${n.id} — "${n.subject}" (${n.durationMinutes} min, state=${n.state})`;
 }
 
@@ -1250,7 +1262,11 @@ export const schedulingAction: Action & {
         return {
           text,
           success: false,
-          data: { error: "SERVICE_ERROR", status: error.status, detail: error.message },
+          data: {
+            error: "SERVICE_ERROR",
+            status: error.status,
+            detail: error.message,
+          },
         };
       }
       throw error;
@@ -1265,12 +1281,14 @@ export const schedulingAction: Action & {
     },
     {
       name: "intent",
-      description: "Free-text description of what the scheduling turn is trying to do.",
+      description:
+        "Free-text description of what the scheduling turn is trying to do.",
       schema: { type: "string" as const },
     },
     {
       name: "negotiationId",
-      description: "Target negotiation ID for proposal, finalize, cancel, or list_proposals.",
+      description:
+        "Target negotiation ID for proposal, finalize, cancel, or list_proposals.",
       schema: { type: "string" as const },
     },
     {
@@ -1295,7 +1313,8 @@ export const schedulingAction: Action & {
     },
     {
       name: "durationMinutes",
-      description: "Meeting duration in minutes (defaults to 30 when starting).",
+      description:
+        "Meeting duration in minutes (defaults to 30 when starting).",
       schema: { type: "number" as const },
     },
     {
@@ -1311,7 +1330,12 @@ export const schedulingAction: Action & {
   ],
   examples: [
     [
-      { name: "{{name1}}", content: { text: "Start a scheduling negotiation with Alice about the quarterly review" } },
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Start a scheduling negotiation with Alice about the quarterly review",
+        },
+      },
       {
         name: "{{agentName}}",
         content: {
@@ -1320,7 +1344,10 @@ export const schedulingAction: Action & {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "Propose Tuesday 2-3pm for negotiation abc-123" } },
+      {
+        name: "{{name1}}",
+        content: { text: "Propose Tuesday 2-3pm for negotiation abc-123" },
+      },
       {
         name: "{{agentName}}",
         content: {
@@ -1329,7 +1356,10 @@ export const schedulingAction: Action & {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "Alice accepted proposal xyz-789" } },
+      {
+        name: "{{name1}}",
+        content: { text: "Alice accepted proposal xyz-789" },
+      },
       {
         name: "{{agentName}}",
         content: {
@@ -1338,7 +1368,10 @@ export const schedulingAction: Action & {
       },
     ],
     [
-      { name: "{{name1}}", content: { text: "Finalize negotiation abc-123 with proposal xyz-789" } },
+      {
+        name: "{{name1}}",
+        content: { text: "Finalize negotiation abc-123 with proposal xyz-789" },
+      },
       {
         name: "{{agentName}}",
         content: {

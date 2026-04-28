@@ -799,13 +799,12 @@ describe("n8n write workflows", () => {
     expect(init.method).toBe("PUT");
   });
 
-  it("generates a runnable fallback graph when no plugin service is registered", async () => {
-    const fetchImpl = vi.fn(async (_url, init) => {
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      return mockResponse({
-        body: { id: "generated", active: false, ...body },
-      });
-    }) as unknown as typeof fetch;
+  it("returns 503 when no workflow service is registered", async () => {
+    const fetchImpl = vi.fn(async () =>
+      mockResponse({
+        body: { id: "unexpected" },
+      }),
+    ) as unknown as typeof fetch;
     const sidecar = makeSidecarStub(
       { status: "ready", host: "http://127.0.0.1:5678" },
       "k",
@@ -822,21 +821,9 @@ describe("n8n write workflows", () => {
       },
     });
 
-    expect(status).toBe(200);
-    expect(payload).toMatchObject({ id: "generated" });
-
-    const calls = (fetchImpl as unknown as { mock: { calls: unknown[][] } })
-      .mock.calls;
-    const [, init] = calls[0] as [string, RequestInit];
-    const forwarded = JSON.parse(String(init.body)) as {
-      nodes: Array<{ type: string; name: string }>;
-      connections: Record<string, unknown>;
-    };
-    expect(forwarded.nodes[0]?.type).toBe("n8n-nodes-base.manualTrigger");
-    expect(
-      forwarded.nodes.some((node) => node.type === "n8n-nodes-base.noOp"),
-    ).toBe(true);
-    expect(Object.keys(forwarded.connections).length).toBeGreaterThan(0);
+    expect(status).toBe(503);
+    expect(payload).toEqual({ error: "n8n workflow service unavailable" });
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 
@@ -1005,5 +992,132 @@ describe("n8n route gate", () => {
       pathname: "/api/n8n/workflows/w1/activate",
     });
     expect(handled).toBe(false);
+  });
+});
+
+// ── handleGenerateWorkflow → deployWorkflow path ────────────────────────────
+//
+// Pins the post-Session-19 behavior of POST /api/n8n/workflows/generate:
+// when the n8n_workflow service is registered, the route MUST go through
+// service.generateWorkflowDraft → service.deployWorkflow → service.getWorkflow
+// (with userId = resolveAgentId(ctx)) so credential resolution runs
+// server-side. Without this, generated workflows reach n8n with
+// `{{CREDENTIAL_ID}}` placeholders unresolved and crash on activate. A
+// future refactor that silently reverts to the legacy proxy path would be
+// caught here.
+
+interface MockGenerateService {
+  generateWorkflowDraft: ReturnType<typeof vi.fn>;
+  deployWorkflow: ReturnType<typeof vi.fn>;
+  getWorkflow: ReturnType<typeof vi.fn>;
+}
+
+function runtimeWithWorkflowService(
+  service: Partial<MockGenerateService>,
+): AgentRuntime {
+  return {
+    getService: vi.fn((name: string) =>
+      name === "n8n_workflow" ? service : null,
+    ),
+  } as unknown as AgentRuntime;
+}
+
+describe("n8n POST /api/n8n/workflows/generate", () => {
+  it("calls generateWorkflowDraft → deployWorkflow → getWorkflow in order with resolveAgentId(ctx) as userId", async () => {
+    const draft = {
+      name: "Test Draft",
+      nodes: [],
+      connections: {},
+    };
+    const deployed = {
+      id: "wf-123",
+      name: "Test Draft",
+      active: false,
+      nodeCount: 0,
+      missingCredentials: [],
+    };
+    const full = {
+      id: "wf-123",
+      name: "Test Draft",
+      nodes: [],
+      connections: {},
+      active: false,
+    };
+    const generateWorkflowDraft = vi.fn(async () => draft);
+    const deployWorkflow = vi.fn(async () => deployed);
+    const getWorkflow = vi.fn(async () => full);
+    const service: MockGenerateService = {
+      generateWorkflowDraft,
+      deployWorkflow,
+      getWorkflow,
+    };
+    const runtime = runtimeWithWorkflowService(service);
+
+    const { handled, status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/generate",
+      runtime,
+      agentId: "agent-abc",
+      body: { prompt: "create a hello workflow" },
+    });
+
+    expect(handled).toBe(true);
+    expect(status).toBe(200);
+    expect(payload).toEqual(full);
+
+    // Argument shapes
+    expect(generateWorkflowDraft).toHaveBeenCalledWith(
+      "create a hello workflow",
+    );
+    expect(deployWorkflow).toHaveBeenCalledWith(draft, "agent-abc");
+    expect(getWorkflow).toHaveBeenCalledWith("wf-123");
+
+    // Call ordering — generate < deploy < getWorkflow
+    const genOrder = generateWorkflowDraft.mock.invocationCallOrder[0];
+    const deployOrder = deployWorkflow.mock.invocationCallOrder[0];
+    const getOrder = getWorkflow.mock.invocationCallOrder[0];
+    expect(genOrder).toBeLessThan(deployOrder);
+    expect(deployOrder).toBeLessThan(getOrder);
+  });
+
+  it("short-circuits with warning when deployWorkflow reports missingCredentials and skips getWorkflow", async () => {
+    const draft = { name: "Gmail Draft", nodes: [], connections: {} };
+    const deployed = {
+      id: "wf-456",
+      name: "Gmail Draft",
+      active: false,
+      nodeCount: 0,
+      missingCredentials: [
+        {
+          credType: "gmailOAuth2",
+          authUrl: "milady://settings/connectors/gmail",
+        },
+      ],
+    };
+    const generateWorkflowDraft = vi.fn(async () => draft);
+    const deployWorkflow = vi.fn(async () => deployed);
+    const getWorkflow = vi.fn(async () => ({}));
+    const service: MockGenerateService = {
+      generateWorkflowDraft,
+      deployWorkflow,
+      getWorkflow,
+    };
+    const runtime = runtimeWithWorkflowService(service);
+
+    const { status, payload } = await invoke({
+      method: "POST",
+      pathname: "/api/n8n/workflows/generate",
+      runtime,
+      agentId: "agent-abc",
+      body: { prompt: "send my Gmail summary to Discord" },
+    });
+
+    expect(status).toBe(200);
+    expect(payload).toMatchObject({
+      id: "wf-456",
+      missingCredentials: deployed.missingCredentials,
+      warning: "missing credentials",
+    });
+    expect(getWorkflow).not.toHaveBeenCalled();
   });
 });

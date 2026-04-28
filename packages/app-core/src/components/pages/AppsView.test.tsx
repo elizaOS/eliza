@@ -89,6 +89,30 @@ vi.mock("../../state", async () => {
   };
 });
 
+vi.mock("../../state/useApp", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+
+  return {
+    useApp: () => {
+      const noop = React.useCallback(() => {}, []);
+      const translate = React.useCallback(
+        (_key: string, values?: { defaultValue?: string }) =>
+          values?.defaultValue ?? _key,
+        [],
+      );
+
+      return {
+        appRuns: [],
+        plugins: [],
+        setActionNotice: noop,
+        setState: noop,
+        setTab: noop,
+        t: translate,
+      };
+    },
+  };
+});
+
 vi.mock("../apps/AppsSidebar", () => ({
   AppsSidebar: () => <aside data-testid="apps-sidebar" />,
 }));
@@ -107,34 +131,89 @@ vi.mock("../apps/AppsCatalogGrid", () => ({
     onLaunch: (app: { name: string }) => void;
     visibleApps: Array<{ name: string; displayName?: string | null }>;
   }) => {
-    const pluginViewer = visibleApps.find(
-      (app) => app.name === "@elizaos/app-plugin-viewer",
-    );
+    const launchableApp =
+      visibleApps.find(
+        (app) => app.name === "@elizaos/app-defense-of-the-agents",
+      ) ?? visibleApps.find((app) => app.name === "@elizaos/app-plugin-viewer");
     return (
       <button
         type="button"
-        disabled={loading || !pluginViewer}
+        disabled={loading || !launchableApp}
         onClick={() => {
-          if (pluginViewer) onLaunch(pluginViewer);
+          if (launchableApp) onLaunch(launchableApp);
         }}
       >
-        Open Plugin Viewer
+        Open {launchableApp?.displayName ?? "App"}
       </button>
     );
   },
 }));
 
+function createCatalogApp(name: string, displayName: string) {
+  return {
+    name,
+    displayName,
+    description: `${displayName} test app`,
+    category: "game",
+    launchType: "local",
+    launchUrl: null,
+    icon: null,
+    heroImage: null,
+    capabilities: [],
+    stars: 0,
+    repository: "",
+    latestVersion: null,
+    supports: { v0: false, v1: false, v2: true },
+    npm: {
+      package: name,
+      v0Version: null,
+      v1Version: null,
+      v2Version: null,
+    },
+  };
+}
+
+function installMemoryLocalStorage(): void {
+  const store = new Map<string, string>();
+  const storage: Storage = {
+    get length() {
+      return store.size;
+    },
+    clear: () => store.clear(),
+    getItem: (key) => store.get(key) ?? null,
+    key: (index) => Array.from(store.keys())[index] ?? null,
+    removeItem: (key) => {
+      store.delete(key);
+    },
+    setItem: (key, value) => {
+      store.set(key, String(value));
+    },
+  };
+
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: storage,
+  });
+}
+
 describe("AppsView", () => {
   beforeEach(() => {
+    installMemoryLocalStorage();
     window.history.replaceState(null, "", "/apps");
+    window.localStorage.clear();
     clientMock.attachAppRun.mockResolvedValue({ run: null });
     clientMock.heartbeatAppRun.mockResolvedValue(undefined);
     clientMock.launchApp.mockResolvedValue({});
     clientMock.listAppRuns.mockResolvedValue([]);
     clientMock.listApps.mockResolvedValue([]);
-    clientMock.listCatalogApps.mockResolvedValue([]);
+    clientMock.listCatalogApps.mockResolvedValue([
+      createCatalogApp(
+        "@elizaos/app-defense-of-the-agents",
+        "Defense of the Agents",
+      ),
+    ]);
     invokeDesktopBridgeRequestMock.mockResolvedValue({
-      id: "plugins-window",
+      id: "app-window",
       alwaysOnTop: false,
     });
   });
@@ -144,7 +223,33 @@ describe("AppsView", () => {
     vi.clearAllMocks();
   });
 
-  it("does not auto-launch a second native app window after a manual catalog launch updates the route", async () => {
+  it("routes game apps to the details page before launching", async () => {
+    render(<AppsView />);
+
+    expect(
+      screen.queryByRole("checkbox", { name: "Open apps in windows" }),
+    ).toBeNull();
+
+    const launchButton = await screen.findByRole("button", {
+      name: "Open Defense of the Agents",
+    });
+
+    fireEvent.click(launchButton);
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe(
+        "/apps/defense-of-the-agents/details",
+      );
+    });
+
+    expect(clientMock.launchApp).not.toHaveBeenCalled();
+    expect(invokeDesktopBridgeRequestMock).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("app-launch-panel")).toBeTruthy();
+  });
+
+  it("opens lightweight route apps in desktop windows by default", async () => {
+    clientMock.listCatalogApps.mockResolvedValue([]);
+
     render(<AppsView />);
 
     const launchButton = await screen.findByRole("button", {
@@ -163,6 +268,15 @@ describe("AppsView", () => {
     });
 
     expect(invokeDesktopBridgeRequestMock).toHaveBeenCalledTimes(1);
+    expect(invokeDesktopBridgeRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rpcMethod: "desktopOpenAppWindow",
+        params: expect.objectContaining({
+          path: "/apps/plugins",
+        }),
+      }),
+    );
+    expect(clientMock.launchApp).not.toHaveBeenCalled();
     expect(window.location.pathname).toBe("/apps/plugin-viewer");
   });
 });

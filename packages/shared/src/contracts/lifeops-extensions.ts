@@ -4,7 +4,7 @@
 // reported done without actually writing them.
 // Re-exported from `./lifeops.ts` so downstream imports work unchanged.
 
-import type { LifeOpsConnectorDegradation } from "./lifeops";
+import type { LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
 
 // ── Message channels ─────────────────────────────────────────────────────────
 
@@ -219,6 +219,16 @@ export interface LifeOpsIMessageConnectorStatus {
   lastSyncAt: string | null;
   lastCheckedAt: string | null;
   error: string | null;
+  chatDbAvailable?: boolean;
+  sendOnly?: boolean;
+  chatDbPath?: string;
+  reason?: string | null;
+  permissionAction?: {
+    type: "full_disk_access";
+    label: string;
+    url: string;
+    instructions: string[];
+  } | null;
   degradations?: LifeOpsConnectorDegradation[];
 }
 

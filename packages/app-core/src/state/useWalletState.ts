@@ -26,9 +26,9 @@ import type {
   WalletNftsResponse,
   WalletPrimaryMap,
   WalletSource,
-} from "@elizaos/shared/contracts/wallet";
+} from "@elizaos/shared";
 import type { PromptOptions } from "@elizaos/ui";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,
   type DropStatus,
@@ -79,12 +79,18 @@ export function useWalletState({
   const setWalletEnabled = useCallback((v: boolean) => {
     setWalletEnabledRaw(v);
     saveWalletEnabled(v);
+    void client
+      .updateConfig({ ui: { capabilities: { wallet: v } } })
+      .catch(() => {});
   }, []);
 
   const [browserEnabled, setBrowserEnabledRaw] = useState(loadBrowserEnabled);
   const setBrowserEnabled = useCallback((v: boolean) => {
     setBrowserEnabledRaw(v);
     saveBrowserEnabled(v);
+    void client
+      .updateConfig({ ui: { capabilities: { browser: v } } })
+      .catch(() => {});
   }, []);
 
   const [computerUseEnabled, setComputerUseEnabledRaw] = useState(
@@ -93,6 +99,40 @@ export function useWalletState({
   const setComputerUseEnabled = useCallback((v: boolean) => {
     setComputerUseEnabledRaw(v);
     saveComputerUseEnabled(v);
+    void client
+      .updateConfig({ ui: { capabilities: { computerUse: v } } })
+      .catch(() => {});
+  }, []);
+
+  // ── Hydrate capability flags from server config on mount ──────────
+  // Server config (written by TOGGLE_CAPABILITY agent action) wins on
+  // first load; localStorage remains a fallback for offline / stale.
+  useEffect(() => {
+    let cancelled = false;
+    void client
+      .getConfig()
+      .then((cfg) => {
+        if (cancelled) return;
+        const ui = cfg.ui as Record<string, unknown> | undefined;
+        const caps = ui?.capabilities as Record<string, unknown> | undefined;
+        if (!caps || typeof caps !== "object") return;
+        if (typeof caps.wallet === "boolean") {
+          setWalletEnabledRaw(caps.wallet);
+          saveWalletEnabled(caps.wallet);
+        }
+        if (typeof caps.browser === "boolean") {
+          setBrowserEnabledRaw(caps.browser);
+          saveBrowserEnabled(caps.browser);
+        }
+        if (typeof caps.computerUse === "boolean") {
+          setComputerUseEnabledRaw(caps.computerUse);
+          saveComputerUseEnabled(caps.computerUse);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ── Wallet / Inventory ─────────────────────────────────────────────

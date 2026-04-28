@@ -103,15 +103,26 @@ async function probeBlueBubbles(
 ): Promise<boolean> {
   try {
     const target = new URL("/api/v1/server/info", url);
-    if (password) target.searchParams.set("password", password);
     const response = await fetch(target.toString(), {
       method: "GET",
+      headers: bluebubblesAuthHeaders(password),
       signal: AbortSignal.timeout(3_000),
     });
     return response.ok;
   } catch {
     return false;
   }
+}
+
+/**
+ * Build BlueBubbles auth headers. BlueBubbles' v1 API accepts the server
+ * password via either a `password` query parameter or an `Authorization:
+ * Bearer <password>` header; we always use the header form so the credential
+ * never lands in URL access logs, browser history, or referrer headers.
+ */
+function bluebubblesAuthHeaders(password?: string): Record<string, string> {
+  if (!password) return {};
+  return { Authorization: `Bearer ${password}` };
 }
 
 export async function detectIMessageBackend(
@@ -423,6 +434,18 @@ interface BlueBubblesMessage {
   attachments?: BlueBubblesAttachment[];
 }
 
+function directRecipientFromBlueBubblesChatGuid(
+  chatGuid: string | undefined,
+): string | undefined {
+  const directPrefix = ";-;";
+  const directMarkerIndex = chatGuid?.indexOf(directPrefix) ?? -1;
+  if (!chatGuid || directMarkerIndex < 0) {
+    return undefined;
+  }
+  const recipient = chatGuid.slice(directMarkerIndex + directPrefix.length);
+  return recipient.trim().length > 0 ? recipient : undefined;
+}
+
 function buildBlueBubblesUrl(
   config: IMessageBridgeConfig,
   pathname: string,
@@ -435,9 +458,6 @@ function buildBlueBubblesUrl(
     );
   }
   const url = new URL(pathname, config.bluebubblesUrl);
-  if (config.bluebubblesPassword) {
-    url.searchParams.set("password", config.bluebubblesPassword);
-  }
   if (search) {
     for (const [k, v] of Object.entries(search)) {
       url.searchParams.set(k, v);
@@ -451,13 +471,18 @@ async function bluebubblesRequest<T>(
   pathname: string,
   init: RequestInit & { search?: Record<string, string> } = {},
 ): Promise<T> {
-  const { search, ...requestInit } = init;
+  const { search, headers, ...requestInit } = init;
   const url = buildBlueBubblesUrl(config, pathname, search);
+  const mergedHeaders: Record<string, string> = {
+    ...bluebubblesAuthHeaders(config.bluebubblesPassword),
+    ...((headers as Record<string, string>) ?? {}),
+  };
 
   let response: Response;
   try {
     response = await fetch(url.toString(), {
       ...requestInit,
+      headers: mergedHeaders,
       signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
@@ -532,10 +557,13 @@ function normalizeBlueBubblesChat(raw: BlueBubblesChat): IMessageChat {
 function normalizeBlueBubblesMessage(raw: BlueBubblesMessage): IMessageRecord {
   const firstChat = raw.chats?.[0];
   const chatId = raw.chatGuid ?? firstChat?.guid;
+  const handle = raw.handle?.address?.trim() ?? "";
+  const outboundRecipient =
+    handle || directRecipientFromBlueBubblesChatGuid(chatId);
   return {
     id: raw.guid,
-    fromHandle: raw.handle?.address ?? "",
-    toHandles: [],
+    fromHandle: raw.isFromMe ? "me" : handle,
+    toHandles: raw.isFromMe && outboundRecipient ? [outboundRecipient] : [],
     text: raw.text ?? "",
     isFromMe: Boolean(raw.isFromMe),
     sentAt:
@@ -571,6 +599,12 @@ async function sendViaBlueBubbles(
       }),
     },
   );
+  if (!result.guid?.trim()) {
+    throw new IMessageBridgeError(
+      "BlueBubbles /api/v1/message/text returned message without guid",
+      "bluebubbles",
+    );
+  }
   return { ok: true, messageId: result.guid };
 }
 
@@ -814,6 +848,7 @@ export interface IMessageDeliveryResult {
   isRead: boolean | null;
   isDelivered: boolean | null;
   errorDescription: string | null;
+  checkedAt: string;
 }
 
 interface BlueBubblesMessageDetail {
@@ -846,49 +881,41 @@ export async function getIMessageDeliveryStatus(
       isRead: null,
       isDelivered: null,
       errorDescription: null,
+      checkedAt: new Date().toISOString(),
     }));
   }
 
   const results: IMessageDeliveryResult[] = [];
   for (const id of ids) {
-    try {
-      const detail = await bluebubblesRequest<BlueBubblesMessageDetail>(
-        config ?? {},
-        `/api/v1/message/${encodeURIComponent(id)}`,
-        { method: "GET" },
-      );
-      const isRead = typeof detail.isRead === "boolean" ? detail.isRead : null;
-      const isDelivered =
-        typeof detail.isDelivered === "boolean" ? detail.isDelivered : null;
-      let status: IMessageDeliveryStatus;
-      if (detail.error) {
-        status = "failed";
-      } else if (isRead) {
-        status = "delivered_read";
-      } else if (isDelivered) {
-        status = "delivered";
-      } else {
-        status = "sent";
-      }
-      results.push({
-        messageId: id,
-        status,
-        isRead,
-        isDelivered,
-        errorDescription:
-          typeof detail.errorDescription === "string"
-            ? detail.errorDescription
-            : null,
-      });
-    } catch {
-      results.push({
-        messageId: id,
-        status: "unknown",
-        isRead: null,
-        isDelivered: null,
-        errorDescription: null,
-      });
+    const detail = await bluebubblesRequest<BlueBubblesMessageDetail>(
+      config ?? {},
+      `/api/v1/message/${encodeURIComponent(id)}`,
+      { method: "GET" },
+    );
+    const isRead = typeof detail.isRead === "boolean" ? detail.isRead : null;
+    const isDelivered =
+      typeof detail.isDelivered === "boolean" ? detail.isDelivered : null;
+    let status: IMessageDeliveryStatus;
+    if (detail.error) {
+      status = "failed";
+    } else if (isRead) {
+      status = "delivered_read";
+    } else if (isDelivered) {
+      status = "delivered";
+    } else {
+      status = "sent";
     }
+    results.push({
+      messageId: id,
+      status,
+      isRead,
+      isDelivered,
+      errorDescription:
+        typeof detail.errorDescription === "string"
+          ? detail.errorDescription
+          : null,
+      checkedAt: new Date().toISOString(),
+    });
   }
   return results;
 }

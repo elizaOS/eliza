@@ -18,8 +18,8 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { logger } from "@elizaos/core";
 import { resolveStateDir } from "@elizaos/agent/config/paths";
+import { logger } from "@elizaos/core";
 import { PairingCodeStore } from "./pairing-code.js";
 
 export type RemoteSessionStatus = "pending" | "active" | "denied" | "revoked";
@@ -349,8 +349,7 @@ export class RemoteSessionService {
           localMode: session.localMode,
           createdAt: session.createdAt,
           updatedAt: session.updatedAt,
-          endedAt:
-            typeof session.endedAt === "string" ? session.endedAt : null,
+          endedAt: typeof session.endedAt === "string" ? session.endedAt : null,
         });
       }
     } catch {

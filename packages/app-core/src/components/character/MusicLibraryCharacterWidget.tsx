@@ -1,5 +1,5 @@
 import { ListMusic, Music, Plus, Search } from "lucide-react";
-import type { WidgetProps } from "../../widgets";
+import type { WidgetProps } from "../../widgets/types";
 
 const MUSIC_LIBRARY_COMMANDS = [
   {

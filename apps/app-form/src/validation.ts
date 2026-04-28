@@ -250,11 +250,13 @@ function validateText(value: JsonValue, control: FormControl): ValidationResult 
  * - Further validation via confirmation email
  */
 function validateEmail(value: JsonValue, control: FormControl): ValidationResult {
-  const strValue = String(value);
+  const rawValue = String(value);
+  const strValue = rawValue.length > 320 ? rawValue.slice(0, 320) : rawValue;
 
   // Basic email regex - intentionally simple
   // WHY: More complex patterns have edge cases; simple pattern catches most errors
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // Use [^\s@.] in the domain parts to keep matching linear (no ReDoS).
+  const emailRegex = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
   if (!emailRegex.test(strValue)) {
     return {
       valid: false,

@@ -16,7 +16,6 @@ import {
   PencilLine,
   Sparkles,
 } from "lucide-react";
-import { getBrandIcon } from "../conversations/brand-icons";
 import {
   type ReactNode,
   useCallback,
@@ -34,7 +33,10 @@ import type {
   RelationshipsActivityItem,
 } from "../../api/client-types";
 import { useApp } from "../../state/useApp";
-import { WidgetHost } from "../../widgets";
+// Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
+// chunk-level circular dependency.
+import { WidgetHost } from "../../widgets/WidgetHost";
+import { getBrandIcon } from "../conversations/brand-icons";
 import { KnowledgeView } from "../pages/KnowledgeView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
@@ -268,10 +270,12 @@ export function CharacterHubView({
     () => readHubCache<CharacterHistoryEntry[]>("history", []),
   );
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [, setHistoryError] = useState<string | null>(null);
   const [relationshipActivity, setRelationshipActivity] = useState<
     RelationshipsActivityItem[]
-  >(() => readHubCache<RelationshipsActivityItem[]>("relationship-activity", []));
+  >(() =>
+    readHubCache<RelationshipsActivityItem[]>("relationship-activity", []),
+  );
   const [relationshipActivityLoading, setRelationshipActivityLoading] =
     useState(true);
   const [relationshipActivityError, setRelationshipActivityError] = useState<
@@ -566,12 +570,11 @@ export function CharacterHubView({
           latestTimestamp(right.createdAt) - latestTimestamp(left.createdAt),
       )
       .slice(0, 3);
-    const recentExperience = [...experienceRecords]
-      .sort(
-        (left, right) =>
-          latestTimestamp(right.updatedAt ?? right.createdAt) -
-          latestTimestamp(left.updatedAt ?? left.createdAt),
-      )[0];
+    const recentExperience = [...experienceRecords].sort(
+      (left, right) =>
+        latestTimestamp(right.updatedAt ?? right.createdAt) -
+        latestTimestamp(left.updatedAt ?? left.createdAt),
+    )[0];
     const recentRelationshipActivity = [...relationshipActivity]
       .filter((item) => item.type !== "relationship")
       .sort(
@@ -668,6 +671,7 @@ export function CharacterHubView({
           <span
             className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted/80"
             title={label}
+            role="img"
             aria-label={label}
           >
             <Icon className="h-3.5 w-3.5" />
@@ -708,7 +712,7 @@ export function CharacterHubView({
         body:
           recentRelationshipActivity.length > 0 ? (
             <ul className="flex flex-col divide-y divide-border/10 text-xs text-muted">
-              {recentRelationshipActivity.map((item, index) => {
+              {recentRelationshipActivity.map((item) => {
                 const connectors = parseConnectorsFromDetail(item.detail);
                 const memoryText =
                   item.type === "fact"
@@ -718,7 +722,14 @@ export function CharacterHubView({
                       : item.summary?.trim() || item.type;
                 return (
                   <li
-                    key={`${item.personId ?? "person"}-${index}-${item.timestamp ?? ""}`}
+                    key={[
+                      item.personId,
+                      item.personName,
+                      item.type,
+                      item.timestamp ?? "no-time",
+                      item.summary,
+                      item.detail ?? "",
+                    ].join(":")}
                     className="flex min-w-0 items-center gap-2 py-1.5 first:pt-0 last:pb-0"
                   >
                     <span className="inline-flex shrink-0 items-center gap-1">
@@ -726,10 +737,7 @@ export function CharacterHubView({
                         @{item.personName?.trim() || "unknown"}
                       </span>
                       {connectors.map((connector) => (
-                        <ConnectorBadge
-                          key={connector}
-                          connector={connector}
-                        />
+                        <ConnectorBadge key={connector} connector={connector} />
                       ))}
                     </span>
                     <span className="min-w-0 flex-1 truncate">
@@ -748,7 +756,8 @@ export function CharacterHubView({
             )
           ),
         isLoading:
-          relationshipActivityLoading && recentRelationshipActivity.length === 0,
+          relationshipActivityLoading &&
+          recentRelationshipActivity.length === 0,
         isEmpty: recentRelationshipActivity.length === 0,
       },
       {
@@ -784,8 +793,7 @@ export function CharacterHubView({
       {
         section: "skills",
         title: "Skills",
-        meta:
-          activeSkills.length > 0 ? `${activeSkills.length} active` : null,
+        meta: activeSkills.length > 0 ? `${activeSkills.length} active` : null,
         body:
           activeSkills.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
@@ -1025,7 +1033,10 @@ export function CharacterHubView({
 
   const sectionNav = (
     <SidebarPanel className="min-h-0 gap-2 bg-transparent p-0 shadow-none">
-      <nav className="flex flex-col gap-0" aria-label={t("character.characterHubSections")}>
+      <nav
+        className="flex flex-col gap-0"
+        aria-label={t("character.characterHubSections")}
+      >
         {CHARACTER_HUB_SECTIONS.map((section) =>
           (() => {
             const meta = CHARACTER_SECTION_META[section];

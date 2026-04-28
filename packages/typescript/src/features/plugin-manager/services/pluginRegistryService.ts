@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { execFile } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
@@ -21,7 +21,7 @@ const CACHE_DURATION = 3_600_000; // 1 hour
 // ---------------------------------------------------------------------------
 
 const LOCAL_PLUGINS_DIR = "plugins";
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
 // Wire types for the generated-registry.json format
@@ -598,9 +598,16 @@ export async function clonePlugin(pluginName: string): Promise<CloneResult> {
 	await fs.promises.mkdir(cloneDir, { recursive: true });
 
 	const branch = plugin.git.v2Branch || plugin.git.v1Branch || "next";
-	await execAsync(
-		`git clone --branch ${branch} --single-branch --depth 1 ${plugin.gitUrl} ${cloneDir}`,
-	);
+	await execFileAsync("git", [
+		"clone",
+		"--branch",
+		branch,
+		"--single-branch",
+		"--depth",
+		"1",
+		plugin.gitUrl,
+		cloneDir,
+	]);
 
 	let hasTests = false;
 	let dependencies: Record<string, string> = {};

@@ -1,7 +1,12 @@
 /**
  * Credential storage and token refresh for subscription providers.
  *
- * Stores OAuth credentials in ~/.eliza/auth/ as JSON files.
+ * Credentials live under `~/.eliza/auth/{providerId}/{accountId}.json`
+ * (see `account-storage.ts` for the on-disk format and atomic-write
+ * details). The `loadCredentials` / `saveCredentials` /
+ * `deleteCredentials` / `hasValidCredentials` / `getAccessToken`
+ * helpers all default to `accountId="default"` so callers that pre-date
+ * multi-account support keep working without changes.
  */
 
 import { execSync } from "node:child_process";
@@ -9,8 +14,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import {
+  type AccountCredentialRecord,
+  deleteAccount,
+  listAccounts,
+  loadAccount,
+  migrateLegacySingleAccount,
+  saveAccount,
+} from "./account-storage.js";
 import { refreshAnthropicToken } from "./anthropic.js";
 import { refreshCodexToken } from "./openai-codex.js";
+import { accountRefreshMutex } from "./refresh-mutex.js";
 import {
   type OAuthCredentials,
   type StoredCredentials,
@@ -18,125 +32,159 @@ import {
   type SubscriptionProvider,
 } from "./types.js";
 
-const AUTH_DIR = path.join(
-  process.env.ELIZA_HOME || path.join(os.homedir(), ".eliza"),
-  "auth",
-);
+const DEFAULT_ACCOUNT_ID = "default";
 
 /** Buffer before expiry to trigger refresh (5 minutes) */
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const invalidClaudeCodeRefreshTokens = new Set<string>();
 
-function ensureAuthDir(): void {
-  if (!fs.existsSync(AUTH_DIR)) {
-    fs.mkdirSync(AUTH_DIR, { recursive: true, mode: 0o700 });
-  }
-}
+// Run the legacy → per-account migration eagerly at module load. This
+// is cheap when there's nothing to migrate (one `existsSync` per
+// provider) and ensures every code path sees the per-account layout.
+migrateLegacySingleAccount();
 
-function credentialPath(provider: SubscriptionProvider): string {
-  return path.join(AUTH_DIR, `${provider}.json`);
+function recordToStored(record: AccountCredentialRecord): StoredCredentials {
+  return {
+    provider: record.providerId,
+    credentials: record.credentials,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
 }
 
 /**
- * Save credentials for a provider.
+ * Save credentials for a provider account.
+ *
+ * The `accountId` defaults to `"default"`. New accounts are persisted
+ * with `source: "oauth"` and `label: "Default"` (or the existing
+ * record's label when overwriting).
  */
 export function saveCredentials(
   provider: SubscriptionProvider,
   credentials: OAuthCredentials,
+  accountId: string = DEFAULT_ACCOUNT_ID,
 ): void {
-  ensureAuthDir();
-  const stored: StoredCredentials = {
-    provider,
+  const existing = loadAccount(provider, accountId);
+  const now = Date.now();
+  const record: AccountCredentialRecord = {
+    id: accountId,
+    providerId: provider,
+    label:
+      existing?.label ??
+      (accountId === DEFAULT_ACCOUNT_ID ? "Default" : accountId),
+    source: existing?.source ?? "oauth",
     credentials,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    ...(existing?.lastUsedAt !== undefined
+      ? { lastUsedAt: existing.lastUsedAt }
+      : {}),
+    ...(existing?.organizationId !== undefined
+      ? { organizationId: existing.organizationId }
+      : {}),
+    ...(existing?.userId !== undefined ? { userId: existing.userId } : {}),
+    ...(existing?.email !== undefined ? { email: existing.email } : {}),
   };
-  fs.writeFileSync(credentialPath(provider), JSON.stringify(stored, null, 2), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-  logger.info(`[auth] Saved ${provider} credentials`);
+  saveAccount(record);
 }
 
 /**
- * Load stored credentials for a provider.
+ * Load stored credentials for a provider account.
+ * Returns `null` when no account is configured for the given id.
  */
 export function loadCredentials(
   provider: SubscriptionProvider,
+  accountId: string = DEFAULT_ACCOUNT_ID,
 ): StoredCredentials | null {
-  const filePath = credentialPath(provider);
-  try {
-    const data = fs.readFileSync(filePath, "utf-8");
-    return JSON.parse(data) as StoredCredentials;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      return null;
-    }
-    throw err;
-  }
+  const record = loadAccount(provider, accountId);
+  if (!record) return null;
+  return recordToStored(record);
 }
 
 /**
- * Delete stored credentials for a provider.
+ * Delete stored credentials for a provider account.
  */
-export function deleteCredentials(provider: SubscriptionProvider): void {
-  const filePath = credentialPath(provider);
-  try {
-    fs.unlinkSync(filePath);
-    logger.info(`[auth] Deleted ${provider} credentials`);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw err;
-    }
-  }
+export function deleteCredentials(
+  provider: SubscriptionProvider,
+  accountId: string = DEFAULT_ACCOUNT_ID,
+): void {
+  deleteAccount(provider, accountId);
 }
 
 /**
  * Check if credentials exist and are not expired.
  */
-export function hasValidCredentials(provider: SubscriptionProvider): boolean {
-  const stored = loadCredentials(provider);
+export function hasValidCredentials(
+  provider: SubscriptionProvider,
+  accountId: string = DEFAULT_ACCOUNT_ID,
+): boolean {
+  const stored = loadCredentials(provider, accountId);
   if (!stored) return false;
   return stored.credentials.expires > Date.now();
 }
 
 /**
+ * List all accounts configured for a provider.
+ */
+export function listProviderAccounts(
+  provider: SubscriptionProvider,
+): AccountCredentialRecord[] {
+  return listAccounts(provider);
+}
+
+/**
  * Get a valid access token, refreshing if needed.
- * Returns null if no credentials stored or refresh fails.
+ *
+ * Refreshes are serialized per `{provider}:{accountId}` via
+ * `accountRefreshMutex` so concurrent callers don't race on the
+ * refresh-token grant or the credential file write.
+ *
+ * Returns `null` when no credentials are stored or the refresh fails.
  */
 export async function getAccessToken(
   provider: SubscriptionProvider,
+  accountId: string = DEFAULT_ACCOUNT_ID,
 ): Promise<string | null> {
-  const stored = loadCredentials(provider);
-  if (!stored) return null;
+  const initial = loadCredentials(provider, accountId);
+  if (!initial) return null;
 
-  const { credentials } = stored;
-
-  // Token still valid
-  if (credentials.expires > Date.now() + REFRESH_BUFFER_MS) {
-    return credentials.access;
+  if (initial.credentials.expires > Date.now() + REFRESH_BUFFER_MS) {
+    return initial.credentials.access;
   }
 
-  // Need to refresh
-  logger.info(`[auth] Refreshing ${provider} token...`);
-  try {
+  return accountRefreshMutex.acquire(`${provider}:${accountId}`, async () => {
+    // Re-read after acquiring the lock — a concurrent caller may have
+    // already refreshed the token, in which case we want the new one.
+    const stored = loadCredentials(provider, accountId);
+    if (!stored) return null;
+    const { credentials } = stored;
+    if (credentials.expires > Date.now() + REFRESH_BUFFER_MS) {
+      return credentials.access;
+    }
+
+    logger.info(
+      `[auth] Refreshing ${provider} token for account "${accountId}"...`,
+    );
     let refreshed: OAuthCredentials;
-    if (provider === "anthropic-subscription") {
-      refreshed = await refreshAnthropicToken(credentials.refresh);
-    } else if (provider === "openai-codex") {
-      refreshed = await refreshCodexToken(credentials.refresh);
-    } else {
-      logger.error(`[auth] Unknown provider: ${provider}`);
+    try {
+      if (provider === "anthropic-subscription") {
+        refreshed = await refreshAnthropicToken(credentials.refresh);
+      } else if (provider === "openai-codex") {
+        refreshed = await refreshCodexToken(credentials.refresh);
+      } else {
+        logger.error(`[auth] Unknown provider: ${provider}`);
+        return null;
+      }
+    } catch (err) {
+      logger.error(
+        `[auth] Failed to refresh ${provider} token for "${accountId}": ${err}`,
+      );
       return null;
     }
 
-    // Save refreshed credentials
-    saveCredentials(provider, refreshed);
+    saveCredentials(provider, refreshed, accountId);
     return refreshed.access;
-  } catch (err) {
-    logger.error(`[auth] Failed to refresh ${provider} token: ${err}`);
-    return null;
-  }
+  });
 }
 
 function readConfiguredAnthropicSetupToken(): string | null {
@@ -176,17 +224,6 @@ function hasCodexCliSubscriptionAuth(): boolean {
   }
 }
 
-/**
- * Get all configured subscription providers and their status.
- *
- * IMPORTANT: stays synchronous. For Anthropic we check whether a
- * Claude Code OAuth credential blob exists on disk or in the keychain
- * via `readClaudeCodeOAuthBlob()` (sync, no refresh) rather than
- * calling `importClaudeCodeOAuthToken()` which is async and returns
- * a `Promise<string | null>` that would always be truthy when
- * awaited without `await` — silently marking every user as
- * "configured: true".
- */
 export type SubscriptionCredentialSource =
   | "app"
   | "claude-code-cli"
@@ -194,79 +231,96 @@ export type SubscriptionCredentialSource =
   | "codex-cli"
   | null;
 
-export function getSubscriptionStatus(): Array<{
+/**
+ * Per-account subscription status row used by the dashboard / API.
+ *
+ * One row is emitted per stored account for each provider. CLI- /
+ * setup-token-derived sources also produce a row with a synthetic
+ * `accountId` (e.g. `"claude-code-cli"`); those rows are read-only
+ * (they cannot be deleted via `DELETE /api/subscription/{provider}`).
+ */
+export interface SubscriptionAccountStatus {
   provider: SubscriptionProvider;
+  accountId: string;
+  label: string;
   configured: boolean;
   valid: boolean;
   expiresAt: number | null;
   source: SubscriptionCredentialSource;
-}> {
+}
+
+export function getSubscriptionStatus(): SubscriptionAccountStatus[] {
   const providers: SubscriptionProvider[] = [
     "anthropic-subscription",
     "openai-codex",
   ];
-  return providers.map((provider) => {
-    const stored = loadCredentials(provider);
-    // Read the Claude Code OAuth blob exactly once per provider row.
-    // On macOS this helper shells out to `security` to query the
-    // keychain — calling it twice per poll used to double the cost
-    // of every `GET /api/subscription/status` request.
+  const rows: SubscriptionAccountStatus[] = [];
+
+  for (const provider of providers) {
+    const accounts = listProviderAccounts(provider);
+    for (const account of accounts) {
+      rows.push({
+        provider,
+        accountId: account.id,
+        label: account.label,
+        configured: true,
+        valid: account.credentials.expires > Date.now(),
+        expiresAt: account.credentials.expires,
+        source: "app",
+      });
+    }
+
+    // Read the Claude Code OAuth blob exactly once per provider —
+    // `readClaudeCodeOAuthBlob()` shells out to `security` on macOS
+    // and calling it twice doubled the cost of every status poll.
     const claudeBlob =
       provider === "anthropic-subscription" ? readClaudeCodeOAuthBlob() : null;
-    let importedClaudeAuth: string | null = null;
-    let claudeSource: SubscriptionCredentialSource = null;
     if (provider === "anthropic-subscription") {
+      let importedClaudeAuth: string | null = null;
+      let claudeSource: SubscriptionCredentialSource = null;
       if (claudeBlob?.accessToken) {
-        // Blob exists with a parsed accessToken — the user has Claude
-        // Code installed and authenticated. Expiry is validated
-        // below via the `valid` field.
         importedClaudeAuth = claudeBlob.accessToken;
         claudeSource = "claude-code-cli";
       } else {
         importedClaudeAuth = readConfiguredAnthropicSetupToken();
         if (importedClaudeAuth) claudeSource = "setup-token";
       }
-    }
-    const importedCodexAuth =
-      provider === "openai-codex" && hasCodexCliSubscriptionAuth();
 
-    // For the Claude blob path, derive expiry from the blob itself
-    // so the UI can surface an accurate "valid" state even before a
-    // refresh runs. Older Claude Code credential files omit
-    // `expiresAt` entirely — treat a null expiry on an otherwise
-    // parseable blob as "valid" (the presence of an accessToken is
-    // itself evidence the user is authenticated; the runtime will
-    // refresh via the refresh token on first use if needed).
-    const blobExpiresAt = claudeBlob?.expiresAt ?? null;
-    const blobValid = claudeBlob
-      ? blobExpiresAt === null || blobExpiresAt > Date.now()
-      : false;
-
-    // App-owned credentials take priority over system/CLI sources —
-    // they represent an explicit in-app OAuth, and they're the only
-    // source the DELETE /api/subscription/{provider} route can clear.
-    let source: SubscriptionCredentialSource = null;
-    if (stored !== null) {
-      source = "app";
-    } else if (provider === "anthropic-subscription" && claudeSource) {
-      source = claudeSource;
-    } else if (importedCodexAuth) {
-      source = "codex-cli";
+      if (importedClaudeAuth) {
+        const blobExpiresAt = claudeBlob?.expiresAt ?? null;
+        const blobValid = claudeBlob
+          ? blobExpiresAt === null || blobExpiresAt > Date.now()
+          : true;
+        const accountId =
+          claudeSource === "claude-code-cli" ? "claude-code-cli" : "setup-token";
+        const label =
+          claudeSource === "claude-code-cli" ? "Claude Code CLI" : "Setup Token";
+        rows.push({
+          provider,
+          accountId,
+          label,
+          configured: true,
+          valid: blobValid,
+          expiresAt: blobExpiresAt,
+          source: claudeSource,
+        });
+      }
     }
 
-    return {
-      provider,
-      configured:
-        stored !== null || Boolean(importedClaudeAuth || importedCodexAuth),
-      valid: stored
-        ? stored.credentials.expires > Date.now()
-        : provider === "anthropic-subscription" && importedClaudeAuth
-          ? blobValid
-          : Boolean(importedCodexAuth),
-      expiresAt: stored?.credentials.expires ?? blobExpiresAt,
-      source,
-    };
-  });
+    if (provider === "openai-codex" && hasCodexCliSubscriptionAuth()) {
+      rows.push({
+        provider,
+        accountId: "codex-cli",
+        label: "Codex CLI",
+        configured: true,
+        valid: true,
+        expiresAt: null,
+        source: "codex-cli",
+      });
+    }
+  }
+
+  return rows;
 }
 
 /**
@@ -391,9 +445,6 @@ async function importClaudeCodeOAuthToken(): Promise<string | null> {
     return null;
   }
 
-  // Try to refresh. Claude Code's persisted access token is often stale even
-  // when the user is actively using Claude Code, because Claude Code keeps the
-  // live token in memory and only persists the original OAuth grant.
   try {
     const refreshed = await refreshAnthropicToken(blob.refreshToken);
     logger.info(`[auth] Refreshed Claude Code OAuth token from ${blob.source}`);
@@ -427,10 +478,9 @@ async function importClaudeCodeOAuthToken(): Promise<string | null> {
  * Codex / ChatGPT subscription tokens *are* applied to the environment
  * because OpenAI permits direct API usage with those tokens.
  *
- * When a `config` is provided and the active subscription provider has
- * credentials, `model.primary` is auto-set so the user doesn't need to
- * configure it manually — but only for providers whose tokens are applied
- * to the runtime (currently Codex only).
+ * For multi-account installs the FIRST configured Codex account is the one
+ * applied to `process.env.OPENAI_API_KEY`. Real account selection lands in
+ * WS2 (AccountPool).
  */
 export async function applySubscriptionCredentials(config?: {
   agents?: {
@@ -460,24 +510,55 @@ export async function applySubscriptionCredentials(config?: {
   // (which ARE Claude Code). If the user has only a subscription and no
   // API key, the runtime simply won't have an Anthropic provider — they
   // need an API key or Eliza Cloud for the main agent.
-  let anthropicToken = await getAccessToken("anthropic-subscription");
-  if (!anthropicToken) {
-    anthropicToken = await importClaudeCodeOAuthToken();
-  }
-  if (anthropicToken) {
+  const anthropicAccounts = listProviderAccounts("anthropic-subscription");
+  if (anthropicAccounts.length > 0) {
+    const labels = anthropicAccounts
+      .map((a) => `"${a.label}" (${a.id})`)
+      .join(", ");
     logger.info(
-      "[auth] Anthropic subscription detected — available for coding agents (Claude Code CLI). " +
+      `[auth] Anthropic subscription accounts configured: ${labels} — available for coding agents (Claude Code CLI). ` +
         "Not applied to runtime env. Add an API key or connect Eliza Cloud for the main agent.",
     );
+  } else {
+    const claudeImported = await importClaudeCodeOAuthToken();
+    if (claudeImported) {
+      logger.info(
+        "[auth] Anthropic subscription detected via Claude Code CLI — available for coding agents. " +
+          "Not applied to runtime env. Add an API key or connect Eliza Cloud for the main agent.",
+      );
+    }
   }
 
   // ── OpenAI Codex subscription → set OPENAI_API_KEY ────────────────────
-  const codexToken = await getAccessToken("openai-codex");
-  if (codexToken) {
-    process.env.OPENAI_API_KEY = codexToken;
-    logger.info(
-      "[auth] Applied OpenAI Codex subscription credentials to environment",
+  //
+  // Account selection goes through the WS2 AccountPool when its shim is
+  // installed (via `app-core`'s `getDefaultAccountPool()` accessor). The
+  // shim is symbol-keyed on `globalThis` so this package doesn't need to
+  // depend on `@elizaos/app-core`. When the shim is absent (e.g. agent
+  // running without app-core), we fall back to the lowest-createdAt
+  // account, which is stable for single-account installs.
+  const codexAccounts = listProviderAccounts("openai-codex");
+  if (codexAccounts.length > 0) {
+    const selectorSymbol = Symbol.for(
+      "milady.account-pool.subscription-selector.v1",
     );
+    const selector = (globalThis as Record<symbol, unknown>)[selectorSymbol] as
+      | { pickAccountId(providerId: SubscriptionProvider): Promise<string | null> }
+      | undefined;
+    let chosenId: string | null = null;
+    if (selector) {
+      chosenId = await selector.pickAccountId("openai-codex");
+    }
+    const primary =
+      codexAccounts.find((a) => a.id === chosenId) ??
+      codexAccounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
+    const codexToken = await getAccessToken("openai-codex", primary.id);
+    if (codexToken) {
+      process.env.OPENAI_API_KEY = codexToken;
+      logger.info(
+        `[auth] Applied OpenAI Codex subscription credentials to environment from account "${primary.label}" (${primary.id})`,
+      );
+    }
   }
 
   // Auto-set model.primary from subscription provider (Codex only —

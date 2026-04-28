@@ -1,5 +1,43 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionResult, HandlerOptions, Memory, UUID } from "@elizaos/core";
+
+const { defaultSelfControlStatus } = vi.hoisted(() => ({
+  defaultSelfControlStatus: {
+    available: true,
+    active: false,
+    hostsFilePath: "/tmp/test-hosts",
+    startedAt: null,
+    endsAt: null,
+    websites: [],
+    managedBy: null,
+    metadata: null,
+    scheduledByAgentId: null,
+    canUnblockEarly: true,
+    requiresElevation: false,
+    engine: "hosts-file" as const,
+    platform: process.platform,
+    supportsElevationPrompt: false,
+    elevationPromptMethod: null,
+  },
+}));
+
+vi.mock("../../../actions/website-blocker.js", () => ({
+  blockWebsitesAction: {
+    handler: vi.fn(async () => ({
+      success: true,
+      text: "Website block side effect mocked for chat integration tests.",
+    })),
+  },
+}));
+
+vi.mock("../../engine.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../engine.js")>();
+  return {
+    ...actual,
+    getSelfControlStatus: vi.fn(async () => defaultSelfControlStatus),
+  };
+});
+
 import { blockUntilTaskCompleteAction } from "../actions/blockUntilTaskComplete.js";
 import { listActiveBlocksAction } from "../actions/listActiveBlocks.js";
 import { releaseBlockAction } from "../actions/releaseBlock.js";

@@ -3,12 +3,13 @@ task: Generate dialog and actions for {{agentName}}.
 context:
 {{providers}}
 
-rules[11]:
+rules[12]:
 - think briefly, then respond
 - always include a <thought> field, even for direct replies
 - actions execute in listed order
 - if replying without another grounded state/action query, REPLY goes first
 - use IGNORE or STOP only by themselves
+- in group conversations, choose IGNORE if the latest message is addressed to someone else and not to {{agentName}}
 - include providers only when needed
 - use provider_hints from context when present instead of restating the same rules
 - if an action needs inputs, include them inside that action's <params> block

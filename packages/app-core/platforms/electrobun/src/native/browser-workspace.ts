@@ -1,18 +1,14 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { BrowserWindow } from "electrobun/bun";
 import { getBrandConfig } from "../brand-config";
-import type { SendToWebview, WebviewEvalRpc } from "../types.js";
+import { getCurrentMainWindowSnapshot } from "../main-window-runtime";
+import type { SendToWebview } from "../types.js";
 
-const DEFAULT_TAB_BOUNDS = {
-  x: 120,
-  y: 90,
-  width: 1360,
-  height: 920,
-} as const;
-const HIDDEN_WINDOW_POSITION = -99_999;
 const DEFAULT_PARTITION = getBrandConfig().browserWorkspacePartition;
+const DEFAULT_EVAL_TIMEOUT_MS = 30_000;
+const MIN_EVAL_TIMEOUT_MS = 1_000;
+const MAX_EVAL_TIMEOUT_MS = 5 * 60 * 1_000;
 type BrowserWorkspaceTabKind = "internal" | "standard";
 
 export interface BrowserWorkspaceTabSnapshot {
@@ -27,10 +23,7 @@ export interface BrowserWorkspaceTabSnapshot {
   lastFocusedAt: string | null;
 }
 
-interface BrowserWorkspaceTab extends BrowserWorkspaceTabSnapshot {
-  window: BrowserWindow;
-  savedPosition: { x: number; y: number } | null;
-}
+interface BrowserWorkspaceTab extends BrowserWorkspaceTabSnapshot {}
 
 export interface OpenBrowserWorkspaceTabOptions {
   url?: string;
@@ -42,15 +35,37 @@ export interface OpenBrowserWorkspaceTabOptions {
   height?: number;
 }
 
+/**
+ * Bun-side caller for renderer-owned RPC requests.
+ *
+ * The renderer holds the live <electrobun-webview> tag refs. When the bridge
+ * server (or the agent) needs to evaluate a script in a tab or capture a
+ * snapshot, the manager forwards through this caller, which is wired to
+ * win.webview.rpc.request.<method> at startup.
+ *
+ * `getTabRect` returns the tag's bounding rect in CSS pixels relative to the
+ * renderer viewport; the manager adds the main-window origin and runs the
+ * OS screencapture itself.
+ */
+export type BrowserWorkspaceRendererCaller = {
+  evaluate: (params: {
+    id: string;
+    script: string;
+    timeoutMs: number;
+  }) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
+  getTabRect: (params: { id: string }) => Promise<
+    | {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+      }
+    | null
+  >;
+};
+
 function toIsoNow(): string {
   return new Date().toISOString();
-}
-
-function isVisibleWindowPosition(position: { x: number; y: number }): boolean {
-  return (
-    position.x > HIDDEN_WINDOW_POSITION / 2 &&
-    position.y > HIDDEN_WINDOW_POSITION / 2
-  );
 }
 
 function assertBrowserWorkspaceUrl(url: string): string {
@@ -74,14 +89,111 @@ function assertBrowserWorkspaceUrl(url: string): string {
   return parsed.toString();
 }
 
+function resolveEvalTimeoutMs(): number {
+  const raw = process.env.MILADY_BROWSER_TAB_EVAL_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_EVAL_TIMEOUT_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_EVAL_TIMEOUT_MS;
+  return Math.min(MAX_EVAL_TIMEOUT_MS, Math.max(MIN_EVAL_TIMEOUT_MS, parsed));
+}
+
+/**
+ * Capture an OS-level PNG of a screen-pixel rectangle and return base64.
+ *
+ * macOS and Linux screencapture work in points (logical pixels) on Retina
+ * displays — same coordinate system as renderer CSS pixels — so callers
+ * pass renderer-side coordinates with no DPR multiplication.
+ */
+async function captureScreenRegionPng(rect: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): Promise<{ data: string } | null> {
+  if (rect.width <= 0 || rect.height <= 0) return null;
+
+  const x = Math.round(rect.x);
+  const y = Math.round(rect.y);
+  const width = Math.round(rect.width);
+  const height = Math.round(rect.height);
+
+  const tmpPath = path.join(
+    os.tmpdir(),
+    `${getBrandConfig().urlScheme}-browser-workspace-${Date.now()}-${Math.random().toString(36).slice(2)}.png`,
+  );
+
+  let proc: ReturnType<typeof Bun.spawn>;
+  try {
+    if (process.platform === "darwin") {
+      proc = Bun.spawn(
+        [
+          "screencapture",
+          "-x",
+          "-R",
+          `${x},${y},${width},${height}`,
+          "-t",
+          "png",
+          tmpPath,
+        ],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+    } else if (process.platform === "win32") {
+      const psScript = `
+Add-Type -AssemblyName System.Drawing
+$bmp = New-Object System.Drawing.Bitmap(${width}, ${height})
+$gfx = [System.Drawing.Graphics]::FromImage($bmp)
+$gfx.CopyFromScreen(${x}, ${y}, 0, 0, $bmp.Size)
+$gfx.Dispose()
+$bmp.Save('${tmpPath.replace(/\\/g, "\\\\")}', [System.Drawing.Imaging.ImageFormat]::Png)
+$bmp.Dispose()`;
+      proc = Bun.spawn(["powershell", "-NoProfile", "-Command", psScript], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+    } else {
+      proc = Bun.spawn(
+        [
+          "import",
+          "-window",
+          "root",
+          "-crop",
+          `${width}x${height}+${x}+${y}`,
+          tmpPath,
+        ],
+        { stdout: "pipe", stderr: "pipe" },
+      );
+    }
+
+    await proc.exited;
+
+    if (!fs.existsSync(tmpPath)) return null;
+
+    const buf = fs.readFileSync(tmpPath);
+    return buf.length > 100 ? { data: buf.toString("base64") } : null;
+  } catch {
+    return null;
+  } finally {
+    try {
+      if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    } catch {
+      // best-effort cleanup
+    }
+  }
+}
+
 let browserWorkspaceCounter = 0;
 
 export class BrowserWorkspaceManager {
   private sendToWebview: SendToWebview | null = null;
+  private rendererCaller: BrowserWorkspaceRendererCaller | null = null;
   private readonly tabs = new Map<string, BrowserWorkspaceTab>();
 
   setSendToWebview(fn: SendToWebview | null): void {
     this.sendToWebview = fn;
+  }
+
+  setRendererCaller(caller: BrowserWorkspaceRendererCaller | null): void {
+    this.rendererCaller = caller;
   }
 
   private notify(event: string, payload: Record<string, unknown>): void {
@@ -135,26 +247,6 @@ export class BrowserWorkspaceManager {
       options.kind === "internal" ? "internal" : "standard";
     const id = `btab_${++browserWorkspaceCounter}`;
     const createdAt = toIsoNow();
-    const width = options.width ?? DEFAULT_TAB_BOUNDS.width;
-    const height = options.height ?? DEFAULT_TAB_BOUNDS.height;
-    const initialX = visible ? DEFAULT_TAB_BOUNDS.x : HIDDEN_WINDOW_POSITION;
-    const initialY = visible ? DEFAULT_TAB_BOUNDS.y : HIDDEN_WINDOW_POSITION;
-
-    const win = new BrowserWindow({
-      title,
-      url,
-      frame: {
-        x: initialX,
-        y: initialY,
-        width,
-        height,
-      },
-      transparent: false,
-      sandbox: true,
-      // @ts-expect-error Electrobun exposes partition at runtime.
-      partition,
-      ...(process.platform === "darwin" ? { renderer: "native" as const } : {}),
-    });
 
     const tab: BrowserWorkspaceTab = {
       id,
@@ -165,27 +257,10 @@ export class BrowserWorkspaceManager {
       visible,
       createdAt,
       updatedAt: createdAt,
-      lastFocusedAt: null,
-      window: win,
-      savedPosition: visible
-        ? null
-        : { x: DEFAULT_TAB_BOUNDS.x, y: DEFAULT_TAB_BOUNDS.y },
+      lastFocusedAt: visible ? createdAt : null,
     };
 
     this.tabs.set(id, tab);
-
-    win.on("focus", () => {
-      tab.visible = true;
-      tab.lastFocusedAt = toIsoNow();
-      tab.updatedAt = tab.lastFocusedAt;
-      this.notify("focus", { tab: this.toSnapshot(tab) });
-    });
-
-    win.on("close", () => {
-      this.tabs.delete(id);
-      this.notify("closed", { id });
-    });
-
     this.notify("opened", { tab: this.toSnapshot(tab) });
     return this.toSnapshot(tab);
   }
@@ -198,7 +273,6 @@ export class BrowserWorkspaceManager {
     if (!tab) return null;
 
     const nextUrl = assertBrowserWorkspaceUrl(options.url);
-    tab.window.webview.loadURL(nextUrl);
     tab.url = nextUrl;
     tab.updatedAt = toIsoNow();
     this.notify("navigated", { tab: this.toSnapshot(tab) });
@@ -210,97 +284,40 @@ export class BrowserWorkspaceManager {
     if (!tab) {
       throw new Error(`browser workspace tab not found: ${options.id}`);
     }
+    if (!this.rendererCaller) {
+      throw new Error(
+        "browser workspace renderer is not attached — eval unavailable",
+      );
+    }
 
-    const rpc = tab.window.webview.rpc as WebviewEvalRpc | undefined;
-    return await rpc?.requestProxy?.evaluateJavascriptWithResponse?.({
+    const reply = await this.rendererCaller.evaluate({
+      id: tab.id,
       script: options.script,
+      timeoutMs: resolveEvalTimeoutMs(),
     });
+    if (!reply.ok) {
+      throw new Error(reply.error ?? "browser workspace tab eval failed");
+    }
+    return reply.result;
   }
 
   async snapshotTab(options: { id: string }): Promise<{ data: string } | null> {
     const tab = this.getTab(options.id);
-    if (!tab) return null;
+    if (!tab || !tab.visible) return null;
+    if (!this.rendererCaller) return null;
 
-    const position = tab.window.getPosition();
-    if (!isVisibleWindowPosition(position)) {
-      return null;
-    }
+    const tabRect = await this.rendererCaller.getTabRect({ id: tab.id });
+    if (!tabRect) return null;
 
-    let tmpPath: string | undefined;
-    try {
-      const size = tab.window.getSize();
-      const x = position.x ?? 0;
-      const y = position.y ?? 0;
-      const width = size.width;
-      const height = size.height;
-      tmpPath = path.join(
-        os.tmpdir(),
-        `${getBrandConfig().urlScheme}-browser-workspace-${options.id}-${Date.now()}.png`,
-      );
-      let proc: ReturnType<typeof Bun.spawn>;
+    const window = getCurrentMainWindowSnapshot();
+    if (!window.bounds) return null;
 
-      if (process.platform === "darwin") {
-        proc = Bun.spawn(
-          [
-            "screencapture",
-            "-x",
-            "-R",
-            `${x},${y},${width},${height}`,
-            "-t",
-            "png",
-            tmpPath,
-          ],
-          { stdout: "pipe", stderr: "pipe" },
-        );
-      } else if (process.platform === "win32") {
-        const psScript = `
-Add-Type -AssemblyName System.Drawing
-$bmp = New-Object System.Drawing.Bitmap(${width}, ${height})
-$gfx = [System.Drawing.Graphics]::FromImage($bmp)
-$gfx.CopyFromScreen(${x}, ${y}, 0, 0, $bmp.Size)
-$gfx.Dispose()
-$bmp.Save('${tmpPath.replace(/\\/g, "\\\\")}', [System.Drawing.Imaging.ImageFormat]::Png)
-$bmp.Dispose()`;
-        proc = Bun.spawn(["powershell", "-NoProfile", "-Command", psScript], {
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-      } else {
-        proc = Bun.spawn(
-          [
-            "import",
-            "-window",
-            "root",
-            "-crop",
-            `${width}x${height}+${x}+${y}`,
-            tmpPath,
-          ],
-          { stdout: "pipe", stderr: "pipe" },
-        );
-      }
-
-      await proc.exited;
-
-      if (!fs.existsSync(tmpPath)) {
-        return null;
-      }
-
-      const buf = fs.readFileSync(tmpPath);
-      fs.unlinkSync(tmpPath);
-      return buf.length > 100 ? { data: buf.toString("base64") } : null;
-    } catch {
-      return null;
-    } finally {
-      // Clean up tmp file if it was created but not yet deleted (e.g. crash
-      // between screencapture write and unlinkSync above).
-      try {
-        if (tmpPath && fs.existsSync(tmpPath)) {
-          fs.unlinkSync(tmpPath);
-        }
-      } catch {
-        // best-effort cleanup
-      }
-    }
+    return await captureScreenRegionPng({
+      x: window.bounds.x + tabRect.x,
+      y: window.bounds.y + tabRect.y,
+      width: tabRect.width,
+      height: tabRect.height,
+    });
   }
 
   async showTab(options: {
@@ -309,14 +326,6 @@ $bmp.Dispose()`;
     const tab = this.getTab(options.id);
     if (!tab) return null;
 
-    const restore = tab.savedPosition ?? {
-      x: DEFAULT_TAB_BOUNDS.x,
-      y: DEFAULT_TAB_BOUNDS.y,
-    };
-    tab.window.setPosition(restore.x, restore.y);
-    tab.window.show();
-    tab.window.focus();
-    tab.savedPosition = null;
     tab.visible = true;
     tab.lastFocusedAt = toIsoNow();
     tab.updatedAt = tab.lastFocusedAt;
@@ -330,14 +339,6 @@ $bmp.Dispose()`;
     const tab = this.getTab(options.id);
     if (!tab) return null;
 
-    if (!tab.savedPosition) {
-      const position = tab.window.getPosition();
-      tab.savedPosition = {
-        x: position.x ?? DEFAULT_TAB_BOUNDS.x,
-        y: position.y ?? DEFAULT_TAB_BOUNDS.y,
-      };
-    }
-    tab.window.setPosition(HIDDEN_WINDOW_POSITION, HIDDEN_WINDOW_POSITION);
     tab.visible = false;
     tab.updatedAt = toIsoNow();
     this.notify("hidden", { tab: this.toSnapshot(tab) });
@@ -347,24 +348,15 @@ $bmp.Dispose()`;
   async closeTab(options: { id: string }): Promise<boolean> {
     const tab = this.getTab(options.id);
     if (!tab) return false;
-    try {
-      tab.window.close();
-    } finally {
-      this.tabs.delete(options.id);
-    }
+    this.tabs.delete(options.id);
+    this.notify("closed", { id: tab.id });
     return true;
   }
 
   dispose(): void {
-    for (const tab of this.tabs.values()) {
-      try {
-        tab.window.close();
-      } catch {
-        // already closed
-      }
-    }
     this.tabs.clear();
     this.sendToWebview = null;
+    this.rendererCaller = null;
   }
 }
 

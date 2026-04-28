@@ -1,3 +1,11 @@
+import type { LifeOpsConnectorDegradation } from "./lifeops-connector-degradation.js";
+
+export type {
+  LifeOpsConnectorDegradation,
+  LifeOpsConnectorDegradationAxis,
+} from "./lifeops-connector-degradation.js";
+export { LIFEOPS_CONNECTOR_DEGRADATION_AXES } from "./lifeops-connector-degradation.js";
+
 export const LIFEOPS_TIME_WINDOW_NAMES = [
   "morning",
   "afternoon",
@@ -1820,6 +1828,111 @@ export const LIFEOPS_GMAIL_BULK_OPERATIONS = [
 export type LifeOpsGmailBulkOperation =
   (typeof LIFEOPS_GMAIL_BULK_OPERATIONS)[number];
 
+export const LIFEOPS_GMAIL_MANAGE_EXECUTION_MODES = [
+  "proposal",
+  "dry_run",
+  "execute",
+] as const;
+export type LifeOpsGmailManageExecutionMode =
+  (typeof LIFEOPS_GMAIL_MANAGE_EXECUTION_MODES)[number];
+
+export const LIFEOPS_GMAIL_MANAGE_STATUSES = [
+  "proposed",
+  "dry_run",
+  "approved",
+  "executed",
+  "partial",
+  "failed",
+  "cancelled",
+] as const;
+export type LifeOpsGmailManageStatus =
+  (typeof LIFEOPS_GMAIL_MANAGE_STATUSES)[number];
+
+export const LIFEOPS_GMAIL_MANAGE_UNDO_STATUSES = [
+  "not_available",
+  "available",
+  "completed",
+  "expired",
+  "failed",
+] as const;
+export type LifeOpsGmailManageUndoStatus =
+  (typeof LIFEOPS_GMAIL_MANAGE_UNDO_STATUSES)[number];
+
+export interface LifeOpsGmailManageApprovalIdentity {
+  proposalId?: string;
+  approvalId?: string;
+  proposedBy?: LifeOpsActor;
+  approvedBy?: LifeOpsActor;
+  approvedAt?: string;
+}
+
+export interface LifeOpsGmailManagePlanIdentity {
+  planId?: string;
+  planHash?: string;
+  idempotencyKey?: string;
+}
+
+export interface LifeOpsGmailManageMessageSnapshot {
+  messageId: string;
+  externalId: string;
+  threadId: string;
+  subject: string;
+  from: string;
+  fromEmail: string | null;
+  receivedAt: string;
+  snippet: string;
+  labels: string[];
+  grantId?: string;
+  accountEmail?: string;
+  syncedAt?: string;
+  snapshotHash?: string;
+}
+
+export interface LifeOpsGmailManageChunkRequest {
+  chunkId: string;
+  chunkIndex: number;
+  chunkCount: number;
+  messageIds?: string[];
+  cursor?: string;
+}
+
+export interface LifeOpsGmailManageChunkStatus {
+  chunkId: string;
+  chunkIndex: number;
+  chunkCount: number;
+  processedCount: number;
+  remainingCount: number;
+  nextCursor: string | null;
+}
+
+export interface LifeOpsGmailManageAuditContext {
+  auditEventId?: string;
+  auditRef?: string;
+  parentAuditEventId?: string;
+  actor?: LifeOpsActor;
+}
+
+export interface LifeOpsGmailManageAuditState {
+  auditEventId: string | null;
+  auditRef: string | null;
+  actor: LifeOpsActor;
+  recordedAt: string | null;
+}
+
+export interface LifeOpsGmailManageUndoRequest {
+  undoId: string;
+  auditEventId?: string;
+  reason?: string;
+}
+
+export interface LifeOpsGmailManageUndoState {
+  status: LifeOpsGmailManageUndoStatus;
+  undoId: string | null;
+  undoExpiresAt: string | null;
+  auditEventId: string | null;
+  messageIds: string[];
+}
+
 export interface ManageLifeOpsGmailMessagesRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
@@ -1830,6 +1943,14 @@ export interface ManageLifeOpsGmailMessagesRequest {
   maxResults?: number;
   labelIds?: string[];
   confirmDestructive?: boolean;
+  executionMode?: LifeOpsGmailManageExecutionMode;
+  reason?: string;
+  approval?: LifeOpsGmailManageApprovalIdentity;
+  plan?: LifeOpsGmailManagePlanIdentity;
+  selectedMessageSnapshots?: LifeOpsGmailManageMessageSnapshot[];
+  chunk?: LifeOpsGmailManageChunkRequest;
+  audit?: LifeOpsGmailManageAuditContext;
+  undo?: LifeOpsGmailManageUndoRequest;
 }
 
 export interface LifeOpsGmailManageResult {
@@ -1841,6 +1962,15 @@ export interface LifeOpsGmailManageResult {
   destructive: boolean;
   grantId?: string;
   accountEmail?: string;
+  executionMode?: LifeOpsGmailManageExecutionMode;
+  status?: LifeOpsGmailManageStatus;
+  reason?: string;
+  approval?: LifeOpsGmailManageApprovalIdentity;
+  plan?: LifeOpsGmailManagePlanIdentity;
+  selectedMessageSnapshots?: LifeOpsGmailManageMessageSnapshot[];
+  chunk?: LifeOpsGmailManageChunkStatus;
+  audit?: LifeOpsGmailManageAuditState;
+  undo?: LifeOpsGmailManageUndoState;
 }
 
 export interface LifeOpsGmailRecommendationMessage {
@@ -2144,6 +2274,13 @@ export interface CreateLifeOpsCalendarEventRequest {
   durationMinutes?: number;
   windowPreset?: LifeOpsCalendarWindowPreset;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
+  /**
+   * RFC 5545 RRULE strings (without the leading "RRULE:" prefix), e.g.
+   * `["FREQ=WEEKLY;BYDAY=MO"]`. Forwarded to Google Calendar's
+   * `recurrence` array when creating the event.
+   */
+  recurrence?: string[];
+  reminders?: LifeOpsCalendarEventReminderOverride[];
 }
 
 export interface LifeOpsNextCalendarEventContext {
@@ -2178,6 +2315,13 @@ export interface LifeOpsCalendarEventUpdate {
   endAt?: string;
   timeZone?: string;
   notes?: string;
+  location?: string;
+  attendees?: CreateLifeOpsCalendarEventAttendee[];
+  /**
+   * RFC 5545 RRULE strings (without the leading "RRULE:" prefix). Forwarded
+   * to Google Calendar's `recurrence` array on patch when supplied.
+   */
+  recurrence?: string[];
   reminders?: LifeOpsCalendarEventReminderOverride[];
 }
 
@@ -2222,6 +2366,24 @@ export interface LifeOpsInboxMessage {
   unread: boolean;
   deepLink: string | null;
   sourceRef: LifeOpsInboxMessageSourceRef;
+  /** Stable per-conversation key. For chat: roomId. For Gmail: thread id from sourceRef. */
+  threadId?: string;
+  /** Present on Gmail messages when multiple accounts exist; identifies which Google grant the message came from. */
+  gmailAccountId?: string;
+  /** Display label for the Gmail account (e.g., `work@example.com`). */
+  gmailAccountEmail?: string;
+  /** ISO timestamp of when the user last viewed this thread (UI updates on open). */
+  lastSeenAt?: string;
+  /** ISO timestamp if the user has replied since this message arrived. */
+  repliedAt?: string;
+  /** 0–100 score; higher = more important. */
+  priorityScore?: number;
+  /** Coarse semantic category from the priority scorer. */
+  priorityCategory?: "important" | "planning" | "casual";
+  /** DM, small/medium group chat, or public channel/broadcast. */
+  chatType?: "dm" | "group" | "channel";
+  /** For groups, number of participants. UI uses this to hide groups with >15 participants. */
+  participantCount?: number;
 }
 
 export interface LifeOpsInboxChannelCount {
@@ -2229,17 +2391,76 @@ export interface LifeOpsInboxChannelCount {
   unread: number;
 }
 
+export interface LifeOpsInboxThreadGroup {
+  /** Stable per-conversation key (matches LifeOpsInboxMessage.threadId on member messages) */
+  threadId: string;
+  /** Channel this thread belongs to */
+  channel: LifeOpsInboxChannel;
+  /** dm | group | channel */
+  chatType: "dm" | "group" | "channel";
+  /** Most recent message in the thread */
+  latestMessage: LifeOpsInboxMessage;
+  /** Total messages in the visible window */
+  totalCount: number;
+  /** Unread messages in the visible window */
+  unreadCount: number;
+  /** Group/DM participant count if known */
+  participantCount?: number;
+  /** Highest priority score across messages in the thread */
+  maxPriorityScore?: number;
+  /** Coarse semantic category from the priority scorer (mirrors latestMessage). */
+  priorityCategory?: "important" | "planning" | "casual";
+  /** Messages in this visible thread window, newest first. */
+  messages: LifeOpsInboxMessage[];
+}
+
 export interface LifeOpsInbox {
   messages: LifeOpsInboxMessage[];
   channelCounts: Record<LifeOpsInboxChannel, LifeOpsInboxChannelCount>;
   fetchedAt: string;
+  /** Populated when the caller requests grouped output via `groupByThread`. */
+  threadGroups?: LifeOpsInboxThreadGroup[];
 }
+
+export const LIFEOPS_INBOX_CACHE_MODES = [
+  "read-through",
+  "refresh",
+  "cache-only",
+] as const;
+export type LifeOpsInboxCacheMode = (typeof LIFEOPS_INBOX_CACHE_MODES)[number];
 
 export interface GetLifeOpsInboxRequest {
   /** Cap on the total number of messages returned. Defaults to 100. */
   limit?: number;
   /** If omitted, all connected channels are included. */
   channels?: LifeOpsInboxChannel[];
+  /** When true, response includes `threadGroups`. */
+  groupByThread?: boolean;
+  /** Filter messages by chat type. */
+  chatTypeFilter?: Array<"dm" | "group" | "channel">;
+  /** Exclude groups with more than this many participants. */
+  maxParticipants?: number;
+  /** Filter to a specific Google grant. */
+  gmailAccountId?: string;
+  /**
+   * When true, only return messages where the user has not replied for >24h
+   * and the priority score is at least 50. Applies at both the message and
+   * thread-group layer.
+   */
+  missedOnly?: boolean;
+  /**
+   * When true, thread groups are sorted by max priority score desc, recency
+   * tiebreaker. When false (default), groups are sorted by recency only.
+   */
+  sortByPriority?: boolean;
+  /**
+   * read-through: use fresh cache, otherwise fetch and cache;
+   * refresh: force a connector pull and cache the full requested window;
+   * cache-only: never hit connectors, only read persisted inbox messages.
+   */
+  cacheMode?: LifeOpsInboxCacheMode;
+  /** Cap on messages pulled/read for cache operations. Defaults to a bounded full-cache window. */
+  cacheLimit?: number;
 }
 
 export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [
@@ -2251,29 +2472,6 @@ export const LIFEOPS_GOOGLE_CONNECTOR_REASONS = [
 ] as const;
 export type LifeOpsGoogleConnectorReason =
   (typeof LIFEOPS_GOOGLE_CONNECTOR_REASONS)[number];
-
-export const LIFEOPS_CONNECTOR_DEGRADATION_AXES = [
-  "missing-scope",
-  "rate-limited",
-  "disconnected",
-  "auth-expired",
-  "session-revoked",
-  "delivery-degraded",
-  "helper-disconnected",
-  "retry-idempotent",
-  "hold-expired",
-  "transport-offline",
-  "blocked-resume",
-] as const;
-export type LifeOpsConnectorDegradationAxis =
-  (typeof LIFEOPS_CONNECTOR_DEGRADATION_AXES)[number];
-
-export interface LifeOpsConnectorDegradation {
-  axis: LifeOpsConnectorDegradationAxis;
-  code: string;
-  message: string;
-  retryable: boolean;
-}
 
 export interface LifeOpsGoogleConnectorStatus {
   provider: "google";
@@ -2367,8 +2565,22 @@ export interface LifeOpsSignalInboundMessage {
   roomId: string;
   /** Signal channel ID (typically the sender's phone number or group ID). */
   channelId: string;
+  /** Stable per-conversation key used for reply routing. */
+  threadId: string;
+  /** Human-readable conversation name when known. */
+  roomName: string;
   /** Display name of the sender. */
   speakerName: string;
+  /** Sender phone number when signal-cli exposes one. */
+  senderNumber: string | null;
+  /** Sender UUID when signal-cli exposes one. */
+  senderUuid: string | null;
+  /** Sender device ID when signal-cli exposes one. */
+  sourceDevice: number | null;
+  /** Signal group ID for group messages. */
+  groupId: string | null;
+  /** Signal group event/type when signal-cli exposes one. */
+  groupType: string | null;
   /** Plain-text body of the message. */
   text: string;
   /** Unix millisecond timestamp of the message. */
@@ -2398,6 +2610,7 @@ export interface LifeOpsDiscordDmInboxStatus {
 export const LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES = [
   "lifeops_browser",
   "desktop_browser",
+  "discord_desktop",
 ] as const;
 export type LifeOpsOwnerBrowserAccessSource =
   (typeof LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES)[number];
@@ -2431,6 +2644,7 @@ export const LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS = [
   "focus_dm_inbox_manually",
   "log_in",
   "open_desktop_browser",
+  "relaunch_discord",
 ] as const;
 export type LifeOpsOwnerBrowserNextAction =
   (typeof LIFEOPS_OWNER_BROWSER_NEXT_ACTIONS)[number];
@@ -2492,10 +2706,9 @@ export type LifeOpsTelegramAuthState =
 export interface LifeOpsWhatsAppConnectorStatus {
   provider: "whatsapp";
   /**
-   * `connected` here means credentials are present in env; it does NOT imply
-   * a live network probe has been performed. A live send can still fail if
-   * the token has been revoked upstream. Callers that need true liveness
-   * must catch errors from the actual send/receive methods.
+   * `connected` means at least one WhatsApp transport is live enough for
+   * inbound or outbound work. A local auth file by itself is not connected until
+   * the Baileys runtime service is actually online.
    */
   connected: boolean;
   /**
@@ -2504,6 +2717,12 @@ export interface LifeOpsWhatsAppConnectorStatus {
    */
   inbound: true;
   phoneNumberId?: string;
+  localAuthAvailable?: boolean;
+  localAuthRegistered?: boolean | null;
+  serviceConnected?: boolean;
+  outboundReady?: boolean;
+  inboundReady?: boolean;
+  transport?: "cloudapi" | "baileys" | "unconfigured";
   lastCheckedAt: string;
   degradations?: LifeOpsConnectorDegradation[];
 }
@@ -2589,6 +2808,7 @@ export interface LifeOpsSignalPairingStatus {
 
 export interface StartLifeOpsDiscordConnectorRequest {
   side?: LifeOpsConnectorSide;
+  source?: LifeOpsOwnerBrowserAccessSource;
 }
 
 export interface StartLifeOpsTelegramAuthRequest {
@@ -3138,6 +3358,62 @@ export interface WebsiteBlockerSettingsCardProps {
 
 export interface LifeOpsOccurrenceActionResult {
   occurrence: LifeOpsOccurrenceView;
+}
+
+// ── Sleep history / regularity / baseline responses ──────────────────────────
+
+/**
+ * Single sleep episode entry returned by the sleep history endpoint.
+ *
+ * Mirrors `LifeOpsSleepEpisodeRecord` plus a derived `durationMin` so clients
+ * never need to recompute it. `endedAt` and `durationMin` are `null` for
+ * still-open (current) sleep episodes.
+ */
+export interface LifeOpsSleepHistoryEpisode {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationMin: number | null;
+  cycleType: LifeOpsSleepCycleType;
+  source: LifeOpsSleepCycleEvidenceSource | "manual";
+  confidence: number;
+}
+
+export interface LifeOpsSleepHistoryResponse {
+  episodes: LifeOpsSleepHistoryEpisode[];
+  windowDays: number;
+  includeNaps: boolean;
+}
+
+/**
+ * Wire-format response for the sleep regularity endpoint. Mirrors
+ * `LifeOpsScheduleRegularity` (`sampleCount` is renamed to `sampleSize` here
+ * for client-readable consistency with the baseline response).
+ */
+export interface LifeOpsSleepRegularityResponse {
+  sri: number;
+  classification: LifeOpsRegularityClass;
+  bedtimeStddevMin: number;
+  wakeStddevMin: number;
+  midSleepStddevMin: number;
+  sampleSize: number;
+  windowDays: number;
+}
+
+/**
+ * Wire-format response for the personal baseline endpoint. Mirrors
+ * `LifeOpsPersonalBaseline` plus `sampleSize` (alias of `sampleCount`).
+ *
+ * Returns nullable medians when the underlying baseline has insufficient data.
+ */
+export interface LifeOpsPersonalBaselineResponse {
+  medianBedtimeLocalHour: number | null;
+  medianWakeLocalHour: number | null;
+  medianSleepDurationMin: number | null;
+  bedtimeStddevMin: number | null;
+  wakeStddevMin: number | null;
+  sampleSize: number;
+  windowDays: number;
 }
 
 // ── Wave 1+ extensions (relationships, X read, cross-channel, screen time,

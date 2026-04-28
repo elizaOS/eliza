@@ -1,19 +1,19 @@
-import {
-  type Action,
-  type ActionExample,
-  type ActionResult,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/agent";
 import {
   detectRemoteDesktopBackend,
   endRemoteSession,
   getSessionStatus,
   listActiveSessions,
-  startRemoteSession,
   type RemoteDesktopSession,
+  startRemoteSession,
 } from "../lifeops/remote-desktop.js";
 
 const ACTION_NAME = "REMOTE_DESKTOP";
@@ -27,29 +27,6 @@ interface RemoteDesktopParameters {
   confirmed?: boolean;
 }
 
-function parseLooseParameterString(raw: unknown): Partial<RemoteDesktopParameters> {
-  if (typeof raw !== "string") {
-    return {};
-  }
-  const subactionMatch = raw.match(
-    /\bsubaction\s*[:=]\s*["']?([a-z_]+)["']?/i,
-  );
-  const intentMatch = raw.match(/\bintent\s*[:=]\s*["']?([^,"']+)["']?/i);
-  const sessionIdMatch = raw.match(
-    /\bsessionId\s*[:=]\s*["']?([a-z0-9-]+)["']?/i,
-  );
-  const confirmedMatch = raw.match(/\bconfirmed\s*[:=]\s*(true|false)\b/i);
-  return {
-    subaction: subactionMatch?.[1],
-    intent: intentMatch?.[1]?.trim(),
-    sessionId: sessionIdMatch?.[1],
-    confirmed:
-      confirmedMatch?.[1] != null
-        ? confirmedMatch[1].toLowerCase() === "true"
-        : undefined,
-  };
-}
-
 function coerceSubaction(value: unknown): RemoteDesktopSubaction | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().toLowerCase();
@@ -60,54 +37,6 @@ function coerceSubaction(value: unknown): RemoteDesktopSubaction | undefined {
     normalized === "list"
   ) {
     return normalized;
-  }
-  return undefined;
-}
-
-function inferSubactionFromText(
-  text: string,
-): RemoteDesktopSubaction | undefined {
-  const lower = text.toLowerCase();
-  if (!lower.trim()) return undefined;
-  if (/\b(list|show|what)\b.*\b(remote|sessions?|vnc)\b/.test(lower)) {
-    return "list";
-  }
-  if (
-    /\b(status|check|how is|is the)\b.*\b(remote|session|vnc)\b/.test(lower)
-  ) {
-    return "status";
-  }
-  if (
-    /\b(end|stop|close|terminate|kill|disconnect)\b.*\b(remote|session|vnc)\b/.test(
-      lower,
-    )
-  ) {
-    return "end";
-  }
-  if (
-    /\b(start|open|begin|launch|initiate|set up|setup|create)\b.*\b(remote|session|vnc|screen share|desktop)\b/.test(
-      lower,
-    ) ||
-    /\b(connect|access|control)\b.*\b(from my phone|from another|remotely)\b/.test(
-      lower,
-    )
-  ) {
-    return "start";
-  }
-  return undefined;
-}
-
-function inferConfirmedFromText(text: string): boolean | undefined {
-  const lower = text.toLowerCase();
-  if (
-    /\bconfirmed\s*:\s*true\b/.test(lower) ||
-    /\byes[, ]+confirmed\b/.test(lower) ||
-    /\bplease proceed\b/.test(lower)
-  ) {
-    return true;
-  }
-  if (/\bconfirmed\s*:\s*false\b/.test(lower)) {
-    return false;
   }
   return undefined;
 }
@@ -182,7 +111,7 @@ export const remoteDesktopAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: 'This will expose your desktop to the network. Re-issue with confirmed: true to start the session.',
+          text: "This will expose your desktop to the network. Re-issue with confirmed: true to start the session.",
         },
       },
     ],
@@ -226,19 +155,11 @@ export const remoteDesktopAction: Action & {
     }
 
     const rawParameters = (options as HandlerOptions | undefined)?.parameters;
-    const params = {
-      ...parseLooseParameterString(rawParameters),
-      ...((typeof rawParameters === "object" && rawParameters !== null
-        ? (rawParameters as RemoteDesktopParameters)
-        : {}) ?? {}),
-    } satisfies RemoteDesktopParameters;
+    const params = ((typeof rawParameters === "object" && rawParameters !== null
+      ? (rawParameters as RemoteDesktopParameters)
+      : {}) ?? {}) as RemoteDesktopParameters;
 
-    const messageText =
-      typeof message.content?.text === "string" ? message.content.text : "";
-    const subaction =
-      coerceSubaction(params.subaction) ??
-      inferSubactionFromText(params.intent ?? "") ??
-      inferSubactionFromText(messageText);
+    const subaction = coerceSubaction(params.subaction);
     if (!subaction) {
       return {
         text: "Missing or invalid subaction. Use one of: start, status, end, list.",
@@ -322,10 +243,7 @@ export const remoteDesktopAction: Action & {
     }
 
     // subaction === "start"
-    const confirmed =
-      params.confirmed === true
-        ? true
-        : (inferConfirmedFromText(params.intent ?? messageText) ?? false);
+    const confirmed = params.confirmed === true;
     if (!confirmed) {
       const backend = await detectRemoteDesktopBackend();
       return {

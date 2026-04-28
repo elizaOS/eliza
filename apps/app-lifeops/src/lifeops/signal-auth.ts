@@ -1,16 +1,16 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+import {
+  type SignalPairingEvent,
+  SignalPairingSession,
+  type SignalPairingSnapshot,
+} from "@elizaos/agent/services/signal-pairing";
 import type {
   LifeOpsConnectorSide,
   LifeOpsSignalPairingStatus,
-} from "@elizaos/shared/contracts/lifeops";
-import {
-  SignalPairingSession,
-  type SignalPairingEvent,
-  type SignalPairingSnapshot,
-} from "@elizaos/agent/services/signal-pairing";
-import { resolveOAuthDir } from "@elizaos/agent/config/paths";
+} from "@elizaos/shared";
 
 export interface PendingSignalPairingSession {
   sessionId: string;
@@ -32,6 +32,13 @@ export interface SignalLinkedDeviceInfo {
   deviceName: string;
 }
 
+export interface SignalLinkedDeviceCandidate {
+  agentId: string;
+  side: LifeOpsConnectorSide;
+  tokenRef: string;
+  info: SignalLinkedDeviceInfo;
+}
+
 interface StoredPendingSignalPairingSession {
   sessionId: string;
   agentId: string;
@@ -44,16 +51,17 @@ interface ManagedSignalPairingSession extends PendingSignalPairingSession {
   pairingSession: SignalPairingSession;
 }
 
-const pendingSignalPairingSessions = new Map<string, ManagedSignalPairingSession>();
+const pendingSignalPairingSessions = new Map<
+  string,
+  ManagedSignalPairingSession
+>();
 const SIGNAL_PAIRING_SESSION_TTL_MS = 10 * 60 * 1000;
 
 function signalStorageRoot(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveOAuthDir(env), "lifeops", "signal");
 }
 
-function signalPendingSessionDir(
-  env: NodeJS.ProcessEnv = process.env,
-): string {
+function signalPendingSessionDir(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(signalStorageRoot(env), "pending");
 }
 
@@ -170,7 +178,10 @@ function cleanupExpiredSessions(): void {
     }
   }
   for (const session of listPendingSignalSessions()) {
-    if (now - new Date(session.createdAt).getTime() > SIGNAL_PAIRING_SESSION_TTL_MS) {
+    if (
+      now - new Date(session.createdAt).getTime() >
+      SIGNAL_PAIRING_SESSION_TTL_MS
+    ) {
       deletePendingSignalSession(session.sessionId);
     }
   }
@@ -297,10 +308,14 @@ function writeDeviceInfo(session: ManagedSignalPairingSession): void {
     deviceName: "Eliza Mac",
   };
   fs.mkdirSync(session.authDir, { recursive: true });
-  fs.writeFileSync(credentialFilePath(session.authDir), JSON.stringify(info, null, 2), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
+  fs.writeFileSync(
+    credentialFilePath(session.authDir),
+    JSON.stringify(info, null, 2),
+    {
+      encoding: "utf-8",
+      mode: 0o600,
+    },
+  );
 }
 
 function applySnapshot(
@@ -319,7 +334,10 @@ function applyEvent(
   const snapshot = session.pairingSession.getSnapshot();
   applySnapshot(session, snapshot);
 
-  if (typeof event.phoneNumber === "string" && event.phoneNumber.trim().length > 0) {
+  if (
+    typeof event.phoneNumber === "string" &&
+    event.phoneNumber.trim().length > 0
+  ) {
     session.phoneNumber = event.phoneNumber.trim();
   }
   if (typeof event.uuid === "string" && event.uuid.trim().length > 0) {
@@ -433,17 +451,81 @@ export function readSignalLinkedDeviceInfo(
   if (!fs.existsSync(filePath)) {
     return null;
   }
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const parsed = JSON.parse(raw) as SignalLinkedDeviceInfo;
-  if (!parsed.authDir || !parsed.phoneNumber) {
+  let parsed: Partial<SignalLinkedDeviceInfo>;
+  try {
+    parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+  } catch {
+    return null;
+  }
+  if (
+    typeof parsed.authDir !== "string" ||
+    parsed.authDir.trim().length === 0 ||
+    typeof parsed.phoneNumber !== "string" ||
+    parsed.phoneNumber.trim().length === 0
+  ) {
     return null;
   }
   return {
     authDir: parsed.authDir,
-    phoneNumber: parsed.phoneNumber,
-    uuid: parsed.uuid ?? "",
-    deviceName: parsed.deviceName ?? "Eliza Mac",
+    phoneNumber: parsed.phoneNumber.trim(),
+    uuid: typeof parsed.uuid === "string" ? parsed.uuid : "",
+    deviceName:
+      typeof parsed.deviceName === "string" &&
+      parsed.deviceName.trim().length > 0
+        ? parsed.deviceName
+        : "Eliza Mac",
   };
+}
+
+function linkedDeviceCandidate(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+  env: NodeJS.ProcessEnv = process.env,
+): SignalLinkedDeviceCandidate | null {
+  const tokenRef = signalAuthDir(agentId, side, env);
+  const info = readSignalLinkedDeviceInfo(tokenRef);
+  return info
+    ? {
+        agentId,
+        side,
+        tokenRef,
+        info,
+      }
+    : null;
+}
+
+function listLinkedDeviceCandidatesForSide(
+  side: LifeOpsConnectorSide,
+  env: NodeJS.ProcessEnv = process.env,
+): SignalLinkedDeviceCandidate[] {
+  const root = signalStorageRoot(env);
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== "pending")
+    .flatMap((entry) => {
+      const candidate = linkedDeviceCandidate(entry.name, side, env);
+      return candidate ? [candidate] : [];
+    });
+}
+
+export function findSignalLinkedDeviceInfoForSide(
+  agentId: string,
+  side: LifeOpsConnectorSide,
+  env: NodeJS.ProcessEnv = process.env,
+): SignalLinkedDeviceCandidate | null {
+  const exact = linkedDeviceCandidate(agentId, side, env);
+  if (exact) {
+    return exact;
+  }
+
+  const candidates = listLinkedDeviceCandidatesForSide(side, env).filter(
+    (candidate) => candidate.agentId !== agentId,
+  );
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 export function deleteSignalLinkedDevice(tokenRef: string): void {

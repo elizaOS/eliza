@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type http from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
 import type {
@@ -8,7 +9,7 @@ import type {
   AppSessionActivityItem,
   AppSessionJsonValue,
   AppSessionState,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 import { decode, encode } from "@toon-format/toon";
 
 import type { JournalGoal, JournalMemory } from "./journal/types.js";
@@ -172,7 +173,7 @@ function resolveScapeSessionId(runtime: IAgentRuntime | null): string {
     return `scape:${agentId}`;
   }
   if (!fallbackSessionId) {
-    fallbackSessionId = `scape:${Math.random().toString(36).slice(2, 10)}`;
+    fallbackSessionId = `scape:${randomBytes(4).toString("hex")}`;
   }
   return fallbackSessionId;
 }

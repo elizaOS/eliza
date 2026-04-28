@@ -5,6 +5,7 @@ import type {
   CloudCompatAgent,
 } from "../../api";
 import { pathForTab } from "../../navigation";
+import { isCloudStatusReasonApiKeyOnly } from "../../utils/cloud-status";
 
 export const ELIZA_CLOUD_INSTANCES_URL =
   "https://www.elizacloud.ai/dashboard/app";
@@ -12,10 +13,6 @@ export const ELIZA_CLOUD_INSTANCES_URL =
 export const ELIZA_CLOUD_WEB_URL = "https://elizacloud.ai";
 export const BILLING_PRESET_AMOUNTS = [10, 25, 100];
 export const MANAGED_DISCORD_GATEWAY_AGENT_NAME = "Discord Gateway";
-export const CLOUD_STATUS_API_KEY_ONLY_REASONS: ReadonlySet<string> = new Set([
-  "api_key_present_not_authenticated",
-  "api_key_present_runtime_not_started",
-]);
 
 export const STATUS_BADGE: Record<
   string,
@@ -53,14 +50,6 @@ export function getCloudAuthToken(): string {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-export function isCloudStatusReasonApiKeyOnly(
-  reason: string | null | undefined,
-): boolean {
-  return (
-    typeof reason === "string" && CLOUD_STATUS_API_KEY_ONLY_REASONS.has(reason)
-  );
 }
 
 export function resolveCloudAccountIdDisplay(

@@ -45,7 +45,7 @@ describe("Cloud login persist real route coverage", () => {
     }
   });
 
-  it("persists the cloud api key through the real server route", async () => {
+  it("keeps the cloud api key after a subsequent settings config save", async () => {
     const response = await req(
       server?.port ?? 0,
       "POST",
@@ -65,5 +65,22 @@ describe("Cloud login persist real route coverage", () => {
     expect(
       runtimeResult?.runtime.character.secrets?.ELIZAOS_CLOUD_API_KEY,
     ).toBe("cloud-api-key-test");
+
+    const settingsSave = await req(server?.port ?? 0, "PUT", "/api/config", {
+      ui: { theme: "dark" },
+    });
+
+    expect(settingsSave.status).toBe(200);
+
+    const savedAfterSettingsRefresh = JSON.parse(
+      await fs.readFile(configEnv?.configPath ?? "", "utf8"),
+    ) as {
+      cloud?: { apiKey?: string };
+      linkedAccounts?: { elizacloud?: { status?: string } };
+    };
+    expect(savedAfterSettingsRefresh.cloud?.apiKey).toBe("cloud-api-key-test");
+    expect(savedAfterSettingsRefresh.linkedAccounts?.elizacloud?.status).toBe(
+      "linked",
+    );
   });
 });

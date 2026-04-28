@@ -1,7 +1,7 @@
 import type {
   LifeOpsRegularityClass,
   LifeOpsWorkflowSchedule,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import type { LifeOpsScheduleMergedStateRecord } from "./repository.js";
 import { buildUtcDateFromLocalParts, getZonedDateParts } from "./time.js";
 import { parseIsoMs } from "./time-util.js";

@@ -96,19 +96,23 @@ export function setByPath(
 ): void {
   const segments = (path.startsWith("/") ? path.slice(1) : path).split("/");
   if (segments.length === 0) return;
-  const BLOCKED_KEYS = ["__proto__", "constructor", "prototype"];
+  const isUnsafeKey = (k: string): boolean =>
+    k === "__proto__" || k === "constructor" || k === "prototype";
   for (const seg of segments) {
-    if (BLOCKED_KEYS.includes(seg)) return; // silently reject dangerous paths
+    if (isUnsafeKey(seg)) return; // silently reject dangerous paths
   }
   let current: Record<string, unknown> = obj;
   for (let i = 0; i < segments.length - 1; i++) {
     const seg = segments[i];
+    if (isUnsafeKey(seg)) return;
     if (!(seg in current) || typeof current[seg] !== "object") {
       current[seg] = /^\d+$/.test(segments[i + 1]) ? [] : {};
     }
     current = current[seg] as Record<string, unknown>;
   }
-  current[segments[segments.length - 1]] = value;
+  const finalKey = segments[segments.length - 1];
+  if (isUnsafeKey(finalKey)) return;
+  current[finalKey] = value;
 }
 
 /**
@@ -172,7 +176,9 @@ export function interpolateString(
   template: string,
   context: Record<string, unknown>,
 ): string {
-  return template.replace(/\{\{([^}]+)\}\}/g, (_, path) => {
+  const safeTemplate =
+    template.length > 100_000 ? template.slice(0, 100_000) : template;
+  return safeTemplate.replace(/\{\{([^}]{1,1024})\}\}/g, (_, path) => {
     const value = getByPath(
       context,
       path.trim().startsWith("/") ? path.trim() : `/${path.trim()}`,
@@ -340,7 +346,9 @@ export const builtInValidators: Record<string, ValidationFunction> = {
     return true;
   },
   email: (value) =>
-    typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+    typeof value === "string" &&
+    value.length <= 254 &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
   minLength: (value, args) =>
     typeof value === "string" &&
     typeof args?.min === "number" &&

@@ -184,9 +184,7 @@ export function HeartbeatForm({
                   void onToggleTriggerEnabled(editingId, editorEnabled)
                 }
               >
-                {editorEnabled
-                  ? t("common.disable")
-                  : t("common.enable")}
+                {editorEnabled ? t("common.disable") : t("common.enable")}
               </Button>
               <div className="w-px h-6 bg-border/50 mx-1 hidden sm:block" />
               <Button

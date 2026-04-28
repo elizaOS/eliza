@@ -23,15 +23,12 @@ export interface SubscriptionStatusProps {
   resolvedSelectedId: string | null;
   subscriptionStatus: Array<{
     provider: string;
+    accountId: string;
+    label: string;
     configured: boolean;
     valid: boolean;
     expiresAt: number | null;
-    source?:
-      | "app"
-      | "claude-code-cli"
-      | "setup-token"
-      | "codex-cli"
-      | null;
+    source?: "app" | "claude-code-cli" | "setup-token" | "codex-cli" | null;
   }>;
   anthropicConnected: boolean;
   setAnthropicConnected: (v: boolean) => void;
@@ -524,9 +521,7 @@ export function SubscriptionStatus({
             </span>
           )}
           {setupTokenSuccess && (
-            <span className="text-xs-tight text-ok">
-              {t("common.saved")}
-            </span>
+            <span className="text-xs-tight text-ok">{t("common.saved")}</span>
           )}
         </div>
       </div>

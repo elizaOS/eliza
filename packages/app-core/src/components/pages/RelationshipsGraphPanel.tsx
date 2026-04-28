@@ -8,10 +8,8 @@ import {
 import {
   Crown,
   Fingerprint,
-  Focus,
   Frown,
   Link2,
-  Maximize2,
   Meh,
   MessageCircle,
   Minus,
@@ -23,6 +21,8 @@ import {
   type MouseEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -36,9 +36,10 @@ import type {
 const GRAPH_WIDTH = 1320;
 const GRAPH_HEIGHT = 760;
 const GRAPH_PADDING = 92;
-const MIN_ZOOM = 0.58;
-const MAX_ZOOM = 1.35;
+const MIN_ZOOM = 0.4;
+const MAX_ZOOM = 2.0;
 const ZOOM_STEP = 0.12;
+const WHEEL_ZOOM_FACTOR = 0.0015;
 const MAX_GLOBAL_NODES = 60;
 const MAX_FOCUSED_NODES = 60;
 const MAX_DIRECT_NEIGHBORS = 36;
@@ -800,6 +801,8 @@ export function RelationshipsGraphPanel({
   const hideTooltip = () => setTooltip(null);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const shouldSuppressClickRef = useRef(false);
   const panStateRef = useRef<{
     pointerId: number;
     startX: number;
@@ -808,28 +811,120 @@ export function RelationshipsGraphPanel({
     scrollTop: number;
     moved: boolean;
   } | null>(null);
+  const pinchStateRef = useRef<{
+    startDistance: number;
+    startZoom: number;
+  } | null>(null);
 
-  const isInteractiveTarget = (target: EventTarget | null): boolean => {
-    if (!(target instanceof Element)) return false;
-    return Boolean(target.closest("button, a, input, textarea, select"));
+  const activePointerPoints = (): Array<{ x: number; y: number }> =>
+    Array.from(pointersRef.current.values());
+
+  const distanceBetweenPointers = (): number => {
+    const points = Array.from(pointersRef.current.values());
+    if (points.length < 2) return 0;
+    const [a, b] = points;
+    return Math.hypot(b.x - a.x, b.y - a.y);
   };
 
-  const beginPan = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
-    if (isInteractiveTarget(event.target)) return;
+  const pointerCenter = (): { x: number; y: number } | null => {
+    const points = activePointerPoints();
+    if (points.length < 2) return null;
+    const [a, b] = points;
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  };
+
+  const viewportCenter = (): { x: number; y: number } | null => {
     const container = containerRef.current;
-    if (!container) return;
-    panStateRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      scrollLeft: container.scrollLeft,
-      scrollTop: container.scrollTop,
-      moved: false,
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
     };
   };
 
+  const zoomTo = useCallback(
+    (nextZoom: number, focalPoint: { x: number; y: number } | null = null) => {
+      const container = containerRef.current;
+      const clampedZoom = Number(
+        clamp(nextZoom, MIN_ZOOM, MAX_ZOOM).toFixed(3),
+      );
+
+      if (!container || !focalPoint) {
+        setZoom(clampedZoom);
+        return;
+      }
+
+      const rect = container.getBoundingClientRect();
+      const offsetX = focalPoint.x - rect.left;
+      const offsetY = focalPoint.y - rect.top;
+
+      setZoom((currentZoom) => {
+        const graphX = (container.scrollLeft + offsetX) / currentZoom;
+        const graphY = (container.scrollTop + offsetY) / currentZoom;
+        window.requestAnimationFrame(() => {
+          container.scrollLeft = graphX * clampedZoom - offsetX;
+          container.scrollTop = graphY * clampedZoom - offsetY;
+        });
+        return clampedZoom;
+      });
+    },
+    [],
+  );
+
+  const cancelPan = () => {
+    panStateRef.current = null;
+  };
+
+  const beginPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    pointersRef.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    if (pointersRef.current.size === 1) {
+      panStateRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        scrollLeft: container.scrollLeft,
+        scrollTop: container.scrollTop,
+        moved: false,
+      };
+    } else if (pointersRef.current.size === 2) {
+      cancelPan();
+      pinchStateRef.current = {
+        startDistance: distanceBetweenPointers(),
+        startZoom: zoom,
+      };
+      hideTooltip();
+    }
+  };
+
   const updatePan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (pointersRef.current.has(event.pointerId)) {
+      pointersRef.current.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+    }
+
+    const pinch = pinchStateRef.current;
+    if (pinch && pointersRef.current.size >= 2) {
+      const distance = distanceBetweenPointers();
+      if (pinch.startDistance > 0 && distance > 0) {
+        zoomTo(
+          pinch.startZoom * (distance / pinch.startDistance),
+          pointerCenter(),
+        );
+      }
+      return;
+    }
+
     const state = panStateRef.current;
     if (!state || state.pointerId !== event.pointerId) return;
     const container = containerRef.current;
@@ -839,10 +934,7 @@ export function RelationshipsGraphPanel({
     if (!state.moved && Math.hypot(dx, dy) > 4) {
       state.moved = true;
       hideTooltip();
-      // Capture only after a real drag begins so node clicks remain unaffected.
-      try {
-        container.setPointerCapture(event.pointerId);
-      } catch {}
+      container.setPointerCapture(event.pointerId);
     }
     if (state.moved) {
       container.scrollLeft = state.scrollLeft - dx;
@@ -851,27 +943,56 @@ export function RelationshipsGraphPanel({
   };
 
   const endPan = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const state = panStateRef.current;
-    if (!state || state.pointerId !== event.pointerId) return;
-    const container = containerRef.current;
-    if (container?.hasPointerCapture(event.pointerId)) {
-      try {
-        container.releasePointerCapture(event.pointerId);
-      } catch {}
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) {
+      pinchStateRef.current = null;
     }
-    panStateRef.current = null;
+    const state = panStateRef.current;
+    if (state && state.pointerId === event.pointerId) {
+      const container = containerRef.current;
+      if (container?.hasPointerCapture(event.pointerId)) {
+        container.releasePointerCapture(event.pointerId);
+      }
+      if (state.moved) {
+        shouldSuppressClickRef.current = true;
+        window.setTimeout(() => {
+          shouldSuppressClickRef.current = false;
+        }, 0);
+      }
+      panStateRef.current = null;
+    }
   };
 
-  const zoomOut = () =>
-    setZoom((currentZoom) =>
-      clamp(Number((currentZoom - ZOOM_STEP).toFixed(2)), MIN_ZOOM, MAX_ZOOM),
+  const leavePan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    endPan(event);
+  };
+
+  // Attach a non-passive wheel listener so we can preventDefault native scroll/zoom.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const onWheel = (event: globalThis.WheelEvent) => {
+      if (Math.abs(event.deltaY) === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setTooltip(null);
+      zoomTo(zoom * (1 - event.deltaY * WHEEL_ZOOM_FACTOR), {
+        x: event.clientX,
+        y: event.clientY,
+      });
+    };
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, [zoom, zoomTo]);
+
+  const zoomOut = () => zoomTo(zoom - ZOOM_STEP, viewportCenter());
+  const zoomIn = () => zoomTo(zoom + ZOOM_STEP, viewportCenter());
+  const handleZoomPercentClick = () =>
+    zoomTo(
+      Math.abs(zoom - fittedZoom) < 0.01 ? 1 : fittedZoom,
+      viewportCenter(),
     );
-  const zoomIn = () =>
-    setZoom((currentZoom) =>
-      clamp(Number((currentZoom + ZOOM_STEP).toFixed(2)), MIN_ZOOM, MAX_ZOOM),
-    );
-  const fitGraph = () => setZoom(fittedZoom);
-  const actualSize = () => setZoom(1);
   const zoomPercent = `${Math.round(zoom * 100)}%`;
   const graphWidth = GRAPH_WIDTH * zoom;
   const graphHeight = GRAPH_HEIGHT * zoom;
@@ -881,43 +1002,48 @@ export function RelationshipsGraphPanel({
       <div className={compact ? "space-y-3" : "space-y-4"}>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <GraphLegend />
-          <div className="flex items-center gap-1">
+          <div className="inline-flex items-center gap-0.5 rounded-full border border-border/24 bg-card/40 px-1 py-0.5">
             <GraphIconButton
               label="Zoom out"
               disabled={zoom <= MIN_ZOOM}
               onClick={zoomOut}
             >
-              <Minus className="h-4 w-4" />
+              <Minus className="h-3.5 w-3.5" />
             </GraphIconButton>
-            <GraphIconButton label="Fit graph" onClick={fitGraph}>
-              <Focus className="h-4 w-4" />
-            </GraphIconButton>
-            <GraphIconButton label="Actual size" onClick={actualSize}>
-              <Maximize2 className="h-4 w-4" />
-            </GraphIconButton>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleZoomPercentClick}
+                  className="min-w-10 rounded-full px-1 text-2xs font-semibold tabular-nums text-muted transition hover:text-txt"
+                  aria-label="Toggle zoom (fit / 100%)"
+                >
+                  {zoomPercent}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Toggle fit / 100%</TooltipContent>
+            </Tooltip>
             <GraphIconButton
               label="Zoom in"
               disabled={zoom >= MAX_ZOOM}
               onClick={zoomIn}
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5" />
             </GraphIconButton>
-            <span className="min-w-10 text-right text-2xs font-semibold tabular-nums text-muted">
-              {zoomPercent}
-            </span>
           </div>
         </div>
 
         {/* biome-ignore lint/a11y/noStaticElementInteractions: graph container handles tooltip dismiss on mouse leave */}
         <div
           ref={containerRef}
-          className={`${compact ? "max-h-[34rem]" : "max-h-[42rem]"} relative cursor-grab overflow-auto overscroll-contain rounded-2xl border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] active:cursor-grabbing`}
+          className={`${compact ? "max-h-[34rem]" : "max-h-[42rem]"} relative cursor-grab touch-none overflow-auto overscroll-contain rounded-2xl border border-border/26 bg-[radial-gradient(circle_at_top,rgba(240,185,11,0.12),transparent_42%),linear-gradient(180deg,color-mix(in_srgb,var(--card)_92%,transparent),color-mix(in_srgb,var(--bg)_97%,transparent))] active:cursor-grabbing`}
           data-graph-container
           onMouseLeave={hideTooltip}
           onPointerDown={beginPan}
           onPointerMove={updatePan}
           onPointerUp={endPan}
           onPointerCancel={endPan}
+          onPointerLeave={leavePan}
         >
           <GraphTooltip state={tooltip} />
           <svg
@@ -1003,6 +1129,7 @@ export function RelationshipsGraphPanel({
                 selectedGroupId !== null && !selected && !directlyConnected;
               const radius = nodeRadius(person) + (selected ? 6 : 0);
               const isOwner = person.isOwner;
+              const showLabel = isOwner || selected || directlyConnected;
               return (
                 <g key={person.groupId}>
                   <g
@@ -1054,17 +1181,19 @@ export function RelationshipsGraphPanel({
                     >
                       {nodeInitials(person.displayName)}
                     </text>
-                    <text
-                      textAnchor="middle"
-                      y={radius + 24}
-                      className="text-xs font-semibold"
-                      fill="var(--txt)"
-                      stroke="rgba(255,255,255,0.82)"
-                      strokeWidth={4}
-                      paintOrder="stroke"
-                    >
-                      {shortLabel(person.displayName, 19)}
-                    </text>
+                    {showLabel ? (
+                      <text
+                        textAnchor="middle"
+                        y={radius + 24}
+                        className="text-xs font-semibold"
+                        fill="var(--txt)"
+                        stroke="rgba(255,255,255,0.82)"
+                        strokeWidth={4}
+                        paintOrder="stroke"
+                      >
+                        {shortLabel(person.displayName, 19)}
+                      </text>
+                    ) : null}
                   </g>
                   <foreignObject
                     x={position.x - 90}
@@ -1074,7 +1203,15 @@ export function RelationshipsGraphPanel({
                   >
                     <button
                       type="button"
-                      onClick={() => onSelectPersonId(person.primaryEntityId)}
+                      onClick={(event) => {
+                        if (shouldSuppressClickRef.current) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          shouldSuppressClickRef.current = false;
+                          return;
+                        }
+                        onSelectPersonId(person.primaryEntityId);
+                      }}
                       onMouseEnter={(event) =>
                         showTooltipForNode(person, event)
                       }

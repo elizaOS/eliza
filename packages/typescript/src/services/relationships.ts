@@ -2217,6 +2217,7 @@ export class RelationshipsService extends Service {
 		entityIds: UUID[],
 	): Promise<Array<{ entityId: UUID; platform: string; handle: string }>> {
 		if (entityIds.length === 0) return [];
+		if (!this.getRuntimeDb()) return [];
 		const quoted = entityIds.map(sqlQuote).join(", ");
 		const result = await this.execSql(
 			`SELECT entity_id, platform, handle
@@ -2247,6 +2248,7 @@ export class RelationshipsService extends Service {
 	): Promise<UUID[]> {
 		const [platform, handle] = handleKey.split(":", 2);
 		if (!platform || handle === undefined) return [];
+		if (!this.getRuntimeDb()) return [];
 		const result = await this.execSql(
 			`SELECT DISTINCT entity_id
 			 FROM entity_identities

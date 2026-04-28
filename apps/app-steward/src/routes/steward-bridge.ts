@@ -1,9 +1,5 @@
-import crypto from "node:crypto";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import type {
-  StewardSignRequest,
-  StewardSignResponse,
-} from "../types/steward";
+import { fingerprintRandomToken } from "../services/steward-sidecar/helpers";
 import {
   type PolicyResult,
   type PolicyRule,
@@ -20,6 +16,7 @@ import {
   resolveEffectiveStewardConfig,
   saveStewardCredentials,
 } from "../services/steward-credentials";
+import type { StewardSignRequest, StewardSignResponse } from "../types/steward";
 
 export interface StewardBridgeOptions {
   env?: NodeJS.ProcessEnv;
@@ -1170,10 +1167,7 @@ async function doEnsureStewardAgent(
           body: JSON.stringify({
             id: tenantId,
             name: "Desktop",
-            apiKeyHash: crypto
-              .createHash("sha256")
-              .update(apiKey)
-              .digest("hex"),
+            apiKeyHash: fingerprintRandomToken(apiKey),
           }),
         });
 

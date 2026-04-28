@@ -1,19 +1,15 @@
 import type http from "node:http";
 import {
+  type ConversationMetadata,
+  type ConversationScope,
   extractConversationMetadataFromRoom,
   isAutomationConversationMetadata,
-} from "@elizaos/agent/api/conversation-metadata";
-import type {
-  ConversationMetadata,
-  ConversationScope,
-} from "@elizaos/agent/api/server-types";
-import { toWorkbenchTask } from "@elizaos/agent/api/workbench-helpers";
-import { loadElizaConfig } from "@elizaos/agent/config/config";
-import {
   listTriggerTasks,
+  loadElizaConfig,
+  type TriggerSummary,
   taskToTriggerSummary,
-} from "@elizaos/agent/triggers/runtime";
-import type { TriggerSummary } from "@elizaos/agent/triggers/types";
+  toWorkbenchTask,
+} from "@elizaos/agent";
 import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import {
   type AgentRuntime,
@@ -27,8 +23,8 @@ import type {
   LifeOpsGoogleConnectorStatus,
   LifeOpsSignalConnectorStatus,
   LifeOpsTelegramConnectorStatus,
-} from "@elizaos/shared/contracts/lifeops";
-import { ensureCompatApiAuthorized } from "./auth";
+} from "@elizaos/shared";
+import { ensureRouteAuthorized } from "./auth";
 import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
 import type {
   AutomationItem,
@@ -545,15 +541,27 @@ async function buildAutomationListResponse(
     }
   }
 
-  for (const [workflowId, room] of workflowRooms.entries()) {
-    if (!workflowItemsById.has(workflowId)) {
-      workflowItemsById.set(
-        workflowId,
-        buildWorkflowItem(undefined, room, {
+  // Only synthesize workflow items from rooms when n8n itself is offline
+  // (`workflowFetchError` set) — in that case the room is the most-recent
+  // ground truth we have and should be surfaced. When n8n IS online and
+  // returned a list, any workflowId in `workflowRooms` that isn't in the
+  // current n8n list is an ORPHAN: the workflow was deleted but the chat
+  // room/conversation wasn't cleaned up. Surfacing those creates ghost
+  // rows the user can't dismiss. Skip them; the UI's deleteWorkflow path
+  // also deletes the conversation now, so future deletions won't leak
+  // rooms.
+  const n8nOffline = workflowFetchError !== null;
+  if (n8nOffline) {
+    for (const [workflowId, room] of workflowRooms.entries()) {
+      if (!workflowItemsById.has(workflowId)) {
+        workflowItemsById.set(
           workflowId,
-          workflowName: room.metadata.workflowName,
-        }),
-      );
+          buildWorkflowItem(undefined, room, {
+            workflowId,
+            workflowName: room.metadata.workflowName,
+          }),
+        );
+      }
     }
   }
 
@@ -863,7 +871,7 @@ export async function handleAutomationsCompatRoutes(
     return false;
   }
 
-  if (!ensureCompatApiAuthorized(req, res)) {
+  if (!(await ensureRouteAuthorized(req, res, state))) {
     return true;
   }
 

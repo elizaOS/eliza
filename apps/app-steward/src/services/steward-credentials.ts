@@ -7,8 +7,21 @@
  */
 
 import fs from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+
+// Inlined to avoid pulling the @elizaos/core source barrel into consumers
+// that only need state-dir resolution (e.g. the Electrobun bun bundle, which
+// would otherwise transitively bundle plugin-sql, transformers, and onnxruntime).
+// Mirrors the canonical implementation in @elizaos/core's
+// src/utils/state-dir.ts: MILADY_STATE_DIR > ELIZA_STATE_DIR > ~/.milady.
+function resolveStateDir(): string {
+  return (
+    process.env.MILADY_STATE_DIR?.trim() ||
+    process.env.ELIZA_STATE_DIR?.trim() ||
+    path.join(homedir(), ".milady")
+  );
+}
 
 export interface PersistedStewardCredentials {
   apiUrl: string;

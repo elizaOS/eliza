@@ -599,6 +599,7 @@ describe("run-mobile-build", () => {
     const changed = applyIosAppIdentity({
       appDirValue: appDir,
       appId: "com.example.milady",
+      appName: "Milady",
       appGroup: "group.com.example.milady",
       developmentTeam: "ABCDE12345",
       log: () => {},

@@ -4,7 +4,7 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsConnectorSourceOfTruth,
-} from "@elizaos/app-lifeops/contracts";
+} from "../contracts/index.js";
 import {
   resolveConfiguredGoogleModes,
   resolveGoogleDefaultMode,

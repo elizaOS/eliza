@@ -11,6 +11,7 @@ import type {
   N8nStatusResponse,
   N8nWorkflow,
   N8nWorkflowGenerateRequest,
+  N8nWorkflowGenerateResponse,
   N8nWorkflowWriteRequest,
 } from "./client-types-chat";
 
@@ -30,7 +31,7 @@ declare module "./client-base" {
     ): Promise<N8nWorkflow>;
     generateN8nWorkflow(
       request: N8nWorkflowGenerateRequest,
-    ): Promise<N8nWorkflow>;
+    ): Promise<N8nWorkflowGenerateResponse>;
     activateN8nWorkflow(id: string): Promise<N8nWorkflow>;
     deactivateN8nWorkflow(id: string): Promise<N8nWorkflow>;
     deleteN8nWorkflow(id: string): Promise<{ ok: boolean }>;
@@ -93,11 +94,21 @@ ElizaClient.prototype.updateN8nWorkflow = async function (
 ElizaClient.prototype.generateN8nWorkflow = async function (
   this: ElizaClient,
   request: N8nWorkflowGenerateRequest,
-): Promise<N8nWorkflow> {
-  return this.fetch<N8nWorkflow>("/api/n8n/workflows/generate", {
-    method: "POST",
-    body: JSON.stringify(request),
-  });
+): Promise<N8nWorkflowGenerateResponse> {
+  // LLM-driven workflow generation runs keyword extraction, node search,
+  // generation, multiple correction passes, and feasibility assessment
+  // sequentially — easily 30-90s on a cold cache. The 10s default fetch
+  // timeout is far too aggressive and surfaces as
+  // "Request timed out after 10000ms" in the Automations UI even when
+  // the backend would have succeeded a few seconds later.
+  return this.fetch<N8nWorkflowGenerateResponse>(
+    "/api/n8n/workflows/generate",
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+    { timeoutMs: 120_000 },
+  );
 };
 
 ElizaClient.prototype.activateN8nWorkflow = async function (

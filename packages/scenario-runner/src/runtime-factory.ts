@@ -205,7 +205,8 @@ export async function createScenarioRuntime(
   // Env prerequisites (Gmail OAuth, Twilio, etc.) are NOT required for the
   // plugin to load — they only gate individual action execution at call time.
   try {
-    const lifeOpsModule = (await import("@elizaos/app-lifeops/plugin")) as Record<
+    const lifeOpsPluginSpecifier = "@elizaos/app-lifeops/plugin";
+    const lifeOpsModule = (await import(lifeOpsPluginSpecifier)) as Record<
       string,
       unknown
     >;
@@ -229,8 +230,9 @@ export async function createScenarioRuntime(
   // Load the separate LifeOps route bridge plugin so scenario API turns can
   // exercise the same HTTP handlers the app exposes at runtime.
   try {
+    const lifeOpsRoutesPluginSpecifier = "@elizaos/app-lifeops/routes/plugin";
     const lifeOpsRoutesModule = (await import(
-      "@elizaos/app-lifeops/routes/plugin"
+      lifeOpsRoutesPluginSpecifier
     )) as Record<string, unknown>;
     const lifeOpsRoutesPlugin = extractPlugin(lifeOpsRoutesModule, [
       "default",

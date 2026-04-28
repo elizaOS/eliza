@@ -1,7 +1,9 @@
-import { registerOperatorSurface } from "@elizaos/app-core/components/apps/surfaces/registry";
-import { registerDetailExtension } from "@elizaos/app-core/components/apps/extensions/registry";
-import { DefenseAgentsOperatorSurface } from "./DefenseAgentsOperatorSurface.js";
+import {
+  registerDetailExtension,
+  registerOperatorSurface,
+} from "@elizaos/app-core";
 import { DefenseAgentsDetailExtension } from "./DefenseAgentsDetailExtension.js";
+import { DefenseAgentsOperatorSurface } from "./DefenseAgentsOperatorSurface.js";
 
 registerOperatorSurface("@elizaos/app-defense-of-the-agents", DefenseAgentsOperatorSurface);
 registerDetailExtension("defense-agent-control", DefenseAgentsDetailExtension);

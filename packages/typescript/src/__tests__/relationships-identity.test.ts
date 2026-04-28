@@ -19,8 +19,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../character.ts";
+import { recentMessagesProvider } from "../features/basic-capabilities/providers/recentMessages.ts";
 import { AgentRuntime } from "../runtime.ts";
 import type { RelationshipsService } from "../services/relationships.ts";
+import type { Memory, State } from "../types/index.ts";
 import { asUUID } from "../types/primitives.ts";
 import { stringToUuid } from "../utils.ts";
 
@@ -239,5 +241,112 @@ describe("RelationshipsService identity surface", () => {
 		// The auto-accepted candidate should not show up as pending.
 		const pending = await fx.service.getCandidateMerges();
 		expect(pending).toHaveLength(0);
+	});
+
+	it("resolves confirmed identity links into one member cluster", async () => {
+		const telegramEntity = await fx.makeEntity("Frank-Telegram");
+		const discordEntity = await fx.makeEntity("Frank-Discord");
+
+		await fx.runtime.createRelationship({
+			sourceEntityId: telegramEntity,
+			targetEntityId: discordEntity,
+			tags: ["identity_link"],
+			metadata: {
+				status: "confirmed",
+				source: "test",
+			},
+		});
+
+		const members = await fx.service.getMemberEntityIds(discordEntity);
+		expect(new Set(members)).toEqual(new Set([telegramEntity, discordEntity]));
+	});
+
+	it("loads recent interactions from rooms used by linked identities", async () => {
+		const telegramEntity = await fx.makeEntity("Grace-Telegram");
+		const discordEntity = await fx.makeEntity("Grace-Discord");
+		const telegramRoomId = asUUID(stringToUuid("grace-telegram-room"));
+		const discordRoomId = asUUID(stringToUuid("grace-discord-room"));
+		const telegramWorldId = asUUID(stringToUuid("grace-telegram-world"));
+		const discordWorldId = asUUID(stringToUuid("grace-discord-world"));
+
+		await fx.runtime.ensureConnection({
+			entityId: telegramEntity,
+			roomId: telegramRoomId,
+			roomName: "Telegram DM",
+			name: "Grace",
+			userName: "grace_tg",
+			source: "telegram",
+			channelId: "telegram-grace",
+			type: "DM",
+			worldId: telegramWorldId,
+			worldName: "Telegram",
+		});
+		await fx.runtime.ensureConnection({
+			entityId: discordEntity,
+			roomId: discordRoomId,
+			roomName: "Discord DM",
+			name: "Grace",
+			userName: "grace_discord",
+			source: "discord",
+			channelId: "discord-grace",
+			type: "DM",
+			worldId: discordWorldId,
+			worldName: "Discord",
+		});
+		await fx.runtime.createRelationship({
+			sourceEntityId: telegramEntity,
+			targetEntityId: discordEntity,
+			tags: ["identity_link"],
+			metadata: {
+				status: "confirmed",
+				source: "test",
+			},
+		});
+
+		const previousMessageId = asUUID(
+			stringToUuid("grace-telegram-previous-message"),
+		);
+		await fx.runtime.createMemory(
+			{
+				id: previousMessageId,
+				entityId: telegramEntity,
+				agentId: fx.runtime.agentId,
+				roomId: telegramRoomId,
+				content: {
+					text: "My favorite color is green.",
+					source: "telegram",
+				},
+				createdAt: 1,
+			},
+			"messages",
+		);
+
+		const currentMessage: Memory = {
+			id: asUUID(stringToUuid("grace-discord-current-message")),
+			entityId: discordEntity,
+			agentId: fx.runtime.agentId,
+			roomId: discordRoomId,
+			content: {
+				text: "What did I tell you before?",
+				source: "discord",
+			},
+			createdAt: 2,
+		};
+		const emptyState: State = { values: {}, data: {}, text: "" };
+
+		const result = await recentMessagesProvider.get(
+			fx.runtime,
+			currentMessage,
+			emptyState,
+		);
+
+		expect(result.data?.recentInteractions).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ id: previousMessageId }),
+			]),
+		);
+		expect(result.values?.recentInteractions).toContain(
+			"My favorite color is green.",
+		);
 	});
 });

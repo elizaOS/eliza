@@ -5,14 +5,21 @@
 		"moduleResolution": "bundler",
 		"esModuleInterop": true,
 		"strict": true,
-		"ignoreDeprecations": "6.0",
+		"ignoreDeprecations": "5.0",
 		"skipLibCheck": true,
 		"declaration": true,
 		"declarationMap": true,
 		"outDir": "./dist",
-		"rootDir": "./src",
+		"rootDir": "../../../",
 		"lib": ["ES2022", "DOM"],
-		"types": ["node"]
+		"types": ["node"],
+		"allowImportingTsExtensions": true,
+		"paths": {
+			"@elizaos/core": ["../../../packages/typescript/src/index.node.ts"],
+			"@elizaos/core/*": ["../../../packages/typescript/src/*"],
+			"@elizaos/shared": ["../../../packages/shared/src/index.ts"],
+			"@elizaos/shared/*": ["../../../packages/shared/src/*"]
+		}
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist"]

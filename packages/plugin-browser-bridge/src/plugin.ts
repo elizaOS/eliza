@@ -14,13 +14,13 @@ import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
 } from "@elizaos/agent/api/http-helpers";
-import { decodePathComponent as httpDecodePathComponent } from "@elizaos/agent/api/server-helpers";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
-import { browserBridgeSchema } from "./schema.ts";
+import { browserBridgeActions } from "./actions.ts";
 import {
   type BrowserBridgeRouteContext,
   handleBrowserBridgeRoutes,
 } from "./routes.ts";
+import { browserBridgeSchema } from "./schema.ts";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
@@ -28,6 +28,19 @@ function json(res: http.ServerResponse, data: unknown, status = 200): void {
 
 function error(res: http.ServerResponse, message: string, status = 400): void {
   httpSendJsonError(res, message, status);
+}
+
+function httpDecodePathComponent(
+  raw: string,
+  res: http.ServerResponse,
+  fieldName: string,
+): string | null {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    httpSendJsonError(res, `Invalid ${fieldName}: malformed URL encoding`, 400);
+    return null;
+  }
 }
 
 function firstHeaderValue(value: string | string[] | undefined): string | null {
@@ -162,4 +175,5 @@ export const browserBridgePlugin: Plugin = {
     "Agent Browser Bridge: Chrome/Safari companion pairing, settings, tab + page context sync, packaging artifacts, and workflow-linked browser session endpoints.",
   schema: browserBridgeSchema,
   routes: browserBridgePluginRoutes,
+  actions: browserBridgeActions,
 };

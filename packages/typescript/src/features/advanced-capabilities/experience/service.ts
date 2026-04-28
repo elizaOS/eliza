@@ -242,6 +242,31 @@ export class ExperienceService extends Service {
 				typeof rawData?.correctedBelief === "string"
 					? rawData.correctedBelief
 					: undefined,
+			sourceMessageIds: this.asOptionalUuidArray(rawData?.sourceMessageIds),
+			sourceRoomId:
+				typeof rawData?.sourceRoomId === "string"
+					? (rawData.sourceRoomId as UUID)
+					: undefined,
+			sourceTriggerMessageId:
+				typeof rawData?.sourceTriggerMessageId === "string"
+					? (rawData.sourceTriggerMessageId as UUID)
+					: undefined,
+			sourceTrajectoryId:
+				typeof rawData?.sourceTrajectoryId === "string"
+					? rawData.sourceTrajectoryId
+					: undefined,
+			sourceTrajectoryStepId:
+				typeof rawData?.sourceTrajectoryStepId === "string"
+					? rawData.sourceTrajectoryStepId
+					: undefined,
+			extractionMethod:
+				typeof rawData?.extractionMethod === "string"
+					? rawData.extractionMethod
+					: undefined,
+			extractionReason:
+				typeof rawData?.extractionReason === "string"
+					? rawData.extractionReason
+					: undefined,
 		};
 	}
 
@@ -310,6 +335,27 @@ export class ExperienceService extends Service {
 		}
 		if (experience.correctedBelief !== undefined) {
 			data.correctedBelief = experience.correctedBelief;
+		}
+		if (experience.sourceMessageIds !== undefined) {
+			data.sourceMessageIds = experience.sourceMessageIds;
+		}
+		if (experience.sourceRoomId !== undefined) {
+			data.sourceRoomId = experience.sourceRoomId;
+		}
+		if (experience.sourceTriggerMessageId !== undefined) {
+			data.sourceTriggerMessageId = experience.sourceTriggerMessageId;
+		}
+		if (experience.sourceTrajectoryId !== undefined) {
+			data.sourceTrajectoryId = experience.sourceTrajectoryId;
+		}
+		if (experience.sourceTrajectoryStepId !== undefined) {
+			data.sourceTrajectoryStepId = experience.sourceTrajectoryStepId;
+		}
+		if (experience.extractionMethod !== undefined) {
+			data.extractionMethod = experience.extractionMethod;
+		}
+		if (experience.extractionReason !== undefined) {
+			data.extractionReason = experience.extractionReason;
 		}
 
 		return {
@@ -395,6 +441,15 @@ export class ExperienceService extends Service {
 			supersedes: experienceData.supersedes,
 			previousBelief: experienceData.previousBelief,
 			correctedBelief: experienceData.correctedBelief,
+			sourceMessageIds: experienceData.sourceMessageIds
+				? [...experienceData.sourceMessageIds]
+				: undefined,
+			sourceRoomId: experienceData.sourceRoomId,
+			sourceTriggerMessageId: experienceData.sourceTriggerMessageId,
+			sourceTrajectoryId: experienceData.sourceTrajectoryId,
+			sourceTrajectoryStepId: experienceData.sourceTrajectoryStepId,
+			extractionMethod: experienceData.extractionMethod,
+			extractionReason: experienceData.extractionReason,
 		};
 
 		this.setExperience(experience);
@@ -519,6 +574,14 @@ export class ExperienceService extends Service {
 						: undefined
 					: existing.relatedExperiences
 						? [...existing.relatedExperiences]
+						: undefined,
+			sourceMessageIds:
+				"sourceMessageIds" in updates
+					? updates.sourceMessageIds
+						? [...updates.sourceMessageIds]
+						: undefined
+					: existing.sourceMessageIds
+						? [...existing.sourceMessageIds]
 						: undefined,
 			embedding,
 			updatedAt: Date.now(),

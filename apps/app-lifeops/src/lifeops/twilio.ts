@@ -1,5 +1,5 @@
+import { createIntegrationTelemetrySpan } from "@elizaos/agent/diagnostics/integration-observability";
 import { logger } from "@elizaos/core";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 
 export interface TwilioCredentials {
   accountSid: string;

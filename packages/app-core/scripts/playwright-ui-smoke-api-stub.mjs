@@ -345,11 +345,129 @@ const emptyWalletMarketOverview = {
   predictions: [],
 };
 
+const smokeGeneratedAt = "2026-01-01T00:00:00.000Z";
+
+const emptyLifeOpsOverviewSummary = {
+  activeGoalCount: 0,
+  activeOccurrenceCount: 0,
+  activeReminderCount: 0,
+  overdueOccurrenceCount: 0,
+  snoozedOccurrenceCount: 0,
+};
+
+const emptyLifeOpsOverviewSection = {
+  occurrences: [],
+  goals: [],
+  reminders: [],
+  summary: emptyLifeOpsOverviewSummary,
+};
+
+const emptyLifeOpsOverview = {
+  occurrences: [],
+  goals: [],
+  reminders: [],
+  summary: emptyLifeOpsOverviewSummary,
+  owner: emptyLifeOpsOverviewSection,
+  agentOps: emptyLifeOpsOverviewSection,
+  schedule: null,
+};
+
+const emptyLifeOpsCapabilities = {
+  generatedAt: smokeGeneratedAt,
+  appEnabled: true,
+  relativeTime: null,
+  capabilities: [],
+  summary: {
+    totalCount: 0,
+    workingCount: 0,
+    degradedCount: 0,
+    blockedCount: 0,
+    notConfiguredCount: 0,
+  },
+};
+
+const emptyLifeOpsCalendarFeed = {
+  calendarId: "primary",
+  events: [],
+  source: "cache",
+  timeMin: smokeGeneratedAt,
+  timeMax: smokeGeneratedAt,
+  syncedAt: null,
+};
+
+const emptyLifeOpsInbox = {
+  messages: [],
+  channelCounts: {},
+  fetchedAt: smokeGeneratedAt,
+  threadGroups: [],
+};
+
+const emptyLifeOpsScreenTimeSummary = {
+  items: [],
+  totalSeconds: 0,
+};
+
+const emptyLifeOpsScreenTimeBreakdown = {
+  items: [],
+  totalSeconds: 0,
+  bySource: [],
+  byCategory: [],
+  byDevice: [],
+  byService: [],
+  byBrowser: [],
+  fetchedAt: smokeGeneratedAt,
+};
+
+const emptyLifeOpsSocialSummary = {
+  since: smokeGeneratedAt,
+  until: smokeGeneratedAt,
+  totalSeconds: 0,
+  services: [],
+  devices: [],
+  surfaces: [],
+  browsers: [],
+  sessions: [],
+  messages: {
+    channels: [],
+    inbound: 0,
+    outbound: 0,
+    opened: 0,
+    replied: 0,
+  },
+  dataSources: [],
+  fetchedAt: smokeGeneratedAt,
+};
+
+const emptyBrowserBridgeSettings = {
+  enabled: true,
+  trackingMode: "current_tab",
+  allowBrowserControl: false,
+  requireConfirmationForAccountAffecting: true,
+  incognitoEnabled: false,
+  siteAccessMode: "current_site_only",
+  grantedOrigins: [],
+  blockedOrigins: [],
+  maxRememberedTabs: 10,
+  pauseUntil: null,
+  metadata: {},
+  updatedAt: null,
+};
+
+const emptyBrowserBridgePackageStatus = {
+  extensionPath: null,
+  chromeBuildPath: null,
+  chromePackagePath: null,
+  safariAppPath: null,
+  safariPackagePath: null,
+  safariWebExtensionPath: null,
+  releaseManifest: null,
+};
+
 const stubCharacter = {
-  name: "Chen",
-  username: "chen",
+  name: "Eliza",
+  username: "eliza",
   bio: ["A concise local assistant for UI smoke tests."],
-  system: "You are Chen, a concise assistant for UI smoke tests.",
+  system: "You are Eliza, a concise assistant for UI smoke tests.",
   adjectives: ["focused", "direct"],
   topics: [],
   style: {
@@ -898,7 +1016,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/character") {
-    sendJson(req, res, 200, { character: stubCharacter, agentName: "Chen" });
+    sendJson(req, res, 200, { character: stubCharacter, agentName: "Eliza" });
     return;
   }
 
@@ -1236,13 +1354,43 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/api/lifeops/overview") {
-    sendJson(req, res, 200, {
-      available: false,
-      tasks: [],
-      routines: [],
-      habits: [],
-      trajectories: [],
-    });
+    sendJson(req, res, 200, emptyLifeOpsOverview);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/lifeops/capabilities") {
+    sendJson(req, res, 200, emptyLifeOpsCapabilities);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/lifeops/calendar/feed") {
+    sendJson(req, res, 200, emptyLifeOpsCalendarFeed);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/lifeops/inbox") {
+    sendJson(req, res, 200, emptyLifeOpsInbox);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/lifeops/screen-time/summary"
+  ) {
+    sendJson(req, res, 200, emptyLifeOpsScreenTimeSummary);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/lifeops/screen-time/breakdown"
+  ) {
+    sendJson(req, res, 200, emptyLifeOpsScreenTimeBreakdown);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/lifeops/social/summary") {
+    sendJson(req, res, 200, emptyLifeOpsSocialSummary);
     return;
   }
 
@@ -1259,12 +1407,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/browser-bridge/settings") {
+    sendJson(req, res, 200, { settings: emptyBrowserBridgeSettings });
+    return;
+  }
+
   if (
     req.method === "GET" &&
-    (url.pathname === "/api/browser-bridge/companions" ||
-      url.pathname === "/api/browser-bridge/packages")
+    url.pathname === "/api/browser-bridge/companions"
   ) {
-    sendJson(req, res, 404, { error: "Not found" });
+    sendJson(req, res, 200, { companions: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/browser-bridge/packages") {
+    sendJson(req, res, 200, { status: emptyBrowserBridgePackageStatus });
     return;
   }
 

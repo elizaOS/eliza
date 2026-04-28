@@ -3,7 +3,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { clientMock, reactModuleUrl } = vi.hoisted(() => {
+const { clientMock } = vi.hoisted(() => {
   const disconnectedStatus = {
     provider: "signal" as const,
     side: "owner" as const,
@@ -55,12 +55,10 @@ const { clientMock, reactModuleUrl } = vi.hoisted(() => {
       connectedPairing,
       failedPairing,
     },
-    reactModuleUrl: `${process.cwd()}/node_modules/react/index.js`,
   };
 });
 
 vi.mock("@elizaos/app-core/api", () => ({ client: clientMock }));
-vi.mock("react", async () => import(reactModuleUrl));
 
 import { useSignalConnector } from "./useSignalConnector";
 

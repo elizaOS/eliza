@@ -4,17 +4,20 @@ import {
   Input,
   openExternalUrl,
   Spinner,
-  useMediaQuery,
   useApp,
+  useMediaQuery,
 } from "@elizaos/app-core";
 import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsInboxChannel,
   type LifeOpsInboxMessage,
-} from "@elizaos/shared/contracts/lifeops";
+  type LifeOpsInboxThreadGroup,
+} from "@elizaos/shared";
 import {
+  AlarmClock,
   ArrowLeft,
   AtSign,
+  CalendarClock,
   ExternalLink,
   MessageCircle,
   MessageSquare,
@@ -24,6 +27,7 @@ import {
   Send,
   Shield,
   Smartphone,
+  Sparkles,
 } from "lucide-react";
 import {
   type JSX,
@@ -35,6 +39,7 @@ import {
 } from "react";
 import {
   type InboxChannel,
+  type InboxChatType,
   useInbox,
 } from "../hooks/useInbox.js";
 import {
@@ -126,6 +131,12 @@ export const LIFEOPS_MESSAGE_CHANNELS: LifeOpsInboxChannel[] =
   LIFEOPS_INBOX_CHANNELS.filter((channel) => channel !== "gmail");
 export const LIFEOPS_MAIL_CHANNELS: LifeOpsInboxChannel[] = ["gmail"];
 
+const SMALL_GROUP_PARTICIPANT_CAP = 15;
+const IMPORTANT_PRIORITY_SCORE_THRESHOLD = 70;
+const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
+const MISSED_MIN_PRIORITY = 50;
+const ALL_GMAIL_ACCOUNTS = "__all__";
+
 function styleFor(channel: LifeOpsInboxChannel): ChannelStyle {
   return CHANNEL_STYLES[channel];
 }
@@ -134,6 +145,30 @@ function styleForFilter(channel: InboxChannel): ChannelStyle {
   return channel === "all"
     ? ALL_CHANNEL_STYLE
     : CHANNEL_STYLES[channel as LifeOpsInboxChannel];
+}
+
+function messagesForThreadGroup(
+  group: LifeOpsInboxThreadGroup,
+): LifeOpsInboxMessage[] {
+  const messages = Array.isArray(group.messages) ? group.messages : [];
+  return messages.length > 0 ? messages : [group.latestMessage];
+}
+
+function computeMissedAgeMs(message: LifeOpsInboxMessage): number | null {
+  if (typeof message.repliedAt === "string" && message.repliedAt.length > 0) {
+    return null;
+  }
+  const received = Date.parse(message.receivedAt);
+  if (!Number.isFinite(received)) return null;
+  const age = Date.now() - received;
+  return age >= MISSED_REPLY_GAP_MS ? age : null;
+}
+
+function formatMissedAge(ageMs: number): string {
+  const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+  if (days >= 1) return `${days}d ago`;
+  const hours = Math.max(1, Math.floor(ageMs / (60 * 60 * 1000)));
+  return `${hours}h ago`;
 }
 
 function formatRelativeTime(receivedAt: string): string {
@@ -201,6 +236,189 @@ function ChannelChip({
         </span>
       ) : null}
     </button>
+  );
+}
+
+function GmailAccountChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const style = CHANNEL_STYLES.gmail;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={[
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+        active
+          ? `${style.bg} ${style.text} ring-1 ${style.ring}`
+          : "bg-bg-muted/30 text-muted hover:text-txt",
+      ].join(" ")}
+    >
+      <span className={`shrink-0 ${active ? style.text : "text-muted/80"}`}>
+        {style.icon}
+      </span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+interface ThreadRowProps {
+  group: LifeOpsInboxThreadGroup;
+  selected: boolean;
+  onSelect: () => void;
+  onReply: () => void;
+  showAccountSubtitle: boolean;
+}
+
+function ThreadRow({
+  group,
+  selected,
+  onSelect,
+  onReply,
+  showAccountSubtitle,
+}: ThreadRowProps) {
+  const message = group.latestMessage;
+  const style = styleFor(message.channel);
+  const subject = message.subject?.trim() || `${style.label} message`;
+  const score = group.maxPriorityScore ?? message.priorityScore ?? 0;
+  const category = group.priorityCategory ?? message.priorityCategory ?? null;
+  const isImportant =
+    score >= IMPORTANT_PRIORITY_SCORE_THRESHOLD || category === "important";
+  const isPlanning = category === "planning";
+  const missedAge = computeMissedAgeMs(message);
+  const isMissed = missedAge !== null && score >= MISSED_MIN_PRIORITY;
+  const senderLabel =
+    group.chatType === "group" && typeof group.participantCount === "number"
+      ? `${message.sender.displayName} (${group.participantCount})`
+      : message.sender.displayName;
+
+  return (
+    <div
+      role="option"
+      aria-selected={selected}
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className={[
+        "group flex cursor-pointer items-start gap-3 border-l-2 px-3 py-2.5 transition-colors",
+        selected
+          ? "border-accent bg-accent/8"
+          : message.unread
+            ? "border-transparent bg-bg/30 hover:bg-bg-muted/30"
+            : "border-transparent hover:bg-bg-muted/20",
+      ].join(" ")}
+    >
+      <div className="relative h-8 w-8 shrink-0">
+        <div
+          className={`flex h-full w-full items-center justify-center overflow-hidden rounded-full text-[11px] font-semibold ${style.bg} ${style.text}`}
+        >
+          {message.sender.avatarUrl ? (
+            <img
+              src={message.sender.avatarUrl}
+              alt=""
+              aria-hidden
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            initialsFor(message.sender.displayName)
+          )}
+        </div>
+        <span
+          className={`pointer-events-none absolute -bottom-1 -right-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-bg ring-2 ring-bg ${style.text} [&>svg]:h-2.5 [&>svg]:w-2.5`}
+          aria-hidden
+        >
+          {style.icon}
+        </span>
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span
+            className={`truncate text-sm ${
+              message.unread
+                ? "font-semibold text-txt"
+                : "font-medium text-txt/85"
+            }`}
+          >
+            {senderLabel}
+          </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {group.totalCount > 1 ? (
+              <span className="text-[10px] tabular-nums text-muted">
+                {group.totalCount}
+              </span>
+            ) : null}
+            {group.unreadCount > 0 ? (
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            ) : null}
+            <span className="text-[10px] tabular-nums text-muted">
+              {formatRelativeTime(message.receivedAt)}
+            </span>
+          </div>
+        </div>
+        <div className="mt-0.5 truncate text-xs text-muted">{subject}</div>
+        <div className="mt-0.5 line-clamp-1 text-[11px] text-muted/70">
+          {message.snippet}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          {isImportant ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-amber-500/16 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-500/40"
+              title={`Priority score ${score}`}
+            >
+              <Sparkles className="h-2.5 w-2.5" aria-hidden />
+              Important
+            </span>
+          ) : null}
+          {isPlanning ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/16 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300 ring-1 ring-sky-500/40">
+              <CalendarClock className="h-2.5 w-2.5" aria-hidden />
+              Planning
+            </span>
+          ) : null}
+          {showAccountSubtitle && message.gmailAccountEmail ? (
+            <span className="truncate text-[10px] text-muted/70">
+              {message.gmailAccountEmail}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        {isMissed && missedAge !== null ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-amber-500/16 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-500/40"
+            title="Unreplied for over 24h"
+          >
+            <AlarmClock className="h-2.5 w-2.5" aria-hidden />
+            Missed · {formatMissedAge(missedAge)}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          aria-label="Reply"
+          onClick={(e) => {
+            e.stopPropagation();
+            onReply();
+          }}
+          className="mt-0.5 rounded-full p-1.5 text-muted opacity-0 transition-opacity hover:bg-bg-muted/40 hover:text-txt group-hover:opacity-100"
+        >
+          <MessageSquareReply className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -304,17 +522,18 @@ function MessageRow({
 }
 
 function ReaderPane({
-  message,
+  threadGroup,
   onReply,
   onChat,
   onBack,
 }: {
-  message: LifeOpsInboxMessage | null;
+  threadGroup: LifeOpsInboxThreadGroup | null;
   onReply: (msg: LifeOpsInboxMessage) => void;
   onChat: (msg: LifeOpsInboxMessage) => void;
   onBack?: () => void;
 }) {
   const { t } = useApp();
+  const message = threadGroup?.latestMessage ?? null;
 
   if (!message) {
     return (
@@ -332,6 +551,12 @@ function ReaderPane({
   const style = styleFor(message.channel);
   const subject = message.subject?.trim() || `${style.label} message`;
   const receivedAt = formatAbsoluteTime(message.receivedAt);
+  const threadMessages = threadGroup
+    ? [...messagesForThreadGroup(threadGroup)].sort(
+        (left, right) =>
+          Date.parse(left.receivedAt) - Date.parse(right.receivedAt),
+      )
+    : [];
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-bg/10">
@@ -370,7 +595,11 @@ function ReaderPane({
               {style.label}
             </span>
             <span>·</span>
-            <span>{message.sender.displayName}</span>
+            <span>
+              {threadMessages.length > 1
+                ? `${threadMessages.length} messages`
+                : message.sender.displayName}
+            </span>
             {receivedAt ? (
               <>
                 <span>·</span>
@@ -382,9 +611,44 @@ function ReaderPane({
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-txt/85">
-          {message.snippet}
-        </p>
+        <div className="space-y-3">
+          {(threadMessages.length > 0 ? threadMessages : [message]).map(
+            (item) => {
+              const itemStyle = styleFor(item.channel);
+              return (
+                <article
+                  key={item.id}
+                  className="rounded-xl border border-border/12 bg-bg/20 px-3 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-txt">
+                        {item.sender.displayName}
+                      </div>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+                        <span
+                          className={`inline-flex items-center gap-1 ${itemStyle.text}`}
+                        >
+                          {itemStyle.icon}
+                          {itemStyle.label}
+                        </span>
+                        {item.sender.email ? (
+                          <span>{item.sender.email}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted">
+                      {formatAbsoluteTime(item.receivedAt)}
+                    </span>
+                  </div>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-txt/85">
+                    {item.snippet}
+                  </p>
+                </article>
+              );
+            },
+          )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-t border-border/12 px-5 py-3">
@@ -430,32 +694,23 @@ function InboxUnsubscribeButton({
   message,
 }: {
   message: LifeOpsInboxMessage;
-}): JSX.Element {
+}): JSX.Element | null {
+  const senderEmail = message.sender.email?.trim().toLowerCase() || null;
   const [state, setState] = useState<"idle" | "working" | "done" | "error">(
     "idle",
   );
   const [note, setNote] = useState<string | null>(null);
 
   const onClick = useCallback(async () => {
-    const senderEmail = message.sender.email?.trim().toLowerCase() || null;
-    if (!senderEmail) {
-      window.alert(
-        "This message does not include a sender email for unsubscribe.",
-      );
-      return;
-    }
-    if (
-      !window.confirm(
-        `Unsubscribe from ${senderEmail} and create a filter to auto-trash future mail?`,
-      )
-    ) {
+    if (!senderEmail) return;
+    if (!window.confirm(`Send an unsubscribe request to ${senderEmail}?`)) {
       return;
     }
     setState("working");
     try {
       const result = await client.unsubscribeLifeOpsEmailSender({
         senderEmail,
-        blockAfter: true,
+        blockAfter: false,
         trashExisting: false,
         confirmed: true,
       });
@@ -465,7 +720,12 @@ function InboxUnsubscribeButton({
       setState("error");
       setNote(error instanceof Error ? error.message : String(error));
     }
-  }, [message.sender.email]);
+  }, [senderEmail]);
+
+  // Hide entirely when the message has no parsed From email (chat channels,
+  // malformed Gmail headers). Showing a button that can't work is worse than
+  // not showing it.
+  if (!senderEmail) return null;
 
   const label =
     state === "working"
@@ -483,11 +743,22 @@ function InboxUnsubscribeButton({
       className="h-8 rounded-xl px-3 text-xs font-semibold text-muted"
       disabled={state === "working" || state === "done"}
       onClick={() => void onClick()}
-      title="Send RFC 8058 one-click unsubscribe and create a Gmail filter"
+      title={`Send RFC 8058 one-click unsubscribe to ${senderEmail}`}
     >
       {label}
     </Button>
   );
+}
+
+interface InboxListPaneProps {
+  inbox: ReturnType<typeof useInbox>;
+  selectedMessageId: string | null;
+  onSelect: (args: Partial<LifeOpsSelection>) => void;
+  onReply: (msg: LifeOpsInboxMessage) => void;
+  emptyLabel?: string;
+  groupedMode: boolean;
+  visibleThreadGroups: LifeOpsInboxThreadGroup[];
+  showGmailAccountSubtitles: boolean;
 }
 
 function InboxListPane({
@@ -496,14 +767,14 @@ function InboxListPane({
   onSelect,
   onReply,
   emptyLabel,
-}: {
-  inbox: ReturnType<typeof useInbox>;
-  selectedMessageId: string | null;
-  onSelect: (args: Partial<LifeOpsSelection>) => void;
-  onReply: (msg: LifeOpsInboxMessage) => void;
-  emptyLabel?: string;
-}) {
+  groupedMode,
+  visibleThreadGroups,
+  showGmailAccountSubtitles,
+}: InboxListPaneProps) {
   const { t } = useApp();
+  const isEmpty = groupedMode
+    ? visibleThreadGroups.length === 0
+    : inbox.messages.length === 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -531,7 +802,7 @@ function InboxListPane({
           defaultValue: "Messages",
         })}
       >
-        {inbox.messages.length === 0 ? (
+        {isEmpty ? (
           <div className="px-4 py-8 text-center text-xs text-muted">
             {inbox.searchQuery
               ? t("lifeopsInbox.noResults", {
@@ -541,6 +812,22 @@ function InboxListPane({
                   defaultValue: emptyLabel ?? "Inbox clear.",
                 })}
           </div>
+        ) : groupedMode ? (
+          visibleThreadGroups.map((group) => (
+            <ThreadRow
+              key={group.threadId}
+              group={group}
+              selected={
+                group.latestMessage.id === selectedMessageId ||
+                messagesForThreadGroup(group).some(
+                  (message) => message.id === selectedMessageId,
+                )
+              }
+              onSelect={() => onSelect({ messageId: group.latestMessage.id })}
+              onReply={() => onReply(group.latestMessage)}
+              showAccountSubtitle={showGmailAccountSubtitles}
+            />
+          ))
         ) : (
           inbox.messages.map((msg) => (
             <MessageRow
@@ -573,6 +860,14 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   const { openLifeOpsChat } = useLifeOpsChatLauncher();
   const compactLayout = useMediaQuery("(max-width: 767px)");
   const allowedChannels = props.channels ?? LIFEOPS_INBOX_CHANNELS;
+
+  // Derive the section mode from the channel set passed in by the route.
+  // Mail mode is gmail-only; everything else is the Messages section, which
+  // hides public channels and groups with more than 15 participants.
+  const isMailMode =
+    allowedChannels.length === 1 && allowedChannels[0] === "gmail";
+  const isMessagesMode = !isMailMode;
+
   const channelFilters = useMemo<InboxChannel[]>(
     () =>
       allowedChannels.length > 1
@@ -580,19 +875,113 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
         : [...allowedChannels],
     [allowedChannels],
   );
+
+  const [selectedGmailAccount, setSelectedGmailAccount] =
+    useState<string>(ALL_GMAIL_ACCOUNTS);
+  const [missedOnly, setMissedOnly] = useState<boolean>(false);
+
+  const chatTypeFilter = useMemo<ReadonlyArray<InboxChatType> | undefined>(
+    () =>
+      isMessagesMode
+        ? (["dm", "group"] as const)
+        : isMailMode
+          ? (["dm"] as const)
+          : undefined,
+    [isMessagesMode, isMailMode],
+  );
+
   const inbox = useInbox({
     maxResults: 40,
     channel: allowedChannels.length === 1 ? allowedChannels[0] : "all",
     channels: allowedChannels,
+    groupByThread: true,
+    chatTypeFilter,
+    maxParticipants: isMessagesMode ? SMALL_GROUP_PARTICIPANT_CAP : undefined,
+    gmailAccountId:
+      isMailMode && selectedGmailAccount !== ALL_GMAIL_ACCOUNTS
+        ? selectedGmailAccount
+        : undefined,
+    missedOnly: isMessagesMode ? missedOnly : false,
+    // Mail mode keeps recency-first because email priority is less actionable.
+    sortByPriority: isMessagesMode,
   });
 
   const selectedMessageId = selection.messageId ?? null;
 
-  const selectedIndex = useMemo(
-    () => inbox.messages.findIndex((m) => m.id === selectedMessageId),
-    [inbox.messages, selectedMessageId],
-  );
-  const selectedMessage = inbox.messages[selectedIndex] ?? null;
+  // Build the messages-by-id index from both flat messages and thread groups
+  // so the reader pane can resolve the active message regardless of how we
+  // ended up selecting it.
+  const messageById = useMemo(() => {
+    const map = new Map<string, LifeOpsInboxMessage>();
+    for (const msg of inbox.messages) map.set(msg.id, msg);
+    for (const group of inbox.threadGroups) {
+      map.set(group.latestMessage.id, group.latestMessage);
+      for (const msg of messagesForThreadGroup(group)) {
+        map.set(msg.id, msg);
+      }
+    }
+    return map;
+  }, [inbox.messages, inbox.threadGroups]);
+
+  const threadGroupByMessageId = useMemo(() => {
+    const map = new Map<string, LifeOpsInboxThreadGroup>();
+    for (const group of inbox.threadGroups) {
+      map.set(group.latestMessage.id, group);
+      for (const msg of messagesForThreadGroup(group)) {
+        map.set(msg.id, group);
+      }
+    }
+    return map;
+  }, [inbox.threadGroups]);
+
+  const selectedMessage =
+    (selectedMessageId ? messageById.get(selectedMessageId) : null) ?? null;
+  const selectedThread =
+    (selectedMessageId
+      ? threadGroupByMessageId.get(selectedMessageId)
+      : null) ?? null;
+
+  // Distinct Gmail accounts visible in the current feed. Only show the chip
+  // group when more than one Gmail account has produced messages.
+  const gmailAccountOptions = useMemo<
+    Array<{ id: string; label: string }>
+  >(() => {
+    if (!isMailMode) return [];
+    const seen = new Map<string, string>();
+    for (const group of inbox.threadGroups) {
+      const id = group.latestMessage.gmailAccountId;
+      const email = group.latestMessage.gmailAccountEmail;
+      if (id && email && !seen.has(id)) seen.set(id, email);
+    }
+    if (seen.size === 0) {
+      for (const msg of inbox.messages) {
+        if (
+          msg.gmailAccountId &&
+          msg.gmailAccountEmail &&
+          !seen.has(msg.gmailAccountId)
+        ) {
+          seen.set(msg.gmailAccountId, msg.gmailAccountEmail);
+        }
+      }
+    }
+    return Array.from(seen.entries()).map(([id, label]) => ({ id, label }));
+  }, [inbox.threadGroups, inbox.messages, isMailMode]);
+
+  const showGmailAccountChips = isMailMode && gmailAccountOptions.length > 1;
+  // Subtitle on every Gmail row when more than one account is connected, so
+  // users can tell apart two senders that exist in both inboxes.
+  const showGmailAccountSubtitles = showGmailAccountChips;
+
+  // Reset to "all" if the previously selected account disappears from the
+  // current feed (e.g. account disconnected).
+  useEffect(() => {
+    if (
+      selectedGmailAccount !== ALL_GMAIL_ACCOUNTS &&
+      !gmailAccountOptions.some((opt) => opt.id === selectedGmailAccount)
+    ) {
+      setSelectedGmailAccount(ALL_GMAIL_ACCOUNTS);
+    }
+  }, [gmailAccountOptions, selectedGmailAccount]);
 
   const channelCounts = useMemo(() => {
     const base = Object.fromEntries(
@@ -613,24 +1002,39 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
     return base;
   }, [channelFilters, inbox.messages]);
 
-  const selectByIndex = useCallback(
-    (index: number) => {
-      const msg = inbox.messages[index];
-      if (msg) onSelect({ messageId: msg.id });
-    },
-    [inbox.messages, onSelect],
+  // Build the navigable list (thread rows in grouped modes, flat messages
+  // otherwise) so j/k keyboard navigation walks the same items the user sees.
+  const navigableItems = useMemo<LifeOpsInboxMessage[]>(
+    () => inbox.threadGroups.map((g) => g.latestMessage),
+    [inbox.threadGroups],
   );
 
-  const handleReply = useCallback((msg: LifeOpsInboxMessage) => {
-    const label = styleFor(msg.channel).label;
-    const text = buildReplyPrefill({
-      channel: msg.channel === "gmail" ? "email" : label,
-      sender: msg.sender.displayName,
-      snippet: msg.snippet,
-      deepLink: msg.deepLink,
-    });
-    openLifeOpsChat(text, { messageId: msg.id });
-  }, [openLifeOpsChat]);
+  const navigableSelectedIndex = useMemo(
+    () => navigableItems.findIndex((m) => m.id === selectedMessageId),
+    [navigableItems, selectedMessageId],
+  );
+
+  const selectByIndex = useCallback(
+    (index: number) => {
+      const msg = navigableItems[index];
+      if (msg) onSelect({ messageId: msg.id });
+    },
+    [navigableItems, onSelect],
+  );
+
+  const handleReply = useCallback(
+    (msg: LifeOpsInboxMessage) => {
+      const label = styleFor(msg.channel).label;
+      const text = buildReplyPrefill({
+        channel: msg.channel === "gmail" ? "email" : label,
+        sender: msg.sender.displayName,
+        snippet: msg.snippet,
+        deepLink: msg.deepLink,
+      });
+      openLifeOpsChat(text, { messageId: msg.id });
+    },
+    [openLifeOpsChat],
+  );
 
   const handleChat = useCallback(
     (msg: LifeOpsInboxMessage) => {
@@ -653,10 +1057,12 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
       }
       if (e.key === "j") {
         e.preventDefault();
-        selectByIndex(Math.min(selectedIndex + 1, inbox.messages.length - 1));
+        selectByIndex(
+          Math.min(navigableSelectedIndex + 1, navigableItems.length - 1),
+        );
       } else if (e.key === "k") {
         e.preventDefault();
-        selectByIndex(Math.max(selectedIndex - 1, 0));
+        selectByIndex(Math.max(navigableSelectedIndex - 1, 0));
       } else if (e.key === "r" && selectedMessage) {
         e.preventDefault();
         handleReply(selectedMessage);
@@ -666,21 +1072,27 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
     return () => window.removeEventListener("keydown", handler);
   }, [
     handleReply,
-    inbox.messages.length,
+    navigableItems.length,
+    navigableSelectedIndex,
     selectByIndex,
-    selectedIndex,
     selectedMessage,
   ]);
 
   useEffect(() => {
     if (
       !compactLayout &&
-      inbox.messages.length > 0 &&
-      (!selectedMessageId || selectedIndex === -1)
+      navigableItems.length > 0 &&
+      (!selectedMessageId || navigableSelectedIndex === -1)
     ) {
-      onSelect({ messageId: inbox.messages[0].id });
+      onSelect({ messageId: navigableItems[0].id });
     }
-  }, [compactLayout, inbox.messages, onSelect, selectedIndex, selectedMessageId]);
+  }, [
+    compactLayout,
+    navigableItems,
+    navigableSelectedIndex,
+    onSelect,
+    selectedMessageId,
+  ]);
 
   return (
     <section
@@ -704,7 +1116,45 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
             />
           );
         })}
+        {isMessagesMode ? (
+          <button
+            type="button"
+            aria-pressed={missedOnly}
+            onClick={() => setMissedOnly((prev) => !prev)}
+            title={t("lifeopsInbox.missedTooltip", {
+              defaultValue:
+                "Threads you have not replied to in 24h with priority ≥ 50",
+            })}
+            className={[
+              "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+              missedOnly
+                ? "bg-amber-500/16 text-amber-300 ring-1 ring-amber-500/40"
+                : "bg-bg-muted/30 text-muted hover:text-txt",
+            ].join(" ")}
+          >
+            <AlarmClock className="h-3.5 w-3.5" aria-hidden />
+            {t("lifeopsInbox.missed", { defaultValue: "Missed" })}
+          </button>
+        ) : null}
       </div>
+
+      {showGmailAccountChips ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/10 px-3 py-2">
+          <GmailAccountChip
+            label={t("lifeopsInbox.allGmail", { defaultValue: "All Gmail" })}
+            active={selectedGmailAccount === ALL_GMAIL_ACCOUNTS}
+            onClick={() => setSelectedGmailAccount(ALL_GMAIL_ACCOUNTS)}
+          />
+          {gmailAccountOptions.map((opt) => (
+            <GmailAccountChip
+              key={opt.id}
+              label={`Gmail · ${opt.label}`}
+              active={selectedGmailAccount === opt.id}
+              onClick={() => setSelectedGmailAccount(opt.id)}
+            />
+          ))}
+        </div>
+      ) : null}
 
       {inbox.error ? (
         <div className="px-5 py-4 text-xs text-rose-300">{inbox.error}</div>
@@ -716,9 +1166,9 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
       ) : (
         <div className="flex min-h-0 flex-1">
           {compactLayout ? (
-            selectedMessage ? (
+            selectedThread ? (
               <ReaderPane
-                message={selectedMessage}
+                threadGroup={selectedThread}
                 onReply={handleReply}
                 onChat={handleChat}
                 onBack={() => onSelect({ messageId: null })}
@@ -730,6 +1180,9 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
                 onSelect={onSelect}
                 onReply={handleReply}
                 emptyLabel={props.emptyLabel}
+                groupedMode={true}
+                visibleThreadGroups={inbox.threadGroups}
+                showGmailAccountSubtitles={showGmailAccountSubtitles}
               />
             )
           ) : (
@@ -741,11 +1194,14 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
                   onSelect={onSelect}
                   onReply={handleReply}
                   emptyLabel={props.emptyLabel}
+                  groupedMode={true}
+                  visibleThreadGroups={inbox.threadGroups}
+                  showGmailAccountSubtitles={showGmailAccountSubtitles}
                 />
               </div>
 
               <ReaderPane
-                message={selectedMessage}
+                threadGroup={selectedThread}
                 onReply={handleReply}
                 onChat={handleChat}
               />

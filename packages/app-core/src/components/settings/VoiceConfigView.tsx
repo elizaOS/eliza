@@ -252,13 +252,9 @@ export function DesktopTalkModePanel() {
           </Card>
           <Card className="border-border/50 bg-bg-hover/60 shadow-none">
             <CardContent className="px-2.5 py-2 text-xs-tight">
-              <div className="text-2xs text-muted">
-                {t("common.enabled")}
-              </div>
+              <div className="text-2xs text-muted">{t("common.enabled")}</div>
               <div className="font-semibold text-txt">
-                {panelState.enabled
-                  ? t("common.yes")
-                  : t("common.no")}
+                {panelState.enabled ? t("common.yes") : t("common.no")}
               </div>
             </CardContent>
           </Card>
@@ -268,9 +264,7 @@ export function DesktopTalkModePanel() {
                 {t("voiceconfigview.Speaking")}
               </div>
               <div className="font-semibold text-txt">
-                {panelState.speaking
-                  ? t("common.yes")
-                  : t("common.no")}
+                {panelState.speaking ? t("common.yes") : t("common.no")}
               </div>
             </CardContent>
           </Card>
@@ -932,9 +926,7 @@ export function VoiceConfigView() {
             </div>
           )}
           <div className="flex flex-col gap-2">
-            <div className="text-xs font-semibold">
-              {t("common.voice")}
-            </div>
+            <div className="text-xs font-semibold">{t("common.voice")}</div>
             <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
               {PREMADE_VOICES.map((preset) => {
                 const active = selectedVoiceId === preset.voiceId;

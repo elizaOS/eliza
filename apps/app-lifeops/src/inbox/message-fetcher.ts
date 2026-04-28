@@ -1,16 +1,22 @@
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
 import {
   expandConnectorSourceFilter,
+  type GetLifeOpsGmailTriageRequest,
+  type LifeOpsGmailTriageFeed,
+  type LifeOpsGoogleConnectorStatus,
+  type LifeOpsXConnectorStatus,
+  type LifeOpsXDm,
   normalizeConnectorSource,
-} from "@elizaos/shared/connectors";
-import type {
-  LifeOpsGmailTriageFeed,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsXConnectorStatus,
-  LifeOpsXDm,
-} from "@elizaos/shared/contracts/lifeops";
+} from "@elizaos/shared";
 import { buildDeepLink, resolveChannelName } from "./channel-deep-links.js";
 import type { InboundMessage } from "./types.js";
+
+/**
+ * Discord public channels are typically larger than DMs / threads. We use this
+ * threshold both to treat sufficiently-large groups as broadcast channels and
+ * to drive the v1 small-group filter in the Messages section.
+ */
+const PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD = 15;
 
 const DEFAULT_SOURCES = [
   "discord",
@@ -32,7 +38,10 @@ export interface GmailInboxSource {
   getGoogleConnectorStatus(
     requestUrl: URL,
   ): Promise<LifeOpsGoogleConnectorStatus>;
-  getGmailTriage(requestUrl: URL): Promise<LifeOpsGmailTriageFeed>;
+  getGmailTriage(
+    requestUrl: URL,
+    request?: GetLifeOpsGmailTriageRequest,
+  ): Promise<LifeOpsGmailTriageFeed>;
 }
 
 export interface XDmInboxSource {
@@ -117,6 +126,16 @@ export async function fetchChatMessages(
     messagesByRoom.set(m.roomId, arr);
   }
 
+  // Fetch participant counts per room exactly once. Used to classify groups
+  // vs public channels and to filter out >15-person rooms in the inbox.
+  const participantCountByRoom = new Map<string, number>();
+  await Promise.all(
+    sourceRooms.map(async (room) => {
+      const ids = await runtime.getParticipantsForRoom(room.id);
+      participantCountByRoom.set(room.id, ids.length);
+    }),
+  );
+
   const results: InboundMessage[] = [];
   for (const memory of filtered.slice(0, limit)) {
     const room = roomMap.get(memory.roomId);
@@ -127,6 +146,8 @@ export async function fetchChatMessages(
     const senderName = extractSenderName(memory) ?? "Unknown";
     const channelName = resolveChannelName(source, room?.name, senderName);
     const channelType = detectChannelType(room);
+    const participantCount = participantCountByRoom.get(memory.roomId);
+    const chatType = classifyChatType(room, channelType, participantCount);
     const world = room?.worldId ? worldMap.get(room.worldId) : undefined;
     const deepLink = await buildDeepLink(runtime, source, {
       roomId: memory.roomId,
@@ -162,6 +183,9 @@ export async function fetchChatMessages(
       timestamp: memory.createdAt ?? Date.now(),
       deepLink: deepLink ?? undefined,
       threadMessages: threadMessages.length > 0 ? threadMessages : undefined,
+      threadId: memory.roomId,
+      chatType,
+      participantCount,
     });
   }
 
@@ -173,6 +197,8 @@ export async function fetchGmailMessages(
   opts: {
     sinceIso?: string;
     limit?: number;
+    /** Filter to a single Gmail account by Google grant id. */
+    grantId?: string;
   },
 ): Promise<InboundMessage[]> {
   const status = await source.getGoogleConnectorStatus(INTERNAL_URL);
@@ -180,10 +206,20 @@ export async function fetchGmailMessages(
   const capabilities = status.grantedCapabilities ?? [];
   if (!capabilities.includes("google.gmail.triage")) return [];
 
-  const triageFeed = await source.getGmailTriage(INTERNAL_URL);
+  const limit = opts.limit ?? 50;
+
+  // When no grantId is supplied, the service-side getGmailTriage already
+  // aggregates across every Google grant and tags each summary with grantId
+  // and accountEmail. We forward those onto the InboundMessage so the inbox
+  // mixin can group by account and render account chips.
+  const triageFeed = await source.getGmailTriage(
+    INTERNAL_URL,
+    opts.grantId
+      ? { grantId: opts.grantId, maxResults: limit }
+      : { maxResults: limit },
+  );
   if (triageFeed.messages.length === 0) return [];
 
-  const limit = opts.limit ?? 50;
   const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : 0;
 
   const results: InboundMessage[] = [];
@@ -212,6 +248,10 @@ export async function fetchGmailMessages(
       gmailMessageId: msg.externalId || msg.id,
       gmailIsImportant: msg.isImportant ?? false,
       gmailLikelyReplyNeeded: msg.likelyReplyNeeded ?? false,
+      threadId: msg.threadId,
+      chatType: "dm",
+      gmailAccountId: msg.grantId,
+      gmailAccountEmail: msg.accountEmail ?? undefined,
     });
   }
 
@@ -252,6 +292,7 @@ export async function fetchXDmMessages(
         ? metadata.participantId.trim()
         : dm.senderId;
     const isGroup = participantIds.length > 2;
+    const xParticipantCount = participantIds.length || (isGroup ? undefined : 2);
     results.push({
       id: dm.id,
       source: "x_dm",
@@ -264,6 +305,9 @@ export async function fetchXDmMessages(
       text: dm.text,
       snippet: dm.text.slice(0, SNIPPET_MAX_LENGTH),
       timestamp: Number.isFinite(receivedMs) ? receivedMs : Date.now(),
+      threadId: dm.conversationId,
+      chatType: isGroup ? "group" : "dm",
+      participantCount: xParticipantCount,
     });
   }
 
@@ -279,6 +323,8 @@ export async function fetchAllMessages(
     includeGmail?: boolean;
     gmailSource?: GmailInboxSource;
     xDmSource?: XDmInboxSource;
+    /** Filter Gmail to a single account by Google grant id. */
+    gmailGrantId?: string;
   },
 ): Promise<InboundMessage[]> {
   const includeGmail =
@@ -289,6 +335,7 @@ export async function fetchAllMessages(
       ? fetchGmailMessages(opts.gmailSource, {
           sinceIso: opts.sinceIso,
           limit: opts.limit,
+          grantId: opts.gmailGrantId,
         })
       : Promise.reject(
           new Error(
@@ -379,4 +426,36 @@ function detectChannelType(room: Room | undefined): "dm" | "group" {
     if (lower.includes("group") || lower.includes("channel")) return "group";
   }
   return "dm";
+}
+
+/**
+ * Classify a room as DM, small group, or public channel/broadcast.
+ * Discord text channels (`GUILD_TEXT`, `voice`, etc.) are treated as channels.
+ * Anything with more than {@link PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD}
+ * participants is also treated as a channel so the inbox can hide it.
+ */
+function classifyChatType(
+  room: Room | undefined,
+  channelType: "dm" | "group",
+  participantCount: number | undefined,
+): "dm" | "group" | "channel" {
+  const rawType =
+    typeof room?.type === "string" ? room.type.toLowerCase() : "";
+  const isLikelyPublicChannel =
+    rawType.includes("guild") ||
+    rawType.includes("voice") ||
+    rawType.includes("forum") ||
+    rawType.includes("public") ||
+    rawType.includes("broadcast");
+  if (channelType === "dm") {
+    return "dm";
+  }
+  if (
+    isLikelyPublicChannel ||
+    (typeof participantCount === "number" &&
+      participantCount > PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD)
+  ) {
+    return "channel";
+  }
+  return "group";
 }

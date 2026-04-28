@@ -17,7 +17,7 @@ import type {
   BrowserWorkspaceTab,
   NavigateBrowserWorkspaceTabRequest,
   OpenBrowserWorkspaceTabRequest,
-} from "@elizaos/agent/services/browser-workspace";
+} from "@elizaos/agent";
 import type { RPCSchema } from "electrobun/bun";
 import type { ExistingElizaInstallInfo } from "../../../src/types/index.js";
 
@@ -216,12 +216,12 @@ export type {
   PermissionState,
   PermissionStatus,
   SystemPermissionId,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 
 import type {
   PermissionState,
   SystemPermissionId,
-} from "@elizaos/shared/contracts/permissions";
+} from "@elizaos/shared";
 
 /** Local variant uses an index signature (the canonical contract uses explicit keys). */
 export interface AllPermissionsState {
@@ -700,7 +700,12 @@ export type ElizaDesktopRPCSchema = {
         response: DesktopManagedWindowSnapshot | null;
       };
       desktopOpenAppWindow: {
-        params: { title: string; path: string; alwaysOnTop?: boolean };
+        params: {
+          slug?: string;
+          title: string;
+          path: string;
+          alwaysOnTop?: boolean;
+        };
         response: DesktopManagedWindowSnapshot | null;
       };
       desktopSetManagedWindowAlwaysOnTop: {
@@ -1263,9 +1268,27 @@ export type ElizaDesktopRPCSchema = {
     };
   }>;
   webview: RPCSchema<{
-    // biome-ignore lint/complexity/noBannedTypes: empty request schema — built-in methods added by Electroview
     requests: {
-      // Built-in: evaluateJavascriptWithResponse is added by Electroview
+      // Built-in: evaluateJavascriptWithResponse is added by Electroview.
+
+      // Browser Workspace — bun delegates evaluate/get-tab-rect to the
+      // renderer, which holds the <electrobun-webview> tag refs and runs the
+      // request against the matching tab. The rect is in CSS pixels relative
+      // to the renderer viewport; bun adds the main-window origin and runs
+      // the OS screencapture itself.
+      browserWorkspaceRendererEvaluate: {
+        params: { id: string; script: string; timeoutMs: number };
+        response: { ok: boolean; result?: unknown; error?: string };
+      };
+      browserWorkspaceRendererGetTabRect: {
+        params: { id: string };
+        response: {
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        } | null;
+      };
     };
     messages: {
       // Push events FROM bun TO webview

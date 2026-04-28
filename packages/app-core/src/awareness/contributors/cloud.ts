@@ -3,7 +3,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type { AwarenessContributor } from "@elizaos/shared/contracts";
+import type { AwarenessContributor } from "@elizaos/shared";
 
 export const cloudContributor: AwarenessContributor = {
   id: "cloud",

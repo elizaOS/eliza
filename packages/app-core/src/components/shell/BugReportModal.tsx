@@ -226,8 +226,17 @@ export function BugReportModal() {
   }, [buildDiagnosticsBlock, form.logs]);
 
   const formatMarkdown = useCallback((): string => {
-    const strip = (s: string, max = 10_000) =>
-      s.replace(/<[^>]*>/g, "").slice(0, max);
+    const strip = (s: string, max = 10_000) => {
+      const truncated = s.length > max ? s.slice(0, max) : s;
+      // Iteratively strip `<...>` tags to defeat embedded `<scr<script>ipt>` patterns.
+      let out = truncated;
+      let prev: string;
+      do {
+        prev = out;
+        out = out.replace(/<[^>]*>/g, "");
+      } while (out !== prev);
+      return out.slice(0, max);
+    };
     const lines: string[] = [];
     lines.push(`### Description\n${strip(form.description)}`);
     lines.push(`\n### Steps to Reproduce\n${strip(form.stepsToReproduce)}`);
@@ -619,9 +628,7 @@ export function BugReportModal() {
             <Field>
               <div className="flex items-center justify-between gap-3">
                 <div className="space-y-1">
-                  <FieldLabel className="mb-0">
-                    {t("common.logs")}
-                  </FieldLabel>
+                  <FieldLabel className="mb-0">{t("common.logs")}</FieldLabel>
                   <FieldDescription className={subtleMonoDescriptionClassName}>
                     {t("bugreportmodal.LogsHint", {
                       defaultValue:

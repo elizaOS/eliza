@@ -7,12 +7,21 @@ import {
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
 } from "@elizaos/agent/services/browser-workspace";
-import type { BrowserBridgePageContext } from "@elizaos/plugin-browser-bridge/contracts";
-import type { LifeOpsConnectorSide } from "@elizaos/shared/contracts/lifeops";
+import type { BrowserBridgePageContext } from "@elizaos/plugin-browser-bridge";
+import type { LifeOpsConnectorSide } from "@elizaos/shared";
 
 export const DISCORD_APP_URL = "https://discord.com/channels/@me";
 const DISCORD_APP_TITLE = "Discord";
 const DISCORD_DM_PREVIEW_LIMIT = 5;
+
+function isDiscordHost(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.hostname === "discord.com" || u.hostname.endsWith(".discord.com");
+  } catch {
+    return false;
+  }
+}
 
 export interface DiscordTabIdentity {
   id: string | null;
@@ -232,7 +241,7 @@ export function probeDiscordCapturedPage(
         mainText?: string | null;
         links?: Array<{ text: string; href: string }>;
         forms?: Array<{ action: string | null; fields: string[] }>;
-	      },
+      },
 ): DiscordTabProbe {
   const safeUrl = normalizeDiscordText(page.url);
   if (!safeUrl || !isDiscordUrl(safeUrl)) {
@@ -369,7 +378,7 @@ export function probeDiscordDocumentState(
   }
 }
 
-function buildDiscordProbeScript(): string {
+export function buildDiscordProbeScript(): string {
   return `(() => {
     const DISCORD_DM_PREVIEW_LIMIT = ${DISCORD_DM_PREVIEW_LIMIT};
     const normalizeDiscordText = ${normalizeDiscordText.toString()};
@@ -412,7 +421,7 @@ async function findTabByIdOrPartition(
     (tab) =>
       tab.partition === partition &&
       typeof tab.url === "string" &&
-      tab.url.includes("discord.com"),
+      isDiscordHost(tab.url),
   );
   if (byPartition) return { id: byPartition.id, url: byPartition.url };
   return null;
@@ -510,23 +519,72 @@ export interface DiscordMessageSearchResult {
   id: string | null;
   content: string;
   authorName: string | null;
+  guildId: string | null;
   channelId: string | null;
   timestamp: string | null;
   /** Delivery status indicator derived from DOM state (partial). */
   deliveryStatus: "sent" | "sending" | "failed" | "unknown";
 }
 
-/**
- * DOM script injected into the Discord tab to read search results from the
- * "Search Results" panel after Discord's own Ctrl+F / search UX has rendered.
- *
- * Discord renders search results inside `[class*="searchResultMessage"]` or
- * the newer `[data-testid*="message-item"]` containers. We read what the DOM
- * exposes — no regex on content, no heuristics.
- */
+function normalizeDiscordDeliveryStatus(
+  value: unknown,
+): DiscordMessageSearchResult["deliveryStatus"] | null {
+  return value === "sent" ||
+    value === "sending" ||
+    value === "failed" ||
+    value === "unknown"
+    ? value
+    : null;
+}
+
+function normalizeDiscordResultText(value: unknown): string | null {
+  return typeof value === "string" ? normalizeDiscordText(value) : null;
+}
+
+function normalizeDiscordMessageSearchResults(
+  value: unknown,
+  operation: string,
+): DiscordMessageSearchResult[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Discord ${operation} returned an invalid result.`);
+  }
+
+  return value.map((item, index) => {
+    if (!item || typeof item !== "object") {
+      throw new Error(`Discord ${operation} result ${index} is invalid.`);
+    }
+    const record = item as Record<string, unknown>;
+    if (typeof record.content !== "string") {
+      throw new Error(
+        `Discord ${operation} result ${index} is missing content.`,
+      );
+    }
+    const deliveryStatus = normalizeDiscordDeliveryStatus(
+      record.deliveryStatus,
+    );
+    if (!deliveryStatus) {
+      throw new Error(
+        `Discord ${operation} result ${index} has invalid delivery status.`,
+      );
+    }
+    return {
+      id: normalizeDiscordResultText(record.id),
+      content: record.content,
+      authorName: normalizeDiscordResultText(record.authorName),
+      guildId: normalizeDiscordResultText(record.guildId),
+      channelId: normalizeDiscordResultText(record.channelId),
+      timestamp: normalizeDiscordResultText(record.timestamp),
+      deliveryStatus,
+    };
+  });
+}
+
 function buildDiscordSearchResultsScript(): string {
   return `(() => {
     const results = [];
+    const routeMatch = window.location.href.match(/\\/channels\\/([^/?#]+)\\/([^/?#]+)/);
+    const guildId = routeMatch && routeMatch[1] !== "@me" ? routeMatch[1] : null;
+    const channelId = routeMatch ? routeMatch[2] : null;
     const containers = Array.from(
       document.querySelectorAll(
         '[class*="searchResultMessage"], [class*="search-result-message"]'
@@ -556,11 +614,7 @@ function buildDiscordSearchResultsScript(): string {
         ? timestampEl.getAttribute('datetime')
         : null;
 
-      const href = window.location.href;
-      const channelMatch = href.match(/\\/channels\\/@me\\/([\\d]+)/);
-      const channelId = channelMatch ? channelMatch[1] : null;
-
-      results.push({ id, content, authorName, channelId, timestamp, deliveryStatus: "unknown" });
+      results.push({ id, content, authorName, guildId, channelId, timestamp, deliveryStatus: "unknown" });
     }
     return results;
   })();`;
@@ -625,10 +679,22 @@ export async function searchDiscordMessages(args: {
     }
   })();`;
 
-  await evaluateBrowserWorkspaceTab(
+  const injected = await evaluateBrowserWorkspaceTab(
     { id: args.tabId, script: searchScript },
     env,
   );
+  if (
+    !injected ||
+    typeof injected !== "object" ||
+    (injected as { injected?: unknown }).injected !== true
+  ) {
+    const error =
+      typeof (injected as { error?: unknown } | null)?.error === "string"
+        ? ` ${(injected as { error: string }).error}`
+        : "";
+    throw new Error(`Discord search injection failed.${error}`);
+  }
+
   // Wait for Discord's search results panel to render.
   await new Promise((resolve) => setTimeout(resolve, 1200));
 
@@ -637,8 +703,7 @@ export async function searchDiscordMessages(args: {
     env,
   )) as DiscordMessageSearchResult[] | null | undefined;
 
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((item) => typeof item === "object" && item !== null);
+  return normalizeDiscordMessageSearchResults(raw, "search");
 }
 
 // ---------------------------------------------------------------------------
@@ -662,6 +727,9 @@ export async function captureDiscordDeliveryStatus(args: {
   const env = args.env ?? process.env;
   const script = `(() => {
     const results = [];
+    const routeMatch = window.location.href.match(/\\/channels\\/([^/?#]+)\\/([^/?#]+)/);
+    const guildId = routeMatch && routeMatch[1] !== "@me" ? routeMatch[1] : null;
+    const channelId = routeMatch ? routeMatch[2] : null;
     const messages = Array.from(
       document.querySelectorAll('[class*="message-"] [id^="message-content-"], [id^="chat-messages-"] li')
     );
@@ -683,7 +751,7 @@ export async function captureDiscordDeliveryStatus(args: {
         !!el.querySelector('[aria-label*="failed" i]');
       const deliveryStatus = isFailed ? 'failed' : isSending ? 'sending' : 'sent';
 
-      results.push({ id, content, authorName: null, channelId: null, timestamp, deliveryStatus });
+      results.push({ id, content, authorName: null, guildId, channelId, timestamp, deliveryStatus });
     }
     return results;
   })();`;
@@ -693,6 +761,5 @@ export async function captureDiscordDeliveryStatus(args: {
     env,
   )) as DiscordMessageSearchResult[] | null | undefined;
 
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((item) => typeof item === "object" && item !== null);
+  return normalizeDiscordMessageSearchResults(raw, "delivery status capture");
 }

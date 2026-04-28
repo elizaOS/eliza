@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
+import { isPrivyWalletProvisioningEnabled } from "@elizaos/app-steward/services/privy-wallets";
 import {
   type AgentRuntime,
   type ChannelType,
@@ -24,7 +25,7 @@ import {
   resolveStylePresetByAvatarIndex,
   resolveStylePresetById,
   resolveStylePresetByName,
-} from "@elizaos/shared/onboarding-presets";
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import {
@@ -42,7 +43,6 @@ import {
   isPluginManagerLike,
   type PluginManagerLike,
 } from "../services/plugin-manager-types.js";
-import { isPrivyWalletProvisioningEnabled } from "../services/privy-wallets.js";
 import { maybeAugmentChatMessageWithKnowledge as augmentChatMessageWithKnowledge } from "./chat-augmentation.js";
 import { extractCompatTextContent } from "./compat-utils.js";
 import { sendJsonError } from "./http-helpers.js";

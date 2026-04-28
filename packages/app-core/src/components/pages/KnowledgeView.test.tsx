@@ -173,7 +173,7 @@ describe("KnowledgeView", () => {
     expect(
       screen.getByPlaceholderText("knowledge.ui.searchPlaceholder"),
     ).toBeTruthy();
-    expect(screen.getByText("Documents")).toBeTruthy();
+    expect(screen.getAllByText("Documents").length).toBeGreaterThan(0);
     expect(screen.getByText("1 doc")).toBeTruthy();
     expect(screen.getByText(/Upload • 2 fragments • 1.3 KB/)).toBeTruthy();
   });

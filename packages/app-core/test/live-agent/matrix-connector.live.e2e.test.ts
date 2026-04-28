@@ -37,8 +37,8 @@ import {
 import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import { sleep } from "../../../../../test/helpers/test-utils";
+import { describeIf } from "../helpers/conditional-tests.ts";
+import { sleep } from "../helpers/test-utils";
 
 // ---------------------------------------------------------------------------
 // Environment Setup

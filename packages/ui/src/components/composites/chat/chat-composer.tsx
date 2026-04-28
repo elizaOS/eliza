@@ -188,9 +188,7 @@ export function ChatComposer({
         : t("common.send")
       : t("chat.stopSpeaking");
   const actionButtonLabel = isGameModal ? undefined : actionButtonTitle;
-  const inputPlaceholder = isNarrow
-    ? t("common.message")
-    : t("common.message");
+  const inputPlaceholder = isNarrow ? t("common.message") : t("common.message");
   const voiceButtonTitle = isAgentStarting
     ? t("chat.agentStarting")
     : voice.isListening

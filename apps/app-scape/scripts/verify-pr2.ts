@@ -23,15 +23,13 @@ import {
     getElizaCuratedAppDefinition,
     isElizaCuratedAppName,
     normalizeElizaCuratedAppName,
-} from "@elizaos/shared/contracts/apps";
+} from "@elizaos/shared";
 import appScapePlugin, {
     createAppScapePlugin,
-} from "@elizaos/app-scape";
-import {
     handleAppRoutes,
     refreshRunSession,
     resolveLaunchSession,
-} from "@elizaos/app-scape/routes";
+} from "@elizaos/app-scape";
 
 interface MockResponse {
     statusCode: number;
@@ -73,6 +71,23 @@ function assertTrue(label: string, ok: boolean): void {
     } else {
         console.log(`  ✗ ${label}`);
         process.exitCode = 1;
+    }
+}
+
+function iframeSrcMatches(html: string, expected: string): boolean {
+    const match = html.match(/id="scape-frame"[^>]*\bsrc="([^"]+)"/);
+    if (!match) return false;
+    try {
+        const actual = new URL(match[1] ?? "");
+        const target = new URL(expected);
+        return (
+            actual.protocol === target.protocol &&
+            actual.hostname === target.hostname &&
+            actual.pathname.replace(/\/$/, "") ===
+                target.pathname.replace(/\/$/, "")
+        );
+    } catch {
+        return false;
     }
 }
 
@@ -157,7 +172,7 @@ async function main(): Promise<void> {
     assertTrue(
         "body contains iframe pointing at default deployed 'scape client",
         res.body.includes('id="scape-frame"') &&
-            res.body.includes("https://scape-client-2sqyc.kinsta.page"),
+            iframeSrcMatches(res.body, "https://scape-client-2sqyc.kinsta.page"),
     );
     assertTrue(
         "body contains fallback block",
@@ -179,7 +194,7 @@ async function main(): Promise<void> {
     });
     assertTrue(
         "iframe src reflects SCAPE_CLIENT_URL override",
-        res2.body.includes("https://example.test/custom-scape"),
+        iframeSrcMatches(res2.body, "https://example.test/custom-scape"),
     );
     delete process.env.SCAPE_CLIENT_URL;
 

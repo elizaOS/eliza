@@ -47,7 +47,6 @@ import { JournalService } from "./journal-service.js";
  * Override via SCAPE_BOT_SDK_URL character secret or process env
  * to target a local dev xRSPS instance, e.g.
  *   ws://127.0.0.1:8080/botsdk   (shared-HTTP topology)
- *   ws://127.0.0.1:43595         (legacy standalone BOT_SDK_PORT)
  */
 const DEFAULT_BOT_SDK_URL = "wss://scape-96cxt.sevalla.app/botsdk";
 const _DEFAULT_AGENT_NAME = "scape-agent";
@@ -119,12 +118,6 @@ const MODEL_SIZE_MAP: Record<string, ScapeModelSize> = {
   SMALL: ModelType.TEXT_SMALL,
   MEDIUM: ModelType.TEXT_MEDIUM,
   LARGE: ModelType.TEXT_LARGE,
-  // Back-compat: `@elizaos/core`'s ModelType has no MINI tier (the real
-  // progression is NANO → SMALL → MEDIUM → LARGE → MEGA). Earlier docs
-  // advertised a MINI option that silently fell through to TEXT_SMALL at
-  // runtime; preserve that behavior so existing configs keep working.
-  MINI: ModelType.TEXT_SMALL,
-  TEXT_MINI: ModelType.TEXT_SMALL,
 };
 
 interface EventLogEntry {

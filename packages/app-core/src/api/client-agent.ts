@@ -5,19 +5,20 @@
 
 import type {
   AllPermissionsState,
+  LinkedAccountConfig,
+  LinkedAccountProviderId,
+  OnboardingConnectorConfig as ConnectorConfig,
+  OnboardingOptions,
   PermissionState,
+  ServiceRouteAccountStrategy,
+  SubscriptionStatusResponse,
   SystemPermissionId,
-} from "@elizaos/agent/contracts/permissions";
+} from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
-import type {
-  OnboardingConnectorConfig as ConnectorConfig,
-  OnboardingOptions,
-  SubscriptionStatusResponse,
-} from "@elizaos/shared/contracts/onboarding";
 import {
   type AppBlockerInstalledApp,
   type AppBlockerPermissionResult,
@@ -88,12 +89,6 @@ import {
   mapPtySessionsToCodingAgentSessions,
   mapTaskThreadsToCodingAgentSessions,
 } from "./client-types";
-
-type RolodexGraphQuery = RelationshipsGraphQuery;
-type RolodexGraphSnapshot = RelationshipsGraphSnapshot;
-type RolodexGraphStats = RelationshipsGraphStats;
-type RolodexPersonDetail = RelationshipsPersonDetail;
-type RolodexPersonSummary = RelationshipsPersonSummary;
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
@@ -179,6 +174,71 @@ function logSettingsClient(
 const SETTINGS_MUTATION_TIMEOUT_MS = 30_000;
 
 // ---------------------------------------------------------------------------
+// Bootstrap exchange types
+// ---------------------------------------------------------------------------
+
+/** Successful response from POST /api/auth/bootstrap/exchange. */
+export interface BootstrapExchangeSuccess {
+  ok: true;
+  sessionId: string;
+  expiresAt: number;
+  identityId: string;
+}
+
+/** Failure response from POST /api/auth/bootstrap/exchange. */
+export interface BootstrapExchangeFailure {
+  ok: false;
+  status: 400 | 401 | 429 | 503;
+  error: string;
+  reason?: string;
+}
+
+export type BootstrapExchangeResult =
+  | BootstrapExchangeSuccess
+  | BootstrapExchangeFailure;
+
+// ---------------------------------------------------------------------------
+// Multi-account routes (WS3) — surfaced under `/api/accounts/*` and the
+// per-provider `/api/providers/:providerId/strategy` endpoint. The on-disk
+// `LinkedAccountConfig` records are joined with a `hasCredential` flag so
+// the UI can spot orphan metadata.
+// ---------------------------------------------------------------------------
+
+export type AccountStrategy = ServiceRouteAccountStrategy;
+
+export interface AccountWithCredentialFlag extends LinkedAccountConfig {
+  hasCredential: boolean;
+}
+
+export interface AccountsListProvider {
+  providerId: LinkedAccountProviderId;
+  strategy: AccountStrategy;
+  accounts: AccountWithCredentialFlag[];
+}
+
+export interface AccountsListResponse {
+  providers: AccountsListProvider[];
+}
+
+export interface AccountTestResult {
+  ok: boolean;
+  latencyMs?: number;
+  status?: number;
+  error?: string;
+}
+
+export interface AccountRefreshUsageResult {
+  account: LinkedAccountConfig;
+  source: "pool" | "inline-probe";
+}
+
+export interface AccountOAuthStartResult {
+  sessionId: string;
+  authUrl: string;
+  needsCodeSubmission: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
 
@@ -224,9 +284,14 @@ declare module "./client-base" {
     }>;
     getAuthStatus(): Promise<{
       required: boolean;
+      loginRequired?: boolean;
+      bootstrapRequired?: boolean;
+      localAccess?: boolean;
+      passwordConfigured?: boolean;
       pairingEnabled: boolean;
       expiresAt: number | null;
     }>;
+    postBootstrapExchange(token: string): Promise<BootstrapExchangeResult>;
     pair(code: string): Promise<{ token: string }>;
     getOnboardingOptions(): Promise<OnboardingOptions>;
     submitOnboarding(data: Record<string, unknown>): Promise<void>;
@@ -269,6 +334,44 @@ declare module "./client-base" {
     updateConfig(
       patch: Record<string, unknown>,
     ): Promise<Record<string, unknown>>;
+    listAccounts(): Promise<AccountsListResponse>;
+    createApiKeyAccount(
+      providerId: LinkedAccountProviderId,
+      body: { label: string; apiKey: string },
+    ): Promise<LinkedAccountConfig>;
+    patchAccount(
+      providerId: LinkedAccountProviderId,
+      accountId: string,
+      body: Partial<{ label: string; enabled: boolean; priority: number }>,
+    ): Promise<LinkedAccountConfig>;
+    deleteAccount(
+      providerId: LinkedAccountProviderId,
+      accountId: string,
+    ): Promise<{ deleted: boolean }>;
+    testAccount(
+      providerId: LinkedAccountProviderId,
+      accountId: string,
+    ): Promise<AccountTestResult>;
+    refreshAccountUsage(
+      providerId: LinkedAccountProviderId,
+      accountId: string,
+    ): Promise<AccountRefreshUsageResult>;
+    startAccountOAuth(
+      providerId: LinkedAccountProviderId,
+      body: { label: string },
+    ): Promise<AccountOAuthStartResult>;
+    submitAccountOAuthCode(
+      providerId: LinkedAccountProviderId,
+      body: { sessionId: string; code: string },
+    ): Promise<{ accepted: boolean }>;
+    cancelAccountOAuth(
+      providerId: LinkedAccountProviderId,
+      body: { sessionId: string },
+    ): Promise<{ cancelled: boolean }>;
+    patchProviderStrategy(
+      providerId: LinkedAccountProviderId,
+      body: { strategy: AccountStrategy },
+    ): Promise<{ providerId: LinkedAccountProviderId; strategy: AccountStrategy }>;
     uploadCustomVrm(file: File): Promise<void>;
     hasCustomVrm(): Promise<boolean>;
     uploadCustomBackground(file: File): Promise<void>;
@@ -413,12 +516,6 @@ declare module "./client-base" {
       targetEntityId: string,
       evidence?: Record<string, unknown>,
     ): Promise<{ id: string; status: string }>;
-    getRolodexGraph(query?: RolodexGraphQuery): Promise<RolodexGraphSnapshot>;
-    getRolodexPeople(query?: RolodexGraphQuery): Promise<{
-      people: RolodexPersonSummary[];
-      stats: RolodexGraphStats;
-    }>;
-    getRolodexPerson(id: string): Promise<RolodexPersonDetail>;
     getCharacter(): Promise<{
       character: CharacterData;
       agentName: string;
@@ -786,6 +883,59 @@ ElizaClient.prototype.getAuthStatus = async function (this: ElizaClient) {
   throw lastErr;
 };
 
+ElizaClient.prototype.postBootstrapExchange = async function (
+  this: ElizaClient,
+  token: string,
+): Promise<BootstrapExchangeResult> {
+  // Use allowNonOk so 401/429/503 bodies are parsed rather than thrown.
+  const body = await this.fetch<{
+    sessionId?: string;
+    expiresAt?: number;
+    identityId?: string;
+    error?: string;
+    reason?: string;
+  }>(
+    "/api/auth/bootstrap/exchange",
+    {
+      method: "POST",
+      body: JSON.stringify({ token }),
+    },
+    { allowNonOk: true },
+  );
+
+  if (
+    typeof body.sessionId === "string" &&
+    typeof body.expiresAt === "number" &&
+    typeof body.identityId === "string"
+  ) {
+    return {
+      ok: true,
+      sessionId: body.sessionId,
+      expiresAt: body.expiresAt,
+      identityId: body.identityId,
+    };
+  }
+
+  // Map reason to an HTTP status bucket for the UI layer.
+  const reason = body.reason;
+  const status: 400 | 401 | 429 | 503 =
+    reason === "rate_limited"
+      ? 429
+      : reason === "db_unavailable" ||
+          reason === "missing_issuer_env" ||
+          reason === "missing_container_env"
+        ? 503
+        : reason === "missing_token"
+          ? 400
+          : 401;
+  return {
+    ok: false,
+    status,
+    error: body.error ?? "exchange_failed",
+    reason,
+  };
+};
+
 ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
   const res = await this.fetch<{ token: string }>("/api/auth/pair", {
     method: "POST",
@@ -934,14 +1084,16 @@ ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
     );
     return res.status;
   } catch {
-    // Back-compat for older runtimes that still expose the legacy restart path.
-    const legacy = await this.fetch<{ status: AgentStatus }>(
-      "/api@elizaos/agent/restart",
-      {
-        method: "POST",
-      },
-    );
-    return legacy.status;
+    // Back-compat for older runtimes that still expose only the process-level
+    // restart endpoint.
+    await this.fetch<{ ok: boolean }>("/api/restart", { method: "POST" });
+    return {
+      state: "restarting",
+      agentName: "Eliza",
+      model: undefined,
+      uptime: undefined,
+      startedAt: undefined,
+    };
   }
 };
 
@@ -1667,27 +1819,6 @@ ElizaClient.prototype.proposeRelationshipsLink = async function (
     },
   );
   return response.data;
-};
-
-ElizaClient.prototype.getRolodexGraph = async function (
-  this: ElizaClient,
-  query,
-) {
-  return this.getRelationshipsGraph(query);
-};
-
-ElizaClient.prototype.getRolodexPeople = async function (
-  this: ElizaClient,
-  query,
-) {
-  return this.getRelationshipsPeople(query);
-};
-
-ElizaClient.prototype.getRolodexPerson = async function (
-  this: ElizaClient,
-  id,
-) {
-  return this.getRelationshipsPerson(id);
 };
 
 ElizaClient.prototype.getCharacter = async function (this: ElizaClient) {
@@ -2436,5 +2567,131 @@ ElizaClient.prototype.saveStreamSettings = async function (
   return this.fetch("/api/stream/settings", {
     method: "POST",
     body: JSON.stringify({ settings }),
+  });
+};
+
+// ---------------------------------------------------------------------------
+// Multi-account routes (WS3)
+// ---------------------------------------------------------------------------
+
+ElizaClient.prototype.listAccounts = async function (this: ElizaClient) {
+  return this.fetch<AccountsListResponse>("/api/accounts");
+};
+
+ElizaClient.prototype.createApiKeyAccount = async function (
+  this: ElizaClient,
+  providerId,
+  body,
+) {
+  return this.fetch<LinkedAccountConfig>(
+    `/api/accounts/${encodeURIComponent(providerId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ source: "api-key", ...body }),
+    },
+  );
+};
+
+ElizaClient.prototype.patchAccount = async function (
+  this: ElizaClient,
+  providerId,
+  accountId,
+  body,
+) {
+  return this.fetch<LinkedAccountConfig>(
+    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
+};
+
+ElizaClient.prototype.deleteAccount = async function (
+  this: ElizaClient,
+  providerId,
+  accountId,
+) {
+  return this.fetch<{ deleted: boolean }>(
+    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}`,
+    { method: "DELETE" },
+  );
+};
+
+ElizaClient.prototype.testAccount = async function (
+  this: ElizaClient,
+  providerId,
+  accountId,
+) {
+  return this.fetch<AccountTestResult>(
+    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}/test`,
+    { method: "POST" },
+  );
+};
+
+ElizaClient.prototype.refreshAccountUsage = async function (
+  this: ElizaClient,
+  providerId,
+  accountId,
+) {
+  return this.fetch<AccountRefreshUsageResult>(
+    `/api/accounts/${encodeURIComponent(providerId)}/${encodeURIComponent(accountId)}/refresh-usage`,
+    { method: "POST" },
+  );
+};
+
+ElizaClient.prototype.startAccountOAuth = async function (
+  this: ElizaClient,
+  providerId,
+  body,
+) {
+  return this.fetch<AccountOAuthStartResult>(
+    `/api/accounts/${encodeURIComponent(providerId)}/oauth/start`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+};
+
+ElizaClient.prototype.submitAccountOAuthCode = async function (
+  this: ElizaClient,
+  providerId,
+  body,
+) {
+  return this.fetch<{ accepted: boolean }>(
+    `/api/accounts/${encodeURIComponent(providerId)}/oauth/submit-code`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+};
+
+ElizaClient.prototype.cancelAccountOAuth = async function (
+  this: ElizaClient,
+  providerId,
+  body,
+) {
+  return this.fetch<{ cancelled: boolean }>(
+    `/api/accounts/${encodeURIComponent(providerId)}/oauth/cancel`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+};
+
+ElizaClient.prototype.patchProviderStrategy = async function (
+  this: ElizaClient,
+  providerId,
+  body,
+) {
+  return this.fetch<{
+    providerId: LinkedAccountProviderId;
+    strategy: AccountStrategy;
+  }>(`/api/providers/${encodeURIComponent(providerId)}/strategy`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
   });
 };

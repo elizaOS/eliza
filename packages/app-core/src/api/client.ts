@@ -11,34 +11,9 @@
  */
 
 import type {
-  AudioGenConfig,
-  AudioGenProvider,
-  CustomActionDef,
-  CustomActionHandler,
-  DatabaseProviderType,
-  ImageConfig,
-  ImageProvider,
-  MediaConfig,
-  MediaMode,
-  ReleaseChannel,
-  VideoConfig,
-  VideoProvider,
-  VisionConfig,
-  VisionProvider,
-} from "@elizaos/agent/contracts/config";
-import type { DropStatus, MintResult } from "@elizaos/agent/contracts/drop";
-import type {
-  AllPermissionsState,
-  PermissionState,
-  PermissionStatus,
-  SystemPermissionDefinition,
-  SystemPermissionId,
-} from "@elizaos/agent/contracts/permissions";
-import type { VerificationResult } from "@elizaos/agent/contracts/verification";
-import type {
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
-} from "@elizaos/agent/services/browser-workspace";
+} from "@elizaos/agent";
 import type {
   StewardApprovalActionResponse,
   StewardApprovalInfo,
@@ -57,8 +32,11 @@ import type {
   StewardWebhookEvent,
   StewardWebhookEventsResponse,
   StewardWebhookEventType,
-} from "@elizaos/app-steward/types";
+} from "@elizaos/app-steward";
 import type {
+  AllPermissionsState,
+  AudioGenConfig,
+  AudioGenProvider,
   BscTradeExecuteRequest,
   BscTradeExecuteResponse,
   BscTradePreflightResponse,
@@ -67,11 +45,44 @@ import type {
   BscTradeTxStatusResponse,
   BscTransferExecuteRequest,
   BscTransferExecuteResponse,
+  CloudProviderOption,
+  OnboardingConnectorConfig as ConnectorConfig,
+  CustomActionDef,
+  CustomActionHandler,
+  DatabaseProviderType,
+  DropStatus,
   EvmChainBalance,
   EvmNft,
   EvmTokenBalance,
+  ImageConfig,
+  ImageProvider,
+  InventoryProviderOption,
+  MediaConfig,
+  MediaMode,
+  MessageExample,
+  MessageExampleContent,
+  MintResult,
+  ModelOption,
+  OnboardingConnection,
+  OnboardingOptions,
+  OpenRouterModelOption,
+  PermissionState,
+  PermissionStatus,
+  ProviderOption,
+  ReleaseChannel,
+  RpcProviderOption,
   SolanaNft,
   SolanaTokenBalance,
+  StylePreset,
+  SubscriptionProviderStatus,
+  SubscriptionStatusResponse,
+  SystemPermissionDefinition,
+  SystemPermissionId,
+  VerificationResult,
+  VideoConfig,
+  VideoProvider,
+  VisionConfig,
+  VisionProvider,
   WalletAddresses,
   WalletBalancesResponse,
   WalletConfigStatus,
@@ -83,29 +94,13 @@ import type {
   WalletTradingProfileResponse,
   WalletTradingProfileSourceFilter,
   WalletTradingProfileWindow,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcProviderId,
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
-} from "@elizaos/shared/contracts";
-import type {
-  CloudProviderOption,
-  OnboardingConnectorConfig as ConnectorConfig,
-  InventoryProviderOption,
-  MessageExample,
-  MessageExampleContent,
-  ModelOption,
-  OnboardingConnection,
-  OnboardingOptions,
-  OpenRouterModelOption,
-  ProviderOption,
-  RpcProviderOption,
-  StylePreset,
-  SubscriptionProviderStatus,
-  SubscriptionStatusResponse,
-} from "@elizaos/shared/contracts/onboarding";
+} from "@elizaos/shared";
 
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
@@ -230,7 +225,7 @@ import "./client-browser-workspace";
 import "./client-chat";
 import "./client-cloud";
 import "./client-computeruse";
-import "./client-lifeops";
+import "@elizaos/app-lifeops/api/client-lifeops";
 import "./client-imessage";
 import "./client-local-inference";
 import "./client-n8n";

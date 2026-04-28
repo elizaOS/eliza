@@ -114,6 +114,39 @@ export interface VertexTuningOrchestrationResult {
   modelPreferencePatch: VertexModelPreferencePatch;
 }
 
+const VERTEX_REGION_RE = /^[a-z]{2,20}(?:-[a-z]+)?[1-9]$/;
+const GCP_PROJECT_ID_RE = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+const VERTEX_JOB_NAME_RE =
+  /^projects\/[a-z][a-z0-9-]{4,28}[a-z0-9]\/locations\/[a-z0-9-]{2,30}\/tuningJobs\/\d{1,30}$/;
+
+function assertVertexRegion(region: string): void {
+  if (!VERTEX_REGION_RE.test(region)) {
+    throw new Error(`Invalid Vertex region: ${region}`);
+  }
+}
+
+function assertGcpProjectId(projectId: string): void {
+  if (!GCP_PROJECT_ID_RE.test(projectId)) {
+    throw new Error(`Invalid GCP project ID: ${projectId}`);
+  }
+}
+
+function assertVertexJobName(jobName: string): void {
+  if (!VERTEX_JOB_NAME_RE.test(jobName)) {
+    throw new Error(`Invalid Vertex tuning job name: ${jobName}`);
+  }
+}
+
+function assertVertexHost(url: string): void {
+  const u = new URL(url);
+  if (
+    u.hostname !== "aiplatform.googleapis.com" &&
+    !/^[a-z0-9-]+-aiplatform\.googleapis\.com$/.test(u.hostname)
+  ) {
+    throw new Error(`Refusing to call non-Vertex host: ${u.hostname}`);
+  }
+}
+
 export function normalizeVertexBaseModel(
   baseModel: string | undefined,
   slot: VertexTuningSlot = "should_respond",
@@ -247,6 +280,8 @@ export async function createTuningJob(
   config: VertexTuningConfig,
 ): Promise<TuningJob> {
   const region = config.region ?? "us-central1";
+  assertVertexRegion(region);
+  assertGcpProjectId(config.projectId);
   const accessToken = await getAccessToken(config.accessToken);
 
   // Upload training data to GCS
@@ -276,6 +311,7 @@ export async function createTuningJob(
   const sourceModel = `publishers/google/models/${modelMap[config.baseModel] ?? config.baseModel}`;
 
   const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${config.projectId}/locations/${region}/tuningJobs`;
+  assertVertexHost(url);
 
   const body: Record<string, unknown> = {
     baseModel: sourceModel,
@@ -315,14 +351,14 @@ export async function getTuningJobStatus(
   jobName: string,
   accessToken?: string,
 ): Promise<TuningJob> {
+  assertVertexJobName(jobName);
   const token = await getAccessToken(accessToken);
 
-  const response = await fetch(
-    `https://aiplatform.googleapis.com/v1/${jobName}`,
-    {
-      headers: { authorization: `Bearer ${token}` },
-    },
-  );
+  const url = `https://aiplatform.googleapis.com/v1/${jobName}`;
+  assertVertexHost(url);
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${token}` },
+  });
 
   if (!response.ok) {
     throw new Error(
@@ -341,9 +377,12 @@ export async function listTuningJobs(
   region: string = "us-central1",
   accessToken?: string,
 ): Promise<TuningJob[]> {
+  assertVertexRegion(region);
+  assertGcpProjectId(projectId);
   const token = await getAccessToken(accessToken);
 
   const url = `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/tuningJobs`;
+  assertVertexHost(url);
 
   const response = await fetch(url, {
     headers: { authorization: `Bearer ${token}` },

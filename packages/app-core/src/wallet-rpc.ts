@@ -1,14 +1,12 @@
-import type {
-  WalletConfigStatus,
-  WalletConfigUpdateRequest,
-  WalletRpcChain,
-  WalletRpcCredentialKey,
-  WalletRpcSelections,
-} from "@elizaos/agent/contracts/wallet";
 import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   normalizeWalletRpcSelections,
-} from "@elizaos/agent/contracts/wallet";
+  type WalletConfigStatus,
+  type WalletConfigUpdateRequest,
+  type WalletRpcChain,
+  type WalletRpcCredentialKey,
+  type WalletRpcSelections,
+} from "@elizaos/shared";
 
 const PROVIDER_CREDENTIAL_KEYS: Record<
   WalletRpcChain,

@@ -14,6 +14,7 @@ import type {
 } from "../services/relationships-graph.js";
 import { resolveRelationshipsGraphService } from "../services/relationships-graph.js";
 import { hasContextSignalSyncForKey } from "./context-signal.js";
+import { extractActionParamsViaLlm } from "./extract-params.js";
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -165,7 +166,7 @@ export const searchEntityAction: Action = {
     return hasContextSignalSyncForKey(message, state, "search_entity");
   },
 
-  handler: async (runtime, message, _state, options) => {
+  handler: async (runtime, message, state, options) => {
     if (!(await hasAdminAccess(runtime, message))) {
       return {
         text: "Permission denied.",
@@ -175,8 +176,18 @@ export const searchEntityAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as SearchEntityParams;
+    const params = (await extractActionParamsViaLlm<SearchEntityParams>({
+      runtime,
+      message,
+      state,
+      actionName: "SEARCH_ENTITY",
+      actionDescription: searchEntityAction.description ?? "",
+      paramSchema: searchEntityAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["query"],
+    })) as SearchEntityParams;
     const { query, platform } = params;
     const limit = Math.min(Math.max(1, params.limit ?? 10), 25);
 
@@ -342,7 +353,7 @@ export const readEntityAction: Action = {
     return hasContextSignalSyncForKey(message, state, "search_entity");
   },
 
-  handler: async (runtime, message, _state, options) => {
+  handler: async (runtime, message, state, options) => {
     if (!(await hasAdminAccess(runtime, message))) {
       return {
         text: "Permission denied.",
@@ -352,8 +363,18 @@ export const readEntityAction: Action = {
       };
     }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
+    const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as ReadEntityParams;
+    const params = (await extractActionParamsViaLlm<ReadEntityParams>({
+      runtime,
+      message,
+      state,
+      actionName: "READ_ENTITY",
+      actionDescription: readEntityAction.description ?? "",
+      paramSchema: readEntityAction.parameters ?? [],
+      existingParams: rawParams,
+      requiredFields: ["name"],
+    })) as ReadEntityParams;
     const { entityId, name } = params;
 
     if (!entityId && !name) {
@@ -812,6 +833,409 @@ export const linkEntityAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Linked the two entities. Their identities and facts now share one rolodex entry.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
+};
+
+// ---------------------------------------------------------------------------
+// RESOLVE_MERGE_CANDIDATE
+// ---------------------------------------------------------------------------
+//
+// Decide an outstanding merge proposal from `RelationshipsCandidateMergesPanel`
+// without going through the HTTP layer. Mirrors
+// `POST /api/relationships/candidates/:id/{accept,reject}`.
+
+type ResolveMergeCandidateParams = {
+  candidateId?: string;
+  action?: "accept" | "reject";
+};
+
+export const resolveMergeCandidateAction: Action = {
+  name: "RESOLVE_MERGE_CANDIDATE",
+  similes: [
+    "ACCEPT_MERGE_CANDIDATE",
+    "REJECT_MERGE_CANDIDATE",
+    "DECIDE_MERGE_CANDIDATE",
+    "APPROVE_IDENTITY_MERGE",
+    "DISMISS_IDENTITY_MERGE",
+  ],
+  description:
+    "Accept or reject a pending identity-merge candidate by id. Owner/admin only.",
+
+  validate: async (runtime, message) => {
+    return hasAdminAccess(runtime, message);
+  },
+
+  parameters: [
+    {
+      name: "candidateId",
+      description: "Identifier of the merge candidate to resolve.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "action",
+      description:
+        'Either "accept" to apply the merge or "reject" to dismiss it.',
+      required: true,
+      schema: {
+        type: "string" as const,
+        enum: ["accept", "reject"] as const,
+      },
+    },
+  ],
+
+  handler: async (runtime, message, _state, options) => {
+    if (!(await hasAdminAccess(runtime, message))) {
+      return {
+        text: "Permission denied.",
+        success: false,
+        values: { success: false, error: "PERMISSION_DENIED" },
+        data: { actionName: "RESOLVE_MERGE_CANDIDATE" },
+      };
+    }
+
+    const params = ((options as HandlerOptions | undefined)?.parameters ??
+      {}) as ResolveMergeCandidateParams;
+    const candidateId =
+      typeof params.candidateId === "string" ? params.candidateId.trim() : "";
+    const action = params.action;
+
+    if (!candidateId) {
+      return {
+        text: "RESOLVE_MERGE_CANDIDATE requires a candidateId parameter.",
+        success: false,
+        values: { success: false, error: "INVALID_PARAMETERS" },
+        data: { actionName: "RESOLVE_MERGE_CANDIDATE" },
+      };
+    }
+    if (action !== "accept" && action !== "reject") {
+      return {
+        text: 'RESOLVE_MERGE_CANDIDATE action must be "accept" or "reject".',
+        success: false,
+        values: { success: false, error: "INVALID_PARAMETERS" },
+        data: { actionName: "RESOLVE_MERGE_CANDIDATE", candidateId },
+      };
+    }
+
+    const graphService = await getGraphService(runtime);
+    if (!graphService) {
+      return {
+        text: "Relationships service not available.",
+        success: false,
+        values: { success: false, error: "SERVICE_NOT_FOUND" },
+        data: { actionName: "RESOLVE_MERGE_CANDIDATE", candidateId, action },
+      };
+    }
+
+    try {
+      if (action === "accept") {
+        await graphService.acceptMerge(candidateId as UUID);
+      } else {
+        await graphService.rejectMerge(candidateId as UUID);
+      }
+      return {
+        text:
+          action === "accept"
+            ? `Accepted merge candidate ${candidateId}. The two identities now share one rolodex entry.`
+            : `Rejected merge candidate ${candidateId}.`,
+        success: true,
+        values: { success: true, candidateId, action },
+        data: {
+          actionName: "RESOLVE_MERGE_CANDIDATE",
+          candidateId,
+          action,
+          status: action,
+        },
+      };
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error("[RESOLVE_MERGE_CANDIDATE] Error:", errMsg);
+      return {
+        text: `Failed to ${action} merge candidate ${candidateId}: ${errMsg}`,
+        success: false,
+        values: { success: false, error: "RESOLVE_FAILED" },
+        data: { actionName: "RESOLVE_MERGE_CANDIDATE", candidateId, action },
+      };
+    }
+  },
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Accept merge candidate 7e2c8f...",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Accepted merge candidate 7e2c8f. The two identities now share one rolodex entry.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Reject the merge proposal e34fa1.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Rejected merge candidate e34fa1.",
+        },
+      },
+    ],
+  ] as ActionExample[][],
+};
+
+// ---------------------------------------------------------------------------
+// GET_RELATIONSHIP_ACTIVITY
+// ---------------------------------------------------------------------------
+//
+// Surface the activity timeline shown in `RelationshipsActivityFeed` —
+// relationships, identity changes, and recently extracted facts — without
+// going through the HTTP layer. Mirrors `GET /api/relationships/activity`.
+
+type GetRelationshipActivityParams = {
+  limit?: number;
+  offset?: number;
+};
+
+type RelationshipActivityItem = {
+  type: "relationship" | "identity" | "fact";
+  personName: string;
+  personId: string;
+  summary: string;
+  detail: string | null;
+  timestamp: string | null;
+};
+
+const ACTIVITY_DEFAULT_LIMIT = 50;
+const ACTIVITY_MAX_LIMIT = 100;
+
+function clampActivityLimit(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
+    return ACTIVITY_DEFAULT_LIMIT;
+  }
+  return Math.min(Math.trunc(value), ACTIVITY_MAX_LIMIT);
+}
+
+function clampActivityOffset(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+  return Math.trunc(value);
+}
+
+export const getRelationshipActivityAction: Action = {
+  name: "GET_RELATIONSHIP_ACTIVITY",
+  similes: [
+    "RELATIONSHIPS_ACTIVITY",
+    "LIST_RELATIONSHIP_ACTIVITY",
+    "RECENT_ROLODEX_ACTIVITY",
+    "RELATIONSHIP_FEED",
+  ],
+  description:
+    "Return the recent relationship/identity/fact activity timeline, paginated. Mirrors the Relationships activity feed in the desktop app.",
+
+  validate: async (runtime, message) => {
+    return hasAdminAccess(runtime, message);
+  },
+
+  parameters: [
+    {
+      name: "limit",
+      description: `Maximum activity items to return (1–${ACTIVITY_MAX_LIMIT}; defaults to ${ACTIVITY_DEFAULT_LIMIT}).`,
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "offset",
+      description: "Number of items to skip for pagination (default 0).",
+      required: false,
+      schema: { type: "number" as const },
+    },
+  ],
+
+  handler: async (runtime, message, _state, options) => {
+    if (!(await hasAdminAccess(runtime, message))) {
+      return {
+        text: "Permission denied.",
+        success: false,
+        values: { success: false, error: "PERMISSION_DENIED" },
+        data: { actionName: "GET_RELATIONSHIP_ACTIVITY" },
+      };
+    }
+
+    const params = ((options as HandlerOptions | undefined)?.parameters ??
+      {}) as GetRelationshipActivityParams;
+    const limit = clampActivityLimit(params.limit);
+    const offset = clampActivityOffset(params.offset);
+
+    const graphService = await getGraphService(runtime);
+    if (!graphService) {
+      return {
+        text: "Relationships service not available.",
+        success: false,
+        values: { success: false, error: "SERVICE_NOT_FOUND" },
+        data: { actionName: "GET_RELATIONSHIP_ACTIVITY" },
+      };
+    }
+
+    try {
+      const snapshot = await graphService.getGraphSnapshot();
+      const personByEntityId = new Map<
+        string,
+        { personId: string; personName: string }
+      >();
+      for (const person of snapshot.people) {
+        personByEntityId.set(person.primaryEntityId, {
+          personId: person.primaryEntityId,
+          personName: person.displayName,
+        });
+        for (const memberEntityId of person.memberEntityIds) {
+          personByEntityId.set(memberEntityId, {
+            personId: person.primaryEntityId,
+            personName: person.displayName,
+          });
+        }
+      }
+
+      const activity: RelationshipActivityItem[] = [];
+
+      for (const edge of snapshot.relationships) {
+        const types = edge.relationshipTypes.join(", ") || "connected";
+        activity.push({
+          type: "relationship",
+          personName: edge.sourcePersonName,
+          personId: edge.sourcePersonId,
+          summary: `${edge.sourcePersonName} ↔ ${edge.targetPersonName}`,
+          detail: `${types} · ${edge.sentiment} · strength ${edge.strength.toFixed(2)} · ${edge.interactionCount} interactions`,
+          timestamp: edge.lastInteractionAt ?? null,
+        });
+      }
+
+      for (const person of snapshot.people) {
+        const platforms = person.platforms.join(", ") || "no platform";
+        activity.push({
+          type: "identity",
+          personName: person.displayName,
+          personId: person.primaryEntityId,
+          summary: person.displayName,
+          detail: `${person.memberEntityIds.length} identit${person.memberEntityIds.length === 1 ? "y" : "ies"} on ${platforms} · ${person.factCount} facts`,
+          timestamp: person.lastInteractionAt ?? null,
+        });
+      }
+
+      const recentFacts = await runtime.getMemories({
+        agentId: runtime.agentId,
+        tableName: "facts",
+        limit: 200,
+      });
+      for (const fact of recentFacts) {
+        const text =
+          typeof fact.content?.text === "string"
+            ? fact.content.text.trim()
+            : "";
+        if (!text) continue;
+
+        const person = fact.entityId
+          ? (personByEntityId.get(fact.entityId) ?? null)
+          : null;
+        const metadata =
+          fact.metadata && typeof fact.metadata === "object"
+            ? (fact.metadata as Record<string, unknown>)
+            : null;
+        const confidence =
+          typeof metadata?.confidence === "number" ? metadata.confidence : null;
+        const scopeBase =
+          metadata?.base && typeof metadata.base === "object"
+            ? (metadata.base as Record<string, unknown>)
+            : null;
+        const scope =
+          typeof scopeBase?.scope === "string" ? scopeBase.scope : null;
+
+        const detailParts = [text];
+        if (scope) detailParts.push(scope);
+        if (confidence !== null)
+          detailParts.push(`confidence ${confidence.toFixed(2)}`);
+
+        activity.push({
+          type: "fact",
+          personName: person?.personName ?? "Unknown person",
+          personId: person?.personId ?? fact.entityId ?? "unknown",
+          summary: person?.personName
+            ? `Fact for ${person.personName}`
+            : "Fact extracted",
+          detail: detailParts.join(" · "),
+          timestamp:
+            typeof fact.createdAt === "number"
+              ? new Date(fact.createdAt).toISOString()
+              : null,
+        });
+      }
+
+      activity.sort((a, b) => {
+        const ta = a.timestamp ? Date.parse(a.timestamp) : 0;
+        const tb = b.timestamp ? Date.parse(b.timestamp) : 0;
+        return tb - ta;
+      });
+
+      const total = activity.length;
+      const slice = activity.slice(offset, offset + limit);
+      const lines = slice.map((item, i) => {
+        const ts = item.timestamp ? ` · ${item.timestamp.slice(0, 19)}` : "";
+        const detail = item.detail ? ` — ${item.detail}` : "";
+        return `${String(offset + i + 1).padStart(3, " ")} | [${item.type}] ${item.summary}${detail}${ts}`;
+      });
+
+      const header = `Relationships activity | ${slice.length}/${total} items shown (offset ${offset}, limit ${limit})`;
+      const body = lines.length > 0 ? lines.join("\n") : "(no activity yet)";
+
+      return {
+        text: `${header}\n${"─".repeat(60)}\n${body}`,
+        success: true,
+        values: { success: true, total, count: slice.length, offset, limit },
+        data: {
+          actionName: "GET_RELATIONSHIP_ACTIVITY",
+          activity: slice,
+          total,
+          count: slice.length,
+          offset,
+          limit,
+          hasMore: offset + limit < total,
+        },
+      };
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error("[GET_RELATIONSHIP_ACTIVITY] Error:", errMsg);
+      return {
+        text: `Failed to load relationship activity: ${errMsg}`,
+        success: false,
+        values: { success: false, error: "ACTIVITY_FAILED" },
+        data: { actionName: "GET_RELATIONSHIP_ACTIVITY" },
+      };
+    }
+  },
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Show recent relationship activity.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Relationships activity | 25/40 items shown (offset 0, limit 25)\n  1 | [relationship] Jill Park ↔ Marco Pierre — friends · positive · strength 0.72 · 14 interactions · 2026-04-22T...",
         },
       },
     ],

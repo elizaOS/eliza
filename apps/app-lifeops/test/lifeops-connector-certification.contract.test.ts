@@ -98,10 +98,8 @@ const CONNECTOR_SCENARIO_DIR = path.join(
   "connector-certification",
 );
 const CONNECTOR_CATALOG_PATH = path.join(
-  REPO_ROOT,
-  "test",
+  import.meta.dirname,
   "scenarios",
-  "lifeops",
   "_catalogs",
   "lifeops-connector-certification.json",
 );
@@ -122,6 +120,15 @@ const SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH = path.join(
   "src",
   "contracts",
   "lifeops-extensions.ts",
+);
+const SHARED_LIFEOPS_DEGRADATION_CONTRACT_PATH = path.join(
+  REPO_ROOT,
+  "eliza",
+  "packages",
+  "shared",
+  "src",
+  "contracts",
+  "lifeops-connector-degradation.ts",
 );
 
 const ACTION_SHAPE_CHECK_TYPES = new Set([
@@ -347,7 +354,9 @@ describe("LifeOps connector-certification fixture invariants (shape-only + sourc
   it("requires degraded certification scenarios to declare seeded fault state and axis-specific checks", async () => {
     const catalog = await loadCatalog();
 
-    for (const entry of catalog.scenarios.filter((scenario) => scenario.degraded)) {
+    for (const entry of catalog.scenarios.filter(
+      (scenario) => scenario.degraded,
+    )) {
       const scenario = await loadScenario(entry.id);
       const seed = scenario.seed ?? [];
       const seedTypes = listSeedTypes(seed);
@@ -385,13 +394,18 @@ describe("LifeOps connector-certification fixture invariants (shape-only + sourc
   });
 
   it("keeps degraded connector status/auth DTOs exposed in shared contracts", async () => {
-    const [lifeopsSource, extensionsSource] = await Promise.all([
-      readFile(SHARED_LIFEOPS_CONTRACT_PATH, "utf8"),
-      readFile(SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH, "utf8"),
-    ]);
+    const [lifeopsSource, extensionsSource, degradationSource] =
+      await Promise.all([
+        readFile(SHARED_LIFEOPS_CONTRACT_PATH, "utf8"),
+        readFile(SHARED_LIFEOPS_EXTENSIONS_CONTRACT_PATH, "utf8"),
+        readFile(SHARED_LIFEOPS_DEGRADATION_CONTRACT_PATH, "utf8"),
+      ]);
 
-    expect(lifeopsSource).toContain(
+    expect(degradationSource).toContain(
       "export interface LifeOpsConnectorDegradation",
+    );
+    expect(lifeopsSource).toContain(
+      "export type {\n  LifeOpsConnectorDegradation,",
     );
 
     for (const interfaceName of [

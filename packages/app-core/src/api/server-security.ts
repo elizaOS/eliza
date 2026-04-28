@@ -8,7 +8,7 @@ import {
   resolveTerminalRunClientId as upstreamResolveTerminalRunClientId,
   resolveTerminalRunRejection as upstreamResolveTerminalRunRejection,
   resolveWebSocketUpgradeRejection as upstreamResolveWebSocketUpgradeRejection,
-} from "@elizaos/agent/api/server";
+} from "@elizaos/agent";
 import {
   normalizeCompatRejection,
   runWithCompatAuthContext,

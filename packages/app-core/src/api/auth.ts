@@ -7,8 +7,14 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { resolveApiToken } from "@elizaos/shared/runtime-env";
-import { isLoopbackRemoteAddress } from "./compat-route-shared";
+import { logger } from "@elizaos/core";
+import { resolveApiToken } from "@elizaos/shared";
+import {
+  CSRF_HEADER_NAME,
+  findActiveSession,
+  verifyCsrfToken,
+} from "./auth/sessions";
+import { isTrustedLocalRequest } from "./compat-route-shared";
 import { sendJsonError } from "./response";
 
 /**
@@ -58,9 +64,11 @@ export function tokenMatches(expected: string, provided: string): boolean {
 export function getProvidedApiToken(
   req: Pick<http.IncomingMessage, "headers">,
 ): string | null {
-  const authHeader = extractHeaderValue(req.headers.authorization)?.trim();
+  const authHeader = extractHeaderValue(req.headers.authorization)
+    ?.slice(0, 1024)
+    ?.trim();
   if (authHeader) {
-    const match = /^Bearer\s+(.+)$/i.exec(authHeader);
+    const match = /^Bearer\s{1,8}(.+)$/i.exec(authHeader);
     if (match?.[1]) return match[1].trim();
   }
 
@@ -119,16 +127,25 @@ function recordFailedAuth(ip: string | null): void {
 }
 
 /**
- * Gate a request behind the configured API token.
- * Returns `true` if the request is authorised (or no token is configured).
- * Sends a 401 and returns `false` otherwise.
+ * Gate a request behind the configured API token (sync, bearer-only).
+ *
+ * Use this only on cold paths where no `AuthStore` exists yet (boot
+ * sequence, or before plugin-sql has attached its adapter). Every route
+ * that runs after the runtime is up should use
+ * {@link ensureCompatApiAuthorizedAsync} instead, which understands
+ * session cookies + CSRF.
  */
 export function ensureCompatApiAuthorized(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
   res: http.ServerResponse,
 ): boolean {
+  if (isTrustedLocalRequest(req)) return true;
+
   const expectedToken = getCompatApiToken();
-  if (!expectedToken) return true;
+  if (!expectedToken) {
+    sendJsonError(res, 401, "Unauthorized");
+    return false;
+  }
 
   const ip = req.socket?.remoteAddress ?? null;
   if (isAuthRateLimited(ip)) {
@@ -144,30 +161,249 @@ export function ensureCompatApiAuthorized(
   return false;
 }
 
+/** State-changing HTTP verbs that require CSRF enforcement on cookie auth. */
+const CSRF_REQUIRED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/**
+ * Cookie-aware authorisation gate. Tries (in order):
+ *   1. valid `milady_session` cookie → session in DB → authorised.
+ *   2. configured static bearer (legacy) → 14-day grace window via
+ *      `decideLegacyBearer`; emits the deprecation header on success.
+ *   3. open-access fallback when no token is configured.
+ *
+ * For cookie-bound sessions, state-changing methods (POST/PUT/PATCH/DELETE)
+ * MUST present a valid `x-milady-csrf` header that matches the per-session
+ * `csrfSecret` derivation. Reject 403 otherwise. Bearer-auth requests are
+ * exempt (not cookie-bound, so no CSRF risk).
+ *
+ * Returns `true` when the request may proceed; `false` after sending a
+ * 401/403/429.
+ *
+ * Caller supplies an `AuthStore` because importing one here would create a
+ * cycle with `services/auth-store.ts`. Routes typically construct one
+ * once per handler.
+ */
+export async function ensureCompatApiAuthorizedAsync(
+  req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
+  res: http.ServerResponse,
+  options: {
+    store: import("../services/auth-store").AuthStore;
+    now?: number;
+    /**
+     * Skip CSRF enforcement for routes that ALWAYS handle CSRF themselves
+     * (e.g. login routes that mint the cookie, where there is no prior
+     * session to derive a token from). Default: false — enforce CSRF.
+     */
+    skipCsrf?: boolean;
+  },
+): Promise<boolean> {
+  const ip = req.socket?.remoteAddress ?? null;
+  if (isAuthRateLimited(ip)) {
+    sendJsonError(res, 429, "Too many authentication attempts");
+    return false;
+  }
+
+  if (isTrustedLocalRequest(req)) return true;
+
+  const method = (req.method ?? "GET").toUpperCase();
+  const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
+
+  // Cookie path
+  const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
+  if (sessionCookie) {
+    const session = await findActiveSession(
+      options.store,
+      sessionCookie,
+      options.now,
+    ).catch(() => null);
+    if (session) {
+      if (csrfRequired) {
+        const csrfHeader = extractHeaderValue(
+          (req.headers as http.IncomingHttpHeaders)[CSRF_HEADER_NAME],
+        );
+        if (!verifyCsrfToken(session, csrfHeader)) {
+          sendJsonError(res, 403, "csrf_required");
+          return false;
+        }
+      }
+      return true;
+    }
+  }
+
+  // Bearer path — session id, legacy static token, or bootstrap bearer.
+  // Bearer-auth requests are exempt from CSRF (they're not cookie-bound).
+  const provided = getProvidedApiToken(req);
+  if (provided) {
+    const sessionFromBearer = await findActiveSession(
+      options.store,
+      provided,
+      options.now,
+    ).catch(() => null);
+    if (sessionFromBearer) return true;
+
+    const expectedToken = getCompatApiToken();
+    if (expectedToken && tokenMatches(expectedToken, provided)) {
+      const userAgent = extractHeaderValue(req.headers["user-agent"]);
+      const {
+        decideLegacyBearer,
+        recordLegacyBearerRejection,
+        recordLegacyBearerUse,
+        LEGACY_DEPRECATION_HEADER,
+      } = await import("./auth/legacy-bearer");
+      const decision = await decideLegacyBearer(
+        options.store,
+        process.env,
+        options.now,
+      );
+      if (decision.allowed) {
+        if (!res.headersSent) {
+          res.setHeader(LEGACY_DEPRECATION_HEADER, "1");
+        }
+        await recordLegacyBearerUse(options.store, {
+          ip,
+          userAgent,
+        }).catch((err) => {
+          logger.error(
+            `[auth] legacy bearer audit failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+        return true;
+      }
+      await recordLegacyBearerRejection(options.store, {
+        ip,
+        userAgent,
+        reason: decision.reason ?? "post_grace",
+      }).catch((err) => {
+        logger.error(
+          `[auth] legacy bearer rejection audit failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+      recordFailedAuth(ip);
+      sendJsonError(res, 401, "Unauthorized");
+      return false;
+    }
+  }
+
+  // No credential matched.
+  if (!getCompatApiToken()) {
+    sendJsonError(res, 401, "Unauthorized");
+    return false;
+  }
+
+  recordFailedAuth(ip);
+  sendJsonError(res, 401, "Unauthorized");
+  return false;
+}
+
 /** Returns true when NODE_ENV indicates a local development environment. */
 export function isDevEnvironment(): boolean {
   const env = process.env.NODE_ENV?.trim().toLowerCase();
   return env === "development" || env === "dev";
 }
 
+// ── Cookie / session helpers ──────────────────────────────────────────────────
+
+const SESSION_COOKIE_NAME = "milady_session";
+
+/** Cookie name used by the session model. Exported for tests + UI client. */
+export function getSessionCookieName(): string {
+  return SESSION_COOKIE_NAME;
+}
+
 /**
- * Gate a sensitive route. In dev mode the request is allowed through ONLY
- * when `ELIZA_DEV_AUTH_BYPASS=1` is explicitly set and no token is configured.
- * In all other cases an API token is required.
+ * Read the named cookie from the `cookie` header. Returns `null` when the
+ * header is missing or the cookie is not set.
+ *
+ * Pulled out here so route handlers don't reimplement parsing — the existing
+ * `compat-route-shared.ts` predates the cookie-based session model.
+ */
+export function readCookie(
+  req: Pick<http.IncomingMessage, "headers">,
+  name: string,
+): string | null {
+  const raw = extractHeaderValue(req.headers.cookie);
+  if (!raw) return null;
+  for (const part of raw.split(";")) {
+    const eq = part.indexOf("=");
+    if (eq < 0) continue;
+    const k = part.slice(0, eq).trim();
+    if (k !== name) continue;
+    const v = part.slice(eq + 1).trim();
+    return v.length > 0 ? decodeURIComponent(v) : null;
+  }
+  return null;
+}
+
+/**
+ * Resolved auth context for a sensitive request.
+ *
+ * `kind === "session"` — request carries a valid session cookie / bearer that
+ * resolves to an unrevoked, unexpired session row.
+ *
+ * `kind === "bootstrap"` — request carries a one-shot bootstrap token. The
+ * token has been verified and its `jti` consumed; the caller is expected to
+ * mint a session row for the identity in `claims.sub` and reply with the
+ * session id.
+ *
+ * `kind === "denied"` — request is rejected. The handler must send 401/403/429
+ * per `status` and not proceed.
+ */
+export type AuthSessionOrBootstrapResult =
+  | { kind: "session"; sessionId: string }
+  | { kind: "bootstrap"; token: string; bearer: string }
+  | { kind: "denied"; status: 401 | 403 | 429; reason: string };
+
+/**
+ * Decide whether a request carries a valid session cookie or a bootstrap
+ * bearer eligible for exchange. This is the single chokepoint that replaces
+ * the deleted "cloud-provisioned bypass" branches.
+ *
+ * The function does NOT exchange the bootstrap token here — that's the job
+ * of `POST /api/auth/bootstrap/exchange`, which is rate-limited and audited.
+ * On the legacy onboarding routes we treat a valid session OR an unconsumed
+ * bootstrap bearer as authorisation to read; the exchange route is the
+ * single place that flips bootstrap → session.
+ *
+ * Fails closed on every error path. There is no path through this function
+ * that returns "session" without a real session row id.
+ */
+export function ensureAuthSessionOrBootstrap(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+): AuthSessionOrBootstrapResult {
+  const ip = req.socket?.remoteAddress ?? null;
+  if (isAuthRateLimited(ip)) {
+    return { kind: "denied", status: 429, reason: "rate_limited" };
+  }
+
+  const cookie = readCookie(req, SESSION_COOKIE_NAME);
+  if (cookie) {
+    // Caller is expected to look up the session by id and confirm it is
+    // valid. We don't hit the DB here to keep the helper synchronous; the
+    // DB lookup happens in the route handler with `AuthStore.findSession`.
+    return { kind: "session", sessionId: cookie };
+  }
+
+  const bearer = getProvidedApiToken(req);
+  if (bearer) {
+    return { kind: "bootstrap", token: bearer, bearer };
+  }
+
+  recordFailedAuth(ip);
+  return { kind: "denied", status: 401, reason: "auth_required" };
+}
+
+/**
+ * Gate a sensitive route. Without a configured token, only trusted same-machine
+ * dashboard requests are allowed. Remote callers need a real auth method.
  */
 export function ensureCompatSensitiveRouteAuthorized(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
   res: http.ServerResponse,
 ): boolean {
   if (!getCompatApiToken()) {
-    // No API token configured. Allow if the request is from loopback
-    // (desktop app / local dev) or if dev bypass is enabled. Block
-    // otherwise — an unconfigured token on a non-loopback bind is
-    // a security risk.
-    if (
-      isLoopbackRemoteAddress(req.socket?.remoteAddress) ||
-      (isDevEnvironment() && process.env.ELIZA_DEV_AUTH_BYPASS?.trim() === "1")
-    ) {
+    // No API token configured. Allow only the same-machine dashboard path.
+    // Remote access must use a configured auth method.
+    if (isTrustedLocalRequest(req)) {
       return true;
     }
     sendJsonError(
@@ -178,4 +414,44 @@ export function ensureCompatSensitiveRouteAuthorized(
     return false;
   }
   return ensureCompatApiAuthorized(req, res);
+}
+
+interface CompatStateLike {
+  current: { adapter?: { db?: unknown } | null } | null;
+}
+
+/**
+ * Canonical async route guard. Replaces every call site of
+ * {@link ensureCompatApiAuthorized}. Behaviour:
+ *
+ *   - When the runtime DB is up, delegate to
+ *     {@link ensureCompatApiAuthorizedAsync} so cookie + CSRF +
+ *     legacy-bearer + machine-session paths all work.
+ *   - When the runtime DB is not yet available (early boot), fall back
+ *     to {@link ensureCompatApiAuthorized} (bearer-only). This preserves
+ *     the existing behaviour for cold boot probes that ran before the
+ *     auth subsystem was available.
+ *
+ * Pass `skipCsrf: true` for routes that mint cookies / handle their own
+ * CSRF (login, setup, bootstrap exchange) where the SPA cannot present a
+ * CSRF token because the session doesn't exist yet.
+ */
+export async function ensureRouteAuthorized(
+  req: Pick<http.IncomingMessage, "headers" | "socket" | "method">,
+  res: http.ServerResponse,
+  state: CompatStateLike,
+  options: { skipCsrf?: boolean; now?: number } = {},
+): Promise<boolean> {
+  const adapter = state.current?.adapter;
+  const db = adapter?.db;
+  if (!db) {
+    return ensureCompatApiAuthorized(req, res);
+  }
+  const { AuthStore } = await import("../services/auth-store");
+  const store = new AuthStore(db as ConstructorParameters<typeof AuthStore>[0]);
+  return ensureCompatApiAuthorizedAsync(req, res, {
+    store,
+    now: options.now,
+    skipCsrf: options.skipCsrf,
+  });
 }

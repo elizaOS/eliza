@@ -1,7 +1,5 @@
-
-
-import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  type AppOperatorSurfaceProps,
   type BabylonActivityItem,
   type BabylonAgentGoal,
   type BabylonAgentStatus,
@@ -9,8 +7,20 @@ import {
   type BabylonPredictionMarket,
   type BabylonWallet,
   client,
-} from "@elizaos/app-core/api";
-import { useApp } from "@elizaos/app-core/state";
+  formatDetailTimestamp,
+  selectLatestRunForApp,
+  SurfaceBadge,
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+  useApp,
+} from "@elizaos/app-core";
+import { Button, Input } from "@elizaos/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type BabylonAgentSummaryEnvelope,
   type BabylonTeamConversation,
@@ -21,21 +31,7 @@ import {
   extractTeamDashboard,
   extractTradingBalance,
   summarizeBabylonActivity,
-} from "@elizaos/app-core/components/apps/babylon-data";
-import {
-  formatDetailTimestamp,
-  SurfaceBadge,
-  SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
-  SurfaceSection,
-  selectLatestRunForApp,
-  toneForHealthState,
-  toneForStatusText,
-  toneForViewerAttachment,
-} from "@elizaos/app-core/components/apps/extensions/surface";
-import type { AppOperatorSurfaceProps } from "@elizaos/app-core/components/apps/surfaces/types";
-import { Button, Input } from "@elizaos/ui";
+} from "./babylon-data";
 
 function extractWallet(value: unknown): BabylonWallet | null {
   if (!value || typeof value !== "object") return null;

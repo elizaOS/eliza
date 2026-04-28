@@ -2,7 +2,15 @@
  * Vincent domain methods — OAuth status, dashboard, and strategy settings.
  */
 
-/** Declaration merging must target the module that declares `ElizaClient` (see `declare module` below). */
+/**
+ * Declaration merging must target the module that declares `ElizaClient`.
+ * Import from the source module (`@elizaos/app-core/api/client-base`) — NOT
+ * from the `@elizaos/app-core` barrel — to avoid a circular dependency.
+ * `app-core/api/client.ts` imports this file (Vincent extension) AFTER
+ * defining `ElizaClient` but BEFORE re-exporting it through the barrel, so
+ * a barrel import here resolves to `undefined` when this file evaluates.
+ * Going direct to the source module breaks the cycle.
+ */
 import { ElizaClient } from "@elizaos/app-core/api/client-base";
 import type {
   VincentStartLoginResponse,

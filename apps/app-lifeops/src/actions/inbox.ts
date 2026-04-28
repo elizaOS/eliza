@@ -1,5 +1,5 @@
-import { hasAdminAccess } from "@elizaos/agent";
 import { resolveAdminEntityId } from "@elizaos/agent/actions/send-message";
+import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -11,7 +11,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import { logger, ModelType, parseJSONObjectFromText } from "@elizaos/core";
-import { getRecentMessagesData } from "@elizaos/shared/recent-messages-state";
+import { getRecentMessagesData } from "@elizaos/shared";
 import { loadInboxTriageConfig } from "../inbox/config.js";
 import { fetchAllMessages } from "../inbox/message-fetcher.js";
 import {
@@ -32,7 +32,6 @@ import type { ApprovalChannel } from "../lifeops/approval-queue.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { executeApprovedRequest } from "./approval.js";
 import { INTERNAL_URL } from "./lifeops-google-helpers.js";
-import { looksLikeEmailVenting } from "./non-actionable-request.js";
 
 // ---------------------------------------------------------------------------
 // Subaction types & params
@@ -345,9 +344,6 @@ export const inboxAction: Action & {
   suppressPostActionContinuation: true,
 
   validate: async (runtime, message) => {
-    if (looksLikeEmailVenting(extractText(message))) {
-      return false;
-    }
     return hasAdminAccess(runtime, message);
   },
 

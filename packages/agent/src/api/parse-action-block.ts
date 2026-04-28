@@ -74,10 +74,11 @@ function isValidActionEnvelope(
  * Handles both fenced (```json ... ```) and bare JSON formats.
  */
 export function stripActionBlockFromDisplay(text: string): string {
+  const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
   // First: fenced ```json action blocks — only strip if the action value is
   // one of our known orchestrator actions to avoid false-positive stripping.
-  let cleaned = text.replace(
-    /```(?:json)?\s*\n?(\{[\s\S]*?"action"[\s\S]*?\})\s*\n?```/g,
+  let cleaned = safeText.replace(
+    /```(?:json)?\s{0,32}\n?(\{[\s\S]{0,50000}?"action"[\s\S]{0,50000}?\})\s{0,32}\n?```/g,
     (_match, json: string) => {
       try {
         const parsed = JSON.parse(json);
@@ -116,10 +117,15 @@ export function stripActionBlockFromDisplay(text: string): string {
  */
 export function parseActionBlock(text: string): CoordinationLLMResponse | null {
   if (!text) return null;
+  const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
   // Try fenced ```json block first
-  const fenced = text.match(/```(?:json)?\s*\n?(\{[\s\S]*?\})\s*\n?```/);
+  const fenced = safeText.match(
+    /```(?:json)?\s{0,32}\n?(\{[\s\S]{0,50000}?\})\s{0,32}\n?```/,
+  );
   // Bare JSON fallback: non-greedy match from first { containing "action" to next }
-  const jsonStr = fenced?.[1] ?? text.match(/\{[^}]*"action"[^}]*\}/)?.[0];
+  const jsonStr =
+    fenced?.[1] ??
+    safeText.match(/\{[^}]{0,50000}"action"[^}]{0,50000}\}/)?.[0];
   if (!jsonStr) return null;
   try {
     const parsed = JSON.parse(jsonStr);

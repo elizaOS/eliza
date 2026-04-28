@@ -1,11 +1,11 @@
-import type { RouteRequestContext } from "@elizaos/agent/api";
 import {
   type PermissionRouteState as AutonomousPermissionRouteState,
+  type ElizaConfig,
   handlePermissionRoutes as handleAutonomousPermissionRoutes,
-} from "@elizaos/agent/api/permissions-routes";
-import type { ElizaConfig } from "@elizaos/agent/config/types";
+  type RouteRequestContext,
+} from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
-import type { PermissionState } from "@elizaos/shared/contracts/permissions";
+import type { PermissionState } from "@elizaos/shared";
 
 export type { PermissionState };
 

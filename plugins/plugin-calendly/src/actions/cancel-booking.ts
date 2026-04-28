@@ -14,6 +14,7 @@
 import type {
   Action,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -60,7 +61,8 @@ function extractReason(
   if (typeof raw === "string" && raw.length > 0) {
     return raw;
   }
-  const match = BECAUSE_RE.exec(text);
+  const safeText = text.length > 10_000 ? text.slice(0, 10_000) : text;
+  const match = BECAUSE_RE.exec(safeText);
   if (match) {
     return match[1].trim();
   }
@@ -71,11 +73,34 @@ function getService(runtime: IAgentRuntime): CalendlyService | null {
   return runtime.getService<CalendlyService>(CALENDLY_SERVICE_TYPE);
 }
 
+function mergedOptions(options?: HandlerOptions): Record<string, unknown> {
+  const direct = (options ?? {}) as Record<string, unknown>;
+  const parameters =
+    direct.parameters && typeof direct.parameters === "object"
+      ? (direct.parameters as Record<string, unknown>)
+      : {};
+  return { ...direct, ...parameters };
+}
+
+function isConfirmed(options?: HandlerOptions): boolean {
+  const raw = mergedOptions(options).confirmed;
+  return raw === true || raw === "true";
+}
+
 export const cancelBookingAction: Action = {
   name: CalendlyActions.CANCEL_CALENDLY_BOOKING,
   similes: ["CANCEL_CALENDLY", "CANCEL_CALENDLY_EVENT"],
   description:
-    "Cancels a scheduled Calendly event. Extracts the scheduled_events/{uuid} handle and an optional 'because <reason>' suffix from the message.",
+    "Cancels a scheduled Calendly event after confirmed:true. Extracts the scheduled_events/{uuid} handle and an optional 'because <reason>' suffix from the message.",
+  parameters: [
+    {
+      name: "confirmed",
+      description:
+        "Must be true to cancel the Calendly event after preview.",
+      required: false,
+      schema: { type: "boolean", default: false },
+    },
+  ],
 
   validate: async (
     runtime: IAgentRuntime,
@@ -88,7 +113,7 @@ export const cancelBookingAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state?: State,
-    options?: Record<string, unknown>,
+    options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<CalendlyActionResult<{ uuid: string; reason?: string }>> => {
     const service = getService(runtime);
@@ -100,14 +125,26 @@ export const cancelBookingAction: Action = {
     }
     const text =
       typeof message.content?.text === "string" ? message.content.text : "";
-    const uuid = extractUuid(options, text);
+    const params = mergedOptions(options);
+    const uuid = extractUuid(params, text);
     if (!uuid) {
       const error =
         "CANCEL_CALENDLY_BOOKING requires a scheduled_events/{uuid} URI or eventUuid option";
       await callback?.({ text: error });
       return { success: false, error };
     }
-    const reason = extractReason(options, text);
+    const reason = extractReason(params, text);
+    const preview = `Confirmation required before canceling Calendly event ${uuid}${reason ? ` (${reason})` : ""}.`;
+    if (!isConfirmed(options)) {
+      await callback?.({ text: preview });
+      return {
+        success: false,
+        requiresConfirmation: true,
+        preview,
+        text: preview,
+        data: { requiresConfirmation: true, preview, uuid, reason },
+      };
+    }
     try {
       await service.cancelBooking(uuid, reason);
       await callback?.({

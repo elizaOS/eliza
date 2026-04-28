@@ -3,6 +3,7 @@ import type { Action, AgentContext, Evaluator, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
 import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
+import type { X402Config, X402RequestValidator } from "./payment";
 import type { UUID } from "./primitives";
 import type {
 	JsonValue,
@@ -81,6 +82,37 @@ interface BaseRoute {
 	 * Use for legacy API paths that must remain stable (e.g. `/api/telegram-setup/status`).
 	 */
 	rawPath?: boolean;
+	/** x402 micropayment gate: object, or `true` to use `character.settings.x402` defaults */
+	x402?: X402Config | true;
+	/** Runs before payment; invalid → 402 with accepts payload */
+	validator?: X402RequestValidator;
+	/** Optional OpenAPI-style metadata for x402 outputSchema */
+	openapi?: {
+		parameters?: Array<{
+			name: string;
+			in: "path" | "query" | "header";
+			required?: boolean;
+			description?: string;
+			schema: {
+				type: string;
+				format?: string;
+				pattern?: string;
+				enum?: string[];
+				minimum?: number;
+				maximum?: number;
+			};
+		}>;
+		requestBody?: {
+			required?: boolean;
+			description?: string;
+			content: {
+				"application/json"?: { schema: JsonValue };
+				"multipart/form-data"?: { schema: JsonValue };
+			};
+		};
+	};
+	/** Shown in x402 `accepts` / wallet UIs when set */
+	description?: string;
 }
 
 interface PublicRoute extends BaseRoute {
@@ -94,6 +126,9 @@ interface PrivateRoute extends BaseRoute {
 }
 
 export type Route = PublicRoute | PrivateRoute;
+
+/** Route that may include x402 payment fields (alias for authoring clarity) */
+export type PaymentEnabledRoute = Route;
 
 /**
  * JSON Schema type definition for component validation

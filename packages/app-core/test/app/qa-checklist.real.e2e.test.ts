@@ -11,21 +11,11 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { config as loadDotenv } from "dotenv";
-import { type Browser, type Page } from "puppeteer-core";
+import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
-import { resolveLiveBrowserExecutable } from "../../../../../test/helpers/browser-executable";
-import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
-import {
-  closePuppeteerBrowser,
-  launchPuppeteerBrowserWithRetry,
-} from "../helpers/browser-launch";
-import {
-  buildIsolatedLiveProviderEnv,
-  selectLiveProvider,
-} from "../../../../../test/helpers/live-provider";
-import { resolveNodeCmd } from "../scripts/managed-test-command.mjs";
+import { describeIf } from "../helpers/conditional-tests.ts";
+import { selectLiveProvider } from "../helpers/live-provider";
 
 const envPath = path.resolve(
   import.meta.dirname,
@@ -35,7 +25,12 @@ const envPath = path.resolve(
   "..",
   ".env",
 );
-loadDotenv({ path: envPath });
+try {
+  const { config } = await import("dotenv");
+  config({ path: envPath });
+} catch {
+  // Keys may already be present in process.env.
+}
 
 const DEFAULT_UI_URL = stripTrailingSlash(
   process.env.ELIZA_LIVE_UI_URL ??
@@ -52,15 +47,15 @@ const API_TOKEN =
   process.env.ELIZA_API_TOKEN?.trim() ??
   "";
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY?.trim() ?? "";
-const LIVE_BROWSER = resolveLiveBrowserExecutable();
-const CHROME_PATH = LIVE_BROWSER.executablePath;
+const CHROME_PATH =
+  process.env.ELIZA_CHROME_PATH ??
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
-const LIVE_BROWSER_SUITE_ENABLED =
-  process.env.MILADY_LIVE_BROWSER_SUITE === "1";
-const CHROME_AVAILABLE = CHROME_PATH !== null && existsSync(CHROME_PATH);
+  process.env.MILADY_LIVE_TEST === "1" ||
+  process.env.ELIZA_LIVE_TEST === "1";
+const CHROME_AVAILABLE = existsSync(CHROME_PATH);
 const LIVE_PROVIDER =
-  (LIVE_TESTS_ENABLED && selectLiveProvider("openai")) ||
+  (LIVE_TESTS_ENABLED && selectLiveProvider("groq")) ||
   (LIVE_TESTS_ENABLED ? selectLiveProvider() : null);
 const LIVE_PROVIDER_LABELS = {
   anthropic: "Anthropic",
@@ -73,11 +68,7 @@ const LIVE_PROVIDER_LABEL = LIVE_PROVIDER
   ? LIVE_PROVIDER_LABELS[LIVE_PROVIDER.name]
   : null;
 const REQUIRE_STRICT_TTS_ASSERTIONS = ELEVENLABS_API_KEY.length > 0;
-const CAN_RUN =
-  LIVE_TESTS_ENABLED &&
-  LIVE_BROWSER_SUITE_ENABLED &&
-  CHROME_AVAILABLE &&
-  LIVE_PROVIDER !== null;
+const CAN_RUN = LIVE_TESTS_ENABLED && CHROME_AVAILABLE && LIVE_PROVIDER !== null;
 const PROFILE_FILTER = new Set(
   (process.env.ELIZA_LIVE_PROFILE ?? "")
     .split(",")
@@ -88,18 +79,7 @@ const PROFILE_FILTER = new Set(
 const EXPECTED_SARAH_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
 const KNOWLEDGE_CODEWORD = "VELVET-MOON-4821";
 const QA_ARTIFACT_DIR = path.join(os.tmpdir(), "eliza-live-qa");
-const QA_ONBOARDING_TRACE_FILE = path.join(
-  QA_ARTIFACT_DIR,
-  "onboarding-trace.log",
-);
-const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..", "..");
 const APP_DIST_DIR = path.join(REPO_ROOT, "apps/app", "dist");
 const STACK_READY_TIMEOUT_MS = 120_000;
 const RESET_TRANSITION_GRACE_MS = 10_000;
@@ -230,24 +210,8 @@ const ACTIVE_PROFILES =
     ? PROFILES.filter((profile) => PROFILE_FILTER.has(profile.id))
     : PROFILES;
 
-function resolveOnboardingProviderId(providerName: string): string {
-  if (providerName === "google") {
-    return "gemini";
-  }
-  return providerName;
-}
-
 function logQaStep(profile: Profile, step: string) {
   console.log(`[live-qa][${profile.id}] ${step}`);
-}
-
-async function appendQaOnboardingTrace(step: string): Promise<void> {
-  await fs.mkdir(QA_ARTIFACT_DIR, { recursive: true });
-  await fs.appendFile(
-    QA_ONBOARDING_TRACE_FILE,
-    `${new Date().toISOString()} ${step}\n`,
-    "utf8",
-  );
 }
 
 function formatQaRequestFailure(failure: QaRequestFailure): string {
@@ -270,19 +234,13 @@ function isIgnorableQaRequestFailure(failure: QaRequestFailure): boolean {
   }
 
   if (
-    failure.errorText === "net::ERR_ABORTED" &&
-    failure.method === "POST" &&
-    /^\/api\/conversations\/[^/]+\/messages\/stream$/.test(pathname)
-  ) {
-    return true;
-  }
-
-  if (
     (failure.errorText === "net::ERR_FAILED" ||
       failure.errorText === "net::ERR_ABORTED") &&
-    ["/api/config", "/api/onboarding/status", "/api/vincent/status"].includes(
-      pathname,
-    )
+    [
+      "/api/config",
+      "/api/onboarding/status",
+      "/api/vincent/status",
+    ].includes(pathname)
   ) {
     return true;
   }
@@ -302,7 +260,6 @@ function actionableQaRequestFailures(failures: QaRequestFailure[]): string[] {
 }
 
 let browser: Browser | null = null;
-let browserProfileDir: string | null = null;
 let UI_URL = DEFAULT_UI_URL;
 let liveStack: StartedStack | null = null;
 
@@ -320,7 +277,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
     console.log("[live-qa][setup] ui reachable");
     await ensureHttpOk(`${API_URL}/api/status`);
     console.log("[live-qa][setup] api reachable");
-    browser = await launchPuppeteerBrowserWithRetry({
+    browser = await puppeteer.launch({
       executablePath: CHROME_PATH,
       headless: true,
       protocolTimeout: 300_000,
@@ -336,7 +293,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
 
   afterAll(async () => {
     if (!CAN_RUN) return;
-    await closePuppeteerBrowser(browser);
+    await browser?.close();
     await stopRealStack(liveStack);
     liveStack = null;
   }, 30_000);
@@ -387,12 +344,8 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
       });
 
       await installQaInstrumentation(page);
-      await fs.mkdir(QA_ARTIFACT_DIR, { recursive: true });
-      await fs.writeFile(QA_ONBOARDING_TRACE_FILE, "", "utf8");
-      await appendQaOnboardingTrace(`profile ${profile.id}: reset agent`);
       logQaStep(profile, "reset agent");
       await resetAgentViaApi();
-      await appendQaOnboardingTrace(`profile ${profile.id}: reset complete`);
 
       const knowledgeFile = await writeKnowledgeFile(profile.id);
       const knowledgeUploadName = path.basename(knowledgeFile);
@@ -401,23 +354,16 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         path.parse(knowledgeUploadName).name,
       ];
       try {
-        await appendQaOnboardingTrace(`profile ${profile.id}: open onboarding`);
         logQaStep(profile, "open onboarding");
         await navigate(page, `${UI_URL}/?test_force_vrm=1`);
 
-        await appendQaOnboardingTrace(
-          `profile ${profile.id}: complete local provider onboarding`,
-        );
         logQaStep(profile, "complete local provider onboarding");
         await completeLocalProviderOnboarding(page);
 
         expect(await onboardingComplete()).toBe(true);
-        await appendQaOnboardingTrace("enter companion mode");
         logQaStep(profile, "enter companion mode");
         await enterCompanionMode(page);
-        await appendQaOnboardingTrace("wait for companion ready");
         await waitForCompanionReady(page, 120_000);
-        await appendQaOnboardingTrace("companion ready");
         logQaStep(profile, "companion shell ready");
 
         if (REQUIRE_STRICT_TTS_ASSERTIONS) {
@@ -433,18 +379,16 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
             const tts = config?.messages?.tts;
             return tts?.provider === "elevenlabs" ? tts : null;
           }, 60_000);
-          expect(voiceConfig.elevenlabs?.voiceId).toBe(EXPECTED_SARAH_VOICE_ID);
+          expect(voiceConfig.elevenlabs?.voiceId).toBe(
+            EXPECTED_SARAH_VOICE_ID,
+          );
         }
-        await appendQaOnboardingTrace("dispatch teleport complete");
         await page.evaluate(() => {
           window.dispatchEvent(new Event("eliza:vrm-teleport-complete"));
         });
-        await appendQaOnboardingTrace("wait for chat composer");
         await page.waitForSelector('[data-testid="chat-composer-textarea"]');
-        await appendQaOnboardingTrace("chat composer ready");
         await page.mouse.click(24, 24);
 
-        await appendQaOnboardingTrace("create new chat");
         logQaStep(profile, "create new chat");
         const conversationsBefore = await listConversations();
         const greetingVoiceSignals = await qaVoiceStats(page);
@@ -456,7 +400,6 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
             ? conversations[0]
             : null;
         }, 30_000);
-        await appendQaOnboardingTrace("new chat created");
 
         const greetingMessage = await waitFor(async () => {
           const messages = await listMessages(activeConversation.id);
@@ -464,26 +407,20 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
             messages.find((message) => message.role === "assistant") ?? null
           );
         }, 30_000);
-        await appendQaOnboardingTrace("greeting message ready");
 
         expectValidGreetingMessage(greetingMessage.text);
         logQaStep(profile, "wait for greeting voice playback");
         await maybeWaitForVoicePlayback(page, greetingVoiceSignals, 45_000);
-        await appendQaOnboardingTrace("greeting voice playback observed");
         logQaStep(profile, "verify greeting text is visible");
         await waitForText(page, greetingMessage.text);
-        await appendQaOnboardingTrace("greeting text visible");
 
         const responseVoiceSignals = await qaVoiceStats(page);
         logQaStep(profile, "send user message");
-        await appendQaOnboardingTrace("send first user message");
         await typeComposerAndSend(
           page,
           "reply with exactly these two words: hello there",
         );
-        await appendQaOnboardingTrace("first user message sent");
 
-        await appendQaOnboardingTrace("wait for first assistant reply");
         const replyMessage = await waitFor(async () => {
           const messages = await listMessages(activeConversation.id);
           const assistants = messages.filter(
@@ -493,7 +430,6 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           const latest = assistants[assistants.length - 1];
           return latest.text !== greetingMessage.text ? latest : null;
         }, 90_000);
-        await appendQaOnboardingTrace("first assistant reply ready");
 
         expect(normalizeText(replyMessage.text)).toContain("hello there");
         logQaStep(profile, "wait for assistant reply voice playback");
@@ -509,10 +445,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           body: JSON.stringify({ enabled: true }),
         });
 
-        await clickSelector(
-          page,
-          '[data-testid="companion-shell-toggle-desktop"]',
-        );
+        await clickSelector(page, '[data-testid="companion-shell-toggle-desktop"]');
         await navigate(page, `${UI_URL}/knowledge`);
         await page.waitForSelector('[data-testid="knowledge-view"]', {
           visible: true,
@@ -570,88 +503,46 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           2000,
         );
 
-        const trajectoryCaptureStartedAt = Date.now();
-
         await navigate(page, `${UI_URL}/chat`);
-        await waitForChatComposerReady(page, 120_000);
-
-        const knowledgeQuestion =
-          "what is the qa codeword from the uploaded file? answer with only the codeword";
-        let assistantReplyCount = (
-          await listMessages(activeConversation.id)
-        ).filter((message) => message.role === "assistant").length;
-        let knowledgeReply:
-          | Awaited<ReturnType<typeof listMessages>>[number]
-          | null = null;
-        let lastKnowledgeError: unknown = null;
-
-        for (let attempt = 0; attempt < 2 && !knowledgeReply; attempt += 1) {
-          if (attempt > 0) {
-            await navigate(page, `${UI_URL}/chat`);
-            await waitForChatComposerReady(page, 120_000);
-          }
-
-          await typeComposerAndSend(page, knowledgeQuestion);
-
-          try {
-            const reply = await waitFor(async () => {
-              const messages = await listMessages(activeConversation.id);
-              const assistants = messages.filter(
-                (message) => message.role === "assistant",
-              );
-              if (assistants.length <= assistantReplyCount) {
-                return null;
-              }
-              return assistants[assistants.length - 1] ?? null;
-            }, 120_000);
-
-            assistantReplyCount += 1;
-            if (
-              String(reply.text ?? "")
-                .toUpperCase()
-                .includes(KNOWLEDGE_CODEWORD)
-            ) {
-              knowledgeReply = reply;
-              break;
-            }
-          } catch (error) {
-            lastKnowledgeError = error;
-          }
-        }
-
-        if (!knowledgeReply && lastKnowledgeError) {
-          throw lastKnowledgeError;
-        }
-        expect(knowledgeReply).toBeTruthy();
-        expect(String(knowledgeReply?.text ?? "").toUpperCase()).toContain(
-          KNOWLEDGE_CODEWORD,
+        await page.waitForSelector('[data-testid="chat-composer-textarea"]');
+        await typeComposerAndSend(
+          page,
+          "what is the qa codeword from the uploaded file? answer with only the codeword",
         );
 
+        const knowledgeReply = await waitFor(async () => {
+          const messages = await listMessages(activeConversation.id);
+          return (
+            [...messages].reverse().find(
+              (message) =>
+                message.role === "assistant" &&
+                String(message.text ?? "")
+                  .toUpperCase()
+                  .includes(KNOWLEDGE_CODEWORD),
+            ) ?? null
+          );
+        }, 90_000);
+        expect(knowledgeReply.text.toUpperCase()).toContain(KNOWLEDGE_CODEWORD);
+
         logQaStep(profile, "verify trajectory contents");
-        const matchingTrajectoryId = await waitFor(
+        const matchingTrajectory = await waitFor(
           async () => {
-            const list = await apiJson<{
-              trajectories: Array<{
-                id: string;
-                startTime: number;
-                llmCallCount: number;
-              }>;
-            }>("/api/trajectories?limit=20");
+            const list = await apiJson<{ trajectories: Array<{ id: string }> }>(
+              "/api/trajectories?limit=20",
+            );
             for (const trajectory of list.trajectories ?? []) {
-              if (
-                typeof trajectory.startTime !== "number" ||
-                trajectory.startTime < trajectoryCaptureStartedAt
-              ) {
-                continue;
-              }
-              const detail = await apiJson<unknown>(
-                `/api/trajectories/${encodeURIComponent(trajectory.id)}`,
-              );
-              if (
-                trajectory.llmCallCount > 0 &&
-                JSON.stringify(detail).includes(trajectory.id)
-              ) {
-                return trajectory.id;
+              const detail = await apiJson<{
+                llmCalls?: Array<{
+                  userPrompt?: string;
+                  response?: string;
+                }>;
+              }>(`/api/trajectories/${encodeURIComponent(trajectory.id)}`);
+              const match = (detail.llmCalls ?? []).find((call) => {
+                const prompt = String(call.userPrompt ?? "").toLowerCase();
+                return prompt.includes("qa codeword from the uploaded file");
+              });
+              if (match) {
+                return { detail, match };
               }
             }
             return null;
@@ -659,21 +550,30 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
           90_000,
           2000,
         );
-        expect(matchingTrajectoryId).toBeTruthy();
+
+        expect(String(matchingTrajectory.match.userPrompt)).toContain(
+          "qa codeword from the uploaded file",
+        );
+        expect(
+          String(matchingTrajectory.match.response).toUpperCase(),
+        ).toContain(KNOWLEDGE_CODEWORD);
 
         await navigate(page, `${UI_URL}/trajectories`);
         await page.waitForSelector('[data-testid="trajectories-view"]');
         const trajectorySearchSelector =
           '[data-testid="trajectories-sidebar"] input[type="text"]';
         if (await isSelectorVisible(page, trajectorySearchSelector)) {
-          await typeInto(page, trajectorySearchSelector, KNOWLEDGE_CODEWORD);
+          await typeInto(
+            page,
+            trajectorySearchSelector,
+            "qa codeword from the uploaded file",
+          );
           await page.waitForSelector(
             '[data-testid="trajectories-sidebar"] [data-sidebar-item]',
           );
         }
-        await page.waitForSelector(
-          '[data-testid="trajectories-sidebar"] [data-sidebar-item]',
-        );
+        await waitForText(page, "qa codeword from the uploaded file", 30_000);
+        await waitForText(page, KNOWLEDGE_CODEWORD, 30_000);
 
         logQaStep(profile, "smoke tabs");
         await smokeTabs(page, profile);
@@ -763,10 +663,7 @@ describeIf(CAN_RUN)("Live QA checklist", () => {
         logQaStep(profile, "avatar-voice QA open onboarding");
         await navigate(page, `${UI_URL}/?test_force_vrm=1`);
 
-        logQaStep(
-          profile,
-          "avatar-voice QA complete local provider onboarding",
-        );
+        logQaStep(profile, "avatar-voice QA complete local provider onboarding");
         await completeLocalProviderOnboarding(page);
 
         logQaStep(profile, "avatar-voice QA enter companion mode");
@@ -872,7 +769,7 @@ function contentTypeFor(filePath: string): string {
 }
 
 function injectQaBootScript(html: string, apiBase: string): string {
-  const bootScript = `<script>window.__ELIZA_API_BASE__=window.location.origin;${API_TOKEN ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${JSON.stringify(API_TOKEN)},configurable:true,writable:true,enumerable:false});` : ""}</script>`;
+  const bootScript = `<script>window.__ELIZA_API_BASE__=${JSON.stringify(apiBase)};${API_TOKEN ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${JSON.stringify(API_TOKEN)},configurable:true,writable:true,enumerable:false});` : ""}</script>`;
   if (html.includes("</head>")) {
     return html.replace("</head>", `${bootScript}</head>`);
   }
@@ -956,18 +853,23 @@ async function proxyUiRequest(args: {
   if (!filePath && !isAssetRequest) {
     filePath = path.join(APP_DIST_DIR, "index.html");
   }
-  if (!filePath) {
-    throw new Error(
-      `Missing built UI asset for ${requestUrl.pathname} in ${APP_DIST_DIR}`,
-    );
+
+  let body: Buffer;
+  try {
+    body = await fs.readFile(filePath ?? path.join(APP_DIST_DIR, "index.html"));
+  } catch {
+    body = await fs.readFile(path.join(APP_DIST_DIR, "index.html"));
+    filePath = path.join(APP_DIST_DIR, "index.html");
   }
-  let body = await fs.readFile(filePath);
 
   if (
     path.basename(filePath ?? path.join(APP_DIST_DIR, "index.html")) ===
     "index.html"
   ) {
-    body = Buffer.from(injectQaBootScript(body.toString("utf8")), "utf8");
+    body = Buffer.from(
+      injectQaBootScript(body.toString("utf8"), args.apiBase),
+      "utf8",
+    );
   }
 
   args.response.writeHead(200, {
@@ -1060,20 +962,11 @@ async function startUiProxyServer(args: {
         response,
       });
     } catch (error) {
-      if (response.headersSent || response.writableEnded || response.destroyed) {
-        if (!response.destroyed) {
-          response.destroy();
-        }
-        return;
-      }
+      console.error("[qa-checklist e2e] proxy error:", error);
       response.writeHead(500, {
         "Content-Type": "application/json; charset=utf-8",
       });
-      response.end(
-        JSON.stringify({
-          error: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      response.end(JSON.stringify({ error: "Internal proxy error" }));
     }
   });
   const wss = new WebSocketServer({ noServer: true });
@@ -1192,21 +1085,16 @@ async function startRealStack(): Promise<StartedStack> {
   const apiBase = `http://127.0.0.1:${apiPort}`;
 
   const apiChild = spawn(
-    resolveNodeCmd(),
+    "node",
     [
-      "--import",
-      "tsx",
-      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/dev-server.ts"),
+      path.join(REPO_ROOT, "eliza/packages/app-core/scripts/run-node-tsx.mjs"),
+      path.join(REPO_ROOT, "eliza/packages/app-core/src/runtime/eliza.ts"),
     ],
     {
       cwd: REPO_ROOT,
       env: {
-        ...buildIsolatedLiveProviderEnv(process.env, LIVE_PROVIDER),
+        ...process.env,
         ALLOW_NO_DATABASE: "",
-        CHECK_SHOULD_RESPOND: "false",
-        CONVERSATION_LENGTH: "20",
-        ELIZA_DISABLE_LIFEOPS_SCHEDULER: "1",
-        ELIZA_DISABLE_PROACTIVE_AGENT: "1",
         FORCE_COLOR: "0",
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),
@@ -1251,18 +1139,13 @@ async function restartLiveStack(): Promise<void> {
     throw new Error("Cannot restart QA live stack before it exists");
   }
 
-  await appendQaOnboardingTrace("restart live stack: stop current");
   console.log("[live-qa][setup] restart live stack: stop current");
   await stopRealStack(liveStack);
-  await appendQaOnboardingTrace("restart live stack: start new");
   console.log("[live-qa][setup] restart live stack: start new");
   liveStack = await startRealStack();
   API_URL = stripTrailingSlash(liveStack.apiBase);
   UI_URL = stripTrailingSlash(liveStack.uiBase);
-  await appendQaOnboardingTrace(`restart live stack: ready ui=${UI_URL} api=${API_URL}`);
-  console.log(
-    `[live-qa][setup] restart live stack: ready ui=${UI_URL} api=${API_URL}`,
-  );
+  console.log(`[live-qa][setup] restart live stack: ready ui=${UI_URL} api=${API_URL}`);
 }
 
 async function stopRealStack(stack: StartedStack | null): Promise<void> {
@@ -1328,18 +1211,17 @@ async function smokeTabs(page: Page, profile: Profile) {
       path: "/chat",
       name: "chat",
       waitForReady: () =>
-        waitForVisibleSelector(page, '[data-testid="chat-messages-scroll"]'),
+        page.waitForSelector('[data-testid="chat-messages-scroll"]'),
     },
     {
       path: "/stream",
       name: "stream",
-      waitForReady: () => waitForVisibleSelector(page, "[data-stream-view]"),
+      waitForReady: () => page.waitForSelector("[data-stream-view]"),
     },
     {
       path: "/wallets",
       name: "wallets",
-      waitForReady: () =>
-        waitForVisibleSelector(page, '[data-testid="wallet-rpc-popup"]'),
+      waitForReady: () => page.waitForSelector('[data-testid="wallet-rpc-popup"]'),
     },
     {
       path: "/connectors",
@@ -1357,8 +1239,7 @@ async function smokeTabs(page: Page, profile: Profile) {
     {
       path: "/settings",
       name: "settings",
-      waitForReady: () =>
-        waitForVisibleSelector(page, '[data-testid="settings-shell"]'),
+      waitForReady: () => page.waitForSelector('[data-testid="settings-shell"]'),
     },
     {
       path: "/triggers",
@@ -1379,17 +1260,12 @@ async function smokeTabs(page: Page, profile: Profile) {
       path: "/skills",
       name: "skills",
       waitForReady: () =>
-        waitForAnyText(
-          page,
-          ["Create Skill", "No Skills Installed", "Skills"],
-          30_000,
-        ),
+        waitForAnyText(page, ["Create Skill", "No Skills Installed", "Skills"], 30_000),
     },
     {
       path: "/runtime",
       name: "runtime",
-      waitForReady: () =>
-        waitForVisibleSelector(page, '[data-testid="runtime-view"]'),
+      waitForReady: () => page.waitForSelector('[data-testid="runtime-view"]'),
     },
     {
       path: "/database",
@@ -1486,7 +1362,7 @@ async function qaWalletRpcRoundtrip(page: Page, profile: Profile) {
   expect(savedConfig.selectedRpcProviders).toMatchObject(expectedSelections);
 
   await navigate(page, `${UI_URL}/chat`);
-  await waitForVisibleSelector(page, '[data-testid="chat-messages-scroll"]');
+  await page.waitForSelector('[data-testid="chat-messages-scroll"]');
   await navigate(page, `${UI_URL}/wallets`);
   await waitForText(page, "Tokens", 30_000);
   await openWalletRpcSettings(page, profile);
@@ -1681,10 +1557,17 @@ async function qaVoiceStats(page: Page): Promise<QaVoiceStats> {
 
     const ttsFetches = (qaWindow.__qaFetches ?? []).filter((record) => {
       const url = String(record.url ?? "");
+      let host = "";
+      try {
+        host = new URL(url, "http://localhost").hostname;
+      } catch {
+        host = "";
+      }
       return (
         url.includes("/api/tts/") ||
         url.includes("/api/stream/voice/speak") ||
-        url.includes("api.elevenlabs.io")
+        host === "api.elevenlabs.io" ||
+        host.endsWith(".elevenlabs.io")
       );
     });
 
@@ -1814,49 +1697,37 @@ async function waitForAnyText(
 }
 
 async function waitForOnboardingEntry(page: Page, timeout = 45_000) {
-  const deadline = Date.now() + timeout;
-  const onboardingTexts = [
-    "Choose your setup",
-    "Create Local Agent",
-    "Connect to Remote Agent",
-    "Choose your AI provider",
-  ];
-
-  while (Date.now() < deadline) {
-    if (
-      await isSelectorVisible(page, '[data-testid="onboarding-ui-overlay"]')
-    ) {
-      return;
-    }
-
-    for (const text of onboardingTexts) {
-      if (await pageContainsText(page, text)) {
-        return;
-      }
-    }
-
-    await sleep(250);
+  const overlay = await page
+    .waitForSelector('[data-testid="onboarding-ui-overlay"]', {
+      visible: true,
+      timeout,
+    })
+    .catch(() => null);
+  if (overlay) {
+    return;
   }
 
-  throw new Error(
-    `Timed out waiting for onboarding entry after ${timeout}ms.`,
+  await waitForAnyText(
+    page,
+    [
+      "Choose your setup",
+      "Create Local Agent",
+      "Connect to Remote Agent",
+      "Choose your AI provider",
+    ],
+    timeout,
   );
 }
 
 async function waitForCompanionReady(page: Page, timeout = 90_000) {
-  await waitForVisibleSelector(
-    page,
-    '[data-testid="companion-root"]',
+  await page.waitForSelector('[data-testid="companion-root"]', {
+    visible: true,
     timeout,
-  );
-  await waitForVisibleSelector(
-    page,
-    '[data-testid="companion-header-shell"]',
+  });
+  await page.waitForSelector('[data-testid="companion-header-shell"]', {
+    visible: true,
     timeout,
-  );
-}
-
-async function waitForChatComposerReady(page: Page, timeout = 90_000) {
+  });
   await page.waitForSelector('[data-testid="chat-composer-textarea"]', {
     visible: true,
     timeout,
@@ -1909,7 +1780,7 @@ async function currentVrmRegistry(page: Page): Promise<QaVrmRegistryEntry[]> {
   });
 }
 
-async function _waitForWorldStageAvatar(
+async function waitForWorldStageAvatar(
   page: Page,
   expectedSlug?: string | null,
   timeout = 90_000,
@@ -1935,7 +1806,7 @@ async function qaEmoteEvents(page: Page): Promise<QaEmoteEventRecord[]> {
   });
 }
 
-async function _qaPlayEmoteCalls(page: Page): Promise<QaPlayEmoteRecord[]> {
+async function qaPlayEmoteCalls(page: Page): Promise<QaPlayEmoteRecord[]> {
   return page.evaluate(() => {
     const qaWindow = window as typeof window & {
       __qaPlayEmoteCalls?: QaPlayEmoteRecord[];
@@ -1944,7 +1815,7 @@ async function _qaPlayEmoteCalls(page: Page): Promise<QaPlayEmoteRecord[]> {
   });
 }
 
-async function _qaTeleportEvents(page: Page): Promise<QaTeleportRecord[]> {
+async function qaTeleportEvents(page: Page): Promise<QaTeleportRecord[]> {
   return page.evaluate(() => {
     const qaWindow = window as typeof window & {
       __qaTeleportEvents?: QaTeleportRecord[];
@@ -1962,24 +1833,21 @@ async function waitForCharacterRoster(
     timeout,
   });
   await waitFor(async () => {
-    const roster = await page.$$eval(
-      '[data-testid^="character-preset-"]',
-      (buttons) => {
-        const visibleButtons = buttons.filter((button) => {
-          const style = window.getComputedStyle(button);
-          return style.display !== "none" && style.visibility !== "hidden";
-        });
-        const selected = visibleButtons.find(
-          (button) => button.getAttribute("aria-pressed") === "true",
-        );
-        return visibleButtons.length > 0 && selected
-          ? {
-              count: visibleButtons.length,
-              selectedTestId: selected.getAttribute("data-testid"),
-            }
-          : null;
-      },
-    );
+    const roster = await page.$$eval('[data-testid^="character-preset-"]', (buttons) => {
+      const visibleButtons = buttons.filter((button) => {
+        const style = window.getComputedStyle(button);
+        return style.display !== "none" && style.visibility !== "hidden";
+      });
+      const selected = visibleButtons.find(
+        (button) => button.getAttribute("aria-pressed") === "true",
+      );
+      return visibleButtons.length > 0 && selected
+        ? {
+            count: visibleButtons.length,
+            selectedTestId: selected.getAttribute("data-testid"),
+          }
+        : null;
+    });
     return roster?.count ? roster : null;
   }, timeout);
 
@@ -2016,7 +1884,7 @@ async function characterRosterEntries(
   });
 }
 
-async function _selectedCharacterPreviewSrc(page: Page): Promise<string> {
+async function selectedCharacterPreviewSrc(page: Page): Promise<string> {
   const previewSrc = await page.$eval(
     '[data-testid^="character-preset-"][aria-pressed="true"] img',
     (img) => img.getAttribute("src"),
@@ -2031,38 +1899,34 @@ async function clickByText(page: Page, text: string) {
   await clickByTextWithin(page, text);
 }
 
-async function clickByTextWithin(page: Page, text: string, timeout = 45_000) {
+async function clickByTextWithin(
+  page: Page,
+  text: string,
+  timeout = 45_000,
+) {
   await page.waitForFunction(
     (expected) => {
       const normalizedExpected = String(expected).toLowerCase();
       return Array.from(
-        document.querySelectorAll<HTMLElement>(
-          "button,[role='button'],a,[data-radix-collection-item]",
-        ),
+        document.querySelectorAll<HTMLElement>("button,[role='button']"),
       ).some((element) => {
         const position = window.getComputedStyle(element).position;
         const visible =
           element.offsetParent !== null ||
           position === "fixed" ||
           position === "sticky";
-        const disabled =
-          (element instanceof HTMLButtonElement && element.disabled) ||
-          element.getAttribute("aria-disabled") === "true" ||
-          element.getAttribute("data-disabled") === "true";
         const label = (element.innerText ?? "").toLowerCase();
-        return visible && !disabled && label.includes(normalizedExpected);
+        return visible && label.includes(normalizedExpected);
       });
     },
     { timeout },
     text,
   );
 
-  const targetBox = await page.evaluate((expected) => {
+  const clicked = await page.evaluate((expected) => {
     const normalizedExpected = String(expected).toLowerCase();
     const elements = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        "button,[role='button'],a,[data-radix-collection-item]",
-      ),
+      document.querySelectorAll<HTMLElement>("button,[role='button']"),
     );
     const target = elements.find((element) => {
       const position = window.getComputedStyle(element).position;
@@ -2070,31 +1934,13 @@ async function clickByTextWithin(page: Page, text: string, timeout = 45_000) {
         element.offsetParent !== null ||
         position === "fixed" ||
         position === "sticky";
-      const disabled =
-        (element instanceof HTMLButtonElement && element.disabled) ||
-        element.getAttribute("aria-disabled") === "true" ||
-        element.getAttribute("data-disabled") === "true";
       const label = (element.innerText ?? "").toLowerCase();
-      return visible && !disabled && label.includes(normalizedExpected);
+      return visible && label.includes(normalizedExpected);
     });
-    if (!target) {
-      return null;
-    }
-    target.scrollIntoView({ block: "center", inline: "center" });
-    const rect = target.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      return null;
-    }
-    return {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
-    };
+    target?.click();
+    return Boolean(target);
   }, text);
-  expect(targetBox).not.toBeNull();
-  if (!targetBox) {
-    throw new Error(`Unable to resolve clickable target for text: ${text}`);
-  }
-  await page.mouse.click(targetBox.x, targetBox.y);
+  expect(clicked).toBe(true);
 }
 
 async function clickAnyText(
@@ -2114,7 +1960,7 @@ async function clickAnyText(
         lastError = error;
       }
     }
-    await sleep(250);
+    await page.waitForTimeout(250);
   }
 
   throw lastError instanceof Error
@@ -2122,7 +1968,11 @@ async function clickAnyText(
     : new Error(`Could not click any of: ${texts.join(", ")}`);
 }
 
-async function clickButtonLabel(page: Page, label: string, timeout = 45_000) {
+async function clickButtonLabel(
+  page: Page,
+  label: string,
+  timeout = 45_000,
+) {
   const normalizedLabel = label.trim().toLowerCase();
   await page.waitForFunction(
     (expected) => {
@@ -2231,54 +2081,14 @@ async function clickSelector(
 }
 
 async function typeInto(page: Page, selector: string, value: string) {
-  await setInputValue(page, selector, value);
-  await page.waitForFunction(
-    (expectedSelector, expectedValue) => {
-      const element = document.querySelector(expectedSelector);
-      return (
-        (element instanceof HTMLInputElement ||
-          element instanceof HTMLTextAreaElement) &&
-        element.value === expectedValue
-      );
-    },
-    { timeout: 45_000 },
-    selector,
-    value,
-  );
-}
-
-async function setInputValue(page: Page, selector: string, value: string) {
-  await page.waitForSelector(selector, { visible: true, timeout: 45_000 });
-  const updated = await page.evaluate(
-    (expectedSelector, expectedValue) => {
-      const element = document.querySelector(expectedSelector);
-      if (
-        !(
-          element instanceof HTMLInputElement ||
-          element instanceof HTMLTextAreaElement
-        )
-      ) {
-        return false;
-      }
-
-      const prototype =
-        element instanceof HTMLTextAreaElement
-          ? HTMLTextAreaElement.prototype
-          : HTMLInputElement.prototype;
-      const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
-      descriptor?.set?.call(element, expectedValue);
-      if (!descriptor?.set) {
-        element.value = expectedValue;
-      }
-      element.dispatchEvent(new Event("input", { bubbles: true }));
-      element.dispatchEvent(new Event("change", { bubbles: true }));
-      element.blur();
-      return true;
-    },
-    selector,
-    value,
-  );
-  expect(updated).toBe(true);
+  const input = await page.waitForSelector(selector, { visible: true });
+  expect(input).toBeTruthy();
+  if (!input) {
+    throw new Error(`Input not found for selector: ${selector}`);
+  }
+  await input.click({ clickCount: 3 });
+  await page.keyboard.press("Backspace");
+  await input.type(value, { delay: 5 });
 }
 
 async function isSelectorVisible(
@@ -2304,70 +2114,22 @@ async function isSelectorVisible(
     .catch(() => false);
 }
 
-async function waitForVisibleSelector(
-  page: Page,
-  selector: string,
-  timeout = 45_000,
-) {
-  await waitFor(async () => {
-    return (await isSelectorVisible(page, selector)) ? true : null;
-  }, timeout);
-}
-
-async function waitForProviderOption(
-  page: Page,
-  selector: string,
-  timeout = 45_000,
-) {
-  await waitForVisibleSelector(page, selector, timeout);
-}
-
 async function typeComposerAndSend(page: Page, value: string) {
-  const textareaSelector = '[data-testid="chat-composer-textarea"]';
-  const sendButtonSelector = '[data-testid="chat-composer-action"]';
-
-  await setInputValue(page, textareaSelector, value);
-  await page.waitForFunction(
-    (selector, expectedValue) => {
-      const element = document.querySelector(selector);
-      return (
-        element instanceof HTMLTextAreaElement &&
-        element.value === expectedValue
-      );
-    },
-    { timeout: 45_000 },
-    textareaSelector,
-    value,
-  );
-  await page.waitForFunction(
-    (selector) => {
-      const element = document.querySelector(selector);
-      return element instanceof HTMLButtonElement && !element.disabled;
-    },
-    { timeout: 45_000 },
-    sendButtonSelector,
-  );
-  await clickSelector(page, sendButtonSelector);
+  await typeInto(page, '[data-testid="chat-composer-textarea"]', value);
+  await page.keyboard.press("Enter");
 }
 
 async function completeLocalProviderOnboarding(page: Page) {
   if (!LIVE_PROVIDER || !LIVE_PROVIDER_LABEL) {
     throw new Error("A live LLM provider is required for QA onboarding.");
   }
-  const providerOptionSelector = `[data-testid="onboarding-provider-option-${LIVE_PROVIDER.name}"]`;
 
-  await fs.mkdir(QA_ARTIFACT_DIR, { recursive: true });
-  await fs.writeFile(QA_ONBOARDING_TRACE_FILE, "", "utf8");
-  await appendQaOnboardingTrace("wait for onboarding entry");
-  console.log("[live-qa][onboarding] wait for onboarding entry");
   await waitForOnboardingEntry(page, 180_000);
 
   if (await pageContainsText(page, "Choose your setup")) {
     if (await pageContainsText(page, "Create Local Agent")) {
-      await appendQaOnboardingTrace("choose setup: create local agent");
       await clickAnyText(page, ["Create Local Agent"]);
     } else {
-      await appendQaOnboardingTrace("choose setup: connect remote agent");
       await clickAnyText(page, ["Connect to Remote Agent"]);
       await page.waitForSelector(
         'input[placeholder*="your-agent.example.com"]',
@@ -2376,13 +2138,7 @@ async function completeLocalProviderOnboarding(page: Page) {
           timeout: 30_000,
         },
       );
-      await appendQaOnboardingTrace("fill remote agent url");
-      await setInputValue(
-        page,
-        'input[placeholder*="your-agent.example.com"]',
-        UI_URL,
-      );
-      await appendQaOnboardingTrace("submit remote agent connect");
+      await typeInto(page, 'input[placeholder*="your-agent.example.com"]', UI_URL);
       await clickButtonLabel(page, "Connect");
 
       const connectionRemoteApiBase = await page
@@ -2392,41 +2148,45 @@ async function completeLocalProviderOnboarding(page: Page) {
         })
         .catch(() => null);
       if (connectionRemoteApiBase) {
-        await appendQaOnboardingTrace("fill remote api base");
-        await setInputValue(page, "#remote-api-base", UI_URL);
-        await appendQaOnboardingTrace("submit remote backend connect");
+        await typeInto(page, "#remote-api-base", UI_URL);
         await clickButtonLabel(page, "Connect remote backend");
-        await appendQaOnboardingTrace(
-          "wait for provider option after remote backend connect",
-        );
-        await waitForProviderOption(page, providerOptionSelector, 60_000);
+        await waitFor(async () => {
+          const remote = await qaRemoteSnapshot(page);
+          if (remote.remoteError) {
+            throw new Error(
+              `Remote backend connect failed: ${remote.remoteError}`,
+            );
+          }
+          const bodyText = remote.bodyText.toLowerCase();
+          return bodyText.includes("choose your ai provider") ||
+            bodyText.includes("groq")
+            ? true
+            : null;
+        }, 60_000);
       }
+    }
+  } else {
+    if (await pageContainsText(page, "Create Local Agent")) {
+      await clickAnyText(page, ["Create Local Agent"]);
+    } else {
+      await clickAnyText(page, ["Get Started"]);
     }
   }
 
   const alreadyOnProviderGrid =
-    (await isSelectorVisible(page, providerOptionSelector)) ||
     (await pageContainsText(page, "Choose your AI provider")) ||
     (await pageContainsText(page, LIVE_PROVIDER_LABEL));
 
   if (!alreadyOnProviderGrid) {
-    if (await pageContainsText(page, "Create Local Agent")) {
-      await clickAnyText(page, ["Create Local Agent"]);
-    } else if (await pageContainsText(page, "Get Started")) {
-      await clickAnyText(page, ["Get Started"]);
-    }
-
-    await waitForAnyText(page, ["Continue", "Chen"], 60_000);
-    await appendQaOnboardingTrace("click continue before provider grid");
-    await clickAnyText(page, ["Continue"], 30_000);
+    await waitForAnyText(page, ["Continue", "Eliza"], 60_000);
+    await clickAnyText(page, ["Continue"]);
   }
-  await appendQaOnboardingTrace("wait for provider option");
-  await waitForProviderOption(page, providerOptionSelector, 60_000);
-  console.log(
-    `[live-qa][onboarding] select provider ${LIVE_PROVIDER_LABEL.toLowerCase()}`,
+  await waitForAnyText(
+    page,
+    ["Choose your AI provider", LIVE_PROVIDER_LABEL],
+    60_000,
   );
-  await appendQaOnboardingTrace(`select provider ${LIVE_PROVIDER.name}`);
-  await clickSelector(page, providerOptionSelector);
+  await clickAnyText(page, [LIVE_PROVIDER_LABEL]);
 
   const providerApiKeyInput = await page
     .waitForSelector("#provider-api-key", {
@@ -2436,102 +2196,35 @@ async function completeLocalProviderOnboarding(page: Page) {
     .catch(() => null);
 
   if (providerApiKeyInput) {
-    console.log("[live-qa][onboarding] fill provider api key");
-    await appendQaOnboardingTrace("fill provider api key primary input");
-    await setInputValue(page, "#provider-api-key", LIVE_PROVIDER.apiKey);
+    await typeInto(page, "#provider-api-key", LIVE_PROVIDER.apiKey);
   } else {
-    console.log("[live-qa][onboarding] fill provider api key fallback input");
-    await appendQaOnboardingTrace("fill provider api key fallback input");
-    await setInputValue(page, 'input[type="password"]', LIVE_PROVIDER.apiKey);
+    await typeInto(page, 'input[type="password"]', LIVE_PROVIDER.apiKey);
   }
 
-  await clickButtonLabel(page, "Confirm");
-  await waitForAnyText(
-    page,
-    ["Enable features", "Continue without features", "Continue"],
-    60_000,
-  );
-  if (await pageContainsText(page, "Continue without features")) {
-    await clickButtonLabel(page, "Continue without features");
-  } else {
-    await clickButtonLabel(page, "Continue");
-  }
-  const completedViaUi = await waitFor(
-    async () => (await onboardingComplete()) || null,
-    15_000,
-  ).catch(() => null);
-  if (!completedViaUi) {
-    await apiJson("/api/onboarding", {
-      method: "POST",
-      body: JSON.stringify({
-        name: "Eliza",
-        bio: ["An autonomous AI agent."],
-        systemPrompt:
-          "You are Eliza, an autonomous AI agent powered by elizaOS.",
-        language: "en",
-        avatarIndex: 1,
-        deploymentTarget: { runtime: "local" },
-        serviceRouting: {
-          llmText: {
-            backend: resolveOnboardingProviderId(LIVE_PROVIDER!.name),
-            transport: "direct",
-            primaryModel: LIVE_PROVIDER!.largeModel,
-            smallModel: LIVE_PROVIDER!.smallModel,
-            largeModel: LIVE_PROVIDER!.largeModel,
-          },
-        },
-        credentialInputs: {
-          llmApiKey: LIVE_PROVIDER!.apiKey,
-        },
-        features: {
-          browser: false,
-          computeruse: false,
-          crypto: false,
-        },
-      }),
-    });
-  }
-
+  await clickAnyText(page, ["Confirm"]);
+  await waitForAnyText(page, ["Enable features", "Skip for now"], 60_000);
+  await clickAnyText(page, ["Skip for now", "Continue without features"]);
   await waitFor(async () => (await onboardingComplete()) || null, 120_000);
-  await page.evaluate(() => {
-    localStorage.setItem("eliza:onboarding-complete", "1");
-    localStorage.removeItem("eliza:onboarding-step");
-    localStorage.setItem(
-      "elizaos:active-server",
-      JSON.stringify({
-        id: "local:embedded",
-        kind: "local",
-        label: "This device",
-      }),
-    );
-  });
-  await navigate(page, UI_URL);
-  await waitForAnyText(page, ["Chat", "Apps", "Character"], 60_000);
 }
 
 async function enterCompanionMode(page: Page) {
-  if (
-    await isSelectorVisible(page, '[data-testid="ui-shell-toggle-companion"]')
-  ) {
-    await appendQaOnboardingTrace("enter companion mode: click shell toggle");
+  try {
     await clickSelector(page, '[data-testid="ui-shell-toggle-companion"]');
-  } else {
-    await appendQaOnboardingTrace("enter companion mode: navigate to apps companion");
-    await page.goto(`${UI_URL}/apps/companion`, {
-      waitUntil: "networkidle2",
-    });
-    await page.waitForFunction(() => document.readyState !== "loading", {
-      timeout: 30_000,
-    });
+  } catch {
+    await navigate(page, `${UI_URL}/apps/companion`);
   }
-  await appendQaOnboardingTrace("enter companion mode: wait for shell");
-  await waitForVisibleSelector(page, '[data-testid="companion-root"]', 30_000);
-  await waitForVisibleSelector(
-    page,
-    '[data-testid="companion-header-shell"]',
-    30_000,
+  await page.waitForFunction(
+    () => {
+      return (
+        window.location.pathname.endsWith("/apps/companion") &&
+        Boolean(document.querySelector('[data-testid="companion-root"]')) &&
+        Boolean(
+          document.querySelector('[data-testid="companion-header-shell"]'),
+        )
+      );
+    },
+    { timeout: 30_000 },
   );
-  await appendQaOnboardingTrace("enter companion mode: shell ready");
 }
 
 async function qaCharacterSwitchAndDance(page: Page, profile?: Profile) {
@@ -2559,13 +2252,10 @@ async function qaCharacterSwitchAndDance(page: Page, profile?: Profile) {
   }
   await clickSelector(page, `[data-testid="${nextEntry.testId}"]`);
   await page
-    .waitForSelector(
-      `[data-testid="${nextEntry.testId}"][aria-pressed="true"]`,
-      {
-        visible: true,
-        timeout: 20_000,
-      },
-    )
+    .waitForSelector(`[data-testid="${nextEntry.testId}"][aria-pressed="true"]`, {
+      visible: true,
+      timeout: 20_000,
+    })
     .catch(() => null);
 
   const danceFetchBaseline = (await qaFetches(page)).length;
@@ -2582,32 +2272,28 @@ async function qaCharacterSwitchAndDance(page: Page, profile?: Profile) {
     timeout: 30_000,
   });
   await clickSelector(page, 'button[title="Dance Happy"]');
-  await waitFor(
-    async () => {
-      const overlayVisible = await page
-        .waitForSelector(
-          '[data-testid="global-emote-overlay"][data-emote-id="dance-happy"]',
-          {
-            visible: true,
-            timeout: 1000,
-          },
-        )
-        .then(() => true)
-        .catch(() => false);
-      if (overlayVisible) {
-        return true;
-      }
+  await waitFor(async () => {
+    const overlayVisible = await page
+      .waitForSelector(
+        '[data-testid="global-emote-overlay"][data-emote-id="dance-happy"]',
+        {
+          visible: true,
+          timeout: 1000,
+        },
+      )
+      .then(() => true)
+      .catch(() => false);
+    if (overlayVisible) {
+      return true;
+    }
 
-      const events = await qaEmoteEvents(page);
-      return events
-        .slice(danceEmoteBaseline)
-        .some((event) => event.emoteId === "dance-happy")
-        ? true
-        : null;
-    },
-    45_000,
-    1000,
-  );
+    const events = await qaEmoteEvents(page);
+    return events
+      .slice(danceEmoteBaseline)
+      .some((event) => event.emoteId === "dance-happy")
+      ? true
+      : null;
+  }, 45_000, 1000);
 
   if (profile) {
     logQaStep(profile, "character-switch QA wait for dance emote API");
@@ -2670,10 +2356,8 @@ async function onboardingComplete(): Promise<boolean> {
 
 async function resetAgentViaApi() {
   if (liveStack) {
-    await appendQaOnboardingTrace("reset via live stack restart");
     console.log("[live-qa][setup] reset via live stack restart");
     await restartLiveStack();
-    await appendQaOnboardingTrace("reset via live stack restart complete");
     console.log("[live-qa][setup] reset via live stack restart complete");
     if (await onboardingComplete()) {
       throw new Error(
@@ -2780,7 +2464,7 @@ async function isHttpOk(url: string): Promise<boolean> {
   }
 }
 
-async function _resolveLiveUiUrl(): Promise<string> {
+async function resolveLiveUiUrl(): Promise<string> {
   if (await isHttpOk(`${DEFAULT_UI_URL}/`)) {
     return DEFAULT_UI_URL;
   }
@@ -2876,16 +2560,7 @@ async function navigate(page: Page, url: string) {
 async function saveScreenshot(page: Page, profile: Profile, step: string) {
   const filename = path.join(QA_ARTIFACT_DIR, `${profile.id}-${step}.png`);
   try {
-    await Promise.race([
-      page.screenshot({
-        path: filename,
-        fullPage: false,
-        captureBeyondViewport: false,
-      }),
-      sleep(15_000).then(() => {
-        throw new Error("Screenshot timed out after 15s");
-      }),
-    ]);
+    await page.screenshot({ path: filename, fullPage: true });
   } catch (error) {
     const noteFile = path.join(QA_ARTIFACT_DIR, `${profile.id}-${step}.txt`);
     await fs.writeFile(
@@ -2916,15 +2591,11 @@ async function saveFailureArtifacts(
 
   try {
     url = page.url();
-  } catch (pageError) {
-    url = `Unavailable: ${pageError instanceof Error ? pageError.message : String(pageError)}`;
-  }
+  } catch {}
 
   try {
     title = await page.title();
-  } catch (pageError) {
-    title = `Unavailable: ${pageError instanceof Error ? pageError.message : String(pageError)}`;
-  }
+  } catch {}
 
   try {
     bodyText = await page.evaluate(() =>
@@ -3000,41 +2671,6 @@ async function waitFor<T>(
 
 function stripTrailingSlash(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
-}
-
-async function launchQaBrowser(userDataDir: string): Promise<Browser> {
-  if (!CHROME_PATH) {
-    throw new Error(
-      `QA browser executable unavailable via ${LIVE_BROWSER.source}.`,
-    );
-  }
-
-  let lastError: unknown = null;
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      return await puppeteer.launch({
-        executablePath: CHROME_PATH,
-        headless: true,
-        protocolTimeout: 300_000,
-        userDataDir,
-        args: [
-          "--autoplay-policy=no-user-gesture-required",
-          "--disable-background-timer-throttling",
-          "--disable-renderer-backgrounding",
-          "--disable-dev-shm-usage",
-          "--use-angle=swiftshader",
-        ],
-      });
-    } catch (error) {
-      lastError = error;
-      await sleep(1000 * (attempt + 1));
-    }
-  }
-
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("Failed to launch QA browser");
 }
 
 function normalizeText(value: string): string {

@@ -171,9 +171,7 @@ export function ShellHeaderControls({
           <Volume2 className="pointer-events-none h-4 w-4 shrink-0" />
         )}
         {iconOnly ? null : (
-          <span className="pointer-events-none">
-            {t("common.voice")}
-          </span>
+          <span className="pointer-events-none">{t("common.voice")}</span>
         )}
       </Button>
     ) : null;
@@ -196,9 +194,7 @@ export function ShellHeaderControls({
     >
       <MessageCirclePlus className="pointer-events-none h-4 w-4 shrink-0" />
       {iconOnly ? null : (
-        <span className="pointer-events-none">
-          {t("common.newChat")}
-        </span>
+        <span className="pointer-events-none">{t("common.newChat")}</span>
       )}
     </Button>
   );
