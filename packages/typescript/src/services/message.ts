@@ -1321,6 +1321,15 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // routinely overrides a correct CREATE_CRON/CREATE_TRIGGER_TASK pick on
 // page-automations with LIFE based on fuzzy description overlap — breaking
 // the scope-gated routing on the page-automations surface.
+// OWNER_RELATIONSHIP is the explicit umbrella action for the contacts /
+// rolodex / follow-up surface. The metadata-based corrector would otherwise
+// override a correct OWNER_RELATIONSHIP pick (subaction=add_follow_up) with
+// SCHEDULE_FOLLOW_UP based on keyword overlap ("follow up with X next week"),
+// even though SCHEDULE_FOLLOW_UP's validate explicitly returns false when
+// OWNER_RELATIONSHIP is registered. The bypassed validate then surfaces a
+// "Contact not found in relationships" error from the wrong action path.
+// Treat OWNER_RELATIONSHIP as explicit planner intent so the corrector does
+// not second-guess it.
 const EXPLICIT_INTENT_ACTIONS = new Set(
 	[
 		"SPAWN_AGENT",
@@ -1334,6 +1343,7 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 		"SCHEDULE_AUTOMATION",
 		"CREATE_CRON",
 		"CREATE_RECURRING",
+		"OWNER_RELATIONSHIP",
 	].map(normalizeActionIdentifier),
 );
 
