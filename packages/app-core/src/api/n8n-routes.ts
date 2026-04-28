@@ -695,13 +695,17 @@ async function buildTriggerContextFromConversation(
   const discordThreadId =
     typeof discord.threadId === "string" ? discord.threadId : undefined;
 
+  // No `meta.fromId` fallback for Telegram: `fromId` is the sender's user
+  // id, which equals the chat id only in private 1:1 DMs. In group chats /
+  // channels the chat id is a distinct (typically negative) integer, so
+  // falling back to fromId would silently route the workflow to the wrong
+  // entity. Only use the canonical `metadata.telegram.chatId`. If the
+  // upstream Telegram plugin hasn't populated it yet, we skip Telegram
+  // routing rather than guess.
   const telegramChatId =
-    (typeof telegram.chatId === "string" || typeof telegram.chatId === "number"
+    typeof telegram.chatId === "string" || typeof telegram.chatId === "number"
       ? telegram.chatId
-      : undefined) ??
-    (typeof meta.fromId === "string" || typeof meta.fromId === "number"
-      ? (meta.fromId as string | number)
-      : undefined);
+      : undefined;
   const telegramThreadId =
     typeof telegram.threadId === "string" ||
     typeof telegram.threadId === "number"
