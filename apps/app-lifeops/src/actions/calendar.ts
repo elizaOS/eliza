@@ -849,7 +849,7 @@ function normalizeCalendarSearchQueryValue(
 
   const cleaned = normalizeText(value)
     .replace(/\b(?:actions?|params?|parameters?)\b[:;]*/g, "")
-    .replace(/\b\w+\?:\w+(?:\s+\[[^\]]+\])?\s*-\s*/g, " ")
+    .replace(/\b\w{1,128}\?:\w{1,128}(?:\s{1,32}\[[^\]]{1,256}\])?\s{0,32}-\s{0,32}/g, " ")
     .replace(/\bsupported keys include\b.*$/g, "")
     .replace(/\bmatch against titles\b.*$/g, "")
     .replace(/\bstructured calendar arguments\b.*$/g, "")

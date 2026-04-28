@@ -57,8 +57,8 @@ export function extractVoiceText(input: string): string {
   }
 
   text = text.replace(HIDDEN_VOICE_BLOCK_RE, " ");
-  text = text.replace(/\s*<actions>[\s\S]*?(?:<\/actions>|$)\s*/g, " ");
-  text = text.replace(/\s*<params>[\s\S]*?(?:<\/params>|$)\s*/g, " ");
+  text = text.replace(/\s{0,32}<actions>[\s\S]{0,16384}?(?:<\/actions>|$)\s{0,32}/g, " ");
+  text = text.replace(/\s{0,32}<params>[\s\S]{0,16384}?(?:<\/params>|$)\s{0,32}/g, " ");
   text = text.replace(/<\/?[a-zA-Z][^>]*$|<\/?$/s, "");
 
   return text;

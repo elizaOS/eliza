@@ -28,10 +28,12 @@ type StewardApprovalRequest = {
 };
 
 const ADDRESS_RE = /\b0x[a-fA-F0-9]{40}\b/;
-const CHAIN_ID_RE = /\bchain(?:[ \t]{0,4}id)?[ \t]{0,4}:?[ \t]{0,4}(\d+)\b/i;
-const DATA_RE = /\b(?:data|calldata)[ \t]{0,4}:?[ \t]{0,4}(0x[a-fA-F0-9]+)\b/i;
-const TX_ID_RE = /\b(tx[\w:-]+)\b/i;
-const VALUE_RE = /\bvalue(?:[ \t]{0,4}\(wei\))?[ \t]{0,4}:?[ \t]{0,4}(\d+)\b/i;
+const CHAIN_ID_RE = /\bchain(?:[ \t]{0,4}id)?[ \t]{0,4}:?[ \t]{0,4}(\d{1,16})\b/i;
+const DATA_RE =
+  /\b(?:data|calldata)[ \t]{0,4}:?[ \t]{0,4}(0x[a-fA-F0-9]{1,8192})\b/i;
+const TX_ID_RE = /\b(tx[\w:-]{1,128})\b/i;
+const VALUE_RE =
+  /\bvalue(?:[ \t]{0,4}\(wei\))?[ \t]{0,4}:?[ \t]{0,4}(\d{1,40})\b/i;
 
 const MAX_MESSAGE_TEXT_LENGTH = 8192;
 
