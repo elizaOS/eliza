@@ -264,6 +264,12 @@ describe("APP create dispatch", () => {
 					profile: "full",
 				},
 			});
+
+			// originRoomId plumbed through CREATE_TASK metadata so the
+			// VerificationRoomBridgeService can post the verdict back into
+			// the originating chat room.
+			const metadata = parameters.metadata as Record<string, unknown>;
+			expect(metadata.originRoomId).toBe("room-1");
 		} finally {
 			await rm(repoRoot, { recursive: true, force: true });
 		}
@@ -352,6 +358,11 @@ describe("APP create dispatch", () => {
 					profile: "full",
 				},
 			});
+
+			// originRoomId on the edit path mirrors the create path — bridge
+			// posts the verdict back into the same room the edit was started in.
+			const metadata = parameters.metadata as Record<string, unknown>;
+			expect(metadata.originRoomId).toBe("room-edit");
 		} finally {
 			await rm(repoRoot, { recursive: true, force: true });
 		}
