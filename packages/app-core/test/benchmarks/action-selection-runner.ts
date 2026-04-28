@@ -810,130 +810,6 @@ async function runSingleCaseWithRecording(
   }
 }
 
-async function runSingleCase(
-  runtime: AgentRuntime,
-  tc: ActionBenchmarkCase,
-  timeoutMs: number,
-  registeredActions: string[],
-): Promise<ActionBenchmarkResult> {
-  const started = Date.now();
-  const entityId = resolveBenchmarkOwnerEntityId(runtime);
-  const harness = new ConversationHarness(runtime, {
-    userId: entityId,
-    userName: BENCHMARK_USER_NAME,
-    source: BENCHMARK_SOURCE,
-  });
-  const hookId = `benchmark-${tc.id}-${crypto.randomUUID()}`;
-  const capture: { firstAction: string | null } = { firstAction: null };
-
-  try {
-    runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
-    await seedBenchmarkCaseFixtures(runtime, entityId);
-    await ensureBenchmarkConversation({
-      runtime,
-      entityId,
-      roomId: harness.roomId,
-      worldId: harness.worldId,
-    });
-
-    runtime.registerPipelineHook({
-      id: hookId,
-      phase: "outgoing_before_deliver",
-      handler: (_runtime, ctx) => {
-        if (ctx.phase !== "outgoing_before_deliver") return;
-        if (ctx.roomId !== harness.roomId) return;
-        if (capture.firstAction !== null) return;
-        const name = ctx.actionName;
-        if (typeof name === "string" && name.trim().length > 0) {
-          capture.firstAction = name;
-        }
-      },
-    });
-
-    const message = createMessageMemory({
-      id: crypto.randomUUID() as UUID,
-      entityId,
-      roomId: harness.roomId,
-      content: {
-        text: tc.userMessage,
-        source: BENCHMARK_SOURCE,
-        channelType: ChannelType.DM,
-      },
-    });
-
-    const filteredActions = await computeFilteredActions(runtime, message);
-
-    const turn = await harness.send(tc.userMessage, { timeoutMs });
-    const startedAction = pickObservedAction(
-      turn.actions,
-      "started",
-      tc.expectedAction,
-      tc.acceptableActions,
-    );
-    const completedAction = pickObservedAction(
-      turn.actions,
-      "completed",
-      tc.expectedAction,
-      tc.acceptableActions,
-      { requireSuccessfulCompletion: true },
-    );
-    const actualAction = completedAction ?? startedAction;
-    const pass = caseMatches(
-      actualAction,
-      tc.expectedAction,
-      tc.acceptableActions,
-    );
-    const failureMode = determineFailureMode({
-      pass,
-      expected: tc.expectedAction,
-      actual: actualAction,
-      planned: actualAction,
-      filtered: filteredActions,
-      hadError: false,
-    });
-
-    return {
-      case: tc,
-      plannedAction: actualAction,
-      plannedActions: actualAction ? [actualAction] : [],
-      startedAction,
-      completedAction,
-      actualAction,
-      selectionPass: pass,
-      executionPass: pass,
-      pass,
-      latencyMs: Date.now() - started,
-      failureMode,
-      filteredActions,
-      registeredActions,
-      responseText:
-        typeof turn.responseText === "string"
-          ? turn.responseText.slice(0, 200)
-          : undefined,
-    };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      case: tc,
-      plannedAction: null,
-      plannedActions: [],
-      startedAction: null,
-      completedAction: null,
-      actualAction: null,
-      selectionPass: false,
-      executionPass: false,
-      pass: false,
-      latencyMs: Date.now() - started,
-      error: message,
-      failureMode: "error",
-      registeredActions,
-    };
-  } finally {
-    runtime.unregisterPipelineHook(hookId);
-    await harness.cleanup();
-  }
-}
-
 function percentile(sorted: number[], p: number): number {
   if (sorted.length === 0) return 0;
   const idx = Math.min(
@@ -970,39 +846,25 @@ export async function runActionSelectionBenchmark(
       const handle = await opts.createCaseRuntime();
       const registeredActions = handle.runtime.actions.map((a) => a.name);
       try {
-        return captureEnabled
-          ? await runSingleCaseWithRecording(
-              handle.runtime,
-              tc,
-              timeoutMs,
-              trajectoryDir,
-              registeredActions,
-            )
-          : await runSingleCase(
-              handle.runtime,
-              tc,
-              timeoutMs,
-              registeredActions,
-            );
+        return await runSingleCaseWithRecording(
+          handle.runtime,
+          tc,
+          timeoutMs,
+          captureEnabled ? trajectoryDir : undefined,
+          registeredActions,
+        );
       } finally {
         await handle.cleanup();
       }
     }
 
-    return captureEnabled
-      ? runSingleCaseWithRecording(
-          opts.runtime as AgentRuntime,
-          tc,
-          timeoutMs,
-          trajectoryDir,
-          sharedRegisteredActions,
-        )
-      : runSingleCase(
-          opts.runtime as AgentRuntime,
-          tc,
-          timeoutMs,
-          sharedRegisteredActions,
-        );
+    return runSingleCaseWithRecording(
+      opts.runtime as AgentRuntime,
+      tc,
+      timeoutMs,
+      captureEnabled ? trajectoryDir : undefined,
+      sharedRegisteredActions,
+    );
   };
 
   const runOneWithRetries = async (
