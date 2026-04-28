@@ -75,7 +75,7 @@ jobs:
         if: steps.check-autodoc.outputs.exists == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: "23"
+          node-version: "24"
 
       - name: Setup Python
         if: steps.check-autodoc.outputs.exists == 'true'

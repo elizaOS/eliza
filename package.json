@@ -4,7 +4,7 @@
   "module": "index.ts",
   "type": "module",
   "engines": {
-    "node": "23.3.0"
+    "node": "24.15.0"
   },
   "scripts": {
     "fix-deps": "bun scripts/fix-workspace-deps.mjs",
