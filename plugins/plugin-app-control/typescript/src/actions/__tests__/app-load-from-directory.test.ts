@@ -26,12 +26,20 @@ import {
 import { runLoadFromDirectory } from "../app-load-from-directory.js";
 
 let scanRoot: string;
+let originalProtectedEnv: string | undefined;
 
 beforeEach(async () => {
 	scanRoot = await mkdtemp(path.join(tmpdir(), "milady-app-load-dir-"));
+	originalProtectedEnv = process.env.MILADY_PROTECTED_APPS;
+	delete process.env.MILADY_PROTECTED_APPS;
 });
 
 afterEach(async () => {
+	if (originalProtectedEnv === undefined) {
+		delete process.env.MILADY_PROTECTED_APPS;
+	} else {
+		process.env.MILADY_PROTECTED_APPS = originalProtectedEnv;
+	}
 	await rm(scanRoot, { recursive: true, force: true });
 });
 
@@ -73,6 +81,7 @@ describe("APP load_from_directory", () => {
 			message: makeMessage(),
 			options: { directory: "relative/path" },
 			callback: bag.cb,
+			repoRoot: scanRoot,
 		});
 
 		expect(result.success).toBe(false);
@@ -101,6 +110,7 @@ describe("APP load_from_directory", () => {
 				message: makeMessage(),
 				options: { directory: scanRoot },
 				callback: bag.cb,
+				repoRoot: scanRoot,
 			});
 		} catch {
 			threw = true;
@@ -154,6 +164,7 @@ describe("APP load_from_directory", () => {
 			message: makeMessage(),
 			options: { directory: scanRoot },
 			callback: bag.cb,
+			repoRoot: scanRoot,
 		});
 
 		expect(result.success).toBe(true);
@@ -217,6 +228,7 @@ describe("APP load_from_directory", () => {
 			message: makeMessage(),
 			options: { directory: scanRoot },
 			callback: bag.cb,
+			repoRoot: scanRoot,
 		});
 
 		expect(result.success).toBe(true);
