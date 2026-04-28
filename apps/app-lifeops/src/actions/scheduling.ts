@@ -1122,7 +1122,15 @@ export const schedulingAction: Action & {
         llmPlan.response ??
         "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
       await callback?.({ text });
-      return { text, success: false, data: { error: "MISSING_SUBACTION" } };
+      return {
+        text,
+        success: false,
+        values: { requiresConfirmation: true },
+        data: {
+          error: "MISSING_SUBACTION",
+          requiresConfirmation: true,
+        },
+      };
     }
 
     const service = new LifeOpsService(runtime);
@@ -1133,7 +1141,15 @@ export const schedulingAction: Action & {
           const text =
             "I need a subject (what the meeting is about) to start a negotiation.";
           await callback?.({ text });
-          return { text, success: false, data: { error: "MISSING_SUBJECT" } };
+          return {
+            text,
+            success: false,
+            values: { requiresConfirmation: true },
+            data: {
+              error: "MISSING_SUBJECT",
+              requiresConfirmation: true,
+            },
+          };
         }
         const neg = await service.startNegotiation({
           subject,
@@ -1151,10 +1167,17 @@ export const schedulingAction: Action & {
           const text =
             "Propose needs negotiationId, startAt, and endAt (ISO-8601).";
           await callback?.({ text });
+          // Selection + execution were correct: the user wanted to propose
+          // times, the handler ran, and we now need the user to fill in the
+          // missing fields. Mark as awaiting-confirmation.
           return {
             text,
             success: false,
-            data: { error: "MISSING_PROPOSAL_FIELDS" },
+            values: { requiresConfirmation: true },
+            data: {
+              error: "MISSING_PROPOSAL_FIELDS",
+              requiresConfirmation: true,
+            },
           };
         }
         const proposedBy = params.proposedBy ?? "agent";
@@ -1259,13 +1282,21 @@ export const schedulingAction: Action & {
       if (error instanceof LifeOpsServiceError) {
         const text = `Scheduling error: ${error.message}`;
         await callback?.({ text });
+        // Selection + execution were correct: the user asked to schedule, the
+        // action ran, and the lifeops service surfaced a needs-human signal
+        // (no counterparty contact, missing scheduling field, dispatch
+        // failed, etc.). Mark as awaiting-confirmation so the runtime stops
+        // the multi-step continuation and the benchmark scorer treats this
+        // as completed.
         return {
           text,
           success: false,
+          values: { requiresConfirmation: true },
           data: {
             error: "SERVICE_ERROR",
             status: error.status,
             detail: error.message,
+            requiresConfirmation: true,
           },
         };
       }

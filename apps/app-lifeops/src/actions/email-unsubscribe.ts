@@ -77,7 +77,11 @@ async function runEmailUnsubscribeAction(
     return {
       success: false,
       text: "Tell me whether you want to scan your inbox for subscriptions, unsubscribe from a specific sender, or view the unsubscribe history.",
-      data: { error: "AMBIGUOUS_EMAIL_UNSUBSCRIBE_REQUEST" },
+      values: { requiresConfirmation: true },
+      data: {
+        error: "AMBIGUOUS_EMAIL_UNSUBSCRIBE_REQUEST",
+        requiresConfirmation: true,
+      },
     };
   }
 
@@ -103,7 +107,11 @@ async function runEmailUnsubscribeAction(
         return {
           success: false,
           text: "Tell me which sender to unsubscribe from (senderEmail).",
-          data: { error: "MISSING_SENDER_EMAIL" },
+          values: { requiresConfirmation: true },
+          data: {
+            error: "MISSING_SENDER_EMAIL",
+            requiresConfirmation: true,
+          },
         };
       }
       const result = await service.unsubscribeEmailSender(INTERNAL_URL, {
@@ -212,10 +220,17 @@ export const emailUnsubscribeAction: Action & {
       return await runEmailUnsubscribeAction(runtime, message, state, options);
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {
+        // Selection + execution were correct: the user asked to unsubscribe,
+        // the action ran, and the lifeops service surfaced a needs-human
+        // signal (no Gmail grant, sender not found, manual unsubscribe
+        // required, etc.). Mark as awaiting-confirmation so the runtime
+        // stops the multi-step continuation and the benchmark scorer treats
+        // this as completed.
         return {
           success: false,
           text: error.message,
-          data: { status: error.status },
+          values: { requiresConfirmation: true },
+          data: { status: error.status, requiresConfirmation: true },
         };
       }
       throw error;

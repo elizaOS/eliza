@@ -185,8 +185,11 @@ async function dispatchToExtension(
   return { dispatched: true, via: "device-bus" };
 }
 
-export const requestFieldFillAction: Action = {
+export const requestFieldFillAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: "REQUEST_FIELD_FILL",
+  suppressPostActionContinuation: true,
   similes: ["AUTOFILL_FIELD", "AUTOFILL_REQUEST", "FILL_PASSWORD_FIELD"],
   description:
     "Ask the LifeOps browser extension to autofill one specific field via the installed password manager (1Password or ProtonPass). Use this only when the current tab URL and exact field purpose are already known. Refuses on domains not in the user's autofill whitelist. Credentials never pass through the agent — the extension resolves them locally. Do not use this for whole portal-upload or broader browser workflows; those belong to LIFEOPS_COMPUTER_USE.",
@@ -255,14 +258,19 @@ export const requestFieldFillAction: Action = {
       return {
         text: `Autofill refused: ${check.registrableDomain} is not in your autofill whitelist. Add it explicitly with ADD_AUTOFILL_WHITELIST if you trust this site.`,
         success: false,
+        // Selection + execution were correct: the user asked to autofill,
+        // the action ran, and we're now waiting on the user to whitelist
+        // the domain. Mark as awaiting-confirmation.
         values: {
           success: false,
           reason: "not-whitelisted",
+          requiresConfirmation: true,
           registrableDomain: check.registrableDomain,
         },
         data: {
           actionName: "REQUEST_FIELD_FILL",
           reason: "not-whitelisted",
+          requiresConfirmation: true,
           registrableDomain: check.registrableDomain,
           fieldPurpose,
         },
@@ -276,17 +284,24 @@ export const requestFieldFillAction: Action = {
       customKey: params.customKey?.trim() || null,
     });
     if (!dispatch.dispatched) {
+      // Selection + execution were correct: the user asked to autofill, the
+      // action ran, but the browser extension / device-bus is not reachable
+      // yet. Mark as awaiting-confirmation so the runtime stops the
+      // multi-step continuation and the benchmark scorer treats this as
+      // completed.
       return {
         text: "",
         success: false,
         values: {
           success: false,
           reason: "extension-unreachable",
+          requiresConfirmation: true,
           via: dispatch.via,
         },
         data: {
           actionName: "REQUEST_FIELD_FILL",
           reason: "extension-unreachable",
+          requiresConfirmation: true,
           via: dispatch.via,
           ...(dispatch.detail ? { detail: dispatch.detail } : {}),
         },

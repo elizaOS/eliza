@@ -222,8 +222,12 @@ function missingSubactionResult(): ActionResult {
   return {
     text: "missing subaction; choose triage|digest|respond|needs_response|search|read_message|draft_reply|send_reply|cross_channel_search",
     success: false,
-    values: { success: false, error: "MISSING_SUBACTION" },
-    data: { actionName: ACTION_NAME },
+    values: {
+      success: false,
+      error: "MISSING_SUBACTION",
+      requiresConfirmation: true,
+    },
+    data: { actionName: ACTION_NAME, requiresConfirmation: true },
   };
 }
 
