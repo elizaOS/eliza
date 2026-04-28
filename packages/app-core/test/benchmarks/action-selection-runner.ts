@@ -823,6 +823,8 @@ async function runSingleCase(
     userName: BENCHMARK_USER_NAME,
     source: BENCHMARK_SOURCE,
   });
+  const hookId = `benchmark-${tc.id}-${crypto.randomUUID()}`;
+  const capture: { firstAction: string | null } = { firstAction: null };
 
   try {
     runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", entityId, false);
@@ -830,8 +832,8 @@ async function runSingleCase(
     await ensureBenchmarkConversation({
       runtime,
       entityId,
-      roomId,
-      worldId,
+      roomId: harness.roomId,
+      worldId: harness.worldId,
     });
 
     runtime.registerPipelineHook({
@@ -839,7 +841,7 @@ async function runSingleCase(
       phase: "outgoing_before_deliver",
       handler: (_runtime, ctx) => {
         if (ctx.phase !== "outgoing_before_deliver") return;
-        if (ctx.roomId !== roomId) return;
+        if (ctx.roomId !== harness.roomId) return;
         if (capture.firstAction !== null) return;
         const name = ctx.actionName;
         if (typeof name === "string" && name.trim().length > 0) {
@@ -927,6 +929,7 @@ async function runSingleCase(
       registeredActions,
     };
   } finally {
+    runtime.unregisterPipelineHook(hookId);
     await harness.cleanup();
   }
 }
