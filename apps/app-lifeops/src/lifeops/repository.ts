@@ -1723,11 +1723,29 @@ function parseDossier(row: Record<string, unknown>): LifeOpsDossier {
   };
 }
 
-function isMissingInboxCacheTableError(error: unknown): boolean {
+function isMissingTableError(error: unknown, table: string): boolean {
   const message = errorMessagesWithCauses(error).join("\n");
-  return /no such table: life_inbox_messages|relation ["']?life_inbox_messages["']? does not exist|undefined table/i.test(
-    message,
+  const escaped = table.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(
+    `no such table: ${escaped}|relation ["']?${escaped}["']? does not exist|undefined table`,
+    "i",
   );
+  return pattern.test(message);
+}
+
+async function tableExists(
+  runtime: IAgentRuntime,
+  table: string,
+): Promise<boolean> {
+  try {
+    await executeRawSql(runtime, `SELECT 1 FROM ${table} WHERE 1=0`);
+    return true;
+  } catch (error) {
+    if (isMissingTableError(error, table)) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 function errorMessagesWithCauses(error: unknown): string[] {
@@ -1801,6 +1819,9 @@ export class LifeOpsRepository {
   static async ensureSchedulingNegotiationColumns(
     runtime: IAgentRuntime,
   ): Promise<void> {
+    if (!(await tableExists(runtime, "life_scheduling_negotiations"))) {
+      return;
+    }
     await executeRawSql(
       runtime,
       "ALTER TABLE life_scheduling_negotiations ADD COLUMN IF NOT EXISTS accepted_proposal_id TEXT",
@@ -1810,6 +1831,9 @@ export class LifeOpsRepository {
   static async ensureActivitySignalColumns(
     runtime: IAgentRuntime,
   ): Promise<void> {
+    if (!(await tableExists(runtime, "life_activity_signals"))) {
+      return;
+    }
     await executeRawSql(
       runtime,
       "ALTER TABLE life_activity_signals ADD COLUMN IF NOT EXISTS platform TEXT NOT NULL DEFAULT ''",
@@ -1833,16 +1857,8 @@ export class LifeOpsRepository {
   }
 
   static async ensureInboxCacheIndexes(runtime: IAgentRuntime): Promise<void> {
-    try {
-      await executeRawSql(
-        runtime,
-        "SELECT 1 FROM life_inbox_messages WHERE 1=0",
-      );
-    } catch (error) {
-      if (isMissingInboxCacheTableError(error)) {
-        return;
-      }
-      throw error;
+    if (!(await tableExists(runtime, "life_inbox_messages"))) {
+      return;
     }
 
     await executeRawSql(
