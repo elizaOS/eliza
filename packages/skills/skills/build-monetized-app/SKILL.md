@@ -7,7 +7,11 @@ description: "Use when the task is building a new app on Eliza Cloud that earns 
 
 Use this skill when you need to build an app that takes a markup on every chat or inference call and credits the earnings back to your owner. Eliza Cloud already supports app registration, per-app API keys, container deploys, the `appId`-based auth and redirect flow, the affiliate-header revenue path, and creator-monetization plumbing — you do not need to invent any of these.
 
-The shipped reference implementation of this pattern is **eDad** (in `cloud-mini-apps/edad-chat`). Read `references/sdk-flow.md` for the canonical 6-step build flow before writing code.
+Read `references/sdk-flow.md` for the 6-step build flow with a self-contained code example. External references (all public):
+
+- **Working chat-app**: [`elizaOS/cloud-mini-apps/apps/edad-chat`](https://github.com/elizaOS/cloud-mini-apps/tree/main/apps/edad-chat) — copyable end-to-end implementation. Read its `server.ts` and `api/proxy.ts` for the canonical chat-forwarder shape using `@elizaos/cloud-sdk`.
+- **SDK reference**: [`@elizaos/cloud-sdk` README](https://github.com/elizaOS/cloud/tree/develop/packages/sdk) — typed methods + helpers + auth.
+- **Human-readable recipe**: [`docs/building-a-monetized-app.md`](https://github.com/elizaOS/cloud/blob/develop/docs/building-a-monetized-app.md) — same loop, narrative form, with the schema fields explained.
 
 ## The survival-economics loop
 

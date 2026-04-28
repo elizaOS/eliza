@@ -44,10 +44,54 @@ const retried = await cloud.routes.postApiV1Apps({
 The agent's job, not the SDK's. Use the org's container registry creds (default ECR via cloud's per-org setup, or any public registry the agent has push access to). The image must:
 
 - Listen on `$PORT` (cloud sets this at runtime)
-- Expose a health-check endpoint
-- Pass user-bearing requests through to `cloud.client` with the affiliate header set
+- Expose a `GET /health` endpoint that returns 200 quickly (the cloud's deploy step polls it before flipping the load balancer)
+- For chat-style apps, expose a server route that forwards user-bearing requests upstream to cloud's `/api/v1/messages` (or `/v1/chat/completions`) with the user's bearer token AND your affiliate code
 
-The eDad reference at `cloud-mini-apps/edad-chat/server.ts` is the canonical shape. Copy its `requestForwarder` if your app is a chat shell.
+The canonical reference for this shape is [`apps/edad-chat/server.ts` and `apps/edad-chat/api/proxy.ts`](https://github.com/elizaOS/cloud-mini-apps/tree/main/apps/edad-chat) in `elizaOS/cloud-mini-apps`. Copy that pattern when your app is a chat shell.
+
+If you want the inline minimal version — a Next.js or Hono handler is equivalent — the shape is:
+
+```ts
+import { ElizaCloudClient } from "@elizaos/cloud-sdk";
+
+const cloud = new ElizaCloudClient({ apiKey: process.env.ELIZAOS_CLOUD_API_KEY });
+const AFFILIATE = process.env.ELIZA_AFFILIATE_CODE!; // your owner's affiliate code
+
+export async function handleChat(req: Request): Promise<Response> {
+  const userToken = req.headers.get("authorization") ?? req.headers.get("x-user-token");
+  if (!userToken) return new Response("unauthorized", { status: 401 });
+
+  const body = await req.json();
+
+  // Forward to cloud /messages with the user's token AND our affiliate code.
+  // The user's balance is debited; the affiliate header is what credits us.
+  const upstream = await fetch(`${process.env.ELIZA_CLOUD_URL}/api/v1/messages`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: userToken,
+      "x-affiliate-code": AFFILIATE,
+      "x-app-id": process.env.ELIZA_APP_ID!,
+    },
+    body: JSON.stringify(body),
+  });
+
+  return new Response(upstream.body, {
+    status: upstream.status,
+    headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },
+  });
+}
+```
+
+That's the full server-side surface. Add a `/health` route that returns 200 and you're done with step 2 from a code perspective.
+
+For frontend, ship a static page that:
+
+1. Reads the user's intended-flow choice (sign in / paste API key / etc.)
+2. Posts user prompts to your chat route with the user-token in the `authorization` header
+3. Renders streaming responses
+
+The frontend can be served by the same container or by any static host pointing at the same domain — the cloud doesn't care.
 
 ## 3. Deploy the container
 
