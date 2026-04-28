@@ -1,13 +1,23 @@
 /**
- * flap.sh — Solana memecoin launchpad profile.
+ * flap.sh — BNB Chain memecoin launchpad profile.
  *
- * Selectors are best-effort first cuts and need to be tuned against the
- * live site during smoke testing. flap.sh's UI changes; if a step fails
- * on "not found" the profile is the right place to update.
+ * Under the hood, flap.sh's web UI builds a `newTokenV6(NewTokenV6Params)`
+ * call against the Portal contract and sends it via the user's connected
+ * wallet. Docs:
+ *   https://docs.flap.sh/flap/developers/token-launcher-developers
  *
- * Solana cluster gating: flap.sh's mainnet UI lives at https://flap.sh.
- * If the site lacks an in-UI cluster toggle, dryRun: "stop-before-tx"
- * lets us exercise the full flow against mainnet without submitting.
+ * Deployed Portals (per docs/deployed-contract-addresses):
+ *   - BNB mainnet (chain 56):  Portal 0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0
+ *   - BNB testnet (chain 97):  Portal 0x5bEacaF7ABCbB3aB280e80D007FD31fcE26510e9
+ *
+ * Because the launch terminates in a standard EVM `eth_sendTransaction`
+ * sent through `window.ethereum`, our existing browser-wallet bridge +
+ * steward sign path handles this without any Solana plumbing — the user
+ * confirms the tx in the steward approval sheet exactly like four.meme.
+ *
+ * Selectors below are best-effort first cuts and need to be tuned against
+ * the live site at smoke time. flap.sh's UI changes; if a step fails on
+ * "not found" this is the right place to update.
  */
 
 import type { LaunchpadProfile } from "../launchpad-types.js";
@@ -15,9 +25,9 @@ import type { LaunchpadProfile } from "../launchpad-types.js";
 export const flapShMainnetProfile: LaunchpadProfile = {
   id: "flap-sh:mainnet",
   displayName: "flap.sh",
-  chain: "solana",
+  chain: "evm",
   entryUrl: "https://flap.sh/create",
-  network: { solanaCluster: "mainnet" },
+  network: { evmChainId: 56 },
   steps: [
     { kind: "navigate", url: "https://flap.sh/create" },
     {
@@ -27,10 +37,10 @@ export const flapShMainnetProfile: LaunchpadProfile = {
     },
     {
       kind: "connectWallet",
-      chain: "solana",
+      chain: "evm",
       connectButton:
-        "button:has-text('Connect Wallet'), button:has-text('Select Wallet'), [data-testid='connect-wallet']",
-      narration: "Connecting Solana wallet",
+        "button:has-text('Connect Wallet'), button:has-text('Connect'), [data-testid='connect-wallet']",
+      narration: "Connecting BSC wallet",
     },
     {
       kind: "fillField",
@@ -57,20 +67,22 @@ export const flapShMainnetProfile: LaunchpadProfile = {
       text: "Launch",
       narration: "Submitting — please confirm in your wallet",
     },
-    { kind: "confirmTx", chain: "solana" },
+    { kind: "confirmTx", chain: "evm" },
     {
       kind: "awaitTxResult",
-      explorerUrlPattern: "solscan.io",
+      explorerUrlPattern: "bscscan.com",
       timeoutMs: 90_000,
     },
   ],
 };
 
-export const flapShDevnetProfile: LaunchpadProfile = {
+export const flapShTestnetProfile: LaunchpadProfile = {
   ...flapShMainnetProfile,
-  id: "flap-sh:devnet",
-  network: { solanaCluster: "devnet" },
-  // No public devnet host is documented. Smoke tests should run this
-  // profile with dryRun: "stop-before-tx" to exercise everything except
-  // the live submission.
+  id: "flap-sh:testnet",
+  network: { evmChainId: 97 },
+  steps: flapShMainnetProfile.steps.map((step) =>
+    step.kind === "awaitTxResult"
+      ? { ...step, explorerUrlPattern: "testnet.bscscan.com" }
+      : step,
+  ),
 };

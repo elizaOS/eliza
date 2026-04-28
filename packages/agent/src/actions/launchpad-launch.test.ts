@@ -70,7 +70,7 @@ describe("launchpadLaunchAction", () => {
     ["four-meme", "four-meme:mainnet"],
     ["four-meme:testnet", "four-meme:testnet"],
     ["flap-sh", "flap-sh:mainnet"],
-    ["flap-sh:devnet", "flap-sh:devnet"],
+    ["flap-sh:testnet", "flap-sh:testnet"],
   ])("resolves %s to profile %s", async (key, expectedProfile) => {
     const result = await launchpadLaunchAction.handler(
       fakeRuntime,
