@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { intentSyncAction } from "../src/actions/intent-sync.ts";
 import { appLifeOpsPlugin } from "../src/plugin.ts";
 import { actionsAreScenarioEquivalent } from "../../../packages/scenario-runner/src/action-families.ts";
 import {
@@ -102,7 +103,11 @@ describe("LifeOps executive-assistant prompt benchmark contracts", () => {
     const actionNames = new Set(
       (appLifeOpsPlugin.actions ?? []).map((action) => action.name),
     );
-    expect(actionNames.has("PUBLISH_DEVICE_INTENT")).toBe(true);
+    // INTENT_SYNC is the canonical cross-device broadcast action. The legacy
+    // PUBLISH_DEVICE_INTENT alias was folded into it as a simile (see commit
+    // efb970f60b). Reference the imported action so this check tracks the
+    // single source of truth instead of a duplicated string.
+    expect(actionNames.has(intentSyncAction.name)).toBe(true);
     const cases = await buildExecutiveAssistantPromptBenchmarkCases();
     for (const testCase of cases) {
       const acceptedAnchors = [
