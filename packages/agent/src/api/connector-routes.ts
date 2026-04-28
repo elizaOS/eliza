@@ -148,9 +148,6 @@ export async function handleConnectorRoutes(
       return true;
     }
     if (!state.config.connectors) state.config.connectors = {};
-    const wasEnabled =
-      (state.config.connectors[connectorName] as ConnectorConfig | undefined)
-        ?.enabled === true;
     state.config.connectors[connectorName] = cloneWithoutBlockedObjectKeys(
       config,
     ) as ConnectorConfig;
@@ -159,11 +156,14 @@ export async function handleConnectorRoutes(
     } catch {
       /* test envs */
     }
-    const isDisconnect =
-      (config as ConnectorConfig).enabled === false ||
-      (wasEnabled &&
-        (state.config.connectors[connectorName] as ConnectorConfig | undefined)
-          ?.enabled !== true);
+    // Only treat this POST as a disconnect when the incoming payload
+    // explicitly sets `enabled: false`. The second clause that read
+    // `state.config.connectors[connectorName]` would have been evaluated
+    // AFTER the new (cloned) config was written above, making it equivalent
+    // to checking the incoming payload — but firing on every config-only
+    // update that happens to omit `enabled` while the connector was active.
+    // That false-positive purge silently broke live connectors.
+    const isDisconnect = (config as ConnectorConfig).enabled === false;
     if (isDisconnect && onConnectorDisconnect) {
       try {
         await onConnectorDisconnect(connectorName);
