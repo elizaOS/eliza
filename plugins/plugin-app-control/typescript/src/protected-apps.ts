@@ -29,9 +29,17 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 export interface ProtectedAppsResolution {
-	/** Raw, trimmed, non-empty contributions from `MILADY_PROTECTED_APPS`. */
+	/**
+	 * Raw, trimmed, non-empty contributions from `MILADY_PROTECTED_APPS`.
+	 * Surfaced as a diagnostic field so the rejection log entry can attribute
+	 * a refusal to env vs. first-party-dir; not used at the lookup hot path.
+	 */
 	fromEnv: string[];
-	/** Discovered first-party app subdir names from `eliza/apps/`. */
+	/**
+	 * Discovered first-party app subdir names from `eliza/apps/`. Same
+	 * diagnostic role as `fromEnv` — kept on the public type so rejection
+	 * logs and tests can introspect which source seeded the protected name.
+	 */
 	fromFirstPartyDir: string[];
 	/**
 	 * Canonical lookup set, lowercased. For every contributing name we add

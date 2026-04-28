@@ -1733,6 +1733,24 @@ function isMissingTableError(error: unknown, table: string): boolean {
   return pattern.test(message);
 }
 
+/**
+ * Probe whether a table exists by running a no-op query against it.
+ *
+ * Boot-order contract: callers MUST run after `adapter.runPluginMigrations`
+ * has completed in `bootstrapSchema`, which already early-returns when the
+ * adapter is missing or `adapter.isReady() === false`. We rely on that
+ * gating; this helper does not re-check.
+ *
+ * SECURITY: `table` is interpolated directly into the SQL. Callers MUST
+ * pass a hardcoded literal, NEVER a user-derived or runtime-derived name.
+ * The current three callers (life_scheduling_negotiations,
+ * life_activity_signals, life_inbox_messages) all pass string literals.
+ *
+ * Failure mode: any error other than the recognized "missing table"
+ * patterns (`isMissingTableError`) rethrows. We deliberately fail loud on
+ * connection / syntax / permission errors rather than silent-skip the
+ * column-repair pass.
+ */
 async function tableExists(
   runtime: IAgentRuntime,
   table: string,
