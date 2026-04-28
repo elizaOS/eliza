@@ -462,6 +462,15 @@ const ANDROID_PERMISSIONS = [
   "FOREGROUND_SERVICE_DATA_SYNC",
   "POST_NOTIFICATIONS",
   "WAKE_LOCK",
+  // PACKAGE_USAGE_STATS is granted via the privapp-permissions whitelist;
+  // MANAGE_APP_OPS_MODES is what MiladyBootReceiver actually needs to
+  // reflectively flip the GET_USAGE_STATS appop to ALLOWED at boot.
+  // Without MANAGE_APP_OPS_MODES the receiver throws SecurityException
+  // and PACKAGE_USAGE_STATS stays appop-default-denied, which breaks
+  // priv-app usage-stats access. See vendor/milady/permissions/
+  // privapp-permissions-com.miladyai.milady.xml.
+  "PACKAGE_USAGE_STATS",
+  "MANAGE_APP_OPS_MODES",
 ];
 
 function replaceOrInsertGradleString(content, key, value) {
