@@ -767,7 +767,13 @@ export function SettingsView({
 
     function handle(event: Event) {
       const detail = (event as CustomEvent<SettingsFocusConnectorDetail>).detail;
-      if (detail?.provider) focusProvider(detail.provider);
+      if (!detail?.provider) return;
+      // Consume the stash here too — the dispatcher always writes it before
+      // firing the event, but if we're already mounted the event path wins
+      // and the stash would otherwise persist and re-fire on the next mount
+      // (e.g. tab navigation) as a spurious scroll/flash.
+      consumePendingFocusProvider();
+      focusProvider(detail.provider);
     }
 
     // Drain any pending provider stashed before this mount.
