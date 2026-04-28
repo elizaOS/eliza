@@ -220,7 +220,13 @@ export const lifeOpsComputerUseAction: Action & {
     "CREATE_FOLDER",
     "NEW_FOLDER",
     "TAKE_SCREENSHOT",
+    "SCREENSHOT_DESKTOP",
+    "SCREENSHOT_SCREEN",
+    "SCREENSHOT_MY_DESKTOP",
     "CAPTURE_SCREEN",
+    "CAPTURE_DESKTOP",
+    "DESKTOP_SCREENSHOT",
+    "SCREEN_CAPTURE",
     "PORTAL_UPLOAD",
     "UPLOAD_DECK",
     "REQUEST_UPLOAD",
@@ -241,15 +247,26 @@ export const lifeOpsComputerUseAction: Action & {
     "future upload policy",
   ],
   description:
-    "Control the owner's desktop (screenshots, mouse, keyboard, browser, " +
-    "windows, files, terminal) via @elizaos/plugin-computeruse. Use this for " +
-    "portal uploads, Finder/Desktop tasks like creating folders or taking " +
-    "screenshots, browser form-filling, and other on-machine workflows the " +
-    "assistant should perform directly, including standing instructions like " +
-    "'when I send the file, upload it to the portal for me.' Select this action " +
-    "even before the file arrives when the user is delegating that future upload " +
-    "workflow; the action can hold the task and ask for portal/file details later. " +
-    "Do not use this merely to ask the owner for a missing document or updated ID copy; if the workflow is blocked waiting on the owner to send an artifact, use an intervention or inbox action unless the assistant is actually operating a browser, portal, or file surface. Owner-only. " +
+    "Control the owner's full desktop / OS at the machine level via " +
+    "@elizaos/plugin-computeruse. This is the ONLY action for OS-level desktop " +
+    "operations: take a screenshot of the desktop / screen, click at " +
+    "coordinates (x, y), drag, key press / keyboard combo, open a native " +
+    "application, Finder operations (create folder on desktop, move/rename " +
+    "files), terminal commands, and window management. Always pick this action " +
+    "when the user says \"my desktop\", \"my screen\", \"my computer\", \"screenshot " +
+    "the screen\", \"take a screenshot\" (without specifying a browser tab), " +
+    "\"Finder\", \"create a folder\", or names a native macOS app. Also handles " +
+    "portal uploads, browser form-filling that requires real cursor control, " +
+    "and standing instructions like 'when I send the file, upload it to the " +
+    "portal for me.' Select this action even before the file arrives when the " +
+    "user is delegating that future upload workflow; the action can hold the " +
+    "task and ask for portal/file details later. Do not use this merely to ask " +
+    "the owner for a missing document or updated ID copy; if the workflow is " +
+    "blocked waiting on the owner to send an artifact, use an intervention or " +
+    "inbox action unless the assistant is actually operating a browser, portal, " +
+    "or file surface. Prefer this over MANAGE_LIFEOPS_BROWSER for any " +
+    "OS-level / desktop / screen request — MANAGE_LIFEOPS_BROWSER is " +
+    "in-browser-tab only. Owner-only. " +
     "Disabled when ELIZA_LIFEOPS_COMPUTER_USE_ENABLED=0.",
   suppressPostActionContinuation: true,
 
@@ -259,10 +276,7 @@ export const lifeOpsComputerUseAction: Action & {
   ): Promise<boolean> => {
     if (!isComputerUseEnabled()) return false;
     if (!(await hasOwnerAccess(runtime, message))) return false;
-    const actions = await getLoadedActions();
-    const base = actions ? selectDelegateAction(actions, message) : null;
-    if (!base?.validate) return true;
-    return base.validate(runtime, message, undefined);
+    return true;
   },
 
   parameters: [
