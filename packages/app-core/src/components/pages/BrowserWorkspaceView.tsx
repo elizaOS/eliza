@@ -32,6 +32,10 @@ import {
 } from "../../api";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
+import {
+  BROWSER_TAB_PRELOAD_SCRIPT,
+  setBrowserTabsRendererImpl,
+} from "../../utils/browser-tabs-renderer-registry";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import {
@@ -45,8 +49,60 @@ const POLL_INTERVAL_MS = 2_500;
 const BROWSER_BRIDGE_POLL_INTERVAL_MS = 4_000;
 const BROWSER_WORKSPACE_AGENT_PARTITION = "persist:eliza-browser-agent";
 const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
+// Default URL when the user opens a fresh tab via "+". The docs site
+// respects prefers-color-scheme so the OS theme drives light/dark.
+const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://docs.elizaos.ai/";
 const BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY =
   "milady:browser-workspace:collapsed-sections";
+
+// Minimal subset of Electrobun's <electrobun-webview> custom element surface
+// used by this view. Inlined so this file typechecks identically from any
+// package that consumes app-core source — the full type lives in
+// node_modules/electrobun/dist/api/browser/webviewtag.ts.
+type WebviewTagElement = HTMLElement & {
+  loadURL(url: string): void;
+  reload(): void;
+  executeJavascript(js: string): void;
+  on(event: "host-message", handler: (event: CustomEvent) => void): void;
+  off(event: "host-message", handler: (event: CustomEvent) => void): void;
+  /**
+   * Synchronizes the OOPIF's frame with the anchor's `getBoundingClientRect()`.
+   * The tag auto-syncs on its own resize, but layout changes outside the
+   * element (sidebar collapse, window resize, parent flex reflow) need a
+   * manual poke. `force: true` triggers the sync even if dimensions look
+   * unchanged.
+   */
+  syncDimensions(force?: boolean): void;
+  /**
+   * Hide/show the underlying native OOPIF view. The HTML `hidden` attribute
+   * does not propagate to the native layer — only this method does. Without
+   * it, inactive tabs' OOPIFs stay painted over the surface and intercept
+   * clicks meant for sibling UI.
+   */
+  toggleHidden(value?: boolean): void;
+};
+
+// JSX intrinsic for the Electrobun custom element. Augments the React module
+// so the modern `react-jsx` transform picks it up without app-core's
+// ambient-modules.d.ts being on every consumer's include list.
+declare module "react" {
+  namespace JSX {
+    interface IntrinsicElements {
+      "electrobun-webview": React.DetailedHTMLProps<
+        React.HTMLAttributes<HTMLElement> & {
+          src?: string;
+          partition?: string;
+          preload?: string;
+          sandbox?: boolean | "";
+          transparent?: boolean | "";
+          hidden?: boolean;
+        },
+        HTMLElement
+      >;
+    }
+  }
+}
+
 type TranslateFn = (key: string, vars?: Record<string, unknown>) => string;
 type BrowserWorkspaceTabSectionKey = "agent" | "app" | "user";
 
@@ -129,7 +185,10 @@ function isBrowserBridgePlugin(plugin: {
 function isBrowserWorkspaceSessionMode(
   mode: BrowserWorkspaceSnapshot["mode"],
 ): boolean {
-  return mode === "cloud" || mode === "desktop";
+  // Cloud is the only mode that still uses the snapshot-preview UX. Desktop
+  // mode renders <electrobun-webview> tags directly into the React tree, so
+  // there's no need to poll for screenshot data.
+  return mode === "cloud";
 }
 
 function normalizeBrowserWorkspaceInputUrl(
@@ -306,8 +365,30 @@ export function BrowserWorkspaceView(): JSX.Element {
     useState<BrowserBridgeCompanionPackageStatus | null>(null);
   const initialBrowseUrlRef = useRef<string | null | undefined>(undefined);
   const initialBrowseHandledRef = useRef(false);
-  const initialBlankTabHandledRef = useRef(false);
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
+  const electrobunWebviewRefs = useRef(
+    new Map<string, WebviewTagElement | null>(),
+  );
+  const pendingTabExecsRef = useRef(
+    new Map<
+      number,
+      {
+        resolve: (value: {
+          ok: boolean;
+          result?: unknown;
+          error?: string;
+        }) => void;
+        timer: ReturnType<typeof setTimeout>;
+      }
+    >(),
+  );
+  const tabExecCounterRef = useRef(0);
+  const tabChainIdRef = useRef(new Map<string, number>());
+  const browserWalletStateRef = useRef<BrowserWorkspaceWalletState | null>(null);
+  // Ref-mirror of the selected tab id so the register callback (which is
+  // memoized on handleTabHostMessage only) can read the current selection
+  // without a fresh closure each render.
+  const selectedTabIdRef = useRef<string | null>(null);
   const getStewardPendingRef = useRef(getStewardPending);
   const getStewardStatusRef = useRef(getStewardStatus);
   const setActionNoticeRef = useRef(setActionNotice);
@@ -341,7 +422,7 @@ export function BrowserWorkspaceView(): JSX.Element {
     : false;
   const newBrowserWorkspaceTabSeedUrl = selectedTabIsInternal
     ? "about:blank"
-    : locationInput || "about:blank";
+    : locationInput || BROWSER_WORKSPACE_DEFAULT_HOME_URL;
   const groupedTabs = useMemo(
     () =>
       workspace.tabs.reduce<
@@ -633,6 +714,9 @@ export function BrowserWorkspaceView(): JSX.Element {
         if (iframe && iframe.src !== tab.url) {
           iframe.src = tab.url;
         }
+      } else if (workspace.mode === "desktop") {
+        const tag = electrobunWebviewRefs.current.get(selectedTabId);
+        tag?.loadURL(tab.url);
       }
       await loadWorkspace({ preferTabId: tab.id, silent: true });
       setLocationInput(tab.url);
@@ -658,6 +742,424 @@ export function BrowserWorkspaceView(): JSX.Element {
     },
     [],
   );
+
+  // Keep a ref so the host-message handler always sees the latest wallet
+  // state without needing a fresh closure per render.
+  browserWalletStateRef.current = browserWalletState;
+  selectedTabIdRef.current = selectedTabId;
+
+  const handleTabWalletRequest = useCallback(
+    async (req: {
+      tabId: string;
+      requestId: number;
+      protocol: "evm" | "solana";
+      method: string;
+      params: unknown;
+    }): Promise<void> => {
+      const tag = electrobunWebviewRefs.current.get(req.tabId);
+      const reply = (payload: { result?: unknown; error?: string }): void => {
+        if (!tag) return;
+        tag.executeJavascript(
+          `window.__elizaWalletReply(${JSON.stringify(req.requestId)}, ${JSON.stringify(payload)})`,
+        );
+      };
+      const walletState = browserWalletStateRef.current;
+      if (!walletState) {
+        reply({ error: "Wallet state not yet loaded." });
+        return;
+      }
+      try {
+        const evmAddress = walletState.evmAddress;
+        const solanaAddress = walletState.solanaAddress;
+        if (req.protocol === "evm") {
+          switch (req.method) {
+            case "eth_requestAccounts":
+            case "eth_accounts": {
+              if (!evmAddress) {
+                reply({ error: walletState.reason ?? "No EVM wallet connected." });
+                return;
+              }
+              reply({ result: [evmAddress] });
+              return;
+            }
+            case "eth_chainId": {
+              const chainId = tabChainIdRef.current.get(req.tabId) ?? 1;
+              reply({ result: `0x${chainId.toString(16)}` });
+              return;
+            }
+            case "wallet_switchEthereumChain": {
+              const arr = Array.isArray(req.params) ? req.params : [req.params];
+              const next =
+                arr[0] && typeof arr[0] === "object"
+                  ? (arr[0] as { chainId?: unknown }).chainId
+                  : null;
+              const chainHex = typeof next === "string" ? next : "";
+              const chainId = chainHex.startsWith("0x")
+                ? Number.parseInt(chainHex.slice(2), 16)
+                : Number(chainHex);
+              if (!Number.isFinite(chainId) || chainId <= 0) {
+                reply({ error: "wallet_switchEthereumChain requires a valid chainId." });
+                return;
+              }
+              tabChainIdRef.current.set(req.tabId, chainId);
+              reply({ result: null });
+              return;
+            }
+            case "personal_sign":
+            case "eth_sign": {
+              if (!walletState.messageSigningAvailable) {
+                reply({
+                  error:
+                    walletState.mode === "steward"
+                      ? "Browser message signing requires a local wallet key."
+                      : (walletState.reason ?? "Browser wallet message signing is unavailable."),
+                });
+                return;
+              }
+              const arr = Array.isArray(req.params) ? req.params : [];
+              const message =
+                typeof arr[0] === "string"
+                  ? (arr[0] as string)
+                  : typeof arr[1] === "string"
+                    ? (arr[1] as string)
+                    : null;
+              if (!message) {
+                reply({ error: "Browser wallet signing requires a message payload." });
+                return;
+              }
+              const result = await client.signBrowserWalletMessage(message);
+              reply({ result: result.signature });
+              return;
+            }
+            case "eth_sendTransaction": {
+              if (!walletState.transactionSigningAvailable) {
+                reply({ error: walletState.reason ?? "Browser wallet transaction signing is unavailable." });
+                return;
+              }
+              const arr = Array.isArray(req.params) ? req.params : [req.params];
+              const tx =
+                arr[0] && typeof arr[0] === "object"
+                  ? (arr[0] as Record<string, unknown>)
+                  : null;
+              if (!tx) {
+                reply({ error: "eth_sendTransaction requires a transaction object." });
+                return;
+              }
+              const chainId = tabChainIdRef.current.get(req.tabId) ?? 1;
+              const value =
+                typeof tx.value === "string"
+                  ? tx.value.startsWith("0x")
+                    ? BigInt(tx.value).toString()
+                    : tx.value
+                  : "0";
+              const result = await client.sendBrowserWalletTransaction({
+                broadcast: true,
+                chainId,
+                to: typeof tx.to === "string" ? tx.to : "",
+                value,
+                data: typeof tx.data === "string" ? tx.data : undefined,
+                description:
+                  typeof tx.description === "string" ? tx.description : undefined,
+              });
+              reply({ result: result.txHash ?? result.txId ?? null });
+              const next = await loadBrowserWalletState();
+              browserWalletStateRef.current = next;
+              return;
+            }
+            default:
+              reply({ error: `Unsupported EVM method: ${req.method}` });
+              return;
+          }
+        }
+        if (req.protocol === "solana") {
+          switch (req.method) {
+            case "connect": {
+              if (!solanaAddress) {
+                reply({ error: walletState.reason ?? "No Solana wallet connected." });
+                return;
+              }
+              reply({ result: { publicKey: solanaAddress } });
+              return;
+            }
+            case "signMessage": {
+              if (!walletState.solanaMessageSigningAvailable) {
+                reply({ error: walletState.reason ?? "Solana message signing is unavailable." });
+                return;
+              }
+              const messageBase64 =
+                req.params && typeof req.params === "object"
+                  ? ((req.params as Record<string, unknown>).messageBase64 as string | undefined)
+                  : undefined;
+              const message =
+                req.params && typeof req.params === "object"
+                  ? ((req.params as Record<string, unknown>).message as string | undefined)
+                  : undefined;
+              const result = await client.signBrowserSolanaMessage({
+                ...(messageBase64 ? { messageBase64 } : {}),
+                ...(message ? { message } : {}),
+              });
+              reply({ result });
+              return;
+            }
+            case "signTransaction":
+            case "signAndSendTransaction": {
+              if (!walletState.solanaTransactionSigningAvailable) {
+                reply({ error: walletState.reason ?? "Solana transaction signing is unavailable." });
+                return;
+              }
+              const transactionBase64 =
+                req.params && typeof req.params === "object"
+                  ? ((req.params as Record<string, unknown>)
+                      .transactionBase64 as string | undefined)
+                  : undefined;
+              if (!transactionBase64) {
+                reply({ error: "Solana transaction signing requires transactionBase64." });
+                return;
+              }
+              const result = await client.sendBrowserSolanaTransaction({
+                transactionBase64,
+                broadcast: req.method === "signAndSendTransaction",
+              });
+              reply({ result });
+              return;
+            }
+            default:
+              reply({ error: `Unsupported Solana method: ${req.method}` });
+              return;
+          }
+        }
+        reply({ error: `Unsupported wallet protocol: ${req.protocol}` });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        reply({ error: message });
+      }
+    },
+    [loadBrowserWalletState],
+  );
+
+  const handleTabHostMessage = useCallback(
+    (event: CustomEvent) => {
+      const detail = event.detail as
+        | {
+            type?: string;
+            requestId?: number;
+            ok?: boolean;
+            result?: unknown;
+            error?: string;
+            protocol?: "evm" | "solana";
+            method?: string;
+            params?: unknown;
+          }
+        | null
+        | undefined;
+      if (!detail || typeof detail.type !== "string") return;
+
+      if (
+        detail.type === "__elizaTabExecResult" &&
+        typeof detail.requestId === "number"
+      ) {
+        const pending = pendingTabExecsRef.current.get(detail.requestId);
+        if (!pending) return;
+        pendingTabExecsRef.current.delete(detail.requestId);
+        clearTimeout(pending.timer);
+        pending.resolve({
+          ok: detail.ok === true,
+          result: detail.result,
+          error: detail.error,
+        });
+        return;
+      }
+
+      if (
+        detail.type === "__elizaWalletRequest" &&
+        typeof detail.requestId === "number" &&
+        typeof detail.protocol === "string" &&
+        typeof detail.method === "string"
+      ) {
+        const tag =
+          (event.currentTarget as unknown as WebviewTagElement | null) ?? null;
+        const tabId =
+          [...electrobunWebviewRefs.current.entries()].find(
+            ([, el]) => el === tag,
+          )?.[0] ?? null;
+        if (!tabId) return;
+        void handleTabWalletRequest({
+          tabId,
+          requestId: detail.requestId,
+          protocol: detail.protocol,
+          method: detail.method,
+          params: detail.params,
+        });
+      }
+    },
+    [handleTabWalletRequest],
+  );
+
+  const registerBrowserWorkspaceElectrobunWebview = useCallback(
+    (tabId: string, element: WebviewTagElement | null) => {
+      const previous = electrobunWebviewRefs.current.get(tabId);
+      if (previous && previous !== element) {
+        previous.off("host-message", handleTabHostMessage);
+      }
+      if (!element) {
+        electrobunWebviewRefs.current.delete(tabId);
+        return;
+      }
+      if (previous !== element) {
+        element.on("host-message", handleTabHostMessage);
+        // Poke the OOPIF to read fresh dimensions multiple times — the
+        // tag auto-syncs only on its own ResizeObserver firing, and that
+        // can miss the initial layout settle if the parent flex chain is
+        // still computing on first mount.
+        const sync = () => {
+          try {
+            element.syncDimensions(true);
+          } catch {
+            // Element may have unmounted.
+          }
+        };
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(() => requestAnimationFrame(sync));
+        } else {
+          setTimeout(sync, 0);
+        }
+        // Safety net for late-settling layouts (image-driven shifts, web
+        // fonts loading, etc.). The poll loop in the upstream tag runs
+        // every 100ms anyway — these poke a forceSync on top.
+        setTimeout(sync, 250);
+        setTimeout(sync, 1000);
+        // Hide the native OOPIF immediately if the tag isn't the active
+        // one — otherwise its native view sits over the surface and
+        // intercepts clicks while React still has it in the tree.
+        if (selectedTabIdRef.current && selectedTabIdRef.current !== tabId) {
+          try {
+            element.toggleHidden(true);
+          } catch {
+            // best-effort
+          }
+        }
+      }
+      electrobunWebviewRefs.current.set(tabId, element);
+    },
+    [handleTabHostMessage],
+  );
+
+  // Track the surface container so layout changes (sidebar collapse,
+  // window resize, route entry) re-poke every mounted tag. Without this
+  // the OOPIF can latch at whatever rect it had on first mount because
+  // Electrobun's OverlaySyncController only fires onSync when the rect
+  // *changes* — a small-but-stable rect persists.
+  const browserSurfaceRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const surface = browserSurfaceRef.current;
+    if (!surface || typeof ResizeObserver === "undefined") return;
+    const pokeAll = (): void => {
+      for (const element of electrobunWebviewRefs.current.values()) {
+        try {
+          element?.syncDimensions(true);
+        } catch {
+          // Tag may have been unmounted between observation and dispatch.
+        }
+      }
+    };
+    const observer = new ResizeObserver(() => pokeAll());
+    observer.observe(surface);
+    window.addEventListener("resize", pokeAll);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", pokeAll);
+    };
+  }, []);
+
+  // Drive native hide/show on every tag whenever selection changes. The
+  // HTML `hidden` attribute does NOT propagate to the OOPIF — only the
+  // tag's `toggleHidden(bool)` method does. Without this, inactive tabs'
+  // OOPIFs stay painted over the surface as native views and intercept
+  // clicks intended for sibling UI (e.g. the top app nav).
+  useEffect(() => {
+    if (workspace.mode !== "desktop") return;
+    for (const [tabId, element] of electrobunWebviewRefs.current.entries()) {
+      if (!element) continue;
+      try {
+        element.toggleHidden(tabId !== selectedTabId);
+        element.syncDimensions(true);
+      } catch {
+        // best-effort
+      }
+    }
+  }, [selectedTabId, workspace.mode]);
+
+  // On unmount, hide every OOPIF so leftover native views don't bleed onto
+  // other routes between React's unmount and the tag's
+  // disconnectedCallback firing.
+  useEffect(() => {
+    const refs = electrobunWebviewRefs;
+    return () => {
+      for (const element of refs.current.values()) {
+        try {
+          element?.toggleHidden(true);
+        } catch {
+          // best-effort
+        }
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const tagsRef = electrobunWebviewRefs;
+    const pendingsRef = pendingTabExecsRef;
+    const counterRef = tabExecCounterRef;
+    setBrowserTabsRendererImpl({
+      evaluate: (id, script, timeoutMs) =>
+        new Promise((resolve) => {
+          const tag = tagsRef.current.get(id);
+          if (!tag) {
+            resolve({
+              ok: false,
+              error: `browser workspace tab ${id} is not mounted in the renderer`,
+            });
+            return;
+          }
+          counterRef.current += 1;
+          const requestId = counterRef.current;
+          const timer = setTimeout(() => {
+            if (pendingsRef.current.delete(requestId)) {
+              resolve({
+                ok: false,
+                error: `browser workspace tab eval timed out after ${timeoutMs}ms`,
+              });
+            }
+          }, timeoutMs);
+          pendingsRef.current.set(requestId, { resolve, timer });
+          tag.executeJavascript(
+            `window.__elizaTabExec(${JSON.stringify(requestId)}, ${JSON.stringify(script)})`,
+          );
+        }),
+      getTabRect: async (id) => {
+        const tag = tagsRef.current.get(id);
+        if (!tag) return null;
+        const rect = tag.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return null;
+        return {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        };
+      },
+    });
+    return () => {
+      setBrowserTabsRendererImpl(null);
+      for (const pending of pendingsRef.current.values()) {
+        clearTimeout(pending.timer);
+        pending.resolve({
+          ok: false,
+          error: "BrowserWorkspaceView unmounted",
+        });
+      }
+      pendingsRef.current.clear();
+    };
+  }, []);
 
   const { postBrowserWalletReady } = useBrowserWorkspaceWalletBridge({
     iframeRefs,
@@ -800,36 +1302,6 @@ export function BrowserWorkspaceView(): JSX.Element {
     workspace.tabs,
   ]);
 
-  // When the workspace loads with no tabs (and the ?browse= path isn't going
-  // to open one), auto-open the Milady homepage so the user lands on a live
-  // page instead of a dead empty state. Runs exactly once per mount.
-  useEffect(() => {
-    if (initialBlankTabHandledRef.current) return;
-    if (loading || loadError) return;
-    if (initialBrowseUrlRef.current) return;
-    if (workspace.tabs.length > 0) {
-      initialBlankTabHandledRef.current = true;
-      return;
-    }
-    initialBlankTabHandledRef.current = true;
-    void runBrowserWorkspaceAction(
-      "open:initial-home",
-      async () => {
-        await openNewBrowserWorkspaceTab("https://milady.ai/");
-      },
-      t("browserworkspace.OpenInitialHomeFailed", {
-        defaultValue: "Failed to open the Milady homepage.",
-      }),
-    );
-  }, [
-    loadError,
-    loading,
-    openNewBrowserWorkspaceTab,
-    runBrowserWorkspaceAction,
-    t,
-    workspace.tabs.length,
-  ]);
-
   const reloadSelectedBrowserWorkspaceTab = useCallback(async () => {
     if (!selectedTab) return;
     if (workspace.mode === "web") {
@@ -837,6 +1309,11 @@ export function BrowserWorkspaceView(): JSX.Element {
       if (iframe) {
         iframe.src = selectedTab.url;
       }
+      return;
+    }
+    if (workspace.mode === "desktop") {
+      const tag = electrobunWebviewRefs.current.get(selectedTab.id);
+      tag?.reload();
       return;
     }
     await client.navigateBrowserWorkspaceTab(selectedTab.id, selectedTab.url);
@@ -1374,8 +1851,32 @@ export function BrowserWorkspaceView(): JSX.Element {
     </div>
   );
 
+  const watchBannerLabel = busyAction
+    ? t("browserworkspace.Working", {
+        defaultValue: "Working: {{action}}",
+        action: busyAction.replace(/[:\-_]+/g, " "),
+      })
+    : null;
+
   const browserSurface = (
-    <div className="relative flex-1 min-h-0 overflow-hidden bg-bg">
+    <div
+      ref={browserSurfaceRef}
+      className="relative flex-1 min-h-0 overflow-hidden bg-bg"
+    >
+      {watchBannerLabel ? (
+        <div
+          className="absolute left-3 right-3 top-2 z-20 flex items-center gap-2 rounded-md border border-border/40 bg-card/80 px-3 py-1.5 text-xs text-muted shadow-sm backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+          data-testid="browser-workspace-watch-banner"
+        >
+          <span
+            aria-hidden
+            className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent shadow-[0_0_4px_var(--accent)]"
+          />
+          <span className="truncate">{watchBannerLabel}</span>
+        </div>
+      ) : null}
       {loadError ? (
         <div
           className="absolute left-1/2 top-6 z-20 -translate-x-1/2 rounded-md border border-danger/50 bg-danger/15 px-3 py-1.5 text-xs text-danger"
@@ -1387,7 +1888,7 @@ export function BrowserWorkspaceView(): JSX.Element {
 
       {workspace.tabs.length === 0 ? (
         <div className="flex h-full items-center justify-center">
-          <div className="flex max-w-sm flex-col items-center gap-2 text-center">
+          <div className="flex max-w-sm flex-col items-center gap-3 text-center">
             <div className="text-sm font-semibold text-txt">
               {loading
                 ? t("browserworkspace.Loading", {
@@ -1397,16 +1898,40 @@ export function BrowserWorkspaceView(): JSX.Element {
                     defaultValue: "No browser tabs yet",
                   })}
             </div>
-            <div className="text-xs text-muted">
+            <div className="text-xs leading-5 text-muted">
               {isBrowserWorkspaceSessionMode(workspace.mode)
                 ? t("browserworkspace.EmptySessionDescription", {
                     defaultValue:
                       "Open a page to start a real browser session. The preview here follows the session instead of embedding the target site directly.",
                   })
                 : t("browserworkspace.EmptyDescription", {
-                    defaultValue: "Open a page here to get started.",
+                    defaultValue:
+                      "Open a tab and watch the agent drive the page. Wallet and signing route through your local Steward — no extension required.",
                   })}
             </div>
+            {!loading ? (
+              <Button
+                size="sm"
+                className="mt-1"
+                disabled={busyAction !== null}
+                onClick={() =>
+                  void runBrowserWorkspaceAction(
+                    "open:home",
+                    async () => {
+                      await openNewBrowserWorkspaceTab(
+                        BROWSER_WORKSPACE_DEFAULT_HOME_URL,
+                        "user",
+                      );
+                    },
+                  )
+                }
+                data-testid="browser-workspace-open-home"
+              >
+                {t("browserworkspace.OpenNewTab", {
+                  defaultValue: "Open new tab",
+                })}
+              </Button>
+            ) : null}
             {!loading && workspace.mode === "web" && browserBridgeSupported ? (
               <div className="mt-3 flex w-full flex-col gap-3 rounded-md border border-border/40 bg-card/35 p-3 text-left">
                 <div className="flex items-start justify-between gap-3">
@@ -1491,6 +2016,34 @@ export function BrowserWorkspaceView(): JSX.Element {
             ) : null}
           </div>
         </div>
+      ) : workspace.mode === "desktop" ? (
+        workspace.tabs.map((tab) => {
+          const active = tab.id === selectedTabId;
+          const visibilityClass = active
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0";
+          return (
+            <electrobun-webview
+              key={tab.id}
+              ref={(el) =>
+                registerBrowserWorkspaceElectrobunWebview(
+                  tab.id,
+                  (el as WebviewTagElement | null) ?? null,
+                )
+              }
+              src={tab.url}
+              partition={tab.partition}
+              preload={BROWSER_TAB_PRELOAD_SCRIPT}
+              // Native OOPIF hide/show is driven by `tag.toggleHidden(bool)`
+              // in the selection useEffect — the HTML `hidden` attribute
+              // alone is a no-op for the underlying native view, which is
+              // why inactive tabs were leaking pointer events through the
+              // surface.
+              className={`absolute inset-0 ${visibilityClass}`}
+              style={{ display: "block" }}
+            />
+          );
+        })
       ) : workspace.mode === "web" ? (
         workspace.tabs.map((tab) => {
           const active = tab.id === selectedTabId;
@@ -1569,13 +2122,9 @@ export function BrowserWorkspaceView(): JSX.Element {
         <div className="flex h-full flex-1 flex-col bg-bg">
           <div className="flex flex-wrap items-center gap-2 border-b border-border/30 bg-card/20 px-3 py-2 text-xs text-muted">
             <span className="rounded-full border border-border/40 bg-card/60 px-2 py-1 font-medium text-txt">
-              {workspace.mode === "cloud"
-                ? t("browserworkspace.CloudSession", {
-                    defaultValue: "Cloud browser session",
-                  })
-                : t("browserworkspace.DesktopSession", {
-                    defaultValue: "Desktop browser session",
-                  })}
+              {t("browserworkspace.CloudSession", {
+                defaultValue: "Cloud browser session",
+              })}
             </span>
             {selectedTab?.provider ? (
               <span>

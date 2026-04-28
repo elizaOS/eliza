@@ -32,6 +32,7 @@ import {
   saveChatSidebarVisibility,
   widgetVisibilityKey,
 } from "../../widgets/visibility";
+import { resolveRuntimeImageUrl } from "../apps/app-identity";
 import { getAppDetailExtension } from "../apps/extensions/registry";
 import { findAppBySlug, getAppSlug } from "../apps/helpers";
 import {
@@ -430,7 +431,7 @@ export function AppDetailsView({
         <div className="flex items-center gap-4">
           {resolved.info.heroImage ? (
             <img
-              src={resolved.info.heroImage}
+              src={resolveRuntimeImageUrl(resolved.info.heroImage)}
               alt=""
               className="h-14 w-14 rounded-lg border border-border/40 object-cover"
             />

@@ -35,7 +35,7 @@ export const PAGE_SCOPES: readonly PageScope[] = [
  * single prompt-regime cohort instead of mixing trajectories generated under
  * different surface contracts.
  */
-export const PAGE_SCOPE_VERSION = 12;
+export const PAGE_SCOPE_VERSION = 13;
 
 export interface PageScopeIntroCopy {
   /** Short user-facing intro card title shown when the conversation is empty. */
@@ -53,9 +53,9 @@ export interface PageScopeIntroCopy {
 export const PAGE_SCOPE_COPY: Record<PageScope, PageScopeIntroCopy> = {
   "page-browser": {
     title: "Browser chat",
-    body: "Use me to work with the browser workspace. User Tabs are writable; Agent Tabs and App Tabs are read-only context. I can open, navigate, refresh, snapshot, show, hide, or close User Tabs and explain what is currently open everywhere else.",
+    body: "Use me to drive the browser while you watch. I narrate each step here as a short status line; you confirm transactions in the wallet sheet. User Tabs are writable; Agent Tabs and App Tabs are read-only context.",
     systemAddendum:
-      "You are answering inside the Browser view. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate User Tabs: open them, navigate them, refresh them, snapshot them, show or hide them, and close them. Agent Tabs and App Tabs are read-only context: you may inspect, summarize, or reference them, but do not navigate, click, type into, refresh, close, or otherwise mutate them. Recommend the next browser action based on live tab and bridge state. Offer to answer questions about the current page, forms, tabs, or browser setup. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.",
+      "You are answering inside the Browser view in watch mode: the user is watching a visible cursor move and the browser tab paint live as you work. Tabs are grouped into User Tabs, Agent Tabs, and App Tabs. You may mutate User Tabs: open them, navigate them, refresh them, snapshot them, show or hide them, and close them. Agent Tabs and App Tabs are read-only context — never navigate, click, type into, refresh, close, or otherwise mutate them. When you take a browser action, recommend and prefer the realistic-* BROWSER_SESSION subactions (realistic-click, realistic-fill, realistic-type, realistic-press) with watchMode:true so the cursor moves visibly and pointer/keyboard events fire faithfully on React-controlled inputs. Emit a short status line in chat BEFORE each concrete action — for example 'Navigating to four.meme', 'Choosing token name: $WAGMI', 'Filling description', 'Submitting — please confirm in your wallet'. Keep narration to one line per step. Never auto-sign transactions; the user confirms each one in the wallet approval sheet. Ground every answer in the live tab list provided in context. Never invent tabs or URLs.",
   },
   "page-character": {
     title: "Character chat",

@@ -1268,9 +1268,27 @@ export type ElizaDesktopRPCSchema = {
     };
   }>;
   webview: RPCSchema<{
-    // biome-ignore lint/complexity/noBannedTypes: empty request schema — built-in methods added by Electroview
     requests: {
-      // Built-in: evaluateJavascriptWithResponse is added by Electroview
+      // Built-in: evaluateJavascriptWithResponse is added by Electroview.
+
+      // Browser Workspace — bun delegates evaluate/get-tab-rect to the
+      // renderer, which holds the <electrobun-webview> tag refs and runs the
+      // request against the matching tab. The rect is in CSS pixels relative
+      // to the renderer viewport; bun adds the main-window origin and runs
+      // the OS screencapture itself.
+      browserWorkspaceRendererEvaluate: {
+        params: { id: string; script: string; timeoutMs: number };
+        response: { ok: boolean; result?: unknown; error?: string };
+      };
+      browserWorkspaceRendererGetTabRect: {
+        params: { id: string };
+        response: {
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        } | null;
+      };
     };
     messages: {
       // Push events FROM bun TO webview
