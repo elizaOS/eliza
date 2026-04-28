@@ -5,8 +5,13 @@ export function normalizeMessageText(message: Memory): string {
 	return normalizeUserMessageText(message);
 }
 
+const GREETING_PATTERN =
+	/^(h(i|ey|ello|owdy|ola)|yo|sup|gm|gn|what'?s\s*up|how'?s\s*it\s*going|good\s*(morning|afternoon|evening|night))[\s!?.,]*$/;
+
 export function looksLikeNonActionableChatter(message: Memory): boolean {
 	const text = normalizeMessageText(message);
+	if (!text) return false;
+	if (GREETING_PATTERN.test(text)) return true;
 	return (
 		/\bi hate\b.*\b(email|gmail|inbox|mail)\b/.test(text) ||
 		/^my calendar has been\b/.test(text) ||

@@ -5833,6 +5833,7 @@ Output ONLY the continuation, starting immediately after the last character abov
 
 		if (
 			!overrides?.providerFollowup &&
+			!looksLikeNonActionableChatter(message) &&
 			shouldAttemptProviderRescue(responseContent)
 		) {
 			const rescuedProviders = await recoverProvidersForTurn({
@@ -6147,11 +6148,13 @@ Output ONLY the continuation, starting immediately after the last character abov
 			}
 		}
 
-		const metadataCorrection = findOwnedActionCorrectionFromMetadata(
-			runtime,
-			message,
-			responseContent,
-		);
+		const metadataCorrection = looksLikeNonActionableChatter(message)
+			? null
+			: findOwnedActionCorrectionFromMetadata(
+					runtime,
+					message,
+					responseContent,
+				);
 		if (metadataCorrection) {
 			runtime.logger.info(
 				{
