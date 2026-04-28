@@ -6,8 +6,7 @@ name: Rust Release
 #   1. elizaos (core library) - must publish first
 #   2. Plugins with elizaos dependency (after elizaos is indexed):
 #      - elizaos-plugin-sql, elizaos-plugin-openai, elizaos-plugin-goals,
-#        elizaos-plugin-localdb, elizaos-plugin-todo, elizaos-plugin-xai,
-#        elizaos-plugin-discord
+#        elizaos-plugin-localdb, elizaos-plugin-xai, elizaos-plugin-discord
 #   4. All other plugins (45 total) - independent, publish in parallel
 
 on:
@@ -27,7 +26,6 @@ on:
           - elizaos-plugin-openai
           - elizaos-plugin-goals
           - elizaos-plugin-localdb
-          - elizaos-plugin-todo
           - elizaos-plugin-xai
           - elizaos-plugin-discord
           # Independent plugins
@@ -406,8 +404,6 @@ jobs:
             path: plugins/plugin-goals/rust
           - name: elizaos-plugin-localdb
             path: plugins/plugin-localdb/rust
-          - name: elizaos-plugin-todo
-            path: plugins/plugin-todo/rust
           - name: elizaos-plugin-xai
             path: plugins/plugin-xai/rust
           - name: elizaos-plugin-discord
