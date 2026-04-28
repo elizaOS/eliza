@@ -489,14 +489,26 @@ export async function fetchGoogleGmailMessage(args: {
   for (const header of GMAIL_METADATA_HEADERS) {
     params.append("metadataHeaders", header);
   }
-  const response = await googleApiFetch(
-    `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(args.messageId)}?${params.toString()}`,
-    {
-      headers: {
-        Authorization: `Bearer ${args.accessToken}`,
+  let response: Response;
+  try {
+    response = await googleApiFetch(
+      `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(args.messageId)}?${params.toString()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${args.accessToken}`,
+        },
       },
-    },
-  );
+    );
+  } catch (error) {
+    // A 404 here means the supplied messageId does not match any Gmail
+    // message visible to this account — treat it the same as "no result"
+    // so callers can render the standard "message not found" fallback
+    // instead of leaking the raw Google error string.
+    if (error instanceof GoogleApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
   const parsed = (await response.json()) as GoogleGmailMetadataResponse;
   return normalizeGoogleGmailMessage(parsed, args.selfEmail ?? null);
 }
@@ -537,14 +549,25 @@ export async function fetchGoogleGmailMessageDetail(args: {
   const params = new URLSearchParams({
     format: "full",
   });
-  const response = await googleApiFetch(
-    `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(args.messageId)}?${params.toString()}`,
-    {
-      headers: {
-        Authorization: `Bearer ${args.accessToken}`,
+  let response: Response;
+  try {
+    response = await googleApiFetch(
+      `${GOOGLE_GMAIL_MESSAGES_ENDPOINT}/${encodeURIComponent(args.messageId)}?${params.toString()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${args.accessToken}`,
+        },
       },
-    },
-  );
+    );
+  } catch (error) {
+    // 404 → treat as "no such message" so the caller's existing
+    // "message not found" fallback handles the user-facing response,
+    // instead of leaking the raw Google API error string.
+    if (error instanceof GoogleApiError && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
   const parsed = (await response.json()) as GoogleGmailMetadataResponse;
   const message = normalizeGoogleGmailMessage(parsed, args.selfEmail ?? null);
   if (!message) {
