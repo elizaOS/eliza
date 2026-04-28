@@ -114,7 +114,7 @@ export type VerificationResult = {
 	runId: string;
 };
 
-type LaunchContext = {
+export type LaunchContext = {
 	viewerUrl: string | null;
 };
 
@@ -459,17 +459,38 @@ async function runLaunchCheck(
 	};
 }
 
-async function loadBrowserModule(): Promise<BrowserModule | null> {
+type BrowserModuleLoader = () => Promise<BrowserModule | null>;
+
+const defaultBrowserModuleLoader: BrowserModuleLoader = async () => {
 	try {
-		// Use dynamic import wrapped in a string so bundlers do not try to
-		// resolve puppeteer-core at build time.
+		// Dynamic import keeps puppeteer-core off the bundler's resolution graph.
 		const mod = (await import(/* @vite-ignore */ "puppeteer-core")) as {
 			default?: BrowserModule;
 		} & BrowserModule;
 		return mod.default ?? mod;
-	} catch {
-		return null;
+	} catch (err) {
+		const code = (err as NodeJS.ErrnoException | undefined)?.code;
+		if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
+			return null;
+		}
+		const message = err instanceof Error ? err.message : String(err);
+		throw new Error(
+			`[AppVerificationService] failed to load puppeteer-core: ${message}`,
+			{ cause: err instanceof Error ? err : undefined },
+		);
 	}
+};
+
+let browserModuleLoader: BrowserModuleLoader = defaultBrowserModuleLoader;
+
+export function __setBrowserModuleLoaderForTests(
+	loader: BrowserModuleLoader | null,
+): void {
+	browserModuleLoader = loader ?? defaultBrowserModuleLoader;
+}
+
+async function loadBrowserModule(): Promise<BrowserModule | null> {
+	return browserModuleLoader();
 }
 
 function resolveChromePath(): string | undefined {
@@ -500,32 +521,63 @@ async function runBrowserCheck(
 	const baseUrl = launchCtx.viewerUrl;
 	if (!baseUrl) {
 		const output =
-			"Skipping browser check: launch did not produce a viewer URL.";
+			"Browser check failed: launch reported success but did not surface a viewer URL. The launch contract requires a launchUrl on healthy runs; without it we cannot verify rendering.";
+		logger.error(`[AppVerificationService] ${output}`);
 		const outputPath = await persistOutput(dir, "browser", output);
 		return {
 			check: {
 				kind: "browser",
-				passed: true,
+				passed: false,
 				durationMs: nowMs() - start,
 				output,
 				outputPath,
+				diagnostics: [
+					{
+						file: "browser",
+						message: "launch produced no viewerUrl; cannot verify rendering",
+						severity: "error",
+					},
+				],
 			},
 		};
 	}
 
 	const browserModule = await loadBrowserModule();
 	if (!browserModule) {
+		if (process.env.MILADY_BROWSER_VERIFY_OPTIONAL === "1") {
+			const output =
+				"browser check skipped — MILADY_BROWSER_VERIFY_OPTIONAL=1; install puppeteer-core for full coverage";
+			logger.warn(`[AppVerificationService] ${output}`);
+			const outputPath = await persistOutput(dir, "browser", output);
+			return {
+				check: {
+					kind: "browser",
+					passed: true,
+					durationMs: nowMs() - start,
+					output,
+					outputPath,
+				},
+			};
+		}
 		const output =
-			"puppeteer-core not installed; skipping browser check. Install puppeteer-core to enable headless browser verification.";
-		logger.warn(`[AppVerificationService] ${output}`);
+			"puppeteer-core not installed; cannot verify rendering. Install puppeteer-core (bun add -D puppeteer-core), or set MILADY_BROWSER_VERIFY_OPTIONAL=1 to acknowledge skipping this check.";
+		logger.error(`[AppVerificationService] ${output}`);
 		const outputPath = await persistOutput(dir, "browser", output);
 		return {
 			check: {
 				kind: "browser",
-				passed: true,
+				passed: false,
 				durationMs: nowMs() - start,
 				output,
 				outputPath,
+				diagnostics: [
+					{
+						file: "browser",
+						message:
+							"puppeteer-core dependency missing — install puppeteer-core (bun add -D puppeteer-core) or set MILADY_BROWSER_VERIFY_OPTIONAL=1 to acknowledge skipping browser verification",
+						severity: "error",
+					},
+				],
 			},
 		};
 	}
@@ -637,6 +689,8 @@ async function runBrowserCheck(
 		...(screenshotPath ? { screenshotPath } : {}),
 	};
 }
+
+export const __runBrowserCheckForTests = runBrowserCheck;
 
 function isHardFail(kind: VerificationCheckKind): boolean {
 	return (
