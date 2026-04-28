@@ -601,6 +601,42 @@ async function seedBenchmarkCaseFixtures(
       "seedBenchmarkCaseFixtures: google grant seed skipped",
     );
   }
+
+  // 4) Seed an X (Twitter) connector grant + minimal env credentials so
+  //    X_READ's `validate()` resolves to true. Local-mode capability resolution
+  //    requires both a grant row and OAuth env credentials before
+  //    `feedRead`/`dmRead` are reported as available.
+  try {
+    process.env.TWITTER_API_KEY = process.env.TWITTER_API_KEY ?? "bench-x-key";
+    process.env.TWITTER_API_SECRET_KEY =
+      process.env.TWITTER_API_SECRET_KEY ?? "bench-x-secret";
+    process.env.TWITTER_ACCESS_TOKEN =
+      process.env.TWITTER_ACCESS_TOKEN ?? "bench-x-token";
+    process.env.TWITTER_ACCESS_TOKEN_SECRET =
+      process.env.TWITTER_ACCESS_TOKEN_SECRET ?? "bench-x-token-secret";
+    process.env.TWITTER_USER_ID =
+      process.env.TWITTER_USER_ID ?? "bench-x-user-id";
+
+    const seedModule = (await import(
+      // @ts-expect-error — path resolved at runtime relative to repo root
+      "../../../../../test/mocks/helpers/seed-grants.ts"
+    )) as {
+      seedXConnectorGrant: (
+        runtime: AgentRuntime,
+        opts?: { side?: "owner" | "agent"; handle?: string },
+      ) => Promise<void>;
+    };
+    await seedModule.seedXConnectorGrant(runtime, { side: "owner" });
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, agentId: runtime.agentId },
+      "seedBenchmarkCaseFixtures: x connector grant seeded",
+    );
+  } catch (error) {
+    runtime.logger?.debug?.(
+      { src: "benchmark", userEntityId, error: String(error) },
+      "seedBenchmarkCaseFixtures: x grant seed skipped",
+    );
+  }
 }
 
 /**

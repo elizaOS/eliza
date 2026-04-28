@@ -431,14 +431,34 @@ export const xReadAction: Action & {
   validate: async (runtime, message) => {
     if (!(await hasLifeOpsAccess(runtime, message))) return false;
     const service = new LifeOpsService(runtime);
-    try {
-      const status = await service.getXConnectorStatus();
-      return Boolean(
+    const isUsable = (status: {
+      grant?: unknown;
+      feedRead?: boolean;
+      dmRead?: boolean;
+      grantedCapabilities: readonly string[];
+    }) =>
+      Boolean(
         status.grant &&
           (status.feedRead ||
             status.dmRead ||
             status.grantedCapabilities.includes("x.read")),
       );
+    try {
+      const defaultStatus = await service.getXConnectorStatus();
+      if (isUsable(defaultStatus)) return true;
+      // Fall back to the local-mode grant: when cloud is configured the
+      // default mode is cloud_managed, but a local grant + env credentials
+      // may still authorize the read. Checking both keeps validate true to
+      // any configured X path.
+      if (defaultStatus.mode !== "local") {
+        try {
+          const localStatus = await service.getXConnectorStatus("local");
+          if (isUsable(localStatus)) return true;
+        } catch {
+          // ignore — falls through to false
+        }
+      }
+      return false;
     } catch (error) {
       logger.warn(
         {
