@@ -136,7 +136,7 @@ function normalizeRegistryFilterKey(value: string | null | undefined): string {
   return (value ?? "")
     .trim()
     .toLowerCase()
-    .replace(/\s*&\s*/g, " and ")
+    .replace(/\s{0,32}&\s{0,32}/g, " and ")
     .replace(/[^a-z0-9/]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }

@@ -133,6 +133,15 @@ function normalizeCdpTarget(value: unknown): CdpTarget | null {
   return { id, type, title, url, webSocketDebuggerUrl };
 }
 
+function isDiscordHost(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === "discord.com" || hostname.endsWith(".discord.com");
+  } catch {
+    return false;
+  }
+}
+
 function pickDiscordTarget(targets: CdpTarget[]): CdpTarget | null {
   const pageTargets = targets.filter(
     (target) => target.type === "page" && target.webSocketDebuggerUrl,
@@ -140,7 +149,7 @@ function pickDiscordTarget(targets: CdpTarget[]): CdpTarget | null {
   return (
     pageTargets.find(
       (target) =>
-        target.url.includes("discord.com") || /discord/i.test(target.title),
+        isDiscordHost(target.url) || /discord/i.test(target.title),
     ) ??
     pageTargets[0] ??
     null
