@@ -1253,7 +1253,7 @@ function extractPlannerQueries(
 ): Array<string | undefined> {
   const rawQueries: Array<string | undefined> = [];
   if (typeof parsed.queries === "string" && parsed.queries.trim().length > 0) {
-    for (const query of parsed.queries.split(/\s*\|\|\s*/)) {
+    for (const query of parsed.queries.split(/\s{0,256}\|\|\s{0,256}/)) {
       if (query.trim().length > 0) {
         rawQueries.push(query.trim());
       }
