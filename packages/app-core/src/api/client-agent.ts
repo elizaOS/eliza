@@ -308,6 +308,7 @@ declare module "./client-base" {
       provider: string,
       apiKey?: string,
       primaryModel?: string,
+      options?: { useLocalEmbeddings?: boolean },
     ): Promise<{ success: boolean; provider: string; restarting: boolean }>;
     startOpenAILogin(): Promise<{
       authUrl: string;
@@ -1009,6 +1010,7 @@ ElizaClient.prototype.switchProvider = async function (
   provider,
   apiKey?,
   primaryModel?,
+  options?,
 ) {
   logSettingsClient("POST /api/provider/switch → start", {
     baseUrl: this.getBaseUrl(),
@@ -1017,6 +1019,7 @@ ElizaClient.prototype.switchProvider = async function (
     apiKey,
     hasPrimaryModel: Boolean(primaryModel?.trim()),
     primaryModel,
+    useLocalEmbeddings: options?.useLocalEmbeddings,
   });
   const result = (await this.fetch("/api/provider/switch", {
     method: "POST",
@@ -1025,6 +1028,9 @@ ElizaClient.prototype.switchProvider = async function (
       provider,
       ...(apiKey ? { apiKey } : {}),
       ...(primaryModel ? { primaryModel } : {}),
+      ...(options?.useLocalEmbeddings != null
+        ? { useLocalEmbeddings: options.useLocalEmbeddings }
+        : {}),
     }),
   })) as { success: boolean; provider: string; restarting: boolean };
   logSettingsClient("POST /api/provider/switch ← ok", {
