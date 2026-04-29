@@ -259,3 +259,122 @@ describe("FilesystemRuntimeOperationRepository — pruneTerminal", () => {
     expect(listFiles(tmpStateDir)).toEqual(["recent.json"]);
   });
 });
+
+describe("FilesystemRuntimeOperationRepository — legacy plaintext apiKey migration", () => {
+  test("hydrate strips plaintext apiKey from a legacy ProviderSwitchIntent record", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const dir = path.join(tmpStateDir, "runtime-operations");
+    await fs.mkdir(dir, { recursive: true });
+
+    const legacyOp = {
+      id: "legacy-1",
+      kind: "provider-switch",
+      intent: {
+        kind: "provider-switch",
+        provider: "openai",
+        apiKey: "sk-leaked-plaintext-do-not-keep",
+        primaryModel: "gpt-5.5",
+      },
+      tier: "hot",
+      status: "succeeded",
+      phases: [],
+      startedAt: Date.now(),
+      finishedAt: Date.now(),
+    };
+    const filePath = path.join(dir, "legacy-1.json");
+    await fs.writeFile(filePath, `${JSON.stringify(legacyOp, null, 2)}\n`);
+
+    const repo = new FilesystemRuntimeOperationRepository(tmpStateDir, {
+      retentionMs: 365 * DAY_MS,
+      maxRecords: 1000,
+    });
+
+    const loaded = await repo.get("legacy-1");
+    expect(loaded).not.toBeNull();
+    if (loaded?.intent.kind !== "provider-switch") {
+      throw new Error("expected provider-switch intent");
+    }
+    // The in-memory record must have NO apiKey field.
+    expect("apiKey" in loaded.intent).toBe(false);
+    // Other fields are preserved.
+    expect(loaded.intent.provider).toBe("openai");
+    expect(loaded.intent.primaryModel).toBe("gpt-5.5");
+
+    // The file on disk must NOT contain the plaintext after hydration.
+    const onDiskAfter = await fs.readFile(filePath, "utf8");
+    expect(onDiskAfter).not.toContain("sk-leaked-plaintext-do-not-keep");
+    expect(onDiskAfter).not.toContain("apiKey");
+  });
+
+  test("hydrate leaves non-provider-switch records untouched", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const dir = path.join(tmpStateDir, "runtime-operations");
+    await fs.mkdir(dir, { recursive: true });
+
+    const restartOp = {
+      id: "restart-1",
+      kind: "restart",
+      intent: { kind: "restart", reason: "manual" },
+      tier: "cold",
+      status: "succeeded",
+      phases: [],
+      startedAt: Date.now(),
+      finishedAt: Date.now(),
+    };
+    const filePath = path.join(dir, "restart-1.json");
+    const original = `${JSON.stringify(restartOp, null, 2)}\n`;
+    await fs.writeFile(filePath, original);
+
+    const repo = new FilesystemRuntimeOperationRepository(tmpStateDir, {
+      retentionMs: 365 * DAY_MS,
+      maxRecords: 1000,
+    });
+    await repo.get("restart-1");
+
+    const onDisk = await fs.readFile(filePath, "utf8");
+    expect(onDisk).toBe(original);
+  });
+
+  test("post-migration hydrate is a no-op (idempotent)", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const dir = path.join(tmpStateDir, "runtime-operations");
+    await fs.mkdir(dir, { recursive: true });
+
+    const legacyOp = {
+      id: "legacy-2",
+      kind: "provider-switch",
+      intent: {
+        kind: "provider-switch",
+        provider: "anthropic",
+        apiKey: "sk-ant-leak",
+      },
+      tier: "hot",
+      status: "succeeded",
+      phases: [],
+      startedAt: Date.now(),
+      finishedAt: Date.now(),
+    };
+    const filePath = path.join(dir, "legacy-2.json");
+    await fs.writeFile(filePath, `${JSON.stringify(legacyOp, null, 2)}\n`);
+
+    // First hydration migrates.
+    const repo1 = new FilesystemRuntimeOperationRepository(tmpStateDir, {
+      retentionMs: 365 * DAY_MS,
+      maxRecords: 1000,
+    });
+    await repo1.get("legacy-2");
+    const afterFirst = await fs.readFile(filePath, "utf8");
+
+    // Second hydration (fresh repo) sees no `apiKey` field, must not rewrite.
+    const repo2 = new FilesystemRuntimeOperationRepository(tmpStateDir, {
+      retentionMs: 365 * DAY_MS,
+      maxRecords: 1000,
+    });
+    await repo2.get("legacy-2");
+    const afterSecond = await fs.readFile(filePath, "utf8");
+    expect(afterSecond).toBe(afterFirst);
+  });
+});
