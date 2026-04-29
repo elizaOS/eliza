@@ -19,11 +19,12 @@ function unsignedIdToken(claims: Record<string, unknown>): string {
   return `${encodeJwtPart({ alg: "none" })}.${encodeJwtPart(claims)}.`;
 }
 
-function startOAuthCallback(): URL {
+function startOAuthCallback(grantId?: string): URL {
   const start = startGoogleConnectorOAuth({
     agentId: "google-oauth-test-agent",
     mode: "local",
     requestUrl: new URL("http://127.0.0.1:31337"),
+    grantId,
     env,
   });
   const authUrl = new URL(start.authUrl);
@@ -122,5 +123,44 @@ describe("Google OAuth callback identity", () => {
       sub: "google-subject",
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("scopes local token references by grant id for additional accounts", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (!url.includes("oauth2.googleapis.com/token")) {
+        throw new Error(`Unexpected Google OAuth fetch: ${url}`);
+      }
+      return new Response(
+        JSON.stringify({
+          access_token: "access-token",
+          expires_in: 3600,
+          id_token: unsignedIdToken({
+            sub: "google-subject",
+            email: "owner@example.com",
+          }),
+          scope: "openid email profile",
+          token_type: "Bearer",
+        }),
+        { status: 200 },
+      );
+    });
+
+    const first = await completeGoogleConnectorOAuth({
+      callbackUrl: startOAuthCallback("grant-a"),
+      env,
+    });
+    const second = await completeGoogleConnectorOAuth({
+      callbackUrl: startOAuthCallback("grant-b"),
+      env,
+    });
+
+    expect(first.tokenRef).toBe(
+      path.join("google-oauth-test-agent", "owner", "local_grant-a.json"),
+    );
+    expect(second.tokenRef).toBe(
+      path.join("google-oauth-test-agent", "owner", "local_grant-b.json"),
+    );
+    expect(first.tokenRef).not.toBe(second.tokenRef);
   });
 });
