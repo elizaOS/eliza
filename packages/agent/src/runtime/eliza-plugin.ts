@@ -28,7 +28,14 @@ import {
   exportLogsAction,
   queryLogsAction,
 } from "../actions/logs.js";
+import {
+  disconnectConnectorAction,
+  listConnectorsAction,
+  saveConnectorConfigAction,
+  toggleConnectorAction,
+} from "../actions/connector-control.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
+import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import {
   editMemoryAction,
   forgetMemoryAction,
@@ -268,6 +275,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       toggleWorkflowActiveAction,
       promoteTaskToWorkflowAction,
       manageTasksAction,
+      ...pageActionGroupActions,
       setUserNameAction,
       skillCommandAction,
       webSearchAction,
@@ -286,6 +294,10 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       updateAiProviderAction,
       toggleCapabilityAction,
       toggleAutoTrainingAction,
+      listConnectorsAction,
+      toggleConnectorAction,
+      saveConnectorConfigAction,
+      disconnectConnectorAction,
       // Observability / introspection actions
       queryLogsAction,
       exportLogsAction,

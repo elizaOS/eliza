@@ -76,6 +76,6 @@ describe("applySubscriptionCredentials", () => {
     await applySubscriptionCredentials(config);
 
     expect(process.env.OPENAI_API_KEY).toBe("codex-subscription-token");
-    expect(config.agents.defaults.model?.primary).toBe("openai-codex");
+    expect(config.agents.defaults.model?.primary).toBe("openai");
   });
 });

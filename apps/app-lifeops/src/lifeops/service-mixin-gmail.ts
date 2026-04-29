@@ -713,14 +713,14 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           });
           const messages = filterGmailMessagesBySearch({
             messages: managedSearch.messages.map((message) =>
-                materializeGmailMessageSummary({
-                  agentId: this.agentId(),
-                  side: effectiveSide,
-                  grantId: grant.id,
-                  accountEmail: googleGrantAccountEmail(grant),
-                  message,
-                  syncedAt: managedSearch.syncedAt,
-                }),
+              materializeGmailMessageSummary({
+                agentId: this.agentId(),
+                side: effectiveSide,
+                grantId: grant.id,
+                accountEmail: googleGrantAccountEmail(grant),
+                message,
+                syncedAt: managedSearch.syncedAt,
+              }),
             ),
             query,
             replyNeededOnly,
@@ -1575,7 +1575,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           likelyReplyNeeded: messageSummary.likelyReplyNeeded,
           triageScore: messageSummary.triageScore,
           grantId: grant.id,
-          accountEmail: grant.identityEmail ?? null,
+          accountEmail: googleGrantAccountEmail(grant),
           htmlLink: messageSummary.htmlLink,
         },
       };
@@ -2029,7 +2029,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
             {
               mode,
               side: grant.side,
-              grantId,
+              grantId: grant.id,
               maxResults: DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
             },
             new Date(),
@@ -2203,7 +2203,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
             {
               mode,
               side: grant.side,
-              grantId,
+              grantId: grant.id,
               maxResults: DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
             },
             new Date(),
@@ -2398,7 +2398,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
               {
                 mode,
                 side: grant.side,
-                grantId,
+                grantId: grant.id,
                 maxResults: DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
               },
               new Date(),
