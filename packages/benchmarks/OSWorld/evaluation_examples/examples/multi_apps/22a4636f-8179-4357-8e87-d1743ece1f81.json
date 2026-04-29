@@ -8,19 +8,14 @@
       "type": "googledrive",
       "parameters": {
         "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
-        "operation": [
-          "delete",
-          "mkdirs"
-        ],
+        "operation": ["delete", "mkdirs"],
         "args": [
           {
             "query": "title = 'Meeting-Agenda.docx' or title = 'Meeting-Agenda.pdf'",
             "trash": false
           },
           {
-            "path": [
-              "meetings"
-            ]
+            "path": ["meetings"]
           }
         ]
       }
@@ -28,20 +23,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -84,19 +72,13 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_writer",
-    "chrome"
-  ],
+  "related_apps": ["libreoffice_writer", "chrome"],
   "evaluator": {
     "func": "compare_pdfs",
     "result": {
       "type": "googledrive_file",
       "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
-      "path": [
-        "meetings",
-        "Meeting-Agenda.pdf"
-      ],
+      "path": ["meetings", "Meeting-Agenda.pdf"],
       "dest": "Meeting-Agenda.pdf"
     },
     "expected": {

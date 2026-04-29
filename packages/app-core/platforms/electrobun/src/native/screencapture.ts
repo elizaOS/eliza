@@ -167,7 +167,10 @@ $bmp.Dispose()`;
     // macOS: use screencapture -l <windowId> if a windowId is provided.
     // Other platforms: fall back to full-screen capture.
     if (process.platform === "darwin" && options?.windowId) {
-      const tmpPath = path.join(os.tmpdir(), `elizaos-window-${Date.now()}.png`);
+      const tmpPath = path.join(
+        os.tmpdir(),
+        `elizaos-window-${Date.now()}.png`,
+      );
       try {
         const proc = Bun.spawn(
           ["screencapture", "-x", "-t", "png", "-l", options.windowId, tmpPath],

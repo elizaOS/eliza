@@ -1,10 +1,10 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createElizaPlugin, resolveOAuthDir } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import {
   createConversation,
   postConversationMessage,
@@ -14,17 +14,14 @@ import {
   isLiveTestEnabled,
   selectLiveProvider,
 } from "../../../../test/helpers/live-provider";
-import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 import { saveEnv } from "../../../../test/helpers/test-utils";
-import {
-  createElizaPlugin,
-  resolveOAuthDir,
-} from "@elizaos/agent";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 
 const GOOGLE_CLIENT_ID = "lifeops-gmail-live-chat-client";
 const LIVE_PROVIDER = selectLiveProvider("openai") ?? selectLiveProvider();
@@ -127,36 +124,34 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
     },
   );
 
-  await repository.upsertConnectorGrant(
-    {
-      ...createLifeOpsConnectorGrant({
-        agentId,
-        provider: "google",
-        side: "owner",
-        identity: {
-          email: "shawmakesmagic@gmail.com",
-          name: "Shaw",
-        },
-        grantedScopes: [
-          "openid",
-          "email",
-          "profile",
-          "https://www.googleapis.com/auth/gmail.metadata",
-          "https://www.googleapis.com/auth/gmail.send",
-        ],
-        capabilities: [
-          "google.basic_identity",
-          "google.gmail.triage",
-          "google.gmail.send",
-        ],
-        tokenRef,
-        mode: "local",
-        metadata: {},
-        lastRefreshAt: nowIso,
-      }),
-      id: grantId,
-    },
-  );
+  await repository.upsertConnectorGrant({
+    ...createLifeOpsConnectorGrant({
+      agentId,
+      provider: "google",
+      side: "owner",
+      identity: {
+        email: "shawmakesmagic@gmail.com",
+        name: "Shaw",
+      },
+      grantedScopes: [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/gmail.metadata",
+        "https://www.googleapis.com/auth/gmail.send",
+      ],
+      capabilities: [
+        "google.basic_identity",
+        "google.gmail.triage",
+        "google.gmail.send",
+      ],
+      tokenRef,
+      mode: "local",
+      metadata: {},
+      lastRefreshAt: nowIso,
+    }),
+    id: grantId,
+  });
 
   await repository.upsertGmailSyncState(
     createLifeOpsGmailSyncState({

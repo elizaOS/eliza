@@ -26,14 +26,14 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import {
-  createLifeOpsTestRuntime,
-  type RealTestRuntimeResult,
-} from "./helpers/runtime.js";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
 import { extractLifeOperationWithLlm } from "../src/actions/life.extractor.js";
+import {
+  createLifeOpsTestRuntime,
+  type RealTestRuntimeResult,
+} from "./helpers/runtime.js";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 try {
@@ -44,8 +44,7 @@ try {
 }
 
 const LIVE_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const provider = LIVE_ENABLED ? selectLiveProvider() : null;
 
 if (!LIVE_ENABLED || !provider) {
@@ -234,7 +233,10 @@ describeIfLive("Multilingual action-routing (live LLM)", () => {
               `CALENDAR planner picked ${plan.subaction ?? "null"} for "${text}" (expected ${row.expectedSubaction})`,
             ).toBe(row.expectedSubaction);
           },
-          { perRunTimeoutMs: TEST_TIMEOUT, label: `calendar/${row.label}/${lang}` },
+          {
+            perRunTimeoutMs: TEST_TIMEOUT,
+            label: `calendar/${row.label}/${lang}`,
+          },
         );
       }
     }

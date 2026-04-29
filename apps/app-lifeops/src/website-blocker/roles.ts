@@ -7,10 +7,10 @@
  */
 
 import {
+  type RoleCheckResult as CoreRoleCheckResult,
   checkSenderRole as coreCheckSenderRole,
   type IAgentRuntime,
   type Memory,
-  type RoleCheckResult as CoreRoleCheckResult,
 } from "@elizaos/core";
 
 export type RoleCheckResult = CoreRoleCheckResult & {

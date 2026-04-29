@@ -229,7 +229,9 @@ async function handleSolanaSendTransaction(
     };
   }
   const cluster =
-    p?.cluster === "devnet" || p?.cluster === "testnet" || p?.cluster === "mainnet"
+    p?.cluster === "devnet" ||
+    p?.cluster === "testnet" ||
+    p?.cluster === "mainnet"
       ? p.cluster
       : undefined;
   const description =

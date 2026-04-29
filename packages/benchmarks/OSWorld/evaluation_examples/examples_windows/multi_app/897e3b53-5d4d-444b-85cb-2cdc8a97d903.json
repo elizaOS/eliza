@@ -8,9 +8,7 @@
       "type": "googledrive",
       "parameters": {
         "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
-        "operation": [
-          "delete"
-        ],
+        "operation": ["delete"],
         "args": [
           {
             "query": "title = 'form.pdf' or title = 'form.docx' or title = 'form.docx.pdf' or title = 'forms'",
@@ -72,10 +70,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "word",
-    "chrome"
-  ],
+  "related_apps": ["word", "chrome"],
   "evaluator": {
     "func": "compare_pdfs",
     "result": {

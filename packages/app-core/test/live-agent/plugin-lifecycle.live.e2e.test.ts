@@ -26,13 +26,7 @@ import {
   listLocalWorkspacePlugins,
 } from "./helpers/local-plugin-inventory.ts";
 
-const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 loadDotenv({ path: path.join(REPO_ROOT, ".env") });
 
 const LIVE =

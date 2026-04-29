@@ -659,9 +659,7 @@ async function launch() {
     ELIZA_PORT: String(uiDevPort),
     ELIZA_UI_PORT: String(uiDevPort),
     ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-    ...(rendererUrlForShell
-      ? { ELIZA_RENDERER_URL: rendererUrlForShell }
-      : {}),
+    ...(rendererUrlForShell ? { ELIZA_RENDERER_URL: rendererUrlForShell } : {}),
     ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
     ...screenshotEnvApi,
     ...(desktopDevLogPath

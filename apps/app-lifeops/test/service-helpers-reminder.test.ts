@@ -48,7 +48,10 @@ function buildActivityProfile(
 function shouldDefer(
   channel: LifeOpsReminderChannel,
   profile: ReminderActivityProfileSnapshot | null,
-  definition: Pick<LifeOpsTaskDefinition, "title" | "originalIntent" | "cadence">,
+  definition: Pick<
+    LifeOpsTaskDefinition,
+    "title" | "originalIntent" | "cadence"
+  >,
 ): boolean {
   return shouldDeferReminderUntilComputerActive({
     channel,

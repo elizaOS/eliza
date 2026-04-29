@@ -1,7 +1,7 @@
-import { describe, expect, test } from "vitest";
 import type { AgentRuntime } from "@elizaos/core";
-import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import { describe, expect, test } from "vitest";
 import { summarizeBrowserTaskLifecycle } from "../src/lifeops/browser-session-lifecycle.js";
+import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 
@@ -10,7 +10,9 @@ function createRuntime(agentId: string): AgentRuntime {
     agentId,
     handleTurn: async () => ({ text: "ok" }),
     useModel: async () => {
-      throw new Error("useModel should not be called in browser lifecycle tests");
+      throw new Error(
+        "useModel should not be called in browser lifecycle tests",
+      );
     },
   });
 }
@@ -190,7 +192,9 @@ describe("browser session lifecycle", () => {
   });
 
   test("owner progress route preserves browser task summary before completion", async () => {
-    const service = await createService("browser-bridge-session-progress-owner");
+    const service = await createService(
+      "browser-bridge-session-progress-owner",
+    );
     const session = await service.createBrowserSession({
       title: "Upload ID copy",
       browser: "chrome",

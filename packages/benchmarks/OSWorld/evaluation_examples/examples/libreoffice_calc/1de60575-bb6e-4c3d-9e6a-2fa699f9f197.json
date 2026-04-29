@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/1de60575-bb6e-4c3d-9e6a-2fa699f9f197",
-  "related_apps": [
-    "libreoffice_calc"
-  ],
+  "related_apps": ["libreoffice_calc"],
   "evaluator": {
     "postconfig": [
       {
@@ -75,12 +73,7 @@
           "type": "pivot_table",
           "sheet_idx0": "RNSheet2",
           "sheet_idx1": "ENSheet2",
-          "pivot_props": [
-            "col_fields",
-            "filter",
-            "row_fields",
-            "data_fields"
-          ]
+          "pivot_props": ["col_fields", "filter", "row_fields", "data_fields"]
         }
       ]
     }

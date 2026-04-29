@@ -19,7 +19,7 @@ class InferenceSession {
 
 class Tensor {
   constructor() {
-    return unavailable();
+    unavailable();
   }
 }
 

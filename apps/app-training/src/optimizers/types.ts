@@ -26,21 +26,21 @@ import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js
  * canonical shape for all native optimizer code.
  */
 export interface OptimizationExample {
-	/** Stable identifier for traceability. Defaults to the row index. */
-	id?: string;
-	input: {
-		system?: string;
-		user: string;
-	};
-	/** Reference output the model should produce. Compared by the scorer. */
-	expectedOutput: string;
-	/**
-	 * Optional reward signal recorded with the trajectory (e.g. successful
-	 * completion = 1). Bootstrap-fewshot uses this to pick top-K demonstrations.
-	 */
-	reward?: number;
-	/** Optional per-row metadata (task name, source trajectory id, ...). */
-	metadata?: Record<string, unknown>;
+  /** Stable identifier for traceability. Defaults to the row index. */
+  id?: string;
+  input: {
+    system?: string;
+    user: string;
+  };
+  /** Reference output the model should produce. Compared by the scorer. */
+  expectedOutput: string;
+  /**
+   * Optional reward signal recorded with the trajectory (e.g. successful
+   * completion = 1). Bootstrap-fewshot uses this to pick top-K demonstrations.
+   */
+  reward?: number;
+  /** Optional per-row metadata (task name, source trajectory id, ...). */
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -51,8 +51,8 @@ export interface OptimizationExample {
  * the optimizer cannot tell signal from noise across rounds.
  */
 export type PromptScorer = (
-	prompt: string,
-	examples: OptimizationExample[],
+  prompt: string,
+  examples: OptimizationExample[],
 ) => Promise<number>;
 
 /**
@@ -61,42 +61,42 @@ export type PromptScorer = (
  * deterministic stub in tests.
  */
 export interface LlmAdapter {
-	/**
-	 * Run a single completion. Returns plain text (no parsing).
-	 *
-	 * `temperature` is optional because some adapters (e.g. tests) ignore it,
-	 * but optimizers should pass it explicitly when they want diverse samples.
-	 */
-	complete(input: {
-		system?: string;
-		user: string;
-		temperature?: number;
-		maxTokens?: number;
-	}): Promise<string>;
+  /**
+   * Run a single completion. Returns plain text (no parsing).
+   *
+   * `temperature` is optional because some adapters (e.g. tests) ignore it,
+   * but optimizers should pass it explicitly when they want diverse samples.
+   */
+  complete(input: {
+    system?: string;
+    user: string;
+    temperature?: number;
+    maxTokens?: number;
+  }): Promise<string>;
 }
 
 /** Per-round bookkeeping returned by every optimizer. */
 export interface OptimizerLineageEntry {
-	round: number;
-	variant: number;
-	score: number;
-	notes?: string;
+  round: number;
+  variant: number;
+  score: number;
+  notes?: string;
 }
 
 /** Common shape returned by all native optimizers. */
 export interface OptimizerResult {
-	optimizedPrompt: string;
-	score: number;
-	baseline: number;
-	lineage: OptimizerLineageEntry[];
-	/** Demonstrations injected into the prompt (bootstrap-fewshot only). */
-	fewShotExamples?: OptimizationExample[];
+  optimizedPrompt: string;
+  score: number;
+  baseline: number;
+  lineage: OptimizerLineageEntry[];
+  /** Demonstrations injected into the prompt (bootstrap-fewshot only). */
+  fewShotExamples?: OptimizationExample[];
 }
 
 export type OptimizerName =
-	| "instruction-search"
-	| "prompt-evolution"
-	| "bootstrap-fewshot";
+  | "instruction-search"
+  | "prompt-evolution"
+  | "bootstrap-fewshot";
 
 /**
  * Persisted artifact written by the native backend and consumed by
@@ -104,15 +104,15 @@ export type OptimizerName =
  * field on read; required fields stay required (no `?? null` fallbacks).
  */
 export interface OptimizedPromptArtifact {
-	task: TrajectoryTrainingTask;
-	optimizer: OptimizerName;
-	baseline: string;
-	prompt: string;
-	score: number;
-	baselineScore: number;
-	datasetId: string;
-	datasetSize: number;
-	generatedAt: string;
-	fewShotExamples?: OptimizationExample[];
-	lineage: OptimizerLineageEntry[];
+  task: TrajectoryTrainingTask;
+  optimizer: OptimizerName;
+  baseline: string;
+  prompt: string;
+  score: number;
+  baselineScore: number;
+  datasetId: string;
+  datasetSize: number;
+  generatedAt: string;
+  fewShotExamples?: OptimizationExample[];
+  lineage: OptimizerLineageEntry[];
 }

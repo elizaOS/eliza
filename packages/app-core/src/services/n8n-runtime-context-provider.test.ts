@@ -121,9 +121,7 @@ describe("startMiladyN8nRuntimeContextProvider", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => [
-            { id: "chan-other", name: "other-text", type: 0 },
-          ],
+          json: async () => [{ id: "chan-other", name: "other-text", type: 0 }],
         } as unknown as Response;
       }
       throw new Error(`unexpected fetch ${url}`);

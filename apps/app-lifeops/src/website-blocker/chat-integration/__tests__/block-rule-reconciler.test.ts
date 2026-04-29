@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { UUID } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../actions/website-blocker.js", () => ({
   blockWebsitesAction: {
@@ -10,13 +10,13 @@ vi.mock("../../../actions/website-blocker.js", () => ({
   },
 }));
 
-import { BlockRuleReader, BlockRuleWriter } from "../block-rule-service.js";
 import { reconcileBlockRulesOnce } from "../block-rule-reconciler.js";
+import { BlockRuleReader, BlockRuleWriter } from "../block-rule-service.js";
 import {
+  type BlockRuleTestHarness,
   completeTodo,
   createBlockRuleHarness,
   seedTodo,
-  type BlockRuleTestHarness,
 } from "./test-harness.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000bbbb" as UUID;

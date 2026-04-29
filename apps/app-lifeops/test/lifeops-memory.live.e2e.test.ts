@@ -4,6 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  buildCharacterFromConfig,
+  configureLocalEmbeddingPlugin,
+  createElizaPlugin,
+  extractPlugin,
+  type PluginModuleShape,
+} from "@elizaos/agent";
+import {
   AgentRuntime,
   ChannelType,
   createMessageMemory,
@@ -15,25 +22,22 @@ import {
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { saveEnv, sleep, withTimeout } from "../../../../test/helpers/test-utils";
+import {
+  saveEnv,
+  sleep,
+  withTimeout,
+} from "../../../../test/helpers/test-utils";
 import { readLifeOpsOwnerProfile } from "../src/lifeops/owner-profile.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import {
-  LIVE_CLOUD_ENV_PREFIXES,
-  LIVE_PROVIDER_ENV_KEYS,
-  LIVE_TESTS_ENABLED,
   applyLocalEmbeddingDefaults,
   getLifeOpsLiveSetupWarnings,
   getSelectedLiveProviderEnv,
+  LIVE_CLOUD_ENV_PREFIXES,
+  LIVE_PROVIDER_ENV_KEYS,
+  LIVE_TESTS_ENABLED,
   selectLifeOpsLiveProvider,
 } from "./helpers/lifeops-live-harness.ts";
-import {
-  buildCharacterFromConfig,
-  configureLocalEmbeddingPlugin,
-  createElizaPlugin,
-  extractPlugin,
-  type PluginModuleShape,
-} from "@elizaos/agent";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

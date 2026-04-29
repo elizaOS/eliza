@@ -218,10 +218,7 @@ export type {
   SystemPermissionId,
 } from "@elizaos/shared";
 
-import type {
-  PermissionState,
-  SystemPermissionId,
-} from "@elizaos/shared";
+import type { PermissionState, SystemPermissionId } from "@elizaos/shared";
 
 /** Local variant uses an index signature (the canonical contract uses explicit keys). */
 export interface AllPermissionsState {

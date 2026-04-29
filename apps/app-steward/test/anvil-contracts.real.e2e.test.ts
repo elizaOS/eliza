@@ -15,14 +15,10 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DropService, RegistryService, TxService } from "@elizaos/agent";
 import { ethers } from "ethers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import {
-  DropService,
-  RegistryService,
-  TxService,
-} from "@elizaos/agent";
 import { type AnvilInstance, startAnvil } from "./anvil-helper";
 import { type DeployedContracts, deployContracts } from "./contract-deployer";
 

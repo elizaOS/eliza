@@ -3,12 +3,12 @@ import * as readline from "node:readline";
 import {
   AgentRuntime,
   ChannelType,
-  createCharacter,
   type Character,
+  createCharacter,
   createMessageMemory,
+  type Plugin,
   stringToUuid,
   type UUID,
-  type Plugin,
 } from "@elizaos/core";
 import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
@@ -62,7 +62,10 @@ function hasValidApiKey(envKey: string): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-async function loadLLMPlugin(): Promise<{ plugin: Plugin; providerName: string } | null> {
+async function loadLLMPlugin(): Promise<{
+  plugin: Plugin;
+  providerName: string;
+} | null> {
   for (const provider of LLM_PROVIDERS) {
     if (hasValidApiKey(provider.envKey)) {
       try {
@@ -73,7 +76,6 @@ async function loadLLMPlugin(): Promise<{ plugin: Plugin; providerName: string }
         }
       } catch (error) {
         console.warn(`⚠️  Failed to load ${provider.name} plugin: ${error}`);
-        continue;
       }
     }
   }

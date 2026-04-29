@@ -66,9 +66,7 @@ export interface DefaultRuntimeOperationManagerOptions {
 
 const DEFAULT_CLASSIFIER: IntentClassifier = () => "cold";
 
-export class DefaultRuntimeOperationManager
-  implements RuntimeOperationManager
-{
+export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
   private readonly repository: RuntimeOperationRepository;
   private readonly runtime: () => AgentRuntime | null;
   private readonly classifyContext: () => ClassifyContext;
@@ -140,9 +138,7 @@ export class DefaultRuntimeOperationManager
     return this.repository.get(id);
   }
 
-  async list(
-    opts?: RuntimeOperationListOptions,
-  ): Promise<RuntimeOperation[]> {
+  async list(opts?: RuntimeOperationListOptions): Promise<RuntimeOperation[]> {
     return this.repository.list(opts);
   }
 

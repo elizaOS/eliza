@@ -56,11 +56,7 @@ describeIf(LIVE)("Shopify API live route coverage", () => {
   });
 
   it("returns the real unconfigured error for /api/shopify/products", async () => {
-    const response = await req(
-      runtime.port,
-      "GET",
-      "/api/shopify/products",
-    );
+    const response = await req(runtime.port, "GET", "/api/shopify/products");
     expect(response.status).toBe(404);
     expect(response.data).toMatchObject({
       error: expect.stringContaining("Shopify not configured"),

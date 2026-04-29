@@ -10,4 +10,3 @@
     "start": "bun --cwd backend start"
   }
 }
-

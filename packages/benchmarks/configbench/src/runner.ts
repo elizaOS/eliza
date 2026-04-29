@@ -1,5 +1,10 @@
-import type { Handler, Scenario, ScenarioOutcome, BenchmarkResults } from "./types.js";
 import { scoreHandler } from "./scoring/scorer.js";
+import type {
+  BenchmarkResults,
+  Handler,
+  Scenario,
+  ScenarioOutcome,
+} from "./types.js";
 
 async function runHandler(
   handler: Handler,
@@ -23,25 +28,36 @@ export async function runBenchmark(
   handlers: Handler[],
   scenarios: Scenario[],
   options: {
-    progressCallback?: (handler: string, scenarioId: string, index: number, total: number) => void;
+    progressCallback?: (
+      handler: string,
+      scenarioId: string,
+      index: number,
+      total: number,
+    ) => void;
   } = {},
 ): Promise<BenchmarkResults> {
   const handlerResults = [];
 
   for (const handler of handlers) {
     const progress = options.progressCallback
-      ? (id: string, idx: number, total: number) => options.progressCallback!(handler.name, id, idx, total)
+      ? (id: string, idx: number, total: number) =>
+          options.progressCallback!(handler.name, id, idx, total)
       : undefined;
     const outcomes = await runHandler(handler, scenarios, progress);
     handlerResults.push(scoreHandler(handler.name, scenarios, outcomes));
   }
 
-  const perfectResult = handlerResults.find(r => r.handlerName.includes("Perfect") || r.handlerName.includes("Oracle"));
+  const perfectResult = handlerResults.find(
+    (r) =>
+      r.handlerName.includes("Perfect") || r.handlerName.includes("Oracle"),
+  );
 
   return {
     timestamp: new Date().toISOString(),
     totalScenarios: scenarios.length,
     handlers: handlerResults,
-    validationPassed: perfectResult ? perfectResult.overallScore >= 99.9 : false,
+    validationPassed: perfectResult
+      ? perfectResult.overallScore >= 99.9
+      : false,
   };
 }

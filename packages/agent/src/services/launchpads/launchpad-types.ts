@@ -103,7 +103,10 @@ export interface LaunchpadProfile {
   /** URL the engine navigates to before any other step. */
   entryUrl: string;
   /** Cluster (Solana) or chain id (EVM) used by signers downstream. */
-  network: { evmChainId?: number; solanaCluster?: "mainnet" | "devnet" | "testnet" };
+  network: {
+    evmChainId?: number;
+    solanaCluster?: "mainnet" | "devnet" | "testnet";
+  };
   /** Ordered step list. */
   steps: LaunchpadStep[];
 }

@@ -1,5 +1,4 @@
-import { MemoryType, type Memory } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { type Memory, MemoryType, ModelType } from "@elizaos/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import { LipSyncPlayer } from "./components/LipSyncPlayer";
@@ -16,7 +15,11 @@ import {
   sendUserMessage,
 } from "./runtime/runtimeManager";
 import { splitForTts, synthesizeSamWav } from "./runtime/samTts";
-import { DEFAULT_DEMO_CONFIG, type DemoConfig, type DemoMode } from "./runtime/types";
+import {
+  DEFAULT_DEMO_CONFIG,
+  type DemoConfig,
+  type DemoMode,
+} from "./runtime/types";
 
 type UiMessage = {
   id: string;
@@ -48,7 +51,10 @@ function modeLabel(mode: DemoMode): string {
 }
 
 export default function App() {
-  const [config, setConfig] = useLocalStorageState<DemoConfig>("eliza-vrm-demo:config", DEFAULT_DEMO_CONFIG);
+  const [config, setConfig] = useLocalStorageState<DemoConfig>(
+    "eliza-vrm-demo:config",
+    DEFAULT_DEMO_CONFIG,
+  );
   const effectiveMode = getEffectiveMode(config);
 
   const [messages, setMessages] = useState<UiMessage[]>([]);
@@ -70,6 +76,7 @@ export default function App() {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Voice Activity Detection with auto-send
+  // biome-ignore lint/correctness/useExhaustiveDependencies: handleSendMessage depends on the VAD instance created with this callback.
   const handleVoiceTranscript = useCallback(
     (transcript: string) => {
       if (!sending && transcript.trim()) {
@@ -77,7 +84,7 @@ export default function App() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sending]
+    [sending],
   );
 
   // Barge-in: stop agent audio when user starts speaking
@@ -99,7 +106,7 @@ export default function App() {
       bargeInThreshold: 0.04, // Slightly lower threshold to be responsive
     },
     handleVoiceTranscript,
-    handleBargeIn
+    handleBargeIn,
   );
 
   // Update VAD about agent speaking state
@@ -110,12 +117,18 @@ export default function App() {
   // Surface runtime errors in the UI
   useEffect(() => {
     const onError = (ev: ErrorEvent) => {
-      const msg = ev.error instanceof Error ? ev.error.stack ?? ev.error.message : ev.message;
+      const msg =
+        ev.error instanceof Error
+          ? (ev.error.stack ?? ev.error.message)
+          : ev.message;
       setFatalError(msg || "Unknown error");
     };
     const onRejection = (ev: PromiseRejectionEvent) => {
       const reason = ev.reason;
-      const msg = reason instanceof Error ? reason.stack ?? reason.message : String(reason);
+      const msg =
+        reason instanceof Error
+          ? (reason.stack ?? reason.message)
+          : String(reason);
       setFatalError(msg || "Unhandled promise rejection");
     };
     window.addEventListener("error", onError);
@@ -156,7 +169,11 @@ export default function App() {
         });
 
         const msgs: UiMessage[] = mems
-          .filter((m: Memory) => m.metadata?.type === MemoryType.MESSAGE && typeof m.content.text === "string")
+          .filter(
+            (m: Memory) =>
+              m.metadata?.type === MemoryType.MESSAGE &&
+              typeof m.content.text === "string",
+          )
           .map((m: Memory) => {
             const isUser = m.entityId === bundle.userId;
             return {
@@ -175,11 +192,15 @@ export default function App() {
         }
 
         const greet = getGreetingText(effectiveMode);
-        setMessages([{ id: uuidv4(), role: "assistant", text: greet, ts: Date.now() }]);
+        setMessages([
+          { id: uuidv4(), role: "assistant", text: greet, ts: Date.now() },
+        ]);
       } catch {
         if (cancelled) return;
         const greet = getGreetingText(effectiveMode);
-        setMessages([{ id: uuidv4(), role: "assistant", text: greet, ts: Date.now() }]);
+        setMessages([
+          { id: uuidv4(), role: "assistant", text: greet, ts: Date.now() },
+        ]);
       }
     })();
 
@@ -192,7 +213,7 @@ export default function App() {
     (patch: (prev: DemoConfig) => DemoConfig) => {
       setConfig(patch);
     },
-    [setConfig]
+    [setConfig],
   );
 
   // Sync settings to runtime when settings modal closes
@@ -236,33 +257,38 @@ export default function App() {
 
             let buffer: ArrayBuffer;
 
+            // biome-ignore lint/correctness/useHookAtTopLevel: useModel is an elizaOS runtime method, not a React hook.
             const response = await bundle.runtime.useModel(
               ModelType.TEXT_TO_SPEECH,
               chunk,
             );
 
-            if (response instanceof Uint8Array || response instanceof ArrayBuffer) {
-                buffer = response instanceof Uint8Array ? response.buffer : response;
+            if (
+              response instanceof Uint8Array ||
+              response instanceof ArrayBuffer
+            ) {
+              buffer =
+                response instanceof Uint8Array ? response.buffer : response;
             } else {
-                const stream = response as ReadableStream<Uint8Array>;
-                const reader = stream.getReader();
-                const chunks: Uint8Array[] = [];
-                let total = 0;
-                while (true) {
-                  const res = await reader.read();
-                  if (res.done) break;
-                  chunks.push(res.value);
-                  total += res.value.byteLength;
-                }
-                reader.releaseLock();
+              const stream = response as ReadableStream<Uint8Array>;
+              const reader = stream.getReader();
+              const chunks: Uint8Array[] = [];
+              let total = 0;
+              while (true) {
+                const res = await reader.read();
+                if (res.done) break;
+                chunks.push(res.value);
+                total += res.value.byteLength;
+              }
+              reader.releaseLock();
 
-                const merged = new Uint8Array(total);
-                let offset = 0;
-                for (const c of chunks) {
-                  merged.set(c, offset);
-                  offset += c.byteLength;
-                }
-                buffer = merged.buffer;
+              const merged = new Uint8Array(total);
+              let offset = 0;
+              for (const c of chunks) {
+                merged.set(c, offset);
+                offset += c.byteLength;
+              }
+              buffer = merged.buffer;
             }
 
             await lipSyncPlayerRef.current.playWav(buffer);
@@ -277,7 +303,7 @@ export default function App() {
         }
       }
     },
-    [config]
+    [config],
   );
 
   const handleSendMessage = useCallback(
@@ -313,7 +339,9 @@ export default function App() {
         const { responseText } = await sendUserMessage(config, trimmed, {
           onAssistantChunk: (chunk) => {
             setMessages((prev) =>
-              prev.map((m) => (m.id === assistantId ? { ...m, text: m.text + chunk } : m))
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, text: m.text + chunk } : m,
+              ),
             );
           },
         });
@@ -323,9 +351,13 @@ export default function App() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, text: responseText, visibleUntil: responseTime + MESSAGE_VISIBLE_DURATION }
-              : m
-          )
+              ? {
+                  ...m,
+                  text: responseText,
+                  visibleUntil: responseTime + MESSAGE_VISIBLE_DURATION,
+                }
+              : m,
+          ),
         );
 
         if (config.voiceOutputEnabled) {
@@ -337,9 +369,13 @@ export default function App() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, text: `Error: ${errText}`, visibleUntil: errorTime + MESSAGE_VISIBLE_DURATION }
-              : m
-          )
+              ? {
+                  ...m,
+                  text: `Error: ${errText}`,
+                  visibleUntil: errorTime + MESSAGE_VISIBLE_DURATION,
+                }
+              : m,
+          ),
         );
       } finally {
         setSending(false);
@@ -347,7 +383,7 @@ export default function App() {
         setTimeout(() => inputRef.current?.focus(), 50);
       }
     },
-    [config, sending, vad, speakText]
+    [config, sending, vad, speakText],
   );
 
   const handleResetConversation = useCallback(async () => {
@@ -362,7 +398,9 @@ export default function App() {
 
     // Reset UI messages to greeting.
     const greet = getGreetingText(effectiveMode);
-    setMessages([{ id: uuidv4(), role: "assistant", text: greet, ts: Date.now() }]);
+    setMessages([
+      { id: uuidv4(), role: "assistant", text: greet, ts: Date.now() },
+    ]);
     setInput("");
     lastAssistantIdRef.current = null;
 
@@ -373,7 +411,9 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      setMessages((prev) => prev.filter((m) => !m.visibleUntil || m.visibleUntil > now));
+      setMessages((prev) =>
+        prev.filter((m) => !m.visibleUntil || m.visibleUntil > now),
+      );
     }, 1000);
     return () => clearInterval(interval);
   }, []);
@@ -383,7 +423,7 @@ export default function App() {
       e.preventDefault();
       void handleSendMessage(input);
     },
-    [input, handleSendMessage]
+    [input, handleSendMessage],
   );
 
   const toggleVoice = useCallback(() => {
@@ -406,7 +446,9 @@ export default function App() {
 
   // Get visible messages for chat bubble display
   const now = Date.now();
-  const visibleMessages = messages.filter((m) => !m.visibleUntil || m.visibleUntil > now);
+  const visibleMessages = messages.filter(
+    (m) => !m.visibleUntil || m.visibleUntil > now,
+  );
 
   return (
     <div className="app-fullpage">
@@ -423,7 +465,9 @@ export default function App() {
           <div className="error-content">
             <div className="error-header">
               <span>Runtime Error</span>
-              <button onClick={() => setFatalError(null)}>×</button>
+              <button onClick={() => setFatalError(null)} type="button">
+                ×
+              </button>
             </div>
             <pre>{fatalError}</pre>
           </div>
@@ -433,15 +477,24 @@ export default function App() {
       {/* Top-right controls */}
       <div className="top-controls">
         <div className="status-pill">
-          <span className={`status-dot ${effectiveMode === "elizaClassic" ? "offline" : "online"}`} />
+          <span
+            className={`status-dot ${effectiveMode === "elizaClassic" ? "offline" : "online"}`}
+          />
           <span>{modeLabel(effectiveMode)}</span>
         </div>
         {vrmState?.vrmLoaded ? (
-          <div className="status-pill" title={`Idle clip tracks: ${vrmState.idleTracks}`}>
-            <span className={`status-dot ${vrmState.idlePlaying ? "online" : "offline"}`} />
+          <div
+            className="status-pill"
+            title={`Idle clip tracks: ${vrmState.idleTracks}`}
+          >
+            <span
+              className={`status-dot ${vrmState.idlePlaying ? "online" : "offline"}`}
+            />
             <span>
               idle {vrmState.idlePlaying ? "playing" : "stopped"}{" "}
-              <span style={{ opacity: 0.75 }}>({vrmState.idleTime.toFixed(1)}s)</span>
+              <span style={{ opacity: 0.75 }}>
+                ({vrmState.idleTime.toFixed(1)}s)
+              </span>
             </span>
           </div>
         ) : null}
@@ -449,8 +502,17 @@ export default function App() {
           className="icon-button"
           onClick={() => setSettingsOpen(true)}
           title="Settings"
+          type="button"
         >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg
+            aria-hidden="true"
+            width="22"
+            height="22"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
@@ -462,9 +524,12 @@ export default function App() {
         <div className="chat-bubbles">
           {visibleMessages.map((msg) => {
             // Calculate fade-out opacity (fade during last 2 seconds)
-            const timeLeft = msg.visibleUntil ? msg.visibleUntil - now : MESSAGE_VISIBLE_DURATION;
+            const timeLeft = msg.visibleUntil
+              ? msg.visibleUntil - now
+              : MESSAGE_VISIBLE_DURATION;
             const fadeStart = 2000; // Start fading 2 seconds before removal
-            const opacity = timeLeft < fadeStart ? Math.max(0, timeLeft / fadeStart) : 1;
+            const opacity =
+              timeLeft < fadeStart ? Math.max(0, timeLeft / fadeStart) : 1;
 
             return (
               <div
@@ -472,9 +537,12 @@ export default function App() {
                 className={`chat-bubble ${msg.role === "user" ? "user" : "assistant"}`}
                 style={{ opacity }}
               >
-                <div className="bubble-label">{msg.role === "user" ? "You" : "Agent"}</div>
+                <div className="bubble-label">
+                  {msg.role === "user" ? "You" : "Agent"}
+                </div>
                 <div className="bubble-text">
-                  {msg.text || (msg.role === "assistant" && sending ? "..." : "")}
+                  {msg.text ||
+                    (msg.role === "assistant" && sending ? "..." : "")}
                 </div>
               </div>
             );
@@ -493,14 +561,22 @@ export default function App() {
               onClick={toggleVoice}
               title="Switch to text mode"
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+              <svg
+                aria-hidden="true"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
                 <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
                 <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
               </svg>
             </button>
 
             <div className="voice-status">
-              <div className={`voice-indicator ${vad.speaking ? "speaking" : vad.listening ? "listening" : ""}`}>
+              <div
+                className={`voice-indicator ${vad.speaking ? "speaking" : vad.listening ? "listening" : ""}`}
+              >
                 <div className="voice-waves">
                   <span style={{ height: `${20 + vad.audioLevel * 60}%` }} />
                   <span style={{ height: `${30 + vad.audioLevel * 50}%` }} />
@@ -510,7 +586,9 @@ export default function App() {
                 </div>
               </div>
               {(vad.interimTranscript || vad.transcript) && (
-                <div className={`voice-transcript ${vad.transcript && !vad.interimTranscript ? "pending" : ""}`}>
+                <div
+                  className={`voice-transcript ${vad.transcript && !vad.interimTranscript ? "pending" : ""}`}
+                >
                   {vad.interimTranscript || vad.transcript}
                 </div>
               )}
@@ -523,7 +601,15 @@ export default function App() {
               disabled={sending}
               title="Reset conversation"
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                aria-hidden="true"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M3 12a9 9 0 1 0 3-6.7" />
                 <path d="M3 4v6h6" />
               </svg>
@@ -539,7 +625,15 @@ export default function App() {
               disabled={!vad.supported}
               title="Switch to voice mode"
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                aria-hidden="true"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M12 1a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                 <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
                 <line x1="12" y1="19" x2="12" y2="23" />
@@ -566,7 +660,13 @@ export default function App() {
               {sending ? (
                 <div className="spinner" />
               ) : (
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                <svg
+                  aria-hidden="true"
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                >
                   <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                 </svg>
               )}
@@ -579,7 +679,15 @@ export default function App() {
               disabled={sending}
               title="Reset conversation"
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                aria-hidden="true"
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M3 12a9 9 0 1 0 3-6.7" />
                 <path d="M3 4v6h6" />
               </svg>

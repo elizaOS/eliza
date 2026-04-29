@@ -1,20 +1,24 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { AgentRuntime } from "@elizaos/core";
-import type { Trajectory, TrajectoryLlmCall } from "../../../../packages/agent/src/types/trajectory.ts";
 import { flushTrajectoryWrites } from "../../../../packages/agent/src/runtime/trajectory-storage.ts";
+import type {
+  Trajectory,
+  TrajectoryLlmCall,
+} from "../../../../packages/agent/src/types/trajectory.ts";
 import { ConversationHarness } from "../../../../packages/app-core/test/helpers/conversation-harness.ts";
-import { type LiveProviderName, selectLiveProvider } from "../../../../packages/app-core/test/helpers/live-provider.ts";
-import { actionsAreScenarioEquivalent } from "../../../../packages/scenario-runner/src/action-families.ts";
 import {
-  type RealTestRuntimeResult,
-} from "../../../../packages/app-core/test/helpers/real-runtime.ts";
-import { createLifeOpsTestRuntime } from "./runtime.ts";
+  type LiveProviderName,
+  selectLiveProvider,
+} from "../../../../packages/app-core/test/helpers/live-provider.ts";
+import type { RealTestRuntimeResult } from "../../../../packages/app-core/test/helpers/real-runtime.ts";
+import { actionsAreScenarioEquivalent } from "../../../../packages/scenario-runner/src/action-families.ts";
 import type {
   PromptBenchmarkCase,
   PromptBenchmarkRiskClass,
   PromptBenchmarkSuiteId,
   PromptBenchmarkVariantId,
 } from "./lifeops-prompt-benchmark-cases.ts";
+import { createLifeOpsTestRuntime } from "./runtime.ts";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 const PASSIVE_ACTIONS = new Set(["REPLY", "IGNORE", "NONE", "CHOOSE_OPTION"]);
@@ -93,10 +97,7 @@ export type AxOptimizationRow = {
 };
 
 type TrajectoryServiceLike = {
-  listTrajectories: (options?: {
-    limit?: number;
-    offset?: number;
-  }) => Promise<{
+  listTrajectories: (options?: { limit?: number; offset?: number }) => Promise<{
     trajectories?: Array<{
       id?: string;
       startTime?: number;
@@ -113,8 +114,12 @@ type RunOptions = {
   timeoutMsPerCase?: number;
 };
 
-function normalizeActionName(actionName: string | null | undefined): string | null {
-  const normalized = String(actionName ?? "").trim().toUpperCase();
+function normalizeActionName(
+  actionName: string | null | undefined,
+): string | null {
+  const normalized = String(actionName ?? "")
+    .trim()
+    .toUpperCase();
   return normalized.length > 0 ? normalized : null;
 }
 
@@ -129,7 +134,10 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
 }
 
 function normalizeComparableText(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function llmCallMatchesPrompt(
@@ -234,7 +242,9 @@ async function captureTrajectoryForCase(args: {
       continue;
     }
     const llmCalls = collectLlmCalls(detail);
-    if (llmCalls.some((llmCall) => llmCallMatchesPrompt(llmCall, args.prompt))) {
+    if (
+      llmCalls.some((llmCall) => llmCallMatchesPrompt(llmCall, args.prompt))
+    ) {
       bestDetail = detail;
       break;
     }
@@ -252,7 +262,9 @@ async function captureTrajectoryForCase(args: {
         ? latestCall.userPrompt
         : undefined,
     plannerResponse:
-      typeof latestCall?.response === "string" ? latestCall.response : undefined,
+      typeof latestCall?.response === "string"
+        ? latestCall.response
+        : undefined,
     llmCallCount: llmCalls.length,
   };
 }
@@ -358,7 +370,9 @@ async function runSinglePromptBenchmarkCase(args: {
     const fallbackActionNames = uniqueStrings(
       turn.actions.map((action) => action.actionName),
     );
-    const actualActions = actionNames.length ? actionNames : fallbackActionNames;
+    const actualActions = actionNames.length
+      ? actionNames
+      : fallbackActionNames;
     const trajectory = await captureTrajectoryForCase({
       prompt: args.testCase.prompt,
       runtime: args.runtime,
@@ -414,26 +428,43 @@ export function buildPromptBenchmarkReport(args: {
   const passedWeight = results
     .filter((result) => result.pass)
     .reduce((sum, result) => sum + result.case.benchmarkWeight, 0);
-  const nullCases = results.filter((result) => result.case.riskClass === "null");
+  const nullCases = results.filter(
+    (result) => result.case.riskClass === "null",
+  );
   const nullFalsePositives = nullCases.filter((result) => !result.pass).length;
   const trajectoryHits = results.filter(
     (result) => typeof result.trajectoryId === "string" && result.trajectoryId,
   ).length;
 
-  const bySuite = {} as Record<PromptBenchmarkSuiteId, PromptBenchmarkSliceStats>;
-  const byVariant =
-    {} as Record<PromptBenchmarkVariantId, PromptBenchmarkSliceStats>;
-  const byRiskClass =
-    {} as Record<PromptBenchmarkRiskClass, PromptBenchmarkSliceStats>;
+  const bySuite = {} as Record<
+    PromptBenchmarkSuiteId,
+    PromptBenchmarkSliceStats
+  >;
+  const byVariant = {} as Record<
+    PromptBenchmarkVariantId,
+    PromptBenchmarkSliceStats
+  >;
+  const byRiskClass = {} as Record<
+    PromptBenchmarkRiskClass,
+    PromptBenchmarkSliceStats
+  >;
 
   for (const result of results) {
-    const buckets: Array<
-      [Record<string, PromptBenchmarkSliceStats>, string]
-    > = [
-      [bySuite as Record<string, PromptBenchmarkSliceStats>, result.case.suiteId],
-      [byVariant as Record<string, PromptBenchmarkSliceStats>, result.case.variantId],
-      [byRiskClass as Record<string, PromptBenchmarkSliceStats>, result.case.riskClass],
-    ];
+    const buckets: Array<[Record<string, PromptBenchmarkSliceStats>, string]> =
+      [
+        [
+          bySuite as Record<string, PromptBenchmarkSliceStats>,
+          result.case.suiteId,
+        ],
+        [
+          byVariant as Record<string, PromptBenchmarkSliceStats>,
+          result.case.variantId,
+        ],
+        [
+          byRiskClass as Record<string, PromptBenchmarkSliceStats>,
+          result.case.riskClass,
+        ],
+      ];
     for (const [collection, key] of buckets) {
       const bucket = collection[key] ?? { total: 0, passed: 0, accuracy: 0 };
       bucket.total += 1;
@@ -524,7 +555,10 @@ export function buildAxOptimizationRows(
 }
 
 export function serializeAxOptimizationRows(rows: AxOptimizationRow[]): string {
-  return rows.map((row) => JSON.stringify(row)).join("\n").concat("\n");
+  return rows
+    .map((row) => JSON.stringify(row))
+    .join("\n")
+    .concat("\n");
 }
 
 export function formatPromptBenchmarkReportMarkdown(
@@ -559,8 +593,8 @@ export function formatPromptBenchmarkReportMarkdown(
   lines.push("");
   lines.push("| Variant | Passed | Total | Accuracy |");
   lines.push("| --- | ---: | ---: | ---: |");
-  for (const [variantId, stats] of Object.entries(report.byVariant).sort((a, b) =>
-    a[0].localeCompare(b[0]),
+  for (const [variantId, stats] of Object.entries(report.byVariant).sort(
+    (a, b) => a[0].localeCompare(b[0]),
   )) {
     lines.push(
       `| ${variantId} | ${stats.passed} | ${stats.total} | ${(stats.accuracy * 100).toFixed(1)}% |`,
@@ -596,7 +630,9 @@ export async function createLifeOpsPromptBenchmarkRuntime(args?: {
   });
   if (!runtimeResult.providerName) {
     await runtimeResult.cleanup();
-    throw new Error("Prompt benchmark runtime failed to register an LLM provider.");
+    throw new Error(
+      "Prompt benchmark runtime failed to register an LLM provider.",
+    );
   }
   return runtimeResult;
 }

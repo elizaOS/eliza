@@ -165,11 +165,15 @@ function indexRunEvent(
 ): void {
   if (!hasRunIdAndSeq(event)) return;
   const runId = event.runId;
-  if (runId === "__proto__" || runId === "constructor" || runId === "prototype") {
+  if (
+    runId === "__proto__" ||
+    runId === "constructor" ||
+    runId === "prototype"
+  ) {
     return;
   }
   const seq = Math.trunc(event.seq);
-  const bySeq = Object.prototype.hasOwnProperty.call(store.runIndex, runId)
+  const bySeq = Object.hasOwn(store.runIndex, runId)
     ? store.runIndex[runId]
     : {};
   bySeq[seq] = event.eventId;
@@ -204,7 +208,7 @@ function removeEventFromStore(
       return;
     }
     const seq = Math.trunc(event.seq);
-    const bySeq = Object.prototype.hasOwnProperty.call(store.runIndex, runId)
+    const bySeq = Object.hasOwn(store.runIndex, runId)
       ? store.runIndex[runId]
       : undefined;
     if (bySeq && bySeq[seq] === eventId) {

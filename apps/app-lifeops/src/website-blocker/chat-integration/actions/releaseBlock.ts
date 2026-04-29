@@ -32,16 +32,11 @@ function coerceBoolean(value: unknown): boolean {
 
 export const releaseBlockAction: Action = {
   name: "RELEASE_BLOCK",
-  similes: [
-    "RELEASE_WEBSITE_BLOCK",
-    "END_BLOCK_RULE",
-    "BYPASS_BLOCK_RULE",
-  ],
+  similes: ["RELEASE_WEBSITE_BLOCK", "END_BLOCK_RULE", "BYPASS_BLOCK_RULE"],
   description:
     "Release an active website block rule. Requires confirmed:true. " +
     "harsh_no_bypass rules cannot be released via confirmation — they must wait for gate fulfillment.",
-  descriptionCompressed:
-    "Release a website block rule; requires confirmation.",
+  descriptionCompressed: "Release a website block rule; requires confirmation.",
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
@@ -68,8 +63,7 @@ export const releaseBlockAction: Action = {
     try {
       await writer.releaseBlockRule(ruleId, { confirmed: true, reason });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       return {
         success: false,
         text: `Failed to release block rule ${ruleId}: ${message}`,

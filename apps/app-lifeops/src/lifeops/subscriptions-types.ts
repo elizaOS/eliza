@@ -1,20 +1,10 @@
-export type LifeOpsSubscriptionAuditStatus =
-  | "completed"
-  | "failed";
+export type LifeOpsSubscriptionAuditStatus = "completed" | "failed";
 
-export type LifeOpsSubscriptionSource =
-  | "gmail"
-  | "manual";
+export type LifeOpsSubscriptionSource = "gmail" | "manual";
 
-export type LifeOpsSubscriptionState =
-  | "active"
-  | "canceled"
-  | "uncertain";
+export type LifeOpsSubscriptionState = "active" | "canceled" | "uncertain";
 
-export type LifeOpsSubscriptionCadence =
-  | "monthly"
-  | "annual"
-  | "unknown";
+export type LifeOpsSubscriptionCadence = "monthly" | "annual" | "unknown";
 
 export type LifeOpsSubscriptionExecutor =
   | "user_browser"

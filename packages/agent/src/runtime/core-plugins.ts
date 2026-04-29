@@ -30,9 +30,7 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = ["agent-orchestrator"];
  * either from a cloud provider or from the upcoming `llama-cpp-capacitor`
  * JNI binding (separate task).
  */
-export const MOBILE_CORE_PLUGINS: readonly string[] = [
-  "@elizaos/plugin-sql",
-];
+export const MOBILE_CORE_PLUGINS: readonly string[] = ["@elizaos/plugin-sql"];
 
 /** Core plugins that should always be loaded. collectPluginNames() seeds from this list only. */
 export const CORE_PLUGINS: readonly string[] = [

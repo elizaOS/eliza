@@ -21,8 +21,7 @@ import { req } from "../../../../test/helpers/http";
 import { createLiveRuntimeChildEnv } from "../../../../test/helpers/live-child-env";
 
 const LIVE =
-  process.env.ELIZA_LIVE_TEST === "1" ||
-  process.env.MILADY_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.MILADY_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 
 try {
@@ -93,7 +92,10 @@ async function startRuntime(): Promise<Runtime> {
     try {
       const res = await fetch(`http://127.0.0.1:${port}/api/health`);
       if (res.ok) {
-        const data = (await res.json()) as { ready?: boolean; runtime?: string };
+        const data = (await res.json()) as {
+          ready?: boolean;
+          runtime?: string;
+        };
         if (data.ready && data.runtime === "ok") break;
       }
     } catch {
@@ -173,9 +175,14 @@ describeIf(LIVE)("App-Training: API e2e", () => {
   }, 30_000);
 
   it("trajectory route handles POST export", async () => {
-    const res = await req(runtime.port, "POST", "/api/training/trajectories/export", {
-      format: "jsonl",
-    });
+    const res = await req(
+      runtime.port,
+      "POST",
+      "/api/training/trajectories/export",
+      {
+        format: "jsonl",
+      },
+    );
     // Export may create an artifact (201), return one immediately (200),
     // degrade when the service is unavailable (503), or reject bad input (400).
     expect([200, 201, 400, 503]).toContain(res.status);

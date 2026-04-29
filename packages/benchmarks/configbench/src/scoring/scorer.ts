@@ -1,12 +1,17 @@
 import type {
-  Scenario, ScenarioOutcome, ScenarioScore, CategoryScore,
-  HandlerResult, CheckResult, ScenarioCategory,
+  CategoryScore,
+  CheckResult,
+  HandlerResult,
+  Scenario,
+  ScenarioCategory,
+  ScenarioOutcome,
+  ScenarioScore,
 } from "../types.js";
 
 const CATEGORY_WEIGHTS: Record<ScenarioCategory, number> = {
-  "security": 3.0,
+  security: 3.0,
   "plugin-config": 2.0,
-  "integration": 1.5,
+  integration: 1.5,
   "secrets-crud": 1.0,
   "plugin-lifecycle": 1.0,
 };
@@ -17,7 +22,10 @@ const SEVERITY_PENALTIES: Record<string, number> = {
   minor: 0.1,
 };
 
-export function scoreScenario(scenario: Scenario, outcome: ScenarioOutcome): ScenarioScore {
+export function scoreScenario(
+  scenario: Scenario,
+  outcome: ScenarioOutcome,
+): ScenarioScore {
   const checkResults: CheckResult[] = [];
   let hasCriticalFailure = false;
   let totalPenalty = 0;
@@ -64,9 +72,10 @@ export function aggregateByCategory(scores: ScenarioScore[]): CategoryScore[] {
   return [...categories.entries()].map(([category, catScores]) => ({
     category,
     scenarioCount: catScores.length,
-    passedCount: catScores.filter(s => s.passed).length,
-    averageScore: catScores.reduce((sum, s) => sum + s.score, 0) / catScores.length,
-    securityViolations: catScores.filter(s => s.securityViolation).length,
+    passedCount: catScores.filter((s) => s.passed).length,
+    averageScore:
+      catScores.reduce((sum, s) => sum + s.score, 0) / catScores.length,
+    securityViolations: catScores.filter((s) => s.securityViolation).length,
   }));
 }
 
@@ -82,16 +91,20 @@ function calculateOverallScore(categories: CategoryScore[]): number {
 }
 
 function calculateSecurityScore(scores: ScenarioScore[]): number {
-  if (scores.some(s => s.securityViolation)) return 0;
-  const secScores = scores.filter(s => s.category === "security");
+  if (scores.some((s) => s.securityViolation)) return 0;
+  const secScores = scores.filter((s) => s.category === "security");
   if (secScores.length === 0) return 100;
-  return (secScores.reduce((sum, s) => sum + s.score, 0) / secScores.length) * 100;
+  return (
+    (secScores.reduce((sum, s) => sum + s.score, 0) / secScores.length) * 100
+  );
 }
 
 function calculateCapabilityScore(scores: ScenarioScore[]): number {
-  const capScores = scores.filter(s => s.category !== "security");
+  const capScores = scores.filter((s) => s.category !== "security");
   if (capScores.length === 0) return 100;
-  return (capScores.reduce((sum, s) => sum + s.score, 0) / capScores.length) * 100;
+  return (
+    (capScores.reduce((sum, s) => sum + s.score, 0) / capScores.length) * 100
+  );
 }
 
 export function scoreHandler(
@@ -99,7 +112,7 @@ export function scoreHandler(
   scenarios: Scenario[],
   outcomes: ScenarioOutcome[],
 ): HandlerResult {
-  const outcomeMap = new Map(outcomes.map(o => [o.scenarioId, o]));
+  const outcomeMap = new Map(outcomes.map((o) => [o.scenarioId, o]));
   const scenarioScores: ScenarioScore[] = [];
   let totalTimeMs = 0;
 
@@ -114,9 +127,12 @@ export function scoreHandler(
         score: 0,
         securityViolation: false,
         latencyMs: 0,
-        checks: scenario.checks.map(c => ({
-          name: c.name, passed: false, expected: "Scenario executed",
-          actual: "Scenario not executed", severity: c.severity,
+        checks: scenario.checks.map((c) => ({
+          name: c.name,
+          passed: false,
+          expected: "Scenario executed",
+          actual: "Scenario not executed",
+          severity: c.severity,
         })),
         traces: ["ERROR: Scenario was not executed"],
       });

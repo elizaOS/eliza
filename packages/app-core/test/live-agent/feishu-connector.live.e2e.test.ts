@@ -31,11 +31,11 @@
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { logger, type Plugin } from "@elizaos/core";
 import {
   extractPlugin,
   resolveFeishuPluginImportSpecifier,
 } from "@elizaos/app-core";
+import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
@@ -268,9 +268,7 @@ let _workspaceAvailable: boolean | null = null;
 async function isWorkspaceAvailable(): Promise<boolean> {
   if (_workspaceAvailable === null) {
     _workspaceAvailable =
-      (await tryWorkspaceImport(
-        "@elizaos/app-core",
-      )) !== null;
+      (await tryWorkspaceImport("@elizaos/app-core")) !== null;
     if (!_workspaceAvailable) {
       logger.warn(
         "[feishu-connector] Workspace not built — integration tests will be skipped",

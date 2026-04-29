@@ -52,18 +52,12 @@
     {
       "type": "chrome_open_tabs",
       "parameters": {
-        "urls_to_open": [
-          "https://academicpages.github.io/"
-        ]
+        "urls_to_open": ["https://academicpages.github.io/"]
       }
     }
   ],
   "trajectory": "trajectories/e2392362-125e-4f76-a2ee-524b183a3412",
-  "related_apps": [
-    "chrome",
-    "os",
-    "vscode"
-  ],
+  "related_apps": ["chrome", "os", "vscode"],
   "evaluator": {
     "postconfig": [
       {
@@ -86,25 +80,17 @@
       "rules": {
         "expect": [
           {
-            "key": [
-              "name"
-            ],
+            "key": ["name"],
             "method": "eq",
             "ref": "Test Account"
           },
           {
-            "key": [
-              "author",
-              "name"
-            ],
+            "key": ["author", "name"],
             "method": "eq",
             "ref": "Test Account"
           },
           {
-            "key": [
-              "author",
-              "email"
-            ],
+            "key": ["author", "email"],
             "method": "eq",
             "ref": "Test@gmail.com"
           }

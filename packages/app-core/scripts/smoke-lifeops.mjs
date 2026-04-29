@@ -182,10 +182,7 @@ export async function runSmokeLifeOps(options = {}) {
       `[smoke-lifeops] OK ${overviewUrl} occurrences=${overview.body.summary.activeOccurrenceCount} reminders=${overview.body.summary.activeReminderCount}`,
     );
 
-    const browserUrl = new URL(
-      "/api/browser-bridge/sessions",
-      base,
-    ).toString();
+    const browserUrl = new URL("/api/browser-bridge/sessions", base).toString();
     const browserSessions = await fetchJson(
       fetchImpl,
       browserUrl,

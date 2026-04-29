@@ -60,7 +60,9 @@ type ScenarioTurn = {
   text?: string;
   responseIncludesAny?: Array<string | RegExp>;
   responseJudge?: { rubric: string; minimumScore?: number };
-  assertTurn?: (turn: { actionsCalled: unknown[] }) => Promise<unknown> | unknown;
+  assertTurn?: (turn: {
+    actionsCalled: unknown[];
+  }) => Promise<unknown> | unknown;
   [key: string]: unknown;
 };
 
@@ -123,7 +125,10 @@ const SIDE_EFFECT_CHECK_TYPES = new Set([
 const RUBRIC_CHECK_TYPE = "judgeRubric";
 
 function normalizeComparableText(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function sharesComparablePromptIntent(a: string, b: string): boolean {
@@ -162,9 +167,7 @@ async function loadScenarioSource(id: string): Promise<string> {
   );
 }
 
-function countCheckTypes(
-  finalChecks: ScenarioFinalCheck[] | undefined,
-): {
+function countCheckTypes(finalChecks: ScenarioFinalCheck[] | undefined): {
   actionShape: number;
   sideEffect: number;
   rubric: number;
@@ -246,7 +249,10 @@ describe("LifeOps executive-assistant PRD fixture invariants (shape-only, not be
       );
       expect(firstTurnText.length).toBeGreaterThan(0);
       expect(
-        sharesComparablePromptIntent(firstTurnText, catalogScenario.examplePrompt),
+        sharesComparablePromptIntent(
+          firstTurnText,
+          catalogScenario.examplePrompt,
+        ),
       ).toBe(true);
       expect(scenarioSource).not.toContain("NotYetImplemented");
       expect(typeof firstTurn?.assertTurn).toBe("function");

@@ -32,16 +32,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "/usr/bin/thunderbird"
-        ]
+        "command": ["/usr/bin/thunderbird"]
       }
     }
   ],
   "trajectory": "trajectories/99146c54-4f37-4ab8-9327-5f3291665e1e",
-  "related_apps": [
-    "thunderbird"
-  ],
+  "related_apps": ["thunderbird"],
   "evaluator": {
     "func": "infeasible"
   },

@@ -17,11 +17,7 @@
     }
   ],
   "trajectory": "trajectories/a503b07f-9119-456b-b75d-f5146737d24f",
-  "related_apps": [
-    "os",
-    "gimp",
-    "pdf"
-  ],
+  "related_apps": ["os", "gimp", "pdf"],
   "evaluator": {
     "func": "compare_pdf_images",
     "expected": {

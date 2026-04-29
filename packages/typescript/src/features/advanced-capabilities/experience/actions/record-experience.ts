@@ -145,6 +145,7 @@ export const recordExperienceAction: Action = {
 			learning: sanitizedLearning,
 			domain: detectExperienceDomain(sanitizedLearning),
 			tags: ["manual", "explicit"],
+			associatedEntityIds: message.entityId ? [message.entityId] : [],
 			sourceMessageIds: message.id ? [message.id] : undefined,
 			sourceRoomId: message.roomId,
 			sourceTriggerMessageId: message.id,

@@ -25,11 +25,7 @@ const ELIZA_ROOT = existsSync(join(REPO_ROOT, "eliza", "packages", "shared"))
   : REPO_ROOT;
 
 const SHARED_PKG_DIR = join(ELIZA_ROOT, "packages", "shared");
-const GENERATOR_PATH = join(
-  SHARED_PKG_DIR,
-  "scripts",
-  "generate-keywords.mjs",
-);
+const GENERATOR_PATH = join(SHARED_PKG_DIR, "scripts", "generate-keywords.mjs");
 
 export function runKeywordGenerator({
   generatorPath = GENERATOR_PATH,

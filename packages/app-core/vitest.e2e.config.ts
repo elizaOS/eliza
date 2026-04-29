@@ -21,10 +21,7 @@ export default defineConfig({
   test: {
     ...baseConfig.test,
     setupFiles: [path.join(here, "test/setup.ts")],
-    include: [
-      "src/**/*.e2e.test.ts",
-      "src/**/*.e2e.test.tsx",
-    ],
+    include: ["src/**/*.e2e.test.ts", "src/**/*.e2e.test.tsx"],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 600_000,
     hookTimeout: 60_000,

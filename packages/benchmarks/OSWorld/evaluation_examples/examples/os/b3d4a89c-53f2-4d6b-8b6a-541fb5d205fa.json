@@ -5,9 +5,7 @@
   "source": "https://help.ubuntu.com/lts/ubuntu-help/bluetooth-turn-on-off.html.en",
   "trajectory": "trajectories/",
   "config": [],
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "func": "infeasible"
   },

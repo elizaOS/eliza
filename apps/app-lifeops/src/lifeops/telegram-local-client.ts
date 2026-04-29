@@ -375,11 +375,7 @@ function firstNonEmptyTelegramId(values: unknown[]): string | null {
 
 function messagePeerId(message: TelegramMessageLike): string | null {
   const peer = message.peerId;
-  return firstNonEmptyTelegramId([
-    peer?.userId,
-    peer?.chatId,
-    peer?.channelId,
-  ]);
+  return firstNonEmptyTelegramId([peer?.userId, peer?.chatId, peer?.channelId]);
 }
 
 function messageSenderId(message: TelegramMessageLike): string | null {
@@ -505,7 +501,9 @@ export async function searchTelegramMessages(args: {
               : null,
           dialogId,
           threadId: dialogId,
-          dialogTitle: messageDialog ? normalizeDialogTitle(messageDialog) : null,
+          dialogTitle: messageDialog
+            ? normalizeDialogTitle(messageDialog)
+            : null,
           username,
           peerId: messagePeerId(message),
           senderId: messageSenderId(message),

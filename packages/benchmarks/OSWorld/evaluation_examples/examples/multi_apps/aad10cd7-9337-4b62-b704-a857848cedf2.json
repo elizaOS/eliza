@@ -7,28 +7,18 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     }
   ],
   "trajectory": "trajectories/aad10cd7-9337-4b62-b704-a857848cedf2",
-  "related_apps": [
-    "os",
-    "chrome"
-  ],
+  "related_apps": ["os", "chrome"],
   "evaluator": {
     "postconfig": [
       {

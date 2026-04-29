@@ -7,20 +7,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -131,24 +124,14 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "nautilus",
-          "/home/user/Documents/Novels/Pass Through"
-        ]
+        "command": ["nautilus", "/home/user/Documents/Novels/Pass Through"]
       }
     }
   ],
   "trajectory": "trajectories/42d25c08-fb87-4927-8b65-93631280a26f",
-  "related_apps": [
-    "chrome",
-    "os"
-  ],
+  "related_apps": ["chrome", "os"],
   "evaluator": {
-    "func": [
-      "compare_epub",
-      "compare_epub",
-      "compare_epub"
-    ],
+    "func": ["compare_epub", "compare_epub", "compare_epub"],
     "conj": "or",
     "result": [
       {

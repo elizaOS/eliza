@@ -1,18 +1,14 @@
+import { normalizeMerchant } from "./payment-recurrence.js";
 import type {
   LifeOpsPaymentDirection,
   LifeOpsPaymentTransaction,
 } from "./payment-types.js";
-import { normalizeMerchant } from "./payment-recurrence.js";
 
 const DATE_COLUMN_HINTS = ["date", "posted", "posted date", "transaction date"];
 // Only single-amount formats match here. Separate Debit/Credit columns are
 // handled below via DEBIT_COLUMN_HINTS / CREDIT_COLUMN_HINTS so we don't
 // collapse them into a single amount column.
-const AMOUNT_COLUMN_HINTS = [
-  "amount",
-  "amount (usd)",
-  "transaction amount",
-];
+const AMOUNT_COLUMN_HINTS = ["amount", "amount (usd)", "transaction amount"];
 const DEBIT_COLUMN_HINTS = ["debit", "withdrawal", "amount debit"];
 const CREDIT_COLUMN_HINTS = ["credit", "deposit", "amount credit"];
 const MERCHANT_COLUMN_HINTS = [
@@ -282,7 +278,9 @@ export function parseTransactionsCsv(
     errors.push("Could not find a date column in the CSV header.");
   }
   if (amountIndex < 0 && debitIndex < 0 && creditIndex < 0) {
-    errors.push("Could not find an amount/debit/credit column in the CSV header.");
+    errors.push(
+      "Could not find an amount/debit/credit column in the CSV header.",
+    );
   }
   if (merchantIndex < 0) {
     errors.push("Could not find a merchant / payee / description column.");
@@ -300,7 +298,9 @@ export function parseTransactionsCsv(
     }
     const postedAt = normalizeDate(row[dateIndex] ?? "");
     if (!postedAt) {
-      errors.push(`Row ${rowIndex + 1}: unparseable date "${row[dateIndex] ?? ""}".`);
+      errors.push(
+        `Row ${rowIndex + 1}: unparseable date "${row[dateIndex] ?? ""}".`,
+      );
       continue;
     }
     const amount = parseAmount(row, amountIndex, debitIndex, creditIndex);

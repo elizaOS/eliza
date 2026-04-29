@@ -27,12 +27,6 @@ import {
   type RealTestRuntimeResult,
 } from "../../../../test/helpers/real-runtime";
 import {
-  addDaysToLocalDate,
-  buildUtcDateFromLocalParts,
-  getZonedDateParts,
-} from "../src/lifeops/time.js";
-import { ensureLifeOpsSchedulerTask } from "../src/lifeops/runtime.js";
-import {
   checkAvailabilityAction,
   computeProposedSlots,
   extractBundledMeetingCounterparties,
@@ -42,6 +36,12 @@ import {
   updateMeetingPreferencesAction,
 } from "../src/actions/scheduling.js";
 import { readLifeOpsMeetingPreferences } from "../src/lifeops/owner-profile.js";
+import { ensureLifeOpsSchedulerTask } from "../src/lifeops/runtime.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getZonedDateParts,
+} from "../src/lifeops/time.js";
 
 const AGENT_ID = "lifeops-scheduling-agent";
 const TEST_TIME_ZONE = "America/Los_Angeles";

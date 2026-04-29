@@ -96,3 +96,4 @@ demo_trajectory_skills/
 voyager/skill_runner/code_loop_code.ts
 voyager/skill_runner/code.ts
 voyager/skill_runner/batch_*.ts
+metrics/

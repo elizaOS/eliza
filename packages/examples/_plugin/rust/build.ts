@@ -29,8 +29,12 @@ try {
     console.log("✅ WASM target installed");
   }
 } catch {
-  console.error("❌ Rust build skipped - rustup not available or failed to add WASM target");
-  console.log("   Please install manually: rustup target add wasm32-unknown-unknown");
+  console.error(
+    "❌ Rust build skipped - rustup not available or failed to add WASM target",
+  );
+  console.log(
+    "   Please install manually: rustup target add wasm32-unknown-unknown",
+  );
   console.log("   Skipping Rust WASM build...");
   process.exit(0);
 }

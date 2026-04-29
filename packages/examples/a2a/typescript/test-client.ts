@@ -31,7 +31,10 @@ export async function runA2ATestClient(baseUrl: string): Promise<void> {
   const agentId = info.agentId;
   const capabilities = info.capabilities;
   assert(typeof name === "string", "GET /: name must be a string");
-  assert(typeof bio === "string" || bio === null, "GET /: bio must be string|null");
+  assert(
+    typeof bio === "string" || bio === null,
+    "GET /: bio must be string|null",
+  );
   assert(typeof agentId === "string", "GET /: agentId must be a string");
   assert(Array.isArray(capabilities), "GET /: capabilities must be an array");
 
@@ -49,7 +52,10 @@ export async function runA2ATestClient(baseUrl: string): Promise<void> {
   assert(healthResponse.ok, `GET /health failed: ${healthResponse.status}`);
   const health = (await healthResponse.json()) as JsonValue;
   assert(isJsonObject(health), "GET /health did not return an object");
-  assert(typeof health.status === "string", "GET /health: status must be a string");
+  assert(
+    typeof health.status === "string",
+    "GET /health: status must be a string",
+  );
   console.log(`   Status: ${health.status}`);
   console.log();
 
@@ -78,8 +84,14 @@ export async function runA2ATestClient(baseUrl: string): Promise<void> {
     assert(chatResponse.ok, `POST /chat failed: ${chatResponse.status}`);
     const chat = (await chatResponse.json()) as JsonValue;
     assert(isJsonObject(chat), "POST /chat did not return an object");
-    assert(typeof chat.response === "string", "POST /chat: response must be a string");
-    assert(typeof chat.sessionId === "string", "POST /chat: sessionId must be a string");
+    assert(
+      typeof chat.response === "string",
+      "POST /chat: response must be a string",
+    );
+    assert(
+      typeof chat.sessionId === "string",
+      "POST /chat: sessionId must be a string",
+    );
 
     console.log(`   Agent: ${chat.response}`);
     console.log(`   Session: ${chat.sessionId}`);
@@ -102,7 +114,10 @@ export async function runA2ATestClient(baseUrl: string): Promise<void> {
     }),
   });
 
-  assert(streamResponse.ok, `POST /chat/stream failed: ${streamResponse.status}`);
+  assert(
+    streamResponse.ok,
+    `POST /chat/stream failed: ${streamResponse.status}`,
+  );
   const reader = streamResponse.body?.getReader();
   const decoder = new TextDecoder();
 

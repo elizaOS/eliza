@@ -27,10 +27,7 @@
     }
   ],
   "trajectory": "trajectories/8df7e444-8e06-4f93-8a1a-c5c974269d82",
-  "related_apps": [
-    "libreoffice_writer",
-    "os"
-  ],
+  "related_apps": ["libreoffice_writer", "os"],
   "evaluator": {
     "func": "compare_zip_files",
     "expected": {

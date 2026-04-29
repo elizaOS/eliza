@@ -1,4 +1,10 @@
+import type {
+  LifeOpsXDm,
+  LifeOpsXFeedItem,
+  LifeOpsXFeedType,
+} from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { withXRead } from "../src/lifeops/service-mixin-x-read.js";
 import {
   pullXFeed,
   readXDms,
@@ -6,12 +12,6 @@ import {
   XReadError,
   type XReaderCredentials,
 } from "../src/lifeops/x-reader.js";
-import { withXRead } from "../src/lifeops/service-mixin-x-read.js";
-import type {
-  LifeOpsXFeedItem,
-  LifeOpsXFeedType,
-  LifeOpsXDm,
-} from "@elizaos/shared";
 
 const ORIGINAL_FETCH = global.fetch;
 const ORIGINAL_ENV = { ...process.env };
@@ -313,8 +313,9 @@ describe("withXRead mixin", () => {
       };
     }
     const Composed = withXRead(StubBase as never);
-    const svc = new (Composed as unknown as new () => StubBase &
-      XReadService)();
+    const svc = new (
+      Composed as unknown as new () => StubBase & XReadService
+    )();
 
     await expect(svc.syncXDms({ limit: 2 })).resolves.toEqual({ synced: 0 });
     await expect(svc.readXInboundDms({ limit: 2 })).resolves.toEqual([
@@ -352,8 +353,9 @@ describe("withXRead mixin", () => {
       };
     }
     const Composed = withXRead(StubBase as never);
-    const svc = new (Composed as unknown as new () => StubBase &
-      XReadService)();
+    const svc = new (
+      Composed as unknown as new () => StubBase & XReadService
+    )();
 
     const results = await svc.searchXPosts("milady");
 

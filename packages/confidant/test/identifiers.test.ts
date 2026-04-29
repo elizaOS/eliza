@@ -11,11 +11,11 @@ describe("identifiers", () => {
   describe("assertSecretId", () => {
     it("accepts well-formed ids", () => {
       expect(() => assertSecretId("llm.openrouter.apiKey")).not.toThrow();
-      expect(() => assertSecretId("subscription.openai.accessToken")).not.toThrow();
-      expect(() => assertSecretId("connector.telegram.botToken")).not.toThrow();
       expect(() =>
-        assertSecretId("llm.openai.embeddingApiKey"),
+        assertSecretId("subscription.openai.accessToken"),
       ).not.toThrow();
+      expect(() => assertSecretId("connector.telegram.botToken")).not.toThrow();
+      expect(() => assertSecretId("llm.openai.embeddingApiKey")).not.toThrow();
     });
 
     it("rejects ids with too few segments", () => {
@@ -49,21 +49,35 @@ describe("identifiers", () => {
 
   describe("matchesPattern", () => {
     it("matches exact ids", () => {
-      expect(matchesPattern("llm.openrouter.apiKey", "llm.openrouter.apiKey")).toBe(true);
-      expect(matchesPattern("llm.openrouter.apiKey", "llm.openai.apiKey")).toBe(false);
+      expect(
+        matchesPattern("llm.openrouter.apiKey", "llm.openrouter.apiKey"),
+      ).toBe(true);
+      expect(matchesPattern("llm.openrouter.apiKey", "llm.openai.apiKey")).toBe(
+        false,
+      );
     });
 
     it("suffix wildcard matches any depth at or beyond prefix", () => {
-      expect(matchesPattern("llm.openrouter.*", "llm.openrouter.apiKey")).toBe(true);
-      expect(matchesPattern("llm.openrouter.*", "llm.openrouter.large.model")).toBe(true);
-      expect(matchesPattern("llm.openrouter.*", "llm.openai.apiKey")).toBe(false);
+      expect(matchesPattern("llm.openrouter.*", "llm.openrouter.apiKey")).toBe(
+        true,
+      );
+      expect(
+        matchesPattern("llm.openrouter.*", "llm.openrouter.large.model"),
+      ).toBe(true);
+      expect(matchesPattern("llm.openrouter.*", "llm.openai.apiKey")).toBe(
+        false,
+      );
       expect(matchesPattern("llm.*", "llm.openrouter.apiKey")).toBe(true);
     });
 
     it("single-segment wildcard matches one segment in that slot", () => {
-      expect(matchesPattern("llm.*.apiKey", "llm.openrouter.apiKey")).toBe(true);
+      expect(matchesPattern("llm.*.apiKey", "llm.openrouter.apiKey")).toBe(
+        true,
+      );
       expect(matchesPattern("llm.*.apiKey", "llm.openai.apiKey")).toBe(true);
-      expect(matchesPattern("llm.*.apiKey", "llm.openai.embeddingApiKey")).toBe(false);
+      expect(matchesPattern("llm.*.apiKey", "llm.openai.embeddingApiKey")).toBe(
+        false,
+      );
       // segment-count must match for non-trailing wildcards
       expect(matchesPattern("llm.*.apiKey", "llm.foo.bar.apiKey")).toBe(false);
     });

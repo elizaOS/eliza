@@ -102,7 +102,7 @@ function describeIntent(intent: OperationIntent): {
 }
 
 function formatError(err: unknown): string {
-  return err instanceof Error ? err.stack ?? err.message : String(err);
+  return err instanceof Error ? (err.stack ?? err.message) : String(err);
 }
 
 /**
@@ -203,13 +203,9 @@ export function createHotStrategy(
         // models.) flow through the plugin notify step only — env was already
         // mutated by whoever scheduled the operation (e.g. the config writer).
         await ctx.reportPhase(
-          buildPhase(
-            "apply-env",
-            "skipped",
-            envStarted,
-            nowMs(),
-            { detail: { reason: `intent=${ctx.intent.kind}` } },
-          ),
+          buildPhase("apply-env", "skipped", envStarted, nowMs(), {
+            detail: { reason: `intent=${ctx.intent.kind}` },
+          }),
         );
       } else {
         try {
@@ -235,13 +231,9 @@ export function createHotStrategy(
       try {
         await notifyConfigChanged(ctx.runtime, change);
         await ctx.reportPhase(
-          buildPhase(
-            "notify-plugins",
-            "succeeded",
-            notifyStarted,
-            nowMs(),
-            { detail: change.detail },
-          ),
+          buildPhase("notify-plugins", "succeeded", notifyStarted, nowMs(), {
+            detail: change.detail,
+          }),
         );
       } catch (err) {
         // Best-effort: env is already applied, so we surface this as a failed

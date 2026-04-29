@@ -1,4 +1,10 @@
-export type DemoMode = "elizaClassic" | "openai" | "anthropic" | "xai" | "gemini" | "groq";
+export type DemoMode =
+  | "elizaClassic"
+  | "openai"
+  | "anthropic"
+  | "xai"
+  | "gemini"
+  | "groq";
 
 export type SamVoiceParams = {
   speed: number;

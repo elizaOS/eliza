@@ -144,10 +144,7 @@ const CRED_TYPE_FACTS: Record<
   },
   telegramApi: {
     friendlyName: "Telegram Bot",
-    nodeTypes: [
-      "n8n-nodes-base.telegram",
-      "n8n-nodes-base.telegramTrigger",
-    ],
+    nodeTypes: ["n8n-nodes-base.telegram", "n8n-nodes-base.telegramTrigger"],
   },
   gmailOAuth2: {
     friendlyName: "Gmail Account",

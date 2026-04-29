@@ -4,32 +4,28 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  AgentRuntime,
-  type Plugin,
-  type UUID,
-} from "@elizaos/core";
+  buildCharacterFromConfig,
+  configureLocalEmbeddingPlugin,
+  createElizaPlugin,
+} from "@elizaos/agent";
+import { AgentRuntime, type Plugin, type UUID } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
 import { ConversationHarness } from "../../../../test/helpers/conversation-harness.ts";
 import { saveEnv } from "../../../../test/helpers/test-utils";
 import {
-  buildCharacterFromConfig,
-  configureLocalEmbeddingPlugin,
-  createElizaPlugin,
-} from "@elizaos/agent";
-import {
-  LIVE_PROVIDER_ENV_KEYS,
-  LIVE_TESTS_ENABLED,
-  getLifeOpsLiveSetupWarnings,
-  getSelectedLiveProviderEnv,
-  selectLifeOpsLiveProvider,
-} from "./helpers/lifeops-live-harness.ts";
-import { loadPlugin } from "./helpers/lifeops-morning-brief-fixtures.ts";
-import {
   acceptCanonicalIdentityMerge,
   seedCanonicalIdentityFixture,
 } from "./helpers/lifeops-identity-merge-fixtures.js";
+import {
+  getLifeOpsLiveSetupWarnings,
+  getSelectedLiveProviderEnv,
+  LIVE_PROVIDER_ENV_KEYS,
+  LIVE_TESTS_ENABLED,
+  selectLifeOpsLiveProvider,
+} from "./helpers/lifeops-live-harness.ts";
+import { loadPlugin } from "./helpers/lifeops-morning-brief-fixtures.ts";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
@@ -146,9 +142,11 @@ describeIf(LIVE_SUITE_ENABLED)(
         await runtime.registerPlugin(localEmbeddingPlugin as Plugin);
       }
       await runtime.initialize();
-      await (runtime as AgentRuntime & {
-        enableRelationships?: () => Promise<void>;
-      }).enableRelationships?.();
+      await (
+        runtime as AgentRuntime & {
+          enableRelationships?: () => Promise<void>;
+        }
+      ).enableRelationships?.();
 
       const trajectoryService = runtime.getService("trajectories") as
         | {
@@ -194,26 +192,24 @@ describeIf(LIVE_SUITE_ENABLED)(
       fs.rmSync(stateDir, { recursive: true, force: true });
     });
 
-    it(
-      "surfaces one person across Gmail, Signal, Telegram, and WhatsApp without duplicating the contact",
-      async () => {
-        const turn = await harness.send(
-          "Show me everything Priya Rao has sent me recently across Gmail, Signal, Telegram, and WhatsApp. Treat it as one person and group the context by platform.",
-        );
+    it("surfaces one person across Gmail, Signal, Telegram, and WhatsApp without duplicating the contact", async () => {
+      const turn = await harness.send(
+        "Show me everything Priya Rao has sent me recently across Gmail, Signal, Telegram, and WhatsApp. Treat it as one person and group the context by platform.",
+      );
 
-        const text = normalizeText(turn.responseText);
-        expect(text).toContain("priya");
-        expect(countMatches(text, ["gmail", "signal", "telegram", "whatsapp"])).toBeGreaterThanOrEqual(4);
-        expect(
-          countMatches(text, [
-            "investor packet",
-            "contractor can call after 4pm",
-            "dinner reservation",
-            "heathrow",
-          ]),
-        ).toBeGreaterThanOrEqual(3);
-      },
-      240_000,
-    );
+      const text = normalizeText(turn.responseText);
+      expect(text).toContain("priya");
+      expect(
+        countMatches(text, ["gmail", "signal", "telegram", "whatsapp"]),
+      ).toBeGreaterThanOrEqual(4);
+      expect(
+        countMatches(text, [
+          "investor packet",
+          "contractor can call after 4pm",
+          "dinner reservation",
+          "heathrow",
+        ]),
+      ).toBeGreaterThanOrEqual(3);
+    }, 240_000);
   },
 );

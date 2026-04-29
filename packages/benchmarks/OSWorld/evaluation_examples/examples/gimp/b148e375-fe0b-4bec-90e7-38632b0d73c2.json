@@ -18,17 +18,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "gimp",
-          "/home/user/Desktop/white_background.xcf"
-        ]
+        "command": ["gimp", "/home/user/Desktop/white_background.xcf"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp"
-  ],
+  "related_apps": ["gimp"],
   "evaluator": {
     "postconfig": [
       {

@@ -104,7 +104,9 @@ export async function handleSleepRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/sleep/history") {
     return runSleepRoute(ctx, async (service) => {
-      const windowDays = parseWindowDaysQuery(url.searchParams.get("windowDays"));
+      const windowDays = parseWindowDaysQuery(
+        url.searchParams.get("windowDays"),
+      );
       const includeNaps = parseIncludeNapsQuery(
         url.searchParams.get("includeNaps"),
       );
@@ -118,7 +120,9 @@ export async function handleSleepRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/sleep/regularity") {
     return runSleepRoute(ctx, async (service) => {
-      const windowDays = parseWindowDaysQuery(url.searchParams.get("windowDays"));
+      const windowDays = parseWindowDaysQuery(
+        url.searchParams.get("windowDays"),
+      );
       const includeNaps = parseIncludeNapsQuery(
         url.searchParams.get("includeNaps"),
       );
@@ -132,7 +136,9 @@ export async function handleSleepRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/sleep/baseline") {
     return runSleepRoute(ctx, async (service) => {
-      const windowDays = parseWindowDaysQuery(url.searchParams.get("windowDays"));
+      const windowDays = parseWindowDaysQuery(
+        url.searchParams.get("windowDays"),
+      );
       const response = await service.getPersonalBaseline({ windowDays });
       json(res, response);
     });

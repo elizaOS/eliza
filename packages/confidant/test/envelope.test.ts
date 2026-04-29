@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   decrypt,
-  encrypt,
   EnvelopeError,
+  encrypt,
   generateMasterKey,
   KEY_BYTES,
 } from "../src/crypto/envelope.js";
@@ -71,6 +71,8 @@ describe("envelope (AES-256-GCM)", () => {
     const ct = Buffer.from(parts[3]!, "base64");
     ct[0] = (ct[0] ?? 0) ^ 0xff;
     parts[3] = ct.toString("base64");
-    expect(() => decrypt(key, parts.join(":"), "id.a.b")).toThrow(EnvelopeError);
+    expect(() => decrypt(key, parts.join(":"), "id.a.b")).toThrow(
+      EnvelopeError,
+    );
   });
 });

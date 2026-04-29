@@ -23,14 +23,9 @@
     }
   ],
   "trajectory": "trajectories/aa3a8974-2e85-438b-b29e-a64df44deb4b",
-  "related_apps": [
-    "libreoffice_calc"
-  ],
+  "related_apps": ["libreoffice_calc"],
   "evaluator": {
-    "func": [
-      "check_pdf_pages",
-      "compare_pdfs"
-    ],
+    "func": ["check_pdf_pages", "compare_pdfs"],
     "result": [
       {
         "type": "vm_file",

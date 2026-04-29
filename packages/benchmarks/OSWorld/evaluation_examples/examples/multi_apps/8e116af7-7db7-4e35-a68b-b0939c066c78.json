@@ -43,12 +43,7 @@
     }
   ],
   "trajectory": "trajectories/8e116af7-7db7-4e35-a68b-b0939c066c78",
-  "related_apps": [
-    "libreoffice_calc",
-    "os",
-    "image",
-    "pdf"
-  ],
+  "related_apps": ["libreoffice_calc", "os", "image", "pdf"],
   "evaluator": {
     "postconfig": [
       {
@@ -100,13 +95,7 @@
           "sheet_idx1": "ENSheet1",
           "rules": [
             {
-              "range": [
-                "A1:A8",
-                "B1:B8",
-                "C1:C8",
-                "D1:D8",
-                "E1:E8"
-              ],
+              "range": ["A1:A8", "B1:B8", "C1:C8", "D1:D8", "E1:E8"],
               "type": "exact_match"
             }
           ]
@@ -117,9 +106,7 @@
           "sheet_idx1": "ENSheet1",
           "rules": [
             {
-              "range": [
-                "C9:C13"
-              ],
+              "range": ["C9:C13"],
               "type": "exact_match",
               "ignore_case": true
             }

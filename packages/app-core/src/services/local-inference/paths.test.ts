@@ -51,9 +51,7 @@ describe("paths", () => {
     process.env.ELIZA_STATE_DIR = "/state";
     const root = path.join("/state", "local-inference");
     expect(isWithinMiladyRoot(root)).toBe(false);
-    expect(
-      isWithinMiladyRoot(path.join(root, "models", "x.gguf")),
-    ).toBe(true);
+    expect(isWithinMiladyRoot(path.join(root, "models", "x.gguf"))).toBe(true);
     expect(isWithinMiladyRoot("/etc/passwd")).toBe(false);
     expect(isWithinMiladyRoot(`${root}-evil`)).toBe(false);
   });

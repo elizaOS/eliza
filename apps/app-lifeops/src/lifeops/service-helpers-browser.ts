@@ -12,13 +12,13 @@ import type {
   LifeOpsOccurrenceView,
   LifeOpsWorkflowRun,
 } from "../contracts/index.js";
+import type { LifeOpsWebsiteAccessGrant } from "./repository.js";
 import {
-  requireNonEmptyString,
-  normalizeOptionalString,
   fail,
+  normalizeOptionalString,
+  requireNonEmptyString,
 } from "./service-normalize.js";
 import type { LifeOpsWorkflowSchedulerState } from "./service-types.js";
-import type { LifeOpsWebsiteAccessGrant } from "./repository.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);

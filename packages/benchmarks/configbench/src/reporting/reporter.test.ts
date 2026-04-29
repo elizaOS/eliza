@@ -1,42 +1,72 @@
-import { describe, it, expect } from "vitest";
-import { writeJsonResults, writeMarkdownReport } from "./reporter.js";
-import type { BenchmarkResults } from "../types.js";
-import { readFileSync, rmSync, existsSync } from "fs";
-import { join } from "path";
+import { existsSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
+import { join } from "path";
+import { describe, expect, it } from "vitest";
+import type { BenchmarkResults } from "../types.js";
+import { writeJsonResults, writeMarkdownReport } from "./reporter.js";
 
 function makeResults(): BenchmarkResults {
   return {
     timestamp: "2026-01-01T00:00:00.000Z",
     totalScenarios: 2,
-    handlers: [{
-      handlerName: "TestHandler",
-      overallScore: 75.5,
-      securityScore: 100,
-      capabilityScore: 60.2,
-      categories: [{
-        category: "secrets-crud",
-        scenarioCount: 2,
-        passedCount: 1,
-        averageScore: 0.755,
-        securityViolations: 0,
-      }],
-      scenarios: [
-        {
-          scenarioId: "x-01", scenarioName: "Test One", category: "secrets-crud",
-          passed: true, score: 1.0, securityViolation: false, latencyMs: 5,
-          checks: [{ name: "check1", passed: true, expected: "yes", actual: "yes", severity: "critical" }],
-          traces: ["trace1"],
-        },
-        {
-          scenarioId: "x-02", scenarioName: "Test Two", category: "secrets-crud",
-          passed: false, score: 0, securityViolation: true, latencyMs: 3,
-          checks: [{ name: "check2", passed: false, expected: "no leak", actual: "leaked", severity: "critical" }],
-          traces: ["trace2"],
-        },
-      ],
-      totalTimeMs: 8,
-    }],
+    handlers: [
+      {
+        handlerName: "TestHandler",
+        overallScore: 75.5,
+        securityScore: 100,
+        capabilityScore: 60.2,
+        categories: [
+          {
+            category: "secrets-crud",
+            scenarioCount: 2,
+            passedCount: 1,
+            averageScore: 0.755,
+            securityViolations: 0,
+          },
+        ],
+        scenarios: [
+          {
+            scenarioId: "x-01",
+            scenarioName: "Test One",
+            category: "secrets-crud",
+            passed: true,
+            score: 1.0,
+            securityViolation: false,
+            latencyMs: 5,
+            checks: [
+              {
+                name: "check1",
+                passed: true,
+                expected: "yes",
+                actual: "yes",
+                severity: "critical",
+              },
+            ],
+            traces: ["trace1"],
+          },
+          {
+            scenarioId: "x-02",
+            scenarioName: "Test Two",
+            category: "secrets-crud",
+            passed: false,
+            score: 0,
+            securityViolation: true,
+            latencyMs: 3,
+            checks: [
+              {
+                name: "check2",
+                passed: false,
+                expected: "no leak",
+                actual: "leaked",
+                severity: "critical",
+              },
+            ],
+            traces: ["trace2"],
+          },
+        ],
+        totalTimeMs: 8,
+      },
+    ],
     validationPassed: true,
   };
 }

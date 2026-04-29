@@ -17,7 +17,11 @@
 
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { builtInHealthChecks } from "./health-checks.js";
-import type { HealthCheck, HealthCheckReport, HealthCheckResult } from "./types.js";
+import type {
+  HealthCheck,
+  HealthCheckReport,
+  HealthCheckResult,
+} from "./types.js";
 
 const LOG_PREFIX = "[runtime-ops:health]";
 
