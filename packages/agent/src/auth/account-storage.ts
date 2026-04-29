@@ -68,7 +68,6 @@ function ensureProviderDir(provider: SubscriptionProvider): void {
   }
 }
 
-
 interface LegacyStoredCredentials {
   provider: SubscriptionProvider;
   credentials: OAuthCredentials;

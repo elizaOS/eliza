@@ -5,8 +5,8 @@ import type { ElizaConfig } from "../config/config.js";
 import { normalizeOnboardingProviderId } from "../contracts/onboarding.js";
 import {
   defaultSecretsManager,
-  persistProviderApiKey,
   type ProviderSwitchIntent,
+  persistProviderApiKey,
   type RuntimeOperationManager,
 } from "../runtime/operations/index.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";

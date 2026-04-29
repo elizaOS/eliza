@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
-import { writeJsonAtomicSync } from "../utils/atomic-json.js";
 import type {
   AppRunAwaySummary,
   AppRunCapabilityAvailability,
@@ -15,6 +14,7 @@ import type {
   AppSessionState,
   AppViewerConfig,
 } from "../contracts/apps.js";
+import { writeJsonAtomicSync } from "../utils/atomic-json.js";
 
 const APP_RUN_STORE_VERSION = 2;
 const MAX_RECORDED_RUN_EVENTS = 20;
@@ -40,7 +40,6 @@ function _defaultStoreFile(): AppRunStoreFile {
     runs: [],
   };
 }
-
 
 function normalizeAvailability(value: unknown): AppRunCapabilityAvailability {
   if (value === "available" || value === "unavailable") {

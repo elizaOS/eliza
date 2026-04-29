@@ -55,8 +55,9 @@ jobs:
       # Linux Secret Service prerequisites — without these the
       # @napi-rs/keyring round-trip throws on its first call.
       # Install libsecret + gnome-keyring + a session DBus, then
-      # start + unlock the secret-service daemon in a single call so
-      # the master-key resolver has a real backend to talk to.
+      # start the secret-service daemon and unlock it. Recent
+      # gnome-keyring versions reject `--start --unlock` together
+      # (mutually exclusive options), so they run as separate calls.
       - name: Install Secret Service (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -69,14 +70,19 @@ jobs:
             echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
             echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID"
           } >> "$GITHUB_ENV"
-          # One-shot start + unlock with empty password (stdin). The daemon
-          # prints its env vars on stdout in `KEY=VAL` form; capture them all
-          # and export. The daemon forks but stays alive for the duration of
-          # the job.
-          daemon_env="$(printf '\n' | gnome-keyring-daemon --start --unlock --components=secrets)"
+          # Start the daemon. It prints its env vars on stdout in `KEY=VAL`
+          # form (XDG_RUNTIME_DIR, GNOME_KEYRING_CONTROL, SSH_AUTH_SOCK).
+          # Capture and export all of them so libsecret in the test process
+          # finds the running daemon.
+          daemon_env="$(printf '\n' | gnome-keyring-daemon --start --components=secrets)"
           echo "$daemon_env" | while IFS='=' read -r key value; do
             [ -n "$key" ] && echo "${key}=${value}" >> "$GITHUB_ENV"
           done
+          # Unlock the default keyring with an empty password so the
+          # @napi-rs/keyring writes don't block on a prompt. This is a
+          # separate invocation: --start and --unlock are mutually
+          # exclusive in current gnome-keyring releases.
+          printf '\n' | gnome-keyring-daemon --unlock --components=secrets
 
       - name: Install dependencies
         working-directory: packages/vault
@@ -115,6 +121,10 @@ jobs:
       - name: Generate i18n keyword data (transitive prerequisite)
         working-directory: packages/shared
         run: bun run build:i18n
+
+      - name: Generate protobuf bindings (transitive prerequisite)
+        working-directory: packages/schemas
+        run: bunx buf generate
 
       - name: Run vault wiring tests
         working-directory: packages/app-core

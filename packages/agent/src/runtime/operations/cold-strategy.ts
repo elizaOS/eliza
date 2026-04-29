@@ -8,7 +8,11 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import type { OperationIntent, ReloadContext, ReloadStrategy } from "./types.js";
+import type {
+  OperationIntent,
+  ReloadContext,
+  ReloadStrategy,
+} from "./types.js";
 
 export interface ColdStrategyOptions {
   /**

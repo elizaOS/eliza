@@ -21,24 +21,24 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import {
+  createServer,
   type IncomingMessage,
   type Server,
   type ServerResponse,
-  createServer,
 } from "node:http";
-import { type AddressInfo } from "node:net";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createManager } from "@elizaos/vault";
 import { createTestVault, type TestVault } from "@elizaos/vault/testing";
 import type { ElizaConfig } from "../config/config.js";
 import {
-  defaultClassifier,
-  DefaultRuntimeOperationManager,
-  FilesystemRuntimeOperationRepository,
-  HealthChecker,
   createColdStrategy,
   createHotStrategy,
+  DefaultRuntimeOperationManager,
+  defaultClassifier,
+  FilesystemRuntimeOperationRepository,
+  HealthChecker,
 } from "../runtime/operations/index.js";
 import {
   handleProviderSwitchRoutes,
@@ -123,7 +123,8 @@ beforeEach(async () => {
       };
       // readJsonBody is invoked by the route; have it return our parsed body.
       const ctx = buildCtx(req, res, bodyHandle);
-      ctx.readJsonBody = (async () => parsed) as ProviderSwitchRouteContext["readJsonBody"];
+      ctx.readJsonBody = (async () =>
+        parsed) as ProviderSwitchRouteContext["readJsonBody"];
       try {
         const handled = await handleProviderSwitchRoutes(ctx);
         if (!handled && !res.writableEnded) {
@@ -276,7 +277,9 @@ describe("provider-switch save flow — real HTTP server", () => {
     expect([200, 202]).toContain(second.status);
 
     const list = await testVault.vault.list("providers.openai");
-    expect(list.filter((k) => k === "providers.openai.api-key")).toHaveLength(1);
+    expect(list.filter((k) => k === "providers.openai.api-key")).toHaveLength(
+      1,
+    );
 
     // Vault audit: the route's `set` may have run twice (the route writes
     // before consulting the manager's idempotency). What matters is that

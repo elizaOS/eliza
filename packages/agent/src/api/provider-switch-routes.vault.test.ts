@@ -14,19 +14,23 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import type { IncomingHttpHeaders, IncomingMessage, ServerResponse } from "node:http";
+import type {
+  IncomingHttpHeaders,
+  IncomingMessage,
+  ServerResponse,
+} from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createManager, type SecretsManager } from "@elizaos/vault";
 import { createTestVault, type TestVault } from "@elizaos/vault/testing";
 import type { ElizaConfig } from "../config/config.js";
 import {
-  defaultClassifier,
-  DefaultRuntimeOperationManager,
-  FilesystemRuntimeOperationRepository,
-  HealthChecker,
   createColdStrategy,
   createHotStrategy,
+  DefaultRuntimeOperationManager,
+  defaultClassifier,
+  FilesystemRuntimeOperationRepository,
+  HealthChecker,
 } from "../runtime/operations/index.js";
 import {
   handleProviderSwitchRoutes,
@@ -143,7 +147,11 @@ describe("handleProviderSwitchRoutes (vault path)", () => {
       primaryModel: "gpt-5.5",
     });
     const handled = await handleProviderSwitchRoutes(
-      buildCtx({ req, res, body: { provider: "openai", apiKey, primaryModel: "gpt-5.5" } }),
+      buildCtx({
+        req,
+        res,
+        body: { provider: "openai", apiKey, primaryModel: "gpt-5.5" },
+      }),
     );
     expect(handled).toBe(true);
     expect(res.status).toBe(202);
