@@ -159,7 +159,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "mid",
     blurb:
-      "1-bit weights load on stock llama.cpp, but the TurboQuant KV-cache memory win requires the apothic/llama.cpp-1bit-turboquant fork. Mobile-experimental.",
+      "1-bit weights load on stock llama.cpp; TurboQuant's KV-cache memory win is CPU/CUDA-only (apothic/llama.cpp-1bit-turboquant fork). On mobile (Vulkan/GPU-delegate) and Apple Silicon (Metal), Bonsai runs at full KV cache. Mobile-experimental.",
   },
 
   // ─── large (8-20 GB) ────────────────────────────────────────────────
