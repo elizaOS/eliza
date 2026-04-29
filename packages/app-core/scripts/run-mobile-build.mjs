@@ -548,6 +548,54 @@ function injectBuildConfigAospField(content) {
   return next;
 }
 
+/**
+ * Inject the `androidResources { noCompress += [...] }` block that keeps
+ * `.tar.gz`, `.tar`, `.gguf`, and `.so` files byte-identical in the
+ * packaged APK.
+ *
+ * Why: aapt2's default packaging treats `.gz` and `.tar.gz` as
+ * "compressed-extension-to-preserve-uncompressed" and rewrites the entry
+ * to a plain `.tar`. PGlite's runtime extension loader resolves
+ * `vector.tar.gz` and `fuzzystrmatch.tar.gz` via
+ * `new URL("../X", import.meta.url)`; when aapt2 strips the `.gz` the
+ * loader can't find the file and the runtime falls over at first
+ * Postgres extension call.
+ *
+ * Idempotent: re-runs are no-ops once the block is present. The matcher
+ * accepts AGP-modern `androidResources` and legacy `aaptOptions` blocks,
+ * but only injects when neither already lists `tar.gz`.
+ */
+export function injectNoCompressTarGz(content) {
+  if (/noCompress[^\n]*['"]tar\.gz['"]/.test(content)) return content;
+  const block =
+    `\n    // Preserve .tar.gz / .tar / .gguf / .so as-is in the packaged APK.\n` +
+    `    // aapt2 otherwise rewrites .tar.gz to .tar and PGlite's runtime\n` +
+    `    // extension loader fails to find vector.tar.gz / fuzzystrmatch.tar.gz.\n` +
+    `    androidResources {\n` +
+    `        noCompress += ['gguf', 'tar.gz', 'so', 'tar']\n` +
+    `    }\n`;
+  // Inject just before the closing brace of the top-level `android { ... }`
+  // block. Match the LAST `}` in the file as a heuristic that's robust
+  // against arbitrary middle content.
+  const androidOpen = content.search(/\n\s*android\s*\{/);
+  if (androidOpen < 0) return content;
+  // Find the matching closing brace by counting from the open.
+  let depth = 0;
+  let i = content.indexOf("{", androidOpen);
+  while (i < content.length) {
+    const ch = content[i];
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(0, i) + block + content.slice(i);
+      }
+    }
+    i += 1;
+  }
+  return content;
+}
+
 function patchCapacitorBarcodeScannerGradle() {
   const pkgRel = resolvePackagePath("@capacitor/barcode-scanner", androidDir);
   if (!pkgRel) return;
@@ -1472,6 +1520,7 @@ function patchAndroidGradle() {
       "getDefaultProguardFile('proguard-android-optimize.txt')",
     );
     patched = injectBuildConfigAospField(patched);
+    patched = injectNoCompressTarGz(patched);
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(

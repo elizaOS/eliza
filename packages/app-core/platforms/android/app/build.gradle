@@ -66,6 +66,23 @@ android {
         }
     }
 
+    // Preserve .tar.gz / .tar / .gguf / .so as-is in the packaged APK.
+    //
+    // Default aapt2 packaging treats `.gz` / `.tar.gz` as "compressed
+    // extension to preserve uncompressed", which rewrites the entry to a
+    // plain `.tar` and breaks PGlite's runtime extension loader (it
+    // resolves vector.tar.gz and fuzzystrmatch.tar.gz with
+    // `new URL("../X", import.meta.url)` and the loader fails when the
+    // file landed as a different name).
+    //
+    // .gguf is added so bundled chat + embedding models stay byte-identical
+    // for memory-mapped loading; .so already ships uncompressed but
+    // declaring it here matches AGP's recommended noCompress list and
+    // protects against future packaging-default changes.
+    androidResources {
+        noCompress += ['gguf', 'tar.gz', 'so', 'tar']
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
