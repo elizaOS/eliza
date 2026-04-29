@@ -119,10 +119,11 @@ interface GoogleCalendarCreateRequestBody {
   }>;
 }
 
-export interface SyncedGoogleCalendarEvent extends Omit<
-  LifeOpsCalendarEvent,
-  "id" | "agentId" | "provider" | "side" | "syncedAt" | "updatedAt"
-> {}
+export interface SyncedGoogleCalendarEvent
+  extends Omit<
+    LifeOpsCalendarEvent,
+    "id" | "agentId" | "provider" | "side" | "syncedAt" | "updatedAt"
+  > {}
 
 function readGoogleEventInstant(
   value: GoogleCalendarEventDate | undefined,
@@ -212,21 +213,6 @@ function normalizeGoogleCalendarEvent(
       createdAt: event.created?.trim() || null,
     },
   };
-}
-
-async function readGoogleCalendarError(response: Response): Promise<string> {
-  const text = await response.text();
-  if (!text) {
-    return `Google Calendar request failed with ${response.status}`;
-  }
-  try {
-    const parsed = JSON.parse(text) as {
-      error?: { message?: string };
-    };
-    return parsed.error?.message || text;
-  } catch {
-    return text;
-  }
 }
 
 export async function fetchGoogleCalendarEvents(args: {
