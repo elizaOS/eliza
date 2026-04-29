@@ -59,6 +59,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import {
+  credTypesForConnector,
   getStylePresets,
   normalizeCharacterLanguage,
   resolveApiBindHost,
@@ -84,6 +85,20 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.js";
+import {
+  resolvePreferredProviderId,
+  resolvePrimaryModel,
+} from "../runtime/eliza.js";
+import {
+  type ClassifyContext,
+  createColdStrategy,
+  createHotStrategy,
+  DefaultRuntimeOperationManager,
+  defaultClassifier,
+  getDefaultHealthChecker,
+  getDefaultRepository,
+  type RuntimeOperationManager,
+} from "../runtime/operations/index.js";
 import { classifyRegistryPluginRelease } from "../runtime/release-plugin-policy.js";
 import {
   AUDIT_EVENT_TYPES,
@@ -177,7 +192,6 @@ import { handleCodingAgentsFallback } from "./coding-agents-fallback-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
-import { credTypesForConnector } from "@elizaos/shared";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
@@ -206,20 +220,6 @@ import type { PTYService } from "./parse-action-block.js";
 import { handlePermissionRoutes } from "./permissions-routes.js";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.js";
 import { handlePluginRoutes } from "./plugin-routes.js";
-import {
-  type ClassifyContext,
-  createColdStrategy,
-  createHotStrategy,
-  defaultClassifier,
-  DefaultRuntimeOperationManager,
-  getDefaultHealthChecker,
-  getDefaultRepository,
-  type RuntimeOperationManager,
-} from "../runtime/operations/index.js";
-import {
-  resolvePreferredProviderId,
-  resolvePrimaryModel,
-} from "../runtime/eliza.js";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.js";
 import { handleRegistryRoutes } from "./registry-routes.js";
 import { RegistryService } from "./registry-service.js";
@@ -2086,16 +2086,14 @@ async function handleRequest(
         if (credTypes.length === 0) return;
         const runtime = state.runtime;
         if (!runtime) return;
-        const credStore = runtime.getService("n8n_credential_store") as
-          | {
-              delete?: (userId: string, credType: string) => Promise<void>;
-            }
-          | null;
+        const credStore = runtime.getService("n8n_credential_store") as {
+          delete?: (userId: string, credType: string) => Promise<void>;
+        } | null;
         if (!credStore?.delete) return;
         const userId = runtime.agentId;
         await Promise.all(
           credTypes.map((credType) =>
-            credStore.delete!(userId, credType).catch(() => {
+            credStore.delete?.(userId, credType).catch(() => {
               /* per-credType failure shouldn't block siblings */
             }),
           ),

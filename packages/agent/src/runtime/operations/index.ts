@@ -6,14 +6,13 @@
  */
 
 export {
+  type ClassifyContext,
   classifyOperation,
   defaultClassifier,
-  type ClassifyContext,
 } from "./classifier.js";
-export { createColdStrategy } from "./cold-strategy.js";
 export type { ColdStrategyOptions } from "./cold-strategy.js";
-export { createHotStrategy, type HotStrategyDeps } from "./reload-hot.js";
-export { HealthChecker, getDefaultHealthChecker } from "./health.js";
+export { createColdStrategy } from "./cold-strategy.js";
+export { getDefaultHealthChecker, HealthChecker } from "./health.js";
 export {
   builtInHealthChecks,
   dbConnectionCheck,
@@ -26,6 +25,7 @@ export {
   type DefaultRuntimeOperationManagerOptions,
   type IntentClassifier,
 } from "./manager.js";
+export { createHotStrategy, type HotStrategyDeps } from "./reload-hot.js";
 export {
   FilesystemRuntimeOperationRepository,
   getDefaultRepository,

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { classifyOperation, defaultClassifier } from "./classifier.js";
 import type { ClassifyContext } from "./classifier.js";
+import { classifyOperation, defaultClassifier } from "./classifier.js";
 import type { OperationIntent } from "./types.js";
 
 const ctx = (overrides: Partial<ClassifyContext> = {}): ClassifyContext => ({
@@ -85,9 +85,9 @@ describe("classifyOperation — provider-switch", () => {
       kind: "provider-switch",
       provider: "openai-subscription",
     };
-    expect(
-      classifyOperation(intent, ctx({ currentProvider: "openai" })),
-    ).toBe("warm");
+    expect(classifyOperation(intent, ctx({ currentProvider: "openai" }))).toBe(
+      "warm",
+    );
   });
 
   test("anthropic → anthropic-subscription (same family) → warm", () => {
@@ -133,11 +133,7 @@ describe("classifyOperation — config-reload", () => {
   test("multiple env/vars/models paths → hot", () => {
     const intent: OperationIntent = {
       kind: "config-reload",
-      changedPaths: [
-        "env.ANTHROPIC_API_KEY",
-        "vars.SOMETHING",
-        "models.large",
-      ],
+      changedPaths: ["env.ANTHROPIC_API_KEY", "vars.SOMETHING", "models.large"],
     };
     expect(classifyOperation(intent, ctx())).toBe("hot");
   });

@@ -96,15 +96,13 @@ describe("runLaunchpad", () => {
     // Field fills use realistic-fill with the metadata value.
     const nameFill = commands.find(
       (c) =>
-        c.subaction === "realistic-fill" &&
-        c.selector === "input[name=name]",
+        c.subaction === "realistic-fill" && c.selector === "input[name=name]",
     );
     expect(nameFill?.value).toBe("Test Token");
 
     const symbolFill = commands.find(
       (c) =>
-        c.subaction === "realistic-fill" &&
-        c.selector === "input[name=symbol]",
+        c.subaction === "realistic-fill" && c.selector === "input[name=symbol]",
     );
     expect(symbolFill?.value).toBe("TEST");
 

@@ -78,7 +78,12 @@ export class ResearchTaskExecutor implements TaskExecutor {
         const lines = raw
           .split(/\r?\n/)
           .map((line) =>
-            line.replace(/^\s{0,32}(?:\d{1,8}[.)]\s{0,32}|-\s{0,32}|\*\s{0,32})/, "").trim(),
+            line
+              .replace(
+                /^\s{0,32}(?:\d{1,8}[.)]\s{0,32}|-\s{0,32}|\*\s{0,32})/,
+                "",
+              )
+              .trim(),
           )
           .filter((line) => line.length > 0);
 

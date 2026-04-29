@@ -7,7 +7,9 @@ import type { HealthCheck, HealthCheckResult } from "./types.js";
 // the unit tests here use checks that ignore the argument entirely.
 const stubRuntime = {} as AgentRuntime;
 
-function makeCheck(overrides: Partial<HealthCheck> & Pick<HealthCheck, "name" | "run">): HealthCheck {
+function makeCheck(
+  overrides: Partial<HealthCheck> & Pick<HealthCheck, "name" | "run">,
+): HealthCheck {
   return {
     required: true,
     timeoutMs: 100,
@@ -42,9 +44,7 @@ describe("HealthChecker.register", () => {
 
   test("unregister removes the check", async () => {
     const checker = new HealthChecker();
-    checker.register(
-      makeCheck({ name: "a", run: async () => ({ ok: true }) }),
-    );
+    checker.register(makeCheck({ name: "a", run: async () => ({ ok: true }) }));
     checker.unregister("a");
     const report = await checker.runForRuntime(stubRuntime);
     expect(report.passed).toHaveLength(0);
@@ -56,12 +56,8 @@ describe("HealthChecker.register", () => {
 describe("HealthChecker.runForRuntime", () => {
   test("all checks pass → ok=true, passed populated, failed empty", async () => {
     const checker = new HealthChecker();
-    checker.register(
-      makeCheck({ name: "a", run: async () => ({ ok: true }) }),
-    );
-    checker.register(
-      makeCheck({ name: "b", run: async () => ({ ok: true }) }),
-    );
+    checker.register(makeCheck({ name: "a", run: async () => ({ ok: true }) }));
+    checker.register(makeCheck({ name: "b", run: async () => ({ ok: true }) }));
     checker.register(
       makeCheck({
         name: "c",

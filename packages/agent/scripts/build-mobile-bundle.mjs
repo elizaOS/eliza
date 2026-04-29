@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 // build-mobile-bundle.mjs — produce the on-device agent payload.
 //
 // Output layout (consumed by the Phase A asset pipeline):
@@ -29,6 +30,7 @@
 //   the relative paths land. Phase A is responsible for placing the .tar.gz
 //   files at parent-of-bundle on the device.
 
+import { existsSync, readdirSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -37,7 +39,6 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -128,7 +129,10 @@ const nodeLlamaStubs = isAospBuild
 const nativeStubs = {
   ...nodeLlamaStubs,
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
-  "@huggingface/transformers": path.join(stubsDir, "huggingface-transformers.cjs"),
+  "@huggingface/transformers": path.join(
+    stubsDir,
+    "huggingface-transformers.cjs",
+  ),
   "puppeteer-core": path.join(stubsDir, "puppeteer-core.cjs"),
   "pty-manager": path.join(stubsDir, "pty-manager.cjs"),
   sharp: path.join(stubsDir, "sharp.cjs"),
