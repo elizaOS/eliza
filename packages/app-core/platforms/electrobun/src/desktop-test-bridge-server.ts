@@ -6,8 +6,8 @@ import {
   getCurrentMainWindowSnapshot,
 } from "./main-window-runtime";
 import { getDesktopManager } from "./native/desktop";
-import { getScreenCaptureManager } from "./native/screencapture";
 import { findFirstAvailableLoopbackPort } from "./native/loopback-port";
+import { getScreenCaptureManager } from "./native/screencapture";
 
 const DEFAULT_TEST_BRIDGE_PORT = 31_341;
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -176,9 +176,7 @@ export async function startDesktopTestBridgeServer(): Promise<
     });
   });
 
-  console.log(
-    `[DesktopTestBridge] ${baseUrl} (loopback only; token required)`,
-  );
+  console.log(`[DesktopTestBridge] ${baseUrl} (loopback only; token required)`);
 
   return () => {
     server.close();

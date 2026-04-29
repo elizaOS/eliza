@@ -7,21 +7,13 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/project1"
-        ]
+        "command": ["mkdir", "-p", "/home/user/project1"]
       }
     },
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/project2"
-        ]
+        "command": ["mkdir", "-p", "/home/user/project2"]
       }
     },
     {
@@ -42,9 +34,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code"
-        ]
+        "command": ["code"]
       }
     },
     {
@@ -55,9 +45,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vscode"
-  ],
+  "related_apps": ["vscode"],
   "evaluator": {
     "func": "infeasible"
   },

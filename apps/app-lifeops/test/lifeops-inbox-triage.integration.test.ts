@@ -3,8 +3,9 @@ import { InboxTriageRepository } from "../src/inbox/repository.ts";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 describe("LifeOps inbox triage schema bootstrap", () => {
-  let runtimeResult: Awaited<ReturnType<typeof createLifeOpsTestRuntime>> | null =
-    null;
+  let runtimeResult: Awaited<
+    ReturnType<typeof createLifeOpsTestRuntime>
+  > | null = null;
 
   afterEach(async () => {
     if (runtimeResult) {

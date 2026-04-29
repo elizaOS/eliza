@@ -188,7 +188,7 @@ export const settingsProvider: Provider = {
 				if (!world) {
 					logger.warn(
 						{
-							src: "plugin:trust:provider:settings",
+							src: "trust:provider:settings",
 							agentId: runtime.agentId,
 						},
 						"No world found for user during onboarding -- settings provider will be skipped",

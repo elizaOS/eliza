@@ -445,7 +445,7 @@ export function AppsCatalogGrid({
                                       className={`absolute bottom-3 right-3 rounded-full p-1.5 text-white transition-all ${
                                         isFavorite
                                           ? "bg-black/30 text-warn backdrop-blur-sm"
-                                          : "bg-black/30 text-white/70 opacity-0 backdrop-blur-sm group-hover:opacity-100 hover:text-warn"
+                                          : "bg-black/30 text-white/70 backdrop-blur-sm hover:text-warn focus-visible:text-warn"
                                       }`}
                                       onClick={(
                                         event: MouseEvent<HTMLButtonElement>,

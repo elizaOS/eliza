@@ -9,29 +9,32 @@
  * This is useful for end-to-end testing but results will include network
  * latency and are NOT suitable for framework overhead measurement.
  */
-import { readFileSync, writeFileSync, statSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { InMemoryDatabaseAdapter } from "../../../../packages/typescript/src/database/inMemoryAdapter";
 // Direct source imports — Bun transpiles TS at runtime, no build step needed
 import { AgentRuntime } from "../../../../packages/typescript/src/runtime";
-import { InMemoryDatabaseAdapter } from "../../../../packages/typescript/src/database/inMemoryAdapter";
-import type { Plugin } from "../../../../packages/typescript/src/types/plugin";
-import type { Memory } from "../../../../packages/typescript/src/types/memory";
-import type { UUID, Content } from "../../../../packages/typescript/src/types/primitives";
 import type { Character } from "../../../../packages/typescript/src/types/agent";
-import { mockLlmPlugin, createDummyProviders } from "./mock-llm-plugin.js";
+import type { Memory } from "../../../../packages/typescript/src/types/memory";
+import type { Plugin } from "../../../../packages/typescript/src/types/plugin";
+import type {
+  Content,
+  UUID,
+} from "../../../../packages/typescript/src/types/primitives";
 import {
-  Timer,
-  MemoryMonitor,
-  PipelineTimer,
+  type BenchmarkResult,
   computeLatencyStats,
   computeThroughputStats,
-  getSystemInfo,
   formatDuration,
+  getSystemInfo,
+  MemoryMonitor,
+  PipelineTimer,
   printScenarioResult,
-  type BenchmarkResult,
   type ScenarioResult,
+  Timer,
 } from "./metrics.js";
+import { createDummyProviders, mockLlmPlugin } from "./mock-llm-plugin.js";
 
 // ─── Real LLM support ───────────────────────────────────────────────────────
 
@@ -40,9 +43,9 @@ import {
  * Isolated in a function so the import only happens when --real-llm is used.
  */
 async function loadOpenAIPlugin(): Promise<Plugin> {
-  const mod = await import(
+  const mod = (await import(
     "../../../../plugins/plugin-openai/typescript/index.js"
-  ) as { openaiPlugin: Plugin; default: Plugin };
+  )) as { openaiPlugin: Plugin; default: Plugin };
   return mod.openaiPlugin ?? mod.default;
 }
 
@@ -50,7 +53,9 @@ async function loadOpenAIPlugin(): Promise<Plugin> {
  * Resolve which LLM plugin to use based on the --real-llm flag.
  * Returns the plugin and a boolean indicating real-LLM mode.
  */
-async function resolveLlmPlugin(useRealLlm: boolean): Promise<{ llmPlugin: Plugin; isRealLlm: boolean }> {
+async function resolveLlmPlugin(
+  useRealLlm: boolean,
+): Promise<{ llmPlugin: Plugin; isRealLlm: boolean }> {
   if (!useRealLlm) {
     return { llmPlugin: mockLlmPlugin, isRealLlm: false };
   }
@@ -125,7 +130,9 @@ function generateMessages(count: number): ScenarioMessage[] {
 }
 
 /** Resolve messages (handles _generate:N pattern) */
-function resolveMessages(messages: ScenarioMessage[] | string): ScenarioMessage[] {
+function resolveMessages(
+  messages: ScenarioMessage[] | string,
+): ScenarioMessage[] {
   if (typeof messages === "string" && messages.startsWith("_generate:")) {
     const count = parseInt(messages.split(":")[1], 10);
     return generateMessages(count);
@@ -267,10 +274,15 @@ function createMessage(text: string, index: number): Memory {
  * This gives us real per-stage pipeline breakdown instead of just total time.
  * The wrapping is applied once per runtime instance.
  */
-function instrumentRuntime(runtime: AgentRuntime, pipelineTimer: PipelineTimer): void {
+function instrumentRuntime(
+  runtime: AgentRuntime,
+  pipelineTimer: PipelineTimer,
+): void {
   // Wrap composeState
   const origComposeState = runtime.composeState.bind(runtime);
-  (runtime as Record<string, Function>).composeState = async (...args: unknown[]) => {
+  (runtime as Record<string, Function>).composeState = async (
+    ...args: unknown[]
+  ) => {
     const start = performance.now();
     const result = await origComposeState(...args);
     pipelineTimer.record("compose_state", performance.now() - start);
@@ -279,7 +291,9 @@ function instrumentRuntime(runtime: AgentRuntime, pipelineTimer: PipelineTimer):
 
   // Wrap useModel
   const origUseModel = runtime.useModel.bind(runtime);
-  (runtime as Record<string, Function>).useModel = async (...args: unknown[]) => {
+  (runtime as Record<string, Function>).useModel = async (
+    ...args: unknown[]
+  ) => {
     const start = performance.now();
     const result = await origUseModel(...args);
     pipelineTimer.record("model_call", performance.now() - start);
@@ -288,7 +302,9 @@ function instrumentRuntime(runtime: AgentRuntime, pipelineTimer: PipelineTimer):
 
   // Wrap processActions
   const origProcessActions = runtime.processActions.bind(runtime);
-  (runtime as Record<string, Function>).processActions = async (...args: unknown[]) => {
+  (runtime as Record<string, Function>).processActions = async (
+    ...args: unknown[]
+  ) => {
     const start = performance.now();
     const result = await origProcessActions(...args);
     pipelineTimer.record("action_dispatch", performance.now() - start);
@@ -297,7 +313,9 @@ function instrumentRuntime(runtime: AgentRuntime, pipelineTimer: PipelineTimer):
 
   // Wrap evaluate
   const origEvaluate = runtime.evaluate.bind(runtime);
-  (runtime as Record<string, Function>).evaluate = async (...args: unknown[]) => {
+  (runtime as Record<string, Function>).evaluate = async (
+    ...args: unknown[]
+  ) => {
     const start = performance.now();
     const result = await origEvaluate(...args);
     pipelineTimer.record("evaluator", performance.now() - start);
@@ -308,7 +326,9 @@ function instrumentRuntime(runtime: AgentRuntime, pipelineTimer: PipelineTimer):
   const adapter = runtime.adapter;
   if (adapter && "createMemory" in adapter) {
     const origCreate = adapter.createMemory.bind(adapter);
-    (adapter as Record<string, Function>).createMemory = async (...args: unknown[]) => {
+    (adapter as Record<string, Function>).createMemory = async (
+      ...args: unknown[]
+    ) => {
       const start = performance.now();
       const result = await origCreate(...args);
       pipelineTimer.record("memory_create", performance.now() - start);
@@ -319,7 +339,9 @@ function instrumentRuntime(runtime: AgentRuntime, pipelineTimer: PipelineTimer):
   // Wrap adapter.getMemories
   if (adapter && "getMemories" in adapter) {
     const origGet = adapter.getMemories.bind(adapter);
-    (adapter as Record<string, Function>).getMemories = async (...args: unknown[]) => {
+    (adapter as Record<string, Function>).getMemories = async (
+      ...args: unknown[]
+    ) => {
       const start = performance.now();
       const result = await origGet(...args);
       pipelineTimer.record("memory_get", performance.now() - start);
@@ -379,7 +401,10 @@ async function runStartupBenchmark(
     iterations: config.iterations,
     warmup: 0,
     latency: computeLatencyStats(timings),
-    throughput: computeThroughputStats(config.iterations, timings.reduce((a, b) => a + b, 0)),
+    throughput: computeThroughputStats(
+      config.iterations,
+      timings.reduce((a, b) => a + b, 0),
+    ),
     pipeline: {
       compose_state_avg_ms: 0,
       provider_execution_avg_ms: 0,
@@ -406,7 +431,12 @@ async function runDbBenchmark(
   const count = config.dbCount ?? 10000;
 
   for (let i = 0; i < config.iterations; i++) {
-    const runtime = await createBenchmarkRuntime(character, [], config, llmPlugin);
+    const runtime = await createBenchmarkRuntime(
+      character,
+      [],
+      config,
+      llmPlugin,
+    );
     const adapter = runtime.adapter;
 
     if (config.dbOperation === "write") {
@@ -420,7 +450,10 @@ async function runDbBenchmark(
           agentId: AGENT_ID,
           entityId: USER_ENTITY_ID,
           roomId: ROOM_ID,
-          content: { text: `Write benchmark message ${j}`, source: "benchmark" },
+          content: {
+            text: `Write benchmark message ${j}`,
+            source: "benchmark",
+          },
           createdAt: Date.now(),
         };
         await adapter.createMemory(memory, "messages");
@@ -467,8 +500,14 @@ async function runDbBenchmark(
       model_call_avg_ms: 0,
       action_dispatch_avg_ms: 0,
       evaluator_avg_ms: 0,
-      memory_create_avg_ms: config.dbOperation === "write" ? totalTime / (count * config.iterations) : 0,
-      memory_get_avg_ms: config.dbOperation === "read" ? totalTime / (count * config.iterations) : 0,
+      memory_create_avg_ms:
+        config.dbOperation === "write"
+          ? totalTime / (count * config.iterations)
+          : 0,
+      memory_get_avg_ms:
+        config.dbOperation === "read"
+          ? totalTime / (count * config.iterations)
+          : 0,
       model_time_total_ms: 0,
       framework_time_total_ms: 0,
     },
@@ -488,7 +527,12 @@ async function runMessageBenchmark(
 
   // Warm-up
   for (let w = 0; w < config.warmup; w++) {
-    const runtime = await createBenchmarkRuntime(character, [], config, llmPlugin);
+    const runtime = await createBenchmarkRuntime(
+      character,
+      [],
+      config,
+      llmPlugin,
+    );
     instrumentRuntime(runtime, new PipelineTimer()); // warmup instrumentation discarded
     if (config.prePopulateHistory) {
       await prePopulateHistory(runtime, config.prePopulateHistory);
@@ -510,7 +554,12 @@ async function runMessageBenchmark(
   memMonitor.start();
 
   for (let i = 0; i < config.iterations; i++) {
-    const runtime = await createBenchmarkRuntime(character, [], config, llmPlugin);
+    const runtime = await createBenchmarkRuntime(
+      character,
+      [],
+      config,
+      llmPlugin,
+    );
     instrumentRuntime(runtime, pipelineTimer); // real instrumentation recorded
     if (config.prePopulateHistory) {
       await prePopulateHistory(runtime, config.prePopulateHistory);
@@ -608,14 +657,20 @@ async function main(): Promise<void> {
 
   if (isRealLlm) {
     console.log("NOTE: Using real LLM. Results will include network latency");
-    console.log("      and are not suitable for framework overhead measurement.");
+    console.log(
+      "      and are not suitable for framework overhead measurement.",
+    );
     console.log();
   }
 
   const sysInfo = getSystemInfo();
-  console.log(`System: ${sysInfo.os} ${sysInfo.arch} | ${sysInfo.cpus} CPUs | ${sysInfo.memory_gb}GB RAM`);
+  console.log(
+    `System: ${sysInfo.os} ${sysInfo.arch} | ${sysInfo.cpus} CPUs | ${sysInfo.memory_gb}GB RAM`,
+  );
   console.log(`Runtime: ${sysInfo.runtime_version}`);
-  console.log(`LLM Mode: ${isRealLlm ? "real (OpenAI)" : "mock (deterministic)"}`);
+  console.log(
+    `LLM Mode: ${isRealLlm ? "real (OpenAI)" : "mock (deterministic)"}`,
+  );
   console.log(`Scenarios: ${selectedScenarios.length} selected`);
   console.log();
 
@@ -633,12 +688,25 @@ async function main(): Promise<void> {
     let scenarioResult: ScenarioResult;
 
     if (scenario.config.startupOnly) {
-      scenarioResult = await runStartupBenchmark(character, scenario.config, llmPlugin);
+      scenarioResult = await runStartupBenchmark(
+        character,
+        scenario.config,
+        llmPlugin,
+      );
     } else if (scenario.config.dbOnly) {
-      scenarioResult = await runDbBenchmark(character, scenario.config, llmPlugin);
+      scenarioResult = await runDbBenchmark(
+        character,
+        scenario.config,
+        llmPlugin,
+      );
     } else {
       const messages = resolveMessages(scenario.messages);
-      scenarioResult = await runMessageBenchmark(character, messages, scenario.config, llmPlugin);
+      scenarioResult = await runMessageBenchmark(
+        character,
+        messages,
+        scenario.config,
+        llmPlugin,
+      );
     }
 
     const totalElapsed = performance.now() - startTime;
@@ -650,7 +718,10 @@ async function main(): Promise<void> {
 
   // Try to get binary/bundle size
   try {
-    const corePkg = resolve(__dirname, "../../../packages/typescript/dist/node/index.node.js");
+    const corePkg = resolve(
+      __dirname,
+      "../../../packages/typescript/dist/node/index.node.js",
+    );
     const stat = statSync(corePkg);
     results.binary_size_bytes = stat.size;
     console.log(`\nBundle size: ${(stat.size / 1024).toFixed(1)}KB`);
@@ -659,14 +730,17 @@ async function main(): Promise<void> {
   }
 
   // Write results
-  const outPath = outputPath ?? resolve(RESULTS_DIR, `typescript-${Date.now()}.json`);
+  const outPath =
+    outputPath ?? resolve(RESULTS_DIR, `typescript-${Date.now()}.json`);
   writeFileSync(outPath, JSON.stringify(results, null, 2));
   console.log(`\nResults written to: ${outPath}`);
 }
 
-main().then(() => {
-  process.exit(0);
-}).catch((err) => {
-  console.error("Benchmark failed:", err);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error("Benchmark failed:", err);
+    process.exit(1);
+  });

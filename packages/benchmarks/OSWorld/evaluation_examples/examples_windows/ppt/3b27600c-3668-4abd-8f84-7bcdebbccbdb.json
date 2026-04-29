@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "ppt"
-  ],
+  "related_apps": ["ppt"],
   "evaluator": {
     "postconfig": [
       {
@@ -62,11 +60,7 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "rgb": [
-          0,
-          0,
-          255
-        ]
+        "rgb": [0, 0, 255]
       }
     },
     "result": {

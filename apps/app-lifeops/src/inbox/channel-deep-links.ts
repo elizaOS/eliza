@@ -121,7 +121,12 @@ function buildGmailLink(
 ): string | null {
   const gmailId = messageId || str(room.gmailMessageId);
   if (gmailId) {
-    return `https://mail.google.com/mail/u/0/#inbox/${gmailId}`;
+    const account =
+      str(room.gmailAccountEmail) ||
+      str(room.accountEmail) ||
+      str(room.email) ||
+      "0";
+    return `https://mail.google.com/mail/u/${encodeURIComponent(account)}/#inbox/${gmailId}`;
   }
   return null;
 }

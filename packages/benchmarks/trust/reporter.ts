@@ -3,14 +3,23 @@
  * Formats results as a readable table.
  */
 
-import type { BenchmarkResult, CategoryScore, DetectionResult, TestCase } from "./types";
+import type {
+  BenchmarkResult,
+  CategoryScore,
+  DetectionResult,
+  TestCase,
+} from "./types";
 
 function padRight(str: string, len: number): string {
-  return str.length >= len ? str.slice(0, len) : str + " ".repeat(len - str.length);
+  return str.length >= len
+    ? str.slice(0, len)
+    : str + " ".repeat(len - str.length);
 }
 
 function padLeft(str: string, len: number): string {
-  return str.length >= len ? str.slice(0, len) : " ".repeat(len - str.length) + str;
+  return str.length >= len
+    ? str.slice(0, len)
+    : " ".repeat(len - str.length) + str;
 }
 
 function pct(n: number): string {

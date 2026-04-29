@@ -14,7 +14,10 @@ afterEach(() => {
 });
 
 function stubFetch(response: Response): void {
-  vi.stubGlobal("fetch", vi.fn(async () => response));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => response),
+  );
 }
 
 describe("x-poster strict success validation", () => {

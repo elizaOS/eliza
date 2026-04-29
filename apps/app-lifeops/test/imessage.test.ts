@@ -21,8 +21,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 
   const execFile = vi.fn(
     (file: string, args: string[], _opts: unknown, maybeCb?: ExecCb) => {
-      const cb =
-        typeof _opts === "function" ? (_opts as ExecCb) : maybeCb;
+      const cb = typeof _opts === "function" ? (_opts as ExecCb) : maybeCb;
       const handler = execFileBehavior(file, args);
       if (handler.error) {
         cb?.(handler.error, "", handler.stderr ?? "");
@@ -115,21 +114,21 @@ describe("detectIMessageBackend", () => {
   });
 
   test('detects "imsg" when `imsg --version` succeeds', async () => {
-    setExecFile(
-      (file, args) => file === "imsg" && args[0] === "--version",
-      { stdout: "imsg 1.0.0\n" },
-    );
+    setExecFile((file, args) => file === "imsg" && args[0] === "--version", {
+      stdout: "imsg 1.0.0\n",
+    });
     const backend = await detectIMessageBackend();
     expect(backend).toBe("imsg");
   });
 
   test('detects "bluebubbles" when server info ping succeeds', async () => {
     // imsg is not on PATH (default ENOENT). BlueBubbles ping returns 200.
-    global.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ data: { private_api: true } }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+    global.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: { private_api: true } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     ) as unknown as typeof fetch;
 
     const backend = await detectIMessageBackend({
@@ -142,10 +141,9 @@ describe("detectIMessageBackend", () => {
 
 describe("sendIMessage", () => {
   test("imsg backend invokes execFile with argv array (no shell interpolation)", async () => {
-    setExecFile(
-      (file, args) => file === "imsg" && args[0] === "--version",
-      { stdout: "1.0.0\n" },
-    );
+    setExecFile((file, args) => file === "imsg" && args[0] === "--version", {
+      stdout: "1.0.0\n",
+    });
     let capturedArgs: string[] | null = null;
     setExecFile(
       (file, args) => {
@@ -175,35 +173,37 @@ describe("sendIMessage", () => {
 
   test("bluebubbles backend POSTs JSON to /api/v1/message/text", async () => {
     // imsg unavailable → BlueBubbles auto-selected.
-    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/api/v1/server/info")) {
-        return new Response(
-          JSON.stringify({
-            data: { private_api: true, helper_connected: true },
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (url.includes("/api/v1/chat/query")) {
-        // resolveBlueBubblesTarget calls listChatsViaBlueBubbles when target
-        // doesn't have an iMessage;/SMS;/any; prefix. We pre-prefix the target
-        // to avoid that path; return empty array as a safe default.
-        return new Response(JSON.stringify({ data: [] }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
-      }
-      if (url.includes("/api/v1/message/text")) {
-        // capture the body for assertions
-        sentBody = init?.body ? String(init.body) : "";
-        return new Response(
-          JSON.stringify({ data: { guid: "msg-guid-123" } }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      return new Response("not mocked", { status: 500 });
-    });
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/api/v1/server/info")) {
+          return new Response(
+            JSON.stringify({
+              data: { private_api: true, helper_connected: true },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.includes("/api/v1/chat/query")) {
+          // resolveBlueBubblesTarget calls listChatsViaBlueBubbles when target
+          // doesn't have an iMessage;/SMS;/any; prefix. We pre-prefix the target
+          // to avoid that path; return empty array as a safe default.
+          return new Response(JSON.stringify({ data: [] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url.includes("/api/v1/message/text")) {
+          // capture the body for assertions
+          sentBody = init?.body ? String(init.body) : "";
+          return new Response(
+            JSON.stringify({ data: { guid: "msg-guid-123" } }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response("not mocked", { status: 500 });
+      },
+    );
     let sentBody = "";
     global.fetch = fetchMock as unknown as typeof fetch;
 
@@ -229,39 +229,41 @@ describe("sendIMessage", () => {
 
   test("bluebubbles backend resolves a plain handle to the matching chat guid before send", async () => {
     let sentBody: Record<string, unknown> | null = null;
-    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/api/v1/server/info")) {
-        return new Response(
-          JSON.stringify({
-            data: { private_api: true, helper_connected: true },
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (url.includes("/api/v1/chat/query")) {
-        return new Response(
-          JSON.stringify({
-            data: [
-              {
-                guid: "iMessage;-;+15551112222",
-                displayName: "Alice",
-                participants: [{ address: "+15551112222" }],
-              },
-            ],
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (url.includes("/api/v1/message/text")) {
-        sentBody = JSON.parse((init?.body as string | undefined) ?? "{}");
-        return new Response(
-          JSON.stringify({ data: { guid: "msg-guid-plain-handle" } }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      return new Response("not mocked", { status: 500 });
-    }) as unknown as typeof fetch;
+    global.fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/api/v1/server/info")) {
+          return new Response(
+            JSON.stringify({
+              data: { private_api: true, helper_connected: true },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.includes("/api/v1/chat/query")) {
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  guid: "iMessage;-;+15551112222",
+                  displayName: "Alice",
+                  participants: [{ address: "+15551112222" }],
+                },
+              ],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.includes("/api/v1/message/text")) {
+          sentBody = JSON.parse((init?.body as string | undefined) ?? "{}");
+          return new Response(
+            JSON.stringify({ data: { guid: "msg-guid-plain-handle" } }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response("not mocked", { status: 500 });
+      },
+    ) as unknown as typeof fetch;
 
     await expect(
       sendIMessage(
@@ -358,44 +360,48 @@ describe("sendIMessage", () => {
 describe("readIMessages — BlueBubbles backend", () => {
   test("preserves inbound and outbound ids, chat ids, handles, direction, and text", async () => {
     let queryBody: Record<string, unknown> | null = null;
-    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/api/v1/server/info")) {
-        return new Response(
-          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (url.includes("/api/v1/message/query")) {
-        queryBody = JSON.parse((init?.body as string | undefined) ?? "{}");
-        return new Response(
-          JSON.stringify({
-            data: [
-              {
-                guid: "bb-inbound-1",
-                text: "incoming iMessage text",
-                handle: { address: "+15551112222" },
-                chatGuid: "iMessage;-;+15551112222",
-                chats: [{ guid: "iMessage;-;+15551112222" }],
-                isFromMe: false,
-                dateCreated: Date.parse("2026-04-17T18:30:00.000Z"),
-              },
-              {
-                guid: "bb-outbound-1",
-                text: "outbound reply text",
-                handle: null,
-                chatGuid: "iMessage;-;+15551112222",
-                chats: [{ guid: "iMessage;-;+15551112222" }],
-                isFromMe: true,
-                dateCreated: Date.parse("2026-04-17T18:31:00.000Z"),
-              },
-            ],
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      return new Response("not mocked", { status: 500 });
-    }) as unknown as typeof fetch;
+    global.fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/api/v1/server/info")) {
+          return new Response(
+            JSON.stringify({
+              data: { private_api: true, helper_connected: true },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.includes("/api/v1/message/query")) {
+          queryBody = JSON.parse((init?.body as string | undefined) ?? "{}");
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  guid: "bb-inbound-1",
+                  text: "incoming iMessage text",
+                  handle: { address: "+15551112222" },
+                  chatGuid: "iMessage;-;+15551112222",
+                  chats: [{ guid: "iMessage;-;+15551112222" }],
+                  isFromMe: false,
+                  dateCreated: Date.parse("2026-04-17T18:30:00.000Z"),
+                },
+                {
+                  guid: "bb-outbound-1",
+                  text: "outbound reply text",
+                  handle: null,
+                  chatGuid: "iMessage;-;+15551112222",
+                  chats: [{ guid: "iMessage;-;+15551112222" }],
+                  isFromMe: true,
+                  dateCreated: Date.parse("2026-04-17T18:31:00.000Z"),
+                },
+              ],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response("not mocked", { status: 500 });
+      },
+    ) as unknown as typeof fetch;
 
     const messages = await readIMessages(
       { limit: 2, since: "2026-04-17T18:00:00.000Z" },
@@ -560,7 +566,9 @@ describe("withIMessage mixin", () => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("/api/v1/server/info")) {
         return new Response(
-          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
+          JSON.stringify({
+            data: { private_api: true, helper_connected: true },
+          }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
       }
@@ -667,10 +675,9 @@ describe("withIMessage mixin", () => {
 
 describe("searchIMessages — imsg backend", () => {
   test("passes query and optional chat as discrete argv entries (no shell)", async () => {
-    setExecFile(
-      (file, args) => file === "imsg" && args[0] === "--version",
-      { stdout: "imsg 2.0.0\n" },
-    );
+    setExecFile((file, args) => file === "imsg" && args[0] === "--version", {
+      stdout: "imsg 2.0.0\n",
+    });
 
     let capturedArgs: string[] | null = null;
     setExecFile(
@@ -709,10 +716,9 @@ describe("searchIMessages — imsg backend", () => {
   });
 
   test("passes --chat flag when chatId scope is given", async () => {
-    setExecFile(
-      (file, args) => file === "imsg" && args[0] === "--version",
-      { stdout: "imsg 2.0.0\n" },
-    );
+    setExecFile((file, args) => file === "imsg" && args[0] === "--version", {
+      stdout: "imsg 2.0.0\n",
+    });
 
     let capturedArgs: string[] | null = null;
     setExecFile(
@@ -726,7 +732,10 @@ describe("searchIMessages — imsg backend", () => {
       { stdout: JSON.stringify([]) },
     );
 
-    await searchIMessages({ query: "hi", chatId: "iMessage;+;alice@example.com" });
+    await searchIMessages({
+      query: "hi",
+      chatId: "iMessage;+;alice@example.com",
+    });
 
     expect(capturedArgs).not.toBeNull();
     expect(capturedArgs!).toContain("--chat");
@@ -740,32 +749,36 @@ describe("searchIMessages — BlueBubbles backend", () => {
   test("POSTs to /api/v1/message/query with search field", async () => {
     let searchBody: Record<string, unknown> | null = null;
 
-    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === "string" ? input : input.toString();
-      if (url.includes("/api/v1/server/info")) {
-        return new Response(
-          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      if (url.includes("/api/v1/message/query")) {
-        searchBody = JSON.parse(init?.body as string ?? "{}");
-        return new Response(
-          JSON.stringify({
-            data: [
-              {
-                guid: "bb-msg-999",
-                text: "bluebubbles result",
-                isFromMe: true,
-                dateCreated: 1713340800000,
-              },
-            ],
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        );
-      }
-      return new Response("not mocked", { status: 500 });
-    }) as unknown as typeof fetch;
+    global.fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.includes("/api/v1/server/info")) {
+          return new Response(
+            JSON.stringify({
+              data: { private_api: true, helper_connected: true },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        if (url.includes("/api/v1/message/query")) {
+          searchBody = JSON.parse((init?.body as string) ?? "{}");
+          return new Response(
+            JSON.stringify({
+              data: [
+                {
+                  guid: "bb-msg-999",
+                  text: "bluebubbles result",
+                  isFromMe: true,
+                  dateCreated: 1713340800000,
+                },
+              ],
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response("not mocked", { status: 500 });
+      },
+    ) as unknown as typeof fetch;
 
     const results = await searchIMessages(
       { query: "bluebubbles result", limit: 5 },
@@ -789,10 +802,9 @@ describe("searchIMessages — BlueBubbles backend", () => {
 
 describe("getIMessageDeliveryStatus", () => {
   test("imsg backend returns unknown for all IDs (no CLI delivery command)", async () => {
-    setExecFile(
-      (file, args) => file === "imsg" && args[0] === "--version",
-      { stdout: "imsg 2.0.0\n" },
-    );
+    setExecFile((file, args) => file === "imsg" && args[0] === "--version", {
+      stdout: "imsg 2.0.0\n",
+    });
 
     const results = await getIMessageDeliveryStatus(["id-1", "id-2"]);
 
@@ -809,33 +821,36 @@ describe("getIMessageDeliveryStatus", () => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("/api/v1/server/info")) {
         return new Response(
-          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
+          JSON.stringify({
+            data: { private_api: true, helper_connected: true },
+          }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
       }
       if (url.includes("/api/v1/message/read-msg")) {
         return new Response(
-          JSON.stringify({ data: { guid: "read-msg", isRead: true, isDelivered: true } }),
+          JSON.stringify({
+            data: { guid: "read-msg", isRead: true, isDelivered: true },
+          }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
       }
       if (url.includes("/api/v1/message/sent-msg")) {
         return new Response(
-          JSON.stringify({ data: { guid: "sent-msg", isRead: false, isDelivered: true } }),
+          JSON.stringify({
+            data: { guid: "sent-msg", isRead: false, isDelivered: true },
+          }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
       }
       return new Response("not mocked", { status: 500 });
     }) as unknown as typeof fetch;
 
-    const results = await getIMessageDeliveryStatus(
-      ["read-msg", "sent-msg"],
-      {
-        preferredBackend: "bluebubbles",
-        bluebubblesUrl: "http://127.0.0.1:5678",
-        bluebubblesPassword: "pw",
-      },
-    );
+    const results = await getIMessageDeliveryStatus(["read-msg", "sent-msg"], {
+      preferredBackend: "bluebubbles",
+      bluebubblesUrl: "http://127.0.0.1:5678",
+      bluebubblesPassword: "pw",
+    });
 
     expect(results).toHaveLength(2);
     const readResult = results.find((r) => r.messageId === "read-msg");
@@ -853,7 +868,9 @@ describe("getIMessageDeliveryStatus", () => {
       const url = typeof input === "string" ? input : input.toString();
       if (url.includes("/api/v1/server/info")) {
         return new Response(
-          JSON.stringify({ data: { private_api: true, helper_connected: true } }),
+          JSON.stringify({
+            data: { private_api: true, helper_connected: true },
+          }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
       }

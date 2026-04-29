@@ -13,6 +13,3 @@ declare global {
     };
   }
 }
-
-export {};
-

@@ -12,12 +12,16 @@ function createRuntime(agentId: string) {
     agentId,
     handleTurn: async () => ({ text: "ok" }),
     useModel: async () => {
-      throw new Error("useModel should not be called in browser current-page tests");
+      throw new Error(
+        "useModel should not be called in browser current-page tests",
+      );
     },
   });
 }
 
-function installBrowserSchemaBootstrap(runtime: ReturnType<typeof createRuntime>) {
+function installBrowserSchemaBootstrap(
+  runtime: ReturnType<typeof createRuntime>,
+) {
   runtime.adapter.runPluginMigrations = async () => {
     await runtime.adapter.db.execute({
       queryChunks: [
@@ -114,7 +118,7 @@ describe("browser current-page context", () => {
     const source = await readFile(
       path.resolve(
         import.meta.dirname,
-        "../../../../test/scenarios/browser.lifeops/lifeops-extension.see-what-user-sees.scenario.ts",
+        "../../../test/scenarios/browser.lifeops/lifeops-extension.see-what-user-sees.scenario.ts",
       ),
       "utf8",
     );

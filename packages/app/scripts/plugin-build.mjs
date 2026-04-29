@@ -60,10 +60,15 @@ export function shouldBuildPluginForHost(pkg, hostPlatform) {
 
 function readPluginPackageJson(pluginsDir, name) {
   const pkgPath = path.join(pluginsDir, name, "package.json");
+  const raw = fs.readFileSync(pkgPath, "utf8");
   try {
-    return JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-  } catch {
-    return undefined;
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error(
+      `[plugins] ${pkgPath} is not valid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
 }
 
@@ -73,6 +78,9 @@ function run(command, args, cwd) {
       cwd,
       stdio: "inherit",
       env: process.env,
+    });
+    child.on("error", (error) => {
+      reject(new Error(`${command} failed to start: ${error.message}`));
     });
     child.on("exit", (code, signal) => {
       if (signal) {

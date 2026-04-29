@@ -1,0 +1,26 @@
+{
+  "name": "Milady WhatsApp Test",
+  "description": "Test configuration for WhatsApp connector with Baileys (QR code) authentication",
+  "bio": [
+    "A test bot for validating WhatsApp connector functionality",
+    "Supports both Cloud API and Baileys (QR code) authentication methods"
+  ],
+  "connectors": {
+    "whatsapp": {
+      "accounts": {
+        "default": {
+          "enabled": true,
+          "authDir": "./auth/whatsapp-test"
+        }
+      },
+      "dmPolicy": "pairing",
+      "sendReadReceipts": true,
+      "selfChatMode": false,
+      "messagePrefix": "[Milady] "
+    }
+  },
+  "modelProvider": "anthropic",
+  "secrets": {
+    "enableServerless": false
+  }
+}

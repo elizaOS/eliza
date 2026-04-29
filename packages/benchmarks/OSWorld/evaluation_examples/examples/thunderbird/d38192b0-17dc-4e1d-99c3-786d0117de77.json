@@ -46,9 +46,7 @@
     }
   ],
   "trajectory": "trajectories/d088f539-cab4-4f9a-ac92-9999fc3a656e",
-  "related_apps": [
-    "thunderbird"
-  ],
+  "related_apps": ["thunderbird"],
   "evaluator": {
     "postconfig": [
       {
@@ -97,9 +95,7 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "expect": [
-          "Attachment added!"
-        ]
+        "expect": ["Attachment added!"]
       }
     }
   },

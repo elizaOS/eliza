@@ -505,4 +505,12 @@ export interface N8nWorkflowGenerateRequest {
   prompt: string;
   name?: string;
   workflowId?: string;
+  /**
+   * Optional originating conversation id. When present, the server reads
+   * the conversation's tail inbound message metadata and threads platform
+   * routing (Discord channelId/guildId, Telegram chatId, etc.) into the
+   * workflow generator so the LLM can target "this channel" / "back to
+   * here" without the user naming an ID.
+   */
+  bridgeConversationId?: string;
 }

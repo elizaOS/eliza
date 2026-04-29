@@ -8,22 +8,27 @@
  * a real Signal account. The stub exposes the subset of the signal-cli JSON-RPC
  * HTTP API that `@elizaos/plugin-signal` calls during startup and message reads.
  */
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { ChannelType, stringToUuid, type UUID } from "@elizaos/core";
 import {
   decodePathComponent,
   readJsonBody,
   sendJson,
   sendJsonError,
 } from "@elizaos/agent";
+import { ChannelType, stringToUuid, type UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { itIf } from "../../../../test/helpers/conditional-tests.ts";
-import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
+import { itIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import { createLifeOpsConnectorGrant } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 const SKIP_REASON = process.env.SKIP_REASON?.trim();
 const SIGNAL_HTTP_URL = process.env.SIGNAL_HTTP_URL?.trim();
@@ -44,42 +49,40 @@ type StartedHttpServer = {
 };
 
 async function startSignalStub(): Promise<StartedHttpServer> {
-  const server = createServer(
-    (req: IncomingMessage, res: ServerResponse) => {
-      const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      const method = (req.method ?? "GET").toUpperCase();
-      const pathname = decodeURIComponent(url.pathname);
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const method = (req.method ?? "GET").toUpperCase();
+    const pathname = decodeURIComponent(url.pathname);
 
-      if (method === "GET" && pathname === `/v1/contacts/${SIGNAL_ACCOUNT}`) {
-        sendJson(res, {
-          contacts: [
-            {
-              number: "+15550000001",
-              uuid: "aabbccdd-1234-5678-9000-aabbccddeeff",
-              name: "Alice",
-              profileName: "Alice",
-              color: "green",
-              blocked: false,
-            },
-          ],
-        });
-        return;
-      }
-      if (method === "GET" && pathname === `/v1/groups/${SIGNAL_ACCOUNT}`) {
-        sendJson(res, []);
-        return;
-      }
-      if (method === "GET" && pathname === `/v1/receive/${SIGNAL_ACCOUNT}`) {
-        sendJson(res, []);
-        return;
-      }
-      if (method === "POST" && pathname === "/v2/send") {
-        sendJson(res, { timestamp: Date.now() });
-        return;
-      }
-      sendJsonError(res, `Unhandled stub route: ${method} ${pathname}`, 404);
-    },
-  );
+    if (method === "GET" && pathname === `/v1/contacts/${SIGNAL_ACCOUNT}`) {
+      sendJson(res, {
+        contacts: [
+          {
+            number: "+15550000001",
+            uuid: "aabbccdd-1234-5678-9000-aabbccddeeff",
+            name: "Alice",
+            profileName: "Alice",
+            color: "green",
+            blocked: false,
+          },
+        ],
+      });
+      return;
+    }
+    if (method === "GET" && pathname === `/v1/groups/${SIGNAL_ACCOUNT}`) {
+      sendJson(res, []);
+      return;
+    }
+    if (method === "GET" && pathname === `/v1/receive/${SIGNAL_ACCOUNT}`) {
+      sendJson(res, []);
+      return;
+    }
+    if (method === "POST" && pathname === "/v2/send") {
+      sendJson(res, { timestamp: Date.now() });
+      return;
+    }
+    sendJsonError(res, `Unhandled stub route: ${method} ${pathname}`, 404);
+  });
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -145,15 +148,22 @@ describe("Integration: Signal inbound read", () => {
   });
 
   afterEach(async () => {
-    if (runtime) { await runtime.cleanup(); runtime = undefined; }
-    if (stub) { await stub.close(); stub = undefined; }
+    if (runtime) {
+      await runtime.cleanup();
+      runtime = undefined;
+    }
+    if (stub) {
+      await stub.close();
+      stub = undefined;
+    }
     if (prevOAuthDir === undefined) delete process.env.ELIZA_OAUTH_DIR;
     else process.env.ELIZA_OAUTH_DIR = prevOAuthDir;
     if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
     else process.env.ELIZA_STATE_DIR = prevStateDir;
     if (prevSignalHttpUrl === undefined) delete process.env.SIGNAL_HTTP_URL;
     else process.env.SIGNAL_HTTP_URL = prevSignalHttpUrl;
-    if (prevDisableProactive === undefined) delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+    if (prevDisableProactive === undefined)
+      delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
     else process.env.ELIZA_DISABLE_PROACTIVE_AGENT = prevDisableProactive;
     await rm(oauthDir, { recursive: true, force: true });
   });
@@ -174,7 +184,13 @@ describe("Integration: Signal inbound read", () => {
       runtime = await createLifeOpsTestRuntime();
       runtime.runtime.setSetting("SIGNAL_HTTP_URL", stub.baseUrl, false);
 
-      const authDir = path.join(oauthDir, "lifeops", "signal", runtime.runtime.agentId, "owner");
+      const authDir = path.join(
+        oauthDir,
+        "lifeops",
+        "signal",
+        runtime.runtime.agentId,
+        "owner",
+      );
       await writeLinkedDevice(authDir);
 
       const service = new LifeOpsService(runtime.runtime);
@@ -243,16 +259,18 @@ describe("Integration: Signal inbound read", () => {
         expect(
           msg.senderNumber === null || typeof msg.senderNumber === "string",
         ).toBe(true);
-        expect(msg.senderUuid === null || typeof msg.senderUuid === "string").toBe(
-          true,
-        );
+        expect(
+          msg.senderUuid === null || typeof msg.senderUuid === "string",
+        ).toBe(true);
         expect(
           msg.sourceDevice === null || typeof msg.sourceDevice === "number",
         ).toBe(true);
-        expect(msg.groupId === null || typeof msg.groupId === "string").toBe(true);
-        expect(msg.groupType === null || typeof msg.groupType === "string").toBe(
+        expect(msg.groupId === null || typeof msg.groupId === "string").toBe(
           true,
         );
+        expect(
+          msg.groupType === null || typeof msg.groupType === "string",
+        ).toBe(true);
         expect(typeof msg.text).toBe("string");
         expect(typeof msg.createdAt).toBe("number");
         expect(typeof msg.isInbound).toBe("boolean");

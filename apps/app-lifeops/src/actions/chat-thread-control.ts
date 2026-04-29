@@ -1,5 +1,6 @@
 import type {
   Action,
+  ActionExample,
   ActionResult,
   IAgentRuntime,
   Memory,
@@ -159,7 +160,9 @@ function roomMatchesTarget(args: {
 }): boolean {
   const room = args.room;
   if (!room) return false;
-  if (normalizePlatform((room as { source?: unknown }).source) !== args.platform) {
+  if (
+    normalizePlatform((room as { source?: unknown }).source) !== args.platform
+  ) {
     return false;
   }
   if (args.roomId && room.id === args.roomId) {
@@ -220,14 +223,16 @@ export const chatThreadControlAction: Action = {
     "Mute or unmute a specific connector chat that is not necessarily the current room, and optionally schedule an automatic unmute. " +
     "Use this for requests like 'Mute the crypto signals Telegram group for 24 hours' or 'Unmute that Telegram room now'. " +
     "Do not use generic MUTE_ROOM or UNMUTE_ROOM when the owner names a different chat or platform.",
+  descriptionCompressed:
+    "Mute/unmute named Telegram Discord chat optional timed unmute not current room",
+
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   handler: async (runtime, message, state, options): Promise<ActionResult> => {
     const runtimeLike = runtime as RuntimeLike;
     const params = ((options as { parameters?: ChatThreadParams } | undefined)
       ?.parameters ?? {}) as ChatThreadParams;
     const planned = await resolveChatThreadPlan({ runtime, message, state });
-    const operation =
-      normalizeOperation(params.operation) ?? planned.operation;
+    const operation = normalizeOperation(params.operation) ?? planned.operation;
     const platform =
       normalizePlatform(params.platform) ?? planned.platform ?? "telegram";
     const roomId = normalizeString(params.roomId) ?? planned.roomId;
@@ -336,4 +341,70 @@ export const chatThreadControlAction: Action = {
       },
     };
   },
+
+  parameters: [
+    {
+      name: "operation",
+      description: "mute_chat or unmute_chat when already known.",
+      required: false,
+      schema: { type: "string" as const, enum: ["mute_chat", "unmute_chat"] },
+    },
+    {
+      name: "platform",
+      description: "Connector id (telegram, discord, ...).",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "chatName",
+      description:
+        "Channel or group title to match against joined rooms when roomId omitted.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "roomId",
+      description: "Exact room UUID when caller already knows it.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "durationMinutes",
+      description:
+        "Temporary mute window; schedules automatic unmute when set.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+  ],
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Mute the crypto signals Telegram channel for six hours.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Muted crypto signals on Telegram for 360 minutes.",
+          action: "CHAT_THREAD_CONTROL",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Unmute #general on Discord now." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Unmuted #general on Discord.",
+          action: "CHAT_THREAD_CONTROL",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

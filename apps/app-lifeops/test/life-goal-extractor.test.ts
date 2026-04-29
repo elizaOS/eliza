@@ -1,5 +1,5 @@
-import type { AgentRuntime } from "@elizaos/core";
 import type { LifeOpsGoalDefinition } from "@elizaos/app-lifeops";
+import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   buildGoalCreateExtractionPrompt,
@@ -78,7 +78,8 @@ describe("life-goal-extractor", () => {
         useModel: async () =>
           JSON.stringify({
             mode: "respond",
-            response: "What would a stabilized sleep schedule look like for you?",
+            response:
+              "What would a stabilized sleep schedule look like for you?",
             title: "Stabilize sleep schedule",
             description: "Build a more consistent sleep schedule.",
             cadence: { kind: "weekly" },

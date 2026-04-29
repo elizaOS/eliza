@@ -1,14 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import {
-  selectLiveProvider,
   type LiveProviderConfig,
+  selectLiveProvider,
 } from "../helpers/live-provider";
 import { createRealTestRuntime } from "../helpers/real-runtime";
 
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const liveProvider = LIVE_TESTS_ENABLED ? selectLiveProvider() : null;
 const CAN_RUN = LIVE_TESTS_ENABLED && liveProvider !== null;
 

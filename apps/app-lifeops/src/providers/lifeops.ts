@@ -1,7 +1,3 @@
-import type {
-  LifeOpsGmailTriageSummary,
-  LifeOpsNextCalendarEventContext,
-} from "../contracts/index.js";
 import {
   type IAgentRuntime,
   logger,
@@ -11,6 +7,10 @@ import {
   type State,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../actions/lifeops-google-helpers.js";
+import type {
+  LifeOpsGmailTriageSummary,
+  LifeOpsNextCalendarEventContext,
+} from "../contracts/index.js";
 import {
   type LifeOpsOwnerProfile,
   readLifeOpsOwnerProfile,

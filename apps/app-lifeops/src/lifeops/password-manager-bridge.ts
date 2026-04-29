@@ -154,9 +154,7 @@ function resolveOpBinary(config?: PasswordManagerBridgeConfig): string {
   return config?.opPath?.trim() || "op";
 }
 
-function resolveProtonPassBinary(
-  config?: PasswordManagerBridgeConfig,
-): string {
+function resolveProtonPassBinary(config?: PasswordManagerBridgeConfig): string {
   return config?.protonPassPath?.trim() || "protonpass";
 }
 
@@ -283,10 +281,7 @@ async function runOp(
 function normalizeOpListEntry(raw: OpItemListEntry): PasswordManagerItem {
   const id = raw.id ?? "";
   if (!id) {
-    throw new PasswordManagerError(
-      "1Password item missing id",
-      "1password",
-    );
+    throw new PasswordManagerError("1Password item missing id", "1password");
   }
   const primaryUrl =
     raw.urls?.find((u) => u.primary)?.href ?? raw.urls?.[0]?.href;
@@ -307,10 +302,7 @@ function normalizeOpListEntry(raw: OpItemListEntry): PasswordManagerItem {
 async function listItemsVia1Password(
   config?: PasswordManagerBridgeConfig,
 ): Promise<PasswordManagerItem[]> {
-  const stdout = await runOp(
-    ["item", "list", "--format", "json"],
-    config,
-  );
+  const stdout = await runOp(["item", "list", "--format", "json"], config);
   const trimmed = stdout.trim();
   if (!trimmed) return [];
   let parsed: unknown;
@@ -541,8 +533,8 @@ export async function searchPasswordItems(
     backend === "fixture"
       ? listItemsViaFixture()
       : backend === "1password"
-      ? await listItemsVia1Password(config)
-      : await listItemsViaProtonPass(config);
+        ? await listItemsVia1Password(config)
+        : await listItemsViaProtonPass(config);
   return items.filter((item) => matchesQuery(item, query));
 }
 
@@ -555,8 +547,8 @@ export async function listPasswordItems(
     backend === "fixture"
       ? listItemsViaFixture()
       : backend === "1password"
-      ? await listItemsVia1Password(config)
-      : await listItemsViaProtonPass(config);
+        ? await listItemsVia1Password(config)
+        : await listItemsViaProtonPass(config);
   const limit = opts.limit;
   if (typeof limit === "number" && limit >= 0) {
     return items.slice(0, limit);
@@ -579,10 +571,19 @@ export async function injectCredentialToClipboard(
 
   if (backend === "fixture") {
     logger.warn(
-      { itemId, field, boundary: "lifeops", component: "password-manager-bridge" },
+      {
+        itemId,
+        field,
+        boundary: "lifeops",
+        component: "password-manager-bridge",
+      },
       "[password-manager-bridge] fixture backend active: NO actual clipboard write performed. Set MILADY_TEST_PASSWORD_MANAGER_BACKEND=0 for real injection.",
     );
-    return { ok: true, expiresInSeconds: CLIPBOARD_TTL_SECONDS, fixtureMode: true };
+    return {
+      ok: true,
+      expiresInSeconds: CLIPBOARD_TTL_SECONDS,
+      fixtureMode: true,
+    };
   }
 
   if (backend === "1password") {
@@ -618,9 +619,6 @@ export async function injectCredentialToClipboard(
     const hasProton = await probeBinary(binary, ["--version"]);
     if (!hasProton) producerCmd = "pass";
   }
-  await pipeToClipboard(
-    { cmd: producerCmd, args: producerArgs },
-    "protonpass",
-  );
+  await pipeToClipboard({ cmd: producerCmd, args: producerArgs }, "protonpass");
   return { ok: true, expiresInSeconds: CLIPBOARD_TTL_SECONDS };
 }

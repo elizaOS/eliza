@@ -27,7 +27,6 @@ interface Memory {
   };
 }
 
-
 export const RustPluginTestSuite: TestSuite = {
   name: "rust_plugin_starter_test_suite",
   tests: [

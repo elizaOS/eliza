@@ -14,10 +14,18 @@ export function readFileAsText(file) {
 }
 
 export function parseJSONL(text) {
-  return text.split(/\r?\n/).filter(Boolean).map((line, i) => {
-    try { return JSON.parse(line); }
-    catch (e) { console.warn("Bad JSONL line", i+1, e); return null; }
-  }).filter(Boolean);
+  return text
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line, i) => {
+      try {
+        return JSON.parse(line);
+      } catch (e) {
+        console.warn("Bad JSONL line", i + 1, e);
+        return null;
+      }
+    })
+    .filter(Boolean);
 }
 
 export function fmtScore(n) {
@@ -27,29 +35,33 @@ export function fmtScore(n) {
 
 export function domainPill(name) {
   const key = String(name || "-").toLowerCase();
-  const cls = key === "perp" ? "tag-perp"
-    : key === "account" ? "tag-account"
-    : key === "risk" ? "tag-risk"
-    : "tag-generic";
+  const cls =
+    key === "perp"
+      ? "tag-perp"
+      : key === "account"
+        ? "tag-account"
+        : key === "risk"
+          ? "tag-risk"
+          : "tag-generic";
   return `<span class="tag ${cls}">${name}</span>`;
 }
 
 export function signatureDomain(signature) {
   if (!signature) return null;
-  return String(signature).split('.')[0] || null;
+  return String(signature).split(".")[0] || null;
 }
 
 const HIAN_TAGS = {
-  PASS: 'tag-pass',
-  PASS_WITH_WARNINGS: 'tag-warning',
-  PARTIAL: 'tag-partial',
-  FAIL: 'tag-fail'
+  PASS: "tag-pass",
+  PASS_WITH_WARNINGS: "tag-warning",
+  PARTIAL: "tag-partial",
+  FAIL: "tag-fail",
 };
 
 export function hianBadge(result) {
-  if (!result) return '-';
+  if (!result) return "-";
   const key = String(result).toUpperCase();
-  const cls = HIAN_TAGS[key] || 'tag-warning';
-  const label = key.replace(/_/g, ' ');
+  const cls = HIAN_TAGS[key] || "tag-warning";
+  const label = key.replace(/_/g, " ");
   return `<span class="tag ${cls}">${label}</span>`;
 }

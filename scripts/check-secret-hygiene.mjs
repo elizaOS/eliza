@@ -7,6 +7,10 @@ const repoRoots = discoverTrackedRepos(workspaceRoot);
 const trackedBuffers = [];
 const violations = [];
 let trackedFileCount = 0;
+const knownNonSecretValues = new Set([
+  "playwright-local-auth-secret",
+  "test-cron-secret",
+]);
 
 for (const repoRoot of repoRoots) {
   const trackedFiles = listTrackedFiles(repoRoot).filter((trackedFile) =>
@@ -123,11 +127,15 @@ function isDisallowedTrackedPath(relativePath) {
     return true;
   }
 
-  if (!/^\.env(?:\.|$)/.test(baseName)) {
-    return false;
+  if (/^\.dev\.vars(?:\.|$)/.test(baseName)) {
+    return !baseName.endsWith(".example");
   }
 
-  return !baseName.endsWith(".example");
+  if (/^\.env(?:\.|$)/.test(baseName)) {
+    return !baseName.endsWith(".example");
+  }
+
+  return false;
 }
 
 function collectLocalSecretEntries(rootDir) {
@@ -189,10 +197,7 @@ function findLocalEnvFiles(rootDir) {
         continue;
       }
 
-      if (
-        !/^\.env(?:\.|$)/.test(entry.name) ||
-        entry.name.endsWith(".example")
-      ) {
+      if (!isLocalSecretFileName(entry.name)) {
         continue;
       }
 
@@ -201,6 +206,16 @@ function findLocalEnvFiles(rootDir) {
   }
 
   return files;
+}
+
+function isLocalSecretFileName(fileName) {
+  if (fileName.endsWith(".example")) {
+    return false;
+  }
+
+  return (
+    /^\.env(?:\.|$)/.test(fileName) || /^\.dev\.vars(?:\.|$)/.test(fileName)
+  );
 }
 
 function parseEnvFile(filePath) {
@@ -254,6 +269,10 @@ function looksLikeSecret(entry) {
   }
 
   if (/^(?:true|false|null|undefined)$/i.test(entry.value)) {
+    return false;
+  }
+
+  if (knownNonSecretValues.has(entry.value)) {
     return false;
   }
 

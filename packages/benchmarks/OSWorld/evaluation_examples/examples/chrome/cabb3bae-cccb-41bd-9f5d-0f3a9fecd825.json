@@ -7,28 +7,19 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
       "type": "chrome_open_tabs",
       "parameters": {
-        "urls_to_open": [
-          "https://www.kohls.com/"
-        ]
+        "urls_to_open": ["https://www.kohls.com/"]
       }
     },
     {
@@ -39,9 +30,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "chrome"
-  ],
+  "related_apps": ["chrome"],
   "evaluator": {
     "func": "check_direct_json_object",
     "result": {
@@ -49,14 +38,8 @@
       "goto_prefix": "https://www.",
       "category": "class&url",
       "class_multiObject_li": {
-        "pmpSearch_breadcrumb": [
-          "Spider-Man",
-          "Toys",
-          "Kids"
-        ],
-        "sbSelector": [
-          "Price Low-High"
-        ]
+        "pmpSearch_breadcrumb": ["Spider-Man", "Toys", "Kids"],
+        "sbSelector": ["Price Low-High"]
       },
       "url_include_expected_multichoice": {
         "Spider-Man": "Spider-Man",

@@ -8,11 +8,11 @@ Each sub-module is a self-contained Python port of the corresponding
 TypeScript plugin:
 
 - **trust** -- multi-dimensional trust scoring, security threat detection
-  (from ``plugin-trust``)
+  (runtime built-in capability)
 - **secrets** -- multi-level secret management with AES-256-GCM encryption
-  (from ``plugin-secrets-manager``)
+  (built into the ``@elizaos/core`` TypeScript runtime)
 - **plugin_manager** -- read-only plugin discovery and status introspection
-  (from ``plugin-plugin-manager``)
+  (from ``@elizaos/core`` plugin-manager)
 """
 
 from .plugin_manager import (

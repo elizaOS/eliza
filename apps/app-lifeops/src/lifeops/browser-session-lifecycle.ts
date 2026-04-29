@@ -78,7 +78,9 @@ function browserTaskPatchFromContainer(value: unknown): BrowserTaskPatch {
   return isRecord(nested) ? { ...nested } : {};
 }
 
-function browserTaskFromSession(session: Pick<LifeOpsBrowserSession, "result">) {
+function browserTaskFromSession(
+  session: Pick<LifeOpsBrowserSession, "result">,
+) {
   return browserTaskPatchFromContainer(session.result);
 }
 
@@ -108,7 +110,10 @@ function provenanceKey(provenance: BrowserTaskProvenance): string {
   ].join("|");
 }
 
-function normalizeArtifact(value: unknown, now: string): BrowserTaskArtifact | null {
+function normalizeArtifact(
+  value: unknown,
+  now: string,
+): BrowserTaskArtifact | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -147,7 +152,7 @@ function normalizeIntervention(
     requestedAt,
     resolvedAt:
       status === "resolved"
-        ? stringOrNull(value.resolvedAt) ?? now
+        ? (stringOrNull(value.resolvedAt) ?? now)
         : stringOrNull(value.resolvedAt),
     detail: stringOrNull(value.detail),
   };
@@ -177,10 +182,7 @@ function normalizeProvenance(
   };
 }
 
-function dedupeByKey<T>(
-  values: T[],
-  keyFor: (value: T) => string,
-): T[] {
+function dedupeByKey<T>(values: T[], keyFor: (value: T) => string): T[] {
   const map = new Map<string, T>();
   for (const value of values) {
     map.set(keyFor(value), value);
@@ -188,7 +190,10 @@ function dedupeByKey<T>(
   return [...map.values()];
 }
 
-function normalizeArtifacts(value: unknown, now: string): BrowserTaskArtifact[] {
+function normalizeArtifacts(
+  value: unknown,
+  now: string,
+): BrowserTaskArtifact[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -251,12 +256,18 @@ function emptySummary(
 }
 
 function normalizedSummary(
-  session: Pick<LifeOpsBrowserSession, "actions" | "status" | "metadata" | "result">,
+  session: Pick<
+    LifeOpsBrowserSession,
+    "actions" | "status" | "metadata" | "result"
+  >,
 ): BrowserTaskSummary {
   const base = emptySummary(session);
   const patch = browserTaskFromSession(session);
   const artifacts = dedupeByKey(
-    normalizeArtifacts(patch.artifacts, patch.lastUpdatedAt ?? new Date().toISOString()),
+    normalizeArtifacts(
+      patch.artifacts,
+      patch.lastUpdatedAt ?? new Date().toISOString(),
+    ),
     artifactKey,
   );
   const uploadedAssets = dedupeByKey(
@@ -316,7 +327,10 @@ function normalizedSummary(
 }
 
 export function summarizeBrowserTaskLifecycle(
-  session: Pick<LifeOpsBrowserSession, "actions" | "status" | "metadata" | "result">,
+  session: Pick<
+    LifeOpsBrowserSession,
+    "actions" | "status" | "metadata" | "result"
+  >,
 ): BrowserTaskSummary {
   return normalizedSummary(session);
 }
@@ -328,7 +342,10 @@ function mergePatch(
 ): BrowserTaskSummary {
   const incomingArtifacts = normalizeArtifacts(patch.artifacts, now);
   const incomingUploadedAssets = normalizeArtifacts(patch.uploadedAssets, now);
-  const incomingInterventions = normalizeInterventions(patch.interventions, now);
+  const incomingInterventions = normalizeInterventions(
+    patch.interventions,
+    now,
+  );
   const incomingProvenance = normalizeProvenanceList(patch.provenance, now);
   const artifacts = dedupeByKey(
     [...current.artifacts, ...incomingArtifacts, ...incomingUploadedAssets],
@@ -386,7 +403,10 @@ function mergePatch(
 }
 
 export function mergeBrowserTaskLifecycle(args: {
-  session: Pick<LifeOpsBrowserSession, "actions" | "status" | "metadata" | "result">;
+  session: Pick<
+    LifeOpsBrowserSession,
+    "actions" | "status" | "metadata" | "result"
+  >;
   resultPatch?: Record<string, unknown>;
   metadataPatch?: Record<string, unknown>;
   now: string;

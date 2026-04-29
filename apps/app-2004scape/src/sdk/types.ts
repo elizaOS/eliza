@@ -177,7 +177,12 @@ export interface BotState {
 }
 
 export interface BotAlert {
-  type: "inventory_full" | "low_hp" | "no_food" | "in_combat" | "inventory_nearly_full";
+  type:
+    | "inventory_full"
+    | "low_hp"
+    | "no_food"
+    | "in_combat"
+    | "inventory_nearly_full";
   message: string;
 }
 

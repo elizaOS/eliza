@@ -11,12 +11,12 @@ import {
   parseKeyValueXml,
 } from "@elizaos/core";
 import {
-  getAppBlockerAccess,
   APP_BLOCKER_ACCESS_ERROR,
+  getAppBlockerAccess,
 } from "../app-blocker/access.ts";
 import {
-  getInstalledApps,
   getAppBlockerStatus,
+  getInstalledApps,
   startAppBlock,
   stopAppBlock,
 } from "../app-blocker/engine.ts";
@@ -224,7 +224,8 @@ export const blockAppsAction: Action & {
     "On iPhone, uses Family Controls to shield apps. On Android, uses Usage Access to detect and overlay blocked apps. " +
     "Use this for requests like 'block all games on my phone until 6pm' or 'block the Slack app while I focus on deep work'. " +
     "Pass app package names (Android) or previously selected app tokens (iPhone) to block.",
-  descriptionCompressed: "Admin: block phone apps via native OS controls (Family Controls/Usage Access).",
+  descriptionCompressed:
+    "Admin: block phone apps via native OS controls (Family Controls/Usage Access).",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     const access = await getAppBlockerAccess(runtime, message);
@@ -243,9 +244,7 @@ export const blockAppsAction: Action & {
     if (!status.available) {
       return {
         success: false,
-        text:
-          status.reason ??
-          "App blocking is not available on this device.",
+        text: status.reason ?? "App blocking is not available on this device.",
       };
     }
 
@@ -263,7 +262,8 @@ export const blockAppsAction: Action & {
     const appTokens =
       Array.isArray(params?.appTokens) && params.appTokens.length > 0
         ? params.appTokens.filter(
-            (token): token is string => typeof token === "string" && token.length > 0,
+            (token): token is string =>
+              typeof token === "string" && token.length > 0,
           )
         : undefined;
     const explicitDurationMinutes = normalizeDurationMinutes(
@@ -320,7 +320,7 @@ export const blockAppsAction: Action & {
     const packageNames =
       explicitPackageNames.length > 0
         ? explicitPackageNames
-        : llmPlan?.packageNames ?? [];
+        : (llmPlan?.packageNames ?? []);
     const durationMinutes =
       explicitDurationMinutes !== undefined
         ? explicitDurationMinutes
@@ -516,9 +516,7 @@ export const getAppBlockStatusAction: Action = {
     if (!status.available) {
       return {
         success: false,
-        text:
-          status.reason ??
-          "App blocking is not available on this device.",
+        text: status.reason ?? "App blocking is not available on this device.",
       };
     }
 

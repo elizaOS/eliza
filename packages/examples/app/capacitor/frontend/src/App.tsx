@@ -1,16 +1,20 @@
-import React, { useEffect, useMemo, useState } from "react";
+import type React from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchGreeting, fetchHistory, resetChat, sendChat } from "./api";
 import { loadConfig, saveConfig } from "./storage";
 import {
-  DEFAULT_CONFIG,
-  getModeLabel,
   type AppConfig,
   type ChatMessage,
+  DEFAULT_CONFIG,
+  getModeLabel,
   type ProviderMode,
 } from "./types";
 
 function newId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -32,7 +36,8 @@ export function App(): React.JSX.Element {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState<string>("");
   const [busy, setBusy] = useState<boolean>(false);
-  const [effectiveMode, setEffectiveMode] = useState<ProviderMode>("elizaClassic");
+  const [effectiveMode, setEffectiveMode] =
+    useState<ProviderMode>("elizaClassic");
 
   const backendUrl = useMemo(() => {
     const env = import.meta.env.VITE_CHAT_BACKEND_URL as string | undefined;
@@ -109,7 +114,12 @@ export function App(): React.JSX.Element {
       const msg = e instanceof Error ? e.message : String(e);
       setMessages((m) => [
         ...m,
-        { id: newId(), role: "system", text: `Error: ${msg}`, timestamp: now() },
+        {
+          id: newId(),
+          role: "system",
+          text: `Error: ${msg}`,
+          timestamp: now(),
+        },
       ]);
     } finally {
       setBusy(false);
@@ -122,7 +132,9 @@ export function App(): React.JSX.Element {
     try {
       await resetChat(config);
       const greeting = await fetchGreeting(config);
-      setMessages([{ id: newId(), role: "system", text: greeting, timestamp: now() }]);
+      setMessages([
+        { id: newId(), role: "system", text: greeting, timestamp: now() },
+      ]);
     } finally {
       setBusy(false);
     }
@@ -137,7 +149,7 @@ export function App(): React.JSX.Element {
             Backend: <code>{backendUrl}</code>
           </div>
         </div>
-        <button className="btn" onClick={onReset} disabled={busy}>
+        <button className="btn" onClick={onReset} disabled={busy} type="button">
           Reset
         </button>
       </header>
@@ -188,7 +200,9 @@ export function App(): React.JSX.Element {
                 value={config.provider.openaiApiKey}
                 placeholder="sk-..."
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { openaiApiKey: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { openaiApiKey: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -198,7 +212,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.openaiBaseUrl}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { openaiBaseUrl: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { openaiBaseUrl: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -208,7 +224,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.openaiSmallModel}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { openaiSmallModel: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { openaiSmallModel: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -218,7 +236,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.openaiLargeModel}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { openaiLargeModel: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { openaiLargeModel: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -316,7 +336,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.groqApiKey}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { groqApiKey: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { groqApiKey: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -326,7 +348,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.groqBaseUrl}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { groqBaseUrl: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { groqBaseUrl: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -336,7 +360,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.groqSmallModel}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { groqSmallModel: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { groqSmallModel: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -346,7 +372,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.groqLargeModel}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { groqLargeModel: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { groqLargeModel: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -455,7 +483,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.xaiApiKey}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { xaiApiKey: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { xaiApiKey: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -465,7 +495,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.xaiBaseUrl}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { xaiBaseUrl: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { xaiBaseUrl: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -475,7 +507,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.xaiSmallModel}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { xaiSmallModel: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { xaiSmallModel: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -485,7 +519,9 @@ export function App(): React.JSX.Element {
                 className="input"
                 value={config.provider.xaiLargeModel}
                 onChange={(e) =>
-                  setConfig((c) => updateProvider(c, { xaiLargeModel: e.target.value }))
+                  setConfig((c) =>
+                    updateProvider(c, { xaiLargeModel: e.target.value }),
+                  )
                 }
               />
             </label>
@@ -518,11 +554,15 @@ export function App(): React.JSX.Element {
           }}
           disabled={busy}
         />
-        <button className="btn btn--primary" onClick={onSend} disabled={busy}>
+        <button
+          className="btn btn--primary"
+          onClick={onSend}
+          disabled={busy}
+          type="button"
+        >
           Send
         </button>
       </footer>
     </div>
   );
 }
-

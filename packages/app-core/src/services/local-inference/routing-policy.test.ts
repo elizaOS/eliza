@@ -71,6 +71,21 @@ describe("policyEngine.pickProvider", () => {
     expect(pick?.provider).toBe("milady-local-inference");
   });
 
+  it("cheapest prefers subscription access over API keys and Eliza Cloud", () => {
+    const pick = policyEngine.pickProvider({
+      modelType: "TEXT_LARGE",
+      policy: "cheapest",
+      preferredProvider: null,
+      candidates: [
+        reg("elizacloud", 100),
+        reg("anthropic", 90),
+        reg("openai-codex", 20),
+      ],
+      selfProvider: "milady-router",
+    });
+    expect(pick?.provider).toBe("openai-codex");
+  });
+
   it("prefer-local → picks local when present", () => {
     const pick = policyEngine.pickProvider({
       modelType: "TEXT_LARGE",

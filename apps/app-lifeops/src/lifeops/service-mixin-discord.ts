@@ -4,7 +4,7 @@ import { logger } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeTabSummary,
-} from "../../../../plugins/plugin-browser-bridge/src/index.js";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsBrowserSession,
   LifeOpsConnectorGrant,
@@ -339,10 +339,7 @@ function browserAuthStateFromProbe(
   if (probe?.loggedIn === true) {
     return "logged_in";
   }
-  if (
-    probe?.loggedIn === false &&
-    Boolean(probe.url && isDiscordHost(probe.url))
-  ) {
+  if (probe?.loggedIn === false && probe.url && isDiscordHost(probe.url)) {
     return "logged_out";
   }
   return "unknown";
@@ -1385,10 +1382,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       if (status.grant?.executionTarget === "local") {
         const result = await sendDiscordViaDesktopCdp({ channelId, text });
         if (!result.ok) {
-          fail(
-            502,
-            result.error ?? "Discord Desktop send failed.",
-          );
+          fail(502, result.error ?? "Discord Desktop send failed.");
         }
       } else {
         if (typeof this.runtime.sendMessageToTarget !== "function") {

@@ -60,7 +60,7 @@ export type {
   BrowserBridgeTabSummary,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
-} from "../../../../plugins/plugin-browser-bridge/src/contracts";
+} from "@elizaos/plugin-browser-bridge/contracts";
 
 export interface SecretInfo {
   key: string;
@@ -556,7 +556,12 @@ export interface AutomationNodeDescriptor {
   label: string;
   description: string;
   class: AutomationNodeClass;
-  source: "runtime_action" | "runtime_provider" | "lifeops" | "lifeops_event";
+  source:
+    | "runtime_action"
+    | "runtime_provider"
+    | "lifeops"
+    | "lifeops_event"
+    | "static_catalog";
   backingCapability: string;
   ownerScoped: boolean;
   requiresSetup: boolean;

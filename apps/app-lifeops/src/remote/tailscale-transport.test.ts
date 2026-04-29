@@ -3,11 +3,11 @@ import {
   __resetProcessRunnerForTests,
   __setProcessRunnerForTests,
   getTailscaleStatus,
+  type ProcessResult,
+  type ProcessRunner,
   releasePort,
   reserveServerPort,
   selectRemoteTransport,
-  type ProcessResult,
-  type ProcessRunner,
 } from "./tailscale-transport";
 
 interface RecordedCall {
@@ -18,10 +18,14 @@ interface RecordedCall {
 
 class FakeRunner implements ProcessRunner {
   public readonly calls: RecordedCall[] = [];
-  private script: Array<(call: RecordedCall) => Promise<ProcessResult> | ProcessResult>;
+  private script: Array<
+    (call: RecordedCall) => Promise<ProcessResult> | ProcessResult
+  >;
 
   constructor(
-    script: Array<(call: RecordedCall) => Promise<ProcessResult> | ProcessResult>,
+    script: Array<
+      (call: RecordedCall) => Promise<ProcessResult> | ProcessResult
+    >,
   ) {
     this.script = script;
   }
@@ -39,7 +43,9 @@ class FakeRunner implements ProcessRunner {
     this.calls.push(call);
     const next = this.script.shift();
     if (!next) {
-      throw new Error(`Unexpected extra CLI call: ${command} ${args.join(" ")}`);
+      throw new Error(
+        `Unexpected extra CLI call: ${command} ${args.join(" ")}`,
+      );
     }
     return await next(call);
   }

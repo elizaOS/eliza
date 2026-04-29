@@ -12,8 +12,7 @@ describe("googleApiFetch Gmail write guard", () => {
     vi.restoreAllMocks();
   });
 
-  it("blocks real Gmail writes when the guard is enabled", async () => {
-    process.env.MILADY_BLOCK_REAL_GMAIL_WRITES = "1";
+  it("blocks real Gmail writes by default", async () => {
     globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
     await expect(
@@ -25,11 +24,26 @@ describe("googleApiFetch Gmail write guard", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
+  it("allows real Gmail writes only when explicitly confirmed", async () => {
+    process.env.MILADY_ALLOW_REAL_GMAIL_WRITES = "1";
+    globalThis.fetch = vi.fn(
+      async () => new Response("{}", { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      googleApiFetch(
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/batchModify",
+        { method: "POST" },
+      ),
+    ).resolves.toBeInstanceOf(Response);
+    expect(globalThis.fetch).toHaveBeenCalledOnce();
+  });
+
   it("allows guarded writes when Google traffic is routed to loopback mock", async () => {
-    process.env.MILADY_BLOCK_REAL_GMAIL_WRITES = "1";
     process.env.MILADY_MOCK_GOOGLE_BASE = "http://127.0.0.1:4321";
-    globalThis.fetch = vi.fn(async () => new Response("{}", { status: 200 })) as
-      unknown as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () => new Response("{}", { status: 200 }),
+    ) as unknown as typeof fetch;
 
     await expect(
       googleApiFetch(

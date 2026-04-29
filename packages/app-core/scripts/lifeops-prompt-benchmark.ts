@@ -1,7 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
-import type { LiveProviderName } from "../test/helpers/live-provider.ts";
 import {
   buildExecutiveAssistantPromptBenchmarkCases,
   buildLifeOpsPromptBenchmarkCases,
@@ -14,6 +13,7 @@ import {
   runLifeOpsPromptBenchmark,
   serializeAxOptimizationRows,
 } from "../../../apps/app-lifeops/test/helpers/lifeops-prompt-benchmark-runner.ts";
+import type { LiveProviderName } from "../test/helpers/live-provider.ts";
 
 type CliOptions = {
   axPath?: string;
@@ -80,7 +80,9 @@ function parseArgs(argv: string[]): CliOptions {
       continue;
     }
     if (arg === "--provider") {
-      options.preferredProvider = argv[index + 1] as LiveProviderName | undefined;
+      options.preferredProvider = argv[index + 1] as
+        | LiveProviderName
+        | undefined;
       index += 1;
       continue;
     }

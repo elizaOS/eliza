@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { redactWindowTitle, resolveRedactorConfigFromEnv } from "../redactor.js";
+import {
+  redactWindowTitle,
+  resolveRedactorConfigFromEnv,
+} from "../redactor.js";
 
 const ON = { enabled: true };
 const OFF = { enabled: false };

@@ -5,9 +5,7 @@
   "source": "https://superuser.com/questions/984668/change-interface-language-of-chrome-to-english",
   "config": [],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "chrome"
-  ],
+  "related_apps": ["chrome"],
   "evaluator": {
     "func": "infeasible"
   },

@@ -9,7 +9,7 @@ function installMatchMediaMock(): void {
     configurable: true,
     writable: true,
     value: (query: string) => ({
-      matches: query === "(min-width: 768px)",
+      matches: query === "(min-width: 820px)",
       media: query,
       onchange: null,
       addEventListener: () => {},

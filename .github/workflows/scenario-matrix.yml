@@ -70,28 +70,28 @@ jobs:
         shard:
           - name: messaging
             runs-on: ubuntu-24.04
-            globs: "test/scenarios/messaging.*/**/*.scenario.ts"
+            globs: "eliza/test/scenarios/messaging.*/**/*.scenario.ts"
           - name: messaging-apple
             runs-on: [self-hosted, eliza-e2e-macos]
-            globs: "test/scenarios/messaging.imessage/**/*.scenario.ts test/scenarios/messaging.signal/**/*.scenario.ts"
+            globs: "eliza/test/scenarios/messaging.imessage/**/*.scenario.ts eliza/test/scenarios/messaging.signal/**/*.scenario.ts"
           - name: todos-reminders
             runs-on: ubuntu-24.04
-            globs: "test/scenarios/todos/**/*.scenario.ts test/scenarios/reminders/**/*.scenario.ts"
+            globs: "eliza/test/scenarios/todos/**/*.scenario.ts eliza/test/scenarios/reminders/**/*.scenario.ts"
           - name: calendar
             runs-on: ubuntu-24.04
-            globs: "test/scenarios/calendar/**/*.scenario.ts"
+            globs: "eliza/test/scenarios/calendar/**/*.scenario.ts"
           - name: relationships
             runs-on: ubuntu-24.04
-            globs: "test/scenarios/relationships/**/*.scenario.ts"
+            globs: "eliza/test/scenarios/relationships/**/*.scenario.ts"
           - name: selfcontrol-activity
             runs-on: [self-hosted, eliza-e2e-macos]
-            globs: "test/scenarios/selfcontrol/**/*.scenario.ts test/scenarios/activity/**/*.scenario.ts"
+            globs: "eliza/test/scenarios/selfcontrol/**/*.scenario.ts eliza/test/scenarios/activity/**/*.scenario.ts"
           - name: browser-social
             runs-on: ubuntu-24.04
-            globs: "test/scenarios/browser.*/**/*.scenario.ts test/scenarios/social.*/**/*.scenario.ts"
+            globs: "eliza/test/scenarios/browser.*/**/*.scenario.ts eliza/test/scenarios/social.*/**/*.scenario.ts"
           - name: cross-cutting-gateway
             runs-on: ubuntu-24.04
-            globs: "test/scenarios/cross-cutting/**/*.scenario.ts test/scenarios/gateway/**/*.scenario.ts test/scenarios/remote/**/*.scenario.ts test/scenarios/lifeops.*/**/*.scenario.ts test/scenarios/goals/**/*.scenario.ts test/scenarios/convo/**/*.scenario.ts"
+            globs: "eliza/test/scenarios/cross-cutting/**/*.scenario.ts eliza/test/scenarios/gateway/**/*.scenario.ts eliza/test/scenarios/remote/**/*.scenario.ts eliza/test/scenarios/lifeops.*/**/*.scenario.ts eliza/test/scenarios/goals/**/*.scenario.ts eliza/test/scenarios/convo/**/*.scenario.ts"
           - name: lifeops-app
             runs-on: ubuntu-24.04
             root: apps/app-lifeops/test/scenarios
@@ -196,7 +196,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: false
           fetch-depth: 0
@@ -221,7 +221,7 @@ jobs:
         run: |
           set -f
           bun run milady-scenarios run \
-            ${{ matrix.shard.root || 'test/scenarios' }} \
+            ${{ matrix.shard.root || 'eliza/test/scenarios' }} \
             --report-dir reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }} \
             --runId "${{ github.run_id }}-${{ matrix.shard.name }}" \
             ${{ matrix.shard.globs }}
@@ -242,7 +242,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: false
 

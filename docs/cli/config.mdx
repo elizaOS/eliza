@@ -1,0 +1,57 @@
+---
+title: "milady config"
+description: "Read, display, and locate the active configuration from the shell."
+---
+
+# `milady config`
+
+Read-only helpers for inspecting the active configuration.
+
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `milady config get <key>` | Read a specific config value |
+| `milady config path` | Print the resolved config file path |
+| `milady config show` | Display all config values grouped by section |
+
+## Subcommands
+
+### `milady config get <key>`
+
+Read a single config value using dot-notation. Nested keys are supported (e.g. `agents.defaults.model.primary`). Prints `(not set)` when the key does not exist, or the JSON-formatted value otherwise.
+
+```bash
+milady config path                  # show which file the runtime loads
+milady config get connectors.discord.token   # read a specific key
+milady config show                  # dump all config values
+milady config --help                # show available subcommands
+```
+
+### `milady config path`
+
+Print the resolved config file path (e.g. `~/.eliza/eliza.json`).
+
+```bash
+milady config path
+```
+
+### `milady config show`
+
+Display all configuration values grouped by section. Sensitive values (API keys, tokens) are masked. Hidden fields are excluded unless `--all` is passed.
+
+| Flag | Description |
+|------|-------------|
+| `-a, --all` | Include advanced and hidden fields |
+| `--json` | Output as raw JSON |
+
+```bash
+milady config show
+milady config show --all
+milady config show --json
+```
+
+## Related
+
+- [Configuration](/configuration)
+- [`milady configure`](/cli/configure)

@@ -88,8 +88,7 @@ type RuntimeWithPluginLifecycle = {
 
 const NATIVE_IMESSAGE_SERVICE_LOAD_TIMEOUT_MS = 8_000;
 const NATIVE_IMESSAGE_SEND_TIMEOUT_MS = 20_000;
-const NATIVE_IMESSAGE_SEND_TIMEOUT_MESSAGE =
-  "native iMessage send timed out";
+const NATIVE_IMESSAGE_SEND_TIMEOUT_MESSAGE = "native iMessage send timed out";
 const IMESSAGE_URL_HANDOFF_TIMEOUT_MS = 12_000;
 const IMESSAGE_URL_HANDOFF_SETTLE_MS = 700;
 const IMESSAGE_URL_HANDOFF_CONFIRM_TIMEOUT_MS = 12_000;
@@ -175,7 +174,9 @@ async function waitForNativeIMessageService(
   return Boolean(runtime.getService("imessage"));
 }
 
-async function withNativeIMessageSendTimeout<T>(promise: Promise<T>): Promise<T> {
+async function withNativeIMessageSendTimeout<T>(
+  promise: Promise<T>,
+): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(
@@ -518,11 +519,13 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
       }
 
       try {
-        await execFileAsync("/usr/bin/open", [
-          messagesUrlFor(req.to, req.text),
-        ], {
-          timeout: IMESSAGE_URL_HANDOFF_TIMEOUT_MS,
-        });
+        await execFileAsync(
+          "/usr/bin/open",
+          [messagesUrlFor(req.to, req.text)],
+          {
+            timeout: IMESSAGE_URL_HANDOFF_TIMEOUT_MS,
+          },
+        );
         await sleep(IMESSAGE_URL_HANDOFF_SETTLE_MS);
         await pressMessagesReturn();
 
@@ -538,10 +541,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
           await sleep(500);
         }
 
-        fail(
-          504,
-          "iMessage URL handoff sent no confirmable chat.db message.",
-        );
+        fail(504, "iMessage URL handoff sent no confirmable chat.db message.");
       } catch (error) {
         const causeMessage =
           cause instanceof Error ? cause.message : String(cause);

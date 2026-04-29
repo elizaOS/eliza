@@ -1,7 +1,7 @@
 import { Badge, Button, useApp } from "@elizaos/app-core";
-import type { WebsiteBlockerSettingsCardProps } from "../types";
-import { ShieldBan } from "lucide-react";
 import type { PermissionStatus } from "@elizaos/shared";
+import { ShieldBan } from "lucide-react";
+import type { WebsiteBlockerSettingsCardProps } from "../types";
 
 function translate(
   t: (key: string) => string,
@@ -26,11 +26,7 @@ function statusBadge(
   if (status === "denied") {
     return {
       variant: "outline",
-      label: translate(
-        t,
-        "permissionssection.badge.needsAdmin",
-        "Needs Admin",
-      ),
+      label: translate(t, "permissionssection.badge.needsAdmin", "Needs Admin"),
     };
   }
   if (status === "not-determined") {

@@ -216,7 +216,10 @@ export const scratchpadAddAction: Action = {
 export const scratchpadReadAction: Action = {
   name: "SCRATCHPAD_READ",
   similes: ["READ_SCRATCHPAD", "GET_SCRATCHPAD_TOPIC"],
-  description: "Read a scratchpad topic by id.",
+  description:
+    "Fetch one scratchpad topic by id from GET /api/knowledge/scratchpad/topics/:id and return full title, summary, token counts, and body text. Owner-only.",
+  descriptionCompressed:
+    "GET scratchpad topic by topicId return full text owner-only",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -255,7 +258,21 @@ export const scratchpadReadAction: Action = {
       schema: { type: "string" as const },
     },
   ],
-  examples: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Show me scratchpad topic abc-123-def." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Scratchpad topic body...",
+          action: "SCRATCHPAD_READ",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };
 
 export const scratchpadSearchAction: Action = {

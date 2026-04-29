@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.12/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.4.13/schema.json",
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "vcs": {
     "enabled": true,
@@ -11,7 +11,14 @@
     "maxSize": 1048576,
     "includes": [
       "**",
-      "!packages/app-core/src/styles/**"
+      "!**/public",
+			"!packages/app-core/test/contracts/lib/openzeppelin-contracts",
+			"!packages/benchmarks/evm/metrics",
+			"!packages/benchmarks/openclaw-benchmark/.archived",
+			"!packages/benchmarks/solana/solana-gym-env/metrics",
+			"!packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts",
+			"!packages/examples/app/electron/backend/renderer/assets",
+      "!packages/app-core/src/styles"
     ]
   },
   "linter": {
@@ -37,6 +44,16 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["**/*.ts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useHookAtTopLevel": "off"
+          }
+        }
+      }
+    },
     {
       "includes": [
         "packages/training/src/benchmark/BenchmarkRunner.ts",

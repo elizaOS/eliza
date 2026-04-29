@@ -19,6 +19,22 @@ export function formatExperienceSummary(experience: Experience): string {
 	return `${typeEmoji} ${experience.learning} (${Math.round(experience.confidence * 100)}% confidence)`;
 }
 
+export function formatExperienceForPrompt(
+	experience: Experience,
+	index?: number,
+): string {
+	const prefix = typeof index === "number" ? `${index + 1}. ` : "";
+	const tags = experience.tags.length > 0 ? experience.tags.join(", ") : "none";
+	const keywords =
+		experience.keywords.length > 0 ? experience.keywords.join(", ") : tags;
+	return `${prefix}DO: ${experience.learning}
+WHEN: ${experience.context || experience.action || "similar situation"}
+WHY: ${experience.result || experience.extractionReason || "past experience"}
+META: id=${experience.id}; domain=${experience.domain}; confidence=${Math.round(
+		experience.confidence * 100,
+	)}%; importance=${Math.round(experience.importance * 100)}%; keywords=${keywords}`;
+}
+
 export function formatExperienceList(experiences: Experience[]): string {
 	if (experiences.length === 0) {
 		return "No experiences found.";
@@ -163,6 +179,10 @@ export function formatExperienceForRAG(experience: Experience): string {
 }
 
 export function extractKeywords(experience: Experience): string[] {
+	if (experience.keywords.length > 0) {
+		return [...experience.keywords];
+	}
+
 	const keywords = new Set<string>();
 
 	// Add tags

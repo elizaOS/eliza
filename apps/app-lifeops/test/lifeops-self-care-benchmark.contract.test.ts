@@ -37,9 +37,9 @@ describe("LifeOps self-care prompt benchmark contracts", () => {
     for (const scenarioId of expectedScenarioIds) {
       const scenarioCases = grouped.get(scenarioId) ?? [];
       expect(scenarioCases).toHaveLength(PROMPT_BENCHMARK_VARIANT_IDS.length);
-      expect(scenarioCases.map((testCase) => testCase.variantId).sort()).toEqual(
-        [...PROMPT_BENCHMARK_VARIANT_IDS].sort(),
-      );
+      expect(
+        scenarioCases.map((testCase) => testCase.variantId).sort(),
+      ).toEqual([...PROMPT_BENCHMARK_VARIANT_IDS].sort());
     }
   });
 
@@ -87,12 +87,16 @@ describe("LifeOps self-care prompt benchmark contracts", () => {
       forbiddenActions: ["LIFE"],
       riskClass: "null",
     });
-    expect(brushTeethSmalltalkDirect?.notes ?? "").toContain("subtle non-request");
+    expect(brushTeethSmalltalkDirect?.notes ?? "").toContain(
+      "subtle non-request",
+    );
   });
 
   it("keeps the subtle null slice non-executing and prompt-distinct", async () => {
     const cases = await buildSelfCarePromptBenchmarkCases();
-    const nullCases = cases.filter((testCase) => testCase.variantId === "subtle-null");
+    const nullCases = cases.filter(
+      (testCase) => testCase.variantId === "subtle-null",
+    );
 
     expect(nullCases).toHaveLength(
       SELF_CARE_PRD_SCENARIO_IDS.length + SELF_CARE_HABIT_SCENARIO_IDS.length,

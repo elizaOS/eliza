@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
 import type { IAgentRuntime, Service } from "@elizaos/core";
+import { afterEach, describe, expect, it } from "vitest";
 import { createFeatureFlagService } from "../src/lifeops/feature-flags.ts";
 import {
   ALL_FEATURE_KEYS,
@@ -7,8 +7,8 @@ import {
   CLOUD_LINKED_DEFAULT_ON,
   resolveFeatureDefaults,
 } from "../src/lifeops/feature-flags.types.ts";
-import { parseX402Response } from "../src/lifeops/x402-payment-handler.ts";
 import { executeRawSql } from "../src/lifeops/sql.ts";
+import { parseX402Response } from "../src/lifeops/x402-payment-handler.ts";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
 interface MockCloudAuth {

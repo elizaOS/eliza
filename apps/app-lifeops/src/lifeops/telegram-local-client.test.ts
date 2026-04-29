@@ -5,9 +5,9 @@ import {
   listRecentTelegramDialogs,
   searchTelegramMessages,
   sendTelegramAccountMessage,
+  type TelegramLocalClientLike,
   telegramLocalSessionAvailable,
   verifyTelegramLocalConnector,
-  type TelegramLocalClientLike,
 } from "./telegram-local-client.js";
 
 function buildStoredToken(): StoredTelegramConnectorToken {
@@ -37,7 +37,9 @@ function buildStoredToken(): StoredTelegramConnectorToken {
   };
 }
 
-function buildClient(overrides: Partial<TelegramLocalClientLike> = {}): TelegramLocalClientLike {
+function buildClient(
+  overrides: Partial<TelegramLocalClientLike> = {},
+): TelegramLocalClientLike {
   return {
     connect: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),

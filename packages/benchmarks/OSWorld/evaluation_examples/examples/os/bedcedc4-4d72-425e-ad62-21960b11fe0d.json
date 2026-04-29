@@ -28,14 +28,9 @@
       }
     }
   ],
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
-    "func": [
-      "exact_match",
-      "exact_match"
-    ],
+    "func": ["exact_match", "exact_match"],
     "conj": "or",
     "result": [
       {
@@ -56,7 +51,7 @@
           "idle-dim"
         ]
       }
-  ],
+    ],
     "expected": [
       {
         "type": "rule",

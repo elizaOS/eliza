@@ -1,10 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import {
-  extractPlugin,
-  type PluginModuleShape,
-} from "@elizaos/agent";
+import { extractPlugin, type PluginModuleShape } from "@elizaos/agent";
 
 type PluginCategory =
   | "ai-provider"
@@ -59,14 +56,7 @@ function findWorkspaceRoot(startDir: string): string {
     }
     const parent = path.dirname(current);
     if (parent === current) {
-      return path.resolve(
-        startDir,
-        "..",
-        "..",
-        "..",
-        "..",
-        "..",
-      );
+      return path.resolve(startDir, "..", "..", "..", "..", "..");
     }
     current = parent;
   }

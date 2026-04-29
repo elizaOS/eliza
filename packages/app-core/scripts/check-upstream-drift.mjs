@@ -10,12 +10,12 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import {
   getElizaPackageLinks,
   getPluginPackageLinks,
   getPublishedElizaPackageSpecs,
 } from "./setup-upstreams.mjs";
-import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
 const ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 

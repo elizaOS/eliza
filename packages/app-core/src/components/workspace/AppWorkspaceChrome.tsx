@@ -37,7 +37,7 @@ export const APP_WORKSPACE_CHROME_CHAT_WIDTH_STORAGE_KEY =
 const CHAT_DEFAULT_WIDTH = 384;
 const CHAT_MIN_WIDTH = 240;
 const CHAT_MAX_WIDTH = 640;
-const WORKSPACE_MOBILE_MEDIA_QUERY = "(max-width: 639px)";
+const WORKSPACE_MOBILE_MEDIA_QUERY = "(max-width: 819px)";
 
 interface AppWorkspaceChatChromeContextValue {
   collapseChat: () => void;
@@ -474,7 +474,7 @@ export function AppWorkspaceChrome({
     >
       <AppWorkspaceChatChromeContext.Provider value={chatChromeContextValue}>
         <div
-          className={`flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[var(--eliza-mobile-nav-offset,0px)] ${
+          className={`flex min-h-0 min-w-0 w-full flex-1 bg-bg pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))] ${
             isMobileViewport ? "flex-col" : ""
           }`}
           data-testid={testId}

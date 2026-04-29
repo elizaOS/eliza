@@ -16,14 +16,9 @@
       }
     }
   ],
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
-    "func": [
-      "check_include_exclude",
-      "check_include_exclude"
-    ],
+    "func": ["check_include_exclude", "check_include_exclude"],
     "conj": "or",
     "result": [
       {
@@ -41,25 +36,15 @@
       {
         "type": "rule",
         "rules": {
-          "include": [
-            "Large text enabled"
-          ],
-          "exclude": [
-            "No text scaling enabled",
-            "error"
-          ]
+          "include": ["Large text enabled"],
+          "exclude": ["No text scaling enabled", "error"]
         }
       },
       {
         "type": "rule",
         "rules": {
-          "include": [
-            "Zoom enabled with magnification"
-          ],
-          "exclude": [
-            "No zoom magnification enabled",
-            "error"
-          ]
+          "include": ["Zoom enabled with magnification"],
+          "exclude": ["No zoom magnification enabled", "error"]
         }
       }
     ]

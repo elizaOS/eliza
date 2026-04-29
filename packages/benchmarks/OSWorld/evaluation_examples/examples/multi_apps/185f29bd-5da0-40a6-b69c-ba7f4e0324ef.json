@@ -39,11 +39,7 @@
     }
   ],
   "trajectory": "trajectories/185f29bd-5da0-40a6-b69c-ba7f4e0324ef",
-  "related_apps": [
-    "libreoffice_calc",
-    "os",
-    "pdf"
-  ],
+  "related_apps": ["libreoffice_calc", "os", "pdf"],
   "evaluator": {
     "func": "compare_pdfs",
     "result": {
@@ -67,15 +63,7 @@
         "Sophia Carter_Gold.pdf"
       ],
       "multi": true,
-      "gives": [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6
-      ]
+      "gives": [0, 1, 2, 3, 4, 5, 6]
     },
     "expected": {
       "type": "vm_file",
@@ -98,15 +86,7 @@
         "Sophia Carter.pdf"
       ],
       "multi": true,
-      "gives": [
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6
-      ]
+      "gives": [0, 1, 2, 3, 4, 5, 6]
     }
   },
   "proxy": false,

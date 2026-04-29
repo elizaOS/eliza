@@ -1,6 +1,6 @@
 //! Personality capability — character evolution and per-user preferences.
 //!
-//! Ports the TypeScript `plugin-personality` module, providing:
+//! Ports the TypeScript `advanced-capabilities/personality` module, providing:
 //! - Character traits, modifications, and snapshots
 //! - CharacterFileManager service
 //! - MODIFY_CHARACTER action

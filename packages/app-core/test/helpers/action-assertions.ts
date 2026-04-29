@@ -66,7 +66,9 @@ function formatCalls(calls: ActionSpyCall[]): string {
 
 function formatInvocations(invocations: ActionInvocation[]): string {
   if (invocations.length === 0) return "(none)";
-  return invocations.map((i) => `${i.actionName} (${i.actionStatus})`).join(", ");
+  return invocations
+    .map((i) => `${i.actionName} (${i.actionStatus})`)
+    .join(", ");
 }
 
 // ---------------------------------------------------------------------------

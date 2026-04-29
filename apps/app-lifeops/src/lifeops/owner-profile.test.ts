@@ -61,7 +61,10 @@ describe("owner profile scheduler metadata reads", () => {
       tags: [...LIFEOPS_TASK_TAGS],
       metadata: {
         lifeopsScheduler: { kind: "runtime_runner", version: 1 },
-        ownerProfile: { name: "Stored Owner", updatedAt: "2026-04-21T00:00:00.000Z" },
+        ownerProfile: {
+          name: "Stored Owner",
+          updatedAt: "2026-04-21T00:00:00.000Z",
+        },
       },
     } as Task;
     let getTasksCall = 0;

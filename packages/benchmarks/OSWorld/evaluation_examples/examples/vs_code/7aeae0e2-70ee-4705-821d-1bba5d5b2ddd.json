@@ -18,10 +18,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code",
-          "/home/user/main.py"
-        ]
+        "command": ["code", "/home/user/main.py"]
       }
     },
     {
@@ -32,9 +29,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vscode"
-  ],
+  "related_apps": ["vscode"],
   "evaluator": {
     "func": "infeasible"
   },

@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import type React from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Link, Route, BrowserRouter as Router, Routes } from "react-router-dom";
 import LandingPage from "./components/LandingPage";
-import TrajectoryList from "./components/TrajectoryList";
 import TrajectoryDetail from "./components/TrajectoryDetail";
+import TrajectoryList from "./components/TrajectoryList";
 import "./App.css";
 
 // Type definitions
@@ -36,12 +37,7 @@ const App: React.FC = () => {
   const [currentBenchmark, setCurrentBenchmark] = useState<string>("all");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Load runs from both benchmarks
-    loadAllBenchmarks();
-  }, []);
-
-  const loadAllBenchmarks = async () => {
+  const loadAllBenchmarks = useCallback(async () => {
     try {
       const benchmarks = ["basic", "swap"];
       const allRunsData: RunMetrics[] = [];
@@ -49,7 +45,7 @@ const App: React.FC = () => {
       for (const benchmark of benchmarks) {
         try {
           const response = await fetch(
-            `/solana-gym-env/data/${benchmark}/manifest.json`
+            `/solana-gym-env/data/${benchmark}/manifest.json`,
           );
           const manifest = await response.json();
           // Add benchmark field to each run
@@ -70,7 +66,11 @@ const App: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadAllBenchmarks();
+  }, [loadAllBenchmarks]);
 
   // Filter runs based on selected benchmark
   const filteredRuns =

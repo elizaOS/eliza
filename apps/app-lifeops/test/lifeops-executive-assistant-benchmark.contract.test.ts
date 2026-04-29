@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { appLifeOpsPlugin } from "../src/plugin.ts";
 import { actionsAreScenarioEquivalent } from "../../../packages/scenario-runner/src/action-families.ts";
+import { intentSyncAction } from "../src/actions/intent-sync.ts";
+import { appLifeOpsPlugin } from "../src/plugin.ts";
 import {
   buildExecutiveAssistantPromptBenchmarkCases,
   loadExecutiveAssistantCatalog,
@@ -8,7 +9,9 @@ import {
 } from "./helpers/lifeops-prompt-benchmark-cases.ts";
 
 function groupCasesByScenario(
-  cases: Awaited<ReturnType<typeof buildExecutiveAssistantPromptBenchmarkCases>>,
+  cases: Awaited<
+    ReturnType<typeof buildExecutiveAssistantPromptBenchmarkCases>
+  >,
 ): Map<string, typeof cases> {
   const grouped = new Map<string, typeof cases>();
   for (const testCase of cases) {
@@ -36,9 +39,9 @@ describe("LifeOps executive-assistant prompt benchmark contracts", () => {
     for (const scenarioId of scenarioIds) {
       const scenarioCases = grouped.get(scenarioId) ?? [];
       expect(scenarioCases).toHaveLength(PROMPT_BENCHMARK_VARIANT_IDS.length);
-      expect(scenarioCases.map((testCase) => testCase.variantId).sort()).toEqual(
-        [...PROMPT_BENCHMARK_VARIANT_IDS].sort(),
-      );
+      expect(
+        scenarioCases.map((testCase) => testCase.variantId).sort(),
+      ).toEqual([...PROMPT_BENCHMARK_VARIANT_IDS].sort());
     }
   });
 
@@ -47,7 +50,9 @@ describe("LifeOps executive-assistant prompt benchmark contracts", () => {
     const grouped = groupCasesByScenario(cases);
 
     for (const scenarioCases of grouped.values()) {
-      const directCase = scenarioCases.find((testCase) => testCase.variantId === "direct");
+      const directCase = scenarioCases.find(
+        (testCase) => testCase.variantId === "direct",
+      );
       const nullCase = scenarioCases.find(
         (testCase) => testCase.variantId === "subtle-null",
       );
@@ -102,7 +107,11 @@ describe("LifeOps executive-assistant prompt benchmark contracts", () => {
     const actionNames = new Set(
       (appLifeOpsPlugin.actions ?? []).map((action) => action.name),
     );
-    expect(actionNames.has("PUBLISH_DEVICE_INTENT")).toBe(true);
+    // INTENT_SYNC is the canonical cross-device broadcast action. The legacy
+    // PUBLISH_DEVICE_INTENT alias was folded into it as a simile (see commit
+    // efb970f60b). Reference the imported action so this check tracks the
+    // single source of truth instead of a duplicated string.
+    expect(actionNames.has(intentSyncAction.name)).toBe(true);
     const cases = await buildExecutiveAssistantPromptBenchmarkCases();
     for (const testCase of cases) {
       const acceptedAnchors = [
@@ -110,13 +119,16 @@ describe("LifeOps executive-assistant prompt benchmark contracts", () => {
         ...testCase.acceptableActions,
       ].filter((actionName): actionName is string => Boolean(actionName));
 
-      const hasCompatibleSurfaceAction = acceptedAnchors.some((benchmarkAction) =>
-        benchmarkAction === "REPLY" ||
-        Array.from(actionNames).some(
-          (registeredActionName) =>
-            actionsAreScenarioEquivalent(benchmarkAction, registeredActionName) ||
-            benchmarkAction === registeredActionName,
-        ),
+      const hasCompatibleSurfaceAction = acceptedAnchors.some(
+        (benchmarkAction) =>
+          benchmarkAction === "REPLY" ||
+          Array.from(actionNames).some(
+            (registeredActionName) =>
+              actionsAreScenarioEquivalent(
+                benchmarkAction,
+                registeredActionName,
+              ) || benchmarkAction === registeredActionName,
+          ),
       );
       expect(hasCompatibleSurfaceAction).toBe(true);
     }

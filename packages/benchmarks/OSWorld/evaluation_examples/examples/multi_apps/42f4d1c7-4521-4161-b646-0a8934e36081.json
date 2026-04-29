@@ -18,32 +18,18 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code"
-        ]
+        "command": ["code"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp",
-    "vs_code"
-  ],
+  "related_apps": ["gimp", "vs_code"],
   "evaluator": {
-    "func": [
-      "is_extension_installed",
-      "check_image_size"
-    ],
+    "func": ["is_extension_installed", "check_image_size"],
     "result": [
       {
         "type": "vm_command_line",
-        "command": [
-          "code",
-          "--list-extensions",
-          "|",
-          "grep",
-          "mattn.lisp"
-        ]
+        "command": ["code", "--list-extensions", "|", "grep", "mattn.lisp"]
       },
       {
         "type": "vm_file",

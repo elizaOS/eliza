@@ -203,7 +203,13 @@ export const formPlugin: Plugin = {
       },
       handler: async (runtime, message, state, options, callback) => {
         const { formRestoreAction } = await import("./actions/restore");
-        return formRestoreAction.handler(runtime, message, state, options, callback);
+        return formRestoreAction.handler(
+          runtime,
+          message,
+          state,
+          options,
+          callback,
+        );
       },
       examples: [
         [

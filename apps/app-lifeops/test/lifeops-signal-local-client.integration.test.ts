@@ -10,23 +10,25 @@
  * - Live tests gate on `SIGNAL_HTTP_URL` being set to a real daemon.
  * - Set `SKIP_REASON` to skip all tests with a documented reason.
  */
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { itIf } from "../../../../test/helpers/conditional-tests.ts";
+import { itIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import {
   readSignalInboundMessages,
   readSignalLocalClientConfigFromEnv,
-  SignalLocalClientError,
   type SignalLocalClientConfig,
+  SignalLocalClientError,
 } from "../src/lifeops/signal-local-client.js";
 
 const SKIP_REASON = process.env.SKIP_REASON?.trim();
 const LIVE_SIGNAL_HTTP_URL = process.env.SIGNAL_HTTP_URL?.trim();
 const LIVE_SIGNAL_ACCOUNT = process.env.SIGNAL_ACCOUNT_NUMBER?.trim();
 const LIVE_AVAILABLE =
-  !SKIP_REASON &&
-  Boolean(LIVE_SIGNAL_HTTP_URL) &&
-  Boolean(LIVE_SIGNAL_ACCOUNT);
+  !SKIP_REASON && Boolean(LIVE_SIGNAL_HTTP_URL) && Boolean(LIVE_SIGNAL_ACCOUNT);
 
 // ---------------------------------------------------------------------------
 // HTTP stub
@@ -68,13 +70,11 @@ function makeReceivePayload(
 async function startSignalStub(
   messages: Parameters<typeof makeReceivePayload>[0],
 ): Promise<StubServer> {
-  const server = createServer(
-    (_req: IncomingMessage, res: ServerResponse) => {
-      const payload = makeReceivePayload(messages);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(payload));
-    },
-  );
+  const server = createServer((_req: IncomingMessage, res: ServerResponse) => {
+    const payload = makeReceivePayload(messages);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(payload));
+  });
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -241,9 +241,24 @@ describe("signal-local-client: readSignalInboundMessages (stub)", () => {
   it("respects the limit parameter", async () => {
     const ts = Date.now();
     stub = await startSignalStub([
-      { source: "+15551110001", sourceName: "A", message: "msg1", timestamp: ts },
-      { source: "+15551110002", sourceName: "B", message: "msg2", timestamp: ts + 1 },
-      { source: "+15551110003", sourceName: "C", message: "msg3", timestamp: ts + 2 },
+      {
+        source: "+15551110001",
+        sourceName: "A",
+        message: "msg1",
+        timestamp: ts,
+      },
+      {
+        source: "+15551110002",
+        sourceName: "B",
+        message: "msg2",
+        timestamp: ts + 1,
+      },
+      {
+        source: "+15551110003",
+        sourceName: "C",
+        message: "msg3",
+        timestamp: ts + 2,
+      },
     ]);
     const config: SignalLocalClientConfig = {
       httpUrl: stub.baseUrl,
@@ -256,7 +271,12 @@ describe("signal-local-client: readSignalInboundMessages (stub)", () => {
   it("all returned messages have the required LifeOpsSignalInboundMessage fields", async () => {
     const ts = Date.now();
     stub = await startSignalStub([
-      { source: "+15551110001", sourceName: "Carol", message: "Hi", timestamp: ts },
+      {
+        source: "+15551110001",
+        sourceName: "Carol",
+        message: "Hi",
+        timestamp: ts,
+      },
     ]);
     const config: SignalLocalClientConfig = {
       httpUrl: stub.baseUrl,
@@ -274,13 +294,15 @@ describe("signal-local-client: readSignalInboundMessages (stub)", () => {
       expect(
         msg.senderNumber === null || typeof msg.senderNumber === "string",
       ).toBe(true);
-      expect(msg.senderUuid === null || typeof msg.senderUuid === "string").toBe(
-        true,
-      );
+      expect(
+        msg.senderUuid === null || typeof msg.senderUuid === "string",
+      ).toBe(true);
       expect(
         msg.sourceDevice === null || typeof msg.sourceDevice === "number",
       ).toBe(true);
-      expect(msg.groupId === null || typeof msg.groupId === "string").toBe(true);
+      expect(msg.groupId === null || typeof msg.groupId === "string").toBe(
+        true,
+      );
       expect(msg.groupType === null || typeof msg.groupType === "string").toBe(
         true,
       );

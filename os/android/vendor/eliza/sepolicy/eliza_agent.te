@@ -1,0 +1,32 @@
+###
+### Eliza on-device agent SELinux allow rule.
+###
+### The Eliza APK is platform-signed (see vendor/eliza/apps/Eliza/
+### Android.bp), so seapp_contexts assigns its process to the
+### `platform_app` SELinux domain. AOSP's stock platform_app.te does
+### not include `allow platform_app app_data_file:file execute` — that
+### rule lives only on `priv_app`. Without it ElizaAgentService cannot
+### execve the bundled bun runtime out of /data/data/<pkg>/files/agent/
+### and the on-device agent crashloops with avc:denied { execute }.
+###
+### A previous attempt added a custom `eliza_agent` domain with a
+### domain transition to scope this allow narrowly; that approach
+### tripped roughly 30 AOSP neverallow checks (priv_app cannot
+### auto_trans to a vendor domain, app domains cannot label files
+### under /data/data, etc.). Per-domain custom labels for /data/data
+### paths are supposed to be done at the seapp_contexts level, which
+### would require a custom seinfo entry tied to a different signing
+### certificate.
+###
+### For now the allow is broad: any platform_app can execve any file
+### labeled app_data_file. The neverallow envelope still applies
+### (no write+execute on the same file outside narrow exemptions, no
+### entrypoint, etc.). This is acceptable on userdebug builds where
+### the only platform_app is Eliza itself; for production user
+### builds the rule should be re-scoped to a custom file label set
+### via restorecon from the Java service.
+###
+### Validated by scripts/elizaos/validate.mjs::validateSepolicy().
+###
+
+allow platform_app app_data_file:file { execute execute_no_trans };

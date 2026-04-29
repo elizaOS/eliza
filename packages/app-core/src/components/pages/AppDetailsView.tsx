@@ -13,17 +13,11 @@ import {
   Settings as SettingsIcon,
   TriangleAlert,
 } from "lucide-react";
-import {
-  type JSX,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type { RegistryAppInfo } from "../../api";
-import { invokeDesktopBridgeRequest } from "../../bridge";
+import { type JSX, useCallback, useEffect, useMemo, useState } from "react";
+import { client, type RegistryAppInfo } from "../../api";
+import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state/useApp";
+import { openExternalUrl } from "../../utils";
 import { getWidgetComponent } from "../../widgets/registry";
 import type { PluginWidgetDeclaration } from "../../widgets/types";
 import {
@@ -32,6 +26,7 @@ import {
   saveChatSidebarVisibility,
   widgetVisibilityKey,
 } from "../../widgets/visibility";
+import { resolveRuntimeImageUrl } from "../apps/app-identity";
 import { getAppDetailExtension } from "../apps/extensions/registry";
 import { findAppBySlug, getAppSlug } from "../apps/helpers";
 import {
@@ -142,6 +137,10 @@ function sourceLabel(source: AppSource): string {
     default:
       return "Unknown";
   }
+}
+
+function isOverlayLaunchApp(app: RegistryAppInfo): boolean {
+  return isOverlayApp(app.name) || app.launchType === "overlay";
 }
 
 function formatTimestamp(value: number): string {
@@ -293,11 +292,19 @@ export function AppDetailsView({
 
   // Launch action.
   const [launching, setLaunching] = useState(false);
-  const launchedRef = useRef(false);
   const handleLaunch = useCallback(async () => {
     if (!resolved || launching) return;
     setLaunching(true);
-    launchedRef.current = false;
+    const recordResult = (succeeded: boolean, errorMessage?: string) => {
+      recordLaunchAttempt({
+        appName: resolved.info.name,
+        timestamp: Date.now(),
+        succeeded,
+        diagnostics: [],
+        ...(errorMessage ? { errorMessage } : {}),
+      });
+      setHistory(getLaunchHistoryForApp(resolved.info.name));
+    };
     try {
       if (config.launchMode === "inline") {
         // Inline: for internal tools, switch the main shell tab; for
@@ -306,32 +313,66 @@ export function AppDetailsView({
           const tab = getInternalToolAppTargetTab(resolved.info.name);
           if (tab) {
             setTab(tab);
-            launchedRef.current = true;
-            recordLaunchAttempt({
-              appName: resolved.info.name,
-              timestamp: Date.now(),
-              succeeded: true,
-              diagnostics: [],
-            });
-            setHistory(getLaunchHistoryForApp(resolved.info.name));
+            recordResult(true);
             onLaunched?.({ mode: "inline", slug });
             return;
           }
         }
-        if (resolved.source === "overlay") {
+        if (
+          resolved.source === "overlay" ||
+          isOverlayLaunchApp(resolved.info)
+        ) {
           setState("activeOverlayApp", resolved.info.name);
-          launchedRef.current = true;
-          recordLaunchAttempt({
-            appName: resolved.info.name,
-            timestamp: Date.now(),
-            succeeded: true,
-            diagnostics: [],
-          });
-          setHistory(getLaunchHistoryForApp(resolved.info.name));
+          recordResult(true);
           onLaunched?.({ mode: "inline", slug });
           return;
         }
         // Fall through to window mode — inline not supported for this app.
+      }
+
+      if (!isElectrobunRuntime()) {
+        const tab = getInternalToolAppTargetTab(resolved.info.name);
+        if (tab) {
+          setTab(tab);
+          recordResult(true);
+          onLaunched?.({ mode: "inline", slug });
+          return;
+        }
+        if (isOverlayLaunchApp(resolved.info)) {
+          setState("activeOverlayApp", resolved.info.name);
+          recordResult(true);
+          onLaunched?.({ mode: "inline", slug });
+          return;
+        }
+
+        const result = await client.launchApp(resolved.info.name);
+        const primaryDiagnostic =
+          result.diagnostics?.find(
+            (diagnostic) => diagnostic.severity === "error",
+          ) ?? result.diagnostics?.[0];
+        if (result.run?.viewer?.url) {
+          setState("activeGameRunId", result.run.runId);
+          setState("tab", "apps");
+          setState("appsSubTab", "games");
+          recordResult(true);
+          onLaunched?.({ mode: "window", slug });
+          return;
+        }
+
+        const targetUrl = result.launchUrl ?? resolved.info.launchUrl;
+        if (targetUrl) {
+          await openExternalUrl(targetUrl);
+          recordResult(true);
+          onLaunched?.({ mode: "window", slug });
+          return;
+        }
+
+        throw new Error(
+          primaryDiagnostic?.message ??
+            t("appdetails.LaunchedNoViewer", {
+              defaultValue: "This app launched without a viewer URL.",
+            }),
+        );
       }
 
       // Window mode (default).
@@ -351,25 +392,11 @@ export function AppDetailsView({
       if (!created?.id) {
         throw new Error("Desktop bridge declined to open the window.");
       }
-      launchedRef.current = true;
-      recordLaunchAttempt({
-        appName: resolved.info.name,
-        timestamp: Date.now(),
-        succeeded: true,
-        diagnostics: [],
-      });
-      setHistory(getLaunchHistoryForApp(resolved.info.name));
+      recordResult(true);
       onLaunched?.({ mode: "window", slug });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      recordLaunchAttempt({
-        appName: resolved.info.name,
-        timestamp: Date.now(),
-        succeeded: false,
-        diagnostics: [],
-        errorMessage: message,
-      });
-      setHistory(getLaunchHistoryForApp(resolved.info.name));
+      recordResult(false, message);
       setActionNotice(
         t("appdetails.LaunchFailed", {
           defaultValue: `Could not launch ${resolved.info.displayName}: ${message}`,
@@ -430,7 +457,7 @@ export function AppDetailsView({
         <div className="flex items-center gap-4">
           {resolved.info.heroImage ? (
             <img
-              src={resolved.info.heroImage}
+              src={resolveRuntimeImageUrl(resolved.info.heroImage)}
               alt=""
               className="h-14 w-14 rounded-lg border border-border/40 object-cover"
             />
@@ -745,6 +772,12 @@ export function appNeedsDetailsPage(app: RegistryAppInfo | string): boolean {
   const name = typeof app === "string" ? app : app.name;
   if (isInternalToolApp(name)) {
     return getInternalToolAppHasDetailsPage(name);
+  }
+  if (isOverlayApp(name)) {
+    return false;
+  }
+  if (typeof app !== "string" && app.launchType === "overlay") {
+    return false;
   }
   if (typeof app === "string") {
     return false;

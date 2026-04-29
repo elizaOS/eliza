@@ -13,9 +13,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "postconfig": [
       {

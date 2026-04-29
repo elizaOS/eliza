@@ -46,7 +46,7 @@ jobs:
           df -h /
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Recursive picks up nested plugin submodules under plugins/
           # which the snapcraft sandbox needs to satisfy workspace:* deps.
@@ -55,7 +55,7 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.11"
+          bun-version: "1.3.13"
 
       - name: Setup Buf
         uses: bufbuild/buf-setup-action@v1

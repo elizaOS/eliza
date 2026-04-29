@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/8b1ce5f2-59d2-4dcc-b0b0-666a714b9a14",
-  "related_apps": [
-    "excel"
-  ],
+  "related_apps": ["excel"],
   "evaluator": {
     "postconfig": [
       {
@@ -80,9 +78,7 @@
           "type": "style",
           "sheet_idx0": 0,
           "sheet_idx1": "EI0",
-          "props": [
-            "bgcolor"
-          ]
+          "props": ["bgcolor"]
         }
       ]
     }

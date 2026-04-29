@@ -8,9 +8,7 @@
       "type": "googledrive",
       "parameters": {
         "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
-        "operation": [
-          "delete"
-        ],
+        "operation": ["delete"],
         "args": [
           {
             "query": "title = 'environment_policy_report (draft).doc' or title = 'environment_policy_report (draft).docx' or title = 'environment_policy_report (draft)'",
@@ -22,20 +20,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -48,11 +39,7 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/Desktop/wwf"
-        ]
+        "command": ["mkdir", "-p", "/home/user/Desktop/wwf"]
       }
     },
     {
@@ -84,20 +71,13 @@
     }
   ],
   "trajectory": "trajectories/0c825995-5b70-4526-b663-113f4c999dd2",
-  "related_apps": [
-    "libreoffice_calc",
-    "chrome",
-    "os"
-  ],
+  "related_apps": ["libreoffice_calc", "chrome", "os"],
   "evaluator": {
     "func": "compare_docx_files",
     "result": {
       "type": "googledrive_file",
       "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
-      "path": [
-        "environment_policy",
-        "environment_policy_report (draft)"
-      ],
+      "path": ["environment_policy", "environment_policy_report (draft)"],
       "dest": "environment_policy_report (draft).docx"
     },
     "expected": {

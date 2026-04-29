@@ -50,7 +50,7 @@ jobs:
             Write-Host "Enabled Git long paths in global config."
           }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: true
           sparse-checkout: |
@@ -68,7 +68,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 

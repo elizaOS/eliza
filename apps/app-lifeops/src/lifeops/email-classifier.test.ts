@@ -108,4 +108,20 @@ describe("email classifier", () => {
       signals: ["known_contact"],
     });
   });
+
+  it("uses list-unsubscribe headers as a promotional signal", () => {
+    const result = classifyEmailByRules({
+      subject: "Weekly deals",
+      fromEmail: "deals@example.com",
+      headers: {
+        "List-Unsubscribe": "<mailto:unsubscribe@example.com>",
+      },
+    });
+
+    expect(result).toMatchObject({
+      category: "promotional",
+      confidence: 0.85,
+    });
+    expect(result?.signals).toContain("list_unsubscribe_header");
+  });
 });

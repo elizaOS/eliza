@@ -1,17 +1,20 @@
 import {
   AgentRuntime,
   ChannelType,
-  createCharacter,
   type Character,
   type Content,
+  createCharacter,
   createMessageMemory,
   LLMMode,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
 import anthropicPlugin from "@elizaos/plugin-anthropic";
-import { elizaClassicPlugin, getElizaGreeting } from "@elizaos/plugin-eliza-classic";
 import elevenLabsPlugin from "@elizaos/plugin-elevenlabs";
+import {
+  elizaClassicPlugin,
+  getElizaGreeting,
+} from "@elizaos/plugin-eliza-classic";
 import googleGenAIPlugin from "@elizaos/plugin-google-genai";
 import groqPlugin from "@elizaos/plugin-groq";
 import localdbPlugin from "@elizaos/plugin-localdb";
@@ -21,7 +24,9 @@ import { v4 as uuidv4 } from "uuid";
 import type { DemoConfig, DemoMode } from "./types";
 
 export type SendMessageResult = { responseText: string };
-export type SendMessageCallbacks = { onAssistantChunk?: (chunk: string) => void };
+export type SendMessageCallbacks = {
+  onAssistantChunk?: (chunk: string) => void;
+};
 
 type RuntimeBundle = {
   runtime: AgentRuntime;
@@ -32,7 +37,8 @@ type RuntimeBundle = {
 
 const DEMO_CHARACTER: Character = createCharacter({
   name: "Cool Robot",
-  system: "Cool Robot is very concise, to the point and brief robot who keeps responses very brief. No emojis or punctuation. Cool Robot responds very concisely, and never more than a sentence. He doens't use any punction, always all lower case",
+  system:
+    "Cool Robot is very concise, to the point and brief robot who keeps responses very brief. No emojis or punctuation. Cool Robot responds very concisely, and never more than a sentence. He doens't use any punction, always all lower case",
   bio: "A nice and friendly robot built on the elizaOS agent framework.",
 });
 
@@ -80,15 +86,23 @@ export async function resetConversation(): Promise<void> {
 function resolveEffectiveMode(config: DemoConfig): DemoMode {
   switch (config.mode) {
     case "openai":
-      return (config.provider.openaiApiKey ?? "").trim() ? "openai" : "elizaClassic";
+      return (config.provider.openaiApiKey ?? "").trim()
+        ? "openai"
+        : "elizaClassic";
     case "anthropic":
-      return (config.provider.anthropicApiKey ?? "").trim() ? "anthropic" : "elizaClassic";
+      return (config.provider.anthropicApiKey ?? "").trim()
+        ? "anthropic"
+        : "elizaClassic";
     case "xai":
       return (config.provider.xaiApiKey ?? "").trim() ? "xai" : "elizaClassic";
     case "gemini":
-      return (config.provider.googleGenaiApiKey ?? "").trim() ? "gemini" : "elizaClassic";
+      return (config.provider.googleGenaiApiKey ?? "").trim()
+        ? "gemini"
+        : "elizaClassic";
     case "groq":
-      return (config.provider.groqApiKey ?? "").trim() ? "groq" : "elizaClassic";
+      return (config.provider.groqApiKey ?? "").trim()
+        ? "groq"
+        : "elizaClassic";
     case "elizaClassic":
       return "elizaClassic";
     default:
@@ -96,20 +110,38 @@ function resolveEffectiveMode(config: DemoConfig): DemoMode {
   }
 }
 
-function applySettings(runtime: AgentRuntime, config: DemoConfig, effectiveMode: DemoMode): void {
+function applySettings(
+  runtime: AgentRuntime,
+  config: DemoConfig,
+  effectiveMode: DemoMode,
+): void {
   runtime.setSetting("LLM_MODE", "DEFAULT");
   runtime.setSetting("CHECK_SHOULD_RESPOND", false);
 
   // ElevenLabs TTS (used by the VRM demo when enabled)
-  runtime.setSetting("ELEVENLABS_API_KEY", config.provider.elevenlabsApiKey ?? "", true);
+  runtime.setSetting(
+    "ELEVENLABS_API_KEY",
+    config.provider.elevenlabsApiKey ?? "",
+    true,
+  );
   runtime.setSetting("ELEVENLABS_VOICE_ID", "ZEcx3Wdpj4EvM8PltzHY");
 
   if (effectiveMode === "openai") {
     runtime.setSetting("OPENAI_ALLOW_BROWSER_API_KEY", "true");
-    runtime.setSetting("OPENAI_API_KEY", config.provider.openaiApiKey ?? "", true);
+    runtime.setSetting(
+      "OPENAI_API_KEY",
+      config.provider.openaiApiKey ?? "",
+      true,
+    );
     runtime.setSetting("OPENAI_BASE_URL", config.provider.openaiBaseUrl ?? "");
-    runtime.setSetting("OPENAI_SMALL_MODEL", config.provider.openaiSmallModel ?? "");
-    runtime.setSetting("OPENAI_LARGE_MODEL", config.provider.openaiLargeModel ?? "");
+    runtime.setSetting(
+      "OPENAI_SMALL_MODEL",
+      config.provider.openaiSmallModel ?? "",
+    );
+    runtime.setSetting(
+      "OPENAI_LARGE_MODEL",
+      config.provider.openaiLargeModel ?? "",
+    );
     const browserUrl = (config.provider.openaiBrowserBaseUrl ?? "").trim();
     if (browserUrl) {
       runtime.setSetting("OPENAI_BROWSER_BASE_URL", browserUrl);
@@ -118,9 +150,19 @@ function applySettings(runtime: AgentRuntime, config: DemoConfig, effectiveMode:
   }
 
   if (effectiveMode === "anthropic") {
-    runtime.setSetting("ANTHROPIC_API_KEY", config.provider.anthropicApiKey ?? "", true);
-    runtime.setSetting("ANTHROPIC_SMALL_MODEL", config.provider.anthropicSmallModel ?? "");
-    runtime.setSetting("ANTHROPIC_LARGE_MODEL", config.provider.anthropicLargeModel ?? "");
+    runtime.setSetting(
+      "ANTHROPIC_API_KEY",
+      config.provider.anthropicApiKey ?? "",
+      true,
+    );
+    runtime.setSetting(
+      "ANTHROPIC_SMALL_MODEL",
+      config.provider.anthropicSmallModel ?? "",
+    );
+    runtime.setSetting(
+      "ANTHROPIC_LARGE_MODEL",
+      config.provider.anthropicLargeModel ?? "",
+    );
     const browserUrl = (config.provider.anthropicBrowserBaseUrl ?? "").trim();
     if (browserUrl) {
       runtime.setSetting("ANTHROPIC_BROWSER_BASE_URL", browserUrl);
@@ -131,21 +173,43 @@ function applySettings(runtime: AgentRuntime, config: DemoConfig, effectiveMode:
     runtime.setSetting("OPENAI_ALLOW_BROWSER_API_KEY", "true");
     runtime.setSetting("OPENAI_API_KEY", config.provider.xaiApiKey ?? "", true);
     runtime.setSetting("OPENAI_BASE_URL", config.provider.xaiBaseUrl ?? "");
-    runtime.setSetting("OPENAI_SMALL_MODEL", config.provider.xaiSmallModel ?? "");
-    runtime.setSetting("OPENAI_LARGE_MODEL", config.provider.xaiLargeModel ?? "");
+    runtime.setSetting(
+      "OPENAI_SMALL_MODEL",
+      config.provider.xaiSmallModel ?? "",
+    );
+    runtime.setSetting(
+      "OPENAI_LARGE_MODEL",
+      config.provider.xaiLargeModel ?? "",
+    );
   }
 
   if (effectiveMode === "gemini") {
-    runtime.setSetting("GOOGLE_GENERATIVE_AI_API_KEY", config.provider.googleGenaiApiKey ?? "", true);
-    runtime.setSetting("GOOGLE_SMALL_MODEL", config.provider.googleSmallModel ?? "");
-    runtime.setSetting("GOOGLE_LARGE_MODEL", config.provider.googleLargeModel ?? "");
+    runtime.setSetting(
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      config.provider.googleGenaiApiKey ?? "",
+      true,
+    );
+    runtime.setSetting(
+      "GOOGLE_SMALL_MODEL",
+      config.provider.googleSmallModel ?? "",
+    );
+    runtime.setSetting(
+      "GOOGLE_LARGE_MODEL",
+      config.provider.googleLargeModel ?? "",
+    );
   }
 
   if (effectiveMode === "groq") {
     runtime.setSetting("GROQ_API_KEY", config.provider.groqApiKey ?? "", true);
     runtime.setSetting("GROQ_BASE_URL", config.provider.groqBaseUrl ?? "");
-    runtime.setSetting("GROQ_SMALL_MODEL", config.provider.groqSmallModel ?? "");
-    runtime.setSetting("GROQ_LARGE_MODEL", config.provider.groqLargeModel ?? "");
+    runtime.setSetting(
+      "GROQ_SMALL_MODEL",
+      config.provider.groqSmallModel ?? "",
+    );
+    runtime.setSetting(
+      "GROQ_LARGE_MODEL",
+      config.provider.groqLargeModel ?? "",
+    );
   }
 }
 
@@ -164,7 +228,9 @@ let currentBundle: RuntimeBundle | null = null;
 let currentMode: DemoMode | null = null;
 let initializing: Promise<RuntimeBundle> | null = null;
 
-export async function getOrCreateRuntime(config: DemoConfig): Promise<RuntimeBundle> {
+export async function getOrCreateRuntime(
+  config: DemoConfig,
+): Promise<RuntimeBundle> {
   const effectiveMode = resolveEffectiveMode(config);
 
   if (currentBundle && currentMode === effectiveMode) {
@@ -218,7 +284,9 @@ export async function getOrCreateRuntime(config: DemoConfig): Promise<RuntimeBun
 }
 
 export function getGreetingText(effectiveMode: DemoMode): string {
-  return effectiveMode === "elizaClassic" ? getElizaGreeting() : "Hello. I’m ready. What would you like to talk about?";
+  return effectiveMode === "elizaClassic"
+    ? getElizaGreeting()
+    : "Hello. I’m ready. What would you like to talk about?";
 }
 
 export function getEffectiveMode(config: DemoConfig): DemoMode {
@@ -250,7 +318,8 @@ export async function sendUserMessage(
     bundle.runtime,
     messageMemory,
     async (content: Content) => {
-      if (!streaming && typeof content.text === "string") responseText = content.text;
+      if (!streaming && typeof content.text === "string")
+        responseText = content.text;
       return [];
     },
     streaming

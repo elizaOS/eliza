@@ -176,6 +176,11 @@ const appNpmSchema = z.object({
   v2Version: z.string().nullable(),
 });
 
+const appRoutePluginSchema = z.object({
+  specifier: z.string().min(1),
+  exportName: z.string().min(1).optional(),
+});
+
 export const appLaunchSchema = z.object({
   type: z.enum(["internal-tab", "overlay", "server-launch"]),
   target: z.string().optional(),
@@ -187,6 +192,7 @@ export const appLaunchSchema = z.object({
   capabilities: z.array(z.string()).default([]),
   uiExtension: z.object({ detailPanelId: z.string() }).optional(),
   curatedSlug: z.string().optional(),
+  routePlugin: appRoutePluginSchema.optional(),
 });
 
 export type AppLaunch = z.infer<typeof appLaunchSchema>;

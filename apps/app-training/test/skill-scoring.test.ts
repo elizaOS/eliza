@@ -9,8 +9,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  scoreSkill,
   type ScoreableTrajectory,
+  scoreSkill,
 } from "../src/core/replay-validator.js";
 import {
   applyScoreToSkillFile,
