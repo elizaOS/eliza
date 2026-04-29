@@ -711,11 +711,87 @@ export function LifeOpsScreenTimeSection({
         </div>
       ) : null}
 
+      {blockStatus ? (
+        <HabitPanel title="Social Block Status" icon={<ShieldBan />}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div
+                className={`text-sm font-semibold ${
+                  blockStatus.active ? "text-amber-200" : "text-txt"
+                }`}
+              >
+                {blockStatus.label}
+              </div>
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+                {blockStatus.details.map((detail) => (
+                  <span key={detail}>{detail}</span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </HabitPanel>
+      ) : null}
+
+      {blockStatusError ? (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <TriangleAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          Block status unavailable: {blockStatusError}
+        </div>
+      ) : null}
+
+      {!loading && !error && setupSources.length > 0 ? (
+        <div
+          className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-4 py-3"
+          data-testid="lifeops-screen-time-setup-warning"
+        >
+          <div className="flex min-w-0 items-start gap-3">
+            <TriangleAlert
+              className="mt-0.5 h-4 w-4 shrink-0 text-amber-300"
+              aria-hidden
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-txt">
+                Tracking setup incomplete
+              </div>
+              <div className="mt-1 text-xs leading-5 text-muted">
+                Check {setupWarningLabel(setupSources)}.
+              </div>
+            </div>
+          </div>
+          {onNavigate ? (
+            <button
+              type="button"
+              aria-label="Open LifeOps setup"
+              title="Open setup"
+              className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+              onClick={() => onNavigate("setup")}
+            >
+              Open setup
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {!loading && !error && (breakdown || social) && !hasUsage ? (
         <HabitPanel title="Screen Time" icon={<Monitor />}>
           <div className="py-3 text-sm text-muted">
-            No screen activity in this range.
+            {setupSources.length > 0
+              ? `No screen activity in this range. Finish setup for ${setupWarningLabel(
+                  setupSources,
+                )}.`
+              : "No screen activity in this range."}
           </div>
+          {onNavigate && setupSources.length > 0 ? (
+            <button
+              type="button"
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-border/16 bg-bg/50 px-3 text-xs font-medium text-txt transition-colors hover:border-accent/30 hover:text-accent"
+              onClick={() => onNavigate("setup")}
+            >
+              Open setup
+              <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          ) : null}
         </HabitPanel>
       ) : (
         <>

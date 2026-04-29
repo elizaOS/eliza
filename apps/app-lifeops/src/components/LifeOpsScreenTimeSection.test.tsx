@@ -7,6 +7,8 @@ const { clientMock } = vi.hoisted(() => ({
   clientMock: {
     getLifeOpsScreenTimeBreakdown: vi.fn(),
     getLifeOpsSocialHabitSummary: vi.fn(),
+    getWebsiteBlockerStatus: vi.fn(),
+    getAppBlockerStatus: vi.fn(),
   },
 }));
 
@@ -64,6 +66,30 @@ const social = {
 beforeEach(() => {
   clientMock.getLifeOpsScreenTimeBreakdown.mockResolvedValue(breakdown);
   clientMock.getLifeOpsSocialHabitSummary.mockResolvedValue(social);
+  clientMock.getWebsiteBlockerStatus.mockResolvedValue({
+    active: false,
+    available: true,
+    canUnblockEarly: true,
+    elevationPromptMethod: null,
+    endsAt: null,
+    engine: "hosts-file",
+    hostsFilePath: "/etc/hosts",
+    platform: "darwin",
+    requiresElevation: true,
+    supportsElevationPrompt: true,
+    websites: [],
+  });
+  clientMock.getAppBlockerStatus.mockResolvedValue({
+    active: false,
+    available: false,
+    blockedCount: 0,
+    blockedPackageNames: [],
+    endsAt: null,
+    engine: "none",
+    permissionStatus: "not-applicable",
+    platform: "web",
+    reason: "App blocking is only available on mobile.",
+  });
 });
 
 afterEach(() => {
@@ -86,5 +112,75 @@ describe("LifeOpsScreenTimeSection", () => {
     );
     expect(await screen.findByText("Editor")).toBeTruthy();
     expect(screen.getByText("Development")).toBeTruthy();
+  });
+
+  it("renders unified current website and app block status", async () => {
+    clientMock.getWebsiteBlockerStatus.mockResolvedValue({
+      active: true,
+      available: true,
+      canUnblockEarly: true,
+      elevationPromptMethod: null,
+      endsAt: null,
+      engine: "hosts-file",
+      hostsFilePath: "/etc/hosts",
+      platform: "darwin",
+      requiresElevation: true,
+      supportsElevationPrompt: true,
+      websites: ["x.com", "reddit.com"],
+    });
+    clientMock.getAppBlockerStatus.mockResolvedValue({
+      active: true,
+      available: true,
+      blockedCount: 2,
+      blockedPackageNames: ["com.twitter.android", "com.reddit.frontpage"],
+      endsAt: null,
+      engine: "usage-stats-overlay",
+      permissionStatus: "granted",
+      platform: "android",
+    });
+
+    render(<LifeOpsScreenTimeSection />);
+
+    expect(await screen.findByText("Websites and apps blocked")).toBeTruthy();
+    expect(screen.getByText("Websites: 2 websites")).toBeTruthy();
+    expect(screen.getByText("Apps: 2 apps on ANDROID")).toBeTruthy();
+  });
+
+  it("links incomplete tracking setup from the empty Screen Time state", async () => {
+    clientMock.getLifeOpsScreenTimeBreakdown.mockResolvedValue({
+      ...breakdown,
+      byBrowser: [],
+      byCategory: [],
+      byDevice: [],
+      bySource: [],
+      items: [],
+      totalSeconds: 0,
+    });
+    clientMock.getLifeOpsSocialHabitSummary.mockResolvedValue({
+      ...social,
+      dataSources: [
+        { id: "browser_bridge", label: "Browser", state: "partial" },
+        { id: "android_usage_stats", label: "Android apps", state: "unwired" },
+      ],
+      messages: {
+        channels: [],
+        inbound: 0,
+        opened: 0,
+        outbound: 0,
+        replied: 0,
+      },
+      services: [],
+      sessions: [],
+      surfaces: [],
+      totalSeconds: 0,
+    });
+    const onNavigate = vi.fn();
+
+    render(<LifeOpsScreenTimeSection onNavigate={onNavigate} />);
+
+    expect(await screen.findByText("Tracking setup incomplete")).toBeTruthy();
+    expect(screen.getByText("Check Browser and Android apps.")).toBeTruthy();
+    screen.getAllByRole("button", { name: "Open LifeOps setup" })[0].click();
+    expect(onNavigate).toHaveBeenCalledWith("setup");
   });
 });
