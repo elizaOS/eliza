@@ -1138,6 +1138,18 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
           replied: xReplied,
         },
       ];
+      const browserState = browserTrackingDataSourceState(
+        browserSettings,
+        browserCompanions,
+      );
+      const androidState = mobileScreenTimeDataSourceFromSignals(
+        recentMobileSignals,
+        "android",
+      );
+      const iosState = mobileScreenTimeDataSourceFromSignals(
+        recentMobileSignals,
+        "ios",
+      );
 
       return {
         since: opts.since,
@@ -1159,29 +1171,110 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
           replied: xReplied,
         },
         dataSources: [
-          { id: "macos_activity", label: "Mac apps", state: "live" },
+          {
+            id: "macos_activity",
+            label: "Mac apps",
+            state: "live",
+            statusLabel: "Live",
+            detail: "macOS app focus events are included in screen-time totals.",
+          },
           {
             id: "browser_bridge",
             label: "Browser",
-            state: browserTrackingDataSourceState(
-              browserSettings,
-              browserCompanions,
-            ),
+            state: browserState,
+            statusLabel:
+              browserState === "live"
+                ? "Live"
+                : browserState === "partial"
+                  ? "Needs attention"
+                  : "Not connected",
+            detail:
+              browserState === "live"
+                ? "Browser focus sessions are included in website totals."
+                : browserState === "partial"
+                  ? "Browser tracking is enabled but permissions, recency, or pause state are incomplete."
+                  : "Browser tracking is disabled or no companion is connected.",
           },
           {
             id: "android_usage_stats",
             label: "Android apps",
-            state: mobileScreenTimeStateFromSignals(
-              recentMobileSignals,
-              "android",
-            ),
+            ...androidState,
           },
           {
             id: "ios_device_activity",
             label: "iOS apps",
-            state: mobileScreenTimeStateFromSignals(recentMobileSignals, "ios"),
+            ...iosState,
           },
         ],
+        fetchedAt: isoNow(),
+      };
+    }
+
+    async getScreenTimeHistory(opts: {
+      range: LifeOpsScreenTimeRangeKey;
+      topN?: number;
+      socialTopN?: number;
+    }): Promise<LifeOpsScreenTimeHistoryResponse> {
+      const window = computeScreenTimeRange(opts.range);
+      const priorWindow = computePriorScreenTimeRange(opts.range, window);
+      const [breakdown, social, priorBreakdown, priorSocial] =
+        await Promise.all([
+          this.getScreenTimeBreakdown({
+            since: window.since,
+            until: window.until,
+            topN: opts.topN,
+          }),
+          this.getSocialHabitSummary({
+            since: window.since,
+            until: window.until,
+            topN: opts.socialTopN,
+          }),
+          priorWindow
+            ? this.getScreenTimeBreakdown({
+                since: priorWindow.since,
+                until: priorWindow.until,
+                topN: opts.topN,
+              })
+            : Promise.resolve(null),
+          priorWindow
+            ? this.getSocialHabitSummary({
+                since: priorWindow.since,
+                until: priorWindow.until,
+                topN: opts.socialTopN,
+              })
+            : Promise.resolve(null),
+        ]);
+      const history: LifeOpsScreenTimeHistoryPoint[] =
+        opts.range === "today"
+          ? []
+          : await Promise.all(
+              enumerateHistoryDays(window).map(async (day) => {
+                const summary = await this.getScreenTimeSummary({
+                  since: day.since,
+                  until: day.until,
+                });
+                return {
+                  ...day,
+                  totalSeconds: summary.totalSeconds,
+                };
+              }),
+            );
+
+      return {
+        range: opts.range,
+        label: screenTimeRangeLabel(opts.range),
+        window,
+        priorWindow,
+        breakdown,
+        social,
+        history,
+        metrics: buildScreenTimeMetrics(
+          breakdown,
+          social,
+          priorBreakdown,
+          priorSocial,
+        ),
+        visible: buildVisibleBuckets(breakdown, social),
         fetchedAt: isoNow(),
       };
     }
