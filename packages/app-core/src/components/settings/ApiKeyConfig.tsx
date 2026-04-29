@@ -1,4 +1,5 @@
 import { Button, useTimeout } from "@elizaos/ui";
+import { API_KEY_PREFIX_HINTS } from "../../config/api-key-prefix-hints";
 import { useCallback, useState } from "react";
 import { client, type PluginParamDef } from "../../api";
 import {
@@ -119,11 +120,24 @@ export function ApiKeyConfig({
     if (k.includes("URL") || k.includes("ENDPOINT")) prop.format = "uri";
     properties[p.key] = prop;
     if (p.required) required.push(p.key);
-    hints[p.key] = {
+    // Inline prefix validation for known API-key fields. Mirrors
+    // KEY_PREFIX_HINTS in packages/agent/src/api/plugin-validation.ts
+    // — that one runs server-side at save time, this one runs in the
+    // form as the user types so they catch the "I pasted a model slug
+    // into the API key field" mistake before it lands on disk.
+    const prefixHint = API_KEY_PREFIX_HINTS[p.key];
+    const fieldHint: ConfigUiHint = {
       label: autoLabel(p.key, selectedProvider.id),
       sensitive: p.sensitive ?? false,
+      ...(prefixHint
+        ? {
+            pattern: `^${prefixHint.prefix}`,
+            patternError: `${prefixHint.label} keys start with "${prefixHint.prefix}" — this doesn't look like a valid key. (Did you paste a model name into the wrong field?)`,
+          }
+        : {}),
       ...serverHints[p.key],
     };
+    hints[p.key] = fieldHint;
     if (p.description && !hints[p.key].help) hints[p.key].help = p.description;
   }
   const schema = { type: "object", properties, required } as JsonSchemaObject;
