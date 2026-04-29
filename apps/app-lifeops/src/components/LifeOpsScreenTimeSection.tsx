@@ -341,11 +341,18 @@ async function fetchHistoryData(period: Period): Promise<HistoryData> {
   return results;
 }
 
-export function LifeOpsScreenTimeSection() {
+export function LifeOpsScreenTimeSection({
+  onNavigate,
+}: {
+  onNavigate?: (section: LifeOpsSection) => void;
+}) {
   const [range, setRange] = useState<RangeKey>("today");
   const [data, setData] = useState<RangeData | null>(null);
   const [priorData, setPriorData] = useState<PriorData | null>(null);
   const [history, setHistory] = useState<HistoryData | null>(null);
+  const [blockStatus, setBlockStatus] =
+    useState<UnifiedSocialBlockStatus | null>(null);
+  const [blockStatusError, setBlockStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -423,9 +430,31 @@ export function LifeOpsScreenTimeSection() {
     [],
   );
 
+  const loadBlockStatus = useCallback(async () => {
+    try {
+      const [website, app] = await Promise.all([
+        client.getWebsiteBlockerStatus(),
+        client.getAppBlockerStatus(),
+      ]);
+      setBlockStatus(buildUnifiedSocialBlockStatus(website, app));
+      setBlockStatusError(null);
+    } catch (cause) {
+      setBlockStatus(null);
+      setBlockStatusError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Block status failed to load.",
+      );
+    }
+  }, []);
+
   useEffect(() => {
     void load(range);
   }, [load, range]);
+
+  useEffect(() => {
+    void loadBlockStatus();
+  }, [loadBlockStatus]);
 
   const breakdown = data?.breakdown ?? null;
   const social = data?.social ?? null;
@@ -484,6 +513,9 @@ export function LifeOpsScreenTimeSection() {
   const messageInbound = social?.messages.inbound ?? 0;
   const hasMessageActivity =
     messageOpened > 0 || messageOutbound > 0 || messageInbound > 0;
+  const setupSources = (social?.dataSources ?? []).filter(
+    (source) => source.state !== "live",
+  );
 
   const hasUsage =
     totalSeconds > 0 ||
@@ -624,7 +656,10 @@ export function LifeOpsScreenTimeSection() {
           aria-label="Refresh screen time"
           title="Refresh"
           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border/20 bg-bg/30 text-muted transition-colors hover:border-accent/30 hover:text-txt disabled:opacity-40"
-          onClick={() => void load(range, true)}
+          onClick={() => {
+            void load(range, true);
+            void loadBlockStatus();
+          }}
           disabled={loading}
         >
           <RefreshCw
