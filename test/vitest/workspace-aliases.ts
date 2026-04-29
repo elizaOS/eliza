@@ -112,7 +112,9 @@ function getWorkspacePackageExportAliases(
     return [
       {
         find: new RegExp(
-          `^@elizaos/${escapeRegExp(packageName)}/${escapeRegExp(subpath.slice(2))}$`,
+          `^@elizaos/${escapeRegExp(packageName)}/${escapeRegExp(
+            subpath.slice(2),
+          )}$`,
         ),
         replacement,
       },
@@ -412,6 +414,28 @@ export function getWorkspaceAppAliases(
       ...getWorkspacePackageExportAliases(appName, appRoot),
       ...getPackageSourceAliases(appName, appSourceRoot, {
         rootReplacement: appEntry,
+      }),
+    ];
+  });
+}
+
+export function getWorkspacePluginAliases(
+  repoRoot: string,
+  pluginNames: string[],
+): ModuleAlias[] {
+  return pluginNames.flatMap((pluginName) => {
+    const pluginRoot = path.join(repoRoot, "eliza", "plugins", pluginName);
+    const pluginSourceRoot = path.join(pluginRoot, "src");
+    const pluginEntry = path.join(pluginSourceRoot, "index.ts");
+
+    if (!existsSync(pluginEntry)) {
+      return [];
+    }
+
+    return [
+      ...getWorkspacePackageExportAliases(pluginName, pluginRoot),
+      ...getPackageSourceAliases(pluginName, pluginSourceRoot, {
+        rootReplacement: pluginEntry,
       }),
     ];
   });

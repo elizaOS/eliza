@@ -1,5 +1,11 @@
 import crypto from "node:crypto";
 import { MockHttpError } from "./mock-http-error.ts";
+import {
+  getLifeOpsSimulatorPerson,
+  LIFEOPS_SIMULATOR_CALENDAR_EVENTS,
+  LIFEOPS_SIMULATOR_OWNER,
+  type LifeOpsSimulatorCalendarEvent,
+} from "../fixtures/lifeops-simulator.ts";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -93,8 +99,60 @@ interface GoogleCalendarLedgerEntry {
   runId?: string;
 }
 
-export function createGoogleCalendarMockState(): GoogleCalendarMockState {
+function simulatorEventToGoogleEvent(
+  event: LifeOpsSimulatorCalendarEvent,
+  now: number
+): GoogleCalendarMockEvent {
+  const start = new Date(now + event.startOffsetMs);
+  const end = new Date(start.getTime() + event.durationMs);
+  const attendees = event.attendeePersonKeys.map((key) => {
+    const person = getLifeOpsSimulatorPerson(key);
+    return {
+      email: person.email,
+      displayName: person.name,
+      responseStatus: "needsAction",
+      self: false,
+      organizer: false,
+      optional: false,
+    };
+  });
   return {
+    id: event.id,
+    calendarId: "primary",
+    status: "confirmed",
+    summary: event.title,
+    description: event.description,
+    location: event.location,
+    htmlLink: `https://calendar.google.com/calendar/event?eid=${encodeURIComponent(
+      event.id
+    )}`,
+    hangoutLink: "https://meet.google.com/sim-atlas",
+    iCalUID: `${event.id}@lifeops-simulator.test`,
+    recurringEventId: null,
+    created: new Date(now - 24 * 60 * 60 * 1000).toISOString(),
+    updated: new Date(now - 10 * 60 * 1000).toISOString(),
+    start: {
+      dateTime: start.toISOString(),
+      timeZone: LIFEOPS_SIMULATOR_OWNER.timezone,
+    },
+    end: {
+      dateTime: end.toISOString(),
+      timeZone: LIFEOPS_SIMULATOR_OWNER.timezone,
+    },
+    organizer: {
+      email: LIFEOPS_SIMULATOR_OWNER.email,
+      displayName: LIFEOPS_SIMULATOR_OWNER.name,
+      self: true,
+    },
+    attendees,
+    deleted: false,
+  };
+}
+
+export function createGoogleCalendarMockState(opts?: {
+  simulator?: boolean;
+}): GoogleCalendarMockState {
+  const state: GoogleCalendarMockState = {
     calendars: new Map([
       [
         "primary",
@@ -131,29 +189,40 @@ export function createGoogleCalendarMockState(): GoogleCalendarMockState {
     ]),
     events: new Map(),
   };
+  if (opts?.simulator) {
+    const now = Date.now();
+    for (const event of LIFEOPS_SIMULATOR_CALENDAR_EVENTS) {
+      const googleEvent = simulatorEventToGoogleEvent(event, now);
+      state.events.set(
+        eventKey(googleEvent.calendarId, googleEvent.id),
+        googleEvent
+      );
+    }
+  }
+  return state;
 }
 
 function jsonFixture(
   body: JsonValue,
-  statusCode = 200,
+  statusCode = 200
 ): DynamicFixtureResponse {
   return { statusCode, body, headers: { "Content-Type": "application/json" } };
 }
 
 function jsonError(
   statusCode: number,
-  message: string,
+  message: string
 ): DynamicFixtureResponse {
   const status =
     statusCode === 401
       ? "UNAUTHENTICATED"
       : statusCode === 403
-        ? "PERMISSION_DENIED"
-        : statusCode === 404
-          ? "NOT_FOUND"
-          : statusCode === 410
-            ? "GONE"
-            : "INVALID_ARGUMENT";
+      ? "PERMISSION_DENIED"
+      : statusCode === 404
+      ? "NOT_FOUND"
+      : statusCode === 410
+      ? "GONE"
+      : "INVALID_ARGUMENT";
   return jsonFixture(
     {
       error: {
@@ -162,12 +231,12 @@ function jsonError(
         status,
       },
     },
-    statusCode,
+    statusCode
   );
 }
 
 function calendarResponse(
-  calendar: GoogleCalendarMockCalendar,
+  calendar: GoogleCalendarMockCalendar
 ): Record<string, JsonValue> {
   return {
     kind: "calendar#calendarListEntry",
@@ -194,7 +263,7 @@ function eventKey(calendarId: string, eventId: string): string {
 }
 
 function eventResponse(
-  event: GoogleCalendarMockEvent,
+  event: GoogleCalendarMockEvent
 ): Record<string, JsonValue> {
   return {
     kind: "calendar#event",
@@ -223,11 +292,11 @@ function decodeRouteParam(value: string | undefined): string {
 }
 
 function matchEventsPath(
-  pathname: string,
+  pathname: string
 ): { calendarId: string; eventId?: string; move: boolean } | null {
   const match =
     /^\/calendar\/v3\/calendars\/([^/]+)\/events(?:\/([^/]+))?(?:\/(move))?\/?$/.exec(
-      pathname,
+      pathname
     );
   if (!match) return null;
   return {
@@ -239,7 +308,7 @@ function matchEventsPath(
 
 function requireCalendar(
   state: GoogleCalendarMockState,
-  calendarId: string,
+  calendarId: string
 ): GoogleCalendarMockCalendar | DynamicFixtureResponse {
   const calendar = state.calendars.get(calendarId);
   return calendar && !calendar.deleted
@@ -250,7 +319,7 @@ function requireCalendar(
 function getEvent(
   state: GoogleCalendarMockState,
   calendarId: string,
-  eventId: string,
+  eventId: string
 ): GoogleCalendarMockEvent | null {
   return state.events.get(eventKey(calendarId, eventId)) ?? null;
 }
@@ -258,7 +327,7 @@ function getEvent(
 function requiredEventResponse(
   state: GoogleCalendarMockState,
   calendarId: string,
-  eventId: string,
+  eventId: string
 ): GoogleCalendarMockEvent | DynamicFixtureResponse {
   const event = getEvent(state, calendarId, eventId);
   if (!event) return jsonError(404, "Requested entity was not found.");
@@ -284,7 +353,7 @@ function optionalString(value: JsonValue | undefined, key: string): string {
 
 function requireEventDate(
   value: JsonValue | undefined,
-  key: string,
+  key: string
 ): GoogleCalendarEventDate {
   const record = asRecord(value, key);
   const date = optionalString(record.date, `${key}.date`);
@@ -317,19 +386,19 @@ function readAttendees(value: JsonValue | undefined): GoogleCalendarAttendee[] {
     if (!email) {
       throw new MockHttpError(
         400,
-        `attendees[${index}].email must be a non-empty string`,
+        `attendees[${index}].email must be a non-empty string`
       );
     }
     return {
       email,
       ...(optionalString(
         attendee.displayName,
-        `attendees[${index}].displayName`,
+        `attendees[${index}].displayName`
       )
         ? {
             displayName: optionalString(
               attendee.displayName,
-              `attendees[${index}].displayName`,
+              `attendees[${index}].displayName`
             ),
           }
         : {}),
@@ -351,7 +420,7 @@ function eventEndMs(event: GoogleCalendarMockEvent): number {
 
 function optionalBoundaryMs(
   params: URLSearchParams,
-  key: "timeMin" | "timeMax",
+  key: "timeMin" | "timeMax"
 ): number | null {
   const value = params.get(key);
   if (!value) return null;
@@ -364,7 +433,7 @@ function optionalBoundaryMs(
 
 function eventMatchesQuery(
   event: GoogleCalendarMockEvent,
-  query: string,
+  query: string
 ): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
@@ -391,7 +460,7 @@ function eventMatchesQuery(
 function listEvents(
   state: GoogleCalendarMockState,
   calendarId: string,
-  searchParams: URLSearchParams,
+  searchParams: URLSearchParams
 ): DynamicFixtureResponse {
   const calendar = requireCalendar(state, calendarId);
   if ("statusCode" in calendar) return calendar;
@@ -402,11 +471,11 @@ function listEvents(
   const showDeleted = searchParams.get("showDeleted") === "true";
   const maxResults = Math.max(
     1,
-    Math.min(Number.parseInt(searchParams.get("maxResults") ?? "50", 10), 250),
+    Math.min(Number.parseInt(searchParams.get("maxResults") ?? "50", 10), 250)
   );
   const pageOffset = Math.max(
     0,
-    Number.parseInt(searchParams.get("pageToken") ?? "0", 10) || 0,
+    Number.parseInt(searchParams.get("pageToken") ?? "0", 10) || 0
   );
   const matching = [...state.events.values()]
     .filter((event) => event.calendarId === calendarId)
@@ -435,7 +504,7 @@ function listEvents(
 
 function buildEvent(
   calendarId: string,
-  body: RequestBody,
+  body: RequestBody
 ): GoogleCalendarMockEvent {
   const now = new Date().toISOString();
   const id = `evt-${crypto.randomUUID()}`;
@@ -468,7 +537,7 @@ function buildEvent(
 function applyEventPatch(
   event: GoogleCalendarMockEvent,
   body: RequestBody,
-  requireBounds: boolean,
+  requireBounds: boolean
 ): void {
   if (requireBounds && (!body.start || !body.end)) {
     throw new MockHttpError(400, "update requires start and end");
@@ -497,7 +566,7 @@ function applyEventPatch(
 function createEvent(
   state: GoogleCalendarMockState,
   calendarId: string,
-  requestBody: RequestBody,
+  requestBody: RequestBody
 ): DynamicFixtureResponse {
   const calendar = requireCalendar(state, calendarId);
   if ("statusCode" in calendar) return calendar;
@@ -511,7 +580,7 @@ function mutateEvent(
   calendarId: string,
   eventId: string,
   requestBody: RequestBody,
-  action: "patch" | "update",
+  action: "patch" | "update"
 ): DynamicFixtureResponse {
   const event = requiredEventResponse(state, calendarId, eventId);
   if ("statusCode" in event) return event;
@@ -523,7 +592,7 @@ function moveEvent(
   state: GoogleCalendarMockState,
   calendarId: string,
   eventId: string,
-  searchParams: URLSearchParams,
+  searchParams: URLSearchParams
 ): DynamicFixtureResponse {
   const event = requiredEventResponse(state, calendarId, eventId);
   if ("statusCode" in event) return event;
@@ -544,7 +613,7 @@ function moveEvent(
 function deleteEvent(
   state: GoogleCalendarMockState,
   calendarId: string,
-  eventId: string,
+  eventId: string
 ): DynamicFixtureResponse {
   const event = getEvent(state, calendarId, eventId);
   if (!event) return jsonError(404, "Requested entity was not found.");
@@ -557,7 +626,7 @@ function deleteEvent(
 
 function recordCalendarLedger(
   ledgerEntry: GoogleCalendarLedgerEntry,
-  metadata: GoogleCalendarRequestLedgerMetadata,
+  metadata: GoogleCalendarRequestLedgerMetadata
 ): void {
   ledgerEntry.calendar = {
     ...metadata,
@@ -582,7 +651,7 @@ export function googleCalendarDynamicFixture(args: {
       (calendar) =>
         !calendar.deleted &&
         !calendar.hidden &&
-        calendar.accessRole !== "freeBusyReader",
+        calendar.accessRole !== "freeBusyReader"
     );
     return jsonFixture({
       kind: "calendar#calendarList",
@@ -627,7 +696,7 @@ export function googleCalendarDynamicFixture(args: {
     const event = requiredEventResponse(
       args.state,
       eventPath.calendarId,
-      eventPath.eventId,
+      eventPath.eventId
     );
     return "statusCode" in event ? event : jsonFixture(eventResponse(event));
   }
@@ -643,7 +712,7 @@ export function googleCalendarDynamicFixture(args: {
       eventPath.calendarId,
       eventPath.eventId,
       args.requestBody,
-      "patch",
+      "patch"
     );
   }
 
@@ -658,7 +727,7 @@ export function googleCalendarDynamicFixture(args: {
       eventPath.calendarId,
       eventPath.eventId,
       args.requestBody,
-      "update",
+      "update"
     );
   }
 
@@ -674,7 +743,7 @@ export function googleCalendarDynamicFixture(args: {
       args.state,
       eventPath.calendarId,
       eventPath.eventId,
-      args.searchParams,
+      args.searchParams
     );
   }
 

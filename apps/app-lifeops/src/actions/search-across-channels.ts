@@ -9,7 +9,7 @@
  * and memory.
  */
 
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -281,10 +281,10 @@ export const searchAcrossChannelsAction: Action = {
     "iMessage, WhatsApp, Signal, X DMs, Calendly — plus agent memory. " +
     "Returns merged hits with citations to source platform, room, and " +
     "timestamp. Connectors without native search emit typed unsupported " +
-    "markers (no fabricated results). Admin/owner only.",
-  descriptionCompressed: "Cross-channel search with citations. Admin only.",
+    "markers (no fabricated results). Owner only.",
+  descriptionCompressed: "Cross-channel search with citations. Owner only.",
 
-  validate: async (runtime, message) => hasAdminAccess(runtime, message),
+  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
 
   examples: [
     [
@@ -325,9 +325,9 @@ export const searchAcrossChannelsAction: Action = {
     state: State | undefined,
     options: HandlerOptions | undefined,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return {
-        text: "Permission denied: only the owner or admins may search across channels.",
+        text: "Permission denied: only the owner may search across channels.",
         success: false,
         values: { success: false, error: "PERMISSION_DENIED" },
         data: { actionName: ACTION_NAME },

@@ -91,8 +91,8 @@ export const REMINDER_ESCALATION_DELAYS: Record<
 > = {
   low: { initialMinutes: null, repeatMinutes: null },
   medium: { initialMinutes: 90, repeatMinutes: 180 },
-  high: { initialMinutes: 20, repeatMinutes: 45 },
-  critical: { initialMinutes: 5, repeatMinutes: 15 },
+  high: { initialMinutes: 7, repeatMinutes: 10 },
+  critical: { initialMinutes: 5, repeatMinutes: 10 },
 };
 export const DEFAULT_CALENDAR_REMINDER_STEPS: LifeOpsReminderStep[] = [
   {

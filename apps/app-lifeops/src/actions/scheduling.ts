@@ -14,7 +14,7 @@
  *    metadata — no new table).
  */
 
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -1069,7 +1069,7 @@ export const schedulingAction: Action & {
     "searches; those belong to CALENDAR_ACTION, PROPOSE_MEETING_TIMES, INBOX, " +
     "or CROSS_CHANNEL_SEND.",
   suppressPostActionContinuation: true,
-  validate: async (runtime, message) => hasAdminAccess(runtime, message),
+  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -1077,8 +1077,8 @@ export const schedulingAction: Action & {
     options,
     callback,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
-      const text = "Scheduling negotiation is restricted to admins.";
+    if (!(await hasOwnerAccess(runtime, message))) {
+      const text = "Scheduling negotiation is restricted to the owner.";
       await callback?.({ text });
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }

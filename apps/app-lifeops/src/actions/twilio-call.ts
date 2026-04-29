@@ -1,5 +1,5 @@
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
-import { hasAdminAccess, hasOwnerAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type Action,
   type ActionExample,
@@ -91,7 +91,7 @@ export const twilioCallAction: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (!readTwilioCredentialsFromEnv()) return false;
-    return hasAdminAccess(runtime, message);
+    return hasOwnerAccess(runtime, message);
   },
 
   parameters: [
@@ -163,9 +163,9 @@ export const twilioCallAction: Action = {
     state,
     options,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return {
-        text: "Permission denied: only the owner or admin may place voice calls.",
+        text: "Permission denied: only the owner may place voice calls.",
         success: false,
         values: { success: false, error: "PERMISSION_DENIED" },
         data: { actionName: ACTION_NAME },
