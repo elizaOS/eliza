@@ -4,7 +4,8 @@ name: vault-ci
 # claim is that the OS-keyring-backed master key works the same on
 # macOS Keychain, Windows Credential Manager, and Linux Secret
 # Service (libsecret). This workflow makes that claim verifiable in
-# CI on every PR that touches packages/vault/**.
+# CI on every PR that touches packages/vault/** or the app-core
+# wiring that consumes it.
 
 concurrency:
   group: vault-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -15,11 +16,23 @@ on:
     branches: [main, develop]
     paths:
       - "packages/vault/**"
+      - "packages/app-core/src/api/plugins-compat-routes.ts"
+      - "packages/app-core/src/api/secrets-manager-routes.ts"
+      - "packages/app-core/src/api/server.ts"
+      - "packages/app-core/src/services/vault-mirror.ts"
+      - "packages/app-core/src/state/usePluginsSkillsState.ts"
+      - "packages/app-core/src/hooks/useSecretsManagerShortcut.ts"
       - ".github/workflows/vault-ci.yaml"
   pull_request:
     branches: [main, develop]
     paths:
       - "packages/vault/**"
+      - "packages/app-core/src/api/plugins-compat-routes.ts"
+      - "packages/app-core/src/api/secrets-manager-routes.ts"
+      - "packages/app-core/src/api/server.ts"
+      - "packages/app-core/src/services/vault-mirror.ts"
+      - "packages/app-core/src/state/usePluginsSkillsState.ts"
+      - "packages/app-core/src/hooks/useSecretsManagerShortcut.ts"
       - ".github/workflows/vault-ci.yaml"
 
 jobs:
@@ -76,3 +89,39 @@ jobs:
       - name: Test
         working-directory: packages/vault
         run: bun run test
+
+  app-core-wiring:
+    # Verifies the app-core consumer code that wires @elizaos/vault into
+    # the secrets-manager routes, plugins-compat routes, settings hooks,
+    # and the cloud-disconnect orphan-route patch. These tests are
+    # platform-agnostic (no OS keyring access — the vault is mocked at
+    # the boundary), so we only run them on ubuntu-latest.
+    name: app-core wiring tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install workspace dependencies
+        run: bun install
+
+      - name: Generate i18n keyword data (transitive prerequisite)
+        working-directory: packages/shared
+        run: bun run build:i18n
+
+      - name: Run vault wiring tests
+        working-directory: packages/app-core
+        run: |
+          bunx vitest run --config vitest.config.ts \
+            src/api/secrets-manager-routes.test.ts \
+            src/services/vault-mirror.test.ts \
+            src/state/usePluginsSkillsState.heuristic.test.ts \
+            src/hooks/useSecretsManagerShortcut.test.ts \
+            src/api/server.cloud-disconnect.test.ts
