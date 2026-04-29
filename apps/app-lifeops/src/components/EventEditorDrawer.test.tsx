@@ -14,25 +14,20 @@ import type {
   LifeOpsCalendarSummary,
 } from "@elizaos/shared";
 
-const { clientMock } = vi.hoisted(() => ({
+const { clientMock, selectState } = vi.hoisted(() => ({
   clientMock: {
     createLifeOpsCalendarEvent: vi.fn(),
     deleteLifeOpsCalendarEvent: vi.fn(),
     getLifeOpsCalendars: vi.fn(),
     updateLifeOpsCalendarEvent: vi.fn(),
   },
+  selectState: {
+    onValueChange: null as ((value: string) => void) | null,
+    value: "",
+  },
 }));
 
 vi.mock("@elizaos/app-core", () => {
-  const SelectContext = (
-    globalThis as typeof globalThis & {
-      React?: typeof React;
-    }
-  ).React?.createContext<{
-    value: string;
-    onValueChange: (value: string) => void;
-  } | null>(null);
-
   return {
     Button: ({
       children,
@@ -69,12 +64,11 @@ vi.mock("@elizaos/app-core", () => {
       children: React.ReactNode;
       onValueChange: (value: string) => void;
       value: string;
-    }) =>
-      SelectContext ? (
-        <SelectContext.Provider value={{ value, onValueChange }}>
-          <div data-select-value={value}>{children}</div>
-        </SelectContext.Provider>
-      ) : null,
+    }) => {
+      selectState.onValueChange = onValueChange;
+      selectState.value = value;
+      return <div data-select-value={value}>{children}</div>;
+    },
     SelectContent: ({ children }: { children: React.ReactNode }) => (
       <div>{children}</div>
     ),
@@ -85,16 +79,11 @@ vi.mock("@elizaos/app-core", () => {
       children: React.ReactNode;
       value: string;
     }) => {
-      const context = SelectContext
-        ? (globalThis as typeof globalThis & { React?: typeof React }).React?.useContext(
-            SelectContext,
-          )
-        : null;
       return (
         <button
           type="button"
-          aria-pressed={context?.value === value}
-          onClick={() => context?.onValueChange(value)}
+          aria-pressed={selectState.value === value}
+          onClick={() => selectState.onValueChange?.(value)}
         >
           {children}
         </button>

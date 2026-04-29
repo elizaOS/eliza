@@ -490,9 +490,6 @@ export async function applySubscriptionCredentials(config?: {
   agents?: {
     defaults?: { subscriptionProvider?: string; model?: { primary?: string } };
   };
-  serviceRouting?: Record<string, unknown>;
-  deploymentTarget?: Record<string, unknown>;
-  cloud?: Record<string, unknown>;
 }): Promise<void> {
   const subscriptionCredentialsDisabled =
     process.env.ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS?.trim().toLowerCase();
