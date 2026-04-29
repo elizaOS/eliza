@@ -632,6 +632,8 @@ export async function disconnectCloudConnection(args: {
   }
 }
 
+export const disconnectUnifiedCloudConnection = disconnectCloudConnection;
+
 /** Matches `reason` from GET /api/cloud/status when connected via API key without CLOUD_AUTH. */
 const CLOUD_STATUS_API_KEY_ONLY_REASONS: ReadonlySet<string> = new Set([
   "api_key_present_not_authenticated",

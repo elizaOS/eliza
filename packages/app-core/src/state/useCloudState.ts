@@ -393,6 +393,7 @@ export function useCloudState({
           if (!elizaCloudLoginPollTimer.current) return;
           let poll: {
             status: string;
+            organizationId?: string;
             token?: string;
             userId?: string;
             error?: string;
@@ -423,7 +424,10 @@ export function useCloudState({
                 return;
               }
               try {
-                await client.cloudLoginPersist(poll.token);
+                await client.cloudLoginPersist(poll.token, {
+                  organizationId: poll.organizationId,
+                  userId: poll.userId,
+                });
               } catch (cause) {
                 stopCloudLoginPolling(formatCloudLoginPersistError(cause));
                 return;

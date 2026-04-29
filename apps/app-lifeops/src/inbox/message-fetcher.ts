@@ -307,6 +307,8 @@ export async function fetchXDmMessages(
       threadId: dm.conversationId,
       chatType: isGroup ? "group" : "dm",
       participantCount: xParticipantCount,
+      lastSeenAt: dm.readAt ?? undefined,
+      repliedAt: dm.repliedAt ?? undefined,
     });
   }
 
