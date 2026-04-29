@@ -16,6 +16,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
+import { openExternalUrl } from "../../utils";
 import { AppIdentityTile } from "../apps/app-identity";
 import { loadMergedCatalogApps } from "../apps/catalog-loader";
 import { getAppShortName } from "../apps/helpers";
@@ -208,10 +209,40 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
           setState("appsSubTab", "games");
           return;
         }
+        const targetUrl = result.launchUrl ?? app.launchUrl;
+        if (targetUrl) {
+          try {
+            await openExternalUrl(targetUrl);
+            setActionNotice(
+              t("appsview.OpenedInNewTab", {
+                name: app.displayName ?? app.name,
+              }),
+              "success",
+              2600,
+            );
+          } catch {
+            setActionNotice(
+              t("appsview.PopupBlockedOpen", {
+                name: app.displayName ?? app.name,
+              }),
+              "error",
+              4200,
+            );
+          }
+          return;
+        }
         if (primaryRun) {
           setTab("apps");
           setState("appsSubTab", "running");
+          return;
         }
+        setActionNotice(
+          t("appsview.LaunchedNoViewer", {
+            name: app.displayName ?? app.name,
+          }),
+          "error",
+          4000,
+        );
       } catch (err) {
         setActionNotice(
           t("appsview.LaunchFailed", {

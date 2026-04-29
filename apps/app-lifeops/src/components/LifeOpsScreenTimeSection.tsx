@@ -57,6 +57,57 @@ type UnifiedSocialBlockStatus = {
   details: string[];
 };
 
+type BlockStatusLoadResult<T> =
+  | { status: T; error: null }
+  | { status: null; error: string };
+
+function errorLabel(cause: unknown): string {
+  return cause instanceof Error && cause.message.trim().length > 0
+    ? cause.message.trim()
+    : "status failed to load";
+}
+
+function unavailableWebsiteBlockerStatus(reason: string): WebsiteBlockerStatus {
+  return {
+    active: false,
+    available: false,
+    canUnblockEarly: false,
+    elevationPromptMethod: null,
+    endsAt: null,
+    engine: "hosts-file",
+    hostsFilePath: null,
+    platform: "unknown",
+    requiresElevation: false,
+    supportsElevationPrompt: false,
+    websites: [],
+    reason,
+  };
+}
+
+function unavailableAppBlockerStatus(reason: string): AppBlockerStatus {
+  return {
+    active: false,
+    available: false,
+    blockedCount: 0,
+    blockedPackageNames: [],
+    endsAt: null,
+    engine: "none",
+    permissionStatus: "not-applicable",
+    platform: "unknown",
+    reason,
+  };
+}
+
+async function loadStatus<T>(
+  request: () => Promise<T>,
+): Promise<BlockStatusLoadResult<T>> {
+  try {
+    return { status: await request(), error: null };
+  } catch (cause) {
+    return { status: null, error: errorLabel(cause) };
+  }
+}
+
 function formatInlineList(values: string[]): string {
   if (values.length === 0) return "";
   if (values.length === 1) return values[0];
@@ -249,8 +300,8 @@ export function LifeOpsScreenTimeSection({
     const fresh = (entry: CacheEntry<unknown> | undefined) =>
       entry !== undefined && now - entry.fetchedAt < CACHE_TTL_MS;
 
-    if (!force && fresh(cached)) {
-      setData(cached!.value);
+    if (!force && cached && fresh(cached)) {
+      setData(cached.value);
       setLoading(false);
       return;
     }
@@ -272,21 +323,34 @@ export function LifeOpsScreenTimeSection({
   }, []);
 
   const loadBlockStatus = useCallback(async () => {
-    try {
-      const [website, app] = await Promise.all([
-        client.getWebsiteBlockerStatus(),
-        client.getAppBlockerStatus(),
-      ]);
-      setBlockStatus(buildUnifiedSocialBlockStatus(website, app));
-      setBlockStatusError(null);
-    } catch (cause) {
+    const [websiteResult, appResult] = await Promise.all([
+      loadStatus(() => client.getWebsiteBlockerStatus()),
+      loadStatus(() => client.getAppBlockerStatus()),
+    ]);
+
+    if (!websiteResult.status && !appResult.status) {
       setBlockStatus(null);
       setBlockStatusError(
-        cause instanceof Error && cause.message.trim().length > 0
-          ? cause.message.trim()
-          : "Block status failed to load.",
+        [
+          `Website blocker: ${websiteResult.error}`,
+          `App blocker: ${appResult.error}`,
+        ].join(" "),
       );
+      return;
     }
+
+    const website =
+      websiteResult.status ??
+      unavailableWebsiteBlockerStatus(websiteResult.error);
+    const app =
+      appResult.status ?? unavailableAppBlockerStatus(appResult.error);
+    setBlockStatus(buildUnifiedSocialBlockStatus(website, app));
+    setBlockStatusError(
+      [websiteResult, appResult]
+        .filter((result) => result.error)
+        .map((result) => result.error)
+        .join(" ") || null,
+    );
   }, []);
 
   useEffect(() => {
@@ -586,7 +650,7 @@ export function LifeOpsScreenTimeSection({
 
           {showHistory ? (
             <HabitPanel title="Daily History" icon={<CalendarRange />}>
-              <HistoryStrip days={history!} />
+              <HistoryStrip days={history} />
             </HabitPanel>
           ) : null}
 

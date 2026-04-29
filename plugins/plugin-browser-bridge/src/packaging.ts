@@ -40,8 +40,8 @@ const workspaceRootCandidates = uniquePaths([
 ]);
 
 const extensionRootCandidates = workspaceRootCandidates.flatMap((root) => [
-  path.join(root, "apps", "browser-bridge"),
   path.join(root, "eliza", "apps", "browser-bridge"),
+  path.join(root, "apps", "browser-bridge"),
   path.join(root, "apps", "app-lifeops", "extensions", "lifeops-browser"),
   path.join(
     root,

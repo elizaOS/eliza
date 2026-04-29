@@ -157,4 +157,22 @@ describe("isProtected", () => {
 		expect(isProtected("foo", resolution)).toBe(false);
 		expect(isProtected("", resolution)).toBe(false);
 	});
+
+	it("handles double-prefix names (app-app-foo) at the single-pass strip boundary", async () => {
+		// `expansionsFor("app-app-foo")` strips one `app-` level:
+		//   - `app-app-foo`   (full, lowercased)
+		//   - `app-foo`       (one `app-` prefix removed)
+		// It does NOT produce `foo` because the function strips only the outermost
+		// `app-` prefix in a single pass.
+		await makeApp("app-app-foo");
+		process.env.MILADY_PROTECTED_APPS = "app-app-foo";
+		const res = await resolveProtectedApps(repoRoot);
+		// Both the full name and the single-stripped form are protected.
+		expect(isProtected("app-app-foo", res)).toBe(true);
+		expect(isProtected("app-foo", res)).toBe(true);
+		// `foo` is not produced; only one stripping pass occurs.
+		expect(isProtected("foo", res)).toBe(false);
+		// An unrelated name is still not protected.
+		expect(isProtected("bar", res)).toBe(false);
+	});
 });

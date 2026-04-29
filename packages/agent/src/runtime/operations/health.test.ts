@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import type { AgentRuntime } from "@elizaos/core";
+import { describe, expect, test } from "vitest";
 import { HealthChecker } from "./health.js";
 import type { HealthCheck, HealthCheckResult } from "./types.js";
 

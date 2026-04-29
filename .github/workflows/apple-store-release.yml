@@ -139,7 +139,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -150,6 +150,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --ignore-scripts || bun install --ignore-scripts
+
+      - name: Materialize bun npm package binary
+        run: if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
 
       - name: Set version
         env:
@@ -289,7 +292,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -300,6 +303,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --ignore-scripts || bun install --ignore-scripts
+
+      - name: Materialize bun npm package binary
+        run: if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
 
       - name: Set version
         env:
@@ -331,6 +337,7 @@ jobs:
         working-directory: packages/app
         run: |
           bun install --ignore-scripts
+          if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
           bun run build:web
 
       - name: Stage renderer

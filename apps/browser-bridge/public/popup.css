@@ -1,0 +1,261 @@
+:root {
+  color-scheme: light;
+  font-family: "SF Pro Text", "Inter", system-ui, sans-serif;
+  background:
+    radial-gradient(
+      circle at top left,
+      rgba(246, 210, 157, 0.48),
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at bottom right,
+      rgba(156, 212, 190, 0.35),
+      transparent 34%
+    ),
+    linear-gradient(180deg, #fbf6ea 0%, #efe6d6 100%);
+  color: #1f2920;
+}
+
+body {
+  margin: 0;
+  min-width: 380px;
+}
+
+.panel {
+  padding: 18px;
+}
+
+.panel-header h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.08;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #536453;
+}
+
+.lede {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #48564a;
+}
+
+.status-hero,
+.auto-card,
+.advanced-card,
+.import-card {
+  margin-top: 16px;
+  border: 1px solid rgba(34, 54, 38, 0.12);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  backdrop-filter: blur(10px);
+}
+
+.status-hero {
+  padding: 14px;
+}
+
+.status-topline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(45, 98, 67, 0.12);
+  color: #215438;
+}
+
+.status-badge[data-kind="connected"] {
+  background: rgba(36, 118, 73, 0.14);
+  color: #1d6b47;
+}
+
+.status-badge[data-kind="needs_app"],
+.status-badge[data-kind="needs_pairing"] {
+  background: rgba(188, 122, 22, 0.14);
+  color: #8a4f09;
+}
+
+.status-badge[data-kind="needs_settings"],
+.status-badge[data-kind="error"] {
+  background: rgba(160, 66, 26, 0.12);
+  color: #8a3c16;
+}
+
+.status-title {
+  margin: 10px 0 0;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.status-detail {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #4d5b4f;
+}
+
+.status-checklist {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.status-checklist li {
+  border-radius: 14px;
+  background: rgba(243, 239, 229, 0.9);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #334336;
+}
+
+.summary-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.summary-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 999px;
+  background: rgba(238, 234, 223, 0.95);
+  font-size: 11px;
+  line-height: 1.35;
+  color: #526053;
+}
+
+.auto-card,
+.advanced-card {
+  padding: 14px;
+}
+
+.import-copy h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.import-copy p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #5c695e;
+}
+
+.actions,
+.advanced-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.actions {
+  margin-top: 12px;
+  grid-template-columns: 1.5fr 1fr;
+}
+
+.advanced-actions {
+  margin-top: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.advanced-card summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+  font-weight: 700;
+  color: #213022;
+}
+
+.advanced-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.form-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #314235;
+}
+
+input,
+select {
+  height: 38px;
+  border: 1px solid rgba(40, 68, 49, 0.16);
+  border-radius: 10px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1f2a1f;
+}
+
+textarea {
+  border: 1px solid rgba(40, 68, 49, 0.16);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #1f2a1f;
+  resize: vertical;
+  font: inherit;
+}
+
+.import-card {
+  padding: 14px;
+  background: rgba(252, 249, 241, 0.88);
+}
+
+button {
+  height: 40px;
+  border: none;
+  border-radius: 999px;
+  background: #dde5da;
+  color: #1d281f;
+  font-weight: 700;
+}
+
+button.primary {
+  background: #1e6d49;
+  color: #f6fff9;
+}
+
+button.secondary {
+  background: #dce6df;
+  color: #223025;
+}
+
+button.danger {
+  background: #ead6cd;
+  color: #7b2d12;
+}
+
+button:disabled {
+  opacity: 0.65;
+}

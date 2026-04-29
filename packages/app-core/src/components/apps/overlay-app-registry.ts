@@ -8,7 +8,19 @@
 import type { RegistryAppInfo } from "../../api";
 import type { OverlayApp } from "./overlay-app-api";
 
-const registry = new Map<string, OverlayApp>();
+const OVERLAY_APP_REGISTRY_KEY = "__elizaosOverlayAppRegistry__";
+
+type OverlayAppRegistryGlobal = typeof globalThis & {
+  [OVERLAY_APP_REGISTRY_KEY]?: Map<string, OverlayApp>;
+};
+
+const overlayRegistryGlobal = globalThis as OverlayAppRegistryGlobal;
+const registry =
+  overlayRegistryGlobal[OVERLAY_APP_REGISTRY_KEY] ??
+  (overlayRegistryGlobal[OVERLAY_APP_REGISTRY_KEY] = new Map<
+    string,
+    OverlayApp
+  >());
 
 /** Register an overlay app. Call at module scope. */
 export function registerOverlayApp(app: OverlayApp): void {
@@ -37,7 +49,7 @@ export function overlayAppToRegistryInfo(app: OverlayApp): RegistryAppInfo {
     displayName: app.displayName,
     description: app.description,
     category: app.category,
-    launchType: "local",
+    launchType: "overlay",
     launchUrl: null,
     icon: app.icon,
     heroImage: app.heroImage ?? null,

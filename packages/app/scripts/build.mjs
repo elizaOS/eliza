@@ -77,6 +77,9 @@ function run(command, args, cwd) {
       stdio: "inherit",
       env,
     });
+    child.on("error", (error) => {
+      reject(new Error(`${command} failed to start: ${error.message}`));
+    });
     child.on("exit", (code, signal) => {
       if (signal) {
         reject(new Error(`${command} exited due to signal ${signal}`));

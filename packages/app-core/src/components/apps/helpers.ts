@@ -42,6 +42,7 @@ export const APP_CATALOG_SECTION_LABELS: Record<AppCatalogSectionKey, string> =
 
 export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/app",
+  "@elizaos/browser-bridge-extension",
   "app-counter",
   "@elizaos/app-browser",
   "@elizaos/app-form",
