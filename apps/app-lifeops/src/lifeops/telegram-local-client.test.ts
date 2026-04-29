@@ -411,4 +411,83 @@ describe("getTelegramReadReceipts", () => {
       ids: [199, 201],
     });
   });
+
+  it("returns receipts for older message IDs that a recent-window search would have missed", async () => {
+    // Simulate a Telegram dialog whose most recent traffic dwarfs the
+    // requested message id. A search-based fetch ({ search: "", limit })
+    // would only return the latest N messages and silently miss the older
+    // outgoing message we are checking. The IDs-based fetch must still
+    // resolve it.
+    const target = { peer: "carol" };
+    const recentMessageIds = Array.from({ length: 50 }, (_, index) => ({
+      id: 10_000 + index,
+      message: `recent-${index}`,
+      date: new Date("2026-04-28T00:00:00.000Z"),
+      out: false,
+    }));
+
+    const olderRequestedMessage = {
+      id: 42,
+      message: "older outgoing message",
+      date: new Date("2026-04-01T00:00:00.000Z"),
+      out: true,
+    };
+
+    const getMessagesMock = vi.fn(async (_entity, opts) => {
+      if (opts?.ids !== undefined) {
+        const idList = Array.isArray(opts.ids) ? opts.ids : [opts.ids];
+        const pool = [olderRequestedMessage, ...recentMessageIds];
+        return idList.map(
+          (requestedId) =>
+            pool.find((message) => message.id === requestedId) ?? null,
+        );
+      }
+      // Recent-window simulation: most-recent first, capped by limit.
+      const limit = typeof opts?.limit === "number" ? opts.limit : 25;
+      return [...recentMessageIds].reverse().slice(0, limit);
+    });
+
+    const client = buildClient({
+      getEntity: vi.fn(async () => target),
+      getDialogs: vi.fn(async () => [
+        {
+          id: 7,
+          title: "Carol",
+          inputEntity: target,
+          dialog: { readOutboxMaxId: 100 },
+        },
+      ]),
+      getMessages: getMessagesMock,
+    });
+
+    const results = await getTelegramReadReceipts({
+      tokenRef: "token-ref",
+      target: "Carol",
+      messageIds: ["42"],
+      deps: {
+        loadSessionString: () => "session-data",
+        readStoredToken: () => buildStoredToken(),
+        createClient: () => client,
+      },
+    });
+
+    expect(results).toEqual([
+      {
+        messageId: "42",
+        status: "delivered_read",
+        isRead: true,
+        timestamp: "2026-04-01T00:00:00.000Z",
+        content: "older outgoing message",
+        outgoing: true,
+      },
+    ]);
+
+    // Sanity: the IDs path was used, not a recent-window search.
+    expect(getMessagesMock).toHaveBeenCalledTimes(1);
+    expect(getMessagesMock).toHaveBeenCalledWith(target, { ids: [42] });
+    const everyCallUsedIds = getMessagesMock.mock.calls.every(
+      ([, opts]) => opts && "ids" in opts && !("search" in opts),
+    );
+    expect(everyCallUsedIds).toBe(true);
+  });
 });
