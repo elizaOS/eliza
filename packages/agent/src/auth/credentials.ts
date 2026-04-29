@@ -14,6 +14,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { resolveElizaCloudTopology } from "@elizaos/shared/contracts";
 import {
   type AccountCredentialRecord,
   deleteAccount,
@@ -490,6 +491,9 @@ export async function applySubscriptionCredentials(config?: {
   agents?: {
     defaults?: { subscriptionProvider?: string; model?: { primary?: string } };
   };
+  serviceRouting?: Record<string, unknown>;
+  deploymentTarget?: Record<string, unknown>;
+  cloud?: Record<string, unknown>;
 }): Promise<void> {
   const subscriptionCredentialsDisabled =
     process.env.ELIZA_DISABLE_SUBSCRIPTION_CREDENTIALS?.trim().toLowerCase();
@@ -533,6 +537,11 @@ export async function applySubscriptionCredentials(config?: {
     }
   }
 
+  const cloudInferenceEnabled = config
+    ? resolveElizaCloudTopology(config as Record<string, unknown>).services
+        .inference
+    : false;
+
   // ── OpenAI Codex subscription → set OPENAI_API_KEY ────────────────────
   //
   // Account selection goes through the WS2 AccountPool when its shim is
@@ -561,10 +570,14 @@ export async function applySubscriptionCredentials(config?: {
       codexAccounts.find((a) => a.id === chosenId) ??
       codexAccounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
     const codexToken = await getAccessToken("openai-codex", primary.id);
-    if (codexToken) {
+    if (codexToken && !cloudInferenceEnabled) {
       process.env.OPENAI_API_KEY = codexToken;
       logger.info(
         `[auth] Applied OpenAI Codex subscription credentials to environment from account "${primary.label}" (${primary.id})`,
+      );
+    } else if (codexToken) {
+      logger.info(
+        `[auth] OpenAI Codex subscription account "${primary.label}" (${primary.id}) detected, but cloud inference is active; skipping runtime OPENAI_API_KEY injection`,
       );
     }
   }
@@ -579,7 +592,11 @@ export async function applySubscriptionCredentials(config?: {
     if (provider) {
       const modelId = SUBSCRIPTION_PROVIDER_MAP[provider];
       if (modelId) {
-        if (!defaults.model) {
+        if (cloudInferenceEnabled) {
+          logger.info(
+            `[auth] Cloud inference is active; ignoring subscription model.primary auto-selection for "${modelId}"`,
+          );
+        } else if (!defaults.model) {
           defaults.model = { primary: modelId };
           logger.info(
             `[auth] Auto-set model.primary to "${modelId}" from subscription provider`,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { shouldDeferReminderUntilComputerActive } from "../src/lifeops/service-helpers-reminder.js";
+import { isWithinQuietHours } from "../src/lifeops/service-helpers-misc.js";
 import type {
   LifeOpsReminderChannel,
   LifeOpsTaskDefinition,
@@ -96,6 +97,32 @@ describe("shouldDeferReminderUntilComputerActive", () => {
           originalIntent: "drink water during the day",
         }),
       ),
+    ).toBe(false);
+  });
+});
+
+describe("isWithinQuietHours", () => {
+  it("uses the normalized minute-based quiet-hours contract", () => {
+    const quietHours = {
+      timezone: "America/Los_Angeles",
+      startMinute: 6 * 60,
+      endMinute: 8 * 60,
+      channels: ["push"],
+    };
+
+    expect(
+      isWithinQuietHours({
+        now: new Date("2026-04-28T13:30:00.000Z"),
+        quietHours,
+        channel: "push",
+      }),
+    ).toBe(true);
+    expect(
+      isWithinQuietHours({
+        now: new Date("2026-04-28T13:30:00.000Z"),
+        quietHours,
+        channel: "sms",
+      }),
     ).toBe(false);
   });
 });
