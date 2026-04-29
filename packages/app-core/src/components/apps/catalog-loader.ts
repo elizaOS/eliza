@@ -32,9 +32,16 @@ export async function loadMergedCatalogApps({
     )
     .map(overlayAppToRegistryInfo);
 
+  // Keep the FIRST occurrence so internal-tool apps (which carry hero images
+  // and the canonical catalog metadata) win over duplicate `installedApps`
+  // entries that lack heroImage/category etc.
+  const seenNames = new Set<string>();
   const mergedApps = [...staticApps, ...overlayApps, ...installedApps].filter(
-    (app, index, items) =>
-      !items.slice(index + 1).some((candidate) => candidate.name === app.name),
+    (app) => {
+      if (seenNames.has(app.name)) return false;
+      seenNames.add(app.name);
+      return true;
+    },
   );
 
   return includeHiddenApps

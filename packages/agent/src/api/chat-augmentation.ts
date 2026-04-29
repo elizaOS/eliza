@@ -134,13 +134,25 @@ async function resolveCloudCreditsBalance(
       }),
     ])) as Record<string, unknown>;
 
+    const coerce = (value: unknown): number | null => {
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        const parsed = Number.parseFloat(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    };
+    // Eliza Cloud returns `balance` as `string | number` (per the bridge
+    // client + types.eliza.ts type defs). Accept both shapes — string is
+    // what the upstream returns when the value is held as a fixed-precision
+    // decimal.
     const rawBalance =
-      typeof response.balance === "number"
-        ? response.balance
-        : typeof (response.data as Record<string, unknown> | undefined)
-              ?.balance === "number"
-          ? ((response.data as Record<string, unknown>).balance as number)
-          : null;
+      coerce(response.balance) ??
+      coerce(
+        (response.data as Record<string, unknown> | undefined)?.balance,
+      );
 
     return typeof rawBalance === "number"
       ? rawBalance.toFixed(2)

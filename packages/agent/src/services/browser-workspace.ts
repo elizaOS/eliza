@@ -888,6 +888,13 @@ export async function executeBrowserWorkspaceCommand(
     case "type":
     case "uncheck":
     case "wait":
+    case "realistic-click":
+    case "realistic-fill":
+    case "realistic-type":
+    case "realistic-press":
+    case "realistic-upload":
+    case "cursor-move":
+    case "cursor-hide":
       if (
         command.subaction === "wait" &&
         !command.selector &&
