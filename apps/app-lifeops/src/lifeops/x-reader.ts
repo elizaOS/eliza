@@ -2,7 +2,11 @@ import crypto from "node:crypto";
 import { logger } from "@elizaos/core";
 
 function getXBaseUrl(): string {
-  return process.env.MILADY_MOCK_X_BASE ?? "https://api.twitter.com";
+  return (
+    process.env.MILADY_MOCK_X_BASE ??
+    process.env.ELIZA_MOCK_X_BASE ??
+    "https://api.twitter.com"
+  );
 }
 
 /**
@@ -71,7 +75,7 @@ export class XReadError extends Error {
       status: number | null;
       category: XReadError["category"];
       retryAfterSeconds?: number | null;
-    },
+    }
   ) {
     super(message);
     this.name = "XReadError";
@@ -88,20 +92,22 @@ const REQUEST_TIMEOUT_MS = 12_000;
 function percentEncode(value: string): string {
   return encodeURIComponent(value).replace(
     /[!'()*]/g,
-    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`
   );
 }
 
 function buildSignatureBaseString(
   method: string,
   url: string,
-  params: Record<string, string>,
+  params: Record<string, string>
 ): string {
   const sorted = Object.keys(params)
     .sort()
     .map((key) => `${percentEncode(key)}=${percentEncode(params[key] ?? "")}`)
     .join("&");
-  return `${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(sorted)}`;
+  return `${method.toUpperCase()}&${percentEncode(url)}&${percentEncode(
+    sorted
+  )}`;
 }
 
 function buildSigningKey(apiSecret: string, tokenSecret: string): string {
@@ -139,7 +145,7 @@ function buildOAuth1GetHeader(args: {
   const baseString = buildSignatureBaseString("GET", args.url, combined);
   const signingKey = buildSigningKey(
     args.credentials.apiSecret,
-    args.credentials.accessTokenSecret,
+    args.credentials.accessTokenSecret
   );
   oauthParams.oauth_signature = signOAuth1(baseString, signingKey);
 
@@ -149,7 +155,7 @@ function buildOAuth1GetHeader(args: {
       .sort()
       .map(
         (key) =>
-          `${percentEncode(key)}="${percentEncode(oauthParams[key] ?? "")}"`,
+          `${percentEncode(key)}="${percentEncode(oauthParams[key] ?? "")}"`
       )
       .join(", ")
   );
@@ -224,7 +230,7 @@ async function xFetch<T>(args: {
         integration: "x",
         operation: args.operation,
       },
-      `[lifeops] X read network failure: ${message}`,
+      `[lifeops] X read network failure: ${message}`
     );
     throw new XReadError(message, { status: null, category: "network" });
   }
@@ -255,7 +261,7 @@ async function xFetch<T>(args: {
 }
 
 function buildHandleIndex(
-  users: readonly TwitterUser[] | undefined,
+  users: readonly TwitterUser[] | undefined
 ): Map<string, string> {
   const index = new Map<string, string>();
   for (const user of users ?? []) {
@@ -287,7 +293,7 @@ type TwitterTweet = {
 function parseDmEvent(
   event: TwitterDmEvent,
   selfUserId: string | undefined,
-  handleIndex: Map<string, string>,
+  handleIndex: Map<string, string>
 ): XRawDm | null {
   if (event.event_type && event.event_type !== "MessageCreate") return null;
   const senderId = event.sender_id ?? "";
@@ -306,7 +312,7 @@ function parseDmEvent(
 
 function parseTweet(
   tweet: TwitterTweet,
-  handleIndex: Map<string, string>,
+  handleIndex: Map<string, string>
 ): XRawFeedItem {
   const authorId = tweet.author_id ?? "";
   return {
@@ -325,7 +331,7 @@ function parseTweet(
  */
 export async function readXDms(
   credentials: XReaderCredentials,
-  options: XReadPageOptions = {},
+  options: XReadPageOptions = {}
 ): Promise<XReadPage<XRawDm>> {
   const limit = clampLimit(options.limit);
   const url = `${getXBaseUrl()}/2/dm_events`;
@@ -365,7 +371,7 @@ export async function readXDms(
 export async function pullXFeed(
   credentials: XReaderCredentials,
   feedType: XFeedType,
-  options: XFeedPageOptions = {},
+  options: XFeedPageOptions = {}
 ): Promise<XReadPage<XRawFeedItem>> {
   const limit = clampLimit(options.limit);
   const baseQuery: Record<string, string> = {
@@ -385,7 +391,9 @@ export async function pullXFeed(
         category: "unknown",
       });
     }
-    url = `${getXBaseUrl()}/2/users/${encodeURIComponent(credentials.userId)}/timelines/reverse_chronological`;
+    url = `${getXBaseUrl()}/2/users/${encodeURIComponent(
+      credentials.userId
+    )}/timelines/reverse_chronological`;
   } else if (feedType === "mentions") {
     if (!credentials.userId) {
       throw new XReadError("mentions requires credentials.userId", {
@@ -393,7 +401,9 @@ export async function pullXFeed(
         category: "unknown",
       });
     }
-    url = `${getXBaseUrl()}/2/users/${encodeURIComponent(credentials.userId)}/mentions`;
+    url = `${getXBaseUrl()}/2/users/${encodeURIComponent(
+      credentials.userId
+    )}/mentions`;
   } else {
     const query = (options.query ?? "").trim();
     if (query.length === 0) {
@@ -429,7 +439,7 @@ export async function pullXFeed(
 export function searchX(
   credentials: XReaderCredentials,
   query: string,
-  options: { limit?: number; cursor?: string } = {},
+  options: { limit?: number; cursor?: string } = {}
 ): Promise<XReadPage<XRawFeedItem>> {
   return pullXFeed(credentials, "search", { ...options, query });
 }

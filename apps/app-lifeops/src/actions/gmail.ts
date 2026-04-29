@@ -2003,7 +2003,7 @@ export const gmailAction: Action & {
   ) => {
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const fallback =
-        "Gmail actions are restricted to the owner, explicitly granted users, and the agent.";
+        "Gmail actions are restricted to the owner and the agent.";
       return {
         success: false,
         text: await renderGmailActionReply({

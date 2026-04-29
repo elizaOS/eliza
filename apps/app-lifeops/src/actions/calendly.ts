@@ -1,5 +1,5 @@
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import {
   type Action,
   type ActionExample,
@@ -166,7 +166,7 @@ export const calendlyAction: Action = {
     message: Memory,
   ): Promise<boolean> => {
     if (!readCalendlyCredentialsFromEnv()) return false;
-    return hasAdminAccess(runtime, message);
+    return hasOwnerAccess(runtime, message);
   },
 
   parameters: [
@@ -260,9 +260,9 @@ export const calendlyAction: Action = {
     state,
     options,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return failure(
-        "Permission denied: only the owner or admin may use Calendly.",
+        "Permission denied: only the owner may use Calendly.",
         "PERMISSION_DENIED",
       );
     }

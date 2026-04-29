@@ -41,6 +41,7 @@ import {
   getSharedSourceAliases,
   getUiSourceAliases,
   getWorkspaceAppAliases,
+  getWorkspacePluginAliases,
   type ModuleAlias,
 } from "./workspace-aliases";
 
@@ -309,6 +310,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     "app-lifeops",
     "app-knowledge",
   ]),
+  ...getWorkspacePluginAliases(repoRoot, ["plugin-browser-bridge"]),
   ...getSharedSourceAliases(sharedSourceRoot, {
     includeMiladyAlias: true,
   }),
@@ -347,6 +349,7 @@ export default defineConfig({
       "eliza/packages/app-core/test/live-agent/**/*.test.ts",
       "eliza/packages/app-core/test/live-agent/**/*.test.tsx",
       "eliza/packages/app-core/test/helpers/**/*.test.ts",
+      "eliza/test/mocks/__tests__/**/*.test.ts",
       // app-core src-colocated tests run here; test/ harness suites run in
       // the app-unit config (apps/app/vitest.config.ts) which provides the
       // correct @elizaos/app-core alias resolution. Running both in parallel

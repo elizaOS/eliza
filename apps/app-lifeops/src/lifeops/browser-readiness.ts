@@ -26,7 +26,7 @@ export interface BrowserBridgeReadiness {
 
 export function isBrowserBridgePaused(
   settings: Pick<BrowserBridgeSettings, "pauseUntil">,
-  nowMs = Date.now(),
+  nowMs = Date.now()
 ): boolean {
   if (!settings.pauseUntil) {
     return false;
@@ -38,7 +38,7 @@ export function isBrowserBridgePaused(
 export function browserBridgeCompanionIsRecent(
   companion: Pick<BrowserBridgeCompanionStatus, "lastSeenAt">,
   nowMs = Date.now(),
-  recentWindowMs = BROWSER_BRIDGE_RECENT_CONTACT_WINDOW_MS,
+  recentWindowMs = BROWSER_BRIDGE_RECENT_CONTACT_WINDOW_MS
 ): boolean {
   if (!companion.lastSeenAt) {
     return false;
@@ -49,7 +49,7 @@ export function browserBridgeCompanionIsRecent(
 
 export function browserBridgeSiteAccessReady(
   settings: Pick<BrowserBridgeSettings, "siteAccessMode" | "grantedOrigins">,
-  permissions: BrowserBridgePermissionState,
+  permissions: BrowserBridgePermissionState
 ): boolean {
   switch (settings.siteAccessMode) {
     case "all_sites":
@@ -62,12 +62,14 @@ export function browserBridgeSiteAccessReady(
       );
     case "current_site_only":
       return permissions.activeTab;
+    default:
+      return false;
   }
 }
 
 export function browserBridgePermissionsReady(
   settings: Pick<BrowserBridgeSettings, "siteAccessMode" | "grantedOrigins">,
-  permissions: BrowserBridgePermissionState,
+  permissions: BrowserBridgePermissionState
 ): boolean {
   return (
     permissions.tabs &&
@@ -80,13 +82,13 @@ export function browserBridgePermissionsReady(
 export function resolveBrowserBridgeReadiness(
   settings: BrowserBridgeSettings,
   companions: readonly BrowserBridgeCompanionStatus[],
-  nowMs = Date.now(),
+  nowMs = Date.now()
 ): BrowserBridgeReadiness {
   const connectedCompanions = companions.filter(
-    (companion) => companion.connectionState === "connected",
+    (companion) => companion.connectionState === "connected"
   );
   const recentConnectedCompanions = connectedCompanions.filter((companion) =>
-    browserBridgeCompanionIsRecent(companion, nowMs),
+    browserBridgeCompanionIsRecent(companion, nowMs)
   );
   const primaryCompanion =
     recentConnectedCompanions[0] ??
@@ -118,7 +120,7 @@ export function resolveBrowserBridgeReadiness(
   if (
     connectedCompanions.length === 0 &&
     companions.some(
-      (companion) => companion.connectionState === "permission_blocked",
+      (companion) => companion.connectionState === "permission_blocked"
     )
   ) {
     return { ...base, ready: false, state: "permission_blocked" };
@@ -128,7 +130,7 @@ export function resolveBrowserBridgeReadiness(
   }
   if (
     recentConnectedCompanions.some((companion) =>
-      browserBridgePermissionsReady(settings, companion.permissions),
+      browserBridgePermissionsReady(settings, companion.permissions)
     )
   ) {
     return { ...base, ready: true, state: "ready" };

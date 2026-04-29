@@ -521,14 +521,14 @@ export const blockWebsitesAction: Action & {
     "BLOCK_DISTRACTING_SITES",
   ],
   description:
-    "Admin-only. Start a local website block by editing the system hosts file. " +
+    "Owner-only. Start a local website block by editing the system hosts file. " +
     "Use this for fixed-duration or generic focus blocks like 'block twitter and reddit for the next 2 hours', 'turn on a focus block for all social media sites', or 'block youtube'. " +
     "Use recent conversation context to block public websites like x.com for a fixed duration or until manually unblocked. " +
     "Do not use this when the unblock condition is finishing a task, workout, or todo; that is BLOCK_UNTIL_TASK_COMPLETE. " +
     "Always drafts first; the owner must pass confirmed: true (e.g. by replying 'confirm') to actually edit the hosts file. " +
     "If the user confirms a block in a follow-up message without repeating the hostnames, reuse that context through the action planner.",
   descriptionCompressed:
-    "Admin: block websites via hosts file for set duration.",
+    "Owner: block websites via hosts file for set duration.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
@@ -824,8 +824,8 @@ export const getWebsiteBlockStatusAction: Action = {
     "IS_BLOCK_RUNNING",
   ],
   description:
-    "Admin-only. Check whether a local hosts-file website block is currently active and when it ends.",
-  descriptionCompressed: "Admin: check website block status.",
+    "Owner-only. Check whether a local hosts-file website block is currently active and when it ends.",
+  descriptionCompressed: "Owner: check website block status.",
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
     return access.allowed;
@@ -881,8 +881,8 @@ export const requestWebsiteBlockingPermissionAction: Action = {
     "REQUEST_SELFCONTROL_PERMISSION",
   ],
   description:
-    "Admin-only. Prepare local website blocking by requesting administrator/root approval when the machine supports it, or explain the manual change needed when it does not.",
-  descriptionCompressed: "Admin: request website blocking permission.",
+    "Owner-only. Prepare local website blocking by requesting administrator/root approval when the machine supports it, or explain the manual change needed when it does not.",
+  descriptionCompressed: "Owner: request website blocking permission.",
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
     return access.allowed;
@@ -944,8 +944,8 @@ export const unblockWebsitesAction: Action = {
     "LIFT_WEBSITE_BLOCK",
   ],
   description:
-    "Admin-only. Remove the current local website block by restoring the system hosts file entries Eliza added.",
-  descriptionCompressed: "Admin: remove website block.",
+    "Owner-only. Remove the current local website block by restoring the system hosts file entries Eliza added.",
+  descriptionCompressed: "Owner: remove website block.",
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
     return access.allowed;

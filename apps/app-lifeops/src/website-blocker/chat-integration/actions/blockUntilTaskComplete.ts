@@ -121,7 +121,7 @@ async function createTodoByName(
        'user_lifeops',
        'owner',
        ${sqlQuote(agentId)},
-       'owner_agent_admin',
+       'owner_only',
        'explicit_only',
        'todo',
        ${sqlQuote(name)},
