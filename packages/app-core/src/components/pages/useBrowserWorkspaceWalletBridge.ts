@@ -11,6 +11,8 @@
  * for per-iframe onLoad and any other point-in-time broadcasts.
  */
 
+import { type RefObject, useCallback, useEffect, useRef } from "react";
+import { type BrowserWorkspaceTab, client } from "../../api";
 import {
   BROWSER_WALLET_READY_TYPE,
   BROWSER_WALLET_RESPONSE_TYPE,
@@ -18,9 +20,7 @@ import {
   type BrowserWorkspaceWalletResponse,
   type BrowserWorkspaceWalletState,
   isBrowserWorkspaceWalletRequest,
-} from "@elizaos/app-steward/browser-workspace-wallet";
-import { type RefObject, useCallback, useEffect, useRef } from "react";
-import { type BrowserWorkspaceTab, client } from "../../api";
+} from "./browser-workspace-wallet";
 
 const DEFAULT_CHAIN_ID = 1;
 

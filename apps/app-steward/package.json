@@ -23,6 +23,7 @@
     "@simplewebauthn/browser": "^13.0.0",
     "@solana/web3.js": "^1.98.4",
     "@stwd/sdk": "^0.8.0",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",

@@ -9,11 +9,11 @@ import {
   loadElizaConfig,
   resolveWalletRpcReadiness,
 } from "@elizaos/agent";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   canUseLocalTradeExecution,
   resolveTradePermissionMode,
-} from "@elizaos/app-steward";
-import type { IAgentRuntime } from "@elizaos/core";
+} from "../../api/server-wallet-trade";
 
 function shorten(address: string | null): string | null {
   if (!address) return null;

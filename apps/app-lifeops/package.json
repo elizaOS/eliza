@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@capacitor/core": "8.3.1",
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-appblocker": "workspace:*",
     "@elizaos/capacitor-mobile-signals": "workspace:*",
     "@elizaos/core": "workspace:*",

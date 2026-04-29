@@ -448,61 +448,35 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
   }
 }
 
-/**
- * Register the nightly Track C training crons (trajectory export + skill
- * scoring) against the live runtime. The @elizaos/app-training package is
- * optional — if it is not installed, the dynamic import fails and we skip
- * silently. Each underlying registration also no-ops when the CRON service
- * is missing, so installs without plugin-cron are safe.
- */
-async function registerTrackCTrainingCrons(
+interface RuntimeHookModule {
+  registerTrainingRuntimeHooks?: (runtime: AgentRuntime) => Promise<void>;
+}
+
+const TRAINING_RUNTIME_HOOKS_SPECIFIER =
+  "@elizaos/app-training/register-runtime";
+
+async function registerTrainingRuntimeHooks(
   runtime: AgentRuntime,
 ): Promise<void> {
-  // `@elizaos/app-training` is an optional dependency: the package may not be
-  // installed at all in minimal deployments. Scope the try/catch to the
-  // dynamic imports so a missing package logs a skip, but real errors inside
-  // the registration helpers propagate with full context.
-  let exportMod: typeof import("@elizaos/app-training/core/trajectory-export-cron");
-  let scoringMod: typeof import("@elizaos/app-training/core/skill-scoring-cron");
-  let triggerMod: typeof import("@elizaos/app-training/services/training-trigger");
+  let hookMod: RuntimeHookModule;
   try {
-    [exportMod, scoringMod, triggerMod] = await Promise.all([
-      import("@elizaos/app-training/core/trajectory-export-cron"),
-      import("@elizaos/app-training/core/skill-scoring-cron"),
-      import("@elizaos/app-training/services/training-trigger"),
-    ]);
+    hookMod = (await import(
+      TRAINING_RUNTIME_HOOKS_SPECIFIER
+    )) as RuntimeHookModule;
   } catch (err) {
     logger.warn(
-      `[eliza] @elizaos/app-training not installed, skipping Track C training crons: ${err instanceof Error ? err.message : String(err)}`,
+      `[eliza] @elizaos/app-training not installed, skipping runtime hooks: ${err instanceof Error ? err.message : String(err)}`,
     );
     return;
   }
 
-  await exportMod.registerTrajectoryExportCron(runtime);
-  await scoringMod.registerSkillScoringCron(runtime);
-  const triggerService = triggerMod.registerTrainingTriggerService(runtime);
-  logger.info(
-    "[eliza] Registered Track C training crons + auto-train trigger service",
-  );
-  // Phase 5.5 — Hermes-parity default-on bootstrap. Fire-and-forget so
-  // runtime boot stays fast; the bootstrap helper short-circuits when
-  // counters are below threshold or an artifact already exists. We log the
-  // rejection instead of swallowing so a bug in the bootstrap helper is
-  // surfaced at boot time rather than silently lost.
-  void triggerMod
-    .bootstrapOptimizationFromAccumulatedTrajectories(runtime, triggerService)
-    .then((fired) => {
-      if (fired.length > 0) {
-        logger.info(
-          `[eliza] Bootstrapped prompt optimization for ${fired.join(", ")}`,
-        );
-      }
-    })
-    .catch((err) => {
-      logger.error(
-        `[eliza] bootstrapOptimizationFromAccumulatedTrajectories failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
-      );
-    });
+  if (!hookMod.registerTrainingRuntimeHooks) {
+    throw new Error(
+      `[eliza] ${TRAINING_RUNTIME_HOOKS_SPECIFIER} did not export registerTrainingRuntimeHooks`,
+    );
+  }
+
+  await hookMod.registerTrainingRuntimeHooks(runtime);
 }
 
 async function repairRuntimeAfterBoot(
@@ -515,7 +489,7 @@ async function repairRuntimeAfterBoot(
   // subprocesses (n8n autostart, n8n auth bridge, telegram polling), shell
   // out to platform-specific binaries (text-to-speech, local inference), or
   // dynamic-import optional packages that are not in the mobile bundle
-  // (registered app route plugins and `@elizaos/app-training/*`). Skipping
+  // (registered app route plugins and app runtime hooks). Skipping
   // them here is what the mobile bundle has to do to avoid crashing on first
   // turn — feature parity comes from cloud-side services, not on-device state.
   if (isMobilePlatform()) {
@@ -537,11 +511,7 @@ async function repairRuntimeAfterBoot(
   // runtime only consumes app route plugin loaders.
   await registerAppRoutePlugins(runtime);
 
-  // ── Register Track C training crons (trajectory export + skill scoring) ─
-  // Optional: only runs when @elizaos/app-training is installed. Both cron
-  // registrations internally no-op when the CRON service is unavailable, so
-  // installs without plugin-cron are also safe.
-  await registerTrackCTrainingCrons(runtime);
+  await registerTrainingRuntimeHooks(runtime);
 
   if (!runtime.getService("AUTONOMY")) {
     try {

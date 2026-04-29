@@ -15,25 +15,6 @@ import type {
   BrowserWorkspaceTab,
 } from "@elizaos/agent";
 import type {
-  StewardApprovalActionResponse,
-  StewardApprovalInfo,
-  StewardBalanceResponse,
-  StewardHistoryResponse,
-  StewardPendingApproval,
-  StewardPendingResponse,
-  StewardPolicyResult,
-  StewardSignRequest,
-  StewardSignResponse,
-  StewardStatusResponse,
-  StewardTokenBalancesResponse,
-  StewardTxRecord,
-  StewardTxStatus,
-  StewardWalletAddressesResponse,
-  StewardWebhookEvent,
-  StewardWebhookEventsResponse,
-  StewardWebhookEventType,
-} from "@elizaos/app-steward";
-import type {
   AllPermissionsState,
   AudioGenConfig,
   AudioGenProvider,
@@ -101,6 +82,25 @@ import {
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
 } from "@elizaos/shared";
+import type {
+  StewardApprovalActionResponse,
+  StewardApprovalInfo,
+  StewardBalanceResponse,
+  StewardHistoryResponse,
+  StewardPendingApproval,
+  StewardPendingResponse,
+  StewardPolicyResult,
+  StewardSignRequest,
+  StewardSignResponse,
+  StewardStatusResponse,
+  StewardTokenBalancesResponse,
+  StewardTxRecord,
+  StewardTxStatus,
+  StewardWalletAddressesResponse,
+  StewardWebhookEvent,
+  StewardWebhookEventsResponse,
+  StewardWebhookEventType,
+} from "./client-types-steward";
 
 // Re-export the class from client-base (no circular dependency issues)
 export { ElizaClient } from "./client-base";
@@ -225,13 +225,11 @@ import "./client-browser-workspace";
 import "./client-chat";
 import "./client-cloud";
 import "./client-computeruse";
-import "@elizaos/app-lifeops/api/client-lifeops";
 import "./client-imessage";
 import "./client-local-inference";
 import "./client-n8n";
 import "./client-skills";
 import "./client-wallet";
-import "@elizaos/app-vincent/client";
 
 // ---------------------------------------------------------------------------
 // Singleton

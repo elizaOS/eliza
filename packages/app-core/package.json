@@ -39,9 +39,11 @@
     "./api/auth": "./src/api/auth.ts",
     "./api/client": "./src/api/client.ts",
     "./api/client-base": "./src/api/client-base.ts",
+    "./api/automation-node-contributors": "./src/api/automation-node-contributors.ts",
     "./api/client-types-babylon": "./src/api/client-types-babylon.ts",
     "./api/client-types-cloud": "./src/api/client-types-cloud.ts",
     "./api/client-types-core": "./src/api/client-types-core.ts",
+    "./api/client-types-steward": "./src/api/client-types-steward.ts",
     "./api/response": "./src/api/response.ts",
     "./api/compat-route-shared": "./src/api/compat-route-shared.ts",
     "./api/server-cloud-tts": "./src/api/server-cloud-tts.ts",
@@ -114,6 +116,9 @@
     "./services/plugin-installer": "./src/services/plugin-installer.ts",
     "./services/account-pool": "./src/services/account-pool.ts",
     "./services/account-usage": "./src/services/account-usage.ts",
+    "./services/steward-credentials": "./src/services/steward-credentials.ts",
+    "./services/steward-sidecar": "./src/services/steward-sidecar.ts",
+    "./services/steward-sidecar/*": "./src/services/steward-sidecar/*",
     "./styles/base.css": "./src/styles/base.css",
     "./styles/xterm.css": "./src/styles/xterm.css",
     "./styles/onboarding-game.css": "./src/styles/onboarding-game.css",
@@ -126,7 +131,8 @@
   },
   "peerDependencies": {
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "three": "^0.182.0 || ^0.184.0"
   },
   "optionalDependencies": {
     "node-llama-cpp": "3.18.1"
@@ -143,16 +149,6 @@
     "@capacitor/push-notifications": "^8.0.0",
     "@clack/prompts": "^1.0.0",
     "@elizaos/agent": "workspace:*",
-    "@elizaos/app-companion": "workspace:*",
-    "@elizaos/app-elizamaker": "workspace:*",
-    "@elizaos/app-hyperliquid": "workspace:*",
-    "@elizaos/app-lifeops": "workspace:*",
-    "@elizaos/app-polymarket": "workspace:*",
-    "@elizaos/app-shopify": "workspace:*",
-    "@elizaos/app-steward": "workspace:*",
-    "@elizaos/app-task-coordinator": "workspace:*",
-    "@elizaos/app-training": "workspace:*",
-    "@elizaos/app-vincent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-browser-bridge": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
