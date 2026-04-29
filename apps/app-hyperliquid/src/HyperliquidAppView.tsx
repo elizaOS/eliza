@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   BarChart3,
   CircleAlert,
+  Cloud,
+  KeyRound,
   RefreshCw,
   ShieldCheck,
   ShieldX,
@@ -29,12 +31,25 @@ function ReadinessPill({ ready, label }: { ready: boolean; label: string }) {
   );
 }
 
+function credentialModeLabel(
+  mode: "managed_vault" | "local_key" | "none" | undefined,
+): string {
+  switch (mode) {
+    case "managed_vault":
+      return "Managed vault";
+    case "local_key":
+      return "Local key";
+    default:
+      return "Read-only";
+  }
+}
+
 export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
   const { status, markets, positions, orders, loading, error, refresh } =
     useHyperliquidState();
 
   const publicReadReady = status?.publicReadReady ?? false;
-  const executionReady = status?.executionReady ?? false;
+  const credentialMode = status?.credentialMode ?? "none";
 
   return (
     <div
@@ -91,13 +106,18 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
             </div>
 
             <div className="rounded-lg border border-border/24 bg-card/50 px-4 py-3">
-              <div className="text-xs font-semibold uppercase text-muted">
-                Execution
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase text-muted">
+                {credentialMode === "managed_vault" ? (
+                  <Cloud className="h-3.5 w-3.5" />
+                ) : (
+                  <KeyRound className="h-3.5 w-3.5" />
+                )}
+                Credentials
               </div>
               <div className="mt-3">
                 <ReadinessPill
-                  ready={executionReady}
-                  label={executionReady ? "Key present" : "Disabled"}
+                  ready={status?.signerReady ?? false}
+                  label={credentialModeLabel(credentialMode)}
                 />
               </div>
             </div>
@@ -107,7 +127,7 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                 Account
               </div>
               <div className="mt-3 truncate font-mono text-xs text-txt">
-                {status?.accountAddress ?? "No account address configured"}
+                {status?.account.address ?? "No account address configured"}
               </div>
             </div>
           </section>
@@ -116,6 +136,12 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
             <div className="flex items-start gap-2 rounded-lg border border-border/24 bg-bg-accent px-4 py-3 text-sm text-muted">
               <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{status.executionBlockedReason}</span>
+            </div>
+          )}
+
+          {status && !status.vault.ready && credentialMode !== "local_key" && (
+            <div className="rounded-lg border border-border/24 bg-bg-accent px-4 py-3 text-sm text-muted">
+              {status.vault.guidance}
             </div>
           )}
 

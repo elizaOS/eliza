@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import { hyperliquidPlugin } from "../src/plugin";
 import { type HyperliquidFetch, handleHyperliquidRoute } from "../src/routes";
 
+const VALID_LOCAL_KEY =
+  "0x0000000000000000000000000000000000000000000000000000000000000001";
+const VALID_AGENT_KEY =
+  "0x0000000000000000000000000000000000000000000000000000000000000002";
+
 interface CapturedResponse {
   status: number;
   headers: Record<string, number | string | string[]>;
@@ -55,7 +60,7 @@ describe("Hyperliquid routes", () => {
     const response = await callRoute({
       path: "/api/hyperliquid/status",
       env: {
-        HL_PRIVATE_KEY: "0xabc",
+        EVM_PRIVATE_KEY: VALID_LOCAL_KEY,
         HL_ACCOUNT_ADDRESS: "0x0000000000000000000000000000000000000001",
       },
       fetchImpl: vi.fn(),
@@ -66,12 +71,159 @@ describe("Hyperliquid routes", () => {
       publicReadReady: true,
       signerReady: true,
       executionReady: false,
+      credentialMode: "local_key",
       accountAddress: "0x0000000000000000000000000000000000000001",
+      readiness: {
+        publicReads: true,
+        accountReads: true,
+        signer: true,
+        execution: false,
+      },
+      account: {
+        address: "0x0000000000000000000000000000000000000001",
+        source: "env_account",
+      },
     });
     expect(
       responseJson<{ executionBlockedReason: string }>(response)
         .executionBlockedReason,
     ).toContain("not implemented");
+  });
+
+  it("does not require registration, a vault, or local keys for public reads", async () => {
+    const fetchImpl = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({
+          universe: [{ name: "BTC", szDecimals: 5, maxLeverage: 50 }],
+        }),
+        { status: 200 },
+      );
+    });
+
+    const statusResponse = await callRoute({
+      path: "/api/hyperliquid/status",
+      fetchImpl,
+    });
+    const marketsResponse = await callRoute({
+      path: "/api/hyperliquid/markets",
+      fetchImpl,
+    });
+
+    expect(statusResponse.status).toBe(200);
+    expect(responseJson<Record<string, unknown>>(statusResponse)).toMatchObject(
+      {
+        publicReadReady: true,
+        signerReady: false,
+        executionReady: false,
+        credentialMode: "none",
+        readiness: {
+          publicReads: true,
+          accountReads: false,
+          signer: false,
+          execution: false,
+        },
+        vault: {
+          configured: false,
+          ready: false,
+          address: null,
+        },
+        apiWallet: {
+          configured: false,
+        },
+      },
+    );
+    expect(marketsResponse.status).toBe(200);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://api.hyperliquid.xyz/info",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ type: "meta" }),
+      }),
+    );
+  });
+
+  it("defaults account readiness to the managed vault when it is available", async () => {
+    const response = await callRoute({
+      path: "/api/hyperliquid/status",
+      env: {
+        STEWARD_API_URL: "https://steward.example",
+        STEWARD_AGENT_ID: "agent-1",
+        STEWARD_EVM_ADDRESS: "0x0000000000000000000000000000000000000002",
+        EVM_PRIVATE_KEY: VALID_LOCAL_KEY,
+        HL_ACCOUNT_ADDRESS: "0x0000000000000000000000000000000000000001",
+      },
+      fetchImpl: vi.fn(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(responseJson<Record<string, unknown>>(response)).toMatchObject({
+      credentialMode: "managed_vault",
+      signerReady: true,
+      accountAddress: "0x0000000000000000000000000000000000000002",
+      account: {
+        address: "0x0000000000000000000000000000000000000002",
+        source: "managed_vault",
+      },
+      vault: {
+        configured: true,
+        ready: true,
+        address: "0x0000000000000000000000000000000000000002",
+      },
+    });
+  });
+
+  it("keeps local keys as an advanced optional readiness path", async () => {
+    const response = await callRoute({
+      path: "/api/hyperliquid/status",
+      env: {
+        HYPERLIQUID_PRIVATE_KEY: VALID_LOCAL_KEY,
+        HYPERLIQUID_AGENT_KEY: VALID_AGENT_KEY,
+      },
+      fetchImpl: vi.fn(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(responseJson<Record<string, unknown>>(response)).toMatchObject({
+      publicReadReady: true,
+      signerReady: true,
+      executionReady: false,
+      credentialMode: "local_key",
+      accountAddress: null,
+      vault: {
+        configured: false,
+        ready: false,
+      },
+      apiWallet: {
+        configured: true,
+      },
+    });
+    expect(
+      responseJson<{ executionBlockedReason: string }>(response)
+        .executionBlockedReason,
+    ).toContain("not implemented");
+  });
+
+  it("does not report malformed local keys as signer readiness", async () => {
+    const response = await callRoute({
+      path: "/api/hyperliquid/status",
+      env: {
+        HYPERLIQUID_PRIVATE_KEY: "0xabc",
+        HYPERLIQUID_AGENT_KEY: "0xdef",
+      },
+      fetchImpl: vi.fn(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(responseJson<Record<string, unknown>>(response)).toMatchObject({
+      publicReadReady: true,
+      signerReady: false,
+      executionReady: false,
+      credentialMode: "none",
+      apiWallet: {
+        configured: false,
+      },
+    });
   });
 
   it("fetches markets from the Hyperliquid Info endpoint through injected fetch", async () => {
@@ -162,6 +314,7 @@ describe("Hyperliquid routes", () => {
     expect(response.status).toBe(501);
     expect(responseJson<Record<string, unknown>>(response)).toMatchObject({
       executionReady: false,
+      credentialMode: "none",
     });
   });
 
