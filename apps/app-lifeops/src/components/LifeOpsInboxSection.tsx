@@ -1263,7 +1263,33 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
             {t("lifeopsInbox.missed", { defaultValue: "Missed" })}
           </button>
         ) : null}
+        {isMailMode
+          ? ([
+              "needs_response",
+              "unresponded",
+              "spam_review",
+            ] as const).map((kind) => (
+              <MailWorkflowButton
+                key={kind}
+                kind={kind}
+                active={mailWorkflow.kind === kind}
+                loading={mailWorkflow.kind === kind && mailWorkflow.loading}
+                onClick={(nextKind) => void runMailWorkflow(nextKind)}
+              />
+            ))
+          : null}
       </div>
+
+      {isMailMode && (mailWorkflow.summary || mailWorkflow.error) ? (
+        <div
+          className={[
+            "border-b border-border/10 px-4 py-2 text-xs",
+            mailWorkflow.error ? "text-rose-300" : "text-muted",
+          ].join(" ")}
+        >
+          {mailWorkflow.error ?? mailWorkflow.summary}
+        </div>
+      ) : null}
 
       {showGmailAccountChips ? (
         <div className="flex flex-wrap items-center gap-2 border-b border-border/10 px-3 py-2">

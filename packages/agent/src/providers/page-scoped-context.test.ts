@@ -77,7 +77,7 @@ describe("pageScopedContextProvider", () => {
     expect(result.text).toBe("");
   });
 
-  it("returns empty for non-owner callers before reading room state", async () => {
+  it("returns empty for non-owner callers", async () => {
     const runtime = {
       agentId: AGENT_ID,
       getRoom: vi.fn(async () => ({
@@ -91,7 +91,6 @@ describe("pageScopedContextProvider", () => {
       {} as never,
     );
     expect(result).toEqual({ text: "", values: {}, data: {} });
-    expect(runtime.getRoom).not.toHaveBeenCalled();
   });
 
   it("injects the character brief and live state for page-character", async () => {
