@@ -262,15 +262,33 @@ export function RuntimeGate() {
     if (synchronousLocal) return;
     if (!isAndroid) return;
     let cancelled = false;
-    shouldShowLocalOption({ isDesktop, isDev, isAndroid })
-      .then((ok) => {
-        if (!cancelled) setLocalProbeResult(ok);
-      })
-      .catch(() => {
-        if (!cancelled) setLocalProbeResult(false);
-      });
+    let pollTimer: ReturnType<typeof setTimeout> | null = null;
+    // Re-poll every 4 s while the gate is mounted and the agent is not yet
+    // reachable. The on-device agent can take 30+ s to come up after a cold
+    // boot (PGlite migration + GGUF model warmup). A one-shot probe at
+    // mount time would otherwise leave the user stuck on Cloud/Remote even
+    // though the agent is racing toward live. Stops polling once a positive
+    // result is in — `probe-local-agent`'s positive cache then keeps it
+    // stable for the rest of the session.
+    const poll = () => {
+      shouldShowLocalOption({ isDesktop, isDev, isAndroid })
+        .then((ok) => {
+          if (cancelled) return;
+          setLocalProbeResult(ok);
+          if (!ok) {
+            pollTimer = setTimeout(poll, 4_000);
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setLocalProbeResult(false);
+          pollTimer = setTimeout(poll, 4_000);
+        });
+    };
+    poll();
     return () => {
       cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
     };
   }, [isDesktop, isDev, synchronousLocal]);
 

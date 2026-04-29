@@ -378,9 +378,7 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
         setterCalls.push({ name: "set_n_threads", args });
         initOrder.push("set_n_threads");
       },
-      milady_llama_context_params_set_n_threads_batch: (
-        ...args: unknown[]
-      ) => {
+      milady_llama_context_params_set_n_threads_batch: (...args: unknown[]) => {
         setterCalls.push({ name: "set_n_threads_batch", args });
         initOrder.push("set_n_threads_batch");
       },
@@ -492,9 +490,7 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
       milady_llama_context_params_set_n_threads: (...args: unknown[]) => {
         captured.push({ name: "n_threads", args });
       },
-      milady_llama_context_params_set_n_threads_batch: (
-        ...args: unknown[]
-      ) => {
+      milady_llama_context_params_set_n_threads_batch: (...args: unknown[]) => {
         captured.push({ name: "n_threads_batch", args });
       },
       milady_llama_init_from_model: () => 4,
@@ -575,8 +571,6 @@ describe("aosp-llama-adapter / embed pooling contract", () => {
         // `required` directly (we just need a positive number).
         return _args[4] === 0 ? -3 : 3;
       },
-      llama_batch_get_one: () => 99,
-      llama_decode: () => 0,
       // The contract violation: pooling was disabled externally and
       // get_embeddings_seq returns NULL (0 in bun:ffi pointer space).
       llama_get_embeddings_seq: () => 0,
@@ -588,6 +582,9 @@ describe("aosp-llama-adapter / embed pooling contract", () => {
       milady_llama_context_params_default: () => 3,
       milady_llama_init_from_model: () => 4,
       milady_llama_context_params_free: () => undefined,
+      milady_llama_batch_get_one: () => 99,
+      milady_llama_batch_free: () => undefined,
+      milady_llama_decode: () => 0,
     };
 
     vi.doMock("node:fs", () => ({ existsSync: () => true }));
@@ -762,6 +759,462 @@ describe("aosp-llama-adapter / shim integration with loadModel", () => {
     expect(callLog).toContain("model_params_free(1)");
     expect(callLog).toContain("init_from_model(params=3)");
     expect(callLog).toContain("context_params_free(3)");
+
+    vi.doUnmock("node:fs");
+    vi.doUnmock("bun:ffi");
+  });
+});
+
+describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
+  /**
+   * Regression for the apothic/llama.cpp-1bit-turboquant integration. The
+   * fork ships TBQ3_0 (43) / TBQ4_0 (44) ggml_type ids and the matching
+   * Bonsai-8B-1bit GGUF is trained against them. The adapter MUST:
+   *
+   *   1. Auto-detect Bonsai by filename (any model basename that contains
+   *      "bonsai" — case-insensitive).
+   *   2. Forward the resolved enum values to milady_llama_context_params_
+   *      set_type_k / set_type_v BEFORE init_from_model.
+   *   3. Honour explicit LoadOptions.kvCacheType overrides.
+   *   4. Honour MILADY_LLAMA_CACHE_TYPE_K / _V env overrides.
+   *   5. Skip the setters entirely for non-Bonsai models with no override —
+   *      that keeps the fp16 default which is the safe choice for any
+   *      stock GGUF.
+   */
+
+  it("kvCacheTypeNameToEnum maps the documented names to ggml_type ids", async () => {
+    const { kvCacheTypeNameToEnum } = await import("./aosp-llama-adapter");
+    expect(kvCacheTypeNameToEnum("f16")).toBe(1);
+    expect(kvCacheTypeNameToEnum("tbq3_0")).toBe(43);
+    expect(kvCacheTypeNameToEnum("tbq4_0")).toBe(44);
+  });
+
+  it("looksLikeBonsai matches the canonical filename and rename variants", async () => {
+    const { looksLikeBonsai } = await import("./aosp-llama-adapter");
+    expect(looksLikeBonsai("/data/agent/models/Bonsai-8B.gguf")).toBe(true);
+    expect(looksLikeBonsai("bonsai-8b-1bit.gguf")).toBe(true);
+    expect(looksLikeBonsai("BONSAI.GGUF")).toBe(true);
+    expect(looksLikeBonsai("Llama-3-8B-Q4_K_M.gguf")).toBe(false);
+    expect(looksLikeBonsai("Hermes-3-Llama.gguf")).toBe(false);
+  });
+
+  it("resolveKvCacheType auto-picks tbq4_0/tbq3_0 for Bonsai filenames", async () => {
+    const { resolveKvCacheType } = await import("./aosp-llama-adapter");
+    expect(
+      resolveKvCacheType("/tmp/models/Bonsai-8B.gguf", undefined, {}),
+    ).toEqual({ k: "tbq4_0", v: "tbq3_0" });
+  });
+
+  it("resolveKvCacheType returns undefined for non-Bonsai with no overrides", async () => {
+    const { resolveKvCacheType } = await import("./aosp-llama-adapter");
+    expect(
+      resolveKvCacheType("/tmp/models/Llama-3-8B.gguf", undefined, {}),
+    ).toBeUndefined();
+  });
+
+  it("resolveKvCacheType honours explicit LoadOptions overrides over auto-detect", async () => {
+    const { resolveKvCacheType } = await import("./aosp-llama-adapter");
+    expect(
+      resolveKvCacheType(
+        "/tmp/models/Bonsai-8B.gguf",
+        { k: "f16", v: "f16" },
+        {},
+      ),
+    ).toEqual({ k: "f16", v: "f16" });
+  });
+
+  it("resolveKvCacheType honours env overrides over auto-detect", async () => {
+    const { resolveKvCacheType } = await import("./aosp-llama-adapter");
+    expect(
+      resolveKvCacheType("/tmp/models/Bonsai-8B.gguf", undefined, {
+        MILADY_LLAMA_CACHE_TYPE_K: "f16",
+        MILADY_LLAMA_CACHE_TYPE_V: "tbq4_0",
+      }),
+    ).toEqual({ k: "f16", v: "tbq4_0" });
+  });
+
+  it("resolveKvCacheType lets explicit LoadOptions trump env overrides", async () => {
+    const { resolveKvCacheType } = await import("./aosp-llama-adapter");
+    expect(
+      resolveKvCacheType(
+        "/tmp/models/Bonsai-8B.gguf",
+        { k: "tbq3_0" },
+        { MILADY_LLAMA_CACHE_TYPE_K: "f16" },
+      ),
+    ).toEqual({ k: "tbq3_0", v: "tbq3_0" });
+  });
+
+  it("resolveKvCacheType ignores unrecognised env values rather than throwing", async () => {
+    const { resolveKvCacheType } = await import("./aosp-llama-adapter");
+    expect(
+      resolveKvCacheType("/tmp/models/Llama-3-8B.gguf", undefined, {
+        MILADY_LLAMA_CACHE_TYPE_K: "garbage",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("forwards tbq4_0/tbq3_0 to set_type_k/set_type_v before init_from_model on Bonsai loads", async () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    delete process.env.MILADY_LLAMA_CACHE_TYPE_K;
+    delete process.env.MILADY_LLAMA_CACHE_TYPE_V;
+
+    const setterCalls: { name: string; args: unknown[] }[] = [];
+    const initOrder: string[] = [];
+
+    const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      llama_backend_init: () => 0,
+      llama_model_get_vocab: () => 100,
+      llama_n_ctx: () => 4096,
+    };
+    const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      milady_llama_model_params_default: () => 1,
+      milady_llama_model_load_from_file: () => 2,
+      milady_llama_model_params_free: () => undefined,
+      milady_llama_context_params_default: () => 3,
+      milady_llama_context_params_set_type_k: (...args: unknown[]) => {
+        setterCalls.push({ name: "set_type_k", args });
+        initOrder.push("set_type_k");
+      },
+      milady_llama_context_params_set_type_v: (...args: unknown[]) => {
+        setterCalls.push({ name: "set_type_v", args });
+        initOrder.push("set_type_v");
+      },
+      milady_llama_init_from_model: () => {
+        initOrder.push("init_from_model");
+        return 4;
+      },
+      milady_llama_context_params_free: () => undefined,
+    };
+
+    vi.doMock("node:fs", () => ({ existsSync: () => true }));
+    vi.doMock("bun:ffi", () => ({
+      FFIType: {
+        void: 0,
+        bool: 1,
+        i32: 2,
+        u32: 3,
+        i64: 4,
+        f32: 5,
+        ptr: 6,
+        cstring: 7,
+      },
+      dlopen: (libPath: string) => {
+        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const table = isShim ? shimSymbols : llamaSymbols;
+        const symbols = new Proxy(table, {
+          get: (target: typeof table, prop: string) =>
+            prop in target ? target[prop] : (..._args: unknown[]) => 0,
+        });
+        return { symbols, close() {} };
+      },
+      ptr: () => 0,
+      CString: class {},
+      read: { cstring: () => "" },
+    }));
+
+    const mod = await import("./aosp-llama-adapter");
+    mod.__resetForTests();
+    const services = new Map<string, unknown>();
+    const runtime = {
+      registerService(name: string, impl: unknown) {
+        services.set(name, impl);
+      },
+    };
+    await mod.registerAospLlamaLoader(runtime);
+    const loader = services.get("localInferenceLoader") as {
+      loadModel: (a: { modelPath: string }) => Promise<void>;
+    };
+    await loader.loadModel({ modelPath: "/tmp/models/Bonsai-8B.gguf" });
+
+    // tbq4_0 = 44, tbq3_0 = 43 — verified against
+    //   ~/.cache/milady-android-agent/llama-cpp-main-b8198-b2b5273/
+    //     ggml/include/ggml.h:434
+    const k = setterCalls.find((c) => c.name === "set_type_k");
+    const v = setterCalls.find((c) => c.name === "set_type_v");
+    expect(k?.args[1]).toBe(44);
+    expect(v?.args[1]).toBe(43);
+
+    // Both setters fire BEFORE init_from_model.
+    expect(initOrder.indexOf("set_type_k")).toBeGreaterThanOrEqual(0);
+    expect(initOrder.indexOf("set_type_v")).toBeGreaterThanOrEqual(0);
+    expect(initOrder.indexOf("init_from_model")).toBeGreaterThan(
+      initOrder.indexOf("set_type_k"),
+    );
+    expect(initOrder.indexOf("init_from_model")).toBeGreaterThan(
+      initOrder.indexOf("set_type_v"),
+    );
+
+    vi.doUnmock("node:fs");
+    vi.doUnmock("bun:ffi");
+  });
+
+  it("does NOT call set_type_k/set_type_v on non-Bonsai loads with no override", async () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    delete process.env.MILADY_LLAMA_CACHE_TYPE_K;
+    delete process.env.MILADY_LLAMA_CACHE_TYPE_V;
+
+    let setTypeKCalled = false;
+    let setTypeVCalled = false;
+
+    const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      llama_backend_init: () => 0,
+      llama_model_get_vocab: () => 100,
+      llama_n_ctx: () => 4096,
+    };
+    const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      milady_llama_model_params_default: () => 1,
+      milady_llama_model_load_from_file: () => 2,
+      milady_llama_model_params_free: () => undefined,
+      milady_llama_context_params_default: () => 3,
+      milady_llama_context_params_set_type_k: () => {
+        setTypeKCalled = true;
+      },
+      milady_llama_context_params_set_type_v: () => {
+        setTypeVCalled = true;
+      },
+      milady_llama_init_from_model: () => 4,
+      milady_llama_context_params_free: () => undefined,
+    };
+
+    vi.doMock("node:fs", () => ({ existsSync: () => true }));
+    vi.doMock("bun:ffi", () => ({
+      FFIType: {
+        void: 0,
+        bool: 1,
+        i32: 2,
+        u32: 3,
+        i64: 4,
+        f32: 5,
+        ptr: 6,
+        cstring: 7,
+      },
+      dlopen: (libPath: string) => {
+        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const table = isShim ? shimSymbols : llamaSymbols;
+        const symbols = new Proxy(table, {
+          get: (target: typeof table, prop: string) =>
+            prop in target ? target[prop] : (..._args: unknown[]) => 0,
+        });
+        return { symbols, close() {} };
+      },
+      ptr: () => 0,
+      CString: class {},
+      read: { cstring: () => "" },
+    }));
+
+    const mod = await import("./aosp-llama-adapter");
+    mod.__resetForTests();
+    const services = new Map<string, unknown>();
+    const runtime = {
+      registerService(name: string, impl: unknown) {
+        services.set(name, impl);
+      },
+    };
+    await mod.registerAospLlamaLoader(runtime);
+    const loader = services.get("localInferenceLoader") as {
+      loadModel: (a: { modelPath: string }) => Promise<void>;
+    };
+    await loader.loadModel({ modelPath: "/tmp/models/Llama-3-8B.gguf" });
+
+    expect(setTypeKCalled).toBe(false);
+    expect(setTypeVCalled).toBe(false);
+
+    vi.doUnmock("node:fs");
+    vi.doUnmock("bun:ffi");
+  });
+});
+
+describe("aosp-llama-adapter / embeddings flag reset", () => {
+  /**
+   * Regression for the cuttlefish chat assert: llama.cpp's `llama_decode`
+   * rejects token-only batches when the context is in embedding mode with
+   *   GGML_ASSERT((!batch_inp.token && batch_inp.embd) ||
+   *               (batch_inp.token && !batch_inp.embd))
+   * The single-context adapter shares one ctx between generate() and
+   * embed(), so a prior embed() call leaves the flag on and the next
+   * generate() call asserts inside libllama.so. Both decode paths must
+   * therefore set the flag explicitly before their first llama_decode —
+   * generate() to FALSE, embed() to TRUE — so cross-mode bleed cannot
+   * crash the bun process.
+   */
+  function buildBunFfiMock(
+    llamaSymbols: Record<string, (...args: unknown[]) => unknown>,
+    shimSymbols: Record<string, (...args: unknown[]) => unknown>,
+  ): Record<string, unknown> {
+    return {
+      FFIType: {
+        void: 0,
+        bool: 1,
+        i32: 2,
+        u32: 3,
+        i64: 4,
+        f32: 5,
+        ptr: 6,
+        cstring: 7,
+      },
+      dlopen: (libPath: string) => {
+        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const table = isShim ? shimSymbols : llamaSymbols;
+        const symbols = new Proxy(table, {
+          get: (target: typeof table, prop: string) =>
+            prop in target ? target[prop] : (..._args: unknown[]) => 0,
+        });
+        return { symbols, close() {} };
+      },
+      ptr: () => 0,
+      toArrayBuffer: () => new Float32Array([0.1, 0.2, 0.3]).buffer,
+      CString: class {},
+      read: { cstring: () => "" },
+    };
+  }
+
+  it("generate() sets embeddings=false before the first llama_decode", async () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+
+    const callOrder: string[] = [];
+    const setEmbeddingsCalls: { value: unknown }[] = [];
+
+    const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      llama_backend_init: () => 0,
+      llama_model_get_vocab: () => 100,
+      llama_n_ctx: () => 4096,
+      llama_set_embeddings: (...args: unknown[]) => {
+        setEmbeddingsCalls.push({ value: args[1] });
+        callOrder.push(`set_embeddings(${args[1]})`);
+      },
+      llama_tokenize: (..._args: unknown[]) =>
+        _args[4] === 0 ? -3 : 3, // negative on probe, positive on fill
+      // Force the EOG path on the first sampled token so we don't loop.
+      llama_sampler_sample: () => 999,
+      llama_vocab_is_eog: () => true,
+      llama_sampler_accept: () => undefined,
+      llama_sampler_chain_add: () => undefined,
+      llama_sampler_init_temp: () => 1,
+      llama_sampler_init_top_p: () => 2,
+      llama_sampler_init_dist: () => 3,
+      llama_sampler_init_greedy: () => 4,
+      llama_sampler_free: () => undefined,
+      llama_token_to_piece: () => 0,
+    };
+    const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      milady_llama_model_params_default: () => 1,
+      milady_llama_model_load_from_file: () => 2,
+      milady_llama_model_params_free: () => undefined,
+      milady_llama_context_params_default: () => 3,
+      milady_llama_init_from_model: () => 4,
+      milady_llama_context_params_free: () => undefined,
+      milady_llama_sampler_chain_params_default: () => 5,
+      milady_llama_sampler_chain_params_free: () => undefined,
+      milady_llama_sampler_chain_init: () => 6,
+      milady_llama_batch_get_one: () => 99,
+      milady_llama_batch_free: () => undefined,
+      milady_llama_decode: () => {
+        callOrder.push("llama_decode");
+        return 0;
+      },
+    };
+
+    vi.doMock("node:fs", () => ({ existsSync: () => true }));
+    vi.doMock("bun:ffi", () => buildBunFfiMock(llamaSymbols, shimSymbols));
+
+    const mod = await import("./aosp-llama-adapter");
+    mod.__resetForTests();
+    const services = new Map<string, unknown>();
+    const runtime = {
+      registerService(name: string, impl: unknown) {
+        services.set(name, impl);
+      },
+    };
+    await mod.registerAospLlamaLoader(runtime);
+    const loader = services.get("localInferenceLoader") as {
+      loadModel: (a: { modelPath: string }) => Promise<void>;
+      generate: (a: { prompt: string; maxTokens?: number }) => Promise<string>;
+    };
+    await loader.loadModel({ modelPath: "/tmp/fake.gguf" });
+    await loader.generate({ prompt: "hi", maxTokens: 1 });
+
+    // The generate() path must call set_embeddings(false) at least once
+    // BEFORE the first llama_decode. bun:ffi marshals a JS `false` to the
+    // C `bool` ABI as 0; either form is acceptable here as long as the
+    // flag is unambiguously OFF.
+    const firstDecodeIdx = callOrder.indexOf("llama_decode");
+    expect(firstDecodeIdx).toBeGreaterThanOrEqual(0);
+    const flagOffBeforeDecode = callOrder
+      .slice(0, firstDecodeIdx)
+      .some((step) => step === "set_embeddings(false)");
+    expect(flagOffBeforeDecode).toBe(true);
+    expect(
+      setEmbeddingsCalls.some((c) => c.value === false || c.value === 0),
+    ).toBe(true);
+
+    vi.doUnmock("node:fs");
+    vi.doUnmock("bun:ffi");
+  });
+
+  it("embed() sets embeddings=true before the embed llama_decode and resets to false in finally", async () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+
+    const callOrder: string[] = [];
+
+    const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      llama_backend_init: () => 0,
+      llama_model_get_vocab: () => 100,
+      llama_n_ctx: () => 4096,
+      llama_model_n_embd: () => 3,
+      llama_set_embeddings: (...args: unknown[]) => {
+        callOrder.push(`set_embeddings(${args[1]})`);
+      },
+      llama_tokenize: (..._args: unknown[]) =>
+        _args[4] === 0 ? -3 : 3,
+      llama_get_embeddings_seq: () => 1, // non-NULL
+    };
+    const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      milady_llama_model_params_default: () => 1,
+      milady_llama_model_load_from_file: () => 2,
+      milady_llama_model_params_free: () => undefined,
+      milady_llama_context_params_default: () => 3,
+      milady_llama_init_from_model: () => 4,
+      milady_llama_context_params_free: () => undefined,
+      milady_llama_batch_get_one: () => 99,
+      milady_llama_batch_free: () => undefined,
+      milady_llama_decode: () => {
+        callOrder.push("llama_decode");
+        return 0;
+      },
+    };
+
+    vi.doMock("node:fs", () => ({ existsSync: () => true }));
+    vi.doMock("bun:ffi", () => buildBunFfiMock(llamaSymbols, shimSymbols));
+
+    const mod = await import("./aosp-llama-adapter");
+    mod.__resetForTests();
+    const services = new Map<string, unknown>();
+    const runtime = {
+      registerService(name: string, impl: unknown) {
+        services.set(name, impl);
+      },
+    };
+    await mod.registerAospLlamaLoader(runtime);
+    const loader = services.get("localInferenceLoader") as {
+      loadModel: (a: { modelPath: string }) => Promise<void>;
+      embed: (a: { input: string }) => Promise<{
+        embedding: number[];
+        tokens: number;
+      }>;
+    };
+    await loader.loadModel({ modelPath: "/tmp/fake.gguf" });
+    await loader.embed({ input: "hello" });
+
+    // embed() must call set_embeddings(true) BEFORE its llama_decode and
+    // then restore set_embeddings(false) in the finally block so the next
+    // generate() call doesn't inherit embeddings mode from this call.
+    const decodeIdx = callOrder.indexOf("llama_decode");
+    const trueBeforeDecodeIdx = callOrder.indexOf("set_embeddings(true)");
+    const falseAfterDecodeIdx = callOrder.lastIndexOf("set_embeddings(false)");
+    expect(decodeIdx).toBeGreaterThanOrEqual(0);
+    expect(trueBeforeDecodeIdx).toBeGreaterThanOrEqual(0);
+    expect(trueBeforeDecodeIdx).toBeLessThan(decodeIdx);
+    expect(falseAfterDecodeIdx).toBeGreaterThan(decodeIdx);
 
     vi.doUnmock("node:fs");
     vi.doUnmock("bun:ffi");
