@@ -488,6 +488,14 @@ public class MiladyAgentService extends Service {
             agentEnv.put("LD_LIBRARY_PATH", abiDir.getAbsolutePath());
             agentEnv.put("PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("MILADY_API_PORT", String.valueOf(AGENT_PORT));
+            // The agent's runtime-env resolver reads ELIZA_PORT / ELIZA_UI_PORT
+            // (defaulting to 2138) before falling back to PORT. Without
+            // these the agent binds 2138 even though the service advertises
+            // 31337, the loopback healthcheck never sees a listener, and
+            // the watchdog churns indefinitely. Both env vars resolve to
+            // the same port — UI bundles in the same Hono server.
+            agentEnv.put("ELIZA_PORT", String.valueOf(AGENT_PORT));
+            agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("MILADY_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("MILADY_PLATFORM", "android");
             agentEnv.put("MILADY_DISABLE_DIRECT_RUN", "1");
