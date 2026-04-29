@@ -345,6 +345,11 @@ declare module "@elizaos/app-core/api/client-base" {
     getLifeOpsScreenTimeBreakdown(
       data: LifeOpsScreenTimeSummaryRequest,
     ): Promise<LifeOpsScreenTimeBreakdown>;
+    getLifeOpsScreenTimeHistory(data: {
+      range: LifeOpsScreenTimeRangeKey;
+      topN?: number;
+      socialTopN?: number;
+    }): Promise<LifeOpsScreenTimeHistoryResponse>;
     getLifeOpsSocialHabitSummary(
       data: Omit<LifeOpsScreenTimeSummaryRequest, "source">,
     ): Promise<LifeOpsSocialHabitSummary>;
@@ -954,6 +959,9 @@ ElizaClient.prototype.getLifeOpsScreenTimeSummary = async function (
   if (data.source) {
     params.set("source", data.source);
   }
+  if (data.identifier) {
+    params.set("identifier", data.identifier);
+  }
   if (data.topN !== undefined) {
     params.set("topN", String(data.topN));
   }
@@ -972,11 +980,31 @@ ElizaClient.prototype.getLifeOpsScreenTimeBreakdown = async function (
   if (data.source) {
     params.set("source", data.source);
   }
+  if (data.identifier) {
+    params.set("identifier", data.identifier);
+  }
   if (data.topN !== undefined) {
     params.set("topN", String(data.topN));
   }
   return this.fetch<LifeOpsScreenTimeBreakdown>(
     `/api/lifeops/screen-time/breakdown?${params.toString()}`,
+  );
+};
+
+ElizaClient.prototype.getLifeOpsScreenTimeHistory = async function (
+  this: ElizaClient,
+  data,
+) {
+  const params = new URLSearchParams();
+  params.set("range", data.range);
+  if (data.topN !== undefined) {
+    params.set("topN", String(data.topN));
+  }
+  if (data.socialTopN !== undefined) {
+    params.set("socialTopN", String(data.socialTopN));
+  }
+  return this.fetch<LifeOpsScreenTimeHistoryResponse>(
+    `/api/lifeops/screen-time/history?${params.toString()}`,
   );
 };
 
