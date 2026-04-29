@@ -263,25 +263,9 @@ export function RuntimeGate() {
     };
   }, [isDesktop, isDev, synchronousLocal]);
 
-  // Auto-pick the on-device agent on Android when (a) the probe shows the
-  // agent is up and (b) the user hasn't already chosen a runtime. The
-  // RuntimeGate then never renders — the user lands directly in chat. If
-  // they later want a different agent (cloud / remote), the Settings ▸
-  // Runtime view re-opens this picker. The auto-pick is intentionally one
-  // shot: once the mode is persisted any subsequent launch reads it
-  // directly from storage and skips this path.
-  useEffect(() => {
-    if (!isAndroid) return;
-    if (!showLocalOption) return;
-    if (readPersistedMobileRuntimeMode() != null) return;
-    finishAsLocal();
-    // intentionally only triggers once — finishAsLocal persists the mode
-    // and dispatches SPLASH_CONTINUE; a second invocation is a no-op.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showLocalOption]);
-
   const showLocalOption = localProbeResult === true;
   const localProbePending = localProbeResult === null;
+
   const runtimeChoices = useMemo(
     () =>
       resolveRuntimeChoices({
@@ -399,6 +383,20 @@ export function RuntimeGate() {
     // placeholder handles the missing-provider case.
     completeOnboarding();
   }, [completeOnboarding, setState, startupCoordinator]);
+
+  // Auto-pick the on-device agent on Android when (a) the probe shows the
+  // agent is up and (b) the user hasn't already chosen a runtime. The
+  // RuntimeGate then never renders — the user lands directly in chat. If
+  // they later want a different agent (cloud / remote), the Settings ▸
+  // Runtime view re-opens this picker. The auto-pick is intentionally one
+  // shot: once the mode is persisted any subsequent launch reads it
+  // directly from storage and skips this path.
+  useEffect(() => {
+    if (!isAndroid) return;
+    if (!showLocalOption) return;
+    if (readPersistedMobileRuntimeMode() != null) return;
+    finishAsLocal();
+  }, [finishAsLocal, showLocalOption]);
 
   const finishAsRemoteGateway = useCallback(
     (gateway: GatewayDiscoveryEndpoint) => {
