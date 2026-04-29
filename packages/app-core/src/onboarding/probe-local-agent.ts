@@ -17,7 +17,13 @@
 export const DEFAULT_LOCAL_AGENT_HEALTH_URL =
   "http://127.0.0.1:31337/api/health";
 
-const PROBE_CACHE_TTL_MS = 30_000;
+// Positive results are cached longer so re-renders during onboarding don't
+// hammer loopback. Negative results are short-lived because the agent may
+// finish booting moments after the first probe — without a short negative
+// TTL the user sees "no local agent" for 30 s after a reboot even though
+// the agent is up. 3 s lets `RuntimeGate`'s render cycle re-poll naturally.
+const PROBE_POSITIVE_CACHE_TTL_MS = 30_000;
+const PROBE_NEGATIVE_CACHE_TTL_MS = 3_000;
 
 interface CacheEntry {
   result: boolean;
@@ -83,11 +89,24 @@ async function runProbe(url: string, timeoutMs: number): Promise<boolean> {
     return false;
   }
 
-  return (
-    typeof body === "object" &&
-    body !== null &&
-    (body as { ok?: unknown }).ok === true
-  );
+  // The agent's /api/health responds with one of two shapes depending on
+  // version:
+  //   { ok: true, agent, bun, uptime }                 ← spike stub
+  //   { ready: true, runtime: "ok", database: "ok",
+  //     agentState: "running", uptime, ...}            ← real @elizaos/agent
+  // Treat either as healthy. `ok === true` covers the stub; `ready === true`
+  // and `agentState === "running"` cover the real runtime. Without this, the
+  // RuntimeGate tile stays hidden even when the agent is plainly up.
+  if (typeof body !== "object" || body === null) return false;
+  const b = body as {
+    ok?: unknown;
+    ready?: unknown;
+    agentState?: unknown;
+  };
+  if (b.ok === true) return true;
+  if (b.ready === true) return true;
+  if (b.agentState === "running") return true;
+  return false;
 }
 
 /**
@@ -116,7 +135,9 @@ export async function probeLocalAgent(
     .then((result) => {
       resultCache.set(url, {
         result,
-        expiresAt: Date.now() + PROBE_CACHE_TTL_MS,
+        expiresAt:
+          Date.now() +
+          (result ? PROBE_POSITIVE_CACHE_TTL_MS : PROBE_NEGATIVE_CACHE_TTL_MS),
       });
       return result;
     })

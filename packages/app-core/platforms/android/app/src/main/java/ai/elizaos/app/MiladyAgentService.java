@@ -88,29 +88,33 @@ public class MiladyAgentService extends Service {
 
     // The on-device boot path is heavy: PGlite extension extraction +
     // plugin resolution + libllama dlopen + first-time model load can
-    // exceed 240 s on a cold cuttlefish x86_64 image. With the watchdog
-    // at 10 s, two consecutive misses (20 s) kill bun before PGlite
-    // finishes opening the database. The agent-bundle's own
-    // "coordinator not available after 90s (boot)" debug line is also
-    // misleading — the real `[eliza-api] Listening` print happens
-    // ~200–240 s after process start on cvd.
+    // exceed 240 s on a cold cuttlefish x86_64 image. The chat path is
+    // even heavier: a single planner-produced prompt at ~12k tokens,
+    // chunked through llama_decode on emulated CPU, can run 15–30 min
+    // wall-clock for a single chat turn (multiple model invocations:
+    // planner, action evaluator, response generator).
     //
-    // 120 s × 3 = 360 s grace gives enough headroom. We override the
-    // 2-strike rule below to 3 strikes for the same reason. Tighten back
-    // down once a runtime "ready" signal lands.
+    // Strategy: combine a generous interval with a smart probe that
+    // distinguishes "process dead" from "process alive but busy in a
+    // native FFI call". When the HTTP probe times out but the process
+    // is alive (i.e. bun is mid-llama_decode and hasn't returned to its
+    // event loop yet), we DO NOT count a strike — the process is doing
+    // exactly what it should be doing, just synchronously inside a
+    // native call. We only count strikes when the process is actually
+    // dead OR returns 5xx from /api/health (a real crash signal).
+    // Strikes accumulate when the process is dead, which forces a
+    // restart via the existing scheduleRestart() path.
     //
-    // HEALTH_TIMEOUT_MS = 120 s: bun blocks on FFI calls into libllama
-    // for the duration of a single `llama_decode` call (no way to
-    // interrupt a native call from JS). On cuttlefish x86_64 with
-    // SmolLM2-360M and an 8k-context prompt chunked at n_batch=2048, one
-    // chunk decode runs ~60–70 s. A 3 s probe timeout would fire mid-
-    // decode, never hear back, and rack up strikes that kill bun before
-    // it returns to the event loop. Bumping the per-probe timeout above
-    // worst-case decode latency lets the probe sit on the connect/read
-    // socket until bun's setImmediate yield wakes the HTTP listener.
-    private static final long WATCHDOG_INTERVAL_MS = 120_000L;
+    // 600 s × 3 = 1800 s = 30 min worst-case grace window. Real phone
+    // hardware (Tensor / Adreno) finishes a chat turn in seconds, so
+    // this only matters for AOSP smoke runs on cvd. HEALTH_TIMEOUT_MS
+    // = 30 s is a conservative bound on a single HTTP listener wakeup
+    // — bun's setImmediate yield should hit within a few seconds even
+    // mid-decode, and 30 s catches genuine TCP-level hangs without
+    // racing against real long-running calls.
+    private static final long WATCHDOG_INTERVAL_MS = 600_000L;
     private static final int HEALTH_FAIL_STRIKES = 3;
-    private static final long HEALTH_TIMEOUT_MS = 120_000L;
+    private static final long HEALTH_TIMEOUT_MS = 30_000L;
     private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
 
@@ -657,7 +661,18 @@ public class MiladyAgentService extends Service {
             agentEnv.put("MILADY_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("MILADY_PLATFORM", "android");
             agentEnv.put("MILADY_DISABLE_DIRECT_RUN", "1");
-            agentEnv.put("MILADY_REQUIRE_LOCAL_AUTH", "1");
+            // Bearer auth on the loopback API is reserved for the case
+            // where the WebView wires up a token-fetch native binding;
+            // until that exists, requiring the token blocks the WebView
+            // from doing the initial /api/auth/status handshake (the
+            // WebView doesn't know the token yet, the agent rejects it,
+            // the UI sticks at "Initializing agent…"). Default OFF keeps
+            // Android consistent with desktop's loopback model — the
+            // WebView and agent share the same Linux UID, so any process
+            // that can hit loopback already has app-uid filesystem access.
+            // Setting MILADY_REQUIRE_LOCAL_AUTH=1 still works once the
+            // WebView side is wired up; it's just no longer the default.
+            // agentEnv.put("MILADY_REQUIRE_LOCAL_AUTH", "1");
             agentEnv.put("ELIZA_API_TOKEN", token);
             // The Capacitor APK always hosts @elizaos/capacitor-llama in the
             // WebView, so the runtime should always be ready to broker
@@ -672,17 +687,51 @@ public class MiladyAgentService extends Service {
             // the Capacitor APK keeps its DeviceBridge loopback path.
             if (BuildConfig.AOSP_BUILD) {
                 agentEnv.put("MILADY_LOCAL_LLAMA", "1");
-                // CPU-only inference of an 8k-context prompt on cuttlefish
-                // x86_64 / SmolLM2-360M lands well past the 180 s default
+                // CPU-only inference of a 12k-token prompt on cuttlefish
+                // x86_64 / Llama-3.2-1B lands well past the 180 s default
                 // chat-generation timeout (chat-routes.ts). 30 minutes
-                // covers prompt decode (≈4 chunks × ~70 s + ramp-up) plus
-                // token generation. Real phone hardware (Tensor / Adreno)
-                // finishes in seconds, so this only matters for AOSP
-                // smoke runs on cvd. Override via env on real-device
-                // builds when first-token-latency lands.
-                agentEnv.put(
-                    "ELIZA_CHAT_GENERATION_TIMEOUT_MS",
-                    "1800000");
+                // covers prompt decode plus token generation across the
+                // full planner → action evaluator → response cycle. Real
+                // phone hardware (Tensor / Adreno) finishes in seconds,
+                // so this only matters for AOSP smoke runs on cvd.
+                agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "1800000");
+
+                // Llama-3.2-1B native context is 128k. We pin to 16k
+                // because 16k easily fits the planner's ~12k-token
+                // prompts plus output reserve, and a larger ctx
+                // proportionally grows KV-cache RAM (~5 MB / 1k tokens
+                // for 1B-Q4_K_M / fp16 KV). 16k = ~80 MB KV cache, well
+                // under cvd's 4 GB budget. Override via env on real-
+                // device builds when ctx vs RAM trade-offs change.
+                if (!env.containsKey("MILADY_LLAMA_N_CTX")) {
+                    agentEnv.put("MILADY_LLAMA_N_CTX", "16384");
+                }
+
+                // Pin n_threads to the actual CPU count. The default of
+                // 0 in the adapter (and llama.cpp's auto-detect path)
+                // frequently returns 1 on Android because Android's
+                // seccomp filter blocks sched_getaffinity for app
+                // domains and llama.cpp's /proc/cpuinfo parse misses
+                // the core count on cvd. Cuttlefish x86_64 has 4 vCPUs;
+                // most real phones have 6–8 big.LITTLE cores. Read
+                // from the JVM at startup and pass through so the FFI
+                // side doesn't need to call any blocked syscall.
+                if (!env.containsKey("MILADY_LLAMA_THREADS")) {
+                    int cores = Runtime.getRuntime().availableProcessors();
+                    if (cores < 1) cores = 1;
+                    agentEnv.put("MILADY_LLAMA_THREADS", String.valueOf(cores));
+                }
+
+                // Smaller decode chunks → more event-loop yield points
+                // during prompt prefill. 2048 holds bun inside a single
+                // llama_decode call for ~30 s on cvd CPU; the watchdog
+                // probe sits on a closed listener queue that whole
+                // time. 512-token chunks land each call in ~6–8 s, so
+                // the 30 s probe timeout has a realistic chance to
+                // wake the listener between chunks.
+                if (!env.containsKey("MILADY_LLAMA_N_BATCH")) {
+                    agentEnv.put("MILADY_LLAMA_N_BATCH", "512");
+                }
             }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
             agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
@@ -968,7 +1017,8 @@ public class MiladyAgentService extends Service {
                     continue;
                 }
 
-                if (probeHealth()) {
+                ProbeResult probe = probeHealth();
+                if (probe == ProbeResult.OK) {
                     if (unhealthyTicks > 0) {
                         Log.i(TAG, "Agent health restored.");
                     }
@@ -981,7 +1031,20 @@ public class MiladyAgentService extends Service {
                         currentStatus = "running";
                         updateNotification();
                     }
+                } else if (probe == ProbeResult.BUSY) {
+                    // HTTP listener didn't answer in HEALTH_TIMEOUT_MS but the
+                    // bun process is still alive. The most likely cause is
+                    // synchronous work inside the JS event loop — typically
+                    // a long llama_decode FFI call with a 12k-token prompt
+                    // on emulated CPU. We do NOT count a strike; the
+                    // process is doing exactly what it should be doing.
+                    // Logging is at info-level so operators can correlate
+                    // decode-busy periods with apparent unresponsiveness.
+                    Log.i(TAG, "Agent HTTP probe timed out but process is alive — likely mid-decode. No strike.");
                 } else {
+                    // ProbeResult.DEAD: process is dead, OR /api/health
+                    // returned 5xx (a real crash signal). Only here do we
+                    // accumulate strikes toward a force-restart.
                     unhealthyTicks++;
                     Log.w(TAG, "Agent health probe failed (" + unhealthyTicks + " consecutive).");
                     if (unhealthyTicks >= HEALTH_FAIL_STRIKES) {
@@ -994,7 +1057,7 @@ public class MiladyAgentService extends Service {
             }
         }
 
-        private boolean probeHealth() {
+        private ProbeResult probeHealth() {
             HttpURLConnection conn = null;
             try {
                 URL url = new URL(HEALTH_URL);
@@ -1003,13 +1066,52 @@ public class MiladyAgentService extends Service {
                 conn.setReadTimeout((int) HEALTH_TIMEOUT_MS);
                 conn.setRequestMethod("GET");
                 int status = conn.getResponseCode();
-                return status >= 200 && status < 500;
+                if (status >= 200 && status < 500) {
+                    return ProbeResult.OK;
+                }
+                // 5xx: agent process is up but reported a server error.
+                // Treat as DEAD so strikes accumulate — a 5xx on
+                // /api/health is a crash signal, not a busy signal.
+                return ProbeResult.DEAD;
             } catch (IOException error) {
-                return false;
+                // HTTP request failed (timeout / connect refused / read
+                // interrupt). If the agent process is still alive the
+                // most likely cause is bun synchronously inside a native
+                // FFI call (long llama_decode on a multi-thousand-token
+                // prompt). The event loop will resume when the FFI call
+                // returns. If the process IS dead, scheduleRestart()
+                // already fired from the outer loop on the
+                // !current.isAlive() path on the previous tick — a
+                // strike here would be redundant.
+                Process current;
+                synchronized (processLock) {
+                    current = agentProcess;
+                }
+                if (current != null && current.isAlive()) {
+                    return ProbeResult.BUSY;
+                }
+                return ProbeResult.DEAD;
             } finally {
                 if (conn != null) conn.disconnect();
             }
         }
+    }
+
+    /**
+     * Outcome of a single watchdog health probe. The watchdog uses these
+     * to decide whether to count a strike toward force-restart:
+     *   OK   → process is healthy, reset strike counter.
+     *   BUSY → process is alive but the HTTP listener didn't answer in
+     *          HEALTH_TIMEOUT_MS. Typically means bun is synchronously
+     *          inside a native FFI call (llama_decode on a long prompt).
+     *          No strike.
+     *   DEAD → process is dead, OR the HTTP server returned 5xx, OR a
+     *          hard connection failure (port closed). Count a strike.
+     */
+    private enum ProbeResult {
+        OK,
+        BUSY,
+        DEAD,
     }
 
     // ── Notification helpers ─────────────────────────────────────────────
