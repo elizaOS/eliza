@@ -89,7 +89,7 @@ async function readOperationFile(
   filePath: string,
 ): Promise<RuntimeOperation | null> {
   const parsed = await readJsonFile<RuntimeOperation>(filePath);
-  if (!parsed || !parsed.id || !parsed.kind || !Array.isArray(parsed.phases)) {
+  if (!parsed?.id || !parsed.kind || !Array.isArray(parsed.phases)) {
     return null;
   }
   return parsed;

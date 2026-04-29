@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { VaultMissError, type Vault } from "@elizaos/vault";
+import { type Vault, VaultMissError } from "@elizaos/vault";
 import { createTestVault, type TestVault } from "@elizaos/vault/testing";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
