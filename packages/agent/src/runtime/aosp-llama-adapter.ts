@@ -1,22 +1,39 @@
 /**
  * AOSP-only loader for native llama.cpp via `bun:ffi`.
  *
- * Targets llama.cpp upstream tag `b4500` (commit
- *   git@github.com:ggml-org/llama.cpp.git tags/b4500
- *   sha: a133566d34a1dd3693c504786963bf1b7b7d8c0e
- * — the matching libllama.so is compiled by the AOSP build pipeline against
- * this same SHA via `scripts/miladyos/compile-libllama.mjs`).
+ * Targets the apothic/llama.cpp-1bit-turboquant fork (commit
+ *   https://github.com/Apothic-AI/llama.cpp-1bit-turboquant
+ *   tag: main-b8198-b2b5273
+ *   sha: b2b5273e8b275bb96362fe844a5202632eb3e52b
+ * — the matching libllama.so is compiled by the AOSP build pipeline
+ * against this same SHA via `scripts/miladyos/compile-libllama.mjs`).
  *
- * Why b4500 (was b3490 in the initial spike):
- *   The previous pin predated the sampler-chain API rewrite and the
- *   model/vocab rename. dlopen succeeded but every renamed symbol resolved
- *   to NULL — the adapter would have thrown at the first inference call.
- *   b4500 is the first stable tag that exports all of the post-rewrite
- *   symbols this file binds (sampler chain, `llama_model_load_from_file`,
+ * Why this fork (was stock llama.cpp b4500 before):
+ *   apothic's fork adds two GGML quant types (TBQ3_0 = 43, TBQ4_0 = 44)
+ *   for KV-cache compression, with CPU implementations under
+ *   `ggml/src/ggml-cpu/quants.c` + `ggml/src/ggml-cpu/ggml-cpu.c`.
+ *   block_tbq3_0 packs 32 floats into 14 bytes (vs 64 bytes for fp16) —
+ *   ~4.6x KV-cache memory reduction. KV cache dominates phone-RAM
+ *   pressure at long contexts, so this is the difference between Bonsai
+ *   "loads but OOMs after 1k tokens" and "loads and chats". The matching
+ *   Bonsai-8B-1bit GGUF on Hugging Face is trained against this fork.
+ *
+ *   The fork is based on llama.cpp b8198 (much newer than b4500), so it
+ *   inherits the post-2024 sampler-chain API
+ *   (`llama_sampler_chain_init`, `llama_sampler_init_greedy`, etc.) and
+ *   the renamed model/vocab API (`llama_model_load_from_file`,
  *   `llama_init_from_model`, `llama_model_get_vocab`, `llama_vocab_eos`,
  *   `llama_vocab_is_eog`) AND the embedding helpers
  *   (`llama_set_embeddings`, `llama_get_embeddings_seq`,
  *   `llama_model_n_embd`).
+ *
+ *   Drift since the b4500 pin handled in the shim:
+ *     - llama_context_params.flash_attn (bool) → flash_attn_type (enum);
+ *       shim removed the bool setter (the adapter never called it).
+ *     - llama_context_params adds type_k / type_v / samplers / kv_unified;
+ *       shim now exposes set_type_k / set_type_v for TBQ KV-cache wiring
+ *       (driven by `kvCacheType` in the adapter LoadOptions, with
+ *       Bonsai-by-filename auto-detection as a default).
  *
  * Symbols pinned for reference:
  *   libllama.so (dlopen'd first):
@@ -232,6 +249,17 @@ interface ShimSymbols {
   ) => void;
   milady_llama_context_params_set_embeddings: (p: Pointer, v: boolean) => void;
   milady_llama_context_params_set_pooling_type: (p: Pointer, v: number) => void;
+  /**
+   * type_k / type_v: ggml_type enum values for the K and V cache slots.
+   * TBQ3_0 = 43 and TBQ4_0 = 44 are the apothic/llama.cpp-1bit-turboquant
+   * additions; stock types (F16 = 1, Q4_0 = 2, Q8_0 = 8) work too. Setting
+   * these flips the KV cache from fp16 to the chosen quant on the next
+   * `llama_init_from_model` call. The CPU vec-dot path lives in
+   * ggml/src/ggml-cpu/quants.c — this is the actual switch that turns on
+   * the memory win on phones.
+   */
+  milady_llama_context_params_set_type_k: (p: Pointer, v: number) => void;
+  milady_llama_context_params_set_type_v: (p: Pointer, v: number) => void;
   milady_llama_init_from_model: (model: Pointer, params: Pointer) => Pointer;
 
   // sampler_chain_params
@@ -244,14 +272,31 @@ interface RuntimeWithRegisterService {
   registerService?: (name: string, impl: unknown) => unknown;
 }
 
+/**
+ * AOSP-only `LoadOptions` extension. The cross-platform `LocalInferenceLoader`
+ * contract (`@elizaos/native-plugins/llama` and the Capacitor side) does NOT
+ * surface KV-cache type — that's an AOSP-specific tunable that only the
+ * fork-built libllama.so supports. We carry it on this private interface and
+ * default-resolve from filename + env in `loadModel`.
+ */
+export interface AospLlamaLoadOptions {
+  modelPath: string;
+  contextSize?: number;
+  useGpu?: boolean;
+  maxThreads?: number;
+  /**
+   * KV-cache type override. When undefined we auto-pick:
+   *   - Bonsai-by-filename → { k: "tbq4_0", v: "tbq3_0" }
+   *   - everything else    → undefined (let llama.cpp keep its fp16 default)
+   * Env overrides:
+   *   MILADY_LLAMA_CACHE_TYPE_K, MILADY_LLAMA_CACHE_TYPE_V (e.g. "tbq4_0").
+   */
+  kvCacheType?: { k?: KvCacheTypeName; v?: KvCacheTypeName };
+}
+
 /** Minimal subset of LocalInferenceLoader we satisfy here. */
 interface AospLoader {
-  loadModel(args: {
-    modelPath: string;
-    contextSize?: number;
-    useGpu?: boolean;
-    maxThreads?: number;
-  }): Promise<void>;
+  loadModel(args: AospLlamaLoadOptions): Promise<void>;
   unloadModel(): Promise<void>;
   currentModelPath(): string | null;
   generate(args: {
@@ -277,6 +322,126 @@ interface AospLoader {
  */
 const LLAMA_POOLING_TYPE_NONE = 0;
 const LLAMA_POOLING_TYPE_MEAN = 1;
+
+/**
+ * GGML type ids used for KV-cache configuration. The base set comes from
+ * ggml.h; TBQ3_0 / TBQ4_0 are the apothic/llama.cpp-1bit-turboquant fork
+ * additions and only valid against the fork-built libllama.so + matching
+ * Bonsai-8B-1bit GGUF model.
+ *
+ * Verified against
+ *   ~/.cache/milady-android-agent/llama-cpp-main-b8198-b2b5273/ggml/include/ggml.h
+ * (lines 420-435 — Q1_0 = 42 sits next to TBQ3_0 = 43, TBQ4_0 = 44).
+ */
+const GGML_TYPE_F16 = 1;
+const GGML_TYPE_TBQ3_0 = 43;
+const GGML_TYPE_TBQ4_0 = 44;
+
+/**
+ * Map a friendly KV-cache type name to its ggml_type enum value. Keep the
+ * table small — only types we actually intend to drive end up here. F16
+ * is the upstream default; tbq3_0 / tbq4_0 are the fork additions used by
+ * Bonsai. Unknown names throw rather than silently degrade.
+ *
+ * Exported for unit tests so we can assert mapping correctness without
+ * reaching into the adapter internals.
+ */
+export type KvCacheTypeName = "f16" | "tbq3_0" | "tbq4_0";
+
+export function kvCacheTypeNameToEnum(name: KvCacheTypeName): number {
+  switch (name) {
+    case "f16":
+      return GGML_TYPE_F16;
+    case "tbq3_0":
+      return GGML_TYPE_TBQ3_0;
+    case "tbq4_0":
+      return GGML_TYPE_TBQ4_0;
+    default: {
+      // Exhaustive switch — fall here only if a future type is added without
+      // updating the map. Throw with the offending name so a future caller
+      // doesn't silently get f16.
+      const exhaustive: never = name;
+      throw new Error(`[aosp-llama] Unknown KV cache type: ${exhaustive}`);
+    }
+  }
+}
+
+/**
+ * Auto-detect when a model path indicates a Bonsai 1-bit TurboQuant build,
+ * which is the only model in the curated catalog that's trained against
+ * the fork's TBQ KV-cache codec. Match is intentionally loose
+ * (case-insensitive substring) because users may rename downloaded GGUFs.
+ *
+ * The Hugging Face repo is `apothic/bonsai-8B-1bit-turboquant` and ships
+ * `models/gguf/8B/Bonsai-8B.gguf`; downloads pass that filename through
+ * verbatim by default, so a "Bonsai" basename match is the right hook.
+ *
+ * Exported for unit tests.
+ */
+export function looksLikeBonsai(modelPath: string): boolean {
+  const base = modelPath.split(/[/\\]/).pop() ?? modelPath;
+  return /bonsai/i.test(base);
+}
+
+/**
+ * Read a `KvCacheTypeName` from an env var, returning undefined when the var
+ * is unset, blank, or not a recognised type name. Recognised values are
+ * exactly `"f16"`, `"tbq3_0"`, `"tbq4_0"` (case-insensitive). An unrecognised
+ * value logs a warning and returns undefined rather than throwing — env-var
+ * typos shouldn't crash the loader.
+ *
+ * Exported for unit tests.
+ */
+export function readEnvKvCacheType(
+  name: string,
+  env: NodeJS.ProcessEnv = process.env,
+): KvCacheTypeName | undefined {
+  const raw = env[name]?.trim().toLowerCase();
+  if (!raw) return undefined;
+  if (raw === "f16" || raw === "tbq3_0" || raw === "tbq4_0") {
+    return raw;
+  }
+  logger.warn(
+    `[aosp-llama] ${name}=${raw} is not a recognised KV cache type; ignoring (use f16 / tbq3_0 / tbq4_0).`,
+  );
+  return undefined;
+}
+
+/**
+ * Resolve the KV-cache type to use for a given load. Precedence:
+ *   1. Explicit `LoadOptions.kvCacheType.{k,v}` (highest priority).
+ *   2. `MILADY_LLAMA_CACHE_TYPE_K` / `MILADY_LLAMA_CACHE_TYPE_V` env vars.
+ *   3. Auto-detection: Bonsai-by-filename → `{ k: "tbq4_0", v: "tbq3_0" }`
+ *      (matches the model card recommendation).
+ *   4. Otherwise undefined — the shim leaves the cache at llama.cpp's fp16
+ *      default, which is the safe choice for any non-Bonsai GGUF.
+ *
+ * Returns `undefined` when no override applies, so the caller can skip the
+ * shim setters entirely (smaller diff to upstream behaviour, easier to
+ * reason about in logs).
+ *
+ * Exported for unit tests.
+ */
+export function resolveKvCacheType(
+  modelPath: string,
+  override: AospLlamaLoadOptions["kvCacheType"] | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): { k?: KvCacheTypeName; v?: KvCacheTypeName } | undefined {
+  const explicitK = override?.k;
+  const explicitV = override?.v;
+  const envK = readEnvKvCacheType("MILADY_LLAMA_CACHE_TYPE_K", env);
+  const envV = readEnvKvCacheType("MILADY_LLAMA_CACHE_TYPE_V", env);
+  // Auto-detection only kicks in when neither an explicit override nor an
+  // env override is set. Catalog blurb references this contract directly —
+  // change here = update catalog.ts blurb in the same commit.
+  const auto = looksLikeBonsai(modelPath)
+    ? { k: "tbq4_0" as const, v: "tbq3_0" as const }
+    : undefined;
+  const k = explicitK ?? envK ?? auto?.k;
+  const v = explicitV ?? envV ?? auto?.v;
+  if (k === undefined && v === undefined) return undefined;
+  return { k, v };
+}
 
 const SERVICE_NAME = "localInferenceLoader";
 
@@ -453,6 +618,14 @@ function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
       args: [T.ptr, T.i32],
       returns: T.void,
     },
+    milady_llama_context_params_set_type_k: {
+      args: [T.ptr, T.i32],
+      returns: T.void,
+    },
+    milady_llama_context_params_set_type_v: {
+      args: [T.ptr, T.i32],
+      returns: T.void,
+    },
     milady_llama_init_from_model: { args: [T.ptr, T.ptr], returns: T.ptr },
 
     milady_llama_sampler_chain_params_default: { args: [], returns: T.ptr },
@@ -501,12 +674,7 @@ class AospLlamaAdapter implements AospLoader {
     return this.loadedPath;
   }
 
-  async loadModel(args: {
-    modelPath: string;
-    contextSize?: number;
-    useGpu?: boolean;
-    maxThreads?: number;
-  }): Promise<void> {
+  async loadModel(args: AospLlamaLoadOptions): Promise<void> {
     this.ensureBackend();
     if (this.loadedPath === args.modelPath && this.ctx !== null) return;
     if (this.ctx !== null || this.model !== null) {
@@ -519,6 +687,7 @@ class AospLlamaAdapter implements AospLoader {
     const contextSize = args.contextSize ?? readEnvInt("MILADY_LLAMA_N_CTX", 4096);
     const maxThreads = args.maxThreads ?? readEnvInt("MILADY_LLAMA_THREADS", 0);
     const useGpu = args.useGpu ?? false;
+    const kvCacheType = resolveKvCacheType(args.modelPath, args.kvCacheType);
 
     // Materialize llama_model_params via the shim. The shim runs
     // llama_model_default_params() under the hood, so use_mmap=true,
@@ -591,6 +760,24 @@ class AospLlamaAdapter implements AospLoader {
         ctxParamsPtr,
         LLAMA_POOLING_TYPE_MEAN,
       );
+      // KV-cache type override (TBQ for Bonsai, fp16 default for everything
+      // else). When kvCacheType.k / .v are set we forward the resolved
+      // ggml_type enum to the shim setters; otherwise we leave the cache at
+      // llama.cpp's canonical default. Only the apothic fork-built libllama.so
+      // understands TBQ3_0 / TBQ4_0 — using these against stock llama.cpp
+      // would crash inside type_traits lookup.
+      if (kvCacheType?.k !== undefined) {
+        this.shim.milady_llama_context_params_set_type_k(
+          ctxParamsPtr,
+          kvCacheTypeNameToEnum(kvCacheType.k),
+        );
+      }
+      if (kvCacheType?.v !== undefined) {
+        this.shim.milady_llama_context_params_set_type_v(
+          ctxParamsPtr,
+          kvCacheTypeNameToEnum(kvCacheType.v),
+        );
+      }
       ctxPtr = this.shim.milady_llama_init_from_model(modelPtr, ctxParamsPtr);
     } finally {
       this.shim.milady_llama_context_params_free(ctxParamsPtr);
@@ -608,7 +795,7 @@ class AospLlamaAdapter implements AospLoader {
     this.nCtx = this.sym.llama_n_ctx(ctxPtr);
     this.loadedPath = args.modelPath;
     logger.info(
-      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_threads=${maxThreads}, gpu=${useGpu})`,
+      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_threads=${maxThreads}, gpu=${useGpu}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"})`,
     );
   }
 
@@ -990,7 +1177,11 @@ export async function registerAospLlamaLoader(
   const adapter = await buildAdapter();
   if (!adapter) return false;
   runtime.registerService(SERVICE_NAME, {
-    loadModel: (a: { modelPath: string }) => adapter.loadModel(a),
+    // Accept the shared LocalInferenceLoader shape (`{ modelPath }`) AND the
+    // AOSP-specific extension (`{ modelPath, kvCacheType?, … }`) — callers
+    // that don't know about TBQ pass the slim shape and the adapter
+    // auto-detects from the filename.
+    loadModel: (a: AospLlamaLoadOptions) => adapter.loadModel(a),
     unloadModel: () => adapter.unloadModel(),
     currentModelPath: () => adapter.currentModelPath(),
     generate: (a: {
