@@ -13,7 +13,14 @@
     {
       "name": "mountain-time reminder create",
       "text": "please set a reminder for april 17 2026 at 8pm mountain time to hug my wife",
-      "responseIncludesAny": ["hug", "wife", "8:00", "8pm", "april 17", "mountain"]
+      "responseIncludesAny": [
+        "hug",
+        "wife",
+        "8:00",
+        "8pm",
+        "april 17",
+        "mountain"
+      ]
     }
   ],
   "finalChecks": [

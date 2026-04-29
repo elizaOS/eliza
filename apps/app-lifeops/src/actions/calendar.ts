@@ -849,7 +849,10 @@ function normalizeCalendarSearchQueryValue(
 
   const cleaned = normalizeText(value)
     .replace(/\b(?:actions?|params?|parameters?)\b[:;]*/g, "")
-    .replace(/\b\w{1,128}\?:\w{1,128}(?:\s{1,32}\[[^\]]{1,256}\])?\s{0,32}-\s{0,32}/g, " ")
+    .replace(
+      /\b\w{1,128}\?:\w{1,128}(?:\s{1,32}\[[^\]]{1,256}\])?\s{0,32}-\s{0,32}/g,
+      " ",
+    )
     .replace(/\bsupported keys include\b.*$/g, "")
     .replace(/\bmatch against titles\b.*$/g, "")
     .replace(/\bstructured calendar arguments\b.*$/g, "")
@@ -2738,7 +2741,9 @@ function normalizeCalendarMatchIdsFromValue(
 ): string[] {
   const rawIds: string[] = [];
   if (typeof value === "string") {
-    for (const token of value.split(/\s{0,256}\|\|\s{0,256}|\s{0,256},\s{0,256}|\s{1,256}/)) {
+    for (const token of value.split(
+      /\s{0,256}\|\|\s{0,256}|\s{0,256},\s{0,256}|\s{1,256}/,
+    )) {
       if (token.trim().length > 0) {
         rawIds.push(token.trim());
       }

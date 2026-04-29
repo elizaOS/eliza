@@ -4,7 +4,10 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
-const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const packageRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const require = createRequire(import.meta.url);
 const repoRoot = path.resolve(packageRoot, "..", "..", "..");
 const storybookBin = path.join(
@@ -13,17 +16,15 @@ const storybookBin = path.join(
   ".bin",
   process.platform === "win32" ? "storybook.cmd" : "storybook",
 );
-const playwrightPackage = require(path.join(
-  repoRoot,
-  "apps",
-  "app",
-  "node_modules",
-  "@playwright",
-  "test",
-));
+const playwrightPackage = require(
+  path.join(repoRoot, "apps", "app", "node_modules", "@playwright", "test"),
+);
 const { chromium } = playwrightPackage;
 const storybookHost = "127.0.0.1";
-const storybookPort = Number.parseInt(process.env.STORYBOOK_PORT?.trim() || "6007", 10);
+const storybookPort = Number.parseInt(
+  process.env.STORYBOOK_PORT?.trim() || "6007",
+  10,
+);
 const startupTimeoutMs = 120_000;
 const storyLimit = Number.parseInt(
   process.env.STORYBOOK_E2E_STORY_LIMIT?.trim() || "3",
@@ -54,7 +55,9 @@ async function waitForStorybookReady() {
       await delay(500);
     }
   }
-  fail(`storybook did not become ready at ${baseUrl} within ${startupTimeoutMs}ms`);
+  fail(
+    `storybook did not become ready at ${baseUrl} within ${startupTimeoutMs}ms`,
+  );
 }
 
 function collectStoryIds(indexPayload) {
@@ -63,7 +66,10 @@ function collectStoryIds(indexPayload) {
       ? Object.entries(indexPayload.entries)
       : [];
   const storyIds = entries
-    .filter(([, entry]) => entry && typeof entry === "object" && entry.type === "story")
+    .filter(
+      ([, entry]) =>
+        entry && typeof entry === "object" && entry.type === "story",
+    )
     .map(([storyId]) => storyId);
 
   if (storyIds.length === 0) {

@@ -49,7 +49,9 @@ function runtimeFor(args: {
   const roomsById = new Map(args.rooms.map((item) => [item.id, item]));
   return {
     agentId: AGENT_ID,
-    getRoomsForParticipant: vi.fn(async () => args.rooms.map((item) => item.id)),
+    getRoomsForParticipant: vi.fn(async () =>
+      args.rooms.map((item) => item.id),
+    ),
     getRoom: vi.fn(async (id: UUID) => roomsById.get(id) ?? null),
     getWorld: vi.fn(async () => null),
     getParticipantsForRoom: vi.fn(async (id: UUID) =>
@@ -95,12 +97,7 @@ describe("fetchChatMessages", () => {
         "public feed",
         2,
       ),
-      memory(
-        "00000000-0000-0000-0000-000000000104",
-        rooms[3].id,
-        "unknown",
-        1,
-      ),
+      memory("00000000-0000-0000-0000-000000000104", rooms[3].id, "unknown", 1),
     ];
 
     const messages = await fetchChatMessages(
@@ -117,7 +114,9 @@ describe("fetchChatMessages", () => {
       { sources: ["telegram"], limit: 10 },
     );
 
-    const byRoom = new Map(messages.map((message) => [message.roomId, message]));
+    const byRoom = new Map(
+      messages.map((message) => [message.roomId, message]),
+    );
     expect(byRoom.get(rooms[0].id)?.chatType).toBe("dm");
     expect(byRoom.get(rooms[1].id)?.chatType).toBe("group");
     expect(byRoom.get(rooms[2].id)?.chatType).toBe("channel");

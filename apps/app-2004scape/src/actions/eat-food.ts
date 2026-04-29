@@ -1,4 +1,10 @@
-import type { Action, IAgentRuntime, Memory, State, HandlerCallback } from "@elizaos/core";
+import type {
+  Action,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
 
 export const eatFood: Action = {
   name: "EAT_FOOD",
@@ -6,7 +12,10 @@ export const eatFood: Action = {
   descriptionCompressed: "Eat food from inventory.",
   similes: ["CONSUME_FOOD", "HEAL"],
   examples: [],
-  validate: async (_runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
+  validate: async (
+    _runtime: IAgentRuntime,
+    _message: Memory,
+  ): Promise<boolean> => {
     return _runtime.getService("rs_2004scape") != null;
   },
   handler: async (
@@ -16,8 +25,9 @@ export const eatFood: Action = {
     _options: Record<string, unknown>,
     callback?: HandlerCallback,
   ): Promise<unknown> => {
-    const service = runtime.getService("rs_2004scape") as any;
-    if (!service) return { success: false, message: "Game service not available." };
+    const service = getRsSdkGameService(runtime);
+    if (!service)
+      return { success: false, message: "Game service not available." };
 
     const result = await service.executeAction("eatFood", {});
     if (callback) callback({ text: result.message, action: "EAT_FOOD" });

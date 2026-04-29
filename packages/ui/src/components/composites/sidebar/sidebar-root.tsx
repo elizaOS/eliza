@@ -260,7 +260,7 @@ function useDefaultSidebarDesktopRailEnabled(variant: SidebarVariant) {
     ) {
       return true;
     }
-    return window.matchMedia("(min-width: 768px)").matches;
+    return window.matchMedia("(min-width: 820px)").matches;
   });
 
   React.useEffect(() => {
@@ -276,7 +276,7 @@ function useDefaultSidebarDesktopRailEnabled(variant: SidebarVariant) {
       return;
     }
 
-    const mediaQuery = window.matchMedia("(min-width: 768px)");
+    const mediaQuery = window.matchMedia("(min-width: 820px)");
     const update = () => setIsDesktop(mediaQuery.matches);
 
     update();

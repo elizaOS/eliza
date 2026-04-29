@@ -7,6 +7,13 @@ import {
   Textarea,
   useApp,
 } from "@elizaos/app-core";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -21,13 +28,6 @@ import type {
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
 } from "../contracts/index.js";
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";
 
 type CalendarWindow = "today" | "week";
@@ -207,7 +207,8 @@ function formatEventWindow(
 
 function eventOriginLabel(event: LifeOpsCalendarEvent): string | null {
   const parts = [event.calendarSummary, event.accountEmail].filter(
-    (value): value is string => typeof value === "string" && value.trim().length > 0,
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
   );
   if (parts.length === 0) {
     return null;

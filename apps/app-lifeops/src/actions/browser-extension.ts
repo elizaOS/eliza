@@ -21,12 +21,12 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import {
+  type BrowserSessionRegistration,
   getBrowserActivitySnapshot,
   recordBrowserSessionRegistration,
-  type BrowserSessionRegistration,
 } from "../lifeops/browser-extension-store.js";
+import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 const REGISTER_NAME = "REGISTER_BROWSER_SESSION";
 const FETCH_NAME = "FETCH_BROWSER_ACTIVITY";
@@ -48,7 +48,9 @@ function getParams<T>(options: HandlerOptions | undefined): T {
   return (params ?? {}) as T;
 }
 
-function toVendor(value: string | undefined): BrowserSessionRegistration["browserVendor"] {
+function toVendor(
+  value: string | undefined,
+): BrowserSessionRegistration["browserVendor"] {
   if (value === "chrome" || value === "safari") {
     return value;
   }
@@ -119,7 +121,9 @@ export const fetchBrowserActivityAction: Action = {
 
     const params = getParams<FetchParameters>(options);
     const limit =
-      typeof params.limit === "number" && params.limit > 0 ? Math.floor(params.limit) : 10;
+      typeof params.limit === "number" && params.limit > 0
+        ? Math.floor(params.limit)
+        : 10;
     const snapshot = await getBrowserActivitySnapshot(runtime, {
       deviceId: params.deviceId?.trim(),
       limit,
@@ -132,7 +136,8 @@ export const fetchBrowserActivityAction: Action = {
     }
 
     const lines = snapshot.domains.map(
-      (d) => `- ${d.domain}: ${Math.round(d.focusMs / 1000)}s (${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"})`,
+      (d) =>
+        `- ${d.domain}: ${Math.round(d.focusMs / 1000)}s (${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"})`,
     );
     const text = `Browser activity (device ${snapshot.deviceId ?? "any"}, window ending ${snapshot.windowEnd}):\n${lines.join("\n")}`;
     await callback?.({ text, source: "action", action: FETCH_NAME });

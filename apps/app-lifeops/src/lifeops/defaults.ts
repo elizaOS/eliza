@@ -1,9 +1,9 @@
+import type { ActivityProfile } from "../activity-profile/types";
 import type {
   LifeOpsReminderStep,
   LifeOpsTimeWindowDefinition,
   LifeOpsWindowPolicy,
 } from "../contracts/index.js";
-import type { ActivityProfile } from "../activity-profile/types";
 
 export const DEFAULT_TIME_WINDOWS: LifeOpsTimeWindowDefinition[] = [
   {

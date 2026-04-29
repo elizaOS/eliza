@@ -10,15 +10,16 @@ const TABLE_PAGE_LIMIT = 500;
 const SCHEDULE_OBSERVATION_BUCKET_MINUTES = 30;
 const SCHEDULE_OBSERVATION_LOOKBACK_MS = 48 * 60 * 60 * 1_000;
 
-const OBSERVATION_TTL_MS: Record<LifeOpsScheduleObservation["state"], number> = {
-  probably_awake: 4 * 60 * 60 * 1_000,
-  probably_sleeping: 8 * 60 * 60 * 1_000,
-  woke_recently: 2 * 60 * 60 * 1_000,
-  winding_down: 3 * 60 * 60 * 1_000,
-  meal_window_likely: 6 * 60 * 60 * 1_000,
-  ate_recently: 4 * 60 * 60 * 1_000,
-  active_recently: 90 * 60 * 1_000,
-};
+const OBSERVATION_TTL_MS: Record<LifeOpsScheduleObservation["state"], number> =
+  {
+    probably_awake: 4 * 60 * 60 * 1_000,
+    probably_sleeping: 8 * 60 * 60 * 1_000,
+    woke_recently: 2 * 60 * 60 * 1_000,
+    winding_down: 3 * 60 * 60 * 1_000,
+    meal_window_likely: 6 * 60 * 60 * 1_000,
+    ate_recently: 4 * 60 * 60 * 1_000,
+    active_recently: 90 * 60 * 1_000,
+  };
 
 type TableRowsResponse<T> = {
   table: string;
@@ -289,7 +290,10 @@ function localDateKey(iso: string, timezone: string): string {
   return formatter.format(new Date(iso));
 }
 
-function formatLocal(iso: string | null | undefined, timezone: string): string | null {
+function formatLocal(
+  iso: string | null | undefined,
+  timezone: string,
+): string | null {
   if (!iso) return null;
   const parsed = parseIsoMs(iso);
   if (parsed === null) return null;
@@ -343,9 +347,16 @@ function minIso(values: Array<string | null | undefined>): string | null {
   return best;
 }
 
-function formatLine(label: string, value: string | number | boolean | null): string {
+function formatLine(
+  label: string,
+  value: string | number | boolean | null,
+): string {
   const rendered =
-    value === null ? "null" : typeof value === "boolean" ? String(value) : String(value);
+    value === null
+      ? "null"
+      : typeof value === "boolean"
+        ? String(value)
+        : String(value);
   return `${label.padEnd(28)} ${rendered}`;
 }
 
@@ -361,7 +372,9 @@ function topRecentApps(
     counts.set(row.app_name, (counts.get(row.app_name) ?? 0) + 1);
   }
   return [...counts.entries()]
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .sort(
+      (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+    )
     .slice(0, 5)
     .map(([name, count]) => `${name} (${count})`);
 }
@@ -393,7 +406,8 @@ function isObservationActive(
 ): boolean {
   const observedAtMs = parseIsoMs(observation.observedAt);
   if (observedAtMs === null) return false;
-  if (mergedAtMs - observedAtMs > SCHEDULE_OBSERVATION_LOOKBACK_MS) return false;
+  if (mergedAtMs - observedAtMs > SCHEDULE_OBSERVATION_LOOKBACK_MS)
+    return false;
   return mergedAtMs - observedAtMs <= OBSERVATION_TTL_MS[observation.state];
 }
 
@@ -427,19 +441,24 @@ function buildReport(args: {
       : normalizedObservations.filter((observation) =>
           isObservationActive(observation, mergedAtMs),
         );
-  const activeObservationStates = [...new Set(activeObservations.map((row) => row.state))].sort();
+  const activeObservationStates = [
+    ...new Set(activeObservations.map((row) => row.state)),
+  ].sort();
   const activeObservationDeviceKinds = [
     ...new Set(activeObservations.map((row) => row.deviceKind)),
   ].sort();
   const activeObservationDeviceIds = [
     ...new Set(activeObservations.map((row) => row.deviceId)),
   ].sort();
-  const latestObservationAt = maxIso(activeObservations.map((row) => row.observedAt));
+  const latestObservationAt = maxIso(
+    activeObservations.map((row) => row.observedAt),
+  );
 
   if (args.observationTotal === 0) {
     issues.push({
       level: "failure",
-      message: "No schedule observations are stored. Local schedule inference is not persisting evidence.",
+      message:
+        "No schedule observations are stored. Local schedule inference is not persisting evidence.",
     });
   }
   if (args.mergedState.observationCount !== activeObservations.length) {
@@ -456,7 +475,9 @@ function buildReport(args: {
   }
 
   const mergedKinds = [...args.mergedState.contributingDeviceKinds].sort();
-  if (JSON.stringify(mergedKinds) !== JSON.stringify(activeObservationDeviceKinds)) {
+  if (
+    JSON.stringify(mergedKinds) !== JSON.stringify(activeObservationDeviceKinds)
+  ) {
     issues.push({
       level: "failure",
       message: `Merged contributingDeviceKinds=${mergedKinds.join(", ")} but active observations show ${activeObservationDeviceKinds.join(", ")}.`,
@@ -476,7 +497,8 @@ function buildReport(args: {
   if (!args.mergedStateRow) {
     issues.push({
       level: "failure",
-      message: "life_schedule_merged_states does not contain a persisted row for the merged state route response.",
+      message:
+        "life_schedule_merged_states does not contain a persisted row for the merged state route response.",
     });
   } else {
     if (args.mergedStateRow.id !== args.mergedState.id) {
@@ -496,18 +518,29 @@ function buildReport(args: {
   if (args.activityEventTotal === 0) {
     issues.push({
       level: "failure",
-      message: "No life_activity_events are stored. macOS application tracking is not feeding the predictor.",
+      message:
+        "No life_activity_events are stored. macOS application tracking is not feeding the predictor.",
     });
   }
 
-  const activeSignals = args.activitySignals.filter((row) => row.state === "active");
-  const latestActivityEventAt = maxIso(args.activityEvents.map((row) => row.observed_at));
-  const latestActiveSignalAt = maxIso(activeSignals.map((row) => row.observed_at));
+  const activeSignals = args.activitySignals.filter(
+    (row) => row.state === "active",
+  );
+  const latestActivityEventAt = maxIso(
+    args.activityEvents.map((row) => row.observed_at),
+  );
+  const latestActiveSignalAt = maxIso(
+    activeSignals.map((row) => row.observed_at),
+  );
   const todayEventRows = args.activityEvents.filter(
-    (row) => localDateKey(row.observed_at, args.timezone) === args.mergedState.localDate,
+    (row) =>
+      localDateKey(row.observed_at, args.timezone) ===
+      args.mergedState.localDate,
   );
   const todayActiveSignals = activeSignals.filter(
-    (row) => localDateKey(row.observed_at, args.timezone) === args.mergedState.localDate,
+    (row) =>
+      localDateKey(row.observed_at, args.timezone) ===
+      args.mergedState.localDate,
   );
   const earliestActivityEvidenceTodayAt = minIso([
     ...todayEventRows.map((row) => row.observed_at),
@@ -524,7 +557,8 @@ function buildReport(args: {
   );
   if (
     latestActivityEvidenceAt &&
-    (lastActiveDelta === null || lastActiveDelta > SCHEDULE_OBSERVATION_BUCKET_MINUTES)
+    (lastActiveDelta === null ||
+      lastActiveDelta > SCHEDULE_OBSERVATION_BUCKET_MINUTES)
   ) {
     issues.push({
       level: "failure",
@@ -538,7 +572,8 @@ function buildReport(args: {
   );
   if (
     earliestActivityEvidenceTodayAt &&
-    (firstActiveDelta === null || firstActiveDelta > SCHEDULE_OBSERVATION_BUCKET_MINUTES)
+    (firstActiveDelta === null ||
+      firstActiveDelta > SCHEDULE_OBSERVATION_BUCKET_MINUTES)
   ) {
     issues.push({
       level: "failure",
@@ -549,19 +584,25 @@ function buildReport(args: {
   if (args.screenTimeSessionTotal === 0) {
     issues.push({
       level: "warning",
-      message: "life_screen_time_sessions is empty, so there is no persisted browser/app screen-time evidence in the merged schedule yet.",
+      message:
+        "life_screen_time_sessions is empty, so there is no persisted browser/app screen-time evidence in the merged schedule yet.",
     });
   }
   if (args.browserSessionTotal === 0) {
     issues.push({
       level: "warning",
-      message: "life_browser_sessions is empty, so browser companion telemetry is not contributing any coverage yet.",
+      message:
+        "life_browser_sessions is empty, so browser companion telemetry is not contributing any coverage yet.",
     });
   }
-  if (activeObservationDeviceKinds.length <= 1 && activeObservationDeviceKinds[0] === "mac") {
+  if (
+    activeObservationDeviceKinds.length <= 1 &&
+    activeObservationDeviceKinds[0] === "mac"
+  ) {
     issues.push({
       level: "warning",
-      message: "All active schedule observations come from the Mac. Cross-device fusion is not being exercised by the current real dataset.",
+      message:
+        "All active schedule observations come from the Mac. Cross-device fusion is not being exercised by the current real dataset.",
     });
   }
   if (
@@ -573,15 +614,23 @@ function buildReport(args: {
       message: `Sleep status is ${args.mergedState.sleepStatus}, which means the current dataset does not yet provide enough overnight evidence for a confident sleep interval.`,
     });
   }
-  if (args.mergedState.nextMealConfidence > 0 && args.screenTimeSessionTotal === 0) {
+  if (
+    args.mergedState.nextMealConfidence > 0 &&
+    args.screenTimeSessionTotal === 0
+  ) {
     issues.push({
       level: "warning",
-      message: "Meal guidance is currently being inferred without any browser/screen-time sessions, so the dinner window is a weak time-of-day heuristic rather than multimodal evidence.",
+      message:
+        "Meal guidance is currently being inferred without any browser/screen-time sessions, so the dinner window is a weak time-of-day heuristic rather than multimodal evidence.",
     });
   }
 
   const signalSources = [
-    ...new Set(args.activitySignals.map((row) => `${row.platform}:${row.source}:${row.state}`)),
+    ...new Set(
+      args.activitySignals.map(
+        (row) => `${row.platform}:${row.source}:${row.state}`,
+      ),
+    ),
   ].sort();
   const recentApps = topRecentApps(
     args.activityEvents,
@@ -645,7 +694,9 @@ function buildReport(args: {
 
 function printReport(report: VerificationReport): void {
   console.log(
-    report.ok ? "LifeOps live schedule verification: PASS" : "LifeOps live schedule verification: FAIL",
+    report.ok
+      ? "LifeOps live schedule verification: PASS"
+      : "LifeOps live schedule verification: FAIL",
   );
   console.log(formatLine("API base", report.apiBase));
   console.log(formatLine("Timezone", report.timezone));
@@ -654,34 +705,69 @@ function printReport(report: VerificationReport): void {
   console.log("Merged state");
   console.log(formatLine("Phase", report.mergedState.phase));
   console.log(formatLine("Sleep status", report.mergedState.sleepStatus));
-  console.log(formatLine("Probably sleeping", report.mergedState.isProbablySleeping));
-  console.log(formatLine("Observation count", report.mergedState.observationCount));
+  console.log(
+    formatLine("Probably sleeping", report.mergedState.isProbablySleeping),
+  );
+  console.log(
+    formatLine("Observation count", report.mergedState.observationCount),
+  );
   console.log(formatLine("Device count", report.mergedState.deviceCount));
   console.log(formatLine("First active", report.mergedState.firstActiveAt));
   console.log(formatLine("Last active", report.mergedState.lastActiveAt));
   console.log(formatLine("Next meal", report.mergedState.nextMealLabel));
-  console.log(formatLine("Meal window start", report.mergedState.nextMealWindowStartAt));
-  console.log(formatLine("Meal window end", report.mergedState.nextMealWindowEndAt));
-  console.log(formatLine("Meal confidence", report.mergedState.nextMealConfidence));
+  console.log(
+    formatLine("Meal window start", report.mergedState.nextMealWindowStartAt),
+  );
+  console.log(
+    formatLine("Meal window end", report.mergedState.nextMealWindowEndAt),
+  );
+  console.log(
+    formatLine("Meal confidence", report.mergedState.nextMealConfidence),
+  );
   console.log("");
   console.log("Coverage");
   console.log(formatLine("Activity events", report.coverage.activityEvents));
   console.log(formatLine("Activity signals", report.coverage.activitySignals));
   console.log(formatLine("Browser sessions", report.coverage.browserSessions));
-  console.log(formatLine("Screen-time sessions", report.coverage.screenTimeSessions));
-  console.log(formatLine("Active observations", report.coverage.activeObservationCount));
-  console.log(formatLine("Observation states", report.coverage.activeObservationStates.join(", ")));
-  console.log(formatLine("Observation devices", report.coverage.activeObservationDeviceKinds.join(", ")));
-  console.log(formatLine("Signal sources", report.coverage.signalSources.join(", ")));
+  console.log(
+    formatLine("Screen-time sessions", report.coverage.screenTimeSessions),
+  );
+  console.log(
+    formatLine("Active observations", report.coverage.activeObservationCount),
+  );
+  console.log(
+    formatLine(
+      "Observation states",
+      report.coverage.activeObservationStates.join(", "),
+    ),
+  );
+  console.log(
+    formatLine(
+      "Observation devices",
+      report.coverage.activeObservationDeviceKinds.join(", "),
+    ),
+  );
+  console.log(
+    formatLine("Signal sources", report.coverage.signalSources.join(", ")),
+  );
   console.log(formatLine("Recent apps", report.coverage.recentApps.join(", ")));
   console.log("");
   console.log("Evidence");
-  console.log(formatLine("Latest event", report.evidence.latestActivityEventAt));
   console.log(
-    formatLine("First active evidence", report.evidence.earliestActivityEvidenceTodayAt),
+    formatLine("Latest event", report.evidence.latestActivityEventAt),
   );
-  console.log(formatLine("Latest active signal", report.evidence.latestActiveSignalAt));
-  console.log(formatLine("Latest observation", report.evidence.latestObservationAt));
+  console.log(
+    formatLine(
+      "First active evidence",
+      report.evidence.earliestActivityEvidenceTodayAt,
+    ),
+  );
+  console.log(
+    formatLine("Latest active signal", report.evidence.latestActiveSignalAt),
+  );
+  console.log(
+    formatLine("Latest observation", report.evidence.latestObservationAt),
+  );
 
   if (report.failures.length > 0) {
     console.log("");

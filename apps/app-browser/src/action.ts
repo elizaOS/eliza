@@ -1,10 +1,3 @@
-import type {
-  Action,
-  ActionExample,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-} from "@elizaos/core";
 import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
@@ -16,6 +9,13 @@ import {
   type BrowserWorkspaceWaitState,
   executeBrowserWorkspaceCommand,
 } from "@elizaos/agent";
+import type {
+  Action,
+  ActionExample,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+} from "@elizaos/core";
 
 type BrowserWorkspaceActionRequest = BrowserWorkspaceCommand;
 
@@ -548,9 +548,9 @@ function parseRequest(
         ? /\bscreenshot\b/.test(lower)
           ? "screenshot"
           : "snapshot"
-        : /\b(open|new tab|browse)\b/.test(lower) && Boolean(url)
+        : /\b(open|new tab|browse)\b/.test(lower) && url
           ? "open"
-          : /\bnavigate\b/.test(lower) && Boolean(url)
+          : /\bnavigate\b/.test(lower) && url
             ? "navigate"
             : /\bshow\b/.test(lower)
               ? "show"
@@ -1061,7 +1061,8 @@ export const manageElizaBrowserWorkspaceAction: Action = {
   name: "MANAGE_ELIZA_BROWSER_WORKSPACE",
   description:
     "Use the Eliza browser workspace through one main action. Pass a subaction such as list, open, navigate, show, hide, close, inspect, snapshot, screenshot, find, click, dblclick, fill, type, keyboardtype, keyboardinserttext, focus, hover, select, check, uncheck, press, keydown, keyup, scroll, scrollinto, wait, get, back, forward, reload, eval, batch, clipboard, mouse, drag, upload, set, cookies, storage, network, dialog, console, errors, highlight, diff, trace, profiler, state, frame, tab, window, or pdf. Use batch with stepsJson to run a series of browser subactions in order. Snapshot and inspect return reusable element refs like @e1 that can be passed back as selector values.",
-  descriptionCompressed: "Browser workspace: navigate, click, fill, type, screenshot, DOM, eval, tabs, cookies, network, console.",
+  descriptionCompressed:
+    "Browser workspace: navigate, click, fill, type, screenshot, DOM, eval, tabs, cookies, network, console.",
   similes: [
     "browser command",
     "browser subaction",

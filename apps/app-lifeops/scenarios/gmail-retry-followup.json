@@ -14,7 +14,12 @@
       "name": "gmail initial search",
       "text": "find emails from suran",
       "plannerIncludesAll": ["gmail_action", "suran"],
-      "plannerExcludes": ["create_task", "spawn_agent", "send_to_agent", "list_agents"]
+      "plannerExcludes": [
+        "create_task",
+        "spawn_agent",
+        "send_to_agent",
+        "list_agents"
+      ]
     },
     {
       "name": "gmail retry follow-up",
@@ -25,8 +30,18 @@
       "name": "gmail unread refinement",
       "text": "what about unread ones?",
       "plannerIncludesAll": ["gmail_action", "suran"],
-      "plannerIncludesAny": ["unread", "replyneededonly", "needs_response", "reply needed"],
-      "plannerExcludes": ["create_task", "spawn_agent", "send_to_agent", "list_agents"]
+      "plannerIncludesAny": [
+        "unread",
+        "replyneededonly",
+        "needs_response",
+        "reply needed"
+      ],
+      "plannerExcludes": [
+        "create_task",
+        "spawn_agent",
+        "send_to_agent",
+        "list_agents"
+      ]
     }
   ]
 }

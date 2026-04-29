@@ -280,7 +280,9 @@ export const calendlyAction: Action = {
     rawParameters !== null
       ? (rawParameters as CalendlyParameters)
       : {}) ?? {}) as CalendlyParameters;
-    const params = (await extractActionParamsViaLlm<CalendlyParameters & Record<string, unknown>>({
+    const params = (await extractActionParamsViaLlm<
+      CalendlyParameters & Record<string, unknown>
+    >({
       runtime,
       message,
       state,

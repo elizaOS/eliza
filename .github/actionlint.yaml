@@ -1,9 +1,15 @@
 # actionlint configuration
 # https://github.com/rhysd/actionlint/blob/main/docs/config.md
 
-# All jobs run on GitHub-hosted runners (ubuntu-24.04 / ubuntu-24.04-arm /
-# windows-2025 / macos-15 etc.). If self-hosted runners are introduced,
-# declare their labels here.
+# Most jobs run on GitHub-hosted runners (ubuntu-24.04 / ubuntu-24.04-arm /
+# windows-2025 / macos-15 etc.). The labels below are self-hosted runner
+# labels we use:
+#   kvm — Linux x86_64 host with /dev/kvm available, used for Cuttlefish/AOSP
+#         builds (.github/workflows/elizaos-cuttlefish.yml).
+
+self-hosted-runner:
+  labels:
+    - kvm
 
 paths:
   .github/workflows/release.yml:

@@ -42,9 +42,9 @@ describe("serializeHashParams", () => {
   });
 
   it("drops null / undefined / empty values", () => {
-    expect(
-      serializeHashParams({ a: "1", b: null, c: undefined, d: "" }),
-    ).toBe("#a=1");
+    expect(serializeHashParams({ a: "1", b: null, c: undefined, d: "" })).toBe(
+      "#a=1",
+    );
   });
 
   it("returns empty string when no keys survive", () => {
@@ -67,14 +67,10 @@ describe("parseLifeOpsRoute", () => {
 
   it("reads section, event, and message keys when present", () => {
     expect(
-      parseLifeOpsRoute(
-        "#lifeops.section=calendar&lifeops.event=evt-1",
-      ),
+      parseLifeOpsRoute("#lifeops.section=calendar&lifeops.event=evt-1"),
     ).toEqual({ section: "calendar", eventId: "evt-1", messageId: null });
     expect(
-      parseLifeOpsRoute(
-        "#lifeops.section=messages&lifeops.message=m-1",
-      ),
+      parseLifeOpsRoute("#lifeops.section=messages&lifeops.message=m-1"),
     ).toEqual({ section: "messages", eventId: null, messageId: "m-1" });
   });
 
@@ -116,10 +112,10 @@ describe("buildLifeOpsHash", () => {
   });
 
   it("preserves unrelated keys (e.g. automations.trigger)", () => {
-    const next = buildLifeOpsHash(
-      "#automations.trigger=abc",
-      { section: "messages", messageId: "m-1" },
-    );
+    const next = buildLifeOpsHash("#automations.trigger=abc", {
+      section: "messages",
+      messageId: "m-1",
+    });
     expect(next).toContain("automations.trigger=abc");
     expect(next).toContain("lifeops.section=messages");
     expect(next).toContain("lifeops.message=m-1");

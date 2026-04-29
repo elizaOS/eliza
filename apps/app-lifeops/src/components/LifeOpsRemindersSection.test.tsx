@@ -135,7 +135,9 @@ describe("LifeOpsRemindersSection", () => {
     render(<LifeOpsRemindersSection />);
 
     expect(screen.getByTestId("lifeops-reminders")).toBeTruthy();
-    await waitFor(() => expect(clientMock.getLifeOpsOverview).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(clientMock.getLifeOpsOverview).toHaveBeenCalled(),
+    );
     expect(clientMock.listLifeOpsDefinitions).toHaveBeenCalled();
     expect(
       await screen.findByText("All clear. No active reminders."),

@@ -1,9 +1,19 @@
 import { BotSDK } from "../sdk/index.js";
-import type { BotWorldState, BotState, BotAlert } from "../sdk/types.js";
+import type { BotAlert, BotState, BotWorldState } from "../sdk/types.js";
 
 const FOOD_ITEMS = [
-  "shrimp", "anchovies", "bread", "meat", "chicken", "trout",
-  "salmon", "tuna", "lobster", "swordfish", "cake", "pie",
+  "shrimp",
+  "anchovies",
+  "bread",
+  "meat",
+  "chicken",
+  "trout",
+  "salmon",
+  "tuna",
+  "lobster",
+  "swordfish",
+  "cake",
+  "pie",
 ];
 
 export class BotManager {

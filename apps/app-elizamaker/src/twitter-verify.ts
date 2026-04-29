@@ -9,11 +9,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { logger } from "@elizaos/core";
 import {
   createIntegrationTelemetrySpan,
   resolveStateDir,
 } from "@elizaos/agent";
+import { logger } from "@elizaos/core";
 import type { VerificationResult } from "@elizaos/shared";
 
 export type { VerificationResult } from "@elizaos/shared";

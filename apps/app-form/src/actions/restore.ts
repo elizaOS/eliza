@@ -85,7 +85,11 @@ export const formRestoreAction: Action = {
    *
    * @returns true if action should run
    */
-  validate: async (runtime: IAgentRuntime, message: Memory, _state?: State): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+  ): Promise<boolean> => {
     try {
       const text = message.content?.text || "";
 
@@ -128,7 +132,7 @@ export const formRestoreAction: Action = {
     message: Memory,
     _state?: State,
     _options?: HandlerOptions,
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     try {
       const formService = runtime.getService("FORM") as FormService;
@@ -172,7 +176,9 @@ export const formRestoreAction: Action = {
 
       // Restore the most recent stashed session — the user likely wants what
       // they just stashed.
-      const sessionToRestore = stashed.sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      const sessionToRestore = stashed.sort(
+        (a, b) => b.updatedAt - a.updatedAt,
+      )[0];
       const session = await formService.restore(sessionToRestore.id, entityId);
 
       const form = formService.getForm(session.formId);
