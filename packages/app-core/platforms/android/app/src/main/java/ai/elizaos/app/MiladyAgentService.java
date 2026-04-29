@@ -263,11 +263,23 @@ public class MiladyAgentService extends Service {
         // vector.tar.gz and fuzzystrmatch.tar.gz must live one directory
         // ABOVE the bundle because PGlite resolves them via
         // `new URL("../X.tar.gz", ...)`.
+        //
+        // aapt2 quirk: even with `androidResources.noCompress` listing
+        // `tar.gz` and `tar`, aapt2 strips the `.gz` suffix from
+        // `*.tar.gz` assets at packaging time (the `noCompress` flag
+        // only controls ZIP-level compression of the entry, not the
+        // pre-processing aapt2 does to "doubly compressed" extensions).
+        // The asset on disk inside the APK is therefore named
+        // `vector.tar` / `fuzzystrmatch.tar`, but PGlite's runtime
+        // loader still resolves `../vector.tar.gz` and
+        // `../fuzzystrmatch.tar.gz`. Look up under the aapt2-rewritten
+        // name and write to the runtime-expected `.tar.gz` name so the
+        // loader contract is preserved without changing the bundle.
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(root, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(root, "pglite.data"));
-        copyAssetIfPresent(assets, "agent/vector.tar.gz",
+        copyAssetIfPresent(assets, "agent/vector.tar",
             new File(getFilesDir(), "vector.tar.gz"));
-        copyAssetIfPresent(assets, "agent/fuzzystrmatch.tar.gz",
+        copyAssetIfPresent(assets, "agent/fuzzystrmatch.tar",
             new File(getFilesDir(), "fuzzystrmatch.tar.gz"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(root, "plugins-manifest.json"));
