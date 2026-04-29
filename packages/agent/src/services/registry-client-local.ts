@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.js";
 import { packageNameToAppDisplayName } from "../contracts/apps.js";
+import { readJsonFile } from "../utils/atomic-json.js";
 import {
   mergeAppMeta,
   resolveAppOverride,
@@ -167,15 +168,6 @@ function normaliseGitHubRepo(repo: string | null): string | null {
     .trim();
   if (!cleaned.includes("/")) return null;
   return cleaned;
-}
-
-async function readJsonFile<T>(filePath: string): Promise<T | null> {
-  try {
-    const raw = await fs.readFile(filePath, "utf-8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
 }
 
 function normalizeLocalTag(tag: string): string | null {

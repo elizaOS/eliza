@@ -31,13 +31,6 @@ export interface ProviderSwitchRouteContext {
   ) => Promise<T | null>;
   saveElizaConfig: (config: ElizaConfig) => void;
   scheduleRuntimeRestart: (reason: string) => void;
-  /**
-   * Legacy single-flight gate — kept on the context type for now because
-   * other call sites still set it. This route no longer reads or writes
-   * the flag; the runtime operation repo's active-op slot is the gate.
-   */
-  providerSwitchInProgress: boolean;
-  setProviderSwitchInProgress: (value: boolean) => void;
   runtimeOperationManager: RuntimeOperationManager;
 }
 
@@ -48,19 +41,11 @@ export interface ProviderSwitchRouteContext {
 function readIdempotencyKey(
   headers: http.IncomingHttpHeaders,
 ): string | undefined {
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() !== "idempotency-key") continue;
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-    if (Array.isArray(value)) {
-      const first = value.find(
-        (v) => typeof v === "string" && v.trim().length > 0,
-      );
-      if (first) return first.trim();
-    }
-  }
-  return undefined;
+  // Node lowercases header names on IncomingMessage.headers.
+  const raw = headers["idempotency-key"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 export async function handleProviderSwitchRoutes(

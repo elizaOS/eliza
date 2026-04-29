@@ -14,6 +14,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { writeJsonAtomicSync } from "../utils/atomic-json.js";
 import type { OAuthCredentials, SubscriptionProvider } from "./types.js";
 
 export interface AccountCredentialRecord {
@@ -67,18 +68,6 @@ function ensureProviderDir(provider: SubscriptionProvider): void {
   }
 }
 
-function atomicWriteJsonSync(filePath: string, value: unknown): void {
-  const dir = path.dirname(filePath);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-  const tmp = `${filePath}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(value, null, 2), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-  fs.renameSync(tmp, filePath);
-}
 
 interface LegacyStoredCredentials {
   provider: SubscriptionProvider;
@@ -157,7 +146,7 @@ function migrateProvider(provider: SubscriptionProvider): boolean {
   };
 
   ensureProviderDir(provider);
-  atomicWriteJsonSync(accountFile(provider, "default"), record);
+  writeJsonAtomicSync(accountFile(provider, "default"), record);
 
   // Atomic-ish delete: rename to a side path first so a concurrent
   // reader sees either the legacy file or nothing — then unlink.
@@ -290,7 +279,7 @@ export function saveAccount(record: AccountCredentialRecord): void {
     ...record,
     updatedAt: Date.now(),
   };
-  atomicWriteJsonSync(accountFile(record.providerId, record.id), next);
+  writeJsonAtomicSync(accountFile(record.providerId, record.id), next);
   logger.info(
     `[auth] Saved ${record.providerId} account "${record.id}" (label="${record.label}")`,
   );
@@ -321,5 +310,5 @@ export function touchAccount(
     ...existing,
     lastUsedAt: Date.now(),
   };
-  atomicWriteJsonSync(accountFile(provider, accountId), next);
+  writeJsonAtomicSync(accountFile(provider, accountId), next);
 }
