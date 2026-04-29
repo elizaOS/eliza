@@ -463,6 +463,51 @@ describe("DeviceBridge e2e", () => {
     }
   });
 
+  it("parks an embed on device disconnect and re-routes it to a fresh device on connect", async () => {
+    // Mirrors the parked-generate symmetry test for embeds: connect A,
+    // send embed, disconnect A (request orphans), connect B, assert the
+    // embed re-routes to B with the same correlation id.
+    const a = await connectDevice(harness.wsUrl, {
+      deviceId: "mac",
+      platform: "desktop",
+      totalRamGb: 16,
+    });
+    await waitFor(() => harness.bridge.status().devices.length === 1);
+
+    const pending = harness.bridge.embed({ input: "park-then-reconnect" });
+    const original = await a.nextMessage<{ correlationId: string }>("embed");
+
+    // Disconnect A — pending embed should orphan, NOT reject.
+    await a.close();
+    await waitFor(() => harness.bridge.status().devices.length === 0);
+    expect(harness.bridge.status().pendingRequests).toBe(1);
+
+    // Connect a fresh device B; it should receive the orphaned embed
+    // with the same correlation id.
+    const b = await connectDevice(harness.wsUrl, {
+      deviceId: "phone",
+      platform: "ios",
+      totalRamGb: 8,
+    });
+    const reroute = await b.nextMessage<{
+      type: string;
+      correlationId: string;
+    }>("embed");
+    expect(reroute.correlationId).toBe(original.correlationId);
+
+    b.send({
+      type: "embedResult",
+      correlationId: original.correlationId,
+      ok: true,
+      embedding: [0.5, 0.5, 0.5],
+      tokens: 1,
+    });
+    const result = await pending;
+    expect(result.embedding).toEqual([0.5, 0.5, 0.5]);
+
+    await b.close();
+  });
+
   it("reroutes an in-flight embed when the routed device drops", async () => {
     const mac = await connectDevice(harness.wsUrl, {
       deviceId: "mac",

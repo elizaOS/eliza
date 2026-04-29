@@ -283,25 +283,26 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       "milady_llama_sampler_chain_init",
     ];
     const shimSetters = [
-      // model_params: the five user-overridable fields per llama.h b4500.
+      // model_params: only n_gpu_layers is wired today (when LoadOptions
+      // explicitly opts out of GPU we set it to 0). The other model_params
+      // fields the shim could expose — use_mmap, use_mlock, vocab_only,
+      // check_tensors — are intentionally left at llama.cpp's canonical
+      // defaults (use_mmap=true, the rest false), which are correct for
+      // the AOSP CPU path.
       "milady_llama_model_params_set_n_gpu_layers",
-      "milady_llama_model_params_set_use_mmap",
-      "milady_llama_model_params_set_use_mlock",
-      "milady_llama_model_params_set_vocab_only",
-      "milady_llama_model_params_set_check_tensors",
-      // context_params: the runtime-tunable fields the adapter is likely
-      // to override.
+      // context_params: the four fields loadModel actually overrides.
+      // n_ctx caps the context window so we don't OOM on phones.
+      // n_threads / n_threads_batch are bound to LoadOptions.maxThreads
+      // (verified on context_params, NOT model_params, against b4500
+      // llama.h:319-320). embeddings=true pre-allocates the buffer so
+      // the first embed() call doesn't pay an allocation tax.
+      // pooling_type=MEAN gives llama_get_embeddings_seq exactly n_embd
+      // floats and removes the OOB-risk fallback.
       "milady_llama_context_params_set_n_ctx",
-      "milady_llama_context_params_set_n_batch",
-      "milady_llama_context_params_set_n_ubatch",
       "milady_llama_context_params_set_n_threads",
       "milady_llama_context_params_set_n_threads_batch",
       "milady_llama_context_params_set_embeddings",
-      "milady_llama_context_params_set_offload_kqv",
-      "milady_llama_context_params_set_flash_attn",
       "milady_llama_context_params_set_pooling_type",
-      // sampler_chain_params: only one field upstream (no_perf).
-      "milady_llama_sampler_chain_params_set_no_perf",
     ];
     for (const sym of [
       ...shimDefaultsAndFrees,
@@ -311,7 +312,325 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       expect(shimSymbols).toHaveProperty(sym);
     }
 
+    // Setters NOT bound — speculative bindings get dlsym'd at dlopen time
+    // and silently widen the surface a future refactor might rely on.
+    // If a future LoadOptions field needs one of these, add the binding
+    // and add it to `shimSetters` above.
+    const shimSettersThatMustNotBeHere = [
+      "milady_llama_model_params_set_use_mmap",
+      "milady_llama_model_params_set_use_mlock",
+      "milady_llama_model_params_set_vocab_only",
+      "milady_llama_model_params_set_check_tensors",
+      "milady_llama_context_params_set_n_batch",
+      "milady_llama_context_params_set_n_ubatch",
+      "milady_llama_context_params_set_offload_kqv",
+      "milady_llama_context_params_set_flash_attn",
+      "milady_llama_sampler_chain_params_set_no_perf",
+    ];
+    for (const sym of shimSettersThatMustNotBeHere) {
+      expect(shimSymbols).not.toHaveProperty(sym);
+    }
+
     vi.doUnmock("node:fs");
+  });
+});
+
+describe("aosp-llama-adapter / context_params override invocations", () => {
+  /**
+   * Regression for the F1 fix: AOSP must pin pooling_type=MEAN, n_ctx,
+   * n_threads, n_threads_batch, and embeddings=true on the context_params
+   * pointer BEFORE handing it to milady_llama_init_from_model. Without
+   * these the adapter ran at upstream defaults — under-using phone CPU
+   * cores and leaving embeddings to read from a NONE-pooled buffer
+   * (read-OOB risk).
+   */
+  it("calls the wired context_params setters before init_from_model", async () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+
+    const setterCalls: { name: string; args: unknown[] }[] = [];
+    const initOrder: string[] = [];
+
+    const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      llama_backend_init: () => 0,
+      llama_model_get_vocab: () => 100,
+      llama_n_ctx: () => 4096,
+    };
+    const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      milady_llama_model_params_default: () => 1,
+      milady_llama_model_load_from_file: () => 2,
+      milady_llama_model_params_free: () => undefined,
+      milady_llama_context_params_default: () => {
+        initOrder.push("ctx_params_default");
+        return 3;
+      },
+      milady_llama_context_params_set_n_ctx: (...args: unknown[]) => {
+        setterCalls.push({ name: "set_n_ctx", args });
+        initOrder.push("set_n_ctx");
+      },
+      milady_llama_context_params_set_n_threads: (...args: unknown[]) => {
+        setterCalls.push({ name: "set_n_threads", args });
+        initOrder.push("set_n_threads");
+      },
+      milady_llama_context_params_set_n_threads_batch: (
+        ...args: unknown[]
+      ) => {
+        setterCalls.push({ name: "set_n_threads_batch", args });
+        initOrder.push("set_n_threads_batch");
+      },
+      milady_llama_context_params_set_embeddings: (...args: unknown[]) => {
+        setterCalls.push({ name: "set_embeddings", args });
+        initOrder.push("set_embeddings");
+      },
+      milady_llama_context_params_set_pooling_type: (...args: unknown[]) => {
+        setterCalls.push({ name: "set_pooling_type", args });
+        initOrder.push("set_pooling_type");
+      },
+      milady_llama_init_from_model: () => {
+        initOrder.push("init_from_model");
+        return 4;
+      },
+      milady_llama_context_params_free: () => {
+        initOrder.push("ctx_params_free");
+        return undefined;
+      },
+    };
+
+    vi.doMock("node:fs", () => ({ existsSync: () => true }));
+    vi.doMock("bun:ffi", () => ({
+      FFIType: {
+        void: 0,
+        bool: 1,
+        i32: 2,
+        u32: 3,
+        i64: 4,
+        f32: 5,
+        ptr: 6,
+        cstring: 7,
+      },
+      dlopen: (libPath: string) => {
+        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const table = isShim ? shimSymbols : llamaSymbols;
+        const symbols = new Proxy(table, {
+          get: (target: typeof table, prop: string) =>
+            prop in target ? target[prop] : (..._args: unknown[]) => 0,
+        });
+        return { symbols, close() {} };
+      },
+      ptr: () => 0,
+      CString: class {},
+      read: { cstring: () => "" },
+    }));
+
+    const mod = await import("./aosp-llama-adapter");
+    mod.__resetForTests();
+    const services = new Map<string, unknown>();
+    const runtime = {
+      registerService(name: string, impl: unknown) {
+        services.set(name, impl);
+      },
+    };
+    await mod.registerAospLlamaLoader(runtime);
+    const loader = services.get("localInferenceLoader") as {
+      loadModel: (a: { modelPath: string }) => Promise<void>;
+    };
+    await loader.loadModel({ modelPath: "/tmp/fake.gguf" });
+
+    // pooling_type MEAN = 1 (LLAMA_POOLING_TYPE_MEAN per llama.h b4500).
+    const poolingCall = setterCalls.find((c) => c.name === "set_pooling_type");
+    expect(poolingCall).toBeDefined();
+    expect(poolingCall?.args[1]).toBe(1);
+
+    // n_ctx defaults to 4096 when LoadOptions doesn't override.
+    const nCtxCall = setterCalls.find((c) => c.name === "set_n_ctx");
+    expect(nCtxCall?.args[1]).toBe(4096);
+
+    // embeddings=true so the first embed() call doesn't pay alloc tax.
+    const embeddingsCall = setterCalls.find((c) => c.name === "set_embeddings");
+    expect(embeddingsCall?.args[1]).toBe(true);
+
+    // All setters fire AFTER ctx_params_default and BEFORE init_from_model.
+    const idxDefault = initOrder.indexOf("ctx_params_default");
+    const idxInit = initOrder.indexOf("init_from_model");
+    const idxFree = initOrder.indexOf("ctx_params_free");
+    expect(idxDefault).toBeGreaterThanOrEqual(0);
+    expect(idxInit).toBeGreaterThan(idxDefault);
+    expect(idxFree).toBeGreaterThan(idxInit);
+
+    const settersInOrder = initOrder.filter((step) => step.startsWith("set_"));
+    for (const step of settersInOrder) {
+      const i = initOrder.indexOf(step);
+      expect(i).toBeGreaterThan(idxDefault);
+      expect(i).toBeLessThan(idxInit);
+    }
+
+    vi.doUnmock("node:fs");
+    vi.doUnmock("bun:ffi");
+  });
+
+  it("threads MILADY_LLAMA_THREADS env into n_threads / n_threads_batch", async () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.MILADY_LLAMA_THREADS = "6";
+
+    const captured: { name: string; args: unknown[] }[] = [];
+    const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      llama_backend_init: () => 0,
+      llama_model_get_vocab: () => 100,
+      llama_n_ctx: () => 4096,
+    };
+    const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      milady_llama_model_params_default: () => 1,
+      milady_llama_model_load_from_file: () => 2,
+      milady_llama_model_params_free: () => undefined,
+      milady_llama_context_params_default: () => 3,
+      milady_llama_context_params_set_n_threads: (...args: unknown[]) => {
+        captured.push({ name: "n_threads", args });
+      },
+      milady_llama_context_params_set_n_threads_batch: (
+        ...args: unknown[]
+      ) => {
+        captured.push({ name: "n_threads_batch", args });
+      },
+      milady_llama_init_from_model: () => 4,
+      milady_llama_context_params_free: () => undefined,
+    };
+
+    vi.doMock("node:fs", () => ({ existsSync: () => true }));
+    vi.doMock("bun:ffi", () => ({
+      FFIType: {
+        void: 0,
+        bool: 1,
+        i32: 2,
+        u32: 3,
+        i64: 4,
+        f32: 5,
+        ptr: 6,
+        cstring: 7,
+      },
+      dlopen: (libPath: string) => {
+        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const table = isShim ? shimSymbols : llamaSymbols;
+        const symbols = new Proxy(table, {
+          get: (target: typeof table, prop: string) =>
+            prop in target ? target[prop] : (..._args: unknown[]) => 0,
+        });
+        return { symbols, close() {} };
+      },
+      ptr: () => 0,
+      CString: class {},
+      read: { cstring: () => "" },
+    }));
+
+    const mod = await import("./aosp-llama-adapter");
+    mod.__resetForTests();
+    const services = new Map<string, unknown>();
+    const runtime = {
+      registerService(name: string, impl: unknown) {
+        services.set(name, impl);
+      },
+    };
+    await mod.registerAospLlamaLoader(runtime);
+    const loader = services.get("localInferenceLoader") as {
+      loadModel: (a: { modelPath: string }) => Promise<void>;
+    };
+    await loader.loadModel({ modelPath: "/tmp/fake.gguf" });
+
+    const nThreads = captured.find((c) => c.name === "n_threads");
+    const nThreadsBatch = captured.find((c) => c.name === "n_threads_batch");
+    expect(nThreads?.args[1]).toBe(6);
+    expect(nThreadsBatch?.args[1]).toBe(6);
+
+    delete process.env.MILADY_LLAMA_THREADS;
+    vi.doUnmock("node:fs");
+    vi.doUnmock("bun:ffi");
+  });
+});
+
+describe("aosp-llama-adapter / embed pooling contract", () => {
+  /**
+   * Regression for F3: when llama_get_embeddings_seq returns NULL the
+   * adapter must reject with a clear "pooling_type contract violated"
+   * message rather than silently falling back to a per-token mean-pool
+   * read that risks OOB on output-pruning models. Since loadModel pins
+   * pooling_type=MEAN, a NULL return strictly indicates contract
+   * violation (someone disabled pooling externally) and must surface.
+   */
+  it("rejects when llama_get_embeddings_seq returns NULL after decode", async () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+
+    const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      llama_backend_init: () => 0,
+      llama_model_get_vocab: () => 100,
+      llama_n_ctx: () => 4096,
+      llama_model_n_embd: () => 384,
+      llama_set_embeddings: () => undefined,
+      llama_tokenize: (..._args: unknown[]) => {
+        // Probe pass returns -required (negative). Real pass returns
+        // `required` directly (we just need a positive number).
+        return _args[4] === 0 ? -3 : 3;
+      },
+      llama_batch_get_one: () => 99,
+      llama_decode: () => 0,
+      // The contract violation: pooling was disabled externally and
+      // get_embeddings_seq returns NULL (0 in bun:ffi pointer space).
+      llama_get_embeddings_seq: () => 0,
+    };
+    const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      milady_llama_model_params_default: () => 1,
+      milady_llama_model_load_from_file: () => 2,
+      milady_llama_model_params_free: () => undefined,
+      milady_llama_context_params_default: () => 3,
+      milady_llama_init_from_model: () => 4,
+      milady_llama_context_params_free: () => undefined,
+    };
+
+    vi.doMock("node:fs", () => ({ existsSync: () => true }));
+    vi.doMock("bun:ffi", () => ({
+      FFIType: {
+        void: 0,
+        bool: 1,
+        i32: 2,
+        u32: 3,
+        i64: 4,
+        f32: 5,
+        ptr: 6,
+        cstring: 7,
+      },
+      dlopen: (libPath: string) => {
+        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const table = isShim ? shimSymbols : llamaSymbols;
+        const symbols = new Proxy(table, {
+          get: (target: typeof table, prop: string) =>
+            prop in target ? target[prop] : (..._args: unknown[]) => 0,
+        });
+        return { symbols, close() {} };
+      },
+      ptr: () => 0,
+      toArrayBuffer: () => new ArrayBuffer(0),
+      CString: class {},
+      read: { cstring: () => "" },
+    }));
+
+    const mod = await import("./aosp-llama-adapter");
+    mod.__resetForTests();
+    const services = new Map<string, unknown>();
+    const runtime = {
+      registerService(name: string, impl: unknown) {
+        services.set(name, impl);
+      },
+    };
+    await mod.registerAospLlamaLoader(runtime);
+    const loader = services.get("localInferenceLoader") as {
+      loadModel: (a: { modelPath: string }) => Promise<void>;
+      embed: (a: { input: string }) => Promise<unknown>;
+    };
+    await loader.loadModel({ modelPath: "/tmp/fake.gguf" });
+
+    await expect(loader.embed({ input: "hello" })).rejects.toThrow(
+      /pooling_type contract violated/,
+    );
+
+    vi.doUnmock("node:fs");
+    vi.doUnmock("bun:ffi");
   });
 });
 
