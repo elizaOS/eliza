@@ -190,6 +190,10 @@ describe("withHealth mixin", () => {
 
 describe("healthAction", () => {
   test("validate is owner-gated", async () => {
+    const validate = healthAction.validate;
+    if (!validate) {
+      throw new Error("healthAction.validate is required");
+    }
     const runtime = { agentId: SAME_ID } as unknown as Parameters<
       NonNullable<typeof healthAction.validate>
     >[0];
@@ -197,16 +201,20 @@ describe("healthAction", () => {
       entityId: SAME_ID,
       content: { text: "" },
     } as unknown as Parameters<NonNullable<typeof healthAction.validate>>[1];
-    expect(await healthAction.validate!(runtime, ownerMsg)).toBe(true);
+    expect(await validate(runtime, ownerMsg)).toBe(true);
 
     const otherMsg = {
       entityId: "00000000-0000-0000-0000-0000000000ff",
       content: { text: "" },
     } as unknown as Parameters<NonNullable<typeof healthAction.validate>>[1];
-    expect(await healthAction.validate!(runtime, otherMsg)).toBe(false);
+    expect(await validate(runtime, otherMsg)).toBe(false);
   });
 
   test("status subaction returns connector status text", async () => {
+    const handler = healthAction.handler;
+    if (!handler) {
+      throw new Error("healthAction.handler is required");
+    }
     const runtime = {
       agentId: SAME_ID,
       logger: {
@@ -223,7 +231,7 @@ describe("healthAction", () => {
       content: { text: "is health connected?" },
     } as unknown as Parameters<NonNullable<typeof healthAction.handler>>[1];
 
-    const result = await healthAction.handler!(
+    const result = await handler(
       runtime,
       message,
       undefined,
