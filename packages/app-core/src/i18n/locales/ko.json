@@ -2745,6 +2745,8 @@
   "settings.sections.localModels.desc": "로컬 모델 다운로드 및 할당.",
   "settings.sections.localModels.label": "로컬 모델",
   "settings.sections.permissions.desc": "기능 및 액세스 제어",
+  "settings.sections.secrets.desc": "Where Milady stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",
+  "settings.sections.secrets.label": "Secrets storage",
   "settings.sections.security.desc": "로컬 접근, 원격 비밀번호, 세션 및 토큰.",
   "settings.sections.security.label": "보안",
   "settings.sections.updates.desc": "소프트웨어 업데이트 설정",

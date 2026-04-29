@@ -161,7 +161,7 @@ jobs:
           node -e "
             const fs = require('fs');
             const v = process.env.RELEASE_VERSION;
-            for (const f of ['package.json', 'packages/app/package.json']) {
+            for (const f of ['package.json', 'apps/app/package.json']) {
               const pkg = JSON.parse(fs.readFileSync(f, 'utf8'));
               pkg.version = v;
               fs.writeFileSync(f, JSON.stringify(pkg, null, 2) + '\n');
@@ -169,7 +169,7 @@ jobs:
           "
 
       - name: Build web assets
-        working-directory: packages/app
+        working-directory: apps/app
         run: bun run build
 
       - name: Validate iOS secrets
@@ -198,7 +198,7 @@ jobs:
           LANG: en_US.UTF-8
 
       - name: Sync Capacitor iOS
-        working-directory: packages/app
+        working-directory: apps/app
         run: bun run cap:sync:ios
         env:
           LANG: en_US.UTF-8
@@ -209,7 +209,7 @@ jobs:
           LANG: en_US.UTF-8
 
       - name: Update Xcode project version
-        working-directory: packages/app/ios/App/App.xcodeproj
+        working-directory: apps/app/ios/App/App.xcodeproj
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
           BUILD="${{ needs.prepare.outputs.build_number }}"
@@ -217,7 +217,7 @@ jobs:
           sed -i '' "s/CURRENT_PROJECT_VERSION = .*/CURRENT_PROJECT_VERSION = $BUILD;/" project.pbxproj
 
       - name: Install CocoaPods
-        working-directory: packages/app/ios/App
+        working-directory: apps/app/ios/App
         run: pod install
 
       - name: Setup Ruby
@@ -225,10 +225,10 @@ jobs:
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
-          working-directory: packages/app/ios
+          working-directory: apps/app/ios
 
       - name: Resolve app identifiers
-        working-directory: packages/app
+        working-directory: apps/app
         run: |
           # Read the runtime bundle id straight from pbxproj (the overlay step
           # has already rewritten it to the elizaOS-specific id).
@@ -245,13 +245,13 @@ jobs:
           echo "Resolved: APP_IDENTIFIER=$APP_ID, APP_IDENTIFIER_EXTRA=$APP_ID_EXTRA"
 
       - name: Build and upload
-        working-directory: packages/app/ios
+        working-directory: apps/app/ios
         env:
           APP_IDENTIFIER: ${{ env.APP_IDENTIFIER }}
           APP_IDENTIFIER_EXTRA: ${{ env.APP_IDENTIFIER_EXTRA }}
         run: |
           if [[ ! -f fastlane/Fastfile ]]; then
-            echo "::error::fastlane/Fastfile missing at packages/app/ios/. cap:sync:ios or run-mobile-build.mjs should have copied it."
+            echo "::error::fastlane/Fastfile missing at apps/app/ios/. cap:sync:ios or run-mobile-build.mjs should have copied it."
             ls -la fastlane/ || true
             exit 1
           fi
@@ -266,7 +266,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ios-ipa
-          path: packages/app/ios/build/Eliza.ipa
+          path: apps/app/ios/build/Eliza.ipa
           retention-days: 90
           if-no-files-found: error
 
@@ -314,14 +314,14 @@ jobs:
           node -e "
             const fs = require('fs');
             const v = process.env.RELEASE_VERSION;
-            for (const f of ['package.json', 'packages/app/package.json', 'packages/app/electrobun/package.json']) {
+            for (const f of ['package.json', 'apps/app/package.json', 'packages/app-core/platforms/electrobun/package.json']) {
               try {
                 const pkg = JSON.parse(fs.readFileSync(f, 'utf8'));
                 pkg.version = v;
                 fs.writeFileSync(f, JSON.stringify(pkg, null, 2) + '\n');
               } catch(e) {}
             }
-            const cfgPath = 'packages/app/electrobun/electrobun.config.ts';
+            const cfgPath = 'packages/app-core/platforms/electrobun/electrobun.config.ts';
             let cfg = fs.readFileSync(cfgPath, 'utf8');
             cfg = cfg.replace(/version:\s*\"[^\"]+\"/, 'version: \"' + v + '\"');
             fs.writeFileSync(cfgPath, cfg);
@@ -334,7 +334,7 @@ jobs:
           node --import tsx scripts/write-build-info.ts
 
       - name: Build renderer
-        working-directory: packages/app
+        working-directory: apps/app
         run: |
           bun install --ignore-scripts
           if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
@@ -342,15 +342,15 @@ jobs:
 
       - name: Stage renderer
         run: |
-          rm -rf packages/app/electrobun/renderer
-          cp -r packages/app/dist packages/app/electrobun/renderer
+          rm -rf packages/app-core/platforms/electrobun/renderer
+          cp -r apps/app/dist packages/app-core/platforms/electrobun/renderer
 
       - name: Build native macOS effects
-        working-directory: packages/app/electrobun
+        working-directory: packages/app-core/platforms/electrobun
         run: bun run build:native-effects
 
       - name: Build webview preload
-        working-directory: packages/app/electrobun
+        working-directory: packages/app-core/platforms/electrobun
         run: bun run build:preload
 
       - name: Validate signing secrets
@@ -395,17 +395,17 @@ jobs:
           echo "INSTALLER_IDENTITY=$INSTALLER_IDENTITY" >> "$GITHUB_ENV"
 
       - name: Build Electrobun app
-        working-directory: packages/app/electrobun
+        working-directory: packages/app-core/platforms/electrobun
         run: ELECTROBUN_SKIP_CODESIGN=1 bun run build
         env:
           ELECTROBUN_BUILD_ENV: "stable"
 
       - name: Re-sign for Mac App Store
-        working-directory: packages/app/electrobun
+        working-directory: packages/app-core/platforms/electrobun
         run: |
           APP_PATH=$(find build -name "*.app" -maxdepth 2 | head -1)
-          ENTITLEMENTS="${GITHUB_WORKSPACE}/packages/app/electrobun/entitlements/mas.entitlements"
-          CHILD_ENTITLEMENTS="${GITHUB_WORKSPACE}/packages/app/electrobun/entitlements/mas-child.entitlements"
+          ENTITLEMENTS="${GITHUB_WORKSPACE}/packages/app-core/platforms/electrobun/entitlements/mas.entitlements"
+          CHILD_ENTITLEMENTS="${GITHUB_WORKSPACE}/packages/app-core/platforms/electrobun/entitlements/mas-child.entitlements"
 
           # Sign frameworks and dylibs with child entitlements
           find "$APP_PATH" -name "*.dylib" -o -name "*.framework" | while read -r lib; do
@@ -426,7 +426,7 @@ jobs:
           codesign --verify --deep --strict "$APP_PATH"
 
       - name: Create installer pkg
-        working-directory: packages/app/electrobun
+        working-directory: packages/app-core/platforms/electrobun
         run: |
           APP_PATH=$(find build -name "*.app" -maxdepth 2 | head -1)
           VERSION="${{ needs.prepare.outputs.version }}"
@@ -436,7 +436,7 @@ jobs:
             --component "$APP_PATH" /Applications \
             "build/$PKG_NAME"
 
-          echo "PKG_PATH=packages/app/electrobun/build/$PKG_NAME" >> "$GITHUB_ENV"
+          echo "PKG_PATH=packages/app-core/platforms/electrobun/build/$PKG_NAME" >> "$GITHUB_ENV"
 
       - name: Upload to App Store Connect
         run: |

@@ -2745,6 +2745,8 @@
   "settings.sections.localModels.desc": "Tải xuống và gán mô hình cục bộ.",
   "settings.sections.localModels.label": "Mô hình cục bộ",
   "settings.sections.permissions.desc": "Khả năng và kiểm soát truy cập",
+  "settings.sections.secrets.desc": "Where Milady stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",
+  "settings.sections.secrets.label": "Secrets storage",
   "settings.sections.security.desc": "Truy cập cục bộ, mật khẩu từ xa, phiên và token.",
   "settings.sections.security.label": "Bảo mật",
   "settings.sections.updates.desc": "Cài đặt cập nhật phần mềm",

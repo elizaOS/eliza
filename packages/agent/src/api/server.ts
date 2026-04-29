@@ -1055,9 +1055,6 @@ const rateLimitPairing = _rateLimitPairing;
 const getPairingExpiresAt = _getPairingExpiresAt;
 const clearPairing = _clearPairing;
 
-/** Guard against concurrent provider switch requests (P0 §3). */
-let providerSwitchInProgress = false;
-
 /**
  * Lazy per-process runtime operation manager. Constructed on first
  * request because it needs the per-server `state` reference + the
@@ -1376,30 +1373,27 @@ async function handleRequest(
   };
 
   // ── POST /api/provider/switch (extracted to provider-switch-routes.ts) ──
-  const runtimeOperationManager = getOrCreateRuntimeOperationManager(
-    state,
-    restartRuntime,
-  );
-  if (
-    await handleProviderSwitchRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      state,
-      json,
-      error,
-      readJsonBody,
-      saveElizaConfig,
-      scheduleRuntimeRestart,
-      providerSwitchInProgress,
-      setProviderSwitchInProgress: (v: boolean) => {
-        providerSwitchInProgress = v;
-      },
-      runtimeOperationManager,
-    })
-  ) {
-    return;
+  if (method === "POST" && pathname === "/api/provider/switch") {
+    if (
+      await handleProviderSwitchRoutes({
+        req,
+        res,
+        method,
+        pathname,
+        state,
+        json,
+        error,
+        readJsonBody,
+        saveElizaConfig,
+        scheduleRuntimeRestart,
+        runtimeOperationManager: getOrCreateRuntimeOperationManager(
+          state,
+          restartRuntime,
+        ),
+      })
+    ) {
+      return;
+    }
   }
 
   if (

@@ -226,7 +226,7 @@ function buildAppsMenu(): ApplicationMenuItem {
   };
 }
 
-function buildDesktopMenu(): ApplicationMenuItem {
+function buildDesktopMenu(isMac: boolean): ApplicationMenuItem {
   const appName = getBrandConfig().appName;
   return {
     label: "Desktop",
@@ -236,6 +236,16 @@ function buildDesktopMenu(): ApplicationMenuItem {
       { label: "Permissions", action: "open-settings-permissions" },
       { label: "Cloud Settings", action: "open-settings-cloud" },
       { label: "Settings Window", action: "open-settings" },
+      {
+        label: "Secrets Storage…",
+        action: "open-secrets-manager",
+        // Same accelerator the renderer-side keydown listener watches
+        // for. ⌘⌥⌃V on Mac, Ctrl+Alt+Shift+V elsewhere — distinctive
+        // enough to avoid conflicts with the OS or other apps.
+        accelerator: isMac
+          ? "Command+Option+Control+V"
+          : "Ctrl+Alt+Shift+V",
+      },
       { type: "separator" },
       { label: `Show ${appName}`, action: "show" },
       { label: `Focus ${appName}`, action: "focus-main-window" },
@@ -375,7 +385,7 @@ export function buildApplicationMenu({
         { label: "Toggle Full Screen", role: "toggleFullScreen" },
       ],
     },
-    buildDesktopMenu(),
+    buildDesktopMenu(isMac),
     buildAppsMenu(),
     {
       label: "Window",

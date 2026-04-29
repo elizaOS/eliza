@@ -238,10 +238,10 @@ interface LlamaSymbols {
  * silently widen the surface a future refactor might rely on. Setters
  * for fields whose llama.cpp defaults are correct for AOSP CPU
  * (`use_mmap=true`, `use_mlock=false`, `vocab_only=false`,
- * `check_tensors=false`, `n_batch`/`n_ubatch` left at upstream values,
- * `offload_kqv`/`flash_attn` not relevant on phone CPU, `no_perf` cosmetic)
- * are intentionally not bound. Adding one is a one-line edit here +
- * one-line edit in `dlopenShim` if a future LoadOptions field needs it.
+ * `check_tensors=false`, `offload_kqv`/`flash_attn` not relevant on phone
+ * CPU, `no_perf` cosmetic) are intentionally not bound. Adding one is a
+ * one-line edit here + one-line edit in `dlopenShim` if a future LoadOptions
+ * field needs it.
  */
 interface ShimSymbols {
   // model_params

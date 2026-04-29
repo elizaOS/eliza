@@ -21,6 +21,8 @@ import { logger } from "@elizaos/core";
 import type { ClassifyContext } from "./classifier.js";
 import type { HealthChecker } from "./health.js";
 import type {
+  OperationError,
+  OperationErrorCode,
   OperationIntent,
   OperationPhase,
   ReloadStrategy,
@@ -66,6 +68,11 @@ export interface DefaultRuntimeOperationManagerOptions {
 
 const DEFAULT_CLASSIFIER: IntentClassifier = () => "cold";
 
+function strategyErrorCode(err: unknown): OperationErrorCode {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === "vault-resolve-failed" ? code : "strategy-failed";
+}
+
 export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
   private readonly repository: RuntimeOperationRepository;
   private readonly runtime: () => AgentRuntime | null;
@@ -78,6 +85,7 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
    * The repo's active-op slot is the cross-process gate.
    */
   private executionChain: Promise<void> = Promise.resolve();
+  private startChain: Promise<void> = Promise.resolve();
 
   constructor(opts: DefaultRuntimeOperationManagerOptions) {
     this.repository = opts.repository;
@@ -89,6 +97,24 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
   }
 
   async start(req: StartOperationRequest): Promise<StartOperationOutcome> {
+    let outcome: StartOperationOutcome | undefined;
+    const run = this.startChain.then(async () => {
+      outcome = await this.startLocked(req);
+    });
+    this.startChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    await run;
+    if (!outcome) {
+      throw new Error("[runtime-ops] start did not produce an outcome");
+    }
+    return outcome;
+  }
+
+  private async startLocked(
+    req: StartOperationRequest,
+  ): Promise<StartOperationOutcome> {
     if (req.idempotencyKey) {
       const existing = await this.repository.findByIdempotencyKey(
         req.idempotencyKey,
@@ -109,12 +135,15 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
       return { kind: "rejected-busy", activeOperationId: active.id };
     }
 
-    const tier = this.classifier(req.intent, this.classifyContext());
+    const prepareResult = req.prepare ? await req.prepare() : undefined;
+    const preparedIntent =
+      prepareResult === undefined ? req.intent : prepareResult;
+    const tier = this.classifier(preparedIntent, this.classifyContext());
     const now = Date.now();
     const op: RuntimeOperation = {
       id: crypto.randomUUID(),
-      kind: req.intent.kind,
-      intent: req.intent,
+      kind: preparedIntent.kind,
+      intent: preparedIntent,
       tier,
       idempotencyKey: req.idempotencyKey,
       status: "pending",
@@ -206,7 +235,7 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logger.warn(`[runtime-ops] Strategy failed for op ${id}: ${message}`);
-      await this.failOperation(id, { message, code: "strategy-failed" });
+      await this.failOperation(id, { message, code: strategyErrorCode(err) });
       return;
     }
 
@@ -230,11 +259,10 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
           failed: report.failed,
         },
       });
-      // Phase 2: real rollback. For Phase 1 the swap has already happened
-      // via the cold strategy; we record the failure and surface it.
-      logger.warn(
-        `[runtime-ops] Health check failed for op ${id}; rollback deferred to Phase 2`,
-      );
+      // The cold strategy has already swapped the runtime by the time we
+      // observe a failed health check. Surface the failure; rollback to the
+      // previous runtime is not implemented yet.
+      logger.warn(`[runtime-ops] Health check failed for op ${id}`);
       await this.failOperation(id, {
         message: "Required health checks failed",
         code: "health-check-failed",
@@ -260,7 +288,7 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
 
   private async failOperation(
     id: string,
-    error: { message: string; code?: string; cause?: string },
+    error: OperationError,
   ): Promise<void> {
     await this.repository.update(id, {
       status: "failed",

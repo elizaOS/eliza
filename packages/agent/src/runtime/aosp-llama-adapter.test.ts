@@ -290,8 +290,10 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       // defaults (use_mmap=true, the rest false), which are correct for
       // the AOSP CPU path.
       "milady_llama_model_params_set_n_gpu_layers",
-      // context_params: the four fields loadModel actually overrides.
+      // context_params: the fields loadModel actually overrides.
       // n_ctx caps the context window so we don't OOM on phones.
+      // n_batch / n_ubatch bound decode graph size so long prompts are
+      // chunked without allocating the entire context window at once.
       // n_threads / n_threads_batch are bound to LoadOptions.maxThreads
       // (verified on context_params, NOT model_params, against b4500
       // llama.h:319-320). embeddings=true pre-allocates the buffer so
@@ -299,6 +301,8 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       // pooling_type=MEAN gives llama_get_embeddings_seq exactly n_embd
       // floats and removes the OOB-risk fallback.
       "milady_llama_context_params_set_n_ctx",
+      "milady_llama_context_params_set_n_batch",
+      "milady_llama_context_params_set_n_ubatch",
       "milady_llama_context_params_set_n_threads",
       "milady_llama_context_params_set_n_threads_batch",
       "milady_llama_context_params_set_embeddings",
@@ -326,8 +330,6 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       "milady_llama_model_params_set_use_mlock",
       "milady_llama_model_params_set_vocab_only",
       "milady_llama_model_params_set_check_tensors",
-      "milady_llama_context_params_set_n_batch",
-      "milady_llama_context_params_set_n_ubatch",
       "milady_llama_context_params_set_offload_kqv",
       // set_flash_attn is gone from the shim entirely (b8198 changed
       // flash_attn to flash_attn_type, an enum, not a bool).
@@ -373,6 +375,14 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
       milady_llama_context_params_set_n_ctx: (...args: unknown[]) => {
         setterCalls.push({ name: "set_n_ctx", args });
         initOrder.push("set_n_ctx");
+      },
+      milady_llama_context_params_set_n_batch: (...args: unknown[]) => {
+        setterCalls.push({ name: "set_n_batch", args });
+        initOrder.push("set_n_batch");
+      },
+      milady_llama_context_params_set_n_ubatch: (...args: unknown[]) => {
+        setterCalls.push({ name: "set_n_ubatch", args });
+        initOrder.push("set_n_ubatch");
       },
       milady_llama_context_params_set_n_threads: (...args: unknown[]) => {
         setterCalls.push({ name: "set_n_threads", args });
@@ -445,9 +455,14 @@ describe("aosp-llama-adapter / context_params override invocations", () => {
     expect(poolingCall).toBeDefined();
     expect(poolingCall?.args[1]).toBe(1);
 
-    // n_ctx defaults to 4096 when LoadOptions doesn't override.
+    // n_ctx defaults to 8192 when LoadOptions doesn't override.
     const nCtxCall = setterCalls.find((c) => c.name === "set_n_ctx");
-    expect(nCtxCall?.args[1]).toBe(4096);
+    expect(nCtxCall?.args[1]).toBe(8192);
+
+    const nBatchCall = setterCalls.find((c) => c.name === "set_n_batch");
+    expect(nBatchCall?.args[1]).toBe(2048);
+    const nUBatchCall = setterCalls.find((c) => c.name === "set_n_ubatch");
+    expect(nUBatchCall?.args[1]).toBe(512);
 
     // embeddings=true so the first embed() call doesn't pay alloc tax.
     const embeddingsCall = setterCalls.find((c) => c.name === "set_embeddings");
@@ -1082,8 +1097,7 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
         setEmbeddingsCalls.push({ value: args[1] });
         callOrder.push(`set_embeddings(${args[1]})`);
       },
-      llama_tokenize: (..._args: unknown[]) =>
-        _args[4] === 0 ? -3 : 3, // negative on probe, positive on fill
+      llama_tokenize: (..._args: unknown[]) => (_args[4] === 0 ? -3 : 3), // negative on probe, positive on fill
       // Force the EOG path on the first sampled token so we don't loop.
       llama_sampler_sample: () => 999,
       llama_vocab_is_eog: () => true,
@@ -1164,8 +1178,7 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
       llama_set_embeddings: (...args: unknown[]) => {
         callOrder.push(`set_embeddings(${args[1]})`);
       },
-      llama_tokenize: (..._args: unknown[]) =>
-        _args[4] === 0 ? -3 : 3,
+      llama_tokenize: (..._args: unknown[]) => (_args[4] === 0 ? -3 : 3),
       llama_get_embeddings_seq: () => 1, // non-NULL
     };
     const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {

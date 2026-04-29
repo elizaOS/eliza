@@ -1,10 +1,13 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
+import type { SecretsManager } from "@elizaos/vault";
 import type { ElizaConfig } from "../config/config.js";
 import { normalizeOnboardingProviderId } from "../contracts/onboarding.js";
-import type {
-  ProviderSwitchIntent,
-  RuntimeOperationManager,
+import {
+  defaultSecretsManager,
+  type ProviderSwitchIntent,
+  persistProviderApiKey,
+  type RuntimeOperationManager,
 } from "../runtime/operations/index.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import {
@@ -31,14 +34,14 @@ export interface ProviderSwitchRouteContext {
   ) => Promise<T | null>;
   saveElizaConfig: (config: ElizaConfig) => void;
   scheduleRuntimeRestart: (reason: string) => void;
-  /**
-   * Legacy single-flight gate — kept on the context type for now because
-   * other call sites still set it. This route no longer reads or writes
-   * the flag; the runtime operation repo's active-op slot is the gate.
-   */
-  providerSwitchInProgress: boolean;
-  setProviderSwitchInProgress: (value: boolean) => void;
   runtimeOperationManager: RuntimeOperationManager;
+  /**
+   * Vault-backed secrets manager. Tests inject; production resolves to the
+   * OS-keychain default. The route writes the API key here BEFORE
+   * constructing the intent so the secret never lands on disk in plaintext
+   * inside an operation record.
+   */
+  secretsManager?: SecretsManager;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,19 +51,11 @@ export interface ProviderSwitchRouteContext {
 function readIdempotencyKey(
   headers: http.IncomingHttpHeaders,
 ): string | undefined {
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() !== "idempotency-key") continue;
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-    if (Array.isArray(value)) {
-      const first = value.find(
-        (v) => typeof v === "string" && v.trim().length > 0,
-      );
-      if (first) return first.trim();
-    }
-  }
-  return undefined;
+  // Node lowercases header names on IncomingMessage.headers.
+  const raw = headers["idempotency-key"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 export async function handleProviderSwitchRoutes(
@@ -99,7 +94,6 @@ export async function handleProviderSwitchRoutes(
     }
 
     try {
-      const config = state.config;
       let connection:
         | ReturnType<typeof createProviderSwitchConnection>
         | {
@@ -114,14 +108,6 @@ export async function handleProviderSwitchRoutes(
           cloudProvider: "elizacloud" as const,
           apiKey: trimmedApiKey,
         };
-        if (trimmedApiKey) {
-          const cloudApiKey = trimmedApiKey;
-          const cloudBaseUrl = "https://www.elizacloud.ai";
-          process.env.ANTHROPIC_BASE_URL = `${cloudBaseUrl}/api/v1`;
-          process.env.ANTHROPIC_API_KEY = cloudApiKey;
-          process.env.OPENAI_BASE_URL = `${cloudBaseUrl}/api/v1`;
-          process.env.OPENAI_API_KEY = cloudApiKey;
-        }
       } else {
         connection = createProviderSwitchConnection({
           provider: normalizedProvider,
@@ -138,17 +124,9 @@ export async function handleProviderSwitchRoutes(
         return true;
       }
 
-      await applyOnboardingConnectionConfig(
-        config,
-        connection,
-        useLocalEmbeddings === undefined ? {} : { useLocalEmbeddings },
-      );
-      ctx.saveElizaConfig(config);
-
       const intent: ProviderSwitchIntent = {
         kind: "provider-switch",
         provider: normalizedProvider,
-        apiKey: trimmedApiKey,
         primaryModel:
           typeof body.primaryModel === "string"
             ? body.primaryModel.trim()
@@ -159,6 +137,46 @@ export async function handleProviderSwitchRoutes(
       const outcome = await ctx.runtimeOperationManager.start({
         intent,
         idempotencyKey,
+        prepare: async () => {
+          const config = state.config;
+          let apiKeyRef: string | undefined;
+          if (trimmedApiKey) {
+            const secrets = ctx.secretsManager ?? defaultSecretsManager();
+            try {
+              apiKeyRef = await persistProviderApiKey({
+                secrets,
+                normalizedProvider,
+                apiKey: trimmedApiKey,
+                caller: "provider-switch-route",
+              });
+            } catch (vaultErr) {
+              logger.error(
+                `[api] Vault write failed for provider=${normalizedProvider}: ${vaultErr instanceof Error ? vaultErr.message : String(vaultErr)}`,
+              );
+              throw new Error("Vault write failed");
+            }
+          }
+
+          if (normalizedProvider === "elizacloud" && trimmedApiKey) {
+            const cloudBaseUrl = "https://www.elizacloud.ai";
+            process.env.ANTHROPIC_BASE_URL = `${cloudBaseUrl}/api/v1`;
+            process.env.ANTHROPIC_API_KEY = trimmedApiKey;
+            process.env.OPENAI_BASE_URL = `${cloudBaseUrl}/api/v1`;
+            process.env.OPENAI_API_KEY = trimmedApiKey;
+          }
+
+          await applyOnboardingConnectionConfig(
+            config,
+            connection,
+            useLocalEmbeddings === undefined ? {} : { useLocalEmbeddings },
+          );
+          ctx.saveElizaConfig(config);
+
+          return {
+            ...intent,
+            ...(apiKeyRef ? { apiKeyRef } : {}),
+          };
+        },
       });
 
       if (outcome.kind === "accepted") {
@@ -207,7 +225,13 @@ export async function handleProviderSwitchRoutes(
       logger.error(
         `[api] Provider switch failed: ${err instanceof Error ? err.stack : err}`,
       );
-      error(res, "Provider switch failed", 500);
+      error(
+        res,
+        err instanceof Error && err.message === "Vault write failed"
+          ? "Vault write failed"
+          : "Provider switch failed",
+        500,
+      );
     }
     return true;
   }

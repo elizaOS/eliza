@@ -16,12 +16,18 @@ import {
 } from "@elizaos/agent";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
+import { VaultMissError } from "@elizaos/vault";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars";
 import {
   CONNECTOR_PLUGINS,
   STREAMING_PLUGINS,
 } from "../config/plugin-auto-enable";
 import { entriesToLegacyManifest, loadRegistry } from "../registry";
+import {
+  _resetSharedVaultForTesting,
+  mirrorPluginSensitiveToVault,
+  sharedVault,
+} from "../services/vault-mirror";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -234,6 +240,11 @@ let _lastDriftWarningFingerprint = "";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Re-exported so existing call sites keep working. The implementations
+// live in services/vault-mirror.ts so unit tests can import them
+// without dragging in the @elizaos/agent runtime through this file.
+export { _resetSharedVaultForTesting, mirrorPluginSensitiveToVault };
 
 function maskValue(value: string): string {
   if (value.length <= 8) return "****";
@@ -1426,6 +1437,26 @@ export async function handlePluginsCompatRoutes(
       result.payload.loadedPackages = runtimeApply.loadedPackages;
       result.payload.unloadedPackages = runtimeApply.unloadedPackages;
       result.payload.reloadedPackages = runtimeApply.reloadedPackages;
+
+      // Write-through mirror to @elizaos/vault. Sensitive fields the
+      // user just saved are copied into the vault (encrypted at rest
+      // via the OS-keychain master key). The legacy `config.env.X` /
+      // `config.env.vars.X` writes still happen above — vault is a
+      // SHADOW of those for now. The runtime continues to read from
+      // process.env via the legacy hydration path; vault becomes the
+      // canonical source in a follow-up PR.
+      //
+      // Failure mode: if vault.set throws for some keys (OS keychain
+      // locked, file ENOSPC, missing master key, etc.), the save is
+      // NOT rolled back — legacy storage already succeeded above. We
+      // surface the failed keys back to the UI under
+      // `vaultMirrorFailures` so the user knows the vault mirror
+      // didn't take, instead of silently swallowing the error and
+      // showing a green "Saved" toast over an empty vault.
+      const mirrorResult = await mirrorPluginSensitiveToVault(plugin, body);
+      if (mirrorResult.failures.length > 0) {
+        result.payload.vaultMirrorFailures = mirrorResult.failures;
+      }
       const diagnostics = buildPluginDriftDiagnostics(state.current);
       if (diagnostics.summary.withDrift > 0) {
         result.payload.diagnostics = diagnostics;
@@ -1517,6 +1548,28 @@ export async function handlePluginsCompatRoutes(
     // accidental exposure through the general plugin config UI.
     if (SENSITIVE_KEY_PREFIXES.some((prefix) => upperKey.startsWith(prefix))) {
       if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
+    }
+    // Prefer the vault: post-write-through wiring means the user's
+    // actual saved value lives there. Fall back to env/config only when
+    // the vault has no entry; vault/keychain failures surface instead
+    // of pretending the legacy value is canonical.
+    try {
+      const vaultValue = await sharedVault().reveal(
+        key,
+        `plugins:${decodeURIComponent(revealMatch[1])}:reveal`,
+      );
+      sendJsonResponse(res, 200, { ok: true, value: vaultValue });
+      return true;
+    } catch (err) {
+      if (!(err instanceof VaultMissError)) {
+        logger.warn(
+          `[api/plugins] Vault reveal failed for ${key}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        sendJsonErrorResponse(res, 500, "Vault reveal failed");
+        return true;
+      }
     }
     const config = loadElizaConfig();
     const value =

@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { logger, type Plugin } from "@elizaos/core";
+import { formatError } from "@elizaos/shared";
 
 import type { ElizaConfig } from "../config/config.js";
 import type { PluginInstallRecord } from "../config/types.eliza.js";
@@ -59,10 +60,6 @@ export const EJECTED_PLUGINS_DIRNAME = "plugins/ejected";
 // ---------------------------------------------------------------------------
 // Private helpers
 // ---------------------------------------------------------------------------
-
-function formatError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 function looksLikePlugin(value: unknown): value is Plugin {
   if (!value || typeof value !== "object") return false;

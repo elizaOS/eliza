@@ -410,6 +410,7 @@ export interface PluginMutationResult {
   loadedPackages?: string[];
   unloadedPackages?: string[];
   reloadedPackages?: string[];
+  vaultMirrorFailures?: string[];
   message?: string;
   error?: string;
 }

@@ -99,6 +99,7 @@ import * as pluginLocalEmbedding from "@elizaos/plugin-local-embedding";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginSql from "@elizaos/plugin-sql";
 import {
+  formatError,
   getDefaultStylePreset,
   getOnboardingProviderOption,
   isElizaSettingsDebugEnabled,
@@ -531,11 +532,6 @@ export function configureLocalEmbeddingPlugin(
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/** Extract a human-readable error message from an unknown thrown value. */
-function formatError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
 
 function trimEnvString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -3918,7 +3914,7 @@ export async function startEliza(
           // per-session timeout (up to ~5s). runtime.stop() awaits every
           // service.stop() sequentially, so a single idle PTY session
           // turns a provider switch into a multi-second block. During
-          // that window server.ts's providerSwitchInProgress flag +
+          // that window the runtime-operations active-op slot +
           // agentState === "restarting" guard reject further clicks,
           // which is why flipping through providers rapidly feels stuck.
           //
