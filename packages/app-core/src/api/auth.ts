@@ -5,7 +5,6 @@
  * timing-safe comparison so route handlers don't reimplement it.
  */
 
-import crypto from "node:crypto";
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 import { resolveApiToken } from "@elizaos/shared";
@@ -14,8 +13,11 @@ import {
   findActiveSession,
   verifyCsrfToken,
 } from "./auth/sessions";
+import { tokenMatches } from "./auth/tokens";
 import { isTrustedLocalRequest } from "./compat-route-shared";
 import { sendJsonError } from "./response";
+
+export { tokenMatches } from "./auth/tokens";
 
 /**
  * Normalise a potentially multi-valued HTTP header into a single string.
@@ -34,22 +36,6 @@ export function extractHeaderValue(
  */
 export function getCompatApiToken(): string | null {
   return resolveApiToken(process.env);
-}
-
-/** Timing-safe token comparison (constant-time regardless of input length). */
-export function tokenMatches(expected: string, provided: string): boolean {
-  const a = Buffer.from(expected, "utf8");
-  const b = Buffer.from(provided, "utf8");
-  // Pad the shorter buffer so timingSafeEqual always runs on equal-length inputs,
-  // preventing length leakage through early return.
-  const maxLen = Math.max(a.length, b.length);
-  const aPadded = Buffer.alloc(maxLen);
-  const bPadded = Buffer.alloc(maxLen);
-  a.copy(aPadded);
-  b.copy(bPadded);
-  // Always run timingSafeEqual regardless of length to prevent timing leakage
-  const contentMatch = crypto.timingSafeEqual(aPadded, bPadded);
-  return a.length === b.length && contentMatch;
 }
 
 /**

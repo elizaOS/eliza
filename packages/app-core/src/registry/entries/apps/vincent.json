@@ -27,6 +27,10 @@
       "trading",
       "prediction-markets"
     ],
-    "curatedSlug": "vincent"
+    "curatedSlug": "vincent",
+    "routePlugin": {
+      "specifier": "@elizaos/app-vincent/plugin",
+      "exportName": "vincentPlugin"
+    }
   }
 }

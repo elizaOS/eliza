@@ -11,13 +11,9 @@
 
 import type {
   AppBlockerSettingsCardProps,
+  StewardPolicyResult,
   WebsiteBlockerSettingsCardProps,
-} from "@elizaos/app-lifeops/types";
-import type {
-  StewardApprovalActionResponse,
-  StewardPendingApproval,
-  StewardTxRecord,
-} from "@elizaos/app-steward";
+} from "@elizaos/shared";
 import type { ComponentType, ReactNode } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import type { Tab } from "../navigation";
@@ -147,15 +143,58 @@ export interface StewardLogoProps {
   className?: string;
 }
 
+export type AppBootStewardTxStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "signed"
+  | "broadcast"
+  | "confirmed"
+  | "failed";
+
+export interface AppBootStewardTxRecord {
+  id: string;
+  agentId: string;
+  status: AppBootStewardTxStatus;
+  request: {
+    agentId: string;
+    tenantId: string;
+    to: string;
+    value: string;
+    data?: string;
+    chainId: number;
+  };
+  txHash?: string;
+  policyResults: StewardPolicyResult[];
+  createdAt: string;
+  signedAt?: string;
+  confirmedAt?: string;
+}
+
+export interface AppBootStewardPendingApproval {
+  queueId: string;
+  status: "pending" | "approved" | "rejected";
+  requestedAt: string;
+  transaction: AppBootStewardTxRecord;
+}
+
+export interface AppBootStewardApprovalActionResponse {
+  ok: boolean;
+  txHash?: string;
+  error?: string;
+}
+
 export interface StewardApprovalQueueProps {
   embedded?: boolean;
   refreshKey?: number | string;
-  getStewardPending: () => Promise<StewardPendingApproval[]>;
-  approveStewardTx: (txId: string) => Promise<StewardApprovalActionResponse>;
+  getStewardPending: () => Promise<AppBootStewardPendingApproval[]>;
+  approveStewardTx: (
+    txId: string,
+  ) => Promise<AppBootStewardApprovalActionResponse>;
   rejectStewardTx: (
     txId: string,
     reason?: string,
-  ) => Promise<StewardApprovalActionResponse>;
+  ) => Promise<AppBootStewardApprovalActionResponse>;
   copyToClipboard: (text: string) => Promise<void>;
   setActionNotice: (
     text: string,
@@ -172,7 +211,7 @@ export interface StewardTransactionHistoryProps {
     limit?: number;
     offset?: number;
   }) => Promise<{
-    records: StewardTxRecord[];
+    records: AppBootStewardTxRecord[];
     total: number;
     offset: number;
     limit: number;
