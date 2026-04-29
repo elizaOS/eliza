@@ -206,6 +206,7 @@ async function seedGoogleConnector(
   const repository = new LifeOpsRepository(runtime);
   const agentId = String(runtime.agentId);
   const tokenRef = `${agentId}/owner/local.json`;
+  const grantId = "assistant-user-journeys-google-grant";
   const tokenPath = path.join(
     resolveOAuthDir(process.env, stateDir),
     "lifeops",
@@ -250,31 +251,34 @@ async function seedGoogleConnector(
   );
 
   await repository.upsertConnectorGrant(
-    createLifeOpsConnectorGrant({
-      agentId,
-      provider: "google",
-      side: "owner",
-      identity: {
-        email: "shawmakesmagic@gmail.com",
-        name: "Shaw",
-      },
-      grantedScopes: [
-        "openid",
-        "email",
-        "profile",
-        "https://www.googleapis.com/auth/calendar.readonly",
-        "https://www.googleapis.com/auth/gmail.readonly",
-      ],
-      capabilities: [
-        "google.basic_identity",
-        "google.calendar.read",
-        "google.gmail.triage",
-      ],
-      tokenRef,
-      mode: "local",
-      metadata: {},
-      lastRefreshAt: nowIso,
-    }),
+    {
+      ...createLifeOpsConnectorGrant({
+        agentId,
+        provider: "google",
+        side: "owner",
+        identity: {
+          email: "shawmakesmagic@gmail.com",
+          name: "Shaw",
+        },
+        grantedScopes: [
+          "openid",
+          "email",
+          "profile",
+          "https://www.googleapis.com/auth/calendar.readonly",
+          "https://www.googleapis.com/auth/gmail.readonly",
+        ],
+        capabilities: [
+          "google.basic_identity",
+          "google.calendar.read",
+          "google.gmail.triage",
+        ],
+        tokenRef,
+        mode: "local",
+        metadata: {},
+        lastRefreshAt: nowIso,
+      }),
+      id: grantId,
+    },
   );
 
   return repository;

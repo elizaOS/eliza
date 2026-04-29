@@ -493,6 +493,12 @@ export async function handleCloudRoute(
     loginPollSpan.success({ statusCode: pollRes.status });
 
     if (data.status === "authenticated" && data.apiKey) {
+      const organizationId =
+        typeof data.organizationId === "string"
+          ? data.organizationId.trim()
+          : undefined;
+      const userId =
+        typeof data.userId === "string" ? data.userId.trim() : undefined;
       const cloudAuth = clearCloudAuth(state.runtime);
       migrateLegacyRuntimeConfig(state.config as Record<string, unknown>);
       const cloud = (state.config.cloud ?? {}) as NonNullable<
@@ -546,13 +552,13 @@ export async function handleCloudRoute(
         }
         const secrets = character.secrets as Record<string, string>;
         secrets.ELIZAOS_CLOUD_API_KEY = data.apiKey;
-        if (data.userId) {
-          secrets.ELIZA_CLOUD_USER_ID = data.userId;
+        if (userId) {
+          secrets.ELIZA_CLOUD_USER_ID = userId;
         } else {
           delete secrets.ELIZA_CLOUD_USER_ID;
         }
-        if (data.organizationId) {
-          secrets.ELIZA_CLOUD_ORGANIZATION_ID = data.organizationId;
+        if (organizationId) {
+          secrets.ELIZA_CLOUD_ORGANIZATION_ID = organizationId;
         } else {
           delete secrets.ELIZA_CLOUD_ORGANIZATION_ID;
         }
@@ -563,10 +569,10 @@ export async function handleCloudRoute(
         }
 
         if (typeof state.runtime.setSetting === "function") {
-          state.runtime.setSetting("ELIZA_CLOUD_USER_ID", data.userId ?? null);
+          state.runtime.setSetting("ELIZA_CLOUD_USER_ID", userId ?? null);
           state.runtime.setSetting(
             "ELIZA_CLOUD_ORGANIZATION_ID",
-            data.organizationId ?? null,
+            organizationId ?? null,
           );
         }
 
@@ -598,8 +604,8 @@ export async function handleCloudRoute(
       if (typeof cloudAuth?.authenticateWithApiKey === "function") {
         cloudAuth.authenticateWithApiKey({
           apiKey: data.apiKey,
-          organizationId: data.organizationId,
-          userId: data.userId,
+          organizationId,
+          userId,
         });
       }
 
@@ -730,8 +736,8 @@ export async function handleCloudRoute(
       sendJson(res, {
         status: "authenticated",
         keyPrefix: data.keyPrefix,
-        organizationId: data.organizationId,
-        userId: data.userId,
+        organizationId,
+        userId,
       });
     } else {
       sendJson(res, { status: data.status });
