@@ -161,9 +161,7 @@ export interface RuntimeOperationRepository {
    */
   update(
     id: string,
-    patch: Partial<
-      Omit<RuntimeOperation, "id" | "phases" | "intent" | "kind">
-    >,
+    patch: Partial<Omit<RuntimeOperation, "id" | "phases" | "intent" | "kind">>,
   ): Promise<void>;
   appendPhase(id: string, phase: OperationPhase): Promise<void>;
   /**

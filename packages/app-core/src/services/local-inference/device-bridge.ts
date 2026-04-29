@@ -81,6 +81,14 @@ type DeviceOutbound =
       durationMs: number;
     }
   | { type: "generateResult"; correlationId: string; ok: false; error: string }
+  | {
+      type: "embedResult";
+      correlationId: string;
+      ok: true;
+      embedding: number[];
+      tokens: number;
+    }
+  | { type: "embedResult"; correlationId: string; ok: false; error: string }
   | { type: "pong"; at: number };
 
 type AgentOutbound =
@@ -100,6 +108,7 @@ type AgentOutbound =
       maxTokens?: number;
       temperature?: number;
     }
+  | { type: "embed"; correlationId: string; input: string }
   | { type: "ping"; at: number };
 
 interface MinimalWebSocket {
@@ -166,6 +175,24 @@ interface PendingGenerate {
    */
   routedDeviceId: string | null;
   /** ISO timestamp captured on first submission; used to purge stale entries on restart. */
+  submittedAt: string;
+}
+
+interface PendingEmbed {
+  correlationId: string;
+  resolve: (result: { embedding: number[]; tokens: number }) => void;
+  reject: (err: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+  request: AgentOutbound;
+  /** Same disconnect semantics as PendingGenerate — null when orphaned. */
+  routedDeviceId: string | null;
+  /**
+   * ISO timestamp captured on first submission. Mirrors PendingGenerate
+   * for symmetry; embeds are NOT persisted to disk (they're short-lived
+   * and the caller's process holding the result promise has to be alive
+   * for the answer to mean anything), so this field is purely
+   * observational (status snapshots, debugging) today.
+   */
   submittedAt: string;
 }
 
@@ -245,6 +272,7 @@ export class DeviceBridge {
   private readonly pendingLoads = new Map<string, PendingLoad>();
   private readonly pendingUnloads = new Map<string, PendingUnload>();
   private readonly pendingGenerates = new Map<string, PendingGenerate>();
+  private readonly pendingEmbeds = new Map<string, PendingEmbed>();
 
   private readonly statusListeners = new Set<
     (status: DeviceBridgeStatus) => void
@@ -259,6 +287,7 @@ export class DeviceBridge {
       const score = scoreDevice(device);
       const activeRequests =
         this.countRouted(this.pendingGenerates, device.deviceId) +
+        this.countRouted(this.pendingEmbeds, device.deviceId) +
         this.countRouted(this.pendingLoads, device.deviceId) +
         this.countRouted(this.pendingUnloads, device.deviceId);
       summaries.push({
@@ -278,6 +307,7 @@ export class DeviceBridge {
     const primary = summaries[0] ?? null;
     const pendingRequests =
       this.pendingGenerates.size +
+      this.pendingEmbeds.size +
       this.pendingLoads.size +
       this.pendingUnloads.size;
 
@@ -502,6 +532,27 @@ export class DeviceBridge {
       }
     }
 
+    // Same re-route logic for orphaned embeds. Embeds are short-lived and
+    // idempotent (the device just runs llama_get_embeddings), so we can
+    // safely retarget them on reconnect.
+    for (const pending of this.pendingEmbeds.values()) {
+      if (pending.routedDeviceId === null) {
+        const best = this.pickBestDevice();
+        if (best) {
+          pending.routedDeviceId = best.deviceId;
+          try {
+            this.sendToDevice(best.deviceId, pending.request);
+          } catch (err) {
+            pending.reject(
+              err instanceof Error
+                ? err
+                : new Error("Failed to re-route after reconnect"),
+            );
+          }
+        }
+      }
+    }
+
     this.emitStatus();
   }
 
@@ -511,8 +562,8 @@ export class DeviceBridge {
     clearInterval(device.heartbeatTimer);
     this.devices.delete(deviceId);
 
-    // Orphan any generates routed to this device so they can be re-routed
-    // to a surviving device (or await a reconnect).
+    // Orphan any generates / embeds routed to this device so they can be
+    // re-routed to a surviving device (or await a reconnect).
     let orphaned = 0;
     for (const pending of this.pendingGenerates.values()) {
       if (pending.routedDeviceId === deviceId) {
@@ -520,14 +571,33 @@ export class DeviceBridge {
         orphaned += 1;
       }
     }
+    for (const pending of this.pendingEmbeds.values()) {
+      if (pending.routedDeviceId === deviceId) {
+        pending.routedDeviceId = null;
+        orphaned += 1;
+      }
+    }
 
     logger.info(
-      `[device-bridge] Device disconnected: ${deviceId}; ${orphaned} generates orphaned`,
+      `[device-bridge] Device disconnected: ${deviceId}; ${orphaned} request(s) orphaned`,
     );
 
     // Fast-path: if there are other connected devices, re-route now.
     if (this.devices.size > 0) {
       for (const pending of this.pendingGenerates.values()) {
+        if (pending.routedDeviceId === null) {
+          const best = this.pickBestDevice();
+          if (best) {
+            pending.routedDeviceId = best.deviceId;
+            try {
+              this.sendToDevice(best.deviceId, pending.request);
+            } catch {
+              /* will be retried on the next reconnect */
+            }
+          }
+        }
+      }
+      for (const pending of this.pendingEmbeds.values()) {
         if (pending.routedDeviceId === null) {
           const best = this.pickBestDevice();
           if (best) {
@@ -595,6 +665,19 @@ export class DeviceBridge {
         pending.reject(new Error(msg.error));
       } else {
         pending.resolve(msg.text);
+      }
+      return;
+    }
+
+    if (msg.type === "embedResult") {
+      const pending = this.pendingEmbeds.get(msg.correlationId);
+      if (!pending) return;
+      clearTimeout(pending.timeout);
+      this.pendingEmbeds.delete(msg.correlationId);
+      if (msg.ok === false) {
+        pending.reject(new Error(msg.error));
+      } else {
+        pending.resolve({ embedding: msg.embedding, tokens: msg.tokens });
       }
       return;
     }
@@ -712,6 +795,69 @@ export class DeviceBridge {
     // would actually run the next generate.
     const best = this.pickBestDevice();
     return best?.loadedPath ?? null;
+  }
+
+  async embed(args: {
+    input: string;
+  }): Promise<{ embedding: number[]; tokens: number }> {
+    const envTimeout = Number.parseInt(
+      process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
+      10,
+    );
+    const timeoutMs =
+      Number.isFinite(envTimeout) && envTimeout > 0
+        ? envTimeout
+        : DEFAULT_CALL_TIMEOUT_MS;
+
+    const correlationId = randomUUID();
+    const request: AgentOutbound = {
+      type: "embed",
+      correlationId,
+      input: args.input,
+    };
+
+    const best = this.pickBestDevice();
+
+    return new Promise<{ embedding: number[]; tokens: number }>(
+      (resolve, reject) => {
+        const timeout = setTimeout(() => {
+          this.pendingEmbeds.delete(correlationId);
+          reject(
+            new Error(
+              `DEVICE_TIMEOUT: no device responded to embed within ${timeoutMs}ms`,
+            ),
+          );
+        }, timeoutMs);
+        if (typeof timeout === "object" && timeout && "unref" in timeout) {
+          (timeout as { unref(): void }).unref();
+        }
+        const pending: PendingEmbed = {
+          correlationId,
+          resolve,
+          reject,
+          timeout,
+          request,
+          routedDeviceId: best?.deviceId ?? null,
+          submittedAt: new Date().toISOString(),
+        };
+        this.pendingEmbeds.set(correlationId, pending);
+
+        if (best) {
+          try {
+            this.sendToDevice(best.deviceId, request);
+          } catch {
+            // Routed device went away between pickBestDevice and send.
+            // Mark as orphaned; reroute logic will pick it up on the next
+            // device (re)connect.
+            pending.routedDeviceId = null;
+          }
+        } else {
+          logger.debug(
+            `[device-bridge] No device available; parking embed ${correlationId} pending connection`,
+          );
+        }
+      },
+    );
   }
 
   async generate(args: {
@@ -903,6 +1049,9 @@ export function registerDeviceBridgeLoader(
     },
     async generate(args) {
       return deviceBridge.generate(args);
+    },
+    async embed(args) {
+      return deviceBridge.embed(args);
     },
   };
   runtime.registerService("localInferenceLoader", loader);

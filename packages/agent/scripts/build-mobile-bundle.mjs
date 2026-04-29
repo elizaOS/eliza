@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 // build-mobile-bundle.mjs — produce the on-device agent payload.
 //
 // Output layout (consumed by the Phase A asset pipeline):
@@ -29,6 +30,7 @@
 //   the relative paths land. Phase A is responsible for placing the .tar.gz
 //   files at parent-of-bundle on the device.
 
+import { existsSync, readdirSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -37,7 +39,6 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -104,7 +105,16 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // in the output; `MILADY_PLATFORM=android` would then fail at runtime when
 // the mobile bun process can't resolve the missing package. A plugin onResolve
 // that maps the bare specifier to the stub path keeps the resolution pure.
-// Native deps without an Android prebuild — replaced with throw-on-call shims.
+//
+// AOSP runtime uses bun:ffi against libllama.so + libmilady-llama-shim.so
+// directly. node-llama-cpp stays stubbed unconditionally — un-stubbing pulls
+// in unresolvable per-platform prebuild packages (e.g.
+// `@node-llama-cpp/win-x64-cuda-ext`) that the agent's transitive imports
+// reference but the AOSP target cannot install. The static import of
+// `runtime/aosp-llama-adapter.ts` from `bin.ts` registers the runtime loader
+// when `MILADY_LOCAL_LLAMA=1`. The Capacitor APK build also keeps the stub
+// because its on-device inference goes through llama-cpp-capacitor in the
+// WebView, not node-llama-cpp.
 const nativeStubs = {
   "node-llama-cpp": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/linux-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
@@ -113,7 +123,10 @@ const nativeStubs = {
   "@node-llama-cpp/mac-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/win-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
-  "@huggingface/transformers": path.join(stubsDir, "huggingface-transformers.cjs"),
+  "@huggingface/transformers": path.join(
+    stubsDir,
+    "huggingface-transformers.cjs",
+  ),
   "puppeteer-core": path.join(stubsDir, "puppeteer-core.cjs"),
   "pty-manager": path.join(stubsDir, "pty-manager.cjs"),
   sharp: path.join(stubsDir, "sharp.cjs"),

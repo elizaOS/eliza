@@ -303,6 +303,40 @@ public class MiladyAgentService extends Service {
                 }
             }
         }
+
+        // Bundled default models (chat + embedding GGUF files staged by
+        // scripts/miladyos/stage-default-models.mjs at AOSP build time).
+        // Land them under $MILADY_STATE_DIR/local-inference/models/ so
+        // the runtime's first-run bootstrap discovers them at canonical
+        // paths and registers them in the local-inference registry as
+        // milady-owned models. The manifest.json carried alongside the
+        // GGUF files lets the bootstrap pick the right id + role for
+        // each file without re-deriving them from the filename.
+        //
+        // assets/agent/models/ may not exist on Capacitor (non-AOSP)
+        // builds — bundling defaults to off there since the desktop /
+        // Capacitor flows already have download UX. assets.list()
+        // returns null on missing paths, which we treat as "no models
+        // to extract".
+        String modelsAssetDir = "agent/models";
+        String[] modelFiles = assets.list(modelsAssetDir);
+        if (modelFiles != null && modelFiles.length > 0) {
+            File modelsDest = new File(
+                new File(stateDir, "local-inference"),
+                "models"
+            );
+            if (!modelsDest.exists() && !modelsDest.mkdirs()) {
+                throw new IOException("Could not create " + modelsDest);
+            }
+            for (String name : modelFiles) {
+                copyAssetIfMissing(
+                    assets,
+                    modelsAssetDir + "/" + name,
+                    new File(modelsDest, name)
+                );
+            }
+            Log.i(TAG, "Extracted " + modelFiles.length + " bundled model file(s) to " + modelsDest);
+        }
     }
 
     /** Walk agent/{abi}/ for the musl loader; name varies by ABI. */
@@ -459,8 +493,85 @@ public class MiladyAgentService extends Service {
             agentEnv.put("MILADY_DISABLE_DIRECT_RUN", "1");
             agentEnv.put("MILADY_REQUIRE_LOCAL_AUTH", "1");
             agentEnv.put("ELIZA_API_TOKEN", token);
+            // The Capacitor APK always hosts @elizaos/capacitor-llama in the
+            // WebView, so the runtime should always be ready to broker
+            // inference over the device-bridge WSS at /api/local-inference/
+            // device-bridge. The WebView dials it over loopback once the
+            // user picks the local runtime mode in onboarding.
+            agentEnv.put("ELIZA_DEVICE_BRIDGE_ENABLED", "1");
+            // AOSP builds ship libllama.so under agent/{abi}/ and load it
+            // directly into the bun process via bun:ffi (see
+            // eliza/packages/agent/src/runtime/aosp-llama-adapter.ts). The
+            // gradle BuildConfig.AOSP_BUILD field is wired by sub-task 2B;
+            // the Capacitor APK keeps its DeviceBridge loopback path.
+            if (BuildConfig.AOSP_BUILD) {
+                agentEnv.put("MILADY_LOCAL_LLAMA", "1");
+            }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
             agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
+
+            // ── Android seccomp compatibility (SIGSYS / code 159 fix) ──────
+            //
+            // Android's zygote installs a seccomp-bpf filter on every app
+            // process via `seccomp_set_policy()` in
+            // frameworks/base/core/jni/com_android_internal_os_Zygote.cpp,
+            // sourced from the per-arch allowlists in
+            // bionic/libc/seccomp/{x86_64,arm64}_app_policy.cpp. The filter is
+            // inherited and locked by SECCOMP_FILTER_FLAG_TSYNC; a child
+            // process spawned via fork+execve (which is how this service
+            // launches bun via ProcessBuilder) cannot opt out. SELinux
+            // policy in vendor/milady/sepolicy/ is orthogonal — it does
+            // not (and cannot) override seccomp.
+            //
+            // Bun's Linux runtime exercises several syscalls that Android's
+            // seccomp filter blocks for app domains:
+            //   - `io_uring_setup` / `io_uring_enter` / `io_uring_register`
+            //     (bun's IO pool; not on Android's app allowlist)
+            //   - `pidfd_open` (bun uses it for child-process waiting; not
+            //     on the app allowlist before Android 13 / API 33, and
+            //     gated behind `pidfd_open` allow on newer policy)
+            //   - `preadv2` / `pwritev2` with `RWF_NONBLOCK` (bun's
+            //     async-fs path; some Android kernels gate the flag arg)
+            //
+            // Empirically the agent bundle exit-trapped on SIGSYS (signal
+            // 31, exit code 128 + 31 = 159) at first interpretation of
+            // user code. The four BUN_FEATURE_FLAG_* knobs below opt bun
+            // into its more conservative fallbacks for each of those
+            // syscalls. They are intentionally redundant: enabling all four
+            // costs nothing and protects against future bun versions that
+            // start using a previously-unused gated syscall.
+            //
+            // BUN_FEATURE_FLAG_DISABLE_IO_POOL=1
+            //     Replaces bun's io_uring-backed IO pool with the legacy
+            //     thread-pool implementation. Avoids io_uring_* entirely.
+            //
+            // BUN_FEATURE_FLAG_FORCE_WAITER_THREAD=1
+            //     Forces the dedicated waiter-thread child reaper instead
+            //     of pidfd_open + epoll. Avoids pidfd_open.
+            //
+            // BUN_FEATURE_FLAG_DISABLE_RWF_NONBLOCK=1
+            //     Drops RWF_NONBLOCK from preadv2/pwritev2 calls so bun
+            //     stays on flags Android's seccomp predates. Costs us
+            //     nothing on Android (the kernel runs the same fallback).
+            //
+            // BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH=1
+            //     Forces bun's portable spawn fast path off so any
+            //     vfork/clone3 variants the seccomp filter blocks aren't
+            //     attempted.
+            //
+            // To diagnose a future SIGSYS regression on a real boot:
+            //   adb logcat -d | grep -E '(SIGSYS|seccomp|audit:.*type=1326)'
+            //   adb shell dmesg | grep -E '(seccomp|SIGSYS)'
+            // The audit line includes `syscall=N`; map it via
+            //   bionic/libc/kernel/uapi/asm-generic/unistd.h or
+            //   https://chromium.googlesource.com/aosp/platform/bionic/+/refs/heads/master/libc/SYSCALLS.TXT
+            // and either add a new BUN_FEATURE_FLAG_* knob or open a bun
+            // issue if the call has no fallback.
+            agentEnv.put("BUN_FEATURE_FLAG_DISABLE_IO_POOL", "1");
+            agentEnv.put("BUN_FEATURE_FLAG_FORCE_WAITER_THREAD", "1");
+            agentEnv.put("BUN_FEATURE_FLAG_DISABLE_RWF_NONBLOCK", "1");
+            agentEnv.put("BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH", "1");
+
             env.putAll(agentEnv);
 
             Process started;
