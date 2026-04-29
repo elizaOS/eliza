@@ -300,92 +300,29 @@ export function LifeOpsScreenTimeSection({
 
   const breakdown = data?.breakdown ?? null;
   const social = data?.social ?? null;
-  const priorBreakdown = priorData?.breakdown ?? null;
-  const priorSocial = priorData?.social ?? null;
-
-  const totalSeconds = breakdown?.totalSeconds ?? 0;
-  const appSeconds =
-    breakdown?.bySource.find((item) => item.key === "app")?.totalSeconds ?? 0;
-  const webSeconds =
-    breakdown?.bySource.find((item) => item.key === "website")?.totalSeconds ??
-    0;
-  const phoneSeconds =
-    breakdown?.byDevice.find((item) => item.key === "phone")?.totalSeconds ?? 0;
-  const categories = (breakdown?.byCategory ?? []).filter(
-    (item) => item.totalSeconds > 0,
-  );
-  const devices = (breakdown?.byDevice ?? []).filter(
-    (item) => item.totalSeconds > 0,
-  );
-  const browsers = (breakdown?.byBrowser ?? []).filter(
-    (item) => item.totalSeconds > 0,
-  );
-  const topTargets =
-    breakdown?.items
-      .filter((item) => item.totalSeconds > 0)
-      .map((item) => ({
-        key: `${item.source}:${item.identifier}`,
-        label: item.displayName,
-        totalSeconds: item.totalSeconds,
-      })) ?? [];
-
-  const socialSeconds = social?.totalSeconds ?? 0;
-  const youtubeSeconds = socialServiceSeconds(social, "youtube");
-  const xSeconds = socialServiceSeconds(social, "x");
-  const services = (social?.services ?? []).filter(
-    (item) => item.totalSeconds > 0,
-  );
-  const surfaces = (social?.surfaces ?? []).filter(
-    (item) => item.totalSeconds > 0,
-  );
-  const sessionBuckets =
-    social?.sessions
-      .filter((item) => item.totalSeconds > 0)
-      .map((item) => ({
-        key: `${item.source}:${item.identifier}`,
-        label: item.serviceLabel ?? item.displayName,
-        totalSeconds: item.totalSeconds,
-      })) ?? [];
-  const channels = (social?.messages.channels ?? []).filter(
-    (channel) =>
-      channel.opened > 0 || channel.outbound > 0 || channel.inbound > 0,
-  );
-  const messageOpened = social?.messages.opened ?? 0;
-  const messageOutbound = social?.messages.outbound ?? 0;
-  const messageInbound = social?.messages.inbound ?? 0;
-  const hasMessageActivity =
-    messageOpened > 0 || messageOutbound > 0 || messageInbound > 0;
-  const setupSources = (social?.dataSources ?? []).filter(
-    (source) => source.state !== "live",
-  );
-
-  const hasUsage =
-    totalSeconds > 0 ||
-    categories.length > 0 ||
-    devices.length > 0 ||
-    browsers.length > 0 ||
-    topTargets.length > 0 ||
-    socialSeconds > 0 ||
-    services.length > 0 ||
-    surfaces.length > 0 ||
-    sessionBuckets.length > 0 ||
-    hasMessageActivity;
-
-  const showDeltas = range !== "today" && priorData !== null;
-  const priorTotalSeconds = priorBreakdown?.totalSeconds ?? 0;
-  const priorAppSeconds =
-    priorBreakdown?.bySource.find((item) => item.key === "app")?.totalSeconds ??
-    0;
-  const priorWebSeconds =
-    priorBreakdown?.bySource.find((item) => item.key === "website")
-      ?.totalSeconds ?? 0;
-  const priorPhoneSeconds =
-    priorBreakdown?.byDevice.find((item) => item.key === "phone")
-      ?.totalSeconds ?? 0;
-  const priorSocialSeconds = priorSocial?.totalSeconds ?? 0;
-  const priorYoutubeSeconds = socialServiceSeconds(priorSocial, "youtube");
-  const priorXSeconds = socialServiceSeconds(priorSocial, "x");
-  const priorMessageOpened = priorSocial?.messages.opened ?? 0;
+  const metrics = data?.metrics ?? null;
+  const visible = data?.visible ?? null;
+  const totalSeconds = metrics?.totalSeconds ?? 0;
+  const appSeconds = metrics?.appSeconds ?? 0;
+  const webSeconds = metrics?.webSeconds ?? 0;
+  const phoneSeconds = metrics?.phoneSeconds ?? 0;
+  const socialSeconds = metrics?.socialSeconds ?? 0;
+  const youtubeSeconds = metrics?.youtubeSeconds ?? 0;
+  const xSeconds = metrics?.xSeconds ?? 0;
+  const messageOpened = metrics?.messageOpened ?? 0;
+  const messageOutbound = metrics?.messageOutbound ?? 0;
+  const messageInbound = metrics?.messageInbound ?? 0;
+  const categories = visible?.categories ?? [];
+  const devices = visible?.devices ?? [];
+  const browsers = visible?.browsers ?? [];
+  const topTargets = visible?.topTargets ?? [];
+  const services = visible?.services ?? [];
+  const surfaces = visible?.surfaces ?? [];
+  const sessionBuckets = visible?.sessionBuckets ?? [];
+  const channels = visible?.channels ?? [];
+  const setupSources = visible?.setupSources ?? [];
+  const hasUsage = visible?.hasUsage ?? false;
+  const showDeltas = metrics?.deltas !== null && metrics?.deltas !== undefined;
 
   const totalLabel = useMemo(() => {
     switch (range) {
