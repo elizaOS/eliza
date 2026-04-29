@@ -1,1 +1,1 @@
-import "../../eliza/packages/app-core/test/scripts/test-parallel.mjs";
+import "../../packages/app-core/test/scripts/test-parallel.mjs";

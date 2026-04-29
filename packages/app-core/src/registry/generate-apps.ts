@@ -210,6 +210,36 @@ const CURATED_APPS: CuratedDef[] = [
     },
   },
   {
+    id: "hyperliquid",
+    npmName: "@elizaos/app-hyperliquid",
+    displayName: "Hyperliquid",
+    description:
+      "Native Hyperliquid market, position, and order status for wallet trading.",
+    subtype: "trading",
+    launchType: "server-launch",
+    icon: "ChartCandlestick",
+    groupOrder: 7,
+    routePlugin: {
+      specifier: "@elizaos/app-hyperliquid/plugin",
+      exportName: "hyperliquidPlugin",
+    },
+  },
+  {
+    id: "polymarket",
+    npmName: "@elizaos/app-polymarket",
+    displayName: "Polymarket",
+    description:
+      "Native Polymarket market discovery and trading readiness for prediction markets.",
+    subtype: "trading",
+    launchType: "server-launch",
+    icon: "Landmark",
+    groupOrder: 8,
+    routePlugin: {
+      specifier: "@elizaos/app-polymarket/plugin",
+      exportName: "polymarketPlugin",
+    },
+  },
+  {
     id: "shopify",
     npmName: "@elizaos/app-shopify",
     displayName: "Shopify",
@@ -217,7 +247,7 @@ const CURATED_APPS: CuratedDef[] = [
     subtype: "marketplace",
     launchType: "server-launch",
     icon: "Briefcase",
-    groupOrder: 7,
+    groupOrder: 9,
     routePlugin: {
       specifier: "@elizaos/app-shopify/plugin",
       exportName: "shopifyPlugin",

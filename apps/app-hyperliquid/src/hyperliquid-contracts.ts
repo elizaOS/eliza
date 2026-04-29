@@ -1,13 +1,17 @@
 export const HYPERLIQUID_API_BASE = "https://api.hyperliquid.xyz";
 
 export const HYPERLIQUID_EXECUTION_BLOCKED_REASON =
-  "Set HYPERLIQUID_PRIVATE_KEY or HL_PRIVATE_KEY to enable execution. This native app currently exposes read/status endpoints only.";
+  "Set HYPERLIQUID_PRIVATE_KEY or HL_PRIVATE_KEY to prepare signed execution. This native app currently exposes read/status endpoints only.";
+
+export const HYPERLIQUID_EXECUTION_NOT_IMPLEMENTED_REASON =
+  "Signed Hyperliquid exchange execution is not implemented in this native scaffold yet.";
 
 export const HYPERLIQUID_ACCOUNT_BLOCKED_REASON =
   "Set HYPERLIQUID_ACCOUNT_ADDRESS or HL_ACCOUNT_ADDRESS to read account-specific positions and orders.";
 
 export interface HyperliquidStatusResponse {
   publicReadReady: boolean;
+  signerReady: boolean;
   executionReady: boolean;
   executionBlockedReason: string | null;
   accountAddress: string | null;

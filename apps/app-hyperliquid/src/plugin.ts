@@ -38,6 +38,42 @@ const hyperliquidRoutes: Route[] = [
     rawPath: true,
     handler: hyperliquidRouteHandler("/api/hyperliquid/orders"),
   },
+  {
+    type: "POST",
+    path: "/api/hyperliquid/orders/open",
+    rawPath: true,
+    handler: hyperliquidRouteHandler("/api/hyperliquid/orders/open"),
+  },
+  {
+    type: "POST",
+    path: "/api/hyperliquid/orders/close",
+    rawPath: true,
+    handler: hyperliquidRouteHandler("/api/hyperliquid/orders/close"),
+  },
+  {
+    type: "POST",
+    path: "/api/hyperliquid/leverage",
+    rawPath: true,
+    handler: hyperliquidRouteHandler("/api/hyperliquid/leverage"),
+  },
+  {
+    type: "POST",
+    path: "/api/hyperliquid/margin",
+    rawPath: true,
+    handler: hyperliquidRouteHandler("/api/hyperliquid/margin"),
+  },
+  {
+    type: "POST",
+    path: "/api/hyperliquid/bridge",
+    rawPath: true,
+    handler: hyperliquidRouteHandler("/api/hyperliquid/bridge"),
+  },
+  {
+    type: "POST",
+    path: "/api/hyperliquid/tpsl",
+    rawPath: true,
+    handler: hyperliquidRouteHandler("/api/hyperliquid/tpsl"),
+  },
 ];
 
 export const hyperliquidPlugin: Plugin = {

@@ -219,8 +219,7 @@ export const exportLogsAction: Action = {
   similes: ["DOWNLOAD_LOGS", "DUMP_LOGS", "SAVE_LOGS"],
   description:
     "Export the agent's log buffer to JSON or CSV via POST /api/logs/export.",
-  descriptionCompressed:
-    "POST /api/logs/export json or csv buffer dump owner",
+  descriptionCompressed: "POST /api/logs/export json or csv buffer dump owner",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {

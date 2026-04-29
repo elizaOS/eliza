@@ -6,6 +6,7 @@ import type {
 	EvaluationExample,
 	Evaluator,
 } from "./types/index.ts";
+import { compressPromptDescription } from "./utils/prompt-compression.ts";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 
@@ -21,7 +22,9 @@ function toActionParameter(
 	return {
 		name: param.name,
 		description: param.description,
-		descriptionCompressed: param.descriptionCompressed,
+		descriptionCompressed:
+			param.descriptionCompressed ??
+			compressPromptDescription(param.description),
 		required: param.required,
 		schema: {
 			...param.schema,
@@ -31,6 +34,16 @@ function toActionParameter(
 	};
 }
 
+function ensureParameterCompressed(
+	parameters: ActionParameter[],
+): ActionParameter[] {
+	return parameters.map((p) => ({
+		...p,
+		descriptionCompressed:
+			p.descriptionCompressed ?? compressPromptDescription(p.description),
+	}));
+}
+
 /**
  * Merge canonical docs (description/similes/parameters) into an action definition.
  *
@@ -38,21 +51,43 @@ function toActionParameter(
  * - does not overwrite an existing action.description
  * - does not overwrite existing action.similes
  * - does not overwrite existing action.parameters
+ *
+ * Always fills `descriptionCompressed` (and parameter-level compressed descriptions)
+ * when absent, matching Python `compress_prompt_description` so prompt compression
+ * is on for every registered action — including plugins with no canonical spec row.
  */
 export function withCanonicalActionDocs(action: Action): Action {
 	const doc = coreActionDocByName[action.name];
-	if (!doc) return action;
+
+	const mergedDescription =
+		(doc ? action.description || doc.description : action.description) ?? "";
+
+	const descriptionCompressed =
+		action.descriptionCompressed ??
+		doc?.descriptionCompressed ??
+		compressPromptDescription(mergedDescription);
+
+	if (!doc) {
+		const parameters =
+			(action.parameters?.length ?? 0)
+				? ensureParameterCompressed(action.parameters ?? [])
+				: action.parameters;
+		return {
+			...action,
+			descriptionCompressed,
+			parameters,
+		};
+	}
 
 	const parameters =
 		action.parameters && action.parameters.length > 0
-			? action.parameters
+			? ensureParameterCompressed(action.parameters)
 			: (doc.parameters ?? []).map(toActionParameter);
 
 	return {
 		...action,
 		description: action.description || doc.description,
-		descriptionCompressed:
-			action.descriptionCompressed || doc.descriptionCompressed,
+		descriptionCompressed,
 		similes:
 			action.similes && action.similes.length > 0
 				? action.similes

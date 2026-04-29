@@ -64,10 +64,14 @@ describe("Hyperliquid routes", () => {
     expect(response.status).toBe(200);
     expect(responseJson<Record<string, unknown>>(response)).toMatchObject({
       publicReadReady: true,
-      executionReady: true,
-      executionBlockedReason: null,
+      signerReady: true,
+      executionReady: false,
       accountAddress: "0x0000000000000000000000000000000000000001",
     });
+    expect(
+      responseJson<{ executionBlockedReason: string }>(response)
+        .executionBlockedReason,
+    ).toContain("not implemented");
   });
 
   it("fetches markets from the Hyperliquid Info endpoint through injected fetch", async () => {
@@ -172,6 +176,12 @@ describe("Hyperliquid routes", () => {
       ["GET", "/api/hyperliquid/markets"],
       ["GET", "/api/hyperliquid/positions"],
       ["GET", "/api/hyperliquid/orders"],
+      ["POST", "/api/hyperliquid/orders/open"],
+      ["POST", "/api/hyperliquid/orders/close"],
+      ["POST", "/api/hyperliquid/leverage"],
+      ["POST", "/api/hyperliquid/margin"],
+      ["POST", "/api/hyperliquid/bridge"],
+      ["POST", "/api/hyperliquid/tpsl"],
     ]);
   });
 });
