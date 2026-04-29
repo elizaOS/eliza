@@ -299,6 +299,14 @@ export async function stageAndroidAgentRuntime({
   const tlog = logFor(log);
   fs.mkdirSync(cacheDir, { recursive: true });
 
+  // Runtime files ship under `assets/agent/{abi}/` and the service
+  // copies them to /data/data/<pkg>/files/agent/{abi}/ at first launch
+  // and chmods +x. The agent runs as priv_app (Android.bp does not
+  // platform-sign the APK), so AOSP's stock
+  // `allow priv_app privapp_data_file:file execute;` is enough to
+  // execve bun out of the writable data dir — no jniLibs trick, no
+  // custom SELinux domain. We also clean up any stale jniLibs/ from
+  // an earlier pivot so the APK doesn't carry duplicate binaries.
   const assetsAgentDir = path.join(
     androidDir,
     "app",
@@ -308,6 +316,11 @@ export async function stageAndroidAgentRuntime({
     "agent",
   );
   fs.mkdirSync(assetsAgentDir, { recursive: true });
+  const jniLibsDir = path.join(androidDir, "app", "src", "main", "jniLibs");
+  if (fs.existsSync(jniLibsDir)) {
+    fs.rmSync(jniLibsDir, { recursive: true, force: true });
+    tlog("Removed stale jniLibs/ tree (runtime now ships under assets/agent/).");
+  }
 
   let stagedCount = 0;
 
