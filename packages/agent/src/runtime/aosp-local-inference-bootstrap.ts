@@ -226,13 +226,25 @@ function fallbackFindBundledModels(modelsDir: string): {
     if (!name.endsWith(".gguf")) continue;
     const abs = path.join(modelsDir, name);
     const lower = name.toLowerCase();
-    if (!chat && (lower.includes("smollm") || lower.includes("instruct"))) {
-      chat = abs;
-    } else if (
+    // Embedding match runs first so models like "bge-..." (no "instruct"
+    // marker) don't get mistakenly classified as chat by the broader
+    // "instruct" rule below.
+    if (
       !embedding &&
-      (lower.includes("bge") || lower.includes("embed"))
+      (lower.includes("bge") ||
+        lower.includes("embed") ||
+        lower.includes("nomic") ||
+        lower.includes("minilm"))
     ) {
       embedding = abs;
+    } else if (
+      !chat &&
+      (lower.includes("llama") ||
+        lower.includes("smollm") ||
+        lower.includes("qwen") ||
+        lower.includes("instruct"))
+    ) {
+      chat = abs;
     }
   }
   return { chat, embedding };
@@ -396,20 +408,38 @@ export async function ensureAospLocalInferenceHandlers(
   }
 
   const lifecycle = makeLoaderLifecycle(loader);
-  // TEXT_EMBEDDING is wired unconditionally now that the adapter resets
-  // the llama.cpp embeddings flag on both decode paths (chat + embed) —
-  // the previous `MILADY_AOSP_EMBEDDING=1` opt-in existed only because
-  // the shared-context flag bled across calls and caused
-  //   GGML_ASSERT((!batch_inp.token && batch_inp.embd) ||
-  //               (batch_inp.token && !batch_inp.embd))
-  // inside llama_decode, crashing the bun process mid-request. With the
-  // explicit pre-decode `llama_set_embeddings` call in both `generate()`
-  // and `embed()`, the assert can no longer fire from cross-mode bleed.
+  // TEXT_EMBEDDING wiring is gated behind MILADY_AOSP_EMBEDDING=1
+  // because the single-context loader has to swap weights between
+  // the chat model and the embedding model on every embed() →
+  // generate() boundary, and on cuttlefish CPU each swap allocates
+  // ~1.3 GB (770 MB weights + 512 MB KV cache + 290 MB compute
+  // buffer). A typical chat turn fires multiple alternating calls
+  // (planner → relationship-extraction embedding → action evaluator
+  // → ...), and the cumulative GC pressure pushes bun's heap past
+  // the cvd 4 GB ceiling and trips a SIGSEGV mid-request.
+  //
+  // Default-off means the runtime logs a one-line warning that no
+  // TEXT_EMBEDDING handler is registered and downstream code that
+  // would normally embed simply skips the work — chat itself works,
+  // which is the primary AOSP smoke contract. Real-device builds
+  // with more headroom can opt back in via the env knob.
+  //
+  // Long-term fix: hold two ctx pointers (one chat, one embedding),
+  // swap the active pointer instead of re-allocating. That work is
+  // tracked separately; the env opt-out stays as the safe default
+  // until it lands.
+  const enableEmbedding =
+    process.env.MILADY_AOSP_EMBEDDING?.trim() === "1";
   const slots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
     ModelType.TEXT_SMALL,
     ModelType.TEXT_LARGE,
-    ModelType.TEXT_EMBEDDING,
+    ...(enableEmbedding ? [ModelType.TEXT_EMBEDDING] : []),
   ];
+  if (!enableEmbedding) {
+    logger.info(
+      "[aosp-local-inference] TEXT_EMBEDDING handler NOT registered (set MILADY_AOSP_EMBEDDING=1 to enable; default-off avoids OOM during chat-mode swap on cvd CPU)",
+    );
+  }
   for (const modelType of slots) {
     const handler =
       modelType === ModelType.TEXT_EMBEDDING
@@ -423,8 +453,22 @@ export async function ensureAospLocalInferenceHandlers(
     );
   }
 
+  // Pre-warm the chat model so the first incoming chat request doesn't
+  // pay the ~10 s `llama_model_load_from_file` + ~5 s
+  // `llama_init_from_model` cost inside the request handler. The load
+  // is best-effort: if the bundled chat file is missing we let the
+  // request handler bubble up a clear error instead of crashing the
+  // boot. ensureChatLoaded is also memoized at the lifecycle layer, so
+  // calling it here doesn't conflict with the first real request.
+  void lifecycle.ensureChatLoaded().catch((err) => {
+    logger.warn(
+      "[aosp-local-inference] Chat model pre-warm failed (will retry on first request): " +
+        (err instanceof Error ? err.message : String(err)),
+    );
+  });
+
   console.log(
-    `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING (priority ${LOCAL_INFERENCE_PRIORITY})`,
+    `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE${enableEmbedding ? " / TEXT_EMBEDDING" : ""} (priority ${LOCAL_INFERENCE_PRIORITY})`,
   );
   logger.info(
     `[aosp-local-inference] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING at priority ${LOCAL_INFERENCE_PRIORITY}`,

@@ -454,9 +454,15 @@ function resolveChatGenerationTimeoutMs(explicit?: number): number {
     return Math.max(1, Math.floor(explicit));
   }
 
+  // ELIZA_CHAT_GENERATION_TIMEOUT_MS is the canonical env var
+  // (MiladyAgentService sets it to 1_800_000 on AOSP). MILADY_CHAT_-
+  // GENERATION_TIMEOUT_MS is accepted as an alias so operators don't
+  // need to remember which prefix the timeout uses. The previous
+  // implementation read the same env var name twice, which silently
+  // dropped the alias.
   const fromEnv =
     process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim() ||
-    process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim();
+    process.env.MILADY_CHAT_GENERATION_TIMEOUT_MS?.trim();
   if (!fromEnv) return DEFAULT_CHAT_GENERATION_TIMEOUT_MS;
 
   const parsed = Number.parseInt(fromEnv, 10);

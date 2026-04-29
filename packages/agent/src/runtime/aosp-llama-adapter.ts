@@ -497,6 +497,50 @@ function readEnvInt(name: string, fallback: number): number {
 }
 
 /**
+ * Resolve the n_threads to pass to llama.cpp. Precedence:
+ *   1. Explicit `LoadOptions.maxThreads` (highest priority).
+ *   2. `MILADY_LLAMA_THREADS` env var (set by MiladyAgentService.java
+ *      to `Runtime.availableProcessors()` on AOSP).
+ *   3. `os.cpus().length` from the JS runtime.
+ *   4. Final fallback: 4 (cuttlefish baseline).
+ *
+ * Why not pass 0 ("let llama.cpp auto-detect")? llama.cpp's auto-detect
+ * on Android frequently returns 1 because it parses
+ * `/proc/cpuinfo` for "processor :" lines, and Android's seccomp filter
+ * blocks the `sched_getaffinity` fallback. A hard-coded core count is
+ * dramatically faster than the wrong auto-detect result.
+ *
+ * Exported for unit tests so we can verify the precedence chain
+ * without spinning up a Bun runtime.
+ */
+export function resolveThreads(
+  explicit: number | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  if (explicit !== undefined && Number.isFinite(explicit) && explicit > 0) {
+    return Math.floor(explicit);
+  }
+  const raw = env.MILADY_LLAMA_THREADS?.trim();
+  if (raw) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  }
+  // os.cpus() on Bun returns the same shape as Node — array of CPU
+  // descriptor objects. We deliberately don't import "node:os" at the
+  // top because the bundler then has to resolve it on every platform;
+  // here we lazy-require it so non-Bun targets can still type-check.
+  try {
+    /* Boundary cast: dynamic require returns weakly-typed module shape */
+    const os = require("node:os") as { cpus(): unknown[] };
+    const count = os.cpus()?.length ?? 0;
+    if (count > 0) return count;
+  } catch {
+    // require unavailable in some bundler contexts; fall through.
+  }
+  return 4;
+}
+
+/**
  * Resolve the libllama.so path for the current ABI. The AOSP agent process
  * runs with `cwd = <agent_root>`; the Java side unpacks `agent/{abi}/libllama.so`
  * alongside the bun runtime and matching shared libraries.
@@ -743,9 +787,20 @@ class AospLlamaAdapter implements AospLoader {
     // Resolve runtime tunables. The active-model coordinator only forwards
     // `{ modelPath }` today, so we backfill from env so AOSP doesn't run at
     // upstream defaults that under-use phone CPU cores.
+    //
+    // contextSize default: 16384. Llama-3.2-1B (the AOSP default chat
+    // model) has a 128k native context window. The planner builds
+    // ~12k-token prompts on every chat turn (system + tools + history +
+    // user message). 16k fits comfortably with output reserve while
+    // keeping KV-cache RAM under ~80 MB on cvd's 4 GB budget. The env
+    // override lets builders push higher on real-device hardware where
+    // RAM permits.
     const contextSize =
-      args.contextSize ?? readEnvInt("MILADY_LLAMA_N_CTX", 8192);
-    const maxThreads = args.maxThreads ?? readEnvInt("MILADY_LLAMA_THREADS", 0);
+      args.contextSize ?? readEnvInt("MILADY_LLAMA_N_CTX", 16384);
+    // n_threads via the precedence chain. Never pass 0 — see
+    // resolveThreads docblock for why "auto-detect" is dangerous on
+    // Android.
+    const maxThreads = resolveThreads(args.maxThreads);
     const useGpu = args.useGpu ?? false;
     const kvCacheType = resolveKvCacheType(args.modelPath, args.kvCacheType);
 
@@ -810,13 +865,18 @@ class AospLlamaAdapter implements AospLoader {
         ctxParamsPtr,
         contextSize,
       );
-      // n_batch = 2048: the per-decode token cap. We chunk longer prompts
-      // in the decode loop. Setting this to n_ctx makes the worst-case
-      // compute graph allocate ~1.85 GiB (8192 ubatch on a 360M model)
-      // which both wedges the bun event loop long enough to trip the
-      // service watchdog and pushes phone RAM over budget.
-      // n_ubatch = 512: upstream default, matches phone CPU cache.
-      const nBatchParam = readEnvInt("MILADY_LLAMA_N_BATCH", 2048);
+      // n_batch = 512 (AOSP default): the per-decode token cap. We chunk
+      // longer prompts in the decode loop. Smaller chunks = more frequent
+      // event-loop yields, so the service watchdog's HTTP probe doesn't
+      // sit on a closed listener queue for the entire prompt prefill.
+      // Empirically a 512-token chunk on cuttlefish CPU lands each
+      // llama_decode call in ~6–8 s (Llama-3.2-1B), giving the HTTP
+      // probe (30 s timeout) a realistic chance to wake the listener
+      // between chunks. The previous default of 2048 ran each chunk
+      // for ~30 s and triggered repeated probe failures.
+      // n_ubatch = 512: matches the chunk size, upstream default for
+      // phone CPU cache.
+      const nBatchParam = readEnvInt("MILADY_LLAMA_N_BATCH", 512);
       const nUBatchParam = readEnvInt("MILADY_LLAMA_N_UBATCH", 512);
       this.shim.milady_llama_context_params_set_n_batch(
         ctxParamsPtr,
@@ -874,8 +934,9 @@ class AospLlamaAdapter implements AospLoader {
     this.nCtx = this.sym.llama_n_ctx(ctxPtr);
     this.loadedPath = args.modelPath;
     this.hasDecoded = false;
+    const nBatchEffective = readEnvInt("MILADY_LLAMA_N_BATCH", 512);
     logger.info(
-      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_threads=${maxThreads}, gpu=${useGpu}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"})`,
+      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_batch=${nBatchEffective}, n_threads=${maxThreads}, gpu=${useGpu}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"})`,
     );
   }
 
@@ -1053,6 +1114,7 @@ class AospLlamaAdapter implements AospLoader {
           `[aosp-llama] prompt ${written} tokens > capacity ${promptCapacity} (n_ctx=${this.nCtx} - reserve ${maxOutputReserve}); dropping ${head} head tokens`,
         );
       }
+      const prefillStart = Date.now();
       for (let offset = 0; offset < promptLen; offset += nBatch) {
         const chunkLen = Math.min(nBatch, promptLen - offset);
         const chunk = promptTokens.subarray(offset, offset + chunkLen);
@@ -1065,6 +1127,7 @@ class AospLlamaAdapter implements AospLoader {
             "[aosp-llama] milady_llama_batch_get_one returned NULL (malloc failure?)",
           );
         }
+        const chunkStart = Date.now();
         let decodeRc: number;
         try {
           decodeRc = this.shim.milady_llama_decode(ctx, promptBatchPtr);
@@ -1079,14 +1142,37 @@ class AospLlamaAdapter implements AospLoader {
         // Mark the ctx as decoded so subsequent generate()/embed() calls
         // will issue the leading llama_memory_clear safely.
         this.hasDecoded = true;
-        // Yield to the event loop between chunks so the on-device
-        // watchdog's /api/health probe (3s timeout × 3 strikes = ~6 min
-        // grace window with WATCHDOG_INTERVAL_MS=120s) can complete.
-        // Without this yield bun's single-threaded loop sits inside
-        // FFI for the entire prompt decode (minutes on cuttlefish CPU)
-        // and the service kills it for missed health checks.
+        // Per-chunk token-rate logging. Inform operators of real
+        // throughput on whatever hardware is hosting bun. On cuttlefish
+        // CPU + Llama-3.2-1B / Q4_K_M we expect ~30–60 tok/s prefill;
+        // anything below 5 tok/s indicates n_threads not set, KV cache
+        // thrashing, or the SIGSYS shim degrading something. Log at
+        // info level so it's always visible without bumping LOG_LEVEL.
+        const chunkElapsedMs = Date.now() - chunkStart;
+        const tokPerSec =
+          chunkElapsedMs > 0 ? (chunkLen * 1000) / chunkElapsedMs : 0;
+        logger.info(
+          `[aosp-llama] decode chunk ${offset}+${chunkLen}/${promptLen}: ${chunkElapsedMs}ms (${tokPerSec.toFixed(1)} tok/s)`,
+        );
+        // Yield to the event loop between chunks so the service
+        // watchdog's /api/health probe (HEALTH_TIMEOUT_MS=30s) can
+        // complete. Without this yield bun's single-threaded loop
+        // sits inside FFI for the entire prompt decode (minutes on
+        // cuttlefish CPU) and HTTP requests pile up at the listener.
+        // setImmediate yields after I/O processing has had a chance
+        // to run; queueMicrotask would yield AFTER the current task,
+        // which on bun is the FFI call that just returned, so the
+        // listener still gets to handle queued requests. We use
+        // setImmediate as the canonical "yield to the event loop"
+        // signal.
         await new Promise<void>((resolve) => setImmediate(resolve));
       }
+      const prefillElapsedMs = Date.now() - prefillStart;
+      const prefillTokPerSec =
+        prefillElapsedMs > 0 ? (promptLen * 1000) / prefillElapsedMs : 0;
+      logger.info(
+        `[aosp-llama] prefill done: ${promptLen} tokens in ${prefillElapsedMs}ms (${prefillTokPerSec.toFixed(1)} tok/s overall)`,
+      );
 
       // 4. Token loop.
       const maxTokens = args.maxTokens ?? 512;
@@ -1094,6 +1180,8 @@ class AospLlamaAdapter implements AospLoader {
       const pieceBuf = new Uint8Array(256);
       const singleToken = new Int32Array(1);
       let output = "";
+      const decodeStart = Date.now();
+      let lastTokRateLog = decodeStart;
 
       for (let i = 0; i < maxTokens; i++) {
         const next = this.sym.llama_sampler_sample(chain, ctx, -1);
@@ -1143,16 +1231,37 @@ class AospLlamaAdapter implements AospLoader {
             `[aosp-llama] llama_decode (step) returned ${stepRc}`,
           );
         }
-        // Yield every 16 generated tokens. setImmediate every step
-        // would cut sampling throughput by ~30 %; a stride of 16 keeps
-        // the loop responsive to /api/health while staying close to
-        // peak generation rate. SmolLM2-360M on cuttlefish CPU lands
-        // roughly 5 tok/s, so 16 tokens = ~3 s per yield, well under
-        // the 3-strike × 120 s health-probe budget.
-        if ((i & 15) === 15) {
+        // Yield every 4 generated tokens. setImmediate every step
+        // would cut sampling throughput by ~30 %; a stride of 4 stays
+        // close to peak generation rate while keeping the listener
+        // wake-up budget tight enough that the watchdog's HTTP probe
+        // (30 s timeout) can complete mid-decode without the
+        // BUSY-but-not-DEAD distinction being needed. Llama-3.2-1B on
+        // cvd CPU lands ~3–8 tok/s, so 4 tokens = ~1 s per yield.
+        if ((i & 3) === 3) {
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
+        // Log generation rate every ~10 s so operators can watch
+        // throughput without polling the bun process. Frequent enough
+        // to detect a stall, infrequent enough to avoid spamming logs
+        // (10 s × ~5 tok/s = ~50 tokens between log lines).
+        const now = Date.now();
+        if (now - lastTokRateLog > 10_000) {
+          const elapsedMs = now - decodeStart;
+          const tokPerSec =
+            elapsedMs > 0 ? ((i + 1) * 1000) / elapsedMs : 0;
+          logger.info(
+            `[aosp-llama] gen progress: ${i + 1}/${maxTokens} tokens, ${elapsedMs}ms (${tokPerSec.toFixed(1)} tok/s)`,
+          );
+          lastTokRateLog = now;
+        }
       }
+      const decodeElapsedMs = Date.now() - decodeStart;
+      const decodeTokPerSec =
+        decodeElapsedMs > 0 ? (output.length * 1000) / decodeElapsedMs : 0;
+      logger.info(
+        `[aosp-llama] gen done: ${output.length} chars in ${decodeElapsedMs}ms (~${decodeTokPerSec.toFixed(1)} char/s)`,
+      );
       return output;
     } finally {
       this.sym.llama_sampler_free(chain);

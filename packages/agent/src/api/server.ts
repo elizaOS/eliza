@@ -3338,6 +3338,66 @@ export async function startApiServer(opts?: {
   });
   console.log(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
+  // Node's `http.createServer` defaults are tuned for snappy web traffic:
+  //   - requestTimeout: 300_000 ms (5 min) — closes the socket if the
+  //     full request hasn't completed in 5 minutes.
+  //   - headersTimeout: 60_000 ms — closes the socket if headers
+  //     haven't arrived in 60 s.
+  //   - keepAliveTimeout: 5_000 ms — closes idle connections after 5 s.
+  //
+  // Local-inference chat completions on AOSP cuttlefish CPU routinely
+  // run 5–25 minutes per turn (planner + action evaluator + reply,
+  // each with a 9k-token prompt prefilled at ~20 tok/s). The 300 s
+  // requestTimeout aborts the response mid-generation and the client
+  // sees `fetch failed` while the agent's chat-routes timeout
+  // (ELIZA_CHAT_GENERATION_TIMEOUT_MS, default 180 s, AOSP override
+  // 1_800_000 ms = 30 min) is still ticking. The result: the device
+  // does the work, the model produces a reply, but the HTTP socket
+  // is already closed by the time the reply is ready.
+  //
+  // Read overrides from env so non-AOSP deploys keep tighter defaults,
+  // and AOSP can pass a generous bound that matches the chat-routes
+  // generation budget. ELIZA_HTTP_REQUEST_TIMEOUT_MS is the canonical
+  // override; falls back to ELIZA_CHAT_GENERATION_TIMEOUT_MS + 60 s
+  // slack so a single env var can drive the whole pipeline.
+  const requestTimeoutEnvRaw =
+    process.env.ELIZA_HTTP_REQUEST_TIMEOUT_MS?.trim() ?? "";
+  const chatTimeoutEnvRaw =
+    process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS?.trim() ?? "";
+  const requestTimeoutMs = (() => {
+    const explicit = Number.parseInt(requestTimeoutEnvRaw, 10);
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    const chatTimeout = Number.parseInt(chatTimeoutEnvRaw, 10);
+    if (Number.isFinite(chatTimeout) && chatTimeout > 0) {
+      // 60 s slack covers the round-trip overhead between chat-routes
+      // resolving the generation promise and the response actually
+      // landing on the wire.
+      return chatTimeout + 60_000;
+    }
+    // No override and no chat-timeout hint — keep Node's default
+    // (300_000 ms / 5 min) which matches the upstream behavior.
+    return 300_000;
+  })();
+  // headersTimeout MUST be ≤ requestTimeout per Node docs. We give it
+  // a 60 s lower bound so a slow client header upload doesn't cap the
+  // long-tail decode budget.
+  const headersTimeoutMs = Math.min(60_000, requestTimeoutMs);
+  // keepAliveTimeout is for IDLE connections after a response. Bumping
+  // it doesn't help long-running requests but keeps connections warm
+  // for chat-completion clients that fire repeated turns.
+  const keepAliveTimeoutMs = 60_000;
+  server.requestTimeout = requestTimeoutMs;
+  server.headersTimeout = headersTimeoutMs;
+  server.keepAliveTimeout = keepAliveTimeoutMs;
+  // server.timeout is the IDLE socket timeout (legacy). Setting to 0
+  // disables it; we want long-running requests to ride on the
+  // requestTimeout above instead. Default in Node 22 is 0 already, but
+  // pin explicitly for clarity.
+  server.timeout = 0;
+  console.log(
+    `[eliza-api] Server timeouts: requestTimeout=${requestTimeoutMs}ms, headersTimeout=${headersTimeoutMs}ms, keepAliveTimeout=${keepAliveTimeoutMs}ms`,
+  );
+
   const broadcastWs = (payload: unknown): void => {
     const message = JSON.stringify(payload);
     for (const client of wsClients) {
