@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { clientMock } = vi.hoisted(() => ({
@@ -82,7 +88,9 @@ describe("LifeOpsSleepSection", () => {
     render(<LifeOpsSleepSection />);
 
     expect(screen.getByTestId("lifeops-sleep-section")).toBeTruthy();
-    await waitFor(() => expect(clientMock.getLifeOpsOverview).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(clientMock.getLifeOpsOverview).toHaveBeenCalled(),
+    );
 
     fireEvent.click(screen.getByRole("tab", { name: "History" }));
 

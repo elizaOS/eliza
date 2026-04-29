@@ -36,7 +36,11 @@ function durationMinutesFor(
   }
   const startMs = Date.parse(startAt);
   const endMs = Date.parse(endAt);
-  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+  if (
+    !Number.isFinite(startMs) ||
+    !Number.isFinite(endMs) ||
+    endMs <= startMs
+  ) {
     return null;
   }
   return Math.round((endMs - startMs) / 60_000);

@@ -1087,10 +1087,7 @@ export async function readScheduleSummary(args: {
         durationMinutes: toDurationMinutes(startMs, endMs, nowMs),
         current: episode.endAt === null,
         confidence: episode.confidence,
-        source:
-          episode.source === "manual"
-            ? "activity_gap"
-            : episode.source,
+        source: episode.source === "manual" ? "activity_gap" : episode.source,
       };
     }),
   };

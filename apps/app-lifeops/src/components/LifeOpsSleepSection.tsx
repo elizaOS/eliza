@@ -388,7 +388,8 @@ function HistoryEpisodeRow({
   const typeLabel = cycleTypeLabel(episode.cycleType);
   const typeBadge = cycleTypeBadgeClass(episode.cycleType);
   const durationPct =
-    typeof episode.durationMin === "number" && Number.isFinite(episode.durationMin)
+    typeof episode.durationMin === "number" &&
+    Number.isFinite(episode.durationMin)
       ? Math.min(100, Math.max(6, (episode.durationMin / 600) * 100))
       : 0;
 
@@ -453,7 +454,10 @@ function HistorySummaryStrip({
   summary: LifeOpsSleepHistorySummary;
 }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-4" data-testid="sleep-history-summary">
+    <div
+      className="grid gap-2 sm:grid-cols-4"
+      data-testid="sleep-history-summary"
+    >
       <MetricTile
         icon={<Moon />}
         value={String(summary.cycleCount)}

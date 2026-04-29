@@ -9,16 +9,23 @@ vi.mock("node:child_process", async (importOriginal) => {
       _file: string,
       _args: string[],
       _opts: unknown,
-      cb?: (err: NodeJS.ErrnoException | null, stdout: string, stderr: string) => void,
+      cb?: (
+        err: NodeJS.ErrnoException | null,
+        stdout: string,
+        stderr: string,
+      ) => void,
     ) => {
       const callback =
         typeof _opts === "function"
-          ? (_opts as (err: NodeJS.ErrnoException | null, s: string, e: string) => void)
+          ? (_opts as (
+              err: NodeJS.ErrnoException | null,
+              s: string,
+              e: string,
+            ) => void)
           : cb;
-      const err: NodeJS.ErrnoException = Object.assign(
-        new Error("not found"),
-        { code: "ENOENT" },
-      );
+      const err: NodeJS.ErrnoException = Object.assign(new Error("not found"), {
+        code: "ENOENT",
+      });
       callback?.(err, "", "");
       return new EventEmitter();
     },
@@ -175,9 +182,9 @@ describe("withHealth mixin", () => {
   });
 
   test("getHealthDailySummary translates HealthBridgeError to LifeOpsServiceError", async () => {
-    await expect(svc.getHealthDailySummary("2025-01-01")).rejects.toBeInstanceOf(
-      LifeOpsServiceError,
-    );
+    await expect(
+      svc.getHealthDailySummary("2025-01-01"),
+    ).rejects.toBeInstanceOf(LifeOpsServiceError);
   });
 });
 
