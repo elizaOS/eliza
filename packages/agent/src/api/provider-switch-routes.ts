@@ -46,12 +46,17 @@ export async function handleProviderSwitchRoutes(
       provider: string;
       apiKey?: string;
       primaryModel?: string;
+      useLocalEmbeddings?: boolean;
     }>(req, res);
     if (!body) return true;
     if (!body.provider || typeof body.provider !== "string") {
       error(res, "Missing provider", 400);
       return true;
     }
+    const useLocalEmbeddings =
+      typeof body.useLocalEmbeddings === "boolean"
+        ? body.useLocalEmbeddings
+        : undefined;
 
     const normalizedProvider = normalizeOnboardingProviderId(body.provider);
     if (!normalizedProvider) {
@@ -116,7 +121,11 @@ export async function handleProviderSwitchRoutes(
         return true;
       }
 
-      await applyOnboardingConnectionConfig(config, connection);
+      await applyOnboardingConnectionConfig(
+        config,
+        connection,
+        useLocalEmbeddings === undefined ? {} : { useLocalEmbeddings },
+      );
       ctx.saveElizaConfig(config);
 
       const restartReason = `provider switch to ${normalizedProvider}`;
