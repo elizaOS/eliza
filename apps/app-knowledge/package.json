@@ -8,9 +8,11 @@
     ".": "./src/index.ts",
     "./routes": "./src/routes.ts",
     "./service-loader": "./src/service-loader.ts",
+    "./setup-routes": "./src/setup-routes.ts",
     "./package.json": "./package.json"
   },
   "dependencies": {
+    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*"
   },
   "agentConfig": {
