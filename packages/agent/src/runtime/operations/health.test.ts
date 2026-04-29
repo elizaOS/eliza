@@ -149,10 +149,7 @@ describe("HealthChecker.runForRuntime", () => {
   test("checks run in parallel, not series", async () => {
     const checker = new HealthChecker();
     const started: string[] = [];
-    const resolvers = new Map<
-      string,
-      (result: HealthCheckResult) => void
-    >();
+    const resolvers = new Map<string, (result: HealthCheckResult) => void>();
     const controlled = (name: string): HealthCheck => ({
       name,
       required: false,

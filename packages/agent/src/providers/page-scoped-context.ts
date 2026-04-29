@@ -219,8 +219,9 @@ async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
 
 async function renderBrowserLiveState(): Promise<string | null> {
   try {
-    const { getBrowserWorkspaceSnapshot } =
-      await import("../services/browser-workspace.js");
+    const { getBrowserWorkspaceSnapshot } = await import(
+      "../services/browser-workspace.js"
+    );
     const snapshot = await getBrowserWorkspaceSnapshot();
     const lines: string[] = [
       `Live browser state: bridge=${snapshot.mode}, ${snapshot.tabs.length} tab${snapshot.tabs.length === 1 ? "" : "s"}.`,

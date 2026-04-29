@@ -80,12 +80,14 @@ function parseOwnerAction(value: unknown): OwnerAction {
 
 function parseJsonStringArray(value: unknown, label: string): string[] {
   const entries = parseJsonArray<unknown>(value);
+  const strings: string[] = [];
   for (const entry of entries) {
     if (typeof entry !== "string") {
       throw new Error(`[InboxTriageRepository] ${label} must contain strings`);
     }
+    strings.push(entry);
   }
-  return entries;
+  return strings;
 }
 
 function parseTriageEntry(row: Record<string, unknown>): TriageEntry {

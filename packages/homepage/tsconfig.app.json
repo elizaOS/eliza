@@ -17,6 +17,7 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "esModuleInterop": true,
+    "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "ignoreDeprecations": "6.0",
     "paths": {

@@ -1,4 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import type {
+  GetLifeOpsHealthSummaryRequest,
+  LifeOpsHealthMetric,
+  LifeOpsHealthMetricSample,
+  LifeOpsHealthSummaryResponse,
+} from "../src/contracts/index.js";
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual =
@@ -40,6 +46,7 @@ import {
   getDataPoints,
   HealthBridgeError,
 } from "../src/lifeops/health-bridge.js";
+import { createLifeOpsHealthMetricSample } from "../src/lifeops/repository.js";
 import { withHealth } from "../src/lifeops/service-mixin-health.js";
 import { LifeOpsServiceError } from "../src/lifeops/service-types.js";
 
@@ -186,7 +193,92 @@ describe("withHealth mixin", () => {
       svc.getHealthDailySummary("2025-01-01"),
     ).rejects.toBeInstanceOf(LifeOpsServiceError);
   });
+
+  test("getHealthSummary aggregates connector samples without a real health device", async () => {
+    const samples: LifeOpsHealthMetricSample[] = [
+      metricSample("steps", 6000, "steps-1"),
+      metricSample("steps", 4000, "steps-2"),
+      metricSample("calories", 1400, "calories-1"),
+      metricSample("calories", 1000, "calories-2"),
+      metricSample("heart_rate", 60, "heart-1"),
+      metricSample("heart_rate", 70, "heart-2"),
+      metricSample("weight_kg", 72, "weight-1"),
+      metricSample("weight_kg", 73, "weight-2"),
+    ];
+    const testRepository = {
+      listConnectorGrants: vi.fn(async () => []),
+      getConnectorGrant: vi.fn(async () => null),
+      getHealthSyncState: vi.fn(async () => null),
+      listHealthMetricSamples: vi.fn(async () => samples),
+      listHealthWorkouts: vi.fn(async () => []),
+      listHealthSleepEpisodes: vi.fn(async () => []),
+    };
+    class SummaryStubBase {
+      runtime = { agentId: SAME_ID, logger: console };
+      ownerEntityId = null;
+      repository = testRepository;
+      agentId() {
+        return SAME_ID;
+      }
+    }
+    const ComposedSummary = withHealth(SummaryStubBase as never);
+    const summarySvc = new (
+      ComposedSummary as new () => {
+        getHealthSummary(
+          request?: GetLifeOpsHealthSummaryRequest,
+        ): Promise<LifeOpsHealthSummaryResponse>;
+      }
+    )();
+
+    const summary = await summarySvc.getHealthSummary({
+      startDate: "2026-04-20",
+      endDate: "2026-04-20",
+      metrics: ["steps", "calories", "heart_rate", "weight_kg"],
+    });
+
+    expect(testRepository.listHealthMetricSamples).toHaveBeenCalledWith(
+      SAME_ID,
+      {
+        provider: undefined,
+        startDate: "2026-04-20",
+        endDate: "2026-04-20",
+        metrics: ["steps", "calories", "heart_rate", "weight_kg"],
+        limit: 2000,
+      },
+    );
+    expect(summary.providers).toHaveLength(4);
+    expect(summary.summaries).toEqual([
+      expect.objectContaining({
+        provider: "strava",
+        date: "2026-04-20",
+        steps: 10000,
+        calories: 2400,
+        heartRateAvg: 65,
+        weightKg: 72.5,
+      }),
+    ]);
+  });
 });
+
+function metricSample(
+  metric: LifeOpsHealthMetric,
+  value: number,
+  sourceExternalId: string,
+): LifeOpsHealthMetricSample {
+  return createLifeOpsHealthMetricSample({
+    agentId: SAME_ID,
+    provider: "strava",
+    grantId: "grant-strava",
+    metric,
+    value,
+    unit: metric === "steps" ? "count" : "unit",
+    startAt: "2026-04-20T12:00:00.000Z",
+    endAt: "2026-04-20T12:00:00.000Z",
+    localDate: "2026-04-20",
+    sourceExternalId,
+    metadata: {},
+  });
+}
 
 describe("healthAction", () => {
   test("validate is owner-gated", async () => {
