@@ -14,7 +14,7 @@
     "declaration": false,
     "outDir": "./dist",
     "baseUrl": "..",
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/*": ["../../packages/*", "../../plugins/*"]
     },
