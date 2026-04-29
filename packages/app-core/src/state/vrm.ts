@@ -1,4 +1,4 @@
-import { type BundledVrmAsset, getBootConfig } from "../config";
+import { type BundledVrmAsset, getBootConfig } from "../config/boot-config";
 import { resolveAppAssetUrl } from "../utils/asset-url";
 import type { UiTheme } from "./ui-preferences";
 
