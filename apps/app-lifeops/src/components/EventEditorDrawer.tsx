@@ -27,33 +27,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-const REMINDER_PRESETS: ReadonlyArray<{ label: string; minutes: number }> = [
-  { label: "5m", minutes: 5 },
-  { label: "10m", minutes: 10 },
-  { label: "15m", minutes: 15 },
-  { label: "30m", minutes: 30 },
-  { label: "1h", minutes: 60 },
-  { label: "1d", minutes: 1440 },
-];
-
-type RecurrencePresetValue =
-  | "none"
-  | "daily"
-  | "weekly"
-  | "monthly"
-  | "yearly"
-  | "custom";
-
-const WEEKDAY_RRULE_CODES = [
-  "SU",
-  "MO",
-  "TU",
-  "WE",
-  "TH",
-  "FR",
-  "SA",
-] as const;
-
 function toLocalInputValue(isoString: string | null): string {
   if (!isoString) {
     return "";
@@ -90,56 +63,6 @@ function basicEmailValid(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-function rruleForPreset(
-  preset: RecurrencePresetValue,
-  date: Date,
-): string | null {
-  switch (preset) {
-    case "daily":
-      return "FREQ=DAILY";
-    case "weekly":
-      return `FREQ=WEEKLY;BYDAY=${WEEKDAY_RRULE_CODES[date.getDay()]}`;
-    case "monthly":
-      return `FREQ=MONTHLY;BYMONTHDAY=${date.getDate()}`;
-    case "yearly":
-      return "FREQ=YEARLY";
-    default:
-      return null;
-  }
-}
-
-function recurrencePresetLabel(
-  preset: RecurrencePresetValue,
-  date: Date,
-): string {
-  const weekdayLong = new Intl.DateTimeFormat(undefined, {
-    weekday: "long",
-  }).format(date);
-  switch (preset) {
-    case "none":
-      return "Does not repeat";
-    case "daily":
-      return "Daily";
-    case "weekly":
-      return `Weekly on ${weekdayLong}`;
-    case "monthly":
-      return `Monthly on day ${date.getDate()}`;
-    case "yearly":
-      return "Yearly";
-    case "custom":
-      return "Custom (RRULE)";
-  }
-}
-
-const RECURRENCE_PRESETS: ReadonlyArray<RecurrencePresetValue> = [
-  "none",
-  "daily",
-  "weekly",
-  "monthly",
-  "yearly",
-  "custom",
-];
-
 export type EventEditorMode = "create" | "edit";
 
 export interface EventEditorDefaults {
@@ -170,9 +93,6 @@ interface FormState {
   notes: string;
   location: string;
   attendees: string[];
-  reminderMinutes: number[];
-  recurrencePreset: RecurrencePresetValue;
-  customRrule: string;
   calendarId: string;
   grantId: string;
   side: LifeOpsConnectorSide;
@@ -188,9 +108,6 @@ function blankFormState(defaults?: EventEditorDefaults): FormState {
     notes: "",
     location: "",
     attendees: [],
-    reminderMinutes: [],
-    recurrencePreset: "none",
-    customRrule: "",
     calendarId: defaults?.calendarId ?? "",
     grantId: defaults?.grantId ?? "",
     side: defaults?.side ?? "owner",
@@ -208,39 +125,75 @@ function formStateFromEvent(event: LifeOpsCalendarEvent): FormState {
     notes: event.description ?? "",
     location: event.location ?? "",
     attendees,
-    reminderMinutes: [],
-    recurrencePreset: "none",
-    customRrule: "",
     calendarId: event.calendarId,
     grantId: event.grantId ?? "",
     side: event.side,
   };
 }
 
-function buildRecurrenceArray(state: FormState): string[] | undefined {
-  if (state.recurrencePreset === "none") {
-    return undefined;
-  }
-  if (state.recurrencePreset === "custom") {
-    const rule = state.customRrule.trim();
-    if (!rule) return undefined;
-    const stripped = rule.startsWith("RRULE:") ? rule.slice("RRULE:".length) : rule;
-    return [stripped];
-  }
-  const startDate = fromLocalInputValue(state.startAt);
-  if (!startDate) return undefined;
-  const rule = rruleForPreset(state.recurrencePreset, new Date(startDate));
-  return rule ? [rule] : undefined;
-}
-
 function attendeesToContract(
   emails: string[],
-): CreateLifeOpsCalendarEventAttendee[] | undefined {
+): CreateLifeOpsCalendarEventAttendee[] {
   const valid = emails
     .map((value) => value.trim())
-    .filter((value) => value.length > 0 && basicEmailValid(value));
-  if (valid.length === 0) return undefined;
-  return valid.map((email) => ({ email }));
+    .filter((value) => value.length > 0 && basicEmailValid(value))
+    .map((value) => value.toLowerCase());
+  const deduped = [...new Set(valid)];
+  return deduped.map((email) => ({ email }));
+}
+
+function normalizedEmailList(emails: string[]): string[] {
+  return attendeesToContract(emails)
+    .map((attendee) => attendee.email)
+    .sort();
+}
+
+function calendarOptionValue(
+  calendar: Pick<LifeOpsCalendarSummary, "side" | "grantId" | "calendarId">,
+): string {
+  return [calendar.side, calendar.grantId, calendar.calendarId]
+    .map((part) => encodeURIComponent(part))
+    .join(":");
+}
+
+function sameCalendarIdentity(
+  calendar: Pick<LifeOpsCalendarSummary, "side" | "grantId" | "calendarId">,
+  state: Pick<FormState, "side" | "grantId" | "calendarId">,
+): boolean {
+  return (
+    calendar.side === state.side &&
+    calendar.grantId === state.grantId &&
+    calendar.calendarId === state.calendarId
+  );
+}
+
+function findSelectedCalendarOption(
+  calendars: LifeOpsCalendarSummary[],
+  state: Pick<FormState, "side" | "grantId" | "calendarId">,
+): LifeOpsCalendarSummary | null {
+  const exact = calendars.find((calendar) =>
+    sameCalendarIdentity(calendar, state),
+  );
+  if (exact) return exact;
+  if (state.grantId) return null;
+  const matches = calendars.filter(
+    (calendar) =>
+      calendar.side === state.side && calendar.calendarId === state.calendarId,
+  );
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function didAttendeesChange(
+  formAttendees: string[],
+  event: LifeOpsCalendarEvent,
+): boolean {
+  const previous = normalizedEmailList(
+    event.attendees
+      .map((attendee) => attendee.email?.trim() ?? "")
+      .filter((email) => email.length > 0),
+  );
+  const next = normalizedEmailList(formAttendees);
+  return JSON.stringify(previous) !== JSON.stringify(next);
 }
 
 export function EventEditorDrawer({
@@ -261,8 +214,6 @@ export function EventEditorDrawer({
   const [calendars, setCalendars] = useState<LifeOpsCalendarSummary[]>([]);
   const [calendarsLoading, setCalendarsLoading] = useState(false);
   const [calendarsError, setCalendarsError] = useState<string | null>(null);
-  const [customReminderDraft, setCustomReminderDraft] = useState("");
-  const [showCustomReminder, setShowCustomReminder] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -279,8 +230,6 @@ export function EventEditorDrawer({
       setForm(formStateFromEvent(event));
     }
     setError(null);
-    setCustomReminderDraft("");
-    setShowCustomReminder(false);
   }, [open, isCreate, event, createDefaults]);
 
   // Load calendar list when drawer opens. The selector is sourced from
@@ -297,7 +246,19 @@ export function EventEditorDrawer({
         if (cancelled) return;
         setCalendars(response.calendars);
         setForm((prev) => {
-          if (prev.calendarId) return prev;
+          if (prev.calendarId) {
+            const selected = findSelectedCalendarOption(
+              response.calendars,
+              prev,
+            );
+            return selected && !prev.grantId
+              ? {
+                  ...prev,
+                  grantId: selected.grantId,
+                  side: selected.side,
+                }
+              : prev;
+          }
           const primary =
             response.calendars.find((calendar) => calendar.primary) ??
             response.calendars[0];
@@ -362,30 +323,6 @@ export function EventEditorDrawer({
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const toggleReminderPreset = useCallback((minutes: number) => {
-    setForm((prev) => {
-      const exists = prev.reminderMinutes.includes(minutes);
-      const next = exists
-        ? prev.reminderMinutes.filter((value) => value !== minutes)
-        : [...prev.reminderMinutes, minutes];
-      next.sort((a, b) => a - b);
-      return { ...prev, reminderMinutes: next };
-    });
-  }, []);
-
-  const addCustomReminder = useCallback(() => {
-    const parsed = Number(customReminderDraft);
-    if (!Number.isFinite(parsed) || parsed < 0) return;
-    const minutes = Math.floor(parsed);
-    setForm((prev) => {
-      if (prev.reminderMinutes.includes(minutes)) return prev;
-      const next = [...prev.reminderMinutes, minutes];
-      next.sort((a, b) => a - b);
-      return { ...prev, reminderMinutes: next };
-    });
-    setCustomReminderDraft("");
-  }, [customReminderDraft]);
-
   const handleSave = useCallback(
     async (options: { keepOpen?: boolean } = {}) => {
       setError(null);
@@ -415,13 +352,9 @@ export function EventEditorDrawer({
             startAt: startIso,
             endAt: endIso,
             timeZone: TIME_ZONE,
-            attendees: attendeesToContract(form.attendees),
-            recurrence: buildRecurrenceArray(form),
-            reminders:
-              form.reminderMinutes.length > 0
-                ? form.reminderMinutes.map((minutesBefore) => ({
-                    minutesBefore,
-                  }))
+            attendees:
+              attendeesToContract(form.attendees).length > 0
+                ? attendeesToContract(form.attendees)
                 : undefined,
           };
           const result = await client.createLifeOpsCalendarEvent(request);
@@ -444,8 +377,8 @@ export function EventEditorDrawer({
         } else {
           if (!event) return;
           const patch: LifeOpsCalendarEventUpdate = {
-            side: event.side,
-            grantId: event.grantId,
+            side: form.side,
+            grantId: form.grantId || event.grantId,
             calendarId: form.calendarId || event.calendarId,
             timeZone: event.timezone ?? TIME_ZONE,
           };
@@ -458,18 +391,8 @@ export function EventEditorDrawer({
           if (form.location.trim() !== (event.location ?? "")) {
             patch.location = form.location.trim();
           }
-          const attendeesContract = attendeesToContract(form.attendees);
-          if (attendeesContract) {
-            patch.attendees = attendeesContract;
-          }
-          const recurrence = buildRecurrenceArray(form);
-          if (recurrence) {
-            patch.recurrence = recurrence;
-          }
-          if (form.reminderMinutes.length > 0) {
-            patch.reminders = form.reminderMinutes.map((minutesBefore) => ({
-              minutesBefore,
-            }));
+          if (didAttendeesChange(form.attendees, event)) {
+            patch.attendees = attendeesToContract(form.attendees);
           }
           const result = await client.updateLifeOpsCalendarEvent(
             event.externalId,
@@ -543,11 +466,6 @@ export function EventEditorDrawer({
     }
   }, [event, onClose, onDeleted, setActionNotice, t]);
 
-  const startDate = useMemo(() => {
-    const iso = fromLocalInputValue(form.startAt);
-    return iso ? new Date(iso) : new Date();
-  }, [form.startAt]);
-
   if (!isCreate && !event) {
     return null;
   }
@@ -562,8 +480,13 @@ export function EventEditorDrawer({
     ? t("eventEditor.creating", { defaultValue: "Creating…" })
     : t("common.saving", { defaultValue: "Saving…" });
 
-  const calendarSelectValue =
-    form.calendarId || calendarOptions[0]?.calendarId || "";
+  const selectedCalendarOption = findSelectedCalendarOption(
+    calendarOptions,
+    form,
+  );
+  const calendarSelectValue = selectedCalendarOption
+    ? calendarOptionValue(selectedCalendarOption)
+    : "";
 
   return (
     <>

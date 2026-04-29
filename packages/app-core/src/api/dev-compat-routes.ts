@@ -64,6 +64,9 @@ export async function handleDevCompatRoutes(
       sendJsonErrorResponse(res, 403, "loopback only");
       return true;
     }
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
     const upstream = process.env.ELIZA_ELECTROBUN_SCREENSHOT_URL?.trim();
     if (!upstream) {
       sendJsonResponse(res, 404, {
@@ -129,6 +132,9 @@ export async function handleDevCompatRoutes(
   if (method === "GET" && url.pathname === "/api/dev/console-log") {
     if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
       sendJsonErrorResponse(res, 403, "loopback only");
+      return true;
+    }
+    if (!(await ensureRouteAuthorized(req, res, state))) {
       return true;
     }
     const logPath = process.env.ELIZA_DESKTOP_DEV_LOG_PATH?.trim();

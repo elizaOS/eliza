@@ -91,7 +91,7 @@ function buildRouteContext(
   };
 }
 
-const STATIC_ROUTES: Array<{ type: string; path: string }> = [
+const STATIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> = [
   { type: "GET", path: "/api/browser-bridge/sessions" },
   { type: "GET", path: "/api/browser-bridge/settings" },
   { type: "POST", path: "/api/browser-bridge/settings" },
@@ -100,14 +100,14 @@ const STATIC_ROUTES: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/browser-bridge/companions" },
   { type: "GET", path: "/api/browser-bridge/packages" },
   { type: "POST", path: "/api/browser-bridge/packages/open-path" },
-  { type: "POST", path: "/api/browser-bridge/companions/sync" },
+  { type: "POST", path: "/api/browser-bridge/companions/sync", public: true },
   { type: "GET", path: "/api/browser-bridge/tabs" },
   { type: "GET", path: "/api/browser-bridge/current-page" },
   { type: "POST", path: "/api/browser-bridge/sync" },
   { type: "POST", path: "/api/browser-bridge/sessions" },
 ];
 
-const DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
+const DYNAMIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> = [
   { type: "GET", path: "/api/browser-bridge/sessions/:id" },
   { type: "POST", path: "/api/browser-bridge/sessions/:id/confirm" },
   { type: "POST", path: "/api/browser-bridge/sessions/:id/progress" },
@@ -115,10 +115,12 @@ const DYNAMIC_ROUTES: Array<{ type: string; path: string }> = [
   {
     type: "POST",
     path: "/api/browser-bridge/companions/sessions/:id/progress",
+    public: true,
   },
   {
     type: "POST",
     path: "/api/browser-bridge/companions/sessions/:id/complete",
+    public: true,
   },
   { type: "POST", path: "/api/browser-bridge/packages/:browser/build" },
   {
@@ -154,6 +156,7 @@ const browserBridgePluginRoutes: Route[] = [
         type: r.type as Route["type"],
         path: r.path,
         rawPath: true as const,
+        ...(r.public ? ({ public: true } as const) : {}),
         handler: routeHandler(),
       }) as Route,
   ),
@@ -163,6 +166,7 @@ const browserBridgePluginRoutes: Route[] = [
         type: r.type as Route["type"],
         path: r.path,
         rawPath: true as const,
+        ...(r.public ? ({ public: true } as const) : {}),
         handler: routeHandler(),
       }) as Route,
   ),

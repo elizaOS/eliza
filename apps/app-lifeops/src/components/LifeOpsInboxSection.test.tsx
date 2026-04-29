@@ -115,6 +115,38 @@ function gmailFeedFixture(message = SAMPLE_GMAIL_MESSAGE) {
 }
 
 describe("LifeOpsInboxSection", () => {
+  it("requests the Messages section as DM-only", () => {
+    useInboxMock.mockReturnValue({
+      channel: "all",
+      error: null,
+      loading: false,
+      messages: [],
+      threadGroups: [],
+      refresh: vi.fn(),
+      searchQuery: "",
+      setChannel: vi.fn(),
+      setSearchQuery: vi.fn(),
+    });
+
+    render(
+      <LifeOpsInboxSection
+        title="Messages"
+        selection={{ messageId: null }}
+        onSelect={vi.fn()}
+        channels={["discord", "telegram", "signal"]}
+      />,
+    );
+
+    expect(useInboxMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channels: ["discord", "telegram", "signal"],
+        chatTypeFilter: ["dm"],
+        maxParticipants: undefined,
+        sortByPriority: true,
+      }),
+    );
+  });
+
   it("keeps compact inboxes in list mode until a message is selected", () => {
     const onSelect = vi.fn();
 

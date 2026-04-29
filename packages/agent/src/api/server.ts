@@ -1284,7 +1284,6 @@ async function handleRequest(
     !isCloudOnboardingStatusEndpoint &&
     !isWhatsAppWebhookEndpoint &&
     !isBlueBubblesWebhookEndpoint &&
-    !pathname.startsWith("/api/browser-bridge/companions/") &&
     !isPublicRuntimePluginRoute({
       runtime: state.runtime,
       method,

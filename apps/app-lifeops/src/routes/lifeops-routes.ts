@@ -183,6 +183,12 @@ const LIFEOPS_RATE_LIMITS = {
   default: { maxRequests: 60, windowMs: 60_000 },
 } satisfies Record<string, RateLimitConfig>;
 
+const ACTIVITY_SIGNALS_DEFAULT_LIMIT = 200;
+const ACTIVITY_SIGNALS_MAX_LIMIT = 500;
+const MS_PER_DAY = 86_400_000;
+const MAX_SCREEN_TIME_WINDOW_DAYS = 31;
+const MAX_SCREEN_TIME_WINDOW_MS = MAX_SCREEN_TIME_WINDOW_DAYS * MS_PER_DAY;
+
 /**
  * Check rate limit for a LifeOps operation. If the limit is exceeded,
  * sends a 429 response with Retry-After header and returns `true`.
@@ -572,6 +578,40 @@ function parseRequiredIsoQuery(url: URL, field: string): string {
     throw new LifeOpsServiceError(400, `${field} must be a valid ISO string`);
   }
   return value;
+}
+
+function parseOptionalIsoQuery(
+  value: string | null,
+  field: string,
+): string | null {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (!Number.isFinite(Date.parse(normalized))) {
+    throw new LifeOpsServiceError(400, `${field} must be a valid ISO string`);
+  }
+  return normalized;
+}
+
+function parseBoundedIsoWindowQuery(url: URL): {
+  since: string;
+  until: string;
+} {
+  const since = parseRequiredIsoQuery(url, "since");
+  const until = parseRequiredIsoQuery(url, "until");
+  const sinceMs = Date.parse(since);
+  const untilMs = Date.parse(until);
+  if (untilMs <= sinceMs) {
+    throw new LifeOpsServiceError(400, "until must be after since");
+  }
+  if (untilMs - sinceMs > MAX_SCREEN_TIME_WINDOW_MS) {
+    throw new LifeOpsServiceError(
+      400,
+      `window must be ${MAX_SCREEN_TIME_WINDOW_DAYS} days or less`,
+    );
+  }
+  return { since, until };
 }
 
 async function runRoute(

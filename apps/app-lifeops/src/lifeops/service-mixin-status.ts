@@ -316,6 +316,13 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
               companions: browserCompanions.value,
             }
           : null;
+      const browserReadiness = browser
+        ? resolveBrowserBridgeReadiness(
+            browser.settings,
+            browser.companions,
+            now.getTime(),
+          )
+        : null;
       const xStatuses = [xLocal, xCloud]
         .filter(
           (
@@ -466,31 +473,45 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
           id: "activity.browser",
           domain: "activity",
           label: "Browser activity",
-          state: browser
-            ? browser.settings.enabled &&
-              browser.settings.trackingMode !== "off"
-              ? "working"
-              : "not_configured"
+          state: browserReadiness
+            ? browserReadinessCapabilityState(browserReadiness.state)
             : "degraded",
           summary: browser
-            ? `${browser.settings.trackingMode} tracking; ${browser.companions.length} companions`
+            ? browserReadinessSummary(browserReadiness, browser.settings)
             : "Browser status failed to load",
-          confidence: browser ? 0.75 : 0.3,
+          confidence: browserReadiness
+            ? browserReadinessConfidence(browserReadiness.state)
+            : 0.3,
           checkedAt,
           evidence: [
             {
               label: "Browser settings",
-              state: browser
-                ? browser.settings.enabled
-                  ? "working"
-                  : "not_configured"
+              state: browserReadiness
+                ? browserReadinessCapabilityState(browserReadiness.state)
                 : "degraded",
               detail: browser
-                ? `site access ${browser.settings.siteAccessMode}`
+                ? `${browser.settings.trackingMode}; site access ${browser.settings.siteAccessMode}; control ${browser.settings.allowBrowserControl ? "on" : "off"}`
                 : browserSettings.ok
                   ? "Missing browser companions"
                   : browserSettings.message,
               observedAt: browser?.settings.updatedAt ?? checkedAt,
+            },
+            {
+              label: "Browser companions",
+              state: browserReadiness
+                ? browserReadiness.ready
+                  ? "working"
+                  : browserReadiness.connectedCompanions.length > 0
+                    ? "degraded"
+                    : "not_configured"
+                : "degraded",
+              detail: browserReadiness
+                ? `${browserReadiness.recentConnectedCompanions.length}/${browserReadiness.connectedCompanions.length}/${browser?.companions.length ?? 0} recent/connected/paired`
+                : browserCompanions.ok
+                  ? "Browser settings failed"
+                  : browserCompanions.message,
+              observedAt:
+                browserReadiness?.primaryCompanion?.lastSeenAt ?? checkedAt,
             },
           ],
         }),
