@@ -23,9 +23,11 @@ describe("catalog", () => {
     }
   });
 
-  it("every entry declares a Q* quant and a concrete gguf filename", () => {
+  it("every entry declares a quant label and a concrete gguf filename", () => {
     for (const model of MODEL_CATALOG) {
-      expect(model.quant).toMatch(/^Q\d/);
+      // Standard llama.cpp Q-quants (Q4_K_M, IQ4_XS, …) plus exotic schemes
+      // like TurboQuant 1-bit. Whatever it is, it must be non-empty.
+      expect(model.quant.length).toBeGreaterThan(0);
       expect(model.ggufFile).toMatch(/\.gguf$/i);
       expect(model.sizeGb).toBeGreaterThan(0);
       expect(model.minRamGb).toBeGreaterThanOrEqual(model.sizeGb);
@@ -62,6 +64,31 @@ describe("catalog", () => {
       });
       expect(url).toBe(
         "https://huggingface.co/bartowski/Test-GGUF/resolve/main/Test%20Model-Q4_K_M.gguf?download=true",
+      );
+    } finally {
+      if (saved !== undefined) process.env.MILADY_HF_BASE_URL = saved;
+    }
+  });
+
+  it("buildHuggingFaceResolveUrl preserves nested ggufFile path separators", () => {
+    const saved = process.env.MILADY_HF_BASE_URL;
+    delete process.env.MILADY_HF_BASE_URL;
+    try {
+      const url = buildHuggingFaceResolveUrl({
+        id: "nested",
+        displayName: "Nested",
+        hfRepo: "apothic/bonsai-8B-1bit-turboquant",
+        ggufFile: "models/gguf/8B/Bonsai-8B.gguf",
+        params: "8B",
+        quant: "1-bit TurboQuant",
+        sizeGb: 1.2,
+        minRamGb: 8,
+        category: "chat",
+        bucket: "mid",
+        blurb: "",
+      });
+      expect(url).toBe(
+        "https://huggingface.co/apothic/bonsai-8B-1bit-turboquant/resolve/main/models/gguf/8B/Bonsai-8B.gguf?download=true",
       );
     } finally {
       if (saved !== undefined) process.env.MILADY_HF_BASE_URL = saved;
