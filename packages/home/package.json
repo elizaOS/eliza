@@ -15,11 +15,11 @@
     "cap:sync": "capacitor sync"
   },
   "dependencies": {
-    "@capacitor/app": "^8.0.1",
-    "@capacitor/core": "8.0.2",
-    "@capacitor/keyboard": "8.0.0",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/core": "8.3.1",
+    "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",
-    "@capacitor/status-bar": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "react": "^19.0.0",

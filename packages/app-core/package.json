@@ -63,9 +63,9 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
-    "@capacitor/core": "8.0.2",
-    "@capacitor/haptics": "8.0.0",
-    "@capacitor/keyboard": "8.0.0",
+    "@capacitor/core": "8.3.1",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/keyboard": "8.0.3",
     "@capacitor/preferences": "^8.0.1",
     "@elizaos/autonomous": "workspace:*",
     "@elizaos/ui": "workspace:*",
