@@ -159,7 +159,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "mid",
     blurb:
-      "1-bit weights load on stock llama.cpp; TurboQuant's KV-cache memory win is CPU/CUDA-only (apothic/llama.cpp-1bit-turboquant fork). On mobile (Vulkan/GPU-delegate) and Apple Silicon (Metal), Bonsai runs at full KV cache. Mobile-experimental.",
+      '1-bit weights with TurboQuant KV-cache compression (~4-4.6x KV memory cut) on phone CPU via the apothic/llama.cpp-1bit-turboquant fork. Auto-enabled when the AOSP runtime loads any GGUF whose filename contains "bonsai" (k=tbq4_0, v=tbq3_0); override with MILADY_LLAMA_CACHE_TYPE_K/_V. Apple Silicon (Metal) and Vulkan GPU still run at full fp16 KV cache.',
   },
 
   // ─── large (8-20 GB) ────────────────────────────────────────────────

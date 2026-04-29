@@ -41,7 +41,6 @@
  *     - llama_model_free / llama_free
  *     - llama_model_get_vocab / llama_vocab_eos / llama_vocab_is_eog
  *     - llama_tokenize / llama_token_to_piece
- *     - llama_batch_get_one / llama_decode
  *     - llama_sampler_chain_add / llama_sampler_init_temp /
  *       llama_sampler_init_top_p / llama_sampler_init_dist /
  *       llama_sampler_init_greedy / llama_sampler_sample /
@@ -55,6 +54,8 @@
  *     - milady_llama_init_from_model
  *     - milady_llama_sampler_chain_params_default / *_free
  *     - milady_llama_sampler_chain_init
+ *     - milady_llama_batch_get_one / milady_llama_batch_free
+ *     - milady_llama_decode
  *
  * Struct-by-value handled via libmilady-llama-shim.so (NEEDED-links
  * libllama.so, ships in the same per-ABI asset dir). bun:ffi cannot pass
@@ -161,6 +162,17 @@ interface LlamaSymbols {
 
   llama_set_embeddings: (ctx: Pointer, embeddings: boolean) => void;
   /**
+   * `llama_get_memory(ctx)` returns the opaque memory handle (KV cache).
+   * `llama_memory_clear(mem, data)` wipes the KV cache so the next
+   * `llama_decode` call starts at position 0. We call this at the top
+   * of every generate() / embed() to reset state between requests —
+   * without it, llama.cpp accumulates KV slots across calls and decode
+   * eventually returns rc=1 ("could not find a KV slot for the batch")
+   * once the cache fills up.
+   */
+  llama_get_memory: (ctx: Pointer) => Pointer;
+  llama_memory_clear: (mem: Pointer, data: boolean) => void;
+  /**
    * `llama_get_embeddings_seq(ctx, seq_id)` — returns a `float *` of length
    * `n_embd` for the given sequence id when pooling is configured. Returns
    * NULL when the model is not in embeddings mode or the sequence has no
@@ -193,8 +205,11 @@ interface LlamaSymbols {
     special: boolean,
   ) => number;
 
-  llama_batch_get_one: (tokens: Pointer, n_tokens: number) => Pointer;
-  llama_decode: (ctx: Pointer, batch: Pointer) => number;
+  // NOTE: `llama_batch_get_one` returns `struct llama_batch` by value and
+  // `llama_decode` consumes it the same way — neither is callable directly
+  // through bun:ffi (struct-aggregate ABI lowering is not synthesised).
+  // Use the pointer-style wrappers on `ShimSymbols`
+  // (`milady_llama_batch_get_one` / `milady_llama_decode`) instead.
 
   llama_sampler_chain_add: (chain: Pointer, sampler: Pointer) => void;
   llama_sampler_init_temp: (t: number) => Pointer;
@@ -242,6 +257,8 @@ interface ShimSymbols {
   milady_llama_context_params_default: () => Pointer;
   milady_llama_context_params_free: (p: Pointer) => void;
   milady_llama_context_params_set_n_ctx: (p: Pointer, v: number) => void;
+  milady_llama_context_params_set_n_batch: (p: Pointer, v: number) => void;
+  milady_llama_context_params_set_n_ubatch: (p: Pointer, v: number) => void;
   milady_llama_context_params_set_n_threads: (p: Pointer, v: number) => void;
   milady_llama_context_params_set_n_threads_batch: (
     p: Pointer,
@@ -266,6 +283,22 @@ interface ShimSymbols {
   milady_llama_sampler_chain_params_default: () => Pointer;
   milady_llama_sampler_chain_params_free: (p: Pointer) => void;
   milady_llama_sampler_chain_init: (params: Pointer) => Pointer;
+
+  /**
+   * Pointer-style wrappers around llama.cpp's struct-by-value batch API.
+   * `llama_batch_get_one` returns `struct llama_batch` by value and
+   * `llama_decode` takes the same struct by value — bun:ffi cannot
+   * round-trip aggregates through foreign function calls (the SysV
+   * AArch64 / x86_64 ABI for >16-byte aggregates uses hidden return
+   * pointers / split-register lowering that bun:ffi doesn't synthesise),
+   * so we wrap both. The shim version of `_get_one` malloc's a heap
+   * `llama_batch *`, the matching `_free` releases that heap struct
+   * (NOT the token buffer the caller owns), and `milady_llama_decode`
+   * dereferences the pointer before delegating to real `llama_decode`.
+   */
+  milady_llama_batch_get_one: (tokens: Pointer, n_tokens: number) => Pointer;
+  milady_llama_batch_free: (batch: Pointer) => void;
+  milady_llama_decode: (ctx: Pointer, batch: Pointer) => number;
 }
 
 interface RuntimeWithRegisterService {
@@ -547,6 +580,8 @@ function dlopenLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
     llama_set_embeddings: { args: [T.ptr, T.bool], returns: T.void },
     llama_get_embeddings_seq: { args: [T.ptr, T.i32], returns: T.ptr },
     llama_get_embeddings: { args: [T.ptr], returns: T.ptr },
+    llama_get_memory: { args: [T.ptr], returns: T.ptr },
+    llama_memory_clear: { args: [T.ptr, T.bool], returns: T.void },
 
     llama_tokenize: {
       args: [T.ptr, T.ptr, T.i32, T.ptr, T.i32, T.bool, T.bool],
@@ -557,8 +592,8 @@ function dlopenLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
       returns: T.i32,
     },
 
-    llama_batch_get_one: { args: [T.ptr, T.i32], returns: T.ptr },
-    llama_decode: { args: [T.ptr, T.ptr], returns: T.i32 },
+    // Skip llama_batch_get_one / llama_decode — see LlamaSymbols comment.
+    // The pointer-style wrappers in ShimSymbols are bound below.
 
     llama_sampler_chain_add: { args: [T.ptr, T.ptr], returns: T.void },
     llama_sampler_init_temp: { args: [T.f32], returns: T.ptr },
@@ -602,6 +637,14 @@ function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
       args: [T.ptr, T.u32],
       returns: T.void,
     },
+    milady_llama_context_params_set_n_batch: {
+      args: [T.ptr, T.u32],
+      returns: T.void,
+    },
+    milady_llama_context_params_set_n_ubatch: {
+      args: [T.ptr, T.u32],
+      returns: T.void,
+    },
     milady_llama_context_params_set_n_threads: {
       args: [T.ptr, T.i32],
       returns: T.void,
@@ -634,6 +677,13 @@ function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
       returns: T.void,
     },
     milady_llama_sampler_chain_init: { args: [T.ptr], returns: T.ptr },
+
+    milady_llama_batch_get_one: {
+      args: [T.ptr, T.i32],
+      returns: T.ptr,
+    },
+    milady_llama_batch_free: { args: [T.ptr], returns: T.void },
+    milady_llama_decode: { args: [T.ptr, T.ptr], returns: T.i32 },
   });
   /* Deliberate boundary cast: bun:ffi.dlopen returns weakly-typed callable map */
   return handle.symbols as unknown as ShimSymbols;
@@ -657,6 +707,15 @@ class AospLlamaAdapter implements AospLoader {
   private nCtx = 0;
   private loadedPath: string | null = null;
   private backendInitialized = false;
+  /**
+   * Tracks whether the current ctx has had at least one successful
+   * `llama_decode` call. `llama_memory_clear` segfaults on cuttlefish
+   * x86_64 when called against a freshly-initialized ctx with no
+   * decoded positions, so we only invoke it once we know the KV cache
+   * has live state to wipe. Reset to `false` on every `loadModel` /
+   * `unloadModel`.
+   */
+  private hasDecoded = false;
 
   constructor(ffi: BunFFIModule, sym: LlamaSymbols, shim: ShimSymbols) {
     this.ffi = ffi;
@@ -684,7 +743,8 @@ class AospLlamaAdapter implements AospLoader {
     // Resolve runtime tunables. The active-model coordinator only forwards
     // `{ modelPath }` today, so we backfill from env so AOSP doesn't run at
     // upstream defaults that under-use phone CPU cores.
-    const contextSize = args.contextSize ?? readEnvInt("MILADY_LLAMA_N_CTX", 4096);
+    const contextSize =
+      args.contextSize ?? readEnvInt("MILADY_LLAMA_N_CTX", 8192);
     const maxThreads = args.maxThreads ?? readEnvInt("MILADY_LLAMA_THREADS", 0);
     const useGpu = args.useGpu ?? false;
     const kvCacheType = resolveKvCacheType(args.modelPath, args.kvCacheType);
@@ -746,7 +806,26 @@ class AospLlamaAdapter implements AospLoader {
       //     less than the input token count for output-pruning models —
       //     we'd read OOB on the mean-pool fallback. By forcing MEAN at
       //     init we collapse the embed() path to a single read.
-      this.shim.milady_llama_context_params_set_n_ctx(ctxParamsPtr, contextSize);
+      this.shim.milady_llama_context_params_set_n_ctx(
+        ctxParamsPtr,
+        contextSize,
+      );
+      // n_batch = 2048: the per-decode token cap. We chunk longer prompts
+      // in the decode loop. Setting this to n_ctx makes the worst-case
+      // compute graph allocate ~1.85 GiB (8192 ubatch on a 360M model)
+      // which both wedges the bun event loop long enough to trip the
+      // service watchdog and pushes phone RAM over budget.
+      // n_ubatch = 512: upstream default, matches phone CPU cache.
+      const nBatchParam = readEnvInt("MILADY_LLAMA_N_BATCH", 2048);
+      const nUBatchParam = readEnvInt("MILADY_LLAMA_N_UBATCH", 512);
+      this.shim.milady_llama_context_params_set_n_batch(
+        ctxParamsPtr,
+        nBatchParam,
+      );
+      this.shim.milady_llama_context_params_set_n_ubatch(
+        ctxParamsPtr,
+        nUBatchParam,
+      );
       this.shim.milady_llama_context_params_set_n_threads(
         ctxParamsPtr,
         maxThreads,
@@ -794,6 +873,7 @@ class AospLlamaAdapter implements AospLoader {
     this.vocab = this.sym.llama_model_get_vocab(modelPtr);
     this.nCtx = this.sym.llama_n_ctx(ctxPtr);
     this.loadedPath = args.modelPath;
+    this.hasDecoded = false;
     logger.info(
       `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_threads=${maxThreads}, gpu=${useGpu}, kv_k=${kvCacheType?.k ?? "f16"}, kv_v=${kvCacheType?.v ?? "f16"})`,
     );
@@ -811,6 +891,7 @@ class AospLlamaAdapter implements AospLoader {
     this.vocab = null;
     this.nCtx = 0;
     this.loadedPath = null;
+    this.hasDecoded = false;
   }
 
   async generate(args: {
@@ -825,14 +906,30 @@ class AospLlamaAdapter implements AospLoader {
     const ctx = this.ctx;
     const vocab = this.vocab;
 
+    // 0. Reset KV cache for this turn. The b8198 cuttlefish build
+    // segfaults when llama_memory_clear runs on a freshly-initialized
+    // ctx (no positions yet), so we only wipe once we've decoded at
+    // least one batch. The first generate() / embed() against a fresh
+    // ctx skips the clear; subsequent calls always wipe before the
+    // first chunk so prompts can land cleanly without stacking on top
+    // of stale KV state.
+    if (this.hasDecoded) {
+      const memHandle = this.sym.llama_get_memory(ctx);
+      if (memHandle) {
+        this.sym.llama_memory_clear(memHandle, false);
+      }
+    }
+
     // 1. Tokenize the prompt. Two-pass: ask for length (n_tokens_max=0,
-    // empty buffer — llama_tokenize never reads or writes through the
-    // pointer when the cap is zero, so a zero-length probe array is
-    // sufficient and avoids the wasteful 4-byte allocation), then alloc
-    // and fill.
+    // single-slot buffer — llama_tokenize never reads or writes through
+    // the pointer when the cap is zero, but bun:ffi's ptr() helper
+    // rejects zero-length TypedArrays with
+    // `ArrayBufferView must have a length > 0`. A length-1 probe is the
+    // smallest legal allocation that round-trips through ptr() without
+    // a runtime exception. Then alloc and fill on the second pass.
     const promptBuf = encodeCString(args.prompt);
     const promptByteLen = promptBuf.length - 1; // exclude NUL
-    const probe = new Int32Array(0);
+    const probe = new Int32Array(1);
     const requested = this.sym.llama_tokenize(
       vocab,
       this.ffi.ptr(promptBuf),
@@ -907,15 +1004,88 @@ class AospLlamaAdapter implements AospLoader {
 
     try {
       // 3. Decode the prompt batch.
-      const promptBatch = this.sym.llama_batch_get_one(
-        this.ffi.ptr(tokens),
-        written,
+      // llama.cpp's llama_decode rejects token-only batches when the
+      // context is in embedding mode — the per-call assert is
+      //   GGML_ASSERT((!batch_inp.token && batch_inp.embd) ||
+      //               (batch_inp.token && !batch_inp.embd))
+      // and a previous embed() call may have flipped the flag on the
+      // shared context. Reset to OFF before every chat decode so the
+      // batch shape that llama_batch_get_one produces (token-only)
+      // matches what the decoder accepts, regardless of prior calls.
+      this.sym.llama_set_embeddings(ctx, false);
+      // Chunk the prompt into n_batch-sized pieces and feed them to
+      // llama_decode one at a time. llama.cpp asserts
+      //   GGML_ASSERT(n_tokens_all <= cparams.n_batch)
+      // on the first decode if the prompt exceeds the configured n_batch
+      // — and even with n_batch == n_ctx the planner routinely hands us
+      // prompts that exceed n_ctx (system prompt + tools + history +
+      // user msg). When that happens we keep the TAIL of the prompt
+      // (the user's most recent message + closest context), reserving
+      // headroom for the model to generate output. Truncating from the
+      // tail would silently drop the user's question; truncating from
+      // the head preserves the question at the cost of dropping the
+      // earliest tools/history.
+      // bun:ffi struct-by-value workaround: route llama_batch_get_one +
+      // llama_decode through the shim. See ShimSymbols comment.
+      // Decode chunk size is bounded by n_batch (set in loadModel).
+      // Reading it here mirrors the parameter that loadModel committed
+      // to via milady_llama_context_params_set_n_batch.
+      const nBatch = readEnvInt("MILADY_LLAMA_N_BATCH", 2048);
+      const maxOutputReserve = args.maxTokens ?? 512;
+      // Reserve maxOutputReserve + n_batch (one ubatch slack) + an
+      // empirical 25 % safety margin. llama.cpp's Flash-Attention sliding
+      // memory allocator on the b8198 build returns
+      //   decode: failed to find a memory slot for batch of size N
+      // when the per-sequence KV slots get fragmented by repeated
+      // back-to-back chunks even with positions still nominally free,
+      // so we leave generous headroom rather than push to the limit.
+      const promptCapacity = Math.max(
+        1,
+        Math.floor((this.nCtx - maxOutputReserve - nBatch) * 0.75),
       );
-      const decodeRc = this.sym.llama_decode(ctx, promptBatch);
-      if (decodeRc !== 0) {
-        throw new Error(
-          `[aosp-llama] llama_decode (prompt) returned ${decodeRc}`,
+      let promptTokens = tokens;
+      let promptLen = written;
+      if (written > promptCapacity) {
+        const head = written - promptCapacity;
+        promptTokens = tokens.subarray(head);
+        promptLen = promptCapacity;
+        logger.warn(
+          `[aosp-llama] prompt ${written} tokens > capacity ${promptCapacity} (n_ctx=${this.nCtx} - reserve ${maxOutputReserve}); dropping ${head} head tokens`,
         );
+      }
+      for (let offset = 0; offset < promptLen; offset += nBatch) {
+        const chunkLen = Math.min(nBatch, promptLen - offset);
+        const chunk = promptTokens.subarray(offset, offset + chunkLen);
+        const promptBatchPtr = this.shim.milady_llama_batch_get_one(
+          this.ffi.ptr(chunk),
+          chunkLen,
+        );
+        if (!promptBatchPtr) {
+          throw new Error(
+            "[aosp-llama] milady_llama_batch_get_one returned NULL (malloc failure?)",
+          );
+        }
+        let decodeRc: number;
+        try {
+          decodeRc = this.shim.milady_llama_decode(ctx, promptBatchPtr);
+        } finally {
+          this.shim.milady_llama_batch_free(promptBatchPtr);
+        }
+        if (decodeRc !== 0) {
+          throw new Error(
+            `[aosp-llama] llama_decode (prompt chunk @${offset}/${promptLen}) returned ${decodeRc}`,
+          );
+        }
+        // Mark the ctx as decoded so subsequent generate()/embed() calls
+        // will issue the leading llama_memory_clear safely.
+        this.hasDecoded = true;
+        // Yield to the event loop between chunks so the on-device
+        // watchdog's /api/health probe (3s timeout × 3 strikes = ~6 min
+        // grace window with WATCHDOG_INTERVAL_MS=120s) can complete.
+        // Without this yield bun's single-threaded loop sits inside
+        // FFI for the entire prompt decode (minutes on cuttlefish CPU)
+        // and the service kills it for missed health checks.
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
 
       // 4. Token loop.
@@ -953,15 +1123,34 @@ class AospLlamaAdapter implements AospLoader {
         }
 
         singleToken[0] = next;
-        const stepBatch = this.sym.llama_batch_get_one(
+        const stepBatchPtr = this.shim.milady_llama_batch_get_one(
           this.ffi.ptr(singleToken),
           1,
         );
-        const stepRc = this.sym.llama_decode(ctx, stepBatch);
+        if (!stepBatchPtr) {
+          throw new Error(
+            "[aosp-llama] milady_llama_batch_get_one returned NULL (malloc failure?)",
+          );
+        }
+        let stepRc: number;
+        try {
+          stepRc = this.shim.milady_llama_decode(ctx, stepBatchPtr);
+        } finally {
+          this.shim.milady_llama_batch_free(stepBatchPtr);
+        }
         if (stepRc !== 0) {
           throw new Error(
             `[aosp-llama] llama_decode (step) returned ${stepRc}`,
           );
+        }
+        // Yield every 16 generated tokens. setImmediate every step
+        // would cut sampling throughput by ~30 %; a stride of 16 keeps
+        // the loop responsive to /api/health while staying close to
+        // peak generation rate. SmolLM2-360M on cuttlefish CPU lands
+        // roughly 5 tok/s, so 16 tokens = ~3 s per yield, well under
+        // the 3-strike × 120 s health-probe budget.
+        if ((i & 15) === 15) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
         }
       }
       return output;
@@ -1002,13 +1191,25 @@ class AospLlamaAdapter implements AospLoader {
     const model = this.model;
     const vocab = this.vocab;
 
+    // 0. Reset KV cache. See generate() for the hasDecoded gating
+    // rationale (cuttlefish x86_64 segfault on a freshly-initialized
+    // ctx).
+    if (this.hasDecoded) {
+      const memHandle = this.sym.llama_get_memory(ctx);
+      if (memHandle) {
+        this.sym.llama_memory_clear(memHandle, false);
+      }
+    }
+
     // 1. Tokenize the input. Embedding pipelines typically include the BOS
     //    token; we mirror generate() and pass add_special=true. Probe pass
-    //    needs only a length, not storage — empty Int32Array avoids the
-    //    pointless 4-byte allocation.
+    //    needs only a length, not storage, but bun:ffi's ptr() rejects
+    //    zero-length TypedArrays — use a single-slot Int32Array, the
+    //    smallest legal allocation that round-trips through ptr() without
+    //    `ArrayBufferView must have a length > 0`.
     const inputBuf = encodeCString(args.input);
     const inputByteLen = inputBuf.length - 1;
-    const probeOut = new Int32Array(0);
+    const probeOut = new Int32Array(1);
     const requested = this.sym.llama_tokenize(
       vocab,
       this.ffi.ptr(inputBuf),
@@ -1046,13 +1247,30 @@ class AospLlamaAdapter implements AospLoader {
     //    fresh prompt anyway, so this is safe to do unconditionally.
     this.sym.llama_set_embeddings(ctx, true);
     try {
-      const batch = this.sym.llama_batch_get_one(this.ffi.ptr(tokens), written);
-      const decodeRc = this.sym.llama_decode(ctx, batch);
+      // bun:ffi struct-by-value workaround: route through the shim's
+      // pointer-style wrappers. See ShimSymbols.milady_llama_batch_get_one
+      // / milady_llama_decode for the rationale.
+      const batchPtr = this.shim.milady_llama_batch_get_one(
+        this.ffi.ptr(tokens),
+        written,
+      );
+      if (!batchPtr) {
+        throw new Error(
+          "[aosp-llama] milady_llama_batch_get_one returned NULL (malloc failure?)",
+        );
+      }
+      let decodeRc: number;
+      try {
+        decodeRc = this.shim.milady_llama_decode(ctx, batchPtr);
+      } finally {
+        this.shim.milady_llama_batch_free(batchPtr);
+      }
       if (decodeRc !== 0) {
         throw new Error(
           `[aosp-llama] llama_decode (embed) returned ${decodeRc}`,
         );
       }
+      this.hasDecoded = true;
 
       const nEmbd = this.sym.llama_model_n_embd(model);
       if (nEmbd <= 0) {

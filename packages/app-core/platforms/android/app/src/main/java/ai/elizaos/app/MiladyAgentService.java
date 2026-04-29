@@ -86,8 +86,35 @@ public class MiladyAgentService extends Service {
     private static final int AGENT_PORT = 31337;
     private static final String HEALTH_URL = "http://127.0.0.1:" + AGENT_PORT + "/api/health";
 
-    private static final long WATCHDOG_INTERVAL_MS = 10_000L;
-    private static final long HEALTH_TIMEOUT_MS = 3_000L;
+    // The on-device boot path is heavy: PGlite extension extraction +
+    // plugin resolution + libllama dlopen + first-time model load can
+    // exceed 240 s on a cold cuttlefish x86_64 image. The chat path is
+    // even heavier: a single planner-produced prompt at ~12k tokens,
+    // chunked through llama_decode on emulated CPU, can run 15–30 min
+    // wall-clock for a single chat turn (multiple model invocations:
+    // planner, action evaluator, response generator).
+    //
+    // Strategy: combine a generous interval with a smart probe that
+    // distinguishes "process dead" from "process alive but busy in a
+    // native FFI call". When the HTTP probe times out but the process
+    // is alive (i.e. bun is mid-llama_decode and hasn't returned to its
+    // event loop yet), we DO NOT count a strike — the process is doing
+    // exactly what it should be doing, just synchronously inside a
+    // native call. We only count strikes when the process is actually
+    // dead OR returns 5xx from /api/health (a real crash signal).
+    // Strikes accumulate when the process is dead, which forces a
+    // restart via the existing scheduleRestart() path.
+    //
+    // 600 s × 3 = 1800 s = 30 min worst-case grace window. Real phone
+    // hardware (Tensor / Adreno) finishes a chat turn in seconds, so
+    // this only matters for AOSP smoke runs on cvd. HEALTH_TIMEOUT_MS
+    // = 30 s is a conservative bound on a single HTTP listener wakeup
+    // — bun's setImmediate yield should hit within a few seconds even
+    // mid-decode, and 30 s catches genuine TCP-level hangs without
+    // racing against real long-running calls.
+    private static final long WATCHDOG_INTERVAL_MS = 600_000L;
+    private static final int HEALTH_FAIL_STRIKES = 3;
+    private static final long HEALTH_TIMEOUT_MS = 30_000L;
     private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
 
@@ -240,6 +267,70 @@ public class MiladyAgentService extends Service {
             throw new IOException("Could not create " + stateDir);
         }
 
+        // Compare APK source-file mtime against a stamp file in the agent
+        // root; when the APK was upgraded under us (adb push to
+        // /system/priv-app + reboot, a Play update, or an OTA) wipe the
+        // cached bundle + ABI binaries so the new asset payload gets
+        // re-extracted. Without this, copyAssetIfMissing silently keeps
+        // the previous extraction forever and shipping a fresh
+        // agent-bundle.js does nothing.
+        //
+        // We use the APK file's mtime (sourceDir → File.lastModified)
+        // rather than PackageInfo.lastUpdateTime because /system/priv-app
+        // installs (the AOSP image embed path) DO NOT bump
+        // lastUpdateTime — that field reflects pm-install + Play-update
+        // events. The on-disk APK mtime always reflects the current
+        // payload, which is what we need to invalidate cached extractions.
+        File stamp = new File(root, ".apk-stamp");
+        long pkgUpdate = 0L;
+        try {
+            String sourceDir = getApplicationInfo().sourceDir;
+            if (sourceDir != null) {
+                long apkMtime = new File(sourceDir).lastModified();
+                if (apkMtime > 0L) pkgUpdate = apkMtime;
+            }
+            long pmUpdate = getPackageManager()
+                .getPackageInfo(getPackageName(), 0).lastUpdateTime;
+            if (pmUpdate > pkgUpdate) pkgUpdate = pmUpdate;
+        } catch (Exception ignored) {
+            // best-effort; no stamp known on early-boot failure
+        }
+        long stampedUpdate = 0L;
+        if (stamp.exists()) {
+            try (InputStream in = new java.io.FileInputStream(stamp)) {
+                byte[] buf = new byte[64];
+                int n = in.read(buf);
+                if (n > 0) {
+                    stampedUpdate = Long.parseLong(new String(buf, 0, n).trim());
+                }
+            } catch (Exception ignored) {
+                // corrupt stamp — treat as missing
+            }
+        }
+        if (pkgUpdate > 0L && pkgUpdate != stampedUpdate) {
+            Log.i(TAG, "APK changed (was=" + stampedUpdate + ", now=" + pkgUpdate + "); refreshing extracted agent assets");
+            File bundle = new File(root, AGENT_BUNDLE_NAME);
+            if (bundle.exists() && !bundle.delete()) Log.w(TAG, "Could not delete stale agent-bundle.js");
+            File launchScript = new File(root, AGENT_LAUNCH_SCRIPT);
+            if (launchScript.exists() && !launchScript.delete()) Log.w(TAG, "Could not delete stale launch.sh");
+            File pgWasm = new File(root, "pglite.wasm");
+            if (pgWasm.exists()) pgWasm.delete();
+            File pgData = new File(root, "pglite.data");
+            if (pgData.exists()) pgData.delete();
+            File vec = new File(getFilesDir(), "vector.tar.gz");
+            if (vec.exists()) vec.delete();
+            File fuzzy = new File(getFilesDir(), "fuzzystrmatch.tar.gz");
+            if (fuzzy.exists()) fuzzy.delete();
+            File pluginsManifest = new File(root, "plugins-manifest.json");
+            if (pluginsManifest.exists()) pluginsManifest.delete();
+            File[] abiContents = abiDir.listFiles();
+            if (abiContents != null) {
+                for (File f : abiContents) {
+                    if (f.isFile() && !f.delete()) Log.w(TAG, "Could not delete " + f.getName());
+                }
+            }
+        }
+
         AssetManager assets = getAssets();
 
         copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(root, AGENT_BUNDLE_NAME));
@@ -250,11 +341,31 @@ public class MiladyAgentService extends Service {
         // vector.tar.gz and fuzzystrmatch.tar.gz must live one directory
         // ABOVE the bundle because PGlite resolves them via
         // `new URL("../X.tar.gz", ...)`.
+        //
+        // aapt2 quirk: even with `androidResources.noCompress` listing
+        // `tar.gz` and `tar`, aapt2 strips the `.gz` suffix from
+        // `*.tar.gz` assets at packaging time (the `noCompress` flag
+        // only controls ZIP-level compression of the entry, not the
+        // pre-processing aapt2 does to "doubly compressed" extensions).
+        // The asset on disk inside the APK is therefore named
+        // `vector.tar` / `fuzzystrmatch.tar`, but PGlite's runtime
+        // loader still resolves `../vector.tar.gz` and
+        // `../fuzzystrmatch.tar.gz`. Look up under the aapt2-rewritten
+        // name and write to the runtime-expected `.tar.gz` name so the
+        // loader contract is preserved without changing the bundle.
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(root, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(root, "pglite.data"));
-        copyAssetIfPresent(assets, "agent/vector.tar.gz",
+        // aapt2 not only strips `.gz` from `*.tar.gz` asset names, it also
+        // DECOMPRESSES them into raw tar bytes. PGlite's loader does
+        // `new URL("../X.tar.gz", ...)` then pipes the bytes through
+        // gunzip — fed raw tar it errors with `Z_DATA_ERROR: incorrect
+        // header check` and the agent crashloops at PGlite init. Re-gzip
+        // on extraction so the on-disk file matches what the loader
+        // expects: a gzipped tarball at `vector.tar.gz` /
+        // `fuzzystrmatch.tar.gz`.
+        copyAssetIfPresentAsGzipped(assets, "agent/vector.tar",
             new File(getFilesDir(), "vector.tar.gz"));
-        copyAssetIfPresent(assets, "agent/fuzzystrmatch.tar.gz",
+        copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar",
             new File(getFilesDir(), "fuzzystrmatch.tar.gz"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(root, "plugins-manifest.json"));
@@ -274,7 +385,12 @@ public class MiladyAgentService extends Service {
         File launch = new File(root, AGENT_LAUNCH_SCRIPT);
         if (launch.exists()) launch.setExecutable(true, false);
         for (String name : abiFiles) {
-            if (name.startsWith("ld-musl-") && name.endsWith(".so.1")) {
+            // The musl loader (`ld-musl-<arch>.so.1`) needs +x. With the
+            // SIGSYS-shim wrapper installed (x86_64 only) the original
+            // Alpine loader is shipped as `ld-musl-<arch>.so.1.real` and
+            // ALSO needs +x because loader-wrap execve()s it directly.
+            if (name.startsWith("ld-musl-")
+                && (name.endsWith(".so.1") || name.endsWith(".so.1.real"))) {
                 File loader = new File(abiDir, name);
                 if (loader.exists()) loader.setExecutable(true, false);
             }
@@ -336,6 +452,16 @@ public class MiladyAgentService extends Service {
                 );
             }
             Log.i(TAG, "Extracted " + modelFiles.length + " bundled model file(s) to " + modelsDest);
+        }
+
+        // Persist the APK's mtime stamp so subsequent boots can detect a
+        // stale extraction and force a refresh.
+        if (pkgUpdate > 0L) {
+            try (FileOutputStream out = new FileOutputStream(stamp)) {
+                out.write(Long.toString(pkgUpdate).getBytes());
+            } catch (IOException error) {
+                Log.w(TAG, "Could not write APK stamp: " + error.getMessage());
+            }
         }
     }
 
@@ -413,6 +539,42 @@ public class MiladyAgentService extends Service {
         copyAssetIfMissing(assets, assetPath, target);
     }
 
+    /**
+     * Like copyAssetIfPresent, but wraps the asset bytes in a gzip stream on
+     * write. Compensates for aapt2's behaviour of decompressing `.tar.gz`
+     * assets at packaging time even with `androidResources.noCompress`
+     * declared — the on-disk APK entry is raw tar bytes, but PGlite's
+     * loader does `pipeline(createReadStream(file), createGunzip(), …)`
+     * and rejects raw tar with `Z_DATA_ERROR: incorrect header check`.
+     * Re-gzipping on extraction restores the contract the loader expects.
+     */
+    private void copyAssetIfPresentAsGzipped(AssetManager assets, String assetPath, File target) throws IOException {
+        try (InputStream probe = assets.open(assetPath)) {
+            // present — fall through to gzip-wrap via fresh stream
+        } catch (IOException missing) {
+            return;
+        }
+        if (target.exists() && target.length() > 0) {
+            return;
+        }
+        File parent = target.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("Could not create " + parent);
+        }
+        try (
+            InputStream in = assets.open(assetPath);
+            FileOutputStream raw = new FileOutputStream(target);
+            java.util.zip.GZIPOutputStream gz = new java.util.zip.GZIPOutputStream(raw)
+        ) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = in.read(buffer)) > 0) {
+                gz.write(buffer, 0, read);
+            }
+            gz.flush();
+        }
+    }
+
     // ── Process lifecycle ────────────────────────────────────────────────
 
     private void startAgentProcess() {
@@ -488,10 +650,29 @@ public class MiladyAgentService extends Service {
             agentEnv.put("LD_LIBRARY_PATH", abiDir.getAbsolutePath());
             agentEnv.put("PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("MILADY_API_PORT", String.valueOf(AGENT_PORT));
+            // The agent's runtime-env resolver reads ELIZA_PORT / ELIZA_UI_PORT
+            // (defaulting to 2138) before falling back to PORT. Without
+            // these the agent binds 2138 even though the service advertises
+            // 31337, the loopback healthcheck never sees a listener, and
+            // the watchdog churns indefinitely. Both env vars resolve to
+            // the same port — UI bundles in the same Hono server.
+            agentEnv.put("ELIZA_PORT", String.valueOf(AGENT_PORT));
+            agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("MILADY_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("MILADY_PLATFORM", "android");
             agentEnv.put("MILADY_DISABLE_DIRECT_RUN", "1");
-            agentEnv.put("MILADY_REQUIRE_LOCAL_AUTH", "1");
+            // Bearer auth on the loopback API is reserved for the case
+            // where the WebView wires up a token-fetch native binding;
+            // until that exists, requiring the token blocks the WebView
+            // from doing the initial /api/auth/status handshake (the
+            // WebView doesn't know the token yet, the agent rejects it,
+            // the UI sticks at "Initializing agent…"). Default OFF keeps
+            // Android consistent with desktop's loopback model — the
+            // WebView and agent share the same Linux UID, so any process
+            // that can hit loopback already has app-uid filesystem access.
+            // Setting MILADY_REQUIRE_LOCAL_AUTH=1 still works once the
+            // WebView side is wired up; it's just no longer the default.
+            // agentEnv.put("MILADY_REQUIRE_LOCAL_AUTH", "1");
             agentEnv.put("ELIZA_API_TOKEN", token);
             // The Capacitor APK always hosts @elizaos/capacitor-llama in the
             // WebView, so the runtime should always be ready to broker
@@ -506,6 +687,51 @@ public class MiladyAgentService extends Service {
             // the Capacitor APK keeps its DeviceBridge loopback path.
             if (BuildConfig.AOSP_BUILD) {
                 agentEnv.put("MILADY_LOCAL_LLAMA", "1");
+                // CPU-only inference of a 12k-token prompt on cuttlefish
+                // x86_64 / Llama-3.2-1B lands well past the 180 s default
+                // chat-generation timeout (chat-routes.ts). 30 minutes
+                // covers prompt decode plus token generation across the
+                // full planner → action evaluator → response cycle. Real
+                // phone hardware (Tensor / Adreno) finishes in seconds,
+                // so this only matters for AOSP smoke runs on cvd.
+                agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "1800000");
+
+                // Llama-3.2-1B native context is 128k. We pin to 16k
+                // because 16k easily fits the planner's ~12k-token
+                // prompts plus output reserve, and a larger ctx
+                // proportionally grows KV-cache RAM (~5 MB / 1k tokens
+                // for 1B-Q4_K_M / fp16 KV). 16k = ~80 MB KV cache, well
+                // under cvd's 4 GB budget. Override via env on real-
+                // device builds when ctx vs RAM trade-offs change.
+                if (!env.containsKey("MILADY_LLAMA_N_CTX")) {
+                    agentEnv.put("MILADY_LLAMA_N_CTX", "16384");
+                }
+
+                // Pin n_threads to the actual CPU count. The default of
+                // 0 in the adapter (and llama.cpp's auto-detect path)
+                // frequently returns 1 on Android because Android's
+                // seccomp filter blocks sched_getaffinity for app
+                // domains and llama.cpp's /proc/cpuinfo parse misses
+                // the core count on cvd. Cuttlefish x86_64 has 4 vCPUs;
+                // most real phones have 6–8 big.LITTLE cores. Read
+                // from the JVM at startup and pass through so the FFI
+                // side doesn't need to call any blocked syscall.
+                if (!env.containsKey("MILADY_LLAMA_THREADS")) {
+                    int cores = Runtime.getRuntime().availableProcessors();
+                    if (cores < 1) cores = 1;
+                    agentEnv.put("MILADY_LLAMA_THREADS", String.valueOf(cores));
+                }
+
+                // Smaller decode chunks → more event-loop yield points
+                // during prompt prefill. 2048 holds bun inside a single
+                // llama_decode call for ~30 s on cvd CPU; the watchdog
+                // probe sits on a closed listener queue that whole
+                // time. 512-token chunks land each call in ~6–8 s, so
+                // the 30 s probe timeout has a realistic chance to
+                // wake the listener between chunks.
+                if (!env.containsKey("MILADY_LLAMA_N_BATCH")) {
+                    agentEnv.put("MILADY_LLAMA_N_BATCH", "512");
+                }
             }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
             agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
@@ -571,6 +797,14 @@ public class MiladyAgentService extends Service {
             agentEnv.put("BUN_FEATURE_FLAG_FORCE_WAITER_THREAD", "1");
             agentEnv.put("BUN_FEATURE_FLAG_DISABLE_RWF_NONBLOCK", "1");
             agentEnv.put("BUN_FEATURE_FLAG_DISABLE_SPAWNSYNC_FAST_PATH", "1");
+
+            // Default to info-level logging so plugin resolution + listen
+            // progress is visible in agent.log. The runtime defaults to
+            // `error` which leaves boot hangs invisible. Operators can
+            // override by setting LOG_LEVEL in the parent service env.
+            if (!env.containsKey("LOG_LEVEL")) {
+                agentEnv.put("LOG_LEVEL", "info");
+            }
 
             env.putAll(agentEnv);
 
@@ -783,7 +1017,8 @@ public class MiladyAgentService extends Service {
                     continue;
                 }
 
-                if (probeHealth()) {
+                ProbeResult probe = probeHealth();
+                if (probe == ProbeResult.OK) {
                     if (unhealthyTicks > 0) {
                         Log.i(TAG, "Agent health restored.");
                     }
@@ -796,10 +1031,23 @@ public class MiladyAgentService extends Service {
                         currentStatus = "running";
                         updateNotification();
                     }
+                } else if (probe == ProbeResult.BUSY) {
+                    // HTTP listener didn't answer in HEALTH_TIMEOUT_MS but the
+                    // bun process is still alive. The most likely cause is
+                    // synchronous work inside the JS event loop — typically
+                    // a long llama_decode FFI call with a 12k-token prompt
+                    // on emulated CPU. We do NOT count a strike; the
+                    // process is doing exactly what it should be doing.
+                    // Logging is at info-level so operators can correlate
+                    // decode-busy periods with apparent unresponsiveness.
+                    Log.i(TAG, "Agent HTTP probe timed out but process is alive — likely mid-decode. No strike.");
                 } else {
+                    // ProbeResult.DEAD: process is dead, OR /api/health
+                    // returned 5xx (a real crash signal). Only here do we
+                    // accumulate strikes toward a force-restart.
                     unhealthyTicks++;
                     Log.w(TAG, "Agent health probe failed (" + unhealthyTicks + " consecutive).");
-                    if (unhealthyTicks >= 2) {
+                    if (unhealthyTicks >= HEALTH_FAIL_STRIKES) {
                         unhealthyTicks = 0;
                         Log.w(TAG, "Agent unresponsive — force-restarting.");
                         stopAgentProcess();
@@ -809,7 +1057,7 @@ public class MiladyAgentService extends Service {
             }
         }
 
-        private boolean probeHealth() {
+        private ProbeResult probeHealth() {
             HttpURLConnection conn = null;
             try {
                 URL url = new URL(HEALTH_URL);
@@ -818,13 +1066,52 @@ public class MiladyAgentService extends Service {
                 conn.setReadTimeout((int) HEALTH_TIMEOUT_MS);
                 conn.setRequestMethod("GET");
                 int status = conn.getResponseCode();
-                return status >= 200 && status < 500;
+                if (status >= 200 && status < 500) {
+                    return ProbeResult.OK;
+                }
+                // 5xx: agent process is up but reported a server error.
+                // Treat as DEAD so strikes accumulate — a 5xx on
+                // /api/health is a crash signal, not a busy signal.
+                return ProbeResult.DEAD;
             } catch (IOException error) {
-                return false;
+                // HTTP request failed (timeout / connect refused / read
+                // interrupt). If the agent process is still alive the
+                // most likely cause is bun synchronously inside a native
+                // FFI call (long llama_decode on a multi-thousand-token
+                // prompt). The event loop will resume when the FFI call
+                // returns. If the process IS dead, scheduleRestart()
+                // already fired from the outer loop on the
+                // !current.isAlive() path on the previous tick — a
+                // strike here would be redundant.
+                Process current;
+                synchronized (processLock) {
+                    current = agentProcess;
+                }
+                if (current != null && current.isAlive()) {
+                    return ProbeResult.BUSY;
+                }
+                return ProbeResult.DEAD;
             } finally {
                 if (conn != null) conn.disconnect();
             }
         }
+    }
+
+    /**
+     * Outcome of a single watchdog health probe. The watchdog uses these
+     * to decide whether to count a strike toward force-restart:
+     *   OK   → process is healthy, reset strike counter.
+     *   BUSY → process is alive but the HTTP listener didn't answer in
+     *          HEALTH_TIMEOUT_MS. Typically means bun is synchronously
+     *          inside a native FFI call (llama_decode on a long prompt).
+     *          No strike.
+     *   DEAD → process is dead, OR the HTTP server returned 5xx, OR a
+     *          hard connection failure (port closed). Count a strike.
+     */
+    private enum ProbeResult {
+        OK,
+        BUSY,
+        DEAD,
     }
 
     // ── Notification helpers ─────────────────────────────────────────────
