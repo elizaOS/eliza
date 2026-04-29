@@ -59,6 +59,27 @@ export const REMINDER_ESCALATION_RESOLUTION_METADATA_KEY =
   "reminderEscalationResolution";
 export const REMINDER_ESCALATION_RESOLUTION_NOTE_METADATA_KEY =
   "reminderEscalationResolutionNote";
+export const REMINDER_REVIEW_AFTER_MINUTES_METADATA_KEY =
+  "reminderReviewAfterMinutes";
+export const REMINDER_REVIEW_AT_METADATA_KEY = "reminderReviewAt";
+export const REMINDER_REVIEW_REASON_METADATA_KEY = "reminderReviewReason";
+export const REMINDER_REVIEW_STATUS_METADATA_KEY = "reminderReviewStatus";
+export const REMINDER_REVIEW_DECISION_METADATA_KEY = "reminderReviewDecision";
+export const REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY =
+  "reminderReviewRespondedAt";
+export const REMINDER_REVIEW_RESPONSE_TEXT_METADATA_KEY =
+  "reminderReviewResponseText";
+export const REMINDER_REVIEW_ESCALATED_AT_METADATA_KEY =
+  "reminderReviewEscalatedAt";
+export const REMINDER_REVIEW_ESCALATED_ATTEMPT_ID_METADATA_KEY =
+  "reminderReviewEscalatedAttemptId";
+export const REMINDER_REVIEW_ESCALATED_CHANNEL_METADATA_KEY =
+  "reminderReviewEscalatedChannel";
+export const REMINDER_ACTIVITY_GATE_METADATA_KEY = "reminderActivityGate";
+export const REMINDER_ACTIVITY_GATES = ["active_on_computer"] as const;
+export type ReminderActivityGate = (typeof REMINDER_ACTIVITY_GATES)[number];
+export const REMINDER_URGENCY_METADATA_KEY = "reminderUrgency";
+export const REMINDER_URGENCY_LEGACY_METADATA_KEY = "urgency";
 export const reminderProcessingQueues = new Map<string, Promise<void>>();
 export const LIFEOPS_TIME_ZONE_ALIASES: Record<string, string> = {
   pst: "America/Los_Angeles",

@@ -44,14 +44,6 @@ import { ensureLifeOpsSchema } from "./seed-grants.ts";
 type Cleanup = () => Promise<void> | void;
 type RuntimeSendHandler = Parameters<AgentRuntime["registerSendHandler"]>[1];
 
-interface RuntimeWithPrivateServices extends AgentRuntime {
-  services?: Map<string, unknown[]>;
-}
-
-interface RuntimeWithPrivateSendHandlers extends AgentRuntime {
-  sendHandlers?: Map<string, RuntimeSendHandler>;
-}
-
 interface SignalRecentMessage {
   id: string;
   roomId: string;
@@ -110,7 +102,7 @@ function stateDirFromEnv(): string {
 }
 
 function servicesMap(runtime: AgentRuntime): Map<string, unknown[]> {
-  const services = (runtime as RuntimeWithPrivateServices).services;
+  const services: unknown = Reflect.get(runtime, "services");
   if (!(services instanceof Map)) {
     throw new Error(
       "LifeOps simulator requires runtime service registry access.",
@@ -122,7 +114,7 @@ function servicesMap(runtime: AgentRuntime): Map<string, unknown[]> {
 function registeredSendHandlers(
   runtime: AgentRuntime,
 ): Map<string, RuntimeSendHandler> | null {
-  const sendHandlers = (runtime as RuntimeWithPrivateSendHandlers).sendHandlers;
+  const sendHandlers: unknown = Reflect.get(runtime, "sendHandlers");
   return sendHandlers instanceof Map ? sendHandlers : null;
 }
 

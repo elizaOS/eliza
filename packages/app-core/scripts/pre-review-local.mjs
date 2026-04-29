@@ -324,8 +324,8 @@ export function splitRunnableTestFiles(testFiles) {
   const repoE2eTests = [];
 
   for (const file of testFiles) {
-    if (file.startsWith("apps/homepage/")) {
-      homepageTests.push(path.relative("apps/homepage", file));
+    if (file.startsWith("packages/homepage/")) {
+      homepageTests.push(path.relative("packages/homepage", file));
     } else if (/\.e2e\.test\.[jt]sx?$/.test(file)) {
       if (file.startsWith("test/") || file.startsWith("eliza/test/")) {
         repoE2eTests.push(file);
@@ -516,7 +516,7 @@ export function runChecks() {
 
         if (homepageTests.length > 0) {
           testCommands.push(
-            `cd apps/homepage && bunx vitest run ${homepageTests.join(" ")}`,
+            `cd packages/homepage && bunx vitest run ${homepageTests.join(" ")}`,
           );
         }
 

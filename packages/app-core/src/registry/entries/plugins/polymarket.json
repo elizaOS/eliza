@@ -1,5 +1,5 @@
 {
-  "id": "polymarket",
+  "id": "plugin-polymarket",
   "name": "Polymarket",
   "description": "Multi-language Polymarket prediction markets plugin for elizaOS",
   "npmName": "@elizaos/plugin-polymarket",

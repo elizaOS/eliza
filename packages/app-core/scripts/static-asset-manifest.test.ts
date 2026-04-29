@@ -28,7 +28,7 @@ describe("static asset manifest", () => {
   it("excludes hidden and system files from the manifest", () => {
     const root = makeTempRoot();
     const appPublic = path.join(root, "apps", "app", "public");
-    const homepagePublic = path.join(root, "apps", "homepage", "public");
+    const homepagePublic = path.join(root, "packages", "homepage", "public");
 
     fs.mkdirSync(path.join(appPublic, ".ignored-dir"), { recursive: true });
     fs.mkdirSync(homepagePublic, { recursive: true });
@@ -43,7 +43,7 @@ describe("static asset manifest", () => {
 
     expect(buildStaticAssetManifest(root)).toEqual({
       app: ["apps/app/public/logo.png"],
-      homepage: ["apps/homepage/public/hero.png"],
+      homepage: ["packages/homepage/public/hero.png"],
     });
   });
 });

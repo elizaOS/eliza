@@ -353,7 +353,6 @@ interface AospLoader {
  * mean-pool fallback path. By forcing MEAN at init we collapse two code
  * paths into one and remove the OOB risk entirely.
  */
-const LLAMA_POOLING_TYPE_NONE = 0;
 const LLAMA_POOLING_TYPE_MEAN = 1;
 
 /**

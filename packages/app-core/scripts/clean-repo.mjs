@@ -93,8 +93,14 @@ function main() {
   rmPath("dist", path.join(root, "dist"));
   rmPath("apps/app/dist", path.join(root, "apps", "app", "dist"));
   rmPath("apps/app/.vite", path.join(root, "apps", "app", ".vite"));
-  rmPath("apps/homepage/dist", path.join(root, "apps", "homepage", "dist"));
-  rmPath("apps/homepage/.vite", path.join(root, "apps", "homepage", ".vite"));
+  rmPath(
+    "packages/homepage/dist",
+    path.join(root, "packages", "homepage", "dist"),
+  );
+  rmPath(
+    "packages/homepage/.vite",
+    path.join(root, "packages", "homepage", ".vite"),
+  );
 
   rmPath(
     "eliza/packages/app-core/dist",
