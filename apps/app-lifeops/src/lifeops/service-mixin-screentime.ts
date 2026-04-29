@@ -552,6 +552,144 @@ function toBreakdownItems(
   };
 }
 
+function buildScreenTimeMetrics(
+  breakdown: ScreenTimeBreakdown,
+  social: SocialHabitSummary,
+  priorBreakdown: ScreenTimeBreakdown | null,
+  priorSocial: SocialHabitSummary | null,
+): LifeOpsScreenTimeMetrics {
+  const totalSeconds = breakdown.totalSeconds;
+  const appSeconds = bucketSeconds(breakdown.bySource, "app");
+  const webSeconds = bucketSeconds(breakdown.bySource, "website");
+  const phoneSeconds = bucketSeconds(breakdown.byDevice, "phone");
+  const socialSeconds = social.totalSeconds;
+  const youtubeSeconds = serviceSeconds(social, "youtube");
+  const xSeconds = serviceSeconds(social, "x");
+  const messageOpened = social.messages.opened;
+  const messageOutbound = social.messages.outbound;
+  const messageInbound = social.messages.inbound;
+
+  if (!priorBreakdown || !priorSocial) {
+    return {
+      totalSeconds,
+      appSeconds,
+      webSeconds,
+      phoneSeconds,
+      socialSeconds,
+      youtubeSeconds,
+      xSeconds,
+      messageOpened,
+      messageOutbound,
+      messageInbound,
+      deltas: null,
+    };
+  }
+
+  return {
+    totalSeconds,
+    appSeconds,
+    webSeconds,
+    phoneSeconds,
+    socialSeconds,
+    youtubeSeconds,
+    xSeconds,
+    messageOpened,
+    messageOutbound,
+    messageInbound,
+    deltas: {
+      totalPercent: deltaPercent(totalSeconds, priorBreakdown.totalSeconds),
+      appPercent: deltaPercent(
+        appSeconds,
+        bucketSeconds(priorBreakdown.bySource, "app"),
+      ),
+      webPercent: deltaPercent(
+        webSeconds,
+        bucketSeconds(priorBreakdown.bySource, "website"),
+      ),
+      phonePercent: deltaPercent(
+        phoneSeconds,
+        bucketSeconds(priorBreakdown.byDevice, "phone"),
+      ),
+      socialPercent: deltaPercent(socialSeconds, priorSocial.totalSeconds),
+      youtubePercent: deltaPercent(
+        youtubeSeconds,
+        serviceSeconds(priorSocial, "youtube"),
+      ),
+      xPercent: deltaPercent(xSeconds, serviceSeconds(priorSocial, "x")),
+      messageOpenedPercent: deltaPercent(
+        messageOpened,
+        priorSocial.messages.opened,
+      ),
+    },
+  };
+}
+
+function buildVisibleBuckets(
+  breakdown: ScreenTimeBreakdown,
+  social: SocialHabitSummary,
+): LifeOpsScreenTimeVisibleBuckets {
+  const categories = breakdown.byCategory.filter(
+    (item) => item.totalSeconds > 0,
+  );
+  const devices = breakdown.byDevice.filter((item) => item.totalSeconds > 0);
+  const browsers = breakdown.byBrowser.filter((item) => item.totalSeconds > 0);
+  const services = social.services.filter((item) => item.totalSeconds > 0);
+  const surfaces = social.surfaces.filter((item) => item.totalSeconds > 0);
+  const topTargets: LifeOpsScreenTimeTargetBucket[] = breakdown.items
+    .filter((item) => item.totalSeconds > 0)
+    .map((item) => ({
+      key: `${item.source}:${item.identifier}`,
+      label: item.displayName,
+      totalSeconds: item.totalSeconds,
+      source: item.source,
+      identifier: item.identifier,
+    }));
+  const sessionBuckets = social.sessions
+    .filter((item) => item.totalSeconds > 0)
+    .map((item) => ({
+      key: `${item.source}:${item.identifier}`,
+      label: item.serviceLabel ?? item.displayName,
+      totalSeconds: item.totalSeconds,
+      source: item.source,
+      identifier: item.identifier,
+    }));
+  const channels = social.messages.channels.filter(
+    (channel) =>
+      channel.opened > 0 || channel.outbound > 0 || channel.inbound > 0,
+  );
+  const hasMessageActivity =
+    social.messages.opened > 0 ||
+    social.messages.outbound > 0 ||
+    social.messages.inbound > 0;
+  const setupSources = social.dataSources.filter(
+    (source) => source.state !== "live",
+  );
+
+  return {
+    categories,
+    devices,
+    browsers,
+    services,
+    surfaces,
+    topTargets,
+    sessionBuckets,
+    channels,
+    setupSources,
+    hasMessageActivity,
+    hasUsage:
+      breakdown.totalSeconds > 0 ||
+      categories.length > 0 ||
+      devices.length > 0 ||
+      browsers.length > 0 ||
+      topTargets.length > 0 ||
+      social.totalSeconds > 0 ||
+      services.length > 0 ||
+      surfaces.length > 0 ||
+      sessionBuckets.length > 0 ||
+      hasMessageActivity,
+  };
+}
+
 function inWindow(
   iso: string | null | undefined,
   sinceMs: number,
