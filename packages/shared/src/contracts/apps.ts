@@ -347,16 +347,6 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
       aliases: ["@elizaos/plugin-shopify"],
     },
     {
-      slug: "hyperliquid",
-      canonicalName: "@elizaos/app-hyperliquid",
-      aliases: [],
-    },
-    {
-      slug: "polymarket",
-      canonicalName: "@elizaos/app-polymarket",
-      aliases: [],
-    },
-    {
       slug: "screenshare",
       canonicalName: "@elizaos/app-screenshare",
       aliases: [],

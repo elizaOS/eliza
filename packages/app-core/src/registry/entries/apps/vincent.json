@@ -16,16 +16,15 @@
     "actions": ["launch", "configure"]
   },
   "resources": {},
-  "dependsOn": [],
+  "dependsOn": ["wallet"],
   "kind": "app",
   "subtype": "trading",
   "launch": {
     "type": "server-launch",
     "capabilities": [
-      "hyperliquid",
-      "polymarket",
-      "trading",
-      "prediction-markets"
+      "vincent",
+      "delegated-trading",
+      "wallet"
     ],
     "curatedSlug": "vincent",
     "routePlugin": {
