@@ -771,10 +771,11 @@ export async function fetchGoogleGmailUnrespondedThreads(args: {
       : 20;
   const now = args.now ?? new Date();
   const selfEmail = args.selfEmail?.trim().toLowerCase() || null;
+  const sentCandidateLimit = Math.min(Math.max(maxResults * 5, maxResults), 250);
   const sentCandidates = await fetchGoogleGmailSearchMessages({
     accessToken: args.accessToken,
     selfEmail,
-    maxResults,
+    maxResults: sentCandidateLimit,
     query: `in:sent older_than:${olderThanDays}d`,
   });
   const seenThreads = new Set<string>();
