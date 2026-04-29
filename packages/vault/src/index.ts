@@ -1,0 +1,57 @@
+/**
+ * @milady/vault — simple secrets/config vault.
+ *
+ *   import { createVault } from "@milady/vault";
+ *
+ *   const vault = createVault();
+ *   await vault.set("openrouter.apiKey", "sk-or-v1-...", { sensitive: true });
+ *   await vault.set("ui.theme", "dark");
+ *   const apiKey = await vault.get("openrouter.apiKey");
+ *
+ * One API for sensitive credentials and non-sensitive config. Sensitive
+ * values encrypted at rest with the master key in the OS keychain.
+ * Password-manager references (1Password, Proton Pass) are first-class
+ * — the value lives there, the vault stores only the reference.
+ */
+
+export { createVault, VaultMissError } from "./vault.js";
+export type {
+  CreateVaultOptions,
+  SetOptions,
+  Vault,
+} from "./vault.js";
+
+export {
+  inMemoryMasterKey,
+  osKeychainMasterKey,
+  MasterKeyUnavailableError,
+} from "./master-key.js";
+export type { MasterKeyResolver, OsKeychainOptions } from "./master-key.js";
+
+export { encrypt, decrypt, generateMasterKey, KEY_BYTES, CryptoError } from "./crypto.js";
+
+export {
+  PasswordManagerError,
+  resolveReference,
+} from "./password-managers.js";
+
+export {
+  createManager,
+  DEFAULT_PREFERENCES,
+} from "./manager.js";
+export type {
+  BackendId,
+  BackendStatus,
+  CreateManagerOptions,
+  ManagerPreferences,
+  ManagerSetOptions,
+  SecretsManager,
+} from "./manager.js";
+
+export type {
+  AuditRecord,
+  PasswordManagerReference,
+  VaultDescriptor,
+  VaultLogger,
+  VaultStats,
+} from "./types.js";

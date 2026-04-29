@@ -136,6 +136,7 @@ import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-route
 import { handleN8nRoutes } from "./n8n-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
 import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
+import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { getCorsAllowedPorts, isAllowedLocalOrigin } from "./server-cors";
 import { isCloudProvisioned as _isCloudProvisioned } from "./server-onboarding-compat";
 import { handleWalletMarketOverviewRoute } from "./wallet-market-overview-route";
@@ -866,6 +867,10 @@ async function handleCompatRoute(
 
   // Public cached market overview for wallet empty states and cloud feeds.
   if (await handleWalletMarketOverviewRoute(req, res)) return true;
+  if (
+    await handleSecretsManagerRoute(req, res, url.pathname, method)
+  )
+    return true;
 
   // Handle all /api/cloud/* routes (except compat and billing which have
   // their own handlers above) through handleCloudRoute. This is

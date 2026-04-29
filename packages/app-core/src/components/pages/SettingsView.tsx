@@ -52,6 +52,7 @@ import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
+import { SecretsManagerSection } from "../settings/SecretsManagerSection";
 import { SecuritySettingsSection } from "../settings/SecuritySettingsSection";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
@@ -167,6 +168,15 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     icon: Shield,
     description: "settings.sections.permissions.desc",
     defaultDescription: "Browser and device access.",
+  },
+  {
+    id: "secrets",
+    label: "settings.sections.secrets.label",
+    defaultLabel: "Secrets storage",
+    icon: KeyRound,
+    description: "settings.sections.secrets.desc",
+    defaultDescription:
+      "Where Milady stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",
   },
   {
     id: "security",
@@ -1052,6 +1062,22 @@ export function SettingsView({
           ref={registerContentItem("permissions")}
         >
           <PermissionsSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("secrets") && (
+        <SettingsSection
+          id="secrets"
+          title={t("settings.sections.secrets.label", {
+            defaultValue: "Secrets storage",
+          })}
+          description={t("settings.sections.secrets.desc", {
+            defaultValue:
+              "Where Milady stores your API keys: locally, in 1Password, in Bitwarden, or in Proton Pass.",
+          })}
+          ref={registerContentItem("secrets")}
+        >
+          <SecretsManagerSection />
         </SettingsSection>
       )}
 
