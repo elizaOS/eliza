@@ -5,7 +5,8 @@ import {
   sendJson as httpSendJson,
   sendJsonError as httpSendJsonError,
 } from "@elizaos/agent/api/http-helpers";
-import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import type { AgentRuntime, Plugin, Route, UUID } from "@elizaos/core";
+import { resolveCanonicalOwnerId } from "@elizaos/core";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
 import { handleSleepRoutes } from "./sleep-routes.js";
@@ -58,6 +59,11 @@ function requestBaseUrl(req: http.IncomingMessage): string {
   return `${protocol}://${host}`;
 }
 
+function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
+  const ownerId = runtime ? resolveCanonicalOwnerId(runtime) : null;
+  return typeof ownerId === "string" ? (ownerId as UUID) : null;
+}
+
 function buildLifeOpsContext(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -73,7 +79,7 @@ function buildLifeOpsContext(
     url,
     state: {
       runtime,
-      adminEntityId: null,
+      adminEntityId: routeOwnerEntityId(runtime),
     },
     json,
     error,
@@ -234,6 +240,9 @@ const LIFEOPS_STATIC_ROUTES: Array<{
   { type: "GET", path: "/api/lifeops/screen-time/history" },
   { type: "GET", path: "/api/lifeops/social/summary" },
   { type: "GET", path: "/api/lifeops/overview" },
+  { type: "GET", path: "/api/lifeops/connectors/health/status" },
+  { type: "POST", path: "/api/lifeops/health/sync" },
+  { type: "GET", path: "/api/lifeops/health/summary" },
   { type: "GET", path: "/api/lifeops/money/dashboard" },
   { type: "GET", path: "/api/lifeops/money/sources" },
   { type: "POST", path: "/api/lifeops/money/sources" },

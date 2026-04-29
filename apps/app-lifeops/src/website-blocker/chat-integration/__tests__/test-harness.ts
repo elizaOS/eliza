@@ -24,7 +24,7 @@ const BOOTSTRAP_STATEMENTS = [
     domain TEXT NOT NULL DEFAULT 'user_lifeops',
     subject_type TEXT NOT NULL DEFAULT 'owner',
     subject_id TEXT NOT NULL,
-    visibility_scope TEXT NOT NULL DEFAULT 'owner_agent_admin',
+    visibility_scope TEXT NOT NULL DEFAULT 'owner_only',
     context_policy TEXT NOT NULL DEFAULT 'explicit_only',
     kind TEXT NOT NULL,
     title TEXT NOT NULL,

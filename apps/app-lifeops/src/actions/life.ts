@@ -2363,7 +2363,7 @@ export const lifeAction: Action & {
     }
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const fallback =
-        "Life management is restricted to the owner, explicitly granted users, and the agent.";
+        "Life management is restricted to the owner and the agent.";
       return {
         success: false,
         text: await renderLifeActionReply({

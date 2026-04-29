@@ -7,6 +7,7 @@ import type {
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
+  GetLifeOpsHealthSummaryRequest,
   LifeOpsCadence,
   LifeOpsProgressionRule,
   LifeOpsTimeWindowDefinition,
@@ -119,6 +120,7 @@ export function normalizeWorkflowActionPlan(
         "get_calendar_feed",
         "get_gmail_triage",
         "get_gmail_unresponded",
+        "get_health_summary",
         "dispatch_n8n_workflow",
         "summarize",
         "browser",
@@ -196,6 +198,17 @@ export function normalizeWorkflowActionPlan(
           step.request,
           `actionPlan.steps[${index}].request`,
         ) as unknown as GetLifeOpsGmailUnrespondedRequest | undefined,
+      };
+    }
+    if (kind === "get_health_summary") {
+      return {
+        kind,
+        id,
+        resultKey,
+        request: normalizeOptionalRecord(
+          step.request,
+          `actionPlan.steps[${index}].request`,
+        ) as unknown as GetLifeOpsHealthSummaryRequest | undefined,
       };
     }
     if (kind === "dispatch_n8n_workflow") {

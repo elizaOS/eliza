@@ -64,7 +64,7 @@ type NativeIMessageServiceLike = {
   sendMessage(
     to: string,
     text: string,
-    options?: { mediaUrl?: string; maxBytes?: number },
+    options?: { mediaUrl?: string; maxBytes?: number }
   ): Promise<{
     success: boolean;
     messageId?: string;
@@ -117,6 +117,15 @@ function coerceBackend(value: unknown): IMessageBackend | undefined {
     : undefined;
 }
 
+function explicitBackendDisablesNative(
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  const preferred =
+    coerceBackend(env.ELIZA_IMESSAGE_BACKEND) ??
+    coerceBackend(env.IMESSAGE_BACKEND);
+  return preferred === "bluebubbles" || preferred === "none";
+}
+
 function normalizeHostPlatform(): LifeOpsIMessageConnectorStatus["hostPlatform"] {
   return process.platform === "darwin" ||
     process.platform === "linux" ||
@@ -148,12 +157,12 @@ async function pressMessagesReturn(): Promise<void> {
       "-e",
       "end tell",
     ],
-    { timeout: IMESSAGE_URL_HANDOFF_TIMEOUT_MS },
+    { timeout: IMESSAGE_URL_HANDOFF_TIMEOUT_MS }
   );
 }
 
 async function waitForNativeIMessageService(
-  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"]
 ): Promise<boolean> {
   const runtimeWithLifecycle = runtime as typeof runtime &
     RuntimeWithPluginLifecycle;
@@ -166,8 +175,8 @@ async function waitForNativeIMessageService(
     new Promise((_, reject) =>
       setTimeout(
         () => reject(new Error("native iMessage service load timed out")),
-        NATIVE_IMESSAGE_SERVICE_LOAD_TIMEOUT_MS,
-      ),
+        NATIVE_IMESSAGE_SERVICE_LOAD_TIMEOUT_MS
+      )
     ),
   ]);
 
@@ -175,13 +184,13 @@ async function waitForNativeIMessageService(
 }
 
 async function withNativeIMessageSendTimeout<T>(
-  promise: Promise<T>,
+  promise: Promise<T>
 ): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(
       () => reject(new Error(NATIVE_IMESSAGE_SEND_TIMEOUT_MESSAGE)),
-      NATIVE_IMESSAGE_SEND_TIMEOUT_MS,
+      NATIVE_IMESSAGE_SEND_TIMEOUT_MS
     );
   });
   try {
@@ -192,7 +201,7 @@ async function withNativeIMessageSendTimeout<T>(
 }
 
 async function ensureNativeIMessagePluginLoaded(
-  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"]
 ): Promise<boolean> {
   if (process.platform !== "darwin") {
     return false;
@@ -241,10 +250,14 @@ async function ensureNativeIMessagePluginLoaded(
 }
 
 async function getNativeIMessageService(
-  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
+  runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"]
 ): Promise<NativeIMessageServiceLike | null> {
+  if (explicitBackendDisablesNative()) {
+    return null;
+  }
+
   let service = runtime.getService(
-    "imessage",
+    "imessage"
   ) as NativeIMessageServiceLike | null;
   if (service) {
     return service;
@@ -254,7 +267,9 @@ async function getNativeIMessageService(
     await ensureNativeIMessagePluginLoaded(runtime);
   } catch (error) {
     logger.warn(
-      `[lifeops-imessage] failed to load native iMessage plugin: ${String(error)}`,
+      `[lifeops-imessage] failed to load native iMessage plugin: ${String(
+        error
+      )}`
     );
   }
 
@@ -264,7 +279,7 @@ async function getNativeIMessageService(
 
 function nativeStatusToLifeOps(
   service: NativeIMessageServiceLike,
-  checkedAt: string,
+  checkedAt: string
 ): LifeOpsIMessageConnectorStatus {
   const status = service.getStatus?.();
   const diagnostics: string[] = [];
@@ -274,7 +289,7 @@ function nativeStatusToLifeOps(
     diagnostics.push(
       status.permissionAction?.type === "full_disk_access"
         ? "full_disk_access_required"
-        : "chat_db_unavailable",
+        : "chat_db_unavailable"
     );
   }
   if (!connected) {
@@ -304,7 +319,7 @@ function nativeStatusToLifeOps(
 
 function bridgeStatusToLifeOps(
   status: Awaited<ReturnType<typeof getIMessageBackendStatus>>,
-  checkedAt: string,
+  checkedAt: string
 ): LifeOpsIMessageConnectorStatus {
   return {
     available: status.backend !== "none",
@@ -338,21 +353,21 @@ async function getConfiguredBridgeStatusOrNull(): Promise<Awaited<
 > | null> {
   try {
     const status = await getIMessageBackendStatus(
-      resolveLifeOpsIMessageBridgeConfig(),
+      resolveLifeOpsIMessageBridgeConfig()
     );
     return status.backend === "none" ? null : status;
   } catch (error) {
     logger.warn(
       `[lifeops-imessage] configured iMessage bridge probe failed: ${String(
-        error,
-      )}`,
+        error
+      )}`
     );
     return null;
   }
 }
 
 function nativeMessageToLifeOps(
-  message: NativeIMessageMessage,
+  message: NativeIMessageMessage
 ): IMessageRecord {
   const attachmentPaths = message.attachmentPaths ?? [];
   return {
@@ -375,7 +390,7 @@ function nativeMessageToLifeOps(
 
 function nativeChatToLifeOps(chat: NativeIMessageChat): IMessageChat {
   const participants = chat.participants.map(
-    (participant) => participant.handle,
+    (participant) => participant.handle
   );
   return {
     id: chat.chatId,
@@ -386,7 +401,7 @@ function nativeChatToLifeOps(chat: NativeIMessageChat): IMessageChat {
 
 function filterSince(
   messages: IMessageRecord[],
-  since: string | undefined,
+  since: string | undefined
 ): IMessageRecord[] {
   if (!since) {
     return messages;
@@ -418,7 +433,7 @@ function readConfiguredConnectors(): {
 }
 
 export function resolveLifeOpsIMessageBridgeConfig(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env
 ): IMessageBridgeConfig {
   const { bluebubbles, imessage } = readConfiguredConnectors();
   const preferredBackend =
@@ -440,8 +455,8 @@ export function resolveLifeOpsIMessageBridgeConfig(
     bluebubbles?.enabled !== false && bluebubblesUrl && bluebubblesPassword
       ? "bluebubbles"
       : imessage?.enabled !== false && imsgPath
-        ? "imsg"
-        : undefined;
+      ? "imsg"
+      : undefined;
   return {
     preferredBackend: preferredBackend ?? fallbackPreferredBackend,
     bluebubblesUrl,
@@ -457,7 +472,7 @@ export function resolveLifeOpsIMessageBridgeConfig(
 
 /** @internal */
 export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
-  Base: TBase,
+  Base: TBase
 ) {
   class LifeOpsIMessageServiceMixin extends Base {
     async getIMessageConnectorStatus(): Promise<LifeOpsIMessageConnectorStatus> {
@@ -479,7 +494,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async sendIMessage(
-      req: IMessageSendRequest,
+      req: IMessageSendRequest
     ): Promise<{ ok: true; messageId?: string }> {
       const nativeService = await getNativeIMessageService(this.runtime);
       if (nativeService) {
@@ -490,7 +505,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
               ...(req.attachmentPaths?.[0]
                 ? { mediaUrl: req.attachmentPaths[0] }
                 : {}),
-            }),
+            })
           );
         } catch (error) {
           return this.sendIMessageViaMessagesUrl(req, error);
@@ -498,7 +513,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
         if (!result.success) {
           return this.sendIMessageViaMessagesUrl(
             req,
-            new Error(result.error ?? "native iMessage send failed"),
+            new Error(result.error ?? "native iMessage send failed")
           );
         }
         return { ok: true, messageId: result.messageId };
@@ -509,7 +524,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
 
     async sendIMessageViaMessagesUrl(
       req: IMessageSendRequest,
-      cause: unknown,
+      cause: unknown
     ): Promise<{ ok: true; messageId?: string }> {
       if (req.attachmentPaths?.length) {
         throw cause instanceof Error ? cause : new Error(String(cause));
@@ -524,7 +539,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
           [messagesUrlFor(req.to, req.text)],
           {
             timeout: IMESSAGE_URL_HANDOFF_TIMEOUT_MS,
-          },
+          }
         );
         await sleep(IMESSAGE_URL_HANDOFF_SETTLE_MS);
         await pressMessagesReturn();
@@ -549,7 +564,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
           error instanceof Error ? error.message : String(error);
         fail(
           502,
-          `native iMessage send failed (${causeMessage}); URL handoff failed (${fallbackMessage}).`,
+          `native iMessage send failed (${causeMessage}); URL handoff failed (${fallbackMessage}).`
         );
       }
     }
@@ -569,7 +584,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
           : await nativeService.getRecentMessages?.(opts.limit);
         return filterSince(
           (rows ?? []).map(nativeMessageToLifeOps),
-          opts.since,
+          opts.since
         );
       }
 
@@ -598,7 +613,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
               limit: Math.max(opts.limit ?? 100, 100),
             })
           : await nativeService.getRecentMessages?.(
-              Math.max(opts.limit ?? 100, 100),
+              Math.max(opts.limit ?? 100, 100)
             );
         const query = opts.query.trim().toLowerCase();
         return (rows ?? [])
@@ -611,7 +626,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async getIMessageDeliveryStatus(
-      messageIds: string[],
+      messageIds: string[]
     ): Promise<IMessageDeliveryResult[]> {
       const nativeService = await getNativeIMessageService(this.runtime);
       if (nativeService) {
@@ -619,7 +634,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
         if (bridgeStatus) {
           return getIMessageDeliveryStatus(
             messageIds,
-            resolveLifeOpsIMessageBridgeConfig(),
+            resolveLifeOpsIMessageBridgeConfig()
           );
         }
         return messageIds.map((messageId) => ({
@@ -633,7 +648,7 @@ export function withIMessage<TBase extends Constructor<LifeOpsServiceBase>>(
 
       return getIMessageDeliveryStatus(
         messageIds,
-        resolveLifeOpsIMessageBridgeConfig(),
+        resolveLifeOpsIMessageBridgeConfig()
       );
     }
   }

@@ -536,7 +536,7 @@ export const lifeOpsMutateAction: Action & {
     "payment_source_delete (delete a payment source), " +
     "payment_csv_import (import bank/CSV transactions), " +
     "unsubscribe_sender (unsubscribe from a Gmail sender). " +
-    "Each subaction expects subaction-specific params (see schema). Admin / private access only.",
+    "Each subaction expects subaction-specific params (see schema). Owner access only.",
   descriptionCompressed:
     "LifeOps writes: gmail reply/manage, calendar create/update/delete, reminder snooze/complete/create, payment source add/delete + csv import, mark inbox read, unsubscribe sender.",
   suppressPostActionContinuation: true,
