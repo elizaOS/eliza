@@ -25,6 +25,7 @@ import {
 } from "./priority-scoring.js";
 import type { LifeOpsCachedInboxMessage } from "./repository.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import { fail, requireNonEmptyString } from "./service-normalize.js";
 
 const DEFAULT_INBOX_LIMIT = 100;
 const INBOX_CACHE_FRESH_MS = 60_000;
@@ -817,6 +818,20 @@ export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
         flattenInboxMessages(inbox),
       );
       return inbox;
+    }
+
+    async markInboxEntryRead(
+      inboxEntryId: string,
+    ): Promise<LifeOpsInboxMessage> {
+      const id = requireNonEmptyString(inboxEntryId, "inboxEntryId");
+      const message = await this.repository.markCachedInboxMessageRead(
+        this.runtime.agentId,
+        id,
+      );
+      if (!message) {
+        fail(404, "life-ops inbox entry not found");
+      }
+      return message;
     }
   }
 
