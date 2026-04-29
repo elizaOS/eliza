@@ -82,8 +82,14 @@ export type {
 } from "./types.js";
 
 // elizaOS integration helpers — see ./integrations/*
+// Comprehensive coverage of the full elizaOS plugin catalog: LLM
+// providers, TTS/voice, messaging connectors, wallets, blockchain RPC,
+// trading, music, storage, tools, and miscellaneous service tokens.
 export {
-  ELIZA_PROVIDER_SECRET_IDS,
+  ELIZA_ENV_TO_SECRET_ID,
+  ELIZA_PROVIDER_TO_SECRET_ID,
+  envVarForSecretId,
+  isDeviceBoundSecretId,
   isSubscriptionProviderId,
   mirrorLegacyEnvCredentials,
   providerIdForSecretId,
@@ -92,4 +98,7 @@ export type {
   MirrorResult,
   ResolvedCredentialLike,
 } from "./integrations/eliza-providers.js";
-export { registerElizaProviderSchemas } from "./integrations/eliza-schema.js";
+export {
+  registerElizaSecretSchemas,
+  registerElizaProviderSchemas,
+} from "./integrations/eliza-schema.js";

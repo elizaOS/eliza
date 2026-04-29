@@ -5,25 +5,37 @@ host app. Each phase is independently shippable, ends with deletion of
 the legacy code it replaced, and corresponds to a phase in §9 of the
 Milady-side architecture doc (`docs/architecture/confidant.md`).
 
+Confidant covers **every credential the elizaOS plugin catalog uses**
+— LLM providers, TTS / voice, messaging connectors, wallets, blockchain
+RPC, trading APIs, music services, cloud storage, browser tools, and
+miscellaneous service tokens. The integration helpers
+(`registerElizaSecretSchemas`, `mirrorLegacyEnvCredentials`) ship the
+canonical SecretId scheme for the entire catalog, indexed by env-var
+name.
+
 ## TL;DR
 
 ```ts
 // 1. At app boot
 import {
   createConfidant,
-  registerElizaProviderSchemas,
+  registerElizaSecretSchemas,
   mirrorLegacyEnvCredentials,
 } from "@elizaos/confidant";
 import { scanAllCredentials } from "@elizaos/app-core/api/credential-resolver";
 
-registerElizaProviderSchemas();
+registerElizaSecretSchemas();
 const confidant = createConfidant();
 await mirrorLegacyEnvCredentials(confidant, scanAllCredentials());
 
-// 2. Plugin code (eventually)
-const apiKey = await runtime.confidant
-  .scopeFor(plugin.id)
-  .resolve("llm.openrouter.apiKey");
+// 2. Plugin code (eventually) — pick the domain that matches the credential:
+const llmKey      = await scoped.resolve("llm.openrouter.apiKey");
+const ghToken     = await scoped.resolve("connector.github.apiToken");
+const evmKey      = await scoped.resolve("wallet.evm.privateKey");
+const ttsKey      = await scoped.resolve("tts.elevenlabs.apiKey");
+const heliusRpc   = await scoped.resolve("rpc.helius.apiKey");
+const s3Key       = await scoped.resolve("storage.s3.accessKeyId");
+const clobKey     = await scoped.resolve("trading.polymarket.clobApiKey");
 ```
 
 That's the end state. The phases below describe how to get there
@@ -40,13 +52,17 @@ unchanged. Plugins still read `process.env`.
 
 1. Construct a Confidant during runtime initialization. Pass a
    `MasterKeyResolver` (default: `osKeyringMasterKey`).
-2. Call `registerElizaProviderSchemas()` once, before any plugin
-   registers.
+2. Call `registerElizaSecretSchemas()` once, before any plugin
+   registers. This declares the canonical schema for every catalog
+   credential (LLM keys, connector tokens, wallet material, RPC keys,
+   storage credentials, etc.) — one call replaces dozens of individual
+   `defineSecretSchema` invocations.
 3. Call `mirrorLegacyEnvCredentials(confidant, scanAllCredentials())`
    after the existing credential-resolver runs. This populates
    Confidant with `env://VAR_NAME` references that resolve through the
    `EnvLegacyBackend` to the same `process.env` values plugins are
-   already reading.
+   already reading. Indexed by env-var name, so every catalog credential
+   that has a `process.env.X` slot gets a stable Confidant id.
 4. Expose the Confidant on the runtime — either as a typed field
    (`runtime.confidant`) or via the runtime's service registry
    (`runtime.getService("confidant")`). The first is more discoverable;
@@ -98,35 +114,67 @@ key becomes structurally impossible.
 
 ---
 
-## Phase 3 — built-in AI providers migrate to Confidant reads
+## Phase 3 — built-in plugins migrate to Confidant reads
 
-**Goal:** Each `@elizaos/plugin-{anthropic,openai,openrouter,...}`
-reads its credential through Confidant rather than `process.env`.
+**Goal:** Every first-party `@elizaos/plugin-*` — LLM providers,
+connectors, wallet plugins, RPC providers, storage backends — reads
+its credentials through Confidant rather than `process.env`.
 
-### Steps (per plugin)
+### Steps (per plugin, examples across domains)
 
-1. In the plugin's init code, switch from
-   `process.env.OPENROUTER_API_KEY` to
-   `runtime.confidant.lazyResolve("llm.openrouter.apiKey")`. The lazy
-   form returns `() => Promise<string>` — pass it to HTTP clients so
-   the secret is fetched per-request, never copied into long-lived
-   memory.
-2. The plugin gets implicit access to its registered ids (the schema
-   registry attributes ownership). No grants needed.
-3. Once the plugin is migrated, remove its env-var hydration from the
-   credential-resolver. One less hardcoded env-var name in the host
-   app's responsibility.
+```ts
+// LLM provider (plugin-openrouter)
+const apiKey = runtime.confidant
+  .scopeFor("@elizaos/plugin-openrouter")
+  .lazyResolve("llm.openrouter.apiKey");
+
+// Messaging connector (plugin-github)
+const token = runtime.confidant
+  .scopeFor("@elizaos/plugin-github")
+  .lazyResolve("connector.github.apiToken");
+
+// Wallet plugin (plugin-evm)
+const pk = runtime.confidant
+  .scopeFor("@elizaos/plugin-evm")
+  .lazyResolve("wallet.evm.privateKey");
+
+// RPC provider (plugin-evm consuming Alchemy)
+const alchemyKey = runtime.confidant
+  .scopeFor("@elizaos/plugin-evm")
+  .lazyResolve("rpc.alchemy.apiKey");
+
+// Storage backend (plugin-s3-storage)
+const accessKey = runtime.confidant
+  .scopeFor("@elizaos/plugin-s3-storage")
+  .lazyResolve("storage.s3.accessKeyId");
+const secretKey = runtime.confidant
+  .scopeFor("@elizaos/plugin-s3-storage")
+  .lazyResolve("storage.s3.secretAccessKey");
+```
+
+The lazy form returns `() => Promise<string>` — pass it to HTTP / SDK
+clients so the secret is fetched per-request, never copied into
+long-lived memory.
+
+Each plugin gets implicit access to its own registered ids via the
+schema registry's ownership attribution; no grants needed for first-
+party plugins.
+
+Once the plugin is migrated, remove its env-var hydration from the
+credential-resolver. One less hardcoded env-var name in the host app's
+responsibility.
 
 ### Exit criterion
 
 ```bash
-grep -r 'process.env.OPENROUTER_API_KEY' packages/plugin-openrouter/
-# no matches in src/
+# For any migrated plugin:
+grep -r 'process.env.X_API_KEY' packages/plugin-X/   # no matches in src/
+grep -r 'process.env.WALLET_'   packages/plugin-evm/ # no matches in src/
 ```
 
 The plugin now resolves through Confidant for every request. Audit log
-shows resolves keyed by `llm.openrouter.apiKey` and `skill:
-"@elizaos/plugin-openrouter"`.
+shows resolves keyed by the plugin's SecretIds and `skill:
+"@elizaos/plugin-X"`.
 
 ---
 
