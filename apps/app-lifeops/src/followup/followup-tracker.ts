@@ -1,20 +1,15 @@
-import type {
-  IAgentRuntime,
-  JsonValue,
-  Memory,
-  UUID,
-} from "@elizaos/core";
+import type { IAgentRuntime, JsonValue, Memory, UUID } from "@elizaos/core";
 import {
-  MemoryType,
   createUniqueUuid,
   logger,
+  MemoryType,
   stringToUuid,
 } from "@elizaos/core";
 import { loadLifeOpsAppState } from "../lifeops/app-state.js";
 import {
+  type BackgroundJobContext,
   BackgroundPlannerError,
   planJob,
-  type BackgroundJobContext,
 } from "../lifeops/background-planner.js";
 import { enqueueIfSensitive } from "../lifeops/background-planner-dispatch.js";
 

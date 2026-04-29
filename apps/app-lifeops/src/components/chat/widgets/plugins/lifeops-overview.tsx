@@ -858,7 +858,11 @@ function ReminderRow({ reminder }: { reminder: LifeOpsActiveReminderView }) {
         <span className="min-w-0 flex-1 truncate text-xs font-semibold text-txt">
           {reminder.title}
         </span>
-        <span className="shrink-0 text-muted" role="img" aria-label={channelLabel}>
+        <span
+          className="shrink-0 text-muted"
+          role="img"
+          aria-label={channelLabel}
+        >
           {channelIcon ?? (
             <span className="text-3xs uppercase tracking-wider">
               {channelLabel}

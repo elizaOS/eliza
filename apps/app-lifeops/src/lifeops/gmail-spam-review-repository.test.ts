@@ -1,9 +1,9 @@
 import { PGlite } from "@electric-sql/pglite";
-import type { LifeOpsGmailSpamReviewItem } from "../contracts/index.js";
 import type { IAgentRuntime } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { LifeOpsGmailSpamReviewItem } from "../contracts/index.js";
 import { LifeOpsRepository } from "./repository.js";
 
 const BOOTSTRAP = `CREATE TABLE IF NOT EXISTS life_gmail_spam_review_items (
