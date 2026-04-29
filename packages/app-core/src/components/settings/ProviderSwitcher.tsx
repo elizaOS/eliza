@@ -48,6 +48,8 @@ import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
+import { ProvidersList } from "../local-inference/ProvidersList";
+import { RoutingMatrix } from "../local-inference/RoutingMatrix";
 import { CloudDashboard } from "../pages/ElizaCloudDashboard";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import {
@@ -865,8 +867,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   );
 
   return (
-    <div className="grid gap-3 xl:grid-cols-[240px_minmax(0,1fr)]">
-      <aside className="flex min-w-0 flex-col gap-3">
+    <div className="space-y-3">
+      <div className="grid gap-3 xl:grid-cols-[240px_minmax(0,1fr)]">
+        <aside className="flex min-w-0 flex-col gap-3">
         <div className="space-y-1.5">
           <div className="text-[10px] text-muted font-medium uppercase tracking-wider">
             Providers
@@ -957,9 +960,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             })}
           </div>
         ) : null}
-      </aside>
+        </aside>
 
-      <section className="min-w-0 overflow-hidden rounded-xl border border-border/40 bg-card/35">
+        <section className="min-w-0 overflow-hidden rounded-xl border border-border/40 bg-card/35">
         {visibleProviderPanelId === "__local__" ? (
           <div className="min-w-0">
             <ProviderPanelHeader
@@ -1202,7 +1205,15 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
             </div>
           </div>
         ) : null}
-      </section>
+        </section>
+      </div>
+
+      <AdvancedSettingsDisclosure title="Model settings">
+        <div className="flex flex-col gap-3">
+          <ProvidersList />
+          <RoutingMatrix />
+        </div>
+      </AdvancedSettingsDisclosure>
     </div>
   );
 }

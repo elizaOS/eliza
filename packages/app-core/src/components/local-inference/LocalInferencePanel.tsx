@@ -22,8 +22,6 @@ import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { HuggingFaceSearch } from "./HuggingFaceSearch";
 import { ModelHubView } from "./ModelHubView";
-import { ProvidersList } from "./ProvidersList";
-import { RoutingMatrix } from "./RoutingMatrix";
 import { SlotAssignments } from "./SlotAssignments";
 
 type HubTab = "curated" | "search" | "downloads";
@@ -361,10 +359,8 @@ export function LocalInferencePanel() {
         />
       )}
 
-      <AdvancedSettingsDisclosure title="Local routing">
+      <AdvancedSettingsDisclosure title="Local model assignments">
         <div className="flex flex-col gap-3">
-          <ProvidersList />
-          <RoutingMatrix />
           <SlotAssignments
             installed={hub.installed}
             assignments={hub.assignments}

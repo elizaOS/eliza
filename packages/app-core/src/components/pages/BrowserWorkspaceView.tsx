@@ -5,7 +5,7 @@ import {
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
-} from "../../../../../plugins/plugin-browser-bridge/src/contracts.js";
+} from "@elizaos/plugin-browser-bridge/contracts";
 import {
   Button,
   Input,
@@ -1338,14 +1338,18 @@ export function BrowserWorkspaceView(): JSX.Element {
             : "Enter a URL",
         })}
         disabled={busyAction !== null || selectedTabIsInternal}
-        className="h-8 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
+        className="h-8 min-w-0 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
       />
       <Button
         variant="outline"
         size="sm"
         className="h-8 shrink-0 px-3"
         aria-label={goLabel}
-        disabled={busyAction !== null || locationInput.trim().length === 0}
+        disabled={
+          busyAction !== null ||
+          selectedTabIsInternal ||
+          locationInput.trim().length === 0
+        }
         onClick={() =>
           void runBrowserWorkspaceAction("navigate:click", async () => {
             await navigateSelectedBrowserWorkspaceTab(locationInput);

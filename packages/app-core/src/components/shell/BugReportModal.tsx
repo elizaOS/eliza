@@ -60,7 +60,7 @@ const EMPTY_FORM: BugReportForm = {
 };
 
 const modalContentClassName =
-  "w-[min(100%-2rem,42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl backdrop-blur-xl";
+  "w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,52rem)] overflow-hidden rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl backdrop-blur-xl";
 
 const modalInputClassName =
   "h-11 rounded-xl border-border bg-bg-hover text-txt placeholder:text-muted/70 focus-visible:ring-accent/30";
@@ -400,7 +400,7 @@ export function BugReportModal() {
           if (!open) close();
         }}
       >
-        <DialogContent className="w-[min(100%-2rem,28rem)] rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl backdrop-blur-xl">
+        <DialogContent className="w-[min(calc(100%_-_2rem),28rem)] rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl backdrop-blur-xl">
           <DialogHeader className="px-5 py-4 text-left">
             <DialogTitle
               ref={(node) => {

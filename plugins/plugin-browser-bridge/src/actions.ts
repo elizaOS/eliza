@@ -252,25 +252,27 @@ export const browserBridgeRefreshAction: Action = {
     try {
       const status = getBrowserBridgeCompanionPackageStatus();
 
-      // Companions live behind the runtime service. Best-effort: if the
-      // service is not registered (for example in a unit-test runtime) we
-      // still return the package status snapshot.
       let companions: BrowserBridgeCompanionStatus[] = [];
-      let companionsAvailable = false;
       const service = runtime.getService<BrowserBridgeRouteService>(
         BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
       );
-      if (service) {
-        try {
-          companions = await service.listBrowserCompanions();
-          companionsAvailable = true;
-        } catch (err) {
-          logger.warn(
-            `[${REFRESH_NAME}] companion lookup failed: ${describeError(err)}`,
-          );
-        }
+      if (!service) {
+        return {
+          text: "Agent Browser Bridge package status is available, but companion status cannot be read because the Browser Bridge service is not registered.",
+          success: false,
+          values: {
+            success: false,
+            error: "BROWSER_BRIDGE_SERVICE_UNAVAILABLE",
+          },
+          data: {
+            actionName: REFRESH_NAME,
+            status,
+            companions,
+          },
+        };
       }
 
+      companions = await service.listBrowserCompanions();
       const connected = companions.length > 0;
       const text = connected
         ? `Refreshed Agent Browser Bridge connection status: ${companions.length} paired companion(s).`
@@ -288,7 +290,6 @@ export const browserBridgeRefreshAction: Action = {
           actionName: REFRESH_NAME,
           status,
           companions,
-          companionsAvailable,
         },
       };
     } catch (err) {

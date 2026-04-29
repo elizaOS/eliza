@@ -222,8 +222,8 @@ export function ThemedSelect<T extends string>({
           aria-labelledby={ariaLabelledBy}
           className={`absolute left-0 right-0 z-50 max-h-[280px] overflow-y-auto rounded-md border border-border bg-card shadow-lg ${
             menuPlacement === "top"
-              ? "bottom-[calc(100%+0.125rem)]"
-              : "top-[calc(100%+0.125rem)]"
+              ? "bottom-[calc(100%_+_0.125rem)]"
+              : "top-[calc(100%_+_0.125rem)]"
           } ${menuClassName}`}
         >
           {groups.map((group) => (

@@ -50,10 +50,12 @@ class RingBuffer {
 }
 
 /**
- * Published per-million-token rates as of 2026-04. Keep conservative —
- * "cheapest" policy only needs relative ordering to be correct.
- * Sources: vendor pricing pages. Local / device-bridge = 0 because the
- * user already paid for the hardware.
+ * Relative per-million-token costs. Keep conservative: the policy only
+ * needs the order to be right for product defaults.
+ * Local / device-bridge = 0 because the user already paid for the hardware.
+ * Subscriptions get a small marginal cost, direct APIs sit above that,
+ * and Eliza Cloud is last because managed fallback is the most expensive
+ * path for the user.
  */
 const COST_PER_MILLION_TOKENS: Partial<
   Record<string, { input: number; output: number }>
@@ -61,14 +63,20 @@ const COST_PER_MILLION_TOKENS: Partial<
   "milady-local-inference": { input: 0, output: 0 },
   "milady-device-bridge": { input: 0, output: 0 },
   "capacitor-llama": { input: 0, output: 0 },
+  "anthropic-subscription": { input: 0.1, output: 0.1 },
+  "openai-codex": { input: 0.1, output: 0.1 },
+  "openai-subscription": { input: 0.1, output: 0.1 },
   anthropic: { input: 3, output: 15 },
   openai: { input: 2.5, output: 10 },
   grok: { input: 5, output: 15 },
   google: { input: 1.25, output: 5 },
+  "google-genai": { input: 1.25, output: 5 },
+  moonshot: { input: 1.25, output: 5 },
+  kimi: { input: 1.25, output: 5 },
+  zai: { input: 1.25, output: 5 },
+  glm: { input: 1.25, output: 5 },
   mistral: { input: 2, output: 6 },
-  // Cloud is billed by the user's subscription — treat as free at the
-  // resolver level; actual billing happens upstream.
-  elizacloud: { input: 0, output: 0 },
+  elizacloud: { input: 30, output: 60 },
 };
 
 interface ProviderStats {

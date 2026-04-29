@@ -32,7 +32,7 @@ import type {
   OpenBrowserBridgeCompanionPackagePathResponse,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
-} from "../../../../plugins/plugin-browser-bridge/src/contracts.js";
+} from "@elizaos/plugin-browser-bridge/contracts";
 import type {
   CaptureLifeOpsActivitySignalRequest,
   CaptureLifeOpsManualOverrideRequest,

@@ -19,29 +19,28 @@ const SLOTS: Array<{
 }> = [
   {
     slot: "TEXT_SMALL",
-    label: "Small model (TEXT_SMALL)",
+    label: "Small text",
     description:
-      "Fast model used for short completions, classifications, and background tasks.",
+      "Short completions, classifications, and background requests.",
   },
   {
     slot: "TEXT_LARGE",
-    label: "Large model (TEXT_LARGE)",
-    description:
-      "Main model used for the agent's chat responses and reasoning.",
+    label: "Large text",
+    description: "Main chat responses, planning, and reasoning.",
   },
   {
     slot: "TEXT_EMBEDDING",
-    label: "Embedding model (TEXT_EMBEDDING)",
-    description: "Vector embeddings for search and memory. Separate model.",
+    label: "Embeddings",
+    description: "Vector search and memory when a local embedding handler exists.",
   },
   {
     slot: "OBJECT_SMALL",
-    label: "Small structured output (OBJECT_SMALL)",
+    label: "Small structured output",
     description: "XML/JSON structured generation on the small path.",
   },
   {
     slot: "OBJECT_LARGE",
-    label: "Large structured output (OBJECT_LARGE)",
+    label: "Large structured output",
     description: "Structured generation on the large path.",
   },
 ];
@@ -78,7 +77,7 @@ export function SlotAssignments({
   if (installed.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-        Download or scan at least one model to assign it to agent slots.
+        Download or scan at least one model to use local inference.
       </div>
     );
   }
@@ -86,12 +85,12 @@ export function SlotAssignments({
   return (
     <section className="flex flex-col gap-3">
       <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        Agent model assignments
+        Local model assignments
       </h3>
       <p className="text-xs text-muted-foreground">
-        Route each of the agent's model calls to a specific local model. Changes
-        apply on the next request — the runtime lazy-loads the assigned model on
-        demand and swaps when needed.
+        Milady defaults both text routes to the largest installed local model so
+        only one model has to stay in memory. Override a slot only when you
+        explicitly want a different local model.
       </p>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {SLOTS.map(({ slot, label, description }) => {
@@ -113,7 +112,7 @@ export function SlotAssignments({
                 }
                 className="mt-1 rounded-md border border-border bg-bg/50 px-2 py-1.5 text-sm"
               >
-                <option value="">— unset (use active model) —</option>
+                <option value="">Auto</option>
                 {installed.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.displayName}

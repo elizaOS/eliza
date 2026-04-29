@@ -1782,7 +1782,7 @@ function TokenRail({
             key={tab.id}
             type="button"
             className={cn(
-              "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)-4px)] px-3 py-2 text-sm font-semibold transition-colors",
+              "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-[calc(var(--radius-lg)_-_4px)] px-3 py-2 text-sm font-semibold transition-colors",
               showIconOnlyTabs ? "px-2" : undefined,
               activeTab === tab.id
                 ? "bg-bg text-txt shadow-sm"

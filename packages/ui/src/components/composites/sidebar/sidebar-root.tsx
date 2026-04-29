@@ -17,7 +17,7 @@ const sidebarRootVariants = cva(
     variants: {
       variant: {
         default:
-          "relative isolate min-h-0 h-[calc(100%-1rem)] w-full shrink-0 rounded-l-none rounded-tr-2xl rounded-br-2xl border-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md",
+          "relative isolate min-h-0 h-[calc(100%_-_1rem)] w-full shrink-0 rounded-l-none rounded-tr-2xl rounded-br-2xl border-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_76%,transparent),color-mix(in_srgb,var(--bg-muted)_97%,transparent))] backdrop-blur-md",
         mobile:
           "h-full w-full min-w-0 border-0 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_96%,transparent),color-mix(in_srgb,var(--bg)_92%,transparent))] shadow-none ring-0",
         "game-modal":

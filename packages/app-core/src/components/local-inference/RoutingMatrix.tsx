@@ -7,6 +7,8 @@ import type {
   RoutingPreferences,
 } from "../../api/client-local-inference";
 
+const DEFAULT_POLICY: RoutingPolicy = "prefer-local";
+
 const SLOTS: AgentModelSlot[] = [
   "TEXT_SMALL",
   "TEXT_LARGE",
@@ -130,7 +132,7 @@ export function RoutingMatrix() {
             .filter((r) => r.modelType === modelType)
             .filter((r) => r.provider !== "milady-router")
             .sort((a, b) => b.priority - a.priority);
-          const policy = preferences.policy[slot] ?? "manual";
+          const policy = preferences.policy[slot] ?? DEFAULT_POLICY;
           const preferred = preferences.preferredProvider[slot] ?? "";
           const disabled = busy === slot;
           return (

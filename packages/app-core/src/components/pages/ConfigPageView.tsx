@@ -500,7 +500,7 @@ export function ConfigPageView({
             </div>
             <Button
               variant="outline"
-              className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)+2px)] flex items-center gap-1.5 text-xs text-muted hover:text-txt"
+              className="min-h-[2.625rem] px-4 rounded-[calc(var(--radius-lg)_+_2px)] flex items-center gap-1.5 text-xs text-muted hover:text-txt"
               onClick={() => setSecretsOpen(true)}
             >
               <svg
@@ -615,7 +615,7 @@ export function ConfigPageView({
       <Dialog open={secretsOpen} onOpenChange={setSecretsOpen}>
         <DialogContent
           showCloseButton={false}
-          className="w-[min(100%-2rem,42rem)] max-h-[min(88vh,48rem)] overflow-hidden rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl"
+          className="w-[min(calc(100%_-_2rem),42rem)] max-h-[min(88vh,48rem)] overflow-hidden rounded-2xl border border-border/70 bg-card/96 p-0 shadow-2xl"
         >
           <div className="flex max-h-[min(88vh,48rem)] flex-col">
             <DialogHeader className="flex flex-row items-center justify-between px-5 py-4">

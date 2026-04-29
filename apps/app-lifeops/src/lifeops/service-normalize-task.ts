@@ -1,7 +1,7 @@
 import {
   BROWSER_BRIDGE_ACTION_KINDS,
   type BrowserBridgeAction,
-} from "../../../../plugins/plugin-browser-bridge/src/index.js";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   CreateLifeOpsDefinitionRequest,
   GetLifeOpsCalendarFeedRequest,

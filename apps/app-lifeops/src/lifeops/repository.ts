@@ -8,7 +8,7 @@ import {
   type BrowserBridgeSettings,
   type BrowserBridgeTabSummary,
   browserBridgeSchema,
-} from "../../../../plugins/plugin-browser-bridge/src/index.js";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,

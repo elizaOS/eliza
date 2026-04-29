@@ -35,14 +35,12 @@ ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true
 
 set in the environment. That flag is the existing escape valve wired into
 `@elizaos/plugin-sql`'s migrator (see `repository.ts:1389` in plugin-sql).
-This surface is not launched yet, so there is no production data to
-preserve — the rename is destructive by design.
+Use that flag only for throwaway or explicitly approved migration runs.
 
 ## Integration
 
-Phase 4 will register `browserBridgePlugin` in the main plugin list next to
-`@elizaos/app-lifeops`. Until then the plugin is scaffolded but not yet
-mounted at runtime.
+Milady loads `browserBridgePlugin` as a core runtime plugin so the Browser
+Workspace UI, agent actions, and companion extension use the same API surface.
 
 ```ts
 import { browserBridgePlugin } from "@elizaos/plugin-browser-bridge/plugin";

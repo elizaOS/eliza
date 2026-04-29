@@ -397,7 +397,7 @@ function SecretPicker({
     >
       <DialogContent
         showCloseButton={false}
-        className="w-[min(100%-2rem,35rem)] max-h-[min(80vh,36rem)] overflow-hidden rounded-2xl border border-border/60 bg-card/96 p-0 shadow-2xl"
+        className="w-[min(calc(100%_-_2rem),35rem)] max-h-[min(80vh,36rem)] overflow-hidden rounded-2xl border border-border/60 bg-card/96 p-0 shadow-2xl"
       >
         <DialogHeader className="flex flex-row items-center justify-between px-4 py-3">
           <div className="min-w-0">

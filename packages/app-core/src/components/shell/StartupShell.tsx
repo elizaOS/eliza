@@ -273,7 +273,7 @@ export function StartupShell() {
       className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden"
     >
       <img
-        src={resolveAppAssetUrl("splash-bg.jpg")}
+        src={resolveAppAssetUrl("splash-bg.png")}
         alt=""
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 h-full w-full object-cover"
@@ -325,7 +325,7 @@ function BootstrapGateShell({ children }: { children: ReactNode }) {
         <div className="absolute left-[-10%] top-[8%] h-[24rem] w-[24rem] rounded-full bg-[rgba(240,185,11,0.1)] blur-[110px]" />
         <div className="absolute bottom-[-12%] right-[-8%] h-[20rem] w-[20rem] rounded-full bg-[rgba(255,255,255,0.08)] blur-[120px]" />
       </div>
-      <div className="relative z-10 flex flex-1 items-center justify-center px-4 pb-[max(1.5rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)+3.75rem)] sm:px-6 md:px-8">
+      <div className="relative z-10 flex flex-1 items-center justify-center px-4 pb-[max(1.5rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div className="flex w-full max-w-[32rem] flex-col items-center gap-4">
           {children}
         </div>

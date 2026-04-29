@@ -20,7 +20,7 @@
  */
 
 import { Button, Card, CardContent, Input, Spinner } from "@elizaos/ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
   CloudCompatAgent,
@@ -35,14 +35,17 @@ import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
 import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
 import { shouldShowLocalOption } from "../../onboarding/probe-local-agent";
-import { isAndroid, isDesktopPlatform } from "../../platform/init";
+import { isAndroid, isDesktopPlatform, isIOS } from "../../platform/init";
 import {
   addAgentProfile,
   clearPersistedActiveServer,
   savePersistedActiveServer,
+  type UiTheme,
   useApp,
 } from "../../state";
+import { resolveAppAssetUrl } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
+import { ThemeToggle } from "../shared/ThemeToggle";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
@@ -51,6 +54,7 @@ const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 const LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
 
 type SubView = "chooser" | "cloud" | "remote";
+type RuntimeChoice = "cloud" | "local" | "remote";
 
 type CloudStage =
   | "login"
@@ -60,6 +64,27 @@ type CloudStage =
   | "creating"
   | "provisioning"
   | "connecting";
+
+const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
+  cloud: "app-heroes/agentDOD.png",
+  local: "app-heroes/runtime-debugger.png",
+  remote: "app-heroes/log-viewer.png",
+};
+
+function resolveRuntimeChoices(args: {
+  isAndroid: boolean;
+  isIOS: boolean;
+  isDesktop: boolean;
+  isDev: boolean;
+  showLocalOption: boolean;
+  localProbePending: boolean;
+}): RuntimeChoice[] {
+  if (args.isAndroid && args.localProbePending) return [];
+  if (args.isAndroid && args.showLocalOption) return ["local"];
+  if (args.isIOS || args.isAndroid) return ["cloud", "remote"];
+  if (args.isDesktop || args.isDev) return ["cloud", "local", "remote"];
+  return ["cloud", "remote"];
+}
 
 function statusBadge(status: string): { label: string; className: string } {
   switch (status) {
@@ -81,6 +106,95 @@ function statusBadge(status: string): { label: string; className: string } {
   }
 }
 
+function runtimeChoiceDetails(
+  choice: RuntimeChoice,
+  t: (key: string, values?: Record<string, unknown>) => string,
+  androidLocal: boolean,
+): {
+  label: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  imageSrc: string;
+} {
+  switch (choice) {
+    case "cloud":
+      return {
+        label: t("runtimegate.cloudOptionLabel", { defaultValue: "CLOUD" }),
+        eyebrow: t("runtimegate.cloudEyebrow", {
+          defaultValue: "Eliza Cloud",
+        }),
+        title: t("runtimegate.cloudTitle", {
+          defaultValue: "Run in Eliza Cloud",
+        }),
+        description: t("runtimegate.cloudDesc", {
+          defaultValue:
+            "Hosted agent with managed LLMs and connectors. Fastest start.",
+        }),
+        imageSrc: resolveAppAssetUrl(CHOICE_IMAGE_PATH.cloud),
+      };
+    case "local":
+      return {
+        label: t("runtimegate.localOptionLabel", { defaultValue: "LOCAL" }),
+        eyebrow: androidLocal
+          ? t("runtimegate.localEyebrowOnDevice", {
+              defaultValue: "On device",
+            })
+          : t("runtimegate.localEyebrow", {
+              defaultValue: "This device",
+            }),
+        title: androidLocal
+          ? t("runtimegate.localTitleAndroid", {
+              defaultValue: "Local Agent (Beta)",
+            })
+          : t("runtimegate.localTitle", {
+              defaultValue: "Run a local agent",
+            }),
+        description: androidLocal
+          ? t("runtimegate.localDescAndroid", {
+              defaultValue:
+                "Runs the full Eliza agent on this device. No cloud needed.",
+            })
+          : t("runtimegate.localDesc", {
+              defaultValue:
+                "Keep the agent on this machine. You'll pick a provider after start.",
+            }),
+        imageSrc: resolveAppAssetUrl(CHOICE_IMAGE_PATH.local),
+      };
+    case "remote":
+      return {
+        label: t("runtimegate.remoteOptionLabel", { defaultValue: "REMOTE" }),
+        eyebrow: t("runtimegate.remoteEyebrow", {
+          defaultValue: "Remote agent",
+        }),
+        title: t("runtimegate.remoteTitle", {
+          defaultValue: "Connect to an existing agent",
+        }),
+        description: t("runtimegate.remoteDesc", {
+          defaultValue:
+            "Point at an agent you're already running (e.g. on your Mac).",
+        }),
+        imageSrc: resolveAppAssetUrl(CHOICE_IMAGE_PATH.remote),
+      };
+  }
+}
+
+function selectChoiceLabel(
+  choice: RuntimeChoice,
+  t: (key: string, values?: Record<string, unknown>) => string,
+): string {
+  switch (choice) {
+    case "cloud":
+      return t("runtimegate.selectCloud", { defaultValue: "Select Cloud" });
+    case "local":
+      return t("runtimegate.selectLocal", {
+        defaultValue: "Start Local Agent",
+      });
+    case "remote":
+      return t("runtimegate.selectRemote", { defaultValue: "Select Remote" });
+  }
+}
+
 export function RuntimeGate() {
   const {
     setState,
@@ -90,6 +204,8 @@ export function RuntimeGate() {
     handleCloudLogin,
     startupCoordinator,
     uiLanguage,
+    uiTheme,
+    setUiTheme,
     t,
   } = useApp();
 
@@ -119,8 +235,8 @@ export function RuntimeGate() {
   // Local-tile visibility. On desktop/dev this is true synchronously; on
   // Android it depends on a live probe of the on-device agent's
   // `/api/health`, so the tile is hidden until the probe resolves. Other
-  // platforms never see it. `null` means "still probing" — the chooser
-  // shows the spinner placeholder for the local slot only.
+  // platforms never see it. `null` means "still probing" — Android waits
+  // briefly so AOSP builds can collapse to the local-only path.
   const isDesktop = isDesktopPlatform();
   const isDev = Boolean(import.meta.env.DEV);
   const synchronousLocal = isDesktop || isDev;
@@ -146,10 +262,31 @@ export function RuntimeGate() {
 
   const showLocalOption = localProbeResult === true;
   const localProbePending = localProbeResult === null;
+  const runtimeChoices = useMemo(
+    () =>
+      resolveRuntimeChoices({
+        isAndroid,
+        isIOS,
+        isDesktop,
+        isDev,
+        showLocalOption,
+        localProbePending,
+      }),
+    [isDesktop, isDev, showLocalOption, localProbePending],
+  );
+  const runtimeChoiceKey = runtimeChoices.join("|");
+  const [selectedChoice, setSelectedChoice] =
+    useState<RuntimeChoice>("cloud");
+
+  useEffect(() => {
+    if (runtimeChoices.length === 0) return;
+    if (runtimeChoices.includes(selectedChoice)) return;
+    setSelectedChoice(runtimeChoices[0]);
+  }, [runtimeChoiceKey, runtimeChoices, selectedChoice]);
 
   // ── Gateway discovery (LAN autodetect) ────────────────────────────
   useEffect(() => {
-    if (subView !== "chooser") return;
+    if (subView !== "chooser" && subView !== "remote") return;
     let cancelled = false;
     discoverGatewayEndpoints()
       .then((endpoints) => {
@@ -291,6 +428,20 @@ export function RuntimeGate() {
     startupCoordinator,
   ]);
 
+  const handleSelectChoice = useCallback(() => {
+    switch (selectedChoice) {
+      case "cloud":
+        setSubView("cloud");
+        return;
+      case "local":
+        finishAsLocal();
+        return;
+      case "remote":
+        setSubView("remote");
+        return;
+    }
+  }, [finishAsLocal, selectedChoice]);
+
   // ── Cloud: provision + connect ─────────────────────────────────────
 
   const provisionAndConnect = useCallback(
@@ -428,132 +579,101 @@ export function RuntimeGate() {
   // ── Render: chooser ────────────────────────────────────────────────
 
   if (subView === "chooser") {
+    const localOnly = runtimeChoiceKey === "local";
+
     return (
-      <GateShell uiLanguage={uiLanguage} setUiLanguage={setUiLanguage} t={t}>
+      <GateShell
+        uiLanguage={uiLanguage}
+        setUiLanguage={setUiLanguage}
+        uiTheme={uiTheme}
+        setUiTheme={setUiTheme}
+        t={t}
+      >
         <GateHeader t={t} />
 
-        <div className="mt-6 flex w-full flex-col gap-3 text-left">
-          {discoveredGateways.length > 0 && (
-            <div className="flex flex-col gap-3">
-              {discoveredGateways.map((gateway) => (
-                <Card
-                  key={gateway.stableId}
-                  className="rounded-xl border-white/20 bg-white/[0.07] shadow-lg backdrop-blur-xl"
-                >
-                  <CardContent className="flex items-center justify-between gap-3 px-5 py-4">
-                    <div className="min-w-0">
-                      <p
-                        style={{ fontFamily: MONO_FONT }}
-                        className="text-3xs uppercase text-white/60"
-                      >
-                        {gateway.isLocal
-                          ? t("startupshell.LocalNetworkAgent", {
-                              defaultValue: "LAN agent",
-                            })
-                          : t("startupshell.NetworkAgent", {
-                              defaultValue: "Network agent",
-                            })}
-                      </p>
-                      <p className="truncate text-sm font-semibold text-white/95">
-                        {gateway.name}
-                      </p>
-                      <p className="truncate text-xs-tight text-white/50">
-                        {gateway.host}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0 rounded-lg border-[#f0b90b]/40 bg-[#f0b90b]/15 text-[#fffaee] font-semibold hover:bg-[#f0b90b]/25 hover:border-[#f0b90b]/60"
-                      onClick={() => finishAsRemoteGateway(gateway)}
-                    >
-                      {t("common.connect", { defaultValue: "Connect" })}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+        {runtimeChoices.length === 0 ? (
+          <div className="mt-8 flex w-full items-center justify-center gap-3 border-2 border-[#f0b90b]/45 bg-black/70 px-5 py-5 text-[#ffe88a]">
+            <Spinner className="h-4 w-4" />
+            <span
+              style={{ fontFamily: MONO_FONT }}
+              className="text-3xs uppercase tracking-[0.16em]"
+            >
+              {t("runtimegate.localProbing", {
+                defaultValue: "Checking for on-device agent...",
+              })}
+            </span>
+          </div>
+        ) : (
+          <>
+            <div
+              className={`mt-7 grid w-full gap-3 text-left ${
+                runtimeChoices.length === 3 ? "md:grid-cols-3" : ""
+              }`}
+              role="radiogroup"
+              aria-label={t("runtimegate.subtitle", {
+                defaultValue: "Where should your agent run?",
+              })}
+            >
+              {runtimeChoices.map((choice) => {
+                const details = runtimeChoiceDetails(choice, t, isAndroid);
+                return (
+                  <ChoiceCard
+                    key={choice}
+                    choice={choice}
+                    selected={selectedChoice === choice}
+                    disabled={localOnly}
+                    statusLabel={
+                      selectedChoice === choice
+                        ? t("runtimegate.optionSelected", {
+                            defaultValue: "Selected",
+                          })
+                        : t("runtimegate.optionAvailable", {
+                            defaultValue: "Available",
+                          })
+                    }
+                    {...details}
+                    onClick={() => setSelectedChoice(choice)}
+                  />
+                );
+              })}
             </div>
-          )}
 
-          <ChoiceCard
-            recommended
-            eyebrow={t("runtimegate.cloudEyebrow", {
-              defaultValue: "Eliza Cloud",
-            })}
-            title={t("runtimegate.cloudTitle", {
-              defaultValue: "Run in Eliza Cloud",
-            })}
-            description={t("runtimegate.cloudDesc", {
-              defaultValue:
-                "Hosted agent with managed LLMs and connectors. Fastest start.",
-            })}
-            onClick={() => setSubView("cloud")}
-          />
-
-          {showLocalOption && (
-            <ChoiceCard
-              eyebrow={
-                isAndroid
-                  ? t("runtimegate.localEyebrowOnDevice", {
-                      defaultValue: "ON DEVICE",
-                    })
-                  : t("runtimegate.localEyebrow", {
-                      defaultValue: "This device",
-                    })
-              }
-              title={
-                isAndroid
-                  ? t("runtimegate.localTitleAndroid", {
-                      defaultValue: "Local Agent (Beta)",
-                    })
-                  : t("runtimegate.localTitle", {
-                      defaultValue: "Run a local agent",
-                    })
-              }
-              description={
-                isAndroid
-                  ? t("runtimegate.localDescAndroid", {
-                      defaultValue:
-                        "Runs the full Eliza agent on this device. No cloud needed.",
-                    })
-                  : t("runtimegate.localDesc", {
-                      defaultValue:
-                        "Keep the agent on this machine. You'll pick a provider after start.",
-                    })
-              }
-              onClick={finishAsLocal}
-            />
-          )}
-
-          {localProbePending && (
-            <div className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-4">
-              <Spinner className="h-4 w-4 text-white/50" />
-              <span
+            <div className="mt-5 flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p
                 style={{ fontFamily: MONO_FONT }}
-                className="text-3xs uppercase text-white/50"
+                className="min-w-0 text-3xs uppercase tracking-[0.16em] text-white/70"
               >
-                {t("runtimegate.localProbing", {
-                  defaultValue: "Checking for on-device agent...",
-                })}
-              </span>
+                {localOnly
+                  ? t("runtimegate.localOnlyHint", {
+                      defaultValue:
+                        "This build runs your agent on this device.",
+                    })
+                  : t("runtimegate.selectedHint", {
+                      defaultValue: "{{target}} selected",
+                      target: runtimeChoiceDetails(
+                        selectedChoice,
+                        t,
+                        isAndroid,
+                      ).label,
+                    })}
+              </p>
+              <Button
+                type="button"
+                variant="default"
+                className="min-h-12 w-full border-2 border-black bg-[#ffe600] px-8 py-3 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0 sm:w-auto"
+                style={{
+                  borderRadius: 0,
+                  clipPath:
+                    "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
+                  fontFamily: MONO_FONT,
+                }}
+                onClick={handleSelectChoice}
+              >
+                {selectChoiceLabel(selectedChoice, t)}
+              </Button>
             </div>
-          )}
-
-          <ChoiceCard
-            eyebrow={t("runtimegate.remoteEyebrow", {
-              defaultValue: "Remote agent",
-            })}
-            title={t("runtimegate.remoteTitle", {
-              defaultValue: "Connect to an existing agent",
-            })}
-            description={t("runtimegate.remoteDesc", {
-              defaultValue:
-                "Point at an agent you're already running (e.g. on your Mac).",
-            })}
-            onClick={() => setSubView("remote")}
-          />
-        </div>
+          </>
+        )}
       </GateShell>
     );
   }
@@ -562,11 +682,17 @@ export function RuntimeGate() {
 
   if (subView === "cloud") {
     return (
-      <GateShell uiLanguage={uiLanguage} setUiLanguage={setUiLanguage} t={t}>
+      <GateShell
+        uiLanguage={uiLanguage}
+        setUiLanguage={setUiLanguage}
+        uiTheme={uiTheme}
+        setUiTheme={setUiTheme}
+        t={t}
+      >
         <GateHeader t={t} />
 
         {cloudStage === "login" && (
-          <div className="mt-4 flex w-full flex-col gap-3 text-left">
+          <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
             <p
               style={{ fontFamily: MONO_FONT }}
               className="text-3xs uppercase text-white/60"
@@ -612,7 +738,7 @@ export function RuntimeGate() {
           cloudStage === "creating" ||
           cloudStage === "provisioning" ||
           cloudStage === "connecting") && (
-          <div className="mt-6 flex w-full flex-col items-center gap-3">
+          <div className="mt-6 flex w-full max-w-[34rem] flex-col items-center gap-3">
             <Spinner className="h-6 w-6 text-white/60" />
             <p
               style={{ fontFamily: MONO_FONT }}
@@ -644,7 +770,7 @@ export function RuntimeGate() {
         )}
 
         {cloudStage === "agent-list" && (
-          <div className="mt-4 flex w-full flex-col gap-3 text-left">
+          <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
             <div className="flex items-center justify-between">
               <p
                 style={{ fontFamily: MONO_FONT }}
@@ -724,10 +850,16 @@ export function RuntimeGate() {
   // ── Render: remote ─────────────────────────────────────────────────
 
   return (
-    <GateShell uiLanguage={uiLanguage} setUiLanguage={setUiLanguage} t={t}>
+    <GateShell
+      uiLanguage={uiLanguage}
+      setUiLanguage={setUiLanguage}
+      uiTheme={uiTheme}
+      setUiTheme={setUiTheme}
+      t={t}
+    >
       <GateHeader t={t} />
 
-      <div className="mt-4 flex w-full flex-col gap-3 text-left">
+      <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
         <p
           style={{ fontFamily: MONO_FONT }}
           className="text-3xs uppercase text-white/60"
@@ -737,13 +869,57 @@ export function RuntimeGate() {
           })}
         </p>
 
+        {discoveredGateways.length > 0 && (
+          <div className="flex flex-col gap-2">
+            {discoveredGateways.map((gateway) => (
+              <Card
+                key={gateway.stableId}
+                className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
+                style={{ borderRadius: 0 }}
+              >
+                <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
+                  <div className="min-w-0">
+                    <p
+                      style={{ fontFamily: MONO_FONT }}
+                      className="text-3xs uppercase text-[#ffe600]/80"
+                    >
+                      {gateway.isLocal
+                        ? t("startupshell.LocalNetworkAgent", {
+                            defaultValue: "LAN agent",
+                          })
+                        : t("startupshell.NetworkAgent", {
+                            defaultValue: "Network agent",
+                          })}
+                    </p>
+                    <p className="truncate text-sm font-semibold text-white/95">
+                      {gateway.name}
+                    </p>
+                    <p className="truncate text-xs-tight text-white/52">
+                      {gateway.host}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 rounded-none border-2 border-black bg-[#ffe600] text-xs font-black uppercase tracking-[0.12em] text-black hover:bg-white"
+                    onClick={() => finishAsRemoteGateway(gateway)}
+                  >
+                    {t("common.connect", { defaultValue: "Connect" })}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
         <Input
           placeholder={t("runtimegate.remoteUrlPlaceholder", {
             defaultValue: "https://your-agent.example.com",
           })}
           value={remoteUrl}
           onChange={(e) => setRemoteUrl(e.target.value)}
-          className="h-10 border border-white/20 bg-transparent text-white text-sm placeholder:text-white/40"
+          className="h-11 rounded-none border-2 border-[#f0b90b]/35 bg-black/48 text-white text-sm placeholder:text-white/40"
         />
 
         <Input
@@ -753,13 +929,13 @@ export function RuntimeGate() {
           type="password"
           value={remoteToken}
           onChange={(e) => setRemoteToken(e.target.value)}
-          className="h-10 border border-white/20 bg-transparent text-white text-sm placeholder:text-white/40"
+          className="h-11 rounded-none border-2 border-[#f0b90b]/35 bg-black/48 text-white text-sm placeholder:text-white/40"
         />
 
         <Button
           type="button"
           variant="default"
-          className="justify-center rounded-xl border border-[#f0b90b]/40 bg-[#f0b90b]/15 px-3 py-4 text-[#f0b90b] font-semibold shadow-lg hover:bg-[#f0b90b]/25 hover:border-[#f0b90b]/60"
+          className="justify-center rounded-none border-2 border-black bg-[#ffe600] px-3 py-4 text-sm font-black uppercase tracking-[0.14em] text-black shadow-[5px_5px_0_rgba(0,0,0,0.68)] hover:bg-white"
           onClick={finishAsRemote}
           disabled={!remoteUrl.trim()}
         >
@@ -777,26 +953,53 @@ export function RuntimeGate() {
 interface GateShellProps {
   uiLanguage: UiLanguage;
   setUiLanguage: (lang: UiLanguage) => void;
+  uiTheme: UiTheme;
+  setUiTheme: (theme: UiTheme) => void;
   t: (key: string, values?: Record<string, unknown>) => string;
   children: React.ReactNode;
 }
 
-function GateShell({ uiLanguage, setUiLanguage, t, children }: GateShellProps) {
+function GateShell({
+  uiLanguage,
+  setUiLanguage,
+  uiTheme,
+  setUiTheme,
+  t,
+  children,
+}: GateShellProps) {
+  const lightMode = uiTheme === "light";
+
   return (
-    <div className="relative flex min-h-full w-full flex-col bg-black text-white">
+    <div className="relative min-h-full w-full overflow-y-auto bg-black text-white">
       <div
         aria-hidden="true"
-        className="absolute inset-0 overflow-hidden pointer-events-none"
+        className="pointer-events-none fixed inset-0 overflow-hidden"
       >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),transparent_36%),linear-gradient(180deg,rgba(11,14,20,0.18),rgba(6,7,8,0.56))]" />
-        <div className="absolute left-[-10%] top-[8%] h-[24rem] w-[24rem] rounded-full bg-[rgba(240,185,11,0.1)] blur-[110px]" />
-        <div className="absolute bottom-[-12%] right-[-8%] h-[20rem] w-[20rem] rounded-full bg-[rgba(255,255,255,0.08)] blur-[120px]" />
+        <img
+          src={resolveAppAssetUrl("splash-bg.png")}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div
+          className={`absolute inset-0 ${
+            lightMode ? "bg-[#f6d969]/38" : "bg-black/58"
+          }`}
+        />
+        <div
+          className="absolute inset-0 opacity-35"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.08) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+          }}
+        />
       </div>
 
       <div
+        className="flex items-center gap-2"
         style={{
           position: "absolute",
-          top: "calc(var(--safe-area-top, 0px) + 0.5rem)",
+          top: "calc(var(--safe-area-top, 0px) + 0.75rem)",
           right: "calc(var(--safe-area-right, 0px) + 1rem)",
           zIndex: 50,
         }}
@@ -806,12 +1009,26 @@ function GateShell({ uiLanguage, setUiLanguage, t, children }: GateShellProps) {
           setUiLanguage={setUiLanguage}
           t={t}
           variant="companion"
-          triggerClassName="!h-8 !min-h-0 !min-w-0 !rounded-lg !px-2.5 !text-xs leading-none"
+          triggerClassName="!h-9 !min-h-9 !min-w-0 !rounded-none !border-2 !border-black !bg-[#fff0a3] !px-2.5 !text-xs !text-black !shadow-[3px_3px_0_rgba(0,0,0,0.72)] leading-none"
+        />
+        <ThemeToggle
+          uiTheme={uiTheme}
+          setUiTheme={setUiTheme}
+          t={t}
+          variant="companion"
+          className="!h-9 !w-9 !min-h-9 !min-w-9 !rounded-none !border-2 !border-black !bg-[#fff0a3] !text-black !shadow-[3px_3px_0_rgba(0,0,0,0.72)]"
         />
       </div>
 
-      <div className="relative z-10 flex flex-1 items-center justify-center px-4 pb-[max(1.5rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)+3.75rem)] sm:px-6 md:px-8">
-        <div className="flex w-full max-w-[32rem] flex-col items-center gap-4">
+      <div className="relative z-10 flex min-h-full items-center justify-center px-3 pb-[max(1rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_4.25rem)] sm:px-6 md:px-8">
+        <div
+          className="flex w-full max-w-[72rem] flex-col items-center gap-4 border-2 border-black bg-[rgba(9,10,14,0.82)] px-4 py-5 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:px-6 sm:py-7 md:px-8 md:py-8"
+          style={{
+            borderRadius: 0,
+            clipPath:
+              "polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px)",
+          }}
+        >
           {children}
         </div>
       </div>
@@ -845,37 +1062,100 @@ function GateHeader({
 }
 
 interface ChoiceCardProps {
+  choice: RuntimeChoice;
+  label: string;
   eyebrow: string;
   title: string;
   description: string;
+  imageSrc: string;
+  selected: boolean;
+  statusLabel: string;
+  disabled?: boolean;
   onClick: () => void;
-  recommended?: boolean;
 }
 
 function ChoiceCard({
+  choice,
+  label,
   eyebrow,
   title,
   description,
+  imageSrc,
+  selected,
+  statusLabel,
+  disabled,
   onClick,
-  recommended,
 }: ChoiceCardProps) {
-  const base =
-    "flex w-full cursor-pointer flex-col items-start gap-1.5 rounded-xl border px-5 py-4 text-left backdrop-blur-xl transition-all duration-200 focus-visible:outline-none focus-visible:ring-2";
-  const className = recommended
-    ? `${base} border-[#f0b90b]/40 bg-[#f0b90b]/[0.1] shadow-lg hover:border-[#f0b90b]/60 hover:bg-[#f0b90b]/[0.18]`
-    : `${base} border-white/20 bg-white/[0.07] shadow-lg hover:border-white/35 hover:bg-white/[0.12]`;
+  const className = [
+    "group flex w-full min-w-0 border-2 p-2 text-left shadow-[5px_5px_0_rgba(0,0,0,0.62)] transition-[background-color,border-color,color,transform,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffe600] focus-visible:ring-offset-2 focus-visible:ring-offset-black md:min-h-[21rem] md:flex-col md:p-3",
+    selected
+      ? "border-[#ffe600] bg-black/88 text-[#fff3a8]"
+      : "border-black bg-[#fff1ac]/90 text-black hover:-translate-y-0.5 hover:bg-white",
+    disabled ? "cursor-default" : "cursor-pointer",
+  ].join(" ");
+  const imageBorderClassName = selected
+    ? "border-[#ffe600] bg-[#17100a]"
+    : "border-black bg-black";
+  const eyebrowClassName = selected ? "text-[#ffe600]/82" : "text-black/60";
+  const titleClassName = selected ? "text-white/92" : "text-black/76";
+  const descriptionClassName = selected ? "text-white/66" : "text-black/62";
 
   return (
-    <button type="button" className={className} onClick={onClick}>
+    <button
+      type="button"
+      className={className}
+      onClick={disabled ? undefined : onClick}
+      role="radio"
+      aria-checked={selected}
+      aria-disabled={disabled}
+      data-runtime-choice={choice}
+      style={{
+        borderRadius: 0,
+        clipPath:
+          "polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)",
+      }}
+    >
+      <span
+        className={`relative h-24 w-28 shrink-0 overflow-hidden border-2 md:h-36 md:w-full ${imageBorderClassName}`}
+        style={{
+          clipPath:
+            "polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)",
+        }}
+      >
+        <img
+          src={imageSrc}
+          alt=""
+          aria-hidden="true"
+          className="h-full w-full object-cover opacity-90 saturate-[1.05]"
+        />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col px-3 py-1.5 md:px-1 md:pt-3">
+        <span
+          style={{ fontFamily: MONO_FONT }}
+          className={`text-3xs uppercase tracking-[0.18em] ${eyebrowClassName}`}
+        >
+          {eyebrow}
+        </span>
+        <span
+          style={{ fontFamily: MONO_FONT }}
+          className="mt-1 text-lg font-black uppercase leading-none tracking-[0.08em] md:text-2xl"
+        >
+          {label}
+        </span>
+        <span className={`mt-2 text-xs font-bold leading-snug ${titleClassName}`}>
+          {title}
+        </span>
+        <span className={`mt-1 text-xs-tight leading-snug ${descriptionClassName}`}>
+          {description}
+        </span>
+      </span>
       <span
         style={{ fontFamily: MONO_FONT }}
-        className={`text-3xs uppercase ${recommended ? "text-[#f0b90b]/80" : "text-white/60"}`}
+        className={`ml-auto hidden self-start px-2 py-1 text-3xs font-bold uppercase sm:inline-block md:ml-0 md:mt-3 md:self-start ${
+          selected ? "bg-[#ffe600] text-black" : "bg-black text-[#ffe600]"
+        }`}
       >
-        {eyebrow}
-      </span>
-      <span className="text-sm font-bold text-white/95">{title}</span>
-      <span className="text-xs-tight leading-snug text-white/60">
-        {description}
+        {statusLabel}
       </span>
     </button>
   );
