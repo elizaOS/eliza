@@ -13,9 +13,9 @@ import type {
 } from "@elizaos/shared";
 import { loadLifeOpsAppState } from "./app-state.js";
 import {
-  resolveBrowserBridgeReadiness,
   type BrowserBridgeReadiness,
   type BrowserBridgeReadinessState,
+  resolveBrowserBridgeReadiness,
 } from "./browser-readiness.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createFeatureFlagService } from "./feature-flags.js";
@@ -241,7 +241,9 @@ function browserReadinessSummary(
   }
 }
 
-function browserReadinessConfidence(state: BrowserBridgeReadinessState): number {
+function browserReadinessConfidence(
+  state: BrowserBridgeReadinessState,
+): number {
   switch (state) {
     case "ready":
       return 0.9;
@@ -438,18 +440,18 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
             ? "blocked"
             : appStateLoadFailed
               ? "degraded"
-            : workerRegistered && schedulerTask
-              ? "working"
-              : "degraded",
+              : workerRegistered && schedulerTask
+                ? "working"
+                : "degraded",
           summary: appDisabled
             ? "Scheduler is intentionally suppressed while LifeOps is disabled"
             : appStateLoadFailed
               ? "Scheduler status is degraded because LifeOps app state failed to load"
-            : workerRegistered && schedulerTask
-              ? `Worker registered; interval ${Math.round(
-                  schedulerIntervalMs / 1000,
-                )}s`
-              : "Scheduler worker or task row is missing",
+              : workerRegistered && schedulerTask
+                ? `Worker registered; interval ${Math.round(
+                    schedulerIntervalMs / 1000,
+                  )}s`
+                : "Scheduler worker or task row is missing",
           confidence: workerRegistered && schedulerTask ? 0.88 : 0.45,
           checkedAt,
           evidence: [

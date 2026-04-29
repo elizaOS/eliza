@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
 } from "../contracts/index.js";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { clientMock } = vi.hoisted(() => ({
   clientMock: {
