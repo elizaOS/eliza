@@ -980,6 +980,7 @@ export async function inspectLifeOpsSchedule(args: {
     agentId: args.agentId,
     episodes: analysis.sleepEpisodes,
     nowMs,
+    timezone: args.timezone,
   });
   const record: LifeOpsScheduleInsightRecord = {
     ...analysis.insight,

@@ -152,7 +152,6 @@ export {
   type UiShellMode,
   type UiTheme,
   useApp,
-  useTranslation,
   VRM_COUNT,
 } from "./internal";
 export { AGENT_READY_TIMEOUT_MS } from "./types";
