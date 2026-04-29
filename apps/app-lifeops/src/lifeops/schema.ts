@@ -575,6 +575,8 @@ export const lifeInboxMessages = pgTable(
     participantCount: integer("participant_count"),
     gmailAccountId: text("gmail_account_id"),
     gmailAccountEmail: text("gmail_account_email"),
+    lastSeenAt: text("last_seen_at"),
+    repliedAt: text("replied_at"),
     priorityScore: integer("priority_score"),
     priorityCategory: text("priority_category"),
     priorityFlagsJson: text("priority_flags_json").notNull().default("[]"),

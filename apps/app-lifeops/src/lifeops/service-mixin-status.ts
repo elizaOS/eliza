@@ -478,9 +478,10 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
           state: browserReadiness
             ? browserReadinessCapabilityState(browserReadiness.state)
             : "degraded",
-          summary: browser
-            ? browserReadinessSummary(browserReadiness, browser.settings)
-            : "Browser status failed to load",
+          summary:
+            browser && browserReadiness
+              ? browserReadinessSummary(browserReadiness, browser.settings)
+              : "Browser status failed to load",
           confidence: browserReadiness
             ? browserReadinessConfidence(browserReadiness.state)
             : 0.3,
