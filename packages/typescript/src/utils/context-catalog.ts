@@ -240,6 +240,9 @@ export const PROVIDER_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	taskList: ["automation", "code"],
 	agentConfig: ["system"],
 	pluginList: ["system"],
+	pluginConfigurationStatus: ["plugins", "system"],
+	pluginState: ["plugins", "system"],
+	registryPlugins: ["plugins", "system"],
 };
 
 function normalizeContexts(
