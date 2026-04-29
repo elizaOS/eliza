@@ -838,9 +838,12 @@ describe("LifeOps route validation", () => {
       });
     const readJsonBody = vi.fn(async () => ({
       side: "owner",
+      mode: "cloud_managed",
       grantId: "grant-1",
       calendarId: "primary",
       title: "Dentist",
+      location: "",
+      attendees: [],
       timeZone: "America/Los_Angeles",
     }));
     const { context, error, json } = createContext(
@@ -854,6 +857,7 @@ describe("LifeOps route validation", () => {
     expect(error).not.toHaveBeenCalled();
     expect(updateCalendarEvent).toHaveBeenCalledWith(expect.any(URL), {
       eventId: "google-event-1",
+      mode: "cloud_managed",
       side: "owner",
       grantId: "grant-1",
       calendarId: "primary",
@@ -862,6 +866,8 @@ describe("LifeOps route validation", () => {
       startAt: undefined,
       endAt: undefined,
       timeZone: "America/Los_Angeles",
+      location: "",
+      attendees: [],
     });
     expect(json).toHaveBeenCalledWith(
       context.res,
