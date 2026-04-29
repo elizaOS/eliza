@@ -1,8 +1,11 @@
 /**
  * BootstrapStep — cloud-provisioned containers only.
  *
- * Prompts the user to paste their bootstrap token (copied from the Eliza Cloud
- * dashboard). On success the returned session id is written to
+ * If the dashboard linked here with `#bootstrap=<token>`, the token is read
+ * once on mount, scrubbed from the URL, and exchanged automatically — no
+ * paste required. Otherwise the manual paste form is shown as a fallback.
+ *
+ * On success the returned session id is written to
  * sessionStorage["milady_session"] and the `onAdvance` callback fires.
  *
  * P1 will migrate the session to an HttpOnly cookie and retire sessionStorage.
@@ -17,7 +20,7 @@
  */
 
 import { cn } from "@elizaos/ui";
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { client } from "../../api";
 import type { BootstrapExchangeResult } from "../../api/client-agent";
 import {
@@ -43,6 +46,37 @@ import {
 
 const SESSION_STORAGE_KEY = "milady_session";
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
+const BOOTSTRAP_HASH_PARAM = "bootstrap";
+
+/**
+ * If the dashboard handed off the token via `#bootstrap=<token>`, read it once
+ * on mount so the container can auto-activate without a manual paste.
+ * Fragment (not query) so the token never reaches the server or referer logs.
+ */
+function readBootstrapTokenFromHash(): string | null {
+  if (typeof window === "undefined") return null;
+  const hash = window.location.hash;
+  if (hash.length < 2) return null;
+  const params = new URLSearchParams(hash.slice(1));
+  const value = params.get(BOOTSTRAP_HASH_PARAM);
+  return value && value.length > 0 ? value : null;
+}
+
+function scrubBootstrapTokenFromHash(): void {
+  if (typeof window === "undefined") return;
+  const hash = window.location.hash;
+  if (hash.length < 2) return;
+  const params = new URLSearchParams(hash.slice(1));
+  if (!params.has(BOOTSTRAP_HASH_PARAM)) return;
+  params.delete(BOOTSTRAP_HASH_PARAM);
+  const remaining = params.toString();
+  const newHash = remaining.length > 0 ? `#${remaining}` : "";
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${window.location.search}${newHash}`,
+  );
+}
 
 export interface BootstrapStepProps {
   /**
@@ -82,10 +116,15 @@ function describeError(
 export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
   const fieldId = useId().replace(/:/g, "");
   const [token, setToken] = useState("");
-  const [submitState, setSubmitState] = useState<SubmitState>({
-    phase: "idle",
-  });
+  // Lazy-init to "submitting" when an auto-activate token is present so the
+  // first paint shows "Verifying…" instead of an empty paste form.
+  const [submitState, setSubmitState] = useState<SubmitState>(() =>
+    readBootstrapTokenFromHash() !== null
+      ? { phase: "submitting" }
+      : { phase: "idle" },
+  );
   const inputRef = useRef<HTMLInputElement>(null);
+  const didAutoExchangeRef = useRef(false);
 
   const doExchange = useCallback(
     async (rawToken: string): Promise<void> => {
@@ -143,6 +182,17 @@ export function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps) {
     },
     [token, doExchange],
   );
+
+  useEffect(() => {
+    if (didAutoExchangeRef.current) return;
+    const hashToken = readBootstrapTokenFromHash();
+    if (!hashToken) return;
+    didAutoExchangeRef.current = true;
+    // Scrub before exchange so the token never lingers in window.history,
+    // even if exchange throws or the user navigates away mid-flight.
+    scrubBootstrapTokenFromHash();
+    void doExchange(hashToken);
+  }, [doExchange]);
 
   const isSubmitting = submitState.phase === "submitting";
 

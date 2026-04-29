@@ -24,12 +24,6 @@
       "@elizaos/core/*": ["./packages/typescript/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
-      "@elizaos/plugin-browser-bridge": [
-        "plugins/plugin-browser-bridge/src/index.ts"
-      ],
-      "@elizaos/plugin-browser-bridge/*": [
-        "plugins/plugin-browser-bridge/src/*"
-      ]
     }
   },
   "exclude": [
