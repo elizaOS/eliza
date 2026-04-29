@@ -196,6 +196,7 @@ const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
 
   // Apps / plugins expose local installation/runtime state.
   available_apps: "owner",
+  pluginConfigurationStatus: "owner",
   pluginState: "owner",
   registryPlugins: "owner",
 };
