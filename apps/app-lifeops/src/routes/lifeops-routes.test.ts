@@ -898,6 +898,66 @@ describe("LifeOps route validation", () => {
     expect(json).toHaveBeenCalledWith(context.res, { deleted: true });
   });
 
+  it("applies a default cap to activity signal reads", async () => {
+    const listActivitySignals = vi
+      .spyOn(LifeOpsService.prototype, "listActivitySignals")
+      .mockResolvedValue([]);
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/activity-signals",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(listActivitySignals).toHaveBeenCalledWith({
+      sinceAt: null,
+      limit: 200,
+      states: null,
+    });
+    expect(json).toHaveBeenCalledWith(context.res, { signals: [] });
+  });
+
+  it("rejects unbounded activity signal limits", async () => {
+    const listActivitySignals = vi
+      .spyOn(LifeOpsService.prototype, "listActivitySignals")
+      .mockResolvedValue([]);
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/activity-signals?limit=501",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "limit must be less than or equal to 500",
+      400,
+    );
+    expect(listActivitySignals).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("validates activity signal sinceAt before querying", async () => {
+    const listActivitySignals = vi
+      .spyOn(LifeOpsService.prototype, "listActivitySignals")
+      .mockResolvedValue([]);
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/activity-signals?sinceAt=not-a-date",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "sinceAt must be a valid ISO string",
+      400,
+    );
+    expect(listActivitySignals).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("passes screen-time summary query inputs through to the service", async () => {
     const getScreenTimeSummary = vi
       .spyOn(LifeOpsService.prototype, "getScreenTimeSummary")
@@ -967,6 +1027,58 @@ describe("LifeOps route validation", () => {
         fetchedAt: "2026-04-22T12:00:00.000Z",
       }),
     );
+  });
+
+  it("rejects screen-time windows over the telemetry maximum", async () => {
+    const getScreenTimeSummary = vi
+      .spyOn(LifeOpsService.prototype, "getScreenTimeSummary")
+      .mockResolvedValue({
+        items: [],
+        totalSeconds: 0,
+      });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/screen-time/summary?since=2026-04-01T00%3A00%3A00.000Z&until=2026-05-03T00%3A00%3A00.000Z",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "window must be 31 days or less",
+      400,
+    );
+    expect(getScreenTimeSummary).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects inverted screen-time windows", async () => {
+    const getScreenTimeBreakdown = vi
+      .spyOn(LifeOpsService.prototype, "getScreenTimeBreakdown")
+      .mockResolvedValue({
+        items: [],
+        totalSeconds: 0,
+        bySource: [],
+        byCategory: [],
+        byDevice: [],
+        byService: [],
+        byBrowser: [],
+        fetchedAt: "2026-04-22T12:00:00.000Z",
+      });
+    const { context, error, json } = createContext(
+      "GET",
+      "/api/lifeops/screen-time/breakdown?since=2026-04-22T12%3A00%3A00.000Z&until=2026-04-22T00%3A00%3A00.000Z",
+    );
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      context.res,
+      "until must be after since",
+      400,
+    );
+    expect(getScreenTimeBreakdown).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
   });
 
   it("passes social summary query inputs through to the service", async () => {

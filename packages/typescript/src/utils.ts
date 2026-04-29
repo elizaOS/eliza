@@ -1413,6 +1413,10 @@ export {
 	setContextRoutingMetadata,
 	shouldIncludeByContext,
 } from "./utils/context-routing";
+export {
+	resolveActionContexts,
+	resolveProviderContexts,
+} from "./utils/context-catalog";
 export { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 export {
 	extractUserText,
