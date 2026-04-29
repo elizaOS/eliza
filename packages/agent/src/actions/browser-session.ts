@@ -7,7 +7,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { hasRoleAccess } from "../security/access.js";
+import { hasOwnerAccess } from "../security/access.js";
 import {
   type BrowserWorkspaceCommand,
   executeBrowserWorkspaceCommand,
@@ -136,9 +136,18 @@ export const browserSessionAction: Action = {
     message: Memory,
     _state?: State,
   ): Promise<boolean> => {
-    return hasRoleAccess(runtime, message, "USER");
+    return hasOwnerAccess(runtime, message);
   },
-  handler: async (_runtime, message, _state, options) => {
+  handler: async (runtime, message, _state, options) => {
+    if (!(await hasOwnerAccess(runtime, message))) {
+      return {
+        text: "Permission denied: only the owner may control browser sessions.",
+        success: false,
+        values: { success: false, error: "PERMISSION_DENIED" },
+        data: { actionName: "BROWSER_SESSION" },
+      };
+    }
+
     const params = (options as HandlerOptions | undefined)?.parameters as
       | BrowserSessionParameters
       | undefined;
