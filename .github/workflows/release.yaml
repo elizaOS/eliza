@@ -77,7 +77,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "23.3.0"
+          node-version: "24.15.0"
           registry-url: "https://registry.npmjs.org"
 
       - name: Setup Bun
