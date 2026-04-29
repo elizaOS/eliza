@@ -45,10 +45,7 @@ import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 //   updateWalletTradeLedgerEntryStatus,
 // } from "./wallet-trading-profile.js";
 // Phase 2 extraction: Website-blocker routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
-import {
-  handleTrainingRoutes,
-  handleTrajectoryRoute,
-} from "@elizaos/app-training/routes";
+import { setActiveTrainingService } from "@elizaos/app-training/services/training-service-registry";
 import {
   type AgentRuntime,
   type IAgentRuntime,
@@ -1561,25 +1558,9 @@ async function handleRequest(
     return;
   }
 
-  if (pathname.startsWith("/api/training")) {
-    if (!state.trainingService) {
-      error(res, "Training service is not available", 503);
-      return;
-    }
-    const trainingHandled = await handleTrainingRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      runtime: state.runtime,
-      trainingService: state.trainingService,
-      readJsonBody,
-      json,
-      error,
-      isLoopbackHost,
-    });
-    if (trainingHandled) return;
-  }
+  // Training routes (/api/training/*) and trajectory routes
+  // (/api/trajectories/*) are now provided by the @elizaos/app-training
+  // plugin via the runtime route registry.
 
   // Knowledge routes (/api/knowledge/*) are now provided by the
   // @elizaos/app-knowledge plugin via the runtime route registry.
@@ -2488,21 +2469,8 @@ async function handleRequest(
     if (handled) return;
   }
 
-  // ── Trajectory management API ──────────────────────────────────────────
-  if (pathname.startsWith("/api/trajectories")) {
-    if (!state.runtime) {
-      sendJsonError(res, "Agent runtime not started yet", 503);
-      return;
-    }
-    const handled = await handleTrajectoryRoute(
-      req,
-      res,
-      state.runtime,
-      pathname,
-      method,
-    );
-    if (handled) return;
-  }
+  // Trajectory routes (/api/trajectories/*) are now provided by the
+  // @elizaos/app-training plugin via the runtime route registry.
 
   // ── Coding Agent API (/api/coding-agents/*, /api/workspace/*, /api/issues/*) ──
   if (
@@ -3107,6 +3075,7 @@ export async function startApiServer(opts?: {
   };
   if (trainingServiceCtor) {
     state.trainingService = new trainingServiceCtor(trainingServiceOptions);
+    setActiveTrainingService(state.trainingService);
   } else {
     logger.info(
       "[eliza-api] Training service package unavailable; training routes will be disabled",
