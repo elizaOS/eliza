@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { readJsonFile } from "../utils/atomic-json.js";
 import type { RouteHelpers, RouteRequestMeta } from "./route-helpers.js";
 
 function emptyMerkleRoot(): string {
@@ -60,15 +61,6 @@ interface IdentityRecord {
   agentURI: string;
   registeredAt: string;
   lastUpdatedAt: string;
-}
-
-async function readJsonFile<T>(filePath: string): Promise<T | null> {
-  try {
-    const raw = await readFile(filePath, "utf8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
 }
 
 export async function handleNfaRoutes(ctx: NfaRouteContext): Promise<boolean> {

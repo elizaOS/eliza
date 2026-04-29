@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { logger } from "@elizaos/core";
+import { formatError } from "@elizaos/shared";
 import type { StreamConfig } from "../services/stream-manager.js";
 import {
   readRequestBody,
@@ -104,10 +105,6 @@ function json(res: ServerResponse, data: unknown, status = 200): void {
 
 function error(res: ServerResponse, message: string, status: number): void {
   sendJsonError(res, message, status);
-}
-
-function formatErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 // ---------------------------------------------------------------------------
@@ -535,7 +532,7 @@ export async function handleStreamRoute(
         destination: dest.id,
       });
     } catch (err) {
-      error(res, formatErrorMessage(err), 500);
+      error(res, formatError(err), 500);
     }
     return true;
   }
@@ -644,7 +641,7 @@ export async function handleStreamRoute(
       const result = await state.streamManager.stop();
       json(res, { ok: true, ...result });
     } catch (err) {
-      error(res, formatErrorMessage(err), 500);
+      error(res, formatError(err), 500);
     }
     return true;
   }
@@ -697,7 +694,7 @@ export async function handleStreamRoute(
         volume: state.streamManager.getVolume(),
       });
     } catch (err) {
-      error(res, formatErrorMessage(err), 500);
+      error(res, formatError(err), 500);
     }
     return true;
   }
@@ -712,7 +709,7 @@ export async function handleStreamRoute(
         volume: state.streamManager.getVolume(),
       });
     } catch (err) {
-      error(res, formatErrorMessage(err), 500);
+      error(res, formatError(err), 500);
     }
     return true;
   }
@@ -751,7 +748,7 @@ export async function handleStreamRoute(
         error(res, `Unknown destination: ${destinationId}`, 404);
       }
     } catch (err) {
-      error(res, formatErrorMessage(err), 500);
+      error(res, formatError(err), 500);
     }
     return true;
   }
