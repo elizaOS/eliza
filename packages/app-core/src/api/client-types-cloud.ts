@@ -160,6 +160,8 @@ export interface CloudLoginResponse {
 export interface CloudLoginPollResponse {
   status: "pending" | "authenticated" | "expired" | "error";
   keyPrefix?: string;
+  organizationId?: string;
+  userId?: string;
   error?: string;
 }
 

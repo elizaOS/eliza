@@ -956,7 +956,10 @@ export const normalizeJsonString = (str: string) => {
 	);
 
 	// "key": someWord → "key": "someWord"
-	str = str.replace(/("[\w\d_-]{1,256}")\s{0,32}:\s{0,32}([A-Za-z_]{1,256})(?!["\w])/g, '$1: "$2"');
+	str = str.replace(
+		/("[\w\d_-]{1,256}")\s{0,32}:\s{0,32}([A-Za-z_]{1,256})(?!["\w])/g,
+		'$1: "$2"',
+	);
 
 	return str;
 };
@@ -1395,6 +1398,10 @@ export const getContentTypeFromMimeType = (
 };
 
 export {
+	resolveActionContexts,
+	resolveProviderContexts,
+} from "./utils/context-catalog";
+export {
 	AVAILABLE_CONTEXTS_STATE_KEY,
 	attachAvailableContexts,
 	CONTEXT_ROUTING_METADATA_KEY,
@@ -1413,10 +1420,6 @@ export {
 	setContextRoutingMetadata,
 	shouldIncludeByContext,
 } from "./utils/context-routing";
-export {
-	resolveActionContexts,
-	resolveProviderContexts,
-} from "./utils/context-catalog";
 export { extractAndParseJSONObjectFromText } from "./utils/json-llm";
 export {
 	extractUserText,

@@ -43,7 +43,9 @@ function isPageScopedContext(context: unknown): boolean {
 	return normalized === PAGE_CONTEXT || normalized.startsWith("page-");
 }
 
-function normalizeContextList(contexts: readonly string[] | undefined): string[] {
+function normalizeContextList(
+	contexts: readonly string[] | undefined,
+): string[] {
 	return [...new Set((contexts ?? []).map((context) => context.toLowerCase()))];
 }
 
@@ -80,8 +82,8 @@ function collapseGroupedActionsForMainChat(
 		if (isActionGroup(action)) {
 			return true;
 		}
-		return !normalizeContextList(resolveActionContexts(action)).some((context) =>
-			groupedContexts.has(context),
+		return !normalizeContextList(resolveActionContexts(action)).some(
+			(context) => groupedContexts.has(context),
 		);
 	});
 }

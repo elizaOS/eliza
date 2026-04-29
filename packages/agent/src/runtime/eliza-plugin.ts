@@ -35,12 +35,12 @@ import {
   queryLogsAction,
 } from "../actions/logs.js";
 import { manageTasksAction } from "../actions/manage-tasks.js";
-import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import {
   editMemoryAction,
   forgetMemoryAction,
   recallMemoryFilteredAction,
 } from "../actions/memories.js";
+import { pageActionGroupActions } from "../actions/page-action-groups.js";
 import { readChannelAction } from "../actions/read-channel.js";
 import { readMessagesAction } from "../actions/read-messages.js";
 import { restartAction } from "../actions/restart.js";
