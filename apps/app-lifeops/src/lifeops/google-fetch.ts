@@ -46,7 +46,11 @@ function isGoogleGmailWrite(method: string, url: string): boolean {
   return /^https:\/\/gmail\.googleapis\.com\/gmail\/v1\/users\/me\//.test(url);
 }
 
-function guardRealGmailWrite(method: string, originalUrl: string, targetUrl: string): void {
+function guardRealGmailWrite(
+  method: string,
+  originalUrl: string,
+  targetUrl: string,
+): void {
   if (!isGoogleGmailWrite(method, originalUrl)) {
     return;
   }

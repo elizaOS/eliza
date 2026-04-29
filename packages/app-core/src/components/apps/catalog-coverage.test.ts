@@ -144,7 +144,9 @@ describe("apps catalog coverage", () => {
 
   it("backs every upstream catalog app package with a package-local hero", () => {
     const missing = readUpstreamAppPackages()
-      .filter(({ name }) => name !== "@elizaos/app")
+      .filter(
+        ({ name }) => name !== "@elizaos/app" && !isHiddenFromAppsView(name),
+      )
       .flatMap(({ dir, name, packageJson }) => {
         const heroImage = packageJson.elizaos?.app?.heroImage;
         if (typeof heroImage !== "string" || !heroImage.trim()) {

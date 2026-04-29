@@ -47,10 +47,9 @@ type GmailScenario = {
 };
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
+const ELIZA_SCENARIO_ROOT = path.join(REPO_ROOT, "eliza", "test", "scenarios");
 const GMAIL_SCENARIO_DIR = path.join(
-  REPO_ROOT,
-  "test",
-  "scenarios",
+  ELIZA_SCENARIO_ROOT,
   "messaging.gmail",
 );
 const GMAIL_PRD_PATH = path.join(

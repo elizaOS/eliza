@@ -54,9 +54,7 @@ const ACTION_TEXT_RE =
   /\b(urgent|asap|blocked|deadline|today|tonight|tomorrow|confirm|review|send|reply|respond|need|please|important|agreement|agreed|promise|promised|follow up|circle back)\b/i;
 
 export interface CheckinSourceService {
-  getInbox?(
-    request?: GetLifeOpsInboxRequest,
-  ): Promise<LifeOpsInbox>;
+  getInbox?(request?: GetLifeOpsInboxRequest): Promise<LifeOpsInbox>;
   getGmailTriage?(
     requestUrl: URL,
     request?: GetLifeOpsGmailTriageRequest,

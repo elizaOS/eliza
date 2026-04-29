@@ -43,10 +43,7 @@ export interface UseInboxResult {
 
 const DEFAULT_MAX_RESULTS = 40;
 
-function matchesQuery(
-  message: LifeOpsInboxMessage,
-  q: string,
-): boolean {
+function matchesQuery(message: LifeOpsInboxMessage, q: string): boolean {
   return (
     (message.subject ?? "").toLowerCase().includes(q) ||
     message.sender.displayName.toLowerCase().includes(q) ||

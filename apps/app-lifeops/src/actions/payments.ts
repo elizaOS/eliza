@@ -7,12 +7,12 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 import type {
   AddPaymentSourceRequest,
   LifeOpsPaymentSourceKind,
 } from "../lifeops/payment-types.js";
+import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 type PaymentsSubaction =
   | "dashboard"

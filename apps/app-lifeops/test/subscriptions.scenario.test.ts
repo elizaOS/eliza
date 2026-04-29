@@ -15,8 +15,8 @@ import { subscriptionsAction } from "../src/actions/subscriptions.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.js";
 import { runScenario } from "../../../packages/scenario-runner/src/executor.ts";
-import cancelGooglePlayScenario from "../../../../test/scenarios/browser.lifeops/subscriptions.cancel-google-play.scenario";
-import loginRequiredScenario from "../../../../test/scenarios/browser.lifeops/subscriptions.login-required.scenario";
+import cancelGooglePlayScenario from "../../../test/scenarios/browser.lifeops/subscriptions.cancel-google-play.scenario";
+import loginRequiredScenario from "../../../test/scenarios/browser.lifeops/subscriptions.login-required.scenario";
 
 function buildSubscriptionsPlannerStub() {
   return async (_modelType: unknown, input: { prompt?: string } | string) => {

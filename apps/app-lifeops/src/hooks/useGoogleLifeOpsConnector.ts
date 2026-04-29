@@ -3,6 +3,7 @@ import { isApiError } from "@elizaos/app-core/api/client-types-core";
 import { APP_RESUME_EVENT } from "@elizaos/app-core/events";
 import { useApp } from "@elizaos/app-core/state";
 import { openExternalUrl } from "@elizaos/app-core/utils";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -10,7 +11,6 @@ import type {
   LifeOpsGoogleConnectorStatus,
 } from "../contracts/index.js";
 import { LIFEOPS_GOOGLE_CAPABILITIES } from "../contracts/index.js";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   dispatchLifeOpsGoogleConnectorRefresh,
   LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT,
@@ -605,10 +605,10 @@ export function useGoogleLifeOpsConnector(
           connectMode === "cloud_managed"
             ? resolveSuccessRedirectUrl(side)
             : undefined,
-          side,
-          mode: connectMode,
-          createNewGrant: true,
-        });
+        side,
+        mode: connectMode,
+        createNewGrant: true,
+      });
       await openExternalUrl(result.authUrl);
       setError(null);
     } catch (cause) {

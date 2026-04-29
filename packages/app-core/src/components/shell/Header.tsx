@@ -26,7 +26,7 @@ import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { HEADER_BUTTON_STYLE } from "./ShellHeaderControls";
 
-const MOBILE_HEADER_MEDIA_QUERY = "(max-width: 639px)";
+const MOBILE_HEADER_MEDIA_QUERY = "(max-width: 819px)";
 const DESKTOP_LABEL_COLLAPSE_MEDIA_QUERY = "(max-width: 1380px)";
 
 const NAV_LABEL_I18N_KEY: Record<string, string> = {
@@ -546,7 +546,7 @@ export function Header({
           ) : null}
         </div>
       ) : null}
-      <div className="max-[639px]:hidden">
+      <div className="max-[819px]:hidden">
         <LanguageDropdown
           uiLanguage={uiLanguage}
           setUiLanguage={setUiLanguage}
@@ -554,7 +554,7 @@ export function Header({
           variant="titlebar"
         />
       </div>
-      <div className="max-[639px]:hidden">
+      <div className="max-[819px]:hidden">
         <ThemeToggle
           uiTheme={uiTheme}
           setUiTheme={setUiTheme}

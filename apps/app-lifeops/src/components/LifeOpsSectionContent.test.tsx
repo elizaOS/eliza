@@ -69,12 +69,9 @@ afterEach(() => {
 });
 
 describe("LifeOpsSectionContent", () => {
-  it.each(LIFEOPS_ROUTE_SECTIONS)(
-    "renders the %s section",
-    (section) => {
-      renderSection(section);
+  it.each(LIFEOPS_ROUTE_SECTIONS)("renders the %s section", (section) => {
+    renderSection(section);
 
-      expect(screen.getByTestId(SECTION_TEST_IDS[section])).toBeTruthy();
-    },
-  );
+    expect(screen.getByTestId(SECTION_TEST_IDS[section])).toBeTruthy();
+  });
 });

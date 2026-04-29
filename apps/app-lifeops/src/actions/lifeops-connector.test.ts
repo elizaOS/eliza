@@ -49,9 +49,7 @@ vi.mock("../lifeops/service.js", () => {
   }
   return {
     LifeOpsServiceError: FakeError,
-    LifeOpsService: vi.fn(function () {
-      return new FakeLifeOpsService();
-    }),
+    LifeOpsService: vi.fn(() => new FakeLifeOpsService()),
   };
 });
 
@@ -77,7 +75,11 @@ describe("lifeOpsConnectorAction", () => {
     expect(result).toBeDefined();
     expect(result).toMatchObject({
       success: true,
-      data: { actionName: "LIFEOPS_CONNECTOR", connector: "telegram", subaction: "status" },
+      data: {
+        actionName: "LIFEOPS_CONNECTOR",
+        connector: "telegram",
+        subaction: "status",
+      },
     });
   });
 

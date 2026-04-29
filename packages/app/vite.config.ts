@@ -338,7 +338,13 @@ function tryResolveElizaCorePkgDir(): string | null {
   try {
     return path.dirname(_require.resolve("@elizaos/core/package.json"));
   } catch {
-    return null;
+    const workspaceCorePkg = path.join(
+      elizaRoot,
+      "packages/typescript/package.json",
+    );
+    return fs.existsSync(workspaceCorePkg)
+      ? path.dirname(workspaceCorePkg)
+      : null;
   }
 }
 
@@ -810,6 +816,7 @@ function nativeModuleStubPlugin(): Plugin {
     "@elizaos/plugin-sql",
     "@elizaos/plugin-agent-skills",
     "@elizaos/plugin-agent-orchestrator",
+    "@elizaos/plugin-signal",
     "@elizaos/plugin-whatsapp",
   ]);
   if (!IS_CAPACITOR_MOBILE_BUILD) {

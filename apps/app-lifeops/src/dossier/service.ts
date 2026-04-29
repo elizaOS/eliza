@@ -166,9 +166,10 @@ export class DossierService {
     if (trimmed.length === 0) {
       throw new Error("[DossierService] eventIdOrTitleFuzzy is required");
     }
-    const effectiveWindowDays = Number.isFinite(windowDays) && windowDays > 0
-      ? Math.floor(windowDays)
-      : DEFAULT_WINDOW_DAYS;
+    const effectiveWindowDays =
+      Number.isFinite(windowDays) && windowDays > 0
+        ? Math.floor(windowDays)
+        : DEFAULT_WINDOW_DAYS;
 
     const now = new Date();
     const event = await this.resolveEvent(trimmed, now, effectiveWindowDays);
@@ -244,10 +245,12 @@ export class DossierService {
     windowDays: number,
   ): Promise<LifeOpsCalendarEvent | null> {
     const url = new URL("internal://dossier/resolve");
-    const timeMin = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000)
-      .toISOString();
-    const timeMax = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000)
-      .toISOString();
+    const timeMin = new Date(
+      now.getTime() - windowDays * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const timeMax = new Date(
+      now.getTime() + windowDays * 24 * 60 * 60 * 1000,
+    ).toISOString();
     const feed = await this.deps.calendar.getCalendarFeed(
       url,
       { timeMin, timeMax },
@@ -273,7 +276,8 @@ export class DossierService {
       if (nextEvent) return nextEvent;
     }
     const exact = feed.events.find(
-      (e) => e.id === eventIdOrTitleFuzzy || e.externalId === eventIdOrTitleFuzzy,
+      (e) =>
+        e.id === eventIdOrTitleFuzzy || e.externalId === eventIdOrTitleFuzzy,
     );
     if (exact) return exact;
     const lower = eventIdOrTitleFuzzy.toLowerCase();
@@ -353,7 +357,10 @@ export class DossierService {
     degraded: DossierPayload["degraded"],
   ): Promise<DossierAttendeeSummary[]> {
     const relService = this.deps.relationships;
-    if (!relService || typeof relService.resolvePrimaryEntityId !== "function") {
+    if (
+      !relService ||
+      typeof relService.resolvePrimaryEntityId !== "function"
+    ) {
       if (attendees.some((a) => a.contactId !== null)) {
         degraded.identityCluster = true;
       }
@@ -364,7 +371,9 @@ export class DossierService {
     for (const attendee of attendees) {
       if (!attendee.contactId) continue;
       try {
-        const primary = await relService.resolvePrimaryEntityId(attendee.contactId);
+        const primary = await relService.resolvePrimaryEntityId(
+          attendee.contactId,
+        );
         primaryByContact.set(attendee.contactId, primary);
       } catch (err) {
         degraded.identityCluster = true;
@@ -401,15 +410,17 @@ export class DossierService {
   ): Promise<Map<string, UUID[]>> {
     const result = new Map<string, UUID[]>();
     if (emails.length === 0) return result;
-    const adapter = (this.runtime as unknown as {
-      adapter?: {
-        getMemories?: (p: {
-          agentId: string;
-          tableName: string;
-          count: number;
-        }) => Promise<Memory[]>;
-      };
-    }).adapter;
+    const adapter = (
+      this.runtime as unknown as {
+        adapter?: {
+          getMemories?: (p: {
+            agentId: string;
+            tableName: string;
+            count: number;
+          }) => Promise<Memory[]>;
+        };
+      }
+    ).adapter;
     const getMemories = adapter?.getMemories;
     if (typeof getMemories !== "function") {
       throw new Error("runtime.adapter.getMemories not available");

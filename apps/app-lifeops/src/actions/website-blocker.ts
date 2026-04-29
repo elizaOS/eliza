@@ -179,13 +179,15 @@ function normalizeWebsiteCandidates(value: unknown): string[] {
     : typeof value === "string"
       ? value.slice(0, 10_000).split(/\s{0,256}\|\|\s{0,256}|,|\n/)
       : [];
-  return [...new Set(
-    values
-      .filter((item): item is string => typeof item === "string")
-      .map((item) => item.trim().slice(0, 1024))
-      .map((item) => item.replace(/^[\[\]'"]{1,32}|[\[\]'"]{1,32}$/g, ""))
-      .filter((item) => item.length > 0),
-  )];
+  return [
+    ...new Set(
+      values
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim().slice(0, 1024))
+        .map((item) => item.replace(/^[[\]'"]{1,32}|[[\]'"]{1,32}$/g, ""))
+        .filter((item) => item.length > 0),
+    ),
+  ];
 }
 
 function normalizeDurationMinutes(value: unknown): number | null | undefined {
@@ -240,7 +242,9 @@ function extractHeuristicWebsites(text: string): string[] {
   const normalized = text.toLowerCase();
   const fromAliases = Object.entries(WEBSITE_ALIAS_MAP).flatMap(
     ([alias, websites]) => {
-      if (!new RegExp(`(^|[^a-z0-9])${alias}([^a-z0-9]|$)`, "i").test(normalized)) {
+      if (
+        !new RegExp(`(^|[^a-z0-9])${alias}([^a-z0-9]|$)`, "i").test(normalized)
+      ) {
         return [];
       }
       return [...websites];
@@ -265,7 +269,9 @@ function extractHeuristicWebsites(text: string): string[] {
   return normalizeWebsiteCandidates([...explicitHosts, ...fromAliases]);
 }
 
-function extractHeuristicDurationMinutes(text: string): number | null | undefined {
+function extractHeuristicDurationMinutes(
+  text: string,
+): number | null | undefined {
   const normalized = text.toLowerCase();
   if (
     /\buntil (?:i|we) unblock\b/.test(normalized) ||
@@ -521,7 +527,8 @@ export const blockWebsitesAction: Action & {
     "Do not use this when the unblock condition is finishing a task, workout, or todo; that is BLOCK_UNTIL_TASK_COMPLETE. " +
     "Always drafts first; the owner must pass confirmed: true (e.g. by replying 'confirm') to actually edit the hosts file. " +
     "If the user confirms a block in a follow-up message without repeating the hostnames, reuse that context through the action planner.",
-  descriptionCompressed: "Admin: block websites via hosts file for set duration.",
+  descriptionCompressed:
+    "Admin: block websites via hosts file for set duration.",
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => {
     const access = await getSelfControlAccess(runtime, message);
@@ -579,9 +586,9 @@ export const blockWebsitesAction: Action & {
         ? trustedExplicitWebsites
         : heuristicWebsites.length > 0
           ? heuristicWebsites
-          : ((llmPlan?.websites.length ?? 0) > 0
-            ? llmPlan?.websites
-            : recoveredWebsites) ?? [];
+          : (((llmPlan?.websites.length ?? 0) > 0
+              ? llmPlan?.websites
+              : recoveredWebsites) ?? []);
 
     const plannedWebsitesSafe: readonly string[] = plannedWebsites ?? [];
     if (llmPlan?.shouldAct === false && trustedExplicitWebsites.length === 0) {
@@ -607,9 +614,9 @@ export const blockWebsitesAction: Action & {
         durationMinutes:
           explicitDurationMinutes !== undefined
             ? explicitDurationMinutes
-            : (heuristicDurationMinutes !== undefined
-                ? heuristicDurationMinutes
-                : (llmPlan?.durationMinutes ?? null)),
+            : heuristicDurationMinutes !== undefined
+              ? heuristicDurationMinutes
+              : (llmPlan?.durationMinutes ?? null),
       },
     });
     if (!parsed.request) {
@@ -734,7 +741,7 @@ export const blockWebsitesAction: Action & {
       {
         name: "{{agentName}}",
         content: {
-          text: "Ready to block x.com, twitter.com for 120 minutes. Reply \"confirm\" or re-issue with confirmed: true to start the block.",
+          text: 'Ready to block x.com, twitter.com for 120 minutes. Reply "confirm" or re-issue with confirmed: true to start the block.',
           action: "BLOCK_WEBSITES",
         },
       },

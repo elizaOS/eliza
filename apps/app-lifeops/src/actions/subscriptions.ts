@@ -12,15 +12,15 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
+import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
+import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
+import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
+import { recentConversationTexts } from "./life-recent-context.js";
 import {
   hasLifeOpsAccess,
   INTERNAL_URL,
   messageText,
 } from "./lifeops-google-helpers.js";
-import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
-import { PLAYBOOK_NOT_IMPLEMENTED_ERROR } from "../lifeops/subscriptions-playbooks.js";
-import type { LifeOpsSubscriptionExecutor } from "../lifeops/subscriptions-types.js";
-import { recentConversationTexts } from "./life-recent-context.js";
 
 type SubscriptionSubaction = "audit" | "cancel" | "status";
 
@@ -298,10 +298,7 @@ async function runSubscriptionsAction(
 
   const serviceName = params.serviceName ?? planner.serviceName ?? null;
   const serviceSlug = params.serviceSlug ?? planner.serviceSlug ?? null;
-  const executor =
-    params.executor ??
-    planner.executor ??
-    null;
+  const executor = params.executor ?? planner.executor ?? null;
   const confirmed =
     typeof params.confirmed === "boolean"
       ? params.confirmed
@@ -352,7 +349,9 @@ async function runSubscriptionsAction(
           summary.cancellation.status !== "failed" &&
           summary.cancellation.status !== "unsupported_surface",
         text: service.summarizeSubscriptionCancellation(summary),
-        ...(needsHumanHandoff ? { values: { requiresConfirmation: true } } : {}),
+        ...(needsHumanHandoff
+          ? { values: { requiresConfirmation: true } }
+          : {}),
         data: {
           cancellation: summary.cancellation,
           candidate: summary.candidate,
@@ -409,7 +408,9 @@ const examples: ActionExample[][] = [
   [
     {
       name: "{{name1}}",
-      content: { text: "Audit my subscriptions and tell me what I can cancel." },
+      content: {
+        text: "Audit my subscriptions and tell me what I can cancel.",
+      },
     },
     {
       name: "{{agentName}}",

@@ -180,7 +180,8 @@ export function LifeOpsLinkPaypalButton({
     }, POPUP_TIMEOUT_MS);
   }, [cleanup, onLinked]);
 
-  const disabled = !elizaCloudConnected || status === "preparing" || status === "exchanging";
+  const disabled =
+    !elizaCloudConnected || status === "preparing" || status === "exchanging";
 
   let buttonLabel = label;
   if (status === "preparing") buttonLabel = "Preparing PayPal…";
