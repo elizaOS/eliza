@@ -19,7 +19,7 @@
 import { client, useApp } from "@elizaos/app-core";
 import { Banknote, Loader2 } from "lucide-react";
 import { type JSX, useCallback, useEffect, useState } from "react";
-import { usePlaidLink, type PlaidLinkOnSuccess } from "react-plaid-link";
+import { type PlaidLinkOnSuccess, usePlaidLink } from "react-plaid-link";
 import type { LifeOpsPaymentSource } from "../lifeops/payment-types.js";
 
 interface LifeOpsLinkBankButtonProps {
@@ -128,9 +128,7 @@ export function LifeOpsLinkBankButton({
               : label}
       </button>
       {tokenError ? (
-        <span className="text-[11px] text-rose-300">
-          Plaid: {tokenError}
-        </span>
+        <span className="text-[11px] text-rose-300">Plaid: {tokenError}</span>
       ) : null}
       {exchangeError ? (
         <span className="text-[11px] text-rose-300">

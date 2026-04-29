@@ -5,6 +5,7 @@
  * chat route for retrieval.
  */
 import path from "node:path";
+import { createElizaPlugin } from "@elizaos/agent";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
 import {
@@ -17,11 +18,15 @@ import {
   selectLiveProvider,
 } from "../../../../test/helpers/live-provider";
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
-import {
-  createElizaPlugin,
-} from "@elizaos/agent";
 
-const envPath = path.resolve(import.meta.dirname, "..", "..", "..", "..", ".env");
+const envPath = path.resolve(
+  import.meta.dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  ".env",
+);
 try {
   const { config } = await import("dotenv");
   config({ path: envPath });

@@ -52,11 +52,10 @@ function formatGroundItems(state: BotState): string {
   if (!state.groundItems.length) return "  None nearby";
   return state.groundItems
     .slice(0, 8)
-    .map(
-      (item) =>
-        item.count > 1
-          ? `  ${item.name} x${item.count} at (${item.worldX}, ${item.worldZ})`
-          : `  ${item.name} at (${item.worldX}, ${item.worldZ})`,
+    .map((item) =>
+      item.count > 1
+        ? `  ${item.name} x${item.count} at (${item.worldX}, ${item.worldZ})`
+        : `  ${item.name} at (${item.worldX}, ${item.worldZ})`,
     )
     .join("\n");
 }
@@ -71,22 +70,19 @@ function formatMessages(state: BotState): string {
 
 function formatCombatEvents(state: BotState): string {
   if (!state.combatEvents.length) return "";
-  const lines = state.combatEvents
-    .slice(-5)
-    .map((ev) => {
-      if (ev.type === "damage")
-        return `  ${ev.source} hit ${ev.target} for ${ev.amount}`;
-      if (ev.type === "kill") return `  ${ev.source} killed ${ev.target}`;
-      return `  ${ev.type}: ${ev.source} -> ${ev.target}`;
-    });
+  const lines = state.combatEvents.slice(-5).map((ev) => {
+    if (ev.type === "damage")
+      return `  ${ev.source} hit ${ev.target} for ${ev.amount}`;
+    if (ev.type === "kill") return `  ${ev.source} killed ${ev.target}`;
+    return `  ${ev.type}: ${ev.source} -> ${ev.target}`;
+  });
   return `\nCombat Events:\n${lines.join("\n")}`;
 }
 
 function formatAlerts(state: BotState): string {
   if (!state.alerts.length) return "";
   return (
-    "\n⚠ ALERTS:\n" +
-    state.alerts.map((a) => `  - ${a.message}`).join("\n")
+    "\n⚠ ALERTS:\n" + state.alerts.map((a) => `  - ${a.message}`).join("\n")
   );
 }
 
@@ -124,7 +120,8 @@ export const botStateProvider: Provider = {
   name: "RS_SDK_BOT_STATE",
   description:
     "Full game state for the 2004scape bot: player, skills, inventory, equipment, nearby entities, messages, and combat.",
-  descriptionCompressed: "Game state: player, skills, inventory, equipment, nearby, combat.",
+  descriptionCompressed:
+    "Game state: player, skills, inventory, equipment, nearby, combat.",
 
   async get(
     runtime: IAgentRuntime,

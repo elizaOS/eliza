@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import type { BotState } from "../sdk/types.js";
 import { identifyArea } from "../data/areas.js";
+import type { BotState } from "../sdk/types.js";
 
 export const mapAreaProvider: Provider = {
   name: "RS_SDK_MAP_AREA",

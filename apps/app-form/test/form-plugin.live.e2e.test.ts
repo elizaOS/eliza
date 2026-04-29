@@ -14,8 +14,7 @@ import {
 } from "../../../../test/helpers/real-runtime";
 
 const LIVE =
-  process.env.ELIZA_LIVE_TEST === "1" ||
-  process.env.MILADY_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.MILADY_LIVE_TEST === "1";
 
 describeIf(LIVE)("App-Form: Plugin e2e", () => {
   let testResult: RealTestRuntimeResult;
@@ -50,9 +49,8 @@ describeIf(LIVE)("App-Form: Plugin e2e", () => {
   });
 
   it("field validation works for builtin types", async () => {
-    const { validateField, registerBuiltinTypes, registerTypeHandler } = await import(
-      "@elizaos/app-form"
-    );
+    const { validateField, registerBuiltinTypes, registerTypeHandler } =
+      await import("@elizaos/app-form");
     if (!validateField) {
       return;
     }

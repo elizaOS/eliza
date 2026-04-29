@@ -1611,9 +1611,13 @@ export function BrowserWorkspaceView(): JSX.Element {
         {tabIsInternal ? null : (
           <button
             type="button"
-            aria-label={closeTabLabel}
-            title={closeTabLabel}
-            className="absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[var(--radius-sm)] text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-bg-muted/50 hover:text-danger"
+            aria-label={`${closeTabLabel} ${label}`}
+            title={`${closeTabLabel}: ${label}`}
+            className={`absolute right-0 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-[var(--radius-sm)] text-muted transition-opacity hover:bg-bg-muted/50 hover:text-danger focus-visible:opacity-100 ${
+              active
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+            }`}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
@@ -1814,6 +1818,7 @@ export function BrowserWorkspaceView(): JSX.Element {
             ? "Internal tab URL is managed by the app"
             : "Enter a URL",
         })}
+        data-testid="browser-workspace-address-input"
         disabled={busyAction !== null || selectedTabIsInternal}
         className="h-8 min-w-0 flex-1 rounded-full border-border/40 bg-card/70 px-4 text-sm text-txt"
       />

@@ -9,14 +9,14 @@ import type {
 import {
   ChannelType,
   ModelType,
-  Role,
   parseJSONObjectFromText,
   parseKeyValueXml,
+  type Role,
   stringToUuid,
 } from "@elizaos/core";
+import { broadcastIntent } from "../lifeops/intent-sync.js";
 import { recentConversationTexts } from "./life-recent-context.js";
 import { hasLifeOpsAccess, messageText } from "./lifeops-google-helpers.js";
-import { broadcastIntent } from "../lifeops/intent-sync.js";
 
 type GatewaySubaction = "create_group_chat" | "escalate_to_user";
 
@@ -326,8 +326,7 @@ export const crossPlatformGatewayAction: Action = {
       ?.parameters ?? {}) as GatewayParams;
     const planned = await resolveGatewayPlan({ runtime, message, state });
 
-    const subaction =
-      normalizeSubaction(params.subaction) ?? planned.subaction;
+    const subaction = normalizeSubaction(params.subaction) ?? planned.subaction;
     if (!subaction || planned.shouldAct === false) {
       return {
         success: false,
@@ -347,7 +346,8 @@ export const crossPlatformGatewayAction: Action = {
         normalizeOptionalString(params.reason) ??
         planned.reason ??
         "This requires the owner's direct action.";
-      const title = normalizeOptionalString(params.title) ?? "Owner action needed";
+      const title =
+        normalizeOptionalString(params.title) ?? "Owner action needed";
       const intent = await broadcastIntent(runtime, {
         kind: "user_action_requested",
         target: "all",

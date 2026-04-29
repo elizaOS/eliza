@@ -67,7 +67,9 @@ type ExtractionXmlField = {
 
 type ExtractionXmlResponse = {
   intent?: string;
-  extractions?: { field?: ExtractionXmlField | ExtractionXmlField[] } | ExtractionXmlField[];
+  extractions?:
+    | { field?: ExtractionXmlField | ExtractionXmlField[] }
+    | ExtractionXmlField[];
 };
 
 type SingleFieldXmlResponse = {
@@ -86,7 +88,9 @@ type CorrectionXmlField = {
 
 type CorrectionXmlResponse = {
   has_correction?: string | boolean;
-  corrections?: { correction?: CorrectionXmlField | CorrectionXmlField[] } | CorrectionXmlField[];
+  corrections?:
+    | { correction?: CorrectionXmlField | CorrectionXmlField[] }
+    | CorrectionXmlField[];
 };
 
 // ============================================================================
@@ -115,10 +119,12 @@ export async function llmIntentAndExtract(
   text: string,
   form: FormDefinition,
   controls: FormControl[],
-  templateValues?: TemplateValues
+  templateValues?: TemplateValues,
 ): Promise<IntentResult> {
   const resolvedControls = templateValues
-    ? controls.map((control) => resolveControlTemplates(control, templateValues))
+    ? controls.map((control) =>
+        resolveControlTemplates(control, templateValues),
+      )
     : controls;
 
   // Build the extraction prompt
@@ -217,12 +223,18 @@ IMPORTANT: Your response must ONLY contain the TOON document above. No preamble 
 
     // Log if debug mode
     if (form.debug) {
-      runtime.logger.debug("[FormExtraction] LLM extraction result:", JSON.stringify(parsed));
+      runtime.logger.debug(
+        "[FormExtraction] LLM extraction result:",
+        JSON.stringify(parsed),
+      );
     }
 
     return parsed;
   } catch (error) {
-    runtime.logger.error("[FormExtraction] LLM extraction failed:", String(error));
+    runtime.logger.error(
+      "[FormExtraction] LLM extraction failed:",
+      String(error),
+    );
     return { intent: "other", extractions: [] };
   }
 }
@@ -271,7 +283,8 @@ function parseExtractionResponse(response: string): IntentResult {
               value: field.value ?? null,
               confidence: parseFloat(String(field.confidence ?? "")) || 0.5,
               reasoning: field.reasoning ? String(field.reasoning) : undefined,
-              isCorrection: field.is_correction === "true" || field.is_correction === true,
+              isCorrection:
+                field.is_correction === "true" || field.is_correction === true,
             };
             result.extractions.push(extraction);
           }
@@ -289,7 +302,7 @@ function parseExtractionResponse(response: string): IntentResult {
 
     // Extract fields with regex as fallback
     const fieldMatches = response.matchAll(
-      /<field>\s*<key>([^<]+)<\/key>\s*<value>([^<]*)<\/value>\s*<confidence>([^<]+)<\/confidence>/g
+      /<field>\s*<key>([^<]+)<\/key>\s*<value>([^<]*)<\/value>\s*<confidence>([^<]+)<\/confidence>/g,
     );
     for (const match of fieldMatches) {
       result.extractions.push({
@@ -355,7 +368,7 @@ export async function extractSingleField(
   text: string,
   control: FormControl,
   debug?: boolean,
-  templateValues?: TemplateValues
+  templateValues?: TemplateValues,
 ): Promise<ExtractionResult | null> {
   const resolvedControl = templateValues
     ? resolveControlTemplates(control, templateValues)
@@ -411,7 +424,10 @@ reasoning: brief explanation
       };
 
       if (debug) {
-        runtime.logger.debug("[FormExtraction] Single field extraction:", JSON.stringify(result));
+        runtime.logger.debug(
+          "[FormExtraction] Single field extraction:",
+          JSON.stringify(result),
+        );
       }
 
       return result;
@@ -419,7 +435,10 @@ reasoning: brief explanation
 
     return null;
   } catch (error) {
-    runtime.logger.error("[FormExtraction] Single field extraction failed:", String(error));
+    runtime.logger.error(
+      "[FormExtraction] Single field extraction failed:",
+      String(error),
+    );
     return null;
   }
 }
@@ -452,10 +471,12 @@ export async function detectCorrection(
   text: string,
   currentValues: Record<string, JsonValue>,
   controls: FormControl[],
-  templateValues?: TemplateValues
+  templateValues?: TemplateValues,
 ): Promise<ExtractionResult[]> {
   const resolvedControls = templateValues
-    ? controls.map((control) => resolveControlTemplates(control, templateValues))
+    ? controls.map((control) =>
+        resolveControlTemplates(control, templateValues),
+      )
     : controls;
 
   // Build context of current values
@@ -497,7 +518,8 @@ IMPORTANT: Your response must ONLY contain the TOON document above. No preamble 
     });
 
     const parsed = parseKeyValueXml<CorrectionXmlResponse>(response);
-    const hasCorrection = parsed?.has_correction === true || parsed?.has_correction === "true";
+    const hasCorrection =
+      parsed?.has_correction === true || parsed?.has_correction === "true";
 
     if (parsed && hasCorrection && parsed.corrections) {
       const corrections: ExtractionResult[] = [];
@@ -518,7 +540,7 @@ IMPORTANT: Your response must ONLY contain the TOON document above. No preamble 
         const control = resolvedControls.find(
           (c) =>
             c.label.toLowerCase() === fieldName.toLowerCase() ||
-            c.key.toLowerCase() === fieldName.toLowerCase()
+            c.key.toLowerCase() === fieldName.toLowerCase(),
         );
 
         if (control) {
@@ -546,7 +568,10 @@ IMPORTANT: Your response must ONLY contain the TOON document above. No preamble 
 
     return [];
   } catch (error) {
-    runtime.logger.error("[FormExtraction] Correction detection failed:", String(error));
+    runtime.logger.error(
+      "[FormExtraction] Correction detection failed:",
+      String(error),
+    );
     return [];
   }
 }

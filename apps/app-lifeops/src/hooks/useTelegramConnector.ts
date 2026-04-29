@@ -1,3 +1,4 @@
+import { client } from "@elizaos/app-core";
 import type {
   LifeOpsConnectorSide,
   LifeOpsTelegramAuthState,
@@ -5,7 +6,6 @@ import type {
   VerifyLifeOpsTelegramConnectorResponse,
 } from "@elizaos/shared";
 import { useCallback, useEffect, useState } from "react";
-import { client } from "@elizaos/app-core";
 
 function formatError(cause: unknown, fallback: string): string {
   if (cause instanceof Error && cause.message.trim().length > 0) {
@@ -22,8 +22,9 @@ export function useTelegramConnector(
   options: UseTelegramConnectorOptions = {},
 ) {
   const side = options.side ?? "owner";
-  const [status, setStatus] =
-    useState<LifeOpsTelegramConnectorStatus | null>(null);
+  const [status, setStatus] = useState<LifeOpsTelegramConnectorStatus | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [actionPending, setActionPending] = useState(false);
   const [verifyPending, setVerifyPending] = useState(false);
@@ -40,9 +41,7 @@ export function useTelegramConnector(
       setAuthState(nextStatus.authState);
       setError(nextStatus.authError ?? null);
     } catch (cause) {
-      setError(
-        formatError(cause, "Telegram connector status failed to load."),
-      );
+      setError(formatError(cause, "Telegram connector status failed to load."));
     } finally {
       setLoading(false);
     }

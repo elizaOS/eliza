@@ -18,7 +18,10 @@ vi.mock("./LifeOpsNavRail.js", () => ({
     collapsible?: boolean;
     onNavigate: (section: "mail") => void;
   }) => (
-    <div data-testid="mock-lifeops-nav-rail" data-collapsible={String(collapsible)}>
+    <div
+      data-testid="mock-lifeops-nav-rail"
+      data-collapsible={String(collapsible)}
+    >
       <span>{activeSection}</span>
       <button type="button" onClick={() => onNavigate("mail")}>
         Go Mail
@@ -28,11 +31,9 @@ vi.mock("./LifeOpsNavRail.js", () => ({
 }));
 
 vi.mock("./LifeOpsResizableSidebar.js", () => ({
-  LifeOpsResizableSidebar: ({
-    children,
-  }: {
-    children: ReactNode;
-  }) => <div data-testid="mock-lifeops-resizable">{children}</div>,
+  LifeOpsResizableSidebar: ({ children }: { children: ReactNode }) => (
+    <div data-testid="mock-lifeops-resizable">{children}</div>
+  ),
 }));
 
 import { LifeOpsWorkspaceShell } from "./LifeOpsWorkspaceShell";
@@ -42,7 +43,11 @@ describe("LifeOpsWorkspaceShell", () => {
     const navigate = vi.fn();
 
     render(
-      <LifeOpsWorkspaceShell compactLayout section="overview" navigate={navigate}>
+      <LifeOpsWorkspaceShell
+        compactLayout
+        section="overview"
+        navigate={navigate}
+      >
         <div>Overview content</div>
       </LifeOpsWorkspaceShell>,
     );
@@ -53,7 +58,9 @@ describe("LifeOpsWorkspaceShell", () => {
 
     expect(screen.getByTestId("lifeops-mobile-nav-drawer")).toBeTruthy();
     expect(
-      screen.getByTestId("mock-lifeops-nav-rail").getAttribute("data-collapsible"),
+      screen
+        .getByTestId("mock-lifeops-nav-rail")
+        .getAttribute("data-collapsible"),
     ).toBe("false");
 
     fireEvent.click(screen.getByRole("button", { name: "Go Mail" }));

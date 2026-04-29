@@ -92,7 +92,9 @@ function parseFromAddress(value: string | null): {
 
 function internalDateToIso(value: string | undefined): string {
   const ms = value ? Number(value) : NaN;
-  return Number.isFinite(ms) ? new Date(ms).toISOString() : new Date().toISOString();
+  return Number.isFinite(ms)
+    ? new Date(ms).toISOString()
+    : new Date().toISOString();
 }
 
 function parseListUnsubscribe(value: string | null): {
@@ -157,7 +159,8 @@ async function gmailListIds(args: {
   return {
     ids,
     nextPageToken:
-      typeof parsed.nextPageToken === "string" && parsed.nextPageToken.length > 0
+      typeof parsed.nextPageToken === "string" &&
+      parsed.nextPageToken.length > 0
         ? parsed.nextPageToken
         : null,
   };
@@ -198,7 +201,9 @@ async function gmailFetchHeaders(args: {
     listUnsubscribe,
     listUnsubscribePost,
     snippet: parsed.snippet?.trim() ?? "",
-    labels: (parsed.labelIds ?? []).map((label) => label.trim()).filter(Boolean),
+    labels: (parsed.labelIds ?? [])
+      .map((label) => label.trim())
+      .filter(Boolean),
   };
 }
 

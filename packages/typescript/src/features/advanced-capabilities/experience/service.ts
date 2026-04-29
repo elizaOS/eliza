@@ -8,6 +8,10 @@ import { Service, type ServiceTypeName } from "../../../types/service.ts";
 import {
 	type Experience,
 	type ExperienceAnalysis,
+	type ExperienceConsolidationResult,
+	type ExperienceGraphLink,
+	type ExperienceGraphLinkType,
+	type ExperienceGraphSnapshot,
 	type ExperienceQuery,
 	ExperienceServiceType,
 	ExperienceType,
@@ -15,6 +19,13 @@ import {
 } from "./types.ts";
 import { ConfidenceDecayManager } from "./utils/confidenceDecay";
 import { ExperienceRelationshipManager } from "./utils/experienceRelationships";
+import {
+	extractExperienceKeywords,
+	isDuplicateLearning,
+} from "./utils/experienceText.ts";
+
+const GRAPH_MAX_LINKS = 200;
+const GRAPH_KEYWORD_LINK_THRESHOLD = 2;
 
 export class ExperienceService extends Service {
 	static override serviceType: ServiceTypeName =
@@ -78,6 +89,46 @@ export class ExperienceService extends Service {
 		return ids.length > 0 ? ids : undefined;
 	}
 
+	private asUuidArray(value: unknown): UUID[] {
+		return this.asStringArray(value) as UUID[];
+	}
+
+	private dedupeStrings(values: Array<string | undefined>): string[] {
+		return Array.from(
+			new Set(
+				values
+					.map((value) => value?.trim())
+					.filter((value): value is string => Boolean(value)),
+			),
+		);
+	}
+
+	private normalizeTags(
+		tags: unknown,
+		domain: string,
+		type: ExperienceType,
+	): string[] {
+		return this.dedupeStrings([
+			...this.asStringArray(tags).map((tag) => tag.toLowerCase()),
+			domain.toLowerCase(),
+			type,
+		]);
+	}
+
+	private deriveKeywords(experience: Pick<
+		Experience,
+		"context" | "action" | "result" | "learning" | "domain" | "tags"
+	>): string[] {
+		return extractExperienceKeywords([
+			experience.context,
+			experience.action,
+			experience.result,
+			experience.learning,
+			experience.domain,
+			experience.tags,
+		]);
+	}
+
 	private asOptionalEmbedding(value: unknown): number[] | undefined {
 		if (!Array.isArray(value)) {
 			return undefined;
@@ -110,9 +161,18 @@ export class ExperienceService extends Service {
 		return {
 			...experience,
 			tags: [...experience.tags],
+			keywords: [...experience.keywords],
+			associatedEntityIds: [...experience.associatedEntityIds],
 			embedding: experience.embedding ? [...experience.embedding] : undefined,
+			memoryIds: experience.memoryIds ? [...experience.memoryIds] : undefined,
+			sourceMessageIds: experience.sourceMessageIds
+				? [...experience.sourceMessageIds]
+				: undefined,
 			relatedExperiences: experience.relatedExperiences
 				? [...experience.relatedExperiences]
+				: undefined,
+			mergedExperienceIds: experience.mergedExperienceIds
+				? [...experience.mergedExperienceIds]
 				: undefined,
 		};
 	}
@@ -209,6 +269,8 @@ export class ExperienceService extends Service {
 					? rawData.domain
 					: "general",
 			tags: this.asStringArray(rawData?.tags),
+			keywords: this.asStringArray(rawData?.keywords),
+			associatedEntityIds: this.asUuidArray(rawData?.associatedEntityIds),
 			confidence: this.clampScore(rawData?.confidence, 0.5),
 			importance: this.clampScore(rawData?.importance, 0.5),
 			createdAt: this.toTimestamp(
@@ -230,6 +292,7 @@ export class ExperienceService extends Service {
 				this.asOptionalEmbedding(memory.embedding) ??
 				this.asOptionalEmbedding(rawData?.embedding),
 			relatedExperiences: this.asOptionalUuidArray(rawData?.relatedExperiences),
+			mergedExperienceIds: this.asOptionalUuidArray(rawData?.mergedExperienceIds),
 			supersedes:
 				typeof rawData?.supersedes === "string"
 					? (rawData.supersedes as UUID)
@@ -315,6 +378,8 @@ export class ExperienceService extends Service {
 			learning: experience.learning,
 			domain: experience.domain,
 			tags: experience.tags,
+			keywords: experience.keywords,
+			associatedEntityIds: experience.associatedEntityIds,
 			confidence: experience.confidence,
 			importance: experience.importance,
 			createdAt: experience.createdAt,
@@ -326,6 +391,9 @@ export class ExperienceService extends Service {
 		}
 		if (experience.relatedExperiences !== undefined) {
 			data.relatedExperiences = experience.relatedExperiences;
+		}
+		if (experience.mergedExperienceIds !== undefined) {
+			data.mergedExperienceIds = experience.mergedExperienceIds;
 		}
 		if (experience.supersedes !== undefined) {
 			data.supersedes = experience.supersedes;
@@ -393,6 +461,16 @@ export class ExperienceService extends Service {
 		for (const memory of memories) {
 			const experience = this.parseExperienceMemory(memory);
 			if (experience) {
+				if (experience.tags.length === 0) {
+					experience.tags = this.normalizeTags(
+						experience.tags,
+						experience.domain,
+						experience.type,
+					);
+				}
+				if (experience.keywords.length === 0) {
+					experience.keywords = this.deriveKeywords(experience);
+				}
 				this.setExperience(experience);
 			}
 		}
@@ -410,6 +488,20 @@ export class ExperienceService extends Service {
 		const action = experienceData.action || "";
 		const result = experienceData.result || "";
 		const learning = experienceData.learning || "";
+		const type = experienceData.type || ExperienceType.LEARNING;
+		const domain = experienceData.domain || "general";
+		const tags = this.normalizeTags(experienceData.tags, domain, type);
+		const keywords =
+			experienceData.keywords && experienceData.keywords.length > 0
+				? this.dedupeStrings(experienceData.keywords)
+				: this.deriveKeywords({
+						context,
+						action,
+						result,
+						learning,
+						domain,
+						tags,
+					});
 		const embedding = await this.generateEmbedding({
 			context,
 			action,
@@ -420,14 +512,18 @@ export class ExperienceService extends Service {
 		const experience: Experience = {
 			id: uuidv4() as UUID,
 			agentId: this.runtime.agentId,
-			type: experienceData.type || ExperienceType.LEARNING,
+			type,
 			outcome: experienceData.outcome || OutcomeType.NEUTRAL,
 			context,
 			action,
 			result,
 			learning,
-			domain: experienceData.domain || "general",
-			tags: experienceData.tags ? [...experienceData.tags] : [],
+			domain,
+			tags,
+			keywords,
+			associatedEntityIds: experienceData.associatedEntityIds
+				? Array.from(new Set(experienceData.associatedEntityIds))
+				: [],
 			confidence: experienceData.confidence ?? 0.5,
 			importance: experienceData.importance ?? 0.5,
 			createdAt: now,
@@ -437,6 +533,9 @@ export class ExperienceService extends Service {
 			embedding,
 			relatedExperiences: experienceData.relatedExperiences
 				? [...experienceData.relatedExperiences]
+				: undefined,
+			mergedExperienceIds: experienceData.mergedExperienceIds
+				? [...experienceData.mergedExperienceIds]
 				: undefined,
 			supersedes: experienceData.supersedes,
 			previousBelief: experienceData.previousBelief,

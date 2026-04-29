@@ -499,7 +499,9 @@ export const ownerWebsiteBlockAction: Action & {
       }
     }
     if (!subaction) {
-      params = (await extractActionParamsViaLlm<OwnerWebsiteBlockParameters & Record<string, unknown>>({
+      params = (await extractActionParamsViaLlm<
+        OwnerWebsiteBlockParameters & Record<string, unknown>
+      >({
         runtime,
         message,
         state,

@@ -22,13 +22,7 @@ import {
   Repeat,
   Trash2,
 } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLifeOpsChatLauncher } from "./LifeOpsChatAdapter.js";
 import {
   type LifeOpsSelection,
@@ -253,7 +247,8 @@ function readNativeAppleMetadata(
   if (!isRecord(metadata)) return null;
   const raw = metadata[NATIVE_APPLE_REMINDER_METADATA_KEY];
   if (!isRecord(raw)) return null;
-  const kind = raw.kind === "alarm" || raw.kind === "reminder" ? raw.kind : null;
+  const kind =
+    raw.kind === "alarm" || raw.kind === "reminder" ? raw.kind : null;
   if (!kind) return null;
   const reminderId =
     typeof raw.reminderId === "string" && raw.reminderId.trim().length > 0
@@ -393,7 +388,11 @@ function SnoozeSplitButton({
   onCustomSnooze,
 }: Pick<
   RowControlsProps,
-  "occurrenceId" | "busyAction" | "optimisticState" | "onSnooze" | "onCustomSnooze"
+  | "occurrenceId"
+  | "busyAction"
+  | "optimisticState"
+  | "onSnooze"
+  | "onCustomSnooze"
 >) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -793,7 +792,10 @@ function computeNextFireIso(
       probe.setDate(candidate.getDate() + offset);
       probe.setHours(0, 0, 0, 0);
       probe.setMinutes(startMinute);
-      if (weekdays.includes(probe.getDay()) && probe.getTime() > now.getTime()) {
+      if (
+        weekdays.includes(probe.getDay()) &&
+        probe.getTime() > now.getTime()
+      ) {
         return probe.toISOString();
       }
     }
@@ -987,21 +989,27 @@ function AlarmRow({
         </div>
         <div className="text-[11px] text-muted">
           {day ? `${day} · ` : ""}
-          {entry.nextFireIso ? formatRelative(entry.nextFireIso) : "No upcoming fire"}
+          {entry.nextFireIso
+            ? formatRelative(entry.nextFireIso)
+            : "No upcoming fire"}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         <SnoozeSplitButton
           occurrenceId={occurrenceId}
           busyAction={busyAction === "delete" ? null : busyAction}
-          optimisticState={optimisticState === "deleted" ? "snoozed" : optimisticState}
+          optimisticState={
+            optimisticState === "deleted" ? "snoozed" : optimisticState
+          }
           onSnooze={onSnooze}
           onCustomSnooze={onCustomSnooze}
         />
         <CompleteButton
           occurrenceId={occurrenceId}
           busyAction={busyAction === "delete" ? null : busyAction}
-          optimisticState={optimisticState === "deleted" ? "completed" : optimisticState}
+          optimisticState={
+            optimisticState === "deleted" ? "completed" : optimisticState
+          }
           onComplete={onComplete}
         />
         <button
@@ -1059,10 +1067,7 @@ export function LifeOpsRemindersSection() {
     [],
   );
   const setRowOptimistic = useCallback(
-    (
-      key: string,
-      optimistic: "idle" | "snoozed" | "completed" | "deleted",
-    ) => {
+    (key: string, optimistic: "idle" | "snoozed" | "completed" | "deleted") => {
       setRowState((prev) => ({
         ...prev,
         [key]: { ...(prev[key] ?? { busy: null }), optimistic },
@@ -1160,9 +1165,7 @@ export function LifeOpsRemindersSection() {
           void load();
         }, 400);
       } catch (cause) {
-        setError(
-          cause instanceof Error ? cause.message : "Snooze failed.",
-        );
+        setError(cause instanceof Error ? cause.message : "Snooze failed.");
       } finally {
         setRowBusy(rowKey, null);
       }
@@ -1181,9 +1184,7 @@ export function LifeOpsRemindersSection() {
           void load();
         }, 400);
       } catch (cause) {
-        setError(
-          cause instanceof Error ? cause.message : "Complete failed.",
-        );
+        setError(cause instanceof Error ? cause.message : "Complete failed.");
       } finally {
         setRowBusy(rowKey, null);
       }
@@ -1223,9 +1224,7 @@ export function LifeOpsRemindersSection() {
           void load();
         }, 400);
       } catch (cause) {
-        setError(
-          cause instanceof Error ? cause.message : "Delete failed.",
-        );
+        setError(cause instanceof Error ? cause.message : "Delete failed.");
       } finally {
         setRowBusy(rowKey, null);
       }
@@ -1262,7 +1261,9 @@ export function LifeOpsRemindersSection() {
           timezone,
           priority: 1,
           cadence: schedule.cadence,
-          ...(schedule.windowPolicy ? { windowPolicy: schedule.windowPolicy } : {}),
+          ...(schedule.windowPolicy
+            ? { windowPolicy: schedule.windowPolicy }
+            : {}),
           source: "lifeops_ui_alarm",
           metadata: {
             [LIFEOPS_ALARM_METADATA_KEY]: true,
@@ -1292,9 +1293,7 @@ export function LifeOpsRemindersSection() {
         await load();
       } catch (cause) {
         setError(
-          cause instanceof Error
-            ? cause.message
-            : "Failed to create alarm.",
+          cause instanceof Error ? cause.message : "Failed to create alarm.",
         );
       } finally {
         setSavingAlarm(false);
@@ -1493,8 +1492,12 @@ function RemindersTabBody({
                 const record = reminder.definitionId
                   ? definitionById.get(reminder.definitionId)
                   : null;
-                const apple = readNativeAppleMetadata(record?.definition.metadata);
-                const recurrence = describeRecurrence(record?.definition.cadence);
+                const apple = readNativeAppleMetadata(
+                  record?.definition.metadata,
+                );
+                const recurrence = describeRecurrence(
+                  record?.definition.cadence,
+                );
                 const isSelected = selection.reminderId === reminder.ownerId;
                 const state = rowState[rowKey] ?? {
                   busy: null,
@@ -1508,13 +1511,9 @@ function RemindersTabBody({
                     isSelected={isSelected}
                     apple={apple}
                     recurrence={recurrence}
-                    busyAction={
-                      state.busy === "delete" ? null : state.busy
-                    }
+                    busyAction={state.busy === "delete" ? null : state.busy}
                     optimisticState={
-                      state.optimistic === "deleted"
-                        ? "idle"
-                        : state.optimistic
+                      state.optimistic === "deleted" ? "idle" : state.optimistic
                     }
                     onSelect={() =>
                       select({
@@ -1526,9 +1525,7 @@ function RemindersTabBody({
                     onSnooze={(option) =>
                       onSnooze(rowKey, reminder.occurrenceId, option)
                     }
-                    onComplete={() =>
-                      onComplete(rowKey, reminder.occurrenceId)
-                    }
+                    onComplete={() => onComplete(rowKey, reminder.occurrenceId)}
                     onCustomSnooze={() =>
                       onCustomSnooze(rowKey, reminder.occurrenceId)
                     }
@@ -1585,7 +1582,8 @@ function AlarmsTabBody({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-[11px] text-muted">
-          Clock-time LifeOps alerts. One-time alarms sync to Reminders.app on macOS after native sync succeeds.
+          Clock-time LifeOps alerts. One-time alarms sync to Reminders.app on
+          macOS after native sync succeeds.
         </p>
         <button
           type="button"
@@ -1639,10 +1637,7 @@ function AlarmsTabBody({
                   onComplete(rowKey, entry.reminder?.occurrenceId ?? null)
                 }
                 onCustomSnooze={() =>
-                  onCustomSnooze(
-                    rowKey,
-                    entry.reminder?.occurrenceId ?? null,
-                  )
+                  onCustomSnooze(rowKey, entry.reminder?.occurrenceId ?? null)
                 }
                 onDelete={() => onDelete(entry.definition.id)}
               />

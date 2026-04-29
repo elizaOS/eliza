@@ -338,7 +338,13 @@ function tryResolveElizaCorePkgDir(): string | null {
   try {
     return path.dirname(_require.resolve("@elizaos/core/package.json"));
   } catch {
-    return null;
+    const workspaceCorePkg = path.join(
+      elizaRoot,
+      "packages/typescript/package.json",
+    );
+    return fs.existsSync(workspaceCorePkg)
+      ? path.dirname(workspaceCorePkg)
+      : null;
   }
 }
 
@@ -810,6 +816,8 @@ function nativeModuleStubPlugin(): Plugin {
     "@elizaos/plugin-sql",
     "@elizaos/plugin-agent-skills",
     "@elizaos/plugin-agent-orchestrator",
+    "@elizaos/plugin-signal",
+    "@elizaos/plugin-telegram",
     "@elizaos/plugin-whatsapp",
   ]);
   if (!IS_CAPACITOR_MOBILE_BUILD) {
@@ -1080,6 +1088,19 @@ function nativeModuleStubPlugin(): Plugin {
             "worldTable",
           ].map((name) => `export const ${name} = table;`),
           "export default table;",
+        ].join("\n");
+      }
+
+      if (strippedId === "@elizaos/plugin-telegram/account-auth-service") {
+        return [
+          "function serverOnly() { throw new Error('@elizaos/plugin-telegram/account-auth-service is server-only'); }",
+          "export function defaultTelegramAccountDeviceModel() { return 'Eliza Desktop'; }",
+          "export function defaultTelegramAccountSystemVersion() { return 'browser'; }",
+          "export function loadTelegramAccountSessionString() { return serverOnly(); }",
+          "export class TelegramAccountAuthSession {",
+          "  constructor() { serverOnly(); }",
+          "}",
+          "export default { defaultTelegramAccountDeviceModel, defaultTelegramAccountSystemVersion, loadTelegramAccountSessionString, TelegramAccountAuthSession };",
         ].join("\n");
       }
 

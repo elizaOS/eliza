@@ -18,9 +18,7 @@ vi.mock("../lifeops/service.js", () => {
   class FakeLifeOpsService {}
   return {
     LifeOpsServiceError: FakeError,
-    LifeOpsService: vi.fn(function () {
-      return new FakeLifeOpsService();
-    }),
+    LifeOpsService: vi.fn(() => new FakeLifeOpsService()),
   };
 });
 

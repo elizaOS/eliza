@@ -22,10 +22,7 @@ function messageText(message: Memory): string {
   return (message?.content?.text ?? "").toString().toLowerCase();
 }
 
-function coerceSubaction(
-  value: unknown,
-  text: string,
-): ScheduleSubaction {
+function coerceSubaction(value: unknown, text: string): ScheduleSubaction {
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     if (normalized === "inspect") {
@@ -88,7 +85,9 @@ function formatScheduleSummary(inspection: LifeOpsScheduleInspection): string {
   return lines.join("\n");
 }
 
-function formatScheduleInspection(inspection: LifeOpsScheduleInspection): string {
+function formatScheduleInspection(
+  inspection: LifeOpsScheduleInspection,
+): string {
   const { counts, insight } = inspection;
   const lines = [formatScheduleSummary(inspection)];
   lines.push("");

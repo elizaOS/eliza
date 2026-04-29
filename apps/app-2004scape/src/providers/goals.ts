@@ -6,7 +6,10 @@ interface Goal {
   text: string;
 }
 
-function computeGoals(state: BotState, eventLog: Array<{ action: string; timestamp: number }>): Goal[] {
+function computeGoals(
+  state: BotState,
+  eventLog: Array<{ action: string; timestamp: number }>,
+): Goal[] {
   const goals: Goal[] = [];
   const p = state.player;
   if (!p) return goals;
@@ -91,7 +94,10 @@ function computeGoals(state: BotState, eventLog: Array<{ action: string; timesta
   }
 
   // MEDIUM_TERM
-  if (avgCombat >= 10 && !state.equipment.some((e) => e.name.toLowerCase().includes("mithril"))) {
+  if (
+    avgCombat >= 10 &&
+    !state.equipment.some((e) => e.name.toLowerCase().includes("mithril"))
+  ) {
     goals.push({
       priority: "MEDIUM_TERM",
       text: "Combat skills are progressing. Consider upgrading to mithril equipment.",
@@ -153,7 +159,10 @@ export const goalsProvider: Provider = {
     _state?: State,
   ): Promise<string> {
     const service = runtime.getService("rs_2004scape") as
-      | { getBotState(): BotState | null; getEventLog(): Array<{ action: string; timestamp: number }> }
+      | {
+          getBotState(): BotState | null;
+          getEventLog(): Array<{ action: string; timestamp: number }>;
+        }
       | undefined;
     const state = service?.getBotState?.();
     if (!state?.connected || !state.inGame || !state.player) {
@@ -164,8 +173,7 @@ export const goalsProvider: Provider = {
     const goals = computeGoals(state, eventLog);
     goals.sort(
       (a, b) =>
-        (PRIORITY_ORDER[a.priority] ?? 99) -
-        (PRIORITY_ORDER[b.priority] ?? 99),
+        (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99),
     );
 
     let output = "[RS_SDK_GOALS] Current priorities:\n";
