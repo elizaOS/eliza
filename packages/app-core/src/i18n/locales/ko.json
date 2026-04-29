@@ -95,6 +95,7 @@
   "apikeyconfig.fetching": "가져오는 중...",
   "apikeyconfig.loadedModels": "{{count}}개 모델을 불러왔습니다",
   "appdetails.LaunchFailed": "Could not launch {{name}}: {{message}}",
+  "appdetails.LaunchedNoViewer": "이 앱이 뷰어 URL 없이 실행되었습니다.",
   "appsview.ActiveOnly": "활성만",
   "appsview.AppWindowNormal": "App Window Normal",
   "appsview.AppWindowPinFailed": "App Window Pin Failed",

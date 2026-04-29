@@ -214,7 +214,7 @@ describe("Header", () => {
   it("moves mobile global navigation into the bottom dock", () => {
     const setTab = vi.fn();
     useMediaQueryMock.mockImplementation(
-      (query: string) => query === "(max-width: 639px)",
+      (query: string) => query === "(max-width: 819px)",
     );
     useAppMock.mockReturnValue(buildUseAppState({ setTab, tab: "chat" }));
 

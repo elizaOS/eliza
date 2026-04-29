@@ -209,7 +209,7 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
     launchUrl: null,
     message: null,
   });
-  const [_retryCounter, setRetryCounter] = useState(0);
+  const [retryCounter, setRetryCounter] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const authSentRef = useRef(false);
 
@@ -291,7 +291,7 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [resolvedApp, t]);
+  }, [resolvedApp, retryCounter, t]);
 
   // postMessage auth handshake — mirrors GameViewOverlay / GameView.
   const run = runState.run;

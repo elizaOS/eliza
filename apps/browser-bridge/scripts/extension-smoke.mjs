@@ -242,7 +242,7 @@ async function startMockAgentServer() {
     if (url.pathname === "/chat") {
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(
-        "<!doctype html><html><head><title>LifeOps</title></head><body><h1>LifeOps</h1><p>Mock app page for extension smoke tests.</p></body></html>",
+        "<!doctype html><html><head><title>Milady</title></head><body><h1>Milady</h1><p>Mock app page for extension smoke tests.</p></body></html>",
       );
       return;
     }
@@ -323,7 +323,7 @@ async function startMockAgentServer() {
                 title: firstTab.title,
                 selectionText: null,
                 mainText: "Mock agent page",
-                headings: ["LifeOps"],
+                headings: ["Milady"],
                 links: [],
                 forms: [],
                 capturedAt: nowIso(),
@@ -439,7 +439,7 @@ async function runAutoPairAndSyncScenario(chromium) {
     await waitForPopupText(
       popupPage,
       "#statusTitle",
-      "This browser is connected to LifeOps",
+      "This browser is connected to Milady",
       20_000,
     );
     await waitForPopupText(
