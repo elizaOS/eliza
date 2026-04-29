@@ -22,11 +22,18 @@ export type {
 } from "./vault.js";
 
 export {
+  defaultMasterKey,
   inMemoryMasterKey,
-  osKeychainMasterKey,
   MasterKeyUnavailableError,
+  osKeychainMasterKey,
+  passphraseMasterKey,
+  passphraseMasterKeyFromEnv,
 } from "./master-key.js";
-export type { MasterKeyResolver, OsKeychainOptions } from "./master-key.js";
+export type {
+  MasterKeyResolver,
+  OsKeychainOptions,
+  PassphraseOptions,
+} from "./master-key.js";
 
 export { encrypt, decrypt, generateMasterKey, KEY_BYTES, CryptoError } from "./crypto.js";
 
