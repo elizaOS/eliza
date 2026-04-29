@@ -307,9 +307,6 @@ jobs:
 
       - name: Package Agent Browser Bridge release bundles
         id: package-browser-bridge
-        # TODO: verify `browser-bridge:package:release` script exists in eliza.
-        # apps/browser-bridge/ in milady may live elsewhere in eliza or may not
-        # be ported yet.
         run: |
           if bun run browser-bridge:package:release; then
             echo "packaged=true" >> "$GITHUB_OUTPUT"
@@ -323,7 +320,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: browser-bridge-store-bundles
-          # TODO: confirm browser-bridge artifact path in eliza.
           path: |
             apps/browser-bridge/dist/artifacts/browser-bridge-chrome-v*.zip
             apps/browser-bridge/dist/artifacts/browser-bridge-safari-v*.zip
