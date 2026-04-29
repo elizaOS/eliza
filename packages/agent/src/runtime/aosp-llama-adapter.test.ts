@@ -571,8 +571,6 @@ describe("aosp-llama-adapter / embed pooling contract", () => {
         // `required` directly (we just need a positive number).
         return _args[4] === 0 ? -3 : 3;
       },
-      llama_batch_get_one: () => 99,
-      llama_decode: () => 0,
       // The contract violation: pooling was disabled externally and
       // get_embeddings_seq returns NULL (0 in bun:ffi pointer space).
       llama_get_embeddings_seq: () => 0,
@@ -584,6 +582,9 @@ describe("aosp-llama-adapter / embed pooling contract", () => {
       milady_llama_context_params_default: () => 3,
       milady_llama_init_from_model: () => 4,
       milady_llama_context_params_free: () => undefined,
+      milady_llama_batch_get_one: () => 99,
+      milady_llama_batch_free: () => undefined,
+      milady_llama_decode: () => 0,
     };
 
     vi.doMock("node:fs", () => ({ existsSync: () => true }));
@@ -1083,11 +1084,6 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
       },
       llama_tokenize: (..._args: unknown[]) =>
         _args[4] === 0 ? -3 : 3, // negative on probe, positive on fill
-      llama_batch_get_one: () => 99,
-      llama_decode: () => {
-        callOrder.push("llama_decode");
-        return 0;
-      },
       // Force the EOG path on the first sampled token so we don't loop.
       llama_sampler_sample: () => 999,
       llama_vocab_is_eog: () => true,
@@ -1110,6 +1106,12 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
       milady_llama_sampler_chain_params_default: () => 5,
       milady_llama_sampler_chain_params_free: () => undefined,
       milady_llama_sampler_chain_init: () => 6,
+      milady_llama_batch_get_one: () => 99,
+      milady_llama_batch_free: () => undefined,
+      milady_llama_decode: () => {
+        callOrder.push("llama_decode");
+        return 0;
+      },
     };
 
     vi.doMock("node:fs", () => ({ existsSync: () => true }));
@@ -1164,11 +1166,6 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
       },
       llama_tokenize: (..._args: unknown[]) =>
         _args[4] === 0 ? -3 : 3,
-      llama_batch_get_one: () => 99,
-      llama_decode: () => {
-        callOrder.push("llama_decode");
-        return 0;
-      },
       llama_get_embeddings_seq: () => 1, // non-NULL
     };
     const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
@@ -1178,6 +1175,12 @@ describe("aosp-llama-adapter / embeddings flag reset", () => {
       milady_llama_context_params_default: () => 3,
       milady_llama_init_from_model: () => 4,
       milady_llama_context_params_free: () => undefined,
+      milady_llama_batch_get_one: () => 99,
+      milady_llama_batch_free: () => undefined,
+      milady_llama_decode: () => {
+        callOrder.push("llama_decode");
+        return 0;
+      },
     };
 
     vi.doMock("node:fs", () => ({ existsSync: () => true }));

@@ -98,9 +98,19 @@ public class MiladyAgentService extends Service {
     // 120 s × 3 = 360 s grace gives enough headroom. We override the
     // 2-strike rule below to 3 strikes for the same reason. Tighten back
     // down once a runtime "ready" signal lands.
+    //
+    // HEALTH_TIMEOUT_MS = 120 s: bun blocks on FFI calls into libllama
+    // for the duration of a single `llama_decode` call (no way to
+    // interrupt a native call from JS). On cuttlefish x86_64 with
+    // SmolLM2-360M and an 8k-context prompt chunked at n_batch=2048, one
+    // chunk decode runs ~60–70 s. A 3 s probe timeout would fire mid-
+    // decode, never hear back, and rack up strikes that kill bun before
+    // it returns to the event loop. Bumping the per-probe timeout above
+    // worst-case decode latency lets the probe sit on the connect/read
+    // socket until bun's setImmediate yield wakes the HTTP listener.
     private static final long WATCHDOG_INTERVAL_MS = 120_000L;
     private static final int HEALTH_FAIL_STRIKES = 3;
-    private static final long HEALTH_TIMEOUT_MS = 3_000L;
+    private static final long HEALTH_TIMEOUT_MS = 120_000L;
     private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
 
@@ -662,6 +672,17 @@ public class MiladyAgentService extends Service {
             // the Capacitor APK keeps its DeviceBridge loopback path.
             if (BuildConfig.AOSP_BUILD) {
                 agentEnv.put("MILADY_LOCAL_LLAMA", "1");
+                // CPU-only inference of an 8k-context prompt on cuttlefish
+                // x86_64 / SmolLM2-360M lands well past the 180 s default
+                // chat-generation timeout (chat-routes.ts). 30 minutes
+                // covers prompt decode (≈4 chunks × ~70 s + ramp-up) plus
+                // token generation. Real phone hardware (Tensor / Adreno)
+                // finishes in seconds, so this only matters for AOSP
+                // smoke runs on cvd. Override via env on real-device
+                // builds when first-token-latency lands.
+                agentEnv.put(
+                    "ELIZA_CHAT_GENERATION_TIMEOUT_MS",
+                    "1800000");
             }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
             agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
