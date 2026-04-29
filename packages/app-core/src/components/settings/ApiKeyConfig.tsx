@@ -19,6 +19,15 @@ interface ProviderPlugin {
   configUiHints?: Record<string, ConfigUiHint>;
   enabled: boolean;
   category: string;
+  /**
+   * Server-side validation results for the currently-saved config.
+   * Populated by `validatePluginConfig` against the live `process.env`
+   * + saved `config.env.X`. Surfaced inline above the form so users
+   * see "your saved OpenRouter key doesn't match sk-or-…" without
+   * having to first edit the field.
+   */
+  validationWarnings?: Array<{ field: string; message: string }>;
+  validationErrors?: Array<{ field: string; message: string }>;
 }
 
 export interface ApiKeyConfigProps {
@@ -174,6 +183,41 @@ export function ApiKeyConfig({
             : t("mediasettingssection.NeedsSetup")}
         </span>
       </div>
+
+      {/*
+        Surface server-side validation issues against the
+        already-saved config. The validatePluginConfig path runs at
+        plugin-list time and produces warnings like "OpenRouter key
+        should start with sk-or-" when a saved value doesn't match
+        — we just route those into the form so users with a
+        previously-corrupted milady.json see the issue without
+        having to edit the field first.
+      */}
+      {(selectedProvider.validationErrors?.length ||
+        selectedProvider.validationWarnings?.length) && (
+        <div className="mb-3 space-y-1.5">
+          {selectedProvider.validationErrors?.map((issue, i) => (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: stable per-render order
+              key={`err-${i}`}
+              role="alert"
+              className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
+            >
+              <span className="font-semibold">{issue.field}</span> — {issue.message}
+            </div>
+          ))}
+          {selectedProvider.validationWarnings?.map((issue, i) => (
+            <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: stable per-render order
+              key={`warn-${i}`}
+              role="status"
+              className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-xs text-warn"
+            >
+              <span className="font-semibold">{issue.field}</span> — {issue.message}
+            </div>
+          ))}
+        </div>
+      )}
 
       <ConfigRenderer
         schema={schema}
