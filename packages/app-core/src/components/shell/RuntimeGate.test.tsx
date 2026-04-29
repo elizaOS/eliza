@@ -53,6 +53,8 @@ vi.mock("../../bridge/gateway-discovery", () => ({
 vi.mock("../../onboarding/mobile-runtime-mode", () => ({
   persistMobileRuntimeModeForServerTarget: vi.fn(),
   readPersistedMobileRuntimeMode: vi.fn(() => null),
+  MOBILE_RUNTIME_MODE_STORAGE_KEY: "eliza:mobile-runtime-mode",
+  normalizeMobileRuntimeMode: vi.fn((v: unknown) => (typeof v === "string" ? v : null)),
 }));
 
 vi.mock("../../onboarding/probe-local-agent", () => ({
@@ -130,7 +132,7 @@ describe("RuntimeGate — Use local embeddings checkbox", () => {
     render(<RuntimeGate />);
 
     // Navigate into the cloud sub-view — equivalent to selecting elizacloud.
-    fireEvent.click(screen.getByText("Run in Eliza Cloud"));
+    fireEvent.click(screen.getByText("Select Cloud"));
 
     expect(screen.getByText("Use local embeddings")).toBeTruthy();
     expect(
@@ -140,7 +142,7 @@ describe("RuntimeGate — Use local embeddings checkbox", () => {
 
   it("defaults the local embeddings checkbox to unchecked", () => {
     render(<RuntimeGate />);
-    fireEvent.click(screen.getByText("Run in Eliza Cloud"));
+    fireEvent.click(screen.getByText("Select Cloud"));
 
     const checkbox = screen.getByRole("checkbox", {
       name: /use local embeddings/i,
@@ -173,7 +175,7 @@ describe("RuntimeGate — Use local embeddings checkbox", () => {
     render(<RuntimeGate />);
 
     // Navigate to the cloud sub-view. The effect fires but awaits the promise.
-    fireEvent.click(screen.getByText("Run in Eliza Cloud"));
+    fireEvent.click(screen.getByText("Select Cloud"));
 
     // Checkbox is visible (cloudStage === "loading", not "connecting").
     const checkbox = screen.getByRole("checkbox", {
