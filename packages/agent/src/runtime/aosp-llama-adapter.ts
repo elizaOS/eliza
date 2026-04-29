@@ -830,13 +830,15 @@ class AospLlamaAdapter implements AospLoader {
     const vocab = this.vocab;
 
     // 1. Tokenize the prompt. Two-pass: ask for length (n_tokens_max=0,
-    // empty buffer — llama_tokenize never reads or writes through the
-    // pointer when the cap is zero, so a zero-length probe array is
-    // sufficient and avoids the wasteful 4-byte allocation), then alloc
-    // and fill.
+    // single-slot buffer — llama_tokenize never reads or writes through
+    // the pointer when the cap is zero, but bun:ffi's ptr() helper
+    // rejects zero-length TypedArrays with
+    // `ArrayBufferView must have a length > 0`. A length-1 probe is the
+    // smallest legal allocation that round-trips through ptr() without
+    // a runtime exception. Then alloc and fill on the second pass.
     const promptBuf = encodeCString(args.prompt);
     const promptByteLen = promptBuf.length - 1; // exclude NUL
-    const probe = new Int32Array(0);
+    const probe = new Int32Array(1);
     const requested = this.sym.llama_tokenize(
       vocab,
       this.ffi.ptr(promptBuf),
@@ -1008,11 +1010,13 @@ class AospLlamaAdapter implements AospLoader {
 
     // 1. Tokenize the input. Embedding pipelines typically include the BOS
     //    token; we mirror generate() and pass add_special=true. Probe pass
-    //    needs only a length, not storage — empty Int32Array avoids the
-    //    pointless 4-byte allocation.
+    //    needs only a length, not storage, but bun:ffi's ptr() rejects
+    //    zero-length TypedArrays — use a single-slot Int32Array, the
+    //    smallest legal allocation that round-trips through ptr() without
+    //    `ArrayBufferView must have a length > 0`.
     const inputBuf = encodeCString(args.input);
     const inputByteLen = inputBuf.length - 1;
-    const probeOut = new Int32Array(0);
+    const probeOut = new Int32Array(1);
     const requested = this.sym.llama_tokenize(
       vocab,
       this.ffi.ptr(inputBuf),

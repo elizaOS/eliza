@@ -51,6 +51,9 @@ export async function runAutonomousCli(
   if (command === "serve" || command === "start") {
     const { startEliza } = await import("../runtime/index.js");
     const runtime = await startEliza({ serverOnly: true });
+    console.log(
+      `[cli] startEliza returned: runtime=${runtime ? "present" : "null"}, MILADY_LOCAL_LLAMA=${process.env.MILADY_LOCAL_LLAMA ?? "(unset)"}`,
+    );
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the
     // `@elizaos/app-core` runtime wrapper, which the mobile agent
@@ -60,10 +63,13 @@ export async function runAutonomousCli(
     // agent package and out of the bundler's cycle path. No-op when
     // `MILADY_LOCAL_LLAMA !== "1"`.
     if (runtime && process.env.MILADY_LOCAL_LLAMA?.trim() === "1") {
+      console.log("[cli] importing aosp-local-inference-bootstrap…");
       const { ensureAospLocalInferenceHandlers } = await import(
         "../runtime/aosp-local-inference-bootstrap.js"
       );
-      await ensureAospLocalInferenceHandlers(runtime);
+      console.log("[cli] calling ensureAospLocalInferenceHandlers(runtime)…");
+      const ok = await ensureAospLocalInferenceHandlers(runtime);
+      console.log(`[cli] ensureAospLocalInferenceHandlers returned ${ok}`);
     }
     return;
   }
