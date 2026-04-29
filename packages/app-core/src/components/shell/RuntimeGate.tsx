@@ -604,15 +604,16 @@ export function RuntimeGate() {
           </div>
         ) : (
           <>
-            <div
+            <fieldset
               className={`mt-5 grid w-full gap-2.5 text-left md:mt-7 md:gap-3 ${
                 runtimeChoices.length === 3 ? "md:grid-cols-3" : ""
               }`}
-              role="group"
-              aria-label={t("runtimegate.subtitle", {
-                defaultValue: "Where should your agent run?",
-              })}
             >
+              <legend className="sr-only">
+                {t("runtimegate.subtitle", {
+                  defaultValue: "Where should your agent run?",
+                })}
+              </legend>
               {runtimeChoices.map((choice) => {
                 const details = runtimeChoiceDetails(choice, t, isAndroid);
                 return (
@@ -635,7 +636,7 @@ export function RuntimeGate() {
                   />
                 );
               })}
-            </div>
+            </fieldset>
 
             <div className="mt-3 flex w-full flex-col gap-2 sm:mt-5 sm:flex-row sm:items-center sm:justify-between">
               <p
