@@ -218,13 +218,14 @@ pushd "$AGENT_DIR" >/dev/null
 bun run build:docker-dist
 popd >/dev/null
 
-if [[ "${MILADY_SKIP_LOCAL_UPSTREAMS:-0}" == "1" ]]; then
-  log "Skipping @elizaos/core source build in published-only mode"
-else
-  log "Building @elizaos/core and @elizaos/plugin-agent-orchestrator"
+if [[ "$APP_CORE_DIR" == "packages/app-core" || "${MILADY_SKIP_LOCAL_UPSTREAMS:-0}" != "1" ]]; then
+  log "Building @elizaos/core source artifacts"
   pushd "$TYPESCRIPT_DIR" >/dev/null
   bun run build:node
   popd >/dev/null
+  node scripts/patch-nested-core-dist.mjs || true
+else
+  log "Skipping @elizaos/core source build in published-only mode"
 fi
 
 if [[ -f tsdown.config.ts || -f tsdown.config.mts || -f tsdown.config.js || -f tsdown.config.mjs ]]; then
