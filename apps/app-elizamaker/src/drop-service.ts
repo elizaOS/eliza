@@ -8,10 +8,10 @@
  * - Supply tracking and status
  */
 
-import { logger } from "@elizaos/core";
-import { ethers } from "ethers";
-import type { DropStatus, MintResult } from "@elizaos/shared";
 import type { TxService } from "@elizaos/app-steward";
+import { logger } from "@elizaos/core";
+import type { DropStatus, MintResult } from "@elizaos/shared";
+import { ethers } from "ethers";
 
 export type { DropStatus, MintResult } from "@elizaos/shared";
 

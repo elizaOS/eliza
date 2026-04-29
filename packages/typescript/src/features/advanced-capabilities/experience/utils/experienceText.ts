@@ -9,10 +9,16 @@ const STOP_WORDS = new Set([
 	"about",
 	"after",
 	"again",
+	"always",
 	"before",
 	"being",
+	"because",
+	"could",
+	"every",
 	"from",
 	"into",
+	"learned",
+	"needs",
 	"that",
 	"their",
 	"them",
@@ -20,10 +26,14 @@ const STOP_WORDS = new Set([
 	"there",
 	"these",
 	"this",
+	"through",
+	"using",
+	"what",
 	"when",
 	"with",
 	"without",
 ]);
+const MAX_EXPERIENCE_KEYWORDS = 12;
 
 export function sanitizeExperienceText(text: string): string {
 	if (!text) return "Unknown context";
@@ -93,6 +103,33 @@ export function detectExperienceDomain(text: string): string {
 	return "general";
 }
 
+export function extractExperienceKeywords(
+	parts: Array<string | string[] | null | undefined>,
+	limit = MAX_EXPERIENCE_KEYWORDS,
+): string[] {
+	const keywords = new Map<string, number>();
+
+	for (const part of parts) {
+		const values = Array.isArray(part) ? part : [part];
+		for (const value of values) {
+			if (typeof value !== "string" || value.trim().length === 0) {
+				continue;
+			}
+			for (const token of tokenizeForKeywordExtraction(value)) {
+				keywords.set(token, (keywords.get(token) ?? 0) + 1);
+			}
+		}
+	}
+
+	return [...keywords.entries()]
+		.sort((left, right) => {
+			const countDelta = right[1] - left[1];
+			return countDelta !== 0 ? countDelta : left[0].localeCompare(right[0]);
+		})
+		.slice(0, limit)
+		.map(([keyword]) => keyword);
+}
+
 export async function findDuplicateExperienceByLearning(
 	experienceService: ExperienceService,
 	learning: string,
@@ -158,4 +195,11 @@ function tokenizeForDuplicateComparison(text: string): Set<string> {
 			.map((token) => token.trim())
 			.filter((token) => token.length > 3 && !STOP_WORDS.has(token)),
 	);
+}
+
+function tokenizeForKeywordExtraction(text: string): string[] {
+	return normalizeTextForDuplicateComparison(text)
+		.split(" ")
+		.map((token) => token.trim())
+		.filter((token) => token.length > 3 && !STOP_WORDS.has(token));
 }

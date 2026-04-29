@@ -14,7 +14,12 @@
       "name": "gmail narrative sender routing",
       "text": "can you search my email and tell me if anyone named suran emailed me",
       "plannerIncludesAll": ["gmail_action", "suran"],
-      "plannerExcludes": ["create_task", "spawn_agent", "send_to_agent", "list_agents"],
+      "plannerExcludes": [
+        "create_task",
+        "spawn_agent",
+        "send_to_agent",
+        "list_agents"
+      ],
       "responseExcludes": ["no active task agents", "spawned", "scratch/"]
     }
   ]

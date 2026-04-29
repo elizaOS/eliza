@@ -562,7 +562,13 @@ export interface FieldState {
    * - Corrections show user engagement
    * - Useful for analytics
    */
-  source?: "extraction" | "autofill" | "default" | "manual" | "correction" | "external";
+  source?:
+    | "extraction"
+    | "autofill"
+    | "default"
+    | "manual"
+    | "correction"
+    | "external";
   /** ID of message that provided this value */
   messageId?: string;
   /** When the value was last updated */
@@ -702,7 +708,13 @@ export interface FormSession {
    * - 'cancelled': User abandoned
    * - 'expired': TTL exceeded
    */
-  status: "active" | "ready" | "submitted" | "stashed" | "cancelled" | "expired";
+  status:
+    | "active"
+    | "ready"
+    | "submitted"
+    | "stashed"
+    | "cancelled"
+    | "expired";
 
   // ═══ FIELD DATA ═══
   /** Current state of each field, keyed by control.key */
@@ -830,7 +842,10 @@ export interface FormSubmission {
  */
 export interface TypeHandler {
   /** Validate a value. Return { valid: true } or { valid: false, error: '...' } */
-  validate?: (value: JsonValue, control: FormControl) => { valid: boolean; error?: string };
+  validate?: (
+    value: JsonValue,
+    control: FormControl,
+  ) => { valid: boolean; error?: string };
   /** Parse string input to appropriate type */
   parse?: (value: string) => JsonValue;
   /** Format value for display */
@@ -1055,7 +1070,7 @@ export interface ControlType {
    */
   getSubControls?: (
     control: FormControl,
-    runtime: import("@elizaos/core").IAgentRuntime
+    runtime: import("@elizaos/core").IAgentRuntime,
   ) => FormControl[];
 
   // ═══ EXTERNAL TYPE METHODS ═══

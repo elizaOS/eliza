@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseKeyValueXml } from "@elizaos/core";
 import { config } from "dotenv";
+import { describe, expect, it } from "vitest";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(testDir, "../../../../../.env") });
@@ -51,10 +51,8 @@ try {
 }
 
 describe.skipIf(!hasApiKey)("TOON form field extraction integration", () => {
-  it(
-    "extracts a single field from a user message",
-    async () => {
-      const prompt = `Extract the following field from the user's message.
+  it("extracts a single field from a user message", async () => {
+    const prompt = `Extract the following field from the user's message.
 
 Field: email
 Label: Email Address
@@ -70,16 +68,14 @@ confidence: 0.0 to 1.0
 
 IMPORTANT: Your response must ONLY contain the TOON document above. No preamble or explanation.`;
 
-      const raw = await callLLM(prompt);
-      const parsed = parseKeyValueXml(raw);
+    const raw = await callLLM(prompt);
+    const parsed = parseKeyValueXml(raw);
 
-      expect(parsed).not.toBeNull();
-      expect(String(parsed?.found)).toBe("true");
-      expect(String(parsed?.value)).toContain("john@example.com");
-      const confidence = Number(parsed?.confidence);
-      expect(confidence).toBeGreaterThanOrEqual(0);
-      expect(confidence).toBeLessThanOrEqual(1);
-    },
-    30_000,
-  );
+    expect(parsed).not.toBeNull();
+    expect(String(parsed?.found)).toBe("true");
+    expect(String(parsed?.value)).toContain("john@example.com");
+    const confidence = Number(parsed?.confidence);
+    expect(confidence).toBeGreaterThanOrEqual(0);
+    expect(confidence).toBeLessThanOrEqual(1);
+  }, 30_000);
 });

@@ -18,8 +18,7 @@ import { req } from "../../../../test/helpers/http";
 import { createLiveRuntimeChildEnv } from "../../../../test/helpers/live-child-env";
 
 const LIVE =
-  process.env.ELIZA_LIVE_TEST === "1" ||
-  process.env.MILADY_LIVE_TEST === "1";
+  process.env.ELIZA_LIVE_TEST === "1" || process.env.MILADY_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 
 try {
@@ -90,7 +89,10 @@ async function startRuntime(): Promise<Runtime> {
     try {
       const res = await fetch(`http://127.0.0.1:${port}/api/health`);
       if (res.ok) {
-        const data = (await res.json()) as { ready?: boolean; runtime?: string };
+        const data = (await res.json()) as {
+          ready?: boolean;
+          runtime?: string;
+        };
         if (data.ready && data.runtime === "ok") break;
       }
     } catch {
@@ -165,7 +167,8 @@ describeIf(LIVE)("App-Knowledge: API e2e", () => {
 
   it("POST /api/knowledge/documents accepts document upload", async () => {
     const res = await req(runtime.port, "POST", "/api/knowledge/documents", {
-      content: "The quick brown fox jumps over the lazy dog. This is a test document.",
+      content:
+        "The quick brown fox jumps over the lazy dog. This is a test document.",
       metadata: {
         title: "Test Document",
         source: "e2e-test",

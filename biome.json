@@ -39,6 +39,16 @@
   },
   "overrides": [
     {
+      "includes": ["**/*.ts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useHookAtTopLevel": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": [
         "packages/training/src/benchmark/BenchmarkRunner.ts",
         "packages/training/src/benchmark/MetricsVisualizer.ts",

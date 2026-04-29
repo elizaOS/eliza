@@ -55,7 +55,11 @@ import type {
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { FormService } from "../service";
-import { buildTemplateValues, renderTemplate, resolveControlTemplates } from "../template";
+import {
+  buildTemplateValues,
+  renderTemplate,
+  resolveControlTemplates,
+} from "../template";
 import type { FormContextState } from "../types";
 
 /**
@@ -83,14 +87,22 @@ export const formContextProvider: Provider = {
    * @param _state - Current agent state (unused)
    * @returns Provider result with form context (data, values, text)
    */
-  get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
+  get: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> => {
     try {
       // Get form service
       // WHY type cast: Runtime returns unknown, we know it's FormService
       const formService = runtime.getService("FORM") as FormService;
       if (!formService) {
         // WHY early return: No form plugin registered or FORM service not available
-        return { data: { hasActiveForm: false }, values: { formContext: "" }, text: "" };
+        return {
+          data: { hasActiveForm: false },
+          values: { formContext: "" },
+          text: "",
+        };
       }
 
       // Get entity and room IDs
@@ -99,7 +111,11 @@ export const formContextProvider: Provider = {
       const roomId = message.roomId as UUID;
       if (!entityId || !roomId) {
         // WHY early return: Cannot look up session without identity and room
-        return { data: { hasActiveForm: false }, values: { formContext: "" }, text: "" };
+        return {
+          data: { hasActiveForm: false },
+          values: { formContext: "" },
+          text: "",
+        };
       }
 
       // Get active session for this room
@@ -128,7 +144,8 @@ export const formContextProvider: Provider = {
         // Build template values from session (for {{placeholders}} in labels, askPrompt, etc.)
         const templateValues = buildTemplateValues(session);
         // WHY resolve: Form definitions may use {{variable}} in label, description, askPrompt; renderTemplate substitutes from session
-        const resolve = (v?: string): string | undefined => renderTemplate(v, templateValues);
+        const resolve = (v?: string): string | undefined =>
+          renderTemplate(v, templateValues);
 
         // Apply template resolution to all user-facing strings
         // WHY: Agent and user see resolved labels (e.g. "{{discoveryQuestion1Text}}" → actual question text)
@@ -161,22 +178,26 @@ export const formContextProvider: Provider = {
         const controlByKey = new Map(controls.map((c) => [c.key, c]));
 
         const requiredFilled = contextState.filledFields.filter(
-          (f) => controlByKey.get(f.key)?.required
+          (f) => controlByKey.get(f.key)?.required,
         );
         const optionalFilled = contextState.filledFields.filter(
-          (f) => !controlByKey.get(f.key)?.required
+          (f) => !controlByKey.get(f.key)?.required,
         );
         const optionalMissing = controls.filter(
-          (c) => !c.hidden && !c.required && !filledKeys.has(c.key)
+          (c) => !c.hidden && !c.required && !filledKeys.has(c.key),
         );
 
         // Format field list as "key (displayValue)" or "key" for missing; "none" when empty
         // WHY key (displayValue): Agent can reference both field name and what we have in conversation
-        const fmt = (items: { key: string; displayValue?: string }[]): string =>
+        const fmt = (
+          items: { key: string; displayValue?: string }[],
+        ): string =>
           items.length === 0
             ? "none"
             : items
-                .map((i) => (i.displayValue ? `${i.key} (${i.displayValue})` : i.key))
+                .map((i) =>
+                  i.displayValue ? `${i.key} (${i.displayValue})` : i.key,
+                )
                 .join(", ");
 
         // Build human-readable context for agent
@@ -271,7 +292,10 @@ export const formContextProvider: Provider = {
       return {
         // Full context object for programmatic access
         // WHY: Restore action and others read data.nextField, data.filledFields, etc.
-        data: JSON.parse(JSON.stringify(contextState)) as Record<string, JsonValue>,
+        data: JSON.parse(JSON.stringify(contextState)) as Record<
+          string,
+          JsonValue
+        >,
         // String values for template substitution (e.g. in prompts: formContext, formProgress, formStatus)
         values: {
           formContext: contextText,

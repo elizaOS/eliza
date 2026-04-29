@@ -52,6 +52,7 @@ type TsScenario = {
 };
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
+const ELIZA_SCENARIO_ROOT = path.join(REPO_ROOT, "eliza", "test", "scenarios");
 const JSON_SCENARIO_DIR = path.join(
   REPO_ROOT,
   "eliza",
@@ -61,9 +62,7 @@ const JSON_SCENARIO_DIR = path.join(
 );
 const TS_PRD_SCENARIO_DIR = path.join(import.meta.dirname, "scenarios");
 const TS_HABIT_SCENARIO_DIR = path.join(
-  REPO_ROOT,
-  "test",
-  "scenarios",
+  ELIZA_SCENARIO_ROOT,
   "lifeops.habits",
 );
 
