@@ -34,7 +34,8 @@ import {
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
 import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
-import { isDesktopPlatform } from "../../platform/init";
+import { shouldShowLocalOption } from "../../onboarding/probe-local-agent";
+import { isAndroid, isDesktopPlatform } from "../../platform/init";
 import {
   addAgentProfile,
   clearPersistedActiveServer,
@@ -47,9 +48,7 @@ const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 
-function shouldShowLocalOption(isDesktop: boolean, isDev: boolean): boolean {
-  return isDesktop || isDev;
-}
+const LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337";
 
 type SubView = "chooser" | "cloud" | "remote";
 
@@ -117,10 +116,36 @@ export function RuntimeGate() {
   const [remoteUrl, setRemoteUrl] = useState("");
   const [remoteToken, setRemoteToken] = useState("");
 
-  const showLocalOption = shouldShowLocalOption(
-    isDesktopPlatform(),
-    Boolean(import.meta.env.DEV),
+  // Local-tile visibility. On desktop/dev this is true synchronously; on
+  // Android it depends on a live probe of the on-device agent's
+  // `/api/health`, so the tile is hidden until the probe resolves. Other
+  // platforms never see it. `null` means "still probing" — the chooser
+  // shows the spinner placeholder for the local slot only.
+  const isDesktop = isDesktopPlatform();
+  const isDev = Boolean(import.meta.env.DEV);
+  const synchronousLocal = isDesktop || isDev;
+  const [localProbeResult, setLocalProbeResult] = useState<boolean | null>(
+    synchronousLocal ? true : isAndroid ? null : false,
   );
+
+  useEffect(() => {
+    if (synchronousLocal) return;
+    if (!isAndroid) return;
+    let cancelled = false;
+    shouldShowLocalOption({ isDesktop, isDev, isAndroid })
+      .then((ok) => {
+        if (!cancelled) setLocalProbeResult(ok);
+      })
+      .catch(() => {
+        if (!cancelled) setLocalProbeResult(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDesktop, isDev, synchronousLocal]);
+
+  const showLocalOption = localProbeResult === true;
+  const localProbePending = localProbeResult === null;
 
   // ── Gateway discovery (LAN autodetect) ────────────────────────────
   useEffect(() => {
@@ -184,9 +209,33 @@ export function RuntimeGate() {
   );
 
   const finishAsLocal = useCallback(() => {
-    client.setBaseUrl(null);
-    client.setToken(null);
-    clearPersistedActiveServer();
+    if (isAndroid) {
+      // Android: the local agent runs as a foreground service inside the
+      // app and always listens on loopback `127.0.0.1:31337`. The WebView
+      // origin is `https://localhost` (Capacitor) or `file://`, so a null
+      // base URL does not reach the agent — pin it explicitly. We persist
+      // it as a `remote` active server pointing at loopback so the
+      // existing startup-phase-restore branch hydrates the API base on
+      // next launch; the `local` mobile runtime mode records the
+      // distinction for any UI that needs it.
+      client.setBaseUrl(LOCAL_AGENT_API_BASE);
+      client.setToken(null);
+      savePersistedActiveServer({
+        id: "local:android",
+        kind: "remote",
+        label: "On-device agent",
+        apiBase: LOCAL_AGENT_API_BASE,
+      });
+      addAgentProfile({
+        kind: "remote",
+        label: "On-device agent",
+        apiBase: LOCAL_AGENT_API_BASE,
+      });
+    } else {
+      client.setBaseUrl(null);
+      client.setToken(null);
+      clearPersistedActiveServer();
+    }
     persistMobileRuntimeModeForServerTarget("local");
     setState("onboardingServerTarget", "local");
     startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
@@ -444,18 +493,51 @@ export function RuntimeGate() {
 
           {showLocalOption && (
             <ChoiceCard
-              eyebrow={t("runtimegate.localEyebrow", {
-                defaultValue: "This device",
-              })}
-              title={t("runtimegate.localTitle", {
-                defaultValue: "Run a local agent",
-              })}
-              description={t("runtimegate.localDesc", {
-                defaultValue:
-                  "Keep the agent on this machine. You'll pick a provider after start.",
-              })}
+              eyebrow={
+                isAndroid
+                  ? t("runtimegate.localEyebrowOnDevice", {
+                      defaultValue: "ON DEVICE",
+                    })
+                  : t("runtimegate.localEyebrow", {
+                      defaultValue: "This device",
+                    })
+              }
+              title={
+                isAndroid
+                  ? t("runtimegate.localTitleAndroid", {
+                      defaultValue: "Local Agent (Beta)",
+                    })
+                  : t("runtimegate.localTitle", {
+                      defaultValue: "Run a local agent",
+                    })
+              }
+              description={
+                isAndroid
+                  ? t("runtimegate.localDescAndroid", {
+                      defaultValue:
+                        "Runs the full Eliza agent on this device. No cloud needed.",
+                    })
+                  : t("runtimegate.localDesc", {
+                      defaultValue:
+                        "Keep the agent on this machine. You'll pick a provider after start.",
+                    })
+              }
               onClick={finishAsLocal}
             />
+          )}
+
+          {localProbePending && (
+            <div className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-5 py-4">
+              <Spinner className="h-4 w-4 text-white/50" />
+              <span
+                style={{ fontFamily: MONO_FONT }}
+                className="text-3xs uppercase text-white/50"
+              >
+                {t("runtimegate.localProbing", {
+                  defaultValue: "Checking for on-device agent...",
+                })}
+              </span>
+            </div>
           )}
 
           <ChoiceCard
