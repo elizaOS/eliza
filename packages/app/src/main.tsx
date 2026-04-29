@@ -598,7 +598,13 @@ function resolveAppWindowSlug(): string | null {
   if (!isAppWindowRoute()) return null;
   const path = getWindowNavigationPath();
   if (!path.startsWith("/apps/")) return null;
-  const slug = path.slice("/apps/".length).replace(/[?#].*$/, "");
+  // Take only the first path segment after /apps/. URLs like
+  // `/apps/plugins/extra` would otherwise yield a malformed slug
+  // ("plugins/extra") that no descriptor can match.
+  const slug = path
+    .slice("/apps/".length)
+    .replace(/[?#].*$/, "")
+    .split("/")[0];
   return slug.length > 0 ? slug : null;
 }
 
@@ -706,7 +712,10 @@ function getCurrentIosRuntimeConfig(): IosRuntimeConfig {
     const mode = normalizeMobileRuntimeMode(
       window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY),
     );
-    return mode ? { ...IOS_RUNTIME_ENV_CONFIG, mode } : IOS_RUNTIME_ENV_CONFIG;
+    // MobileRuntimeMode includes "local" but IosRuntimeConfig.mode does not -
+    // the local-agent runtime is Android-only. Drop "local" before assigning.
+    if (!mode || mode === "local") return IOS_RUNTIME_ENV_CONFIG;
+    return { ...IOS_RUNTIME_ENV_CONFIG, mode };
   } catch {
     return IOS_RUNTIME_ENV_CONFIG;
   }
