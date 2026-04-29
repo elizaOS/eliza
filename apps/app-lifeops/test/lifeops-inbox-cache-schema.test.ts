@@ -1,4 +1,5 @@
 import type { LifeOpsInboxMessage } from "@elizaos/shared";
+import type { LifeOpsXDm } from "@elizaos/shared/contracts/lifeops-extensions";
 import { describe, expect, it } from "vitest";
 
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
@@ -125,5 +126,53 @@ describe("LifeOps inbox cache schema repair", () => {
     expect(cached[0]?.snippet).toBe("fresh without state");
     expect(cached[0]?.lastSeenAt).toBe("2026-04-26T23:55:00.000Z");
     expect(cached[0]?.repliedAt).toBe("2026-04-26T23:56:00.000Z");
+  });
+});
+
+describe("LifeOps X DM state preservation", () => {
+  it("does not clear read/replied timestamps when a sync payload omits them", async () => {
+    const runtime = createLifeOpsChatTestRuntime({
+      agentId: "x-dm-state-preservation-agent",
+      useModel: async () => {
+        throw new Error("useModel should not be called");
+      },
+      handleTurn: async () => ({ text: "ok" }),
+    });
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const baseDm: LifeOpsXDm = {
+      id: "dm-1",
+      agentId: String(runtime.agentId),
+      externalDmId: "external-dm-1",
+      conversationId: "conversation-1",
+      senderHandle: "sender",
+      senderId: "sender-id",
+      isInbound: true,
+      text: "hello",
+      receivedAt: "2026-04-26T12:00:00.000Z",
+      readAt: "2026-04-26T12:05:00.000Z",
+      repliedAt: "2026-04-26T12:10:00.000Z",
+      metadata: {},
+      syncedAt: "2026-04-26T12:11:00.000Z",
+      updatedAt: "2026-04-26T12:11:00.000Z",
+    };
+
+    await repository.upsertXDm(baseDm);
+    await repository.upsertXDm({
+      ...baseDm,
+      text: "hello again",
+      readAt: null,
+      repliedAt: null,
+      syncedAt: "2026-04-26T12:12:00.000Z",
+      updatedAt: "2026-04-26T12:12:00.000Z",
+    });
+
+    const [dm] = await repository.listXDms(String(runtime.agentId), {
+      limit: 1,
+    });
+
+    expect(dm?.text).toBe("hello again");
+    expect(dm?.readAt).toBe("2026-04-26T12:05:00.000Z");
+    expect(dm?.repliedAt).toBe("2026-04-26T12:10:00.000Z");
   });
 });
