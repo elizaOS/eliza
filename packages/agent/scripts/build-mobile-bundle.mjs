@@ -105,13 +105,28 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // the mobile bun process can't resolve the missing package. A plugin onResolve
 // that maps the bare specifier to the stub path keeps the resolution pure.
 // Native deps without an Android prebuild — replaced with throw-on-call shims.
+//
+// AOSP builds (`MILADY_AOSP_BUILD=1`) flip the gate on `node-llama-cpp` and
+// its prebuild aliases: the AOSP runtime ships its own `libllama.so` and
+// loads it via `bun:ffi` from `eliza/packages/agent/src/runtime/aosp-llama-adapter.ts`.
+// The adapter doesn't import `node-llama-cpp` directly today, but future
+// iterations may pull in its gguf metadata helpers — leaving the package
+// real (not stubbed) keeps that path open. The Capacitor APK build keeps
+// the stub because its on-device inference goes through llama-cpp-capacitor
+// in the WebView, not node-llama-cpp.
+const isAospBuild = process.env.MILADY_AOSP_BUILD === "1";
+const nodeLlamaStubs = isAospBuild
+  ? {}
+  : {
+      "node-llama-cpp": path.join(stubsDir, "node-llama-cpp.cjs"),
+      "@node-llama-cpp/linux-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+      "@node-llama-cpp/linux-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
+      "@node-llama-cpp/mac-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
+      "@node-llama-cpp/mac-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+      "@node-llama-cpp/win-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+    };
 const nativeStubs = {
-  "node-llama-cpp": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/linux-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/linux-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/mac-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/mac-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/win-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+  ...nodeLlamaStubs,
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
   "@huggingface/transformers": path.join(stubsDir, "huggingface-transformers.cjs"),
   "puppeteer-core": path.join(stubsDir, "puppeteer-core.cjs"),

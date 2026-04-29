@@ -436,6 +436,14 @@ public class MiladyAgentService extends Service {
             // device-bridge. The WebView dials it over loopback once the
             // user picks the local runtime mode in onboarding.
             agentEnv.put("ELIZA_DEVICE_BRIDGE_ENABLED", "1");
+            // AOSP builds ship libllama.so under agent/{abi}/ and load it
+            // directly into the bun process via bun:ffi (see
+            // eliza/packages/agent/src/runtime/aosp-llama-adapter.ts). The
+            // gradle BuildConfig.AOSP_BUILD field is wired by sub-task 2B;
+            // the Capacitor APK keeps its DeviceBridge loopback path.
+            if (BuildConfig.AOSP_BUILD) {
+                agentEnv.put("MILADY_LOCAL_LLAMA", "1");
+            }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
             agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
             env.putAll(agentEnv);

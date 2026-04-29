@@ -45,6 +45,7 @@ type RuntimeWithModelRegistration = AgentRuntime & {
 const LOCAL_INFERENCE_PROVIDER = "milady-local-inference";
 const DEVICE_BRIDGE_PROVIDER = "milady-device-bridge";
 const CAPACITOR_LLAMA_PROVIDER = "capacitor-llama";
+const AOSP_LLAMA_PROVIDER = "milady-aosp-llama";
 /** Below default plugin priority (0) so cloud/direct providers win unless the user prefers local. */
 const LOCAL_INFERENCE_PRIORITY = -1;
 
@@ -169,6 +170,46 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
   withRegistration.registerService("localInferenceLoader", loader);
 }
 
+/**
+ * AOSP-only path: load `libllama.so` directly into the bun process via
+ * `bun:ffi`. The adapter no-ops at runtime when `MILADY_LOCAL_LLAMA !== "1"`,
+ * so the dynamic import below is safe on every platform; we only attempt
+ * registration when the user explicitly opted in.
+ *
+ * The `try`/`catch` is justified because the AOSP build can ship the .so on
+ * one ABI but be invoked on another (e.g. cuttlefish_x86_64 reporting both
+ * x86_64 and arm64-v8a). When `MILADY_LOCAL_LLAMA=1` is set but registration
+ * fails, the adapter logs at `error` level — we must NOT silently fall
+ * through to the device-bridge or stock engine: the operator opted in and
+ * deserves the failure surfaced clearly.
+ */
+async function tryRegisterAospLlamaLoader(
+  runtime: AgentRuntime,
+): Promise<boolean> {
+  if (process.env.MILADY_LOCAL_LLAMA?.trim() !== "1") return false;
+  try {
+    const mod = (await import(
+      "@elizaos/agent/runtime/aosp-llama-adapter"
+    )) as unknown as {
+      registerAospLlamaLoader?: (r: AgentRuntime) => Promise<boolean> | boolean;
+    };
+    if (typeof mod.registerAospLlamaLoader !== "function") {
+      logger.error(
+        "[local-inference] AOSP llama adapter import resolved but missing registerAospLlamaLoader export",
+      );
+      return false;
+    }
+    const result = await mod.registerAospLlamaLoader(runtime);
+    return Boolean(result);
+  } catch (err) {
+    logger.error(
+      "[local-inference] AOSP llama adapter unavailable while MILADY_LOCAL_LLAMA=1:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return false;
+  }
+}
+
 async function tryRegisterCapacitorLoader(
   runtime: AgentRuntime,
 ): Promise<boolean> {
@@ -216,19 +257,26 @@ export async function ensureLocalInferenceHandler(
   handlerRegistry.installOn(runtime);
 
   // Loader precedence:
-  //   1. Capacitor native adapter when running on a mobile device itself.
-  //   2. Device-bridge (WebSocket to a paired phone) when explicitly
+  //   1. AOSP native FFI loader when running inside the AOSP agent process
+  //      itself (MILADY_LOCAL_LLAMA=1). This is the canonical AOSP path —
+  //      libllama.so is dlopen'd directly, no IPC.
+  //   2. Capacitor native adapter when running on a mobile device with the
+  //      Capacitor APK shell.
+  //   3. Device-bridge (WebSocket to a paired phone) when explicitly
   //      opted in via ELIZA_DEVICE_BRIDGE_ENABLED=1.
-  //   3. Standalone node-llama-cpp engine for desktop / server.
+  //   4. Standalone node-llama-cpp engine for desktop / server.
   //
-  // All three satisfy the same `localInferenceLoader` service contract.
-  // A later registration overrides an earlier one, so the loader that
-  // wins is the one registered LAST. We check conditions top-down and
-  // register bottom-up to preserve that precedence.
-  const capacitorRegistered = await tryRegisterCapacitorLoader(runtime);
+  // All four satisfy the same `localInferenceLoader` service contract.
+  // A later registration overrides an earlier one, so we register in
+  // LOWEST-priority order first; the AOSP loader runs last so it wins on
+  // AOSP builds. Each `try*Loader` is idempotent and gated on its own env
+  // signal, so they're safe to chain.
+  const aospRegistered = await tryRegisterAospLlamaLoader(runtime);
+  const capacitorRegistered =
+    !aospRegistered && (await tryRegisterCapacitorLoader(runtime));
   const deviceBridgeEnabled =
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
-  if (!capacitorRegistered && deviceBridgeEnabled) {
+  if (!aospRegistered && !capacitorRegistered && deviceBridgeEnabled) {
     registerDeviceBridgeLoader(runtime);
     logger.info(
       "[local-inference] Registered device-bridge loader; inference routes to paired mobile device when connected",
@@ -240,6 +288,7 @@ export async function ensureLocalInferenceHandler(
   // bridge is always "available" in the sense that it parks calls until a
   // device connects, so if it is enabled we always register handlers.
   if (
+    !aospRegistered &&
     !capacitorRegistered &&
     !deviceBridgeEnabled &&
     !(await localInferenceEngine.available())
@@ -250,11 +299,13 @@ export async function ensureLocalInferenceHandler(
     return;
   }
 
-  const provider = capacitorRegistered
-    ? CAPACITOR_LLAMA_PROVIDER
-    : deviceBridgeEnabled
-      ? DEVICE_BRIDGE_PROVIDER
-      : LOCAL_INFERENCE_PROVIDER;
+  const provider = aospRegistered
+    ? AOSP_LLAMA_PROVIDER
+    : capacitorRegistered
+      ? CAPACITOR_LLAMA_PROVIDER
+      : deviceBridgeEnabled
+        ? DEVICE_BRIDGE_PROVIDER
+        : LOCAL_INFERENCE_PROVIDER;
 
   const slots: Array<
     [(typeof ModelType)[keyof typeof ModelType], AgentModelSlot]
