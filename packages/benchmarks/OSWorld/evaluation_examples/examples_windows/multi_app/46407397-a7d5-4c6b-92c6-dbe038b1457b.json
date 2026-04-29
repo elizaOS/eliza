@@ -8,9 +8,7 @@
       "type": "googledrive",
       "parameters": {
         "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
-        "operation": [
-          "delete"
-        ],
+        "operation": ["delete"],
         "args": [
           {
             "query": "title = 'figures' and 'root' in parents and mimeType = 'application/vnd.google-apps.folder'",
@@ -38,10 +36,7 @@
     {
       "type": "chrome_open_tabs",
       "parameters": {
-        "urls_to_open": [
-          "https://news.google.com",
-          "https://x.com"
-        ]
+        "urls_to_open": ["https://news.google.com", "https://x.com"]
       }
     },
     {
@@ -89,17 +84,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "C:\\Program Files\\Mozilla Thunderbird\\thunderbird.exe"
-        ]
+        "command": ["C:\\Program Files\\Mozilla Thunderbird\\thunderbird.exe"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "thunderbird",
-    "chrome"
-  ],
+  "related_apps": ["thunderbird", "chrome"],
   "evaluator": {
     "func": "compare_image_list",
     "result": {
@@ -119,11 +109,7 @@
           "title = '3.png' and trashed = false"
         ]
       ],
-      "dest": [
-        "1.png",
-        "2.png",
-        "3.png"
-      ]
+      "dest": ["1.png", "2.png", "3.png"]
     },
     "expected": {
       "type": "cloud_file",
@@ -132,17 +118,9 @@
         "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/46407397-a7d5-4c6b-92c6-dbe038b1457b/2.png",
         "https://huggingface.co/datasets/xlangai/windows_osworld_file_cache/resolve/main/multi_app/46407397-a7d5-4c6b-92c6-dbe038b1457b/3.png"
       ],
-      "dest": [
-        "1_gold.png",
-        "2_gold.png",
-        "3_gold.png"
-      ],
+      "dest": ["1_gold.png", "2_gold.png", "3_gold.png"],
       "multi": true,
-      "gives": [
-        0,
-        1,
-        2
-      ]
+      "gives": [0, 1, 2]
     }
   }
 }

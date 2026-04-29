@@ -60,10 +60,7 @@
     }
   ],
   "trajectory": "trajectories/1f18aa87-af6f-41ef-9853-cdb8f32ebdea",
-  "related_apps": [
-    "os",
-    "word"
-  ],
+  "related_apps": ["os", "word"],
   "evaluator": {
     "postconfig": [
       {

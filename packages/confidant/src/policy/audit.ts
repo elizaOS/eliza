@@ -18,7 +18,9 @@ export class AuditLog {
     private readonly logger?: ConfidantLogger,
   ) {}
 
-  async record(entry: Omit<AuditRecord, "ts"> & { ts?: number }): Promise<void> {
+  async record(
+    entry: Omit<AuditRecord, "ts"> & { ts?: number },
+  ): Promise<void> {
     const record: AuditRecord = { ts: entry.ts ?? Date.now(), ...entry };
     const line = `${JSON.stringify(record)}\n`;
     try {

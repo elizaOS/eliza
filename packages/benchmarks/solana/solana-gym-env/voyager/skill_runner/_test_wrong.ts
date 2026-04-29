@@ -1,1 +1,3 @@
-export function wrongName(): string { return 'hi'; }
+export function wrongName(): string {
+  return "hi";
+}

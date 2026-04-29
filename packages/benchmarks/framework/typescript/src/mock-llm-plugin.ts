@@ -5,12 +5,13 @@
  * that return pre-computed valid XML responses. This isolates framework
  * overhead from LLM latency for accurate performance measurement.
  */
-import type { Plugin } from "../../../../packages/typescript/src/types/plugin";
-import type { IAgentRuntime } from "../../../../packages/typescript/src/types/runtime";
+
 import type { Provider } from "../../../../packages/typescript/src/types/components";
 import type { Memory } from "../../../../packages/typescript/src/types/memory";
-import type { State } from "../../../../packages/typescript/src/types/state";
 import { ModelType } from "../../../../packages/typescript/src/types/model";
+import type { Plugin } from "../../../../packages/typescript/src/types/plugin";
+import type { IAgentRuntime } from "../../../../packages/typescript/src/types/runtime";
+import type { State } from "../../../../packages/typescript/src/types/state";
 
 // ─── Mock response constants ───────────────────────────────────────────────
 
@@ -58,7 +59,9 @@ const REFLECTION_XML = `<response>
 </response>`;
 
 /** Fixed 384-dimension embedding vector (all zeros). Frozen to prevent mutation. */
-const ZERO_EMBEDDING: readonly number[] = Object.freeze(new Array(384).fill(0)) as readonly number[];
+const ZERO_EMBEDDING: readonly number[] = Object.freeze(
+  new Array(384).fill(0),
+) as readonly number[];
 
 // ─── Handler implementations ───────────────────────────────────────────────
 
@@ -78,17 +81,26 @@ function detectAndRespondTextLarge(
   }
 
   // Multi-step summary template
-  if (prompt.includes("Execution Trace") || prompt.includes("Summarize what the assistant")) {
+  if (
+    prompt.includes("Execution Trace") ||
+    prompt.includes("Summarize what the assistant")
+  ) {
     return MULTI_STEP_SUMMARY_XML;
   }
 
   // Reflection evaluator template
-  if (prompt.includes("Generate Agent Reflection") || prompt.includes("Extract Facts")) {
+  if (
+    prompt.includes("Generate Agent Reflection") ||
+    prompt.includes("Extract Facts")
+  ) {
     return REFLECTION_XML;
   }
 
   // Reply action template
-  if (prompt.includes("Generate dialog for the character") && !prompt.includes("decide what actions")) {
+  if (
+    prompt.includes("Generate dialog for the character") &&
+    !prompt.includes("decide what actions")
+  ) {
     return REPLY_ACTION_XML;
   }
 
@@ -103,7 +115,10 @@ function detectAndRespondTextSmall(
   const prompt = String(params.prompt ?? "");
 
   // ShouldRespond template
-  if (prompt.includes("should respond") || prompt.includes("RESPOND | IGNORE | STOP")) {
+  if (
+    prompt.includes("should respond") ||
+    prompt.includes("RESPOND | IGNORE | STOP")
+  ) {
     return SHOULD_RESPOND_XML;
   }
 
@@ -130,7 +145,11 @@ export function createDummyProviders(count: number): Provider[] {
     providers.push({
       name: `BENCHMARK_DUMMY_${i}`,
       description: `Dummy provider #${i} for benchmark scaling tests`,
-      get: async (_runtime: IAgentRuntime, _message: Memory, _state?: State) => {
+      get: async (
+        _runtime: IAgentRuntime,
+        _message: Memory,
+        _state?: State,
+      ) => {
         return {
           text: `Dummy provider ${i} context data.`,
           values: { [`dummy_${i}`]: `value_${i}` },
@@ -146,7 +165,8 @@ export function createDummyProviders(count: number): Provider[] {
 
 export const mockLlmPlugin: Plugin = {
   name: "mock-llm-benchmark",
-  description: "Deterministic zero-latency mock LLM handlers for framework benchmarking",
+  description:
+    "Deterministic zero-latency mock LLM handlers for framework benchmarking",
   models: {
     [ModelType.TEXT_SMALL]: async (
       runtime: IAgentRuntime,

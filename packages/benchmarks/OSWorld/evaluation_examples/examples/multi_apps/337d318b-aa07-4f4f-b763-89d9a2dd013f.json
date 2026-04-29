@@ -29,10 +29,7 @@
     }
   ],
   "trajectory": "trajectories/337d318b-aa07-4f4f-b763-89d9a2dd013f",
-  "related_apps": [
-    "os",
-    "pdf"
-  ],
+  "related_apps": ["os", "pdf"],
   "evaluator": {
     "func": "compare_pdfs",
     "result": {

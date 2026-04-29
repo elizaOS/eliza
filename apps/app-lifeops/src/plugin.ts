@@ -70,6 +70,7 @@ import { appBlockerProvider } from "./providers/app-blocker.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
 
 // LifeOps core providers
+import { healthProvider } from "./providers/health.js";
 import { inboxTriageProvider } from "./providers/inbox-triage.js";
 import { lifeOpsProvider } from "./providers/lifeops.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
@@ -255,6 +256,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     websiteBlockerProvider,
     appBlockerProvider,
     lifeOpsProvider,
+    healthProvider,
     inboxTriageProvider,
     crossChannelContextProvider,
     activityProfileProvider,
@@ -465,6 +467,7 @@ export {
   resolveLifeOpsTaskIntervalMs,
 } from "./lifeops/runtime.js";
 export { appBlockerProvider } from "./providers/app-blocker.js";
+export { healthProvider } from "./providers/health.js";
 export { inboxTriageProvider } from "./providers/inbox-triage.js";
 export { lifeOpsProvider } from "./providers/lifeops.js";
 export type { LifeOpsRouteContext } from "./routes/lifeops-routes.js";

@@ -2,10 +2,10 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { EnvLegacyBackend } from "../src/backends/env-legacy.js";
+import { createConfidant } from "../src/confidant.js";
 import { generateMasterKey } from "../src/crypto/envelope.js";
 import { inMemoryMasterKey } from "../src/crypto/master-key.js";
-import { createConfidant } from "../src/confidant.js";
-import { EnvLegacyBackend } from "../src/backends/env-legacy.js";
 import {
   ELIZA_ENV_TO_SECRET_ID,
   ELIZA_PROVIDER_TO_SECRET_ID,
@@ -189,11 +189,15 @@ describe("integrations.eliza-providers — env-var map", () => {
     expect(result.skipped).toEqual([]);
 
     // Each resolves through the env-legacy backend.
-    expect(await confidant.resolve("llm.openrouter.apiKey")).toBe("sk-or-v1-test");
+    expect(await confidant.resolve("llm.openrouter.apiKey")).toBe(
+      "sk-or-v1-test",
+    );
     expect(await confidant.resolve("wallet.evm.privateKey")).toBe("0xABC");
     expect(await confidant.resolve("storage.s3.accessKeyId")).toBe("AKIA-TEST");
     expect(await confidant.resolve("tts.elevenlabs.apiKey")).toBe("el-test");
-    expect(await confidant.resolve("connector.github.apiToken")).toBe("ghp-test");
+    expect(await confidant.resolve("connector.github.apiToken")).toBe(
+      "ghp-test",
+    );
   });
 
   it("mirrorLegacyEnvCredentials reports skipped entries with structured reasons", async () => {
@@ -221,7 +225,9 @@ describe("integrations.eliza-providers — env-var map", () => {
   });
 
   it("isDeviceBoundSecretId flags subscription tokens AND wallet keys", () => {
-    expect(isDeviceBoundSecretId("subscription.anthropic.accessToken")).toBe(true);
+    expect(isDeviceBoundSecretId("subscription.anthropic.accessToken")).toBe(
+      true,
+    );
     expect(isDeviceBoundSecretId("subscription.openai.accessToken")).toBe(true);
     expect(isDeviceBoundSecretId("wallet.evm.privateKey")).toBe(true);
     expect(isDeviceBoundSecretId("wallet.solana.privateKey")).toBe(true);
@@ -232,16 +238,20 @@ describe("integrations.eliza-providers — env-var map", () => {
 
   it("providerIdForSecretId is the inverse of the provider map", () => {
     expect(providerIdForSecretId("llm.openrouter.apiKey")).toBe("openrouter");
-    expect(
-      providerIdForSecretId("subscription.anthropic.accessToken"),
-    ).toBe("anthropic-subscription");
+    expect(providerIdForSecretId("subscription.anthropic.accessToken")).toBe(
+      "anthropic-subscription",
+    );
     expect(providerIdForSecretId("nothing.like.this")).toBeNull();
   });
 
   it("envVarForSecretId is the inverse of the env-var map", () => {
-    expect(envVarForSecretId("llm.openrouter.apiKey")).toBe("OPENROUTER_API_KEY");
+    expect(envVarForSecretId("llm.openrouter.apiKey")).toBe(
+      "OPENROUTER_API_KEY",
+    );
     expect(envVarForSecretId("wallet.evm.privateKey")).toBe("EVM_PRIVATE_KEY");
-    expect(envVarForSecretId("connector.github.apiToken")).toBe("GITHUB_API_TOKEN");
+    expect(envVarForSecretId("connector.github.apiToken")).toBe(
+      "GITHUB_API_TOKEN",
+    );
     expect(envVarForSecretId("nothing.like.this")).toBeNull();
   });
 });
@@ -286,12 +296,12 @@ describe("integrations.eliza-schema — full catalog", () => {
 
   it("attributes subscription tokens to the matching provider plugin", () => {
     registerElizaSecretSchemas();
-    expect(
-      lookupSchema("subscription.anthropic.accessToken")?.pluginId,
-    ).toBe("@elizaos/plugin-anthropic");
-    expect(
-      lookupSchema("subscription.openai.accessToken")?.pluginId,
-    ).toBe("@elizaos/plugin-openai");
+    expect(lookupSchema("subscription.anthropic.accessToken")?.pluginId).toBe(
+      "@elizaos/plugin-anthropic",
+    );
+    expect(lookupSchema("subscription.openai.accessToken")?.pluginId).toBe(
+      "@elizaos/plugin-openai",
+    );
   });
 
   it("registerElizaSecretSchemas is idempotent", () => {
@@ -360,14 +370,14 @@ describe("integrations: end-to-end legacy bridge across domains", () => {
     const github = confidant.scopeFor("@elizaos/plugin-github");
     const evm = confidant.scopeFor("@elizaos/plugin-evm");
 
-    expect(await openrouter.resolve("llm.openrouter.apiKey")).toBe("sk-or-v1-real");
+    expect(await openrouter.resolve("llm.openrouter.apiKey")).toBe(
+      "sk-or-v1-real",
+    );
     expect(await github.resolve("connector.github.apiToken")).toBe("ghp-real");
     expect(await evm.resolve("wallet.evm.privateKey")).toBe("0xDEADBEEF");
 
     // Cross-plugin access is denied.
-    const { PermissionDeniedError } = await import(
-      "../src/policy/grants.js"
-    );
+    const { PermissionDeniedError } = await import("../src/policy/grants.js");
     await expect(
       openrouter.resolve("connector.github.apiToken"),
     ).rejects.toThrow(PermissionDeniedError);

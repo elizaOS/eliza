@@ -22,7 +22,9 @@ const HANDLERS: Record<string, TrustBenchmarkHandler> = {
 
 // ── Runner ─────────────────────────────────────────────────────────────────
 
-async function runBenchmark(handler: TrustBenchmarkHandler): Promise<DetectionResult[]> {
+async function runBenchmark(
+  handler: TrustBenchmarkHandler,
+): Promise<DetectionResult[]> {
   const results: DetectionResult[] = [];
 
   for (const testCase of TEST_CORPUS) {
@@ -44,7 +46,7 @@ async function runBenchmark(handler: TrustBenchmarkHandler): Promise<DetectionRe
       case "credential_theft":
         detection = await handler.detectCredentialTheft(testCase.input);
         break;
-      case "benign":
+      case "benign": {
         // For benign cases, run through ALL detectors and flag if ANY fires
         const [inj, se, cred] = await Promise.all([
           handler.detectInjection(testCase.input),
@@ -56,6 +58,7 @@ async function runBenchmark(handler: TrustBenchmarkHandler): Promise<DetectionRe
           confidence: Math.max(inj.confidence, se.confidence, cred.confidence),
         };
         break;
+      }
       default:
         detection = { detected: false, confidence: 0 };
     }

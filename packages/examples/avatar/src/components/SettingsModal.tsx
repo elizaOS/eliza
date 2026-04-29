@@ -1,5 +1,9 @@
 import { useCallback } from "react";
-import type { DemoConfig, DemoMode, VoiceOutputProvider } from "../runtime/types";
+import type {
+  DemoConfig,
+  DemoMode,
+  VoiceOutputProvider,
+} from "../runtime/types";
 
 type SettingsModalProps = {
   isOpen: boolean;
@@ -52,7 +56,14 @@ export function SettingsModal({
         <div className="modal-header">
           <h2>Settings</h2>
           <button className="modal-close" onClick={onClose}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
           </button>
@@ -70,7 +81,9 @@ export function SettingsModal({
                   updateConfig((prev) => ({ ...prev, mode }));
                 }}
               >
-                <option value="elizaClassic">{modeLabel("elizaClassic")}</option>
+                <option value="elizaClassic">
+                  {modeLabel("elizaClassic")}
+                </option>
                 <option value="openai">{modeLabel("openai")}</option>
                 <option value="anthropic">{modeLabel("anthropic")}</option>
                 <option value="xai">{modeLabel("xai")}</option>
@@ -79,7 +92,9 @@ export function SettingsModal({
               </select>
             </div>
             <div className="field-note">
-              <span className={`dot ${effectiveMode === "elizaClassic" ? "warn" : "good"}`} />
+              <span
+                className={`dot ${effectiveMode === "elizaClassic" ? "warn" : "good"}`}
+              />
               Using: <strong>{modeLabel(effectiveMode)}</strong>
             </div>
           </div>
@@ -208,8 +223,12 @@ export function SettingsModal({
                   <select
                     value={config.voiceOutputProvider}
                     onChange={(e) => {
-                      const value = e.currentTarget.value as VoiceOutputProvider;
-                      updateConfig((p) => ({ ...p, voiceOutputProvider: value }));
+                      const value = e.currentTarget
+                        .value as VoiceOutputProvider;
+                      updateConfig((p) => ({
+                        ...p,
+                        voiceOutputProvider: value,
+                      }));
                     }}
                   >
                     <option value="sam">Robot (SAM)</option>
@@ -309,7 +328,10 @@ export function SettingsModal({
 
           <div className="settings-section">
             <h3>Conversation</h3>
-            <button className="reset-conversation-button" onClick={onResetConversation}>
+            <button
+              className="reset-conversation-button"
+              onClick={onResetConversation}
+            >
               Reset conversation
             </button>
             <div className="field-note" style={{ marginTop: 8 }}>
@@ -318,7 +340,8 @@ export function SettingsModal({
           </div>
 
           <div className="settings-note">
-            <strong>Note:</strong> API keys are stored in your browser&apos;s localStorage and used client-side only.
+            <strong>Note:</strong> API keys are stored in your browser&apos;s
+            localStorage and used client-side only.
           </div>
         </div>
       </div>

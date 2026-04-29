@@ -1,9 +1,21 @@
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
-import { checkSenderRole } from "../website-blocker/roles.ts";
+import {
+  checkSenderRole,
+  type RoleCheckResult,
+} from "../website-blocker/roles.ts";
 
 export const APP_BLOCKER_ACCESS_ERROR =
-  "App blocking is restricted to OWNER and ADMIN users.";
+  "App blocking is restricted to OWNER users.";
+
+function hasPrincipal(runtime: IAgentRuntime, message: Memory): boolean {
+  return (
+    typeof runtime.agentId === "string" &&
+    runtime.agentId.length > 0 &&
+    typeof message.entityId === "string" &&
+    message.entityId.length > 0
+  );
+}
 
 export async function getAppBlockerAccess(
   runtime: IAgentRuntime,
@@ -13,14 +25,16 @@ export async function getAppBlockerAccess(
   role: string | null;
   reason?: string;
 }> {
-  // Fast path: canonical-owner check (ELIZA_ADMIN_ENTITY_ID + owner contacts)
-  // is authoritative and works in benchmark environments where world-role
-  // tables aren't seeded. Falls through to the world-role check otherwise.
-  if (await hasAdminAccess(runtime, message)) {
+  // Fast path: canonical owner settings and owner-contact metadata are
+  // authoritative in environments where the per-world role table is not seeded.
+  if (
+    hasPrincipal(runtime, message) &&
+    (await hasOwnerAccess(runtime, message))
+  ) {
     return { allowed: true, role: "OWNER" };
   }
 
-  let roleCheck;
+  let roleCheck: RoleCheckResult;
   try {
     roleCheck = await checkSenderRole(runtime, message);
   } catch (err) {
@@ -35,7 +49,7 @@ export async function getAppBlockerAccess(
     };
   }
 
-  if (!roleCheck.isAdmin) {
+  if (!roleCheck.isOwner) {
     return {
       allowed: false,
       role: roleCheck.role,

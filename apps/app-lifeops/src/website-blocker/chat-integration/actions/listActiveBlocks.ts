@@ -4,16 +4,18 @@ import type {
   ActionResult,
   IAgentRuntime,
 } from "@elizaos/core";
-import { BlockRuleReader } from "../block-rule-service.js";
 import {
   formatWebsiteList,
   getSelfControlStatus,
 } from "../../../website-blocker/engine.js";
+import { BlockRuleReader } from "../block-rule-service.js";
 
 const BLOCK_STATUS_INTENT_RE =
   /\b(block|blocking|blocked|unblock|website block|site block|focus block|selfcontrol|self-control|distracting sites?|blocked websites?|blocked sites?|app block)\b/i;
 
-function getMessageText(message: { content?: { text?: unknown } } | undefined): string {
+function getMessageText(
+  message: { content?: { text?: unknown } } | undefined,
+): string {
   return typeof message?.content?.text === "string" ? message.content.text : "";
 }
 
@@ -22,7 +24,8 @@ function formatLiveWebsiteBlockStatus(
 ): string {
   if (!status.available) {
     return (
-      status.reason ?? "The live website blocker is unavailable on this machine."
+      status.reason ??
+      "The live website blocker is unavailable on this machine."
     );
   }
 
@@ -46,7 +49,8 @@ export const listActiveBlocksAction: Action = {
   similes: ["LIST_BLOCK_RULES", "SHOW_ACTIVE_BLOCKS", "WEBSITE_BLOCKS_STATUS"],
   description:
     "List the live website blocker status and any active managed website block rules, including their gate type and gate target. Only use this for website/app blocking status. Do not use it for inbox blockers, message priority, morning briefs, night briefs, operating pictures, end-of-day reviews, or general executive-assistant triage.",
-  descriptionCompressed: "List live website blocker status and active block rules.",
+  descriptionCompressed:
+    "List live website blocker status and active block rules.",
   validate: async (_runtime, message) =>
     BLOCK_STATUS_INTENT_RE.test(getMessageText(message)),
   handler: async (runtime: IAgentRuntime): Promise<ActionResult> => {
@@ -77,10 +81,7 @@ export const listActiveBlocksAction: Action = {
       if (rule.gateType === "until_iso" && rule.gateUntilMs !== null) {
         parts.push(`until=${new Date(rule.gateUntilMs).toISOString()}`);
       }
-      if (
-        rule.gateType === "fixed_duration" &&
-        rule.fixedDurationMs !== null
-      ) {
+      if (rule.gateType === "fixed_duration" && rule.fixedDurationMs !== null) {
         parts.push(`duration_ms=${rule.fixedDurationMs}`);
       }
       return parts.join(" ");

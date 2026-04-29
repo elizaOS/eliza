@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
-export function useLocalStorageState<T>(key: string, initialValue: T): [T, (patch: (prev: T) => T) => void] {
+export function useLocalStorageState<T>(
+  key: string,
+  initialValue: T,
+): [T, (patch: (prev: T) => T) => void] {
   const [value, setValue] = useState<T>(() => {
     try {
       const raw = localStorage.getItem(key);
@@ -25,4 +28,3 @@ export function useLocalStorageState<T>(key: string, initialValue: T): [T, (patc
 
   return [value, update];
 }
-

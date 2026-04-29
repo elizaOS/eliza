@@ -44,10 +44,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "os",
-    "terminal"
-  ],
+  "related_apps": ["os", "terminal"],
   "evaluator": {
     "func": "check_include_exclude",
     "result": {
@@ -61,10 +58,7 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "include": [
-          "daily update",
-          "repo is synchronous"
-        ]
+        "include": ["daily update", "repo is synchronous"]
       }
     }
   },

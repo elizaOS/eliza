@@ -54,7 +54,7 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
   "page-settings":
     "The user is in the Settings view. They can tune models, providers, permissions, connectors, wallet RPC, cloud account state, appearance, updates, and feature toggles. Action vocabulary: UPDATE_IDENTITY, UPDATE_AI_PROVIDER, TOGGLE_CAPABILITY, and TOGGLE_AUTO_TRAINING. When the user asks what to do, recommend the smallest concrete settings change that fits the visible section. Ask before changes that affect security, spending, or external accounts. Never invent provider status, account state, or permission grants.",
   "page-wallet":
-    "The user is in the Wallet view. They can inspect token inventory, NFTs, LP position status, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, and Vincent trading. There are no chain filters in this surface. When the user asks what to do, recommend the smallest concrete wallet action and confirm asset, amount, destination, slippage/risk limits, and execution path before invoking any available action. If the user asks about trading, betting, gambling, predicting, Hyperliquid, or Polymarket, surface Vincent as the preferred integration when connected or suggest connecting it when not connected. Never invent balances, positions, fills, or execution support.",
+    "The user is in the Wallet view. They can inspect token inventory, NFTs, LP position status, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, native Hyperliquid and Polymarket readiness, and Vincent delegated trading. There are no chain filters in this surface. When the user asks what to do, recommend the smallest concrete wallet action and confirm asset/market, amount, destination/outcome, slippage/risk limits, and execution path before invoking any available action. If the user asks about Hyperliquid or Polymarket, prefer native app surfaces for reads/status and only surface Vincent for delegated automated trading. Never invent balances, positions, fills, markets, odds, or execution support.",
   "automation-draft":
     "This is an automation-creation room. The user wants to create exactly one automation. Decide the right shape based on their description and call the matching action exactly once:\n" +
     '- Recurring prompt or schedule (e.g. "every morning summarize my inbox") → CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n' +
@@ -219,9 +219,8 @@ async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
 
 async function renderBrowserLiveState(): Promise<string | null> {
   try {
-    const { getBrowserWorkspaceSnapshot } = await import(
-      "../services/browser-workspace.js"
-    );
+    const { getBrowserWorkspaceSnapshot } =
+      await import("../services/browser-workspace.js");
     const snapshot = await getBrowserWorkspaceSnapshot();
     const lines: string[] = [
       `Live browser state: bridge=${snapshot.mode}, ${snapshot.tabs.length} tab${snapshot.tabs.length === 1 ? "" : "s"}.`,
@@ -469,20 +468,58 @@ interface VincentLiveStrategy {
   } | null;
 }
 
-async function renderWalletLiveState(): Promise<string | null> {
-  const [config, balances, nfts, profile, vincentStatus, vincentStrategy] =
-    await Promise.all([
-      fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
-      fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
-      fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
-      fetchLocalJson<WalletTradingProfileResponse>(
-        "/api/wallet/trading/profile?window=24h&source=all",
-      ),
-      fetchLocalJson<VincentLiveStatus>("/api/vincent/status"),
-      fetchLocalJson<VincentLiveStrategy>("/api/vincent/strategy"),
-    ]);
+interface HyperliquidLiveStatus {
+  publicReadReady?: boolean;
+  signerReady?: boolean;
+  executionReady?: boolean;
+  executionBlockedReason?: string | null;
+  accountAddress?: string | null;
+}
 
-  if (!config && !balances && !nfts && !profile && !vincentStatus) {
+interface PolymarketLiveStatus {
+  publicReads?: {
+    ready?: boolean;
+  };
+  trading?: {
+    ready?: boolean;
+    credentialsReady?: boolean;
+    reason?: string | null;
+    missing?: readonly string[];
+  };
+}
+
+async function renderWalletLiveState(): Promise<string | null> {
+  const [
+    config,
+    balances,
+    nfts,
+    profile,
+    hyperliquidStatus,
+    polymarketStatus,
+    vincentStatus,
+    vincentStrategy,
+  ] = await Promise.all([
+    fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
+    fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
+    fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
+    fetchLocalJson<WalletTradingProfileResponse>(
+      "/api/wallet/trading/profile?window=24h&source=all",
+    ),
+    fetchLocalJson<HyperliquidLiveStatus>("/api/hyperliquid/status"),
+    fetchLocalJson<PolymarketLiveStatus>("/api/polymarket/status"),
+    fetchLocalJson<VincentLiveStatus>("/api/vincent/status"),
+    fetchLocalJson<VincentLiveStrategy>("/api/vincent/strategy"),
+  ]);
+
+  if (
+    !config &&
+    !balances &&
+    !nfts &&
+    !profile &&
+    !hyperliquidStatus &&
+    !polymarketStatus &&
+    !vincentStatus
+  ) {
     return "Live wallet state: unavailable from the Wallet API.";
   }
 
@@ -553,10 +590,32 @@ async function renderWalletLiveState(): Promise<string | null> {
     );
   }
 
+  if (hyperliquidStatus) {
+    lines.push(
+      `- Hyperliquid native: public reads ${readyLabel(hyperliquidStatus.publicReadReady)}, signer ${readyLabel(hyperliquidStatus.signerReady)}, execution ${readyLabel(hyperliquidStatus.executionReady)}, account ${shortAddress(hyperliquidStatus.accountAddress)}.`,
+    );
+    if (hyperliquidStatus.executionBlockedReason) {
+      lines.push(
+        `- Hyperliquid execution blocked: ${hyperliquidStatus.executionBlockedReason}`,
+      );
+    }
+  }
+
+  if (polymarketStatus) {
+    lines.push(
+      `- Polymarket native: public reads ${readyLabel(polymarketStatus.publicReads?.ready)}, credentials ${readyLabel(polymarketStatus.trading?.credentialsReady)}, trading ${readyLabel(polymarketStatus.trading?.ready)}.`,
+    );
+    if (polymarketStatus.trading?.reason) {
+      lines.push(
+        `- Polymarket trading blocked: ${polymarketStatus.trading.reason}`,
+      );
+    }
+  }
+
   if (vincentStatus) {
     const connected = vincentStatus.connected ? "connected" : "not connected";
     const venues = vincentStatus.tradingVenues?.join(", ") ?? "unknown venues";
-    lines.push(`- Vincent: ${connected} for ${venues}.`);
+    lines.push(`- Vincent delegated trading: ${connected} for ${venues}.`);
   }
   const strategy = vincentStrategy?.strategy;
   if (strategy) {

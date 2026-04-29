@@ -136,6 +136,8 @@ interface CuratedDef {
   icon?: string;
   groupOrder: number;
   visible?: boolean;
+  dependsOn?: string[];
+  capabilities?: string[];
   routePlugin?: {
     specifier: string;
     exportName?: string;
@@ -204,9 +206,45 @@ const CURATED_APPS: CuratedDef[] = [
     launchType: "server-launch",
     icon: "Wallet",
     groupOrder: 6,
+    dependsOn: ["wallet"],
+    capabilities: ["vincent", "delegated-trading", "wallet"],
     routePlugin: {
       specifier: "@elizaos/app-vincent/plugin",
       exportName: "vincentPlugin",
+    },
+  },
+  {
+    id: "hyperliquid",
+    npmName: "@elizaos/app-hyperliquid",
+    displayName: "Hyperliquid",
+    description:
+      "Native Hyperliquid market, position, and order status for wallet trading.",
+    subtype: "trading",
+    launchType: "server-launch",
+    icon: "ChartCandlestick",
+    groupOrder: 7,
+    dependsOn: ["wallet"],
+    capabilities: ["hyperliquid", "trading", "wallet"],
+    routePlugin: {
+      specifier: "@elizaos/app-hyperliquid/plugin",
+      exportName: "hyperliquidPlugin",
+    },
+  },
+  {
+    id: "app-polymarket",
+    npmName: "@elizaos/app-polymarket",
+    displayName: "Polymarket",
+    description:
+      "Native Polymarket market discovery and trading readiness for prediction markets.",
+    subtype: "trading",
+    launchType: "server-launch",
+    icon: "Landmark",
+    groupOrder: 8,
+    dependsOn: ["wallet"],
+    capabilities: ["polymarket", "prediction-markets", "trading", "wallet"],
+    routePlugin: {
+      specifier: "@elizaos/app-polymarket/plugin",
+      exportName: "polymarketPlugin",
     },
   },
   {
@@ -217,7 +255,7 @@ const CURATED_APPS: CuratedDef[] = [
     subtype: "marketplace",
     launchType: "server-launch",
     icon: "Briefcase",
-    groupOrder: 7,
+    groupOrder: 9,
     routePlugin: {
       specifier: "@elizaos/app-shopify/plugin",
       exportName: "shopifyPlugin",
@@ -304,11 +342,11 @@ function buildCurated(def: CuratedDef): AppEntry {
       actions: def.visible === false ? [] : ["launch", "configure"],
     },
     resources: {},
-    dependsOn: [],
+    dependsOn: def.dependsOn ?? [],
     launch: {
       type: def.launchType,
       target: def.target,
-      capabilities: [],
+      capabilities: def.capabilities ?? [],
       curatedSlug: def.id,
       routePlugin: def.routePlugin,
     },

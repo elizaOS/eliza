@@ -74,7 +74,7 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
   {
     key: "stretch",
     title: "Stretch",
-    description: "Short stretch breaks in the afternoon and evening",
+    description: "High-priority stretch breaks in the afternoon and evening",
     category: "health",
     request: {
       kind: "habit",
@@ -86,7 +86,8 @@ export const ROUTINE_SEED_TEMPLATES: RoutineSeedTemplate[] = [
         maxOccurrencesPerDay: 2,
       },
       priority: 2,
-      originalIntent: "stretch twice daily in the afternoon and evening",
+      originalIntent:
+        "high-priority stretch twice daily in the afternoon and evening",
     },
   },
   {

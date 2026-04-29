@@ -1,10 +1,17 @@
 import type {
   LifeOpsReminderChannel,
+  LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
 } from "@elizaos/app-lifeops";
 import { describe, expect, it } from "vitest";
-import { isWithinQuietHours } from "../src/lifeops/service-helpers-misc.js";
-import { shouldDeferReminderUntilComputerActive } from "../src/lifeops/service-helpers-reminder.js";
+import {
+  isWithinQuietHours,
+  priorityToUrgency,
+} from "../src/lifeops/service-helpers-misc.js";
+import {
+  rankReminderEscalationChannels,
+  shouldDeferReminderUntilComputerActive,
+} from "../src/lifeops/service-helpers-reminder.js";
 import type { ReminderActivityProfileSnapshot } from "../src/lifeops/service-types.js";
 
 function buildDefinition(
@@ -34,9 +41,8 @@ function buildActivityProfile(
     lastSeenPlatform: "desktop_app",
     isCurrentlyActive: true,
     lastSeenAt: Date.now(),
-    isProbablySleeping: false,
-    sleepConfidence: 0,
-    schedulePhase: "afternoon",
+    circadianState: "awake",
+    stateConfidence: 0.8,
     lastSleepEndedAt: null,
     nextMealLabel: null,
     nextMealWindowStartAt: null,
@@ -48,12 +54,17 @@ function buildActivityProfile(
 function shouldDefer(
   channel: LifeOpsReminderChannel,
   profile: ReminderActivityProfileSnapshot | null,
-  definition: Pick<LifeOpsTaskDefinition, "title" | "originalIntent" | "cadence">,
+  definition: Pick<
+    LifeOpsTaskDefinition,
+    "title" | "originalIntent" | "cadence"
+  >,
+  urgency?: LifeOpsReminderUrgency,
 ): boolean {
   return shouldDeferReminderUntilComputerActive({
     channel,
     activityProfile: profile,
     definition,
+    urgency,
   });
 }
 
@@ -87,6 +98,17 @@ describe("shouldDeferReminderUntilComputerActive", () => {
     ).toBe(false);
   });
 
+  it("does not defer high-priority stretch reminders", () => {
+    expect(
+      shouldDefer(
+        "in_app",
+        buildActivityProfile({ isCurrentlyActive: false }),
+        buildDefinition(),
+        "high",
+      ),
+    ).toBe(false);
+  });
+
   it("does not defer non-stretch reminders", () => {
     expect(
       shouldDefer(
@@ -98,6 +120,49 @@ describe("shouldDeferReminderUntilComputerActive", () => {
         }),
       ),
     ).toBe(false);
+  });
+});
+
+describe("rankReminderEscalationChannels", () => {
+  it("starts in app and uses observed or configured channels only", () => {
+    const channels = rankReminderEscalationChannels({
+      activityProfile: buildActivityProfile({
+        primaryPlatform: "telegram",
+        secondaryPlatform: "discord",
+        lastSeenPlatform: "telegram",
+      }),
+      ownerContactHints: {},
+      ownerContactSources: [],
+      policyChannels: ["sms"],
+    });
+
+    expect(channels.slice(0, 4)).toEqual([
+      "in_app",
+      "telegram",
+      "discord",
+      "sms",
+    ]);
+  });
+
+  it("does not invent escalation channels when usage is unknown", () => {
+    const channels = rankReminderEscalationChannels({
+      activityProfile: null,
+      ownerContactHints: {},
+      ownerContactSources: [],
+      policyChannels: [],
+    });
+
+    expect(channels).toEqual(["in_app"]);
+  });
+});
+
+describe("priorityToUrgency", () => {
+  it("uses the stored LifeOps 1-5 priority scale", () => {
+    expect(priorityToUrgency(1)).toBe("critical");
+    expect(priorityToUrgency(2)).toBe("high");
+    expect(priorityToUrgency(3)).toBe("medium");
+    expect(priorityToUrgency(4)).toBe("low");
+    expect(priorityToUrgency(5)).toBe("low");
   });
 });
 

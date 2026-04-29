@@ -7,45 +7,30 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "chrome"
-  ],
+  "related_apps": ["chrome"],
   "evaluator": {
     "postconfig": [
       {
         "type": "launch",
         "parameters": {
-          "command": [
-            "pkill",
-            "chrome"
-          ]
+          "command": ["pkill", "chrome"]
         }
       },
       {
         "type": "launch",
         "parameters": {
-          "command": [
-            "google-chrome",
-            "--remote-debugging-port=1337"
-          ]
+          "command": ["google-chrome", "--remote-debugging-port=1337"]
         }
       },
       {
@@ -63,10 +48,7 @@
       "type": "rule",
       "rules": {
         "type": "names",
-        "names": [
-          "chrome-refresh-2023",
-          "chrome-webui-refresh-2023"
-        ]
+        "names": ["chrome-refresh-2023", "chrome-webui-refresh-2023"]
       }
     }
   },

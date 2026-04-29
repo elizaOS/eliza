@@ -1303,7 +1303,10 @@ async function handleGenerateWorkflow(ctx: N8nRouteContext): Promise<boolean> {
   }
 
   const triggerContext = bridgeConversationId
-    ? await buildTriggerContextFromConversation(ctx.runtime, bridgeConversationId)
+    ? await buildTriggerContextFromConversation(
+        ctx.runtime,
+        bridgeConversationId,
+      )
     : undefined;
 
   const draft = await service.generateWorkflowDraft(

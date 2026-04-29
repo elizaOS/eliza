@@ -1,6 +1,6 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
+import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime";
 import { resolveDefaultTimeZone } from "../src/lifeops/defaults.js";
 import type { LifeOpsScheduleMergedStateRecord } from "../src/lifeops/repository.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";

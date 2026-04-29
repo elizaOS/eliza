@@ -3093,7 +3093,7 @@ export const calendarAction: Action & {
   ) => {
     if (!(await hasLifeOpsAccess(runtime, message))) {
       const text =
-        "Calendar actions are restricted to the owner, explicitly granted users, and the agent.";
+        "Calendar actions are restricted to the owner and the agent.";
       await callback?.({ text });
       return {
         success: false,

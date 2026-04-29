@@ -13,7 +13,9 @@ export class LipSyncPlayer {
     this.audioContext = ctx;
     this.analyser = analyser;
     // Ensure plain ArrayBuffer backing.
-    const buf = new ArrayBuffer(analyser.fftSize * Float32Array.BYTES_PER_ELEMENT);
+    const buf = new ArrayBuffer(
+      analyser.fftSize * Float32Array.BYTES_PER_ELEMENT,
+    );
     this.timeDomainData = new Float32Array(buf) as Float32Array<ArrayBuffer>;
     return ctx;
   }
@@ -81,4 +83,3 @@ export class LipSyncPlayer {
     return Math.max(0, Math.min(1, cooked));
   }
 }
-

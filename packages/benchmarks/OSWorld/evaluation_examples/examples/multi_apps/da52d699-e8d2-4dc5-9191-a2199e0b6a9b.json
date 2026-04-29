@@ -27,11 +27,7 @@
     }
   ],
   "trajectory": "trajectories/da52d699-e8d2-4dc5-9191-a2199e0b6a9b",
-  "related_apps": [
-    "libreoffice_calc",
-    "chrome",
-    "libreoffice_writer"
-  ],
+  "related_apps": ["libreoffice_calc", "chrome", "libreoffice_writer"],
   "evaluator": {
     "func": "compare_docx_files",
     "postconfig": [

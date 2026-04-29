@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 
 const REMOTE_API_BASE =
   process.env.MILADY_LIFEOPS_REMOTE_E2E_URL?.trim().replace(/\/+$/, "") ?? "";

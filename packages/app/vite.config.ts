@@ -1182,7 +1182,7 @@ function nativeModuleStubPlugin(): Plugin {
         /\(\(\)\s*=>\s*\{\s*throw\s+new\s+Error\(\s*"Cannot require module "\s*\+\s*"node:async_hooks"\s*\)\s*;\s*\}\)\(\)/g,
         "(function(){function A(){} A.prototype.getStore=function(){return undefined};A.prototype.run=function(s,fn){return fn.apply(void 0,[].slice.call(arguments,2))};A.prototype.enterWith=function(){};A.prototype.disable=function(){};return{AsyncLocalStorage:A}})()",
       );
-      // Names that downstream plugins (plugin-secrets-manager, agent runtime)
+      // Names that downstream plugins and the agent runtime
       // import from @elizaos/core but that are missing from the browser entry.
       const missingExports: Record<string, string> = {
         resolveSecretKeyAlias: "function(k){return k}",
@@ -1629,7 +1629,7 @@ export default defineConfig({
             replacement: path.resolve(elizaRoot, "packages/agent/src/$1"),
           },
           // @elizaos/core — force ALL copies (including nested ones in plugins
-          // like plugin-secrets-manager that ship their own older core) to the
+          // that bundle their own older core) to the
           // main workspace copy's browser entry.  The browser entry has all
           // needed exports and avoids pulling in createRequire/node:fs/etc.
           {
@@ -1730,7 +1730,7 @@ export default defineConfig({
       // Contains native-only pty-state-capture / pty-console imports; skip pre-bundling.
       "@elizaos/plugin-agent-orchestrator",
       "pty-console",
-      // @elizaos/plugin-secrets-manager is now built into @elizaos/core features
+      // Built-in secrets live in @elizaos/core features; Vite must not externalize them as a separate package.
       // Node-only HTTP client — crashes in browser, stub via nativeModuleStubPlugin
       "undici",
       // Browser automation is server-only and pulls in proxy-agent/httpUtil.

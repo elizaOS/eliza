@@ -12,7 +12,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../test/helpers/real-runtime";
+} from "../../../../eliza/test/helpers/real-runtime";
+import { relationshipAction } from "../src/actions/relationships.js";
+import { LifeOpsRepository } from "../src/lifeops/repository.js";
+import { LifeOpsService } from "../src/lifeops/service.js";
 import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,
@@ -20,9 +23,6 @@ import {
   getCanonicalPersonDetail,
   seedCanonicalIdentityFixture,
 } from "./helpers/lifeops-identity-merge-fixtures.js";
-import { LifeOpsRepository } from "../src/lifeops/repository.js";
-import { LifeOpsService } from "../src/lifeops/service.js";
-import { relationshipAction } from "../src/actions/relationships.js";
 
 const AGENT_ID = "lifeops-relationships-agent";
 
@@ -255,13 +255,18 @@ describe("relationships handler — real PGLite", () => {
       notes: "Project contact.",
       tags: ["work"],
       relationshipType: "contact",
-      lastContactedAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
+      lastContactedAt: new Date(
+        Date.now() - 9 * 24 * 60 * 60 * 1000,
+      ).toISOString(),
       metadata: {},
     });
 
     const result = await relationshipAction.handler!(
       runtime,
-      makeMessage(runtime, "how long has it been since I talked to Zora?") as never,
+      makeMessage(
+        runtime,
+        "how long has it been since I talked to Zora?",
+      ) as never,
       undefined,
       {
         parameters: {
@@ -292,13 +297,18 @@ describe("relationships handler — real PGLite", () => {
       notes: "Project contact.",
       tags: ["work"],
       relationshipType: "contact",
-      lastContactedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+      lastContactedAt: new Date(
+        Date.now() - 4 * 24 * 60 * 60 * 1000,
+      ).toISOString(),
       metadata: {},
     });
 
     const result = await relationshipAction.handler!(
       runtime,
-      makeMessage(runtime, "how long has it been since I talked to Mina?") as never,
+      makeMessage(
+        runtime,
+        "how long has it been since I talked to Mina?",
+      ) as never,
       undefined,
       {
         parameters: {
@@ -329,13 +339,18 @@ describe("relationships handler — real PGLite", () => {
       notes: "Project contact.",
       tags: ["work"],
       relationshipType: "contact",
-      lastContactedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+      lastContactedAt: new Date(
+        Date.now() - 6 * 24 * 60 * 60 * 1000,
+      ).toISOString(),
       metadata: {},
     });
 
     const result = await relationshipAction.handler!(
       runtime,
-      makeMessage(runtime, "how long has it been since I talked to Nadia?") as never,
+      makeMessage(
+        runtime,
+        "how long has it been since I talked to Nadia?",
+      ) as never,
       undefined,
       {
         parameters: {
@@ -366,7 +381,9 @@ describe("relationships handler — real PGLite", () => {
       notes: "Project contact.",
       tags: ["work"],
       relationshipType: "contact",
-      lastContactedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      lastContactedAt: new Date(
+        Date.now() - 2 * 24 * 60 * 60 * 1000,
+      ).toISOString(),
       metadata: {},
     });
 
@@ -397,7 +414,10 @@ describe("relationships handler — real PGLite", () => {
     try {
       const result = await relationshipAction.handler!(
         runtime,
-        makeMessage(runtime, "how long has it been since I talked to Omar?") as never,
+        makeMessage(
+          runtime,
+          "how long has it been since I talked to Omar?",
+        ) as never,
         undefined,
         { parameters: {} } as never,
         async () => {},
@@ -406,7 +426,11 @@ describe("relationships handler — real PGLite", () => {
       expect(result?.success).toBe(true);
       const data = (
         result as unknown as {
-          data?: { relationshipId?: string; days?: number | null; noop?: boolean };
+          data?: {
+            relationshipId?: string;
+            days?: number | null;
+            noop?: boolean;
+          };
         }
       ).data;
       expect(data?.noop).not.toBe(true);
@@ -427,7 +451,9 @@ describe("relationships handler — real PGLite", () => {
       notes: "Threshold test contact.",
       tags: ["work"],
       relationshipType: "contact",
-      lastContactedAt: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000).toISOString(),
+      lastContactedAt: new Date(
+        Date.now() - 16 * 24 * 60 * 60 * 1000,
+      ).toISOString(),
       metadata: { followupThresholdDays: 14 },
     });
     await service.upsertRelationship({
@@ -439,7 +465,9 @@ describe("relationships handler — real PGLite", () => {
       notes: "Threshold test contact.",
       tags: ["work"],
       relationshipType: "contact",
-      lastContactedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+      lastContactedAt: new Date(
+        Date.now() - 10 * 24 * 60 * 60 * 1000,
+      ).toISOString(),
       metadata: { followupThresholdDays: 14 },
     });
 
@@ -500,7 +528,9 @@ describe("relationships handler — real PGLite", () => {
       notes: "Loop closure contact.",
       tags: ["vendor"],
       relationshipType: "vendor",
-      lastContactedAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000).toISOString(),
+      lastContactedAt: new Date(
+        Date.now() - 21 * 24 * 60 * 60 * 1000,
+      ).toISOString(),
       metadata: {},
     });
     const followUp = await service.createFollowUp({

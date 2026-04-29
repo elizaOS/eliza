@@ -7,11 +7,7 @@
     {
       "type": "execute",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/Documents/Departments/finance"
-        ]
+        "command": ["mkdir", "-p", "/home/user/Documents/Departments/finance"]
       }
     },
     {
@@ -57,19 +53,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "nautilus",
-          "/home/user/Documents/Departments/finance"
-        ]
+        "command": ["nautilus", "/home/user/Documents/Departments/finance"]
       }
     }
   ],
   "trajectory": "trajectories/f5c13cdd-205c-4719-a562-348ae5cd1d91",
-  "related_apps": [
-    "thunderbird",
-    "os",
-    "libreoffice_calc"
-  ],
+  "related_apps": ["thunderbird", "os", "libreoffice_calc"],
   "evaluator": {
     "postconfig": [
       {

@@ -187,6 +187,7 @@ export function AppsView() {
     activeGameViewerUrl,
     appsSubTab,
     favoriteApps,
+    walletEnabled,
     recentApps,
     setTab,
     setState,
@@ -998,12 +999,13 @@ export function AppsView() {
     return filterAppsForCatalog(apps, {
       activeAppNames,
       searchQuery,
+      walletEnabled,
     });
-  }, [activeAppNames, apps, searchQuery]);
+  }, [activeAppNames, apps, searchQuery, walletEnabled]);
 
   const browseApps = useMemo(() => {
-    return filterAppsForCatalog(apps);
-  }, [apps]);
+    return filterAppsForCatalog(apps, { walletEnabled });
+  }, [apps, walletEnabled]);
 
   const handleToggleFavorite = useCallback(
     (appName: string) => {

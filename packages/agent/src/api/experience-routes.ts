@@ -28,16 +28,21 @@ type ExperienceMutationInput = Partial<
     | "learning"
     | "domain"
     | "tags"
+    | "keywords"
+    | "associatedEntityIds"
     | "confidence"
     | "importance"
     | "relatedExperiences"
+    | "mergedExperienceIds"
     | "supersedes"
     | "previousBelief"
     | "correctedBelief"
   >
 >;
 
-type ExperienceResponse = Omit<Experience, "embedding">;
+type ExperienceResponse = Omit<Experience, "embedding"> & {
+  embeddingDimensions?: number;
+};
 
 export interface ExperienceRouteContext extends RouteRequestContext {
   runtime: AgentRuntime | null;
@@ -238,6 +243,21 @@ function parseExperienceMutationBody(
     parsed.tags = tags.value;
   }
 
+  const keywords = parseStringArrayField(body.keywords, "keywords");
+  if (keywords.error) return { error: keywords.error };
+  if (keywords.value !== undefined) {
+    parsed.keywords = keywords.value;
+  }
+
+  const associatedEntityIds = parseStringArrayField(
+    body.associatedEntityIds,
+    "associatedEntityIds",
+  );
+  if (associatedEntityIds.error) return { error: associatedEntityIds.error };
+  if (associatedEntityIds.value !== undefined) {
+    parsed.associatedEntityIds = associatedEntityIds.value as UUID[];
+  }
+
   const relatedExperiences = parseStringArrayField(
     body.relatedExperiences,
     "relatedExperiences",
@@ -245,6 +265,15 @@ function parseExperienceMutationBody(
   if (relatedExperiences.error) return { error: relatedExperiences.error };
   if (relatedExperiences.value !== undefined) {
     parsed.relatedExperiences = relatedExperiences.value as UUID[];
+  }
+
+  const mergedExperienceIds = parseStringArrayField(
+    body.mergedExperienceIds,
+    "mergedExperienceIds",
+  );
+  if (mergedExperienceIds.error) return { error: mergedExperienceIds.error };
+  if (mergedExperienceIds.value !== undefined) {
+    parsed.mergedExperienceIds = mergedExperienceIds.value as UUID[];
   }
 
   const confidence = parseScoreField(body.confidence, "confidence");
@@ -400,8 +429,14 @@ function toExperienceResponse(experience: Experience): ExperienceResponse {
   return {
     ...rest,
     tags: [...experience.tags],
+    keywords: [...experience.keywords],
+    associatedEntityIds: [...experience.associatedEntityIds],
+    embeddingDimensions: experience.embedding?.length,
     relatedExperiences: experience.relatedExperiences
       ? [...experience.relatedExperiences]
+      : undefined,
+    mergedExperienceIds: experience.mergedExperienceIds
+      ? [...experience.mergedExperienceIds]
       : undefined,
   };
 }
@@ -482,6 +517,49 @@ export async function handleExperienceRoutes(
     }
 
     error(res, "Method not allowed.", 405);
+    return true;
+  }
+
+  if (matchedPath.suffix === "/graph") {
+    if (method !== "GET") {
+      error(res, "Method not allowed.", 405);
+      return true;
+    }
+
+    const parsedQuery = parseExperienceQuery(url);
+    if (parsedQuery.error) {
+      error(res, parsedQuery.error, 400);
+      return true;
+    }
+
+    const graph = await experienceService.getExperienceGraph(parsedQuery.query);
+    json(res, { data: graph }, 200);
+    return true;
+  }
+
+  if (matchedPath.suffix === "/maintenance") {
+    if (method !== "POST") {
+      error(res, "Method not allowed.", 405);
+      return true;
+    }
+
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) {
+      return true;
+    }
+
+    const limit =
+      typeof body.limit === "number" && Number.isFinite(body.limit)
+        ? Math.max(
+            1,
+            Math.min(EXPERIENCE_LIST_MAX_LIMIT, Math.floor(body.limit)),
+          )
+        : undefined;
+    const result = await experienceService.consolidateDuplicateExperiences({
+      deleteDuplicates: body.deleteDuplicates === true,
+      limit,
+    });
+    json(res, { data: result }, 200);
     return true;
   }
 

@@ -13,12 +13,7 @@
  * {@link readPlannerDispatchLog} set that every dispatch writes to.
  */
 
-import type {
-  IAgentRuntime,
-  Memory,
-  Task,
-  UUID,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, Task, UUID } from "@elizaos/core";
 import { describe, expect, test } from "vitest";
 import {
   executeProactiveTask,
@@ -28,19 +23,19 @@ import {
   executeFollowupTrackerTick,
   reconcileFollowupsOnce,
 } from "../src/followup/followup-tracker.js";
-import { executeLifeOpsSchedulerTask } from "../src/lifeops/runtime.js";
-import {
-  APPROVAL_QUEUE_SERVICE_NAME,
-  readPlannerDispatchLog,
-  resetPlannerDispatchLog,
-  type PlannerDispatchResult,
-} from "../src/lifeops/background-planner-dispatch.js";
 import type {
   ApprovalEnqueueInput,
   ApprovalQueue,
   ApprovalRequest,
 } from "../src/lifeops/approval-queue.types.js";
 import { KNOWN_JOB_KINDS } from "../src/lifeops/background-planner.js";
+import {
+  APPROVAL_QUEUE_SERVICE_NAME,
+  type PlannerDispatchResult,
+  readPlannerDispatchLog,
+  resetPlannerDispatchLog,
+} from "../src/lifeops/background-planner-dispatch.js";
+import { executeLifeOpsSchedulerTask } from "../src/lifeops/runtime.js";
 
 // ---------------------------------------------------------------------------
 // In-memory approval queue double
@@ -224,7 +219,12 @@ function sensitivePlannerResponse(
 }
 
 function noopPlannerResponse(reason = "nothing to do"): object {
-  return { action: "noop", channel: "internal", requiresApproval: false, reason };
+  return {
+    action: "noop",
+    channel: "internal",
+    requiresApproval: false,
+    reason,
+  };
 }
 
 // ---------------------------------------------------------------------------

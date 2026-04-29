@@ -1,9 +1,9 @@
+import { getBrandConfig } from "./brand-config";
 import type {
   AllPermissionsState,
   PermissionState,
   SystemPermissionId,
 } from "./native/permissions-shared";
-import { getBrandConfig } from "./brand-config";
 
 export const RUNTIME_PERMISSION_IDS = ["website-blocking"] as const;
 

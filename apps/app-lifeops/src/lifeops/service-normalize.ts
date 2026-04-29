@@ -1,7 +1,4 @@
-import {
-  type IAgentRuntime,
-  stringToUuid,
-} from "@elizaos/core";
+import { type IAgentRuntime, stringToUuid } from "@elizaos/core";
 import type {
   LifeOpsContextPolicy,
   LifeOpsDomain,
@@ -18,9 +15,9 @@ import {
   LIFEOPS_SUBJECT_TYPES,
   LIFEOPS_VISIBILITY_SCOPES,
 } from "../contracts/index.js";
-import { LifeOpsServiceError } from "./service-types.js";
-import { LIFEOPS_TIME_ZONE_ALIASES } from "./service-constants.js";
 import { isValidTimeZone, resolveDefaultTimeZone } from "./defaults.js";
+import { LIFEOPS_TIME_ZONE_ALIASES } from "./service-constants.js";
+import { LifeOpsServiceError } from "./service-types.js";
 
 export function lifeOpsErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -173,7 +170,10 @@ export function normalizeOptionalMinutes(
   return minutes;
 }
 
-export function normalizePositiveInteger(value: unknown, field: string): number {
+export function normalizePositiveInteger(
+  value: unknown,
+  field: string,
+): number {
   const number = Math.trunc(normalizeFiniteNumber(value, field));
   if (number <= 0) {
     fail(400, `${field} must be greater than zero`);
@@ -287,7 +287,9 @@ export function normalizePhoneNumber(value: unknown, field: string): string {
   fail(400, `${field} must be a valid phone number`);
 }
 
-export function normalizeReminderUrgency(value: unknown): LifeOpsReminderUrgency {
+export function normalizeReminderUrgency(
+  value: unknown,
+): LifeOpsReminderUrgency {
   if (typeof value !== "string" || value.trim().length === 0) {
     return "medium";
   }

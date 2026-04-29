@@ -20,14 +20,32 @@
       "description": "10-message back-and-forth conversation measuring state growth",
       "messages": [
         { "content": "Hello BenchmarkAgent, let's talk.", "role": "user" },
-        { "content": "BenchmarkAgent, what do you think about performance?", "role": "user" },
-        { "content": "BenchmarkAgent, can you explain latency?", "role": "user" },
+        {
+          "content": "BenchmarkAgent, what do you think about performance?",
+          "role": "user"
+        },
+        {
+          "content": "BenchmarkAgent, can you explain latency?",
+          "role": "user"
+        },
         { "content": "BenchmarkAgent, how about throughput?", "role": "user" },
-        { "content": "BenchmarkAgent, what about memory usage?", "role": "user" },
-        { "content": "BenchmarkAgent, tell me about concurrency.", "role": "user" },
-        { "content": "BenchmarkAgent, how does state composition work?", "role": "user" },
+        {
+          "content": "BenchmarkAgent, what about memory usage?",
+          "role": "user"
+        },
+        {
+          "content": "BenchmarkAgent, tell me about concurrency.",
+          "role": "user"
+        },
+        {
+          "content": "BenchmarkAgent, how does state composition work?",
+          "role": "user"
+        },
         { "content": "BenchmarkAgent, what are providers?", "role": "user" },
-        { "content": "BenchmarkAgent, explain action dispatch.", "role": "user" },
+        {
+          "content": "BenchmarkAgent, explain action dispatch.",
+          "role": "user"
+        },
         { "content": "BenchmarkAgent, summarize everything.", "role": "user" }
       ],
       "config": {
@@ -114,7 +132,10 @@
       "name": "With Action Execution",
       "description": "Messages that trigger REPLY action execution",
       "messages": [
-        { "content": "BenchmarkAgent, please reply to this message.", "role": "user" },
+        {
+          "content": "BenchmarkAgent, please reply to this message.",
+          "role": "user"
+        },
         { "content": "BenchmarkAgent, send another reply.", "role": "user" },
         { "content": "BenchmarkAgent, one more reply please.", "role": "user" }
       ],
@@ -160,7 +181,10 @@
       "name": "100 Providers",
       "description": "Message processing with 100 registered dummy providers",
       "messages": [
-        { "content": "BenchmarkAgent, test with 100 providers.", "role": "user" }
+        {
+          "content": "BenchmarkAgent, test with 100 providers.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": false,
@@ -175,7 +199,10 @@
       "name": "100 History Messages",
       "description": "Process message with 100 pre-populated memory entries",
       "messages": [
-        { "content": "BenchmarkAgent, process with 100 history.", "role": "user" }
+        {
+          "content": "BenchmarkAgent, process with 100 history.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": false,
@@ -190,7 +217,10 @@
       "name": "1000 History Messages",
       "description": "Process message with 1000 pre-populated memory entries",
       "messages": [
-        { "content": "BenchmarkAgent, process with 1000 history.", "role": "user" }
+        {
+          "content": "BenchmarkAgent, process with 1000 history.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": false,
@@ -205,7 +235,10 @@
       "name": "10000 History Messages",
       "description": "Process message with 10000 pre-populated memory entries",
       "messages": [
-        { "content": "BenchmarkAgent, process with 10000 history.", "role": "user" }
+        {
+          "content": "BenchmarkAgent, process with 10000 history.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": false,
@@ -283,7 +316,10 @@
       "name": "Multi-Step Processing",
       "description": "Multi-step mode with mock LLM (no real LLM calls)",
       "messages": [
-        { "content": "BenchmarkAgent, run a multi-step task for me.", "role": "user" }
+        {
+          "content": "BenchmarkAgent, run a multi-step task for me.",
+          "role": "user"
+        }
       ],
       "config": {
         "checkShouldRespond": false,

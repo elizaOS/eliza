@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { spawn } from "node:child_process";
 /**
  * elizaOS App Benchmark Orchestrator
  *
@@ -14,9 +15,16 @@
  *   bun run benchmarks/app-eval/run-benchmarks.ts --server           # use server mode (boot once)
  *   bun run benchmarks/app-eval/run-benchmarks.ts --timeout 60000    # custom timeout per task
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, symlinkSync, unlinkSync, lstatSync } from "node:fs";
-import { resolve, join, dirname } from "node:path";
-import { spawn } from "node:child_process";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -205,7 +213,9 @@ function loadTasks(args: CliArgs): TaskDefinition[] {
   if (args.taskId) {
     const filtered = tasks.filter((t) => t.id === args.taskId);
     if (filtered.length === 0) {
-      console.error(`[orchestrator] Task ${args.taskId} not found in loaded definitions`);
+      console.error(
+        `[orchestrator] Task ${args.taskId} not found in loaded definitions`,
+      );
       process.exit(1);
     }
     return filtered;
@@ -251,18 +261,26 @@ function runSingleTask(
   timeoutMs: number,
 ): Promise<BenchmarkResult> {
   return new Promise((resolvePromise) => {
-    const taskJson = JSON.stringify({ id: task.id, type: task.type, prompt: task.prompt });
+    const taskJson = JSON.stringify({
+      id: task.id,
+      type: task.type,
+      prompt: task.prompt,
+    });
     const binPath = join(REPO_ROOT, "packages", "agent", "src", "bin.ts");
 
-    const child = spawn("bun", ["run", binPath, "benchmark", "--timeout", String(timeoutMs)], {
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        ELIZA_HEADLESS: "1",
-        LOG_LEVEL: "error",
+    const child = spawn(
+      "bun",
+      ["run", binPath, "benchmark", "--timeout", String(timeoutMs)],
+      {
+        cwd: REPO_ROOT,
+        env: {
+          ...process.env,
+          ELIZA_HEADLESS: "1",
+          LOG_LEVEL: "error",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
       },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    );
 
     let stdout = "";
     let stderr = "";
@@ -295,9 +313,7 @@ function runSingleTask(
           try {
             resolvePromise(JSON.parse(line));
             return;
-          } catch {
-            continue;
-          }
+          } catch {}
         }
       }
 
@@ -307,9 +323,10 @@ function runSingleTask(
         actions_taken: [],
         duration_ms: 0,
         success: false,
-        error: code !== 0
-          ? `Process exited with code ${code}. stderr: ${stderr.slice(0, 500)}`
-          : "No JSON result found in output",
+        error:
+          code !== 0
+            ? `Process exited with code ${code}. stderr: ${stderr.slice(0, 500)}`
+            : "No JSON result found in output",
       });
     });
 
@@ -380,7 +397,11 @@ async function runTasksServerMode(
           if (taskIndex < tasks.length) {
             const nextTask = tasks[taskIndex];
             child.stdin.write(
-              JSON.stringify({ id: nextTask.id, type: nextTask.type, prompt: nextTask.prompt }) + "\n",
+              JSON.stringify({
+                id: nextTask.id,
+                type: nextTask.type,
+                prompt: nextTask.prompt,
+              }) + "\n",
             );
           } else {
             // All tasks sent and results received
@@ -399,10 +420,13 @@ async function runTasksServerMode(
     }
 
     // Total timeout: startup + all tasks
-    const totalTimeout = setTimeout(() => {
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 5_000);
-    }, 90_000 + timeoutMs * tasks.length);
+    const totalTimeout = setTimeout(
+      () => {
+        child.kill("SIGTERM");
+        setTimeout(() => child.kill("SIGKILL"), 5_000);
+      },
+      90_000 + timeoutMs * tasks.length,
+    );
 
     child.on("close", () => {
       clearTimeout(totalTimeout);
@@ -452,7 +476,11 @@ async function runTasksServerMode(
     if (tasks.length > 0) {
       const firstTask = tasks[0];
       child.stdin.write(
-        JSON.stringify({ id: firstTask.id, type: firstTask.type, prompt: firstTask.prompt }) + "\n",
+        JSON.stringify({
+          id: firstTask.id,
+          type: firstTask.type,
+          prompt: firstTask.prompt,
+        }) + "\n",
       );
     } else {
       child.stdin.end();
@@ -518,7 +546,9 @@ function generateSummary(
 ): RunSummary {
   const completedAt = new Date();
   const completed = results.filter((r) => r.success);
-  const failed = results.filter((r) => !r.success && !r.error?.includes("Timeout"));
+  const failed = results.filter(
+    (r) => !r.success && !r.error?.includes("Timeout"),
+  );
   const timedOut = results.filter((r) => r.error?.includes("Timeout"));
 
   const buildCategoryScore = (type: string): CategoryScore | undefined => {
@@ -542,7 +572,12 @@ function generateSummary(
     const successCount = taskScores.filter((t) => t.success).length;
 
     return {
-      avg: scores.length > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : 0,
+      avg:
+        scores.length > 0
+          ? Math.round(
+              (scores.reduce((a, b) => a + b, 0) / scores.length) * 10,
+            ) / 10
+          : 0,
       min: scores.length > 0 ? Math.min(...scores) : 0,
       max: scores.length > 0 ? Math.max(...scores) : 0,
       total: categoryResults.length,
@@ -561,7 +596,9 @@ function generateSummary(
   ];
   const overallScore =
     allScores.length > 0
-      ? Math.round((allScores.reduce((a, b) => a + b, 0) / allScores.length) * 10) / 10
+      ? Math.round(
+          (allScores.reduce((a, b) => a + b, 0) / allScores.length) * 10,
+        ) / 10
       : 0;
 
   const durations = results.map((r) => r.duration_ms).filter((d) => d > 0);
@@ -596,22 +633,35 @@ function printReport(summary: RunSummary): void {
   console.log("  APP BENCHMARK RESULTS");
   console.log("=".repeat(60));
   console.log(`  Run ID:     ${summary.run_id}`);
-  console.log(`  Duration:   ${((new Date(summary.completed_at).getTime() - new Date(summary.started_at).getTime()) / 1000).toFixed(1)}s`);
-  console.log(`  Tasks:      ${summary.total_tasks} total, ${summary.completed} passed, ${summary.failed} failed, ${summary.timed_out} timed out`);
-  console.log(`  Avg time:   ${(summary.avg_duration_ms / 1000).toFixed(1)}s per task`);
+  console.log(
+    `  Duration:   ${((new Date(summary.completed_at).getTime() - new Date(summary.started_at).getTime()) / 1000).toFixed(1)}s`,
+  );
+  console.log(
+    `  Tasks:      ${summary.total_tasks} total, ${summary.completed} passed, ${summary.failed} failed, ${summary.timed_out} timed out`,
+  );
+  console.log(
+    `  Avg time:   ${(summary.avg_duration_ms / 1000).toFixed(1)}s per task`,
+  );
   console.log("-".repeat(60));
 
   for (const [category, scores] of Object.entries(summary.scores)) {
     if (!scores) continue;
     console.log(`\n  ${category.toUpperCase()}`);
-    console.log(`  Score: avg=${scores.avg} min=${scores.min} max=${scores.max}`);
+    console.log(
+      `  Score: avg=${scores.avg} min=${scores.min} max=${scores.max}`,
+    );
     console.log(`  Tasks: ${scores.completed}/${scores.total} passed`);
 
     for (const task of scores.tasks) {
       const status = task.success ? "PASS" : "FAIL";
-      const dur = task.duration_ms > 0 ? `${(task.duration_ms / 1000).toFixed(1)}s` : "N/A";
+      const dur =
+        task.duration_ms > 0
+          ? `${(task.duration_ms / 1000).toFixed(1)}s`
+          : "N/A";
       const err = task.error ? ` (${task.error.slice(0, 60)})` : "";
-      console.log(`    [${status}] ${task.id.padEnd(16)} score=${task.score.toFixed(1).padStart(4)}  ${dur.padStart(6)}${err}`);
+      console.log(
+        `    [${status}] ${task.id.padEnd(16)} score=${task.score.toFixed(1).padStart(4)}  ${dur.padStart(6)}${err}`,
+      );
     }
   }
 
@@ -629,7 +679,9 @@ async function main(): Promise<void> {
   const tasks = loadTasks(args);
 
   if (tasks.length === 0) {
-    console.error("[orchestrator] No tasks found. Check app-eval/tasks/ directory.");
+    console.error(
+      "[orchestrator] No tasks found. Check app-eval/tasks/ directory.",
+    );
     process.exit(1);
   }
 
@@ -638,7 +690,9 @@ async function main(): Promise<void> {
   if (args.dryRun) {
     console.log("\n  DRY RUN — tasks that would be executed:\n");
     for (const task of tasks) {
-      console.log(`  ${task.id.padEnd(16)} type=${task.type.padEnd(10)} difficulty=${(task.difficulty ?? "?").padEnd(8)} prompt="${task.prompt.slice(0, 80)}..."`);
+      console.log(
+        `  ${task.id.padEnd(16)} type=${task.type.padEnd(10)} difficulty=${(task.difficulty ?? "?").padEnd(8)} prompt="${task.prompt.slice(0, 80)}..."`,
+      );
     }
     console.log(`\n  Total: ${tasks.length} tasks`);
     process.exit(0);
@@ -654,16 +708,22 @@ async function main(): Promise<void> {
     console.log("[orchestrator] Using server mode (single runtime boot)");
     allResults = await runTasksServerMode(tasks, args.timeout, args.verbose);
   } else {
-    console.log("[orchestrator] Using single-task mode (separate process per task)");
+    console.log(
+      "[orchestrator] Using single-task mode (separate process per task)",
+    );
     allResults = [];
     for (let i = 0; i < tasks.length; i++) {
       const task = tasks[i];
-      console.log(`[orchestrator] Running ${task.id} (${i + 1}/${tasks.length})...`);
+      console.log(
+        `[orchestrator] Running ${task.id} (${i + 1}/${tasks.length})...`,
+      );
       const result = await runSingleTask(task, args.timeout);
       allResults.push(result);
 
       const status = result.success ? "PASS" : "FAIL";
-      console.log(`  [${status}] ${result.id} (${result.duration_ms}ms)${result.error ? ` — ${result.error.slice(0, 80)}` : ""}`);
+      console.log(
+        `  [${status}] ${result.id} (${result.duration_ms}ms)${result.error ? ` — ${result.error.slice(0, 80)}` : ""}`,
+      );
 
       // Persist individual result immediately
       const resultPath = join(runDir, `${task.id}.json`);
@@ -700,7 +760,9 @@ async function main(): Promise<void> {
   printReport(summary);
 
   console.log(`[orchestrator] Results written to ${runDir}`);
-  console.log(`[orchestrator] Run evaluator: python3 app-eval/evaluate.py ${runDir}`);
+  console.log(
+    `[orchestrator] Run evaluator: python3 app-eval/evaluate.py ${runDir}`,
+  );
 
   // Exit non-zero when tasks failed or timed out
   process.exit(summary.failed > 0 || summary.timed_out > 0 ? 1 : 0);

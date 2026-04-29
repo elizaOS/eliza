@@ -7,21 +7,13 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/Desktop/snake"
-        ]
+        "command": ["mkdir", "-p", "/home/user/Desktop/snake"]
       }
     },
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "pip",
-          "install",
-          "pygame"
-        ]
+        "command": ["pip", "install", "pygame"]
       }
     },
     {
@@ -50,18 +42,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code",
-          "/home/user/Desktop/snake"
-        ]
+        "command": ["code", "/home/user/Desktop/snake"]
       }
     }
   ],
   "trajectory": "trajectories/26150609-0da3-4a7d-8868-0faf9c5f01bb",
-  "related_apps": [
-    "vs_code",
-    "os"
-  ],
+  "related_apps": ["vs_code", "os"],
   "evaluator": {
     "postconfig": [],
     "func": "check_python_file_by_test_suite",
@@ -73,12 +59,7 @@
         "/home/user/Desktop/snake/settings.py",
         "/home/user/Desktop/snake/snake.py"
       ],
-      "dest": [
-        "food.py",
-        "main.py",
-        "settings.py",
-        "snake.py"
-      ],
+      "dest": ["food.py", "main.py", "settings.py", "snake.py"],
       "multi": true
     },
     "expected": {

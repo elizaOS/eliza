@@ -29,18 +29,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "gimp",
-          "/home/user/Desktop/character.png"
-        ]
+        "command": ["gimp", "/home/user/Desktop/character.png"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp",
-    "vs_code"
-  ],
+  "related_apps": ["gimp", "vs_code"],
   "evaluator": {
     "func": [
       "check_structure_sim_with_threshold",

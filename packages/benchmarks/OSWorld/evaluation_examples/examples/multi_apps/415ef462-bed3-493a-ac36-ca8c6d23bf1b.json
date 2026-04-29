@@ -83,27 +83,18 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "thunderbird"
-        ]
+        "command": ["thunderbird"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "nautilus",
-          "/home/user/Documents/Finance"
-        ]
+        "command": ["nautilus", "/home/user/Documents/Finance"]
       }
     }
   ],
   "trajectory": "trajectories/415ef462-bed3-493a-ac36-ca8c6d23bf1b",
-  "related_apps": [
-    "thunderbird",
-    "libreoffice_calc",
-    "os"
-  ],
+  "related_apps": ["thunderbird", "libreoffice_calc", "os"],
   "evaluator": {
     "postconfig": [
       {
@@ -158,10 +149,7 @@
         }
       }
     ],
-    "func": [
-      "compare_table",
-      "check_list"
-    ],
+    "func": ["compare_table", "check_list"],
     "result": [
       {
         "type": "vm_file",
@@ -182,9 +170,7 @@
       {
         "type": "rule",
         "rules": {
-          "unexpect": [
-            ".+"
-          ]
+          "unexpect": [".+"]
         }
       }
     ],

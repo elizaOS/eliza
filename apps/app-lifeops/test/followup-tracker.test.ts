@@ -1,19 +1,19 @@
-import { describe, expect, test } from "vitest";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import {
-  FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
-  FOLLOWUP_MEMORY_TABLE,
-  FOLLOWUP_TRACKER_TASK_NAME,
-  __resetFollowupTrackerForTests,
-  computeOverdueFollowups,
-  reconcileFollowupsOnce,
-  registerFollowupTrackerWorker,
-  type ContactInfo,
-  type RelationshipsServiceLike,
-} from "../src/followup/index.js";
+import { describe, expect, test } from "vitest";
 import { listOverdueFollowupsAction } from "../src/followup/actions/listOverdueFollowups.js";
 import { markFollowupDoneAction } from "../src/followup/actions/markFollowupDone.js";
 import { setFollowupThresholdAction } from "../src/followup/actions/setFollowupThreshold.js";
+import {
+  __resetFollowupTrackerForTests,
+  type ContactInfo,
+  computeOverdueFollowups,
+  FOLLOWUP_DEFAULT_THRESHOLD_DAYS,
+  FOLLOWUP_MEMORY_TABLE,
+  FOLLOWUP_TRACKER_TASK_NAME,
+  type RelationshipsServiceLike,
+  reconcileFollowupsOnce,
+  registerFollowupTrackerWorker,
+} from "../src/followup/index.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000000" as UUID;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -303,16 +303,11 @@ describe("MARK_FOLLOWUP_DONE action", () => {
     });
     const handler = markFollowupDoneAction.handler;
     if (!handler) throw new Error("handler missing");
-    const result = await handler(
-      fixture.runtime,
-      {} as Memory,
-      undefined,
-      {
-        parameters: {
-          contactId: "11111111-1111-1111-1111-111111111111",
-        },
-      } as never,
-    );
+    const result = await handler(fixture.runtime, {} as Memory, undefined, {
+      parameters: {
+        contactId: "11111111-1111-1111-1111-111111111111",
+      },
+    } as never);
     const actionResult = result as {
       success: boolean;
       data?: { lastContactedAt?: string };
@@ -344,12 +339,9 @@ describe("MARK_FOLLOWUP_DONE action", () => {
     });
     const handler = markFollowupDoneAction.handler;
     if (!handler) throw new Error("handler missing");
-    const result = await handler(
-      fixture.runtime,
-      {} as Memory,
-      undefined,
-      { parameters: { contactName: "Alex" } } as never,
-    );
+    const result = await handler(fixture.runtime, {} as Memory, undefined, {
+      parameters: { contactName: "Alex" },
+    } as never);
     const actionResult = result as {
       success: boolean;
       text: string;
@@ -381,12 +373,9 @@ describe("MARK_FOLLOWUP_DONE action", () => {
     const fixture = makeFixture({ contacts: [] });
     const handler = markFollowupDoneAction.handler;
     if (!handler) throw new Error("handler missing");
-    const result = await handler(
-      fixture.runtime,
-      {} as Memory,
-      undefined,
-      { parameters: {} } as never,
-    );
+    const result = await handler(fixture.runtime, {} as Memory, undefined, {
+      parameters: {},
+    } as never);
     const actionResult = result as { success: boolean; text: string };
     expect(actionResult.success).toBe(false);
     expect(actionResult.text).toContain("requires");
@@ -404,17 +393,12 @@ describe("SET_FOLLOWUP_THRESHOLD action", () => {
     });
     const handler = setFollowupThresholdAction.handler;
     if (!handler) throw new Error("handler missing");
-    const result = await handler(
-      fixture.runtime,
-      {} as Memory,
-      undefined,
-      {
-        parameters: {
-          contactId: "11111111-1111-1111-1111-111111111111",
-          thresholdDays: 14,
-        },
-      } as never,
-    );
+    const result = await handler(fixture.runtime, {} as Memory, undefined, {
+      parameters: {
+        contactId: "11111111-1111-1111-1111-111111111111",
+        thresholdDays: 14,
+      },
+    } as never);
     const actionResult = result as {
       success: boolean;
       data?: { thresholdDays?: number };
@@ -437,17 +421,12 @@ describe("SET_FOLLOWUP_THRESHOLD action", () => {
     });
     const handler = setFollowupThresholdAction.handler;
     if (!handler) throw new Error("handler missing");
-    const result = await handler(
-      fixture.runtime,
-      {} as Memory,
-      undefined,
-      {
-        parameters: {
-          contactId: "11111111-1111-1111-1111-111111111111",
-          thresholdDays: 0,
-        },
-      } as never,
-    );
+    const result = await handler(fixture.runtime, {} as Memory, undefined, {
+      parameters: {
+        contactId: "11111111-1111-1111-1111-111111111111",
+        thresholdDays: 0,
+      },
+    } as never);
     const actionResult = result as { success: boolean; text: string };
     expect(actionResult.success).toBe(false);
     expect(actionResult.text).toContain("positive");

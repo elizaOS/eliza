@@ -423,7 +423,9 @@ export async function stageAndroidAgentRuntime({
   const jniLibsDir = path.join(androidDir, "app", "src", "main", "jniLibs");
   if (fs.existsSync(jniLibsDir)) {
     fs.rmSync(jniLibsDir, { recursive: true, force: true });
-    tlog("Removed stale jniLibs/ tree (runtime now ships under assets/agent/).");
+    tlog(
+      "Removed stale jniLibs/ tree (runtime now ships under assets/agent/).",
+    );
   }
 
   let stagedCount = 0;

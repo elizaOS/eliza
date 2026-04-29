@@ -31,16 +31,16 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  type CreateDuffelOrderRequest,
   createOrder,
   createPayment,
   DuffelConfigError,
+  type DuffelOffer,
+  getOffer,
   getOrder,
   readDuffelConfigFromEnv,
-  searchFlights,
-  getOffer,
-  type CreateDuffelOrderRequest,
   type SearchFlightsRequest,
-  type DuffelOffer,
+  searchFlights,
 } from "../src/lifeops/travel-adapters/duffel.js";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -113,7 +113,11 @@ describe("readDuffelConfigFromEnv (cloud mode default)", () => {
 describe("searchFlights — config error", () => {
   it("throws DuffelConfigError when no config passed and env is empty", async () => {
     await expect(
-      searchFlights({ origin: "JFK", destination: "LHR", departureDate: "2025-06-01" }),
+      searchFlights({
+        origin: "JFK",
+        destination: "LHR",
+        departureDate: "2025-06-01",
+      }),
     ).rejects.toThrow(DuffelConfigError);
   });
 });
@@ -127,7 +131,11 @@ describe("searchFlights — network error handling", () => {
     process.env.DUFFEL_API_KEY = "fake-key";
 
     await expect(
-      searchFlights({ origin: "JFK", destination: "LHR", departureDate: "2025-06-01" }),
+      searchFlights({
+        origin: "JFK",
+        destination: "LHR",
+        departureDate: "2025-06-01",
+      }),
     ).rejects.toThrow("Network failure");
   });
 
@@ -143,7 +151,11 @@ describe("searchFlights — network error handling", () => {
     process.env.DUFFEL_API_KEY = "bad-key";
 
     await expect(
-      searchFlights({ origin: "JFK", destination: "LHR", departureDate: "2025-06-01" }),
+      searchFlights({
+        origin: "JFK",
+        destination: "LHR",
+        departureDate: "2025-06-01",
+      }),
     ).rejects.toThrow("401");
   });
 
@@ -153,7 +165,14 @@ describe("searchFlights — network error handling", () => {
       total_amount: "299.50",
       total_currency: "USD",
       expires_at: "2025-05-01T12:00:00Z",
-      passengers: [{ id: "pas_123", type: "adult", given_name: "Tony", family_name: "Stark" }],
+      passengers: [
+        {
+          id: "pas_123",
+          type: "adult",
+          given_name: "Tony",
+          family_name: "Stark",
+        },
+      ],
       payment_requirements: {
         requires_instant_payment: false,
         price_guarantee_expires_at: "2025-05-01T18:00:00Z",
@@ -316,7 +335,9 @@ describe("createOrder", () => {
                   ],
                 },
               ],
-              passengers: [{ id: "pas_123", given_name: "Tony", family_name: "Stark" }],
+              passengers: [
+                { id: "pas_123", given_name: "Tony", family_name: "Stark" },
+              ],
               payment_status: {
                 awaiting_payment: true,
                 payment_required_by: "2025-05-02T18:00:00Z",
@@ -333,7 +354,11 @@ describe("createOrder", () => {
     const order = await createOrder(baseRequest);
 
     const body = capturedBody as {
-      data: { type: string; selected_offers: string[]; passengers: Array<Record<string, unknown>> };
+      data: {
+        type: string;
+        selected_offers: string[];
+        passengers: Array<Record<string, unknown>>;
+      };
     };
     expect(body.data.type).toBe("hold");
     expect(body.data.selected_offers).toEqual(["off_123"]);
@@ -382,7 +407,9 @@ describe("getOrder", () => {
                 ],
               },
             ],
-            passengers: [{ id: "pas_123", given_name: "Tony", family_name: "Stark" }],
+            passengers: [
+              { id: "pas_123", given_name: "Tony", family_name: "Stark" },
+            ],
             payment_status: {
               awaiting_payment: false,
               payment_required_by: "2025-05-02T18:00:00Z",
@@ -441,7 +468,10 @@ describe("createPayment", () => {
     });
 
     const body = capturedBody as {
-      data: { order_id: string; payment: { amount: string; currency: string; type: string } };
+      data: {
+        order_id: string;
+        payment: { amount: string; currency: string; type: string };
+      };
     };
     expect(body.data.order_id).toBe("ord_123");
     expect(body.data.payment.type).toBe("balance");
@@ -470,7 +500,11 @@ describe.skipIf(!LIVE_API_KEY)("searchFlights — live Duffel", () => {
       passengers: 1,
     };
 
-    const result = await searchFlights(request, { mode: "direct", apiKey: LIVE_API_KEY!, cloudRelayBaseUrl: null });
+    const result = await searchFlights(request, {
+      mode: "direct",
+      apiKey: LIVE_API_KEY!,
+      cloudRelayBaseUrl: null,
+    });
 
     expect(typeof result.offerRequestId).toBe("string");
     expect(result.offers.length).toBeGreaterThan(0);
@@ -492,10 +526,18 @@ describe.skipIf(!LIVE_API_KEY)("searchFlights — live Duffel", () => {
       })(),
     };
 
-    const { offers } = await searchFlights(request, { mode: "direct", apiKey: LIVE_API_KEY!, cloudRelayBaseUrl: null });
+    const { offers } = await searchFlights(request, {
+      mode: "direct",
+      apiKey: LIVE_API_KEY!,
+      cloudRelayBaseUrl: null,
+    });
     expect(offers.length).toBeGreaterThan(0);
 
-    const retrieved = await getOffer(offers[0].id, { mode: "direct", apiKey: LIVE_API_KEY!, cloudRelayBaseUrl: null });
+    const retrieved = await getOffer(offers[0].id, {
+      mode: "direct",
+      apiKey: LIVE_API_KEY!,
+      cloudRelayBaseUrl: null,
+    });
     expect(retrieved.id).toBe(offers[0].id);
     expect(retrieved.totalAmount).toBeDefined();
   });

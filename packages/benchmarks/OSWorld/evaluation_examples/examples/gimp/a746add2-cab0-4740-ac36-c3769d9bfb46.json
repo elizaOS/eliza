@@ -18,17 +18,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "gimp",
-          "/home/user/Desktop/dog_with_background.png"
-        ]
+        "command": ["gimp", "/home/user/Desktop/dog_with_background.png"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp"
-  ],
+  "related_apps": ["gimp"],
   "evaluator": {
     "postconfig": [
       {
@@ -67,14 +62,8 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "include": [
-          "filters-vignette"
-        ],
-        "exclude": [
-          "error",
-          "failed",
-          "not found"
-        ]
+        "include": ["filters-vignette"],
+        "exclude": ["error", "failed", "not found"]
       }
     }
   },

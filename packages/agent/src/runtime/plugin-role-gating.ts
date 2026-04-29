@@ -59,7 +59,7 @@ const ROLE_GATED_PLUGINS: Readonly<Record<string, RoleGate>> = {
   // (no dedicated `secrets` plugin name to gate against).
   "plugin-manager": "owner",
 
-  // Trust — policy / trust signals (matches plugin `name` from plugin-trust)
+  // Trust — policy / trust signals (built-in trust capability `name`)
   trust: "admin",
 
   // Shell — arbitrary command execution

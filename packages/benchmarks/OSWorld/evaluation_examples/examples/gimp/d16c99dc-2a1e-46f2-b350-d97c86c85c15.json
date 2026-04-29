@@ -30,9 +30,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp"
-  ],
+  "related_apps": ["gimp"],
   "evaluator": {
     "postconfig": [
       {
@@ -90,10 +88,7 @@
         }
       }
     ],
-    "func": [
-      "check_image_size",
-      "check_structure_sim_resized"
-    ],
+    "func": ["check_image_size", "check_structure_sim_resized"],
     "conj": "and",
     "expected": [
       {

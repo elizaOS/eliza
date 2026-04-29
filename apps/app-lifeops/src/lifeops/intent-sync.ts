@@ -1,11 +1,6 @@
 import crypto from "node:crypto";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  executeRawSql,
-  parseJsonRecord,
-  sqlText,
-  toText,
-} from "./sql.js";
+import { executeRawSql, parseJsonRecord, sqlText, toText } from "./sql.js";
 
 /**
  * Local intent store (formerly called "cross-device intent sync").
@@ -288,7 +283,7 @@ export async function broadcastIntent(
   const metadataJson = JSON.stringify(metadata);
 
   const targetDeviceId =
-    target === "specific" ? input.targetDeviceId ?? null : null;
+    target === "specific" ? (input.targetDeviceId ?? null) : null;
 
   const insertSql = `
     INSERT INTO life_intents (
