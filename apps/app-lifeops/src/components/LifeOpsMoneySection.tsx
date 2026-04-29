@@ -144,6 +144,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
     elizaCloudCredits,
     elizaCloudCreditsLow,
     elizaCloudCreditsCritical,
+    setTab,
   } = useApp();
 
   const [creditTransactions, setCreditTransactions] = useState<
@@ -549,6 +550,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
         balance={elizaCloudCredits}
         low={elizaCloudCreditsLow}
         critical={elizaCloudCreditsCritical}
+        onOpenSettings={() => setTab("settings")}
       />
 
       <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -913,6 +915,7 @@ function CloudCreditsBalance(props: {
   balance: number | null;
   low: boolean;
   critical: boolean;
+  onOpenSettings: () => void;
 }): JSX.Element {
   if (!props.connected) {
     return (
@@ -921,12 +924,13 @@ function CloudCreditsBalance(props: {
           <Sparkles className="h-3.5 w-3.5" aria-hidden />
           Eliza Cloud
         </span>
-        <a
-          href="#/settings"
+        <button
+          type="button"
+          onClick={props.onOpenSettings}
           className="font-medium text-txt underline-offset-2 hover:underline"
         >
           Settings
-        </a>
+        </button>
       </section>
     );
   }

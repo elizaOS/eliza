@@ -22,6 +22,10 @@
   "launch": {
     "type": "server-launch",
     "capabilities": [],
-    "curatedSlug": "shopify"
+    "curatedSlug": "shopify",
+    "routePlugin": {
+      "specifier": "@elizaos/app-shopify/plugin",
+      "exportName": "shopifyPlugin"
+    }
   }
 }

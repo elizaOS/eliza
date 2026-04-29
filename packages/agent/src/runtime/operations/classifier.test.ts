@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 import type { ClassifyContext } from "./classifier.js";
 import { classifyOperation, defaultClassifier } from "./classifier.js";
 import type { OperationIntent } from "./types.js";

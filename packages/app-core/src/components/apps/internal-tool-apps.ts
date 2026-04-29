@@ -25,7 +25,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     displayName: "LifeOps",
     description:
       "Run tasks, reminders, calendar, inbox, and connected operational workflows.",
-    heroImage: "/app-heroes/lifeops.png",
+    heroImage: "/api/apps/hero/lifeops",
     targetTab: "lifeops",
     capabilities: ["lifeops", "tasks", "calendar", "gmail"],
     order: 0,
@@ -57,7 +57,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     displayName: "Fine Tuning",
     description:
       "Build datasets, inspect trajectories, run training jobs, and activate tuned models.",
-    heroImage: "/app-heroes/fine-tuning.png",
+    heroImage: "/api/apps/hero/training",
     targetTab: "fine-tuning",
     capabilities: ["training", "fine-tuning", "datasets", "models"],
     order: 3,

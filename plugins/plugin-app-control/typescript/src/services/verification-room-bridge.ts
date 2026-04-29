@@ -287,6 +287,9 @@ export class VerificationRoomBridgeService extends Service {
 			content: {
 				text,
 				source: "verification-room-bridge",
+				// Structured field so UI and downstream consumers can filter by
+				// verdict without text-parsing the human-readable message.
+				metadata: { verdict: payload.verdict },
 			},
 		};
 

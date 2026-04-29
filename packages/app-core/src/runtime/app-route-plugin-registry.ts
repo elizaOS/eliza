@@ -2,7 +2,7 @@ import type { Plugin } from "@elizaos/core";
 
 export type AppRoutePluginLoader = () => Plugin | Promise<Plugin>;
 
-interface AppRoutePluginRegistryEntry {
+export interface AppRoutePluginRegistryEntry {
   id: string;
   load: AppRoutePluginLoader;
 }
