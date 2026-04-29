@@ -1022,3 +1022,198 @@ describe("aosp-llama-adapter / TBQ KV-cache wiring", () => {
     vi.doUnmock("bun:ffi");
   });
 });
+
+describe("aosp-llama-adapter / embeddings flag reset", () => {
+  /**
+   * Regression for the cuttlefish chat assert: llama.cpp's `llama_decode`
+   * rejects token-only batches when the context is in embedding mode with
+   *   GGML_ASSERT((!batch_inp.token && batch_inp.embd) ||
+   *               (batch_inp.token && !batch_inp.embd))
+   * The single-context adapter shares one ctx between generate() and
+   * embed(), so a prior embed() call leaves the flag on and the next
+   * generate() call asserts inside libllama.so. Both decode paths must
+   * therefore set the flag explicitly before their first llama_decode —
+   * generate() to FALSE, embed() to TRUE — so cross-mode bleed cannot
+   * crash the bun process.
+   */
+  function buildBunFfiMock(
+    llamaSymbols: Record<string, (...args: unknown[]) => unknown>,
+    shimSymbols: Record<string, (...args: unknown[]) => unknown>,
+  ): Record<string, unknown> {
+    return {
+      FFIType: {
+        void: 0,
+        bool: 1,
+        i32: 2,
+        u32: 3,
+        i64: 4,
+        f32: 5,
+        ptr: 6,
+        cstring: 7,
+      },
+      dlopen: (libPath: string) => {
+        const isShim = libPath.endsWith("libmilady-llama-shim.so");
+        const table = isShim ? shimSymbols : llamaSymbols;
+        const symbols = new Proxy(table, {
+          get: (target: typeof table, prop: string) =>
+            prop in target ? target[prop] : (..._args: unknown[]) => 0,
+        });
+        return { symbols, close() {} };
+      },
+      ptr: () => 0,
+      toArrayBuffer: () => new Float32Array([0.1, 0.2, 0.3]).buffer,
+      CString: class {},
+      read: { cstring: () => "" },
+    };
+  }
+
+  it("generate() sets embeddings=false before the first llama_decode", async () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+
+    const callOrder: string[] = [];
+    const setEmbeddingsCalls: { value: unknown }[] = [];
+
+    const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      llama_backend_init: () => 0,
+      llama_model_get_vocab: () => 100,
+      llama_n_ctx: () => 4096,
+      llama_set_embeddings: (...args: unknown[]) => {
+        setEmbeddingsCalls.push({ value: args[1] });
+        callOrder.push(`set_embeddings(${args[1]})`);
+      },
+      llama_tokenize: (..._args: unknown[]) =>
+        _args[4] === 0 ? -3 : 3, // negative on probe, positive on fill
+      llama_batch_get_one: () => 99,
+      llama_decode: () => {
+        callOrder.push("llama_decode");
+        return 0;
+      },
+      // Force the EOG path on the first sampled token so we don't loop.
+      llama_sampler_sample: () => 999,
+      llama_vocab_is_eog: () => true,
+      llama_sampler_accept: () => undefined,
+      llama_sampler_chain_add: () => undefined,
+      llama_sampler_init_temp: () => 1,
+      llama_sampler_init_top_p: () => 2,
+      llama_sampler_init_dist: () => 3,
+      llama_sampler_init_greedy: () => 4,
+      llama_sampler_free: () => undefined,
+      llama_token_to_piece: () => 0,
+    };
+    const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      milady_llama_model_params_default: () => 1,
+      milady_llama_model_load_from_file: () => 2,
+      milady_llama_model_params_free: () => undefined,
+      milady_llama_context_params_default: () => 3,
+      milady_llama_init_from_model: () => 4,
+      milady_llama_context_params_free: () => undefined,
+      milady_llama_sampler_chain_params_default: () => 5,
+      milady_llama_sampler_chain_params_free: () => undefined,
+      milady_llama_sampler_chain_init: () => 6,
+    };
+
+    vi.doMock("node:fs", () => ({ existsSync: () => true }));
+    vi.doMock("bun:ffi", () => buildBunFfiMock(llamaSymbols, shimSymbols));
+
+    const mod = await import("./aosp-llama-adapter");
+    mod.__resetForTests();
+    const services = new Map<string, unknown>();
+    const runtime = {
+      registerService(name: string, impl: unknown) {
+        services.set(name, impl);
+      },
+    };
+    await mod.registerAospLlamaLoader(runtime);
+    const loader = services.get("localInferenceLoader") as {
+      loadModel: (a: { modelPath: string }) => Promise<void>;
+      generate: (a: { prompt: string; maxTokens?: number }) => Promise<string>;
+    };
+    await loader.loadModel({ modelPath: "/tmp/fake.gguf" });
+    await loader.generate({ prompt: "hi", maxTokens: 1 });
+
+    // The generate() path must call set_embeddings(false) at least once
+    // BEFORE the first llama_decode. bun:ffi marshals a JS `false` to the
+    // C `bool` ABI as 0; either form is acceptable here as long as the
+    // flag is unambiguously OFF.
+    const firstDecodeIdx = callOrder.indexOf("llama_decode");
+    expect(firstDecodeIdx).toBeGreaterThanOrEqual(0);
+    const flagOffBeforeDecode = callOrder
+      .slice(0, firstDecodeIdx)
+      .some((step) => step === "set_embeddings(false)");
+    expect(flagOffBeforeDecode).toBe(true);
+    expect(
+      setEmbeddingsCalls.some((c) => c.value === false || c.value === 0),
+    ).toBe(true);
+
+    vi.doUnmock("node:fs");
+    vi.doUnmock("bun:ffi");
+  });
+
+  it("embed() sets embeddings=true before the embed llama_decode and resets to false in finally", async () => {
+    process.env.MILADY_LOCAL_LLAMA = "1";
+
+    const callOrder: string[] = [];
+
+    const llamaSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      llama_backend_init: () => 0,
+      llama_model_get_vocab: () => 100,
+      llama_n_ctx: () => 4096,
+      llama_model_n_embd: () => 3,
+      llama_set_embeddings: (...args: unknown[]) => {
+        callOrder.push(`set_embeddings(${args[1]})`);
+      },
+      llama_tokenize: (..._args: unknown[]) =>
+        _args[4] === 0 ? -3 : 3,
+      llama_batch_get_one: () => 99,
+      llama_decode: () => {
+        callOrder.push("llama_decode");
+        return 0;
+      },
+      llama_get_embeddings_seq: () => 1, // non-NULL
+    };
+    const shimSymbols: Record<string, (...args: unknown[]) => unknown> = {
+      milady_llama_model_params_default: () => 1,
+      milady_llama_model_load_from_file: () => 2,
+      milady_llama_model_params_free: () => undefined,
+      milady_llama_context_params_default: () => 3,
+      milady_llama_init_from_model: () => 4,
+      milady_llama_context_params_free: () => undefined,
+    };
+
+    vi.doMock("node:fs", () => ({ existsSync: () => true }));
+    vi.doMock("bun:ffi", () => buildBunFfiMock(llamaSymbols, shimSymbols));
+
+    const mod = await import("./aosp-llama-adapter");
+    mod.__resetForTests();
+    const services = new Map<string, unknown>();
+    const runtime = {
+      registerService(name: string, impl: unknown) {
+        services.set(name, impl);
+      },
+    };
+    await mod.registerAospLlamaLoader(runtime);
+    const loader = services.get("localInferenceLoader") as {
+      loadModel: (a: { modelPath: string }) => Promise<void>;
+      embed: (a: { input: string }) => Promise<{
+        embedding: number[];
+        tokens: number;
+      }>;
+    };
+    await loader.loadModel({ modelPath: "/tmp/fake.gguf" });
+    await loader.embed({ input: "hello" });
+
+    // embed() must call set_embeddings(true) BEFORE its llama_decode and
+    // then restore set_embeddings(false) in the finally block so the next
+    // generate() call doesn't inherit embeddings mode from this call.
+    const decodeIdx = callOrder.indexOf("llama_decode");
+    const trueBeforeDecodeIdx = callOrder.indexOf("set_embeddings(true)");
+    const falseAfterDecodeIdx = callOrder.lastIndexOf("set_embeddings(false)");
+    expect(decodeIdx).toBeGreaterThanOrEqual(0);
+    expect(trueBeforeDecodeIdx).toBeGreaterThanOrEqual(0);
+    expect(trueBeforeDecodeIdx).toBeLessThan(decodeIdx);
+    expect(falseAfterDecodeIdx).toBeGreaterThan(decodeIdx);
+
+    vi.doUnmock("node:fs");
+    vi.doUnmock("bun:ffi");
+  });
+});

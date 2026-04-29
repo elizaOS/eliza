@@ -396,43 +396,30 @@ export async function ensureAospLocalInferenceHandlers(
   }
 
   const lifecycle = makeLoaderLifecycle(loader);
+  // TEXT_EMBEDDING is wired unconditionally now that the adapter resets
+  // the llama.cpp embeddings flag on both decode paths (chat + embed) —
+  // the previous `MILADY_AOSP_EMBEDDING=1` opt-in existed only because
+  // the shared-context flag bled across calls and caused
+  //   GGML_ASSERT((!batch_inp.token && batch_inp.embd) ||
+  //               (batch_inp.token && !batch_inp.embd))
+  // inside llama_decode, crashing the bun process mid-request. With the
+  // explicit pre-decode `llama_set_embeddings` call in both `generate()`
+  // and `embed()`, the assert can no longer fire from cross-mode bleed.
   const slots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
     ModelType.TEXT_SMALL,
     ModelType.TEXT_LARGE,
+    ModelType.TEXT_EMBEDDING,
   ];
   for (const modelType of slots) {
+    const handler =
+      modelType === ModelType.TEXT_EMBEDDING
+        ? makeEmbeddingHandler(loader, lifecycle)
+        : makeGenerateHandler(loader, lifecycle);
     runtimeWithRegistration.registerModel(
       modelType,
-      makeGenerateHandler(loader, lifecycle),
+      handler,
       PROVIDER,
       LOCAL_INFERENCE_PRIORITY,
-    );
-  }
-
-  // TEXT_EMBEDDING wiring is gated. The AOSP llama adapter's embed path
-  // currently triggers a native llama.cpp assert
-  // (`GGML_ASSERT((!batch_inp.token && batch_inp.embd) ||
-  // (batch_inp.token && !batch_inp.embd)) failed`) inside `llama_decode`
-  // after `set_embeddings(1)` — which crashes the entire bun process
-  // mid-request and breaks every subsequent chat. Until the C-side fix
-  // lands, register the embedding handler ONLY when explicitly opted in
-  // via `MILADY_AOSP_EMBEDDING=1`. With this off, the runtime falls back
-  // to its existing "no embedding handler" graceful skip path
-  // (`[API:CHAT-AUGMENTATION] Knowledge augmentation skipped after
-  // retrieval failure`), which is non-fatal — the chat still works.
-  if (process.env.MILADY_AOSP_EMBEDDING?.trim() === "1") {
-    runtimeWithRegistration.registerModel(
-      ModelType.TEXT_EMBEDDING,
-      makeEmbeddingHandler(loader, lifecycle),
-      PROVIDER,
-      LOCAL_INFERENCE_PRIORITY,
-    );
-    logger.info(
-      "[aosp-local-inference] TEXT_EMBEDDING handler registered (MILADY_AOSP_EMBEDDING=1)",
-    );
-  } else {
-    logger.info(
-      "[aosp-local-inference] TEXT_EMBEDDING handler NOT registered — set MILADY_AOSP_EMBEDDING=1 once the llama_decode batch_inp assert is fixed in the native shim.",
     );
   }
 

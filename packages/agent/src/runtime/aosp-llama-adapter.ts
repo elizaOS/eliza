@@ -913,6 +913,15 @@ class AospLlamaAdapter implements AospLoader {
 
     try {
       // 3. Decode the prompt batch.
+      // llama.cpp's llama_decode rejects token-only batches when the
+      // context is in embedding mode — the per-call assert is
+      //   GGML_ASSERT((!batch_inp.token && batch_inp.embd) ||
+      //               (batch_inp.token && !batch_inp.embd))
+      // and a previous embed() call may have flipped the flag on the
+      // shared context. Reset to OFF before every chat decode so the
+      // batch shape that llama_batch_get_one produces (token-only)
+      // matches what the decoder accepts, regardless of prior calls.
+      this.sym.llama_set_embeddings(ctx, false);
       const promptBatch = this.sym.llama_batch_get_one(
         this.ffi.ptr(tokens),
         written,

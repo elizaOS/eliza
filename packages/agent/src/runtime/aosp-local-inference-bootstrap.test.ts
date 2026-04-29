@@ -139,61 +139,19 @@ describe("ensureAospLocalInferenceHandlers", () => {
     const aospRegs = runtime.registrations.filter(
       (r) => r.provider === "milady-aosp-llama",
     );
-    // TEXT_SMALL + TEXT_LARGE only by default. TEXT_EMBEDDING is gated
-    // behind MILADY_AOSP_EMBEDDING=1 because the AOSP llama-decode
-    // embedding path currently asserts on the batch_inp shape and
-    // crashes bun mid-request (see bootstrap docblock).
-    expect(aospRegs).toHaveLength(2);
+    // TEXT_SMALL + TEXT_LARGE + TEXT_EMBEDDING register together. Earlier
+    // builds gated TEXT_EMBEDDING behind MILADY_AOSP_EMBEDDING=1 because
+    // the embed path triggered a llama_decode batch_inp assert; that's
+    // fixed by resetting `llama_set_embeddings` on every decode path in
+    // `aosp-llama-adapter.ts`, so the gate is gone.
+    expect(aospRegs).toHaveLength(3);
     for (const reg of aospRegs) {
       // Priority 0 = same band as cloud. Tie-breaks live in routing-policy
       // (the smoke regression for "No handler found" was -1 → 0).
       expect(reg.priority).toBe(0);
     }
     const types = aospRegs.map((r) => r.modelType).sort();
-    expect(types).toEqual(["TEXT_LARGE", "TEXT_SMALL"]);
-  });
-
-  it("registers TEXT_EMBEDDING when MILADY_AOSP_EMBEDDING=1", async () => {
-    process.env.MILADY_LOCAL_LLAMA = "1";
-    process.env.MILADY_AOSP_EMBEDDING = "1";
-
-    adapterMock.registerAospLlamaLoader.mockImplementation(
-      async (rt: { registerService: (n: string, i: unknown) => void }) => {
-        const loader: MockLocalInferenceLoader = {
-          async loadModel() {},
-          async unloadModel() {},
-          currentModelPath() {
-            return null;
-          },
-          async generate() {
-            return "ok";
-          },
-          async embed() {
-            return { embedding: [0, 0, 0], tokens: 0 };
-          },
-        };
-        rt.registerService("localInferenceLoader", loader);
-        return true;
-      },
-    );
-
-    const { ensureAospLocalInferenceHandlers } = await import(
-      "./aosp-local-inference-bootstrap.js"
-    );
-    const runtime = makeRuntime();
-    const ok = await ensureAospLocalInferenceHandlers(
-      runtime as Parameters<typeof ensureAospLocalInferenceHandlers>[0],
-    );
-    expect(ok).toBe(true);
-    const aospRegs = runtime.registrations.filter(
-      (r) => r.provider === "milady-aosp-llama",
-    );
-    expect(aospRegs).toHaveLength(3);
-    expect(aospRegs.map((r) => r.modelType).sort()).toEqual([
-      "TEXT_EMBEDDING",
-      "TEXT_LARGE",
-      "TEXT_SMALL",
-    ]);
+    expect(types).toEqual(["TEXT_EMBEDDING", "TEXT_LARGE", "TEXT_SMALL"]);
   });
 
   it("returns false and registers no handlers when the AOSP loader fails to register", async () => {
