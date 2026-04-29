@@ -15,13 +15,16 @@ import {
   RefreshCw,
   Send,
   Share2,
+  ShieldBan,
   Smartphone,
+  TriangleAlert,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   LifeOpsScreenTimeBreakdown,
   LifeOpsSocialHabitSummary,
 } from "../api/client-lifeops.js";
+import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
 import {
   BucketBars,
   DonutChart,
@@ -44,6 +47,17 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
 const CACHE_TTL_MS = 30_000;
 
 type Period = { since: string; until: string };
+type WebsiteBlockerStatus = Awaited<
+  ReturnType<typeof client.getWebsiteBlockerStatus>
+>;
+type AppBlockerStatus = Awaited<ReturnType<typeof client.getAppBlockerStatus>>;
+type SocialDataSource = LifeOpsSocialHabitSummary["dataSources"][number];
+
+type UnifiedSocialBlockStatus = {
+  active: boolean;
+  label: string;
+  details: string[];
+};
 
 function startOfLocalDay(date: Date): Date {
   const start = new Date(date);
@@ -113,6 +127,93 @@ function socialServiceSeconds(
   key: string,
 ): number {
   return summary?.services.find((item) => item.key === key)?.totalSeconds ?? 0;
+}
+
+function formatInlineList(values: string[]): string {
+  if (values.length === 0) return "";
+  if (values.length === 1) return values[0];
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(", ")}, and ${values[values.length - 1]}`;
+}
+
+function formatEndsAt(value: string | null): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString();
+}
+
+function summarizeWebsiteBlock(status: WebsiteBlockerStatus): string {
+  const count = status.websites.length;
+  const targetLabel =
+    count === 0
+      ? "websites"
+      : count === 1
+        ? status.websites[0]
+        : `${count} websites`;
+  const endsAt = formatEndsAt(status.endsAt);
+  return endsAt ? `Websites: ${targetLabel} until ${endsAt}` : `Websites: ${targetLabel}`;
+}
+
+function summarizeAppBlock(status: AppBlockerStatus): string {
+  const count = status.blockedCount;
+  const platform = status.platform ? ` on ${status.platform.toUpperCase()}` : "";
+  const endsAt = formatEndsAt(status.endsAt);
+  const countLabel = `${count} app${count === 1 ? "" : "s"}`;
+  return endsAt
+    ? `Apps: ${countLabel}${platform} until ${endsAt}`
+    : `Apps: ${countLabel}${platform}`;
+}
+
+function buildUnifiedSocialBlockStatus(
+  website: WebsiteBlockerStatus,
+  app: AppBlockerStatus,
+): UnifiedSocialBlockStatus {
+  const websiteActive = website.available && website.active;
+  const appActive = app.available && app.active;
+  if (websiteActive && appActive) {
+    return {
+      active: true,
+      label: "Websites and apps blocked",
+      details: [summarizeWebsiteBlock(website), summarizeAppBlock(app)],
+    };
+  }
+  if (websiteActive) {
+    return {
+      active: true,
+      label: "Websites blocked",
+      details: [summarizeWebsiteBlock(website)],
+    };
+  }
+  if (appActive) {
+    return {
+      active: true,
+      label: "Apps blocked",
+      details: [summarizeAppBlock(app)],
+    };
+  }
+
+  const idleDetails: string[] = [];
+  if (website.available) {
+    idleDetails.push("Website blocker idle");
+  }
+  if (app.available) {
+    idleDetails.push("App blocker idle");
+  }
+  if (idleDetails.length === 0) {
+    idleDetails.push("No website or app blocker is available on this platform");
+  }
+  return {
+    active: false,
+    label: "No active social block",
+    details: idleDetails,
+  };
+}
+
+function setupWarningLabel(sources: SocialDataSource[]): string {
+  return formatInlineList(sources.map((source) => source.label));
 }
 
 function sourceTone(state: "live" | "partial" | "unwired"): string {
