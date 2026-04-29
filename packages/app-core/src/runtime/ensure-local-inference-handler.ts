@@ -217,6 +217,7 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
     unloadModel: () => deviceBridge.unloadModel(),
     currentModelPath: () => deviceBridge.currentModelPath(),
     generate: (args) => deviceBridge.generate(args),
+    embed: (args) => deviceBridge.embed(args),
   };
   withRegistration.registerService("localInferenceLoader", loader);
 }

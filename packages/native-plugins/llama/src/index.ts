@@ -16,9 +16,13 @@ import type {
   NativeCompletionParams,
   NativeCompletionResult,
   NativeContextParams,
+  NativeEmbeddingParams,
+  NativeEmbeddingResult,
   NativeLlamaContext,
 } from "llama-cpp-capacitor";
 import type {
+  EmbedOptions,
+  EmbedResult,
   GenerateOptions,
   GenerateResult,
   HardwareInfo,
@@ -62,6 +66,26 @@ interface LlamaCppPluginLike {
     params?: NativeGenerateParams;
   }) => Promise<NativeCompletionResult>;
   stopCompletion: (options: { contextId: number }) => Promise<void>;
+  /**
+   * Optional — older builds of llama-cpp-capacitor (<= 0.1.4) shipped
+   * without `embedding`. We feature-detect at call-time so the adapter
+   * still loads on those builds and just throws on `embed()` rather than
+   * failing during plugin probe.
+   */
+  embedding?: (options: {
+    contextId: number;
+    text: string;
+    params: NativeEmbeddingParams;
+  }) => Promise<NativeEmbeddingResult>;
+  /**
+   * Optional — used to count input tokens for the `tokens` field of
+   * EmbedResult. Same feature-detect rationale as embedding.
+   */
+  tokenize?: (options: {
+    contextId: number;
+    text: string;
+    imagePaths?: Array<string>;
+  }) => Promise<{ tokens: number[] }>;
   addListener: (
     event: string,
     listener: (data: TokenEventPayload) => void,
@@ -269,6 +293,43 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     await this.plugin.stopCompletion({ contextId: CONTEXT_ID });
   }
 
+  async embed(options: EmbedOptions): Promise<EmbedResult> {
+    if (!this.plugin || !this.loadedPath) {
+      throw new Error("No model loaded. Call load() first.");
+    }
+    if (typeof this.plugin.embedding !== "function") {
+      // Older llama-cpp-capacitor releases (< 0.1.5) didn't expose this.
+      // We surface the gap explicitly so callers can fall through to a
+      // cloud provider rather than silently miscompute (Commandment 8).
+      throw new Error(
+        "llama-cpp-capacitor does not expose embedding() on this build; upgrade or use a cloud embedding provider",
+      );
+    }
+    const params: NativeEmbeddingParams = {
+      embd_normalize: options.embdNormalize ?? 0,
+    };
+    const result = await this.plugin.embedding({
+      contextId: CONTEXT_ID,
+      text: options.input,
+      params,
+    });
+    let tokenCount = 0;
+    if (typeof this.plugin.tokenize === "function") {
+      try {
+        const tokenized = await this.plugin.tokenize({
+          contextId: CONTEXT_ID,
+          text: options.input,
+        });
+        tokenCount = tokenized.tokens.length;
+      } catch {
+        // tokenize() is purely informational here — never block the embed
+        // result on a tokenize failure.
+        tokenCount = 0;
+      }
+    }
+    return { embedding: result.embedding, tokens: tokenCount };
+  }
+
   onToken(listener: (token: string, index: number) => void): () => void {
     this.tokenListeners.add(listener);
     return () => {
@@ -323,6 +384,11 @@ export function registerCapacitorLlamaLoader(runtime: {
         temperature: args.temperature,
       });
       return result.text;
+    },
+    async embed(args: {
+      input: string;
+    }): Promise<{ embedding: number[]; tokens: number }> {
+      return capacitorLlama.embed({ input: args.input });
     },
   });
 }
