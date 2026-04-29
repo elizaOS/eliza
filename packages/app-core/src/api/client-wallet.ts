@@ -5,6 +5,7 @@
 
 import type {
   BrowserWorkspaceSolanaMessageSignatureResult,
+  BrowserWorkspaceSolanaTransactionResult,
   BrowserWorkspaceWalletMessageSignatureResult,
   BrowserWorkspaceWalletTransactionResult,
   BscTradeExecuteRequest,
@@ -144,6 +145,12 @@ declare module "./client-base" {
       message?: string;
       messageBase64?: string;
     }): Promise<BrowserWorkspaceSolanaMessageSignatureResult>;
+    sendBrowserSolanaTransaction(request: {
+      transactionBase64: string;
+      cluster?: "mainnet" | "devnet" | "testnet";
+      broadcast?: boolean;
+      description?: string;
+    }): Promise<BrowserWorkspaceSolanaTransactionResult>;
     sendBrowserWalletTransaction(
       request: StewardSignRequest,
     ): Promise<BrowserWorkspaceWalletTransactionResult>;
@@ -425,6 +432,16 @@ ElizaClient.prototype.signBrowserSolanaMessage = async function (
   request,
 ) {
   return this.fetch("/api/wallet/browser-solana-sign-message", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+};
+
+ElizaClient.prototype.sendBrowserSolanaTransaction = async function (
+  this: ElizaClient,
+  request,
+) {
+  return this.fetch("/api/wallet/browser-solana-transaction", {
     method: "POST",
     body: JSON.stringify(request),
   });

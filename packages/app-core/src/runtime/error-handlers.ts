@@ -24,7 +24,7 @@ function hasInsufficientCreditsSignal(input: string): boolean {
 export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
   const formatted = formatUncaughtError(reason);
   if (
-    !/AI_NoOutputGeneratedError|No output generated|AI_APICallError/i.test(
+    !/AI_NoOutputGeneratedError|No output generated|AI_APICallError|AI_RetryError/i.test(
       formatted,
     )
   ) {
@@ -35,17 +35,30 @@ export function shouldIgnoreUnhandledRejection(reason: unknown): boolean {
     return true;
   }
 
-  if (reason && typeof reason === "object") {
-    const statusCode = (reason as { statusCode?: number }).statusCode;
+  const seen = new Set<unknown>();
+  let current: unknown = reason;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+
+    const statusCode = (current as { statusCode?: number }).statusCode;
     if (statusCode === 402) return true;
 
-    const responseBody = (reason as { responseBody?: unknown }).responseBody;
+    const responseBody = (current as { responseBody?: unknown }).responseBody;
     if (
       typeof responseBody === "string" &&
       hasInsufficientCreditsSignal(responseBody)
     ) {
       return true;
     }
+
+    const errors = (current as { errors?: unknown }).errors;
+    if (Array.isArray(errors)) {
+      for (const inner of errors) {
+        if (shouldIgnoreUnhandledRejection(inner)) return true;
+      }
+    }
+
+    current = (current as { cause?: unknown }).cause;
   }
 
   return false;

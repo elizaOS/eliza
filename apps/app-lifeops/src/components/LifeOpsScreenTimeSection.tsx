@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-  LifeOpsScreenTimeBreakdown,
+  LifeOpsScreenTimeHistoryResponse,
   LifeOpsSocialHabitSummary,
 } from "../api/client-lifeops.js";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
@@ -46,7 +46,6 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
 
 const CACHE_TTL_MS = 30_000;
 
-type Period = { since: string; until: string };
 type WebsiteBlockerStatus = Awaited<
   ReturnType<typeof client.getWebsiteBlockerStatus>
 >;
@@ -58,76 +57,6 @@ type UnifiedSocialBlockStatus = {
   label: string;
   details: string[];
 };
-
-function startOfLocalDay(date: Date): Date {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  return start;
-}
-
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function computeRange(range: RangeKey): Period {
-  const now = new Date();
-  const until = now.toISOString();
-  if (range === "today") {
-    return { since: startOfLocalDay(now).toISOString(), until };
-  }
-  if (range === "this-week") {
-    const startToday = startOfLocalDay(now);
-    const dayOfWeek = startToday.getDay(); // Sunday = 0
-    const since = addDays(startToday, -dayOfWeek);
-    return { since: since.toISOString(), until };
-  }
-  if (range === "7d") {
-    const since = addDays(startOfLocalDay(now), -6);
-    return { since: since.toISOString(), until };
-  }
-  const since = addDays(startOfLocalDay(now), -29);
-  return { since: since.toISOString(), until };
-}
-
-function computePriorRange(range: RangeKey): Period | null {
-  if (range === "today") return null;
-  const current = computeRange(range);
-  const sinceMs = Date.parse(current.since);
-  const untilMs = Date.parse(current.until);
-  const span = untilMs - sinceMs;
-  return {
-    since: new Date(sinceMs - span).toISOString(),
-    until: current.since,
-  };
-}
-
-function enumerateDays(period: Period): Date[] {
-  const days: Date[] = [];
-  const start = startOfLocalDay(new Date(Date.parse(period.since)));
-  const endMs = Date.parse(period.until);
-  let cursor = start;
-  while (cursor.getTime() <= endMs) {
-    days.push(cursor);
-    cursor = addDays(cursor, 1);
-  }
-  return days;
-}
-
-function formatDayLabel(date: Date): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: "numeric",
-    day: "numeric",
-  }).format(date);
-}
-
-function socialServiceSeconds(
-  summary: LifeOpsSocialHabitSummary | null,
-  key: string,
-): number {
-  return summary?.services.find((item) => item.key === key)?.totalSeconds ?? 0;
-}
 
 function formatInlineList(values: string[]): string {
   if (values.length === 0) return "";
@@ -229,13 +158,6 @@ function sourceTone(state: "live" | "partial" | "unwired"): string {
     default:
       return "bg-muted";
   }
-}
-
-function deltaPercent(current: number, prior: number): number | null {
-  if (prior <= 0) {
-    return current > 0 ? null : 0;
-  }
-  return Math.round(((current - prior) / prior) * 100);
 }
 
 function DeltaBadge({ percent }: { percent: number | null }) {

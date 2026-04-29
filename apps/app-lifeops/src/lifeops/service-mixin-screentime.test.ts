@@ -136,7 +136,11 @@ describe("LifeOps screen-time social data sources", () => {
 
     expect(social.dataSources).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "android_usage_stats", state: "live" }),
+        expect.objectContaining({
+          id: "android_usage_stats",
+          state: "partial",
+          statusLabel: "Snapshot only",
+        }),
       ]),
     );
   });
