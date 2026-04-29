@@ -243,10 +243,21 @@ export function usePluginsSkillsState({
         if (isAiProvider) {
           const providerId =
             normalizeOnboardingProviderId(pluginId) ?? pluginId;
-          const providerApiKey = Object.values(config).find(
-            (value): value is string =>
-              typeof value === "string" && value.trim().length > 0,
-          );
+          // Identify the API-key field by its STRUCTURE, not by
+          // iterating values. The plugin's parameter metadata declares
+          // which fields are sensitive; pick the sensitive parameter
+          // whose key looks like an API key (or the first sensitive
+          // parameter as a fallback). This closes the bug where typing
+          // a model field before the API-key field allowed the model
+          // slug to be picked up by `Object.values(config).find()` and
+          // overwrite the actual key.
+          const apiKeyParam =
+            plugin?.parameters.find(
+              (p) => p.sensitive && /api[_-]?key$/i.test(p.key),
+            ) ?? plugin?.parameters.find((p) => p.sensitive);
+          const providerApiKey = apiKeyParam
+            ? config[apiKeyParam.key]
+            : undefined;
           try {
             await client.switchProvider(providerId, providerApiKey);
           } catch (err) {

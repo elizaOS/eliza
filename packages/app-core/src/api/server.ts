@@ -937,9 +937,11 @@ async function handleCompatRoute(
     ) {
       // Include apiKey: null so the upstream state.config does not restore the
       // just-cleared key when it merges and re-saves during the loopback.
-      // Include serviceRouting: { llmText: null } so the upstream's in-memory
-      // serviceRouting (derived from legacy cloud.enabled=true at load time) is
-      // cleared — without it, the loopback save re-persists the cloud-proxy route.
+      // Include serviceRouting with EVERY service that was routed at elizacloud
+      // nulled — without this, tts/media/embeddings/rpc keep pointing at
+      // `cloud-proxy → elizacloud` after disconnect, producing silent 401s for
+      // months until the user notices their voice/image/embedding features
+      // stopped working.
       // Also include linkedAccounts.elizacloud.status="unlinked" so the
       // upstream's in-memory state.config (which still has the old "linked"
       // status from load time) does not overwrite the canonical unlinked
@@ -947,7 +949,13 @@ async function handleCompatRoute(
       // of the auto-reconnect bug after restart.
       const disconnectPatch = {
         cloud: { enabled: false, apiKey: null },
-        serviceRouting: { llmText: null },
+        serviceRouting: {
+          llmText: null,
+          tts: null,
+          media: null,
+          embeddings: null,
+          rpc: null,
+        },
         linkedAccounts: {
           elizacloud: { status: "unlinked", source: "api-key" },
         },
