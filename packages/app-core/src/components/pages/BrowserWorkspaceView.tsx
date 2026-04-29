@@ -1,7 +1,3 @@
-import {
-  type BrowserWorkspaceWalletState,
-  buildBrowserWorkspaceWalletState,
-} from "@elizaos/app-steward/browser-workspace-wallet";
 import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
@@ -42,6 +38,10 @@ import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,
 } from "../workspace/AppWorkspaceChrome.js";
+import {
+  type BrowserWorkspaceWalletState,
+  buildBrowserWorkspaceWalletState,
+} from "./browser-workspace-wallet";
 import { getBrowserPageScopeCopy } from "./page-scoped-conversations";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
 

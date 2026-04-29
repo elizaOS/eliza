@@ -8,19 +8,11 @@ const {
   listTriggerTasksMock,
   taskToTriggerSummaryMock,
   handleN8nRoutesMock,
-  getGoogleConnectorStatusMock,
-  getTelegramConnectorStatusMock,
-  getSignalConnectorStatusMock,
-  getDiscordConnectorStatusMock,
 } = vi.hoisted(() => ({
   toWorkbenchTaskMock: vi.fn(),
   listTriggerTasksMock: vi.fn(),
   taskToTriggerSummaryMock: vi.fn(),
   handleN8nRoutesMock: vi.fn(),
-  getGoogleConnectorStatusMock: vi.fn(),
-  getTelegramConnectorStatusMock: vi.fn(),
-  getSignalConnectorStatusMock: vi.fn(),
-  getDiscordConnectorStatusMock: vi.fn(),
 }));
 
 vi.mock("@elizaos/agent/config/config", () => ({
@@ -47,38 +39,14 @@ vi.mock("@elizaos/agent/triggers/runtime", () => ({
     taskToTriggerSummaryMock(...args),
 }));
 
-vi.mock("@elizaos/app-lifeops/lifeops/service", () => ({
-  LifeOpsService: class {
-    getGoogleConnectorStatus(
-      ...args: Parameters<typeof getGoogleConnectorStatusMock>
-    ) {
-      return getGoogleConnectorStatusMock(...args);
-    }
-
-    getTelegramConnectorStatus(
-      ...args: Parameters<typeof getTelegramConnectorStatusMock>
-    ) {
-      return getTelegramConnectorStatusMock(...args);
-    }
-
-    getSignalConnectorStatus(
-      ...args: Parameters<typeof getSignalConnectorStatusMock>
-    ) {
-      return getSignalConnectorStatusMock(...args);
-    }
-
-    getDiscordConnectorStatus(
-      ...args: Parameters<typeof getDiscordConnectorStatusMock>
-    ) {
-      return getDiscordConnectorStatusMock(...args);
-    }
-  },
-}));
-
 vi.mock("../../src/api/n8n-routes", () => ({
   handleN8nRoutes: (...args: unknown[]) => handleN8nRoutesMock(...args),
 }));
 
+import {
+  clearAutomationNodeContributorsForTests,
+  registerAutomationNodeContributor,
+} from "../../src/api/automation-node-contributors";
 import { handleAutomationsCompatRoutes } from "../../src/api/automations-compat-routes";
 
 interface Harness {
@@ -358,22 +326,38 @@ describe("automations compat routes", () => {
       },
     );
 
-    getGoogleConnectorStatusMock.mockResolvedValue({
-      connected: true,
-      grantedCapabilities: ["gmail.read", "calendar.events"],
-    });
-    getTelegramConnectorStatusMock.mockResolvedValue({ connected: false });
-    getSignalConnectorStatusMock.mockResolvedValue({ connected: true });
-    getDiscordConnectorStatusMock.mockResolvedValue({
-      connected: false,
-      available: false,
-    });
+    registerAutomationNodeContributor("test-lifeops", () => [
+      {
+        id: "lifeops:gmail",
+        label: "Gmail",
+        description: "Owner-scoped Gmail triage, drafting, and send operations.",
+        class: "integration",
+        source: "lifeops",
+        backingCapability: "lifeops:gmail",
+        ownerScoped: true,
+        requiresSetup: true,
+        availability: "enabled",
+      },
+      {
+        id: "lifeops:telegram",
+        label: "Telegram",
+        description: "Owner-scoped Telegram account messaging.",
+        class: "integration",
+        source: "lifeops",
+        backingCapability: "lifeops:telegram",
+        ownerScoped: true,
+        requiresSetup: true,
+        availability: "disabled",
+        disabledReason: "Connect the owner Telegram account.",
+      },
+    ]);
   });
 
   afterEach(async () => {
     delete process.env.EVM_PRIVATE_KEY;
     delete process.env.SOLANA_PRIVATE_KEY;
     delete process.env.POLYMARKET_PRIVATE_KEY;
+    clearAutomationNodeContributorsForTests();
     await harness?.dispose?.();
   });
 

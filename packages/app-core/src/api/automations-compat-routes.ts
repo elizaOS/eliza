@@ -10,21 +10,14 @@ import {
   taskToTriggerSummary,
   toWorkbenchTask,
 } from "@elizaos/agent";
-import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import {
   type AgentRuntime,
-  logger,
   type Room,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import type {
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsGoogleConnectorStatus,
-  LifeOpsSignalConnectorStatus,
-  LifeOpsTelegramConnectorStatus,
-} from "@elizaos/shared";
 import { ensureRouteAuthorized } from "./auth";
+import { listAutomationNodeContributors } from "./automation-node-contributors";
 import type { N8nStatusResponse, N8nWorkflow } from "./client-types-chat";
 import type {
   AutomationItem,
@@ -745,112 +738,6 @@ async function buildAutomationListResponse(
   };
 }
 
-async function resolveGoogleStatus(
-  lifeOps: LifeOpsService,
-): Promise<LifeOpsGoogleConnectorStatus | null> {
-  try {
-    return await lifeOps.getGoogleConnectorStatus(
-      new URL("http://127.0.0.1/api/lifeops/connectors/google/status"),
-      undefined,
-      "owner",
-    );
-  } catch (error) {
-    logger.warn(
-      `[automations] Failed to resolve Google connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
-}
-
-async function resolveTelegramStatus(
-  lifeOps: LifeOpsService,
-): Promise<LifeOpsTelegramConnectorStatus | null> {
-  try {
-    return await lifeOps.getTelegramConnectorStatus("owner");
-  } catch (error) {
-    logger.warn(
-      `[automations] Failed to resolve Telegram connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
-}
-
-async function resolveSignalStatus(
-  lifeOps: LifeOpsService,
-): Promise<LifeOpsSignalConnectorStatus | null> {
-  try {
-    return await lifeOps.getSignalConnectorStatus("owner");
-  } catch (error) {
-    logger.warn(
-      `[automations] Failed to resolve Signal connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
-}
-
-async function resolveDiscordStatus(
-  lifeOps: LifeOpsService,
-): Promise<LifeOpsDiscordConnectorStatus | null> {
-  try {
-    return await lifeOps.getDiscordConnectorStatus("owner");
-  } catch (error) {
-    logger.warn(
-      `[automations] Failed to resolve Discord connector status: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-    return null;
-  }
-}
-
-function buildLifeOpsNode(
-  id: string,
-  label: string,
-  description: string,
-  enabled: boolean,
-  disabledReason: string,
-): AutomationNodeDescriptor {
-  return {
-    id,
-    label,
-    description,
-    class: "integration",
-    source: "lifeops",
-    backingCapability: id,
-    ownerScoped: true,
-    requiresSetup: true,
-    availability: enabled ? "enabled" : "disabled",
-    ...(enabled ? {} : { disabledReason }),
-  };
-}
-
-function buildLifeOpsEventNode(
-  eventKind: string,
-  label: string,
-  description: string,
-  enabled: boolean,
-  disabledReason: string,
-): AutomationNodeDescriptor {
-  return {
-    id: `event:${eventKind}`,
-    label,
-    description,
-    class: "trigger",
-    source: "lifeops_event",
-    backingCapability: eventKind,
-    ownerScoped: true,
-    requiresSetup: !enabled,
-    availability: enabled ? "enabled" : "disabled",
-    ...(enabled ? {} : { disabledReason }),
-  };
-}
-
 function normalizeCapabilityName(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -923,14 +810,6 @@ async function buildAutomationNodeCatalog(
   const config = loadElizaConfig();
   const agentName = resolveAgentName(runtime, config);
   const adminEntityId = resolveAdminEntityId(config, agentName);
-  const lifeOps = new LifeOpsService(runtime, { ownerEntityId: adminEntityId });
-  const [googleStatus, telegramStatus, signalStatus, discordStatus] =
-    await Promise.all([
-      resolveGoogleStatus(lifeOps),
-      resolveTelegramStatus(lifeOps),
-      resolveSignalStatus(lifeOps),
-      resolveDiscordStatus(lifeOps),
-    ]);
 
   const runtimeActionNodes: AutomationNodeDescriptor[] = runtime.actions
     .slice()
@@ -975,89 +854,18 @@ async function buildAutomationNodeCatalog(
       runtimePluginNames,
     ),
   );
-
-  const googleCapabilities = new Set(googleStatus?.grantedCapabilities ?? []);
-  const githubToken = runtime.getSetting("GITHUB_TOKEN");
-  const githubConnected =
-    typeof githubToken === "string" && githubToken.trim().length > 0;
-
-  const lifeOpsNodes: AutomationNodeDescriptor[] = [
-    buildLifeOpsNode(
-      "lifeops:gmail",
-      "Gmail",
-      "Owner-scoped Gmail triage, drafting, and send operations.",
-      Boolean(
-        googleStatus?.connected &&
-          [...googleCapabilities].some((capability) =>
-            capability.includes("gmail"),
-          ),
-      ),
-      "Connect the owner Google account with Gmail access.",
+  const contributorNodeGroups = await Promise.all(
+    listAutomationNodeContributors().map((contributor) =>
+      contributor({ runtime, config, agentName, adminEntityId }),
     ),
-    buildLifeOpsNode(
-      "lifeops:calendar",
-      "Calendar",
-      "Owner-scoped calendar reading and event creation.",
-      Boolean(
-        googleStatus?.connected &&
-          [...googleCapabilities].some((capability) =>
-            capability.includes("calendar"),
-          ),
-      ),
-      "Connect the owner Google account with Calendar access.",
-    ),
-    buildLifeOpsNode(
-      "lifeops:telegram",
-      "Telegram",
-      "Owner-scoped Telegram account messaging.",
-      Boolean(telegramStatus?.connected),
-      "Connect the owner Telegram account.",
-    ),
-    buildLifeOpsNode(
-      "lifeops:signal",
-      "Signal",
-      "Owner-scoped Signal messaging.",
-      Boolean(signalStatus?.connected),
-      "Pair the owner Signal account.",
-    ),
-    buildLifeOpsNode(
-      "lifeops:discord",
-      "Discord",
-      "Owner-scoped Discord messaging through the active owner session.",
-      Boolean(discordStatus?.connected && discordStatus.available),
-      "Connect the owner Discord session.",
-    ),
-    buildLifeOpsNode(
-      "lifeops:github",
-      "GitHub",
-      "Owner-scoped GitHub access for repositories, issues, and pull requests.",
-      githubConnected,
-      "Link the owner GitHub account.",
-    ),
-  ];
-
-  const calendarConnected = Boolean(
-    googleStatus?.connected &&
-      [...googleCapabilities].some((capability) =>
-        capability.includes("calendar"),
-      ),
   );
-  const lifeOpsEventNodes: AutomationNodeDescriptor[] = [
-    buildLifeOpsEventNode(
-      "calendar.event.ended",
-      "Calendar event ended",
-      "Fires a workflow after a synced calendar event's end time has passed.",
-      calendarConnected,
-      "Connect the owner Google account with Calendar access.",
-    ),
-  ];
+  const contributorNodes = contributorNodeGroups.flat();
 
   const nodes = [
     ...runtimeActionNodes,
     ...runtimeProviderNodes,
     ...staticAutomationNodes,
-    ...lifeOpsNodes,
-    ...lifeOpsEventNodes,
+    ...contributorNodes,
   ].sort((left, right) => {
     if (left.class !== right.class) {
       return left.class.localeCompare(right.class);
