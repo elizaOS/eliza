@@ -13,11 +13,11 @@
  * the engine stops before clicking submit.
  */
 
+import { executeBrowserWorkspaceCommand } from "./../browser-workspace.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
 } from "./../browser-workspace-types.js";
-import { executeBrowserWorkspaceCommand } from "./../browser-workspace.js";
 import type {
   LaunchpadDryRun,
   LaunchpadNarrate,
@@ -203,7 +203,8 @@ export async function runLaunchpad(
 
   for (let stepIndex = 0; stepIndex < profile.steps.length; stepIndex += 1) {
     const step = profile.steps[stepIndex];
-    const narration = step.narration ?? defaultNarration(step, profile.displayName);
+    const narration =
+      step.narration ?? defaultNarration(step, profile.displayName);
 
     if (dryRun === "stop-before-tx" && step.kind === "confirmTx") {
       await options.narrate(

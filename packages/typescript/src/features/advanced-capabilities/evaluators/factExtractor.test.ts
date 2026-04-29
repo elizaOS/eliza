@@ -24,7 +24,7 @@ import os from "node:os";
 import path from "node:path";
 import { sql } from "drizzle-orm";
 import { v4 } from "uuid";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { createCharacter } from "../../../character.ts";
 import { AgentRuntime } from "../../../runtime.ts";
 import type {

@@ -12,7 +12,7 @@
  *   - Treat real failures (DB ping false, provider unreachable) as failures.
  */
 
-import { type AgentRuntime, ModelType, logger } from "@elizaos/core";
+import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import { isInsufficientCreditsError } from "../../api/credit-detection.js";
 import type { HealthCheck, HealthCheckResult } from "./types.js";
 
