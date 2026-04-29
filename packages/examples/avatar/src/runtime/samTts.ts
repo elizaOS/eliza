@@ -1,5 +1,5 @@
 import type { AgentRuntime } from "@elizaos/core";
-import { SamTTSService } from "@elizaos/plugin-simple-voice";
+import type { SamTTSService } from "@elizaos/plugin-simple-voice";
 
 export type SamOptions = {
   speed: number;
@@ -13,28 +13,36 @@ export type SamOptions = {
  * SAM only supports basic ASCII characters.
  */
 function sanitizeForSam(text: string): string {
-  return text
-    // Replace em/en dashes with regular hyphen
-    .replace(/[—–]/g, "-")
-    // Replace smart quotes with regular quotes
-    .replace(/[""]/g, '"')
-    .replace(/['']/g, "'")
-    // Replace ellipsis with three dots
-    .replace(/…/g, "...")
-    // Replace other common Unicode punctuation
-    .replace(/[•·]/g, "-")
-    .replace(/[«»]/g, '"')
-    // Remove any remaining non-ASCII characters
-    .replace(/[^\x00-\x7F]/g, "")
-    // Collapse multiple spaces
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    text
+      // Replace em/en dashes with regular hyphen
+      .replace(/[—–]/g, "-")
+      // Replace smart quotes with regular quotes
+      .replace(/[""]/g, '"')
+      .replace(/['']/g, "'")
+      // Replace ellipsis with three dots
+      .replace(/…/g, "...")
+      // Replace other common Unicode punctuation
+      .replace(/[•·]/g, "-")
+      .replace(/[«»]/g, '"')
+      // Remove any remaining non-ASCII characters
+      .replace(/[^\x00-\x7F]/g, "")
+      // Collapse multiple spaces
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
-export function synthesizeSamWav(runtime: AgentRuntime, text: string, options: SamOptions): ArrayBuffer {
+export function synthesizeSamWav(
+  runtime: AgentRuntime,
+  text: string,
+  options: SamOptions,
+): ArrayBuffer {
   const service = runtime.getService("SAM_TTS") as SamTTSService | null;
   if (!service) {
-    throw new Error("SAM_TTS service is not available (plugin-simple-voice not loaded?)");
+    throw new Error(
+      "SAM_TTS service is not available (plugin-simple-voice not loaded?)",
+    );
   }
   const sanitized = sanitizeForSam(text);
   const audio = service.generateAudio(sanitized, options);
@@ -68,4 +76,3 @@ export function splitForTts(text: string, maxChunkChars = 220): string[] {
   }
   return out;
 }
-

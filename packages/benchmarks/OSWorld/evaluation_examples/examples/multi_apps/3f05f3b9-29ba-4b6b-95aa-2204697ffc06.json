@@ -123,20 +123,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -151,18 +144,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "nautilus",
-          "/home/user/Music"
-        ]
+        "command": ["nautilus", "/home/user/Music"]
       }
     }
   ],
   "trajectory": "trajectories/3f05f3b9-29ba-4b6b-95aa-2204697ffc06",
-  "related_apps": [
-    "os",
-    "picard"
-  ],
+  "related_apps": ["os", "picard"],
   "evaluator": {
     "func": [
       "check_mp3_meta",

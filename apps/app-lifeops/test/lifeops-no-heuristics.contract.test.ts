@@ -23,7 +23,9 @@ async function readRepoFile(relativePath: string): Promise<string> {
 
 describe("LifeOps no-heuristics source-level invariants (lint-style, not behavioral)", () => {
   it("keeps LIFE operation routing on the extractor path", async () => {
-    const source = await readRepoFile("eliza/apps/app-lifeops/src/actions/life.ts");
+    const source = await readRepoFile(
+      "eliza/apps/app-lifeops/src/actions/life.ts",
+    );
     expect(source).not.toContain("export function classifyIntent");
     expect(source).not.toContain("classifyIntent(intent)");
     expect(source).not.toContain("getValidationKeywordTerms");
@@ -31,7 +33,9 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
   });
 
   it("keeps INBOX subaction selection off keyword term banks", async () => {
-    const source = await readRepoFile("eliza/apps/app-lifeops/src/actions/inbox.ts");
+    const source = await readRepoFile(
+      "eliza/apps/app-lifeops/src/actions/inbox.ts",
+    );
     expect(source).not.toContain("const TRIAGE_TERMS");
     expect(source).not.toContain("const DIGEST_TERMS");
     expect(source).not.toContain("const RESPOND_TERMS");
@@ -90,7 +94,9 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
     const source = await readRepoFile(
       "eliza/apps/app-lifeops/src/actions/gmail.ts",
     );
-    expect(source).not.toContain("function looksLikeReplyDraftRewriteFollowup(");
+    expect(source).not.toContain(
+      "function looksLikeReplyDraftRewriteFollowup(",
+    );
     expect(source).not.toContain("function looksLikeSendReplyFollowup(");
     expect(source).toContain("extractGmailPlanWithLlm");
   });
@@ -119,7 +125,9 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
     );
     expect(source).not.toContain("function inferSubaction(");
     expect(source).not.toContain("function inferMetric(");
-    expect(source).not.toContain("\\b(steps|heart rate|sleep|calories|distance|active minutes)\\b");
+    expect(source).not.toContain(
+      "\\b(steps|heart rate|sleep|calories|distance|active minutes)\\b",
+    );
     expect(source).toContain("resolveHealthPlanWithLlm");
   });
 
@@ -171,9 +179,7 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
     // weekday: "short" formatter call inside dayOfWeekInTz are heuristics
     // because they only read correctly for en-US locales.
     expect(source).not.toContain("Sun: 0,\n    Mon: 1");
-    const dayOfWeekFn = source.match(
-      /function dayOfWeekInTz\([\s\S]*?\n\}\n/,
-    );
+    const dayOfWeekFn = source.match(/function dayOfWeekInTz\([\s\S]*?\n\}\n/);
     expect(dayOfWeekFn, "dayOfWeekInTz must be defined").toBeTruthy();
     expect(dayOfWeekFn?.[0] ?? "").not.toContain('weekday: "short"');
     expect(dayOfWeekFn?.[0] ?? "").toContain("getZonedDateParts");
@@ -233,7 +239,9 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
     expect(source).toContain(
       "parseSelfControlBlockRequest(options?: HandlerOptions)",
     );
-    expect(source).not.toContain("parseSelfControlBlockRequest(\n  options?: HandlerOptions,\n  message?: Memory,");
+    expect(source).not.toContain(
+      "parseSelfControlBlockRequest(\n  options?: HandlerOptions,\n  message?: Memory,",
+    );
     expect(source).not.toContain("extractDurationMinutesFromText(");
     expect(source).not.toContain("extractWebsiteTargetsFromText(");
     expect(source).not.toContain("hasWebsiteBlockDeferralIntent(");
@@ -247,7 +255,9 @@ describe("LifeOps no-heuristics source-level invariants (lint-style, not behavio
     );
     expect(source).not.toContain("text?: string");
     expect(source).not.toContain("function toSyntheticMessage(");
-    expect(source).not.toContain("parseSelfControlBlockRequest(\n    {\n      parameters,\n    },");
+    expect(source).not.toContain(
+      "parseSelfControlBlockRequest(\n    {\n      parameters,\n    },",
+    );
   });
 
   it("keeps chat fallback execution off website-blocker regex intent detection", async () => {

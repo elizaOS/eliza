@@ -32,26 +32,18 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "/usr/bin/thunderbird"
-        ]
+        "command": ["/usr/bin/thunderbird"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "thunderbird"
-  ],
+  "related_apps": ["thunderbird"],
   "evaluator": {
     "postconfig": [
       {
         "type": "command",
         "parameters": {
-          "command": [
-            "ls",
-            "-R",
-            "/home/user/emails.bak"
-          ],
+          "command": ["ls", "-R", "/home/user/emails.bak"],
           "stdout": "emails.bak.ls"
         }
       }

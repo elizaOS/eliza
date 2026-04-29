@@ -142,7 +142,11 @@ export async function findDuplicateExperienceByLearning(
 	return (
 		similar.find((experience) =>
 			isDuplicateLearning(learning, experience.learning),
-		) ?? null
+		) ??
+		(await experienceService.listExperiences({ limit: 200 })).find(
+			(experience) => isDuplicateLearning(learning, experience.learning),
+		) ??
+		null
 	);
 }
 
@@ -193,8 +197,22 @@ function tokenizeForDuplicateComparison(text: string): Set<string> {
 		text
 			.split(" ")
 			.map((token) => token.trim())
+			.map(normalizeDuplicateToken)
 			.filter((token) => token.length > 3 && !STOP_WORDS.has(token)),
 	);
+}
+
+function normalizeDuplicateToken(token: string): string {
+	if (token.length > 6 && token.endsWith("ing")) {
+		return token.slice(0, -3);
+	}
+	if (token.length > 5 && token.endsWith("ed")) {
+		return token.slice(0, -2);
+	}
+	if (token.length > 4 && token.endsWith("s")) {
+		return token.slice(0, -1);
+	}
+	return token;
 }
 
 function tokenizeForKeywordExtraction(text: string): string[] {

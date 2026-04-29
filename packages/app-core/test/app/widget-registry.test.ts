@@ -25,7 +25,9 @@ describe("resolveWidgetsForSlot", () => {
     );
     // The orchestrator "tasks" widget was removed in favor of the TERMINAL
     // section in the left sidebar, which already lists live PTY sessions.
-    expect(widgetIds).not.toContain("agent-orchestrator/agent-orchestrator.tasks");
+    expect(widgetIds).not.toContain(
+      "agent-orchestrator/agent-orchestrator.tasks",
+    );
     expect(widgetIds).not.toContain("lifeops/lifeops.google");
     expect(widgetIds).not.toContain("todo/todo.items");
   });

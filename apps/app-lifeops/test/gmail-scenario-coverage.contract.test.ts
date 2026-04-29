@@ -48,10 +48,7 @@ type GmailScenario = {
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
 const ELIZA_SCENARIO_ROOT = path.join(REPO_ROOT, "eliza", "test", "scenarios");
-const GMAIL_SCENARIO_DIR = path.join(
-  ELIZA_SCENARIO_ROOT,
-  "messaging.gmail",
-);
+const GMAIL_SCENARIO_DIR = path.join(ELIZA_SCENARIO_ROOT, "messaging.gmail");
 const GMAIL_PRD_PATH = path.join(
   REPO_ROOT,
   "docs",
@@ -99,10 +96,7 @@ const GMAIL_PROOF_TYPES = new Set([
   "n8nDispatchOccurred",
 ]);
 
-function hasPositiveCheck(
-  scenario: GmailScenario,
-  type: string,
-): boolean {
+function hasPositiveCheck(scenario: GmailScenario, type: string): boolean {
   return (scenario.finalChecks ?? []).some(
     (check) => check.type === type && check.expected !== false,
   );
@@ -240,7 +234,9 @@ describe("Gmail scenario coverage contract", () => {
     const scenarios = await loadGmailScenarios();
     const ids = scenarios.map(({ scenario }) => scenario.id).sort();
 
-    expect(ids).toEqual(expect.arrayContaining([...RELEASE_CRITICAL_SCENARIOS]));
+    expect(ids).toEqual(
+      expect.arrayContaining([...RELEASE_CRITICAL_SCENARIOS]),
+    );
     expect(new Set(ids).size).toBe(ids.length);
   });
 
@@ -267,18 +263,30 @@ describe("Gmail scenario coverage contract", () => {
         ),
         `${scenario.id} must prove it cannot write to real Gmail`,
       ).toBe(true);
-      expect(source, `${scenario.id} must not use response text includes`).not
-        .toContain("responseIncludesAny");
-      expect(source, `${scenario.id} must not use response regex matches`).not
-        .toContain("responseMatches");
-      expect(source, `${scenario.id} must not use helper substring assertions`).not
-        .toContain("expectTurnToCallAction");
-      expect(source, `${scenario.id} must not use per-turn helper assertions`).not
-        .toContain("assertTurn");
-      expect(source, `${scenario.id} must not use action blob includesAny`).not
-        .toContain("includesAny");
-      expect(source, `${scenario.id} must not use action blob includesAll`).not
-        .toContain("includesAll");
+      expect(
+        source,
+        `${scenario.id} must not use response text includes`,
+      ).not.toContain("responseIncludesAny");
+      expect(
+        source,
+        `${scenario.id} must not use response regex matches`,
+      ).not.toContain("responseMatches");
+      expect(
+        source,
+        `${scenario.id} must not use helper substring assertions`,
+      ).not.toContain("expectTurnToCallAction");
+      expect(
+        source,
+        `${scenario.id} must not use per-turn helper assertions`,
+      ).not.toContain("assertTurn");
+      expect(
+        source,
+        `${scenario.id} must not use action blob includesAny`,
+      ).not.toContain("includesAny");
+      expect(
+        source,
+        `${scenario.id} must not use action blob includesAll`,
+      ).not.toContain("includesAll");
       expect(
         containsFixtureId(scenario.finalChecks ?? []),
         `${scenario.id} final checks must not hardcode Gmail fixture message/thread IDs`,
@@ -361,7 +369,10 @@ describe("Gmail scenario coverage contract", () => {
 
   it("covers confirmation bound to selected Gmail messages and stale consent refusal", async () => {
     const scenarios = await loadGmailScenarios();
-    const confirmedSend = findScenario(scenarios, "gmail.send-with-confirmation");
+    const confirmedSend = findScenario(
+      scenarios,
+      "gmail.send-with-confirmation",
+    );
     const confirmedSpam = findScenario(
       scenarios,
       "gmail.bulk.report-spam.confirmed",
@@ -381,7 +392,8 @@ describe("Gmail scenario coverage contract", () => {
     expect(
       finalChecksContain(
         confirmedSend,
-        (check) => check.type === "gmailApproval" && check.state === "confirmed",
+        (check) =>
+          check.type === "gmailApproval" && check.state === "confirmed",
       ),
     ).toBe(true);
 
@@ -425,18 +437,27 @@ describe("Gmail scenario coverage contract", () => {
       "gmail.draft.no-silent-fallback",
     );
 
-    expect(hasMockRequest(labelScenario, "GET", "/gmail/v1/users/me/labels")).toBe(
-      true,
-    );
-    expect(operationsFor(labelScenario)).toContain("apply_label");
-    expect(hasBatchModifyBodyField(labelScenario, "addLabelIds", "Label_1")).toBe(
-      true,
-    );
-
-    expect(hasPositiveCheck(noFallbackScenario, "gmailDraftCreated")).toBe(false);
-    expect(hasPositiveCheck(noFallbackScenario, "gmailMessageSent")).toBe(false);
     expect(
-      hasMockRequest(noFallbackScenario, "POST", "/gmail/v1/users/me/drafts", false),
+      hasMockRequest(labelScenario, "GET", "/gmail/v1/users/me/labels"),
+    ).toBe(true);
+    expect(operationsFor(labelScenario)).toContain("apply_label");
+    expect(
+      hasBatchModifyBodyField(labelScenario, "addLabelIds", "Label_1"),
+    ).toBe(true);
+
+    expect(hasPositiveCheck(noFallbackScenario, "gmailDraftCreated")).toBe(
+      false,
+    );
+    expect(hasPositiveCheck(noFallbackScenario, "gmailMessageSent")).toBe(
+      false,
+    );
+    expect(
+      hasMockRequest(
+        noFallbackScenario,
+        "POST",
+        "/gmail/v1/users/me/drafts",
+        false,
+      ),
     ).toBe(true);
     expect(
       hasMockRequest(

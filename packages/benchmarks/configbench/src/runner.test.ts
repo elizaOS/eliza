@@ -1,8 +1,12 @@
-
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { runBenchmark } from "./runner.js";
-import type { Handler, Scenario, ScenarioOutcome, BenchmarkResults } from "./types.js";
 import { checkAgentResponded, checkNoSecretLeak } from "./scenarios/checks.js";
+import type {
+  BenchmarkResults,
+  Handler,
+  Scenario,
+  ScenarioOutcome,
+} from "./types.js";
 
 function makeScenario(id: string): Scenario {
   return {
@@ -41,9 +45,15 @@ describe("runBenchmark", () => {
     let teardownCalled = false;
     const handler: Handler = {
       name: "Test Handler",
-      async setup() { setupCalled = true; },
-      async teardown() { teardownCalled = true; },
-      async run(scenario) { return makePassingOutcome(scenario.id); },
+      async setup() {
+        setupCalled = true;
+      },
+      async teardown() {
+        teardownCalled = true;
+      },
+      async run(scenario) {
+        return makePassingOutcome(scenario.id);
+      },
     };
 
     const results = await runBenchmark([handler], scenarios);
@@ -61,12 +71,16 @@ describe("runBenchmark", () => {
     const scenarios = [makeScenario("p1"), makeScenario("p2")];
     const handler: Handler = {
       name: "Prog",
-      async run(s) { return makePassingOutcome(s.id); },
+      async run(s) {
+        return makePassingOutcome(s.id);
+      },
     };
 
     const calls: Array<[string, string, number, number]> = [];
     await runBenchmark([handler], scenarios, {
-      progressCallback: (h, s, i, t) => { calls.push([h, s, i, t]); },
+      progressCallback: (h, s, i, t) => {
+        calls.push([h, s, i, t]);
+      },
     });
 
     expect(calls).toEqual([
@@ -79,7 +93,9 @@ describe("runBenchmark", () => {
     const scenarios = [makeScenario("v1")];
     const handler: Handler = {
       name: "Perfect (Oracle)",
-      async run(s) { return makePassingOutcome(s.id); },
+      async run(s) {
+        return makePassingOutcome(s.id);
+      },
     };
     const results = await runBenchmark([handler], scenarios);
     expect(results.validationPassed).toBe(true);
@@ -89,7 +105,9 @@ describe("runBenchmark", () => {
     const scenarios = [makeScenario("v2")];
     const handler: Handler = {
       name: "Other",
-      async run(s) { return makePassingOutcome(s.id); },
+      async run(s) {
+        return makePassingOutcome(s.id);
+      },
     };
     const results = await runBenchmark([handler], scenarios);
     expect(results.validationPassed).toBe(false);
@@ -112,8 +130,18 @@ describe("runBenchmark", () => {
 
   it("handles multiple handlers in sequence", async () => {
     const scenarios = [makeScenario("m1")];
-    const h1: Handler = { name: "H1", async run(s) { return makePassingOutcome(s.id); } };
-    const h2: Handler = { name: "H2", async run(s) { return makePassingOutcome(s.id); } };
+    const h1: Handler = {
+      name: "H1",
+      async run(s) {
+        return makePassingOutcome(s.id);
+      },
+    };
+    const h2: Handler = {
+      name: "H2",
+      async run(s) {
+        return makePassingOutcome(s.id);
+      },
+    };
     const results = await runBenchmark([h1, h2], scenarios);
     expect(results.handlers).toHaveLength(2);
     expect(results.handlers[0].handlerName).toBe("H1");
@@ -121,7 +149,12 @@ describe("runBenchmark", () => {
   });
 
   it("handles empty scenario list gracefully", async () => {
-    const handler: Handler = { name: "Empty", async run() { throw new Error("should not be called"); } };
+    const handler: Handler = {
+      name: "Empty",
+      async run() {
+        throw new Error("should not be called");
+      },
+    };
     const results = await runBenchmark([handler], []);
     expect(results.totalScenarios).toBe(0);
     expect(results.handlers[0].scenarios).toHaveLength(0);

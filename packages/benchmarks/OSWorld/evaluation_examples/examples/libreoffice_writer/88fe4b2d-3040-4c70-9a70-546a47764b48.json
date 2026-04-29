@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_writer"
-  ],
+  "related_apps": ["libreoffice_writer"],
   "evaluator": {
     "postconfig": [
       {
@@ -52,11 +50,7 @@
         }
       }
     ],
-    "func": [
-      "compare_docx_files",
-      "compare_docx_files",
-      "compare_docx_files"
-    ],
+    "func": ["compare_docx_files", "compare_docx_files", "compare_docx_files"],
     "conj": "or",
     "expected": [
       {

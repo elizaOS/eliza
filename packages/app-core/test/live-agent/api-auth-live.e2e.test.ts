@@ -7,12 +7,15 @@
 
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createElizaPlugin } from "@elizaos/agent";
 import { config as loadDotenv } from "dotenv";
-import {
-  createElizaPlugin,
-} from "@elizaos/agent";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
+import {
+  createConversation,
+  postConversationMessage,
+  req,
+} from "../helpers/http";
 import {
   buildIsolatedLiveProviderEnv,
   isLiveTestEnabled,
@@ -21,11 +24,6 @@ import {
 } from "../helpers/live-provider";
 import { createRealTestRuntime } from "../helpers/real-runtime";
 import { saveEnv } from "../helpers/test-utils";
-import {
-  createConversation,
-  postConversationMessage,
-  req,
-} from "../helpers/http";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
 loadDotenv({ path: envPath });
@@ -140,7 +138,9 @@ async function postConversationMessageWithRetry(
     };
     lastResult = result;
 
-    const text = String(result.data?.text ?? result.data?.response ?? "").trim();
+    const text = String(
+      result.data?.text ?? result.data?.response ?? "",
+    ).trim();
     if (
       result.status === 200 &&
       text.length > 0 &&

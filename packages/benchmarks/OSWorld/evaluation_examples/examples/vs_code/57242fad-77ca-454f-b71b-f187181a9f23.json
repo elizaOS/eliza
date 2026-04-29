@@ -7,9 +7,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code"
-        ]
+        "command": ["code"]
       }
     },
     {
@@ -20,20 +18,12 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vscode"
-  ],
+  "related_apps": ["vscode"],
   "evaluator": {
     "func": "is_extension_installed",
     "result": {
       "type": "vm_command_line",
-      "command": [
-        "ls",
-        "/home/user/Desktop",
-        "|",
-        "grep",
-        "test.py"
-      ]
+      "command": ["ls", "/home/user/Desktop", "|", "grep", "test.py"]
     },
     "expected": {
       "type": "rule",

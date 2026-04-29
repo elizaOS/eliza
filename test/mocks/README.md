@@ -7,18 +7,18 @@ at those local URLs via env vars instead of hitting real services.
 
 ## Files
 
-| File                              | Mocks                                | Env var                     |
-| --------------------------------- | ------------------------------------ | --------------------------- |
-| `environments/twilio.json`        | Twilio Programmable Messaging/Voice  | `ELIZA_MOCK_TWILIO_BASE`   |
-| `environments/whatsapp.json`      | WhatsApp Business Cloud (Meta Graph) | `ELIZA_MOCK_WHATSAPP_BASE` |
-| `environments/calendly.json`      | Calendly v2                          | `ELIZA_MOCK_CALENDLY_BASE` |
-| `environments/x-twitter.json`     | X (Twitter) v2                       | `ELIZA_MOCK_X_BASE`        |
-| `environments/google.json`        | Gmail / Calendar / OAuth token       | `ELIZA_MOCK_GOOGLE_BASE`   |
-| `environments/cloud-managed.json` | Eliza Cloud managed-Google endpoints | `ELIZA_CLOUD_BASE_URL`      |
-| `environments/signal.json`        | signal-cli HTTP receive/send         | `SIGNAL_HTTP_URL`           |
-| `environments/browser-workspace.json` | Desktop browser workspace bridge | `ELIZA_BROWSER_WORKSPACE_URL` |
-| `environments/bluebubbles.json`   | BlueBubbles iMessage HTTP API        | `ELIZA_BLUEBUBBLES_URL`     |
-| `environments/github.json`        | GitHub REST plus Octokit fixtures    | `ELIZA_MOCK_GITHUB_BASE`   |
+| File                                  | Mocks                                | Env var                                                  |
+| ------------------------------------- | ------------------------------------ | -------------------------------------------------------- |
+| `environments/twilio.json`            | Twilio Programmable Messaging/Voice  | `ELIZA_MOCK_TWILIO_BASE` / `MILADY_MOCK_TWILIO_BASE`     |
+| `environments/whatsapp.json`          | WhatsApp Business Cloud (Meta Graph) | `ELIZA_MOCK_WHATSAPP_BASE` / `MILADY_MOCK_WHATSAPP_BASE` |
+| `environments/calendly.json`          | Calendly v2                          | `ELIZA_MOCK_CALENDLY_BASE` / `MILADY_MOCK_CALENDLY_BASE` |
+| `environments/x-twitter.json`         | X (Twitter) v2                       | `ELIZA_MOCK_X_BASE` / `MILADY_MOCK_X_BASE`               |
+| `environments/google.json`            | Gmail / Calendar / OAuth token       | `ELIZA_MOCK_GOOGLE_BASE` / `MILADY_MOCK_GOOGLE_BASE`     |
+| `environments/cloud-managed.json`     | Eliza Cloud managed-Google endpoints | `ELIZA_CLOUD_BASE_URL`                                   |
+| `environments/signal.json`            | signal-cli HTTP receive/send         | `SIGNAL_HTTP_URL`                                        |
+| `environments/browser-workspace.json` | Desktop browser workspace bridge     | `ELIZA_BROWSER_WORKSPACE_URL`                            |
+| `environments/bluebubbles.json`       | BlueBubbles iMessage HTTP API        | `ELIZA_BLUEBUBBLES_URL`                                  |
+| `environments/github.json`            | GitHub REST plus Octokit fixtures    | `ELIZA_MOCK_GITHUB_BASE`                                 |
 
 Each LifeOps client reads its env var on import and falls back to the real URL
 when unset. These env vars are test-only: the normal `bun run dev` launcher now
@@ -38,7 +38,9 @@ import { startMocks } from "./scripts/start-mocks.ts";
 
 const mocks = await startMocks({ envs: ["google", "twilio"] });
 process.env.ELIZA_MOCK_GOOGLE_BASE = mocks.baseUrls.google;
+process.env.MILADY_MOCK_GOOGLE_BASE = mocks.baseUrls.google;
 process.env.ELIZA_MOCK_TWILIO_BASE = mocks.baseUrls.twilio;
+process.env.MILADY_MOCK_TWILIO_BASE = mocks.baseUrls.twilio;
 await mocks.stop();
 ```
 
@@ -88,10 +90,15 @@ Then point the clients at the mocks:
 
 ```bash
 export ELIZA_MOCK_TWILIO_BASE=http://127.0.0.1:3001
+export MILADY_MOCK_TWILIO_BASE=http://127.0.0.1:3001
 export ELIZA_MOCK_WHATSAPP_BASE=http://127.0.0.1:3002
+export MILADY_MOCK_WHATSAPP_BASE=http://127.0.0.1:3002
 export ELIZA_MOCK_CALENDLY_BASE=http://127.0.0.1:3003
+export MILADY_MOCK_CALENDLY_BASE=http://127.0.0.1:3003
 export ELIZA_MOCK_X_BASE=http://127.0.0.1:3004
+export MILADY_MOCK_X_BASE=http://127.0.0.1:3004
 export ELIZA_MOCK_GOOGLE_BASE=http://127.0.0.1:3005
+export MILADY_MOCK_GOOGLE_BASE=http://127.0.0.1:3005
 export SIGNAL_HTTP_URL=http://127.0.0.1:3006
 export SIGNAL_ACCOUNT_NUMBER=+15550000000
 export ELIZA_BROWSER_WORKSPACE_URL=http://127.0.0.1:3007
@@ -109,6 +116,35 @@ Eliza state/config in a temporary directory, sets the mock env vars, and then
 constructs the LifeOps runtime. Existing unit tests that use
 `vi.stubGlobal('fetch', ...)` continue to work and do not require fixture
 servers.
+
+## Full LifeOps simulator
+
+For end-to-end LifeOps coverage, opt into the richer simulator dataset:
+
+```ts
+const mocked = await createMockedTestRuntime({
+  seedLifeOpsSimulator: true,
+});
+```
+
+This keeps the connector code on the same API seams as production while seeding
+a synthetic owner, mock people, cross-channel inbound data, reminders,
+calendar items, and outbound-capable mocks for Gmail, Calendar, Telegram,
+Signal, Discord, WhatsApp, and iMessage. The simulator is opt-in so low-level
+provider contract tests can keep their small exact fixtures.
+
+Live account comparison must be read-only by default. Use:
+
+```bash
+bunx tsx scripts/lifeops-readonly-connector-snapshot.ts \
+  --base-url=http://127.0.0.1:31337 \
+  --out=artifacts/lifeops-live-snapshot.json
+```
+
+The snapshot script only sends `GET` requests, redacts emails/phone numbers and
+long IDs, and skips Signal message pulls unless
+`--include-destructive-pulls` is explicitly passed because signal-cli receive
+can consume its queue.
 
 ## Google / Gmail mock coverage
 
@@ -164,20 +200,20 @@ The executable source of truth for this table is
 a required LifeOps provider, mock environment, validation file, or documented gap
 falls out of sync.
 
-| Provider id | Covered surfaces | Remaining gaps |
-| --- | --- | --- |
-| `google-calendar` | OAuth token/userinfo rewrite; calendar list; event list/get/search; event create/patch/update/move/delete; request ledger metadata | No recurring-event expansion beyond single synthetic events<br>No freebusy, ACL, attachment, or conference-data surfaces<br>No Google rate-limit or partial-failure variants |
-| `gmail` | work/home account fixture data; message list/get/search/send/modify/delete; thread list/get/modify/trash/untrash; draft create/list/get/send/delete; labels, history, watch, filters; priority, vague, multi-search, and cross-account query fixtures; write request ledger metadata | Search is deterministic fixture matching, not the full Gmail query grammar<br>No attachment download/upload or multipart MIME fidelity<br>No delegated mailbox, push-notification, quota, or rate-limit variants |
-| `github` | REST pull request list/review; issue creation and assignment fixtures; issue/PR search; notification list; Octokit-shaped unit-test fixture; request ledger metadata | No GraphQL API coverage<br>No checks, statuses, contents, branch protection, or workflow endpoints<br>No webhook delivery simulation |
-| `x` | home timeline; mentions; recent search; DM list; tweet create; DM send; request ledger metadata | No streaming API, OAuth handshake, media upload, or delete/like/repost surfaces<br>No rate-limit, partial response, or protected-account variants |
-| `whatsapp` | text message send; inbound webhook ingestion; test-only inbound buffer route; request ledger metadata | No media upload/download, templates, reactions, or message status lifecycle<br>No webhook signature validation or delivery retry simulation |
-| `telegram` | MTProto local-client dependency injection; auth retry state; connector service status; send/search/read-receipt calls through mocked client deps | No central HTTP mock because LifeOps does not consume Telegram through HTTP<br>No MTProto protocol simulator, media fixture, or group-admin fixture |
-| `signal` | signal-cli health check; REST receive; REST send; JSON-RPC send; request ledger metadata | No attachment, group-management, profile, registration, or safety-number surfaces<br>No daemon restart, backfill, or malformed-envelope variants |
-| `discord` | desktop browser workspace tab lifecycle; navigation; script evaluation; snapshot; request ledger metadata | No Discord REST or Gateway mock<br>DOM fixture cannot prove Discord production layout compatibility<br>No attachment, reaction, edit, or thread lifecycle coverage |
-| `imessage-bluebubbles` | server info; chat query; message query/search; text send; message detail/delivery metadata; request ledger metadata | No attachment, tapback/reaction, edit, unsend, or read-receipt lifecycle<br>No macOS Messages database fallback fixture in the central mock runner |
-| `twilio` | Programmable Messaging send; Programmable Voice call create; Mockoon template request echo | No delivery status callbacks, recordings, media, incoming call webhooks, or error variants |
-| `calendly` | current user; event types; available times; scheduling links; scheduled events | No webhooks, invitee cancellation/reschedule, organization/team scope, or OAuth refresh variants |
-| `eliza-cloud-managed-google` | managed Google status; managed Google account list | No managed mutation routes, cloud auth failure matrix, billing limits, or account relink flows |
+| Provider id                  | Covered surfaces                                                                                                                                                                                                                                                                     | Remaining gaps                                                                                                                                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `google-calendar`            | OAuth token/userinfo rewrite; calendar list; event list/get/search; event create/patch/update/move/delete; request ledger metadata                                                                                                                                                   | No recurring-event expansion beyond single synthetic events<br>No freebusy, ACL, attachment, or conference-data surfaces<br>No Google rate-limit or partial-failure variants                                     |
+| `gmail`                      | work/home account fixture data; message list/get/search/send/modify/delete; thread list/get/modify/trash/untrash; draft create/list/get/send/delete; labels, history, watch, filters; priority, vague, multi-search, and cross-account query fixtures; write request ledger metadata | Search is deterministic fixture matching, not the full Gmail query grammar<br>No attachment download/upload or multipart MIME fidelity<br>No delegated mailbox, push-notification, quota, or rate-limit variants |
+| `github`                     | REST pull request list/review; issue creation and assignment fixtures; issue/PR search; notification list; Octokit-shaped unit-test fixture; request ledger metadata                                                                                                                 | No GraphQL API coverage<br>No checks, statuses, contents, branch protection, or workflow endpoints<br>No webhook delivery simulation                                                                             |
+| `x`                          | home timeline; mentions; recent search; DM list; tweet create; DM send; request ledger metadata                                                                                                                                                                                      | No streaming API, OAuth handshake, media upload, or delete/like/repost surfaces<br>No rate-limit, partial response, or protected-account variants                                                                |
+| `whatsapp`                   | text message send; inbound webhook ingestion; test-only inbound buffer route; request ledger metadata                                                                                                                                                                                | No media upload/download, templates, reactions, or message status lifecycle<br>No webhook signature validation or delivery retry simulation                                                                      |
+| `telegram`                   | MTProto local-client dependency injection; auth retry state; connector service status; send/search/read-receipt calls through mocked client deps                                                                                                                                     | No central HTTP mock because LifeOps does not consume Telegram through HTTP<br>No MTProto protocol simulator, media fixture, or group-admin fixture                                                              |
+| `signal`                     | signal-cli health check; REST receive; REST send; JSON-RPC send; request ledger metadata                                                                                                                                                                                             | No attachment, group-management, profile, registration, or safety-number surfaces<br>No daemon restart, backfill, or malformed-envelope variants                                                                 |
+| `discord`                    | desktop browser workspace tab lifecycle; navigation; script evaluation; snapshot; request ledger metadata                                                                                                                                                                            | No Discord REST or Gateway mock<br>DOM fixture cannot prove Discord production layout compatibility<br>No attachment, reaction, edit, or thread lifecycle coverage                                               |
+| `imessage-bluebubbles`       | server info; chat query; message query/search; text send; message detail/delivery metadata; request ledger metadata                                                                                                                                                                  | No attachment, tapback/reaction, edit, unsend, or read-receipt lifecycle<br>No macOS Messages database fallback fixture in the central mock runner                                                               |
+| `twilio`                     | Programmable Messaging send; Programmable Voice call create; Mockoon template request echo                                                                                                                                                                                           | No delivery status callbacks, recordings, media, incoming call webhooks, or error variants                                                                                                                       |
+| `calendly`                   | current user; event types; available times; scheduling links; scheduled events                                                                                                                                                                                                       | No webhooks, invitee cancellation/reschedule, organization/team scope, or OAuth refresh variants                                                                                                                 |
+| `eliza-cloud-managed-google` | managed Google status; managed Google account list                                                                                                                                                                                                                                   | No managed mutation routes, cloud auth failure matrix, billing limits, or account relink flows                                                                                                                   |
 
 ## Add or edit mocks
 

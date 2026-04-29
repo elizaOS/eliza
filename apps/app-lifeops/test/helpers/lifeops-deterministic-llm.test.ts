@@ -13,7 +13,6 @@ vi.mock("@elizaos/agent", () => ({
   extractRecentMessageEntriesFromState: () => [],
   extractStateDataRecords: () => [],
   hasContextSignalForKey: () => false,
-  hasPrivateAccess: async () => true,
   renderGroundedActionReply: async (args: { fallback?: string }) =>
     args.fallback ?? "",
   summarizeActiveTrajectory: async () => null,

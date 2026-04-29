@@ -18,17 +18,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "gimp",
-          "/home/user/Desktop/berry.png"
-        ]
+        "command": ["gimp", "/home/user/Desktop/berry.png"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp"
-  ],
+  "related_apps": ["gimp"],
   "evaluator": {
     "postconfig": [
       {

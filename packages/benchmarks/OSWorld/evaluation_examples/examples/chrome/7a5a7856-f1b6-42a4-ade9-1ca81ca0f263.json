@@ -7,20 +7,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -34,27 +27,19 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "chrome"
-  ],
+  "related_apps": ["chrome"],
   "evaluator": {
     "postconfig": [
       {
         "type": "launch",
         "parameters": {
-          "command": [
-            "pkill",
-            "chrome"
-          ]
+          "command": ["pkill", "chrome"]
         }
       },
       {
         "type": "launch",
         "parameters": {
-          "command": [
-            "google-chrome",
-            "--remote-debugging-port=1337"
-          ]
+          "command": ["google-chrome", "--remote-debugging-port=1337"]
         }
       },
       {
@@ -72,9 +57,7 @@
       "type": "rule",
       "rules": {
         "type": "bookmark_bar_websites_urls",
-        "urls": [
-          "https://jalammar.github.io/illustrated-transformer/"
-        ]
+        "urls": ["https://jalammar.github.io/illustrated-transformer/"]
       }
     }
   },

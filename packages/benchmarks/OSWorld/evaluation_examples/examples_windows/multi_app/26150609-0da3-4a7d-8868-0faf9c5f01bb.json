@@ -14,11 +14,7 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "pip",
-          "install",
-          "pygame"
-        ]
+        "command": ["pip", "install", "pygame"]
       }
     },
     {
@@ -55,10 +51,7 @@
     }
   ],
   "trajectory": "trajectories/26150609-0da3-4a7d-8868-0faf9c5f01bb",
-  "related_apps": [
-    "vs_code",
-    "os"
-  ],
+  "related_apps": ["vs_code", "os"],
   "evaluator": {
     "postconfig": [],
     "func": "check_python_file_by_test_suite",
@@ -70,12 +63,7 @@
         "C:\\Users\\User\\Desktop\\snake\\settings.py",
         "C:\\Users\\User\\Desktop\\snake\\snake.py"
       ],
-      "dest": [
-        "food.py",
-        "main.py",
-        "settings.py",
-        "snake.py"
-      ],
+      "dest": ["food.py", "main.py", "settings.py", "snake.py"],
       "multi": true
     },
     "expected": {

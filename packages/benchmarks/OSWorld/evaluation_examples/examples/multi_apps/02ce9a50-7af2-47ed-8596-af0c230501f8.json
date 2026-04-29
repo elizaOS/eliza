@@ -39,16 +39,9 @@
     }
   ],
   "trajectory": "trajectories/02ce9a50-7af2-47ed-8596-af0c230501f8",
-  "related_apps": [
-    "libreoffice_writer",
-    "os"
-  ],
+  "related_apps": ["libreoffice_writer", "os"],
   "evaluator": {
-    "func": [
-      "compare_image_text",
-      "compare_image_text",
-      "compare_image_text"
-    ],
+    "func": ["compare_image_text", "compare_image_text", "compare_image_text"],
     "conj": "or",
     "result": [
       {

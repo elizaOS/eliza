@@ -1,13 +1,13 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import puppeteer, {
-  type Browser as PuppeteerBrowser,
-  type LaunchOptions as PuppeteerLaunchOptions,
-} from "puppeteer-core";
 import {
   chromium,
   type Browser as PlaywrightBrowser,
   type LaunchOptions as PlaywrightLaunchOptions,
 } from "playwright-core";
+import puppeteer, {
+  type Browser as PuppeteerBrowser,
+  type LaunchOptions as PuppeteerLaunchOptions,
+} from "puppeteer-core";
 
 type RetryOptions = {
   attempts?: number;

@@ -1,0 +1,444 @@
+---
+title: "安装"
+sidebarTitle: "安装"
+description: "下载桌面应用或通过 CLI 在 macOS、Windows 或 Linux 上安装 Milady。"
+---
+
+<div id="prerequisites">
+## 前置条件
+</div>
+
+在安装 Milady 之前，请确保您已具备所需的运行环境：
+
+| 要求 | 版本 | 检查方式 | 安装方式 |
+|-------------|---------|-------------|---------|
+| **Node.js** | >= 22 | `node --version` | [nodejs.org](https://nodejs.org) 或 `nvm install 22` |
+
+如需**从源码构建**或进行开发，您还需要：
+
+| 要求 | 版本 | 检查方式 | 安装方式 |
+|-------------|---------|-------------|---------|
+| **Bun** | 最新版 | `bun --version` | `curl -fsSL https://bun.sh/install \| bash` |
+
+<Info>
+需要 Node 22+ 是因为 Milady 使用了原生 ES 模块、`node:` 协议前缀以及其他现代 Node API。Bun 仅在开发和从源码构建时需要——它用作包管理器和脚本运行器。发布的 npm 包和安装脚本仅依赖 Node.js 即可运行。
+</Info>
+
+您还需要至少一个模型提供商的 API 密钥（Anthropic、OpenAI、OpenRouter 等）——除非您计划使用 [Ollama](https://ollama.com) 进行完全本地推理，这不需要 API 密钥。
+
+<div id="desktop-app-recommended">
+## 桌面应用（推荐）
+</div>
+
+桌面应用是最简单的入门方式。它将完整的 Milady 运行时、Web 仪表板和网关打包为原生 Electrobun 应用程序，支持自动更新和系统托盘集成。
+
+从 **[GitHub Releases](https://github.com/milady-ai/milady/releases/latest)** 下载：
+
+| 平台 | 文件 | 备注 |
+|----------|------|-------|
+| macOS (Apple Silicon) | [`Milady-arm64.dmg`](https://github.com/milady-ai/milady/releases/latest) | M1/M2/M3/M4 Mac |
+| macOS (Intel) | [`Milady-x64.dmg`](https://github.com/milady-ai/milady/releases/latest) | 2020 年之前的 Mac |
+| Windows | [`Milady-Setup.exe`](https://github.com/milady-ai/milady/releases/latest) | Windows 10+ |
+| Linux | [`Milady.AppImage`](https://github.com/milady-ai/milady/releases/latest) / [`.deb`](https://github.com/milady-ai/milady/releases/latest) | AppImage 或 Debian 包 |
+| iOS | App Store（即将推出）| iPhone 和 iPad |
+| Android | [Google Play](https://play.google.com/store/apps/details?id=ai.milady.app) / [APK](https://github.com/milady-ai/milady/releases/latest) | Android 10+ |
+
+所有发行版均已签名并经过公证。macOS 上不会出现 Gatekeeper 警告。
+
+<div id="verify-download-integrity">
+### 验证下载完整性
+</div>
+
+```bash
+cd ~/Downloads
+curl -fsSLO https://github.com/milady-ai/milady/releases/latest/download/SHA256SUMS.txt
+shasum -a 256 --check --ignore-missing SHA256SUMS.txt
+```
+
+<div id="cli-install">
+## CLI 安装
+</div>
+
+<Tabs>
+  <Tab title="macOS / Linux">
+    安装脚本会下载最新版本，将二进制文件放入您的 PATH 中，并运行初始设置：
+
+    ```bash
+    curl -fsSL https://get.milady.ai | bash
+    milady setup
+    ```
+
+    然后启动 Milady：
+
+    ```bash
+    milady
+    ```
+  </Tab>
+  <Tab title="Windows (PowerShell)">
+    ```powershell
+    irm https://get.milady.ai/install.ps1 | iex
+    ```
+
+    安装完成后，打开新的终端窗口并运行：
+
+    ```powershell
+    milady setup
+    milady
+    ```
+  </Tab>
+  <Tab title="Bun">
+    如果您已安装 Bun：
+
+    ```bash
+    bun install -g miladyai
+    milady setup
+    milady
+    ```
+  </Tab>
+  <Tab title="npm">
+    如果您偏好使用 npm：
+
+    ```bash
+    npm install -g miladyai
+    milady setup
+    milady
+    ```
+  </Tab>
+  <Tab title="Homebrew">
+    ```bash
+    brew tap milady-ai/milady
+    brew install milady          # CLI
+    brew install --cask milady   # Desktop app (macOS only)
+    ```
+  </Tab>
+  <Tab title="Snap">
+    ```bash
+    sudo snap install milady
+    milady setup
+    ```
+
+    适用于 Ubuntu、Fedora、Manjaro 以及任何安装了 [snapd](https://snapcraft.io/docs/installing-snapd) 的发行版。Snap 包会在后台自动更新。
+
+    获取最新的开发构建版本：
+    ```bash
+    sudo snap install milady --edge
+    ```
+  </Tab>
+  <Tab title="Flatpak">
+    ```bash
+    flatpak install flathub ai.milady.Milady
+    flatpak run ai.milady.Milady
+    ```
+
+    或从 [发行版包](https://github.com/milady-ai/milady/releases/latest) 侧载：
+    ```bash
+    flatpak --user install milady.flatpak
+    ```
+  </Tab>
+  <Tab title="APT (Debian / Ubuntu)">
+    ```bash
+    # Add the repository
+    curl -fsSL https://apt.milady.ai/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/milady.gpg
+    echo "deb [signed-by=/usr/share/keyrings/milady.gpg] https://apt.milady.ai stable main" | \
+      sudo tee /etc/apt/sources.list.d/milady.list
+
+    # Install
+    sudo apt update && sudo apt install milady
+    ```
+
+    适用于 Debian 12+、Ubuntu 22.04+、Linux Mint 22+、Pop!_OS 及其他 Debian 衍生版。通过 `apt upgrade` 进行更新。
+  </Tab>
+</Tabs>
+
+<div id="build-from-source">
+## 从源码构建
+</div>
+
+适用于贡献者或希望获取最新开发版本的用户：
+
+<Steps>
+  <Step title="克隆仓库">
+    ```bash
+    git clone https://github.com/milady-ai/milady.git
+    cd milady
+    ```
+  </Step>
+  <Step title="安装依赖">
+    ```bash
+    bun install
+    ```
+
+    `preinstall` 钩子会先初始化 git 子模块；随后的 `postinstall` 会确保 skills 目录存在、链接浏览器服务器并修补依赖项。
+  </Step>
+  <Step title="构建所有内容">
+    ```bash
+    bun run build
+    ```
+
+    这会使用 `tsdown` 编译 TypeScript 源码、写入构建信息，并在 `apps/app` 中构建 Web 应用。
+
+    <Info>
+    `bun run build` 通过 Node 运行生产构建（`scripts/run-production-build.mjs`）。
+    </Info>
+  </Step>
+  <Step title="启动 Milady">
+    ```bash
+    bun run start
+    ```
+
+    这会启动网关和 API 服务器。首次运行时，您将完成交互式引导流程。
+  </Step>
+</Steps>
+
+<div id="development-mode">
+## 开发模式
+</div>
+
+Milady 提供多种开发模式，具体取决于您正在进行的工作：
+
+<CodeGroup>
+```bash Full dev (runtime + UI hot reload)
+bun run dev
+```
+
+```bash UI only (web dashboard hot reload)
+bun run dev:ui
+```
+
+```bash Desktop app (Electrobun with live reload)
+bun run dev:desktop
+```
+
+```bash Desktop app + Vite HMR
+bun run dev:desktop:watch
+```
+</CodeGroup>
+
+`dev` 脚本使用 `scripts/dev-ui.mjs` 启动运行时，并为后端和 Web UI 提供热重载。`dev:desktop` 脚本启动支持实时重载的 Electrobun 应用。
+
+<div id="mobile-builds">
+## 移动端构建
+</div>
+
+Milady 使用 [Capacitor](https://capacitorjs.com) 来支持 Android 和 iOS：
+
+<Tabs>
+  <Tab title="Android">
+    ```bash
+    bun run build:android
+    ```
+
+    使用实时重载进行开发：
+
+    ```bash
+    bun run dev:android
+    ```
+
+    需要 Android Studio 和 Android SDK。
+  </Tab>
+  <Tab title="iOS">
+    ```bash
+    bun run build:ios
+    ```
+
+    使用实时重载进行开发：
+
+    ```bash
+    bun run dev:ios
+    ```
+
+    需要 Xcode 和 Mac。
+  </Tab>
+</Tabs>
+
+<div id="environment-setup">
+## 环境设置
+</div>
+
+Milady 默认将所有状态存储在 `~/.milady/` 中。首次启动时，客户端会先选择或连接到一个服务器。
+如果您要创建本地服务器，仍然可以通过环境变量或配置文件预配置引导设置和提供商密钥。
+
+<div id="api-keys">
+### API 密钥
+</div>
+
+只有当本地服务器需要使用本地提供商密钥时，您才需要设置它们。如果您计划连接到
+现有的局域网、远程或 Eliza Cloud 服务器，该服务器可能已经管理了提供商路由和凭据。
+对于本地引导，您可以在 `~/.milady/milady.json` 的 `env` 字段中或在 `~/.milady/.env` 中设置提供商密钥：
+
+<CodeGroup>
+```bash Anthropic (recommended)
+export ANTHROPIC_API_KEY="<ANTHROPIC_API_KEY>"
+```
+
+```bash OpenAI
+export OPENAI_API_KEY="<OPENAI_API_KEY>"
+```
+
+```bash OpenRouter
+export OPENROUTER_API_KEY="<OPENROUTER_API_KEY>"
+```
+
+```bash Google Gemini
+export GOOGLE_API_KEY="<GOOGLE_API_KEY>"
+```
+
+```bash Ollama (local, no key needed)
+export OLLAMA_BASE_URL="http://localhost:11434"
+```
+</CodeGroup>
+
+<div id="ports">
+### 端口
+</div>
+
+| 服务 | 默认端口 | 环境变量 |
+|---------|-------------|---------------------|
+| Dashboard + API | `2138` | `MILADY_PORT` |
+| Gateway (WebSocket) | `18789` | `MILADY_GATEWAY_PORT` |
+| WeChat Webhook | `18790` | `MILADY_WECHAT_WEBHOOK_PORT` |
+| Home Dashboard | `2142` | `MILADY_HOME_PORT` |
+
+在开发模式（`bun run dev`）下，API 运行在单独的端口上：
+
+| 服务 | 默认端口 | 环境变量 |
+|---------|-------------|---------------------|
+| API + WebSocket (dev) | `31337` | `MILADY_API_PORT` |
+| Dashboard UI (dev) | `2138` | `MILADY_PORT` |
+
+```bash
+# Example: custom ports
+MILADY_PORT=3000 MILADY_GATEWAY_PORT=19000 milady start
+```
+
+<div id="state-directory">
+### 状态目录
+</div>
+
+| 变量 | 默认值 | 描述 |
+|----------|---------|-------------|
+| `MILADY_STATE_DIR` | `~/.milady` | Milady 所有状态的根目录 |
+| `MILADY_CONFIG_PATH` | `~/.milady/milady.json` | 显式配置文件路径 |
+
+<div id="security-api-token">
+## 安全：API 令牌
+</div>
+
+API 服务器默认绑定到 `127.0.0.1`（回环地址）——只有您的本地机器可以访问。如果您将服务器暴露到网络（例如，使用 `MILADY_API_BIND=0.0.0.0` 进行容器或云部署），则**必须**设置认证令牌：
+
+```bash
+echo "MILADY_API_TOKEN=$(openssl rand -hex 32)" >> ~/.milady/.env
+```
+
+<Warning>
+如果在公共绑定地址上未设置令牌，任何能够访问服务器的人都可以完全访问仪表板、代理端点和钱包操作。
+</Warning>
+
+<div id="verify-installation">
+## 验证安装
+</div>
+
+安装完成后，确认一切正常运行：
+
+```bash
+# Check version
+milady --version
+
+# Show configured model providers
+milady models
+
+# Bootstrap or validate local setup
+milady setup
+```
+
+`models` 命令列出所选本地服务器上下文中已配置的模型提供商及其状态。`setup` 命令在需要时
+引导本地设置并验证您的工作区。
+
+<div id="troubleshooting">
+## 故障排除
+</div>
+
+<div id="node-version-too-old">
+### Node 版本过旧
+</div>
+
+```
+Error: Milady requires Node.js >= 22
+```
+
+升级 Node.js：`nvm install 22 && nvm use 22`，或从 [nodejs.org](https://nodejs.org) 下载。
+
+<div id="bun-not-found">
+### 找不到 Bun
+</div>
+
+```
+Error: bun: command not found
+```
+
+安装 Bun：
+```bash
+curl -fsSL https://bun.sh/install | bash
+```
+
+然后重启终端或运行 `source ~/.bashrc` / `source ~/.zshrc`。
+
+<div id="port-already-in-use">
+### 端口已被占用
+</div>
+
+```
+Error: EADDRINUSE :::2138
+```
+
+另一个进程正在使用默认端口。停止该进程或使用其他端口：
+```bash
+MILADY_PORT=3000 milady start
+```
+
+<div id="permission-denied-on-install-script">
+### 安装脚本权限被拒绝
+</div>
+
+```bash
+chmod +x ~/.milady/bin/milady
+```
+
+<div id="pglite-database-corruption">
+### PGLite / 数据库损坏
+</div>
+
+如果启动时出现数据库错误，Milady 将尝试自动恢复。如果恢复失败，您可以重置数据库：
+
+```bash
+rm -rf ~/.milady/workspace/.eliza/.elizadb
+milady start
+```
+
+<Warning>
+删除数据库目录会移除所有对话历史和记忆。请将此作为最后手段。
+</Warning>
+
+<div id="macos-gatekeeper-blocks-the-app">
+### macOS Gatekeeper 阻止应用
+</div>
+
+桌面应用已签名并经过公证。如果 Gatekeeper 仍然阻止：
+
+```bash
+xattr -cr /Applications/Milady.app
+```
+
+<div id="local-macos-desktop-builds-unsigned-no-apple-certs">
+### 本地 macOS 桌面构建（未签名 / 无 Apple 证书）
+</div>
+
+GitHub **发行版**已签名并经过公证。如果您在**没有 Developer ID 凭据的情况下本地打包 Electrobun 应用**，请设置 **`ELECTROBUN_SKIP_CODESIGN=1`**（或在 CI 中不设置密钥），以使构建不要求 Apple 签名。
+
+在 **macOS** 上，执行 `node scripts/desktop-build.mjs package`（从仓库根目录）后，桌面构建器会对生成的 **`.app`** 运行 **`apps/app/electrobun/scripts/local-adhoc-sign-macos.ts`**，以便该包被**临时签名**用于本地测试。您也可以手动运行：
+
+```bash
+cd apps/app/electrobun && bun scripts/local-adhoc-sign-macos.ts /path/to/Milady.app
+```
+
+临时签名**不是**公证；Gatekeeper 首次打开时可能仍需要**右键点击 → 打开**。完整的流水线上下文：[构建和发布](/zh/build-and-release)。

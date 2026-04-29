@@ -17,6 +17,13 @@ import {
   googleDynamicFixture,
 } from "./google-gmail-state.ts";
 import { MockHttpError } from "./mock-http-error.ts";
+import {
+  getLifeOpsSimulatorPerson,
+  LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
+  lifeOpsSimulatorMessageTime,
+  lifeOpsSimulatorSummary,
+  type LifeOpsSimulatorChannelMessage,
+} from "../fixtures/lifeops-simulator.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ENVS_DIR = path.resolve(__dirname, "..", "environments");
@@ -76,6 +83,10 @@ interface StartedFixtureServer {
   requests: MockRequestLedgerEntry[];
   clearRequests(): void;
   stop(): Promise<void>;
+}
+
+interface MockFixtureOptions {
+  simulator?: boolean;
 }
 
 export interface MockRequestLedgerEntry {
@@ -162,20 +173,30 @@ export interface StartedMocks {
 
 function envVarsFor(
   envs: readonly MockEnvironmentName[],
-  baseUrls: Record<MockEnvironmentName, string>,
+  baseUrls: Record<MockEnvironmentName, string>
 ): Record<string, string> {
   const out: Record<string, string> = {};
   if (envs.includes("google")) {
     out.ELIZA_MOCK_GOOGLE_BASE = baseUrls.google;
+    out.MILADY_MOCK_GOOGLE_BASE = baseUrls.google;
     out.ELIZA_BLOCK_REAL_GMAIL_WRITES = "1";
   }
-  if (envs.includes("twilio")) out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
+  if (envs.includes("twilio")) {
+    out.ELIZA_MOCK_TWILIO_BASE = baseUrls.twilio;
+    out.MILADY_MOCK_TWILIO_BASE = baseUrls.twilio;
+  }
   if (envs.includes("whatsapp"))
     out.ELIZA_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
-  if (envs.includes("x-twitter"))
+  if (envs.includes("whatsapp"))
+    out.MILADY_MOCK_WHATSAPP_BASE = baseUrls.whatsapp;
+  if (envs.includes("x-twitter")) {
     out.ELIZA_MOCK_X_BASE = baseUrls["x-twitter"];
+    out.MILADY_MOCK_X_BASE = baseUrls["x-twitter"];
+  }
   if (envs.includes("calendly"))
     out.ELIZA_MOCK_CALENDLY_BASE = baseUrls.calendly;
+  if (envs.includes("calendly"))
+    out.MILADY_MOCK_CALENDLY_BASE = baseUrls.calendly;
   if (envs.includes("cloud-managed"))
     out.ELIZA_CLOUD_BASE_URL = baseUrls["cloud-managed"];
   if (envs.includes("signal")) {
@@ -185,6 +206,8 @@ function envVarsFor(
   if (envs.includes("browser-workspace")) {
     out.ELIZA_BROWSER_WORKSPACE_URL = baseUrls["browser-workspace"];
     out.ELIZA_BROWSER_WORKSPACE_TOKEN = "mock-browser-workspace-token";
+    out.ELIZA_DISABLE_DISCORD_DESKTOP_CDP = "1";
+    out.MILADY_DISABLE_DISCORD_DESKTOP_CDP = "1";
   }
   if (envs.includes("bluebubbles")) {
     out.ELIZA_IMESSAGE_BACKEND = "bluebubbles";
@@ -261,13 +284,13 @@ function readEnvironment(dataPath: string): MockoonEnvironmentFile {
         typeof route === "object" &&
         !Array.isArray(route) &&
         typeof route.method === "string" &&
-        typeof route.endpoint === "string",
+        typeof route.endpoint === "string"
     ),
   };
 }
 
 async function readRequestBody(
-  req: http.IncomingMessage,
+  req: http.IncomingMessage
 ): Promise<RequestBody> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
@@ -332,7 +355,7 @@ function fakerValue(kind: string, lengthText?: string): string {
   if (kind === "string.alphanumeric") {
     return randomFromAlphabet(
       "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-      size,
+      size
     );
   }
 
@@ -371,7 +394,7 @@ function formatHttpDate(date: Date): string {
   return `${weekdays[date.getUTCDay()]}, ${pad(date.getUTCDate())} ${
     months[date.getUTCMonth()]
   } ${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(
-    date.getUTCMinutes(),
+    date.getUTCMinutes()
   )}:${pad(date.getUTCSeconds())} GMT`;
 }
 
@@ -388,30 +411,30 @@ function nowValue(format: string, offsetText?: string): string {
 function renderBodyTemplate(
   body: string,
   params: Record<string, string>,
-  requestBody: RequestBody,
+  requestBody: RequestBody
 ): string {
   return body
     .replace(/\{\{urlParam '([^']+)'\}\}/g, (_, key: string) =>
-      escapeTemplateString(params[key] ?? ""),
+      escapeTemplateString(params[key] ?? "")
     )
     .replace(/\{\{body '([^']+)'\}\}/g, (_, key: string) =>
-      escapeTemplateString(valueAsTemplateString(requestBody[key])),
+      escapeTemplateString(valueAsTemplateString(requestBody[key]))
     )
     .replace(
       /\{\{faker '([^']+)'(?: length=(\d+))?\}\}/g,
-      (_, kind: string, length: string | undefined) => fakerValue(kind, length),
+      (_, kind: string, length: string | undefined) => fakerValue(kind, length)
     )
     .replace(
       /\{\{now '([^']+)'(?: offset='([^']+)')?\}\}/g,
       (_, format: string, offset: string | undefined) =>
-        nowValue(format, offset),
+        nowValue(format, offset)
     );
 }
 
 function findRoute(
   routes: readonly CompiledRoute[],
   method: string,
-  pathname: string,
+  pathname: string
 ): { route: CompiledRoute; params: Record<string, string> } | null {
   for (const route of routes) {
     if (route.method !== method) continue;
@@ -432,7 +455,7 @@ function findRoute(
 
 function headerValue(
   headers: http.IncomingHttpHeaders,
-  key: string,
+  key: string
 ): string | null {
   const value = headers[key.toLowerCase()];
   if (Array.isArray(value)) return value[0] ?? null;
@@ -456,7 +479,7 @@ interface DynamicFixtureResponse {
 
 function jsonFixture(
   body: JsonValue | object,
-  statusCode = 200,
+  statusCode = 200
 ): DynamicFixtureResponse {
   return {
     statusCode,
@@ -467,7 +490,7 @@ function jsonFixture(
 
 function mockJsonError(
   statusCode: number,
-  message: string,
+  message: string
 ): DynamicFixtureResponse {
   return jsonFixture({ error: message }, statusCode);
 }
@@ -500,7 +523,7 @@ function readStringArray(body: RequestBody, key: string): string[] {
 function numericSearchParam(
   searchParams: URLSearchParams,
   key: string,
-  fallback: number,
+  fallback: number
 ): number {
   const parsed = Number.parseInt(searchParams.get(key) ?? "", 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -508,7 +531,7 @@ function numericSearchParam(
 
 function withRunId<T extends { runId?: string }>(
   ledgerEntry: MockRequestLedgerEntry,
-  metadata: Omit<T, "runId">,
+  metadata: Omit<T, "runId">
 ): T {
   return {
     ...(metadata as T),
@@ -616,7 +639,7 @@ function createXMockState(): XMockState {
 function xPageResponse<T extends JsonValue>(
   data: T[],
   users: readonly XUser[],
-  limit: number,
+  limit: number
 ): DynamicFixtureResponse {
   const page = data.slice(0, Math.max(1, limit));
   return jsonFixture({
@@ -635,7 +658,7 @@ function xDynamicFixture(
   pathname: string,
   searchParams: URLSearchParams,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  ledgerEntry: MockRequestLedgerEntry
 ): DynamicFixtureResponse | null {
   if (method === "GET" && pathname === "/2/dm_events") {
     const limit = numericSearchParam(searchParams, "max_results", 25);
@@ -648,7 +671,7 @@ function xDynamicFixture(
 
   const homeUserId = routeParam(
     pathname,
-    /^\/2\/users\/([^/]+)\/timelines\/reverse_chronological\/?$/,
+    /^\/2\/users\/([^/]+)\/timelines\/reverse_chronological\/?$/
   );
   if (method === "GET" && homeUserId) {
     const limit = numericSearchParam(searchParams, "max_results", 25);
@@ -662,7 +685,7 @@ function xDynamicFixture(
 
   const mentionsUserId = routeParam(
     pathname,
-    /^\/2\/users\/([^/]+)\/mentions\/?$/,
+    /^\/2\/users\/([^/]+)\/mentions\/?$/
   );
   if (method === "GET" && mentionsUserId) {
     const limit = numericSearchParam(searchParams, "max_results", 25);
@@ -680,7 +703,7 @@ function xDynamicFixture(
     const limit = numericSearchParam(searchParams, "max_results", 25);
     const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
     const matches = state.searchTweets.filter((tweet) =>
-      tokens.some((token) => tweet.text.toLowerCase().includes(token)),
+      tokens.some((token) => tweet.text.toLowerCase().includes(token))
     );
     ledgerEntry.x = withRunId<XRequestLedgerMetadata>(ledgerEntry, {
       action: "tweets.search_recent",
@@ -690,7 +713,7 @@ function xDynamicFixture(
     return xPageResponse(
       matches.length > 0 ? matches : state.searchTweets,
       state.users,
-      limit,
+      limit
     );
   }
 
@@ -713,7 +736,7 @@ function xDynamicFixture(
 
   const dmRecipientId = routeParam(
     pathname,
-    /^\/2\/dm_conversations\/with\/([^/]+)\/messages\/?$/,
+    /^\/2\/dm_conversations\/with\/([^/]+)\/messages\/?$/
   );
   if (method === "POST" && dmRecipientId) {
     const text = readRequiredFixtureString(requestBody, "text");
@@ -751,7 +774,7 @@ interface WhatsAppInboundMessage {
 }
 
 function whatsappInboundMessageToJson(
-  message: WhatsAppInboundMessage,
+  message: WhatsAppInboundMessage
 ): JsonValue {
   return {
     id: message.id,
@@ -766,12 +789,35 @@ interface WhatsAppMockState {
   inboundMessages: WhatsAppInboundMessage[];
 }
 
-function createWhatsAppMockState(): WhatsAppMockState {
-  return { inboundMessages: [] };
+function simulatorWhatsAppMessage(
+  message: LifeOpsSimulatorChannelMessage
+): WhatsAppInboundMessage {
+  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+  return {
+    id: message.id,
+    from: person.whatsappNumber,
+    timestamp: String(
+      Math.floor(
+        Date.parse(lifeOpsSimulatorMessageTime(message.sentAtOffsetMs)) / 1000
+      )
+    ),
+    type: "text",
+    text: { body: message.text },
+  };
+}
+
+function createWhatsAppMockState(opts?: MockFixtureOptions): WhatsAppMockState {
+  return {
+    inboundMessages: opts?.simulator
+      ? LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+          (message) => message.channel === "whatsapp"
+        ).map(simulatorWhatsAppMessage)
+      : [],
+  };
 }
 
 function readNestedRecord(
-  value: JsonValue | undefined,
+  value: JsonValue | undefined
 ): Record<string, JsonValue> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value
@@ -779,7 +825,7 @@ function readNestedRecord(
 }
 
 function parseWhatsAppWebhookMessages(
-  payload: RequestBody,
+  payload: RequestBody
 ): WhatsAppInboundMessage[] {
   const entries = payload.entry;
   if (!Array.isArray(entries)) return [];
@@ -834,17 +880,17 @@ function whatsappDynamicFixture(
   method: string,
   pathname: string,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  ledgerEntry: MockRequestLedgerEntry
 ): DynamicFixtureResponse | null {
   const phoneNumberId = routeParam(
     pathname,
-    /^\/v[^/]+\/([^/]+)\/messages\/?$/,
+    /^\/v[^/]+\/([^/]+)\/messages\/?$/
   );
   if (method === "POST" && phoneNumberId) {
     const recipient = readRequiredFixtureString(requestBody, "to");
     const messageId = `wamid.${randomFromAlphabet(
       "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-      20,
+      20
     )}`;
     ledgerEntry.whatsapp = withRunId<WhatsAppRequestLedgerMetadata>(
       ledgerEntry,
@@ -853,7 +899,7 @@ function whatsappDynamicFixture(
         phoneNumberId,
         recipient,
         messageId,
-      },
+      }
     );
     return jsonFixture({
       messaging_product: "whatsapp",
@@ -869,7 +915,7 @@ function whatsappDynamicFixture(
     const messages = parseWhatsAppWebhookMessages(requestBody);
     for (const message of messages) {
       const existingIndex = state.inboundMessages.findIndex(
-        (candidate) => candidate.id === message.id,
+        (candidate) => candidate.id === message.id
       );
       if (existingIndex >= 0) {
         state.inboundMessages[existingIndex] = message;
@@ -879,7 +925,7 @@ function whatsappDynamicFixture(
     }
     ledgerEntry.whatsapp = withRunId<WhatsAppRequestLedgerMetadata>(
       ledgerEntry,
-      { action: "webhook.ingest", ingested: messages.length },
+      { action: "webhook.ingest", ingested: messages.length }
     );
     return jsonFixture({
       ok: true,
@@ -891,7 +937,7 @@ function whatsappDynamicFixture(
   if (pathname === "/__mock/whatsapp/inbound") {
     ledgerEntry.whatsapp = withRunId<WhatsAppRequestLedgerMetadata>(
       ledgerEntry,
-      { action: "webhook.buffer" },
+      { action: "webhook.buffer" }
     );
     if (method === "GET") {
       return jsonFixture({
@@ -901,7 +947,7 @@ function whatsappDynamicFixture(
     if (method === "DELETE") {
       const drained = state.inboundMessages.splice(
         0,
-        state.inboundMessages.length,
+        state.inboundMessages.length
       );
       return jsonFixture({
         drained: drained.length,
@@ -929,7 +975,7 @@ interface SignalEnvelopeMessage {
 }
 
 function signalEnvelopeMessageToJson(
-  message: SignalEnvelopeMessage,
+  message: SignalEnvelopeMessage
 ): JsonValue {
   return {
     account: message.account,
@@ -953,44 +999,74 @@ interface SignalMockState {
   receiveQueue: SignalEnvelopeMessage[];
 }
 
-function createSignalMockState(): SignalMockState {
+function simulatorSignalMessage(
+  message: LifeOpsSimulatorChannelMessage
+): SignalEnvelopeMessage {
+  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+  const timestamp = Date.parse(
+    lifeOpsSimulatorMessageTime(message.sentAtOffsetMs)
+  );
+  const isGroup = message.threadType === "group";
+  return {
+    envelope: {
+      source: person.signalNumber,
+      sourceNumber: person.signalNumber,
+      sourceName: isGroup ? message.threadName : `${person.name} Signal`,
+      timestamp,
+      dataMessage: {
+        timestamp,
+        message: message.text,
+        ...(isGroup
+          ? { groupInfo: { groupId: message.threadId, type: "DELIVER" } }
+          : {}),
+      },
+    },
+    account: "+15550000000",
+  };
+}
+
+function createSignalMockState(opts?: MockFixtureOptions): SignalMockState {
   const now = Date.parse("2026-04-25T12:00:00.000Z");
   return {
-    receiveQueue: [
-      {
-        envelope: {
-          source: "+15551110001",
-          sourceNumber: "+15551110001",
-          sourceName: "Alice Signal",
-          timestamp: now,
-          dataMessage: {
-            timestamp: now,
-            message: "Signal fixture inbound message",
+    receiveQueue: opts?.simulator
+      ? LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+          (message) => message.channel === "signal"
+        ).map(simulatorSignalMessage)
+      : [
+          {
+            envelope: {
+              source: "+15551110001",
+              sourceNumber: "+15551110001",
+              sourceName: "Alice Signal",
+              timestamp: now,
+              dataMessage: {
+                timestamp: now,
+                message: "Signal fixture inbound message",
+              },
+            },
+            account: "+15550000000",
           },
-        },
-        account: "+15550000000",
-      },
-      {
-        envelope: {
-          source: "+15551110002",
-          sourceNumber: "+15551110002",
-          sourceName: "Ops Group",
-          timestamp: now + 1_000,
-          dataMessage: {
-            timestamp: now + 1_000,
-            message: "Signal group fixture message",
-            groupInfo: { groupId: "group-signal-fixture", type: "DELIVER" },
+          {
+            envelope: {
+              source: "+15551110002",
+              sourceNumber: "+15551110002",
+              sourceName: "Ops Group",
+              timestamp: now + 1_000,
+              dataMessage: {
+                timestamp: now + 1_000,
+                message: "Signal group fixture message",
+                groupInfo: { groupId: "group-signal-fixture", type: "DELIVER" },
+              },
+            },
+            account: "+15550000000",
           },
-        },
-        account: "+15550000000",
-      },
-    ],
+        ],
   };
 }
 
 function signalRpcResponse(
   requestBody: RequestBody,
-  result: JsonValue,
+  result: JsonValue
 ): DynamicFixtureResponse {
   return jsonFixture({
     jsonrpc: "2.0",
@@ -1004,7 +1080,7 @@ function signalDynamicFixture(
   method: string,
   pathname: string,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  ledgerEntry: MockRequestLedgerEntry
 ): DynamicFixtureResponse | null {
   if (method === "GET" && pathname === "/api/v1/check") {
     ledgerEntry.signal = withRunId<SignalRequestLedgerMetadata>(ledgerEntry, {
@@ -1023,7 +1099,7 @@ function signalDynamicFixture(
       account,
       recipients: Array.isArray(params.recipients)
         ? params.recipients.filter(
-            (entry): entry is string => typeof entry === "string",
+            (entry): entry is string => typeof entry === "string"
           )
         : undefined,
       groupId: typeof params.groupId === "string" ? params.groupId : undefined,
@@ -1102,15 +1178,18 @@ interface BrowserWorkspaceTab {
 interface BrowserWorkspaceMockState {
   tabs: Map<string, BrowserWorkspaceTab>;
   nextTabId: number;
+  simulator: boolean;
 }
 
-function createBrowserWorkspaceMockState(): BrowserWorkspaceMockState {
-  return { tabs: new Map(), nextTabId: 1 };
+function createBrowserWorkspaceMockState(
+  opts?: MockFixtureOptions
+): BrowserWorkspaceMockState {
+  return { tabs: new Map(), nextTabId: 1, simulator: Boolean(opts?.simulator) };
 }
 
 function requireBearerToken(
   headers: http.IncomingHttpHeaders,
-  token: string,
+  token: string
 ): DynamicFixtureResponse | null {
   const authorization = headerValue(headers, "authorization");
   return authorization === `Bearer ${token}`
@@ -1118,9 +1197,16 @@ function requireBearerToken(
     : mockJsonError(401, "unauthorized");
 }
 
+function simulatorDiscordMessages(): LifeOpsSimulatorChannelMessage[] {
+  return LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+    (message) => message.channel === "discord"
+  );
+}
+
 function browserWorkspaceEvalResult(
   script: string,
   tab: BrowserWorkspaceTab,
+  state: BrowserWorkspaceMockState
 ): JsonValue {
   if (script.includes("searchMessages")) {
     return { injected: true };
@@ -1129,6 +1215,19 @@ function browserWorkspaceEvalResult(
     script.includes("searchResultMessage") ||
     script.includes("search-result-message")
   ) {
+    if (state.simulator) {
+      return simulatorDiscordMessages().map((message) => {
+        const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+        return {
+          id: message.id,
+          content: message.text,
+          authorName: person.discordUsername,
+          channelId: message.threadId,
+          timestamp: lifeOpsSimulatorMessageTime(message.sentAtOffsetMs),
+          deliveryStatus: "unknown",
+        };
+      });
+    }
     return [
       {
         id: "123456789012345678",
@@ -1156,6 +1255,23 @@ function browserWorkspaceEvalResult(
     script.includes("probeDiscordDocumentState") ||
     script.includes("DISCORD_DM_PREVIEW_LIMIT")
   ) {
+    const previews = state.simulator
+      ? simulatorDiscordMessages().map((message, index) => {
+          const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+          return {
+            channelId: message.threadId,
+            href:
+              message.threadType === "dm"
+                ? `/channels/@me/${message.threadId}`
+                : `/channels/atlas/${message.threadId}`,
+            label:
+              message.threadType === "dm" ? person.name : message.threadName,
+            selected: index === 0,
+            unread: message.unread === true,
+            snippet: message.text,
+          };
+        })
+      : null;
     return {
       loggedIn: true,
       url: tab.url,
@@ -1163,9 +1279,9 @@ function browserWorkspaceEvalResult(
       rawSnippet: "mocked_owner | Direct messages",
       dmInbox: {
         visible: true,
-        count: 2,
-        selectedChannelId: "222",
-        previews: [
+        count: previews?.length ?? 2,
+        selectedChannelId: previews?.[0]?.channelId ?? "222",
+        previews: previews ?? [
           {
             channelId: "111",
             href: "/channels/@me/111",
@@ -1195,11 +1311,11 @@ function browserWorkspaceDynamicFixture(
   pathname: string,
   requestBody: RequestBody,
   headers: http.IncomingHttpHeaders,
-  ledgerEntry: MockRequestLedgerEntry,
+  ledgerEntry: MockRequestLedgerEntry
 ): DynamicFixtureResponse | null {
   const authFailure = requireBearerToken(
     headers,
-    "mock-browser-workspace-token",
+    "mock-browser-workspace-token"
   );
   if (authFailure) return authFailure;
 
@@ -1239,7 +1355,7 @@ function browserWorkspaceDynamicFixture(
 
   const tabMatch =
     /^\/tabs\/([^/]+)(?:\/(navigate|eval|show|hide|snapshot))?\/?$/.exec(
-      pathname,
+      pathname
     );
   if (!tabMatch) return null;
 
@@ -1299,7 +1415,9 @@ function browserWorkspaceDynamicFixture(
         action: "tabs.eval",
         tabId,
       });
-    return jsonFixture({ result: browserWorkspaceEvalResult(script, tab) });
+    return jsonFixture({
+      result: browserWorkspaceEvalResult(script, tab, state),
+    });
   }
 
   if (action === "snapshot" && method === "GET") {
@@ -1341,7 +1459,52 @@ interface BlueBubblesMockState {
   messages: BlueBubblesMessageFixture[];
 }
 
-function createBlueBubblesMockState(): BlueBubblesMockState {
+function simulatorBlueBubblesChat(
+  message: LifeOpsSimulatorChannelMessage
+): BlueBubblesChatFixture {
+  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+  return {
+    guid: message.threadId,
+    displayName: message.threadName,
+    chatIdentifier: person.phone,
+    participants: [{ address: person.phone }],
+    lastMessageAt: Date.parse(
+      lifeOpsSimulatorMessageTime(message.sentAtOffsetMs)
+    ),
+  };
+}
+
+function simulatorBlueBubblesMessage(
+  message: LifeOpsSimulatorChannelMessage
+): BlueBubblesMessageFixture {
+  const person = getLifeOpsSimulatorPerson(message.fromPersonKey);
+  return {
+    guid: message.id,
+    text: message.text,
+    handle: { address: person.phone },
+    chatGuid: message.threadId,
+    chats: [{ guid: message.threadId }],
+    isFromMe: message.outgoing === true,
+    dateCreated: Date.parse(
+      lifeOpsSimulatorMessageTime(message.sentAtOffsetMs)
+    ),
+    isRead: message.unread !== true,
+    isDelivered: true,
+  };
+}
+
+function createBlueBubblesMockState(
+  opts?: MockFixtureOptions
+): BlueBubblesMockState {
+  if (opts?.simulator) {
+    const messages = LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+      (message) => message.channel === "imessage"
+    );
+    return {
+      chats: messages.map(simulatorBlueBubblesChat),
+      messages: messages.map(simulatorBlueBubblesMessage),
+    };
+  }
   const chatGuid = "iMessage;-;+15551112222";
   return {
     chats: [
@@ -1379,7 +1542,7 @@ function bluebubblesDynamicFixture(
   pathname: string,
   requestBody: RequestBody,
   headers: http.IncomingHttpHeaders,
-  ledgerEntry: MockRequestLedgerEntry,
+  ledgerEntry: MockRequestLedgerEntry
 ): DynamicFixtureResponse | null {
   const authFailure = requireBearerToken(headers, "mock-bluebubbles-password");
   if (authFailure) return authFailure;
@@ -1389,7 +1552,7 @@ function bluebubblesDynamicFixture(
       ledgerEntry,
       {
         action: "server.info",
-      },
+      }
     );
     return bluebubblesResponse({
       private_api: true,
@@ -1404,7 +1567,7 @@ function bluebubblesDynamicFixture(
       ledgerEntry,
       {
         action: "chat.query",
-      },
+      }
     );
     return bluebubblesResponse(state.chats);
   }
@@ -1428,25 +1591,25 @@ function bluebubblesDynamicFixture(
         action: search ? "message.search" : "message.query",
         ...(chatGuid ? { chatGuid } : {}),
         ...(search ? { query: search } : {}),
-      },
+      }
     );
     return bluebubblesResponse(messages);
   }
 
   const chatMessageId = routeParam(
     pathname,
-    /^\/api\/v1\/chat\/([^/]+)\/message\/?$/,
+    /^\/api\/v1\/chat\/([^/]+)\/message\/?$/
   );
   if (method === "GET" && chatMessageId) {
     const messages = state.messages.filter(
-      (message) => message.chatGuid === chatMessageId,
+      (message) => message.chatGuid === chatMessageId
     );
     ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
       ledgerEntry,
       {
         action: "chat.messages",
         chatGuid: chatMessageId,
-      },
+      }
     );
     return bluebubblesResponse(messages);
   }
@@ -1472,7 +1635,7 @@ function bluebubblesDynamicFixture(
         action: "message.text",
         chatGuid,
         messageGuid: message.guid,
-      },
+      }
     );
     return bluebubblesResponse(message);
   }
@@ -1480,14 +1643,14 @@ function bluebubblesDynamicFixture(
   const messageGuid = routeParam(pathname, /^\/api\/v1\/message\/([^/]+)\/?$/);
   if (method === "GET" && messageGuid) {
     const message = state.messages.find(
-      (candidate) => candidate.guid === messageGuid,
+      (candidate) => candidate.guid === messageGuid
     );
     ledgerEntry.bluebubbles = withRunId<BlueBubblesRequestLedgerMetadata>(
       ledgerEntry,
       {
         action: "message.get",
         messageGuid,
-      },
+      }
     );
     return message
       ? bluebubblesResponse(message)
@@ -1508,7 +1671,7 @@ function createGitHubMockState(): GitHubMockState {
 
 function parseGitHubRepoPath(
   pathname: string,
-  suffix: RegExp,
+  suffix: RegExp
 ): { owner: string; repo: string; match: RegExpExecArray } | null {
   const match = suffix.exec(pathname);
   if (!match) return null;
@@ -1525,16 +1688,16 @@ function githubDynamicFixture(
   pathname: string,
   searchParams: URLSearchParams,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  ledgerEntry: MockRequestLedgerEntry
 ): DynamicFixtureResponse | null {
   const pullsPath = parseGitHubRepoPath(
     pathname,
-    /^\/repos\/([^/]+)\/([^/]+)\/pulls\/?$/,
+    /^\/repos\/([^/]+)\/([^/]+)\/pulls\/?$/
   );
   if (method === "GET" && pullsPath) {
     const requestedState = searchParams.get("state") ?? "open";
     const pulls = GITHUB_FIXTURE_PULLS.filter(
-      (pull) => requestedState === "all" || pull.state === requestedState,
+      (pull) => requestedState === "all" || pull.state === requestedState
     );
     ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
       action: "pulls.list",
@@ -1546,7 +1709,7 @@ function githubDynamicFixture(
 
   const reviewPath = parseGitHubRepoPath(
     pathname,
-    /^\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/reviews\/?$/,
+    /^\/repos\/([^/]+)\/([^/]+)\/pulls\/(\d+)\/reviews\/?$/
   );
   if (method === "POST" && reviewPath) {
     const number = Number.parseInt(reviewPath.match[3] ?? "", 10);
@@ -1562,7 +1725,7 @@ function githubDynamicFixture(
 
   const createIssuePath = parseGitHubRepoPath(
     pathname,
-    /^\/repos\/([^/]+)\/([^/]+)\/issues\/?$/,
+    /^\/repos\/([^/]+)\/([^/]+)\/issues\/?$/
   );
   if (method === "POST" && createIssuePath) {
     const number = state.nextIssueNumber++;
@@ -1581,12 +1744,12 @@ function githubDynamicFixture(
 
   const assigneesPath = parseGitHubRepoPath(
     pathname,
-    /^\/repos\/([^/]+)\/([^/]+)\/issues\/(\d+)\/assignees\/?$/,
+    /^\/repos\/([^/]+)\/([^/]+)\/issues\/(\d+)\/assignees\/?$/
   );
   if (method === "POST" && assigneesPath) {
     const number = Number.parseInt(assigneesPath.match[3] ?? "", 10);
     const assignees = readStringArray(requestBody, "assignees").map(
-      (login) => ({ login }),
+      (login) => ({ login })
     );
     ledgerEntry.github = withRunId<GitHubRequestLedgerMetadata>(ledgerEntry, {
       action: "issues.addAssignees",
@@ -1632,27 +1795,28 @@ type DynamicProviderState =
 
 function createDynamicProviderState(
   environmentName: string | undefined,
+  opts?: MockFixtureOptions
 ): DynamicProviderState {
   if (environmentName === "Google APIs") {
-    return { kind: "google", state: createGoogleMockState() };
+    return { kind: "google", state: createGoogleMockState(opts) };
   }
   if (environmentName === "X (Twitter)") {
     return { kind: "x-twitter", state: createXMockState() };
   }
   if (environmentName === "WhatsApp") {
-    return { kind: "whatsapp", state: createWhatsAppMockState() };
+    return { kind: "whatsapp", state: createWhatsAppMockState(opts) };
   }
   if (environmentName === "Signal HTTP") {
-    return { kind: "signal", state: createSignalMockState() };
+    return { kind: "signal", state: createSignalMockState(opts) };
   }
   if (environmentName === "Browser Workspace") {
     return {
       kind: "browser-workspace",
-      state: createBrowserWorkspaceMockState(),
+      state: createBrowserWorkspaceMockState(opts),
     };
   }
   if (environmentName === "BlueBubbles") {
-    return { kind: "bluebubbles", state: createBlueBubblesMockState() };
+    return { kind: "bluebubbles", state: createBlueBubblesMockState(opts) };
   }
   if (environmentName === "GitHub REST") {
     return { kind: "github", state: createGitHubMockState() };
@@ -1679,7 +1843,7 @@ function dynamicProviderFixture(args: {
         args.searchParams,
         args.requestBody,
         args.headers,
-        args.ledgerEntry,
+        args.ledgerEntry
       );
     case "x-twitter":
       return xDynamicFixture(
@@ -1688,7 +1852,7 @@ function dynamicProviderFixture(args: {
         args.pathname,
         args.searchParams,
         args.requestBody,
-        args.ledgerEntry,
+        args.ledgerEntry
       );
     case "whatsapp":
       return whatsappDynamicFixture(
@@ -1696,7 +1860,7 @@ function dynamicProviderFixture(args: {
         args.method,
         args.pathname,
         args.requestBody,
-        args.ledgerEntry,
+        args.ledgerEntry
       );
     case "signal":
       return signalDynamicFixture(
@@ -1704,7 +1868,7 @@ function dynamicProviderFixture(args: {
         args.method,
         args.pathname,
         args.requestBody,
-        args.ledgerEntry,
+        args.ledgerEntry
       );
     case "browser-workspace":
       return browserWorkspaceDynamicFixture(
@@ -1713,7 +1877,7 @@ function dynamicProviderFixture(args: {
         args.pathname,
         args.requestBody,
         args.headers,
-        args.ledgerEntry,
+        args.ledgerEntry
       );
     case "bluebubbles":
       return bluebubblesDynamicFixture(
@@ -1722,7 +1886,7 @@ function dynamicProviderFixture(args: {
         args.pathname,
         args.requestBody,
         args.headers,
-        args.ledgerEntry,
+        args.ledgerEntry
       );
     case "github":
       return githubDynamicFixture(
@@ -1731,18 +1895,19 @@ function dynamicProviderFixture(args: {
         args.pathname,
         args.searchParams,
         args.requestBody,
-        args.ledgerEntry,
+        args.ledgerEntry
       );
   }
 }
 
 async function startFixtureServer(
   dataPath: string,
+  opts?: MockFixtureOptions
 ): Promise<StartedFixtureServer> {
   const environment = readEnvironment(dataPath);
   const routes = compileRoutes(environment);
   const requests: MockRequestLedgerEntry[] = [];
-  const dynamicProvider = createDynamicProviderState(environment.name);
+  const dynamicProvider = createDynamicProviderState(environment.name, opts);
   let stopped = false;
 
   const server = http.createServer(async (req, res) => {
@@ -1753,6 +1918,19 @@ async function startFixtureServer(
       if (method === "GET" && requestUrl.pathname === "/__mock/requests") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ requests }));
+        return;
+      }
+      if (
+        method === "GET" &&
+        requestUrl.pathname === "/__mock/lifeops/simulator"
+      ) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            enabled: Boolean(opts?.simulator),
+            summary: opts?.simulator ? lifeOpsSimulatorSummary() : null,
+          })
+        );
         return;
       }
       if (method === "DELETE" && requestUrl.pathname === "/__mock/requests") {
@@ -1800,7 +1978,7 @@ async function startFixtureServer(
 
       const response = matched.route.response;
       const headers = Object.fromEntries(
-        (response.headers ?? []).map((header) => [header.key, header.value]),
+        (response.headers ?? []).map((header) => [header.key, header.value])
       );
       if (!headers["Content-Type"] && !headers["content-type"]) {
         headers["Content-Type"] = "application/json";
@@ -1808,7 +1986,7 @@ async function startFixtureServer(
 
       res.writeHead(response.statusCode ?? 200, headers);
       res.end(
-        renderBodyTemplate(response.body ?? "", matched.params, requestBody),
+        renderBodyTemplate(response.body ?? "", matched.params, requestBody)
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1818,7 +1996,7 @@ async function startFixtureServer(
         JSON.stringify({
           error: statusCode === 500 ? "fixture_error" : "bad_request",
           message,
-        }),
+        })
       );
     }
   });
@@ -1856,6 +2034,7 @@ async function startFixtureServer(
 
 export async function startMocks(opts?: {
   envs?: readonly MockEnvironmentName[];
+  simulator?: boolean;
 }): Promise<StartedMocks> {
   const envs = opts?.envs ?? MOCK_ENVIRONMENTS;
 
@@ -1868,17 +2047,21 @@ export async function startMocks(opts?: {
   const servers: StartedFixtureServer[] = [];
   try {
     for (const dataPath of dataPaths) {
-      servers.push(await startFixtureServer(dataPath));
+      servers.push(
+        await startFixtureServer(dataPath, {
+          simulator: Boolean(opts?.simulator),
+        })
+      );
     }
   } catch (err) {
     await Promise.allSettled(servers.map((server) => server.stop()));
     throw err;
   }
   const portMap = Object.fromEntries(
-    envs.map((e, i) => [e, servers[i].port]),
+    envs.map((e, i) => [e, servers[i].port])
   ) as Record<MockEnvironmentName, number>;
   const baseUrls = Object.fromEntries(
-    envs.map((e, i) => [e, servers[i].baseUrl]),
+    envs.map((e, i) => [e, servers[i].baseUrl])
   ) as Record<MockEnvironmentName, string>;
 
   return {
@@ -1887,7 +2070,7 @@ export async function startMocks(opts?: {
     envVars: envVarsFor(envs, baseUrls),
     requestLedger: () =>
       servers.flatMap((server) =>
-        server.requests.map((entry) => ({ ...entry })),
+        server.requests.map((entry) => ({ ...entry }))
       ),
     clearRequestLedger: () => {
       for (const server of servers) {

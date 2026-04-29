@@ -5,11 +5,11 @@ import { fileURLToPath } from "node:url";
 
 import {
   AgentRuntime,
-  InMemoryDatabaseAdapter,
-  ModelType,
   type Character,
   type Content,
   type HandlerCallback,
+  InMemoryDatabaseAdapter,
+  ModelType,
   type Plugin,
   type UUID,
 } from "@elizaos/core";
@@ -98,44 +98,47 @@ type BenchmarkOutput = {
   sampleCount: number;
   modes: VoicebenchMode[];
   results: IterationResult[];
-  summary: Record<string, {
-    runs: number;
-    avgTranscriptionMs: number;
-    avgResponseTtftMs: number;
-    avgResponseTotalMs: number;
-    avgSpeechToResponseStartMs: number;
-    avgSpeechToVoiceStartUncachedMs: number;
-    avgSpeechToVoiceStartCachedMs: number;
-    avgVoiceGenerationMs: number;
-    avgVoiceFirstTokenUncachedMs: number;
-    avgVoiceFirstTokenCachedMs: number;
-    avgTtsCachedPipelineMs: number;
-    p95TranscriptionMs: number;
-    p99TranscriptionMs: number;
-    p95ResponseTtftMs: number;
-    p99ResponseTtftMs: number;
-    p95ResponseTotalMs: number;
-    p99ResponseTotalMs: number;
-    p95SpeechToResponseStartMs: number;
-    p99SpeechToResponseStartMs: number;
-    p95SpeechToVoiceStartUncachedMs: number;
-    p99SpeechToVoiceStartUncachedMs: number;
-    p95SpeechToVoiceStartCachedMs: number;
-    p99SpeechToVoiceStartCachedMs: number;
-    p95VoiceGenerationMs: number;
-    p99VoiceGenerationMs: number;
-    p95VoiceFirstTokenUncachedMs: number;
-    p99VoiceFirstTokenUncachedMs: number;
-    p95VoiceFirstTokenCachedMs: number;
-    p99VoiceFirstTokenCachedMs: number;
-    p95TtsCachedPipelineMs: number;
-    p99TtsCachedPipelineMs: number;
-    firstSentenceCacheHitRate: number;
-    transcriptionNormalizedAccuracy: number;
-    avgEndToEndMs: number;
-    p95EndToEndMs: number;
-    p99EndToEndMs: number;
-  }>;
+  summary: Record<
+    string,
+    {
+      runs: number;
+      avgTranscriptionMs: number;
+      avgResponseTtftMs: number;
+      avgResponseTotalMs: number;
+      avgSpeechToResponseStartMs: number;
+      avgSpeechToVoiceStartUncachedMs: number;
+      avgSpeechToVoiceStartCachedMs: number;
+      avgVoiceGenerationMs: number;
+      avgVoiceFirstTokenUncachedMs: number;
+      avgVoiceFirstTokenCachedMs: number;
+      avgTtsCachedPipelineMs: number;
+      p95TranscriptionMs: number;
+      p99TranscriptionMs: number;
+      p95ResponseTtftMs: number;
+      p99ResponseTtftMs: number;
+      p95ResponseTotalMs: number;
+      p99ResponseTotalMs: number;
+      p95SpeechToResponseStartMs: number;
+      p99SpeechToResponseStartMs: number;
+      p95SpeechToVoiceStartUncachedMs: number;
+      p99SpeechToVoiceStartUncachedMs: number;
+      p95SpeechToVoiceStartCachedMs: number;
+      p99SpeechToVoiceStartCachedMs: number;
+      p95VoiceGenerationMs: number;
+      p99VoiceGenerationMs: number;
+      p95VoiceFirstTokenUncachedMs: number;
+      p99VoiceFirstTokenUncachedMs: number;
+      p95VoiceFirstTokenCachedMs: number;
+      p99VoiceFirstTokenCachedMs: number;
+      p95TtsCachedPipelineMs: number;
+      p99TtsCachedPipelineMs: number;
+      firstSentenceCacheHitRate: number;
+      transcriptionNormalizedAccuracy: number;
+      avgEndToEndMs: number;
+      p95EndToEndMs: number;
+      p99EndToEndMs: number;
+    }
+  >;
 };
 
 type DatasetSample = {
@@ -221,7 +224,10 @@ function normalizeCacheKeyText(text: string): string {
     .trim();
 }
 
-function enforceResponseBudget(text: string, maxChars: number): {
+function enforceResponseBudget(
+  text: string,
+  maxChars: number,
+): {
   text: string;
   wasCapped: boolean;
 } {
@@ -241,14 +247,19 @@ function enforceResponseBudget(text: string, maxChars: number): {
     head.lastIndexOf(" "),
   );
   const minBreakpoint = Math.floor(maxChars * 0.6);
-  let bounded = (breakpoint >= minBreakpoint ? head.slice(0, breakpoint) : head).trim();
+  let bounded = (
+    breakpoint >= minBreakpoint ? head.slice(0, breakpoint) : head
+  ).trim();
   if (!/[.!?]$/.test(bounded)) {
     bounded = `${bounded}.`;
   }
   return { text: bounded, wasCapped: true };
 }
 
-function splitFirstSentence(text: string): { firstSentence: string; remainder: string } {
+function splitFirstSentence(text: string): {
+  firstSentence: string;
+  remainder: string;
+} {
   const stripped = text.trim();
   if (!stripped) {
     return { firstSentence: "", remainder: "" };
@@ -287,7 +298,8 @@ function inspectModelOutput(raw: string): ModelOutputInspection {
 function resolveAudioBytesLength(output: unknown): number {
   if (output instanceof Uint8Array) return output.byteLength;
   if (output instanceof ArrayBuffer) return output.byteLength;
-  if (typeof Buffer !== "undefined" && Buffer.isBuffer(output)) return output.length;
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(output))
+    return output.length;
   if (typeof output === "string") return output.length;
   if (output && typeof output === "object" && "byteLength" in output) {
     const maybeLength = (output as { byteLength?: unknown }).byteLength;
@@ -299,9 +311,13 @@ function resolveAudioBytesLength(output: unknown): number {
 function coerceAudioBytes(output: unknown): Uint8Array {
   if (output instanceof Uint8Array) return output;
   if (output instanceof ArrayBuffer) return new Uint8Array(output);
-  if (typeof Buffer !== "undefined" && Buffer.isBuffer(output)) return new Uint8Array(output);
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(output))
+    return new Uint8Array(output);
   if (typeof output === "string") {
-    const raw = output.startsWith("data:") && output.includes(",") ? output.split(",", 2)[1] : output;
+    const raw =
+      output.startsWith("data:") && output.includes(",")
+        ? output.split(",", 2)[1]
+        : output;
     try {
       if (typeof Buffer !== "undefined") {
         return new Uint8Array(Buffer.from(raw, "base64"));
@@ -314,15 +330,22 @@ function coerceAudioBytes(output: unknown): Uint8Array {
   return new Uint8Array();
 }
 
-function loadDatasetSamples(datasetPath: string): { datasetName: string; samples: DatasetSample[] } {
+function loadDatasetSamples(datasetPath: string): {
+  datasetName: string;
+  samples: DatasetSample[];
+} {
   const datasetRaw = JSON.parse(readFileSync(datasetPath, "utf-8")) as {
     datasetName?: string;
     name?: string;
     samples?: Array<Record<string, unknown>>;
   };
-  const datasetName = String(datasetRaw.datasetName ?? datasetRaw.name ?? "voicebench-dataset");
+  const datasetName = String(
+    datasetRaw.datasetName ?? datasetRaw.name ?? "voicebench-dataset",
+  );
   const parent = dirname(datasetPath);
-  const rawSamples = Array.isArray(datasetRaw.samples) ? datasetRaw.samples : [];
+  const rawSamples = Array.isArray(datasetRaw.samples)
+    ? datasetRaw.samples
+    : [];
   if (rawSamples.length === 0) {
     throw new Error(`Dataset has no samples: ${datasetPath}`);
   }
@@ -332,17 +355,23 @@ function loadDatasetSamples(datasetPath: string): { datasetName: string; samples
     if (typeof audioPathValue !== "string" || audioPathValue.length === 0) {
       throw new Error(`Dataset sample ${id} missing audioPath`);
     }
-    const expectedTextValue = sample.text ?? sample.expectedText ?? sample.label;
+    const expectedTextValue =
+      sample.text ?? sample.expectedText ?? sample.label;
     return {
       id,
-      audioPath: audioPathValue.startsWith("/") ? audioPathValue : resolve(parent, audioPathValue),
-      expectedText: typeof expectedTextValue === "string" ? expectedTextValue : null,
+      audioPath: audioPathValue.startsWith("/")
+        ? audioPathValue
+        : resolve(parent, audioPathValue),
+      expectedText:
+        typeof expectedTextValue === "string" ? expectedTextValue : null,
     };
   });
   return { datasetName, samples };
 }
 
-async function seedRuntimeGraph(adapter: InMemoryDatabaseAdapter): Promise<void> {
+async function seedRuntimeGraph(
+  adapter: InMemoryDatabaseAdapter,
+): Promise<void> {
   await adapter.createWorld({
     id: WORLD_ID,
     name: "VoicebenchWorld",
@@ -376,7 +405,9 @@ async function seedRuntimeGraph(adapter: InMemoryDatabaseAdapter): Promise<void>
 }
 
 async function resolvePlugins(profile: string): Promise<Plugin[]> {
-  const groqModule = await import("../../../../plugins/plugin-groq/typescript/index.ts");
+  const groqModule = await import(
+    "../../../../plugins/plugin-groq/typescript/index.ts"
+  );
   const groq =
     (groqModule as { groqPlugin?: Plugin }).groqPlugin ??
     (groqModule as { default?: Plugin }).default;
@@ -402,7 +433,10 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
   return [groq, elevenLabs];
 }
 
-async function createRuntime(profile: string, character: Character): Promise<AgentRuntime> {
+async function createRuntime(
+  profile: string,
+  character: Character,
+): Promise<AgentRuntime> {
   const adapter = new InMemoryDatabaseAdapter();
   const plugins = await resolvePlugins(profile);
   const runtimeSettings: Record<string, string> = {
@@ -500,7 +534,9 @@ async function main(): Promise<void> {
     readFileSync(resolve(SHARED_DIR, "character.json"), "utf-8"),
   ) as Character;
 
-  const iterations = iterationsArg ? Number.parseInt(iterationsArg, 10) : config.defaultIterations;
+  const iterations = iterationsArg
+    ? Number.parseInt(iterationsArg, 10)
+    : config.defaultIterations;
   if (!Number.isFinite(iterations) || iterations <= 0) {
     throw new Error(`Invalid iterations: ${iterationsArg}`);
   }
@@ -524,9 +560,9 @@ async function main(): Promise<void> {
 
   const runtime = await createRuntime(profile, character);
   try {
-    const trajectoryService = runtime.getService("trajectory_logger") as
-      | TrajectoryLoggerServiceLike
-      | null;
+    const trajectoryService = runtime.getService(
+      "trajectory_logger",
+    ) as TrajectoryLoggerServiceLike | null;
     for (const mode of config.modes) {
       for (const sample of samples) {
         const sampleAudioBytes = readFileSync(sample.audioPath);
@@ -548,10 +584,13 @@ async function main(): Promise<void> {
           const transcriptText = String(transcription || "").trim();
           const expectedTranscript = sample.expectedText;
           const transcriptionExactMatch =
-            typeof expectedTranscript === "string" ? transcriptText === expectedTranscript : null;
+            typeof expectedTranscript === "string"
+              ? transcriptText === expectedTranscript
+              : null;
           const transcriptionNormalizedMatch =
             typeof expectedTranscript === "string"
-              ? normalizeText(transcriptText) === normalizeText(expectedTranscript)
+              ? normalizeText(transcriptText) ===
+                normalizeText(expectedTranscript)
               : null;
 
           const userPrompt = `${transcriptText}\n\n${config.responsePrompt}`;
@@ -587,16 +626,27 @@ async function main(): Promise<void> {
           };
 
           const responseStart = nowMs();
-          const responseResult = await runtime.messageService.handleMessage(runtime, message, callback);
+          const responseResult = await runtime.messageService.handleMessage(
+            runtime,
+            message,
+            callback,
+          );
           const responseEnd = nowMs();
 
           const responseTotalMs = responseEnd - responseStart;
-          const responseTtftMs = (firstResponseAt ?? responseEnd) - responseStart;
+          const responseTtftMs =
+            (firstResponseAt ?? responseEnd) - responseStart;
           const speechToResponseStartMs = transcriptionMs + responseTtftMs;
           const rawResponseText =
-            callbackText || responseResult.responseContent?.text || "Voicebench fallback response.";
-          const boundedResponse = enforceResponseBudget(rawResponseText, responseMaxChars);
-          const responseText = boundedResponse.text || "Voicebench fallback response.";
+            callbackText ||
+            responseResult.responseContent?.text ||
+            "Voicebench fallback response.";
+          const boundedResponse = enforceResponseBudget(
+            rawResponseText,
+            responseMaxChars,
+          );
+          const responseText =
+            boundedResponse.text || "Voicebench fallback response.";
 
           const segmented = splitFirstSentence(responseText);
           const firstSentence = segmented.firstSentence || responseText;
@@ -612,7 +662,9 @@ async function main(): Promise<void> {
           const uncachedFirstSentenceMs = nowMs() - uncachedFirstSentenceStart;
           const speechToVoiceStartUncachedMs =
             transcriptionMs + responseTotalMs + uncachedFirstSentenceMs;
-          const uncachedFirstSentenceBytes = resolveAudioBytesLength(uncachedFirstSentenceOutput);
+          const uncachedFirstSentenceBytes = resolveAudioBytesLength(
+            uncachedFirstSentenceOutput,
+          );
 
           const cachedPipelineStart = nowMs();
           const cachedHit = firstSentenceCache.has(firstSentenceKey);
@@ -628,7 +680,8 @@ async function main(): Promise<void> {
           let cachedFirstSentenceBytes = 0;
           let cachedFirstSentenceMs = 0;
           if (cachedHit) {
-            cachedFirstSentenceBytes = firstSentenceCache.get(firstSentenceKey)?.byteLength ?? 0;
+            cachedFirstSentenceBytes =
+              firstSentenceCache.get(firstSentenceKey)?.byteLength ?? 0;
             cachedFirstSentenceMs = nowMs() - cachedPipelineStart;
           } else {
             const cachedFirstSentenceStart = nowMs();
@@ -653,7 +706,8 @@ async function main(): Promise<void> {
             ttsRemainderBytes = resolveAudioBytesLength(remainderOutput);
           }
           const ttsCachedPipelineMs = nowMs() - cachedPipelineStart;
-          const ttsCachedPipelineBytes = cachedFirstSentenceBytes + ttsRemainderBytes;
+          const ttsCachedPipelineBytes =
+            cachedFirstSentenceBytes + ttsRemainderBytes;
 
           const ttsStart = nowMs();
           const ttsOutput = await runtime.useModel(
@@ -666,9 +720,12 @@ async function main(): Promise<void> {
           const endToEndMs = nowMs() - startedAt;
 
           const allLlmLogs = trajectoryService?.getLlmCallLogs?.() ?? [];
-          const allProviderLogs = trajectoryService?.getProviderAccessLogs?.() ?? [];
+          const allProviderLogs =
+            trajectoryService?.getProviderAccessLogs?.() ?? [];
           const llmLogs = allLlmLogs.filter((entry) => entry.stepId === stepId);
-          const providerLogs = allProviderLogs.filter((entry) => entry.stepId === stepId);
+          const providerLogs = allProviderLogs.filter(
+            (entry) => entry.stepId === stepId,
+          );
 
           let trajectory: TrajectoryStepLogs = {
             llmCalls: llmLogs.map((entry) => ({
@@ -681,7 +738,10 @@ async function main(): Promise<void> {
               purpose: entry.purpose,
             })),
           };
-          if (trajectory.llmCalls.length === 0 && trajectory.providerAccesses.length === 0) {
+          if (
+            trajectory.llmCalls.length === 0 &&
+            trajectory.providerAccesses.length === 0
+          ) {
             const getStep = trajectoryService?.getStep;
             if (typeof getStep === "function") {
               trajectory = getStep.call(trajectoryService, stepId);
@@ -762,8 +822,12 @@ async function main(): Promise<void> {
               `voice-ttft-cached=${record.voiceFirstTokenCachedMs}ms cache-hit=${record.ttsFirstSentenceCacheHit} ` +
               `e2e=${record.endToEndMs}ms`,
           );
-          console.log(`[voicebench][typescript] in-context: ${record.inContext.prompt}`);
-          console.log(`[voicebench][typescript] out-context: ${record.outContext.response}`);
+          console.log(
+            `[voicebench][typescript] in-context: ${record.inContext.prompt}`,
+          );
+          console.log(
+            `[voicebench][typescript] out-context: ${record.outContext.response}`,
+          );
         }
       }
     }
@@ -779,9 +843,15 @@ async function main(): Promise<void> {
     );
     summary[mode.id] = {
       runs: rows.length,
-      avgTranscriptionMs: round(average(rows.map((entry) => entry.transcriptionMs))),
-      avgResponseTtftMs: round(average(rows.map((entry) => entry.responseTtftMs))),
-      avgResponseTotalMs: round(average(rows.map((entry) => entry.responseTotalMs))),
+      avgTranscriptionMs: round(
+        average(rows.map((entry) => entry.transcriptionMs)),
+      ),
+      avgResponseTtftMs: round(
+        average(rows.map((entry) => entry.responseTtftMs)),
+      ),
+      avgResponseTotalMs: round(
+        average(rows.map((entry) => entry.responseTotalMs)),
+      ),
       avgSpeechToResponseStartMs: round(
         average(rows.map((entry) => entry.speechToResponseStartMs)),
       ),
@@ -791,69 +861,161 @@ async function main(): Promise<void> {
       avgSpeechToVoiceStartCachedMs: round(
         average(rows.map((entry) => entry.speechToVoiceStartCachedMs)),
       ),
-      avgVoiceGenerationMs: round(average(rows.map((entry) => entry.voiceGenerationMs))),
+      avgVoiceGenerationMs: round(
+        average(rows.map((entry) => entry.voiceGenerationMs)),
+      ),
       avgVoiceFirstTokenUncachedMs: round(
         average(rows.map((entry) => entry.voiceFirstTokenUncachedMs)),
       ),
       avgVoiceFirstTokenCachedMs: round(
         average(rows.map((entry) => entry.voiceFirstTokenCachedMs)),
       ),
-      avgTtsCachedPipelineMs: round(average(rows.map((entry) => entry.ttsCachedPipelineMs))),
-      p95TranscriptionMs: round(percentile(rows.map((entry) => entry.transcriptionMs), 95)),
-      p99TranscriptionMs: round(percentile(rows.map((entry) => entry.transcriptionMs), 99)),
-      p95ResponseTtftMs: round(percentile(rows.map((entry) => entry.responseTtftMs), 95)),
-      p99ResponseTtftMs: round(percentile(rows.map((entry) => entry.responseTtftMs), 99)),
-      p95ResponseTotalMs: round(percentile(rows.map((entry) => entry.responseTotalMs), 95)),
-      p99ResponseTotalMs: round(percentile(rows.map((entry) => entry.responseTotalMs), 99)),
+      avgTtsCachedPipelineMs: round(
+        average(rows.map((entry) => entry.ttsCachedPipelineMs)),
+      ),
+      p95TranscriptionMs: round(
+        percentile(
+          rows.map((entry) => entry.transcriptionMs),
+          95,
+        ),
+      ),
+      p99TranscriptionMs: round(
+        percentile(
+          rows.map((entry) => entry.transcriptionMs),
+          99,
+        ),
+      ),
+      p95ResponseTtftMs: round(
+        percentile(
+          rows.map((entry) => entry.responseTtftMs),
+          95,
+        ),
+      ),
+      p99ResponseTtftMs: round(
+        percentile(
+          rows.map((entry) => entry.responseTtftMs),
+          99,
+        ),
+      ),
+      p95ResponseTotalMs: round(
+        percentile(
+          rows.map((entry) => entry.responseTotalMs),
+          95,
+        ),
+      ),
+      p99ResponseTotalMs: round(
+        percentile(
+          rows.map((entry) => entry.responseTotalMs),
+          99,
+        ),
+      ),
       p95SpeechToResponseStartMs: round(
-        percentile(rows.map((entry) => entry.speechToResponseStartMs), 95),
+        percentile(
+          rows.map((entry) => entry.speechToResponseStartMs),
+          95,
+        ),
       ),
       p99SpeechToResponseStartMs: round(
-        percentile(rows.map((entry) => entry.speechToResponseStartMs), 99),
+        percentile(
+          rows.map((entry) => entry.speechToResponseStartMs),
+          99,
+        ),
       ),
       p95SpeechToVoiceStartUncachedMs: round(
-        percentile(rows.map((entry) => entry.speechToVoiceStartUncachedMs), 95),
+        percentile(
+          rows.map((entry) => entry.speechToVoiceStartUncachedMs),
+          95,
+        ),
       ),
       p99SpeechToVoiceStartUncachedMs: round(
-        percentile(rows.map((entry) => entry.speechToVoiceStartUncachedMs), 99),
+        percentile(
+          rows.map((entry) => entry.speechToVoiceStartUncachedMs),
+          99,
+        ),
       ),
       p95SpeechToVoiceStartCachedMs: round(
-        percentile(rows.map((entry) => entry.speechToVoiceStartCachedMs), 95),
+        percentile(
+          rows.map((entry) => entry.speechToVoiceStartCachedMs),
+          95,
+        ),
       ),
       p99SpeechToVoiceStartCachedMs: round(
-        percentile(rows.map((entry) => entry.speechToVoiceStartCachedMs), 99),
+        percentile(
+          rows.map((entry) => entry.speechToVoiceStartCachedMs),
+          99,
+        ),
       ),
-      p95VoiceGenerationMs: round(percentile(rows.map((entry) => entry.voiceGenerationMs), 95)),
-      p99VoiceGenerationMs: round(percentile(rows.map((entry) => entry.voiceGenerationMs), 99)),
+      p95VoiceGenerationMs: round(
+        percentile(
+          rows.map((entry) => entry.voiceGenerationMs),
+          95,
+        ),
+      ),
+      p99VoiceGenerationMs: round(
+        percentile(
+          rows.map((entry) => entry.voiceGenerationMs),
+          99,
+        ),
+      ),
       p95VoiceFirstTokenUncachedMs: round(
-        percentile(rows.map((entry) => entry.voiceFirstTokenUncachedMs), 95),
+        percentile(
+          rows.map((entry) => entry.voiceFirstTokenUncachedMs),
+          95,
+        ),
       ),
       p99VoiceFirstTokenUncachedMs: round(
-        percentile(rows.map((entry) => entry.voiceFirstTokenUncachedMs), 99),
+        percentile(
+          rows.map((entry) => entry.voiceFirstTokenUncachedMs),
+          99,
+        ),
       ),
       p95VoiceFirstTokenCachedMs: round(
-        percentile(rows.map((entry) => entry.voiceFirstTokenCachedMs), 95),
+        percentile(
+          rows.map((entry) => entry.voiceFirstTokenCachedMs),
+          95,
+        ),
       ),
       p99VoiceFirstTokenCachedMs: round(
-        percentile(rows.map((entry) => entry.voiceFirstTokenCachedMs), 99),
+        percentile(
+          rows.map((entry) => entry.voiceFirstTokenCachedMs),
+          99,
+        ),
       ),
       p95TtsCachedPipelineMs: round(
-        percentile(rows.map((entry) => entry.ttsCachedPipelineMs), 95),
+        percentile(
+          rows.map((entry) => entry.ttsCachedPipelineMs),
+          95,
+        ),
       ),
       p99TtsCachedPipelineMs: round(
-        percentile(rows.map((entry) => entry.ttsCachedPipelineMs), 99),
+        percentile(
+          rows.map((entry) => entry.ttsCachedPipelineMs),
+          99,
+        ),
       ),
       firstSentenceCacheHitRate: round(
         average(rows.map((entry) => (entry.ttsFirstSentenceCacheHit ? 1 : 0))),
       ),
       transcriptionNormalizedAccuracy: round(
         average(
-          scoredRows.map((entry) => (entry.transcriptionNormalizedMatch ? 1 : 0)),
+          scoredRows.map((entry) =>
+            entry.transcriptionNormalizedMatch ? 1 : 0,
+          ),
         ),
       ),
       avgEndToEndMs: round(average(rows.map((entry) => entry.endToEndMs))),
-      p95EndToEndMs: round(percentile(rows.map((entry) => entry.endToEndMs), 95)),
-      p99EndToEndMs: round(percentile(rows.map((entry) => entry.endToEndMs), 99)),
+      p95EndToEndMs: round(
+        percentile(
+          rows.map((entry) => entry.endToEndMs),
+          95,
+        ),
+      ),
+      p99EndToEndMs: round(
+        percentile(
+          rows.map((entry) => entry.endToEndMs),
+          99,
+        ),
+      ),
     };
   }
 

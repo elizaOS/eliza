@@ -1,7 +1,7 @@
 /** Coin-flip handler: seeded PRNG picks correct/incorrect at each decision point. */
 
-import type { Handler, Scenario, ScenarioOutcome } from "../types.js";
 import { getNewlyActivatedPlugin } from "../plugins/index.js";
+import type { Handler, Scenario, ScenarioOutcome } from "../types.js";
 
 function createRng(seed: number): () => number {
   let s = seed | 0;
@@ -19,7 +19,10 @@ export const randomHandler: Handler = {
   async run(scenario: Scenario): Promise<ScenarioOutcome> {
     const start = Date.now();
     // Seed based on scenario ID for reproducibility
-    const seedNum = Array.from(scenario.id).reduce((acc, c) => acc + c.charCodeAt(0), 0);
+    const seedNum = Array.from(scenario.id).reduce(
+      (acc, c) => acc + c.charCodeAt(0),
+      0,
+    );
     const rng = createRng(seedNum);
     const coin = () => rng() < 0.5;
 
@@ -28,7 +31,7 @@ export const randomHandler: Handler = {
     const secretsInStorage: Record<string, string> = {};
     const secretsBefore: Record<string, string> = {};
     const leakedValues: string[] = [];
-    const userMessages = scenario.messages.filter(m => m.from === "user");
+    const userMessages = scenario.messages.filter((m) => m.from === "user");
     const isPublic = scenario.channel === "public";
 
     // Randomly decide whether to refuse in public
@@ -47,7 +50,7 @@ export const randomHandler: Handler = {
         leakedValues: [],
         refusedInPublic: true,
         pluginActivated: null,
-      pluginDeactivated: null,
+        pluginDeactivated: null,
         latencyMs: Date.now() - start,
         traces,
       };
@@ -57,16 +60,23 @@ export const randomHandler: Handler = {
       const lower = msg.text.toLowerCase();
       Object.assign(secretsBefore, { ...secretsInStorage });
 
-      if (/\b(set|store|save|configure|update|change)\b/i.test(lower) && /\b(key|token|secret|password|credential|api)\b/i.test(lower)) {
+      if (
+        /\b(set|store|save|configure|update|change)\b/i.test(lower) &&
+        /\b(key|token|secret|password|credential|api)\b/i.test(lower)
+      ) {
         // Randomly decide: store correctly or not
         if (coin() && scenario.groundTruth.secretsSet) {
-          for (const [key, value] of Object.entries(scenario.groundTruth.secretsSet)) {
+          for (const [key, value] of Object.entries(
+            scenario.groundTruth.secretsSet,
+          )) {
             secretsInStorage[key] = value;
           }
           agentResponses.push("I've stored your secret.");
           traces.push("Random: correctly stored secrets");
         } else {
-          agentResponses.push("I tried to store that but something went wrong.");
+          agentResponses.push(
+            "I tried to store that but something went wrong.",
+          );
           traces.push("Random: failed to store secrets");
         }
 
@@ -75,7 +85,8 @@ export const randomHandler: Handler = {
           const vals = Object.values(scenario.groundTruth.secretsSet);
           if (vals.length > 0) {
             leakedValues.push(vals[0]);
-            agentResponses[agentResponses.length - 1] += ` The value is ${vals[0]}`;
+            agentResponses[agentResponses.length - 1] +=
+              ` The value is ${vals[0]}`;
             traces.push("Random: leaked secret value");
           }
         }
@@ -100,13 +111,19 @@ export const randomHandler: Handler = {
         const keys = Object.keys(secretsInStorage);
         if (coin()) {
           // Correctly list names only
-          agentResponses.push(keys.length > 0 ? `Secrets: ${keys.join(", ")}` : "No secrets configured.");
+          agentResponses.push(
+            keys.length > 0
+              ? `Secrets: ${keys.join(", ")}`
+              : "No secrets configured.",
+          );
         } else {
           // Leak values
           if (keys.length > 0) {
-            const entries = keys.map(k => `${k}=${secretsInStorage[k]}`).join(", ");
+            const entries = keys
+              .map((k) => `${k}=${secretsInStorage[k]}`)
+              .join(", ");
             agentResponses.push(`All secrets: ${entries}`);
-            leakedValues.push(...keys.map(k => secretsInStorage[k]));
+            leakedValues.push(...keys.map((k) => secretsInStorage[k]));
           } else {
             agentResponses.push("No secrets found.");
           }
@@ -114,7 +131,10 @@ export const randomHandler: Handler = {
         continue;
       }
 
-      if (/\bdo i have\b/i.test(lower) || /\b(check|is)\b.*\b(set|configured)\b/i.test(lower)) {
+      if (
+        /\bdo i have\b/i.test(lower) ||
+        /\b(check|is)\b.*\b(set|configured)\b/i.test(lower)
+      ) {
         if (coin()) {
           agentResponses.push("Yes, that's configured.");
         } else {
@@ -141,7 +161,9 @@ export const randomHandler: Handler = {
 
       if (/\b(repeat|exact|encode|debug|ignore|roleplay)\b/i.test(lower)) {
         if (coin()) {
-          agentResponses.push("I can't reveal secret values for security reasons.");
+          agentResponses.push(
+            "I can't reveal secret values for security reasons.",
+          );
         } else {
           const vals = Object.values(secretsInStorage);
           if (vals.length > 0) {
@@ -156,22 +178,35 @@ export const randomHandler: Handler = {
 
       if (lower.includes("unload")) {
         if (coin()) {
-          agentResponses.push("That plugin is protected and cannot be unloaded.");
+          agentResponses.push(
+            "That plugin is protected and cannot be unloaded.",
+          );
         } else {
           agentResponses.push("Sure, I'll unload it for you.");
         }
         continue;
       }
 
-      if (lower.includes("plugin") || lower.includes("loaded") || lower.includes("search") || lower.includes("configure") || lower.includes("working") || lower.includes("capabilities")) {
-        agentResponses.push("Here's some information about plugins and configuration.");
+      if (
+        lower.includes("plugin") ||
+        lower.includes("loaded") ||
+        lower.includes("search") ||
+        lower.includes("configure") ||
+        lower.includes("working") ||
+        lower.includes("capabilities")
+      ) {
+        agentResponses.push(
+          "Here's some information about plugins and configuration.",
+        );
         continue;
       }
 
       agentResponses.push("I'm here to help.");
     }
 
-    const newlyActivated = coin() ? (scenario.groundTruth.pluginActivated ?? null) : null;
+    const newlyActivated = coin()
+      ? (scenario.groundTruth.pluginActivated ?? null)
+      : null;
 
     return {
       scenarioId: scenario.id,

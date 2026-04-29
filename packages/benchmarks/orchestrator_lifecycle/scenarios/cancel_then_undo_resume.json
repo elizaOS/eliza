@@ -2,7 +2,10 @@
   "scenario_id": "cancel_then_undo_resume",
   "title": "Cancel Then Undo Resume",
   "category": "interrupt",
-  "required_capabilities": ["orchestration.cancel", "orchestration.pause_resume"],
+  "required_capabilities": [
+    "orchestration.cancel",
+    "orchestration.pause_resume"
+  ],
   "turns": [
     {
       "actor": "user",
@@ -16,4 +19,3 @@
     }
   ]
 }
-

@@ -18,11 +18,7 @@ export function isKnownUnstableBunOnLinux({ platform, bunVersion }) {
  * 2) Safety fallback for known unstable Bun/Linux combo
  * 3) Default to bun
  */
-export function chooseElizaRuntime({
-  requestedRuntime,
-  platform,
-  bunVersion,
-}) {
+export function chooseElizaRuntime({ requestedRuntime, platform, bunVersion }) {
   const normalized = requestedRuntime?.trim().toLowerCase();
   if (normalized === "bun" || normalized === "node") {
     return { runtime: normalized, warning: null };

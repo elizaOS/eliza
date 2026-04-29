@@ -3,8 +3,8 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.ts";
 
-vi.mock("@elizaos/agent/security", () => ({
-  hasAdminAccess: vi.fn(async () => true),
+vi.mock("@elizaos/agent/security/access", () => ({
+  hasOwnerAccess: vi.fn(async () => true),
 }));
 
 function createRuntime(agentId: string) {
@@ -12,12 +12,16 @@ function createRuntime(agentId: string) {
     agentId,
     handleTurn: async () => ({ text: "ok" }),
     useModel: async () => {
-      throw new Error("useModel should not be called in browser current-page tests");
+      throw new Error(
+        "useModel should not be called in browser current-page tests",
+      );
     },
   });
 }
 
-function installBrowserSchemaBootstrap(runtime: ReturnType<typeof createRuntime>) {
+function installBrowserSchemaBootstrap(
+  runtime: ReturnType<typeof createRuntime>,
+) {
   runtime.adapter.runPluginMigrations = async () => {
     await runtime.adapter.db.execute({
       queryChunks: [

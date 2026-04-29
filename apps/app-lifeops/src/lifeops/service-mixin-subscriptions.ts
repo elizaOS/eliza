@@ -1,13 +1,13 @@
 import type {
+  BrowserBridgeAction,
+  BrowserBridgeCompanionStatus,
+} from "@elizaos/plugin-browser-bridge";
+import type {
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,
   LifeOpsGmailMessageSummary,
   LifeOpsGmailTriageFeed,
 } from "@elizaos/shared";
-import type {
-  BrowserBridgeAction,
-  BrowserBridgeCompanionStatus,
-} from "@elizaos/plugin-browser-bridge";
 import {
   createLifeOpsSubscriptionAudit,
   createLifeOpsSubscriptionCancellation,
@@ -21,10 +21,10 @@ import {
   requireNonEmptyString,
 } from "./service-normalize.js";
 import {
-  PLAYBOOK_NOT_IMPLEMENTED_ERROR,
   findLifeOpsSubscriptionPlaybook,
-  listLifeOpsSubscriptionPlaybooks,
   type LifeOpsSubscriptionPlaybook,
+  listLifeOpsSubscriptionPlaybooks,
+  PLAYBOOK_NOT_IMPLEMENTED_ERROR,
   type SubscriptionAutomationStep,
 } from "./subscriptions-playbooks.js";
 import type {

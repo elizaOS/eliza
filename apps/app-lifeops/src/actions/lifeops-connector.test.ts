@@ -1,5 +1,5 @@
 import type { Memory } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./lifeops-google-helpers.js", () => ({
   INTERNAL_URL: new URL("http://127.0.0.1/"),
@@ -44,19 +44,38 @@ vi.mock("../lifeops/service.js", () => {
       provider: "whatsapp",
       connected: false,
     }));
+    getHealthDataConnectorStatuses = vi.fn(async () => [
+      { provider: "strava", connected: false },
+      { provider: "fitbit", connected: false },
+      { provider: "withings", connected: false },
+      { provider: "oura", connected: false },
+    ]);
     getBrowserSettings = vi.fn(async () => ({}));
     listBrowserCompanions = vi.fn(async () => []);
   }
   return {
     LifeOpsServiceError: FakeError,
-    LifeOpsService: vi.fn(() => new FakeLifeOpsService()),
+    LifeOpsService: FakeLifeOpsService,
   };
 });
 
 describe("lifeOpsConnectorAction", () => {
-  it("returns connector status without error for status subaction", async () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  async function loadHandler() {
     const { lifeOpsConnectorAction } = await import("./lifeops-connector.js");
-    const result = await lifeOpsConnectorAction.handler!(
+    const { handler } = lifeOpsConnectorAction;
+    if (!handler) {
+      throw new Error("lifeOpsConnectorAction.handler is required");
+    }
+    return handler;
+  }
+
+  it("returns connector status without error for status subaction", async () => {
+    const handler = await loadHandler();
+    const result = await handler(
       {} as never,
       {
         content: {
@@ -84,8 +103,8 @@ describe("lifeOpsConnectorAction", () => {
   });
 
   it("returns aggregated status for list subaction with no connector", async () => {
-    const { lifeOpsConnectorAction } = await import("./lifeops-connector.js");
-    const result = await lifeOpsConnectorAction.handler!(
+    const handler = await loadHandler();
+    const result = await handler(
       {} as never,
       { content: { text: "list connectors" } } as Memory,
       undefined,
@@ -101,8 +120,8 @@ describe("lifeOpsConnectorAction", () => {
   });
 
   it("rejects when subaction is missing", async () => {
-    const { lifeOpsConnectorAction } = await import("./lifeops-connector.js");
-    const result = await lifeOpsConnectorAction.handler!(
+    const handler = await loadHandler();
+    const result = await handler(
       {} as never,
       { content: { text: "" } } as Memory,
       undefined,

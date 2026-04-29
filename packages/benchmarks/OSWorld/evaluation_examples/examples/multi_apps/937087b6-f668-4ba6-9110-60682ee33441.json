@@ -5,10 +5,7 @@
   "source": "https://superuser.com/questions/187440/set-default-ubuntu-video-player-as-vlc",
   "config": [],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vlc",
-    "os"
-  ],
+  "related_apps": ["vlc", "os"],
   "evaluator": {
     "func": "check_include_exclude",
     "result": {
@@ -17,9 +14,7 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "include": [
-          "vlc.desktop"
-        ]
+        "include": ["vlc.desktop"]
       }
     }
   },

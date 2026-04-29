@@ -1,7 +1,7 @@
 """Secrets sub-module.
 
 Multi-level secret management with encryption, access control, and change
-notification support.  Ported from plugin-secrets-manager TypeScript.
+notification support.  Ported from ``@elizaos/core`` secrets TypeScript.
 """
 
 from .actions import manage_secret_action, request_secret_action, secrets_actions, set_secret_action

@@ -7,31 +7,19 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/Desktop/Paper_reading"
-        ]
+        "command": ["mkdir", "-p", "/home/user/Desktop/Paper_reading"]
       }
     },
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/Desktop/Projects"
-        ]
+        "command": ["mkdir", "-p", "/home/user/Desktop/Projects"]
       }
     },
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/Desktop/Miscellaneous"
-        ]
+        "command": ["mkdir", "-p", "/home/user/Desktop/Miscellaneous"]
       }
     },
     {
@@ -116,32 +104,19 @@
     "libreoffice_impress"
   ],
   "evaluator": {
-    "func": [
-      "exact_match",
-      "exact_match",
-      "exact_match"
-    ],
+    "func": ["exact_match", "exact_match", "exact_match"],
     "result": [
       {
         "type": "vm_command_line",
-        "command": [
-          "ls",
-          "/home/user/Desktop/Paper_reading"
-        ]
+        "command": ["ls", "/home/user/Desktop/Paper_reading"]
       },
       {
         "type": "vm_command_line",
-        "command": [
-          "ls",
-          "/home/user/Desktop/Projects"
-        ]
+        "command": ["ls", "/home/user/Desktop/Projects"]
       },
       {
         "type": "vm_command_line",
-        "command": [
-          "ls",
-          "/home/user/Desktop/Miscellaneous"
-        ]
+        "command": ["ls", "/home/user/Desktop/Miscellaneous"]
       }
     ],
     "expected": [

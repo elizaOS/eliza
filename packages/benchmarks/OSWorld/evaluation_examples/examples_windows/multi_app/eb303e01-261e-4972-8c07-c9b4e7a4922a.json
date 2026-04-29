@@ -27,10 +27,7 @@
     }
   ],
   "trajectory": "trajectories/eb303e01-261e-4972-8c07-c9b4e7a4922a",
-  "related_apps": [
-    "powerpoint",
-    "word"
-  ],
+  "related_apps": ["powerpoint", "word"],
   "evaluator": {
     "postconfig": [
       {

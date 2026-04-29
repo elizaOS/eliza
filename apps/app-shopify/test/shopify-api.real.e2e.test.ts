@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import { req } from "../../../packages/app-core/test/helpers/http.ts";
 import { startLiveRuntimeServer } from "../../../packages/app-core/test/helpers/live-runtime-server.ts";
 import type { RuntimeHarness } from "../../../packages/app-core/test/live-agent/helpers/runtime-harness.ts";
@@ -56,11 +56,7 @@ describeIf(LIVE)("Shopify API live route coverage", () => {
   });
 
   it("returns the real unconfigured error for /api/shopify/products", async () => {
-    const response = await req(
-      runtime.port,
-      "GET",
-      "/api/shopify/products",
-    );
+    const response = await req(runtime.port, "GET", "/api/shopify/products");
     expect(response.status).toBe(404);
     expect(response.data).toMatchObject({
       error: expect.stringContaining("Shopify not configured"),

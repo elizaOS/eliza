@@ -109,15 +109,15 @@ function setExecFile(
   execFileBehaviors.push({ match, result });
 }
 
+import { spawn as mockedSpawn } from "node:child_process";
+import { passwordManagerAction } from "../src/actions/password-manager.js";
 import {
   clearPasswordManagerBackendCache,
   detectPasswordManagerBackend,
   injectCredentialToClipboard,
-  searchPasswordItems,
   PasswordManagerError,
+  searchPasswordItems,
 } from "../src/lifeops/password-manager-bridge.js";
-import { passwordManagerAction } from "../src/actions/password-manager.js";
-import { spawn as mockedSpawn } from "node:child_process";
 
 const SAME_ID = "00000000-0000-0000-0000-000000000001";
 const ORIGINAL_ENV = { ...process.env };
@@ -161,10 +161,9 @@ describe("detectPasswordManagerBackend", () => {
   });
 
   test('returns "1password" when `op --version` succeeds', async () => {
-    setExecFile(
-      (file, args) => file === "op" && args[0] === "--version",
-      { stdout: "2.0.0\n" },
-    );
+    setExecFile((file, args) => file === "op" && args[0] === "--version", {
+      stdout: "2.0.0\n",
+    });
     const backend = await detectPasswordManagerBackend();
     expect(backend).toBe("1password");
   });
@@ -188,10 +187,9 @@ describe("detectPasswordManagerBackend", () => {
 
 describe("searchPasswordItems (1password)", () => {
   test("parses `op item list --format json` JSON output", async () => {
-    setExecFile(
-      (file, args) => file === "op" && args[0] === "--version",
-      { stdout: "2.0.0\n" },
-    );
+    setExecFile((file, args) => file === "op" && args[0] === "--version", {
+      stdout: "2.0.0\n",
+    });
     const items = [
       {
         id: "abc123",
@@ -228,10 +226,9 @@ describe("searchPasswordItems (1password)", () => {
 
 describe("injectCredentialToClipboard", () => {
   test("uses spawn with argv arrays and never inlines secret in argv", async () => {
-    setExecFile(
-      (file, args) => file === "op" && args[0] === "--version",
-      { stdout: "2.0.0\n" },
-    );
+    setExecFile((file, args) => file === "op" && args[0] === "--version", {
+      stdout: "2.0.0\n",
+    });
 
     const result = await injectCredentialToClipboard("item-xyz", "password");
     expect(result.ok).toBe(true);
@@ -241,7 +238,10 @@ describe("injectCredentialToClipboard", () => {
       .mock.calls;
     // Locate the producer (op item get ...) call.
     const opCall = calls.find(
-      (c) => c[0] === "op" && Array.isArray(c[1]) && (c[1] as string[])[0] === "item",
+      (c) =>
+        c[0] === "op" &&
+        Array.isArray(c[1]) &&
+        (c[1] as string[])[0] === "item",
     );
     expect(opCall).toBeDefined();
     const opArgs = opCall![1] as string[];
@@ -264,10 +264,9 @@ describe("injectCredentialToClipboard", () => {
 
 describe("passwordManagerAction", () => {
   test("inject_password without confirmed=true is rejected", async () => {
-    setExecFile(
-      (file, args) => file === "op" && args[0] === "--version",
-      { stdout: "2.0.0\n" },
-    );
+    setExecFile((file, args) => file === "op" && args[0] === "--version", {
+      stdout: "2.0.0\n",
+    });
     const result = await passwordManagerAction.handler!(
       makeRuntime(),
       makeMessage(),
@@ -286,10 +285,9 @@ describe("passwordManagerAction", () => {
   });
 
   test("list subaction returns items", async () => {
-    setExecFile(
-      (file, args) => file === "op" && args[0] === "--version",
-      { stdout: "2.0.0\n" },
-    );
+    setExecFile((file, args) => file === "op" && args[0] === "--version", {
+      stdout: "2.0.0\n",
+    });
     setExecFile(
       (file, args) =>
         file === "op" && args.includes("item") && args.includes("list"),

@@ -7,80 +7,43 @@
  * the contract; Phase 1 wires it into the runtime.
  */
 
-export { createConfidant } from "./confidant.js";
-export type { Confidant, ConfidantOptions } from "./confidant.js";
-export type { ScopedConfidant } from "./scoped.js";
-
-export {
-  defineSecretSchema,
-  lookupSchema,
-  listSchema,
-  SecretSchemaConflictError,
-} from "./secret-schema.js";
-
-export {
-  assertSecretId,
-  isSecretId,
-  matchesPattern,
-  selectMostSpecific,
-  InvalidSecretIdError,
-} from "./identifiers.js";
-
-export {
-  parseReference,
-  buildReference,
-  InvalidReferenceError,
-} from "./references.js";
-
-export type { ParsedReference } from "./references.js";
-
-export {
-  inMemoryMasterKey,
-  osKeyringMasterKey,
-  MasterKeyUnavailableError,
-} from "./crypto/master-key.js";
-export type {
-  MasterKeyResolver,
-  KeyringMasterKeyOptions,
-} from "./crypto/master-key.js";
-
-export {
-  encrypt,
-  decrypt,
-  generateMasterKey,
-  EnvelopeError,
-  KEY_BYTES,
-} from "./crypto/envelope.js";
-export type { Envelope } from "./crypto/envelope.js";
-
+export { EnvLegacyBackend } from "./backends/env-legacy.js";
+export { KeyringBackend } from "./backends/keyring.js";
+export type { VaultBackend } from "./backends/types.js";
 export {
   BackendError,
   BackendNotConfiguredError,
 } from "./backends/types.js";
-export type { VaultBackend } from "./backends/types.js";
-
-export { EnvLegacyBackend } from "./backends/env-legacy.js";
-export { KeyringBackend } from "./backends/keyring.js";
-
-export { decide, PermissionDeniedError } from "./policy/grants.js";
-export type { PolicyDecision, PolicyInput } from "./policy/grants.js";
-
-export { AuditLog } from "./policy/audit.js";
-
+export type { Confidant, ConfidantOptions } from "./confidant.js";
+export { createConfidant } from "./confidant.js";
+export type { Envelope } from "./crypto/envelope.js";
+export {
+  decrypt,
+  EnvelopeError,
+  encrypt,
+  generateMasterKey,
+  KEY_BYTES,
+} from "./crypto/envelope.js";
 export type {
-  AuditRecord,
-  ConfidantLogger,
-  Grant,
-  GrantMode,
-  PromptHandler,
-  ResolveDetail,
-  SecretDescriptor,
-  SecretId,
-  SecretSchemaEntry,
-  VaultReference,
-  VaultSource,
-} from "./types.js";
-
+  KeyringMasterKeyOptions,
+  MasterKeyResolver,
+} from "./crypto/master-key.js";
+export {
+  inMemoryMasterKey,
+  MasterKeyUnavailableError,
+  osKeyringMasterKey,
+} from "./crypto/master-key.js";
+export {
+  assertSecretId,
+  InvalidSecretIdError,
+  isSecretId,
+  matchesPattern,
+  selectMostSpecific,
+} from "./identifiers.js";
+export type {
+  MirrorResult,
+  ResolvedCredentialLike,
+} from "./integrations/eliza-providers.js";
 // elizaOS integration helpers — see ./integrations/*
 // Comprehensive coverage of the full elizaOS plugin catalog: LLM
 // providers, TTS/voice, messaging connectors, wallets, blockchain RPC,
@@ -94,11 +57,36 @@ export {
   mirrorLegacyEnvCredentials,
   providerIdForSecretId,
 } from "./integrations/eliza-providers.js";
-export type {
-  MirrorResult,
-  ResolvedCredentialLike,
-} from "./integrations/eliza-providers.js";
 export {
-  registerElizaSecretSchemas,
   registerElizaProviderSchemas,
+  registerElizaSecretSchemas,
 } from "./integrations/eliza-schema.js";
+export { AuditLog } from "./policy/audit.js";
+export type { PolicyDecision, PolicyInput } from "./policy/grants.js";
+export { decide, PermissionDeniedError } from "./policy/grants.js";
+export type { ParsedReference } from "./references.js";
+export {
+  buildReference,
+  InvalidReferenceError,
+  parseReference,
+} from "./references.js";
+export type { ScopedConfidant } from "./scoped.js";
+export {
+  defineSecretSchema,
+  listSchema,
+  lookupSchema,
+  SecretSchemaConflictError,
+} from "./secret-schema.js";
+export type {
+  AuditRecord,
+  ConfidantLogger,
+  Grant,
+  GrantMode,
+  PromptHandler,
+  ResolveDetail,
+  SecretDescriptor,
+  SecretId,
+  SecretSchemaEntry,
+  VaultReference,
+  VaultSource,
+} from "./types.js";

@@ -16,9 +16,7 @@
       }
     }
   ],
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "postconfig": [
       {
@@ -45,9 +43,7 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "include": [
-          "43 132"
-        ],
+        "include": ["43 132"],
         "exclude": []
       }
     }

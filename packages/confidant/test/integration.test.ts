@@ -2,10 +2,10 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { EnvLegacyBackend } from "../src/backends/env-legacy.js";
+import { createConfidant } from "../src/confidant.js";
 import { generateMasterKey } from "../src/crypto/envelope.js";
 import { inMemoryMasterKey } from "../src/crypto/master-key.js";
-import { createConfidant } from "../src/confidant.js";
-import { EnvLegacyBackend } from "../src/backends/env-legacy.js";
 import { PermissionDeniedError } from "../src/policy/grants.js";
 import {
   __resetSecretSchemaForTests,
@@ -148,12 +148,12 @@ describe("Confidant — bug-fix demonstrations", () => {
 
     // A user-installed third-party skill ("weather-bot") can't read either.
     const weatherBot = confidant.scopeFor("weather-bot");
-    await expect(
-      weatherBot.resolve("llm.openrouter.apiKey"),
-    ).rejects.toThrow(PermissionDeniedError);
-    await expect(
-      weatherBot.resolve("llm.openai.apiKey"),
-    ).rejects.toThrow(PermissionDeniedError);
+    await expect(weatherBot.resolve("llm.openrouter.apiKey")).rejects.toThrow(
+      PermissionDeniedError,
+    );
+    await expect(weatherBot.resolve("llm.openai.apiKey")).rejects.toThrow(
+      PermissionDeniedError,
+    );
   });
 
   /**
@@ -285,12 +285,15 @@ describe("Confidant — bug-fix demonstrations", () => {
 
     // Denied (third-party).
     const intruder = confidant.scopeFor("@third-party/intruder-bot");
-    await expect(
-      intruder.resolve("llm.openrouter.apiKey"),
-    ).rejects.toThrow(PermissionDeniedError);
+    await expect(intruder.resolve("llm.openrouter.apiKey")).rejects.toThrow(
+      PermissionDeniedError,
+    );
 
     const log = await fs.readFile(auditPath, "utf8");
-    const lines = log.trim().split("\n").map((l) => JSON.parse(l));
+    const lines = log
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l));
     expect(lines).toHaveLength(2);
     expect(lines[0]).toMatchObject({
       skill: "@elizaos/plugin-openrouter",

@@ -114,7 +114,6 @@ export const ALWAYS_ON_PLUGIN_IDS = new Set([
   "edge-tts",
   "pdf",
   "clipboard",
-  "secrets-manager",
   "todo",
   "trust",
   "form",

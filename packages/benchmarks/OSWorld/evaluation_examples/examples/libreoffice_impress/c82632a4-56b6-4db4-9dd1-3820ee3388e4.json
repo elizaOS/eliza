@@ -34,9 +34,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_impress"
-  ],
+  "related_apps": ["libreoffice_impress"],
   "evaluator": {
     "postconfig": [
       {

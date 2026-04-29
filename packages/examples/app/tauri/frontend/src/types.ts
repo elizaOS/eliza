@@ -51,4 +51,3 @@ export function getModeLabel(mode: ProviderMode): string {
       return "ELIZA (offline)";
   }
 }
-

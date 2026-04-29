@@ -22,10 +22,7 @@ export class EnvLegacyBackend implements VaultBackend {
     const varName = parsed.path;
     const value = this.env[varName];
     if (typeof value !== "string" || value.length === 0) {
-      throw new BackendError(
-        this.source,
-        `process.env.${varName} is not set`,
-      );
+      throw new BackendError(this.source, `process.env.${varName} is not set`);
     }
     return value;
   }

@@ -1,11 +1,9 @@
-import { createServer } from "node:http";
 import { rm, stat } from "node:fs/promises";
+import { createServer } from "node:http";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
 import {
   FRAME_FILE,
   getBrowserCaptureExecutablePath,
@@ -13,11 +11,12 @@ import {
   startBrowserCapture,
   stopBrowserCapture,
 } from "@elizaos/agent";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import { LifeOpsScreenContextSampler } from "../src/lifeops/screen-context.js";
 
 const LIVE_TESTS_ENABLED =
-  process.env.MILADY_LIVE_TEST === "1" ||
-  process.env.ELIZA_LIVE_TEST === "1";
+  process.env.MILADY_LIVE_TEST === "1" || process.env.ELIZA_LIVE_TEST === "1";
 const CHROME_SUPPORTED = isBrowserCaptureSupported();
 
 console.info(

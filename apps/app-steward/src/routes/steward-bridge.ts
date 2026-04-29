@@ -1,5 +1,4 @@
 import { loadElizaConfig } from "@elizaos/agent/config/config";
-import { fingerprintRandomToken } from "../services/steward-sidecar/helpers";
 import {
   type PolicyResult,
   type PolicyRule,
@@ -16,6 +15,7 @@ import {
   resolveEffectiveStewardConfig,
   saveStewardCredentials,
 } from "../services/steward-credentials";
+import { fingerprintRandomToken } from "../services/steward-sidecar/helpers";
 import type { StewardSignRequest, StewardSignResponse } from "../types/steward";
 
 export interface StewardBridgeOptions {

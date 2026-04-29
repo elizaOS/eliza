@@ -92,9 +92,7 @@
       }
     }
   ],
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "func": "check_moved_jpgs",
     "result": {

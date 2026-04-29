@@ -193,12 +193,6 @@ try {
 } catch {
   pluginCommands = null;
 }
-// plugin-plugin-manager, plugin-secrets-manager, and plugin-trust are now
-// built-in core capabilities in @elizaos/core. Enable via character settings:
-// ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST.
-// Keep plugin-cron behind a guarded runtime require for the same reason. Some
-// published alpha builds resolve through package.json but are missing the
-// shipped dist/index.js entry, which breaks CLI bootstrap before help/version.
 let pluginCron: unknown = null;
 try {
   pluginCron = require("@elizaos/plugin-cron");
@@ -232,8 +226,7 @@ try {
 } catch {
   pluginOpenai = null;
 }
-// plugin-personality is now built into @elizaos/core advanced-capabilities.
-// Enabled when advancedCapabilities: true.
+// Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).
 
 type SignalShutdownContext = {
   getRuntime: () => AgentRuntime;
@@ -318,7 +311,7 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
 Object.assign(STATIC_ELIZA_PLUGINS, {
   "@elizaos/plugin-sql": pluginSql,
   "@elizaos/plugin-local-embedding": pluginLocalEmbedding,
-  // secrets-manager: now built-in core capability (ENABLE_SECRETS_MANAGER)
+  // secrets (SECRETS service): now built-in core capability (ENABLE_SECRETS_MANAGER)
   ...(pluginAgentOrchestrator
     ? { "agent-orchestrator": pluginAgentOrchestrator }
     : {}),

@@ -144,4 +144,3 @@ export function useSpeechRecognition(lang = "en-US") {
     clear,
   };
 }
-

@@ -568,7 +568,8 @@ export async function bootstrapOptimizationFromAccumulatedTrajectories(
   const status = service.getStatus();
   const fired: TrajectoryTrainingTask[] = [];
   for (const task of BOOTSTRAP_TASKS) {
-    const threshold = status.perTaskThresholds[task] ?? Number.POSITIVE_INFINITY;
+    const threshold =
+      status.perTaskThresholds[task] ?? Number.POSITIVE_INFINITY;
     const count = status.counters[task] ?? 0;
     if (count < threshold) continue;
     if (optimizedPromptService?.hasOptimized(task) === true) continue;

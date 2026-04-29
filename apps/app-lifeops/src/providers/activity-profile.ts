@@ -1,4 +1,4 @@
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   IAgentRuntime,
   Memory,
@@ -30,7 +30,7 @@ function formatAgo(ms: number): string {
 export const activityProfileProvider: Provider = {
   name: "activity-profile",
   description:
-    "Owner/admin and agent only. Compact user activity context: platform, time bucket, recency.",
+    "Owner and agent only. Compact user activity context: platform, time bucket, recency.",
   dynamic: true,
   position: 13,
   async get(
@@ -38,7 +38,7 @@ export const activityProfileProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return { text: "", values: {}, data: {} };
     }
 

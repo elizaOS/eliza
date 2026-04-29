@@ -23,9 +23,12 @@ const experiences: CharacterExperienceRecord[] = [
     learning:
       "Always collect complete swap parameters before preparing a wallet transaction.",
     tags: ["wallet", "safety"],
+    keywords: ["swap", "wallet", "slippage", "transaction"],
+    associatedEntityIds: ["user-wallet", "agent-main"],
     domain: "finance",
     confidence: 0.55,
     importance: 0.92,
+    embeddingDimensions: 1536,
     createdAt: "2026-04-20T12:00:00.000Z",
     updatedAt: "2026-04-21T12:00:00.000Z",
     previousBelief: "The source token alone was enough to start a swap.",
@@ -51,6 +54,8 @@ const experiences: CharacterExperienceRecord[] = [
     learning:
       "For release notes, group by user impact before implementation detail.",
     tags: ["writing", "release-notes"],
+    keywords: ["release", "notes", "impact", "writing"],
+    associatedEntityIds: ["user-docs"],
     domain: "communications",
     confidence: 0.86,
     importance: 0.48,
@@ -67,6 +72,8 @@ const experiences: CharacterExperienceRecord[] = [
     learning:
       "Prefer the latest explicit cadence preference when automation guidance conflicts.",
     tags: ["automation", "preference"],
+    keywords: ["automation", "cadence", "preference"],
+    associatedEntityIds: ["user-docs"],
     domain: "planning",
     confidence: 0.72,
     importance: 0.82,
@@ -152,8 +159,26 @@ describe("CharacterExperienceWorkspace", () => {
     expect(screen.getByText("experience_evaluator")).toBeTruthy();
     expect(screen.getByText("room-wallet-...")).toBeTruthy();
     expect(screen.getByText("3 captured")).toBeTruthy();
+    expect(screen.getByText("2 linked")).toBeTruthy();
     expect(screen.getByText("trajectory-s...")).toBeTruthy();
     expect(screen.getByText(/corrected an unsafe assumption/i)).toBeTruthy();
+  });
+
+  it("renders graph nodes and metadata from keywords and associated entities", () => {
+    const onSelectExperience = vi.fn();
+    renderWorkspace({ onSelectExperience });
+
+    expect(screen.getByTestId("experience-graph-panel")).toBeTruthy();
+    expect(screen.getByTestId("experience-graph-node-exp-1")).toBeTruthy();
+    expect(screen.getByText(/3 nodes/i)).toBeTruthy();
+    expect(screen.getAllByText("wallet").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("safety").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/swap/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/2 associated entities/i)).toBeTruthy();
+    expect(screen.getByText(/1536 embedding dimensions/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("experience-graph-node-exp-2"));
+    expect(onSelectExperience).toHaveBeenCalledWith("exp-2");
   });
 
   it("saves edited learning, ranking, and tags for the selected experience", () => {

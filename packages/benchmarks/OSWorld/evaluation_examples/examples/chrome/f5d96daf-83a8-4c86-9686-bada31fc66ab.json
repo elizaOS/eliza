@@ -7,28 +7,19 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
       "type": "chrome_open_tabs",
       "parameters": {
-        "urls_to_open": [
-          "https://www.apple.com/"
-        ]
+        "urls_to_open": ["https://www.apple.com/"]
       }
     },
     {
@@ -39,17 +30,13 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "chrome"
-  ],
+  "related_apps": ["chrome"],
   "evaluator": {
     "func": "check_direct_json_object",
     "result": {
       "type": "active_tab_url_parse",
       "goto_prefix": "https://www.",
-      "parse_keys": [
-        "modelList"
-      ],
+      "parse_keys": ["modelList"],
       "split_list": true
     },
     "expected": {

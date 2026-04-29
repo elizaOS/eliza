@@ -111,7 +111,6 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		"inference",
 		"autonomy",
 		"knowledge",
-		"@elizaos/plugin-personality",
 		"experience",
 		"goals",
 		"todo",

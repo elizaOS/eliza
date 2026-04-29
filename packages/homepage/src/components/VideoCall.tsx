@@ -1,7 +1,15 @@
 
 
 import { useRef, useEffect, useCallback, useState } from "react";
+import type { ComponentType, HTMLAttributes } from "react";
 import { useSpring, animated } from "@react-spring/web";
+
+type SpringAnimatedStyle = Record<string, string | number | boolean | null | undefined | object>;
+type AnimatedDivProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
+  style?: SpringAnimatedStyle;
+};
+
+const AnimatedDiv = animated.div as ComponentType<AnimatedDivProps>;
 
 interface VideoCallProps {
   visible: boolean;
@@ -67,7 +75,7 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
   });
 
   return (
-    <animated.div
+    <AnimatedDiv
       className="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 w-full px-2"
       style={{
         maxWidth: maxW,
@@ -75,7 +83,7 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
         pointerEvents: visible ? "auto" : "none",
       }}
     >
-      <animated.div
+      <AnimatedDiv
         style={{
           transform: spring.scale.to(
             (s) => `perspective(600px) rotateX(5deg) scale(${s})`,
@@ -112,7 +120,7 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
             <span className="text-white text-xs font-medium">end</span>
           </div>
         </div>
-      </animated.div>
-    </animated.div>
+      </AnimatedDiv>
+    </AnimatedDiv>
   );
 }

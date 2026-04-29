@@ -13,13 +13,7 @@ import {
   Settings as SettingsIcon,
   TriangleAlert,
 } from "lucide-react";
-import {
-  type JSX,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { type JSX, useCallback, useEffect, useMemo, useState } from "react";
 import { client, type RegistryAppInfo } from "../../api";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state/useApp";
@@ -324,7 +318,10 @@ export function AppDetailsView({
             return;
           }
         }
-        if (resolved.source === "overlay" || isOverlayLaunchApp(resolved.info)) {
+        if (
+          resolved.source === "overlay" ||
+          isOverlayLaunchApp(resolved.info)
+        ) {
           setState("activeOverlayApp", resolved.info.name);
           recordResult(true);
           onLaunched?.({ mode: "inline", slug });
@@ -350,8 +347,9 @@ export function AppDetailsView({
 
         const result = await client.launchApp(resolved.info.name);
         const primaryDiagnostic =
-          result.diagnostics?.find((diagnostic) => diagnostic.severity === "error") ??
-          result.diagnostics?.[0];
+          result.diagnostics?.find(
+            (diagnostic) => diagnostic.severity === "error",
+          ) ?? result.diagnostics?.[0];
         if (result.run?.viewer?.url) {
           setState("activeGameRunId", result.run.runId);
           setState("tab", "apps");

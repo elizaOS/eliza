@@ -39,10 +39,7 @@
     }
   ],
   "trajectory": "trajectories/36037439-2044-4b50-b9d1-875b5a332143",
-  "related_apps": [
-    "OS",
-    "Chrome"
-  ],
+  "related_apps": ["OS", "Chrome"],
   "evaluator": {
     "func": "is_expected_url_pattern_match",
     "result": {

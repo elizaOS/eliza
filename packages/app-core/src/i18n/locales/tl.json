@@ -143,6 +143,7 @@
   "appsview.URL": "URL",
   "appsview.Viewer": "manonood",
   "appwindow.LaunchedNoViewer": "This app launched without a viewer URL. Open it from the apps catalog.",
+  "appwindow.RetryingLaunch": "Retrying launch...",
   "aria.advancedNavigation": "Advanced na nabigasyon",
   "aria.agentVoiceOff": "Naka-off ang boses ng agent",
   "aria.agentVoiceOn": "Naka-on ang boses ng agent",

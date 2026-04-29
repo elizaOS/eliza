@@ -1,6 +1,6 @@
+import Prism from "prismjs";
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import Prism from "prismjs";
 import "prismjs/components/prism-typescript";
 import "prismjs/themes/prism-tomorrow.css";
 import "./LandingPage.css";
@@ -31,7 +31,9 @@ const ExampleTurnCard: React.FC = () => {
   const reward = 6;
 
   useEffect(() => {
-    Prism.highlightAll();
+    if (showCode) {
+      Prism.highlightAll();
+    }
   }, [showCode]);
 
   const tsCode = `import { Transaction, SystemProgram, PublicKey, Keypair, ComputeBudgetProgram } from '@solana/web3.js';
@@ -179,7 +181,11 @@ export async function executeSkill(blockhash: string): Promise<string> {
         <div
           style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}
         >
-          <button className="cta-button" onClick={() => setShowCode((v) => !v)}>
+          <button
+            className="cta-button"
+            onClick={() => setShowCode((v) => !v)}
+            type="button"
+          >
             {showCode ? "Hide Code" : "Show Code"}
           </button>
         </div>
@@ -212,6 +218,15 @@ const LandingPage: React.FC = () => {
 
   const handleCloseModal = () => {
     setExpandedImage(null);
+  };
+
+  const handleModalKeyDown = (
+    event: React.KeyboardEvent<HTMLButtonElement>,
+  ) => {
+    if (event.key === "Enter" || event.key === " " || event.key === "Escape") {
+      event.preventDefault();
+      handleCloseModal();
+    }
   };
 
   return (
@@ -486,16 +501,22 @@ const LandingPage: React.FC = () => {
             </tbody>
           </table>
           <div className="image-gallery">
-            <img
-              src="/solana-gym-env/assets/basic_individual_trajectories.png"
-              alt="Individual Model Trajectories (Basic)"
+            <button
+              aria-label="Open individual model trajectories for the basic benchmark"
               onClick={() =>
                 handleImageClick(
-                  "/solana-gym-env/assets/basic_individual_trajectories.png"
+                  "/solana-gym-env/assets/basic_individual_trajectories.png",
                 )
               }
-              style={{ cursor: "pointer" }}
-            />
+              style={{ background: "transparent", border: 0, padding: 0 }}
+              type="button"
+            >
+              <img
+                src="/solana-gym-env/assets/basic_individual_trajectories.png"
+                alt="Individual Model Trajectories (Basic)"
+                style={{ cursor: "pointer" }}
+              />
+            </button>
           </div>
           <p>
             Claude is definitely the best performer here. Its key insight is
@@ -549,16 +570,22 @@ const LandingPage: React.FC = () => {
             </tbody>
           </table>
           <div className="image-gallery">
-            <img
-              src="/solana-gym-env/assets/swap_individual_trajectories_raw.png"
-              alt="Individual Model Trajectories Raw(Defi)"
+            <button
+              aria-label="Open raw individual model trajectories for the swap benchmark"
               onClick={() =>
                 handleImageClick(
-                  "/solana-gym-env/assets/swap_individual_trajectories_raw.png"
+                  "/solana-gym-env/assets/swap_individual_trajectories_raw.png",
                 )
               }
-              style={{ cursor: "pointer" }}
-            />
+              style={{ background: "transparent", border: 0, padding: 0 }}
+              type="button"
+            >
+              <img
+                src="/solana-gym-env/assets/swap_individual_trajectories_raw.png"
+                alt="Individual Model Trajectories Raw(Defi)"
+                style={{ cursor: "pointer" }}
+              />
+            </button>
           </div>
           <p>
             Claude outperforms GPT-5 slightly here, only due to one run where it
@@ -586,16 +613,22 @@ const LandingPage: React.FC = () => {
           </p>
           <h4>Filtered Swap Benchmark Performance</h4>
           <div className="image-gallery">
-            <img
-              src="/solana-gym-env/assets/swap_individual_trajectories.png"
-              alt="Individual Model Trajectories (Defi)"
+            <button
+              aria-label="Open filtered individual model trajectories for the swap benchmark"
               onClick={() =>
                 handleImageClick(
-                  "/solana-gym-env/assets/swap_individual_trajectories.png"
+                  "/solana-gym-env/assets/swap_individual_trajectories.png",
                 )
               }
-              style={{ cursor: "pointer" }}
-            />
+              style={{ background: "transparent", border: 0, padding: 0 }}
+              type="button"
+            >
+              <img
+                src="/solana-gym-env/assets/swap_individual_trajectories.png"
+                alt="Individual Model Trajectories (Defi)"
+                style={{ cursor: "pointer" }}
+              />
+            </button>
           </div>
           <p>
             GPT-5 outperforms Claude when filtering out Memo & Memo v1 program
@@ -707,7 +740,6 @@ const LandingPage: React.FC = () => {
       {expandedImage && (
         <div
           className="image-modal-overlay"
-          onClick={handleCloseModal}
           style={{
             position: "fixed",
             top: 0,
@@ -722,6 +754,20 @@ const LandingPage: React.FC = () => {
             cursor: "pointer",
           }}
         >
+          <button
+            aria-label="Close expanded image"
+            onClick={handleCloseModal}
+            onKeyDown={handleModalKeyDown}
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "transparent",
+              border: 0,
+              cursor: "pointer",
+              padding: 0,
+            }}
+            type="button"
+          />
           <img
             src={expandedImage}
             alt="Expanded view"
@@ -729,8 +775,8 @@ const LandingPage: React.FC = () => {
               maxWidth: "90vw",
               maxHeight: "90vh",
               objectFit: "contain",
+              zIndex: 1,
             }}
-            onClick={(e) => e.stopPropagation()}
           />
           <button
             onClick={handleCloseModal}
@@ -749,7 +795,9 @@ const LandingPage: React.FC = () => {
               alignItems: "center",
               justifyContent: "center",
               fontWeight: "bold",
+              zIndex: 2,
             }}
+            type="button"
           >
             ×
           </button>

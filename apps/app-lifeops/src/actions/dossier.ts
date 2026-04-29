@@ -1,5 +1,5 @@
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -75,10 +75,10 @@ export const dossierAction: Action & {
     "Use this for requests like 'pull up a dossier on Satya Nadella', 'give me the background on the person I'm meeting next: Julia Chen', or 'brief me for my next meeting'. " +
     "If the user explicitly wants a brief, backgrounder, prep sheet, or dossier, use this action instead of replying from ENTITIES, FACTS, or memory alone.",
   descriptionCompressed:
-    "Pre-meeting briefing dossier with attendees, recent context, and event details. Admin only.",
+    "Pre-meeting briefing dossier with attendees, recent context, and event details. Owner only.",
   suppressPostActionContinuation: true,
 
-  validate: async (runtime, message) => hasAdminAccess(runtime, message),
+  validate: async (runtime, message) => hasOwnerAccess(runtime, message),
 
   handler: async (
     runtime: IAgentRuntime,
@@ -86,9 +86,9 @@ export const dossierAction: Action & {
     state: State | undefined,
     options: HandlerOptions | undefined,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return {
-        text: "Permission denied: only the owner or admin may generate dossiers.",
+        text: "Permission denied: only the owner may generate dossiers.",
         success: false,
         values: { success: false, error: "PERMISSION_DENIED" },
         data: { actionName: ACTION_NAME },

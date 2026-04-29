@@ -5,11 +5,11 @@ import type {
 } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
-  GOOGLE_DISTANCE_MATRIX_URL,
-  TravelTimeService,
-  TravelTimeUnavailableError,
   type CalendarEventLookupLike,
+  GOOGLE_DISTANCE_MATRIX_URL,
   type TravelTimeFetch,
+  TravelTimeService,
+  type TravelTimeUnavailableError,
 } from "./service.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000099";
@@ -205,8 +205,8 @@ describe("TravelTimeService", () => {
       calendar: makeCalendar([]),
       getApiKey: () => "test-key",
     });
-    await expect(
-      service.computeBuffer({ eventId: "missing" }),
-    ).rejects.toThrow(/not found/);
+    await expect(service.computeBuffer({ eventId: "missing" })).rejects.toThrow(
+      /not found/,
+    );
   });
 });
