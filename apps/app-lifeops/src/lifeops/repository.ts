@@ -905,6 +905,8 @@ function parseCachedInboxMessage(
     gmailAccountEmail: row.gmail_account_email
       ? toText(row.gmail_account_email)
       : undefined,
+    lastSeenAt: row.last_seen_at ? toText(row.last_seen_at) : undefined,
+    repliedAt: row.replied_at ? toText(row.replied_at) : undefined,
     priorityScore,
     priorityCategory:
       priorityCategory as LifeOpsInboxMessage["priorityCategory"],
@@ -1910,6 +1912,14 @@ export class LifeOpsRepository {
       runtime,
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_inbox_messages_agent_channel_external
          ON life_inbox_messages (agent_id, channel, external_id)`,
+    );
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS last_seen_at TEXT",
+    );
+    await executeRawSql(
+      runtime,
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS replied_at TEXT",
     );
   }
 
@@ -3849,7 +3859,7 @@ export class LifeOpsRepository {
           id, agent_id, channel, external_id, thread_id, sender_id,
           sender_display, sender_email, subject, snippet, received_at,
           is_unread, deep_link, source_ref_json, chat_type, participant_count,
-          gmail_account_id, gmail_account_email, priority_score,
+          gmail_account_id, gmail_account_email, last_seen_at, replied_at, priority_score,
           priority_category, priority_flags_json, cached_at, updated_at
         ) VALUES (
           ${sqlQuote(message.id)},
@@ -3870,6 +3880,8 @@ export class LifeOpsRepository {
           ${sqlInteger(message.participantCount)},
           ${sqlText(message.gmailAccountId)},
           ${sqlText(message.gmailAccountEmail)},
+          ${sqlText(message.lastSeenAt)},
+          ${sqlText(message.repliedAt)},
           ${sqlInteger(message.priorityScore)},
           ${sqlText(message.priorityCategory)},
           ${sqlJson([])},
@@ -3892,6 +3904,8 @@ export class LifeOpsRepository {
           participant_count = excluded.participant_count,
           gmail_account_id = excluded.gmail_account_id,
           gmail_account_email = excluded.gmail_account_email,
+          last_seen_at = COALESCE(excluded.last_seen_at, life_inbox_messages.last_seen_at),
+          replied_at = COALESCE(excluded.replied_at, life_inbox_messages.replied_at),
           priority_score = COALESCE(excluded.priority_score, life_inbox_messages.priority_score),
           priority_category = COALESCE(excluded.priority_category, life_inbox_messages.priority_category),
           priority_flags_json = CASE
@@ -5249,8 +5263,8 @@ export class LifeOpsRepository {
         is_inbound = excluded.is_inbound,
         text = excluded.text,
         received_at = excluded.received_at,
-        read_at = excluded.read_at,
-        replied_at = excluded.replied_at,
+        read_at = COALESCE(excluded.read_at, life_x_dms.read_at),
+        replied_at = COALESCE(excluded.replied_at, life_x_dms.replied_at),
         metadata_json = excluded.metadata_json,
         synced_at = excluded.synced_at,
         updated_at = excluded.updated_at`,

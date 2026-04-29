@@ -680,8 +680,8 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     /**
-     * Read upcoming bills (transactions on the email source whose metadata
-     * carries `kind: "bill"` and a future `dueDate`) sorted by due date.
+     * Read bills extracted from email. This includes overdue and no-date bills
+     * so extraction misses do not disappear from the user's review queue.
      */
     async getUpcomingBills(
       args: { now?: Date } = {},
@@ -704,7 +704,12 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         if (metadata.kind !== "bill") continue;
         const dueDate =
           typeof metadata.dueDate === "string" ? metadata.dueDate : null;
-        if (!dueDate || dueDate < todayIso) continue;
+        const status =
+          dueDate === null
+            ? "needs_due_date"
+            : dueDate < todayIso
+              ? "overdue"
+              : "upcoming";
         const sourceMessageId =
           typeof metadata.sourceMessageId === "string"
             ? metadata.sourceMessageId
@@ -720,12 +725,25 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
           amountUsd: transaction.amountUsd,
           currency: transaction.currency,
           dueDate,
+          status,
           postedAt: transaction.postedAt,
           sourceMessageId,
           confidence,
         });
       }
-      bills.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+      const statusRank: Record<LifeOpsUpcomingBill["status"], number> = {
+        overdue: 0,
+        needs_due_date: 1,
+        upcoming: 2,
+      };
+      bills.sort((a, b) => {
+        const rankDelta = statusRank[a.status] - statusRank[b.status];
+        if (rankDelta !== 0) return rankDelta;
+        if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
+        if (a.dueDate) return 1;
+        if (b.dueDate) return -1;
+        return b.postedAt.localeCompare(a.postedAt);
+      });
       return bills;
     }
 
