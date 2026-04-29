@@ -9,6 +9,9 @@ import {
 } from "@elizaos/app-core";
 import {
   LIFEOPS_INBOX_CHANNELS,
+  type LifeOpsGmailNeedsResponseFeed,
+  type LifeOpsGmailSpamReviewFeed,
+  type LifeOpsGmailUnrespondedFeed,
   type LifeOpsInboxChannel,
   type LifeOpsInboxMessage,
   type LifeOpsInboxThreadGroup,
@@ -135,6 +138,15 @@ const IMPORTANT_PRIORITY_SCORE_THRESHOLD = 70;
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
 const ALL_GMAIL_ACCOUNTS = "__all__";
+
+type MailWorkflowKind = "needs_response" | "unresponded" | "spam_review";
+
+interface MailWorkflowState {
+  kind: MailWorkflowKind | null;
+  loading: boolean;
+  summary: string | null;
+  error: string | null;
+}
 
 function styleFor(channel: LifeOpsInboxChannel): ChannelStyle {
   return CHANNEL_STYLES[channel];
@@ -266,6 +278,73 @@ function GmailAccountChip({
       <span>{label}</span>
     </button>
   );
+}
+
+function MailWorkflowButton({
+  kind,
+  active,
+  loading,
+  onClick,
+}: {
+  kind: MailWorkflowKind;
+  active: boolean;
+  loading: boolean;
+  onClick: (kind: MailWorkflowKind) => void;
+}) {
+  const label =
+    kind === "needs_response"
+      ? "Needs response"
+      : kind === "unresponded"
+        ? "Unresponded"
+        : "Spam review";
+  const icon =
+    kind === "spam_review" ? (
+      <Shield className="h-3.5 w-3.5" aria-hidden />
+    ) : kind === "unresponded" ? (
+      <AlarmClock className="h-3.5 w-3.5" aria-hidden />
+    ) : (
+      <MessageSquareReply className="h-3.5 w-3.5" aria-hidden />
+    );
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      disabled={loading}
+      onClick={() => onClick(kind)}
+      className={[
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-60",
+        active
+          ? "bg-rose-500/16 text-rose-300 ring-1 ring-rose-500/40"
+          : "bg-bg-muted/30 text-muted hover:text-txt",
+      ].join(" ")}
+    >
+      {icon}
+      <span>{loading ? "Loading..." : label}</span>
+    </button>
+  );
+}
+
+function summarizeNeedsResponseFeed(feed: LifeOpsGmailNeedsResponseFeed): string {
+  return `${feed.summary.totalCount} thread${
+    feed.summary.totalCount === 1 ? "" : "s"
+  } need response`;
+}
+
+function summarizeUnrespondedFeed(feed: LifeOpsGmailUnrespondedFeed): string {
+  const oldest = feed.summary.oldestDaysWaiting;
+  return oldest === null
+    ? `${feed.summary.totalCount} sent thread${
+        feed.summary.totalCount === 1 ? "" : "s"
+      } awaiting reply`
+    : `${feed.summary.totalCount} sent thread${
+        feed.summary.totalCount === 1 ? "" : "s"
+      } awaiting reply, oldest ${oldest}d`;
+}
+
+function summarizeSpamReviewFeed(feed: LifeOpsGmailSpamReviewFeed): string {
+  return `${feed.summary.pendingCount} pending spam review item${
+    feed.summary.pendingCount === 1 ? "" : "s"
+  }`;
 }
 
 interface ThreadRowProps {
