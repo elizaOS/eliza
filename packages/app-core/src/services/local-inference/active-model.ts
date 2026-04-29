@@ -32,6 +32,18 @@ export interface LocalInferenceLoader {
     maxTokens?: number;
     temperature?: number;
   }): Promise<string>;
+  /**
+   * Optional embedding surface. When a loader implements this, the runtime
+   * handler routes `TEXT_EMBEDDING` requests through it. The AOSP bun:ffi
+   * loader populates this directly via `llama_get_embeddings_seq`; the
+   * device-bridge loader populates it by dispatching an `embed` frame to
+   * the connected device. Loaders that cannot embed leave this undefined,
+   * and the runtime falls back to its non-local embedding provider chain.
+   */
+  embed?(args: { input: string }): Promise<{
+    embedding: number[];
+    tokens: number;
+  }>;
 }
 
 function isLoader(value: unknown): value is LocalInferenceLoader {

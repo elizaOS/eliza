@@ -105,7 +105,16 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // in the output; `MILADY_PLATFORM=android` would then fail at runtime when
 // the mobile bun process can't resolve the missing package. A plugin onResolve
 // that maps the bare specifier to the stub path keeps the resolution pure.
-// Native deps without an Android prebuild — replaced with throw-on-call shims.
+//
+// AOSP runtime uses bun:ffi against libllama.so + libmilady-llama-shim.so
+// directly. node-llama-cpp stays stubbed unconditionally — un-stubbing pulls
+// in unresolvable per-platform prebuild packages (e.g.
+// `@node-llama-cpp/win-x64-cuda-ext`) that the agent's transitive imports
+// reference but the AOSP target cannot install. The static import of
+// `runtime/aosp-llama-adapter.ts` from `bin.ts` registers the runtime loader
+// when `MILADY_LOCAL_LLAMA=1`. The Capacitor APK build also keeps the stub
+// because its on-device inference goes through llama-cpp-capacitor in the
+// WebView, not node-llama-cpp.
 const nativeStubs = {
   "node-llama-cpp": path.join(stubsDir, "node-llama-cpp.cjs"),
   "@node-llama-cpp/linux-x64": path.join(stubsDir, "node-llama-cpp.cjs"),

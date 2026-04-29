@@ -1,6 +1,6 @@
 import {
-  type CoordinatorEvalChannel,
-  runCoordinatorLiveScenarios,
+	type CoordinatorEvalChannel,
+	runCoordinatorLiveScenarios,
 } from "@elizaos/agent";
 
 function takeFlag(name: string): string | undefined {
