@@ -5,6 +5,7 @@ import {
   HYPERLIQUID_ACCOUNT_BLOCKED_REASON,
   HYPERLIQUID_API_BASE,
   HYPERLIQUID_EXECUTION_BLOCKED_REASON,
+  HYPERLIQUID_EXECUTION_NOT_IMPLEMENTED_REASON,
   type HyperliquidExecutionDisabledResponse,
   type HyperliquidMarket,
   type HyperliquidMarketsResponse,
@@ -30,6 +31,7 @@ interface HyperliquidConfig {
   apiBaseUrl: string;
   accountAddress: string | null;
   accountBlockedReason: string | null;
+  signerReady: boolean;
   executionReady: boolean;
   executionBlockedReason: string | null;
 }
@@ -69,6 +71,7 @@ export async function handleHyperliquidRoute(
   if (pathname === "/api/hyperliquid/status") {
     const payload: HyperliquidStatusResponse = {
       publicReadReady: Boolean(fetchImpl),
+      signerReady: config.signerReady,
       executionReady: config.executionReady,
       executionBlockedReason: config.executionBlockedReason,
       accountAddress: config.accountAddress,
@@ -234,9 +237,10 @@ function resolveHyperliquidConfig(env: NodeJS.ProcessEnv): HyperliquidConfig {
     apiBaseUrl: HYPERLIQUID_API_BASE,
     accountAddress,
     accountBlockedReason,
-    executionReady: Boolean(privateKey),
+    signerReady: Boolean(privateKey),
+    executionReady: false,
     executionBlockedReason: privateKey
-      ? null
+      ? HYPERLIQUID_EXECUTION_NOT_IMPLEMENTED_REASON
       : HYPERLIQUID_EXECUTION_BLOCKED_REASON,
   };
 }

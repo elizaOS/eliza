@@ -1,5 +1,5 @@
 import type { AgentRuntime } from "@elizaos/core";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { HealthChecker } from "./health.js";
 import type { HealthCheck, HealthCheckResult } from "./types.js";
 
@@ -148,25 +148,40 @@ describe("HealthChecker.runForRuntime", () => {
 
   test("checks run in parallel, not series", async () => {
     const checker = new HealthChecker();
-    const slow = (name: string): HealthCheck => ({
+    const started: string[] = [];
+    const resolvers = new Map<
+      string,
+      (result: HealthCheckResult) => void
+    >();
+    const controlled = (name: string): HealthCheck => ({
       name,
       required: false,
       timeoutMs: 1000,
       run: () =>
         new Promise<HealthCheckResult>((resolve) => {
-          setTimeout(() => resolve({ ok: true }), 200);
+          started.push(name);
+          resolvers.set(name, resolve);
         }),
     });
-    checker.register(slow("p1"));
-    checker.register(slow("p2"));
+    const resolveCheck = (name: string) => {
+      const resolve = resolvers.get(name);
+      if (!resolve) {
+        throw new Error(`missing resolver for ${name}`);
+      }
+      resolve({ ok: true });
+    };
+    checker.register(controlled("p1"));
+    checker.register(controlled("p2"));
 
-    const start = Date.now();
-    const report = await checker.runForRuntime(stubRuntime);
-    const elapsed = Date.now() - start;
+    const reportPromise = checker.runForRuntime(stubRuntime);
 
-    // Two 200ms checks running serially would take ~400ms. In parallel,
-    // ~200ms. Allow generous slack for CI jitter but well under serial.
-    expect(elapsed).toBeLessThan(300);
+    await vi.waitFor(() => {
+      expect([...started].sort()).toEqual(["p1", "p2"]);
+    });
+    resolveCheck("p1");
+    resolveCheck("p2");
+    const report = await reportPromise;
+
     expect(report.ok).toBe(true);
     expect(report.passed).toHaveLength(2);
   });

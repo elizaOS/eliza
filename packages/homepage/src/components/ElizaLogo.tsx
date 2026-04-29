@@ -1,6 +1,14 @@
 
 
+import type { ComponentType, SVGProps } from "react";
 import { useTrail, animated } from "@react-spring/web";
+
+type SpringAnimatedStyle = Record<string, string | number | boolean | null | undefined | object>;
+type AnimatedSvgProps<T extends SVGElement> = Omit<SVGProps<T>, "style"> & {
+  style?: SpringAnimatedStyle;
+};
+
+const AnimatedG = animated.g as ComponentType<AnimatedSvgProps<SVGGElement>>;
 
 // Paths ordered left-to-right: E, l, i (body + dot), z, a
 const letters: string[][] = [
@@ -54,7 +62,7 @@ export default function ElizaLogo({
       xmlns="http://www.w3.org/2000/svg"
     >
       {trail.map((style, i) => (
-        <animated.g
+        <AnimatedG
           key={i}
           style={{
             opacity: style.opacity,
@@ -64,7 +72,7 @@ export default function ElizaLogo({
           {letters[i].map((d, j) => (
             <path key={j} d={d} />
           ))}
-        </animated.g>
+        </AnimatedG>
       ))}
     </svg>
   );

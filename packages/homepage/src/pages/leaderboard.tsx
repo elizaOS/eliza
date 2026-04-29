@@ -34,11 +34,11 @@ type AnimatedSvgProps<T extends SVGElement> = Omit<SVGProps<T>, "style"> & {
   style?: SpringAnimatedStyle;
 };
 
-const AnimatedSpan = AnimatedSpan as ComponentType<AnimatedHtmlProps<HTMLSpanElement>>;
-const AnimatedDiv = AnimatedDiv as ComponentType<AnimatedHtmlProps<HTMLDivElement>>;
-const AnimatedButton = AnimatedButton as ComponentType<AnimatedButtonProps>;
-const AnimatedSvg = AnimatedSvg as ComponentType<AnimatedSvgProps<SVGSVGElement>>;
-const AnimatedG = AnimatedG as ComponentType<AnimatedSvgProps<SVGGElement>>;
+const AnimatedSpan = animated.span as ComponentType<AnimatedHtmlProps<HTMLSpanElement>>;
+const AnimatedDiv = animated.div as ComponentType<AnimatedHtmlProps<HTMLDivElement>>;
+const AnimatedButton = animated.button as ComponentType<AnimatedButtonProps>;
+const AnimatedSvg = animated.svg as ComponentType<AnimatedSvgProps<SVGSVGElement>>;
+const AnimatedG = animated.g as ComponentType<AnimatedSvgProps<SVGGElement>>;
 
 // Get all countries from libphonenumber-js
 const COUNTRY_CODES = getCountries();

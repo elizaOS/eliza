@@ -70,6 +70,8 @@ const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
 
 const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
   "@elizaos/app-elizamaker",
+  "@elizaos/app-hyperliquid",
+  "@elizaos/app-polymarket",
   "@elizaos/app-shopify",
   "@elizaos/app-steward",
   "@elizaos/app-vincent",
@@ -321,6 +323,8 @@ export function getAppCatalogSectionKey(
       return "games";
     case "@elizaos/app-vincent":
     case "@elizaos/app-shopify":
+    case "@elizaos/app-hyperliquid":
+    case "@elizaos/app-polymarket":
       return "finance";
     case "@elizaos/app-babylon":
       return "games";
