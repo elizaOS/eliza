@@ -154,12 +154,16 @@ function summarizeWebsiteBlock(status: WebsiteBlockerStatus): string {
         ? status.websites[0]
         : `${count} websites`;
   const endsAt = formatEndsAt(status.endsAt);
-  return endsAt ? `Websites: ${targetLabel} until ${endsAt}` : `Websites: ${targetLabel}`;
+  return endsAt
+    ? `Websites: ${targetLabel} until ${endsAt}`
+    : `Websites: ${targetLabel}`;
 }
 
 function summarizeAppBlock(status: AppBlockerStatus): string {
   const count = status.blockedCount;
-  const platform = status.platform ? ` on ${status.platform.toUpperCase()}` : "";
+  const platform = status.platform
+    ? ` on ${status.platform.toUpperCase()}`
+    : "";
   const endsAt = formatEndsAt(status.endsAt);
   const countLabel = `${count} app${count === 1 ? "" : "s"}`;
   return endsAt
@@ -327,9 +331,7 @@ async function fetchHistoryData(period: Period): Promise<HistoryData> {
       const dayStart = startOfLocalDay(date);
       const dayEnd = addDays(dayStart, 1);
       const sinceIso = dayStart.toISOString();
-      const untilIso = new Date(
-        Math.min(dayEnd.getTime(), now),
-      ).toISOString();
+      const untilIso = new Date(Math.min(dayEnd.getTime(), now)).toISOString();
       const breakdown = await client.getLifeOpsScreenTimeBreakdown({
         since: sinceIso,
         until: untilIso,
@@ -362,73 +364,68 @@ export function LifeOpsScreenTimeSection({
     new Map(),
   );
 
-  const load = useCallback(
-    async (key: RangeKey, force = false) => {
-      setLoading(true);
-      setError(null);
-      const now = Date.now();
-      const cached = dataCache.current.get(key);
-      const cachedPrior = priorCache.current.get(key);
-      const cachedHistory = historyCache.current.get(key);
-      const fresh = (entry: CacheEntry<unknown> | undefined) =>
-        entry !== undefined && now - entry.fetchedAt < CACHE_TTL_MS;
+  const load = useCallback(async (key: RangeKey, force = false) => {
+    setLoading(true);
+    setError(null);
+    const now = Date.now();
+    const cached = dataCache.current.get(key);
+    const cachedPrior = priorCache.current.get(key);
+    const cachedHistory = historyCache.current.get(key);
+    const fresh = (entry: CacheEntry<unknown> | undefined) =>
+      entry !== undefined && now - entry.fetchedAt < CACHE_TTL_MS;
 
-      if (
-        !force &&
-        fresh(cached) &&
-        (key === "today" || fresh(cachedPrior)) &&
-        (key === "today" || fresh(cachedHistory))
-      ) {
-        setData(cached!.value);
-        setPriorData(cachedPrior?.value ?? null);
-        setHistory(cachedHistory?.value ?? null);
-        setLoading(false);
-        return;
-      }
+    if (
+      !force &&
+      fresh(cached) &&
+      (key === "today" || fresh(cachedPrior)) &&
+      (key === "today" || fresh(cachedHistory))
+    ) {
+      setData(cached!.value);
+      setPriorData(cachedPrior?.value ?? null);
+      setHistory(cachedHistory?.value ?? null);
+      setLoading(false);
+      return;
+    }
 
-      try {
-        const period = computeRange(key);
-        const priorPeriod = computePriorRange(key);
-        const [rangeData, priorRangeData, historyData] = await Promise.all([
-          fetchRangeData(period),
-          priorPeriod ? fetchRangeData(priorPeriod) : Promise.resolve(null),
-          key === "today"
-            ? Promise.resolve(null)
-            : fetchHistoryData(period),
-        ]);
-        const stamp = Date.now();
-        dataCache.current.set(key, { value: rangeData, fetchedAt: stamp });
-        if (priorRangeData) {
-          priorCache.current.set(key, {
-            value: priorRangeData,
-            fetchedAt: stamp,
-          });
-        } else {
-          priorCache.current.delete(key);
-        }
-        if (historyData) {
-          historyCache.current.set(key, {
-            value: historyData,
-            fetchedAt: stamp,
-          });
-        } else {
-          historyCache.current.delete(key);
-        }
-        setData(rangeData);
-        setPriorData(priorRangeData);
-        setHistory(historyData);
-      } catch (cause) {
-        setError(
-          cause instanceof Error && cause.message.trim().length > 0
-            ? cause.message.trim()
-            : "Screen time failed to load.",
-        );
-      } finally {
-        setLoading(false);
+    try {
+      const period = computeRange(key);
+      const priorPeriod = computePriorRange(key);
+      const [rangeData, priorRangeData, historyData] = await Promise.all([
+        fetchRangeData(period),
+        priorPeriod ? fetchRangeData(priorPeriod) : Promise.resolve(null),
+        key === "today" ? Promise.resolve(null) : fetchHistoryData(period),
+      ]);
+      const stamp = Date.now();
+      dataCache.current.set(key, { value: rangeData, fetchedAt: stamp });
+      if (priorRangeData) {
+        priorCache.current.set(key, {
+          value: priorRangeData,
+          fetchedAt: stamp,
+        });
+      } else {
+        priorCache.current.delete(key);
       }
-    },
-    [],
-  );
+      if (historyData) {
+        historyCache.current.set(key, {
+          value: historyData,
+          fetchedAt: stamp,
+        });
+      } else {
+        historyCache.current.delete(key);
+      }
+      setData(rangeData);
+      setPriorData(priorRangeData);
+      setHistory(historyData);
+    } catch (cause) {
+      setError(
+        cause instanceof Error && cause.message.trim().length > 0
+          ? cause.message.trim()
+          : "Screen time failed to load.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const loadBlockStatus = useCallback(async () => {
     try {
@@ -532,8 +529,8 @@ export function LifeOpsScreenTimeSection({
   const showDeltas = range !== "today" && priorData !== null;
   const priorTotalSeconds = priorBreakdown?.totalSeconds ?? 0;
   const priorAppSeconds =
-    priorBreakdown?.bySource.find((item) => item.key === "app")
-      ?.totalSeconds ?? 0;
+    priorBreakdown?.bySource.find((item) => item.key === "app")?.totalSeconds ??
+    0;
   const priorWebSeconds =
     priorBreakdown?.bySource.find((item) => item.key === "website")
       ?.totalSeconds ?? 0;
@@ -575,9 +572,7 @@ export function LifeOpsScreenTimeSection({
       value: formatDurationSeconds(appSeconds),
       label: "Apps",
       visible: appSeconds > 0,
-      delta: showDeltas
-        ? deltaPercent(appSeconds, priorAppSeconds)
-        : undefined,
+      delta: showDeltas ? deltaPercent(appSeconds, priorAppSeconds) : undefined,
     },
     {
       key: "web",
@@ -585,9 +580,7 @@ export function LifeOpsScreenTimeSection({
       value: formatDurationSeconds(webSeconds),
       label: "Web",
       visible: webSeconds > 0,
-      delta: showDeltas
-        ? deltaPercent(webSeconds, priorWebSeconds)
-        : undefined,
+      delta: showDeltas ? deltaPercent(webSeconds, priorWebSeconds) : undefined,
     },
     {
       key: "phone",
@@ -625,9 +618,7 @@ export function LifeOpsScreenTimeSection({
       value: formatDurationSeconds(xSeconds),
       label: "X",
       visible: xSeconds > 0,
-      delta: showDeltas
-        ? deltaPercent(xSeconds, priorXSeconds)
-        : undefined,
+      delta: showDeltas ? deltaPercent(xSeconds, priorXSeconds) : undefined,
     },
     {
       key: "opened",
@@ -641,7 +632,8 @@ export function LifeOpsScreenTimeSection({
     },
   ].filter((item) => item.visible);
 
-  const showHistory = range !== "today" && history !== null && history.length > 0;
+  const showHistory =
+    range !== "today" && history !== null && history.length > 0;
 
   return (
     <div className="space-y-4" data-testid="lifeops-screen-time-section">

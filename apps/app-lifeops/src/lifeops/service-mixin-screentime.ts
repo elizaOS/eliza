@@ -921,10 +921,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
           {
             id: "ios_device_activity",
             label: "iOS apps",
-            state: mobileScreenTimeStateFromSignals(
-              recentMobileSignals,
-              "ios",
-            ),
+            state: mobileScreenTimeStateFromSignals(recentMobileSignals, "ios"),
           },
         ],
         fetchedAt: isoNow(),

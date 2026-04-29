@@ -2,6 +2,7 @@ import type {
   LifeOpsPersonalBaselineResponse,
   LifeOpsSleepHistoryEpisode,
   LifeOpsSleepHistoryResponse,
+  LifeOpsSleepHistorySummary,
   LifeOpsSleepRegularityResponse,
 } from "@elizaos/shared";
 import { resolveDefaultTimeZone } from "./defaults.js";
@@ -39,6 +40,36 @@ function durationMinutesFor(
     return null;
   }
   return Math.round((endMs - startMs) / 60_000);
+}
+
+function summarizeSleepHistory(
+  episodes: readonly LifeOpsSleepHistoryEpisode[],
+): LifeOpsSleepHistorySummary {
+  let totalDuration = 0;
+  let durationCount = 0;
+  let overnightCount = 0;
+  let napCount = 0;
+  let openCount = 0;
+  for (const episode of episodes) {
+    if (episode.cycleType === "overnight") overnightCount += 1;
+    if (episode.cycleType === "nap") napCount += 1;
+    if (episode.endedAt === null) openCount += 1;
+    if (
+      typeof episode.durationMin === "number" &&
+      Number.isFinite(episode.durationMin)
+    ) {
+      totalDuration += episode.durationMin;
+      durationCount += 1;
+    }
+  }
+  return {
+    cycleCount: episodes.length,
+    averageDurationMin:
+      durationCount > 0 ? Math.round(totalDuration / durationCount) : null,
+    overnightCount,
+    napCount,
+    openCount,
+  };
 }
 
 /** @internal */
@@ -85,6 +116,7 @@ export function withSleep<TBase extends Constructor<LifeOpsServiceBase>>(
       }));
       return {
         episodes,
+        summary: summarizeSleepHistory(episodes),
         windowDays,
         includeNaps,
       };

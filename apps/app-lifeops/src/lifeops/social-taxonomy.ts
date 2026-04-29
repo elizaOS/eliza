@@ -177,10 +177,7 @@ function metadataString(
 }
 
 function targetHaystack(target: ScreenTimeTarget): string {
-  return targetValues(target)
-    .map(normalize)
-    .filter(Boolean)
-    .join(" ");
+  return targetValues(target).map(normalize).filter(Boolean).join(" ");
 }
 
 function targetValues(target: ScreenTimeTarget): string[] {
@@ -266,7 +263,9 @@ function matchSocialRule(
   haystack: string,
 ): SocialRule | null {
   for (const rule of SOCIAL_RULES) {
-    if (rule.patterns.some((pattern) => matchesPattern(target, haystack, pattern))) {
+    if (
+      rule.patterns.some((pattern) => matchesPattern(target, haystack, pattern))
+    ) {
       return rule;
     }
   }
@@ -319,7 +318,11 @@ export function classifyScreenTimeTarget(
       browser,
     };
   }
-  if (BROWSER_PATTERNS.some((pattern) => matchesPattern(target, haystack, pattern))) {
+  if (
+    BROWSER_PATTERNS.some((pattern) =>
+      matchesPattern(target, haystack, pattern),
+    )
+  ) {
     return {
       category: "browser",
       device: classifyDevice(target),
@@ -328,7 +331,9 @@ export function classifyScreenTimeTarget(
       browser,
     };
   }
-  if (SYSTEM_PATTERNS.some((pattern) => matchesPattern(target, haystack, pattern))) {
+  if (
+    SYSTEM_PATTERNS.some((pattern) => matchesPattern(target, haystack, pattern))
+  ) {
     return {
       category: "system",
       device: classifyDevice(target),
@@ -337,7 +342,9 @@ export function classifyScreenTimeTarget(
       browser,
     };
   }
-  if (WORK_PATTERNS.some((pattern) => matchesPattern(target, haystack, pattern))) {
+  if (
+    WORK_PATTERNS.some((pattern) => matchesPattern(target, haystack, pattern))
+  ) {
     return {
       category: "work",
       device: classifyDevice(target),
