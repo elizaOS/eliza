@@ -1,6 +1,5 @@
 export * from "./AgentTabsSection";
 export * from "./api/coordinator-types";
-export * from "./api/coordinator-wiring";
 export * from "./CodingAgentControlChip";
 export * from "./CodingAgentSettingsSection";
 export * from "./CodingAgentTasksPanel";
