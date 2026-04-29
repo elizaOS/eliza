@@ -165,32 +165,53 @@ describe("optional core plugins (require explicit opt-in)", () => {
     expect(names.has("@elizaos/plugin-ollama")).toBe(true);
   });
 
-  it("MILADY_LOCAL_LLAMA=1 strips remote providers even with API keys + cloud config absent", () => {
+  it("MILADY_LOCAL_LLAMA=1 keeps API-key cloud providers loaded alongside local", () => {
+    // The local handler registers at priority -1 so cloud wins when configured.
+    // Stripping remote providers from the load set would prevent users from
+    // ever routing a slot to Anthropic/OpenAI on AOSP / on-device builds.
     process.env.MILADY_LOCAL_LLAMA = "1";
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     process.env.OPENAI_API_KEY = "sk-test";
 
     const names = collectPluginNames({
-      plugins: {
-        allow: ["@elizaos/plugin-anthropic", "@elizaos/plugin-openai"],
-      },
+      plugins: {},
     } as ElizaConfig);
 
-    expect(names.has("@elizaos/plugin-anthropic")).toBe(false);
-    expect(names.has("@elizaos/plugin-openai")).toBe(false);
-    expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+    expect(names.has("@elizaos/plugin-anthropic")).toBe(true);
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
   });
 
-  it("MILADY_LOCAL_LLAMA=1 still allows local provider plugins", () => {
+  it("MILADY_LOCAL_LLAMA=1 keeps subscription plugins loaded (openai-codex needs plugin-openai)", () => {
+    // openai-codex subscription routes through plugin-openai (modelProvider
+    // mapping in SUBSCRIPTION_PROVIDER_MAP), so the plugin must stay loaded
+    // for the subscription to be usable.
+    process.env.MILADY_LOCAL_LLAMA = "1";
+    process.env.OPENAI_API_KEY = "sk-test";
+
+    const names = collectPluginNames({
+      agents: {
+        defaults: { subscriptionProvider: "openai-codex" },
+      },
+      plugins: {},
+    } as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-openai")).toBe(true);
+  });
+
+  it("MILADY_LOCAL_LLAMA=1 still respects legacy config-driven local-only mode", () => {
+    // When the operator opts into local-only via config (cloud.inferenceMode),
+    // the existing precedence path strips cloud regardless of MILADY_LOCAL_LLAMA.
     process.env.MILADY_LOCAL_LLAMA = "1";
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     process.env.OLLAMA_BASE_URL = "http://localhost:11434";
 
     const names = collectPluginNames({
+      cloud: { enabled: false, inferenceMode: "local" },
       plugins: {},
     } as ElizaConfig);
 
     expect(names.has("@elizaos/plugin-anthropic")).toBe(false);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
     expect(names.has("@elizaos/plugin-ollama")).toBe(true);
   });
 

@@ -234,17 +234,18 @@ export function collectPluginNames(
   );
   const isCloudContainer = process.env.ELIZA_CLOUD_PROVISIONED === "1";
   const cloudExplicitlyDisabled = config.cloud?.enabled === false;
-  // AOSP all-local lock. When the agent process explicitly sets
-  // `MILADY_LOCAL_LLAMA=1`, every cloud and remote provider plugin must be
-  // stripped, even if the operator left an `ANTHROPIC_API_KEY` etc. in
-  // their env. The flag is the canonical signal that the runtime should
-  // route TEXT_SMALL/TEXT_LARGE through the in-process bun:ffi llama loader
-  // and nothing else; downstream `applyProviderPrecedence` reads
-  // `localOnlyInference` to decide what to delete.
-  const aospLocalLlamaEnv = process.env.MILADY_LOCAL_LLAMA?.trim() === "1";
+  // `MILADY_LOCAL_LLAMA=1` is the AOSP / on-device signal that the in-process
+  // llama.cpp loader is wired up and should be available as a routable
+  // provider. It does NOT mean "strip every other provider": subscription
+  // accounts (anthropic-subscription, openai-codex) and API-key cloud
+  // plugins must keep loading so the user can route slots to them.
+  // The local handler already registers at priority -1 (see
+  // ensure-local-inference-handler.ts), so cloud/direct providers win when
+  // the user has them configured, and local fills in otherwise.
+  // TODO(local-only-mode): introduce a separate explicit opt-in flag (e.g.
+  // `MILADY_LOCAL_ONLY=1`) for users who want all-cloud-providers stripped.
   const localOnlyInference =
     legacyLocalOnlyInference ||
-    aospLocalLlamaEnv ||
     (cloudExplicitlyDisabled &&
       deploymentTarget.runtime === "local" &&
       !serviceRouting?.llmText);
