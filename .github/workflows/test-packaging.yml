@@ -188,6 +188,9 @@ jobs:
       - name: Install dependencies
         run: bun install --ignore-scripts
 
+      - name: Materialize bun npm package binary
+        run: if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
+
       - name: Generate protobuf types
         run: |
           if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/typescript/src/types/generated ]; then

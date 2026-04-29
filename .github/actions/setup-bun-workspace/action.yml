@@ -102,6 +102,18 @@ runs:
       env:
         npm_config_python: ${{ env.pythonLocation }}/bin/python3
 
+    - name: Materialize bun npm package binary
+      # The default install command uses --ignore-scripts so trustedDependencies
+      # postinstalls don't run silently. The `bun` npm package ships a placeholder
+      # binary that errors with "Bun's postinstall script was not run" until its
+      # own install.js downloads the real binary; run it explicitly so any
+      # subsequent `bun ...` invocation (including the repo postinstall) works.
+      shell: bash
+      run: |
+        if [ -f node_modules/bun/install.js ]; then
+          (cd node_modules/bun && node install.js)
+        fi
+
     - name: Run repository postinstall
       if: ${{ inputs.run-postinstall == 'true' }}
       shell: bash

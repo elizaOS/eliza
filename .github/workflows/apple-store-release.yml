@@ -151,6 +151,9 @@ jobs:
       - name: Install dependencies
         run: bun install --ignore-scripts || bun install --ignore-scripts
 
+      - name: Materialize bun npm package binary
+        run: if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
+
       - name: Set version
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
@@ -301,6 +304,9 @@ jobs:
       - name: Install dependencies
         run: bun install --ignore-scripts || bun install --ignore-scripts
 
+      - name: Materialize bun npm package binary
+        run: if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
+
       - name: Set version
         env:
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
@@ -331,6 +337,7 @@ jobs:
         working-directory: packages/app
         run: |
           bun install --ignore-scripts
+          if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
           bun run build:web
 
       - name: Stage renderer
