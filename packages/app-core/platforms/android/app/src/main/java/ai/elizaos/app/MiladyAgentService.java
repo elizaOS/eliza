@@ -303,6 +303,40 @@ public class MiladyAgentService extends Service {
                 }
             }
         }
+
+        // Bundled default models (chat + embedding GGUF files staged by
+        // scripts/miladyos/stage-default-models.mjs at AOSP build time).
+        // Land them under $MILADY_STATE_DIR/local-inference/models/ so
+        // the runtime's first-run bootstrap discovers them at canonical
+        // paths and registers them in the local-inference registry as
+        // milady-owned models. The manifest.json carried alongside the
+        // GGUF files lets the bootstrap pick the right id + role for
+        // each file without re-deriving them from the filename.
+        //
+        // assets/agent/models/ may not exist on Capacitor (non-AOSP)
+        // builds — bundling defaults to off there since the desktop /
+        // Capacitor flows already have download UX. assets.list()
+        // returns null on missing paths, which we treat as "no models
+        // to extract".
+        String modelsAssetDir = "agent/models";
+        String[] modelFiles = assets.list(modelsAssetDir);
+        if (modelFiles != null && modelFiles.length > 0) {
+            File modelsDest = new File(
+                new File(stateDir, "local-inference"),
+                "models"
+            );
+            if (!modelsDest.exists() && !modelsDest.mkdirs()) {
+                throw new IOException("Could not create " + modelsDest);
+            }
+            for (String name : modelFiles) {
+                copyAssetIfMissing(
+                    assets,
+                    modelsAssetDir + "/" + name,
+                    new File(modelsDest, name)
+                );
+            }
+            Log.i(TAG, "Extracted " + modelFiles.length + " bundled model file(s) to " + modelsDest);
+        }
     }
 
     /** Walk agent/{abi}/ for the musl loader; name varies by ABI. */
