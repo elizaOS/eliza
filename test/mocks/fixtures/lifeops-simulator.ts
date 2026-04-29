@@ -270,6 +270,17 @@ export const LIFEOPS_SIMULATOR_CHANNEL_MESSAGES: LifeOpsSimulatorChannelMessage[
       unread: true,
     },
     {
+      id: "sim-whatsapp-atlas-group-1",
+      channel: "whatsapp",
+      threadId: "whatsapp-group-atlas-ops",
+      threadName: "Atlas WhatsApp Group",
+      threadType: "group",
+      fromPersonKey: "marco",
+      text: "WhatsApp group note: Alice asked whether the diligence packet is ready before the 3pm review.",
+      sentAtOffsetMs: -14 * 60 * 1000,
+      unread: true,
+    },
+    {
       id: "sim-imessage-alice-1",
       channel: "imessage",
       threadId: "iMessage;-;+15551112222",
@@ -278,6 +289,17 @@ export const LIFEOPS_SIMULATOR_CHANNEL_MESSAGES: LifeOpsSimulatorChannelMessage[
       fromPersonKey: "alice",
       text: "Can you review the Project Atlas note I sent across email and Telegram?",
       sentAtOffsetMs: -24 * 60 * 1000,
+      unread: true,
+    },
+    {
+      id: "sim-imessage-atlas-group-1",
+      channel: "imessage",
+      threadId: "iMessage;-;chat-atlas-ops",
+      threadName: "Atlas iMessage Group",
+      threadType: "group",
+      fromPersonKey: "bob",
+      text: "iMessage group check: can you confirm the calendar hold and remind Marco about the packet?",
+      sentAtOffsetMs: -12 * 60 * 1000,
       unread: true,
     },
   ];
@@ -303,7 +325,7 @@ export const LIFEOPS_SIMULATOR_REMINDERS: LifeOpsSimulatorReminder[] = [
 
 export function getLifeOpsSimulatorPerson(key: string): LifeOpsSimulatorPerson {
   const person = LIFEOPS_SIMULATOR_PEOPLE.find(
-    (candidate) => candidate.key === key
+    (candidate) => candidate.key === key,
   );
   if (!person) {
     throw new Error(`Unknown LifeOps simulator person: ${key}`);
@@ -313,7 +335,7 @@ export function getLifeOpsSimulatorPerson(key: string): LifeOpsSimulatorPerson {
 
 export function lifeOpsSimulatorMessageTime(
   offsetMs: number,
-  now = Date.now()
+  now = Date.now(),
 ): string {
   return new Date(now + offsetMs).toISOString();
 }
