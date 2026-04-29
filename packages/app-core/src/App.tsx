@@ -562,7 +562,8 @@ export function App() {
   const { companionShell: CompanionShell } = useBootConfig();
 
   const isPopout = useIsPopout();
-  const companionShellVisible = activeOverlayApp !== null;
+  const companionShellVisible =
+    activeOverlayApp === "@elizaos/app-companion" || tab === "companion";
 
   // Auth gate — only active after the coordinator reaches "ready".
   // During onboarding / pairing / startup phases the StartupShell handles
@@ -826,8 +827,7 @@ export function App() {
   const shellContent = useMemo(
     () =>
       uiShellMode === "companion" &&
-      tab !== "character" &&
-      tab !== "character-select" &&
+      isCompanionTab &&
       CompanionShell ? (
         <CompanionShell tab="companion" actionNotice={actionNotice} />
       ) : isCompanionTab ? (

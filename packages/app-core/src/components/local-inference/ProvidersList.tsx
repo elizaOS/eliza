@@ -1,27 +1,22 @@
+import { Cloud, Cpu, KeyRound, Settings, Smartphone } from "lucide-react";
+import type { ComponentType } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import type { ProviderStatus } from "../../api/client-local-inference";
 
-const KIND_LABEL: Record<ProviderStatus["kind"], string> = {
-  "cloud-api": "Cloud API",
-  "cloud-subscription": "Subscription",
-  local: "Local",
-  "device-bridge": "Device bridge",
+const KIND_ICON: Record<
+  ProviderStatus["kind"],
+  {
+    Icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+    label: string;
+  }
+> = {
+  "cloud-api": { Icon: KeyRound, label: "Cloud API" },
+  "cloud-subscription": { Icon: Cloud, label: "Subscription" },
+  local: { Icon: Cpu, label: "Local" },
+  "device-bridge": { Icon: Smartphone, label: "Device bridge" },
 };
 
-/**
- * Single pane listing every provider Milady knows about, cloud + local.
- * Each card shows:
- *   - current enable state (green/grey dot + short reason)
- *   - supported model slots
- *   - which slots it has registered handlers for right now
- *   - a "Configure" link back to wherever the actual enable happens
- *
- * The key insight: we don't centralise enable/disable here. Each provider
- * points at the surface that controls it (ProviderSwitcher for cloud,
- * download hub for local, etc). This turns the fragmented multi-provider
- * enable story into a single observable list without forcing a migration.
- */
 export function ProvidersList() {
   const [providers, setProviders] = useState<ProviderStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,15 +53,10 @@ export function ProvidersList() {
 
   return (
     <section className="flex flex-col gap-3">
-      <header className="flex flex-col gap-1">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          All providers
+      <header>
+        <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted">
+          Providers
         </h3>
-        <p className="text-xs text-muted-foreground">
-          Every inference source Milady knows about — cloud subscription, cloud
-          API, local llama.cpp, paired device, on-device Capacitor. Enable as
-          many as you want.
-        </p>
       </header>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -74,6 +64,7 @@ export function ProvidersList() {
           const dot = p.enableState.enabled
             ? "bg-emerald-500"
             : "bg-muted-foreground/40";
+          const { Icon, label } = KIND_ICON[p.kind];
           return (
             <div
               key={p.id}
@@ -84,10 +75,12 @@ export function ProvidersList() {
                   className={`inline-flex h-2 w-2 rounded-full ${dot}`}
                   aria-hidden
                 />
+                <Icon
+                  className="h-3.5 w-3.5 shrink-0 text-muted"
+                  aria-hidden
+                />
                 <span className="font-medium truncate">{p.label}</span>
-                <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
-                  {KIND_LABEL[p.kind]}
-                </span>
+                <span className="sr-only">{label}</span>
               </div>
               <p className="text-xs text-muted-foreground line-clamp-2">
                 {p.description}
@@ -121,9 +114,11 @@ export function ProvidersList() {
                 {p.configureHref && (
                   <a
                     href={p.configureHref}
-                    className="text-primary underline-offset-2 hover:underline"
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted transition-colors hover:bg-bg hover:text-txt"
+                    title="Configure"
+                    aria-label={`Configure ${p.label}`}
                   >
-                    Configure
+                    <Settings className="h-3.5 w-3.5" aria-hidden />
                   </a>
                 )}
               </div>

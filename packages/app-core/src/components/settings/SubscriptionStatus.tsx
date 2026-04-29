@@ -573,6 +573,7 @@ export function SubscriptionStatus({
         <SubscriptionProviderPanel
           providerId="anthropic-subscription"
           connected={anthropicConnected}
+          canDisconnect={false}
           externalNotice={
             anthropicCliDetected && !anthropicConnected ? (
               <div className="rounded-lg border border-border/40 bg-card/40 px-2.5 py-2 text-xs leading-relaxed">
@@ -645,6 +646,7 @@ export function SubscriptionStatus({
         <SubscriptionProviderPanel
           providerId="openai-subscription"
           connected={openaiConnected}
+          canDisconnect={false}
           configuredButInvalid={Boolean(
             openaiStatus?.configured && !openaiStatus.valid,
           )}

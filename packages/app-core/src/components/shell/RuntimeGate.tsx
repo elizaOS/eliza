@@ -606,7 +606,7 @@ export function RuntimeGate() {
         ) : (
           <>
             <div
-              className={`mt-7 grid w-full gap-3 text-left ${
+              className={`mt-5 grid w-full gap-2.5 text-left md:mt-7 md:gap-3 ${
                 runtimeChoices.length === 3 ? "md:grid-cols-3" : ""
               }`}
               role="radiogroup"
@@ -638,10 +638,10 @@ export function RuntimeGate() {
               })}
             </div>
 
-            <div className="mt-5 flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mt-3 flex w-full flex-col gap-2 sm:mt-5 sm:flex-row sm:items-center sm:justify-between">
               <p
                 style={{ fontFamily: MONO_FONT }}
-                className="min-w-0 text-3xs uppercase tracking-[0.16em] text-white/70"
+                className="hidden min-w-0 text-3xs uppercase tracking-[0.16em] text-white/70 sm:block"
               >
                 {localOnly
                   ? t("runtimegate.localOnlyHint", {
@@ -1022,7 +1022,7 @@ function GateShell({
 
       <div className="relative z-10 flex min-h-full items-center justify-center px-3 pb-[max(1rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_4.25rem)] sm:px-6 md:px-8">
         <div
-          className="flex w-full max-w-[72rem] flex-col items-center gap-4 border-2 border-black bg-[rgba(9,10,14,0.82)] px-4 py-5 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:px-6 sm:py-7 md:px-8 md:py-8"
+          className="flex w-full max-w-[72rem] flex-col items-center gap-3 border-2 border-black bg-[rgba(9,10,14,0.82)] px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-7 md:px-8 md:py-8"
           style={{
             borderRadius: 0,
             clipPath:
@@ -1045,13 +1045,13 @@ function GateHeader({
     <div className="text-center">
       <h1
         style={{ fontFamily: MONO_FONT }}
-        className="text-2xl font-light text-white/95"
+        className="text-xl font-light text-white/95 sm:text-2xl"
       >
         {t("runtimegate.title", { defaultValue: "Choose your setup" })}
       </h1>
       <p
         style={{ fontFamily: MONO_FONT }}
-        className="mt-2 text-3xs uppercase tracking-[0.2em] text-white/60"
+        className="mt-2 text-3xs uppercase tracking-[0.16em] text-white/60 sm:tracking-[0.2em]"
       >
         {t("runtimegate.subtitle", {
           defaultValue: "Where should your agent run?",
