@@ -161,6 +161,17 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
     expect(result).toBe(true);
     expect(dlopenSpy).toHaveBeenCalledTimes(1);
 
+    // The registered loader implements the embed() surface from
+    // LocalInferenceLoader. Other shape assertions live in the contract
+    // tests; here we just confirm the function exists so a future refactor
+    // can't drop it silently from the registerService payload.
+    const loader = services.get("localInferenceLoader") as
+      | { embed?: unknown; generate?: unknown }
+      | undefined;
+    expect(loader).toBeDefined();
+    expect(typeof loader?.embed).toBe("function");
+    expect(typeof loader?.generate).toBe("function");
+
     const symbolMap = dlopenSpy.mock.calls[0]?.[1] as
       | Record<string, unknown>
       | undefined;

@@ -17,6 +17,7 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  type TextEmbeddingParams,
 } from "@elizaos/core";
 import type { LocalInferenceLoader } from "../services/local-inference/active-model";
 import { readEffectiveAssignments } from "../services/local-inference/assignments";
@@ -32,11 +33,23 @@ type GenerateTextHandler = (
   params: GenerateTextParams,
 ) => Promise<string>;
 
+/**
+ * Embedding handler signature — accepts the same union the runtime hands
+ * to TEXT_EMBEDDING calls (`TextEmbeddingParams | string | null`) and
+ * returns the raw float vector.
+ */
+type EmbeddingHandler = (
+  runtime: IAgentRuntime,
+  params: TextEmbeddingParams | string | null,
+) => Promise<number[]>;
+
 type RuntimeWithModelRegistration = AgentRuntime & {
-  getModel: (modelType: string | number) => GenerateTextHandler | undefined;
+  getModel: (
+    modelType: string | number,
+  ) => GenerateTextHandler | EmbeddingHandler | undefined;
   registerModel: (
     modelType: string | number,
-    handler: GenerateTextHandler,
+    handler: GenerateTextHandler | EmbeddingHandler,
     provider: string,
     priority?: number,
   ) => void;
@@ -146,6 +159,44 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
       prompt: params.prompt,
       stopSequences: params.stopSequences,
     });
+  };
+}
+
+/**
+ * Normalize the runtime's TEXT_EMBEDDING input shape — `params` may be the
+ * structured `TextEmbeddingParams` (when called from a typed plugin), a
+ * raw string (when called from action runners), or `null` (an internal
+ * warmup probe used to size the shipped embedding vector).
+ */
+function extractEmbeddingText(
+  params: TextEmbeddingParams | string | null,
+): string {
+  if (params === null) return "";
+  if (typeof params === "string") return params;
+  return params.text;
+}
+
+/**
+ * Build the TEXT_EMBEDDING handler. Mirrors `makeHandler` for generate:
+ * routes through the loader's `embed` if available, otherwise throws so
+ * the runtime falls back to a non-local provider rather than serving a
+ * silent zero-vector (Commandment 8: don't hide broken pipelines).
+ */
+function makeEmbeddingHandler(): EmbeddingHandler {
+  return async (runtime, params) => {
+    const loader = getLoader(runtime);
+    if (!loader?.embed) {
+      throw new Error(
+        "[local-inference] Active loader does not implement embed; falling through to next provider",
+      );
+    }
+    // Embeddings in this runtime are not slot-aware — there's a single
+    // active model. Make sure the user's TEXT_EMBEDDING assignment, if
+    // any, is loaded before we hit the loader.
+    await ensureAssignedModelLoaded(loader, "TEXT_EMBEDDING");
+    const text = extractEmbeddingText(params);
+    const result = await loader.embed({ input: text });
+    return result.embedding;
   };
 }
 
@@ -325,6 +376,36 @@ export async function ensureLocalInferenceHandler(
       logger.warn(
         "[local-inference] Could not register ModelType",
         modelType,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // Register TEXT_EMBEDDING separately — the runtime contract returns
+  // `number[]` instead of `string`, so it can't share `makeHandler`. We
+  // only register when the active loader actually exposes `embed`;
+  // otherwise the runtime should fall through to the operator-configured
+  // embedding provider.
+  const loaderForEmbed = (
+    runtime as { getService?: (name: string) => unknown }
+  ).getService?.("localInferenceLoader") as
+    | { embed?: unknown }
+    | null
+    | undefined;
+  if (loaderForEmbed && typeof loaderForEmbed.embed === "function") {
+    try {
+      runtimeWithRegistration.registerModel(
+        ModelType.TEXT_EMBEDDING,
+        makeEmbeddingHandler(),
+        provider,
+        LOCAL_INFERENCE_PRIORITY,
+      );
+      logger.info(
+        `[local-inference] Registered ${provider} embedding handler for TEXT_EMBEDDING at priority ${LOCAL_INFERENCE_PRIORITY}`,
+      );
+    } catch (err) {
+      logger.warn(
+        "[local-inference] Could not register TEXT_EMBEDDING handler",
         err instanceof Error ? err.message : String(err),
       );
     }
