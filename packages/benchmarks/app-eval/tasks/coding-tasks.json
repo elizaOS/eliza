@@ -87,9 +87,7 @@
     },
     "evaluation": {
       "must_produce_files": ["src/tasks.ts", "test/tasks.test.ts"],
-      "test_commands": [
-        "bun test"
-      ],
+      "test_commands": ["bun test"],
       "test_assertions": [
         {
           "type": "file_exists",
@@ -151,9 +149,7 @@
     },
     "evaluation": {
       "must_produce_files": ["src/trie.ts", "test/trie.test.ts"],
-      "test_commands": [
-        "bun test"
-      ],
+      "test_commands": ["bun test"],
       "test_assertions": [
         {
           "type": "file_exists",
@@ -216,9 +212,7 @@
     },
     "evaluation": {
       "must_produce_files": ["src/transform.ts", "test/transform.test.ts"],
-      "test_commands": [
-        "bun test"
-      ],
+      "test_commands": ["bun test"],
       "test_assertions": [
         {
           "type": "file_exists",
@@ -282,9 +276,7 @@
     },
     "evaluation": {
       "must_produce_files": ["src/rate-limiter.ts"],
-      "test_commands": [
-        "bun test"
-      ],
+      "test_commands": ["bun test"],
       "test_assertions": [
         {
           "type": "file_exists",
@@ -336,10 +328,11 @@
       }
     },
     "evaluation": {
-      "must_produce_files": ["src/SearchableList.tsx", "test/SearchableList.test.tsx"],
-      "test_commands": [
-        "bun test"
+      "must_produce_files": [
+        "src/SearchableList.tsx",
+        "test/SearchableList.test.tsx"
       ],
+      "test_commands": ["bun test"],
       "test_assertions": [
         {
           "type": "file_exists",
@@ -400,10 +393,11 @@
       }
     },
     "evaluation": {
-      "must_produce_files": ["src/query-builder.ts", "test/query-builder.test.ts"],
-      "test_commands": [
-        "bun test"
+      "must_produce_files": [
+        "src/query-builder.ts",
+        "test/query-builder.test.ts"
       ],
+      "test_commands": ["bun test"],
       "test_assertions": [
         {
           "type": "file_exists",
@@ -461,10 +455,7 @@
     },
     "evaluation": {
       "must_produce_files": ["test/event-emitter.test.ts"],
-      "test_commands": [
-        "bun test",
-        "bun test --coverage"
-      ],
+      "test_commands": ["bun test", "bun test --coverage"],
       "test_assertions": [
         {
           "type": "file_exists",
@@ -523,9 +514,7 @@
     },
     "evaluation": {
       "must_produce_files": ["src/config-manager.ts"],
-      "test_commands": [
-        "bun test"
-      ],
+      "test_commands": ["bun test"],
       "test_assertions": [
         {
           "type": "file_exists",
@@ -577,10 +566,13 @@
       }
     },
     "evaluation": {
-      "must_produce_files": ["src/api.ts", "src/NoteEditor.tsx", "src/markdown.ts", "test/markdown.test.ts"],
-      "test_commands": [
-        "bun test"
+      "must_produce_files": [
+        "src/api.ts",
+        "src/NoteEditor.tsx",
+        "src/markdown.ts",
+        "test/markdown.test.ts"
       ],
+      "test_commands": ["bun test"],
       "test_assertions": [
         {
           "type": "file_exists",

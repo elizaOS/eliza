@@ -39,7 +39,9 @@ function compareValues(a, b, key, order) {
 
 function setGeneratedAt(data) {
   const el = document.getElementById("generated-at");
-  const generatedAt = data.generated_at ? new Date(data.generated_at).toLocaleString() : "n/a";
+  const generatedAt = data.generated_at
+    ? new Date(data.generated_at).toLocaleString()
+    : "n/a";
   el.textContent = `Generated at ${generatedAt}`;
 }
 
@@ -58,14 +60,21 @@ function renderCards(data, filteredRuns) {
     { k: "Latest Run", v: latest ? latest.run_id : "n/a" },
   ];
   cards.innerHTML = items
-    .map((it) => `<article class="card"><div class="k">${it.k}</div><div class="v">${it.v}</div></article>`)
+    .map(
+      (it) =>
+        `<article class="card"><div class="k">${it.k}</div><div class="v">${it.v}</div></article>`,
+    )
     .join("");
 }
 
 function populateFilters(data) {
   const runs = data.runs || [];
-  const benchmarks = [...new Set(runs.map((r) => textValue(r.benchmark_id)).filter(Boolean))].sort();
-  const statuses = [...new Set(runs.map((r) => textValue(r.status)).filter(Boolean))].sort();
+  const benchmarks = [
+    ...new Set(runs.map((r) => textValue(r.benchmark_id)).filter(Boolean)),
+  ].sort();
+  const statuses = [
+    ...new Set(runs.map((r) => textValue(r.status)).filter(Boolean)),
+  ].sort();
 
   const benchSelect = document.getElementById("filter-benchmark");
   const statusSelect = document.getElementById("filter-status");
@@ -82,8 +91,10 @@ function getFilteredRuns() {
   if (!state.data) return [];
   const search = state.search.trim().toLowerCase();
   let runs = [...(state.data.runs || [])];
-  if (state.benchmark) runs = runs.filter((r) => textValue(r.benchmark_id) === state.benchmark);
-  if (state.status) runs = runs.filter((r) => textValue(r.status) === state.status);
+  if (state.benchmark)
+    runs = runs.filter((r) => textValue(r.benchmark_id) === state.benchmark);
+  if (state.status)
+    runs = runs.filter((r) => textValue(r.status) === state.status);
   if (search) {
     runs = runs.filter((r) => {
       const hay = [
@@ -146,7 +157,7 @@ function renderLatestScores(data) {
       <td>${row.score ?? ""}</td>
       <td>${row.high_score_value ?? ""}</td>
       <td>${row.delta_to_high_score ?? ""}</td>
-    </tr>`
+    </tr>`,
     )
     .join("");
 }
@@ -160,7 +171,10 @@ function render() {
 }
 
 async function loadData() {
-  const endpoints = ["/api/viewer-data", "../benchmark_results/viewer_data.json"];
+  const endpoints = [
+    "/api/viewer-data",
+    "../benchmark_results/viewer_data.json",
+  ];
   for (const url of endpoints) {
     try {
       const res = await fetch(url, { cache: "no-store" });
@@ -168,9 +182,7 @@ async function loadData() {
       const data = await res.json();
       if (!data || !Array.isArray(data.runs)) continue;
       return data;
-    } catch (_err) {
-      continue;
-    }
+    } catch (_err) {}
   }
   throw new Error("Unable to load benchmark data");
 }
@@ -229,7 +241,8 @@ async function main() {
     populateFilters(data);
     render();
   } catch (err) {
-    document.getElementById("generated-at").textContent = `Failed to load data: ${err}`;
+    document.getElementById("generated-at").textContent =
+      `Failed to load data: ${err}`;
   }
 }
 

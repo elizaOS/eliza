@@ -52,9 +52,7 @@ export function resolveRepoBundledSkillsAssetsDir(repoRoot = REPO_ROOT) {
   if (hasShippedSkillTree(repoDir)) {
     return repoDir;
   }
-  throw new Error(
-    `Could not resolve repo-local bundled skills at ${repoDir}.`,
-  );
+  throw new Error(`Could not resolve repo-local bundled skills at ${repoDir}.`);
 }
 
 /**

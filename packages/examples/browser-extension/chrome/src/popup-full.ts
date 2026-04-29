@@ -1,6 +1,6 @@
 /**
  * Full Popup Script with ElizaOS Runtime
- * 
+ *
  * Supports multiple LLM providers and uses localdb for persistence
  */
 
@@ -8,7 +8,13 @@ console.log("[Popup] Script loading...");
 
 // Global error handlers
 window.onerror = (message, source, lineno, colno, error) => {
-  console.error("[Popup] Global error:", { message, source, lineno, colno, error });
+  console.error("[Popup] Global error:", {
+    message,
+    source,
+    lineno,
+    colno,
+    error,
+  });
   return false;
 };
 
@@ -17,20 +23,20 @@ window.onunhandledrejection = (event) => {
 };
 
 import {
-  getOrCreateRuntime,
+  clearScreenshot,
   getGreetingText,
+  getOrCreateRuntime,
+  getScreenshot,
   resetConversation,
+  resolveEffectiveMode,
   sendMessage,
   updatePageContent,
-  updateSelectedText,
   updateScreenshot,
-  getScreenshot,
-  clearScreenshot,
-  resolveEffectiveMode,
+  updateSelectedText,
 } from "../../shared/eliza-runtime-full";
 import {
-  deepMergeConfig,
   DEFAULT_CONFIG,
+  deepMergeConfig,
   type ExtensionConfig,
   type PageContent,
   type ProviderMode,
@@ -54,23 +60,35 @@ const elements = {
   clearChatBtn: document.getElementById("clearChatBtn") as HTMLButtonElement,
   settingsBtn: document.getElementById("settingsBtn") as HTMLButtonElement,
   settingsModal: document.getElementById("settingsModal") as HTMLDivElement,
-  closeSettingsBtn: document.getElementById("closeSettingsBtn") as HTMLButtonElement,
-  providerSelect: document.getElementById("providerSelect") as HTMLSelectElement,
+  closeSettingsBtn: document.getElementById(
+    "closeSettingsBtn",
+  ) as HTMLButtonElement,
+  providerSelect: document.getElementById(
+    "providerSelect",
+  ) as HTMLSelectElement,
   providerNote: document.getElementById("providerNote") as HTMLDivElement,
   // Context indicators
   selectionBadge: document.getElementById("selectionBadge") as HTMLSpanElement,
-  screenshotBadge: document.getElementById("screenshotBadge") as HTMLSpanElement,
+  screenshotBadge: document.getElementById(
+    "screenshotBadge",
+  ) as HTMLSpanElement,
   screenshotBtn: document.getElementById("screenshotBtn") as HTMLButtonElement,
-  includeScreenshots: document.getElementById("includeScreenshots") as HTMLInputElement,
+  includeScreenshots: document.getElementById(
+    "includeScreenshots",
+  ) as HTMLInputElement,
   // Individual provider settings sections
   openaiSettings: document.getElementById("openaiSettings") as HTMLDivElement,
-  anthropicSettings: document.getElementById("anthropicSettings") as HTMLDivElement,
+  anthropicSettings: document.getElementById(
+    "anthropicSettings",
+  ) as HTMLDivElement,
   xaiSettings: document.getElementById("xaiSettings") as HTMLDivElement,
   geminiSettings: document.getElementById("geminiSettings") as HTMLDivElement,
   groqSettings: document.getElementById("groqSettings") as HTMLDivElement,
   // API key inputs
   openaiApiKey: document.getElementById("openaiApiKey") as HTMLInputElement,
-  anthropicApiKey: document.getElementById("anthropicApiKey") as HTMLInputElement,
+  anthropicApiKey: document.getElementById(
+    "anthropicApiKey",
+  ) as HTMLInputElement,
   xaiApiKey: document.getElementById("xaiApiKey") as HTMLInputElement,
   geminiApiKey: document.getElementById("geminiApiKey") as HTMLInputElement,
   groqApiKey: document.getElementById("groqApiKey") as HTMLInputElement,
@@ -108,7 +126,10 @@ async function loadConfig(): Promise<void> {
   try {
     const result = await chrome.storage.local.get(CONFIG_KEY);
     if (result[CONFIG_KEY]) {
-      config = deepMergeConfig(DEFAULT_CONFIG, result[CONFIG_KEY] as Partial<ExtensionConfig>);
+      config = deepMergeConfig(
+        DEFAULT_CONFIG,
+        result[CONFIG_KEY] as Partial<ExtensionConfig>,
+      );
     }
   } catch (e) {
     console.error("[Popup] Error loading config:", e);
@@ -129,12 +150,20 @@ async function saveConfig(): Promise<void> {
 
 async function loadChatHistory(): Promise<StoredMessage[]> {
   if (!currentPageUrl) return [];
-  
+
   try {
     const result = await chrome.storage.local.get(CHAT_HISTORY_KEY);
-    const allHistory = result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]> | undefined;
+    const allHistory = result[CHAT_HISTORY_KEY] as
+      | Record<string, StoredMessage[]>
+      | undefined;
     if (allHistory && allHistory[currentPageUrl]) {
-      console.log("[Popup] Loaded chat history for", currentPageUrl, ":", allHistory[currentPageUrl].length, "messages");
+      console.log(
+        "[Popup] Loaded chat history for",
+        currentPageUrl,
+        ":",
+        allHistory[currentPageUrl].length,
+        "messages",
+      );
       return allHistory[currentPageUrl];
     }
   } catch (e) {
@@ -145,10 +174,11 @@ async function loadChatHistory(): Promise<StoredMessage[]> {
 
 async function saveChatHistory(messages: StoredMessage[]): Promise<void> {
   if (!currentPageUrl) return;
-  
+
   try {
     const result = await chrome.storage.local.get(CHAT_HISTORY_KEY);
-    const allHistory = (result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]>) || {};
+    const allHistory =
+      (result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]>) || {};
     allHistory[currentPageUrl] = messages;
     await chrome.storage.local.set({ [CHAT_HISTORY_KEY]: allHistory });
   } catch (e) {
@@ -158,10 +188,11 @@ async function saveChatHistory(messages: StoredMessage[]): Promise<void> {
 
 async function clearChatHistory(): Promise<void> {
   if (!currentPageUrl) return;
-  
+
   try {
     const result = await chrome.storage.local.get(CHAT_HISTORY_KEY);
-    const allHistory = (result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]>) || {};
+    const allHistory =
+      (result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]>) || {};
     delete allHistory[currentPageUrl];
     await chrome.storage.local.set({ [CHAT_HISTORY_KEY]: allHistory });
     console.log("[Popup] Cleared chat history for", currentPageUrl);
@@ -173,7 +204,7 @@ async function clearChatHistory(): Promise<void> {
 function getMessagesFromDOM(): StoredMessage[] {
   const messageElements = elements.messages.querySelectorAll(".message");
   const messages: StoredMessage[] = [];
-  
+
   messageElements.forEach((el) => {
     const isUser = el.classList.contains("user");
     const text = el.textContent || "";
@@ -183,7 +214,7 @@ function getMessagesFromDOM(): StoredMessage[] {
       timestamp: Date.now(),
     });
   });
-  
+
   return messages;
 }
 
@@ -216,24 +247,40 @@ function renderMarkdownToSafeHtml(markdown: string): string {
   );
 
   // Inline code `code`
-  const withInlineCode = withCodeBlocks.replace(/`([^`\n]+)`/g, (_m, code) => `<code>${code}</code>`);
+  const withInlineCode = withCodeBlocks.replace(
+    /`([^`\n]+)`/g,
+    (_m, code) => `<code>${code}</code>`,
+  );
 
   // Bold **text**
-  const withBold = withInlineCode.replace(/\*\*([^*\n]+)\*\*/g, (_m, t) => `<strong>${t}</strong>`);
+  const withBold = withInlineCode.replace(
+    /\*\*([^*\n]+)\*\*/g,
+    (_m, t) => `<strong>${t}</strong>`,
+  );
 
   // Italic *text* (avoid matching bold)
-  const withItalic = withBold.replace(/(^|[^*])\*([^*\n]+)\*/g, (_m, lead, t) => `${lead}<em>${t}</em>`);
+  const withItalic = withBold.replace(
+    /(^|[^*])\*([^*\n]+)\*/g,
+    (_m, lead, t) => `${lead}<em>${t}</em>`,
+  );
 
   // Links [text](url)
-  const withLinks = withItalic.replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, (_m, label, url) => {
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
-  });
+  const withLinks = withItalic.replace(
+    /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    (_m, label, url) => {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    },
+  );
 
   // Newlines -> <br>
   return withLinks.replace(/\n/g, "<br>");
 }
 
-function setMessageContent(msgDiv: HTMLDivElement, role: "user" | "assistant", text: string): void {
+function setMessageContent(
+  msgDiv: HTMLDivElement,
+  role: "user" | "assistant",
+  text: string,
+): void {
   if (role === "assistant") {
     msgDiv.innerHTML = renderMarkdownToSafeHtml(text);
   } else {
@@ -263,7 +310,7 @@ function updatePageInfo(content: PageContent | null): void {
     elements.pageTitle.textContent = content.title || "Untitled";
     elements.pageUrl.textContent = content.url || "";
     elements.pageUrl.title = content.url || "";
-    
+
     // Update context indicators
     if (content.selectedText || contextText) {
       elements.selectionBadge.style.display = "inline-flex";
@@ -275,7 +322,7 @@ function updatePageInfo(content: PageContent | null): void {
     elements.pageUrl.textContent = "";
     elements.selectionBadge.style.display = "none";
   }
-  
+
   // Screenshot indicator
   updateScreenshotIndicator();
 }
@@ -296,12 +343,14 @@ async function captureAndUpdateScreenshot(): Promise<void> {
     updateScreenshotIndicator();
     return;
   }
-  
+
   try {
-    const response = await new Promise<{ dataUrl?: string; success?: boolean }>((resolve) => {
-      chrome.runtime.sendMessage({ type: "CAPTURE_SCREENSHOT" }, resolve);
-    });
-    
+    const response = await new Promise<{ dataUrl?: string; success?: boolean }>(
+      (resolve) => {
+        chrome.runtime.sendMessage({ type: "CAPTURE_SCREENSHOT" }, resolve);
+      },
+    );
+
     if (response?.success && response.dataUrl) {
       updateScreenshot(response.dataUrl);
       console.log("[Popup] Screenshot captured");
@@ -309,7 +358,7 @@ async function captureAndUpdateScreenshot(): Promise<void> {
   } catch (error) {
     console.error("[Popup] Screenshot capture failed:", error);
   }
-  
+
   updateScreenshotIndicator();
 }
 
@@ -323,26 +372,36 @@ function toggleScreenshot(): void {
   }
 }
 
-function addMessage(role: "user" | "assistant", text: string, save = true): HTMLDivElement {
+function addMessage(
+  role: "user" | "assistant",
+  text: string,
+  save = true,
+): HTMLDivElement {
   const msgDiv = document.createElement("div");
   msgDiv.className = `message ${role}`;
   setMessageContent(msgDiv, role, text);
   elements.messages.appendChild(msgDiv);
   elements.messages.scrollTop = elements.messages.scrollHeight;
-  
+
   // Save chat history after adding a message
   if (save && !useBackgroundInference) {
     saveChatHistory(getMessagesFromDOM());
   }
-  
+
   return msgDiv;
 }
 
-function updateMessage(msgDiv: HTMLDivElement, text: string, save = true): void {
-  const role: "user" | "assistant" = msgDiv.classList.contains("user") ? "user" : "assistant";
+function updateMessage(
+  msgDiv: HTMLDivElement,
+  text: string,
+  save = true,
+): void {
+  const role: "user" | "assistant" = msgDiv.classList.contains("user")
+    ? "user"
+    : "assistant";
   setMessageContent(msgDiv, role, text);
   elements.messages.scrollTop = elements.messages.scrollHeight;
-  
+
   // Save chat history after updating a message
   if (save && !useBackgroundInference) {
     saveChatHistory(getMessagesFromDOM());
@@ -374,18 +433,18 @@ function updateProviderSettings(): void {
   Object.values(providerSettingsSections).forEach((section) => {
     if (section) section.classList.remove("active");
   });
-  
+
   // Show the selected provider's settings (add active class)
   const activeSection = providerSettingsSections[config.mode];
   if (activeSection) {
     activeSection.classList.add("active");
   }
-  
+
   // Update the provider note
   const effectiveMode = resolveEffectiveMode(config);
   const noteText = elements.providerNote?.querySelector(".note-text");
   const noteDot = elements.providerNote?.querySelector(".dot") as HTMLElement;
-  
+
   if (noteText && noteDot) {
     if (config.mode === "elizaClassic") {
       noteText.textContent = "ELIZA Classic works offline - no API key needed";
@@ -402,11 +461,16 @@ function updateProviderSettings(): void {
 
 function loadApiKeysIntoForm(): void {
   // Populate form fields with saved values
-  if (elements.openaiApiKey) elements.openaiApiKey.value = config.provider.openaiApiKey || "";
-  if (elements.anthropicApiKey) elements.anthropicApiKey.value = config.provider.anthropicApiKey || "";
-  if (elements.xaiApiKey) elements.xaiApiKey.value = config.provider.xaiApiKey || "";
-  if (elements.geminiApiKey) elements.geminiApiKey.value = config.provider.googleGenaiApiKey || "";
-  if (elements.groqApiKey) elements.groqApiKey.value = config.provider.groqApiKey || "";
+  if (elements.openaiApiKey)
+    elements.openaiApiKey.value = config.provider.openaiApiKey || "";
+  if (elements.anthropicApiKey)
+    elements.anthropicApiKey.value = config.provider.anthropicApiKey || "";
+  if (elements.xaiApiKey)
+    elements.xaiApiKey.value = config.provider.xaiApiKey || "";
+  if (elements.geminiApiKey)
+    elements.geminiApiKey.value = config.provider.googleGenaiApiKey || "";
+  if (elements.groqApiKey)
+    elements.groqApiKey.value = config.provider.groqApiKey || "";
 }
 
 function setupApiKeyListeners(): void {
@@ -416,28 +480,28 @@ function setupApiKeyListeners(): void {
     saveConfig();
     updateProviderSettings();
   });
-  
+
   // Anthropic
   elements.anthropicApiKey?.addEventListener("input", () => {
     config.provider.anthropicApiKey = elements.anthropicApiKey.value;
     saveConfig();
     updateProviderSettings();
   });
-  
+
   // xAI
   elements.xaiApiKey?.addEventListener("input", () => {
     config.provider.xaiApiKey = elements.xaiApiKey.value;
     saveConfig();
     updateProviderSettings();
   });
-  
+
   // Gemini (note: HTML uses geminiApiKey, config uses googleGenaiApiKey)
   elements.geminiApiKey?.addEventListener("input", () => {
     config.provider.googleGenaiApiKey = elements.geminiApiKey.value;
     saveConfig();
     updateProviderSettings();
   });
-  
+
   // Groq
   elements.groqApiKey?.addEventListener("input", () => {
     config.provider.groqApiKey = elements.groqApiKey.value;
@@ -450,12 +514,12 @@ function openSettings(): void {
   elements.providerSelect.value = config.mode;
   loadApiKeysIntoForm();
   updateProviderSettings();
-  
+
   // Sync screenshot checkbox
   if (elements.includeScreenshots) {
     elements.includeScreenshots.checked = screenshotEnabled;
   }
-  
+
   elements.settingsModal.classList.add("open");
 }
 
@@ -471,14 +535,19 @@ function closeSettings(): void {
 
 async function checkContextMenuInput(): Promise<void> {
   try {
-    const response = await new Promise<{ contextData?: { text: string; type: string; url: string } }>((resolve) => {
+    const response = await new Promise<{
+      contextData?: { text: string; type: string; url: string };
+    }>((resolve) => {
       chrome.runtime.sendMessage({ type: "GET_CONTEXT_TEXT" }, resolve);
     });
-    
+
     if (response?.contextData?.text) {
       contextText = response.contextData.text;
       updateSelectedText(contextText);
-      console.log("[Popup] Got context menu text:", contextText.substring(0, 50));
+      console.log(
+        "[Popup] Got context menu text:",
+        contextText.substring(0, 50),
+      );
     }
   } catch (error) {
     console.error("[Popup] Error checking context menu:", error);
@@ -487,48 +556,51 @@ async function checkContextMenuInput(): Promise<void> {
 
 async function fetchPageContent(): Promise<void> {
   console.log("[Popup] Fetching page content...");
-  
+
   // Also check for context menu input
   await checkContextMenuInput();
-  
+
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
       console.log("[Popup] Page content fetch timed out");
       resolve();
     }, 5000);
-    
+
     chrome.runtime.sendMessage({ type: "GET_PAGE_CONTENT" }, (response) => {
       clearTimeout(timeout);
       console.log("[Popup] Got response:", response);
-      
+
       if (chrome.runtime.lastError) {
         console.error("[Popup] Error:", chrome.runtime.lastError);
         resolve();
         return;
       }
-      
+
       if (response?.content) {
         const content = response.content as PageContent;
-        
+
         // Set current page URL for chat history persistence
         currentPageUrl = content.url || "";
         console.log("[Popup] Current page URL:", currentPageUrl);
-        
+
         // If we have context menu text, add it to selected text
         if (contextText && !content.selectedText) {
           content.selectedText = contextText;
         }
-        
+
         pageContent = content;
         updatePageInfo(content);
         updatePageContent(content);
-        
+
         // Also update selected text separately
         if (content.selectedText) {
           updateSelectedText(content.selectedText);
         }
-        
-        console.log("[Popup] Page content loaded, selected:", !!content.selectedText);
+
+        console.log(
+          "[Popup] Page content loaded, selected:",
+          !!content.selectedText,
+        );
       } else {
         console.log("[Popup] No page content");
         updatePageInfo(null);
@@ -548,15 +620,28 @@ function setupBackgroundStreaming(): void {
 
     popupPort.onMessage.addListener((evt: unknown) => {
       if (typeof evt !== "object" || evt === null) return;
-      const e = evt as { type?: unknown; messageId?: unknown; text?: unknown; error?: unknown };
+      const e = evt as {
+        type?: unknown;
+        messageId?: unknown;
+        text?: unknown;
+        error?: unknown;
+      };
 
-      if (e.type === "CHAT_STREAM_CHUNK" && typeof e.messageId === "string" && typeof e.text === "string") {
+      if (
+        e.type === "CHAT_STREAM_CHUNK" &&
+        typeof e.messageId === "string" &&
+        typeof e.text === "string"
+      ) {
         const div = assistantDivByMessageId.get(e.messageId);
         if (div) updateMessage(div, e.text, false);
         return;
       }
 
-      if (e.type === "CHAT_MESSAGE_DONE" && typeof e.messageId === "string" && typeof e.text === "string") {
+      if (
+        e.type === "CHAT_MESSAGE_DONE" &&
+        typeof e.messageId === "string" &&
+        typeof e.text === "string"
+      ) {
         const div = assistantDivByMessageId.get(e.messageId);
         if (div) updateMessage(div, e.text, false);
         return;
@@ -564,7 +649,8 @@ function setupBackgroundStreaming(): void {
 
       if (e.type === "CHAT_MESSAGE_ERROR" && typeof e.messageId === "string") {
         const div = assistantDivByMessageId.get(e.messageId);
-        const errorText = typeof e.error === "string" ? e.error : "Unknown error";
+        const errorText =
+          typeof e.error === "string" ? e.error : "Unknown error";
         if (div) updateMessage(div, `Error: ${errorText}`, false);
       }
     });
@@ -586,29 +672,38 @@ function setupBackgroundStreaming(): void {
 
 async function handleSendMessage(text: string): Promise<void> {
   if (sending || !text.trim()) return;
-  
+
   sending = true;
   elements.sendBtn.disabled = true;
   elements.messageInput.disabled = true;
-  
+
   addMessage("user", text, false);
   elements.messageInput.value = "";
-  
+
   const assistantMsg = addMessage("assistant", "...", false);
-  
+
   try {
     // Capture fresh screenshot if enabled (will dedupe if same as last)
     if (screenshotEnabled) {
       await captureAndUpdateScreenshot();
     }
-    
+
     const effectiveMode = resolveEffectiveMode(config);
-    
+
     // Prefer background/offscreen inference so it can continue if popup closes.
     if (useBackgroundInference && currentPageUrl) {
-      const resp = await new Promise<{ ok?: boolean; unsupported?: boolean; messageId?: string }>((resolve) => {
+      const resp = await new Promise<{
+        ok?: boolean;
+        unsupported?: boolean;
+        messageId?: string;
+      }>((resolve) => {
         chrome.runtime.sendMessage(
-          { type: "SEND_CHAT_MESSAGE", url: currentPageUrl, userText: text, pageContent },
+          {
+            type: "SEND_CHAT_MESSAGE",
+            url: currentPageUrl,
+            userText: text,
+            pageContent,
+          },
           resolve,
         );
       });
@@ -639,7 +734,10 @@ async function handleSendMessage(text: string): Promise<void> {
     }
   } catch (error) {
     console.error("[Popup] Error sending message:", error);
-    updateMessage(assistantMsg, `Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+    updateMessage(
+      assistantMsg,
+      `Error: ${error instanceof Error ? error.message : "Unknown error"}`,
+    );
   } finally {
     sending = false;
     elements.sendBtn.disabled = false;
@@ -652,7 +750,10 @@ async function handleClearChat(): Promise<void> {
   try {
     if (useBackgroundInference && currentPageUrl) {
       await new Promise((resolve) => {
-        chrome.runtime.sendMessage({ type: "RESET_CHAT", url: currentPageUrl }, resolve);
+        chrome.runtime.sendMessage(
+          { type: "RESET_CHAT", url: currentPageUrl },
+          resolve,
+        );
       });
     } else {
       await resetConversation();
@@ -660,10 +761,10 @@ async function handleClearChat(): Promise<void> {
   } catch (e) {
     console.error("[Popup] Error resetting conversation:", e);
   }
-  
+
   // Clear stored chat history for this URL
   await clearChatHistory();
-  
+
   elements.messages.innerHTML = "";
   const effectiveMode = resolveEffectiveMode(config);
   addMessage("assistant", getGreetingText(effectiveMode));
@@ -676,7 +777,7 @@ async function handleClearChat(): Promise<void> {
 async function initializeRuntime(): Promise<void> {
   const effectiveMode = resolveEffectiveMode(config);
   updateStatus(effectiveMode, false);
-  
+
   try {
     if (useBackgroundInference) {
       // Runtime lives in offscreen; popup is just UI.
@@ -696,42 +797,46 @@ async function initializeRuntime(): Promise<void> {
 
 async function initialize(): Promise<void> {
   console.log("[Popup] Starting initialization...");
-  
+
   // Load config
   await loadConfig();
   console.log("[Popup] Config loaded, mode:", config.mode);
-  
+
   // Setup provider select and API key listeners
   elements.providerSelect.value = config.mode;
   setupApiKeyListeners();
   loadApiKeysIntoForm();
   updateProviderSettings();
-  
+
   // Fetch page content (this also sets currentPageUrl)
   await fetchPageContent();
 
   // Connect to background streaming (so inference continues if popup closes)
   setupBackgroundStreaming();
-  
+
   // Initialize runtime
   await initializeRuntime();
-  
+
   // Enable inputs
   elements.messageInput.disabled = false;
   elements.sendBtn.disabled = false;
   elements.messageInput.focus();
-  
+
   // Load saved chat history for this URL, or show greeting if none
   const savedMessages = await loadChatHistory();
   if (savedMessages.length > 0) {
     restoreMessages(savedMessages);
-    console.log("[Popup] Restored", savedMessages.length, "messages from history");
+    console.log(
+      "[Popup] Restored",
+      savedMessages.length,
+      "messages from history",
+    );
   } else {
     // Show greeting for new conversation
     const effectiveMode = resolveEffectiveMode(config);
     addMessage("assistant", getGreetingText(effectiveMode));
   }
-  
+
   console.log("[Popup] Initialization complete");
 }
 
@@ -797,5 +902,8 @@ initialize().catch((error) => {
   elements.statusText.textContent = "Error";
   elements.messageInput.disabled = false;
   elements.sendBtn.disabled = false;
-  addMessage("assistant", `Initialization error: ${error instanceof Error ? error.message : "Unknown"}`);
+  addMessage(
+    "assistant",
+    `Initialization error: ${error instanceof Error ? error.message : "Unknown"}`,
+  );
 });

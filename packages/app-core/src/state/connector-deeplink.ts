@@ -15,7 +15,7 @@
  * server-side disconnect-purge path.
  */
 
-export { providerFromCredType, prettyCredName } from "@elizaos/shared";
+export { prettyCredName, providerFromCredType } from "@elizaos/shared";
 
 export const SETTINGS_FOCUS_CONNECTOR_EVENT = "milady:settings:focus-connector";
 

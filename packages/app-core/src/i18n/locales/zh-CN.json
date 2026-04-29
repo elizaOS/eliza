@@ -143,6 +143,7 @@
   "appsview.URL": "网址：",
   "appsview.Viewer": "查看器",
   "appwindow.LaunchedNoViewer": "This app launched without a viewer URL. Open it from the apps catalog.",
+  "appwindow.RetryingLaunch": "Retrying launch...",
   "aria.advancedNavigation": "高级导航",
   "aria.agentVoiceOff": "代理语音关闭",
   "aria.agentVoiceOn": "代理语音开启",

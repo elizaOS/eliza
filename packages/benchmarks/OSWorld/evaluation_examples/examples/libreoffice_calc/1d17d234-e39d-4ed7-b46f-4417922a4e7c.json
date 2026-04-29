@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/1d17d234-e39d-4ed7-b46f-4417922a4e7c",
-  "related_apps": [
-    "libreoffice_calc"
-  ],
+  "related_apps": ["libreoffice_calc"],
   "evaluator": {
     "postconfig": [
       {

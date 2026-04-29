@@ -1,7 +1,4 @@
-import type {
-  WalletAddresses,
-  WalletConfigStatus,
-} from "@elizaos/shared";
+import type { WalletAddresses, WalletConfigStatus } from "@elizaos/shared";
 import type {
   StewardSignResponse,
   StewardStatusResponse,

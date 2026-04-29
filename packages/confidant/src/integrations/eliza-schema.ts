@@ -28,10 +28,7 @@ import {
 export function registerElizaSecretSchemas(): void {
   // Build all schema entries up front; defineSecretSchema validates and
   // commits the whole batch atomically.
-  const entries: Record<
-    string,
-    Omit<SecretSchemaEntry, "id">
-  > = {};
+  const entries: Record<string, Omit<SecretSchemaEntry, "id">> = {};
 
   // Index every known SecretId with its label, sensitivity, and owner.
   // We derive label from the SecretId namespace and the env-var name

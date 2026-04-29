@@ -18,7 +18,7 @@ module.exports = {
   spawn: unavailable,
   PtyManager: class {
     constructor() {
-      return unavailable();
+      unavailable();
     }
   },
 };

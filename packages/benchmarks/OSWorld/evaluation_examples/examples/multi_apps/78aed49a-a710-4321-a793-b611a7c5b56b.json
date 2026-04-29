@@ -8,9 +8,7 @@
       "type": "googledrive",
       "parameters": {
         "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
-        "operation": [
-          "delete"
-        ],
+        "operation": ["delete"],
         "args": [
           {
             "query": "title = 'attachment' and 'root' in parents and trashed = false",
@@ -22,20 +20,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -82,22 +73,14 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "/usr/bin/thunderbird"
-        ]
+        "command": ["/usr/bin/thunderbird"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "thunderbird",
-    "chrome"
-  ],
+  "related_apps": ["thunderbird", "chrome"],
   "evaluator": {
-    "func": [
-      "check_thunderbird_folder",
-      "compare_pdfs"
-    ],
+    "func": ["check_thunderbird_folder", "compare_pdfs"],
     "result": [
       {
         "type": "vm_file",
@@ -106,32 +89,17 @@
           "/home/user/.thunderbird/t5q2a5hp.default-release/Mail/Local Folders/have_seen",
           "/home/user/.thunderbird/t5q2a5hp.default-release/Mail/Local Folders/Bills"
         ],
-        "dest": [
-          "have_seen",
-          "Bills"
-        ],
-        "gives": [
-          0,
-          1
-        ]
+        "dest": ["have_seen", "Bills"],
+        "gives": [0, 1]
       },
       {
         "type": "googledrive_file",
         "settings_file": "evaluation_examples/settings/googledrive/settings.yml",
         "path_list": [
-          [
-            "attachment",
-            "Invoice-01234567-89ab.pdf"
-          ],
-          [
-            "attachment",
-            "Receipt-0123-4567.pdf"
-          ]
+          ["attachment", "Invoice-01234567-89ab.pdf"],
+          ["attachment", "Receipt-0123-4567.pdf"]
         ],
-        "dest": [
-          "Invoice-01234567-89ab.pdf",
-          "Receipt-0123-4567.pdf"
-        ]
+        "dest": ["Invoice-01234567-89ab.pdf", "Receipt-0123-4567.pdf"]
       }
     ],
     "expected": [
@@ -142,14 +110,8 @@
           "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/78aed49a-a710-4321-a793-b611a7c5b56b/have_seen.bin",
           "https://huggingface.co/datasets/xlangai/ubuntu_osworld_file_cache/resolve/main/multi_apps/78aed49a-a710-4321-a793-b611a7c5b56b/Bills.bin"
         ],
-        "dest": [
-          "have_seen_gold",
-          "Bills_gold"
-        ],
-        "gives": [
-          0,
-          1
-        ]
+        "dest": ["have_seen_gold", "Bills_gold"],
+        "gives": [0, 1]
       },
       {
         "type": "cloud_file",
@@ -162,10 +124,7 @@
           "Invoice-01234567-89ab_gold.pdf",
           "Receipt-0123-4567_gold.pdf"
         ],
-        "gives": [
-          0,
-          1
-        ]
+        "gives": [0, 1]
       }
     ],
     "options": [

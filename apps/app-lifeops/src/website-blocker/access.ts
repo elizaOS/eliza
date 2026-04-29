@@ -1,9 +1,18 @@
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import { type IAgentRuntime, logger, type Memory } from "@elizaos/core";
-import { checkSenderRole } from "./roles.ts";
+import { checkSenderRole, type RoleCheckResult } from "./roles.ts";
 
 export const SELFCONTROL_ACCESS_ERROR =
-  "Website blocking is restricted to OWNER and ADMIN users.";
+  "Website blocking is restricted to OWNER users.";
+
+function hasPrincipal(runtime: IAgentRuntime, message: Memory): boolean {
+  return (
+    typeof runtime.agentId === "string" &&
+    runtime.agentId.length > 0 &&
+    typeof message.entityId === "string" &&
+    message.entityId.length > 0
+  );
+}
 
 export async function getSelfControlAccess(
   runtime: IAgentRuntime,
@@ -13,16 +22,16 @@ export async function getSelfControlAccess(
   role: string | null;
   reason?: string;
 }> {
-  // Fast path: the canonical-owner check (ELIZA_ADMIN_ENTITY_ID setting +
-  // owner-contacts list) is authoritative for owner/admin access and works
-  // in test/benchmark environments where the per-world role table isn't
-  // populated. Falls through to the world-role check only when the fast
-  // path doesn't recognize the sender.
-  if (await hasAdminAccess(runtime, message)) {
+  // Fast path: canonical owner settings and owner-contact metadata are
+  // authoritative in environments where the per-world role table is not seeded.
+  if (
+    hasPrincipal(runtime, message) &&
+    (await hasOwnerAccess(runtime, message))
+  ) {
     return { allowed: true, role: "OWNER" };
   }
 
-  let roleCheck;
+  let roleCheck: RoleCheckResult;
   try {
     roleCheck = await checkSenderRole(runtime, message);
   } catch (err) {
@@ -41,7 +50,7 @@ export async function getSelfControlAccess(
     };
   }
 
-  if (!roleCheck.isAdmin) {
+  if (!roleCheck.isOwner) {
     return {
       allowed: false,
       role: roleCheck.role,

@@ -9,6 +9,12 @@ import {
   googleCalendarDynamicFixture,
 } from "./google-calendar-state.ts";
 import { MockHttpError } from "./mock-http-error.ts";
+import {
+  getLifeOpsSimulatorPerson,
+  LIFEOPS_SIMULATOR_EMAILS,
+  LIFEOPS_SIMULATOR_OWNER,
+  type LifeOpsSimulatorEmail,
+} from "../fixtures/lifeops-simulator.ts";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -28,7 +34,7 @@ interface GoogleMockLedgerEntry {
 
 function jsonFixture(
   body: JsonValue | object,
-  statusCode = 200,
+  statusCode = 200
 ): DynamicFixtureResponse {
   return {
     statusCode,
@@ -67,7 +73,7 @@ function formatHttpDate(date: Date): string {
   return `${weekdays[date.getUTCDay()]}, ${pad(date.getUTCDate())} ${
     months[date.getUTCMonth()]
   } ${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(
-    date.getUTCMinutes(),
+    date.getUTCMinutes()
   )}:${pad(date.getUTCSeconds())} GMT`;
 }
 
@@ -277,6 +283,42 @@ const GMAIL_FIXTURE_MESSAGES: GmailFixtureMessage[] = [
   },
 ];
 
+function simulatorEmailToGmailFixture(
+  email: LifeOpsSimulatorEmail
+): GmailFixtureMessage {
+  const person = getLifeOpsSimulatorPerson(email.fromPersonKey);
+  const accountEmail =
+    email.accountId === "home"
+      ? LIFEOPS_SIMULATOR_OWNER.homeEmail
+      : LIFEOPS_SIMULATOR_OWNER.email;
+  return {
+    id: email.id,
+    ...(email.accountId ? { accountId: email.accountId } : {}),
+    threadId: email.threadId,
+    labelIds: [...email.labels],
+    snippet: email.snippet,
+    internalDateOffsetMs: email.internalDateOffsetMs,
+    headers: [
+      { name: "From", value: `${person.name} <${person.email}>` },
+      { name: "To", value: `Owner <${accountEmail}>` },
+      { name: "Subject", value: email.subject },
+      { name: "Message-Id", value: `<${email.id}@lifeops-simulator.test>` },
+    ],
+    bodyText: email.bodyText,
+  };
+}
+
+function gmailFixtureMessages(opts?: {
+  simulator?: boolean;
+}): GmailFixtureMessage[] {
+  return opts?.simulator
+    ? [
+        ...LIFEOPS_SIMULATOR_EMAILS.map(simulatorEmailToGmailFixture),
+        ...GMAIL_FIXTURE_MESSAGES,
+      ]
+    : GMAIL_FIXTURE_MESSAGES;
+}
+
 type GmailMockMessage = Omit<GmailFixtureMessage, "internalDateOffsetMs"> & {
   accountId: string;
   accountEmail: string;
@@ -397,13 +439,13 @@ const GOOGLE_CALENDAR_WRITE_SCOPES = [
 
 function gmailAccountsMap(): Map<string, GmailMockAccount> {
   return new Map(
-    GMAIL_MOCK_ACCOUNTS.map((account) => [account.id, { ...account }]),
+    GMAIL_MOCK_ACCOUNTS.map((account) => [account.id, { ...account }])
   );
 }
 
 function gmailAccountForFixture(
   accounts: ReadonlyMap<string, GmailMockAccount>,
-  fixture: GmailFixtureMessage,
+  fixture: GmailFixtureMessage
 ): GmailMockAccount {
   const account =
     accounts.get(fixture.accountId ?? DEFAULT_GMAIL_ACCOUNT_ID) ??
@@ -414,10 +456,12 @@ function gmailAccountForFixture(
   return account;
 }
 
-export function createGoogleMockState(): GoogleMockState {
+export function createGoogleMockState(opts?: {
+  simulator?: boolean;
+}): GoogleMockState {
   const accounts = gmailAccountsMap();
   const messages = new Map<string, GmailMockMessage>();
-  for (const fixture of GMAIL_FIXTURE_MESSAGES) {
+  for (const fixture of gmailFixtureMessages(opts)) {
     const account = gmailAccountForFixture(accounts, fixture);
     messages.set(fixture.id, {
       id: fixture.id,
@@ -441,7 +485,7 @@ export function createGoogleMockState(): GoogleMockState {
     labelIds: ["DRAFT"],
     raw: Buffer.from(
       "To: test@example.test\r\nSubject: Mock Gmail draft\r\n\r\nMock Gmail draft",
-      "utf8",
+      "utf8"
     ).toString("base64url"),
     historyId: "123456",
     account: accounts.get(DEFAULT_GMAIL_ACCOUNT_ID),
@@ -476,12 +520,12 @@ export function createGoogleMockState(): GoogleMockState {
       },
     ],
     googleTokens: new Map(),
-    calendar: createGoogleCalendarMockState(),
+    calendar: createGoogleCalendarMockState(opts),
   };
 }
 
 function gmailFixtureInternalDate(
-  message: GmailFixtureMessage | GmailMockMessage,
+  message: GmailFixtureMessage | GmailMockMessage
 ): number {
   return "internalDateMs" in message
     ? message.internalDateMs
@@ -489,7 +533,7 @@ function gmailFixtureInternalDate(
 }
 
 function gmailFixtureResponse(
-  message: GmailFixtureMessage | GmailMockMessage,
+  message: GmailFixtureMessage | GmailMockMessage
 ): JsonValue {
   const date = new Date(gmailFixtureInternalDate(message));
   return {
@@ -518,7 +562,7 @@ type GmailAccountSelection = ReadonlySet<string> | null;
 
 function findGmailAccountByHint(
   state: GoogleMockState,
-  value: string | undefined,
+  value: string | undefined
 ): GmailMockAccount | null {
   const normalized = value?.trim().toLowerCase();
   if (!normalized || normalized === "all") return null;
@@ -527,14 +571,14 @@ function findGmailAccountByHint(
       (account) =>
         account.id.toLowerCase() === normalized ||
         account.grantId.toLowerCase() === normalized ||
-        account.email.toLowerCase() === normalized,
+        account.email.toLowerCase() === normalized
     ) ?? null
   );
 }
 
 function gmailTokenAccount(
   state: GoogleMockState,
-  token: GoogleMockToken | null,
+  token: GoogleMockToken | null
 ): GmailMockAccount | null {
   if (!token) return null;
   return (
@@ -547,7 +591,7 @@ function gmailTokenAccount(
 function gmailAccountSelection(
   state: GoogleMockState,
   searchParams: URLSearchParams,
-  token: GoogleMockToken | null,
+  token: GoogleMockToken | null
 ): GmailAccountSelection {
   const tokenAccount = gmailTokenAccount(state, token);
   if (tokenAccount) return new Set([tokenAccount.id]);
@@ -577,7 +621,7 @@ function defaultGmailAccount(state: GoogleMockState): GmailMockAccount {
 function gmailWriteAccount(
   state: GoogleMockState,
   searchParams: URLSearchParams,
-  token: GoogleMockToken | null,
+  token: GoogleMockToken | null
 ): GmailMockAccount {
   const selection = gmailAccountSelection(state, searchParams, token);
   if (!selection) return defaultGmailAccount(state);
@@ -591,14 +635,14 @@ function gmailWriteAccount(
 
 function gmailMessageVisible(
   message: GmailMockMessage,
-  selection: GmailAccountSelection,
+  selection: GmailAccountSelection
 ): boolean {
   return !selection || selection.has(message.accountId);
 }
 
 function gmailHeaderValue(
   message: GmailFixtureMessage | GmailMockMessage,
-  name: string,
+  name: string
 ): string {
   const lower = name.toLowerCase();
   return (
@@ -608,12 +652,12 @@ function gmailHeaderValue(
 }
 
 function gmailMessageNeedsResponse(
-  message: GmailFixtureMessage | GmailMockMessage,
+  message: GmailFixtureMessage | GmailMockMessage
 ): boolean {
   const accountEmail =
     "accountEmail" in message ? message.accountEmail.toLowerCase() : "";
   const labels = new Set(
-    (message.labelIds ?? []).map((label) => label.toUpperCase()),
+    (message.labelIds ?? []).map((label) => label.toUpperCase())
   );
   const from = gmailHeaderValue(message, "From").toLowerCase();
   const to = gmailHeaderValue(message, "To").toLowerCase();
@@ -622,7 +666,7 @@ function gmailMessageNeedsResponse(
   const listId = gmailHeaderValue(message, "List-Id");
   const autoSubmitted = gmailHeaderValue(
     message,
-    "Auto-Submitted",
+    "Auto-Submitted"
   ).toLowerCase();
   const automated =
     Boolean(listId) ||
@@ -684,12 +728,12 @@ function gmailOrGroups(tokens: readonly string[]): string[][] {
 
 function gmailQueryMatches(
   message: GmailFixtureMessage | GmailMockMessage,
-  query: string,
+  query: string
 ): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
   const labels = new Set(
-    (message.labelIds ?? []).map((label) => label.toUpperCase()),
+    (message.labelIds ?? []).map((label) => label.toUpperCase())
   );
   const haystack = [
     message.id,
@@ -710,7 +754,7 @@ function gmailQueryMatches(
     if (!tokenBody) return true;
     if (tokenBody.startsWith("{") && tokenBody.endsWith("}")) {
       const groupMatched = gmailQueryTokens(tokenBody.slice(1, -1)).some(
-        (entry) => tokenMatches(entry),
+        (entry) => tokenMatches(entry)
       );
       return negated ? !groupMatched : groupMatched;
     }
@@ -741,7 +785,7 @@ function gmailQueryMatches(
       }
       if (value.startsWith("category:")) {
         return labels.has(
-          `CATEGORY_${value.slice("category:".length).toUpperCase()}`,
+          `CATEGORY_${value.slice("category:".length).toUpperCase()}`
         );
       }
       if (value.startsWith("from:")) {
@@ -783,16 +827,16 @@ function gmailQueryMatches(
           : ageMs <= boundaryMs;
       }
       return tokenMatches(token);
-    }),
+    })
   );
 }
 
 function gmailLiveMessages(
   state: GoogleMockState,
-  selection: GmailAccountSelection = null,
+  selection: GmailAccountSelection = null
 ): GmailMockMessage[] {
   return [...state.gmailMessages.values()].filter(
-    (message) => !message.deleted && gmailMessageVisible(message, selection),
+    (message) => !message.deleted && gmailMessageVisible(message, selection)
   );
 }
 
@@ -804,7 +848,7 @@ function isStringArray(value: JsonValue | undefined): value is string[] {
 
 function readOptionalStringArray(
   body: RequestBody,
-  key: string,
+  key: string
 ): string[] | undefined {
   const value = body[key];
   if (value === undefined) return undefined;
@@ -833,7 +877,7 @@ function readRequiredString(body: RequestBody, key: string): string {
 function getMessageOrThrow(
   state: GoogleMockState,
   messageId: string,
-  selection: GmailAccountSelection = null,
+  selection: GmailAccountSelection = null
 ): GmailMockMessage {
   const message = state.gmailMessages.get(messageId);
   if (!message || message.deleted || !gmailMessageVisible(message, selection)) {
@@ -844,16 +888,16 @@ function getMessageOrThrow(
 
 function jsonError(
   statusCode: number,
-  message: string,
+  message: string
 ): DynamicFixtureResponse {
   const status =
     statusCode === 401
       ? "UNAUTHENTICATED"
       : statusCode === 403
-        ? "PERMISSION_DENIED"
-        : statusCode === 404
-          ? "NOT_FOUND"
-          : "INVALID_ARGUMENT";
+      ? "PERMISSION_DENIED"
+      : statusCode === 404
+      ? "NOT_FOUND"
+      : "INVALID_ARGUMENT";
   return jsonFixture(
     {
       error: {
@@ -862,13 +906,13 @@ function jsonError(
         status,
       },
     },
-    statusCode,
+    statusCode
   );
 }
 
 function addHistoryRecord(
   state: GoogleMockState,
-  record: Omit<GmailHistoryRecord, "id">,
+  record: Omit<GmailHistoryRecord, "id">
 ): string {
   state.gmailHistoryId += 1;
   const id = String(state.gmailHistoryId);
@@ -877,7 +921,7 @@ function addHistoryRecord(
 }
 
 function gmailHistoryRecordResponse(
-  record: GmailHistoryRecord,
+  record: GmailHistoryRecord
 ): Record<string, JsonValue> {
   return {
     id: record.id,
@@ -917,7 +961,7 @@ function gmailHistoryRecordResponse(
 function applyLabelPatch(
   message: GmailMockMessage,
   addLabelIds: readonly string[] | undefined,
-  removeLabelIds: readonly string[] | undefined,
+  removeLabelIds: readonly string[] | undefined
 ): {
   added: string[];
   removed: string[];
@@ -945,7 +989,7 @@ function modifyGmailMessages(
   ids: readonly string[],
   addLabelIds: readonly string[] | undefined,
   removeLabelIds: readonly string[] | undefined,
-  selection: GmailAccountSelection = null,
+  selection: GmailAccountSelection = null
 ): string {
   if (
     (!addLabelIds || addLabelIds.length === 0) &&
@@ -953,7 +997,7 @@ function modifyGmailMessages(
   ) {
     throw new MockHttpError(
       400,
-      "modify requires addLabelIds or removeLabelIds",
+      "modify requires addLabelIds or removeLabelIds"
     );
   }
 
@@ -990,7 +1034,7 @@ function modifyGmailMessages(
 function deleteGmailMessages(
   state: GoogleMockState,
   ids: readonly string[],
-  selection: GmailAccountSelection = null,
+  selection: GmailAccountSelection = null
 ): string {
   const messagesDeleted: GmailHistoryMessageRef[] = [];
   for (const id of ids) {
@@ -1044,14 +1088,14 @@ function parseRfc822(raw: string): {
       };
     })
     .filter(
-      (header): header is { name: string; value: string } => header !== null,
+      (header): header is { name: string; value: string } => header !== null
     );
   return { headers, bodyText };
 }
 
 function readRfc822Header(
   headers: readonly { name: string; value: string }[],
-  name: string,
+  name: string
 ): string | null {
   const lower = name.toLowerCase();
   return (
@@ -1118,7 +1162,7 @@ function inferThreadIdFromRaw(
   state: GoogleMockState,
   raw: string,
   requestedThreadId: JsonValue | undefined,
-  selection: GmailAccountSelection = null,
+  selection: GmailAccountSelection = null
 ): string {
   if (
     typeof requestedThreadId === "string" &&
@@ -1128,7 +1172,7 @@ function inferThreadIdFromRaw(
   }
   const decoded = decodedSendMetadata(raw);
   const referencedHeaders = [decoded.inReplyTo, decoded.references].filter(
-    (value): value is string => typeof value === "string" && value.length > 0,
+    (value): value is string => typeof value === "string" && value.length > 0
   );
   for (const message of gmailLiveMessages(state, selection)) {
     const messageId = readRfc822Header(message.headers, "Message-Id");
@@ -1139,33 +1183,36 @@ function inferThreadIdFromRaw(
       return message.threadId;
     }
   }
-  return `thr-sent-${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 8)}`;
+  return `thr-sent-${randomFromAlphabet(
+    "abcdefghijklmnopqrstuvwxyz0123456789",
+    8
+  )}`;
 }
 
 function gmailListMessages(
   state: GoogleMockState,
   searchParams: URLSearchParams,
-  selection: GmailAccountSelection,
+  selection: GmailAccountSelection
 ): DynamicFixtureResponse {
   const includeSpamTrash = searchParams.get("includeSpamTrash") === "true";
   const query = searchParams.get("q") ?? "";
   const labelIds = searchParams.getAll("labelIds");
   const maxResults = Math.max(
     1,
-    Math.min(Number.parseInt(searchParams.get("maxResults") ?? "20", 10), 50),
+    Math.min(Number.parseInt(searchParams.get("maxResults") ?? "20", 10), 50)
   );
   const pageOffset = Math.max(
     0,
-    Number.parseInt(searchParams.get("pageToken") ?? "0", 10) || 0,
+    Number.parseInt(searchParams.get("pageToken") ?? "0", 10) || 0
   );
   const queryTargetsSpamTrash = /\bin:(?:spam|trash|anywhere)\b/i.test(query);
   const labelTargetsSpamTrash = labelIds.some((labelId) =>
-    /^(SPAM|TRASH)$/i.test(labelId),
+    /^(SPAM|TRASH)$/i.test(labelId)
   );
   const filtered = gmailLiveMessages(state, selection)
     .filter((message) => {
       const labels = new Set(
-        (message.labelIds ?? []).map((label) => label.toUpperCase()),
+        (message.labelIds ?? []).map((label) => label.toUpperCase())
       );
       if (
         !includeSpamTrash &&
@@ -1185,7 +1232,7 @@ function gmailListMessages(
     })
     .sort(
       (left, right) =>
-        gmailFixtureInternalDate(right) - gmailFixtureInternalDate(left),
+        gmailFixtureInternalDate(right) - gmailFixtureInternalDate(left)
     );
   const page = filtered.slice(pageOffset, pageOffset + maxResults);
   return jsonFixture({
@@ -1202,7 +1249,7 @@ function gmailListMessages(
 
 function headerValue(
   headers: http.IncomingHttpHeaders,
-  key: string,
+  key: string
 ): string | null {
   const value = headers[key.toLowerCase()];
   if (Array.isArray(value)) return value[0] ?? null;
@@ -1230,7 +1277,7 @@ function googleOAuthSearchDirs(): string[] {
 function readJsonFilesRecursively(
   dir: string,
   out: string[],
-  remaining: number,
+  remaining: number
 ): number {
   if (remaining <= 0 || !fs.existsSync(dir)) return remaining;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -1275,15 +1322,15 @@ function refreshGoogleTokensFromSeededGrants(state: GoogleMockState): void {
       ...(typeof record.accountEmail === "string"
         ? { gmailAccountEmail: record.accountEmail }
         : typeof record.email === "string"
-          ? { gmailAccountEmail: record.email }
-          : {}),
+        ? { gmailAccountEmail: record.email }
+        : {}),
     });
   }
 }
 
 function requiredGoogleScopes(
   method: string,
-  pathname: string,
+  pathname: string
 ): readonly string[] {
   if (pathname === "/calendar/v3/users/me/calendarList") {
     return GOOGLE_CALENDAR_READ_SCOPES;
@@ -1322,7 +1369,7 @@ function enforceGoogleAuthIfPresent(
   state: GoogleMockState,
   method: string,
   pathname: string,
-  headers: http.IncomingHttpHeaders,
+  headers: http.IncomingHttpHeaders
 ): DynamicFixtureResponse | null {
   const requiredScopes = requiredGoogleScopes(method, pathname);
   if (requiredScopes.length === 0) return null;
@@ -1342,7 +1389,7 @@ function enforceGoogleAuthIfPresent(
 
 function googleTokenForRequest(
   state: GoogleMockState,
-  headers: http.IncomingHttpHeaders,
+  headers: http.IncomingHttpHeaders
 ): GoogleMockToken | null {
   const token = bearerToken(headers);
   if (!token) return null;
@@ -1359,7 +1406,7 @@ export function googleDynamicFixture(
   searchParams: URLSearchParams,
   requestBody: RequestBody,
   headers: http.IncomingHttpHeaders,
-  ledgerEntry: GoogleMockLedgerEntry,
+  ledgerEntry: GoogleMockLedgerEntry
 ): DynamicFixtureResponse | null {
   if (method === "POST" && pathname === "/token") {
     const scopeText =
@@ -1372,10 +1419,10 @@ export function googleDynamicFixture(
       typeof requestBody.gmailAccountId === "string"
         ? requestBody.gmailAccountId
         : typeof requestBody.account === "string"
-          ? requestBody.account
-          : typeof requestBody.accountId === "string"
-            ? requestBody.accountId
-            : undefined;
+        ? requestBody.account
+        : typeof requestBody.accountId === "string"
+        ? requestBody.accountId
+        : undefined;
     const gmailGrantId =
       typeof requestBody.grantId === "string" ? requestBody.grantId : undefined;
     const gmailAccountEmail =
@@ -1401,14 +1448,14 @@ export function googleDynamicFixture(
     state,
     method,
     pathname,
-    headers,
+    headers
   );
   if (authFailure) return authFailure;
   const googleToken = googleTokenForRequest(state, headers);
   const gmailSelection = gmailAccountSelection(
     state,
     searchParams,
-    googleToken,
+    googleToken
   );
 
   const calendarResponse = googleCalendarDynamicFixture({
@@ -1473,14 +1520,14 @@ export function googleDynamicFixture(
     const addLabelIds = readOptionalStringArray(requestBody, "addLabelIds");
     const removeLabelIds = readOptionalStringArray(
       requestBody,
-      "removeLabelIds",
+      "removeLabelIds"
     );
     const historyId = modifyGmailMessages(
       state,
       ids,
       addLabelIds,
       removeLabelIds,
-      gmailSelection,
+      gmailSelection
     );
     ledgerEntry.gmail = {
       action: "messages.batchModify",
@@ -1514,12 +1561,15 @@ export function googleDynamicFixture(
     const raw = readRequiredString(requestBody, "raw");
     const metadata = decodedSendMetadata(raw);
     const message = buildGmailMessageFromRaw({
-      id: `sent-${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 12)}`,
+      id: `sent-${randomFromAlphabet(
+        "abcdefghijklmnopqrstuvwxyz0123456789",
+        12
+      )}`,
       threadId: inferThreadIdFromRaw(
         state,
         raw,
         requestBody.threadId,
-        gmailSelection,
+        gmailSelection
       ),
       labelIds: ["SENT"],
       raw,
@@ -1546,20 +1596,20 @@ export function googleDynamicFixture(
 
   const modifyMessageId = routeParam(
     pathname,
-    /^\/gmail\/v1\/users\/me\/messages\/([^/]+)\/modify\/?$/,
+    /^\/gmail\/v1\/users\/me\/messages\/([^/]+)\/modify\/?$/
   );
   if (method === "POST" && modifyMessageId) {
     const addLabelIds = readOptionalStringArray(requestBody, "addLabelIds");
     const removeLabelIds = readOptionalStringArray(
       requestBody,
-      "removeLabelIds",
+      "removeLabelIds"
     );
     const historyId = modifyGmailMessages(
       state,
       [modifyMessageId],
       addLabelIds,
       removeLabelIds,
-      gmailSelection,
+      gmailSelection
     );
     const message = getMessageOrThrow(state, modifyMessageId, gmailSelection);
     ledgerEntry.gmail = {
@@ -1576,7 +1626,7 @@ export function googleDynamicFixture(
 
   const trashMessageId = routeParam(
     pathname,
-    /^\/gmail\/v1\/users\/me\/messages\/([^/]+)\/trash\/?$/,
+    /^\/gmail\/v1\/users\/me\/messages\/([^/]+)\/trash\/?$/
   );
   if (method === "POST" && trashMessageId) {
     const historyId = modifyGmailMessages(
@@ -1584,7 +1634,7 @@ export function googleDynamicFixture(
       [trashMessageId],
       ["TRASH"],
       ["INBOX", "SPAM"],
-      gmailSelection,
+      gmailSelection
     );
     const message = getMessageOrThrow(state, trashMessageId, gmailSelection);
     ledgerEntry.gmail = {
@@ -1600,7 +1650,7 @@ export function googleDynamicFixture(
 
   const untrashMessageId = routeParam(
     pathname,
-    /^\/gmail\/v1\/users\/me\/messages\/([^/]+)\/untrash\/?$/,
+    /^\/gmail\/v1\/users\/me\/messages\/([^/]+)\/untrash\/?$/
   );
   if (method === "POST" && untrashMessageId) {
     const historyId = modifyGmailMessages(
@@ -1608,7 +1658,7 @@ export function googleDynamicFixture(
       [untrashMessageId],
       ["INBOX"],
       ["TRASH"],
-      gmailSelection,
+      gmailSelection
     );
     const message = getMessageOrThrow(state, untrashMessageId, gmailSelection);
     ledgerEntry.gmail = {
@@ -1624,13 +1674,13 @@ export function googleDynamicFixture(
 
   const deleteMessageId = routeParam(
     pathname,
-    /^\/gmail\/v1\/users\/me\/messages\/([^/]+)\/?$/,
+    /^\/gmail\/v1\/users\/me\/messages\/([^/]+)\/?$/
   );
   if (method === "DELETE" && deleteMessageId) {
     const historyId = deleteGmailMessages(
       state,
       [deleteMessageId],
-      gmailSelection,
+      gmailSelection
     );
     ledgerEntry.gmail = {
       action: "messages.delete",
@@ -1666,12 +1716,15 @@ export function googleDynamicFixture(
     }
     const historyId = addHistoryRecord(state, {});
     const draftMessage = buildGmailMessageFromRaw({
-      id: `draft-message-${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 10)}`,
+      id: `draft-message-${randomFromAlphabet(
+        "abcdefghijklmnopqrstuvwxyz0123456789",
+        10
+      )}`,
       threadId: inferThreadIdFromRaw(
         state,
         raw,
         messageRecord.threadId,
-        gmailSelection,
+        gmailSelection
       ),
       labelIds: ["DRAFT"],
       raw,
@@ -1679,7 +1732,10 @@ export function googleDynamicFixture(
       account: gmailWriteAccount(state, searchParams, googleToken),
     });
     const draft: GmailMockDraft = {
-      id: `draft-${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 10)}`,
+      id: `draft-${randomFromAlphabet(
+        "abcdefghijklmnopqrstuvwxyz0123456789",
+        10
+      )}`,
       accountId: draftMessage.accountId,
       message: draftMessage,
     };
@@ -1701,7 +1757,7 @@ export function googleDynamicFixture(
 
   if (method === "GET" && pathname === "/gmail/v1/users/me/drafts") {
     const drafts = [...state.gmailDrafts.values()].filter((draft) =>
-      gmailSelection ? gmailSelection.has(draft.accountId) : true,
+      gmailSelection ? gmailSelection.has(draft.accountId) : true
     );
     return jsonFixture({
       drafts: drafts.map((draft) => ({
@@ -1717,7 +1773,7 @@ export function googleDynamicFixture(
 
   const draftId = routeParam(
     pathname,
-    /^\/gmail\/v1\/users\/me\/drafts\/([^/]+)\/?$/,
+    /^\/gmail\/v1\/users\/me\/drafts\/([^/]+)\/?$/
   );
   if (method === "GET" && draftId) {
     const draft = state.gmailDrafts.get(draftId);
@@ -1754,7 +1810,10 @@ export function googleDynamicFixture(
       throw new MockHttpError(400, "draft message is missing raw content");
     }
     const sentMessage = buildGmailMessageFromRaw({
-      id: `sent-draft-${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 12)}`,
+      id: `sent-draft-${randomFromAlphabet(
+        "abcdefghijklmnopqrstuvwxyz0123456789",
+        12
+      )}`,
       threadId: draft.message.threadId,
       labelIds: ["SENT"],
       raw,
@@ -1803,10 +1862,10 @@ export function googleDynamicFixture(
   if (method === "GET" && pathname === "/gmail/v1/users/me/history") {
     const startHistoryId = Number.parseInt(
       searchParams.get("startHistoryId") ?? "0",
-      10,
+      10
     );
     const history = state.gmailHistory.filter(
-      (entry) => Number.parseInt(entry.id, 10) > startHistoryId,
+      (entry) => Number.parseInt(entry.id, 10) > startHistoryId
     );
     return jsonFixture({
       history: history.map((entry) => gmailHistoryRecordResponse(entry)),
@@ -1833,11 +1892,11 @@ export function googleDynamicFixture(
 
   const threadId = routeParam(
     pathname,
-    /^\/gmail\/v1\/users\/me\/threads\/([^/]+)\/?$/,
+    /^\/gmail\/v1\/users\/me\/threads\/([^/]+)\/?$/
   );
   if (method === "GET" && threadId) {
     const messages = gmailLiveMessages(state, gmailSelection).filter(
-      (message) => message.threadId === threadId,
+      (message) => message.threadId === threadId
     );
     if (messages.length === 0) {
       return jsonError(404, "Requested entity was not found.");
@@ -1851,7 +1910,7 @@ export function googleDynamicFixture(
 
   const modifyThreadId = routeParam(
     pathname,
-    /^\/gmail\/v1\/users\/me\/threads\/([^/]+)\/modify\/?$/,
+    /^\/gmail\/v1\/users\/me\/threads\/([^/]+)\/modify\/?$/
   );
   if (method === "POST" && modifyThreadId) {
     const ids = gmailLiveMessages(state, gmailSelection)
@@ -1863,14 +1922,14 @@ export function googleDynamicFixture(
     const addLabelIds = readOptionalStringArray(requestBody, "addLabelIds");
     const removeLabelIds = readOptionalStringArray(
       requestBody,
-      "removeLabelIds",
+      "removeLabelIds"
     );
     const historyId = modifyGmailMessages(
       state,
       ids,
       addLabelIds,
       removeLabelIds,
-      gmailSelection,
+      gmailSelection
     );
     ledgerEntry.gmail = {
       action: "threads.modify",
@@ -1885,14 +1944,14 @@ export function googleDynamicFixture(
       id: modifyThreadId,
       historyId,
       messages: ids.map((id) =>
-        gmailFixtureResponse(getMessageOrThrow(state, id, gmailSelection)),
+        gmailFixtureResponse(getMessageOrThrow(state, id, gmailSelection))
       ),
     });
   }
 
   const trashThreadId = routeParam(
     pathname,
-    /^\/gmail\/v1\/users\/me\/threads\/([^/]+)\/trash\/?$/,
+    /^\/gmail\/v1\/users\/me\/threads\/([^/]+)\/trash\/?$/
   );
   if (method === "POST" && trashThreadId) {
     const ids = gmailLiveMessages(state, gmailSelection)
@@ -1906,7 +1965,7 @@ export function googleDynamicFixture(
       ids,
       ["TRASH"],
       ["INBOX", "SPAM"],
-      gmailSelection,
+      gmailSelection
     );
     ledgerEntry.gmail = {
       action: "threads.trash",
@@ -1921,14 +1980,14 @@ export function googleDynamicFixture(
       id: trashThreadId,
       historyId,
       messages: ids.map((id) =>
-        gmailFixtureResponse(getMessageOrThrow(state, id, gmailSelection)),
+        gmailFixtureResponse(getMessageOrThrow(state, id, gmailSelection))
       ),
     });
   }
 
   const untrashThreadId = routeParam(
     pathname,
-    /^\/gmail\/v1\/users\/me\/threads\/([^/]+)\/untrash\/?$/,
+    /^\/gmail\/v1\/users\/me\/threads\/([^/]+)\/untrash\/?$/
   );
   if (method === "POST" && untrashThreadId) {
     const ids = gmailLiveMessages(state, gmailSelection)
@@ -1942,7 +2001,7 @@ export function googleDynamicFixture(
       ids,
       ["INBOX"],
       ["TRASH"],
-      gmailSelection,
+      gmailSelection
     );
     ledgerEntry.gmail = {
       action: "threads.untrash",
@@ -1957,7 +2016,7 @@ export function googleDynamicFixture(
       id: untrashThreadId,
       historyId,
       messages: ids.map((id) =>
-        gmailFixtureResponse(getMessageOrThrow(state, id, gmailSelection)),
+        gmailFixtureResponse(getMessageOrThrow(state, id, gmailSelection))
       ),
     });
   }
@@ -1973,7 +2032,7 @@ export function googleDynamicFixture(
     return jsonFixture({
       id: `filter-${randomFromAlphabet(
         "abcdefghijklmnopqrstuvwxyz0123456789",
-        8,
+        8
       )}`,
       criteria: { from: "*@example.com" },
       action: { removeLabelIds: ["INBOX"] },

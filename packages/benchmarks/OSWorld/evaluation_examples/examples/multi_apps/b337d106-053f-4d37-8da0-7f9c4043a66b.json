@@ -7,20 +7,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "google-chrome",
-          "--remote-debugging-port=1337"
-        ]
+        "command": ["google-chrome", "--remote-debugging-port=1337"]
       }
     },
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "socat",
-          "tcp-listen:9222,fork",
-          "tcp:localhost:1337"
-        ]
+        "command": ["socat", "tcp-listen:9222,fork", "tcp:localhost:1337"]
       }
     },
     {
@@ -41,10 +34,7 @@
     }
   ],
   "trajectory": "trajectories/b337d106-053f-4d37-8da0-7f9c4043a66b",
-  "related_apps": [
-    "os",
-    "chrome"
-  ],
+  "related_apps": ["os", "chrome"],
   "evaluator": {
     "postconfig": [
       {
@@ -75,9 +65,7 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "include": [
-          "The File Has Set Number!"
-        ],
+        "include": ["The File Has Set Number!"],
         "exclude": []
       }
     }

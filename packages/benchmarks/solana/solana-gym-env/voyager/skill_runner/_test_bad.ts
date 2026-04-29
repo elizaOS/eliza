@@ -1,1 +1,12 @@
-this is not valid typescript }{}{}{}
+this;
+is;
+not;
+valid;
+typescript;
+}
+{
+}
+{
+}
+{
+}

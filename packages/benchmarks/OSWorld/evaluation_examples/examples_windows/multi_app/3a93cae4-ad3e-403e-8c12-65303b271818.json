@@ -56,10 +56,7 @@
     }
   ],
   "trajectory": "trajectories/3a93cae4-ad3e-403e-8c12-65303b271818",
-  "related_apps": [
-    "os",
-    "excel"
-  ],
+  "related_apps": ["os", "excel"],
   "evaluator": {
     "postconfig": [
       {
@@ -86,11 +83,7 @@
         }
       }
     ],
-    "func": [
-      "compare_table",
-      "compare_table",
-      "compare_table"
-    ],
+    "func": ["compare_table", "compare_table", "compare_table"],
     "result": [
       {
         "type": "vm_file",

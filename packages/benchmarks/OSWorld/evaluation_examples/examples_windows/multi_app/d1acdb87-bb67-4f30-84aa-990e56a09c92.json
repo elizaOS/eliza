@@ -45,11 +45,7 @@
     }
   ],
   "trajectory": "trajectories/d1acdb87-bb67-4f30-84aa-990e56a09c92",
-  "related_apps": [
-    "os",
-    "chrome",
-    "excel"
-  ],
+  "related_apps": ["os", "chrome", "excel"],
   "evaluator": {
     "postconfig": [
       {
@@ -101,34 +97,18 @@
           "sheet_idx1": "ENSheet1",
           "rules": [
             {
-              "range": [
-                "A1:A6",
-                "D1:D6"
-              ],
+              "range": ["A1:A6", "D1:D6"],
               "type": "exact_match"
             },
             {
-              "range": [
-                "B1:B6"
-              ],
+              "range": ["B1:B6"],
               "type": "fuzzy_match",
               "threshold": 85,
-              "normalization": [
-                [
-                  "Rd",
-                  "Road"
-                ],
-                [
-                  "St",
-                  "Street"
-                ]
-              ],
+              "normalization": [["Rd", "Road"], ["St", "Street"]],
               "ignore_case": true
             },
             {
-              "range": [
-                "C1:C6"
-              ],
+              "range": ["C1:C6"],
               "type": "includes",
               "trim_leadings": "+ ",
               "ignore_chars": " ()-"

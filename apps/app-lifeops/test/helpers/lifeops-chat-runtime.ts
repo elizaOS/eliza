@@ -1,7 +1,5 @@
 import crypto from "node:crypto";
-import {
-  DatabaseSync,
-} from "@elizaos/agent";
+import { DatabaseSync } from "@elizaos/agent";
 import type { AgentRuntime, Content, State, Task, UUID } from "@elizaos/core";
 
 type SqlQuery = {

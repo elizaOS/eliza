@@ -47,9 +47,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "postconfig": [
       {
@@ -80,9 +78,7 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "include": [
-          "SUCCESS: The task was completed correctly."
-        ],
+        "include": ["SUCCESS: The task was completed correctly."],
         "exclude": []
       }
     }

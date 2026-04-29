@@ -45,6 +45,7 @@ import type {
   CreateLifeOpsGmailReplyDraftRequest,
   CreateLifeOpsGoalRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
+  DisconnectLifeOpsHealthConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
   DisconnectLifeOpsXConnectorRequest,
   GetLifeOpsCalendarFeedRequest,
@@ -53,6 +54,7 @@ import type {
   GetLifeOpsGmailSpamReviewRequest,
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
+  GetLifeOpsHealthSummaryRequest,
   GetLifeOpsIMessageMessagesRequest,
   GetLifeOpsInboxRequest,
   GetLifeOpsSignalMessagesResponse,
@@ -81,6 +83,9 @@ import type {
   LifeOpsGoalRecord,
   LifeOpsGoalReview,
   LifeOpsGoogleConnectorStatus,
+  LifeOpsHealthConnectorProvider,
+  LifeOpsHealthConnectorStatus,
+  LifeOpsHealthSummaryResponse,
   LifeOpsIMessageChat,
   LifeOpsIMessageConnectorStatus,
   LifeOpsIMessageMessage,
@@ -120,6 +125,8 @@ import type {
   StartLifeOpsDiscordConnectorRequest,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
+  StartLifeOpsHealthConnectorRequest,
+  StartLifeOpsHealthConnectorResponse,
   StartLifeOpsSignalPairingRequest,
   StartLifeOpsSignalPairingResponse,
   StartLifeOpsTelegramAuthRequest,
@@ -127,6 +134,7 @@ import type {
   StartLifeOpsXConnectorRequest,
   StartLifeOpsXConnectorResponse,
   SubmitLifeOpsTelegramAuthRequest,
+  SyncLifeOpsHealthConnectorRequest,
   UpdateLifeOpsBrowserSessionProgressRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
@@ -561,6 +569,29 @@ declare module "@elizaos/app-core/api/client-base" {
       mode?: LifeOpsConnectorMode,
       side?: LifeOpsConnectorSide,
     ): Promise<LifeOpsGoogleConnectorStatus[]>;
+    getHealthLifeOpsConnectorStatuses(
+      mode?: LifeOpsConnectorMode,
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsHealthConnectorStatus[]>;
+    getHealthLifeOpsConnectorStatus(
+      provider: LifeOpsHealthConnectorProvider,
+      mode?: LifeOpsConnectorMode,
+      side?: LifeOpsConnectorSide,
+    ): Promise<LifeOpsHealthConnectorStatus>;
+    startHealthLifeOpsConnector(
+      provider: LifeOpsHealthConnectorProvider,
+      data?: Omit<StartLifeOpsHealthConnectorRequest, "provider">,
+    ): Promise<StartLifeOpsHealthConnectorResponse>;
+    disconnectHealthLifeOpsConnector(
+      provider: LifeOpsHealthConnectorProvider,
+      data?: Omit<DisconnectLifeOpsHealthConnectorRequest, "provider">,
+    ): Promise<LifeOpsHealthConnectorStatus>;
+    syncLifeOpsHealth(
+      data?: SyncLifeOpsHealthConnectorRequest,
+    ): Promise<LifeOpsHealthSummaryResponse>;
+    getLifeOpsHealthSummary(
+      data?: GetLifeOpsHealthSummaryRequest,
+    ): Promise<LifeOpsHealthSummaryResponse>;
     getXLifeOpsConnectorStatus(
       mode?: LifeOpsConnectorMode,
       side?: LifeOpsConnectorSide,
@@ -1935,6 +1966,99 @@ ElizaClient.prototype.getGoogleLifeOpsConnectorAccounts = async function (
   const query = params.size > 0 ? `?${params.toString()}` : "";
   return this.fetch<LifeOpsGoogleConnectorStatus[]>(
     `/api/lifeops/connectors/google/accounts${query}`,
+  );
+};
+
+ElizaClient.prototype.getHealthLifeOpsConnectorStatuses = async function (
+  this: ElizaClient,
+  mode?: LifeOpsConnectorMode,
+  side?: LifeOpsConnectorSide,
+) {
+  const params = new URLSearchParams();
+  if (mode) {
+    params.set("mode", mode);
+  }
+  if (side) {
+    params.set("side", side);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch<LifeOpsHealthConnectorStatus[]>(
+    `/api/lifeops/connectors/health/status${query}`,
+  );
+};
+
+ElizaClient.prototype.getHealthLifeOpsConnectorStatus = async function (
+  this: ElizaClient,
+  provider,
+  mode?: LifeOpsConnectorMode,
+  side?: LifeOpsConnectorSide,
+) {
+  const params = new URLSearchParams();
+  if (mode) {
+    params.set("mode", mode);
+  }
+  if (side) {
+    params.set("side", side);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch<LifeOpsHealthConnectorStatus>(
+    `/api/lifeops/connectors/health/${encodeURIComponent(provider)}/status${query}`,
+  );
+};
+
+ElizaClient.prototype.startHealthLifeOpsConnector = async function (
+  this: ElizaClient,
+  provider,
+  data = {},
+) {
+  return this.fetch<StartLifeOpsHealthConnectorResponse>(
+    `/api/lifeops/connectors/health/${encodeURIComponent(provider)}/start`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.disconnectHealthLifeOpsConnector = async function (
+  this: ElizaClient,
+  provider,
+  data = {},
+) {
+  return this.fetch<LifeOpsHealthConnectorStatus>(
+    `/api/lifeops/connectors/health/${encodeURIComponent(provider)}/disconnect`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.syncLifeOpsHealth = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  return this.fetch<LifeOpsHealthSummaryResponse>("/api/lifeops/health/sync", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.getLifeOpsHealthSummary = async function (
+  this: ElizaClient,
+  data = {},
+) {
+  const params = new URLSearchParams();
+  if (data.provider) params.set("provider", data.provider);
+  if (data.mode) params.set("mode", data.mode);
+  if (data.side) params.set("side", data.side);
+  if (data.days !== undefined) params.set("days", String(data.days));
+  if (data.startDate) params.set("startDate", data.startDate);
+  if (data.endDate) params.set("endDate", data.endDate);
+  if (data.forceSync) params.set("forceSync", "true");
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return this.fetch<LifeOpsHealthSummaryResponse>(
+    `/api/lifeops/health/summary${query}`,
   );
 };
 

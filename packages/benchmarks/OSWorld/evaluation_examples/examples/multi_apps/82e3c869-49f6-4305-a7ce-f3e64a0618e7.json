@@ -7,11 +7,7 @@
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/Desktop/IDS LLM seminar/"
-        ]
+        "command": ["mkdir", "-p", "/home/user/Desktop/IDS LLM seminar/"]
       }
     },
     {
@@ -47,20 +43,13 @@
     }
   ],
   "trajectory": "trajectories/82e3c869-49f6-4305-a7ce-f3e64a0618e7",
-  "related_apps": [
-    "os",
-    "image"
-  ],
+  "related_apps": ["os", "image"],
   "evaluator": {
     "postconfig": [
       {
         "type": "execute",
         "parameters": {
-          "command": [
-            "rm",
-            "-rf",
-            "/home/user/Desktop/presenter"
-          ]
+          "command": ["rm", "-rf", "/home/user/Desktop/presenter"]
         }
       },
       {
@@ -84,12 +73,7 @@
         "/home/user/Desktop/presenter/DSC00554.jpg",
         "/home/user/Desktop/presenter/DSC00495.jpg"
       ],
-      "dest": [
-        "DSC00657.jpg",
-        "DSC00574.jpg",
-        "DSC00554.jpg",
-        "DSC00495.jpg"
-      ],
+      "dest": ["DSC00657.jpg", "DSC00574.jpg", "DSC00554.jpg", "DSC00495.jpg"],
       "multi": "true"
     },
     "expected": {

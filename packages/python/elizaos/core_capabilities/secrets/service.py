@@ -4,7 +4,7 @@ Core service for multi-level secret management.  Provides a unified API
 for accessing global, world, and user secrets with encryption, access
 control, and change notification support.
 
-Ported from plugin-secrets-manager TypeScript ``SecretsService``.
+Ported from ``@elizaos/core`` secrets TypeScript ``SecretsService``.
 """
 
 from __future__ import annotations

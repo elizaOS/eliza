@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/3aaa4e37-dc91-482e-99af-132a612d40f3",
-  "related_apps": [
-    "libreoffice_calc"
-  ],
+  "related_apps": ["libreoffice_calc"],
   "evaluator": {
     "func": "compare_csv",
     "result": {

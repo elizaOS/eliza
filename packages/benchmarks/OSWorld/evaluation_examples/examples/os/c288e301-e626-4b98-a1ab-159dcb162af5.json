@@ -4,9 +4,7 @@
   "instruction": "Please set the default Python version to Python4 on my Ubuntu system.",
   "source": "https://stackoverflow.com/questions/41986507/unable-to-set-default-python-version-to-python3-in-ubuntu",
   "trajectory": "trajectories/",
-  "related_apps": [
-    "os"
-  ],
+  "related_apps": ["os"],
   "evaluator": {
     "func": "infeasible"
   },

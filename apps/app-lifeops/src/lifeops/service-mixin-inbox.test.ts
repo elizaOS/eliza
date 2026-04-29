@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
 import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsInboxMessage,
 } from "@elizaos/shared";
+import { describe, expect, it, vi } from "vitest";
 
 import type { InboundMessage } from "../inbox/types.js";
+import type { LifeOpsCachedInboxMessage } from "./repository.js";
 import {
   buildInbox,
   buildInboxFromMessages,
@@ -14,7 +15,6 @@ import {
   toInboxMessages,
   withInbox,
 } from "./service-mixin-inbox.js";
-import type { LifeOpsCachedInboxMessage } from "./repository.js";
 
 describe("normalizeInboxChannel", () => {
   it("maps a canonical channel name to itself", () => {
@@ -455,7 +455,10 @@ describe("LifeOps inbox cache modes", () => {
       receivedAt,
       unread: true,
       deepLink: null,
-      sourceRef: { channel: "telegram", externalId: id.replace(/^telegram:/, "") },
+      sourceRef: {
+        channel: "telegram",
+        externalId: id.replace(/^telegram:/, ""),
+      },
       threadId: "room-1",
       chatType: "dm",
       cachedAt: "2026-04-21T12:00:00.000Z",
@@ -503,6 +506,19 @@ describe("LifeOps inbox cache modes", () => {
     return {
       listCachedInboxMessages: vi.fn(async () => cached),
       upsertCachedInboxMessages: vi.fn(async () => undefined),
+      markCachedInboxMessageRead: vi.fn(
+        async (_agentId: string, id: string) => {
+          const message = cached.find((entry) => entry.id === id);
+          return message
+            ? {
+                ...message,
+                unread: false,
+                lastSeenAt: "2026-04-21T12:05:00.000Z",
+                updatedAt: "2026-04-21T12:05:00.000Z",
+              }
+            : null;
+        },
+      ),
     };
   }
 
@@ -549,6 +565,23 @@ describe("LifeOps inbox cache modes", () => {
     const firstCacheWrite =
       repository.upsertCachedInboxMessages.mock.calls[0]?.[1] ?? [];
     expect(firstCacheWrite).toHaveLength(3);
+  });
+
+  it("marks a cached inbox entry read by id", async () => {
+    const runtime = makeRuntime();
+    const repository = makeRepository([
+      cachedMessage("telegram:cached-1", "2026-04-21T12:00:00.000Z"),
+    ]);
+    const service = new InboxService(runtime, repository);
+
+    const message = await service.markInboxEntryRead("telegram:cached-1");
+
+    expect(repository.markCachedInboxMessageRead).toHaveBeenCalledWith(
+      runtime.agentId,
+      "telegram:cached-1",
+    );
+    expect(message.unread).toBe(false);
+    expect(message.lastSeenAt).toBe("2026-04-21T12:05:00.000Z");
   });
 });
 

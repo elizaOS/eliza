@@ -982,7 +982,6 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
               logger.warn("[eliza] Telegram runtime missing useModel");
               return;
             }
-            // biome-ignore lint/correctness/useHookAtTopLevel: false positive, hook is at module level
             const response = await modelRuntime.useModel(ModelType.TEXT_LARGE, {
               prompt: `${systemPrompt}\n\nConversation:\n${conv}\n\n${char.name}:`,
             });

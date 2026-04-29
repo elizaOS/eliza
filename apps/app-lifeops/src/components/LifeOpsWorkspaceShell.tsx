@@ -21,6 +21,7 @@ export function LifeOpsWorkspaceShell({
   children,
 }: LifeOpsWorkspaceShellProps) {
   const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const previousSectionRef = useRef(section);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
@@ -37,7 +38,7 @@ export function LifeOpsWorkspaceShell({
       }
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [compactLayout, section]);
+  }, [compactLayout]);
 
   useEffect(() => {
     if (!compactLayout) {
@@ -46,10 +47,11 @@ export function LifeOpsWorkspaceShell({
   }, [compactLayout]);
 
   useEffect(() => {
-    if (compactLayout) {
+    if (previousSectionRef.current !== section) {
+      previousSectionRef.current = section;
       setMobileNavOpen(false);
     }
-  }, [compactLayout, section]);
+  }, [section]);
 
   const handleNavigate = (next: LifeOpsSection) => {
     navigate(next);

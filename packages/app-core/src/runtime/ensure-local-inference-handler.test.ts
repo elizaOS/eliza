@@ -164,8 +164,7 @@ describe("ensureLocalInferenceHandler", () => {
     // that proves the loader-backed embedding handler was wired in.
     const aospEmbeddingRegs = runtime.registrations.filter(
       (r) =>
-        r.modelType === "TEXT_EMBEDDING" &&
-        r.provider === "milady-aosp-llama",
+        r.modelType === "TEXT_EMBEDDING" && r.provider === "milady-aosp-llama",
     );
     expect(aospEmbeddingRegs).toHaveLength(1);
   });

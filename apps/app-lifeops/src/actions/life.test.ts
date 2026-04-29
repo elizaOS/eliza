@@ -13,6 +13,8 @@ vi.mock("./lifeops/service.js", () => ({
 }));
 
 const ROOM_ID = "00000000-0000-4000-8000-000000000001" as UUID;
+const OWNER_ID = "22222222-2222-4000-8000-000000000001" as UUID;
+const AGENT_ID = "33333333-3333-4000-8000-000000000001" as UUID;
 
 function buildRuntime(scope: string | undefined): {
   runtime: IAgentRuntime;
@@ -27,7 +29,12 @@ function buildRuntime(scope: string | undefined): {
     id: roomId,
     metadata,
   }));
-  const runtime = { getRoom } as unknown as IAgentRuntime;
+  const runtime = {
+    agentId: AGENT_ID,
+    getRoom,
+    getSetting: (key: string) =>
+      key === "ELIZA_ADMIN_ENTITY_ID" ? OWNER_ID : undefined,
+  } as unknown as IAgentRuntime;
   return { runtime, getRoom };
 }
 
@@ -35,8 +42,8 @@ function buildMessage(text: string): Memory {
   return {
     id: "11111111-1111-4000-8000-000000000001" as UUID,
     roomId: ROOM_ID,
-    entityId: "22222222-2222-4000-8000-000000000001" as UUID,
-    agentId: "33333333-3333-4000-8000-000000000001" as UUID,
+    entityId: OWNER_ID,
+    agentId: AGENT_ID,
     content: { text, source: "test" },
   } as Memory;
 }

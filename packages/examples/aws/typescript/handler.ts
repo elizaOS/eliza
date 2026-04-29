@@ -268,4 +268,4 @@ export async function handler(
 }
 
 // Export for testing
-export { initializeRuntime, parseRequestBody, handleChat };
+export { handleChat, initializeRuntime, parseRequestBody };

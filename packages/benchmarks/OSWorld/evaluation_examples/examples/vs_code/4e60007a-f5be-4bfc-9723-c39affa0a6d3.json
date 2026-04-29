@@ -7,9 +7,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code"
-        ]
+        "command": ["code"]
       }
     },
     {
@@ -20,9 +18,7 @@
     }
   ],
   "trajectory": "trajectories/4e60007a-f5be-4bfc-9723-c39affa0a6d3",
-  "related_apps": [
-    "vscode"
-  ],
+  "related_apps": ["vscode"],
   "evaluator": {
     "func": "is_extension_installed",
     "result": {

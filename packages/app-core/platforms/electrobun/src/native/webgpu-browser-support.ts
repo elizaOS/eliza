@@ -212,8 +212,7 @@ export function checkWebGpuSupport(
   // Unknown / fallback
   return {
     available: false,
-    reason:
-      `Unable to determine WebGPU support for this configuration. ${getBrandConfig().appName} still runs; the UI uses WebGL when WebGPU is unavailable.`,
+    reason: `Unable to determine WebGPU support for this configuration. ${getBrandConfig().appName} still runs; the UI uses WebGL when WebGPU is unavailable.`,
     renderer: "unknown",
     chromeBetaPath: chromeBeta.path,
     downloadUrl: chromeBeta.downloadUrl,

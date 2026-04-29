@@ -6,10 +6,7 @@
  */
 
 import { client } from "@elizaos/app-core";
-import type {
-  WalletAddresses,
-  WalletBalancesResponse,
-} from "@elizaos/shared";
+import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   VincentStrategy,

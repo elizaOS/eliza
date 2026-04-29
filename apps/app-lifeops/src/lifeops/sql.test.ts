@@ -10,7 +10,7 @@ describe("LifeOps SQL JSON helpers", () => {
 
   it("throws instead of replacing malformed JSON with fake empty data", () => {
     expect(() => parseJsonRecord("{bad json")).toThrow(/Invalid JSON value/);
-    expect(() => parseJsonArray("{\"not\":\"array\"}")).toThrow(
+    expect(() => parseJsonArray('{"not":"array"}')).toThrow(
       /Expected JSON array/,
     );
     expect(() => parseJsonRecord("[1,2,3]")).toThrow(/Expected JSON object/);

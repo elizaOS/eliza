@@ -5,9 +5,9 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
-  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -65,10 +65,7 @@ function collectBrokenBundledTypePackages() {
           continue;
         }
 
-        const resolvedPath = path.resolve(
-          linkRoot,
-          readlinkSync(entryPath),
-        );
+        const resolvedPath = path.resolve(linkRoot, readlinkSync(entryPath));
         if (!existsSync(resolvedPath)) {
           packageNames.add(entry);
         }
@@ -134,15 +131,8 @@ function ensureTypeEntryPoint(targetDir, packageName) {
   try {
     const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
     const dependencyNames = Object.keys(packageJson.dependencies ?? {});
-    if (
-      dependencyNames.length === 1 &&
-      dependencyNames[0] === packageName
-    ) {
-      writeFileSync(
-        entryPoint,
-        `export * from "${packageName}";\n`,
-        "utf8",
-      );
+    if (dependencyNames.length === 1 && dependencyNames[0] === packageName) {
+      writeFileSync(entryPoint, `export * from "${packageName}";\n`, "utf8");
     }
   } catch {
     // Leave stub packages untouched if their metadata cannot be parsed.

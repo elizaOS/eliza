@@ -54,8 +54,9 @@ export async function handleCloudRelayRoute(
     return true;
   }
 
-  // Try both possible service names
-  const service = (state.runtime.getService("cloud-managed-gateway-relay") ??
+  // Try known service names used across package boundaries.
+  const service = (state.runtime.getService("CLOUD_MANAGED_GATEWAY_RELAY") ??
+    state.runtime.getService("cloud-managed-gateway-relay") ??
     state.runtime.getService(
       "cloudManagedGatewayRelay",
     )) as RelayServiceLike | null;

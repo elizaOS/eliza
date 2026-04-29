@@ -8,6 +8,17 @@ import type {
 
 type ReviewFilter = "all" | "needs-review" | "corrected" | "superseded";
 type SortMode = "priority" | "newest" | "confidence" | "importance";
+type LocalExperienceGraphLink = {
+  sourceId: string;
+  targetId: string;
+  type: "similar" | "supports" | "supersedes" | "co_occurs";
+  strength: number;
+  keywords: string[];
+};
+type GraphPosition = {
+  x: number;
+  y: number;
+};
 
 function formatTimestamp(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return "Unknown";
@@ -93,6 +104,202 @@ function uniqueSorted(values: Array<string | null | undefined>): string[] {
 function shortId(value: string | null | undefined): string {
   if (!value) return "Not recorded";
   return value.length > 12 ? `${value.slice(0, 12)}...` : value;
+}
+
+function experienceKeywords(experience: CharacterExperienceRecord): string[] {
+  return experience.keywords && experience.keywords.length > 0
+    ? experience.keywords
+    : experience.tags;
+}
+
+function sharedValues(left: string[], right: string[]): string[] {
+  const rightValues = new Set(right);
+  return left.filter((value) => rightValues.has(value));
+}
+
+function buildLocalGraphLinks(
+  experiences: CharacterExperienceRecord[],
+): LocalExperienceGraphLink[] {
+  const links = new Map<string, LocalExperienceGraphLink>();
+  const addLink = (link: LocalExperienceGraphLink) => {
+    const key = `${link.sourceId}:${link.targetId}:${link.type}`;
+    const existing = links.get(key);
+    if (!existing || existing.strength < link.strength) {
+      links.set(key, link);
+    }
+  };
+  const byId = new Map(
+    experiences.map((experience) => [experience.id, experience]),
+  );
+
+  for (const experience of experiences) {
+    const supersededExperience = experience.supersedes
+      ? byId.get(experience.supersedes)
+      : undefined;
+    if (experience.supersedes && supersededExperience) {
+      addLink({
+        sourceId: experience.id,
+        targetId: experience.supersedes,
+        type: "supersedes",
+        strength: 0.95,
+        keywords: sharedValues(
+          experienceKeywords(experience),
+          experienceKeywords(supersededExperience),
+        ),
+      });
+    }
+    for (const relatedId of experience.relatedExperienceIds ?? []) {
+      const relatedExperience = byId.get(relatedId);
+      if (relatedExperience) {
+        addLink({
+          sourceId: experience.id,
+          targetId: relatedId,
+          type: "similar",
+          strength: 0.7,
+          keywords: sharedValues(
+            experienceKeywords(experience),
+            experienceKeywords(relatedExperience),
+          ),
+        });
+      }
+    }
+  }
+
+  for (let index = 0; index < experiences.length; index++) {
+    const left = experiences[index];
+    if (!left) continue;
+    for (
+      let nextIndex = index + 1;
+      nextIndex < experiences.length;
+      nextIndex++
+    ) {
+      const right = experiences[nextIndex];
+      if (!right) continue;
+      const keywords = sharedValues(
+        experienceKeywords(left),
+        experienceKeywords(right),
+      );
+      const sharedEntity = (left.associatedEntityIds ?? []).some((entityId) =>
+        (right.associatedEntityIds ?? []).includes(entityId),
+      );
+      if (keywords.length >= 2 && left.domain === right.domain) {
+        addLink({
+          sourceId: left.id,
+          targetId: right.id,
+          type: "supports",
+          strength: Math.min(0.85, 0.4 + keywords.length * 0.1),
+          keywords,
+        });
+      } else if (sharedEntity && left.domain === right.domain) {
+        addLink({
+          sourceId: left.id,
+          targetId: right.id,
+          type: "co_occurs",
+          strength: 0.55,
+          keywords,
+        });
+      }
+    }
+  }
+
+  return Array.from(links.values())
+    .sort((left, right) => right.strength - left.strength)
+    .slice(0, 60);
+}
+
+function buildGraphPositions(
+  experiences: CharacterExperienceRecord[],
+): Map<string, GraphPosition> {
+  const domains = uniqueSorted(
+    experiences.map((experience) => experience.domain),
+  );
+  const domainCenter = new Map(
+    domains.map((domain, index) => {
+      const total = Math.max(domains.length, 1);
+      const angle = (Math.PI * 2 * index) / total - Math.PI / 2;
+      return [
+        domain ?? "general",
+        {
+          x: 50 + Math.cos(angle) * 24,
+          y: 50 + Math.sin(angle) * 22,
+        },
+      ];
+    }),
+  );
+  const domainCounts = new Map<string, number>();
+
+  return new Map(
+    experiences.map((experience, index) => {
+      const domain = experience.domain ?? "general";
+      const domainIndex = domainCounts.get(domain) ?? 0;
+      domainCounts.set(domain, domainIndex + 1);
+      const center = domainCenter.get(domain) ?? { x: 50, y: 50 };
+      const angle = (Math.PI * 2 * domainIndex) / 7 + index * 0.41;
+      const radius = 5 + (domainIndex % 4) * 4.8;
+      return [
+        experience.id,
+        {
+          x: Math.max(8, Math.min(92, center.x + Math.cos(angle) * radius)),
+          y: Math.max(10, Math.min(90, center.y + Math.sin(angle) * radius)),
+        },
+      ];
+    }),
+  );
+}
+
+function graphNodeColor(experience: CharacterExperienceRecord): {
+  fill: string;
+  glow: string;
+  ring: string;
+} {
+  switch (experience.outcome) {
+    case "positive":
+      return {
+        fill: "rgb(34 197 94)",
+        glow: "rgba(34,197,94,0.42)",
+        ring: "rgba(134,239,172,0.9)",
+      };
+    case "negative":
+      return {
+        fill: "rgb(239 68 68)",
+        glow: "rgba(239,68,68,0.42)",
+        ring: "rgba(252,165,165,0.9)",
+      };
+    case "mixed":
+      return {
+        fill: "rgb(245 158 11)",
+        glow: "rgba(245,158,11,0.42)",
+        ring: "rgba(253,230,138,0.9)",
+      };
+    default:
+      return {
+        fill: "rgb(56 189 248)",
+        glow: "rgba(56,189,248,0.38)",
+        ring: "rgba(125,211,252,0.85)",
+      };
+  }
+}
+
+function graphLinkColor(type: LocalExperienceGraphLink["type"]): string {
+  switch (type) {
+    case "supersedes":
+      return "rgba(245,158,11,0.9)";
+    case "co_occurs":
+      return "rgba(56,189,248,0.72)";
+    case "supports":
+      return "rgba(34,197,94,0.64)";
+    default:
+      return "rgba(148,163,184,0.56)";
+  }
+}
+
+function graphPath(source: GraphPosition, target: GraphPosition): string {
+  const midX = (source.x + target.x) / 2;
+  const midY = (source.y + target.y) / 2;
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const curve = Math.min(10, Math.max(-10, (dx - dy) * 0.12));
+  return `M ${source.x} ${source.y} Q ${midX + curve} ${midY - curve} ${target.x} ${target.y}`;
 }
 
 function selectedOrFirst(
@@ -219,6 +426,16 @@ function ProvenancePanel({
               : "Not recorded"}
           </div>
         </div>
+        <div>
+          <div className="text-xs font-semibold text-muted">
+            Associated entities
+          </div>
+          <div className="mt-1 font-mono text-xs text-muted-strong">
+            {(experience.associatedEntityIds ?? []).length > 0
+              ? `${experience.associatedEntityIds?.length} linked`
+              : "Not recorded"}
+          </div>
+        </div>
       </div>
       {trajectoryTarget ? (
         <div className="mt-3 text-xs text-muted">
@@ -236,6 +453,156 @@ function ProvenancePanel({
           {experience.extractionReason}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+function ExperienceGraphPanel({
+  experiences,
+  selectedExperienceId,
+  onSelectExperience,
+}: {
+  experiences: CharacterExperienceRecord[];
+  selectedExperienceId: string | null;
+  onSelectExperience: (experienceId: string) => void;
+}) {
+  const graphExperiences = experiences.slice(0, 24);
+  const links = buildLocalGraphLinks(graphExperiences);
+  const positions = buildGraphPositions(graphExperiences);
+  const connectedIds = new Set(
+    links.flatMap((link) => [link.sourceId, link.targetId]),
+  );
+
+  return (
+    <div
+      data-testid="experience-graph-panel"
+      className="relative h-[24rem] overflow-hidden rounded-[2rem] border border-border/40 bg-[radial-gradient(circle_at_18%_16%,rgba(56,189,248,0.18),transparent_30%),radial-gradient(circle_at_82%_24%,rgba(245,158,11,0.16),transparent_28%),radial-gradient(circle_at_50%_92%,rgba(34,197,94,0.12),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.24),rgba(2,6,23,0.04))]"
+    >
+      <div className="pointer-events-none absolute inset-0 opacity-60 [background-image:linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:34px_34px]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(2,6,23,0.22)_72%)]" />
+      <svg
+        aria-hidden="true"
+        className="absolute inset-0 h-full w-full"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <filter
+            id="experience-graph-glow"
+            x="-60%"
+            y="-60%"
+            width="220%"
+            height="220%"
+          >
+            <feGaussianBlur stdDeviation="1.7" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        {links.map((link) => {
+          const source = positions.get(link.sourceId);
+          const target = positions.get(link.targetId);
+          if (!source || !target) return null;
+          return (
+            <path
+              key={`${link.sourceId}-${link.targetId}-${link.type}`}
+              d={graphPath(source, target)}
+              fill="none"
+              filter="url(#experience-graph-glow)"
+              stroke={graphLinkColor(link.type)}
+              strokeDasharray={link.type === "supersedes" ? "3 3" : undefined}
+              strokeLinecap="round"
+              strokeWidth={Math.max(0.22, link.strength * 0.8)}
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
+      </svg>
+
+      {graphExperiences.map((experience) => {
+        const position = positions.get(experience.id) ?? { x: 50, y: 50 };
+        const selected = experience.id === selectedExperienceId;
+        const review = needsReview(experience);
+        const color = graphNodeColor(experience);
+        const size = 1.9 + clampScore(experience.importance) * 2.7;
+        const confidence = clampScore(experience.confidence);
+        const hasEntities = (experience.associatedEntityIds ?? []).length > 0;
+        const connected = connectedIds.has(experience.id);
+        return (
+          <button
+            key={experience.id}
+            type="button"
+            aria-label={`Select experience: ${experience.learning || experience.result || experience.context}`}
+            data-testid={`experience-graph-node-${experience.id}`}
+            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full outline-none transition duration-200 hover:scale-125 focus-visible:ring-2 focus-visible:ring-accent"
+            style={{
+              left: `${position.x}%`,
+              top: `${position.y}%`,
+              width: `${size}rem`,
+              height: `${size}rem`,
+            }}
+            onClick={() => onSelectExperience(experience.id)}
+          >
+            <span
+              aria-hidden="true"
+              className="absolute rounded-full blur-xl"
+              style={{
+                inset: "-42%",
+                background: color.glow,
+                opacity: connected ? 0.88 : 0.48,
+              }}
+            />
+            {hasEntities ? (
+              <span
+                aria-hidden="true"
+                className="absolute rounded-full border"
+                style={{
+                  inset: "-28%",
+                  borderColor: color.ring,
+                  opacity: 0.45 + confidence * 0.25,
+                }}
+              />
+            ) : null}
+            <span
+              aria-hidden="true"
+              className="absolute rounded-full border"
+              style={{
+                inset: selected ? "-20%" : review ? "-12%" : "-5%",
+                borderColor: selected
+                  ? "rgb(255 255 255)"
+                  : review
+                    ? color.ring
+                    : "rgba(255,255,255,0.26)",
+                opacity: selected ? 0.95 : review ? 0.72 : 0.38,
+              }}
+            />
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 rounded-full border shadow-lg"
+              style={{
+                background: `radial-gradient(circle at 32% 28%, rgba(255,255,255,0.92), ${color.fill} 32%, rgba(15,23,42,0.88) 100%)`,
+                borderColor: color.ring,
+                boxShadow: selected
+                  ? `0 0 0 10px ${color.glow}, 0 0 42px ${color.glow}`
+                  : `0 0 ${connected ? 28 : 16}px ${color.glow}`,
+                opacity: 0.48 + confidence * 0.5,
+              }}
+            />
+            <span
+              aria-hidden="true"
+              className="absolute rounded-full bg-white/70"
+              style={{
+                top: "24%",
+                left: "27%",
+                width: "18%",
+                height: "18%",
+              }}
+            />
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -362,7 +729,10 @@ export function CharacterExperienceWorkspace({
         experience.extractionMethod,
         experience.extractionReason,
         ...(experience.relatedExperienceIds ?? []),
+        ...(experience.mergedExperienceIds ?? []),
         ...(experience.sourceMessageIds ?? []),
+        ...(experience.keywords ?? []),
+        ...(experience.associatedEntityIds ?? []),
         ...experience.tags,
       );
       return haystack.includes(query);
@@ -560,6 +930,12 @@ export function CharacterExperienceWorkspace({
           </label>
         </div>
       </div>
+
+      <ExperienceGraphPanel
+        experiences={filteredExperiences}
+        selectedExperienceId={visibleSelectedExperience?.id ?? null}
+        onSelectExperience={onSelectExperience}
+      />
 
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(19rem,25rem)_minmax(0,1fr)]">
         <div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden rounded-2xl border border-border/40 bg-bg/70">
@@ -779,6 +1155,44 @@ export function CharacterExperienceWorkspace({
                       </span>
                     )}
                   </div>
+                </div>
+                <div>
+                  <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
+                    Keywords
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {experienceKeywords(visibleSelectedExperience).length >
+                    0 ? (
+                      experienceKeywords(visibleSelectedExperience).map(
+                        (keyword) => (
+                          <span
+                            key={keyword}
+                            className="rounded-full border border-border/40 bg-bg/50 px-2 py-0.5 text-xs text-muted-strong"
+                          >
+                            {keyword}
+                          </span>
+                        ),
+                      )
+                    ) : (
+                      <span className="text-sm text-muted">
+                        No keywords recorded.
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted">
+                    Graph metadata
+                  </div>
+                  <p className="mt-2 text-sm text-muted-strong">
+                    {
+                      (visibleSelectedExperience.associatedEntityIds ?? [])
+                        .length
+                    }{" "}
+                    associated entities ·{" "}
+                    {visibleSelectedExperience.embeddingDimensions ?? 0}{" "}
+                    embedding dimensions
+                  </p>
                 </div>
               </div>
             </div>

@@ -27,7 +27,6 @@ declare module "@elizaos/capacitor-messages" {
 }
 
 declare module "@elizaos/capacitor-mobile-signals" {
-  export { MobileSignals } from "../../../native-plugins/mobile-signals/src/index";
   export type {
     MobileSignalsHealthSnapshot,
     MobileSignalsPermissionStatus,
@@ -35,6 +34,7 @@ declare module "@elizaos/capacitor-mobile-signals" {
     MobileSignalsSignal,
     MobileSignalsSnapshot,
   } from "../../../native-plugins/mobile-signals/src/definitions";
+  export { MobileSignals } from "../../../native-plugins/mobile-signals/src/index";
 }
 
 declare module "@elizaos/capacitor-phone" {

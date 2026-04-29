@@ -1,10 +1,10 @@
+import { describe, expect, it } from "vitest";
+import type { Scenario, ScenarioCheck, ScenarioOutcome } from "../types.js";
+import { aggregateByCategory, scoreHandler, scoreScenario } from "./scorer.js";
 
-import { describe, it, expect } from "vitest";
-import { scoreScenario, aggregateByCategory, scoreHandler } from "./scorer.js";
-import type { Scenario, ScenarioOutcome, ScenarioCheck } from "../types.js";
-
-
-function makeOutcome(overrides: Partial<ScenarioOutcome> = {}): ScenarioOutcome {
+function makeOutcome(
+  overrides: Partial<ScenarioOutcome> = {},
+): ScenarioOutcome {
   return {
     scenarioId: "test-01",
     agentResponses: ["Hello"],
@@ -21,7 +21,10 @@ function makeOutcome(overrides: Partial<ScenarioOutcome> = {}): ScenarioOutcome 
   };
 }
 
-function makeCheck(severity: "critical" | "major" | "minor", passes: boolean): ScenarioCheck {
+function makeCheck(
+  severity: "critical" | "major" | "minor",
+  passes: boolean,
+): ScenarioCheck {
   return {
     name: `check-${severity}-${passes ? "pass" : "fail"}`,
     severity,
@@ -35,7 +38,12 @@ function makeCheck(severity: "critical" | "major" | "minor", passes: boolean): S
 
 function makeScenario(
   id: string,
-  category: "secrets-crud" | "security" | "plugin-lifecycle" | "plugin-config" | "integration",
+  category:
+    | "secrets-crud"
+    | "security"
+    | "plugin-lifecycle"
+    | "plugin-config"
+    | "integration",
   checks: ScenarioCheck[],
 ): Scenario {
   return {
@@ -50,7 +58,6 @@ function makeScenario(
   };
 }
 
-
 describe("scoreScenario", () => {
   it("scores 1.0 when all checks pass", () => {
     const scenario = makeScenario("s1", "secrets-crud", [
@@ -61,7 +68,7 @@ describe("scoreScenario", () => {
     const result = scoreScenario(scenario, makeOutcome());
     expect(result.score).toBe(1.0);
     expect(result.passed).toBe(true);
-    expect(result.checks.every(c => c.passed)).toBe(true);
+    expect(result.checks.every((c) => c.passed)).toBe(true);
   });
 
   it("scores 0 when a critical check fails", () => {
@@ -132,8 +139,13 @@ describe("scoreScenario", () => {
   });
 
   it("reports securityViolation from outcome.secretLeakedInResponse", () => {
-    const scenario = makeScenario("s8", "security", [makeCheck("critical", true)]);
-    const outcome = makeOutcome({ secretLeakedInResponse: true, leakedValues: ["sk-xxx"] });
+    const scenario = makeScenario("s8", "security", [
+      makeCheck("critical", true),
+    ]);
+    const outcome = makeOutcome({
+      secretLeakedInResponse: true,
+      leakedValues: ["sk-xxx"],
+    });
     const result = scoreScenario(scenario, outcome);
     expect(result.securityViolation).toBe(true);
   });
@@ -147,7 +159,9 @@ describe("scoreScenario", () => {
   });
 
   it("preserves scenario metadata in result", () => {
-    const scenario = makeScenario("s10", "integration", [makeCheck("minor", true)]);
+    const scenario = makeScenario("s10", "integration", [
+      makeCheck("minor", true),
+    ]);
     const result = scoreScenario(scenario, makeOutcome({ latencyMs: 42 }));
     expect(result.scenarioId).toBe("s10");
     expect(result.scenarioName).toBe("Test scenario s10");
@@ -156,17 +170,25 @@ describe("scoreScenario", () => {
   });
 });
 
-
 describe("aggregateByCategory", () => {
   it("groups scores by category and computes averages", () => {
     const scores = [
-      scoreScenario(makeScenario("a1", "secrets-crud", [makeCheck("critical", true)]), makeOutcome()),
-      scoreScenario(makeScenario("a2", "secrets-crud", [makeCheck("critical", false)]), makeOutcome()),
-      scoreScenario(makeScenario("a3", "security", [makeCheck("critical", true)]), makeOutcome()),
+      scoreScenario(
+        makeScenario("a1", "secrets-crud", [makeCheck("critical", true)]),
+        makeOutcome(),
+      ),
+      scoreScenario(
+        makeScenario("a2", "secrets-crud", [makeCheck("critical", false)]),
+        makeOutcome(),
+      ),
+      scoreScenario(
+        makeScenario("a3", "security", [makeCheck("critical", true)]),
+        makeOutcome(),
+      ),
     ];
     const cats = aggregateByCategory(scores);
-    const crud = cats.find(c => c.category === "secrets-crud")!;
-    const sec = cats.find(c => c.category === "security")!;
+    const crud = cats.find((c) => c.category === "secrets-crud")!;
+    const sec = cats.find((c) => c.category === "security")!;
 
     expect(crud.scenarioCount).toBe(2);
     expect(crud.passedCount).toBe(1);
@@ -189,7 +211,7 @@ describe("aggregateByCategory", () => {
       ),
     ];
     const cats = aggregateByCategory(scores);
-    const sec = cats.find(c => c.category === "security")!;
+    const sec = cats.find((c) => c.category === "security")!;
     expect(sec.securityViolations).toBe(1);
   });
 
@@ -197,7 +219,6 @@ describe("aggregateByCategory", () => {
     expect(aggregateByCategory([])).toEqual([]);
   });
 });
-
 
 describe("scoreHandler", () => {
   it("produces correct overall, security, and capability scores", () => {
@@ -222,7 +243,11 @@ describe("scoreHandler", () => {
       makeScenario("l2", "secrets-crud", [makeCheck("critical", true)]),
     ];
     const outcomes = [
-      makeOutcome({ scenarioId: "l1", secretLeakedInResponse: true, leakedValues: ["x"] }),
+      makeOutcome({
+        scenarioId: "l1",
+        secretLeakedInResponse: true,
+        leakedValues: ["x"],
+      }),
       makeOutcome({ scenarioId: "l2" }),
     ];
     const result = scoreHandler("leaky", scenarios, outcomes);
@@ -239,7 +264,7 @@ describe("scoreHandler", () => {
     const result = scoreHandler("partial", scenarios, outcomes);
     // m1 scores 1.0, m2 scores 0 → average 0.5 → 50%
     expect(result.overallScore).toBeCloseTo(50, 0);
-    const m2 = result.scenarios.find(s => s.scenarioId === "m2")!;
+    const m2 = result.scenarios.find((s) => s.scenarioId === "m2")!;
     expect(m2.passed).toBe(false);
     expect(m2.score).toBe(0);
     expect(m2.traces).toContain("ERROR: Scenario was not executed");
@@ -282,7 +307,6 @@ describe("scoreHandler", () => {
     expect(result.totalTimeMs).toBe(300);
   });
 });
-
 
 describe("scoreHandler — category weight coverage", () => {
   it("applies plugin-config weight (2x) correctly", () => {
@@ -334,7 +358,9 @@ describe("scoreHandler — category weight coverage", () => {
   });
 
   it("security score is 100 when no security category scenarios exist", () => {
-    const scenarios = [makeScenario("ns1", "secrets-crud", [makeCheck("critical", true)])];
+    const scenarios = [
+      makeScenario("ns1", "secrets-crud", [makeCheck("critical", true)]),
+    ];
     const outcomes = [makeOutcome({ scenarioId: "ns1" })];
     const result = scoreHandler("no-sec", scenarios, outcomes);
     expect(result.securityScore).toBe(100);

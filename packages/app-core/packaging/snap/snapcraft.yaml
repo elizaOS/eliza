@@ -137,7 +137,7 @@ parts:
       # plugin workspaces we just removed. This has to scan every
       # surviving package.json, not just the root + packages/agent,
       # because package-level devDependencies such as app-core's
-      # plugin-agent-skills/plugin-plugin-manager refs also participate
+      # plugin-agent-skills workspace refs also participate
       # in Bun's workspace resolution.
       node -e '
         const fs = require("fs");

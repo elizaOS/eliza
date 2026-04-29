@@ -10,9 +10,9 @@
  */
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { req } from "../../../../test/helpers/http";
-import { isLiveTestEnabled } from "../../../../test/helpers/live-provider";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import { req } from "../../../../eliza/test/helpers/http";
+import { isLiveTestEnabled } from "../../../../eliza/test/helpers/live-provider";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
 try {
@@ -71,8 +71,7 @@ describeIf(CAN_RUN)("Wallet live E2E — real RPCs and real wallets", () => {
       expect(evmGen.status).toBe(200);
       expect(solGen.status).toBe(200);
     } catch (error) {
-      setupError =
-        error instanceof Error ? error : new Error(String(error));
+      setupError = error instanceof Error ? error : new Error(String(error));
     }
   }, 180_000);
 
@@ -190,14 +189,20 @@ describeIf(CAN_RUN)("Wallet live E2E — real RPCs and real wallets", () => {
         delaySeconds = (parsed.delaySeconds as number) ?? 10;
       } catch {
         // reason might be a plain string — check data directly
-        nonce = (nonceRes.data as Record<string, unknown>).nonce as string | undefined;
+        nonce = (nonceRes.data as Record<string, unknown>).nonce as
+          | string
+          | undefined;
       }
     } else {
-      nonce = (nonceRes.data as Record<string, unknown>).nonce as string | undefined;
+      nonce = (nonceRes.data as Record<string, unknown>).nonce as
+        | string
+        | undefined;
     }
 
     if (nonce) {
-      await new Promise((resolve) => setTimeout(resolve, (delaySeconds + 0.5) * 1000));
+      await new Promise((resolve) =>
+        setTimeout(resolve, (delaySeconds + 0.5) * 1000),
+      );
     }
 
     const { data: exported } = await req(port, "POST", "/api/wallet/export", {

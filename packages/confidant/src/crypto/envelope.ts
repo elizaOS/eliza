@@ -30,11 +30,7 @@ export interface Envelope {
   readonly ciphertext: string;
 }
 
-export function encrypt(
-  key: Buffer,
-  plaintext: string,
-  aad: string,
-): Envelope {
+export function encrypt(key: Buffer, plaintext: string, aad: string): Envelope {
   if (key.length !== KEY_BYTES) {
     throw new EnvelopeError(
       `master key must be ${KEY_BYTES} bytes, got ${key.length}`,
@@ -43,10 +39,7 @@ export function encrypt(
   const nonce = randomBytes(NONCE_BYTES);
   const cipher = createCipheriv("aes-256-gcm", key, nonce);
   cipher.setAAD(Buffer.from(aad, "utf8"));
-  const ct = Buffer.concat([
-    cipher.update(plaintext, "utf8"),
-    cipher.final(),
-  ]);
+  const ct = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return {
     ciphertext: [
@@ -77,11 +70,7 @@ export function decrypt(
   const nonceB64 = parts[1];
   const tagB64 = parts[2];
   const ctB64 = parts[3];
-  if (
-    nonceB64 === undefined ||
-    tagB64 === undefined ||
-    ctB64 === undefined
-  ) {
+  if (nonceB64 === undefined || tagB64 === undefined || ctB64 === undefined) {
     throw new EnvelopeError("malformed envelope");
   }
   const nonce = Buffer.from(nonceB64, "base64");

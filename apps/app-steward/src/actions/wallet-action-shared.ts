@@ -5,10 +5,7 @@
  * @module actions/wallet-action-shared
  */
 
-import {
-  resolveApiToken,
-  resolveDesktopApiPort,
-} from "@elizaos/shared";
+import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 
 /** Resolve the loopback API port for wallet action calls at runtime. */
 export function getWalletActionApiPort(): string {

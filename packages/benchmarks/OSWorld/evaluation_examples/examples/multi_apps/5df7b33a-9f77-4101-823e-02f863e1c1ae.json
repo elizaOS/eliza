@@ -28,10 +28,7 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "nautilus",
-          "/home/user/Desktop/book"
-        ]
+        "command": ["nautilus", "/home/user/Desktop/book"]
       }
     },
     {
@@ -42,10 +39,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "os",
-    "libreoffice_writer"
-  ],
+  "related_apps": ["os", "libreoffice_writer"],
   "evaluator": {
     "postconfig": [
       {

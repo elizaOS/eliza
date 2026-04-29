@@ -1,14 +1,14 @@
 /**
  * Full Eliza Runtime for Browser Extension
- * 
+ *
  * Based on examples/avatar/src/runtime/runtimeManager.ts
  */
 
 import {
   AgentRuntime,
   ChannelType,
-  createCharacter,
   type Content,
+  createCharacter,
   createMessageMemory,
   LLMMode,
   type Provider,
@@ -16,7 +16,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import anthropicPlugin from "@elizaos/plugin-anthropic";
-import { elizaClassicPlugin, getElizaGreeting } from "@elizaos/plugin-eliza-classic";
+import {
+  elizaClassicPlugin,
+  getElizaGreeting,
+} from "@elizaos/plugin-eliza-classic";
 import googleGenAIPlugin from "@elizaos/plugin-google-genai";
 import groqPlugin from "@elizaos/plugin-groq";
 import localdbPlugin from "@elizaos/plugin-localdb";
@@ -29,7 +32,9 @@ import type { ExtensionConfig, PageContent, ProviderMode } from "./types";
 // ============================================
 
 export type SendMessageResult = { responseText: string };
-export type SendMessageCallbacks = { onAssistantChunk?: (chunk: string) => void };
+export type SendMessageCallbacks = {
+  onAssistantChunk?: (chunk: string) => void;
+};
 
 type RuntimeBundle = {
   runtime: AgentRuntime;
@@ -54,7 +59,7 @@ Be concise and helpful. Focus on answering questions about the page content when
 // Storage Keys
 // ============================================
 
-const STORAGE_KEYS = { 
+const STORAGE_KEYS = {
   userId: "elizaos-extension:userId",
   roomId: "elizaos-extension:roomId",
 } as const;
@@ -69,14 +74,19 @@ let cachedScreenshot: string | null = null;
 let lastScreenshotHash: string | null = null;
 
 export function updatePageContent(content: PageContent | null): void {
-  console.log("[ElizaOS Runtime] updatePageContent called:", content ? {
-    title: content.title,
-    url: content.url,
-    contentLength: content.content?.length,
-    hasSelectedText: !!content.selectedText,
-    hasVisibleText: !!content.visibleText,
-  } : null);
-  
+  console.log(
+    "[ElizaOS Runtime] updatePageContent called:",
+    content
+      ? {
+          title: content.title,
+          url: content.url,
+          contentLength: content.content?.length,
+          hasSelectedText: !!content.selectedText,
+          hasVisibleText: !!content.visibleText,
+        }
+      : null,
+  );
+
   cachedPageContent = content;
   if (content?.selectedText) {
     cachedSelectedText = content.selectedText;
@@ -92,14 +102,14 @@ export function updateScreenshot(dataUrl: string | null): void {
     cachedScreenshot = null;
     return;
   }
-  
+
   // Simple hash to detect duplicate screenshots
   const hash = dataUrl.substring(dataUrl.length - 100);
   if (hash === lastScreenshotHash) {
     // Same screenshot, don't update
     return;
   }
-  
+
   lastScreenshotHash = hash;
   cachedScreenshot = dataUrl;
 }
@@ -118,9 +128,11 @@ const pageContentProvider: Provider = {
   description: "Current webpage content that the user is viewing",
   get: async () => {
     if (!cachedPageContent) {
-      return { text: "No page content available. The user may be on a browser page that cannot be read." };
+      return {
+        text: "No page content available. The user may be on a browser page that cannot be read.",
+      };
     }
-    
+
     let context = `## Current Webpage
 **Title:** ${cachedPageContent.title}
 **URL:** ${cachedPageContent.url}
@@ -182,15 +194,23 @@ function getOrCreateRoomId(): UUID {
 export function resolveEffectiveMode(config: ExtensionConfig): ProviderMode {
   switch (config.mode) {
     case "openai":
-      return (config.provider.openaiApiKey ?? "").trim() ? "openai" : "elizaClassic";
+      return (config.provider.openaiApiKey ?? "").trim()
+        ? "openai"
+        : "elizaClassic";
     case "anthropic":
-      return (config.provider.anthropicApiKey ?? "").trim() ? "anthropic" : "elizaClassic";
+      return (config.provider.anthropicApiKey ?? "").trim()
+        ? "anthropic"
+        : "elizaClassic";
     case "xai":
       return (config.provider.xaiApiKey ?? "").trim() ? "xai" : "elizaClassic";
     case "gemini":
-      return (config.provider.googleGenaiApiKey ?? "").trim() ? "gemini" : "elizaClassic";
+      return (config.provider.googleGenaiApiKey ?? "").trim()
+        ? "gemini"
+        : "elizaClassic";
     case "groq":
-      return (config.provider.groqApiKey ?? "").trim() ? "groq" : "elizaClassic";
+      return (config.provider.groqApiKey ?? "").trim()
+        ? "groq"
+        : "elizaClassic";
     case "elizaClassic":
       return "elizaClassic";
     default:
@@ -198,43 +218,92 @@ export function resolveEffectiveMode(config: ExtensionConfig): ProviderMode {
   }
 }
 
-function applySettings(runtime: AgentRuntime, config: ExtensionConfig, effectiveMode: ProviderMode): void {
+function applySettings(
+  runtime: AgentRuntime,
+  config: ExtensionConfig,
+  effectiveMode: ProviderMode,
+): void {
   runtime.setSetting("LLM_MODE", "DEFAULT");
   runtime.setSetting("CHECK_SHOULD_RESPOND", false);
 
   if (effectiveMode === "openai") {
     runtime.setSetting("OPENAI_ALLOW_BROWSER_API_KEY", "true");
-    runtime.setSetting("OPENAI_API_KEY", config.provider.openaiApiKey ?? "", true);
+    runtime.setSetting(
+      "OPENAI_API_KEY",
+      config.provider.openaiApiKey ?? "",
+      true,
+    );
     runtime.setSetting("OPENAI_BASE_URL", config.provider.openaiBaseUrl ?? "");
-    runtime.setSetting("OPENAI_SMALL_MODEL", config.provider.openaiSmallModel ?? "gpt-5-mini");
-    runtime.setSetting("OPENAI_LARGE_MODEL", config.provider.openaiLargeModel ?? "gpt-5");
+    runtime.setSetting(
+      "OPENAI_SMALL_MODEL",
+      config.provider.openaiSmallModel ?? "gpt-5-mini",
+    );
+    runtime.setSetting(
+      "OPENAI_LARGE_MODEL",
+      config.provider.openaiLargeModel ?? "gpt-5",
+    );
   }
 
   if (effectiveMode === "anthropic") {
-    runtime.setSetting("ANTHROPIC_API_KEY", config.provider.anthropicApiKey ?? "", true);
-    runtime.setSetting("ANTHROPIC_SMALL_MODEL", config.provider.anthropicSmallModel ?? "claude-haiku-4-5-20251001");
-    runtime.setSetting("ANTHROPIC_LARGE_MODEL", config.provider.anthropicLargeModel ?? "claude-sonnet-4-6");
+    runtime.setSetting(
+      "ANTHROPIC_API_KEY",
+      config.provider.anthropicApiKey ?? "",
+      true,
+    );
+    runtime.setSetting(
+      "ANTHROPIC_SMALL_MODEL",
+      config.provider.anthropicSmallModel ?? "claude-haiku-4-5-20251001",
+    );
+    runtime.setSetting(
+      "ANTHROPIC_LARGE_MODEL",
+      config.provider.anthropicLargeModel ?? "claude-sonnet-4-6",
+    );
   }
 
   if (effectiveMode === "xai") {
     runtime.setSetting("OPENAI_ALLOW_BROWSER_API_KEY", "true");
     runtime.setSetting("OPENAI_API_KEY", config.provider.xaiApiKey ?? "", true);
-    runtime.setSetting("OPENAI_BASE_URL", config.provider.xaiBaseUrl ?? "https://api.x.ai/v1");
-    runtime.setSetting("OPENAI_SMALL_MODEL", config.provider.xaiSmallModel ?? "grok-2-latest");
-    runtime.setSetting("OPENAI_LARGE_MODEL", config.provider.xaiLargeModel ?? "grok-2-latest");
+    runtime.setSetting(
+      "OPENAI_BASE_URL",
+      config.provider.xaiBaseUrl ?? "https://api.x.ai/v1",
+    );
+    runtime.setSetting(
+      "OPENAI_SMALL_MODEL",
+      config.provider.xaiSmallModel ?? "grok-2-latest",
+    );
+    runtime.setSetting(
+      "OPENAI_LARGE_MODEL",
+      config.provider.xaiLargeModel ?? "grok-2-latest",
+    );
   }
 
   if (effectiveMode === "gemini") {
-    runtime.setSetting("GOOGLE_GENERATIVE_AI_API_KEY", config.provider.googleGenaiApiKey ?? "", true);
-    runtime.setSetting("GOOGLE_SMALL_MODEL", config.provider.googleSmallModel ?? "gemini-1.5-flash");
-    runtime.setSetting("GOOGLE_LARGE_MODEL", config.provider.googleLargeModel ?? "gemini-1.5-pro");
+    runtime.setSetting(
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      config.provider.googleGenaiApiKey ?? "",
+      true,
+    );
+    runtime.setSetting(
+      "GOOGLE_SMALL_MODEL",
+      config.provider.googleSmallModel ?? "gemini-1.5-flash",
+    );
+    runtime.setSetting(
+      "GOOGLE_LARGE_MODEL",
+      config.provider.googleLargeModel ?? "gemini-1.5-pro",
+    );
   }
 
   if (effectiveMode === "groq") {
     runtime.setSetting("GROQ_API_KEY", config.provider.groqApiKey ?? "", true);
     runtime.setSetting("GROQ_BASE_URL", config.provider.groqBaseUrl ?? "");
-    runtime.setSetting("GROQ_SMALL_MODEL", config.provider.groqSmallModel ?? "llama-3.1-8b-instant");
-    runtime.setSetting("GROQ_LARGE_MODEL", config.provider.groqLargeModel ?? "llama-3.3-70b-versatile");
+    runtime.setSetting(
+      "GROQ_SMALL_MODEL",
+      config.provider.groqSmallModel ?? "llama-3.1-8b-instant",
+    );
+    runtime.setSetting(
+      "GROQ_LARGE_MODEL",
+      config.provider.groqLargeModel ?? "llama-3.3-70b-versatile",
+    );
   }
 }
 
@@ -257,7 +326,9 @@ let currentBundle: RuntimeBundle | null = null;
 let currentMode: ProviderMode | null = null;
 let initializing: Promise<RuntimeBundle> | null = null;
 
-export async function getOrCreateRuntime(config: ExtensionConfig): Promise<RuntimeBundle> {
+export async function getOrCreateRuntime(
+  config: ExtensionConfig,
+): Promise<RuntimeBundle> {
   const effectiveMode = resolveEffectiveMode(config);
 
   if (currentBundle && currentMode === effectiveMode) {
@@ -343,47 +414,60 @@ export function getGreetingText(effectiveMode: ProviderMode): string {
  */
 function buildMessageWithContext(userText: string): string {
   console.log("[ElizaOS Runtime] Building message with context...");
-  console.log("[ElizaOS Runtime] cachedPageContent:", cachedPageContent ? {
-    title: cachedPageContent.title,
-    url: cachedPageContent.url,
-    contentLength: cachedPageContent.content?.length,
-    hasVisibleText: !!cachedPageContent.visibleText,
-  } : null);
-  console.log("[ElizaOS Runtime] cachedSelectedText:", cachedSelectedText?.substring(0, 100));
-  
+  console.log(
+    "[ElizaOS Runtime] cachedPageContent:",
+    cachedPageContent
+      ? {
+          title: cachedPageContent.title,
+          url: cachedPageContent.url,
+          contentLength: cachedPageContent.content?.length,
+          hasVisibleText: !!cachedPageContent.visibleText,
+        }
+      : null,
+  );
+  console.log(
+    "[ElizaOS Runtime] cachedSelectedText:",
+    cachedSelectedText?.substring(0, 100),
+  );
+
   // Build context prefix
   let contextPrefix = "";
-  
+
   if (cachedPageContent && cachedPageContent.content) {
     contextPrefix += `[PAGE CONTEXT]\n`;
     contextPrefix += `Title: ${cachedPageContent.title}\n`;
     contextPrefix += `URL: ${cachedPageContent.url}\n`;
-    
+
     if (cachedSelectedText) {
       contextPrefix += `\nUser's Selected Text: "${cachedSelectedText}"\n`;
     }
-    
+
     if (cachedPageContent.visibleText) {
       contextPrefix += `\nCurrently Visible on Screen:\n${cachedPageContent.visibleText.substring(0, 2000)}\n`;
     }
-    
+
     // Include main content (truncated to fit context)
     const maxContentLength = 50000; // ~12k tokens
     const content = cachedPageContent.content.substring(0, maxContentLength);
     contextPrefix += `\nPage Content:\n${content}\n`;
-    
+
     if (cachedPageContent.content.length > maxContentLength) {
       contextPrefix += `[Content truncated...]\n`;
     }
-    
+
     contextPrefix += `[END PAGE CONTEXT]\n\n`;
   } else {
     console.warn("[ElizaOS Runtime] No page content available!");
   }
-  
+
   const result = contextPrefix + `User message: ${userText}`;
-  console.log("[ElizaOS Runtime] Final message length:", result.length, "Context prefix length:", contextPrefix.length);
-  
+  console.log(
+    "[ElizaOS Runtime] Final message length:",
+    result.length,
+    "Context prefix length:",
+    contextPrefix.length,
+  );
+
   return result;
 }
 
@@ -405,7 +489,11 @@ export async function sendMessage(
     id: uuidv4() as UUID,
     entityId: bundle.userId,
     roomId: bundle.roomId,
-    content: { text: fullText, source: "browser-extension", channelType: ChannelType.DM },
+    content: {
+      text: fullText,
+      source: "browser-extension",
+      channelType: ChannelType.DM,
+    },
   });
 
   let responseText = "";
@@ -415,7 +503,8 @@ export async function sendMessage(
     bundle.runtime,
     messageMemory,
     async (content: Content) => {
-      if (!streaming && typeof content.text === "string") responseText = content.text;
+      if (!streaming && typeof content.text === "string")
+        responseText = content.text;
       return [];
     },
     streaming

@@ -1,10 +1,10 @@
+import { describe, expect, it, vi } from "vitest";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarSummary,
   LifeOpsConnectorGrant,
 } from "../contracts/index.js";
-import { describe, expect, it, vi } from "vitest";
 import { ManagedGoogleClientError } from "./google-managed-client.js";
 import { LifeOpsService } from "./service.js";
 import { mergeAggregatedCalendarFeedEvents } from "./service-mixin-calendar.js";

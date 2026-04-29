@@ -1,6 +1,4 @@
-import {
-  DatabaseSync,
-} from "@elizaos/agent";
+import { DatabaseSync } from "@elizaos/agent";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   __internal,

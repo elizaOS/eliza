@@ -5,7 +5,7 @@
  * Reads JSON result files from all three runtimes and generates
  * a side-by-side comparison report with relative performance ratios.
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -109,9 +109,13 @@ function ratio(value: number, best: number): string {
 
 // ─── Find latest result file for each runtime ──────────────────────────────
 
-function findLatestResults(resultsDir: string): Map<RuntimeName, BenchmarkResult> {
+function findLatestResults(
+  resultsDir: string,
+): Map<RuntimeName, BenchmarkResult> {
   const results = new Map<RuntimeName, BenchmarkResult>();
-  const files = readdirSync(resultsDir).filter((f) => f.endsWith(".json") && f !== ".gitkeep");
+  const files = readdirSync(resultsDir).filter(
+    (f) => f.endsWith(".json") && f !== ".gitkeep",
+  );
 
   const runtimeFiles: Record<string, string[]> = {
     typescript: [],
@@ -150,13 +154,33 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
   // Header
   const first = results.get(runtimes[0])!;
-  console.log("╔══════════════════════════════════════════════════════════════════════════╗");
-  console.log("║                    Eliza Framework Benchmark Comparison                 ║");
-  console.log("╠══════════════════════════════════════════════════════════════════════════╣");
-  console.log(`║  Date: ${first.timestamp.split("T")[0]}                                                        ║`);
-  console.log(`║  System: ${first.system.os} ${first.system.arch}                                       ║`.slice(0, 76) + "║");
-  console.log(`║  CPUs: ${first.system.cpus} | RAM: ${first.system.memory_gb}GB                                              ║`.slice(0, 76) + "║");
-  console.log("╚══════════════════════════════════════════════════════════════════════════╝");
+  console.log(
+    "╔══════════════════════════════════════════════════════════════════════════╗",
+  );
+  console.log(
+    "║                    Eliza Framework Benchmark Comparison                 ║",
+  );
+  console.log(
+    "╠══════════════════════════════════════════════════════════════════════════╣",
+  );
+  console.log(
+    `║  Date: ${first.timestamp.split("T")[0]}                                                        ║`,
+  );
+  console.log(
+    `║  System: ${first.system.os} ${first.system.arch}                                       ║`.slice(
+      0,
+      76,
+    ) + "║",
+  );
+  console.log(
+    `║  CPUs: ${first.system.cpus} | RAM: ${first.system.memory_gb}GB                                              ║`.slice(
+      0,
+      76,
+    ) + "║",
+  );
+  console.log(
+    "╚══════════════════════════════════════════════════════════════════════════╝",
+  );
   console.log();
 
   // Runtime versions
@@ -205,61 +229,103 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
     const activeRuntimes = Array.from(scenarioResults.keys());
 
-    console.log(`━━━ ${scenarioId} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`.slice(0, 72));
+    console.log(
+      `━━━ ${scenarioId} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`.slice(
+        0,
+        72,
+      ),
+    );
 
     // Table header
-    const header = pad("Metric", METRIC_W) + activeRuntimes.map((rt) => rpad(rt, COL_W)).join("  ");
+    const header =
+      pad("Metric", METRIC_W) +
+      activeRuntimes.map((rt) => rpad(rt, COL_W)).join("  ");
     console.log(header);
     console.log("─".repeat(header.length));
 
     // Latency metrics
-    const avgValues = activeRuntimes.map((rt) => scenarioResults.get(rt)!.latency.avg_ms);
+    const avgValues = activeRuntimes.map(
+      (rt) => scenarioResults.get(rt)!.latency.avg_ms,
+    );
     const bestAvg = Math.min(...avgValues.filter((v) => v > 0));
 
-    const p95Values = activeRuntimes.map((rt) => scenarioResults.get(rt)!.latency.p95_ms);
+    const p95Values = activeRuntimes.map(
+      (rt) => scenarioResults.get(rt)!.latency.p95_ms,
+    );
     const bestP95 = Math.min(...p95Values.filter((v) => v > 0));
 
-    const p99Values = activeRuntimes.map((rt) => scenarioResults.get(rt)!.latency.p99_ms);
+    const p99Values = activeRuntimes.map(
+      (rt) => scenarioResults.get(rt)!.latency.p99_ms,
+    );
     const bestP99 = Math.min(...p99Values.filter((v) => v > 0));
 
     console.log(
       pad("Avg Latency", METRIC_W) +
         activeRuntimes
-          .map((rt, i) => rpad(`${formatMs(avgValues[i])} (${ratio(avgValues[i], bestAvg)})`, COL_W))
+          .map((rt, i) =>
+            rpad(
+              `${formatMs(avgValues[i])} (${ratio(avgValues[i], bestAvg)})`,
+              COL_W,
+            ),
+          )
           .join("  "),
     );
     console.log(
       pad("P95 Latency", METRIC_W) +
         activeRuntimes
-          .map((rt, i) => rpad(`${formatMs(p95Values[i])} (${ratio(p95Values[i], bestP95)})`, COL_W))
+          .map((rt, i) =>
+            rpad(
+              `${formatMs(p95Values[i])} (${ratio(p95Values[i], bestP95)})`,
+              COL_W,
+            ),
+          )
           .join("  "),
     );
     console.log(
       pad("P99 Latency", METRIC_W) +
         activeRuntimes
-          .map((rt, i) => rpad(`${formatMs(p99Values[i])} (${ratio(p99Values[i], bestP99)})`, COL_W))
+          .map((rt, i) =>
+            rpad(
+              `${formatMs(p99Values[i])} (${ratio(p99Values[i], bestP99)})`,
+              COL_W,
+            ),
+          )
           .join("  "),
     );
 
     // Throughput
-    const tpValues = activeRuntimes.map((rt) => scenarioResults.get(rt)!.throughput.messages_per_second);
+    const tpValues = activeRuntimes.map(
+      (rt) => scenarioResults.get(rt)!.throughput.messages_per_second,
+    );
     const bestTp = Math.max(...tpValues.filter((v) => v > 0));
 
     console.log(
       pad("Throughput (msg/s)", METRIC_W) +
         activeRuntimes
-          .map((rt, i) => rpad(`${formatMsgPerSec(tpValues[i])} (${ratio(bestTp, tpValues[i])})`, COL_W))
+          .map((rt, i) =>
+            rpad(
+              `${formatMsgPerSec(tpValues[i])} (${ratio(bestTp, tpValues[i])})`,
+              COL_W,
+            ),
+          )
           .join("  "),
     );
 
     // Memory
-    const memValues = activeRuntimes.map((rt) => scenarioResults.get(rt)!.resources.memory_rss_peak_mb);
+    const memValues = activeRuntimes.map(
+      (rt) => scenarioResults.get(rt)!.resources.memory_rss_peak_mb,
+    );
     const bestMem = Math.min(...memValues.filter((v) => v > 0));
 
     console.log(
       pad("Peak RSS", METRIC_W) +
         activeRuntimes
-          .map((rt, i) => rpad(`${formatMb(memValues[i])} (${ratio(memValues[i], bestMem)})`, COL_W))
+          .map((rt, i) =>
+            rpad(
+              `${formatMb(memValues[i])} (${ratio(memValues[i], bestMem)})`,
+              COL_W,
+            ),
+          )
           .join("  "),
     );
 
@@ -279,12 +345,16 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
       ];
 
       for (const [label, key] of pipelineMetrics) {
-        const vals = activeRuntimes.map((rt) => scenarioResults.get(rt)!.pipeline[key] as number);
+        const vals = activeRuntimes.map(
+          (rt) => scenarioResults.get(rt)!.pipeline[key] as number,
+        );
         if (vals.every((v) => v === 0)) continue;
         const best = Math.min(...vals.filter((v) => v > 0));
         console.log(
           pad(label, METRIC_W) +
-            activeRuntimes.map((_rt, i) => rpad(formatMs(vals[i]), COL_W)).join("  "),
+            activeRuntimes
+              .map((_rt, i) => rpad(formatMs(vals[i]), COL_W))
+              .join("  "),
         );
       }
     }
@@ -294,7 +364,9 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
   // ─── Category winners ───────────────────────────────────────────────────
 
-  console.log("═══ Category Winners ═══════════════════════════════════════════════════");
+  console.log(
+    "═══ Category Winners ═══════════════════════════════════════════════════",
+  );
 
   const categories: Record<string, RuntimeName | "tie"> = {};
 
@@ -319,7 +391,8 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
     let bestRt: RuntimeName = runtimes[0];
     let bestVal = 0;
     for (const rt of runtimes) {
-      const val = results.get(rt)!.scenarios[burst].throughput.messages_per_second;
+      const val =
+        results.get(rt)!.scenarios[burst].throughput.messages_per_second;
       if (val > bestVal) {
         bestVal = val;
         bestRt = rt;
@@ -333,7 +406,8 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
     let bestRt: RuntimeName = runtimes[0];
     let bestVal = Infinity;
     for (const rt of runtimes) {
-      const val = results.get(rt)!.scenarios[singleMsg].resources.memory_rss_peak_mb;
+      const val =
+        results.get(rt)!.scenarios[singleMsg].resources.memory_rss_peak_mb;
       if (val > 0 && val < bestVal) {
         bestVal = val;
         bestRt = rt;
@@ -367,8 +441,9 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
-const resultsDir = args.find((a) => a.startsWith("--dir="))?.split("=")[1]
-  ?? resolve(import.meta.dir, "results");
+const resultsDir =
+  args.find((a) => a.startsWith("--dir="))?.split("=")[1] ??
+  resolve(import.meta.dir, "results");
 
 const results = findLatestResults(resultsDir);
 printComparison(results);

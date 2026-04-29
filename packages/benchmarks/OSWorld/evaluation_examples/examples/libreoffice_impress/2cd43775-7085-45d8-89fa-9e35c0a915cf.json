@@ -7,17 +7,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "libreoffice",
-          "--impress"
-        ]
+        "command": ["libreoffice", "--impress"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_impress"
-  ],
+  "related_apps": ["libreoffice_impress"],
   "evaluator": {
     "func": "check_auto_saving_time",
     "result": {

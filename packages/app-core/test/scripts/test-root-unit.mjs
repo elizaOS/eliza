@@ -110,8 +110,7 @@ const workspaceTestFiles = collectTestFiles(
   "src",
   "scripts",
   "apps/chrome-extension",
-  "test/helpers",
-  "test/format-error.test.ts",
+  "eliza/test/helpers",
 );
 
 const unitShards = [
@@ -158,7 +157,7 @@ for (const shard of unitShards) {
       "./node_modules/.bin/vitest",
       "run",
       "--config",
-      "test/vitest/default.config.ts",
+      "eliza/test/vitest/default.config.ts",
       "--reporter=dot",
       ...shard.patterns,
     ],

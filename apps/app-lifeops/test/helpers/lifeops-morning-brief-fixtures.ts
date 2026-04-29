@@ -6,23 +6,16 @@ import {
   type PluginModuleShape,
   resolveOAuthDir,
 } from "@elizaos/agent";
-import type {
-  AgentRuntime,
-  Memory,
-  Plugin,
-  UUID,
-} from "@elizaos/core";
+import type { AgentRuntime, Memory, Plugin, UUID } from "@elizaos/core";
 import { ChannelType, createMessageMemory, logger } from "@elizaos/core";
-import {
-  createApprovalQueue,
-} from "../../src/lifeops/approval-queue.js";
+import { InboxTriageRepository } from "../../src/inbox/repository.js";
+import type { DeferredInboxDraft } from "../../src/inbox/types.js";
+import { createApprovalQueue } from "../../src/lifeops/approval-queue.js";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "../../src/lifeops/repository.js";
-import { InboxTriageRepository } from "../../src/inbox/repository.js";
-import type { DeferredInboxDraft } from "../../src/inbox/types.js";
 import { LifeOpsService } from "../../src/lifeops/service.js";
 
 export const GOOGLE_CLIENT_ID = "assistant-user-journeys-google-client";
@@ -42,7 +35,10 @@ export function normalizeText(text: string): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-export function containsAllFragments(text: string, fragments: string[]): boolean {
+export function containsAllFragments(
+  text: string,
+  fragments: string[],
+): boolean {
   const normalized = normalizeText(text);
   return fragments.every((fragment) =>
     normalized.includes(normalizeText(fragment)),
@@ -212,8 +208,7 @@ export async function seedMorningBriefFixtures(args: {
         entityName: "Eliza",
       },
       content: {
-        text:
-          "Pending draft for Marco Alvarez is still waiting for sign-off about the investor diligence packet.",
+        text: "Pending draft for Marco Alvarez is still waiting for sign-off about the investor diligence packet.",
         source: "assistant",
         channelType: ChannelType.DM,
         inboxDraft: pendingDraft,
@@ -233,8 +228,7 @@ export async function seedMorningBriefFixtures(args: {
       agentId: args.runtime.agentId,
       roomId: args.dmRoomId,
       content: {
-        text:
-          "Follow-up still overdue: Frontier Tower needs the missed walkthrough repaired and rescheduled.",
+        text: "Follow-up still overdue: Frontier Tower needs the missed walkthrough repaired and rescheduled.",
         type: "followup_overdue_digest",
         source: "followup-tracker",
         data: {
@@ -261,8 +255,7 @@ export async function seedMorningBriefFixtures(args: {
       agentId: args.runtime.agentId,
       roomId: args.dmRoomId,
       content: {
-        text:
-          "Document blockers: Clinic intake packet still needs signature and the investor diligence packet still needs review before noon.",
+        text: "Document blockers: Clinic intake packet still needs signature and the investor diligence packet still needs review before noon.",
         source: "assistant",
       },
       createdAt: Date.now() - 10_000,
@@ -334,38 +327,36 @@ async function seedGoogleConnector(
     { encoding: "utf-8", mode: 0o600 },
   );
 
-  await repository.upsertConnectorGrant(
-    {
-      ...createLifeOpsConnectorGrant({
-        agentId,
-        provider: "google",
-        side: "owner",
-        identity: {
-          email: "shawmakesmagic@gmail.com",
-          name: "Shaw",
-        },
-        grantedScopes: [
-          "openid",
-          "email",
-          "profile",
-          "https://www.googleapis.com/auth/calendar.readonly",
-          "https://www.googleapis.com/auth/gmail.readonly",
-          "https://www.googleapis.com/auth/drive.readonly",
-        ],
-        capabilities: [
-          "google.basic_identity",
-          "google.calendar.read",
-          "google.gmail.triage",
-          "google.drive.read",
-        ],
-        tokenRef,
-        mode: "local",
-        metadata: {},
-        lastRefreshAt: nowIso,
-      }),
-      id: grantId,
-    },
-  );
+  await repository.upsertConnectorGrant({
+    ...createLifeOpsConnectorGrant({
+      agentId,
+      provider: "google",
+      side: "owner",
+      identity: {
+        email: "shawmakesmagic@gmail.com",
+        name: "Shaw",
+      },
+      grantedScopes: [
+        "openid",
+        "email",
+        "profile",
+        "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/gmail.readonly",
+        "https://www.googleapis.com/auth/drive.readonly",
+      ],
+      capabilities: [
+        "google.basic_identity",
+        "google.calendar.read",
+        "google.gmail.triage",
+        "google.drive.read",
+      ],
+      tokenRef,
+      mode: "local",
+      metadata: {},
+      lastRefreshAt: nowIso,
+    }),
+    id: grantId,
+  });
 
   return repository;
 }
@@ -532,7 +523,8 @@ async function seedUnreadChannels(
     classification: "urgent",
     urgency: "high",
     confidence: 0.96,
-    snippet: "Clinic intake packet still needs your signature before Thursday morning.",
+    snippet:
+      "Clinic intake packet still needs your signature before Thursday morning.",
     senderName: "Northside Clinic",
     triageReasoning: "Document blocker tied to an upcoming appointment.",
     suggestedResponse: "I will review and sign the packet today.",

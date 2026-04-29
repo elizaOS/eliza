@@ -1,5 +1,5 @@
+import { type VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import * as THREE from "three";
-import { VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 export type VrmEngineState = {
@@ -54,7 +54,9 @@ export class VrmEngine {
   private forceFaceCameraFlip = true;
 
   // Camera animation state
-  private cameraAnimation: CameraAnimationConfig = { ...DEFAULT_CAMERA_ANIMATION };
+  private cameraAnimation: CameraAnimationConfig = {
+    ...DEFAULT_CAMERA_ANIMATION,
+  };
   private baseCameraPosition = new THREE.Vector3();
   private elapsedTime = 0;
 
@@ -73,7 +75,11 @@ export class VrmEngine {
     this.onUpdate = onUpdate;
     this.loadingAborted = false;
 
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    const renderer = new THREE.WebGLRenderer({
+      canvas,
+      alpha: true,
+      antialias: true,
+    });
     renderer.setPixelRatio(window.devicePixelRatio);
     renderer.setClearColor(0x000000, 0);
     this.renderer = renderer;
@@ -192,10 +198,19 @@ export class VrmEngine {
     // three-vrm can emit noisy warnings for some VRMs (e.g. duplicate expression entries).
     // Filter those during load so the console stays usable.
     const originalWarn = console.warn;
-    type ConsoleArg = string | number | boolean | bigint | symbol | null | undefined | object;
+    type ConsoleArg =
+      | string
+      | number
+      | boolean
+      | bigint
+      | symbol
+      | null
+      | undefined
+      | object;
     console.warn = (...args: ConsoleArg[]) => {
       const msg = args.map((a) => String(a)).join(" ");
-      if (msg.includes("VRMExpressionLoaderPlugin: An expression preset")) return;
+      if (msg.includes("VRMExpressionLoaderPlugin: An expression preset"))
+        return;
       originalWarn(...args);
     };
 
@@ -297,18 +312,19 @@ export class VrmEngine {
         Math.sin(t * 0.3) * 0.2;
 
       const swayZ =
-        Math.sin(t * 0.4 + 1.0) * 0.4 +
-        Math.sin(t * 0.9 + 2.0) * 0.3;
+        Math.sin(t * 0.4 + 1.0) * 0.4 + Math.sin(t * 0.9 + 2.0) * 0.3;
 
       camera.position.x =
         this.baseCameraPosition.x + swayX * this.cameraAnimation.swayAmplitude;
       camera.position.y =
         this.baseCameraPosition.y + bobY * this.cameraAnimation.bobAmplitude;
       camera.position.z =
-        this.baseCameraPosition.z + swayZ * this.cameraAnimation.swayAmplitude * 0.5;
+        this.baseCameraPosition.z +
+        swayZ * this.cameraAnimation.swayAmplitude * 0.5;
 
       // Subtle rotation for more life
-      const rotX = Math.sin(t * 0.6 + 0.3) * this.cameraAnimation.rotationAmplitude * 0.5;
+      const rotX =
+        Math.sin(t * 0.6 + 0.3) * this.cameraAnimation.rotationAmplitude * 0.5;
       const rotY = Math.sin(t * 0.4) * this.cameraAnimation.rotationAmplitude;
 
       camera.rotation.x = rotX;
@@ -367,7 +383,9 @@ export class VrmEngine {
     // Check if aborted before starting
     if (this.loadingAborted) return;
 
-    const { retargetMixamoGltfToVrm } = await import("../vrm/retargetMixamoGltfToVrm");
+    const { retargetMixamoGltfToVrm } = await import(
+      "../vrm/retargetMixamoGltfToVrm"
+    );
 
     // Check again after dynamic import
     if (this.loadingAborted || this.vrm !== vrm) return;
@@ -444,4 +462,3 @@ export class VrmEngine {
     }
   }
 }
-

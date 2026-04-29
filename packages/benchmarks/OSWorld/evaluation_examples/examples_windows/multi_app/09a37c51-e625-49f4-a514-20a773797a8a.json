@@ -27,11 +27,7 @@
     }
   ],
   "trajectory": "trajectories/09a37c51-e625-49f4-a514-20a773797a8a",
-  "related_apps": [
-    "word",
-    "gimp",
-    "os"
-  ],
+  "related_apps": ["word", "gimp", "os"],
   "evaluator": {
     "func": "compare_images",
     "expected": {

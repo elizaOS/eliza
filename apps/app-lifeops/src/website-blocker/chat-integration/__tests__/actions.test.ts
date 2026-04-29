@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionResult, HandlerOptions, Memory, UUID } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { defaultSelfControlStatus } = vi.hoisted(() => ({
   defaultSelfControlStatus: {
@@ -38,15 +38,15 @@ vi.mock("../../engine.js", async (importOriginal) => {
   };
 });
 
+import * as websiteBlockerEngine from "../../engine.js";
 import { blockUntilTaskCompleteAction } from "../actions/blockUntilTaskComplete.js";
 import { listActiveBlocksAction } from "../actions/listActiveBlocks.js";
 import { releaseBlockAction } from "../actions/releaseBlock.js";
 import { BlockRuleReader, BlockRuleWriter } from "../block-rule-service.js";
-import * as websiteBlockerEngine from "../../engine.js";
 import {
+  type BlockRuleTestHarness,
   createBlockRuleHarness,
   seedTodo,
-  type BlockRuleTestHarness,
 } from "./test-harness.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-00000000cccc" as UUID;
@@ -68,7 +68,11 @@ function isActionResult(value: unknown): value is ActionResult {
 }
 
 function actionData(result: unknown): Record<string, unknown> {
-  if (isActionResult(result) && result.data && typeof result.data === "object") {
+  if (
+    isActionResult(result) &&
+    result.data &&
+    typeof result.data === "object"
+  ) {
     return result.data as Record<string, unknown>;
   }
   return {};
@@ -236,7 +240,9 @@ describe("T7g actions", () => {
       { parameters: { ruleId: harshId, confirmed: true } } as HandlerOptions,
     );
     expect((harshAttempt as ActionResult).success).toBe(false);
-    expect((harshAttempt as ActionResult).text ?? "").toMatch(/harsh_no_bypass/);
+    expect((harshAttempt as ActionResult).text ?? "").toMatch(
+      /harsh_no_bypass/,
+    );
 
     const ok = await releaseBlockAction.handler(
       harness.runtime,

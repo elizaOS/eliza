@@ -17,7 +17,10 @@ const ACTION_NAME = "LIST_REMOTE_SESSIONS";
 export const listRemoteSessionsAction: Action = {
   name: ACTION_NAME,
   similes: ["REMOTE_SESSIONS", "ACTIVE_REMOTE_SESSIONS", "REMOTE_LIST"],
-  description: "List currently active remote-control sessions.",
+  description:
+    "List active T9a remote-control sessions with ids, statuses, ingress URLs, and local-mode hints. Owner-only control-plane visibility before revoke.",
+  descriptionCompressed:
+    "List active remote-control sessions ids status ingress owner",
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
     hasOwnerAccess(runtime, message),

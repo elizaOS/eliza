@@ -454,6 +454,95 @@ function escapePythonTripleQuoted(content) {
   return content.replace(/\\/g, "\\\\").replace(/"""/g, '\\"\\"\\"');
 }
 
+/**
+ * Whitespace-normalize descriptions; truncate to 160 chars (matches Python
+ * `compress_prompt_description`).
+ * @param {string} description
+ * @returns {string}
+ */
+function compressPromptDescription(description) {
+  if (typeof description !== "string" || !description.trim()) {
+    return "";
+  }
+  const compact = description.trim().split(/\s+/).filter(Boolean).join(" ");
+  if (compact.length <= 160) {
+    return compact;
+  }
+  return `${compact.slice(0, 157).replace(/\s+$/, "")}...`;
+}
+
+/**
+ * @param {Record<string, unknown>} action
+ */
+function normalizeActionDoc(action) {
+  if (typeof action.description === "string") {
+    if (
+      action.descriptionCompressed === undefined ||
+      action.descriptionCompressed === ""
+    ) {
+      action.descriptionCompressed = compressPromptDescription(
+        action.description,
+      );
+    }
+  }
+  if (!Array.isArray(action.parameters)) {
+    return;
+  }
+  for (const p of action.parameters) {
+    if (!p || typeof p !== "object") {
+      continue;
+    }
+    const param = /** @type {Record<string, unknown>} */ (p);
+    if (typeof param.description !== "string") {
+      continue;
+    }
+    if (
+      param.descriptionCompressed === undefined ||
+      param.descriptionCompressed === ""
+    ) {
+      param.descriptionCompressed = compressPromptDescription(
+        param.description,
+      );
+    }
+  }
+}
+
+/**
+ * @param {Record<string, unknown>} provider
+ */
+function normalizeProviderDoc(provider) {
+  if (typeof provider.description !== "string") {
+    return;
+  }
+  if (
+    provider.descriptionCompressed === undefined ||
+    provider.descriptionCompressed === ""
+  ) {
+    provider.descriptionCompressed = compressPromptDescription(
+      provider.description,
+    );
+  }
+}
+
+/**
+ * @param {{ core: { items: unknown[] }; all: { items: unknown[] } }} actionsSpec
+ * @param {{ core: { items: unknown[] }; all: { items: unknown[] } }} providersSpec
+ */
+function normalizeSpecsInPlace(actionsSpec, providersSpec) {
+  for (const action of actionsSpec.core.items) {
+    normalizeActionDoc(/** @type {Record<string, unknown>} */ (action));
+  }
+  for (const action of actionsSpec.all.items) {
+    normalizeActionDoc(/** @type {Record<string, unknown>} */ (action));
+  }
+  for (const p of providersSpec.core.items) {
+    normalizeProviderDoc(/** @type {Record<string, unknown>} */ (p));
+  }
+  for (const p of providersSpec.all.items) {
+    normalizeProviderDoc(/** @type {Record<string, unknown>} */ (p));
+  }
+}
+
 function generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec) {
   const outDir = path.join(
     REPO_ROOT,
@@ -923,6 +1012,8 @@ function main() {
     CORE_EVALUATORS_SPEC_PATH,
     "evaluators",
   );
+
+  normalizeSpecsInPlace(actionsSpec, providersSpec);
 
   generateTypeScript(actionsSpec, providersSpec, evaluatorsSpec);
   generatePython(actionsSpec, providersSpec, evaluatorsSpec);

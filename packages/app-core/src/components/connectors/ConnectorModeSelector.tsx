@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApp } from "../../state";
 
 export type ConnectorMode = {
@@ -120,7 +120,7 @@ export function modeToSetupPluginId(
 ): string | null {
   const map: Record<string, Record<string, string>> = {
     discord: { local: "discordlocal", bot: "discord", managed: "discord" },
-    telegram: { bot: "telegram", account: "telegram" },
+    telegram: { bot: "telegram", account: "telegramaccount" },
     signal: { qr: "signal" },
     whatsapp: { qr: "whatsapp", business: "whatsapp" },
     imessage: {
@@ -130,6 +130,21 @@ export function modeToSetupPluginId(
     },
   };
   return map[connectorId]?.[modeId] ?? null;
+}
+
+export function getDefaultConnectorModeId(
+  connectorId: string,
+  modes: ConnectorMode[],
+): string {
+  const preferredDefaults: Record<string, string> = {
+    discord: "bot",
+    telegram: "bot",
+  };
+  const preferred = preferredDefaults[connectorId];
+  if (preferred && modes.some((mode) => mode.id === preferred)) {
+    return preferred;
+  }
+  return modes[0]?.id ?? "";
 }
 
 export function ConnectorModeSelector({
@@ -160,6 +175,7 @@ export function ConnectorModeSelector({
           <button
             key={mode.id}
             type="button"
+            data-testid={`connector-mode-${connectorId}-${mode.id}`}
             onClick={() => onModeChange(mode.id)}
             className={`rounded-xl border px-3 py-1.5 text-xs-tight font-medium transition-all ${
               selectedMode === mode.id
@@ -190,8 +206,14 @@ export function useConnectorMode(
   options?: { elizaCloudConnected?: boolean },
 ) {
   const modes = getConnectorModes(connectorId, options);
-  const defaultMode = modes[0]?.id ?? "";
+  const defaultMode = getDefaultConnectorModeId(connectorId, modes);
   const [selectedMode, setSelectedMode] = useState(defaultMode);
+
+  useEffect(() => {
+    if (!modes.some((mode) => mode.id === selectedMode)) {
+      setSelectedMode(defaultMode);
+    }
+  }, [defaultMode, modes, selectedMode]);
 
   return {
     modes,

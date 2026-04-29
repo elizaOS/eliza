@@ -18,13 +18,12 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-
+import { ConversationHarness } from "../helpers/conversation-harness.ts";
 import {
   isTrajectoryCaptureEnabled,
   RecordingHarness,
   type TrajectoryRecord,
 } from "../helpers/trajectory-harness.ts";
-import { ConversationHarness } from "../helpers/conversation-harness.ts";
 import type { ActionBenchmarkCase } from "./action-selection-cases.ts";
 
 export type ActionFailureMode =
@@ -597,7 +596,7 @@ async function seedBenchmarkCaseFixtures(
   try {
     const seedModule = (await import(
       // @ts-expect-error — path resolved at runtime relative to repo root
-      "../../../../../test/mocks/helpers/seed-grants.ts"
+      "../../../../../eliza/test/mocks/helpers/seed-grants.ts"
     )) as {
       seedGoogleConnectorGrant: (
         runtime: AgentRuntime,
@@ -644,7 +643,7 @@ async function seedBenchmarkCaseFixtures(
 
     const seedModule = (await import(
       // @ts-expect-error — path resolved at runtime relative to repo root
-      "../../../../../test/mocks/helpers/seed-grants.ts"
+      "../../../../../eliza/test/mocks/helpers/seed-grants.ts"
     )) as {
       seedXConnectorGrant: (
         runtime: AgentRuntime,
@@ -1201,9 +1200,7 @@ export function formatBenchmarkReportMarkdown(
         report.reliability.length === 0
           ? 0
           : (bucket.length / report.reliability.length) * 100;
-      lines.push(
-        `| ${i}/${N} | ${bucket.length} | ${pct.toFixed(1)}% |`,
-      );
+      lines.push(`| ${i}/${N} | ${bucket.length} | ${pct.toFixed(1)}% |`);
     }
     lines.push("");
     const flaky = report.reliability.filter(
@@ -1216,9 +1213,7 @@ export function formatBenchmarkReportMarkdown(
       lines.push("| Case | Expected | Actuals across runs |");
       lines.push("| --- | --- | --- |");
       for (const r of broken) {
-        const actuals = r.actuals
-          .map((a) => a ?? "(none)")
-          .join(" \\| ");
+        const actuals = r.actuals.map((a) => a ?? "(none)").join(" \\| ");
         lines.push(
           `| ${r.caseId} | ${r.expectedAction ?? "(none)"} | ${actuals} |`,
         );
@@ -1231,9 +1226,7 @@ export function formatBenchmarkReportMarkdown(
       lines.push("| Case | Pass-rate | Expected | Actuals across runs |");
       lines.push("| --- | ---: | --- | --- |");
       for (const r of flaky) {
-        const actuals = r.actuals
-          .map((a) => a ?? "(none)")
-          .join(" \\| ");
+        const actuals = r.actuals.map((a) => a ?? "(none)").join(" \\| ");
         lines.push(
           `| ${r.caseId} | ${r.passes}/${r.runs} | ${r.expectedAction ?? "(none)"} | ${actuals} |`,
         );
