@@ -182,7 +182,7 @@ function DeltaBadge({ percent }: { percent: number | null }) {
 function HistoryStrip({
   days,
 }: {
-  days: Array<{ date: Date; totalSeconds: number }>;
+  days: Array<{ date: string; label: string; totalSeconds: number }>;
 }) {
   const maxSeconds = days.reduce(
     (max, day) => (day.totalSeconds > max ? day.totalSeconds : max),
@@ -195,9 +195,9 @@ function HistoryStrip({
         const heightPct = Math.max(2, Math.round(ratio * 100));
         return (
           <div
-            key={day.date.toISOString()}
+            key={day.date}
             className="flex min-w-[18px] flex-1 flex-col items-center gap-1"
-            title={`${formatDayLabel(day.date)} - ${formatDurationSeconds(day.totalSeconds)}`}
+            title={`${day.label} - ${formatDurationSeconds(day.totalSeconds)}`}
           >
             <div className="flex h-20 w-full items-end">
               <div
@@ -206,7 +206,7 @@ function HistoryStrip({
               />
             </div>
             <div className="text-[10px] font-medium tabular-nums text-muted">
-              {formatDayLabel(day.date)}
+              {day.label}
             </div>
           </div>
         );
@@ -217,52 +217,14 @@ function HistoryStrip({
 
 type CacheEntry<T> = { value: T; fetchedAt: number };
 
-type RangeData = {
-  breakdown: LifeOpsScreenTimeBreakdown;
-  social: LifeOpsSocialHabitSummary;
-};
+type RangeData = LifeOpsScreenTimeHistoryResponse;
 
-type PriorData = {
-  breakdown: LifeOpsScreenTimeBreakdown;
-  social: LifeOpsSocialHabitSummary;
-};
-
-type HistoryData = Array<{ date: Date; totalSeconds: number }>;
-
-async function fetchRangeData(period: Period): Promise<RangeData> {
-  const [breakdown, social] = await Promise.all([
-    client.getLifeOpsScreenTimeBreakdown({
-      since: period.since,
-      until: period.until,
-      topN: 16,
-    }),
-    client.getLifeOpsSocialHabitSummary({
-      since: period.since,
-      until: period.until,
-      topN: 12,
-    }),
-  ]);
-  return { breakdown, social };
-}
-
-async function fetchHistoryData(period: Period): Promise<HistoryData> {
-  const days = enumerateDays(period);
-  const now = Date.now();
-  const results = await Promise.all(
-    days.map(async (date) => {
-      const dayStart = startOfLocalDay(date);
-      const dayEnd = addDays(dayStart, 1);
-      const sinceIso = dayStart.toISOString();
-      const untilIso = new Date(Math.min(dayEnd.getTime(), now)).toISOString();
-      const breakdown = await client.getLifeOpsScreenTimeBreakdown({
-        since: sinceIso,
-        until: untilIso,
-        topN: 1,
-      });
-      return { date: dayStart, totalSeconds: breakdown.totalSeconds };
-    }),
-  );
-  return results;
+async function fetchRangeData(range: RangeKey): Promise<RangeData> {
+  return client.getLifeOpsScreenTimeHistory({
+    range,
+    topN: 16,
+    socialTopN: 12,
+  });
 }
 
 export function LifeOpsScreenTimeSection({
