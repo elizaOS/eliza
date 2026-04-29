@@ -227,10 +227,11 @@ export async function fetchGmailMessages(
     if (sinceMs > 0 && receivedMs < sinceMs) continue;
 
     const from = msg.from || msg.fromEmail || "Unknown sender";
+    const gmailAccountSegment = encodeURIComponent(msg.accountEmail ?? "0");
     const gmailLink =
       msg.htmlLink ??
       (msg.externalId
-        ? `https://mail.google.com/mail/u/0/#inbox/${msg.externalId}`
+        ? `https://mail.google.com/mail/u/${gmailAccountSegment}/#inbox/${msg.externalId}`
         : undefined);
 
     results.push({
