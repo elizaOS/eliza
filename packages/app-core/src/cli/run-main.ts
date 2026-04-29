@@ -1,4 +1,5 @@
 import process from "node:process";
+import { RESTART_EXIT_CODE, setRestartHandler } from "@elizaos/shared";
 import {
   formatUncaughtError,
   shouldIgnoreUnhandledRejection,
@@ -6,6 +7,21 @@ import {
 import { getLogPrefix } from "../utils/log-prefix";
 import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
 import { registerSubCliByName } from "./program/register.subclis";
+
+let cliRestartHandlerRegistered = false;
+
+function registerCliRestartHandler(): void {
+  if (cliRestartHandlerRegistered) return;
+  cliRestartHandlerRegistered = true;
+  setRestartHandler((reason) => {
+    console.error(
+      `${getLogPrefix()} restart requested: ${
+        reason ?? "unspecified"
+      } — exiting with ${RESTART_EXIT_CODE}`,
+    );
+    process.exit(RESTART_EXIT_CODE);
+  });
+}
 
 async function loadDotEnv(): Promise<void> {
   try {
@@ -22,6 +38,7 @@ async function loadDotEnv(): Promise<void> {
 }
 
 export async function runCli(argv: string[] = process.argv) {
+  registerCliRestartHandler();
   await loadDotEnv();
 
   // Normalize env: copy Z_AI_API_KEY → ZAI_API_KEY when ZAI_API_KEY is empty.

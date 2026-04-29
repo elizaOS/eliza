@@ -32,6 +32,7 @@ export interface BrowserWorkspaceWalletState {
   solanaAddress: string | null;
   solanaConnected: boolean;
   solanaMessageSigningAvailable: boolean;
+  solanaTransactionSigningAvailable: boolean;
 }
 
 export interface BrowserWorkspaceWalletTransactionResult
@@ -53,6 +54,20 @@ export interface BrowserWorkspaceSolanaMessageSignatureResult {
   signatureBase64: string;
 }
 
+export interface BrowserWorkspaceSolanaTransactionResult {
+  address: string;
+  mode: "local-key" | "steward";
+  /** Base64-encoded fully-signed transaction (always present on success). */
+  signedTransactionBase64: string;
+  /**
+   * Optional broadcast signature (base58) when the steward broadcast the
+   * transaction. Omitted when the caller asked for signing only.
+   */
+  signature?: string;
+  /** Cluster the steward signed/broadcast against. */
+  cluster: "mainnet" | "devnet" | "testnet";
+}
+
 export type BrowserWorkspaceWalletRpcMethod =
   | "eth_accounts"
   | "eth_requestAccounts"
@@ -64,7 +79,9 @@ export type BrowserWorkspaceWalletRpcMethod =
 
 export type BrowserWorkspaceSolanaMethod =
   | "solana_connect"
-  | "solana_signMessage";
+  | "solana_signMessage"
+  | "solana_signTransaction"
+  | "solana_signAndSendTransaction";
 
 export type BrowserWorkspaceWalletMethod =
   | "getState"
@@ -109,6 +126,7 @@ export const EMPTY_BROWSER_WORKSPACE_WALLET_STATE: BrowserWorkspaceWalletState =
     solanaAddress: null,
     solanaConnected: false,
     solanaMessageSigningAvailable: false,
+    solanaTransactionSigningAvailable: false,
   };
 
 export function getBrowserWorkspaceWalletAddress(
@@ -206,10 +224,14 @@ export function buildBrowserWorkspaceWalletState(params: {
       solanaAddress,
       solanaConnected,
       solanaMessageSigningAvailable: false,
+      solanaTransactionSigningAvailable: solanaConnected,
     };
   }
 
   if (mode === "local") {
+    const solanaTransactionSigningAvailable = Boolean(
+      solanaAddress && walletConfig?.solanaSigningAvailable,
+    );
     return {
       address,
       connected: evmConnected || solanaConnected,
@@ -229,10 +251,12 @@ export function buildBrowserWorkspaceWalletState(params: {
       ),
       signingAvailable:
         Boolean(evmAddress && walletConfig?.executionReady) ||
-        solanaMessageSigningAvailable,
+        solanaMessageSigningAvailable ||
+        solanaTransactionSigningAvailable,
       solanaAddress,
       solanaConnected,
       solanaMessageSigningAvailable,
+      solanaTransactionSigningAvailable,
     };
   }
 
@@ -256,6 +280,7 @@ export function buildBrowserWorkspaceWalletState(params: {
       solanaAddress,
       solanaConnected,
       solanaMessageSigningAvailable: false,
+      solanaTransactionSigningAvailable: false,
     };
   }
 

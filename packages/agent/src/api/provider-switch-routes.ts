@@ -2,6 +2,10 @@ import type http from "node:http";
 import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import { normalizeOnboardingProviderId } from "../contracts/onboarding.js";
+import type {
+  ProviderSwitchIntent,
+  RuntimeOperationManager,
+} from "../runtime/operations/index.js";
 import type { ReadJsonBodyOptions } from "./http-helpers.js";
 import {
   applyOnboardingConnectionConfig,
@@ -27,14 +31,37 @@ export interface ProviderSwitchRouteContext {
   ) => Promise<T | null>;
   saveElizaConfig: (config: ElizaConfig) => void;
   scheduleRuntimeRestart: (reason: string) => void;
+  /**
+   * Legacy single-flight gate — kept on the context type for now because
+   * other call sites still set it. This route no longer reads or writes
+   * the flag; the runtime operation repo's active-op slot is the gate.
+   */
   providerSwitchInProgress: boolean;
   setProviderSwitchInProgress: (value: boolean) => void;
-  restartRuntime?: (reason: string) => Promise<boolean>;
+  runtimeOperationManager: RuntimeOperationManager;
 }
 
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
+
+function readIdempotencyKey(
+  headers: http.IncomingHttpHeaders,
+): string | undefined {
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() !== "idempotency-key") continue;
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+    if (Array.isArray(value)) {
+      const first = value.find(
+        (v) => typeof v === "string" && v.trim().length > 0,
+      );
+      if (first) return first.trim();
+    }
+  }
+  return undefined;
+}
 
 export async function handleProviderSwitchRoutes(
   ctx: ProviderSwitchRouteContext,
@@ -59,21 +86,14 @@ export async function handleProviderSwitchRoutes(
       return true;
     }
 
-    if (ctx.providerSwitchInProgress) {
-      error(res, "Provider switch already in progress", 409);
+    const trimmedApiKey =
+      typeof body.apiKey === "string" ? body.apiKey.trim() : undefined;
+    if (trimmedApiKey && trimmedApiKey.length > 512) {
+      error(res, "API key is too long", 400);
       return true;
     }
-    ctx.setProviderSwitchInProgress(true);
 
     try {
-      const trimmedApiKey =
-        typeof body.apiKey === "string" ? body.apiKey.trim() : undefined;
-      if (trimmedApiKey && trimmedApiKey.length > 512) {
-        ctx.setProviderSwitchInProgress(false);
-        error(res, "API key is too long", 400);
-        return true;
-      }
-
       const config = state.config;
       let connection:
         | ReturnType<typeof createProviderSwitchConnection>
@@ -97,7 +117,7 @@ export async function handleProviderSwitchRoutes(
           process.env.OPENAI_BASE_URL = `${cloudBaseUrl}/api/v1`;
           process.env.OPENAI_API_KEY = cloudApiKey;
         }
-      } else if (normalizedProvider) {
+      } else {
         connection = createProviderSwitchConnection({
           provider: normalizedProvider,
           apiKey: trimmedApiKey,
@@ -106,12 +126,9 @@ export async function handleProviderSwitchRoutes(
               ? body.primaryModel.trim()
               : undefined,
         });
-      } else {
-        connection = null;
       }
 
       if (!connection) {
-        ctx.setProviderSwitchInProgress(false);
         error(res, "Invalid provider", 400);
         return true;
       }
@@ -119,23 +136,65 @@ export async function handleProviderSwitchRoutes(
       await applyOnboardingConnectionConfig(config, connection);
       ctx.saveElizaConfig(config);
 
-      const restartReason = `provider switch to ${normalizedProvider}`;
-      const restarted = ctx.restartRuntime
-        ? await ctx.restartRuntime(restartReason)
-        : false;
-      if (!restarted) {
-        ctx.scheduleRuntimeRestart(restartReason);
+      const intent: ProviderSwitchIntent = {
+        kind: "provider-switch",
+        provider: normalizedProvider,
+        apiKey: trimmedApiKey,
+        primaryModel:
+          typeof body.primaryModel === "string"
+            ? body.primaryModel.trim()
+            : undefined,
+      };
+      const idempotencyKey = readIdempotencyKey(req.headers);
+
+      const outcome = await ctx.runtimeOperationManager.start({
+        intent,
+        idempotencyKey,
+      });
+
+      if (outcome.kind === "accepted") {
+        logger.info(
+          `[api] Provider switch accepted: provider=${normalizedProvider} op=${outcome.operation.id}`,
+        );
+        json(
+          res,
+          {
+            success: true,
+            provider: normalizedProvider,
+            restarting: true,
+            operationId: outcome.operation.id,
+          },
+          202,
+        );
+        return true;
       }
 
-      ctx.setProviderSwitchInProgress(false);
+      if (outcome.kind === "deduped") {
+        const op = outcome.operation;
+        logger.info(
+          `[api] Provider switch deduped: provider=${normalizedProvider} op=${op.id} status=${op.status}`,
+        );
+        json(res, {
+          success: true,
+          provider: normalizedProvider,
+          restarting: op.status === "running" || op.status === "pending",
+          operationId: op.id,
+          deduped: true,
+        });
+        return true;
+      }
 
-      json(res, {
-        success: true,
-        provider: normalizedProvider,
-        restarting: restarted,
-      });
+      // outcome.kind === "rejected-busy"
+      json(
+        res,
+        {
+          error: "Provider switch already in progress",
+          activeOperationId: outcome.activeOperationId,
+        },
+        409,
+      );
+      return true;
     } catch (err) {
-      ctx.setProviderSwitchInProgress(false);
       logger.error(
         `[api] Provider switch failed: ${err instanceof Error ? err.stack : err}`,
       );

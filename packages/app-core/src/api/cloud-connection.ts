@@ -83,6 +83,11 @@ type CloudClientLike = {
 };
 
 export type CloudAuthLike = {
+  authenticateWithApiKey?: (input: {
+    apiKey: string;
+    organizationId?: string;
+    userId?: string;
+  }) => unknown;
   isAuthenticated?: () => boolean;
   getUserId?: () => string | undefined;
   getOrganizationId?: () => string | undefined;
@@ -162,7 +167,9 @@ function asRuntimeCloud(runtime: AgentRuntime | null): RuntimeCloudLike | null {
   return runtime as RuntimeCloudLike | null;
 }
 
-function getCloudAuth(runtime: AgentRuntime | null): CloudAuthLike | null {
+export function getCloudAuth(
+  runtime: AgentRuntime | null,
+): CloudAuthLike | null {
   const runtimeWithServices = asRuntimeCloud(runtime);
   if (typeof runtimeWithServices?.getService !== "function") {
     return null;
@@ -172,6 +179,37 @@ function getCloudAuth(runtime: AgentRuntime | null): CloudAuthLike | null {
   return service && typeof service === "object"
     ? (service as CloudAuthLike)
     : null;
+}
+
+function resolvePersistedCloudIdentity(runtime: AgentRuntime | null): {
+  organizationId: string | undefined;
+  userId: string | undefined;
+} {
+  const runtimeWithCloud = asRuntimeCloud(runtime);
+  return {
+    organizationId:
+      normalizeEnvValue(
+        runtimeWithCloud?.getSetting?.("ELIZA_CLOUD_ORGANIZATION_ID") as
+          | string
+          | undefined,
+      ) ??
+      normalizeEnvValue(
+        runtimeWithCloud?.character?.secrets?.ELIZA_CLOUD_ORGANIZATION_ID as
+          | string
+          | undefined,
+      ),
+    userId:
+      normalizeEnvValue(
+        runtimeWithCloud?.getSetting?.("ELIZA_CLOUD_USER_ID") as
+          | string
+          | undefined,
+      ) ??
+      normalizeEnvValue(
+        runtimeWithCloud?.character?.secrets?.ELIZA_CLOUD_USER_ID as
+          | string
+          | undefined,
+      ),
+  };
 }
 
 export function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
@@ -241,6 +279,8 @@ export function resolveCloudConnectionSnapshot(
   const cloudAuth = getCloudAuth(runtime);
   const authConnected = Boolean(cloudAuth?.isAuthenticated?.());
   const hasApiKey = Boolean(apiKey);
+  const persistedIdentity = resolvePersistedCloudIdentity(runtime);
+  const shouldExposeIdentity = authConnected || hasApiKey;
 
   return {
     apiKey,
@@ -249,13 +289,35 @@ export function resolveCloudConnectionSnapshot(
     connected: authConnected || hasApiKey,
     enabled,
     hasApiKey,
-    organizationId: authConnected
-      ? normalizeEnvValue(cloudAuth?.getOrganizationId?.())
+    organizationId: shouldExposeIdentity
+      ? (normalizeEnvValue(cloudAuth?.getOrganizationId?.()) ??
+        persistedIdentity.organizationId)
       : undefined,
-    userId: authConnected
-      ? normalizeEnvValue(cloudAuth?.getUserId?.())
+    userId: shouldExposeIdentity
+      ? (normalizeEnvValue(cloudAuth?.getUserId?.()) ??
+        persistedIdentity.userId)
       : undefined,
   };
+}
+
+/**
+ * Coerce an Eliza Cloud `balance` field into a number. The cloud API
+ * returns `balance` as `string | number` (per the Bridge client + config
+ * type definitions) — string when the upstream is using a fixed-precision
+ * decimal, number when it's been arithmetic'd. Treat both as the same
+ * dollar amount; reject anything else as an unexpected response.
+ */
+function coerceCloudBalance(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number.parseFloat(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 async function fetchCloudCreditsByApiKey(
@@ -301,14 +363,11 @@ async function fetchCloudCreditsByApiKey(
     );
   }
 
-  const rawBalance =
-    typeof creditResponse.balance === "number"
-      ? creditResponse.balance
-      : typeof creditResponse.data?.balance === "number"
-        ? creditResponse.data.balance
-        : undefined;
+  const balance =
+    coerceCloudBalance(creditResponse.balance) ??
+    coerceCloudBalance(creditResponse.data?.balance);
 
-  return typeof rawBalance === "number" ? rawBalance : null;
+  return balance;
 }
 
 /** Configurable credit thresholds. Override via env vars if defaults don't fit. */
@@ -349,11 +408,8 @@ export async function fetchCloudCredits(
         data?: { balance?: unknown };
       };
       const rawBalance =
-        typeof creditResponse?.balance === "number"
-          ? creditResponse.balance
-          : typeof creditResponse?.data?.balance === "number"
-            ? creditResponse.data.balance
-            : undefined;
+        coerceCloudBalance(creditResponse?.balance) ??
+        coerceCloudBalance(creditResponse?.data?.balance);
 
       if (typeof rawBalance === "number") {
         return withCreditFlags(rawBalance);
@@ -430,7 +486,7 @@ export async function fetchCloudCredits(
   }
 }
 
-async function clearCloudAuthService(
+export async function clearCloudAuthService(
   cloudAuth: CloudAuthLike | null,
 ): Promise<void> {
   if (!cloudAuth) {
@@ -589,6 +645,8 @@ export async function disconnectCloudConnection(args: {
     );
   }
 }
+
+export const disconnectUnifiedCloudConnection = disconnectCloudConnection;
 
 /** Matches `reason` from GET /api/cloud/status when connected via API key without CLOUD_AUTH. */
 const CLOUD_STATUS_API_KEY_ONLY_REASONS: ReadonlySet<string> = new Set([

@@ -32,6 +32,8 @@ const LIVE_GMAIL_CHAT_ENABLED = isLiveTestEnabled() && Boolean(LIVE_PROVIDER);
 
 function buildGmailMessage(args: {
   agentId: string;
+  grantId: string;
+  accountEmail: string;
   id: string;
   externalId: string;
   threadId: string;
@@ -50,6 +52,8 @@ function buildGmailMessage(args: {
     externalId: args.externalId,
     threadId: args.threadId,
     agentId: args.agentId,
+    grantId: args.grantId,
+    accountEmail: args.accountEmail,
     provider: "google" as const,
     side: "owner" as const,
     subject: args.subject,
@@ -66,7 +70,7 @@ function buildGmailMessage(args: {
     triageScore: args.triageScore ?? 50,
     triageReason: args.likelyReplyNeeded ? "reply needed" : "search hit",
     labels: args.isUnread ? ["INBOX", "UNREAD"] : ["INBOX"],
-    htmlLink: `https://mail.google.com/mail/u/0/#all/${args.threadId}`,
+    htmlLink: `https://mail.google.com/mail/u/${encodeURIComponent(args.accountEmail)}/#all/${args.threadId}`,
     metadata: {
       messageIdHeader: `<${args.externalId}@example.com>`,
       referencesHeader: `<${args.threadId}@example.com>`,
@@ -81,6 +85,7 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
   const agentId = String(runtime.agentId);
   const nowIso = new Date().toISOString();
   const tokenRef = `${agentId}/owner/local.json`;
+  const grantId = "gmail-live-google-grant";
   const tokenPath = path.join(
     resolveOAuthDir(process.env, stateDir),
     "lifeops",
@@ -123,31 +128,34 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
   );
 
   await repository.upsertConnectorGrant(
-    createLifeOpsConnectorGrant({
-      agentId,
-      provider: "google",
-      side: "owner",
-      identity: {
-        email: "shawmakesmagic@gmail.com",
-        name: "Shaw",
-      },
-      grantedScopes: [
-        "openid",
-        "email",
-        "profile",
-        "https://www.googleapis.com/auth/gmail.metadata",
-        "https://www.googleapis.com/auth/gmail.send",
-      ],
-      capabilities: [
-        "google.basic_identity",
-        "google.gmail.triage",
-        "google.gmail.send",
-      ],
-      tokenRef,
-      mode: "local",
-      metadata: {},
-      lastRefreshAt: nowIso,
-    }),
+    {
+      ...createLifeOpsConnectorGrant({
+        agentId,
+        provider: "google",
+        side: "owner",
+        identity: {
+          email: "shawmakesmagic@gmail.com",
+          name: "Shaw",
+        },
+        grantedScopes: [
+          "openid",
+          "email",
+          "profile",
+          "https://www.googleapis.com/auth/gmail.metadata",
+          "https://www.googleapis.com/auth/gmail.send",
+        ],
+        capabilities: [
+          "google.basic_identity",
+          "google.gmail.triage",
+          "google.gmail.send",
+        ],
+        tokenRef,
+        mode: "local",
+        metadata: {},
+        lastRefreshAt: nowIso,
+      }),
+      id: grantId,
+    },
   );
 
   await repository.upsertGmailSyncState(
@@ -156,6 +164,7 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
       provider: "google",
       side: "owner",
       mailbox: "me",
+      grantId,
       maxResults: 50,
       syncedAt: nowIso,
     }),
@@ -164,6 +173,8 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
   const messages = [
     buildGmailMessage({
       agentId,
+      grantId,
+      accountEmail: "shawmakesmagic@gmail.com",
       id: "gmail-live-suran-recent",
       externalId: "gmail-live-suran-recent-ext",
       threadId: "gmail-live-suran-thread-recent",
@@ -179,6 +190,8 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
     }),
     buildGmailMessage({
       agentId,
+      grantId,
+      accountEmail: "shawmakesmagic@gmail.com",
       id: "gmail-live-venue",
       externalId: "gmail-live-venue-ext",
       threadId: "gmail-live-venue-thread",

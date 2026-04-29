@@ -33,6 +33,14 @@ vi.mock("../local-inference/LocalInferencePanel", () => ({
   LocalInferencePanel: () => <div>Local model downloads</div>,
 }));
 
+vi.mock("../local-inference/ProvidersList", () => ({
+  ProvidersList: () => <div>Provider routing list</div>,
+}));
+
+vi.mock("../local-inference/RoutingMatrix", () => ({
+  RoutingMatrix: () => <div>Model routing matrix</div>,
+}));
+
 vi.mock("../pages/ElizaCloudDashboard", () => ({
   CloudDashboard: () => <div>Eliza Cloud account</div>,
 }));

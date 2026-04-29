@@ -14,7 +14,7 @@ import {
   type SyncBrowserBridgeStateRequest,
   type UpdateBrowserBridgeSessionProgressRequest,
   type UpdateBrowserBridgeSettingsRequest,
-} from "../../../plugins/plugin-browser-bridge/src/index.js";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,

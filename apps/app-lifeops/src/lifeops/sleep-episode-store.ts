@@ -1,10 +1,16 @@
-import type { LifeOpsSleepCycleEvidenceSource, LifeOpsSleepCycleType } from "@elizaos/shared";
+import type {
+  LifeOpsSleepCycleEvidenceSource,
+  LifeOpsSleepCycleType,
+} from "@elizaos/shared";
 import {
   createLifeOpsSleepEpisode,
   type LifeOpsRepository,
   type LifeOpsSleepEpisodeRecord,
 } from "./repository.js";
-import type { LifeOpsSleepEpisode } from "./sleep-cycle.js";
+import {
+  classifyLifeOpsSleepCycleType,
+  type LifeOpsSleepEpisode,
+} from "./sleep-cycle.js";
 
 const EPISODE_SEAL_DELAY_MS = 2 * 60 * 60 * 1_000;
 
@@ -13,6 +19,7 @@ export interface PersistSleepEpisodesArgs {
   agentId: string;
   episodes: readonly LifeOpsSleepEpisode[];
   nowMs: number;
+  timezone: string;
 }
 
 export interface HistoricalSleepEpisode {
@@ -45,10 +52,12 @@ export async function persistSleepEpisodes(
       endAt,
       source: episode.source,
       confidence: round(episode.confidence),
-      cycleType:
-        episode.endMs !== null && episode.endMs - episode.startMs < 4 * 60 * 60 * 1_000
-          ? "nap"
-          : "unknown",
+      cycleType: classifyLifeOpsSleepCycleType({
+        startMs: episode.startMs,
+        endMs: episode.endMs,
+        nowMs: args.nowMs,
+        timezone: args.timezone,
+      }),
       sealed:
         episode.endMs !== null &&
         args.nowMs - episode.endMs >= EPISODE_SEAL_DELAY_MS,

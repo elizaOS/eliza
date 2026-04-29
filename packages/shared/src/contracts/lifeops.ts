@@ -968,6 +968,7 @@ export interface LifeOpsConnectorGrant {
   provider: LifeOpsConnectorProvider;
   side: LifeOpsConnectorSide;
   identity: Record<string, unknown>;
+  identityEmail?: string | null;
   grantedScopes: string[];
   capabilities: string[];
   tokenRef: string | null;
@@ -1636,9 +1637,9 @@ export interface LifeOpsCalendarEvent {
   updatedAt: string;
   /** Set on merged feeds so the UI can show which calendar an event came from. */
   calendarSummary?: string;
-  /** Set when aggregating across multiple Google accounts. */
+  /** Google grant that owns this Gmail message cache row. */
   grantId?: string;
-  /** Set when aggregating across multiple Google accounts. */
+  /** Email address for the owning Google account when known. */
   accountEmail?: string;
 }
 
@@ -2274,13 +2275,6 @@ export interface CreateLifeOpsCalendarEventRequest {
   durationMinutes?: number;
   windowPreset?: LifeOpsCalendarWindowPreset;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
-  /**
-   * RFC 5545 RRULE strings (without the leading "RRULE:" prefix), e.g.
-   * `["FREQ=WEEKLY;BYDAY=MO"]`. Forwarded to Google Calendar's
-   * `recurrence` array when creating the event.
-   */
-  recurrence?: string[];
-  reminders?: LifeOpsCalendarEventReminderOverride[];
 }
 
 export interface LifeOpsNextCalendarEventContext {
@@ -2302,12 +2296,9 @@ export interface LifeOpsNextCalendarEventContext {
   >;
 }
 
-export interface LifeOpsCalendarEventReminderOverride {
-  minutesBefore: number;
-}
-
 export interface LifeOpsCalendarEventUpdate {
   side?: LifeOpsConnectorSide;
+  mode?: LifeOpsConnectorMode;
   grantId?: string;
   calendarId?: string;
   title?: string;
@@ -2317,12 +2308,6 @@ export interface LifeOpsCalendarEventUpdate {
   notes?: string;
   location?: string;
   attendees?: CreateLifeOpsCalendarEventAttendee[];
-  /**
-   * RFC 5545 RRULE strings (without the leading "RRULE:" prefix). Forwarded
-   * to Google Calendar's `recurrence` array on patch when supplied.
-   */
-  recurrence?: string[];
-  reminders?: LifeOpsCalendarEventReminderOverride[];
 }
 
 export interface LifeOpsCalendarEventMutationResult {
@@ -2910,6 +2895,8 @@ export interface StartLifeOpsGoogleConnectorRequest {
   mode?: LifeOpsConnectorMode;
   /** Re-authenticate an existing account by grant ID (multi-account). */
   grantId?: string;
+  /** Create an additional account grant instead of reusing the side/mode grant. */
+  createNewGrant?: boolean;
   capabilities?: LifeOpsGoogleCapability[];
   redirectUrl?: string;
 }
@@ -2931,6 +2918,7 @@ export interface SelectLifeOpsGoogleConnectorPreferenceRequest {
 export interface DisconnectLifeOpsGoogleConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
 }
 
 export interface UpsertLifeOpsXConnectorRequest {
@@ -3443,8 +3431,17 @@ export interface LifeOpsSleepHistoryEpisode {
   confidence: number;
 }
 
+export interface LifeOpsSleepHistorySummary {
+  cycleCount: number;
+  averageDurationMin: number | null;
+  overnightCount: number;
+  napCount: number;
+  openCount: number;
+}
+
 export interface LifeOpsSleepHistoryResponse {
   episodes: LifeOpsSleepHistoryEpisode[];
+  summary: LifeOpsSleepHistorySummary;
   windowDays: number;
   includeNaps: boolean;
 }
