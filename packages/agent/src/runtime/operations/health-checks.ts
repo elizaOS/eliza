@@ -43,7 +43,7 @@ function asServiceRegistry(runtime: AgentRuntime): ServiceRegistryLike {
   return runtime as unknown as ServiceRegistryLike;
 }
 
-function describeError(err: unknown): string {
+export function describeError(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
   try {

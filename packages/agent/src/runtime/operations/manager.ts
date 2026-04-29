@@ -21,6 +21,7 @@ import { logger } from "@elizaos/core";
 import type { ClassifyContext } from "./classifier.js";
 import type { HealthChecker } from "./health.js";
 import type {
+  OperationError,
   OperationIntent,
   OperationPhase,
   ReloadStrategy,
@@ -230,11 +231,10 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
           failed: report.failed,
         },
       });
-      // Phase 2: real rollback. For Phase 1 the swap has already happened
-      // via the cold strategy; we record the failure and surface it.
-      logger.warn(
-        `[runtime-ops] Health check failed for op ${id}; rollback deferred to Phase 2`,
-      );
+      // The cold strategy has already swapped the runtime by the time we
+      // observe a failed health check. Surface the failure; rollback to the
+      // previous runtime is not implemented yet.
+      logger.warn(`[runtime-ops] Health check failed for op ${id}`);
       await this.failOperation(id, {
         message: "Required health checks failed",
         code: "health-check-failed",
@@ -260,7 +260,7 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
 
   private async failOperation(
     id: string,
-    error: { message: string; code?: string; cause?: string },
+    error: OperationError,
   ): Promise<void> {
     await this.repository.update(id, {
       status: "failed",
