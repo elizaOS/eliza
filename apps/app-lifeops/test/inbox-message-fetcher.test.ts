@@ -20,6 +20,7 @@ type RuntimeSlice = Pick<
   | "getRoom"
   | "getMemoriesByRoomIds"
   | "getWorld"
+  | "getParticipantsForRoom"
 >;
 
 function makeRoom(): Room {
@@ -56,6 +57,7 @@ function makeRuntime(overrides: Partial<RuntimeSlice> = {}): IAgentRuntime {
     getRoom: vi.fn(async () => makeRoom()),
     getMemoriesByRoomIds: vi.fn(async () => [makeMemory()]),
     getWorld: vi.fn(async () => ({ id: WORLD_ID, metadata: {} }) as World),
+    getParticipantsForRoom: vi.fn(async () => [AGENT_ID, SENDER_ID]),
     ...overrides,
   };
   return runtime as IAgentRuntime;

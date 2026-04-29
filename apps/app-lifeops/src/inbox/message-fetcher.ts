@@ -17,17 +17,6 @@ import type { InboundMessage } from "./types.js";
  */
 const PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD = 15;
 
-const DEFAULT_SOURCES = [
-  "discord",
-  "telegram",
-  "signal",
-  "imessage",
-  "whatsapp",
-  "wechat",
-  "slack",
-  "sms",
-] as const;
-
 const MAX_ROOMS_SCANNED = 200;
 const THREAD_CONTEXT_LIMIT = 5;
 const SNIPPET_MAX_LENGTH = 200;
@@ -52,7 +41,7 @@ export interface XDmInboxSource {
 export async function fetchChatMessages(
   runtime: IAgentRuntime,
   opts: {
-    /** Only scan these sources (default: all chat connectors). */
+    /** Only scan these sources. Defaults to all connector-tagged chat rooms. */
     sources?: string[];
     /** Only return messages newer than this ISO timestamp. */
     sinceIso?: string;
@@ -61,9 +50,7 @@ export async function fetchChatMessages(
   },
 ): Promise<InboundMessage[]> {
   const limit = opts.limit ?? 200;
-  const sourceTags = expandConnectorSourceFilter(
-    opts.sources ?? DEFAULT_SOURCES,
-  );
+  const sourceTags = buildSourceFilter(opts.sources);
   const sinceMs = opts.sinceIso ? Date.parse(opts.sinceIso) : 0;
 
   const allRoomIds = await runtime.getRoomsForParticipant(runtime.agentId);
@@ -75,7 +62,7 @@ export async function fetchChatMessages(
   for (const room of rooms) {
     if (!room) continue;
     const roomSource = extractRoomSource(room);
-    if (roomSource && sourceTags.has(roomSource)) {
+    if (sourceMatchesFilter(roomSource, sourceTags)) {
       sourceRooms.push(room);
     }
   }
@@ -93,7 +80,7 @@ export async function fetchChatMessages(
     if (m.entityId === runtime.agentId) return false;
     if (sinceMs > 0 && (m.createdAt ?? 0) < sinceMs) return false;
     const src = extractMemorySource(m);
-    return src !== null && sourceTags.has(src);
+    return sourceMatchesFilter(src, sourceTags);
   });
 
   filtered.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
@@ -139,6 +126,7 @@ export async function fetchChatMessages(
   for (const memory of filtered.slice(0, limit)) {
     const room = roomMap.get(memory.roomId);
     const source = normalizeConnectorSource(extractMemorySource(memory) ?? "");
+    if (!source) continue;
     const text = extractText(memory);
     if (!text) continue;
 
@@ -330,9 +318,12 @@ export async function fetchAllMessages(
     gmailGrantId?: string;
   },
 ): Promise<InboundMessage[]> {
+  const requestedSources = opts.sources
+    ? buildSourceFilter(opts.sources)
+    : null;
   const includeGmail =
     opts.includeGmail !== false &&
-    (!opts.sources || opts.sources.includes("gmail"));
+    sourceMatchesFilter("gmail", requestedSources);
   const gmailMessagesPromise = includeGmail
     ? opts.gmailSource
       ? fetchGmailMessages(opts.gmailSource, {
@@ -347,7 +338,7 @@ export async function fetchAllMessages(
         )
     : Promise.resolve([]);
   const xDmMessagesPromise =
-    opts.xDmSource && (!opts.sources || opts.sources.includes("x_dm"))
+    opts.xDmSource && sourceMatchesFilter("x_dm", requestedSources)
       ? fetchXDmMessages(opts.xDmSource, {
           sinceIso: opts.sinceIso,
           limit: opts.limit,
@@ -356,7 +347,10 @@ export async function fetchAllMessages(
 
   const [chatMessages, gmailMessages, xDmMessages] = await Promise.all([
     fetchChatMessages(runtime, {
-      sources: opts.sources?.filter((s) => s !== "gmail" && s !== "x_dm"),
+      sources: opts.sources?.filter((source) => {
+        const normalized = normalizeConnectorSource(source);
+        return normalized !== "gmail" && normalized !== "x_dm";
+      }),
       sinceIso: opts.sinceIso,
       limit: opts.limit,
     }),
@@ -375,6 +369,35 @@ function extractMemorySource(memory: Memory): string | null {
   if (typeof source !== "string") return null;
   const trimmed = source.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function buildSourceFilter(
+  sources: readonly string[] | undefined,
+): Set<string> | null {
+  if (!sources) return null;
+  const expanded = expandConnectorSourceFilter(sources);
+  for (const source of sources) {
+    const raw = source.trim().toLowerCase();
+    if (!raw) continue;
+    expanded.add(raw);
+    const normalized = normalizeConnectorSource(raw);
+    if (normalized) {
+      expanded.add(normalized);
+    }
+  }
+  return expanded;
+}
+
+function sourceMatchesFilter(
+  source: string | null,
+  sourceTags: ReadonlySet<string> | null,
+): source is string {
+  if (!source) return false;
+  if (!sourceTags) return true;
+  const raw = source.trim().toLowerCase();
+  if (!raw) return false;
+  const normalized = normalizeConnectorSource(raw);
+  return sourceTags.has(raw) || (!!normalized && sourceTags.has(normalized));
 }
 
 function extractText(memory: Memory): string {

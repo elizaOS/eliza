@@ -119,13 +119,13 @@ function mergeParams(
   return params as ConnectorActionParams;
 }
 
-function notImplemented(
+function unsupportedOperation(
   connector: ConnectorKind,
   subaction: ConnectorSubaction,
   detail?: string,
 ): ActionResult {
   const text =
-    `[${ACTION_NAME}] ${connector}/${subaction} is not yet implemented in the agent action layer.` +
+    `[${ACTION_NAME}] ${connector}/${subaction} is not supported by the current LifeOps connector contract.` +
     (detail ? ` ${detail}` : "");
   return {
     success: false,
@@ -134,7 +134,7 @@ function notImplemented(
       actionName: ACTION_NAME,
       connector,
       subaction,
-      error: "NOT_IMPLEMENTED",
+      error: "UNSUPPORTED_OPERATION",
     },
   };
 }
@@ -187,7 +187,7 @@ async function dispatchListAll(service: LifeOpsService): Promise<ActionResult> {
   ]);
   return {
     success: true,
-    text: "Listed status for all 9 LifeOps connectors.",
+    text: `Listed status for all ${VALID_CONNECTORS.length} LifeOps connectors.`,
     data: {
       actionName: ACTION_NAME,
       connectors: {
@@ -253,7 +253,8 @@ async function dispatchGoogle(
         },
       };
     }
-    case "status": {
+    case "status":
+    case "list": {
       const status = await service.getGoogleConnectorStatus(
         INTERNAL_URL,
         params.mode,
@@ -271,18 +272,93 @@ async function dispatchGoogle(
       };
     }
     case "verify":
-      return notImplemented(
-        "google",
-        subaction,
-        "Google verify subaction is not exposed by LifeOpsService. Use status to inspect grant freshness.",
-      );
-    case "list":
-      return notImplemented(
-        "google",
-        subaction,
-        "Per-connector list is not separate from status; use subaction=list with no connector to see all connectors.",
-      );
+      return await dispatchGoogleVerify(service, side, params);
   }
+}
+
+async function dispatchGoogleVerify(
+  service: LifeOpsService,
+  side: "owner" | "agent",
+  params: ConnectorActionParams,
+): Promise<ActionResult> {
+  const status = await service.getGoogleConnectorStatus(
+    INTERNAL_URL,
+    params.mode,
+    side,
+  );
+  const capabilities = new Set(status.grantedCapabilities);
+  const read: Record<string, unknown> = {};
+
+  if (status.connected && capabilities.has("google.gmail.triage")) {
+    const triage = await service.getGmailTriage(INTERNAL_URL, {
+      mode: params.mode,
+      side,
+      maxResults: params.recentLimit ?? 10,
+      forceSync: true,
+    });
+    read.gmail = {
+      ok: true,
+      count: triage.messages.length,
+      summary: triage.summary,
+      messages: triage.messages,
+    };
+  } else {
+    read.gmail = {
+      ok: false,
+      skipped: true,
+      reason: status.connected
+        ? "google.gmail.triage capability not granted"
+        : status.reason,
+    };
+  }
+
+  if (status.connected && capabilities.has("google.calendar.read")) {
+    const now = Date.now();
+    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+      mode: params.mode,
+      side,
+      timeMin: new Date(now - 60 * 60 * 1000).toISOString(),
+      timeMax: new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    read.calendar = {
+      ok: true,
+      count: feed.events.length,
+      events: feed.events,
+    };
+  } else {
+    read.calendar = {
+      ok: false,
+      skipped: true,
+      reason: status.connected
+        ? "google.calendar.read capability not granted"
+        : status.reason,
+    };
+  }
+
+  const send = params.sendTarget
+    ? await service.sendGmailMessage(INTERNAL_URL, {
+        mode: params.mode,
+        side,
+        to: [params.sendTarget],
+        subject: "LifeOps Google connector verification",
+        bodyText:
+          params.sendMessage ?? "LifeOps Google connector verification ping.",
+        confirmSend: true,
+      })
+    : null;
+
+  return {
+    success: status.connected && (!params.sendTarget || send?.ok === true),
+    text: `Google verify: status=${status.connected ? "connected" : "disconnected"}, gmail=${(read.gmail as { skipped?: boolean }).skipped ? "skipped" : "ok"}, calendar=${(read.calendar as { skipped?: boolean }).skipped ? "skipped" : "ok"}, send=${send ? "ok" : "skipped"}.`,
+    data: {
+      actionName: ACTION_NAME,
+      connector: "google",
+      subaction: "verify",
+      status,
+      read,
+      send,
+    },
+  };
 }
 
 async function dispatchX(
@@ -317,7 +393,8 @@ async function dispatchX(
         data: { actionName: ACTION_NAME, connector: "x", subaction, status },
       };
     }
-    case "status": {
+    case "status":
+    case "list": {
       const status = await service.getXConnectorStatus(params.mode, side);
       return {
         success: true,
@@ -326,10 +403,58 @@ async function dispatchX(
       };
     }
     case "verify":
-      return notImplemented("x", subaction);
-    case "list":
-      return notImplemented("x", subaction);
+      return await dispatchXVerify(service, side, params);
   }
+}
+
+async function dispatchXVerify(
+  service: LifeOpsService,
+  side: "owner" | "agent",
+  params: ConnectorActionParams,
+): Promise<ActionResult> {
+  const status = await service.getXConnectorStatus(params.mode, side);
+  const limit = params.recentLimit ?? 10;
+  const query = params.query?.trim();
+  const search =
+    query && status.feedRead
+      ? {
+          ok: true,
+          query,
+          items: await service.searchXPosts(query, { limit }),
+        }
+      : query
+        ? {
+            ok: false,
+            query,
+            skipped: true,
+            reason: "x.read capability not granted",
+          }
+        : null;
+  const inbound = status.dmInbound
+    ? await service.readXInboundDms({ limit })
+    : [];
+  const send = params.sendTarget
+    ? await service.sendXDirectMessage({
+        participantId: params.sendTarget,
+        text: params.sendMessage ?? "LifeOps X connector verification ping.",
+        mode: params.mode,
+        side,
+        confirmSend: true,
+      })
+    : null;
+  return {
+    success: status.connected && (!params.sendTarget || send?.ok === true),
+    text: `X verify: status=${status.connected ? "connected" : "disconnected"}, read=${inbound.length} inbound DM${inbound.length === 1 ? "" : "s"}, search=${query ? (search?.ok ? `${search.items.length} hit${search.items.length === 1 ? "" : "s"}` : "skipped") : "skipped"}, send=${send ? "ok" : "skipped"}.`,
+    data: {
+      actionName: ACTION_NAME,
+      connector: "x",
+      subaction: "verify",
+      status,
+      read: { ok: status.dmInbound, count: inbound.length, messages: inbound },
+      search,
+      send,
+    },
+  };
 }
 
 async function dispatchHealth(
@@ -358,23 +483,34 @@ async function dispatchHealth(
       };
     }
     case "connect":
-      return notImplemented(
+      return unsupportedOperation(
         "health",
         subaction,
         "Use LifeOps Settings to choose Strava, Fitbit, Withings, or Oura before starting OAuth.",
       );
     case "disconnect":
-      return notImplemented(
+      return unsupportedOperation(
         "health",
         subaction,
         "Disconnect a specific Strava, Fitbit, Withings, or Oura provider from LifeOps Settings.",
       );
-    case "verify":
-      return notImplemented(
-        "health",
-        subaction,
-        "Use HEALTH status or LifeOps Settings sync to verify health providers.",
-      );
+    case "verify": {
+      const [bridge, connectors] = await Promise.all([
+        service.getHealthConnectorStatus(),
+        service.getHealthDataConnectorStatuses(INTERNAL_URL, params.mode, side),
+      ]);
+      return {
+        success: bridge.available || connectors.some((item) => item.connected),
+        text: `Health verify: bridge=${bridge.available ? "available" : "unavailable"}, connectedProviders=${connectors.filter((item) => item.connected).length}.`,
+        data: {
+          actionName: ACTION_NAME,
+          connector: "health",
+          subaction,
+          bridge,
+          connectors,
+        },
+      };
+    }
   }
 }
 
@@ -427,8 +563,7 @@ async function dispatchTelegram(
         sendMessage: params.sendMessage,
       });
       return {
-        success:
-          response.read.ok && (params.sendTarget ? response.send.ok : true),
+        success: response.read.ok && response.send.ok,
         text: `Telegram verify: read=${response.read.ok ? "ok" : "fail"}, send=${response.send.ok ? "ok" : "fail"}.`,
         data: {
           actionName: ACTION_NAME,
@@ -438,7 +573,8 @@ async function dispatchTelegram(
         },
       };
     }
-    case "status": {
+    case "status":
+    case "list": {
       const status = await service.getTelegramConnectorStatus(side);
       return {
         success: true,
@@ -451,8 +587,6 @@ async function dispatchTelegram(
         },
       };
     }
-    case "list":
-      return notImplemented("telegram", subaction);
   }
 }
 
@@ -489,7 +623,8 @@ async function dispatchSignal(
         },
       };
     }
-    case "status": {
+    case "status":
+    case "list": {
       const status = await service.getSignalConnectorStatus(side);
       return {
         success: true,
@@ -504,8 +639,6 @@ async function dispatchSignal(
     }
     case "verify":
       return await dispatchSignalVerify(service, side, params);
-    case "list":
-      return notImplemented("signal", subaction);
   }
 }
 
@@ -573,7 +706,8 @@ async function dispatchDiscord(
         },
       };
     }
-    case "status": {
+    case "status":
+    case "list": {
       const status = await service.getDiscordConnectorStatus(side);
       return {
         success: true,
@@ -588,8 +722,6 @@ async function dispatchDiscord(
     }
     case "verify":
       return await dispatchDiscordVerify(service, side, params);
-    case "list":
-      return notImplemented("discord", subaction);
   }
 }
 
@@ -634,7 +766,8 @@ async function dispatchIMessage(
   params: ConnectorActionParams,
 ): Promise<ActionResult> {
   switch (subaction) {
-    case "status": {
+    case "status":
+    case "list": {
       const status = await service.getIMessageConnectorStatus();
       return {
         success: true,
@@ -648,21 +781,19 @@ async function dispatchIMessage(
       };
     }
     case "connect":
-      return notImplemented(
+      return unsupportedOperation(
         "imessage",
         subaction,
         "iMessage uses the native macOS bridge; nothing to connect via the agent action layer. Inspect status to see bridge readiness.",
       );
     case "disconnect":
-      return notImplemented(
+      return unsupportedOperation(
         "imessage",
         subaction,
         "iMessage disconnect is not exposed by LifeOpsService.",
       );
     case "verify":
       return await dispatchIMessageVerify(service, params);
-    case "list":
-      return notImplemented("imessage", subaction);
   }
 }
 
@@ -702,7 +833,8 @@ async function dispatchWhatsApp(
   params: ConnectorActionParams,
 ): Promise<ActionResult> {
   switch (subaction) {
-    case "status": {
+    case "status":
+    case "list": {
       const status = await service.getWhatsAppConnectorStatus();
       return {
         success: true,
@@ -716,21 +848,19 @@ async function dispatchWhatsApp(
       };
     }
     case "connect":
-      return notImplemented(
+      return unsupportedOperation(
         "whatsapp",
         subaction,
         "WhatsApp connection is configured via env vars (ELIZA_WHATSAPP_ACCESS_TOKEN / ELIZA_WHATSAPP_PHONE_NUMBER_ID); nothing to do via the action layer.",
       );
     case "disconnect":
-      return notImplemented(
+      return unsupportedOperation(
         "whatsapp",
         subaction,
         "WhatsApp disconnect is not exposed by LifeOpsService.",
       );
     case "verify":
       return await dispatchWhatsAppVerify(service, params);
-    case "list":
-      return notImplemented("whatsapp", subaction);
   }
 }
 
@@ -819,13 +949,35 @@ async function dispatchBrowserBridge(
       };
     }
     case "disconnect":
-      return notImplemented(
+      return unsupportedOperation(
         "browser_bridge",
         subaction,
         "Browser companion disconnect is not exposed by LifeOpsService.",
       );
-    case "verify":
-      return notImplemented("browser_bridge", subaction);
+    case "verify": {
+      const [settings, companions] = await Promise.all([
+        service.getBrowserSettings(),
+        service.listBrowserCompanions(),
+      ]);
+      const connected = companions.some(
+        (companion) => companion.connectionState === "connected",
+      );
+      return {
+        success: connected,
+        text: `Browser bridge verify: ${connected ? "connected" : "disconnected"} (${companions.length} companion${companions.length === 1 ? "" : "s"}).`,
+        data: {
+          actionName: ACTION_NAME,
+          connector: "browser_bridge",
+          subaction,
+          settings,
+          companions,
+          verification: {
+            activeProbe: false,
+            connected,
+          },
+        },
+      };
+    }
   }
 }
 

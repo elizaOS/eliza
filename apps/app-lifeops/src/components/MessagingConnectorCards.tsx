@@ -430,6 +430,10 @@ function browserAccessActionIcon(
 export function SignalConnectorCard() {
   const signal = useSignalConnector();
   const isConnected = signal.status?.connected === true;
+  const inboundReady = signal.status?.inbound === true;
+  const sendReady =
+    signal.status?.grantedCapabilities.includes("signal.send") === true;
+  const fullyReady = isConnected && inboundReady && sendReady;
   const pairingState = signal.pairingStatus?.state ?? null;
   const isPairing =
     !isConnected &&
@@ -437,15 +441,31 @@ export function SignalConnectorCard() {
       pairingState === "waiting_for_scan" ||
       pairingState === "linking");
   const busy = signal.actionPending || signal.loading;
+  const statusLabel = isConnected
+    ? fullyReady
+      ? "Connected"
+      : inboundReady
+        ? "Connected, send limited"
+        : sendReady
+          ? "Connected, inbound off"
+          : "Connected, capabilities missing"
+    : isPairing
+      ? "Pairing..."
+      : signal.error
+        ? "Needs attention"
+        : "Not connected";
+  const statusVariant: "ok" | "muted" | "warning" = fullyReady
+    ? "ok"
+    : isConnected || isPairing || signal.error
+      ? "warning"
+      : "muted";
 
   return (
     <ConnectorCardShell
       icon={<SignalIcon className="h-5 w-5 shrink-0 text-muted" />}
       platform="Signal"
-      status={
-        isConnected ? "Connected" : isPairing ? "Pairing..." : "Not connected"
-      }
-      statusVariant={isConnected ? "ok" : "muted"}
+      status={statusLabel}
+      statusVariant={statusVariant}
     >
       {!isConnected && !isPairing ? (
         <Button
@@ -501,6 +521,22 @@ export function SignalConnectorCard() {
               {signal.status.identity.phoneNumber}
             </div>
           ) : null}
+          <details className="rounded-2xl bg-bg/24 px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-txt">Access</span>
+              <AccessPips
+                items={[
+                  inboundReady ? "ok" : "warning",
+                  sendReady ? "ok" : "warning",
+                ]}
+                label={`Signal inbound ${inboundReady ? "ready" : "not ready"}, send ${sendReady ? "ready" : "not ready"}`}
+              />
+            </summary>
+            <div className="mt-2 rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
+              <div>Inbound: {inboundReady ? "ready" : "not ready"}</div>
+              <div>Send: {sendReady ? "ready" : "not ready"}</div>
+            </div>
+          </details>
           <Button
             size="sm"
             variant="outline"
@@ -573,8 +609,12 @@ export function DiscordConnectorCard() {
   const authPending =
     discord.status?.reason === "auth_pending" ||
     preferredAccess?.authState === "logged_out";
+  const preferredActionLabel = browserAccessActionLabel(
+    preferredAccess?.nextAction,
+  );
   const showConnectButton =
-    (available || canRelaunchDiscord) && (!isConnected || !dmInboxVisible);
+    (available || canRelaunchDiscord || Boolean(preferredActionLabel)) &&
+    (!isConnected || !dmInboxVisible);
   const statusLabel = dmInboxVisible
     ? `Connected • ${visibleDmCount} DM${visibleDmCount === 1 ? "" : "s"} visible`
     : authPending
@@ -599,7 +639,7 @@ export function DiscordConnectorCard() {
     ? dmInboxVisible
       ? "ok"
       : "warning"
-    : pairing || authPending
+    : pairing || authPending || preferredActionLabel
       ? "warning"
       : "muted";
   const browserAccessTones = browserAccess.map((access) =>
@@ -678,6 +718,27 @@ export function DiscordConnectorCard() {
     },
     [discord, handleOpenDesktopDiscord, setActionNotice, setTab],
   );
+  const mainActionLabel =
+    preferredActionLabel ??
+    (authPending
+      ? "Open Discord Login"
+      : isConnected
+        ? "Show Discord DMs"
+        : pairing
+          ? "Open Discord"
+          : "Connect Discord");
+  const handlePrimaryAction = useCallback(async () => {
+    if (preferredAccess && preferredActionLabel) {
+      await handleBrowserAccessAction(preferredAccess);
+      return;
+    }
+    await discord.connect(preferredAccess?.source);
+  }, [
+    discord,
+    handleBrowserAccessAction,
+    preferredAccess,
+    preferredActionLabel,
+  ]);
 
   return (
     <ConnectorCardShell
@@ -690,28 +751,10 @@ export function DiscordConnectorCard() {
         <Button
           size="sm"
           className="h-8 w-8 rounded-xl p-0"
-          disabled={busy || (!available && !canRelaunchDiscord)}
-          onClick={() => void discord.connect(preferredAccess?.source)}
-          title={
-            browserAccessActionLabel(preferredAccess?.nextAction) ??
-            (authPending
-              ? "Open Discord Login"
-              : isConnected
-                ? "Show Discord DMs"
-                : pairing
-                  ? "Open Discord"
-                  : "Connect Discord")
-          }
-          aria-label={
-            browserAccessActionLabel(preferredAccess?.nextAction) ??
-            (authPending
-              ? "Open Discord Login"
-              : isConnected
-                ? "Show Discord DMs"
-                : pairing
-                  ? "Open Discord"
-                  : "Connect Discord")
-          }
+          disabled={busy}
+          onClick={() => void handlePrimaryAction()}
+          title={mainActionLabel}
+          aria-label={mainActionLabel}
         >
           {preferredAccess?.nextAction === "relaunch_discord" ? (
             <RefreshCw className="h-3.5 w-3.5" aria-hidden />
@@ -1078,18 +1121,46 @@ export function TelegramConnectorCard() {
 export function WhatsAppConnectorCard() {
   const whatsapp = useWhatsAppConnector();
   const [pairingOpen, setPairingOpen] = useState(false);
-  const isConnected = whatsapp.status?.connected === true;
+  const status = whatsapp.status;
+  const inboundReady = status?.inboundReady === true;
+  const outboundReady = status?.outboundReady === true;
+  const fullyReady = inboundReady && outboundReady;
+  const anyDirectionReady = inboundReady || outboundReady;
+  const hasDegradations = Boolean(status?.degradations?.length);
+  const localAuthNeedsRepair = status?.localAuthRegistered === false;
+  const localAuthUnavailable =
+    status?.localAuthAvailable === true && status.serviceConnected !== true;
+  const isConnected = status?.connected === true;
   const busy = whatsapp.loading;
-  const statusLabel = busy
-    ? "Checking..."
-    : isConnected
-      ? "Configured"
-      : pairingOpen
-        ? "Pairing"
-        : "Needs setup";
-  const statusVariant: "ok" | "muted" | "warning" = isConnected
+  let statusLabel: string;
+  if (busy && !status) {
+    statusLabel = "Checking...";
+  } else if (fullyReady) {
+    statusLabel =
+      status?.transport === "cloudapi"
+        ? "Inbound + outbound"
+        : "Local session ready";
+  } else if (outboundReady) {
+    statusLabel = "Outbound only";
+  } else if (inboundReady) {
+    statusLabel = "Inbound only";
+  } else if (localAuthNeedsRepair) {
+    statusLabel = "Re-pair required";
+  } else if (localAuthUnavailable) {
+    statusLabel = "Local session offline";
+  } else if (pairingOpen) {
+    statusLabel = "Pairing";
+  } else {
+    statusLabel = "Needs setup";
+  }
+  const statusVariant: "ok" | "muted" | "warning" = fullyReady
     ? "ok"
-    : busy || pairingOpen
+    : anyDirectionReady ||
+        hasDegradations ||
+        localAuthNeedsRepair ||
+        localAuthUnavailable ||
+        busy ||
+        pairingOpen
       ? "warning"
       : "muted";
 
@@ -1101,11 +1172,46 @@ export function WhatsAppConnectorCard() {
       statusVariant={statusVariant}
     >
       <div className="space-y-2">
-        {whatsapp.status?.phoneNumberId ? (
+        {status?.phoneNumberId ? (
           <div className="flex items-center gap-1.5 text-xs text-muted">
             <Phone className="h-3.5 w-3.5" />
-            Phone number ID: {whatsapp.status.phoneNumberId}
+            Phone number ID: {status.phoneNumberId}
           </div>
+        ) : null}
+        {status ? (
+          <details className="rounded-2xl bg-bg/24 px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+              <span className="text-xs font-semibold text-txt">
+                {status.transport === "cloudapi"
+                  ? "Cloud API"
+                  : status.transport === "baileys"
+                    ? "Local session"
+                    : "Transport"}
+              </span>
+              <AccessPips
+                items={[
+                  inboundReady ? "ok" : "warning",
+                  outboundReady ? "ok" : "warning",
+                ]}
+                label={`WhatsApp inbound ${inboundReady ? "ready" : "not ready"}, outbound ${outboundReady ? "ready" : "not ready"}`}
+              />
+            </summary>
+            <div className="mt-2 space-y-1 rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
+              <div>Inbound: {inboundReady ? "ready" : "not ready"}</div>
+              <div>Outbound: {outboundReady ? "ready" : "not ready"}</div>
+              {status.serviceConnected !== undefined ? (
+                <div>
+                  Runtime:{" "}
+                  {status.serviceConnected ? "connected" : "not connected"}
+                </div>
+              ) : null}
+              {status.degradations?.map((degradation) => (
+                <div key={degradation.code} className="text-danger">
+                  {degradation.message}
+                </div>
+              ))}
+            </div>
+          </details>
         ) : null}
         <div className="flex items-center gap-2">
           {!isConnected ? (
