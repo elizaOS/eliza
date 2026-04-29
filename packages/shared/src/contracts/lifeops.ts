@@ -3431,8 +3431,17 @@ export interface LifeOpsSleepHistoryEpisode {
   confidence: number;
 }
 
+export interface LifeOpsSleepHistorySummary {
+  cycleCount: number;
+  averageDurationMin: number | null;
+  overnightCount: number;
+  napCount: number;
+  openCount: number;
+}
+
 export interface LifeOpsSleepHistoryResponse {
   episodes: LifeOpsSleepHistoryEpisode[];
+  summary: LifeOpsSleepHistorySummary;
   windowDays: number;
   includeNaps: boolean;
 }

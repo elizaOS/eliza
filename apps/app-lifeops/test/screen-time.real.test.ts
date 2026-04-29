@@ -381,6 +381,51 @@ describe("screen-time handler — real PGLite", () => {
     );
   });
 
+  it("reports browser social tracking setup from companion readiness, not usage rows", async () => {
+    const checkedAt = new Date().toISOString();
+    await service.updateBrowserSettings({
+      enabled: true,
+      trackingMode: "current_tab",
+      siteAccessMode: "current_site_only",
+    });
+
+    await service.syncBrowserState({
+      companion: {
+        browser: "chrome",
+        profileId: "screen-time-setup-profile",
+        label: "LifeOps Browser Setup",
+        connectionState: "connected",
+        lastSeenAt: checkedAt,
+        permissions: {
+          tabs: true,
+          scripting: true,
+          activeTab: true,
+          allOrigins: false,
+          grantedOrigins: [],
+          incognitoEnabled: false,
+        },
+      },
+      tabs: [],
+      pageContexts: [],
+    });
+
+    const social = await service.getSocialHabitSummary({
+      since: "2025-03-01T00:00:00.000Z",
+      until: "2025-03-01T01:00:00.000Z",
+      topN: 5,
+    });
+
+    expect(social.sessions).toEqual([]);
+    expect(social.dataSources).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "browser_bridge",
+          state: "live",
+        }),
+      ]),
+    );
+  });
+
   it("screenTimeAction today handler returns text and data", async () => {
     const today = new Date().toISOString().slice(0, 10);
     const result = await requireScreenTimeHandler()(
