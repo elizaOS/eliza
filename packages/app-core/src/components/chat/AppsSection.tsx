@@ -35,6 +35,10 @@ function getRunRingClass(run: AppRunSummary): string {
   return "ring-2 ring-danger/60";
 }
 
+function isOverlayLaunchApp(app: RegistryAppInfo): boolean {
+  return isOverlayApp(app.name) || app.launchType === "overlay";
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -196,7 +200,7 @@ export function AppsSection({ headerAction }: AppsSectionProps = {}) {
         setTab(internalToolTab);
         return;
       }
-      if (isOverlayApp(app.name)) {
+      if (isOverlayLaunchApp(app)) {
         setState("activeOverlayApp", app.name);
         return;
       }

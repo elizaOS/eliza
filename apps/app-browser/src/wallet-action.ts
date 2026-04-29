@@ -2,8 +2,8 @@ import {
   approveStewardWalletRequest,
   getStewardWalletUnavailableMessage,
   rejectStewardWalletRequest,
-  signWithStewardWallet,
   type StewardSignResponse,
+  signWithStewardWallet,
 } from "@elizaos/app-steward";
 import type {
   Action,
@@ -28,7 +28,8 @@ type StewardApprovalRequest = {
 };
 
 const ADDRESS_RE = /\b0x[a-fA-F0-9]{40}\b/;
-const CHAIN_ID_RE = /\bchain(?:[ \t]{0,4}id)?[ \t]{0,4}:?[ \t]{0,4}(\d{1,16})\b/i;
+const CHAIN_ID_RE =
+  /\bchain(?:[ \t]{0,4}id)?[ \t]{0,4}:?[ \t]{0,4}(\d{1,16})\b/i;
 const DATA_RE =
   /\b(?:data|calldata)[ \t]{0,4}:?[ \t]{0,4}(0x[a-fA-F0-9]{1,8192})\b/i;
 const TX_ID_RE = /\b(tx[\w:-]{1,128})\b/i;
