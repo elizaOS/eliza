@@ -105,29 +105,23 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // in the output; `MILADY_PLATFORM=android` would then fail at runtime when
 // the mobile bun process can't resolve the missing package. A plugin onResolve
 // that maps the bare specifier to the stub path keeps the resolution pure.
-// Native deps without an Android prebuild — replaced with throw-on-call shims.
 //
-// AOSP builds (`MILADY_AOSP_BUILD=1`) flip the gate on `node-llama-cpp` and
-// its prebuild aliases: the AOSP runtime ships its own `libllama.so` and
-// loads it via `bun:ffi` from `eliza/packages/agent/src/runtime/aosp-llama-adapter.ts`.
-// The adapter doesn't import `node-llama-cpp` directly today, but future
-// iterations may pull in its gguf metadata helpers — leaving the package
-// real (not stubbed) keeps that path open. The Capacitor APK build keeps
-// the stub because its on-device inference goes through llama-cpp-capacitor
-// in the WebView, not node-llama-cpp.
-const isAospBuild = process.env.MILADY_AOSP_BUILD === "1";
-const nodeLlamaStubs = isAospBuild
-  ? {}
-  : {
-      "node-llama-cpp": path.join(stubsDir, "node-llama-cpp.cjs"),
-      "@node-llama-cpp/linux-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
-      "@node-llama-cpp/linux-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
-      "@node-llama-cpp/mac-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
-      "@node-llama-cpp/mac-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
-      "@node-llama-cpp/win-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
-    };
+// AOSP runtime uses bun:ffi against libllama.so + libmilady-llama-shim.so
+// directly. node-llama-cpp stays stubbed unconditionally — un-stubbing pulls
+// in unresolvable per-platform prebuild packages (e.g.
+// `@node-llama-cpp/win-x64-cuda-ext`) that the agent's transitive imports
+// reference but the AOSP target cannot install. The static import of
+// `runtime/aosp-llama-adapter.ts` from `bin.ts` registers the runtime loader
+// when `MILADY_LOCAL_LLAMA=1`. The Capacitor APK build also keeps the stub
+// because its on-device inference goes through llama-cpp-capacitor in the
+// WebView, not node-llama-cpp.
 const nativeStubs = {
-  ...nodeLlamaStubs,
+  "node-llama-cpp": path.join(stubsDir, "node-llama-cpp.cjs"),
+  "@node-llama-cpp/linux-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+  "@node-llama-cpp/linux-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
+  "@node-llama-cpp/mac-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
+  "@node-llama-cpp/mac-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+  "@node-llama-cpp/win-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
   "@huggingface/transformers": path.join(
     stubsDir,
