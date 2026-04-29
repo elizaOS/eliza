@@ -701,6 +701,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
                   "google",
                   "cloud_managed",
                   side,
+                  resolvedGrant.id,
                 );
                 if (
                   !grants.some(
