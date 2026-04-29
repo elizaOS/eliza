@@ -468,6 +468,13 @@ function sortPriorityMessages(
   messages: LifeOpsInboxMessage[],
 ): LifeOpsInboxMessage[] {
   return [...messages].sort((left, right) => {
+    const leftPriority =
+      typeof left.priorityScore === "number" ? left.priorityScore : 0;
+    const rightPriority =
+      typeof right.priorityScore === "number" ? right.priorityScore : 0;
+    if (leftPriority !== rightPriority) {
+      return rightPriority - leftPriority;
+    }
     if (left.unread !== right.unread) {
       return left.unread ? -1 : 1;
     }
@@ -814,13 +821,19 @@ export function LifeOpsOverviewSection({
 
   const calendar = useCalendarWeek({ viewMode: "week" });
   const messagesInbox = useInbox({
-    maxResults: 8,
+    maxResults: 40,
     channels: LIFEOPS_MESSAGE_CHANNELS,
+    groupByThread: true,
+    chatTypeFilter: ["dm"],
+    sortByPriority: true,
   });
   const mailInbox = useInbox({
-    maxResults: 8,
+    maxResults: 40,
     channel: "gmail",
     channels: LIFEOPS_MAIL_CHANNELS,
+    groupByThread: true,
+    chatTypeFilter: ["dm"],
+    sortByPriority: true,
   });
 
   const upcomingEvents = useMemo(() => {
