@@ -14,7 +14,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { resolveElizaCloudTopology } from "@elizaos/shared/contracts";
 import {
   type AccountCredentialRecord,
   deleteAccount,
@@ -509,11 +508,6 @@ export async function applySubscriptionCredentials(config?: {
     return;
   }
 
-  const cloudInferenceEnabled = config
-    ? resolveElizaCloudTopology(config as Record<string, unknown>).services
-        .inference
-    : false;
-
   // ── Anthropic subscription ──────────────────────────────────────────
   //
   // Anthropic subscription tokens (sk-ant-oat*) are restricted to the
@@ -570,14 +564,10 @@ export async function applySubscriptionCredentials(config?: {
       codexAccounts.find((a) => a.id === chosenId) ??
       codexAccounts.slice().sort((a, b) => a.createdAt - b.createdAt)[0];
     const codexToken = await getAccessToken("openai-codex", primary.id);
-    if (codexToken && !cloudInferenceEnabled) {
+    if (codexToken) {
       process.env.OPENAI_API_KEY = codexToken;
       logger.info(
         `[auth] Applied OpenAI Codex subscription credentials to environment from account "${primary.label}" (${primary.id})`,
-      );
-    } else if (codexToken) {
-      logger.info(
-        `[auth] OpenAI Codex subscription credentials detected for account "${primary.label}" (${primary.id}) but not applied because Eliza Cloud inference is active`,
       );
     }
   }
@@ -592,11 +582,7 @@ export async function applySubscriptionCredentials(config?: {
     if (provider) {
       const modelId = SUBSCRIPTION_PROVIDER_MAP[provider];
       if (modelId) {
-        if (cloudInferenceEnabled) {
-          logger.info(
-            `[auth] Skipped auto-setting model.primary to "${modelId}" because Eliza Cloud inference is active`,
-          );
-        } else if (!defaults.model) {
+        if (!defaults.model) {
           defaults.model = { primary: modelId };
           logger.info(
             `[auth] Auto-set model.primary to "${modelId}" from subscription provider`,
