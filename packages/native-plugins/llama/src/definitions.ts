@@ -55,6 +55,28 @@ export interface HardwareInfo {
   gpuSupported: boolean;
 }
 
+export interface EmbedOptions {
+  /** Raw text to embed. The adapter forwards this verbatim to the native plugin. */
+  input: string;
+  /**
+   * Optional L2 normalisation passed through to llama-cpp-capacitor's
+   * `embd_normalize` parameter. Native default is 0 (off); set to 2 for
+   * L2-normalised vectors that match most cloud embedding APIs.
+   */
+  embdNormalize?: number;
+}
+
+export interface EmbedResult {
+  embedding: number[];
+  /**
+   * Token count of the embedded input. The native plugin doesn't return
+   * this directly so adapters may estimate via `tokenize` and report 0
+   * when an estimate is unavailable. Always present so downstream
+   * accounting code doesn't have to special-case undefined.
+   */
+  tokens: number;
+}
+
 export interface LlamaAdapter {
   getHardwareInfo(): Promise<HardwareInfo>;
   isLoaded(): Promise<{ loaded: boolean; modelPath: string | null }>;
@@ -65,4 +87,10 @@ export interface LlamaAdapter {
   cancelGenerate(): Promise<void>;
   /** Fires when `generate({ stream: true })` emits a new token. */
   onToken(listener: (token: string, index: number) => void): () => void;
+  /**
+   * Compute a single sentence embedding. Returns the raw float vector and
+   * (when known) the input token count. Throws when the underlying plugin
+   * does not expose an embedding method on the active platform.
+   */
+  embed(options: EmbedOptions): Promise<EmbedResult>;
 }

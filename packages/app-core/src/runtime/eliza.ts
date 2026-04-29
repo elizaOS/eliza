@@ -73,6 +73,7 @@ import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
 } from "./ensure-text-to-speech-handler.js";
+import { shouldEnableMobileLocalInference } from "./mobile-local-inference-gate.js";
 import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
 import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
 
@@ -518,6 +519,9 @@ async function repairRuntimeAfterBoot(
   // them here is what the mobile bundle has to do to avoid crashing on first
   // turn — feature parity comes from cloud-side services, not on-device state.
   if (isMobilePlatform()) {
+    if (shouldEnableMobileLocalInference()) {
+      await ensureLocalInferenceHandler(runtime);
+    }
     logger.info(
       "[eliza] Mobile platform detected — skipping desktop-only boot helpers",
     );
