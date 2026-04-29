@@ -1,0 +1,75 @@
+name: confidant-ci
+
+# Cross-platform tests for @elizaos/confidant. The package's headline claim
+# is that the OS-keyring-backed credential mediation layer works the same
+# on macOS Keychain, Windows Credential Manager, and Linux Secret Service
+# (libsecret). This workflow makes that claim verifiable in CI on every PR
+# that touches the package.
+
+concurrency:
+  group: confidant-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/confidant/**"
+      - ".github/workflows/confidant-ci.yaml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/confidant/**"
+      - ".github/workflows/confidant-ci.yaml"
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      # Linux Secret Service prerequisites — without these the keyring
+      # round-trip tests gate themselves OFF (the test design has a probe
+      # at module-import time and `it.skipIf(!KEYRING_WORKS)` skips
+      # cleanly). With these, the round-trip tests run.
+      - name: Install Secret Service (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsecret-1-dev gnome-keyring dbus-x11
+          # Start a session DBus + an unlocked gnome-keyring-daemon so the
+          # libsecret backend can talk to a real Secret Service.
+          eval "$(dbus-launch --sh-syntax)"
+          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID" >> "$GITHUB_ENV"
+          # Unlock the default keyring with an empty password so subsequent
+          # secret writes don't block on a prompt.
+          printf '\n' | gnome-keyring-daemon --unlock --components=secrets &
+          sleep 1
+          # Daemon prints its env vars; export them for downstream steps.
+          eval "$(printf '\n' | gnome-keyring-daemon --start --components=secrets)"
+          echo "GNOME_KEYRING_CONTROL=$GNOME_KEYRING_CONTROL" >> "$GITHUB_ENV"
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        working-directory: packages/confidant
+        run: bun install
+
+      - name: Typecheck
+        working-directory: packages/confidant
+        run: bun run typecheck
+
+      - name: Test
+        working-directory: packages/confidant
+        run: bun run test
