@@ -234,8 +234,6 @@ export function LifeOpsScreenTimeSection({
 }) {
   const [range, setRange] = useState<RangeKey>("today");
   const [data, setData] = useState<RangeData | null>(null);
-  const [priorData, setPriorData] = useState<PriorData | null>(null);
-  const [history, setHistory] = useState<HistoryData | null>(null);
   const [blockStatus, setBlockStatus] =
     useState<UnifiedSocialBlockStatus | null>(null);
   const [blockStatusError, setBlockStatusError] = useState<string | null>(null);
@@ -243,63 +241,26 @@ export function LifeOpsScreenTimeSection({
   const [error, setError] = useState<string | null>(null);
 
   const dataCache = useRef<Map<RangeKey, CacheEntry<RangeData>>>(new Map());
-  const priorCache = useRef<Map<RangeKey, CacheEntry<PriorData>>>(new Map());
-  const historyCache = useRef<Map<RangeKey, CacheEntry<HistoryData>>>(
-    new Map(),
-  );
 
   const load = useCallback(async (key: RangeKey, force = false) => {
     setLoading(true);
     setError(null);
     const now = Date.now();
     const cached = dataCache.current.get(key);
-    const cachedPrior = priorCache.current.get(key);
-    const cachedHistory = historyCache.current.get(key);
     const fresh = (entry: CacheEntry<unknown> | undefined) =>
       entry !== undefined && now - entry.fetchedAt < CACHE_TTL_MS;
 
-    if (
-      !force &&
-      fresh(cached) &&
-      (key === "today" || fresh(cachedPrior)) &&
-      (key === "today" || fresh(cachedHistory))
-    ) {
+    if (!force && fresh(cached)) {
       setData(cached!.value);
-      setPriorData(cachedPrior?.value ?? null);
-      setHistory(cachedHistory?.value ?? null);
       setLoading(false);
       return;
     }
 
     try {
-      const period = computeRange(key);
-      const priorPeriod = computePriorRange(key);
-      const [rangeData, priorRangeData, historyData] = await Promise.all([
-        fetchRangeData(period),
-        priorPeriod ? fetchRangeData(priorPeriod) : Promise.resolve(null),
-        key === "today" ? Promise.resolve(null) : fetchHistoryData(period),
-      ]);
+      const rangeData = await fetchRangeData(key);
       const stamp = Date.now();
       dataCache.current.set(key, { value: rangeData, fetchedAt: stamp });
-      if (priorRangeData) {
-        priorCache.current.set(key, {
-          value: priorRangeData,
-          fetchedAt: stamp,
-        });
-      } else {
-        priorCache.current.delete(key);
-      }
-      if (historyData) {
-        historyCache.current.set(key, {
-          value: historyData,
-          fetchedAt: stamp,
-        });
-      } else {
-        historyCache.current.delete(key);
-      }
       setData(rangeData);
-      setPriorData(priorRangeData);
-      setHistory(historyData);
     } catch (cause) {
       setError(
         cause instanceof Error && cause.message.trim().length > 0
