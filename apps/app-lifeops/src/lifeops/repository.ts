@@ -15,61 +15,62 @@ import type {
   LifeOpsXFeedType,
   LifeOpsXSyncState,
 } from "@elizaos/shared/contracts/lifeops-extensions";
-import type {
-  LifeOpsActivitySignal,
-  LifeOpsAuditEvent,
-  LifeOpsAwakeProbability,
-  LifeOpsAwakeProbabilityContributor,
-  LifeOpsBrowserSession,
-  LifeOpsCalendarEvent,
-  LifeOpsChannelPolicy,
-  LifeOpsCircadianRuleFiring,
-  LifeOpsCircadianState,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorSide,
-  LifeOpsCrossChannelDraft,
-  LifeOpsDossier,
-  LifeOpsFollowUp,
-  LifeOpsGmailMessageSummary,
-  LifeOpsGmailSpamReviewItem,
-  LifeOpsGmailSpamReviewStatus,
-  LifeOpsGoalDefinition,
-  LifeOpsGoalLink,
-  LifeOpsHealthMetricSample,
-  LifeOpsHealthSignal,
-  LifeOpsHealthSleepEpisode,
-  LifeOpsHealthSleepStageSample,
-  LifeOpsHealthSyncState,
-  LifeOpsHealthWorkout,
-  LifeOpsInboxChannel,
-  LifeOpsInboxMessage,
-  LifeOpsMessageChannel,
-  LifeOpsNegotiationState,
-  LifeOpsOccurrence,
-  LifeOpsOccurrenceView,
-  LifeOpsPersonalBaseline,
-  LifeOpsProposalProposer,
-  LifeOpsProposalStatus,
-  LifeOpsRelationship,
-  LifeOpsRelationshipInteraction,
-  LifeOpsReminderAttempt,
-  LifeOpsReminderPlan,
-  LifeOpsScheduleInsight,
-  LifeOpsScheduleMealInsight,
-  LifeOpsScheduleRegularity,
-  LifeOpsSchedulingNegotiation,
-  LifeOpsSchedulingProposal,
-  LifeOpsScreenTimeDaily,
-  LifeOpsScreenTimeSession,
-  LifeOpsSleepCycleEvidence,
-  LifeOpsSleepCycleType,
-  LifeOpsTaskDefinition,
-  LifeOpsTelemetryEvent,
-  LifeOpsTelemetryFamily,
-  LifeOpsTelemetryPayload,
-  LifeOpsUnclearReason,
-  LifeOpsWorkflowDefinition,
-  LifeOpsWorkflowRun,
+import {
+  LIFEOPS_INBOX_CHANNELS,
+  type LifeOpsActivitySignal,
+  type LifeOpsAuditEvent,
+  type LifeOpsAwakeProbability,
+  type LifeOpsAwakeProbabilityContributor,
+  type LifeOpsBrowserSession,
+  type LifeOpsCalendarEvent,
+  type LifeOpsChannelPolicy,
+  type LifeOpsCircadianRuleFiring,
+  type LifeOpsCircadianState,
+  type LifeOpsConnectorGrant,
+  type LifeOpsConnectorSide,
+  type LifeOpsCrossChannelDraft,
+  type LifeOpsDossier,
+  type LifeOpsFollowUp,
+  type LifeOpsGmailMessageSummary,
+  type LifeOpsGmailSpamReviewItem,
+  type LifeOpsGmailSpamReviewStatus,
+  type LifeOpsGoalDefinition,
+  type LifeOpsGoalLink,
+  type LifeOpsHealthMetricSample,
+  type LifeOpsHealthSignal,
+  type LifeOpsHealthSleepEpisode,
+  type LifeOpsHealthSleepStageSample,
+  type LifeOpsHealthSyncState,
+  type LifeOpsHealthWorkout,
+  type LifeOpsInboxChannel,
+  type LifeOpsInboxMessage,
+  type LifeOpsMessageChannel,
+  type LifeOpsNegotiationState,
+  type LifeOpsOccurrence,
+  type LifeOpsOccurrenceView,
+  type LifeOpsPersonalBaseline,
+  type LifeOpsProposalProposer,
+  type LifeOpsProposalStatus,
+  type LifeOpsRelationship,
+  type LifeOpsRelationshipInteraction,
+  type LifeOpsReminderAttempt,
+  type LifeOpsReminderPlan,
+  type LifeOpsScheduleInsight,
+  type LifeOpsScheduleMealInsight,
+  type LifeOpsScheduleRegularity,
+  type LifeOpsSchedulingNegotiation,
+  type LifeOpsSchedulingProposal,
+  type LifeOpsScreenTimeDaily,
+  type LifeOpsScreenTimeSession,
+  type LifeOpsSleepCycleEvidence,
+  type LifeOpsSleepCycleType,
+  type LifeOpsTaskDefinition,
+  type LifeOpsTelemetryEvent,
+  type LifeOpsTelemetryFamily,
+  type LifeOpsTelemetryPayload,
+  type LifeOpsUnclearReason,
+  type LifeOpsWorkflowDefinition,
+  type LifeOpsWorkflowRun,
 } from "../contracts/index.js";
 import type {
   EmailUnsubscribeMethod,
@@ -198,6 +199,10 @@ export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
 type LifeOpsInboxCacheWriteMessage = LifeOpsInboxMessage & {
   priorityFlags?: readonly string[];
 };
+
+const LIFEOPS_INBOX_CHANNEL_SET = new Set<LifeOpsInboxChannel>(
+  LIFEOPS_INBOX_CHANNELS,
+);
 
 const LIFEOPS_INBOX_CHAT_TYPES = new Set<
   NonNullable<LifeOpsInboxMessage["chatType"]>
@@ -1033,6 +1038,78 @@ function normalizeInboxChatType(
   return "channel";
 }
 
+function normalizeInboxChannelValue(
+  value: unknown,
+  label = "inbox channel",
+): LifeOpsInboxChannel {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (LIFEOPS_INBOX_CHANNEL_SET.has(normalized as LifeOpsInboxChannel)) {
+      return normalized as LifeOpsInboxChannel;
+    }
+  }
+  throw new Error(`[LifeOpsRepository] invalid ${label}: ${String(value)}`);
+}
+
+function requireInboxExternalId(value: unknown, label: string): string {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value;
+  }
+  throw new Error(`[LifeOpsRepository] missing ${label}`);
+}
+
+function parseCachedInboxSourceRef(
+  value: unknown,
+  channel: LifeOpsInboxChannel,
+  externalId: string,
+): LifeOpsInboxMessage["sourceRef"] {
+  const sourceRef = parseJsonRecord(value);
+  const sourceRefChannel =
+    sourceRef.channel === undefined || sourceRef.channel === null
+      ? channel
+      : normalizeInboxChannelValue(
+          sourceRef.channel,
+          "inbox sourceRef channel",
+        );
+  if (sourceRefChannel !== channel) {
+    throw new Error(
+      `[LifeOpsRepository] inbox sourceRef channel ${sourceRefChannel} does not match row channel ${channel}`,
+    );
+  }
+  return {
+    channel: sourceRefChannel,
+    externalId:
+      sourceRef.externalId === undefined || sourceRef.externalId === null
+        ? externalId
+        : requireInboxExternalId(
+            sourceRef.externalId,
+            "inbox sourceRef externalId",
+          ),
+  };
+}
+
+function normalizeInboxWriteSourceRef(
+  sourceRef: LifeOpsInboxMessage["sourceRef"],
+  channel: LifeOpsInboxChannel,
+): LifeOpsInboxMessage["sourceRef"] {
+  const sourceRefChannel = normalizeInboxChannelValue(
+    sourceRef.channel,
+    "inbox sourceRef channel",
+  );
+  if (sourceRefChannel !== channel) {
+    throw new Error(
+      `[LifeOpsRepository] inbox sourceRef channel ${sourceRefChannel} does not match message channel ${channel}`,
+    );
+  }
+  return {
+    channel: sourceRefChannel,
+    externalId: requireInboxExternalId(
+      sourceRef.externalId,
+      "inbox sourceRef externalId",
+    ),
+  };
+}
+
 function normalizeInboxPriorityCategory(
   value: unknown,
 ): LifeOpsInboxMessage["priorityCategory"] {
@@ -1077,8 +1154,11 @@ function hasOwnPriorityFlags(message: LifeOpsInboxCacheWriteMessage): boolean {
 function parseCachedInboxMessage(
   row: Record<string, unknown>,
 ): LifeOpsCachedInboxMessage {
-  const channel = toText(row.channel) as LifeOpsInboxChannel;
-  const externalId = toText(row.external_id);
+  const channel = normalizeInboxChannelValue(row.channel);
+  const externalId = requireInboxExternalId(
+    row.external_id,
+    "inbox external_id",
+  );
   const priorityScore =
     row.priority_score === null || row.priority_score === undefined
       ? undefined
@@ -1096,7 +1176,11 @@ function parseCachedInboxMessage(
     row.chat_type,
     participantCount,
   );
-  const sourceRef = parseJsonRecord(row.source_ref_json);
+  const sourceRef = parseCachedInboxSourceRef(
+    row.source_ref_json,
+    channel,
+    externalId,
+  );
   const flags = parseJsonArray<string>(row.priority_flags_json).filter(
     (flag): flag is string => typeof flag === "string",
   );
@@ -1114,16 +1198,7 @@ function parseCachedInboxMessage(
     receivedAt: toText(row.received_at),
     unread: toBoolean(row.is_unread),
     deepLink: row.deep_link ? toText(row.deep_link) : null,
-    sourceRef: {
-      channel:
-        typeof sourceRef.channel === "string"
-          ? (sourceRef.channel as LifeOpsInboxChannel)
-          : channel,
-      externalId:
-        typeof sourceRef.externalId === "string"
-          ? sourceRef.externalId
-          : externalId,
-    },
+    sourceRef,
     threadId: row.thread_id ? toText(row.thread_id) : undefined,
     chatType,
     participantCount,
@@ -4399,8 +4474,13 @@ export class LifeOpsRepository {
     if (messages.length === 0) return;
     const now = isoNow();
     for (const message of messages) {
+      const channel = normalizeInboxChannelValue(message.channel);
+      const sourceRef = normalizeInboxWriteSourceRef(
+        message.sourceRef,
+        channel,
+      );
       const chatType = normalizeInboxChatType(
-        message.channel,
+        channel,
         message.chatType,
         message.participantCount,
       );
@@ -4420,8 +4500,8 @@ export class LifeOpsRepository {
         ) VALUES (
           ${sqlQuote(message.id)},
           ${sqlQuote(agentId)},
-          ${sqlQuote(message.channel)},
-          ${sqlQuote(message.sourceRef.externalId)},
+          ${sqlQuote(channel)},
+          ${sqlQuote(sourceRef.externalId)},
           ${sqlText(message.threadId)},
           ${sqlQuote(message.sender.id)},
           ${sqlQuote(message.sender.displayName)},
@@ -4431,7 +4511,7 @@ export class LifeOpsRepository {
           ${sqlQuote(message.receivedAt)},
           ${sqlBoolean(message.unread)},
           ${sqlText(message.deepLink)},
-          ${sqlJson(message.sourceRef)},
+          ${sqlJson(sourceRef)},
           ${sqlQuote(chatType)},
           ${sqlInteger(message.participantCount)},
           ${sqlText(message.gmailAccountId)},
@@ -4479,9 +4559,13 @@ export class LifeOpsRepository {
       gmailAccountId?: string;
     },
   ): Promise<LifeOpsCachedInboxMessage[]> {
+    const channels =
+      options?.channels?.map((channel) =>
+        normalizeInboxChannelValue(channel),
+      ) ?? [];
     const channelClause =
-      options?.channels && options.channels.length > 0
-        ? `AND channel IN (${options.channels
+      channels.length > 0
+        ? `AND channel IN (${channels
             .map((channel) => sqlQuote(channel))
             .join(", ")})`
         : "";

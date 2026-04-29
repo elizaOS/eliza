@@ -32,6 +32,7 @@ import {
   getLifeOpsSimulatorPerson,
   LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
   LIFEOPS_SIMULATOR_OWNER,
+  LIFEOPS_SIMULATOR_OWNER_IDENTITIES,
   LIFEOPS_SIMULATOR_PEOPLE,
   LIFEOPS_SIMULATOR_REMINDERS,
   type LifeOpsSimulatorChannelMessage,
@@ -91,6 +92,11 @@ export interface LifeOpsSimulatorSeedResult {
   telegramTokenRef: string;
   signalTokenRef: string;
 }
+
+const LIFEOPS_SIMULATOR_PASSIVE_INGEST = {
+  ingestMode: "passive",
+  handledByAgent: false,
+} as const;
 
 function stateDirFromEnv(): string {
   const dir =
@@ -171,8 +177,11 @@ function installSignalMockService(runtime: AgentRuntime): Cleanup {
           `Simulator Signal send failed with HTTP ${response.status}`,
         );
       }
-      const body = (await response.json()) as { timestamp?: number };
-      return { timestamp: body.timestamp ?? Date.now() };
+      const body = (await response.json()) as { timestamp?: unknown };
+      if (typeof body.timestamp !== "number") {
+        throw new Error("Simulator Signal send response is missing timestamp.");
+      }
+      return { timestamp: body.timestamp };
     },
     async stop() {},
   };
@@ -373,8 +382,7 @@ async function seedChatMemory(
         message.threadType === "group" ? ChannelType.GROUP : ChannelType.DM,
       simulator: {
         id: message.id,
-        ingestMode: "passive",
-        handledByAgent: false,
+        ...LIFEOPS_SIMULATOR_PASSIVE_INGEST,
         threadId: message.threadId,
         threadName: message.threadName,
         unread: message.unread === true,
@@ -384,8 +392,7 @@ async function seedChatMemory(
       entityName: person.name,
       simulator: {
         id: message.id,
-        ingestMode: "passive",
-        handledByAgent: false,
+        ...LIFEOPS_SIMULATOR_PASSIVE_INGEST,
         channel: message.channel,
       },
     },
@@ -431,6 +438,7 @@ function writeTelegramMockSession(stateDir: string): void {
 }
 
 function writeTelegramToken(runtime: AgentRuntime): string {
+  const telegramIdentity = LIFEOPS_SIMULATOR_OWNER_IDENTITIES.telegram;
   const tokenRef = buildTelegramTokenRef(runtime.agentId, "owner");
   const tokenPath = path.join(
     resolveOAuthDir(process.env),
@@ -452,9 +460,9 @@ function writeTelegramToken(runtime: AgentRuntime): string {
         apiHash: "mock-telegram-api-hash",
         phone: LIFEOPS_SIMULATOR_OWNER.phone,
         identity: {
-          id: "lifeops-simulator-owner",
-          username: "mocked_lifeops_owner",
-          firstName: "Eliza",
+          id: telegramIdentity.id,
+          username: telegramIdentity.username,
+          firstName: telegramIdentity.firstName,
         },
         connectorConfig: null,
         createdAt: now,
@@ -469,6 +477,7 @@ function writeTelegramToken(runtime: AgentRuntime): string {
 }
 
 function writeSignalDevice(runtime: AgentRuntime): string {
+  const signalIdentity = LIFEOPS_SIMULATOR_OWNER_IDENTITIES.signal;
   const authDir = path.join(
     resolveOAuthDir(process.env),
     "lifeops",
@@ -483,8 +492,8 @@ function writeSignalDevice(runtime: AgentRuntime): string {
       {
         authDir,
         phoneNumber: LIFEOPS_SIMULATOR_OWNER.phone,
-        uuid: "lifeops-simulator-signal-owner",
-        deviceName: "LifeOps Simulator Signal",
+        uuid: signalIdentity.uuid,
+        deviceName: signalIdentity.deviceName,
       },
       null,
       2,
@@ -499,6 +508,7 @@ async function seedConnectorGrants(
   repository: LifeOpsRepository,
 ): Promise<{ telegramTokenRef: string; signalTokenRef: string }> {
   const now = new Date().toISOString();
+  const ownerIdentities = LIFEOPS_SIMULATOR_OWNER_IDENTITIES;
   const telegramTokenRef = writeTelegramToken(runtime);
   const signalTokenRef = writeSignalDevice(runtime);
   await repository.upsertConnectorGrant(
@@ -509,8 +519,8 @@ async function seedConnectorGrants(
       mode: "local",
       identity: {
         phone: LIFEOPS_SIMULATOR_OWNER.phone,
-        id: "lifeops-simulator-owner",
-        username: "mocked_lifeops_owner",
+        id: ownerIdentities.telegram.id,
+        username: ownerIdentities.telegram.username,
       },
       grantedScopes: [],
       capabilities: [...LIFEOPS_TELEGRAM_CAPABILITIES],
@@ -527,7 +537,7 @@ async function seedConnectorGrants(
       mode: "local",
       identity: {
         phoneNumber: LIFEOPS_SIMULATOR_OWNER.phone,
-        uuid: "lifeops-simulator-signal-owner",
+        uuid: ownerIdentities.signal.uuid,
       },
       grantedScopes: [],
       capabilities: [...LIFEOPS_SIGNAL_CAPABILITIES],
@@ -542,7 +552,10 @@ async function seedConnectorGrants(
       provider: "discord",
       side: "owner",
       mode: "local",
-      identity: { username: "mocked_owner", id: "lifeops-simulator-owner" },
+      identity: {
+        username: ownerIdentities.discord.username,
+        id: ownerIdentities.discord.id,
+      },
       grantedScopes: [],
       capabilities: [...LIFEOPS_DISCORD_CAPABILITIES],
       tokenRef: null,
@@ -608,7 +621,7 @@ function whatsappWebhookPayload() {
     object: "whatsapp_business_account",
     entry: [
       {
-        id: "lifeops-simulator-whatsapp",
+        id: LIFEOPS_SIMULATOR_OWNER_IDENTITIES.whatsapp.businessAccountId,
         changes: [
           {
             field: "messages",
@@ -616,7 +629,8 @@ function whatsappWebhookPayload() {
               messaging_product: "whatsapp",
               metadata: {
                 display_phone_number: LIFEOPS_SIMULATOR_OWNER.phone,
-                phone_number_id: "lifeops-simulator-whatsapp-phone",
+                phone_number_id:
+                  LIFEOPS_SIMULATOR_OWNER_IDENTITIES.whatsapp.phoneNumberId,
               },
               contacts: whatsappMessages.map((message) => {
                 const person = getLifeOpsSimulatorPerson(message.fromPersonKey);

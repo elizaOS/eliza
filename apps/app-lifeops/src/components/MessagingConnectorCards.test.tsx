@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
 
+import type {
+  LifeOpsDiscordConnectorStatus,
+  LifeOpsSignalConnectorStatus,
+  LifeOpsSignalPairingStatus,
+  LifeOpsWhatsAppConnectorStatus,
+} from "@elizaos/shared";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,7 +18,7 @@ const {
   whatsappConnectorState,
 } = vi.hoisted(() => ({
   discordConnectorState: {
-    status: null as Record<string, unknown> | null,
+    status: null as LifeOpsDiscordConnectorStatus | null,
     loading: false,
     actionPending: false,
     error: null as string | null,
@@ -23,18 +29,18 @@ const {
   setActionNoticeMock: vi.fn(),
   setTabMock: vi.fn(),
   signalConnectorState: {
-    status: null as Record<string, unknown> | null,
+    status: null as LifeOpsSignalConnectorStatus | null,
     loading: false,
     actionPending: false,
     error: null as string | null,
-    pairingStatus: null as Record<string, unknown> | null,
+    pairingStatus: null as LifeOpsSignalPairingStatus | null,
     startPairing: vi.fn(),
     stopPairing: vi.fn(),
     disconnect: vi.fn(),
     refresh: vi.fn(),
   },
   whatsappConnectorState: {
-    status: null as Record<string, unknown> | null,
+    status: null as LifeOpsWhatsAppConnectorStatus | null,
     loading: false,
     error: null as string | null,
     refresh: vi.fn(),
@@ -118,7 +124,9 @@ import {
   WhatsAppConnectorCard,
 } from "./MessagingConnectorCards.js";
 
-function discordStatus(overrides: Record<string, unknown> = {}) {
+function discordStatus(
+  overrides: Partial<LifeOpsDiscordConnectorStatus> = {},
+): LifeOpsDiscordConnectorStatus {
   return {
     provider: "discord",
     side: "owner",

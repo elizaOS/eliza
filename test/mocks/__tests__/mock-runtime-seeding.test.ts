@@ -6,12 +6,13 @@ import {
   assertLifeOpsSimulatorFixtureIntegrity,
   LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
   LIFEOPS_SIMULATOR_CHANNELS,
+  LIFEOPS_SIMULATOR_OWNER,
+  LIFEOPS_SIMULATOR_OWNER_IDENTITIES,
 } from "../fixtures/lifeops-simulator.ts";
 import { createMockedTestRuntime } from "../helpers/mock-runtime.ts";
 import { seedTestUserProfile } from "../helpers/seed-test-user-profile.ts";
 
 const INTERNAL_URL = new URL("http://127.0.0.1:31337");
-const SEEDED_OWNER_NAME = "Eliza Test Owner";
 
 async function withLoadTestUserProfileFlag<T>(
   value: "1" | undefined,
@@ -116,7 +117,8 @@ describe("mock runtime seeding", () => {
       expect.arrayContaining([
         expect.objectContaining({
           contactName: "Priya Shah",
-          phoneNumberId: "lifeops-simulator-whatsapp-phone",
+          phoneNumberId:
+            LIFEOPS_SIMULATOR_OWNER_IDENTITIES.whatsapp.phoneNumberId,
         }),
       ]),
     );
@@ -235,7 +237,7 @@ describe("mock runtime seeding", () => {
         service.listDefinitions(),
       ]);
 
-      expect(profile.name).not.toBe(SEEDED_OWNER_NAME);
+      expect(profile.name).not.toBe(LIFEOPS_SIMULATOR_OWNER.name);
       expect(definitions.map((entry) => entry.definition.title)).not.toContain(
         "Invisalign",
       );
@@ -252,7 +254,7 @@ describe("mock runtime seeding", () => {
 
       const service = new LifeOpsService(mocked.runtime);
       const profile = await readLifeOpsOwnerProfile(mocked.runtime);
-      expect(profile.name).toBe(SEEDED_OWNER_NAME);
+      expect(profile.name).toBe(LIFEOPS_SIMULATOR_OWNER.name);
       expect(profile.location).toBe("Test City, CA");
 
       const definitions = await service.listDefinitions();

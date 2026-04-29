@@ -19,6 +19,7 @@ import type {
 } from "@elizaos/core";
 
 const ACTION_NAME = "LIFEOPS_COMPUTER_USE";
+const COMPUTER_USE_PACKAGE = "@elizaos/plugin-computeruse";
 const ACTION_NAMES = {
   desktop: "USE_COMPUTER",
   browser: "BROWSER_ACTION",
@@ -157,9 +158,7 @@ function selectSurface(params: Record<string, unknown>): ComputerUseSurface {
 async function loadComputerUseActions(): Promise<LoadedComputerUseActions | null> {
   try {
     // Dynamic import so a missing peer dependency does not break plugin load.
-    const mod = (await import(
-      /* @vite-ignore */ "@elizaos/plugin-computeruse" as unknown as string
-    )) as {
+    const mod = (await import(/* @vite-ignore */ COMPUTER_USE_PACKAGE)) as {
       default?: { actions?: readonly Action[] };
       computerUsePlugin?: { actions?: readonly Action[] };
     };
@@ -177,9 +176,23 @@ async function loadComputerUseActions(): Promise<LoadedComputerUseActions | null
       file: byName.get(ACTION_NAMES.file) ?? null,
       terminal: byName.get(ACTION_NAMES.terminal) ?? null,
     };
-  } catch {
+  } catch (error) {
+    if (!isMissingComputerUsePackageError(error)) {
+      throw error;
+    }
     return null;
   }
+}
+
+function isMissingComputerUsePackageError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  return (
+    (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") &&
+    error.message.includes(COMPUTER_USE_PACKAGE)
+  );
 }
 
 let cachedActions: LoadedComputerUseActions | null | undefined;
@@ -189,15 +202,6 @@ async function getLoadedActions(): Promise<LoadedComputerUseActions | null> {
     cachedActions = await loadComputerUseActions();
   }
   return cachedActions;
-}
-
-function selectDelegateAction(
-  actions: LoadedComputerUseActions,
-  message: Memory,
-  options?: HandlerOptions,
-): Action | null {
-  const params = resolveWrapperParams(message, options);
-  return actions[selectSurface(params)] ?? null;
 }
 
 const unavailableExamples: ActionExample[][] = [

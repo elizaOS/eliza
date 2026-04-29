@@ -97,6 +97,11 @@ describe("lifeopsPlugin shape", () => {
     expect(paths).toContain("/api/lifeops/workflows/:id");
     expect(paths).toContain("/api/lifeops/workflows/:id/run");
     expect(paths).toContain("/api/lifeops/occurrences/:id/complete");
+    expect(paths).toContain("/api/lifeops/connectors/health/:provider/status");
+    expect(paths).toContain("/api/lifeops/connectors/health/:provider/start");
+    expect(paths).toContain(
+      "/api/lifeops/connectors/health/:provider/disconnect",
+    );
     expect(paths).toContain(
       "/api/lifeops/website-access/callbacks/:key/resolve",
     );
@@ -146,13 +151,28 @@ describe("lifeopsPlugin shape", () => {
     const xSuccessRoute = routes.find(
       (r) => r.path === "/api/lifeops/connectors/x/success",
     );
+    const healthCallbackRoute = routes.find(
+      (r) => r.path === "/api/lifeops/connectors/health/:provider/callback",
+    );
+    const healthSuccessRoute = routes.find(
+      (r) => r.path === "/api/lifeops/connectors/health/:provider/success",
+    );
 
     expect(callbackRoute).toBeDefined();
     expect(callbackRoute?.public).toBe(true);
+    expect(callbackRoute?.name).toBe("lifeops.google.callback");
     expect(googleSuccessRoute).toBeDefined();
     expect(googleSuccessRoute?.public).toBe(true);
+    expect(googleSuccessRoute?.name).toBe("lifeops.google.success");
     expect(xSuccessRoute).toBeDefined();
     expect(xSuccessRoute?.public).toBe(true);
+    expect(xSuccessRoute?.name).toBe("lifeops.x.success");
+    expect(healthCallbackRoute).toBeDefined();
+    expect(healthCallbackRoute?.public).toBe(true);
+    expect(healthCallbackRoute?.name).toBe("lifeops.health.callback");
+    expect(healthSuccessRoute).toBeDefined();
+    expect(healthSuccessRoute?.public).toBe(true);
+    expect(healthSuccessRoute?.name).toBe("lifeops.health.success");
   });
 
   it("handlers delegate to the underlying handler modules", async () => {

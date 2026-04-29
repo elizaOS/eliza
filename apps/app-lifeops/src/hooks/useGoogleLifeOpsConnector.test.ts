@@ -7,7 +7,6 @@ const {
   clientMock,
   dispatchLifeOpsGoogleConnectorRefreshMock,
   openExternalUrlMock,
-  reactModuleUrl,
   useAppMock,
 } = vi.hoisted(() => {
   const makeReadyApp = () => ({
@@ -45,7 +44,6 @@ const {
     dispatchLifeOpsGoogleConnectorRefreshMock: vi.fn(),
     openExternalUrlMock: vi.fn(async () => undefined),
     useAppMock: vi.fn(makeReadyApp),
-    reactModuleUrl: `${process.cwd()}/node_modules/react/index.js`,
   };
 });
 
@@ -54,7 +52,7 @@ vi.mock("@elizaos/app-core/state", () => ({ useApp: useAppMock }));
 vi.mock("@elizaos/app-core/utils", () => ({
   openExternalUrl: openExternalUrlMock,
 }));
-vi.mock("react", async () => import(reactModuleUrl));
+vi.mock("react", async () => vi.importActual("react"));
 vi.mock("@elizaos/app-core/events", () => ({
   APP_RESUME_EVENT: "app-resume",
 }));

@@ -1,6 +1,7 @@
 import type { IAgentRuntime, Memory, Room, UUID, World } from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
 import {
+  fetchAllMessages,
   fetchChatMessages,
   fetchGmailMessages,
   fetchXDmMessages,
@@ -132,6 +133,41 @@ describe("fetchGmailMessages", () => {
   });
 });
 
+describe("fetchAllMessages", () => {
+  test("does not scan chat rooms when the request only includes Gmail", async () => {
+    const runtime = makeRuntime();
+    const source: GmailInboxSource = {
+      getGoogleConnectorStatus: vi.fn(async () => ({
+        provider: "google",
+        side: "owner",
+        mode: "oauth",
+        defaultMode: "oauth",
+        availableModes: ["oauth"],
+        executionTarget: "local",
+        sourceOfTruth: "local_storage",
+        configured: true,
+        connected: false,
+        reason: "not_connected",
+        grantedCapabilities: [],
+        missingCapabilities: ["google.gmail.triage"],
+        identity: null,
+        authUrl: null,
+      })),
+      getGmailTriage: vi.fn(async () => {
+        throw new Error("gmail triage should not be called");
+      }),
+    };
+
+    const messages = await fetchAllMessages(runtime, {
+      sources: ["gmail"],
+      gmailSource: source,
+    });
+
+    expect(messages).toEqual([]);
+    expect(runtime.getRoomsForParticipant).not.toHaveBeenCalled();
+  });
+});
+
 describe("fetchXDmMessages", () => {
   test("preserves read and replied timestamps for inbox missed-state checks", async () => {
     const source: XDmInboxSource = {
@@ -183,5 +219,56 @@ describe("fetchXDmMessages", () => {
 
     expect(messages[0]?.lastSeenAt).toBe("2026-04-21T12:05:00.000Z");
     expect(messages[0]?.repliedAt).toBe("2026-04-21T12:10:00.000Z");
+  });
+
+  test("rejects malformed receivedAt values instead of using the current time", async () => {
+    const source: XDmInboxSource = {
+      getXConnectorStatus: vi.fn(async () => ({
+        provider: "x",
+        side: "owner",
+        mode: "cloud_managed",
+        defaultMode: "cloud_managed",
+        availableModes: ["cloud_managed"],
+        executionTarget: "cloud",
+        sourceOfTruth: "cloud",
+        configured: true,
+        connected: true,
+        reason: "connected",
+        grantedCapabilities: [],
+        grantedScopes: [],
+        missingCapabilities: [],
+        identity: null,
+        hasCredentials: true,
+        grant: null,
+        dmRead: true,
+        dmWrite: true,
+        dmInbound: true,
+        feedRead: false,
+        feedWrite: false,
+      })),
+      syncXDms: vi.fn(async () => ({ synced: 1 })),
+      getXDms: vi.fn(async () => [
+        {
+          id: "dm-bad-time",
+          agentId: String(AGENT_ID),
+          externalDmId: "external-dm-bad-time",
+          conversationId: "conversation-bad-time",
+          senderHandle: "sender",
+          senderId: "sender-id",
+          isInbound: true,
+          text: "checking in",
+          receivedAt: "not-a-date",
+          readAt: null,
+          repliedAt: null,
+          metadata: {},
+          syncedAt: "2026-04-21T12:11:00.000Z",
+          updatedAt: "2026-04-21T12:11:00.000Z",
+        },
+      ]),
+    };
+
+    await expect(fetchXDmMessages(source, { limit: 10 })).rejects.toThrow(
+      "invalid X DM receivedAt",
+    );
   });
 });

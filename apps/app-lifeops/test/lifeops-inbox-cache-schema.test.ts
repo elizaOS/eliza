@@ -308,6 +308,45 @@ describe("LifeOps inbox cache schema repair", () => {
     });
     expect(cached?.priorityFlags).toEqual([]);
   });
+
+  it("rejects cache writes whose sourceRef channel disagrees with the inbox channel", async () => {
+    const runtime = createLifeOpsChatTestRuntime({
+      agentId: "inbox-cache-source-ref-agent",
+      useModel: async () => {
+        throw new Error("useModel should not be called");
+      },
+      handleTurn: async () => ({ text: "ok" }),
+    });
+    await LifeOpsRepository.bootstrapSchema(runtime);
+    const repository = new LifeOpsRepository(runtime);
+    const agentId = String(runtime.agentId);
+
+    const message: LifeOpsInboxMessage = {
+      id: "telegram:source-ref-1",
+      channel: "telegram",
+      sender: {
+        id: "sender-1",
+        displayName: "Alice",
+        email: null,
+        avatarUrl: null,
+      },
+      subject: null,
+      snippet: "bad source ref",
+      receivedAt: "2026-04-26T23:50:16.000Z",
+      unread: true,
+      deepLink: null,
+      sourceRef: {
+        channel: "gmail",
+        externalId: "source-ref-1",
+      },
+    };
+
+    await expect(
+      repository.upsertCachedInboxMessages(agentId, [message]),
+    ).rejects.toThrow(
+      "sourceRef channel gmail does not match message channel telegram",
+    );
+  });
 });
 
 describe("LifeOps X DM state preservation", () => {

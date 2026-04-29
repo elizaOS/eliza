@@ -187,12 +187,13 @@ describe("non-Google central provider mocks", () => {
   it("serves Signal check, receive, REST send, and JSON-RPC send", async () => {
     mocks = await startMocks({ envs: ["signal"] });
     const baseUrl = mocks.baseUrls.signal;
+    const accountNumber = mocks.envVars.SIGNAL_ACCOUNT_NUMBER;
 
     const check = await fetch(`${baseUrl}/api/v1/check`);
     expect(check.status).toBe(200);
 
     const receive = await fetch(
-      `${baseUrl}/v1/receive/${encodeURIComponent("+15550000000")}`,
+      `${baseUrl}/v1/receive/${encodeURIComponent(accountNumber)}`,
       { headers: { "X-Eliza-Test-Run": "run-signal" } },
     );
     expect(receive.status).toBe(200);
@@ -202,7 +203,7 @@ describe("non-Google central provider mocks", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        number: "+15550000000",
+        number: accountNumber,
         recipients: ["+15551110001"],
         message: "Signal REST fixture",
       }),
@@ -220,7 +221,7 @@ describe("non-Google central provider mocks", () => {
         id: "rpc-1",
         method: "send",
         params: {
-          account: "+15550000000",
+          account: accountNumber,
           recipients: ["+15551110002"],
           message: "Signal RPC fixture",
         },
@@ -237,7 +238,7 @@ describe("non-Google central provider mocks", () => {
           runId: "run-signal",
           signal: expect.objectContaining({
             action: "receive",
-            account: "+15550000000",
+            account: accountNumber,
             runId: "run-signal",
           }),
         }),
