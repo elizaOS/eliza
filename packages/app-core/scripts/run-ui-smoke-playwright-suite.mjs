@@ -35,6 +35,7 @@ const specFiles = [
   "test/ui-smoke/apps-session-direct-b.spec.ts",
   "test/ui-smoke/browser-workspace.spec.ts",
   "test/ui-smoke/cloud-wallet-import.spec.ts",
+  "test/ui-smoke/connectors.spec.ts",
   "test/ui-smoke/ui-smoke.spec.ts",
 ];
 

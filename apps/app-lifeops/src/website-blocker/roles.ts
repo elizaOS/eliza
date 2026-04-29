@@ -13,9 +13,7 @@ import {
   type Memory,
 } from "@elizaos/core";
 
-export type RoleCheckResult = CoreRoleCheckResult & {
-  hasPrivateAccess: boolean;
-};
+export type RoleCheckResult = CoreRoleCheckResult;
 
 export async function checkSenderRole(
   runtime: IAgentRuntime,
@@ -29,8 +27,5 @@ export async function checkSenderRole(
         `The room must have a worldId and the sender must be a participant with a resolvable role.`,
     );
   }
-  return {
-    ...result,
-    hasPrivateAccess: result.isAdmin,
-  };
+  return result;
 }

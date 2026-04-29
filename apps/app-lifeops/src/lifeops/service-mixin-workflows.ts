@@ -885,6 +885,8 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
               step.request ?? {},
               new Date(args.startedAt),
             );
+          } else if (step.kind === "get_health_summary") {
+            value = await this.getHealthSummary(step.request ?? {});
           } else if (step.kind === "dispatch_n8n_workflow") {
             const n8n = this.runtime.getService("N8N_DISPATCH") as {
               execute?: (

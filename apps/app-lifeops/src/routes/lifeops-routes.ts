@@ -20,7 +20,9 @@ import type {
   CreateLifeOpsWorkflowRequest,
   CreateLifeOpsXPostRequest,
   DisconnectLifeOpsGoogleConnectorRequest,
+  DisconnectLifeOpsHealthConnectorRequest,
   DisconnectLifeOpsMessagingConnectorRequest,
+  GetLifeOpsHealthSummaryRequest,
   GetLifeOpsCalendarFeedRequest,
   GetLifeOpsGmailRecommendationsRequest,
   GetLifeOpsGmailSearchRequest,
@@ -33,6 +35,7 @@ import type {
   LifeOpsCalendarEventUpdate,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsHealthConnectorProvider,
   LifeOpsInboxChannel,
   ListLifeOpsCalendarsRequest,
   ManageLifeOpsGmailMessagesRequest,
@@ -49,9 +52,11 @@ import type {
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsDiscordConnectorRequest,
   StartLifeOpsGoogleConnectorRequest,
+  StartLifeOpsHealthConnectorRequest,
   StartLifeOpsSignalPairingRequest,
   StartLifeOpsTelegramAuthRequest,
   SubmitLifeOpsTelegramAuthRequest,
+  SyncLifeOpsHealthConnectorRequest,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGmailSpamReviewItemRequest,
   UpdateLifeOpsGoalRequest,
@@ -66,6 +71,7 @@ import {
   LIFEOPS_GMAIL_SPAM_REVIEW_STATUSES,
   LIFEOPS_INBOX_CACHE_MODES,
   LIFEOPS_INBOX_CHANNELS,
+  LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
   LIFEOPS_OWNER_BROWSER_ACCESS_SOURCES,
   LIFEOPS_SCREEN_TIME_RANGES,
   type LifeOpsGmailSpamReviewStatus,
@@ -110,7 +116,7 @@ export interface LifeOpsRouteContext {
 
 /**
  * Ensure the request has the runtime context required to act on behalf of
- * the configured admin entity. Returns `false` (and writes a 503) when the
+ * the configured owner entity. Returns `false` (and writes a 503) when the
  * agent runtime is not available — this is the per-request analogue of an
  * auth guard. The framework-level token check
  * (`route.public !== true && !isAuthorized()` in
@@ -131,7 +137,7 @@ function getService(ctx: LifeOpsRouteContext): LifeOpsService | null {
     return null;
   }
   // `runtime` is non-null after the guard above. The service derives the
-  // owner/admin entity from `ctx.state.adminEntityId` when present,
+  // owner entity from `ctx.state.adminEntityId` when present,
   // otherwise from `defaultOwnerEntityId(runtime)` (a stable per-agent UUID
   // derived from `agentId`). That keeps tenant scoping intact even when the
   // route dispatcher does not surface an explicit admin entity.
@@ -383,6 +389,37 @@ function parseConnectorSideFromRequest(
     );
   }
   return bodySide ?? querySide;
+}
+
+function parseHealthConnectorProvider(
+  value: string,
+): LifeOpsHealthConnectorProvider {
+  const normalized = value.trim().toLowerCase();
+  if (!isOneOf(normalized, LIFEOPS_HEALTH_CONNECTOR_PROVIDERS)) {
+    throw new LifeOpsServiceError(
+      400,
+      `provider must be one of: ${LIFEOPS_HEALTH_CONNECTOR_PROVIDERS.join(", ")}`,
+    );
+  }
+  return normalized;
+}
+
+function parseOptionalHealthConnectorProvider(
+  value: string | null,
+): LifeOpsHealthConnectorProvider | null {
+  const normalized = value?.trim();
+  return normalized ? parseHealthConnectorProvider(normalized) : null;
+}
+
+function parseDateOnlyQuery(value: string | null, field: string): string | null {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return null;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw new LifeOpsServiceError(400, `${field} must be a YYYY-MM-DD date`);
+  }
+  return normalized;
 }
 
 function parseDiscordConnectorSourceInput(
@@ -1583,6 +1620,178 @@ export async function handleLifeOpsRoutes(
     if (!body) return true;
     return runRoute(ctx, async (service) => {
       json(res, await service.disconnectGoogleConnector(body, url));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/connectors/health/status") {
+    if (rateLimitRequest(ctx, "default")) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.getHealthDataConnectorStatuses(
+          url,
+          parseConnectorModeQuery(url.searchParams.get("mode")),
+          parseConnectorSideQuery(url.searchParams.get("side")),
+        ),
+      );
+    });
+  }
+
+  const healthStatusMatch = pathname.match(
+    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/status$/,
+  );
+  if (method === "GET" && healthStatusMatch) {
+    if (rateLimitRequest(ctx, "default")) return true;
+    const provider = parseHealthConnectorProvider(
+      decodeMatchedPathComponent(ctx, healthStatusMatch, 1, res, "provider") ??
+        "",
+    );
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.getHealthDataConnectorStatus(
+          provider,
+          url,
+          parseConnectorModeQuery(url.searchParams.get("mode")),
+          parseConnectorSideQuery(url.searchParams.get("side")),
+        ),
+      );
+    });
+  }
+
+  const healthStartMatch = pathname.match(
+    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/start$/,
+  );
+  if (method === "POST" && healthStartMatch) {
+    if (rateLimitRequest(ctx, "oauth_init")) return true;
+    const provider = parseHealthConnectorProvider(
+      decodeMatchedPathComponent(ctx, healthStartMatch, 1, res, "provider") ??
+        "",
+    );
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.startHealthConnector(
+          {
+            ...(body as Omit<StartLifeOpsHealthConnectorRequest, "provider">),
+            provider,
+          },
+          url,
+        ),
+        201,
+      );
+    });
+  }
+
+  const healthCallbackMatch = pathname.match(
+    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/callback$/,
+  );
+  if (method === "GET" && healthCallbackMatch) {
+    const provider = parseHealthConnectorProvider(
+      decodeMatchedPathComponent(ctx, healthCallbackMatch, 1, res, "provider") ??
+        "",
+    );
+    const service = getService(ctx);
+    if (!service) return true;
+    try {
+      const status = await service.completeHealthConnectorCallback(url);
+      if (status.provider !== provider) {
+        throw new LifeOpsServiceError(
+          409,
+          "Health connector callback provider did not match the request path.",
+        );
+      }
+      writeHtml(
+        res,
+        200,
+        `${provider} Connected`,
+        `${provider} health data is now available in Eliza. You can close this window.`,
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof LifeOpsServiceError) {
+        writeHtml(res, error.status, "Health Connection Failed", error.message);
+        return true;
+      }
+      throw error;
+    }
+  }
+
+  const healthSuccessMatch = pathname.match(
+    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/success$/,
+  );
+  if (method === "GET" && healthSuccessMatch) {
+    const provider = parseHealthConnectorProvider(
+      decodeMatchedPathComponent(ctx, healthSuccessMatch, 1, res, "provider") ??
+        "",
+    );
+    writeHtml(
+      res,
+      200,
+      `${provider} Connected`,
+      `${provider} health data is now available in Eliza. You can close this window.`,
+    );
+    return true;
+  }
+
+  const healthDisconnectMatch = pathname.match(
+    /^\/api\/lifeops\/connectors\/health\/([^/]+)\/disconnect$/,
+  );
+  if (method === "POST" && healthDisconnectMatch) {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
+    const provider = parseHealthConnectorProvider(
+      decodeMatchedPathComponent(
+        ctx,
+        healthDisconnectMatch,
+        1,
+        res,
+        "provider",
+      ) ?? "",
+    );
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(
+        res,
+        await service.disconnectHealthConnector({
+          ...(body as Omit<DisconnectLifeOpsHealthConnectorRequest, "provider">),
+          provider,
+        }, url),
+      );
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/lifeops/health/sync") {
+    if (rateLimitRequest(ctx, "connector_write")) return true;
+    const body = await readJsonBody<SyncLifeOpsHealthConnectorRequest>(
+      req,
+      res,
+    );
+    if (!body) return true;
+    return runRoute(ctx, async (service) => {
+      json(res, await service.syncHealthConnectors(body));
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/lifeops/health/summary") {
+    if (rateLimitRequest(ctx, "default")) return true;
+    return runRoute(ctx, async (service) => {
+      const request: GetLifeOpsHealthSummaryRequest = {
+        provider: parseOptionalHealthConnectorProvider(
+          url.searchParams.get("provider"),
+        ),
+        mode: parseConnectorModeQuery(url.searchParams.get("mode")),
+        side: parseConnectorSideQuery(url.searchParams.get("side")),
+        days: parsePositiveIntegerQuery(url.searchParams.get("days"), "days", {
+          max: 31,
+        }) ?? undefined,
+        startDate: parseDateOnlyQuery(url.searchParams.get("startDate"), "startDate"),
+        endDate: parseDateOnlyQuery(url.searchParams.get("endDate"), "endDate"),
+        forceSync: url.searchParams.get("forceSync") === "true",
+      };
+      json(res, await service.getHealthSummary(request));
     });
   }
 

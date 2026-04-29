@@ -1,5 +1,5 @@
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
+import { hasOwnerAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -180,7 +180,7 @@ export const intentSyncAction: Action & {
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory): Promise<boolean> =>
-    hasAdminAccess(runtime, message),
+    hasOwnerAccess(runtime, message),
 
   parameters: [
     {
@@ -299,7 +299,7 @@ export const intentSyncAction: Action & {
     state,
     options,
   ): Promise<ActionResult> => {
-    if (!(await hasAdminAccess(runtime, message))) {
+    if (!(await hasOwnerAccess(runtime, message))) {
       return fail("PERMISSION_DENIED");
     }
 

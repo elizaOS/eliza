@@ -10,7 +10,6 @@
  */
 
 import { extractActionParamsViaLlm } from "@elizaos/agent/actions/extract-params";
-import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
   ActionExample,
@@ -608,12 +607,7 @@ export const ownerCalendarAction: Action & {
     runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
-    // Union of old validators: negotiation + calendly require admin, calendar +
-    // scheduling-lite require lifeops access. The umbrella gates on either —
-    // the per-target handler re-checks its own stricter access before acting.
-    if (await hasLifeOpsAccess(runtime, message)) return true;
-    if (await hasAdminAccess(runtime, message)) return true;
-    return false;
+    return hasLifeOpsAccess(runtime, message);
   },
   handler: async (
     runtime: IAgentRuntime,

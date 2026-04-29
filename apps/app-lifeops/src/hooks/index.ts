@@ -35,6 +35,7 @@ export {
   useLifeOpsSelection,
 } from "./useLifeOpsSelection.js";
 export { useLifeOpsStretchReminder } from "./useLifeOpsStretchReminder.js";
+export { useLifeOpsHealthConnectors } from "./useLifeOpsHealthConnectors.js";
 export { useLifeOpsXConnector } from "./useLifeOpsXConnector.js";
 export {
   type UseSignalConnectorOptions,

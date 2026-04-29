@@ -3,18 +3,23 @@ import { client } from "@elizaos/app-core/api";
 import type { ModelOption } from "@elizaos/shared/contracts/onboarding";
 import {
   AlertTriangle,
+  Activity,
   CalendarDays,
   Cloud,
   Copy,
   ExternalLink,
   GitBranch,
   HardDrive,
+  HeartPulse,
   Mail,
   Plug2,
   Plus,
+  RefreshCw,
   Sparkles,
   ToggleRight,
   Unplug,
+  Watch,
+  Weight,
   X,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
@@ -23,8 +28,11 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
+  LifeOpsHealthConnectorProvider,
+  LifeOpsHealthConnectorStatus,
 } from "../contracts/index.js";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
+import { useLifeOpsHealthConnectors } from "../hooks/useLifeOpsHealthConnectors";
 import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
 import { LifeOpsFeatureTogglesSection } from "./LifeOpsFeatureTogglesSection";
 import { MobileSignalsSetupCard } from "./MobileSignalsSetupCard";
@@ -881,6 +889,287 @@ function GoogleConnectorSideCard({
   );
 }
 
+type HealthConnectorController = ReturnType<typeof useLifeOpsHealthConnectors>;
+
+const HEALTH_PROVIDER_META: Record<
+  LifeOpsHealthConnectorProvider,
+  {
+    label: string;
+    Icon: typeof Activity;
+  }
+> = {
+  strava: { label: "Strava", Icon: Activity },
+  fitbit: { label: "Fitbit", Icon: Watch },
+  withings: { label: "Withings", Icon: Weight },
+  oura: { label: "Oura", Icon: HeartPulse },
+};
+
+function healthStatusTone(status: LifeOpsHealthConnectorStatus | undefined) {
+  if (status?.connected && status.reason !== "sync_failed") return "ok";
+  if (
+    status?.reason === "needs_reauth" ||
+    status?.reason === "config_missing" ||
+    status?.reason === "sync_failed"
+  ) {
+    return "warning";
+  }
+  return "muted";
+}
+
+function healthStatusText(
+  status: LifeOpsHealthConnectorStatus | undefined,
+  t: TranslateFn,
+): string {
+  if (!status) {
+    return t("common.loading", { defaultValue: "Loading" });
+  }
+  if (status.reason === "sync_failed") {
+    return t("lifeopssettings.syncFailed", { defaultValue: "Sync failed" });
+  }
+  return statusLabel(status.reason, status.connected, t);
+}
+
+function healthIdentityText(
+  status: LifeOpsHealthConnectorStatus | undefined,
+  provider: LifeOpsHealthConnectorProvider,
+): string {
+  const identity = status?.identity;
+  if (!identity) {
+    return HEALTH_PROVIDER_META[provider].label;
+  }
+  const fields = [
+    identity.email,
+    identity.username,
+    identity.name,
+    identity.firstname && identity.lastname
+      ? `${identity.firstname} ${identity.lastname}`
+      : null,
+    identity.id,
+    identity.userId,
+  ];
+  const match = fields.find(
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
+  );
+  return match?.trim() ?? HEALTH_PROVIDER_META[provider].label;
+}
+
+function HealthPendingAuthActions({
+  url,
+  onDismiss,
+}: {
+  url: string;
+  onDismiss: () => void;
+}) {
+  const { t } = useApp();
+  const copy = useCallback(async () => {
+    await navigator.clipboard.writeText(url);
+  }, [url]);
+  const open = useCallback(() => {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, [url]);
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 w-7 rounded-lg p-0"
+        onClick={() => void copy()}
+        title={t("lifeopssettings.copyUrl", { defaultValue: "Copy URL" })}
+        aria-label={t("lifeopssettings.copyUrl", { defaultValue: "Copy URL" })}
+      >
+        <Copy className="h-3.5 w-3.5" aria-hidden />
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 w-7 rounded-lg p-0"
+        onClick={open}
+        title={t("common.open", { defaultValue: "Open" })}
+        aria-label={t("common.open", { defaultValue: "Open" })}
+      >
+        <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 w-7 rounded-lg p-0"
+        onClick={onDismiss}
+        title={t("common.dismiss", { defaultValue: "Dismiss" })}
+        aria-label={t("common.dismiss", { defaultValue: "Dismiss" })}
+      >
+        <X className="h-3.5 w-3.5" aria-hidden />
+      </Button>
+    </div>
+  );
+}
+
+function HealthConnectorsCard() {
+  const { t } = useApp();
+  const health = useLifeOpsHealthConnectors("owner");
+  const [dismissedAuthUrls, setDismissedAuthUrls] = useState<
+    Partial<Record<LifeOpsHealthConnectorProvider, string | null>>
+  >({});
+
+  const dismissAuthUrl = useCallback(
+    (provider: LifeOpsHealthConnectorProvider, url: string) => {
+      setDismissedAuthUrls((current) => ({ ...current, [provider]: url }));
+    },
+    [],
+  );
+
+  return (
+    <section className="space-y-3 rounded-2xl border border-border/20 bg-card/14 px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border/30 bg-bg/38">
+            <HeartPulse className="h-4 w-4 text-muted" aria-hidden />
+          </div>
+          <h3 className="truncate text-sm font-semibold text-txt">
+            {t("lifeopssettings.healthConnectorsTitle", {
+              defaultValue: "Health",
+            })}
+          </h3>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-8 w-8 rounded-xl p-0"
+          disabled={health.loading || health.refreshing}
+          onClick={() => void health.refresh()}
+          title={t("common.refresh", { defaultValue: "Refresh" })}
+          aria-label={t("common.refresh", { defaultValue: "Refresh" })}
+        >
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+        </Button>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {health.providers.map((provider) => {
+          const meta = HEALTH_PROVIDER_META[provider];
+          const ProviderIcon = meta.Icon;
+          const status = health.statusesByProvider[provider];
+          const pendingAuthUrl = health.pendingAuthUrlByProvider[provider];
+          const visibleAuthUrl =
+            pendingAuthUrl && dismissedAuthUrls[provider] !== pendingAuthUrl
+              ? pendingAuthUrl
+              : null;
+          const statusText = healthStatusText(status, t);
+          const controlDisabled =
+            health.loading ||
+            health.actionPendingProvider === provider ||
+            health.syncPendingProvider === provider;
+          return (
+            <div
+              key={provider}
+              className="min-w-0 rounded-2xl bg-bg/40 px-3 py-3"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-border/24 bg-card/28">
+                  <ProviderIcon className="h-4 w-4 text-muted" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm font-semibold text-txt">
+                      {meta.label}
+                    </span>
+                    <StatusDot
+                      label={statusText}
+                      tone={healthStatusTone(status)}
+                    />
+                  </div>
+                  <div className="mt-0.5 truncate text-xs text-muted">
+                    {healthIdentityText(status, provider)}
+                  </div>
+                  {status?.lastSyncAt ? (
+                    <div className="mt-0.5 truncate text-[11px] text-muted">
+                      {new Date(status.lastSyncAt).toLocaleString()}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {status?.connected ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 w-8 rounded-xl p-0"
+                      disabled={controlDisabled}
+                      onClick={() => void health.sync(provider)}
+                      title={t("common.sync", { defaultValue: "Sync" })}
+                      aria-label={t("common.sync", { defaultValue: "Sync" })}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                  ) : null}
+                  {!status?.connected ? (
+                    <Button
+                      size="sm"
+                      className="h-8 w-8 rounded-xl p-0"
+                      disabled={controlDisabled}
+                      onClick={() => void health.connect(provider)}
+                      title={
+                        status?.reason === "needs_reauth"
+                          ? t("common.reconnect", {
+                              defaultValue: "Reconnect",
+                            })
+                          : t("common.connect", {
+                              defaultValue: "Connect",
+                            })
+                      }
+                      aria-label={
+                        status?.reason === "needs_reauth"
+                          ? t("common.reconnect", {
+                              defaultValue: "Reconnect",
+                            })
+                          : t("common.connect", {
+                              defaultValue: "Connect",
+                            })
+                      }
+                    >
+                      <Plug2 className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 w-8 rounded-xl p-0"
+                      disabled={controlDisabled}
+                      onClick={() => void health.disconnect(provider)}
+                      title={t("common.disconnect", {
+                        defaultValue: "Disconnect",
+                      })}
+                      aria-label={t("common.disconnect", {
+                        defaultValue: "Disconnect",
+                      })}
+                    >
+                      <Unplug className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {visibleAuthUrl ? (
+                <HealthPendingAuthActions
+                  url={visibleAuthUrl}
+                  onDismiss={() => dismissAuthUrl(provider, visibleAuthUrl)}
+                />
+              ) : null}
+              {health.errorByProvider[provider] ? (
+                <div className="mt-2 text-xs text-danger">
+                  {health.errorByProvider[provider]}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function flattenModelOptions(
   models:
     | {
@@ -1332,6 +1621,7 @@ export function LifeOpsSettingsSection({
       ) : null}
 
       <MobileSignalsSetupCard />
+      <HealthConnectorsCard />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <GoogleConnectorSideCard

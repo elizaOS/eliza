@@ -61,7 +61,7 @@ export interface DiscordDesktopCdpStatus {
 }
 
 function configuredDiscordDesktopCdpPort(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env
 ): number {
   const raw = env.MILADY_DISCORD_DESKTOP_CDP_PORT?.trim();
   if (!raw) {
@@ -73,6 +73,15 @@ function configuredDiscordDesktopCdpPort(
     : DEFAULT_DISCORD_DESKTOP_CDP_PORT;
 }
 
+function discordDesktopCdpDisabled(
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  return (
+    env.MILADY_DISABLE_DISCORD_DESKTOP_CDP === "1" ||
+    env.ELIZA_DISABLE_DISCORD_DESKTOP_CDP === "1"
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
@@ -80,7 +89,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function execFileAsync(
   file: string,
   args: string[],
-  timeoutMs: number,
+  timeoutMs: number
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     execFile(file, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
@@ -144,11 +153,11 @@ function isDiscordHost(url: string): boolean {
 
 function pickDiscordTarget(targets: CdpTarget[]): CdpTarget | null {
   const pageTargets = targets.filter(
-    (target) => target.type === "page" && target.webSocketDebuggerUrl,
+    (target) => target.type === "page" && target.webSocketDebuggerUrl
   );
   return (
     pageTargets.find(
-      (target) => isDiscordHost(target.url) || /discord/i.test(target.title),
+      (target) => isDiscordHost(target.url) || /discord/i.test(target.title)
     ) ??
     pageTargets[0] ??
     null
@@ -183,7 +192,7 @@ function normalizeDmInbox(value: unknown): DiscordDmInboxProbe {
     ? record.previews
         .map((preview) => normalizeDmPreview(preview))
         .filter(
-          (preview): preview is DiscordVisibleDmPreview => preview !== null,
+          (preview): preview is DiscordVisibleDmPreview => preview !== null
         )
     : [];
   return {
@@ -213,7 +222,7 @@ function normalizeDiscordProbe(value: unknown): DiscordTabProbe | null {
 }
 
 async function evaluateDiscordProbe(
-  webSocketDebuggerUrl: string,
+  webSocketDebuggerUrl: string
 ): Promise<DiscordTabProbe> {
   const WebSocketConstructor = globalThis.WebSocket;
   if (!WebSocketConstructor) {
@@ -251,7 +260,7 @@ async function evaluateDiscordProbe(
             awaitPromise: true,
             returnByValue: true,
           },
-        }),
+        })
       );
     });
 
@@ -267,7 +276,7 @@ async function evaluateDiscordProbe(
       }
       if (payload.error) {
         failProbe(
-          new Error(payload.error.message ?? "Discord desktop probe failed"),
+          new Error(payload.error.message ?? "Discord desktop probe failed")
         );
         return;
       }
@@ -276,8 +285,8 @@ async function evaluateDiscordProbe(
         failProbe(
           new Error(
             payload.result?.result?.description ??
-              "Discord desktop returned an invalid probe",
-          ),
+              "Discord desktop returned an invalid probe"
+          )
         );
         return;
       }
@@ -291,10 +300,25 @@ async function evaluateDiscordProbe(
 }
 
 export async function getDiscordDesktopCdpStatus(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<DiscordDesktopCdpStatus> {
   const platform = process.platform;
   const port = configuredDiscordDesktopCdpPort(env);
+  if (discordDesktopCdpDisabled(env)) {
+    return {
+      supported: platform === "darwin",
+      platform,
+      port,
+      appRunning: false,
+      cdpAvailable: false,
+      browserVersion: null,
+      targetUrl: null,
+      targetTitle: null,
+      webSocketDebuggerUrl: null,
+      probe: null,
+      lastError: "Discord Desktop CDP disabled by environment.",
+    };
+  }
   const appRunning = platform === "darwin" ? await discordAppRunning() : false;
   if (platform !== "darwin") {
     return {
@@ -317,11 +341,11 @@ export async function getDiscordDesktopCdpStatus(
     const [version, rawTargets] = await Promise.all([
       fetchJson<CdpVersionResponse>(
         `${baseUrl}/json/version`,
-        DISCORD_DESKTOP_FETCH_TIMEOUT_MS,
+        DISCORD_DESKTOP_FETCH_TIMEOUT_MS
       ),
       fetchJson<unknown[]>(
         `${baseUrl}/json/list`,
-        DISCORD_DESKTOP_FETCH_TIMEOUT_MS,
+        DISCORD_DESKTOP_FETCH_TIMEOUT_MS
       ).catch(() => []),
     ]);
     const targets = rawTargets
@@ -380,7 +404,7 @@ async function waitForDiscordToQuit(): Promise<void> {
 }
 
 async function waitForDiscordCdpReady(
-  env: NodeJS.ProcessEnv,
+  env: NodeJS.ProcessEnv
 ): Promise<DiscordDesktopCdpStatus> {
   const deadline = Date.now() + DISCORD_DESKTOP_READY_TIMEOUT_MS;
   let latest = await getDiscordDesktopCdpStatus(env);
@@ -388,7 +412,7 @@ async function waitForDiscordCdpReady(
     if (Date.now() >= deadline) {
       throw new Error(
         latest.lastError ??
-          "Discord did not expose a desktop control endpoint before the timeout.",
+          "Discord did not expose a desktop control endpoint before the timeout."
       );
     }
     await delay(DISCORD_DESKTOP_POLL_INTERVAL_MS);
@@ -511,7 +535,7 @@ async function runDiscordCdpSendScript(args: {
       pending.delete(payload.id);
       if (payload.error) {
         callback.reject(
-          new Error(payload.error.message ?? `CDP error id=${payload.id}`),
+          new Error(payload.error.message ?? `CDP error id=${payload.id}`)
         );
         return;
       }
@@ -592,7 +616,7 @@ async function runDiscordCdpSendScript(args: {
         )?.value;
         if (!focusValue?.ok) {
           throw new Error(
-            "Could not focus the Discord message editor for the channel.",
+            "Could not focus the Discord message editor for the channel."
           );
         }
 
@@ -630,12 +654,12 @@ async function runDiscordCdpSendScript(args: {
 }
 
 export async function relaunchDiscordDesktopForCdp(
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<DiscordDesktopCdpStatus> {
   const current = await getDiscordDesktopCdpStatus(env);
   if (!current.supported) {
     throw new Error(
-      current.lastError ?? "Discord Desktop control unavailable.",
+      current.lastError ?? "Discord Desktop control unavailable."
     );
   }
   if (current.cdpAvailable) {
@@ -646,7 +670,7 @@ export async function relaunchDiscordDesktopForCdp(
     await execFileAsync(
       "/usr/bin/osascript",
       ["-e", 'quit app "Discord"'],
-      5_000,
+      5_000
     );
     await waitForDiscordToQuit();
   }
@@ -662,7 +686,7 @@ export async function relaunchDiscordDesktopForCdp(
       `--remote-debugging-address=${DISCORD_DESKTOP_CDP_HOST}`,
       "--remote-allow-origins=*",
     ],
-    5_000,
+    5_000
   );
 
   return waitForDiscordCdpReady(env);

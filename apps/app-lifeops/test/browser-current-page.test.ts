@@ -3,8 +3,8 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createLifeOpsChatTestRuntime } from "./helpers/lifeops-chat-runtime.ts";
 
-vi.mock("@elizaos/agent/security", () => ({
-  hasAdminAccess: vi.fn(async () => true),
+vi.mock("@elizaos/agent/security/access", () => ({
+  hasOwnerAccess: vi.fn(async () => true),
 }));
 
 function createRuntime(agentId: string) {

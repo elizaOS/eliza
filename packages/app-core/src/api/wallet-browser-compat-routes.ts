@@ -14,7 +14,7 @@ export function safeParseBigInt(value: string): bigint {
     return BigInt(value);
   } catch {
     throw new Error(
-      `Invalid transaction value: expected an integer or hex string, got "${value}"`,
+      `Invalid transaction value: expected an integer or hex string, got "${value}"`
     );
   }
 }
@@ -58,7 +58,7 @@ function normalizeBoolean(value: unknown, fallback: boolean): boolean {
 
 const SOLANA_PKCS8_DER_PREFIX = Buffer.from(
   "302e020100300506032b657004220420",
-  "hex",
+  "hex"
 );
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
@@ -125,11 +125,11 @@ function resolveLocalSolanaSeed(): { address: string; seed: Buffer } {
     decoded.length === 64
       ? decoded.subarray(0, 32)
       : decoded.length === 32
-        ? decoded
-        : null;
+      ? decoded
+      : null;
   if (!seed) {
     throw new Error(
-      `Invalid Solana private key length: expected 32 or 64 bytes, got ${decoded.length}.`,
+      `Invalid Solana private key length: expected 32 or 64 bytes, got ${decoded.length}.`
     );
   }
   return {
@@ -178,7 +178,7 @@ function resolvePreferredRpcUrl(chainId: number): string | null {
 }
 
 async function sendLocalBrowserWalletTransaction(
-  request: StewardSignRequest,
+  request: StewardSignRequest
 ): Promise<{
   approved: true;
   mode: "local-key";
@@ -187,7 +187,7 @@ async function sendLocalBrowserWalletTransaction(
 }> {
   if (request.broadcast === false) {
     throw new Error(
-      "Local browser wallet signing currently requires broadcast=true.",
+      "Local browser wallet signing currently requires broadcast=true."
     );
   }
 
@@ -217,7 +217,7 @@ async function sendLocalBrowserWalletTransaction(
 }
 
 function resolveBrowserWalletMessagePayload(
-  message: string,
+  message: string
 ): string | Uint8Array {
   const trimmed = message.trim();
   if (
@@ -242,13 +242,13 @@ async function signLocalBrowserWalletMessage(message: string): Promise<{
   return {
     mode: "local-key",
     signature: await wallet.signMessage(
-      resolveBrowserWalletMessagePayload(message),
+      resolveBrowserWalletMessagePayload(message)
     ),
   };
 }
 
 async function signLocalBrowserSolanaMessage(
-  body: Record<string, unknown>,
+  body: Record<string, unknown>
 ): Promise<{
   address: string;
   mode: "local-key";
@@ -263,7 +263,7 @@ async function signLocalBrowserSolanaMessage(
   const signature = crypto.sign(
     null,
     resolveSolanaMessageBytes(body),
-    privateKey,
+    privateKey
   );
   return {
     address,
@@ -273,6 +273,33 @@ async function signLocalBrowserSolanaMessage(
 }
 
 type SolanaCluster = "mainnet" | "devnet" | "testnet";
+
+interface SolanaWeb3Module {
+  Keypair: {
+    fromSeed(seed: Uint8Array): unknown;
+  };
+  VersionedTransaction: {
+    deserialize(bytes: Uint8Array): {
+      sign(signers: unknown[]): void;
+      serialize(): Uint8Array;
+    };
+  };
+  Transaction: {
+    from(bytes: Uint8Array): {
+      partialSign(...signers: unknown[]): void;
+      serialize(): Uint8Array;
+    };
+  };
+  Connection: new (endpoint: string, commitment: string) => {
+    sendRawTransaction(bytes: Uint8Array): Promise<string>;
+  };
+}
+
+const SOLANA_WEB3_PACKAGE: string = "@solana/web3.js";
+
+async function loadSolanaWeb3(): Promise<SolanaWeb3Module> {
+  return (await import(SOLANA_WEB3_PACKAGE)) as SolanaWeb3Module;
+}
 
 function normalizeSolanaCluster(value: unknown): SolanaCluster {
   if (value === "devnet" || value === "testnet" || value === "mainnet") {
@@ -293,7 +320,7 @@ function clusterRpcUrl(cluster: SolanaCluster): string {
 }
 
 async function signLocalBrowserSolanaTransaction(
-  body: Record<string, unknown>,
+  body: Record<string, unknown>
 ): Promise<{
   address: string;
   mode: "local-key";
@@ -310,7 +337,7 @@ async function signLocalBrowserSolanaTransaction(
 
   const { address, seed } = resolveLocalSolanaSeed();
 
-  const web3 = await import("@solana/web3.js");
+  const web3 = await loadSolanaWeb3();
   const { Keypair, VersionedTransaction, Transaction, Connection } = web3;
 
   const keypair = Keypair.fromSeed(new Uint8Array(seed));
@@ -348,7 +375,7 @@ async function signLocalBrowserSolanaTransaction(
 export async function handleWalletBrowserCompatRoutes(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  state: CompatRuntimeState,
+  state: CompatRuntimeState
 ): Promise<boolean> {
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -374,7 +401,7 @@ export async function handleWalletBrowserCompatRoutes(
 
   const hasLocalKey = Boolean(normalizeString(process.env.EVM_PRIVATE_KEY));
   const hasLocalSolanaKey = Boolean(
-    normalizeString(process.env.SOLANA_PRIVATE_KEY),
+    normalizeString(process.env.SOLANA_PRIVATE_KEY)
   );
   let stewardError: Error | null = null;
 
@@ -390,7 +417,7 @@ export async function handleWalletBrowserCompatRoutes(
         sendJsonResponse(
           res,
           200,
-          await signLocalBrowserWalletMessage(message),
+          await signLocalBrowserWalletMessage(message)
         );
         return true;
       } catch (error) {
@@ -406,7 +433,7 @@ export async function handleWalletBrowserCompatRoutes(
       503,
       isStewardConfigured()
         ? "Browser message signing currently requires a local wallet key."
-        : "No browser wallet signer is available.",
+        : "No browser wallet signer is available."
     );
     return true;
   }
@@ -434,7 +461,7 @@ export async function handleWalletBrowserCompatRoutes(
         sendJsonResponse(
           res,
           200,
-          await signLocalBrowserSolanaTransaction(body),
+          await signLocalBrowserSolanaTransaction(body)
         );
         return true;
       } catch (error) {
@@ -448,7 +475,7 @@ export async function handleWalletBrowserCompatRoutes(
     sendJsonErrorResponse(
       res,
       503,
-      "No browser Solana transaction signer is available.",
+      "No browser Solana transaction signer is available."
     );
     return true;
   }
@@ -469,7 +496,7 @@ export async function handleWalletBrowserCompatRoutes(
     sendJsonErrorResponse(
       res,
       400,
-      "to, value, and a valid chainId are required.",
+      "to, value, and a valid chainId are required."
     );
     return true;
   }
@@ -492,7 +519,7 @@ export async function handleWalletBrowserCompatRoutes(
       sendJsonResponse(
         res,
         200,
-        await sendLocalBrowserWalletTransaction(request),
+        await sendLocalBrowserWalletTransaction(request)
       );
       return true;
     } catch (error) {
@@ -505,7 +532,7 @@ export async function handleWalletBrowserCompatRoutes(
   sendJsonErrorResponse(
     res,
     503,
-    stewardError?.message || "No browser wallet signer is available.",
+    stewardError?.message || "No browser wallet signer is available."
   );
   return true;
 }

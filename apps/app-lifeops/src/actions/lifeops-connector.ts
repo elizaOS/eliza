@@ -23,6 +23,7 @@ type ConnectorKind =
   | "discord"
   | "imessage"
   | "whatsapp"
+  | "health"
   | "browser_bridge";
 
 type ConnectorSubaction =
@@ -61,6 +62,7 @@ const VALID_CONNECTORS: readonly ConnectorKind[] = [
   "discord",
   "imessage",
   "whatsapp",
+  "health",
   "browser_bridge",
 ];
 
@@ -167,6 +169,7 @@ async function dispatchListAll(service: LifeOpsService): Promise<ActionResult> {
     discord,
     imessage,
     whatsapp,
+    health,
     browserSettings,
     browserCompanions,
   ] = await Promise.all([
@@ -177,12 +180,13 @@ async function dispatchListAll(service: LifeOpsService): Promise<ActionResult> {
     service.getDiscordConnectorStatus(),
     service.getIMessageConnectorStatus(),
     service.getWhatsAppConnectorStatus(),
+    service.getHealthDataConnectorStatuses(INTERNAL_URL),
     service.getBrowserSettings(),
     service.listBrowserCompanions(),
   ]);
   return {
     success: true,
-    text: "Listed status for all 8 LifeOps connectors.",
+    text: "Listed status for all 9 LifeOps connectors.",
     data: {
       actionName: ACTION_NAME,
       connectors: {
@@ -193,6 +197,7 @@ async function dispatchListAll(service: LifeOpsService): Promise<ActionResult> {
         discord,
         imessage,
         whatsapp,
+        health,
         browser_bridge: {
           settings: browserSettings,
           companions: browserCompanions,
@@ -323,6 +328,52 @@ async function dispatchX(
       return notImplemented("x", subaction);
     case "list":
       return notImplemented("x", subaction);
+  }
+}
+
+async function dispatchHealth(
+  service: LifeOpsService,
+  subaction: ConnectorSubaction,
+  params: ConnectorActionParams,
+): Promise<ActionResult> {
+  const side = normalizeSide(params.side) ?? "owner";
+  switch (subaction) {
+    case "status":
+    case "list": {
+      const [bridge, connectors] = await Promise.all([
+        service.getHealthConnectorStatus(),
+        service.getHealthDataConnectorStatuses(INTERNAL_URL, params.mode, side),
+      ]);
+      return {
+        success: true,
+        text: `Health connector status retrieved (${connectors.filter((connector) => connector.connected).length} connected provider${connectors.filter((connector) => connector.connected).length === 1 ? "" : "s"}).`,
+        data: {
+          actionName: ACTION_NAME,
+          connector: "health",
+          subaction,
+          bridge,
+          connectors,
+        },
+      };
+    }
+    case "connect":
+      return notImplemented(
+        "health",
+        subaction,
+        "Use LifeOps Settings to choose Strava, Fitbit, Withings, or Oura before starting OAuth.",
+      );
+    case "disconnect":
+      return notImplemented(
+        "health",
+        subaction,
+        "Disconnect a specific Strava, Fitbit, Withings, or Oura provider from LifeOps Settings.",
+      );
+    case "verify":
+      return notImplemented(
+        "health",
+        subaction,
+        "Use HEALTH status or LifeOps Settings sync to verify health providers.",
+      );
   }
 }
 
@@ -679,14 +730,14 @@ export const lifeOpsConnectorAction: Action & {
   ],
   description:
     "Manage the lifecycle of every LifeOps connector. " +
-    "Connectors: google | x | telegram | signal | discord | imessage | whatsapp | browser_bridge. " +
-    "Subactions: connect (start auth/pairing), disconnect (revoke and clear grant), verify (active health probe — Telegram only today), status (per-connector grant/health), list (status across all 8 connectors when no connector is set). " +
+    "Connectors: google | x | telegram | signal | discord | imessage | whatsapp | health | browser_bridge. " +
+    "Subactions: connect (start auth/pairing), disconnect (revoke and clear grant), verify (active health probe — Telegram only today), status (per-connector grant/health), list (status across all 9 connectors when no connector is set). " +
     "Examples: connect Google for the owner; disconnect Telegram; check Discord status; verify Telegram by sending a self-test; list all connectors. " +
     "When subaction=list and no connector is set, returns status for every connector in one call. " +
     "Connector-specific params: telegram connect needs phone (+ optional apiId/apiHash); browser_bridge connect needs browser (chrome/safari/...). " +
-    "Admin / private access only.",
+    "Owner access only.",
   descriptionCompressed:
-    "LifeOps connectors lifecycle: connect/disconnect/verify/status/list across google, x, telegram, signal, discord, imessage, whatsapp, browser_bridge.",
+    "LifeOps connectors lifecycle: connect/disconnect/verify/status/list across google, x, telegram, signal, discord, imessage, whatsapp, health, browser_bridge.",
   suppressPostActionContinuation: true,
 
   validate: async (runtime: IAgentRuntime, message: Memory) =>
@@ -769,6 +820,8 @@ export const lifeOpsConnectorAction: Action & {
           return await dispatchIMessage(service, subaction);
         case "whatsapp":
           return await dispatchWhatsApp(service, subaction);
+        case "health":
+          return await dispatchHealth(service, subaction, params);
         case "browser_bridge":
           return await dispatchBrowserBridge(service, subaction, params);
       }
@@ -793,7 +846,7 @@ export const lifeOpsConnectorAction: Action & {
     {
       name: "connector",
       description:
-        "Which connector to manage. One of: google, x, telegram, signal, discord, imessage, whatsapp, browser_bridge. Optional when subaction=list.",
+        "Which connector to manage. One of: google, x, telegram, signal, discord, imessage, whatsapp, health, browser_bridge. Optional when subaction=list.",
       required: false,
       schema: { type: "string" as const, enum: [...VALID_CONNECTORS] },
     },

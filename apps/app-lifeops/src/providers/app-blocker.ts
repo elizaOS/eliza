@@ -11,8 +11,8 @@ import { getCachedAppBlockerStatus } from "../app-blocker/engine.ts";
 export const appBlockerProvider: Provider = {
   name: "appBlocker",
   description:
-    "Admin-only provider for the native mobile app blocker integration (Family Controls on iPhone, Usage Access overlay on Android)",
-  descriptionCompressed: "Admin: mobile app blocker integration.",
+    "Owner-only provider for the native mobile app blocker integration (Family Controls on iPhone, Usage Access overlay on Android)",
+  descriptionCompressed: "Owner: mobile app blocker integration.",
   dynamic: true,
   get: async (
     runtime: IAgentRuntime,
