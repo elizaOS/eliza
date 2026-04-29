@@ -33,6 +33,7 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, execFile, spawn: vi.fn() };
 });
 
+import { healthAction } from "../src/actions/health.js";
 import {
   detectHealthBackend,
   getDailySummary,
@@ -41,7 +42,6 @@ import {
 } from "../src/lifeops/health-bridge.js";
 import { withHealth } from "../src/lifeops/service-mixin-health.js";
 import { LifeOpsServiceError } from "../src/lifeops/service-types.js";
-import { healthAction } from "../src/actions/health.js";
 
 const ORIGINAL_ENV = { ...process.env };
 const SAME_ID = "00000000-0000-0000-0000-000000000001";

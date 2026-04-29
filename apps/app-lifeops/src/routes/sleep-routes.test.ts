@@ -1,8 +1,8 @@
 import type http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LifeOpsService } from "../lifeops/service.js";
-import { handleSleepRoutes } from "./sleep-routes.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
+import { handleSleepRoutes } from "./sleep-routes.js";
 
 const runtime = {
   agentId: "00000000-0000-0000-0000-000000000000",
