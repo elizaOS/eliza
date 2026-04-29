@@ -1249,6 +1249,8 @@ export async function handleLifeOpsRoutes(
       return runRoute(ctx, async (service) => {
         const event = await service.updateCalendarEvent(url, {
           eventId,
+          mode:
+            body.mode ?? parseConnectorModeQuery(url.searchParams.get("mode")),
           side:
             body.side ?? parseConnectorSideQuery(url.searchParams.get("side")),
           grantId: body.grantId ?? url.searchParams.get("grantId") ?? undefined,
@@ -1259,6 +1261,8 @@ export async function handleLifeOpsRoutes(
           startAt: body.startAt,
           endAt: body.endAt,
           timeZone: body.timeZone,
+          location: body.location,
+          attendees: body.attendees,
         });
         json(res, { event });
       });
@@ -2150,11 +2154,15 @@ export async function handleLifeOpsRoutes(
     return runRoute(ctx, async (service) => {
       json(res, {
         signals: await service.listActivitySignals({
-          sinceAt: url.searchParams.get("sinceAt"),
+          sinceAt: parseOptionalIsoQuery(
+            url.searchParams.get("sinceAt"),
+            "sinceAt",
+          ),
           limit: parsePositiveIntegerQuery(
             url.searchParams.get("limit"),
             "limit",
-          ),
+            { max: ACTIVITY_SIGNALS_MAX_LIMIT },
+          ) ?? ACTIVITY_SIGNALS_DEFAULT_LIMIT,
           states: parseActivitySignalStates(url),
         }),
       });
@@ -2381,11 +2389,12 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/screen-time/summary") {
     return runRoute(ctx, async (service) => {
+      const window = parseBoundedIsoWindowQuery(url);
       json(
         res,
         await service.getScreenTimeSummary({
-          since: parseRequiredIsoQuery(url, "since"),
-          until: parseRequiredIsoQuery(url, "until"),
+          since: window.since,
+          until: window.until,
           source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
           topN:
             parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
@@ -2398,11 +2407,12 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/screen-time/breakdown") {
     return runRoute(ctx, async (service) => {
+      const window = parseBoundedIsoWindowQuery(url);
       json(
         res,
         await service.getScreenTimeBreakdown({
-          since: parseRequiredIsoQuery(url, "since"),
-          until: parseRequiredIsoQuery(url, "until"),
+          since: window.since,
+          until: window.until,
           source: parseScreenTimeSourceQuery(url.searchParams.get("source")),
           topN:
             parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
@@ -2415,11 +2425,12 @@ export async function handleLifeOpsRoutes(
 
   if (method === "GET" && pathname === "/api/lifeops/social/summary") {
     return runRoute(ctx, async (service) => {
+      const window = parseBoundedIsoWindowQuery(url);
       json(
         res,
         await service.getSocialHabitSummary({
-          since: parseRequiredIsoQuery(url, "since"),
-          until: parseRequiredIsoQuery(url, "until"),
+          since: window.since,
+          until: window.until,
           topN:
             parsePositiveIntegerQuery(url.searchParams.get("topN"), "topN", {
               max: 50,

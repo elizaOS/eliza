@@ -1291,11 +1291,12 @@ export function createGmailMessageId(
   agentId: string,
   provider: LifeOpsConnectorGrant["provider"],
   side: LifeOpsConnectorGrant["side"],
+  grantId: string,
   externalMessageId: string,
 ): string {
   const digest = crypto
     .createHash("sha256")
-    .update(`${agentId}:${provider}:${side}:gmail:${externalMessageId}`)
+    .update(`${agentId}:${provider}:${side}:gmail:${grantId}:${externalMessageId}`)
     .digest("hex");
   return `life-gmail-${digest.slice(0, 32)}`;
 }
@@ -1319,6 +1320,8 @@ export function createGmailSpamReviewItemId(
 export function materializeGmailMessageSummary(args: {
   agentId: string;
   side: LifeOpsConnectorGrant["side"];
+  grantId: string;
+  accountEmail?: string | null;
   message: SyncedGoogleGmailMessageSummary;
   syncedAt: string;
 }): LifeOpsGmailMessageSummary {
@@ -1327,12 +1330,15 @@ export function materializeGmailMessageSummary(args: {
       args.agentId,
       "google",
       args.side,
+      args.grantId,
       args.message.externalId,
     ),
     agentId: args.agentId,
     provider: "google",
     side: args.side,
     ...args.message,
+    grantId: args.grantId,
+    accountEmail: args.accountEmail ?? undefined,
     syncedAt: args.syncedAt,
     updatedAt: args.syncedAt,
   };

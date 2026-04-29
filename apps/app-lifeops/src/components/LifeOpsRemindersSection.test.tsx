@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+import type {
+  LifeOpsDefinitionRecord,
+  LifeOpsTaskDefinition,
+} from "@elizaos/shared";
 import {
   cleanup,
   fireEvent,
@@ -8,10 +12,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  LifeOpsDefinitionRecord,
-  LifeOpsTaskDefinition,
-} from "@elizaos/shared";
 
 const { clientMock, selectMock } = vi.hoisted(() => ({
   clientMock: {

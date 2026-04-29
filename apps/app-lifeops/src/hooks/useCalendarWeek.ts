@@ -23,6 +23,7 @@ export interface UseCalendarWeekResult {
   error: string | null;
   viewMode: CalendarViewMode;
   setViewMode: (mode: CalendarViewMode) => void;
+  baseDate: Date;
   windowStart: Date;
   windowEnd: Date;
   refresh: () => Promise<void>;
@@ -36,7 +37,7 @@ function windowDaysForMode(mode: CalendarViewMode): number {
     case "day":
       return 1;
     case "month":
-      return 31;
+      return 42;
     default:
       return 7;
   }
@@ -46,6 +47,14 @@ function startOfLocalDay(date = new Date()): Date {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+function startOfMonthGrid(date: Date): Date {
+  const firstOfMonth = startOfLocalDay(date);
+  firstOfMonth.setDate(1);
+  const start = new Date(firstOfMonth);
+  start.setDate(firstOfMonth.getDate() - firstOfMonth.getDay());
+  return start;
 }
 
 export function useCalendarWeek(
@@ -62,7 +71,10 @@ export function useCalendarWeek(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const windowStart = useMemo(() => startOfLocalDay(baseDate), [baseDate]);
+  const windowStart = useMemo(() => {
+    const dayStart = startOfLocalDay(baseDate);
+    return viewMode === "month" ? startOfMonthGrid(dayStart) : dayStart;
+  }, [baseDate, viewMode]);
   const windowEnd = useMemo(() => {
     const end = new Date(windowStart);
     end.setDate(end.getDate() + windowDaysForMode(viewMode));
@@ -126,6 +138,7 @@ export function useCalendarWeek(
     error,
     viewMode,
     setViewMode,
+    baseDate,
     windowStart,
     windowEnd,
     refresh: fetch,

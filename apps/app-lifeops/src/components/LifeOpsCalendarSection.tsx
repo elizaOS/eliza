@@ -75,6 +75,14 @@ function formatMonthHeader(start: Date, end: Date): string {
   return startMonth === endMonth ? startMonth : `${startMonth} – ${endMonth}`;
 }
 
+function formatMonthTitle(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone: TIME_ZONE,
+  }).format(date);
+}
+
 function formatAgendaDayLabel(date: Date): string {
   return new Intl.DateTimeFormat(undefined, {
     weekday: "short",
@@ -975,8 +983,16 @@ export function LifeOpsCalendarSection(
   }, [selectedEventId, calendar.events, drawerEvent]);
 
   const rangeLabel = useMemo(
-    () => formatMonthHeader(calendar.windowStart, calendar.windowEnd),
-    [calendar.windowStart, calendar.windowEnd],
+    () =>
+      calendar.viewMode === "month"
+        ? formatMonthTitle(calendar.baseDate)
+        : formatMonthHeader(calendar.windowStart, calendar.windowEnd),
+    [
+      calendar.baseDate,
+      calendar.viewMode,
+      calendar.windowStart,
+      calendar.windowEnd,
+    ],
   );
 
   const VIEW_ITEMS: Array<{ value: CalendarViewMode; label: string }> = [
@@ -1082,7 +1098,7 @@ export function LifeOpsCalendarSection(
           />
         ) : calendar.viewMode === "month" ? (
           <MonthGrid
-            baseDate={calendar.windowStart}
+            baseDate={calendar.baseDate}
             eventsByDay={eventsByDay}
             selectedEventId={selectedEventId}
             onSelectEvent={handleSelectEvent}
