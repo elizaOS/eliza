@@ -275,14 +275,13 @@ export function RuntimeGate() {
     [isDesktop, isDev, showLocalOption, localProbePending],
   );
   const runtimeChoiceKey = runtimeChoices.join("|");
-  const [selectedChoice, setSelectedChoice] =
-    useState<RuntimeChoice>("cloud");
+  const [selectedChoice, setSelectedChoice] = useState<RuntimeChoice>("cloud");
 
   useEffect(() => {
     if (runtimeChoices.length === 0) return;
     if (runtimeChoices.includes(selectedChoice)) return;
     setSelectedChoice(runtimeChoices[0]);
-  }, [runtimeChoiceKey, runtimeChoices, selectedChoice]);
+  }, [runtimeChoices, selectedChoice]);
 
   // ── Gateway discovery (LAN autodetect) ────────────────────────────
   useEffect(() => {
@@ -609,7 +608,7 @@ export function RuntimeGate() {
               className={`mt-5 grid w-full gap-2.5 text-left md:mt-7 md:gap-3 ${
                 runtimeChoices.length === 3 ? "md:grid-cols-3" : ""
               }`}
-              role="radiogroup"
+              role="group"
               aria-label={t("runtimegate.subtitle", {
                 defaultValue: "Where should your agent run?",
               })}
@@ -1087,7 +1086,7 @@ function ChoiceCard({
   onClick,
 }: ChoiceCardProps) {
   const className = [
-    "group flex w-full min-w-0 border-2 p-2 text-left shadow-[5px_5px_0_rgba(0,0,0,0.62)] transition-[background-color,border-color,color,transform,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffe600] focus-visible:ring-offset-2 focus-visible:ring-offset-black md:min-h-[21rem] md:flex-col md:p-3",
+    "group flex w-full min-w-0 border-2 p-1.5 text-left shadow-[5px_5px_0_rgba(0,0,0,0.62)] transition-[background-color,border-color,color,transform,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffe600] focus-visible:ring-offset-2 focus-visible:ring-offset-black md:min-h-[21rem] md:flex-col md:p-3",
     selected
       ? "border-[#ffe600] bg-black/88 text-[#fff3a8]"
       : "border-black bg-[#fff1ac]/90 text-black hover:-translate-y-0.5 hover:bg-white",
@@ -1105,8 +1104,7 @@ function ChoiceCard({
       type="button"
       className={className}
       onClick={disabled ? undefined : onClick}
-      role="radio"
-      aria-checked={selected}
+      aria-pressed={selected}
       aria-disabled={disabled}
       data-runtime-choice={choice}
       style={{
@@ -1116,7 +1114,7 @@ function ChoiceCard({
       }}
     >
       <span
-        className={`relative h-24 w-28 shrink-0 overflow-hidden border-2 md:h-36 md:w-full ${imageBorderClassName}`}
+        className={`relative h-20 w-24 shrink-0 overflow-hidden border-2 sm:h-24 sm:w-28 md:h-36 md:w-full ${imageBorderClassName}`}
         style={{
           clipPath:
             "polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)",
@@ -1129,7 +1127,7 @@ function ChoiceCard({
           className="h-full w-full object-cover opacity-90 saturate-[1.05]"
         />
       </span>
-      <span className="flex min-w-0 flex-1 flex-col px-3 py-1.5 md:px-1 md:pt-3">
+      <span className="flex min-w-0 flex-1 flex-col px-2 py-0.5 sm:px-3 sm:py-1.5 md:px-1 md:pt-3">
         <span
           style={{ fontFamily: MONO_FONT }}
           className={`text-3xs uppercase tracking-[0.18em] ${eyebrowClassName}`}
@@ -1138,14 +1136,18 @@ function ChoiceCard({
         </span>
         <span
           style={{ fontFamily: MONO_FONT }}
-          className="mt-1 text-lg font-black uppercase leading-none tracking-[0.08em] md:text-2xl"
+          className="mt-1 text-base font-black uppercase leading-none tracking-[0.08em] sm:text-lg md:text-2xl"
         >
           {label}
         </span>
-        <span className={`mt-2 text-xs font-bold leading-snug ${titleClassName}`}>
+        <span
+          className={`mt-1.5 text-[11px] font-bold leading-snug sm:mt-2 sm:text-xs ${titleClassName}`}
+        >
           {title}
         </span>
-        <span className={`mt-1 text-xs-tight leading-snug ${descriptionClassName}`}>
+        <span
+          className={`mt-1 text-[12px] leading-[1.25] sm:text-xs-tight sm:leading-snug ${descriptionClassName}`}
+        >
           {description}
         </span>
       </span>
