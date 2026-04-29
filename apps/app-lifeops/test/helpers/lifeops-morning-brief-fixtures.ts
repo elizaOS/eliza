@@ -288,6 +288,7 @@ async function seedGoogleConnector(
   const repository = new LifeOpsRepository(runtime);
   const agentId = String(runtime.agentId);
   const tokenRef = `${agentId}/owner/local.json`;
+  const grantId = "morning-brief-google-grant";
   const tokenPath = path.join(
     resolveOAuthDir(process.env, stateDir),
     "lifeops",
@@ -333,33 +334,36 @@ async function seedGoogleConnector(
   );
 
   await repository.upsertConnectorGrant(
-    createLifeOpsConnectorGrant({
-      agentId,
-      provider: "google",
-      side: "owner",
-      identity: {
-        email: "shawmakesmagic@gmail.com",
-        name: "Shaw",
-      },
-      grantedScopes: [
-        "openid",
-        "email",
-        "profile",
-        "https://www.googleapis.com/auth/calendar.readonly",
-        "https://www.googleapis.com/auth/gmail.readonly",
-        "https://www.googleapis.com/auth/drive.readonly",
-      ],
-      capabilities: [
-        "google.basic_identity",
-        "google.calendar.read",
-        "google.gmail.triage",
-        "google.drive.read",
-      ],
-      tokenRef,
-      mode: "local",
-      metadata: {},
-      lastRefreshAt: nowIso,
-    }),
+    {
+      ...createLifeOpsConnectorGrant({
+        agentId,
+        provider: "google",
+        side: "owner",
+        identity: {
+          email: "shawmakesmagic@gmail.com",
+          name: "Shaw",
+        },
+        grantedScopes: [
+          "openid",
+          "email",
+          "profile",
+          "https://www.googleapis.com/auth/calendar.readonly",
+          "https://www.googleapis.com/auth/gmail.readonly",
+          "https://www.googleapis.com/auth/drive.readonly",
+        ],
+        capabilities: [
+          "google.basic_identity",
+          "google.calendar.read",
+          "google.gmail.triage",
+          "google.drive.read",
+        ],
+        tokenRef,
+        mode: "local",
+        metadata: {},
+        lastRefreshAt: nowIso,
+      }),
+      id: grantId,
+    },
   );
 
   return repository;
@@ -370,6 +374,8 @@ async function seedGmail(
   agentId: string,
   nowIso: string,
 ): Promise<void> {
+  const grantId = "morning-brief-google-grant";
+  const accountEmail = "shawmakesmagic@gmail.com";
   const messages = [
     {
       id: "morning-brief-gmail-tax",
@@ -377,6 +383,8 @@ async function seedGmail(
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "morning-brief-thread-tax",
       subject: "Wire cutoff today at 2pm for property tax payment",
       from: "Escrow Ops <escrow@westbridge.example.com>",
@@ -403,6 +411,8 @@ async function seedGmail(
       agentId,
       provider: "google" as const,
       side: "owner" as const,
+      grantId,
+      accountEmail,
       threadId: "morning-brief-thread-clinic-doc",
       subject: "Please sign the clinic intake packet before Thursday",
       from: "Northside Clinic <intake@northside.example.com>",
@@ -436,6 +446,7 @@ async function seedGmail(
       provider: "google",
       side: "owner",
       mailbox: "INBOX",
+      grantId,
       maxResults: 50,
       syncedAt: nowIso,
     }),
