@@ -139,7 +139,10 @@ function mapMobileSignal(
             warnings: signal.warnings,
           }
         : undefined,
-    metadata: signal.metadata,
+    metadata:
+      signal.source === "mobile_health"
+        ? { ...signal.metadata, screenTime: signal.screenTime }
+        : signal.metadata,
   };
 }
 

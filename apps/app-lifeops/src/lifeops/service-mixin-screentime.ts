@@ -7,6 +7,7 @@ import type {
 import { getActivityReportBetween } from "../activity-profile/activity-tracker-reporting.js";
 import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import { resolveBrowserBridgeReadiness } from "./browser-readiness.js";
 import { fail } from "./service-normalize.js";
 import {
   classifyScreenTimeTarget,
@@ -115,6 +116,8 @@ type SocialHabitSummary = {
   }>;
   fetchedAt: string;
 };
+
+type SocialHabitDataSource = SocialHabitSummary["dataSources"][number];
 
 function resolveUtcDateWindow(date: string): {
   startIso: string;
@@ -541,6 +544,57 @@ function androidUsageRowsFromSignals(
   return [...byPackage.values()];
 }
 
+function mobileScreenTimeStateFromSignals(
+  signals: Array<{
+    platform: string;
+    source: string;
+    metadata: Record<string, unknown>;
+  }>,
+  platform: "android" | "ios",
+): SocialHabitDataSource["state"] {
+  const platformSignals = signals.filter(
+    (signal) =>
+      signal.platform === platform &&
+      (signal.source === "mobile_device" || signal.source === "mobile_health"),
+  );
+  if (platformSignals.length === 0) {
+    return "unwired";
+  }
+
+  for (const signal of platformSignals) {
+    const screenTime = asRecord(signal.metadata.screenTime);
+    if (!screenTime) continue;
+    if (platform === "android") {
+      return screenTime.granted === true ? "live" : "partial";
+    }
+    const authorization = asRecord(screenTime.authorization);
+    if (authorization?.status === "approved") {
+      return "live";
+    }
+    return screenTime.supported === true ? "partial" : "unwired";
+  }
+
+  return "partial";
+}
+
+function browserDataSourceState(
+  state: ReturnType<typeof resolveBrowserBridgeReadiness>["state"],
+): SocialHabitDataSource["state"] {
+  switch (state) {
+    case "ready":
+      return "live";
+    case "paused":
+    case "control_disabled":
+    case "stale":
+    case "permission_blocked":
+      return "partial";
+    case "disabled":
+    case "tracking_off":
+    case "no_companion":
+      return "unwired";
+  }
+}
+
 /** @internal */
 export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
@@ -778,6 +832,20 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
         inWindow(dm.repliedAt, sinceMs, untilMs),
       ).length;
 
+      const [browserSettings, browserCompanions, recentMobileSignals] =
+        await Promise.all([
+          this.getBrowserSettings(),
+          this.listBrowserCompanions(),
+          this.repository.listActivitySignals(this.agentId(), {
+            sinceAt: new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString(),
+            limit: 100,
+          }),
+        ]);
+      const browserReadiness = resolveBrowserBridgeReadiness(
+        browserSettings,
+        browserCompanions,
+      );
+
       const messageChannels = [
         {
           channel: "x_dm" as const,
@@ -788,10 +856,6 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
           replied: xReplied,
         },
       ];
-      const hasBrowserRows = socialRows.some((row) => row.source === "website");
-      const hasPhoneRows = socialRows.some(
-        (row) => row.device === "phone" || row.device === "tablet",
-      );
 
       return {
         since: opts.since,
@@ -816,15 +880,25 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
           { id: "macos_activity", label: "Mac apps", state: "live" },
           {
             id: "browser_bridge",
-            label: "Chrome/Safari",
-            state: hasBrowserRows ? "live" : "partial",
+            label: "Browser",
+            state: browserDataSourceState(browserReadiness.state),
           },
           {
             id: "android_usage_stats",
             label: "Android apps",
-            state: hasPhoneRows ? "live" : "partial",
+            state: mobileScreenTimeStateFromSignals(
+              recentMobileSignals,
+              "android",
+            ),
           },
-          { id: "ios_device_activity", label: "iOS apps", state: "unwired" },
+          {
+            id: "ios_device_activity",
+            label: "iOS apps",
+            state: mobileScreenTimeStateFromSignals(
+              recentMobileSignals,
+              "ios",
+            ),
+          },
         ],
         fetchedAt: isoNow(),
       };
