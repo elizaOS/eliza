@@ -12,14 +12,12 @@ export interface MainWindowRuntimeSnapshot {
   transparent: boolean | null;
   vibrancyEnabled: boolean | null;
   shadowEnabled: boolean | null;
-  bounds:
-    | {
-        x: number;
-        y: number;
-        width: number;
-        height: number;
-      }
-    | null;
+  bounds: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
 }
 
 let currentWindow: BrowserWindow | null = null;

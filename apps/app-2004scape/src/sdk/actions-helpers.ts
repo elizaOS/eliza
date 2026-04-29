@@ -5,10 +5,10 @@
 import type { BotSDK } from "./index.js";
 import type {
   BotWorldState,
-  NearbyNpc,
-  NearbyLoc,
-  InventoryItem,
   GroundItem,
+  InventoryItem,
+  NearbyLoc,
+  NearbyNpc,
   ShopItem,
 } from "./types.js";
 

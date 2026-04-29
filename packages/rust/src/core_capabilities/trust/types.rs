@@ -1,4 +1,4 @@
-//! Trust types — Rust port of the TypeScript plugin-trust types.
+//! Trust types — Rust port of the elizaOS runtime trust TypeScript types.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

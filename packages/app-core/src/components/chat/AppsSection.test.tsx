@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RegistryAppInfo } from "../../api";
+import { resolveRuntimeImageUrl } from "../apps/app-identity";
 
 const { useAppMock, clientMock } = vi.hoisted(() => ({
   useAppMock: vi.fn(),
@@ -133,10 +134,11 @@ describe("AppsSection", () => {
     ]);
 
     const { container } = render(<AppsSection />);
+    const expectedSrc = resolveRuntimeImageUrl("/heroes/companion.png");
 
     await waitFor(() => {
       expect(
-        container.querySelector('img[src="/heroes/companion.png"]'),
+        container.querySelector(`img[src="${expectedSrc}"]`),
       ).not.toBeNull();
     });
   });

@@ -3,15 +3,15 @@ import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
 import {
   createOrder,
   createPayment,
-  getOffer,
-  getOrder,
-  readDuffelConfigFromEnv,
-  searchFlights,
   type DuffelOffer,
   type DuffelOrder,
   type DuffelPayment,
+  getOffer,
+  getOrder,
+  readDuffelConfigFromEnv,
   type SearchFlightsRequest,
   type SearchFlightsResult,
+  searchFlights,
 } from "./travel-adapters/duffel.js";
 import type {
   FlightBookingExecutionResult,
@@ -373,7 +373,11 @@ export function withTravel<TBase extends Constructor<LifeOpsServiceBase>>(
       if (calendarSync?.enabled !== false) {
         calendarEvent = await this.createCalendarEvent(requestUrl, {
           calendarId: calendarSync?.calendarId ?? "primary",
-          title: buildCalendarTitle(prepared.offer, refreshedOrder, calendarSync),
+          title: buildCalendarTitle(
+            prepared.offer,
+            refreshedOrder,
+            calendarSync,
+          ),
           description: buildCalendarDescription(
             prepared.offer,
             refreshedOrder,

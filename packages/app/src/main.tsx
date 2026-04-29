@@ -40,6 +40,7 @@ import {
   DesktopTrayRuntime,
   DetachedShellRoot,
   dispatchAppEvent,
+  dispatchFocusConnector,
   getBootConfig,
   getWindowNavigationPath,
   initializeCapacitorBridge,
@@ -405,6 +406,20 @@ function handleDeepLink(url: string): void {
   if (parsed.protocol !== `${APP_URL_SCHEME}:`) return;
   const path = getDeepLinkPath(parsed);
 
+  // milady://settings/connectors/<provider> — open Settings and ask SettingsView
+  // to scroll the matching connector panel into view.
+  const connectorMatch = path.match(/^settings\/connectors\/([a-z0-9-]+)$/i);
+  if (connectorMatch) {
+    window.location.hash = "#settings";
+    const provider = connectorMatch[1].toLowerCase();
+    // Fires the focus event immediately AND stashes `provider` in a module
+    // ref. SettingsView drains the stash on mount, so this works whether the
+    // settings tab is already mounted (event delivery) or is mounting in
+    // response to the hash change above (drain-on-mount).
+    dispatchFocusConnector(provider);
+    return;
+  }
+
   switch (path) {
     case "chat":
       window.location.hash = "#chat";
@@ -583,7 +598,13 @@ function resolveAppWindowSlug(): string | null {
   if (!isAppWindowRoute()) return null;
   const path = getWindowNavigationPath();
   if (!path.startsWith("/apps/")) return null;
-  const slug = path.slice("/apps/".length).replace(/[?#].*$/, "");
+  // Take only the first path segment after /apps/. URLs like
+  // `/apps/plugins/extra` would otherwise yield a malformed slug
+  // ("plugins/extra") that no descriptor can match.
+  const slug = path
+    .slice("/apps/".length)
+    .replace(/[?#].*$/, "")
+    .split("/")[0];
   return slug.length > 0 ? slug : null;
 }
 
@@ -691,7 +712,10 @@ function getCurrentIosRuntimeConfig(): IosRuntimeConfig {
     const mode = normalizeMobileRuntimeMode(
       window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY),
     );
-    return mode ? { ...IOS_RUNTIME_ENV_CONFIG, mode } : IOS_RUNTIME_ENV_CONFIG;
+    // MobileRuntimeMode includes "local" but IosRuntimeConfig.mode does not -
+    // the local-agent runtime is Android-only. Drop "local" before assigning.
+    if (!mode || mode === "local") return IOS_RUNTIME_ENV_CONFIG;
+    return { ...IOS_RUNTIME_ENV_CONFIG, mode };
   } catch {
     return IOS_RUNTIME_ENV_CONFIG;
   }
@@ -731,7 +755,11 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
   if (config.deviceBridgeUrl) {
     return config.deviceBridgeUrl;
   }
-  if (config.mode !== "cloud-hybrid") return null;
+  // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
+  // local: the agent runs in-process on the same device, so the WebView's
+  // @elizaos/capacitor-llama dials the bridge over loopback at the locally
+  // bound apiBase.
+  if (config.mode !== "cloud-hybrid" && config.mode !== "local") return null;
   const apiBase = getBootConfig().apiBase?.trim();
   if (!apiBase) return null;
   try {
@@ -743,7 +771,12 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
 
 async function initializeMobileDeviceBridge(): Promise<void> {
   const runtimeConfig = getCurrentIosRuntimeConfig();
-  if (!isNative || runtimeConfig.mode !== "cloud-hybrid") return;
+  if (
+    !isNative ||
+    (runtimeConfig.mode !== "cloud-hybrid" && runtimeConfig.mode !== "local")
+  ) {
+    return;
+  }
   if (mobileDeviceBridgeClient) return;
 
   const agentUrl = resolveDeviceBridgeUrl(runtimeConfig);
@@ -778,7 +811,8 @@ function initializeMobileRuntimeModeListener(): void {
   if (!isNative || mobileRuntimeModeListenerInstalled) return;
   mobileRuntimeModeListenerInstalled = true;
   document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, () => {
-    if (getCurrentIosRuntimeConfig().mode === "cloud-hybrid") {
+    const mode = getCurrentIosRuntimeConfig().mode;
+    if (mode === "cloud-hybrid" || mode === "local") {
       void initializeMobileDeviceBridge();
       return;
     }

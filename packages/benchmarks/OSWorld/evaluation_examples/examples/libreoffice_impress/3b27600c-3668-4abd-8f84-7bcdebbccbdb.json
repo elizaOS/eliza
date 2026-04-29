@@ -23,9 +23,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "libreoffice_impress"
-  ],
+  "related_apps": ["libreoffice_impress"],
   "evaluator": {
     "postconfig": [
       {
@@ -62,16 +60,8 @@
     "expected": {
       "type": "rule",
       "rules": {
-        "rgb": [
-          0,
-          0,
-          255
-        ],
-        "original_rgb": [
-          255,
-          255,
-          255
-        ]
+        "rgb": [0, 0, 255],
+        "original_rgb": [255, 255, 255]
       }
     },
     "result": {

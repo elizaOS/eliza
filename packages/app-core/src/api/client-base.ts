@@ -7,7 +7,12 @@
 
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
-import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
+import {
+  clearElizaApiBase,
+  getElizaApiBase,
+  getElizaApiToken,
+  setElizaApiBase,
+} from "../utils/eliza-globals";
 import { mergeStreamingText } from "../utils/streaming-text";
 import type {
   ChatTokenUsage,
@@ -175,6 +180,17 @@ export class ElizaClient {
       // Clean up legacy sessionStorage entry (same key was used historically)
       window.sessionStorage.removeItem(LOCAL_STORAGE_API_BASE_KEY);
     }
+    // Mirror to window.__ELIZA_API_BASE__ so the Capacitor agent plugin's web
+    // fallback (native-plugins/agent/src/web.ts) and any other consumers that
+    // read the global directly see the same base. Electrobun's main↔renderer
+    // bridge also writes this; mirroring in setBaseUrl() makes mobile + dev-
+    // server + Electrobun behave consistently for any caller (Local Agent,
+    // Remote Agent, Eliza Cloud).
+    if (normalized) {
+      setElizaApiBase(normalized);
+    } else {
+      clearElizaApiBase();
+    }
   }
 
   /** True when we have a usable HTTP(S) API endpoint. */
@@ -334,7 +350,27 @@ export class ElizaClient {
       },
       options,
     );
-    return res.json() as Promise<T>;
+    if (res.status === 204) {
+      return undefined as T;
+    }
+    const text = await res.text();
+    if (text === "") {
+      return undefined as T;
+    }
+    try {
+      return JSON.parse(text) as T;
+    } catch (err) {
+      throw new ApiError({
+        kind: "parse",
+        path,
+        status: res.status,
+        message:
+          err instanceof Error
+            ? `Invalid JSON response: ${err.message}`
+            : "Invalid JSON response",
+        cause: err,
+      });
+    }
   }
 
   // --- WebSocket ---

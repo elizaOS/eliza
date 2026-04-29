@@ -1,160 +1,200 @@
-import type {
-  BrowserActionParams,
-  BrowserActionResult,
-} from "@elizaos/plugin-computeruse";
+import type { AgentRuntime } from "@elizaos/core";
 
-export type FakeSubscriptionScenario =
-  | "google_play"
-  | "apple_subscriptions"
-  | "fixture_streaming"
-  | "fixture_login_required"
-  | "fixture_phone_only";
+type BrowserActionParams =
+  | { action: "open" | "navigate"; url: string }
+  | { action: "wait"; text?: string; selector?: string; timeout?: number }
+  | { action: "click"; text?: string; selector?: string }
+  | { action: "get_dom" | "screenshot" };
 
-type ScenarioState = {
-  cancelOpened: boolean;
-  completed: boolean;
+type BrowserActionResult = {
+  success: boolean;
+  message?: string | null;
+  content?: string | null;
+  url?: string | null;
+  title?: string | null;
+  error?: string | null;
+  data?: Record<string, string | null>;
+  screenshot?: string | null;
 };
 
-function scenarioForUrl(url: string): FakeSubscriptionScenario | null {
-  const normalized = url.toLowerCase();
-  if (normalized.includes("google.com/store/account/subscriptions")) {
-    return "google_play";
-  }
-  if (
-    normalized.includes(
-      "account.apple.com/account/manage/section/subscriptions",
-    )
-  ) {
-    return "apple_subscriptions";
-  }
-  if (
-    normalized.includes("/services/netflix") ||
-    normalized.includes("/services/hulu") ||
-    normalized.includes("/services/fixture-streaming")
-  ) {
-    return "fixture_streaming";
-  }
-  if (normalized.includes("/services/login-required")) {
-    return "fixture_login_required";
-  }
-  if (normalized.includes("/services/phone-only")) {
-    return "fixture_phone_only";
-  }
-  return null;
-}
+type BrowserPhase = "idle" | "opened" | "confirming" | "canceled";
 
-function renderScenario(
-  scenario: FakeSubscriptionScenario,
-  state: ScenarioState,
-): string {
-  if (state.completed) {
-    return "subscription canceled";
-  }
-  if (scenario === "fixture_login_required") {
-    return "Sign in to continue";
-  }
-  if (scenario === "fixture_phone_only") {
-    return "Call us to cancel";
-  }
-  if (state.cancelOpened) {
-    return "Confirm cancellation Confirm cancellation";
-  }
-  return "Subscriptions Cancel subscription";
-}
+const CANCEL_SELECTOR = "[data-lifeops-action='cancel-subscription']";
+const CONFIRM_SELECTOR = "[data-lifeops-action='confirm-cancellation']";
 
 export class FakeSubscriptionComputerUseService {
-  public readonly history: BrowserActionParams[] = [];
-  public scenario: FakeSubscriptionScenario;
-  private readonly state: ScenarioState = {
-    cancelOpened: false,
-    completed: false,
-  };
+  private currentUrl: string | null = null;
+  private phase: BrowserPhase = "idle";
 
-  constructor(initialScenario: FakeSubscriptionScenario = "fixture_streaming") {
-    this.scenario = initialScenario;
-  }
+  constructor(public readonly fixtureId: string) {}
 
   async executeBrowserAction(
     params: BrowserActionParams,
   ): Promise<BrowserActionResult> {
-    this.history.push({ ...params });
     switch (params.action) {
       case "open":
-      case "navigate": {
-        const nextUrl = typeof params.url === "string" ? params.url : "";
-        const nextScenario = scenarioForUrl(nextUrl);
-        if (nextScenario) {
-          this.scenario = nextScenario;
-        }
-        this.state.cancelOpened = false;
-        this.state.completed = false;
-        return {
-          success: true,
-          url: nextUrl,
-          title: "Subscriptions",
-          isOpen: true,
-          is_open: true,
-          content: renderScenario(this.scenario, this.state),
-          message: `Opened ${nextUrl}`,
-        };
-      }
+      case "navigate":
+        this.currentUrl = params.url;
+        this.phase = "opened";
+        return this.result("opened fixture page");
       case "wait":
-        return {
-          success: true,
-          message: "wait satisfied",
-          content: renderScenario(this.scenario, this.state),
-        };
+        return this.waitFor(params);
+      case "click":
+        return this.click(params);
       case "get_dom":
-      case "context":
-      case "state":
-        return {
-          success: true,
-          content: renderScenario(this.scenario, this.state),
-          message: "page snapshot",
-        };
-      case "click": {
-        const clickLabel =
-          `${params.text ?? ""} ${params.selector ?? ""}`.toLowerCase();
-        if (clickLabel.includes("confirm")) {
-          this.state.completed = true;
-        } else if (clickLabel.includes("cancel")) {
-          this.state.cancelOpened = true;
-        }
-        return {
-          success: true,
-          content: renderScenario(this.scenario, this.state),
-          message: "clicked",
-        };
-      }
+        return this.result("captured fixture DOM");
       case "screenshot":
         return {
-          success: true,
-          screenshot: Buffer.from(
-            `${this.scenario}:${this.history.length}`,
-            "utf8",
-          ).toString("base64"),
-          message: "captured screenshot",
+          ...this.result("captured fixture screenshot"),
+          screenshot: `fixture-screenshot:${this.fixtureId}:${this.phase}`,
         };
+    }
+  }
+
+  private waitFor(
+    params: Extract<BrowserActionParams, { action: "wait" }>,
+  ): BrowserActionResult {
+    if (params.text && !this.domText().includes(params.text.toLowerCase())) {
+      return this.failure(`Text not found: ${params.text}`);
+    }
+    if (
+      params.selector &&
+      !this.availableSelectors().includes(params.selector)
+    ) {
+      return this.failure(`Selector not found: ${params.selector}`);
+    }
+    return this.result("wait matched fixture page");
+  }
+
+  private click(
+    params: Extract<BrowserActionParams, { action: "click" }>,
+  ): BrowserActionResult {
+    const text = params.text?.toLowerCase() ?? null;
+    if (text === "cancel subscription" || params.selector === CANCEL_SELECTOR) {
+      this.phase = "confirming";
+      return this.result("opened cancellation confirmation");
+    }
+    if (
+      text === "confirm cancellation" ||
+      params.selector === CONFIRM_SELECTOR
+    ) {
+      this.phase = "canceled";
+      return this.result("confirmed cancellation");
+    }
+    return this.failure(
+      `Unsupported fixture click: ${params.text ?? params.selector ?? "unknown"}`,
+    );
+  }
+
+  private result(message: string): BrowserActionResult {
+    return {
+      success: true,
+      message,
+      content: this.dom(),
+      url: this.currentUrl,
+      title: this.title(),
+      data: {
+        fixtureId: this.fixtureId,
+        phase: this.phase,
+        url: this.currentUrl,
+      },
+    };
+  }
+
+  private failure(error: string): BrowserActionResult {
+    return {
+      success: false,
+      message: error,
+      error,
+      content: this.dom(),
+      url: this.currentUrl,
+      title: this.title(),
+      data: {
+        fixtureId: this.fixtureId,
+        phase: this.phase,
+        url: this.currentUrl,
+      },
+    };
+  }
+
+  private domText(): string {
+    return this.dom().toLowerCase();
+  }
+
+  private dom(): string {
+    if (this.fixtureId === "fixture_login_required") {
+      return [
+        "<main>",
+        `<h1>${this.title()}</h1>`,
+        "<p>Sign in to continue</p>",
+        "<label>Email address</label>",
+        "</main>",
+      ].join("");
+    }
+    if (this.phase === "canceled") {
+      return [
+        "<main>",
+        `<h1>${this.title()}</h1>`,
+        "<p>subscription canceled</p>",
+        "</main>",
+      ].join("");
+    }
+    if (this.phase === "confirming") {
+      return [
+        "<main>",
+        `<h1>${this.title()}</h1>`,
+        "<p>Confirm cancellation</p>",
+        `<button data-lifeops-action="confirm-cancellation">Confirm cancellation</button>`,
+        "</main>",
+      ].join("");
+    }
+    return [
+      "<main>",
+      `<h1>${this.title()}</h1>`,
+      "<h2>Subscriptions</h2>",
+      `<button data-lifeops-action="cancel-subscription">Cancel subscription</button>`,
+      "</main>",
+    ].join("");
+  }
+
+  private availableSelectors(): string[] {
+    if (this.phase === "confirming") {
+      return [CONFIRM_SELECTOR];
+    }
+    if (this.fixtureId !== "fixture_login_required") {
+      return [CANCEL_SELECTOR];
+    }
+    return [];
+  }
+
+  private title(): string {
+    switch (this.fixtureId) {
+      case "google_play":
+        return "Google Play";
+      case "fixture_login_required":
+        return "Fixture Access Wall";
+      case "fixture_streaming":
+        return "Fixture Streaming";
       default:
-        return {
-          success: true,
-          message: `noop ${params.action}`,
-          content: renderScenario(this.scenario, this.state),
-        };
+        return "Fixture Subscription";
     }
   }
 }
 
 export function attachFakeSubscriptionComputerUse(
-  runtime: { getService?: (serviceType: string) => unknown },
-  service = new FakeSubscriptionComputerUseService(),
-): FakeSubscriptionComputerUseService {
-  const originalGetService = runtime.getService?.bind(runtime);
-  runtime.getService = ((serviceType: string) => {
+  runtime: AgentRuntime,
+  svc: FakeSubscriptionComputerUseService = new FakeSubscriptionComputerUseService(
+    "fixture_streaming",
+  ),
+): void {
+  const runtimeWithServices = runtime as AgentRuntime & {
+    getService(serviceType: string): unknown | null;
+  };
+  const previousGetService = runtimeWithServices.getService.bind(runtime);
+  runtimeWithServices.getService = (serviceType: string): unknown | null => {
     if (serviceType === "computeruse") {
-      return service;
+      return svc;
     }
-    return originalGetService ? originalGetService(serviceType) : null;
-  }) as typeof runtime.getService;
-  return service;
+    return previousGetService(serviceType);
+  };
 }

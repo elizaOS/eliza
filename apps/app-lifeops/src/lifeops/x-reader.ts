@@ -57,7 +57,12 @@ export interface XReadPage<T> {
 
 export class XReadError extends Error {
   readonly status: number | null;
-  readonly category: "auth" | "not_found" | "rate_limit" | "network" | "unknown";
+  readonly category:
+    | "auth"
+    | "not_found"
+    | "rate_limit"
+    | "network"
+    | "unknown";
   readonly retryAfterSeconds: number | null;
 
   constructor(
@@ -127,7 +132,10 @@ function buildOAuth1GetHeader(args: {
     oauth_token: args.credentials.accessToken,
     oauth_version: "1.0",
   };
-  const combined: Record<string, string> = { ...args.queryParams, ...oauthParams };
+  const combined: Record<string, string> = {
+    ...args.queryParams,
+    ...oauthParams,
+  };
   const baseString = buildSignatureBaseString("GET", args.url, combined);
   const signingKey = buildSigningKey(
     args.credentials.apiSecret,
@@ -221,7 +229,9 @@ async function xFetch<T>(args: {
     throw new XReadError(message, { status: null, category: "network" });
   }
 
-  const payload = (await response.json().catch(() => ({}))) as TwitterApiResponse<T>;
+  const payload = (await response
+    .json()
+    .catch(() => ({}))) as TwitterApiResponse<T>;
 
   if (!response.ok) {
     const category = categorizeStatus(response.status);
@@ -244,7 +254,9 @@ async function xFetch<T>(args: {
   return payload;
 }
 
-function buildHandleIndex(users: readonly TwitterUser[] | undefined): Map<string, string> {
+function buildHandleIndex(
+  users: readonly TwitterUser[] | undefined,
+): Map<string, string> {
   const index = new Map<string, string>();
   for (const user of users ?? []) {
     if (user.id && user.username) {
@@ -319,7 +331,8 @@ export async function readXDms(
   const url = `${getXBaseUrl()}/2/dm_events`;
   const queryParams: Record<string, string> = {
     max_results: String(limit),
-    "dm_event.fields": "id,event_type,text,sender_id,dm_conversation_id,created_at",
+    "dm_event.fields":
+      "id,event_type,text,sender_id,dm_conversation_id,created_at",
     expansions: "sender_id",
     "user.fields": "username",
   };
@@ -341,7 +354,8 @@ export async function readXDms(
   }
   return {
     items,
-    nextCursor: payload.meta?.next_token ?? payload.meta?.pagination_token ?? null,
+    nextCursor:
+      payload.meta?.next_token ?? payload.meta?.pagination_token ?? null,
   };
 }
 
@@ -356,7 +370,8 @@ export async function pullXFeed(
   const limit = clampLimit(options.limit);
   const baseQuery: Record<string, string> = {
     max_results: String(limit),
-    "tweet.fields": "id,text,author_id,created_at,conversation_id,referenced_tweets",
+    "tweet.fields":
+      "id,text,author_id,created_at,conversation_id,referenced_tweets",
     expansions: "author_id",
     "user.fields": "username",
   };

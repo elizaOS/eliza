@@ -99,7 +99,7 @@ jobs:
       desktop_matrix: ${{ steps.desktop-matrix.outputs.desktop_matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: false
 
@@ -168,12 +168,12 @@ jobs:
         shell: bash -euo pipefail {0}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -288,12 +288,12 @@ jobs:
       ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -307,9 +307,6 @@ jobs:
 
       - name: Package Agent Browser Bridge release bundles
         id: package-browser-bridge
-        # TODO: verify `browser-bridge:package:release` script exists in eliza.
-        # apps/browser-bridge/ in milady may live elsewhere in eliza or may not
-        # be ported yet.
         run: |
           if bun run browser-bridge:package:release; then
             echo "packaged=true" >> "$GITHUB_OUTPUT"
@@ -323,7 +320,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: browser-bridge-store-bundles
-          # TODO: confirm browser-bridge artifact path in eliza.
           path: |
             apps/browser-bridge/dist/artifacts/browser-bridge-chrome-v*.zip
             apps/browser-bridge/dist/artifacts/browser-bridge-safari-v*.zip
@@ -368,12 +364,12 @@ jobs:
           }
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
@@ -414,7 +410,7 @@ jobs:
 
       - name: Cache Whisper models and binaries
         if: matrix.platform.os == 'macos' || matrix.platform.os == 'linux'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/eliza/whisper
@@ -628,7 +624,7 @@ jobs:
           echo "core-cache-dir=$package_dir/dist-$electrobun_core_target" >> "$GITHUB_OUTPUT"
 
       - name: Cache Electrobun CLI and core binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ${{ steps.resolve-electrobun.outputs.cache-dir }}
@@ -979,7 +975,7 @@ jobs:
 
       - name: Cache Windows embedding model
         if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.eliza/models
           key: embedding-model-nomic-embed-text-v1.5-Q4_K_S
@@ -1571,7 +1567,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4

@@ -24,6 +24,11 @@ public class MainActivity extends BridgeActivity {
         // Start the foreground service so the OS keeps our process (and the
         // Capacitor WebSocket gateway plugin) alive in the background.
         GatewayConnectionService.start(this);
+
+        // Start the local Eliza agent runtime as a foreground service so it
+        // survives backgrounding and Doze. The boot receiver covers the
+        // cold-boot path; this is the fast path when the user opens the app.
+        MiladyAgentService.start(this);
     }
 
     @Override

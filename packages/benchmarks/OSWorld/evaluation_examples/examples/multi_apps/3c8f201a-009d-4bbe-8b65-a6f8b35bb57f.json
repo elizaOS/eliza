@@ -16,10 +16,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp",
-    "os"
-  ],
+  "related_apps": ["gimp", "os"],
   "evaluator": {
     "func": "check_image_file_size",
     "result": {

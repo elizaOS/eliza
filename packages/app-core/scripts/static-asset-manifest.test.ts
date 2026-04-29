@@ -35,7 +35,10 @@ describe("static asset manifest", () => {
     fs.writeFileSync(path.join(appPublic, "logo.png"), "ok");
     fs.writeFileSync(path.join(appPublic, ".DS_Store"), "noise");
     fs.writeFileSync(path.join(appPublic, "Thumbs.db"), "noise");
-    fs.writeFileSync(path.join(appPublic, ".ignored-dir", "secret.txt"), "nope");
+    fs.writeFileSync(
+      path.join(appPublic, ".ignored-dir", "secret.txt"),
+      "nope",
+    );
     fs.writeFileSync(path.join(homepagePublic, "hero.png"), "ok");
 
     expect(buildStaticAssetManifest(root)).toEqual({

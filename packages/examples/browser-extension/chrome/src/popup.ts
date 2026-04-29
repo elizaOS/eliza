@@ -7,7 +7,13 @@
 
 // Global error handler to catch module loading errors
 window.onerror = (message, source, lineno, colno, error) => {
-  console.error("[Popup] Global error:", { message, source, lineno, colno, error });
+  console.error("[Popup] Global error:", {
+    message,
+    source,
+    lineno,
+    colno,
+    error,
+  });
   const statusEl = document.getElementById("statusText");
   if (statusEl) statusEl.textContent = "Script error - check console";
   return false;
@@ -20,15 +26,15 @@ window.onunhandledrejection = (event) => {
 console.log("[Popup] Script starting...");
 
 import {
-  getOrCreateRuntime,
   getGreetingText,
+  getOrCreateRuntime,
   resetConversation,
   sendMessage,
   updatePageContent,
 } from "../../shared/eliza-runtime";
 import {
-  deepMergeConfig,
   DEFAULT_CONFIG,
+  deepMergeConfig,
   type ExtensionConfig,
   getEffectiveMode,
   getModeLabel,
@@ -63,15 +69,23 @@ const elements = {
 
   // Settings Modal
   settingsModal: document.getElementById("settingsModal") as HTMLElement,
-  closeSettingsBtn: document.getElementById("closeSettingsBtn") as HTMLButtonElement,
-  providerSelect: document.getElementById("providerSelect") as HTMLSelectElement,
+  closeSettingsBtn: document.getElementById(
+    "closeSettingsBtn",
+  ) as HTMLButtonElement,
+  providerSelect: document.getElementById(
+    "providerSelect",
+  ) as HTMLSelectElement,
   providerNote: document.getElementById("providerNote") as HTMLElement,
 
   // Provider settings
   openaiSettings: document.getElementById("openaiSettings") as HTMLElement,
   openaiApiKey: document.getElementById("openaiApiKey") as HTMLInputElement,
-  anthropicSettings: document.getElementById("anthropicSettings") as HTMLElement,
-  anthropicApiKey: document.getElementById("anthropicApiKey") as HTMLInputElement,
+  anthropicSettings: document.getElementById(
+    "anthropicSettings",
+  ) as HTMLElement,
+  anthropicApiKey: document.getElementById(
+    "anthropicApiKey",
+  ) as HTMLInputElement,
   xaiSettings: document.getElementById("xaiSettings") as HTMLElement,
   xaiApiKey: document.getElementById("xaiApiKey") as HTMLInputElement,
   geminiSettings: document.getElementById("geminiSettings") as HTMLElement,
@@ -98,7 +112,10 @@ async function loadConfig(): Promise<void> {
   try {
     const result = await chrome.storage.local.get(CONFIG_KEY);
     if (result[CONFIG_KEY]) {
-      config = deepMergeConfig(DEFAULT_CONFIG, result[CONFIG_KEY] as Partial<ExtensionConfig>);
+      config = deepMergeConfig(
+        DEFAULT_CONFIG,
+        result[CONFIG_KEY] as Partial<ExtensionConfig>,
+      );
     }
   } catch (error) {
     console.error("[Popup] Error loading config:", error);
@@ -138,7 +155,8 @@ function updatePageInfo(content: PageContent | null): void {
     elements.pageUrl.textContent = content.url || "";
   } else {
     elements.pageTitle.textContent = "No page content available";
-    elements.pageUrl.textContent = "Open the extension on a webpage to chat about it";
+    elements.pageUrl.textContent =
+      "Open the extension on a webpage to chat about it";
   }
 }
 
@@ -297,7 +315,8 @@ async function handleSendMessage(text: string): Promise<void> {
     }
   } catch (error) {
     removeTypingIndicator();
-    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error occurred";
     addMessage("assistant", `Error: ${errorMessage}`);
   } finally {
     isProcessing = false;
@@ -358,20 +377,25 @@ async function fetchPageContent(): Promise<void> {
   try {
     // Add timeout to prevent hanging
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("Timeout fetching page content")), 5000);
+      setTimeout(
+        () => reject(new Error("Timeout fetching page content")),
+        5000,
+      );
     });
-    
-    const messagePromise = chrome.runtime.sendMessage({ type: "GET_PAGE_CONTENT" });
+
+    const messagePromise = chrome.runtime.sendMessage({
+      type: "GET_PAGE_CONTENT",
+    });
     const response = await Promise.race([messagePromise, timeoutPromise]);
-    
+
     console.log("[Popup] Got response:", response);
-    
+
     if (response?.content) {
       pageContent = response.content;
       updatePageInfo(pageContent);
       // Don't await this - do it in background
-      updatePageContent(config, pageContent).catch(err => 
-        console.error("[Popup] Error updating runtime page content:", err)
+      updatePageContent(config, pageContent).catch((err) =>
+        console.error("[Popup] Error updating runtime page content:", err),
       );
     } else {
       console.log("[Popup] No content in response");
@@ -391,7 +415,7 @@ async function fetchPageContent(): Promise<void> {
 
 async function initialize(): Promise<void> {
   console.log("[Popup] Starting initialization...");
-  
+
   // Load saved config
   try {
     await loadConfig();
@@ -433,11 +457,14 @@ async function initialize(): Promise<void> {
     console.error("[Popup] Error initializing runtime:", error);
     elements.statusText.textContent = "Error initializing";
     elements.statusDot.className = "status-dot error";
-    
+
     // Still enable input in offline mode
     elements.messageInput.disabled = false;
     elements.sendBtn.disabled = false;
-    addMessage("assistant", "Error initializing. Please check the console for details.");
+    addMessage(
+      "assistant",
+      "Error initializing. Please check the console for details.",
+    );
   }
 }
 

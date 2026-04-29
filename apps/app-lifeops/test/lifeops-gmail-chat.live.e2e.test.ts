@@ -1,30 +1,27 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { createElizaPlugin, resolveOAuthDir } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../test/helpers/http";
+} from "../../../../eliza/test/helpers/http";
 import {
   isLiveTestEnabled,
   selectLiveProvider,
-} from "../../../../test/helpers/live-provider";
-import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
-import { saveEnv } from "../../../../test/helpers/test-utils";
-import {
-  createElizaPlugin,
-  resolveOAuthDir,
-} from "@elizaos/agent";
+} from "../../../../eliza/test/helpers/live-provider";
+import { saveEnv } from "../../../../eliza/test/helpers/test-utils";
+import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsGmailSyncState,
   LifeOpsRepository,
 } from "../src/lifeops/repository.js";
+import { createLifeOpsTestRuntime } from "./helpers/runtime.js";
 
 const GOOGLE_CLIENT_ID = "lifeops-gmail-live-chat-client";
 const LIVE_PROVIDER = selectLiveProvider("openai") ?? selectLiveProvider();
@@ -32,6 +29,8 @@ const LIVE_GMAIL_CHAT_ENABLED = isLiveTestEnabled() && Boolean(LIVE_PROVIDER);
 
 function buildGmailMessage(args: {
   agentId: string;
+  grantId: string;
+  accountEmail: string;
   id: string;
   externalId: string;
   threadId: string;
@@ -50,6 +49,8 @@ function buildGmailMessage(args: {
     externalId: args.externalId,
     threadId: args.threadId,
     agentId: args.agentId,
+    grantId: args.grantId,
+    accountEmail: args.accountEmail,
     provider: "google" as const,
     side: "owner" as const,
     subject: args.subject,
@@ -66,7 +67,7 @@ function buildGmailMessage(args: {
     triageScore: args.triageScore ?? 50,
     triageReason: args.likelyReplyNeeded ? "reply needed" : "search hit",
     labels: args.isUnread ? ["INBOX", "UNREAD"] : ["INBOX"],
-    htmlLink: `https://mail.google.com/mail/u/0/#all/${args.threadId}`,
+    htmlLink: `https://mail.google.com/mail/u/${encodeURIComponent(args.accountEmail)}/#all/${args.threadId}`,
     metadata: {
       messageIdHeader: `<${args.externalId}@example.com>`,
       referencesHeader: `<${args.threadId}@example.com>`,
@@ -81,6 +82,7 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
   const agentId = String(runtime.agentId);
   const nowIso = new Date().toISOString();
   const tokenRef = `${agentId}/owner/local.json`;
+  const grantId = "gmail-live-google-grant";
   const tokenPath = path.join(
     resolveOAuthDir(process.env, stateDir),
     "lifeops",
@@ -122,8 +124,8 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
     },
   );
 
-  await repository.upsertConnectorGrant(
-    createLifeOpsConnectorGrant({
+  await repository.upsertConnectorGrant({
+    ...createLifeOpsConnectorGrant({
       agentId,
       provider: "google",
       side: "owner",
@@ -148,7 +150,8 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
       metadata: {},
       lastRefreshAt: nowIso,
     }),
-  );
+    id: grantId,
+  });
 
   await repository.upsertGmailSyncState(
     createLifeOpsGmailSyncState({
@@ -156,6 +159,7 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
       provider: "google",
       side: "owner",
       mailbox: "me",
+      grantId,
       maxResults: 50,
       syncedAt: nowIso,
     }),
@@ -164,6 +168,8 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
   const messages = [
     buildGmailMessage({
       agentId,
+      grantId,
+      accountEmail: "shawmakesmagic@gmail.com",
       id: "gmail-live-suran-recent",
       externalId: "gmail-live-suran-recent-ext",
       threadId: "gmail-live-suran-thread-recent",
@@ -179,6 +185,8 @@ async function seedLocalGmail(runtime: AgentRuntime, stateDir: string) {
     }),
     buildGmailMessage({
       agentId,
+      grantId,
+      accountEmail: "shawmakesmagic@gmail.com",
       id: "gmail-live-venue",
       externalId: "gmail-live-venue-ext",
       threadId: "gmail-live-venue-thread",

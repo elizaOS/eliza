@@ -1,4 +1,4 @@
-//! Plugin Manager types — Rust port of the TypeScript plugin-plugin-manager types.
+//! Plugin Manager types — Rust port of the `@elizaos/core` plugin-manager TypeScript types.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};

@@ -1,7 +1,5 @@
+import { gatePluginSessionForHostedApp } from "@elizaos/agent";
 import type { Plugin, ServiceClass } from "@elizaos/core";
-import {
-  gatePluginSessionForHostedApp,
-} from "@elizaos/agent";
 
 import { scapeActions } from "./actions/index.js";
 import { scapeProviders } from "./providers/index.js";

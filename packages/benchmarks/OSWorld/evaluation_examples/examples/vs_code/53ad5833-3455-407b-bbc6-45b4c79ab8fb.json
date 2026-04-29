@@ -28,19 +28,13 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "code"
-        ]
+        "command": ["code"]
       }
     },
     {
       "type": "command",
       "parameters": {
-        "command": [
-          "mkdir",
-          "-p",
-          "/home/user/project/.vscode"
-        ]
+        "command": ["mkdir", "-p", "/home/user/project/.vscode"]
       }
     },
     {
@@ -70,9 +64,7 @@
     }
   ],
   "trajectory": "trajectories/53ad5833-3455-407b-bbc6-45b4c79ab8fb",
-  "related_apps": [
-    "vscode"
-  ],
+  "related_apps": ["vscode"],
   "evaluator": {
     "postconfig": [
       {

@@ -114,7 +114,7 @@ export function toInboxMessage(
     channel === "gmail"
       ? Boolean(
           message.gmailLikelyReplyNeeded === true ||
-          message.gmailIsImportant === true,
+            message.gmailIsImportant === true,
         )
       : true;
 

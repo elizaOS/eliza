@@ -39,42 +39,50 @@ type TsScenario = {
 };
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
+const ELIZA_SCENARIO_ROOT = path.join(REPO_ROOT, "eliza", "test", "scenarios");
 
 const BLOCKER_SCENARIOS = [
   {
     id: "cross-platform.escalation-to-user",
     relativePath:
-      "test/scenarios/messaging.cross-platform/cross-platform.escalation-to-user.scenario.ts",
+      "messaging.cross-platform/cross-platform.escalation-to-user.scenario.ts",
     requiredSnippets: ["receivePendingIntents", "intentId", "lease"],
   },
   {
     id: "cross-platform.group-chat-gateway",
     relativePath:
-      "test/scenarios/messaging.cross-platform/cross-platform.group-chat-gateway.scenario.ts",
-    requiredSnippets: ["getRoom", "getParticipantsForRoom", "participantEntityIds"],
+      "messaging.cross-platform/cross-platform.group-chat-gateway.scenario.ts",
+    requiredSnippets: [
+      "getRoom",
+      "getParticipantsForRoom",
+      "participantEntityIds",
+    ],
   },
   {
     id: "telegram.local.mute-chat",
     relativePath:
-      "test/scenarios/messaging.telegram-local/telegram.local.mute-chat.scenario.ts",
-    requiredSnippets: ["getParticipantUserState", "listTriggerTasks", "unmute_chat"],
+      "messaging.telegram-local/telegram.local.mute-chat.scenario.ts",
+    requiredSnippets: [
+      "getParticipantUserState",
+      "listTriggerTasks",
+      "unmute_chat",
+    ],
   },
   {
     id: "twitter.dm.schedule-reply",
-    relativePath:
-      "test/scenarios/messaging.twitter-dm/twitter.dm.schedule-reply.scenario.ts",
+    relativePath: "messaging.twitter-dm/twitter.dm.schedule-reply.scenario.ts",
     requiredSnippets: ["listTriggerTasks", "REPLY_X_DM", "sendAtIso"],
   },
   {
     id: "twilio.call.receive",
-    relativePath: "test/scenarios/gateway/twilio.call.receive.scenario.ts",
+    relativePath: "gateway/twilio.call.receive.scenario.ts",
     requiredSnippets: ["responseText", "actionsCalled", "voice transcript"],
   },
 ] as const;
 
 async function loadScenario(relativePath: string): Promise<TsScenario> {
   const module = await import(
-    pathToFileURL(path.join(REPO_ROOT, relativePath)).href
+    pathToFileURL(path.join(ELIZA_SCENARIO_ROOT, relativePath)).href
   );
   return module.default as TsScenario;
 }
@@ -93,17 +101,18 @@ describe("Connector blocker scenario fixtures", () => {
     for (const entry of BLOCKER_SCENARIOS) {
       const [scenario, source] = await Promise.all([
         loadScenario(entry.relativePath),
-        readFile(path.join(REPO_ROOT, entry.relativePath), "utf8"),
+        readFile(path.join(ELIZA_SCENARIO_ROOT, entry.relativePath), "utf8"),
       ]);
 
       expect(scenario.id).toBe(entry.id);
       expect(source).not.toContain("NotYetImplemented");
-      expect(scenario.finalChecks?.some((check) => check.type === "selectedAction")).toBe(
-        true,
-      );
+      expect(
+        scenario.finalChecks?.some((check) => check.type === "selectedAction"),
+      ).toBe(true);
 
       const customChecks = (scenario.finalChecks ?? []).filter(
-        (check) => check.type === "custom" && typeof check.predicate === "function",
+        (check) =>
+          check.type === "custom" && typeof check.predicate === "function",
       );
       expect(customChecks.length).toBeGreaterThan(0);
 

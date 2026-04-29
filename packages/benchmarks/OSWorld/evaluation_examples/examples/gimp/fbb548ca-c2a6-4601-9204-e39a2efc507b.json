@@ -5,9 +5,7 @@
   "source": "",
   "config": [],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp"
-  ],
+  "related_apps": ["gimp"],
   "evaluator": {
     "func": "infeasible"
   },

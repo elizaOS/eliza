@@ -48,6 +48,17 @@ function clearNativeCapacitor(): void {
   delete (globalThis as CapacitorGlobal).Capacitor;
 }
 
+type EmbeddingOptions = {
+  contextId: number;
+  text: string;
+  params: { embd_normalize?: number };
+};
+
+type TokenizeOptions = {
+  contextId: number;
+  text: string;
+};
+
 function makePluginMock() {
   let tokenListener: ((payload: TokenPayload) => void) | null = null;
   const listenerHandle = { remove: vi.fn(async () => undefined) };
@@ -119,6 +130,12 @@ function makePluginMock() {
       },
     })),
     stopCompletion: vi.fn(async (_options: ContextOptions) => undefined),
+    embedding: vi.fn(async (_options: EmbeddingOptions) => ({
+      embedding: [0.5, -0.25, 0.75],
+    })),
+    tokenize: vi.fn(async (_options: TokenizeOptions) => ({
+      tokens: [1, 2, 3, 4],
+    })),
     addListener: vi.fn(
       async (_event: string, listener: (payload: TokenPayload) => void) => {
         tokenListener = listener;
@@ -159,6 +176,12 @@ const llamaCppProxy = {
   stopCompletion(options: Parameters<LlamaPluginMock["stopCompletion"]>[0]) {
     return currentPlugin().stopCompletion(options);
   },
+  embedding(options: Parameters<LlamaPluginMock["embedding"]>[0]) {
+    return currentPlugin().embedding(options);
+  },
+  tokenize(options: Parameters<LlamaPluginMock["tokenize"]>[0]) {
+    return currentPlugin().tokenize(options);
+  },
   addListener(
     event: Parameters<LlamaPluginMock["addListener"]>[0],
     listener: Parameters<LlamaPluginMock["addListener"]>[1],
@@ -169,7 +192,16 @@ const llamaCppProxy = {
 
 vi.mock("llama-cpp-capacitor", () => ({ LlamaCpp: llamaCppProxy }));
 
-afterEach(() => {
+afterEach(async () => {
+  // Reset the module-level `capacitorLlama` singleton between tests so
+  // state from a prior load() doesn't leak into the next case.
+  try {
+    const mod = await import("./index");
+    const adapter = mod.capacitorLlama as { dispose?: () => Promise<void> };
+    await adapter.dispose?.();
+  } catch {
+    /* dispose is best-effort */
+  }
   clearNativeCapacitor();
   mockedPlugin = null;
 });
@@ -247,6 +279,43 @@ describe("@elizaos/capacitor-llama adapter", () => {
     expect(plugin.releaseContext).toHaveBeenCalledWith({ contextId: 1 });
   });
 
+  it("embeds via the native llama-cpp-capacitor embedding() method", async () => {
+    setNativeCapacitor("ios");
+    const plugin = makePluginMock();
+    mockedPlugin = plugin;
+    const { capacitorLlama } = await import("./index");
+
+    await capacitorLlama.load({ modelPath: "/models/test.gguf" });
+    const result = await capacitorLlama.embed({
+      input: "Embed this please",
+      embdNormalize: 2,
+    });
+    expect(plugin.embedding).toHaveBeenCalledWith({
+      contextId: 1,
+      text: "Embed this please",
+      params: { embd_normalize: 2 },
+    });
+    expect(plugin.tokenize).toHaveBeenCalledWith({
+      contextId: 1,
+      text: "Embed this please",
+    });
+    expect(result).toEqual({
+      embedding: [0.5, -0.25, 0.75],
+      tokens: 4,
+    });
+  });
+
+  it("throws when embed is called before load", async () => {
+    setNativeCapacitor("ios");
+    const plugin = makePluginMock();
+    mockedPlugin = plugin;
+    const { capacitorLlama } = await import("./index");
+
+    await expect(capacitorLlama.embed({ input: "x" })).rejects.toThrow(
+      /No model loaded/,
+    );
+  });
+
   it("registers a localInferenceLoader service without private field casts", async () => {
     setNativeCapacitor("android");
     const plugin = makePluginMock();
@@ -265,11 +334,18 @@ describe("@elizaos/capacitor-llama adapter", () => {
       unloadModel(): Promise<void>;
       currentModelPath(): string | null;
       generate(args: { prompt: string }): Promise<string>;
+      embed(args: {
+        input: string;
+      }): Promise<{ embedding: number[]; tokens: number }>;
     };
 
     await loader.loadModel({ modelPath: "/models/mobile.gguf" });
     expect(loader.currentModelPath()).toBe("/models/mobile.gguf");
     await expect(loader.generate({ prompt: "Hello" })).resolves.toBe("hello");
+    await expect(loader.embed({ input: "Hi there" })).resolves.toEqual({
+      embedding: [0.5, -0.25, 0.75],
+      tokens: 4,
+    });
     await loader.unloadModel();
     expect(loader.currentModelPath()).toBe(null);
   });

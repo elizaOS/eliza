@@ -14,7 +14,7 @@ import {
   type CreateBrowserBridgeCompanionPairingRequest,
   type SyncBrowserBridgeStateRequest,
   type UpdateBrowserBridgeSettingsRequest,
-} from "../../../../plugins/plugin-browser-bridge/src/index.js";
+} from "@elizaos/plugin-browser-bridge";
 import type {
   CompleteLifeOpsBrowserSessionRequest,
   ConfirmLifeOpsBrowserSessionRequest,
@@ -23,16 +23,6 @@ import type {
   UpdateLifeOpsBrowserSessionProgressRequest,
 } from "../contracts/index.js";
 import { recordBrowserFocusWindow } from "./browser-extension-store.js";
-import {
-  fail,
-  normalizeEnumValue,
-  normalizeOptionalBoolean,
-  normalizeOptionalIsoString,
-  normalizeOptionalString,
-  requireNonEmptyString,
-} from "./service-normalize.js";
-import { normalizeBrowserActionInput } from "./service-normalize-task.js";
-import { normalizeOptionalRecord, requireRecord } from "./service-helpers-misc.js";
 import {
   browserPageContextIdentityKey,
   browserSessionMatchesCompanion,
@@ -49,11 +39,24 @@ import {
   resolveAwaitingBrowserActionId,
   selectRememberedBrowserTabs,
 } from "./service-helpers-browser.js";
+import {
+  normalizeOptionalRecord,
+  requireRecord,
+} from "./service-helpers-misc.js";
 import type {
   Constructor,
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
+import {
+  fail,
+  normalizeEnumValue,
+  normalizeOptionalBoolean,
+  normalizeOptionalIsoString,
+  normalizeOptionalString,
+  requireNonEmptyString,
+} from "./service-normalize.js";
+import { normalizeBrowserActionInput } from "./service-normalize-task.js";
 
 export interface BrowserBridgeService {
   getBrowserSettings(): Promise<BrowserBridgeSettings>;
@@ -143,16 +146,30 @@ function normalizeBrowserSettingsUpdate(
 ): BrowserBridgeSettings {
   return {
     ...current,
-    enabled: normalizeOptionalBoolean(request.enabled, "enabled") ?? current.enabled,
+    enabled:
+      normalizeOptionalBoolean(request.enabled, "enabled") ?? current.enabled,
     trackingMode: request.trackingMode ?? current.trackingMode,
-    allowBrowserControl: normalizeOptionalBoolean(request.allowBrowserControl, "allowBrowserControl") ?? current.allowBrowserControl,
-    requireConfirmationForAccountAffecting: normalizeOptionalBoolean(request.requireConfirmationForAccountAffecting, "requireConfirmationForAccountAffecting") ?? current.requireConfirmationForAccountAffecting,
-    incognitoEnabled: normalizeOptionalBoolean(request.incognitoEnabled, "incognitoEnabled") ?? current.incognitoEnabled,
+    allowBrowserControl:
+      normalizeOptionalBoolean(
+        request.allowBrowserControl,
+        "allowBrowserControl",
+      ) ?? current.allowBrowserControl,
+    requireConfirmationForAccountAffecting:
+      normalizeOptionalBoolean(
+        request.requireConfirmationForAccountAffecting,
+        "requireConfirmationForAccountAffecting",
+      ) ?? current.requireConfirmationForAccountAffecting,
+    incognitoEnabled:
+      normalizeOptionalBoolean(request.incognitoEnabled, "incognitoEnabled") ??
+      current.incognitoEnabled,
     siteAccessMode: request.siteAccessMode ?? current.siteAccessMode,
     grantedOrigins: request.grantedOrigins ?? [...current.grantedOrigins],
     blockedOrigins: request.blockedOrigins ?? [...current.blockedOrigins],
     maxRememberedTabs: request.maxRememberedTabs ?? current.maxRememberedTabs,
-    pauseUntil: request.pauseUntil !== undefined ? (request.pauseUntil ?? null) : current.pauseUntil,
+    pauseUntil:
+      request.pauseUntil !== undefined
+        ? (request.pauseUntil ?? null)
+        : current.pauseUntil,
     metadata:
       request.metadata !== undefined
         ? mergeMetadata(
@@ -172,19 +189,17 @@ function normalizeOptionalBrowserKind(
   return normalizeEnumValue(value, field, BROWSER_BRIDGE_KINDS);
 }
 
-// Imports from repository
-import {
-  createBrowserBridgePageContext,
-  createLifeOpsBrowserSession,
-  createBrowserBridgeTabSummary,
-} from "./repository.js";
 import {
   mergeBrowserTaskLifecycle,
   summarizeBrowserTaskLifecycle,
 } from "./browser-session-lifecycle.js";
+// Imports from repository
 import {
-  DEFAULT_BROWSER_PERMISSION_STATE,
-} from "./service-constants.js";
+  createBrowserBridgePageContext,
+  createBrowserBridgeTabSummary,
+  createLifeOpsBrowserSession,
+} from "./repository.js";
+import { DEFAULT_BROWSER_PERMISSION_STATE } from "./service-constants.js";
 
 // ---------------------------------------------------------------------------
 // Browser mixin
@@ -481,11 +496,12 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         companionInput.profileId,
         "companion.profileId",
       );
-      const currentCompanion = await this.repository.getBrowserCompanionByProfile(
-        this.agentId(),
-        browser,
-        profileId,
-      );
+      const currentCompanion =
+        await this.repository.getBrowserCompanionByProfile(
+          this.agentId(),
+          browser,
+          profileId,
+        );
       const companion = this.buildBrowserCompanion(
         request.companion,
         currentCompanion,
@@ -512,7 +528,9 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
           companionInput.lastSeenAt,
           "companion.lastSeenAt",
         ) ?? new Date().toISOString();
-      const existingTabs = await this.repository.listBrowserTabs(this.agentId());
+      const existingTabs = await this.repository.listBrowserTabs(
+        this.agentId(),
+      );
       const currentSyncMs = Date.parse(nowIso);
       const previouslyFocusedTab =
         existingTabs.find((tab) => tab.focusedActive) ?? null;
@@ -701,7 +719,10 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       );
       const syncedContextIds = new Set<string>();
       for (const [index, candidate] of (request.pageContexts ?? []).entries()) {
-        const contextRecord = requireRecord(candidate, `pageContexts[${index}]`);
+        const contextRecord = requireRecord(
+          candidate,
+          `pageContexts[${index}]`,
+        );
         const contextBrowser = normalizeEnumValue(
           contextRecord.browser,
           `pageContexts[${index}].browser`,
@@ -815,7 +836,9 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         syncedContextIds.add(nextContext.id);
       }
 
-      const keptKeys = new Set(keptTabs.map((tab) => browserTabIdentityKey(tab)));
+      const keptKeys = new Set(
+        keptTabs.map((tab) => browserTabIdentityKey(tab)),
+      );
       await this.repository.deleteBrowserPageContextsByIds(
         this.agentId(),
         existingContexts
@@ -854,11 +877,12 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         BROWSER_BRIDGE_KINDS,
       );
       const profileId = requireNonEmptyString(request.profileId, "profileId");
-      const currentCompanion = await this.repository.getBrowserCompanionByProfile(
-        this.agentId(),
-        browser,
-        profileId,
-      );
+      const currentCompanion =
+        await this.repository.getBrowserCompanionByProfile(
+          this.agentId(),
+          browser,
+          profileId,
+        );
       const profileLabel =
         normalizeOptionalString(request.profileLabel) ??
         currentCompanion?.profileLabel ??
@@ -976,7 +1000,10 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         "companion.profileId",
       );
       if (browser !== companion.browser || profileId !== companion.profileId) {
-        fail(403, "browser companion payload does not match the paired profile");
+        fail(
+          403,
+          "browser companion payload does not match the paired profile",
+        );
       }
       const state = await this.syncBrowserState(request);
       const settings = await this.getBrowserSettings();

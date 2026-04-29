@@ -104,7 +104,6 @@ const FEATURE_SUBGROUP: Record<string, string> = {
   memory: "knowledge",
   "local-embedding": "knowledge",
   pdf: "knowledge",
-  "secrets-manager": "knowledge",
   clipboard: "knowledge",
   rlm: "knowledge",
   "agent-orchestrator": "agents",
@@ -130,7 +129,6 @@ const FEATURE_SUBGROUP: Record<string, string> = {
   roblox: "gaming",
   babylon: "gaming",
   mysticism: "gaming",
-  personality: "gaming",
   moltbook: "gaming",
 };
 
@@ -211,7 +209,6 @@ const DEFAULT_ICONS: Record<string, string> = {
   memory: "Dna",
   "local-embedding": "Binary",
   pdf: "FileText",
-  "secrets-manager": "FileKey",
   clipboard: "StickyNote",
   rlm: "RefreshCw",
   "agent-orchestrator": "Target",
@@ -237,7 +234,6 @@ const DEFAULT_ICONS: Record<string, string> = {
   roblox: "BrickWall",
   babylon: "Gamepad",
   mysticism: "Sparkle",
-  personality: "Target",
   moltbook: "ScrollText",
   tee: "LockKeyhole",
   blooio: "Circle",

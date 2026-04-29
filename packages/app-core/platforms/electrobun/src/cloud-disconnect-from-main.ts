@@ -5,12 +5,12 @@
  */
 
 import { resolveApiToken } from "@elizaos/shared";
-import { getBrandConfig } from "./brand-config";
 import {
   normalizeApiBase,
   resolveDesktopRuntimeMode,
   resolveInitialApiBase,
 } from "./api-base";
+import { getBrandConfig } from "./brand-config";
 import {
   buildMainMenuResetApiCandidates,
   type FetchLike,

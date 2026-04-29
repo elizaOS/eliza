@@ -17,11 +17,7 @@
     }
   ],
   "trajectory": "trajectories/227d2f97-562b-4ccb-ae47-a5ec9e142fbb",
-  "related_apps": [
-    "libreoffice_writer",
-    "gimp",
-    "os"
-  ],
+  "related_apps": ["libreoffice_writer", "gimp", "os"],
   "evaluator": {
     "postconfig": [
       {

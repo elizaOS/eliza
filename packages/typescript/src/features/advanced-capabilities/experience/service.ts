@@ -8,6 +8,10 @@ import { Service, type ServiceTypeName } from "../../../types/service.ts";
 import {
 	type Experience,
 	type ExperienceAnalysis,
+	type ExperienceConsolidationResult,
+	type ExperienceGraphLink,
+	type ExperienceGraphLinkType,
+	type ExperienceGraphSnapshot,
 	type ExperienceQuery,
 	ExperienceServiceType,
 	ExperienceType,
@@ -15,6 +19,14 @@ import {
 } from "./types.ts";
 import { ConfidenceDecayManager } from "./utils/confidenceDecay";
 import { ExperienceRelationshipManager } from "./utils/experienceRelationships";
+import {
+	extractExperienceKeywords,
+	isDuplicateLearning,
+} from "./utils/experienceText.ts";
+
+const GRAPH_MAX_LINKS = 200;
+const GRAPH_KEYWORD_LINK_THRESHOLD = 2;
+const DAILY_EXPERIENCE_MAINTENANCE_MS = 24 * 60 * 60 * 1000;
 
 export class ExperienceService extends Service {
 	static override serviceType: ServiceTypeName =
@@ -27,6 +39,7 @@ export class ExperienceService extends Service {
 	private experiencesByType: Map<ExperienceType, Set<UUID>> = new Map();
 	private dirtyExperiences: Set<UUID> = new Set();
 	private persistTimer: ReturnType<typeof setInterval> | null = null;
+	private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
 	private decayManager: ConfidenceDecayManager;
 	private relationshipManager: ExperienceRelationshipManager;
 
@@ -41,6 +54,9 @@ export class ExperienceService extends Service {
 		this.persistTimer = setInterval(() => {
 			void this.persistDirtyExperiences();
 		}, 60_000);
+		this.maintenanceTimer = setInterval(() => {
+			void this.consolidateDuplicateExperiences({ deleteDuplicates: false });
+		}, DAILY_EXPERIENCE_MAINTENANCE_MS);
 	}
 
 	static async start(runtime: IAgentRuntime): Promise<ExperienceService> {
@@ -78,6 +94,49 @@ export class ExperienceService extends Service {
 		return ids.length > 0 ? ids : undefined;
 	}
 
+	private asUuidArray(value: unknown): UUID[] {
+		return this.asStringArray(value) as UUID[];
+	}
+
+	private dedupeStrings(values: Array<string | undefined>): string[] {
+		return Array.from(
+			new Set(
+				values
+					.map((value) => value?.trim())
+					.filter((value): value is string => Boolean(value)),
+			),
+		);
+	}
+
+	private normalizeTags(
+		tags: unknown,
+		domain: string,
+		type: ExperienceType,
+	): string[] {
+		const providedTags = this.asStringArray(tags).map((tag) =>
+			tag.toLowerCase(),
+		);
+		return this.dedupeStrings(
+			providedTags.length > 0 ? providedTags : [domain.toLowerCase(), type],
+		);
+	}
+
+	private deriveKeywords(
+		experience: Pick<
+			Experience,
+			"context" | "action" | "result" | "learning" | "domain" | "tags"
+		>,
+	): string[] {
+		return extractExperienceKeywords([
+			experience.context,
+			experience.action,
+			experience.result,
+			experience.learning,
+			experience.domain,
+			experience.tags,
+		]);
+	}
+
 	private asOptionalEmbedding(value: unknown): number[] | undefined {
 		if (!Array.isArray(value)) {
 			return undefined;
@@ -110,9 +169,18 @@ export class ExperienceService extends Service {
 		return {
 			...experience,
 			tags: [...experience.tags],
+			keywords: [...experience.keywords],
+			associatedEntityIds: [...experience.associatedEntityIds],
 			embedding: experience.embedding ? [...experience.embedding] : undefined,
+			memoryIds: experience.memoryIds ? [...experience.memoryIds] : undefined,
+			sourceMessageIds: experience.sourceMessageIds
+				? [...experience.sourceMessageIds]
+				: undefined,
 			relatedExperiences: experience.relatedExperiences
 				? [...experience.relatedExperiences]
+				: undefined,
+			mergedExperienceIds: experience.mergedExperienceIds
+				? [...experience.mergedExperienceIds]
 				: undefined,
 		};
 	}
@@ -209,6 +277,8 @@ export class ExperienceService extends Service {
 					? rawData.domain
 					: "general",
 			tags: this.asStringArray(rawData?.tags),
+			keywords: this.asStringArray(rawData?.keywords),
+			associatedEntityIds: this.asUuidArray(rawData?.associatedEntityIds),
 			confidence: this.clampScore(rawData?.confidence, 0.5),
 			importance: this.clampScore(rawData?.importance, 0.5),
 			createdAt: this.toTimestamp(
@@ -230,6 +300,9 @@ export class ExperienceService extends Service {
 				this.asOptionalEmbedding(memory.embedding) ??
 				this.asOptionalEmbedding(rawData?.embedding),
 			relatedExperiences: this.asOptionalUuidArray(rawData?.relatedExperiences),
+			mergedExperienceIds: this.asOptionalUuidArray(
+				rawData?.mergedExperienceIds,
+			),
 			supersedes:
 				typeof rawData?.supersedes === "string"
 					? (rawData.supersedes as UUID)
@@ -315,6 +388,8 @@ export class ExperienceService extends Service {
 			learning: experience.learning,
 			domain: experience.domain,
 			tags: experience.tags,
+			keywords: experience.keywords,
+			associatedEntityIds: experience.associatedEntityIds,
 			confidence: experience.confidence,
 			importance: experience.importance,
 			createdAt: experience.createdAt,
@@ -326,6 +401,9 @@ export class ExperienceService extends Service {
 		}
 		if (experience.relatedExperiences !== undefined) {
 			data.relatedExperiences = experience.relatedExperiences;
+		}
+		if (experience.mergedExperienceIds !== undefined) {
+			data.mergedExperienceIds = experience.mergedExperienceIds;
 		}
 		if (experience.supersedes !== undefined) {
 			data.supersedes = experience.supersedes;
@@ -393,6 +471,16 @@ export class ExperienceService extends Service {
 		for (const memory of memories) {
 			const experience = this.parseExperienceMemory(memory);
 			if (experience) {
+				if (experience.tags.length === 0) {
+					experience.tags = this.normalizeTags(
+						experience.tags,
+						experience.domain,
+						experience.type,
+					);
+				}
+				if (experience.keywords.length === 0) {
+					experience.keywords = this.deriveKeywords(experience);
+				}
 				this.setExperience(experience);
 			}
 		}
@@ -410,6 +498,20 @@ export class ExperienceService extends Service {
 		const action = experienceData.action || "";
 		const result = experienceData.result || "";
 		const learning = experienceData.learning || "";
+		const type = experienceData.type || ExperienceType.LEARNING;
+		const domain = experienceData.domain || "general";
+		const tags = this.normalizeTags(experienceData.tags, domain, type);
+		const keywords =
+			experienceData.keywords && experienceData.keywords.length > 0
+				? this.dedupeStrings(experienceData.keywords)
+				: this.deriveKeywords({
+						context,
+						action,
+						result,
+						learning,
+						domain,
+						tags,
+					});
 		const embedding = await this.generateEmbedding({
 			context,
 			action,
@@ -420,14 +522,18 @@ export class ExperienceService extends Service {
 		const experience: Experience = {
 			id: uuidv4() as UUID,
 			agentId: this.runtime.agentId,
-			type: experienceData.type || ExperienceType.LEARNING,
+			type,
 			outcome: experienceData.outcome || OutcomeType.NEUTRAL,
 			context,
 			action,
 			result,
 			learning,
-			domain: experienceData.domain || "general",
-			tags: experienceData.tags ? [...experienceData.tags] : [],
+			domain,
+			tags,
+			keywords,
+			associatedEntityIds: experienceData.associatedEntityIds
+				? Array.from(new Set(experienceData.associatedEntityIds))
+				: [],
 			confidence: experienceData.confidence ?? 0.5,
 			importance: experienceData.importance ?? 0.5,
 			createdAt: now,
@@ -437,6 +543,9 @@ export class ExperienceService extends Service {
 			embedding,
 			relatedExperiences: experienceData.relatedExperiences
 				? [...experienceData.relatedExperiences]
+				: undefined,
+			mergedExperienceIds: experienceData.mergedExperienceIds
+				? [...experienceData.mergedExperienceIds]
 				: undefined,
 			supersedes: experienceData.supersedes,
 			previousBelief: experienceData.previousBelief,
@@ -538,11 +647,37 @@ export class ExperienceService extends Service {
 			"result" in updates ? (updates.result ?? "") : existing.result;
 		const nextLearning =
 			"learning" in updates ? (updates.learning ?? "") : existing.learning;
+		const nextType =
+			"type" in updates ? (updates.type ?? existing.type) : existing.type;
+		const nextDomain =
+			"domain" in updates ? (updates.domain ?? "general") : existing.domain;
+		const nextTags =
+			"tags" in updates
+				? this.normalizeTags(updates.tags, nextDomain, nextType)
+				: [...existing.tags];
 		const shouldRegenerateEmbedding =
 			"context" in updates ||
 			"action" in updates ||
 			"result" in updates ||
 			"learning" in updates;
+		const shouldRegenerateKeywords =
+			shouldRegenerateEmbedding ||
+			"domain" in updates ||
+			"tags" in updates ||
+			"type" in updates;
+		const nextKeywords =
+			"keywords" in updates && updates.keywords && updates.keywords.length > 0
+				? this.dedupeStrings(updates.keywords)
+				: shouldRegenerateKeywords
+					? this.deriveKeywords({
+							context: nextContext,
+							action: nextAction,
+							result: nextResult,
+							learning: nextLearning,
+							domain: nextDomain,
+							tags: nextTags,
+						})
+					: [...existing.keywords];
 		const embedding = shouldRegenerateEmbedding
 			? await this.generateEmbedding({
 					context: nextContext,
@@ -561,12 +696,14 @@ export class ExperienceService extends Service {
 			action: nextAction,
 			result: nextResult,
 			learning: nextLearning,
-			tags:
-				"tags" in updates
-					? Array.isArray(updates.tags)
-						? [...updates.tags]
-						: []
-					: [...existing.tags],
+			type: nextType,
+			domain: nextDomain,
+			tags: nextTags,
+			keywords: nextKeywords,
+			associatedEntityIds:
+				"associatedEntityIds" in updates
+					? Array.from(new Set(updates.associatedEntityIds ?? []))
+					: [...existing.associatedEntityIds],
 			relatedExperiences:
 				"relatedExperiences" in updates
 					? updates.relatedExperiences
@@ -582,6 +719,14 @@ export class ExperienceService extends Service {
 						: undefined
 					: existing.sourceMessageIds
 						? [...existing.sourceMessageIds]
+						: undefined,
+			mergedExperienceIds:
+				"mergedExperienceIds" in updates
+					? updates.mergedExperienceIds
+						? [...updates.mergedExperienceIds]
+						: undefined
+					: existing.mergedExperienceIds
+						? [...existing.mergedExperienceIds]
 						: undefined,
 			embedding,
 			updatedAt: Date.now(),
@@ -833,6 +978,365 @@ export class ExperienceService extends Service {
 		return all.slice(0, limit);
 	}
 
+	async getExperienceGraph(
+		query: ExperienceQuery = {},
+	): Promise<ExperienceGraphSnapshot> {
+		const experiences = await this.resolveExperiences(
+			{ ...query, limit: query.limit ?? 100 },
+			false,
+		);
+		return this.buildGraphSnapshot(experiences);
+	}
+
+	async consolidateDuplicateExperiences(
+		options: { deleteDuplicates?: boolean; limit?: number } = {},
+	): Promise<ExperienceConsolidationResult> {
+		const candidates = Array.from(this.experiences.values())
+			.sort((left, right) => right.updatedAt - left.updatedAt)
+			.slice(0, options.limit ?? this.experiences.size);
+		const consumedIds = new Set<UUID>();
+		const groups: ExperienceConsolidationResult["groups"] = [];
+		let deleted = 0;
+
+		for (const experience of candidates) {
+			if (consumedIds.has(experience.id)) {
+				continue;
+			}
+
+			const duplicates = candidates.filter(
+				(candidate) =>
+					candidate.id !== experience.id &&
+					!consumedIds.has(candidate.id) &&
+					!this.areAlreadyConsolidated(experience, candidate) &&
+					isDuplicateLearning(experience.learning, candidate.learning),
+			);
+			if (duplicates.length === 0) {
+				consumedIds.add(experience.id);
+				continue;
+			}
+
+			const group = [experience, ...duplicates];
+			const primary = this.selectPrimaryExperience(group);
+			const duplicateIds: UUID[] = [];
+
+			for (const duplicate of group) {
+				if (duplicate.id === primary.id) {
+					continue;
+				}
+				await this.mergeDuplicateExperience(
+					primary.id,
+					duplicate.id,
+					options.deleteDuplicates === true,
+				);
+				duplicateIds.push(duplicate.id);
+				consumedIds.add(duplicate.id);
+				if (options.deleteDuplicates === true) {
+					deleted++;
+				}
+			}
+
+			const updatedPrimary = this.experiences.get(primary.id) ?? primary;
+			groups.push({
+				primaryId: primary.id,
+				duplicateIds,
+				mergedKeywords: updatedPrimary.keywords,
+				reason: "duplicate learning text",
+			});
+			consumedIds.add(primary.id);
+		}
+
+		return {
+			inspected: candidates.length,
+			groups,
+			merged: groups.reduce(
+				(total, group) => total + group.duplicateIds.length,
+				0,
+			),
+			deleted,
+		};
+	}
+
+	private buildGraphSnapshot(
+		experiences: Experience[],
+	): ExperienceGraphSnapshot {
+		const sorted = [...experiences].sort((left, right) => {
+			const scoreLeft =
+				this.decayManager.getDecayedConfidence(left) *
+				left.importance *
+				this.getTimeWeight(left);
+			const scoreRight =
+				this.decayManager.getDecayedConfidence(right) *
+				right.importance *
+				this.getTimeWeight(right);
+			return scoreRight - scoreLeft;
+		});
+
+		return {
+			generatedAt: Date.now(),
+			totalExperiences: this.experiences.size,
+			nodes: sorted.map((experience, index) =>
+				this.buildGraphNode(experience, index, sorted.length),
+			),
+			links: this.buildGraphLinks(sorted),
+		};
+	}
+
+	private buildGraphNode(
+		experience: Experience,
+		index: number,
+		total: number,
+	): ExperienceGraphSnapshot["nodes"][number] {
+		const angle = total > 0 ? (Math.PI * 2 * index) / total : 0;
+		const ring = 0.28 + (index % 4) * 0.1;
+
+		return {
+			id: experience.id,
+			label: experience.learning,
+			type: experience.type,
+			outcome: experience.outcome,
+			domain: experience.domain,
+			keywords: [...experience.keywords],
+			associatedEntityIds: [...experience.associatedEntityIds],
+			confidence: experience.confidence,
+			importance: experience.importance,
+			timeWeight: this.getTimeWeight(experience),
+			x: 0.5 + Math.cos(angle) * ring,
+			y: 0.5 + Math.sin(angle) * ring,
+		};
+	}
+
+	private buildGraphLinks(experiences: Experience[]): ExperienceGraphLink[] {
+		const links = new Map<string, ExperienceGraphLink>();
+		const addLink = (link: ExperienceGraphLink): void => {
+			const key = `${link.sourceId}:${link.targetId}:${link.type}`;
+			const existing = links.get(key);
+			if (!existing || existing.strength < link.strength) {
+				links.set(key, link);
+			}
+		};
+
+		for (const experience of experiences) {
+			for (const relationship of this.relationshipManager.findRelationships(
+				experience.id,
+			)) {
+				const type = this.toGraphLinkType(relationship.type);
+				if (!type || !this.experiences.has(relationship.toId as UUID)) {
+					continue;
+				}
+				addLink({
+					sourceId: relationship.fromId as UUID,
+					targetId: relationship.toId as UUID,
+					type,
+					strength: relationship.strength,
+					reason: `stored ${relationship.type} relationship`,
+					keywords: [],
+				});
+			}
+		}
+
+		for (let i = 0; i < experiences.length; i++) {
+			const source = experiences[i];
+			if (!source) {
+				continue;
+			}
+			for (let j = i + 1; j < experiences.length; j++) {
+				const target = experiences[j];
+				if (!target) {
+					continue;
+				}
+				const inferred = this.inferGraphLink(source, target);
+				if (inferred) {
+					addLink(inferred);
+				}
+			}
+		}
+
+		return Array.from(links.values())
+			.sort((left, right) => right.strength - left.strength)
+			.slice(0, GRAPH_MAX_LINKS);
+	}
+
+	private inferGraphLink(
+		source: Experience,
+		target: Experience,
+	): ExperienceGraphLink | null {
+		const sharedKeywords = this.getSharedKeywords(source, target);
+		if (source.supersedes === target.id || target.supersedes === source.id) {
+			const superseding = source.supersedes === target.id ? source : target;
+			const superseded = superseding.id === source.id ? target : source;
+			return {
+				sourceId: superseding.id,
+				targetId: superseded.id,
+				type: "supersedes",
+				strength: 0.95,
+				reason: "explicit supersession",
+				keywords: sharedKeywords,
+			};
+		}
+
+		if (isDuplicateLearning(source.learning, target.learning)) {
+			return {
+				sourceId: source.id,
+				targetId: target.id,
+				type: "similar",
+				strength: 0.9,
+				reason: "duplicate or near-duplicate learning",
+				keywords: sharedKeywords,
+			};
+		}
+
+		if (
+			source.domain === target.domain &&
+			sharedKeywords.length >= GRAPH_KEYWORD_LINK_THRESHOLD
+		) {
+			return {
+				sourceId: source.id,
+				targetId: target.id,
+				type: "supports",
+				strength: Math.min(0.85, 0.4 + sharedKeywords.length * 0.1),
+				reason: "shared domain keywords",
+				keywords: sharedKeywords,
+			};
+		}
+
+		const sharesEntities = source.associatedEntityIds.some((entityId) =>
+			target.associatedEntityIds.includes(entityId),
+		);
+		if (sharesEntities && source.domain === target.domain) {
+			return {
+				sourceId: source.id,
+				targetId: target.id,
+				type: "co_occurs",
+				strength: Math.min(0.8, 0.45 + sharedKeywords.length * 0.08),
+				reason: "same associated entity and domain",
+				keywords: sharedKeywords,
+			};
+		}
+
+		return null;
+	}
+
+	private toGraphLinkType(type: string): ExperienceGraphLinkType | null {
+		switch (type) {
+			case "contradicts":
+			case "supports":
+			case "supersedes":
+				return type;
+			case "related":
+				return "similar";
+			default:
+				return null;
+		}
+	}
+
+	private getSharedKeywords(left: Experience, right: Experience): string[] {
+		const rightKeywords = new Set(right.keywords);
+		return left.keywords.filter((keyword) => rightKeywords.has(keyword));
+	}
+
+	private getTimeWeight(experience: Experience): number {
+		const ageDays = Math.max(
+			0,
+			(Date.now() - experience.createdAt) / (24 * 60 * 60 * 1000),
+		);
+		return 1 / (1 + ageDays / 30);
+	}
+
+	private selectPrimaryExperience(experiences: Experience[]): Experience {
+		return [...experiences].sort((left, right) => {
+			const scoreLeft =
+				left.importance * 0.4 +
+				left.confidence * 0.4 +
+				this.getTimeWeight(left) * 0.1 +
+				Math.min(1, left.accessCount / 10) * 0.1;
+			const scoreRight =
+				right.importance * 0.4 +
+				right.confidence * 0.4 +
+				this.getTimeWeight(right) * 0.1 +
+				Math.min(1, right.accessCount / 10) * 0.1;
+			return scoreRight - scoreLeft;
+		})[0] as Experience;
+	}
+
+	private areAlreadyConsolidated(left: Experience, right: Experience): boolean {
+		return (
+			left.supersedes === right.id ||
+			right.supersedes === left.id ||
+			(left.mergedExperienceIds?.includes(right.id) ?? false) ||
+			(right.mergedExperienceIds?.includes(left.id) ?? false)
+		);
+	}
+
+	private async mergeDuplicateExperience(
+		primaryId: UUID,
+		duplicateId: UUID,
+		deleteDuplicate: boolean,
+	): Promise<void> {
+		const primary = this.experiences.get(primaryId);
+		const duplicate = this.experiences.get(duplicateId);
+		if (!primary || !duplicate) {
+			return;
+		}
+
+		const merged: Experience = {
+			...primary,
+			confidence: Math.max(primary.confidence, duplicate.confidence),
+			importance: Math.max(primary.importance, duplicate.importance),
+			accessCount: primary.accessCount + duplicate.accessCount,
+			lastAccessedAt: Math.max(
+				primary.lastAccessedAt ?? primary.updatedAt,
+				duplicate.lastAccessedAt ?? duplicate.updatedAt,
+			),
+			updatedAt: Date.now(),
+			tags: this.dedupeStrings([...primary.tags, ...duplicate.tags]),
+			keywords: this.dedupeStrings([
+				...primary.keywords,
+				...duplicate.keywords,
+			]),
+			associatedEntityIds: this.asUuidArray([
+				...primary.associatedEntityIds,
+				...duplicate.associatedEntityIds,
+			]),
+			sourceMessageIds: this.asOptionalUuidArray([
+				...(primary.sourceMessageIds ?? []),
+				...(duplicate.sourceMessageIds ?? []),
+			]),
+			relatedExperiences: this.asOptionalUuidArray(
+				[
+					...(primary.relatedExperiences ?? []),
+					...(duplicate.relatedExperiences ?? []),
+					duplicate.id,
+				].filter((id) => id !== primary.id),
+			),
+			mergedExperienceIds: this.asOptionalUuidArray([
+				...(primary.mergedExperienceIds ?? []),
+				duplicate.id,
+				...(duplicate.mergedExperienceIds ?? []),
+			]),
+		};
+
+		this.setExperience(merged);
+		await this.saveExperienceToMemory(merged);
+
+		if (deleteDuplicate) {
+			await this.deleteExperience(duplicate.id);
+			return;
+		}
+
+		const superseded: Experience = {
+			...duplicate,
+			confidence: Math.min(duplicate.confidence, 0.4),
+			updatedAt: Date.now(),
+			supersedes: primary.id,
+			relatedExperiences: this.asOptionalUuidArray([
+				...(duplicate.relatedExperiences ?? []),
+				primary.id,
+			]),
+		};
+		this.setExperience(superseded);
+		await this.saveExperienceToMemory(superseded);
+	}
+
 	async analyzeExperiences(
 		domain?: string,
 		type?: ExperienceType,
@@ -1017,6 +1521,10 @@ export class ExperienceService extends Service {
 		if (this.persistTimer) {
 			clearInterval(this.persistTimer);
 			this.persistTimer = null;
+		}
+		if (this.maintenanceTimer) {
+			clearInterval(this.maintenanceTimer);
+			this.maintenanceTimer = null;
 		}
 
 		// Final persist of all dirty experiences + full save

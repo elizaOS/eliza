@@ -23,11 +23,7 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "calc",
-    "chrome",
-    "os"
-  ],
+  "related_apps": ["calc", "chrome", "os"],
   "evaluator": {
     "postconfig": [
       {
@@ -65,52 +61,24 @@
         "expected": [
           "Scottsdale",
           "Atlanta",
-          [
-            "Lake Tahoe",
-            "Stateline"
-          ],
-          [
-            "Banff",
-            "Alberta's Rockies",
-            "Alberta’s Rockies"
-          ],
+          ["Lake Tahoe", "Stateline"],
+          ["Banff", "Alberta's Rockies", "Alberta’s Rockies"],
           "Beijing",
-          [
-            "Montreal",
-            "Montréal"
-          ],
+          ["Montreal", "Montréal"],
           "San Diego",
           "Lille",
-          [
-            "Montreal",
-            "Montréal"
-          ],
+          ["Montreal", "Montréal"],
           "San Juan",
-          [
-            "New York",
-            "New York City",
-            "NYC"
-          ],
+          ["New York", "New York City", "NYC"],
           "Barcelona",
           "Toulon",
           "Sydney",
-          [
-            "Los Angeles",
-            "Long Beach",
-            "LA"
-          ],
+          ["Los Angeles", "Long Beach", "LA"],
           "Vancouver",
           "Stockholm",
-          [
-            "Montreal",
-            "Montréal"
-          ],
+          ["Montreal", "Montréal"],
           "New Orleans",
-          [
-            "Los Angeles",
-            "Long Beach",
-            "LA"
-          ],
+          ["Los Angeles", "Long Beach", "LA"],
           "Vancouver"
         ]
       }

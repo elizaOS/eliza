@@ -6,9 +6,7 @@ function looksLikeElizaSubrepoRoot(dir) {
   return (
     existsSync(path.join(dir, "package.json")) &&
     existsSync(path.join(dir, "apps", "app", "package.json")) &&
-    existsSync(
-      path.join(dir, "eliza", "packages", "app-core", "package.json"),
-    )
+    existsSync(path.join(dir, "eliza", "packages", "app-core", "package.json"))
   );
 }
 

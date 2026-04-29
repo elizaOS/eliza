@@ -47,9 +47,7 @@ export const appBlockerProvider: Provider = {
 
     if (!status.available) {
       return {
-        text:
-          status.reason ??
-          "App blocking is not available on this device.",
+        text: status.reason ?? "App blocking is not available on this device.",
         values: {
           appBlockerAuthorized: true,
           appBlockerAvailable: false,
@@ -74,8 +72,8 @@ export const appBlockerProvider: Provider = {
     const permissionLine =
       status.permissionStatus === "granted"
         ? "Eliza has permission to block apps on this device."
-        : status.reason ??
-          "App blocking permissions have not been granted yet.";
+        : (status.reason ??
+          "App blocking permissions have not been granted yet.");
 
     return {
       text: [statusLine, permissionLine].join(" "),

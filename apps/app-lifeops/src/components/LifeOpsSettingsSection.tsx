@@ -1,16 +1,6 @@
-import {
-  Button,
-  SegmentedControl,
-  useApp,
-} from "@elizaos/app-core";
+import { Button, SegmentedControl, useApp } from "@elizaos/app-core";
 import { client } from "@elizaos/app-core/api";
 import type { ModelOption } from "@elizaos/shared/contracts/onboarding";
-import type {
-  LifeOpsCalendarSummary,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsGoogleCapability,
-} from "../contracts/index.js";
 import {
   AlertTriangle,
   CalendarDays,
@@ -28,6 +18,12 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import type {
+  LifeOpsCalendarSummary,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsGoogleCapability,
+} from "../contracts/index.js";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
 import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
 import { LifeOpsFeatureTogglesSection } from "./LifeOpsFeatureTogglesSection";
@@ -562,7 +558,8 @@ function GoogleConnectorSideCard({
 
   const toggleCalendar = useCallback(
     async (calendar: LifeOpsCalendarSummary) => {
-      setCalendarPendingId(calendar.calendarId);
+      const pendingId = `${calendar.side}:${calendar.grantId}:${calendar.calendarId}`;
+      setCalendarPendingId(pendingId);
       setCalendarError(null);
       try {
         const response = await client.setLifeOpsCalendarIncluded({
@@ -822,12 +819,12 @@ function GoogleConnectorSideCard({
             ) : calendars.length > 0 ? (
               <div className="grid gap-2">
                 {calendars.map((calendar) => {
+                  const calendarIdentity = `${calendar.side}:${calendar.grantId}:${calendar.calendarId}`;
                   const disabled =
-                    controlDisabled ||
-                    calendarPendingId === calendar.calendarId;
+                    controlDisabled || calendarPendingId === calendarIdentity;
                   return (
                     <label
-                      key={`${calendar.grantId}:${calendar.calendarId}`}
+                      key={calendarIdentity}
                       className="flex cursor-pointer items-start gap-3 rounded-xl bg-card/18 px-3 py-2 text-xs"
                     >
                       <input
@@ -885,13 +882,15 @@ function GoogleConnectorSideCard({
 }
 
 function flattenModelOptions(
-  models: {
-    nano?: ModelOption[];
-    small?: ModelOption[];
-    medium?: ModelOption[];
-    large?: ModelOption[];
-    mega?: ModelOption[];
-  } | undefined,
+  models:
+    | {
+        nano?: ModelOption[];
+        small?: ModelOption[];
+        medium?: ModelOption[];
+        large?: ModelOption[];
+        mega?: ModelOption[];
+      }
+    | undefined,
 ): ModelOption[] {
   if (!models) return [];
   const seen = new Set<string>();

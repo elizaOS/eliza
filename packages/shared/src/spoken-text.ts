@@ -49,8 +49,8 @@ function sanitizeSpeechPunctuation(input: string): string {
   text = text.replace(/[‘’]/g, "'");
   text = text.replace(/[…]/g, "...");
   text = text.replace(/[–—]/g, ", ");
-  text = text.replace(/\s*([,;:，；：])\s*/g, "$1 ");
-  text = text.replace(/\s*([.!?。！？])\s*/g, "$1 ");
+  text = text.replace(/\s{0,32}([,;:，；：])\s{0,32}/g, "$1 ");
+  text = text.replace(/\s{0,32}([.!?。！？])\s{0,32}/g, "$1 ");
   text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：-]/gu, " ");
   text = text.replace(/([,.!?，。！？])\1+/g, "$1");
   text = text.replace(/^[,;:.!?，。！？；：]+/g, " ");

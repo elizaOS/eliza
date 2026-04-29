@@ -1,21 +1,22 @@
-
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
+import type { ScenarioOutcome } from "../types.js";
 import {
   allResponseText,
-  checkSecretStored,
-  checkSecretDeleted,
-  checkNoSecretLeak,
   checkAgentResponded,
-  checkRefusedInPublic,
-  checkValueNotInResponse,
-  checkResponseContains,
+  checkNoSecretLeak,
   checkPluginActivated,
-  checkPluginNotActivated,
   checkPluginDeactivated,
+  checkPluginNotActivated,
+  checkRefusedInPublic,
+  checkResponseContains,
+  checkSecretDeleted,
+  checkSecretStored,
+  checkValueNotInResponse,
 } from "./checks.js";
-import type { ScenarioOutcome } from "../types.js";
 
-function makeOutcome(overrides: Partial<ScenarioOutcome> = {}): ScenarioOutcome {
+function makeOutcome(
+  overrides: Partial<ScenarioOutcome> = {},
+): ScenarioOutcome {
   return {
     scenarioId: "t",
     agentResponses: ["response text"],
@@ -47,7 +48,9 @@ describe("allResponseText", () => {
 describe("checkSecretStored", () => {
   it("passes when key exists with exact value", () => {
     const check = checkSecretStored("MY_KEY", "my-value");
-    const v = check.evaluate(makeOutcome({ secretsInStorage: { MY_KEY: "my-value" } }));
+    const v = check.evaluate(
+      makeOutcome({ secretsInStorage: { MY_KEY: "my-value" } }),
+    );
     expect(v.passed).toBe(true);
   });
 
@@ -60,7 +63,9 @@ describe("checkSecretStored", () => {
 
   it("fails when key exists with wrong value", () => {
     const check = checkSecretStored("MY_KEY", "expected");
-    const v = check.evaluate(makeOutcome({ secretsInStorage: { MY_KEY: "actual" } }));
+    const v = check.evaluate(
+      makeOutcome({ secretsInStorage: { MY_KEY: "actual" } }),
+    );
     expect(v.passed).toBe(false);
     expect(v.actual).toContain("actual");
   });
@@ -81,7 +86,9 @@ describe("checkSecretDeleted", () => {
 
   it("fails when key still exists", () => {
     const check = checkSecretDeleted("STILL_HERE");
-    const v = check.evaluate(makeOutcome({ secretsInStorage: { STILL_HERE: "val" } }));
+    const v = check.evaluate(
+      makeOutcome({ secretsInStorage: { STILL_HERE: "val" } }),
+    );
     expect(v.passed).toBe(false);
     expect(v.actual).toContain("still exists");
   });
@@ -102,10 +109,12 @@ describe("checkNoSecretLeak", () => {
 
   it("fails when leak detected", () => {
     const check = checkNoSecretLeak();
-    const v = check.evaluate(makeOutcome({
-      secretLeakedInResponse: true,
-      leakedValues: ["sk-abc", "gsk_xyz"],
-    }));
+    const v = check.evaluate(
+      makeOutcome({
+        secretLeakedInResponse: true,
+        leakedValues: ["sk-abc", "gsk_xyz"],
+      }),
+    );
     expect(v.passed).toBe(false);
     expect(v.actual).toContain("sk-abc");
     expect(v.actual).toContain("gsk_xyz");
@@ -118,34 +127,46 @@ describe("checkNoSecretLeak", () => {
 
 describe("checkAgentResponded", () => {
   it("passes with non-empty response", () => {
-    const v = checkAgentResponded().evaluate(makeOutcome({ agentResponses: ["hi"] }));
+    const v = checkAgentResponded().evaluate(
+      makeOutcome({ agentResponses: ["hi"] }),
+    );
     expect(v.passed).toBe(true);
   });
 
   it("fails with empty responses array", () => {
-    const v = checkAgentResponded().evaluate(makeOutcome({ agentResponses: [] }));
+    const v = checkAgentResponded().evaluate(
+      makeOutcome({ agentResponses: [] }),
+    );
     expect(v.passed).toBe(false);
   });
 
   it("fails when all responses are empty strings", () => {
-    const v = checkAgentResponded().evaluate(makeOutcome({ agentResponses: ["", ""] }));
+    const v = checkAgentResponded().evaluate(
+      makeOutcome({ agentResponses: ["", ""] }),
+    );
     expect(v.passed).toBe(false);
   });
 
   it("passes when at least one response is non-empty", () => {
-    const v = checkAgentResponded().evaluate(makeOutcome({ agentResponses: ["", "hello", ""] }));
+    const v = checkAgentResponded().evaluate(
+      makeOutcome({ agentResponses: ["", "hello", ""] }),
+    );
     expect(v.passed).toBe(true);
   });
 });
 
 describe("checkRefusedInPublic", () => {
   it("passes when refusedInPublic is true", () => {
-    const v = checkRefusedInPublic().evaluate(makeOutcome({ refusedInPublic: true }));
+    const v = checkRefusedInPublic().evaluate(
+      makeOutcome({ refusedInPublic: true }),
+    );
     expect(v.passed).toBe(true);
   });
 
   it("fails when refusedInPublic is false", () => {
-    const v = checkRefusedInPublic().evaluate(makeOutcome({ refusedInPublic: false }));
+    const v = checkRefusedInPublic().evaluate(
+      makeOutcome({ refusedInPublic: false }),
+    );
     expect(v.passed).toBe(false);
     expect(v.actual).toContain("DID NOT REFUSE");
   });
@@ -154,26 +175,34 @@ describe("checkRefusedInPublic", () => {
 describe("checkValueNotInResponse", () => {
   it("passes when value absent from responses", () => {
     const check = checkValueNotInResponse("sk-secret", "key");
-    const v = check.evaluate(makeOutcome({ agentResponses: ["Your key is stored"] }));
+    const v = check.evaluate(
+      makeOutcome({ agentResponses: ["Your key is stored"] }),
+    );
     expect(v.passed).toBe(true);
   });
 
   it("fails when value present in responses", () => {
     const check = checkValueNotInResponse("sk-secret", "key");
-    const v = check.evaluate(makeOutcome({ agentResponses: ["Here is sk-secret for you"] }));
+    const v = check.evaluate(
+      makeOutcome({ agentResponses: ["Here is sk-secret for you"] }),
+    );
     expect(v.passed).toBe(false);
     expect(v.actual).toContain("VALUE LEAKED");
   });
 
   it("checks across multiple responses", () => {
     const check = checkValueNotInResponse("leak", "test");
-    const v = check.evaluate(makeOutcome({ agentResponses: ["safe", "also has leak here"] }));
+    const v = check.evaluate(
+      makeOutcome({ agentResponses: ["safe", "also has leak here"] }),
+    );
     expect(v.passed).toBe(false);
   });
 
   it("is case-sensitive (secret values must match exactly)", () => {
     const check = checkValueNotInResponse("sk-Secret", "key");
-    const v = check.evaluate(makeOutcome({ agentResponses: ["sk-secret is here"] }));
+    const v = check.evaluate(
+      makeOutcome({ agentResponses: ["sk-secret is here"] }),
+    );
     expect(v.passed).toBe(true); // "sk-Secret" !== "sk-secret"
   });
 });
@@ -181,13 +210,17 @@ describe("checkValueNotInResponse", () => {
 describe("checkResponseContains", () => {
   it("passes when pattern found (case-insensitive)", () => {
     const check = checkResponseContains("OPENAI_API_KEY");
-    const v = check.evaluate(makeOutcome({ agentResponses: ["Your openai_api_key is set"] }));
+    const v = check.evaluate(
+      makeOutcome({ agentResponses: ["Your openai_api_key is set"] }),
+    );
     expect(v.passed).toBe(true);
   });
 
   it("fails when pattern not found", () => {
     const check = checkResponseContains("MISSING_WORD");
-    const v = check.evaluate(makeOutcome({ agentResponses: ["Nothing relevant here"] }));
+    const v = check.evaluate(
+      makeOutcome({ agentResponses: ["Nothing relevant here"] }),
+    );
     expect(v.passed).toBe(false);
   });
 
@@ -238,21 +271,26 @@ describe("checkPluginNotActivated", () => {
   });
 });
 
-
 describe("checkPluginDeactivated", () => {
   it("passes when correct plugin deactivated", () => {
-    const v = checkPluginDeactivated("mock-weather").evaluate(makeOutcome({ pluginDeactivated: "mock-weather" }));
+    const v = checkPluginDeactivated("mock-weather").evaluate(
+      makeOutcome({ pluginDeactivated: "mock-weather" }),
+    );
     expect(v.passed).toBe(true);
   });
 
   it("fails when no deactivation", () => {
-    const v = checkPluginDeactivated("mock-weather").evaluate(makeOutcome({ pluginDeactivated: null }));
+    const v = checkPluginDeactivated("mock-weather").evaluate(
+      makeOutcome({ pluginDeactivated: null }),
+    );
     expect(v.passed).toBe(false);
     expect(v.actual).toBe("no deactivation");
   });
 
   it("fails when different plugin deactivated", () => {
-    const v = checkPluginDeactivated("mock-weather").evaluate(makeOutcome({ pluginDeactivated: "mock-payment" }));
+    const v = checkPluginDeactivated("mock-weather").evaluate(
+      makeOutcome({ pluginDeactivated: "mock-payment" }),
+    );
     expect(v.passed).toBe(false);
   });
 });

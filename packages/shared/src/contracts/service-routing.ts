@@ -223,6 +223,7 @@ export function buildDefaultElizaCloudServiceRouting(
   args: {
     base?: ServiceRoutingConfig | null;
     includeInference?: boolean;
+    excludeServices?: readonly Exclude<ServiceCapability, "llmText">[];
     nanoModel?: string;
     smallModel?: string;
     mediumModel?: string;
@@ -237,8 +238,10 @@ export function buildDefaultElizaCloudServiceRouting(
   } = {},
 ): ServiceRoutingConfig {
   const next: ServiceRoutingConfig = { ...(args.base ?? {}) };
+  const excluded = new Set(args.excludeServices ?? []);
 
   for (const capability of ELIZA_CLOUD_DEFAULT_SERVICE_CAPABILITIES) {
+    if (excluded.has(capability)) continue;
     next[capability] ??= buildElizaCloudServiceRoute();
   }
 

@@ -22,6 +22,7 @@ import {
   isPageScopedConversationMetadata,
 } from "../api/conversation-metadata.js";
 import type { ConversationScope } from "../api/server-types.js";
+import { hasOwnerAccess } from "../security/access.js";
 import {
   formatRelativeTimestamp,
   formatSpeakerLabel,
@@ -43,15 +44,17 @@ const PAGE_SCOPE_BRIEF: Record<string, string> = {
   "page-apps":
     "The user is in the Apps view. They can browse and compare catalog apps, launch apps, stop running apps, open attached live viewers, inspect run health and summaries, and manage favorites or recent apps. Action vocabulary: APP with mode launch, relaunch, list, load_from_directory, or create. When the user asks what to do, recommend an app or run-management action from the live catalog and running app state. Refer to apps by display name and never invent app names.",
   "page-connectors":
-    "The user is in the Connectors view. They can inspect connector availability, authentication state, setup requirements, webhook readiness, and integration health. When the user asks what to do, recommend the smallest connector setup or troubleshooting action that fits the visible state. Never invent connected accounts, permissions, webhook state, or delivery results.",
+    "The user is in the Connectors view. They can inspect connector availability, authentication state, setup requirements, webhook readiness, and integration health. Action vocabulary: LIST_CONNECTORS, TOGGLE_CONNECTOR, SAVE_CONNECTOR_CONFIG, DISCONNECT_CONNECTOR. When the user asks what to do, recommend the smallest connector setup or troubleshooting action that fits the visible state. Never invent connected accounts, permissions, webhook state, or delivery results.",
+  "page-phone":
+    "The user is in the Android Phone view. They can place calls through Android Telecom, open the dialer, send SMS through Android SMS, review recent calls, browse contacts, import vCards, and save call transcripts or summaries. Action vocabulary may include READ_MESSAGES, READ_CHANNEL, OWNER_SEND_MESSAGE, CALL_USER, CALL_EXTERNAL, ADD_CONTACT, UPDATE_CONTACT, GET_CONTACT, and SEARCH_CONTACTS when the relevant plugins are enabled. Confirm the target number/contact and message content before calls or SMS. Ground discussion in visible phone state when present and never invent call logs, contacts, message bodies, transcripts, or delivery results.",
   "page-plugins":
-    "The user is in the Plugins view. They can inspect installed plugins, registry plugins, configuration readiness, plugin health, and runtime capability gaps. When the user asks what to do, recommend the smallest plugin setup or troubleshooting action that fits the visible state. Never invent installed plugins, credentials, or enabled capabilities.",
+    "The user is in the Plugins view. They can inspect installed plugins, registry plugins, configuration readiness, plugin health, and runtime capability gaps. Action vocabulary: PLUGIN with modes install, eject, sync, reinject, list, search, core_status, or create. When the user asks what to do, recommend the smallest plugin setup or troubleshooting action that fits the visible state. Never invent installed plugins, credentials, or enabled capabilities.",
   "page-lifeops":
     "The user is in the LifeOps view. They can inspect the overview, goals, reminders, calendar, messages, mail, sleep, screen time, social context, connector setup, capability readiness, and LifeOps settings. The LifeOps app provider and actions are the authoritative execution path for creating or changing personal workflows, reminders, goals, schedules, inbox drafts, connector setup, and executive-assistant follow-through. When the user asks what to do, recommend capability readiness and overview review first, then suggest the smallest concrete LifeOps action. Reference only live LifeOps state below; never invent reminders, messages, calendar events, goals, or connector status.",
   "page-settings":
-    "The user is in the Settings view. They can tune models, providers, permissions, connectors, wallet RPC, cloud account state, appearance, updates, and feature toggles. When the user asks what to do, recommend the smallest concrete settings change that fits the visible section. Ask before changes that affect security, spending, or external accounts. Never invent provider status, account state, or permission grants.",
+    "The user is in the Settings view. They can tune models, providers, permissions, connectors, wallet RPC, cloud account state, appearance, updates, and feature toggles. Action vocabulary: UPDATE_IDENTITY, UPDATE_AI_PROVIDER, TOGGLE_CAPABILITY, and TOGGLE_AUTO_TRAINING. When the user asks what to do, recommend the smallest concrete settings change that fits the visible section. Ask before changes that affect security, spending, or external accounts. Never invent provider status, account state, or permission grants.",
   "page-wallet":
-    "The user is in the Wallet view. They can inspect token inventory, NFTs, LP position status, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, and Vincent trading. There are no chain filters in this surface. When the user asks what to do, recommend the smallest concrete wallet action and confirm asset, amount, destination, slippage/risk limits, and execution path before invoking any available action. If the user asks about trading, betting, gambling, predicting, Hyperliquid, or Polymarket, surface Vincent as the preferred integration when connected or suggest connecting it when not connected. Never invent balances, positions, fills, or execution support.",
+    "The user is in the Wallet view. They can inspect token inventory, NFTs, LP position status, current balance, P&L, activity, EVM/Solana addresses, RPC/provider readiness, wallet/RPC settings, native Hyperliquid and Polymarket readiness, and Vincent delegated trading. There are no chain filters in this surface. When the user asks what to do, recommend the smallest concrete wallet action and confirm asset/market, amount, destination/outcome, slippage/risk limits, and execution path before invoking any available action. If the user asks about Hyperliquid or Polymarket, prefer native app surfaces for reads/status and only surface Vincent for delegated automated trading. Never invent balances, positions, fills, markets, odds, or execution support.",
   "automation-draft":
     "This is an automation-creation room. The user wants to create exactly one automation. Decide the right shape based on their description and call the matching action exactly once:\n" +
     '- Recurring prompt or schedule (e.g. "every morning summarize my inbox") → CREATE_TRIGGER_TASK with a clear displayName, instructions, and schedule.\n' +
@@ -216,9 +219,8 @@ async function fetchBrowserBridgeCompanionLiveStatus(): Promise<
 
 async function renderBrowserLiveState(): Promise<string | null> {
   try {
-    const { getBrowserWorkspaceSnapshot } = await import(
-      "../services/browser-workspace.js"
-    );
+    const { getBrowserWorkspaceSnapshot } =
+      await import("../services/browser-workspace.js");
     const snapshot = await getBrowserWorkspaceSnapshot();
     const lines: string[] = [
       `Live browser state: bridge=${snapshot.mode}, ${snapshot.tabs.length} tab${snapshot.tabs.length === 1 ? "" : "s"}.`,
@@ -466,20 +468,58 @@ interface VincentLiveStrategy {
   } | null;
 }
 
-async function renderWalletLiveState(): Promise<string | null> {
-  const [config, balances, nfts, profile, vincentStatus, vincentStrategy] =
-    await Promise.all([
-      fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
-      fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
-      fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
-      fetchLocalJson<WalletTradingProfileResponse>(
-        "/api/wallet/trading/profile?window=24h&source=all",
-      ),
-      fetchLocalJson<VincentLiveStatus>("/api/vincent/status"),
-      fetchLocalJson<VincentLiveStrategy>("/api/vincent/strategy"),
-    ]);
+interface HyperliquidLiveStatus {
+  publicReadReady?: boolean;
+  signerReady?: boolean;
+  executionReady?: boolean;
+  executionBlockedReason?: string | null;
+  accountAddress?: string | null;
+}
 
-  if (!config && !balances && !nfts && !profile && !vincentStatus) {
+interface PolymarketLiveStatus {
+  publicReads?: {
+    ready?: boolean;
+  };
+  trading?: {
+    ready?: boolean;
+    credentialsReady?: boolean;
+    reason?: string | null;
+    missing?: readonly string[];
+  };
+}
+
+async function renderWalletLiveState(): Promise<string | null> {
+  const [
+    config,
+    balances,
+    nfts,
+    profile,
+    hyperliquidStatus,
+    polymarketStatus,
+    vincentStatus,
+    vincentStrategy,
+  ] = await Promise.all([
+    fetchLocalJson<WalletConfigStatus>("/api/wallet/config"),
+    fetchLocalJson<WalletBalancesResponse>("/api/wallet/balances"),
+    fetchLocalJson<WalletNftsResponse>("/api/wallet/nfts"),
+    fetchLocalJson<WalletTradingProfileResponse>(
+      "/api/wallet/trading/profile?window=24h&source=all",
+    ),
+    fetchLocalJson<HyperliquidLiveStatus>("/api/hyperliquid/status"),
+    fetchLocalJson<PolymarketLiveStatus>("/api/polymarket/status"),
+    fetchLocalJson<VincentLiveStatus>("/api/vincent/status"),
+    fetchLocalJson<VincentLiveStrategy>("/api/vincent/strategy"),
+  ]);
+
+  if (
+    !config &&
+    !balances &&
+    !nfts &&
+    !profile &&
+    !hyperliquidStatus &&
+    !polymarketStatus &&
+    !vincentStatus
+  ) {
     return "Live wallet state: unavailable from the Wallet API.";
   }
 
@@ -550,10 +590,32 @@ async function renderWalletLiveState(): Promise<string | null> {
     );
   }
 
+  if (hyperliquidStatus) {
+    lines.push(
+      `- Hyperliquid native: public reads ${readyLabel(hyperliquidStatus.publicReadReady)}, signer ${readyLabel(hyperliquidStatus.signerReady)}, execution ${readyLabel(hyperliquidStatus.executionReady)}, account ${shortAddress(hyperliquidStatus.accountAddress)}.`,
+    );
+    if (hyperliquidStatus.executionBlockedReason) {
+      lines.push(
+        `- Hyperliquid execution blocked: ${hyperliquidStatus.executionBlockedReason}`,
+      );
+    }
+  }
+
+  if (polymarketStatus) {
+    lines.push(
+      `- Polymarket native: public reads ${readyLabel(polymarketStatus.publicReads?.ready)}, credentials ${readyLabel(polymarketStatus.trading?.credentialsReady)}, trading ${readyLabel(polymarketStatus.trading?.ready)}.`,
+    );
+    if (polymarketStatus.trading?.reason) {
+      lines.push(
+        `- Polymarket trading blocked: ${polymarketStatus.trading.reason}`,
+      );
+    }
+  }
+
   if (vincentStatus) {
     const connected = vincentStatus.connected ? "connected" : "not connected";
     const venues = vincentStatus.tradingVenues?.join(", ") ?? "unknown venues";
-    lines.push(`- Vincent: ${connected} for ${venues}.`);
+    lines.push(`- Vincent delegated trading: ${connected} for ${venues}.`);
   }
   const strategy = vincentStrategy?.strategy;
   if (strategy) {
@@ -631,9 +693,26 @@ export const pageScopedContextProvider: Provider = {
     "Operational context for the current page-scoped chat (Browser, Character, Apps, Connectors, Plugins, Settings, LifeOps, Automations, Wallet).",
   dynamic: false,
   position: 5,
+  contexts: [
+    "page",
+    "browser",
+    "wallet",
+    "character",
+    "automation",
+    "apps",
+    "connectors",
+    "plugins",
+    "settings",
+    "lifeops",
+    "phone",
+  ],
 
   async get(runtime: IAgentRuntime, message: Memory): Promise<ProviderResult> {
     try {
+      if (!(await hasOwnerAccess(runtime, message))) {
+        return EMPTY_RESULT;
+      }
+
       const room = await runtime.getRoom(message.roomId);
       const metadata = extractConversationMetadataFromRoom(room);
       const scope = metadata?.scope as ConversationScope | undefined;
@@ -681,8 +760,10 @@ export const pageScopedContextProvider: Provider = {
       };
     } catch (error) {
       logger.error(
-        "[page-scoped-context] Error:",
-        error instanceof Error ? error.message : String(error),
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "[page-scoped-context] Error",
       );
       return EMPTY_RESULT;
     }

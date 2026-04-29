@@ -4,6 +4,27 @@
 /* React Flow base styles — required for @xyflow/react canvas to render correctly */
 @import "@xyflow/react/dist/style.css";
 
+/*
+ * Electrobun's preload script injects a default stylesheet that hard-codes
+ * `electrobun-webview { width: 800px; height: 300px; background: #fff; ... }`
+ * directly on the element. That explicit pixel width wins over our
+ * Tailwind `absolute inset-0` because, for absolutely positioned elements,
+ * an explicit `width` overrides `right: 0` in the CSS cascade. Override
+ * those defaults with `!important` so the tag actually fills its
+ * `position: relative` parent.
+ *
+ * Source: node_modules/electrobun/dist/api/bun/preload/webviewTag.ts
+ *   → `initWebviewTag()` calls `injectStyles()` which inserts the rule
+ *   at the top of <head>.
+ */
+electrobun-webview,
+electrobun-wgpu {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: transparent !important;
+}
+
 @source "..";
 @source "../../../ui/src";
 @source "../../../../apps/app-lifeops/src";
@@ -328,6 +349,22 @@ kbd {
 
 [data-theme="dark"] :focus-visible {
   box-shadow: 0 0 0 4px var(--focus);
+}
+
+/*
+ * Brief accent flash on a connector panel deep-link target. Triggered by
+ * SettingsView's SETTINGS_FOCUS_CONNECTOR_EVENT listener — adds the class for
+ * ~1.8s, then removes it. The accent box-shadow ring sits outside the panel
+ * so it doesn't shift layout.
+ */
+@keyframes connector-flash {
+  0%   { box-shadow: 0 0 0 0 transparent; }
+  20%  { box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 60%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.connector-flash {
+  animation: connector-flash 1.6s ease-out;
+  border-radius: var(--radius-md);
 }
 
 /* Reduced motion - !important is intentional for accessibility override */

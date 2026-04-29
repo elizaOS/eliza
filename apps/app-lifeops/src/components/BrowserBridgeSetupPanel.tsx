@@ -17,18 +17,6 @@ import {
   useApp,
 } from "@elizaos/app-core";
 import {
-  BROWSER_BRIDGE_SITE_ACCESS_MODES,
-  type BrowserBridgeCompanionPairingResponse,
-  type BrowserBridgeCompanionReleaseManifest,
-  type BrowserBridgeKind,
-  type BrowserBridgePackagePathTarget,
-  type BrowserBridgeSettings,
-  type BrowserBridgeSiteAccessMode,
-  type BrowserBridgeTrackingMode,
-  type CreateBrowserBridgeCompanionPairingRequest,
-  type UpdateBrowserBridgeSettingsRequest,
-} from "../contracts/index.js";
-import {
   CheckCircle2,
   Circle,
   Copy,
@@ -42,6 +30,18 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  BROWSER_BRIDGE_SITE_ACCESS_MODES,
+  type BrowserBridgeCompanionPairingResponse,
+  type BrowserBridgeCompanionReleaseManifest,
+  type BrowserBridgeKind,
+  type BrowserBridgePackagePathTarget,
+  type BrowserBridgeSettings,
+  type BrowserBridgeSiteAccessMode,
+  type BrowserBridgeTrackingMode,
+  type CreateBrowserBridgeCompanionPairingRequest,
+  type UpdateBrowserBridgeSettingsRequest,
+} from "../contracts/index.js";
 import { resolveBrowserBridgeApiBaseUrl } from "../utils/lifeops-url.js";
 
 type SettingsDraft = {

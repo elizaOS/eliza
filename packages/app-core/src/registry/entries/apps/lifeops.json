@@ -22,6 +22,10 @@
   "launch": {
     "type": "internal-tab",
     "target": "lifeops",
-    "capabilities": ["lifeops", "tasks", "calendar", "gmail"]
+    "capabilities": ["lifeops", "tasks", "calendar", "gmail"],
+    "routePlugin": {
+      "specifier": "@elizaos/app-lifeops/public",
+      "exportName": "lifeopsPlugin"
+    }
   }
 }

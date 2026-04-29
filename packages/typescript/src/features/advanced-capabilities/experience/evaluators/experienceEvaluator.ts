@@ -262,6 +262,7 @@ export const experienceEvaluator: Evaluator = {
 				sourceTriggerMessageId: provenance.sourceTriggerMessageId,
 				sourceTrajectoryId: provenance.sourceTrajectoryId,
 				sourceTrajectoryStepId: provenance.sourceTrajectoryStepId,
+				associatedEntityIds: provenance.associatedEntityIds,
 				extractionMethod: "experience_evaluator",
 				extractionReason: sanitizedReason,
 			});
@@ -395,16 +396,28 @@ function buildExperienceProvenance(
 	| "sourceTriggerMessageId"
 	| "sourceTrajectoryId"
 	| "sourceTrajectoryStepId"
+	| "associatedEntityIds"
 > {
 	const sourceMessageIds = recentMessages
 		.map((recentMessage) => recentMessage.id)
 		.filter((id): id is NonNullable<Memory["id"]> => typeof id === "string");
+	const associatedEntityIds = Array.from(
+		new Set(
+			recentMessages
+				.map((recentMessage) => recentMessage.entityId)
+				.filter(
+					(entityId): entityId is NonNullable<Memory["entityId"]> =>
+						typeof entityId === "string",
+				),
+		),
+	);
 
 	return {
 		sourceMessageIds:
 			sourceMessageIds.length > 0 ? sourceMessageIds : undefined,
 		sourceRoomId: triggerMessage.roomId,
 		sourceTriggerMessageId: triggerMessage.id,
+		associatedEntityIds,
 		sourceTrajectoryId: readMetadataString(triggerMessage, "trajectoryId"),
 		sourceTrajectoryStepId: readMetadataString(
 			triggerMessage,

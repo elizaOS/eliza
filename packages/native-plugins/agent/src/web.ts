@@ -17,6 +17,14 @@ interface ElizaWindow extends Window {
  * no native plugin is available. If the page is served from a non-HTTP
  * origin (e.g. electrobun://), relative fetches would hit the
  * app shell HTML, so we bail early.
+ *
+ * Local-agent-on-Android (Phase E): when the host UI selects the
+ * "Local Agent" tile, it sets `apiBase` to `http://127.0.0.1:31337`,
+ * which the runtime mirrors into `window.__ELIZA_API_BASE__`. From this
+ * plugin's perspective there is no special case — it simply HTTP-POSTs
+ * to `${apiBase}/api/agent/start|stop|status`, which is exactly the same
+ * surface Phase B's `MiladyAgentService` exposes. The web fallback path
+ * therefore works unchanged for both remote and on-device agents.
  */
 export class AgentWeb extends WebPlugin implements AgentPlugin {
   private legacyConversationStorageKey(): string {

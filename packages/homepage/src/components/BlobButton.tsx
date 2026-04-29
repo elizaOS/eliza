@@ -1,7 +1,15 @@
 
 
 import { useState, useRef, useEffect, type ReactNode } from "react";
+import type { ComponentType, HTMLAttributes } from "react";
 import { useSpring, animated } from "@react-spring/web";
+
+type SpringAnimatedStyle = Record<string, string | number | boolean | null | undefined | object>;
+type AnimatedDivProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
+  style?: SpringAnimatedStyle;
+};
+
+const AnimatedDiv = animated.div as ComponentType<AnimatedDivProps>;
 import QRCode from "@/components/QRCode";
 
 interface BlobButtonProps {
@@ -56,7 +64,7 @@ export default function BlobButton({
       onMouseLeave={() => setHovered(false)}
     >
       {/* Single glass shape: starts as the pill, morphs into pill+panel */}
-      <animated.div
+      <AnimatedDiv
         className="absolute top-0 right-0 backdrop-blur-md border border-white/60 overflow-hidden"
         style={{
           width: t.to((v) => btnW + (PANEL_W - btnW) * v),
@@ -87,7 +95,7 @@ export default function BlobButton({
 
           <QRCode className="size-36" />
         </div>
-      </animated.div>
+      </AnimatedDiv>
 
       {/* Button label — no background, sits on top of the glass shape */}
       <a

@@ -29,6 +29,14 @@ export interface ConnectorRouteContext {
   ) => Record<string, unknown>;
   isBlockedObjectKey: (key: string) => boolean;
   cloneWithoutBlockedObjectKeys: <T>(value: T) => T;
+  /**
+   * Called when a connector is disconnected (POST `/api/connectors` with
+   * `enabled: false`) or DELETE-d. Lets the host purge service-owned caches
+   * keyed off the connector — most importantly the n8n credential cache,
+   * which would otherwise return stale ids and silently bypass the
+   * missing-credentials banner.
+   */
+  onConnectorDisconnect?: (connectorName: string) => Promise<void> | void;
 }
 
 function getConfiguredConnectorsFromEnv(): Record<
@@ -105,6 +113,7 @@ export async function handleConnectorRoutes(
     redactConfigSecrets,
     isBlockedObjectKey,
     cloneWithoutBlockedObjectKeys,
+    onConnectorDisconnect,
   } = ctx;
 
   // ── GET /api/connectors ──────────────────────────────────────────────
@@ -147,6 +156,21 @@ export async function handleConnectorRoutes(
     } catch {
       /* test envs */
     }
+    // Only treat this POST as a disconnect when the incoming payload
+    // explicitly sets `enabled: false`. The second clause that read
+    // `state.config.connectors[connectorName]` would have been evaluated
+    // AFTER the new (cloned) config was written above, making it equivalent
+    // to checking the incoming payload — but firing on every config-only
+    // update that happens to omit `enabled` while the connector was active.
+    // That false-positive purge silently broke live connectors.
+    const isDisconnect = (config as ConnectorConfig).enabled === false;
+    if (isDisconnect && onConnectorDisconnect) {
+      try {
+        await onConnectorDisconnect(connectorName);
+      } catch {
+        /* don't let cache-purge failure block the response */
+      }
+    }
     json(res, {
       connectors: redactConfigSecrets(
         (state.config.connectors ?? {}) as Record<string, unknown>,
@@ -181,6 +205,13 @@ export async function handleConnectorRoutes(
       saveElizaConfig(state.config);
     } catch {
       /* test envs */
+    }
+    if (onConnectorDisconnect) {
+      try {
+        await onConnectorDisconnect(name);
+      } catch {
+        /* don't let cache-purge failure block the response */
+      }
     }
     json(res, {
       connectors: redactConfigSecrets(

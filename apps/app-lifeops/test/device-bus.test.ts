@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import {
+  __internal,
+  publishDeviceIntentAction,
+} from "../src/actions/device-bus.js";
 import { broadcastIntent } from "../src/lifeops/intent-sync.js";
-import { publishDeviceIntentAction, __internal } from "../src/actions/device-bus.js";
 
 vi.mock("../src/lifeops/intent-sync.js", () => ({
   LIFE_INTENT_KINDS: [

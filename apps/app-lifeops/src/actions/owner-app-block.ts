@@ -163,7 +163,9 @@ export const ownerAppBlockAction: Action & {
 
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerAppBlockParameters;
-    const params = (await extractActionParamsViaLlm<OwnerAppBlockParameters & Record<string, unknown>>({
+    const params = (await extractActionParamsViaLlm<
+      OwnerAppBlockParameters & Record<string, unknown>
+    >({
       runtime,
       message,
       state,

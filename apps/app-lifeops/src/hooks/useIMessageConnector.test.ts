@@ -3,36 +3,35 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { clientMock, statusResponse } =
-  vi.hoisted(() => {
-    const statusResponse = {
-      available: true,
-      connected: true,
-      bridgeType: "native" as const,
-      hostPlatform: "darwin" as const,
-      accountHandle: null,
-      sendMode: "apple-script" as const,
-      helperConnected: null,
-      privateApiEnabled: null,
-      diagnostics: ["full_disk_access_required"],
-      lastSyncAt: null,
-      lastCheckedAt: "2026-04-17T18:00:00.000Z",
-      error: null,
-    };
+const { clientMock, statusResponse } = vi.hoisted(() => {
+  const statusResponse = {
+    available: true,
+    connected: true,
+    bridgeType: "native" as const,
+    hostPlatform: "darwin" as const,
+    accountHandle: null,
+    sendMode: "apple-script" as const,
+    helperConnected: null,
+    privateApiEnabled: null,
+    diagnostics: ["full_disk_access_required"],
+    lastSyncAt: null,
+    lastCheckedAt: "2026-04-17T18:00:00.000Z",
+    error: null,
+  };
 
-    return {
-      clientMock: {
-        getIMessageConnectorStatus: vi.fn(async () => statusResponse),
-        getLifeOpsFullDiskAccessStatus: vi.fn(async () => ({
-          status: "revoked" as const,
-          checkedAt: "2026-04-23T15:00:00.000Z",
-          chatDbPath: "/Users/test/Library/Messages/chat.db",
-          reason: "Full Disk Access is required to read chat.db.",
-        })),
-      },
-      statusResponse,
-    };
-  });
+  return {
+    clientMock: {
+      getIMessageConnectorStatus: vi.fn(async () => statusResponse),
+      getLifeOpsFullDiskAccessStatus: vi.fn(async () => ({
+        status: "revoked" as const,
+        checkedAt: "2026-04-23T15:00:00.000Z",
+        chatDbPath: "/Users/test/Library/Messages/chat.db",
+        reason: "Full Disk Access is required to read chat.db.",
+      })),
+    },
+    statusResponse,
+  };
+});
 
 vi.mock("@elizaos/app-core/api", () => ({ client: clientMock }));
 

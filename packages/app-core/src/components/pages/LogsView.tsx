@@ -38,7 +38,6 @@ export function LogsView() {
     setState("logLevelFilter", "");
     setState("logSourceFilter", "");
     setSearchQuery("");
-    void loadLogs();
   };
 
   const hasActiveFilters =
@@ -97,7 +96,6 @@ export function LogsView() {
             value={logLevelFilter === "" ? "all" : logLevelFilter}
             onValueChange={(val: string) => {
               setState("logLevelFilter", val === "all" ? "" : val);
-              void loadLogs();
             }}
           >
             <SelectTrigger className="w-40 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm">
@@ -116,7 +114,6 @@ export function LogsView() {
             value={logSourceFilter === "" ? "all" : logSourceFilter}
             onValueChange={(val: string) => {
               setState("logSourceFilter", val === "all" ? "" : val);
-              void loadLogs();
             }}
           >
             <SelectTrigger className="w-40 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm">
@@ -137,7 +134,6 @@ export function LogsView() {
               value={logTagFilter === "" ? "all" : logTagFilter}
               onValueChange={(val: string) => {
                 setState("logTagFilter", val === "all" ? "" : val);
-                void loadLogs();
               }}
             >
               <SelectTrigger className="w-40 h-10 rounded-xl border-border/50 bg-bg/80 text-sm text-txt shadow-sm">

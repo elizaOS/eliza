@@ -32,9 +32,7 @@
       "@elizaos/app-task-coordinator": [
         "./apps/app-task-coordinator/src/index.ts"
       ],
-      "@elizaos/app-task-coordinator/*": [
-        "./apps/app-task-coordinator/src/*"
-      ],
+      "@elizaos/app-task-coordinator/*": ["./apps/app-task-coordinator/src/*"],
       "@elizaos/app-companion": ["./apps/app-companion/src/index.ts"],
       "@elizaos/app-companion/*": ["./apps/app-companion/src/*"],
       "@elizaos/app-lifeops": ["./apps/app-lifeops/src/index.ts"],
@@ -74,9 +72,7 @@
       "@elizaos/ui": ["./packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["./packages/ui/src/*"],
       "react": ["./node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": [
-        "./node_modules/@types/react/jsx-runtime.d.ts"
-      ],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
       "react/jsx-dev-runtime": [
         "./node_modules/@types/react/jsx-dev-runtime.d.ts"
       ],

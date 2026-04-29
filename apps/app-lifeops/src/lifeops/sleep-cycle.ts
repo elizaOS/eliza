@@ -437,16 +437,17 @@ function selectCurrentSleep(
   );
 }
 
-function classifySleepType(
-  episode: LifeOpsSleepEpisode,
-  nowMs: number,
-  timezone: string,
-): LifeOpsSleepCycleType {
-  const endMs = episode.endMs ?? nowMs;
-  const durationMs = intervalDurationMs(episode.startMs, episode.endMs, nowMs);
+export function classifyLifeOpsSleepCycleType(args: {
+  startMs: number;
+  endMs: number | null;
+  nowMs: number;
+  timezone: string;
+}): LifeOpsSleepCycleType {
+  const endMs = args.endMs ?? args.nowMs;
+  const durationMs = intervalDurationMs(args.startMs, args.endMs, args.nowMs);
   const durationHours = durationMs / (60 * 60 * 1_000);
-  const startHour = localHour(episode.startMs, timezone);
-  const endHour = localHour(endMs, timezone);
+  const startHour = localHour(args.startMs, args.timezone);
+  const endHour = localHour(endMs, args.timezone);
   if (
     durationHours >= 4 &&
     (startHour >= 18 || startHour < 6 || endHour <= 11)
@@ -457,6 +458,19 @@ function classifySleepType(
     return "nap";
   }
   return "unknown";
+}
+
+function classifySleepType(
+  episode: LifeOpsSleepEpisode,
+  nowMs: number,
+  timezone: string,
+): LifeOpsSleepCycleType {
+  return classifyLifeOpsSleepCycleType({
+    startMs: episode.startMs,
+    endMs: episode.endMs,
+    nowMs,
+    timezone,
+  });
 }
 
 export interface LifeOpsSleepCycleResolution {

@@ -99,9 +99,7 @@ export class TravelTimeService {
   ): Promise<TravelBufferResult> {
     const event = await this.resolveEvent(input.eventId);
     if (!event) {
-      throw new Error(
-        `[TravelTimeService] event ${input.eventId} not found`,
-      );
+      throw new Error(`[TravelTimeService] event ${input.eventId} not found`);
     }
     return this.computeBufferForEvent(event, input.originAddress);
   }
@@ -128,7 +126,9 @@ export class TravelTimeService {
       );
     }
 
-    const apiKey = (this.deps.getApiKey ?? (() => process.env.GOOGLE_MAPS_API_KEY))();
+    const apiKey = (
+      this.deps.getApiKey ?? (() => process.env.GOOGLE_MAPS_API_KEY)
+    )();
     if (!apiKey) {
       throw new TravelTimeUnavailableError(
         "Cannot compute travel time because GOOGLE_MAPS_API_KEY is not configured.",
@@ -169,19 +169,20 @@ export class TravelTimeService {
     eventId: string,
   ): Promise<LifeOpsCalendarEvent | null> {
     const now = new Date();
-    const timeMin = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      .toISOString();
-    const timeMax = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
-      .toISOString();
+    const timeMin = new Date(
+      now.getTime() - 7 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const timeMax = new Date(
+      now.getTime() + 30 * 24 * 60 * 60 * 1000,
+    ).toISOString();
     const feed = await this.deps.calendar.getCalendarFeed(
       new URL("internal://travel-time/resolve"),
       { timeMin, timeMax },
       now,
     );
     return (
-      feed.events.find(
-        (e) => e.id === eventId || e.externalId === eventId,
-      ) ?? null
+      feed.events.find((e) => e.id === eventId || e.externalId === eventId) ??
+      null
     );
   }
 }
@@ -236,9 +237,7 @@ async function safeFetch(
 
 function parseDistanceMatrix(
   body: unknown,
-):
-  | { ok: true; bufferMinutes: number }
-  | { ok: false; reason: string } {
+): { ok: true; bufferMinutes: number } | { ok: false; reason: string } {
   if (!body || typeof body !== "object") {
     return { ok: false, reason: "response was not an object" };
   }

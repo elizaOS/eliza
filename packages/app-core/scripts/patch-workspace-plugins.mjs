@@ -32,7 +32,6 @@ const patchDir = resolve(__dirname, "workspace-plugin-patches");
 export const PLUGIN_PATCH_DIRS = {
   "plugin-anthropic": "eliza/plugins/plugin-anthropic",
   "plugin-google-genai": "eliza/plugins/plugin-google-genai",
-  "plugin-personality": "eliza/plugins/plugin-personality",
   "plugin-agent-skills": "eliza/plugins/plugin-agent-skills",
 };
 

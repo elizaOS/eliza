@@ -33,7 +33,7 @@ const result = spawnSync(
     "vitest",
     "run",
     "--config",
-    "test/vitest/live-e2e.config.ts",
+    "eliza/test/vitest/live-e2e.config.ts",
     ...requiredTests,
   ],
   {

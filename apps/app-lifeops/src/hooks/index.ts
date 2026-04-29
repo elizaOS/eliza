@@ -13,6 +13,12 @@ export {
   useGoogleLifeOpsConnector,
 } from "./useGoogleLifeOpsConnector.js";
 export { useIMessageConnector } from "./useIMessageConnector.js";
+export {
+  type InboxChannel,
+  type UseInboxOptions,
+  type UseInboxResult,
+  useInbox,
+} from "./useInbox.js";
 export { useLifeOpsActivitySignals } from "./useLifeOpsActivitySignals.js";
 export { useLifeOpsAppState } from "./useLifeOpsAppState.js";
 export {
@@ -39,9 +45,3 @@ export {
   useTelegramConnector,
 } from "./useTelegramConnector.js";
 export { useWhatsAppConnector } from "./useWhatsAppConnector.js";
-export {
-  type InboxChannel,
-  type UseInboxOptions,
-  type UseInboxResult,
-  useInbox,
-} from "./useInbox.js";

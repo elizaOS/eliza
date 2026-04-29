@@ -45,8 +45,10 @@ import type {
   ConfigSchemaResponse,
   CorePluginsResponse,
   CreateTriggerRequest,
+  ExperienceGraphResponse,
   ExperienceListQuery,
   ExperienceListResponse,
+  ExperienceMaintenanceResult,
   ExperienceRecord,
   ExperienceUpdateInput,
   ExtensionStatus,
@@ -308,6 +310,7 @@ declare module "./client-base" {
       provider: string,
       apiKey?: string,
       primaryModel?: string,
+      options?: { useLocalEmbeddings?: boolean },
     ): Promise<{ success: boolean; provider: string; restarting: boolean }>;
     startOpenAILogin(): Promise<{
       authUrl: string;
@@ -546,6 +549,13 @@ declare module "./client-base" {
     listExperiences(
       options?: ExperienceListQuery,
     ): Promise<ExperienceListResponse>;
+    getExperienceGraph(
+      options?: ExperienceListQuery,
+    ): Promise<{ graph: ExperienceGraphResponse }>;
+    runExperienceMaintenance(options?: {
+      deleteDuplicates?: boolean;
+      limit?: number;
+    }): Promise<{ result: ExperienceMaintenanceResult }>;
     getExperience(id: string): Promise<{ experience: ExperienceRecord }>;
     updateExperience(
       id: string,
@@ -1009,6 +1019,7 @@ ElizaClient.prototype.switchProvider = async function (
   provider,
   apiKey?,
   primaryModel?,
+  options?,
 ) {
   logSettingsClient("POST /api/provider/switch → start", {
     baseUrl: this.getBaseUrl(),
@@ -1017,6 +1028,7 @@ ElizaClient.prototype.switchProvider = async function (
     apiKey,
     hasPrimaryModel: Boolean(primaryModel?.trim()),
     primaryModel,
+    useLocalEmbeddings: options?.useLocalEmbeddings,
   });
   const result = (await this.fetch("/api/provider/switch", {
     method: "POST",
@@ -1025,6 +1037,9 @@ ElizaClient.prototype.switchProvider = async function (
       provider,
       ...(apiKey ? { apiKey } : {}),
       ...(primaryModel ? { primaryModel } : {}),
+      ...(options?.useLocalEmbeddings != null
+        ? { useLocalEmbeddings: options.useLocalEmbeddings }
+        : {}),
     }),
   })) as { success: boolean; provider: string; restarting: boolean };
   logSettingsClient("POST /api/provider/switch ← ok", {
@@ -1895,6 +1910,21 @@ ElizaClient.prototype.listExperiences = async function (
   if (typeof options?.offset === "number") {
     params.set("offset", String(options.offset));
   }
+  if (typeof options?.q === "string" && options.q.trim()) {
+    params.set("q", options.q.trim());
+  }
+  if (typeof options?.query === "string" && options.query.trim()) {
+    params.set("query", options.query.trim());
+  }
+  if (typeof options?.minConfidence === "number") {
+    params.set("minConfidence", String(options.minConfidence));
+  }
+  if (typeof options?.minImportance === "number") {
+    params.set("minImportance", String(options.minImportance));
+  }
+  if (typeof options?.includeRelated === "boolean") {
+    params.set("includeRelated", String(options.includeRelated));
+  }
   appendMulti("type", options?.type);
   appendMulti("outcome", options?.outcome);
   appendMulti("domain", options?.domain);
@@ -1913,6 +1943,75 @@ ElizaClient.prototype.listExperiences = async function (
     experiences: response.data,
     total: response.total,
   };
+};
+
+ElizaClient.prototype.getExperienceGraph = async function (
+  this: ElizaClient,
+  options,
+) {
+  const params = new URLSearchParams();
+  const appendMulti = (key: string, value?: string | string[]) => {
+    if (Array.isArray(value)) {
+      value
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .forEach((item) => {
+          params.append(key, item);
+        });
+      return;
+    }
+    if (typeof value === "string" && value.trim()) {
+      params.append(key, value.trim());
+    }
+  };
+
+  if (typeof options?.limit === "number") {
+    params.set("limit", String(options.limit));
+  }
+  if (typeof options?.q === "string" && options.q.trim()) {
+    params.set("q", options.q.trim());
+  }
+  if (typeof options?.query === "string" && options.query.trim()) {
+    params.set("query", options.query.trim());
+  }
+  if (typeof options?.minConfidence === "number") {
+    params.set("minConfidence", String(options.minConfidence));
+  }
+  if (typeof options?.minImportance === "number") {
+    params.set("minImportance", String(options.minImportance));
+  }
+  if (typeof options?.includeRelated === "boolean") {
+    params.set("includeRelated", String(options.includeRelated));
+  }
+  appendMulti("type", options?.type);
+  appendMulti("outcome", options?.outcome);
+  appendMulti("domain", options?.domain);
+  options?.tags
+    ?.map((tag) => tag.trim())
+    .filter(Boolean)
+    .forEach((tag) => {
+      params.append("tag", tag);
+    });
+
+  const qs = params.toString();
+  const response = await this.fetch<{ data: ExperienceGraphResponse }>(
+    `/api/character/experiences/graph${qs ? `?${qs}` : ""}`,
+  );
+  return { graph: response.data };
+};
+
+ElizaClient.prototype.runExperienceMaintenance = async function (
+  this: ElizaClient,
+  options,
+) {
+  const response = await this.fetch<{ data: ExperienceMaintenanceResult }>(
+    "/api/character/experiences/maintenance",
+    {
+      method: "POST",
+      body: JSON.stringify(options ?? {}),
+    },
+  );
+  return { result: response.data };
 };
 
 ElizaClient.prototype.getExperience = async function (this: ElizaClient, id) {

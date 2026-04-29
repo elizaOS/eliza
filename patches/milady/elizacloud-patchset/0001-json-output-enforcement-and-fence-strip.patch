@@ -1,0 +1,72 @@
+diff --git a/dist/node/index.node.js b/dist/node/index.node.js
+index 4fe5094b9..79a0f4796 100644
+--- a/dist/node/index.node.js
++++ b/dist/node/index.node.js
+@@ -1327,7 +1327,12 @@ async function generateObjectByModelType(runtime, params, modelType, getModelFn)
+   const requestBody = {
+     model: modelName,
+     input,
+-    max_output_tokens: params.maxTokens ?? 8192
++    max_output_tokens: params.maxTokens ?? 8192,
++    // Milady patch: enforce JSON output at the API layer. Without this, the
++    // cloud plugin ignores the caller's `schema` parameter and the model
++    // returns prose ("I'll help you..." or markdown-fenced JSON), choking
++    // JSON.parse downstream.
++    text: { format: { type: "json_object" } }
+   };
+   if (!reasoning && typeof params.temperature === "number") {
+     requestBody.temperature = params.temperature;
+@@ -1366,10 +1371,17 @@ async function generateObjectByModelType(runtime, params, modelType, getModelFn)
+       totalTokens: data.usage.total_tokens ?? 0
+     });
+   }
+-  const jsonText = extractResponsesOutputText(data);
++  let jsonText = extractResponsesOutputText(data);
+   if (!jsonText.trim()) {
+     throw new Error("Object generation returned empty response");
+   }
++  // Milady patch: strip leading/trailing markdown code fences before JSON.parse.
++  // Models routinely wrap structured output in ```json ... ``` even when JSON
++  // is requested. The repair function does not handle the leading backtick.
++  jsonText = jsonText
++    .replace(/^[\s]*```(?:json)?\s*\n?/i, "")
++    .replace(/\n?```\s*$/i, "")
++    .trim();
+   try {
+     return JSON.parse(jsonText);
+   } catch (error) {
+diff --git a/dist/cjs/index.node.cjs b/dist/cjs/index.node.cjs
+index b496504b9..62772d917 100644
+--- a/dist/cjs/index.node.cjs
++++ b/dist/cjs/index.node.cjs
+@@ -1368,7 +1368,12 @@ async function generateObjectByModelType(runtime, params, modelType, getModelFn)
+   const requestBody = {
+     model: modelName,
+     input,
+-    max_output_tokens: params.maxTokens ?? 8192
++    max_output_tokens: params.maxTokens ?? 8192,
++    // Milady patch: enforce JSON output at the API layer for OBJECT_*
++    // requests. The cloud plugin otherwise ignores the caller's `schema`
++    // parameter and the model returns prose ("I'll help you...") or
++    // markdown-fenced JSON, breaking JSON.parse downstream.
++    text: { format: { type: "json_object" } }
+   };
+   if (!reasoning && typeof params.temperature === "number") {
+     requestBody.temperature = params.temperature;
+@@ -1407,10 +1412,15 @@ async function generateObjectByModelType(runtime, params, modelType, getModelFn)
+       totalTokens: data.usage.total_tokens ?? 0
+     });
+   }
+-  const jsonText = extractResponsesOutputText(data);
++  let jsonText = extractResponsesOutputText(data);
+   if (!jsonText.trim()) {
+     throw new Error("Object generation returned empty response");
+   }
++  // Milady patch: strip leading/trailing markdown code fences before JSON.parse.
++  jsonText = jsonText
++    .replace(/^[\s]*```(?:json)?\s*\n?/i, "")
++    .replace(/\n?```\s*$/i, "")
++    .trim();
+   try {
+     return JSON.parse(jsonText);
+   } catch (error) {

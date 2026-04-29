@@ -14,7 +14,11 @@ import {
   type TrainingTrajectoryList,
   useApp,
 } from "@elizaos/app-core";
-
+import {
+  Button,
+  ContentLayout,
+  useIntervalWhenDocumentVisible,
+} from "@elizaos/ui";
 import {
   type ReactNode,
   useCallback,
@@ -22,7 +26,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useIntervalWhenDocumentVisible, Button, ContentLayout } from "@elizaos/ui";
 import {
   asTrainingEvent,
   DatasetSection,
@@ -499,99 +502,99 @@ export function FineTuningView({
     <ContentLayout contentHeader={contentHeader}>
       <div data-testid="fine-tuning-view" className="space-y-6 pb-8">
         <section className={FINE_TUNING_SECTION_CLASS}>
-        <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-          <div className="space-y-2">
-            <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-              {t("finetuningview.FineTuning")}
+          <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
+            <div className="space-y-2">
+              <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
+                {t("finetuningview.FineTuning")}
+              </div>
+              <h2 className="text-xl font-semibold text-txt">
+                {t("finetuningview.FineTuning")}
+              </h2>
+              <p className="max-w-2xl text-sm leading-relaxed text-muted">
+                {t("finetuningview.BuildDatasetsFrom")}
+              </p>
             </div>
-            <h2 className="text-xl font-semibold text-txt">
-              {t("finetuningview.FineTuning")}
-            </h2>
-            <p className="max-w-2xl text-sm leading-relaxed text-muted">
-              {t("finetuningview.BuildDatasetsFrom")}
-            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className={FINE_TUNING_ACTION_CLASS}
+              onClick={() => {
+                void refreshAll();
+              }}
+            >
+              {t("finetuningview.RefreshAll")}
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className={FINE_TUNING_ACTION_CLASS}
-            onClick={() => {
-              void refreshAll();
-            }}
-          >
-            {t("finetuningview.RefreshAll")}
-          </Button>
-        </div>
-        {errorMessage && (
-          <div className="mt-3 rounded-xl border border-danger/35 bg-danger/10 px-3 py-2 text-sm text-danger">
-            {errorMessage}
-          </div>
-        )}
+          {errorMessage && (
+            <div className="mt-3 rounded-xl border border-danger/35 bg-danger/10 px-3 py-2 text-sm text-danger">
+              {errorMessage}
+            </div>
+          )}
         </section>
 
         <section className={FINE_TUNING_SECTION_CLASS}>
-        <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
-          <div className="space-y-1">
-            <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
-              {t("finetuningview.Overview")}
-            </div>
-            <div className="text-lg font-semibold text-txt">
-              {t("finetuningview.Status")}
-            </div>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3 xl:grid-cols-6">
-          <div className={FINE_TUNING_STATUS_CARD_CLASS}>
-            <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-              {t("finetuningview.Runtime")}
-            </div>
-            <div className="mt-2 text-base font-semibold text-txt">
-              {status?.runtimeAvailable
-                ? t("finetuningview.Ready")
-                : t("finetuningview.Offline")}
+          <div className={FINE_TUNING_SECTION_HEADER_CLASS}>
+            <div className="space-y-1">
+              <div className={FINE_TUNING_SECTION_KICKER_CLASS}>
+                {t("finetuningview.Overview")}
+              </div>
+              <div className="text-lg font-semibold text-txt">
+                {t("finetuningview.Status")}
+              </div>
             </div>
           </div>
-          <div className={FINE_TUNING_STATUS_CARD_CLASS}>
-            <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-              {t("finetuningview.RunningJobs")}
+          <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3 xl:grid-cols-6">
+            <div className={FINE_TUNING_STATUS_CARD_CLASS}>
+              <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                {t("finetuningview.Runtime")}
+              </div>
+              <div className="mt-2 text-base font-semibold text-txt">
+                {status?.runtimeAvailable
+                  ? t("finetuningview.Ready")
+                  : t("finetuningview.Offline")}
+              </div>
             </div>
-            <div className="mt-2 text-base font-semibold text-txt">
-              {status?.runningJobs ?? 0}
+            <div className={FINE_TUNING_STATUS_CARD_CLASS}>
+              <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                {t("finetuningview.RunningJobs")}
+              </div>
+              <div className="mt-2 text-base font-semibold text-txt">
+                {status?.runningJobs ?? 0}
+              </div>
+            </div>
+            <div className={FINE_TUNING_STATUS_CARD_CLASS}>
+              <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                {t("finetuningview.QueuedJobs")}
+              </div>
+              <div className="mt-2 text-base font-semibold text-txt">
+                {status?.queuedJobs ?? 0}
+              </div>
+            </div>
+            <div className={FINE_TUNING_STATUS_CARD_CLASS}>
+              <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                {t("finetuningview.Datasets")}
+              </div>
+              <div className="mt-2 text-base font-semibold text-txt">
+                {status?.datasetCount ?? 0}
+              </div>
+            </div>
+            <div className={FINE_TUNING_STATUS_CARD_CLASS}>
+              <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                {t("finetuningview.Models")}
+              </div>
+              <div className="mt-2 text-base font-semibold text-txt">
+                {status?.modelCount ?? 0}
+              </div>
+            </div>
+            <div className={FINE_TUNING_STATUS_CARD_CLASS}>
+              <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
+                {t("finetuningview.FailedJobs")}
+              </div>
+              <div className="mt-2 text-base font-semibold text-txt">
+                {status?.failedJobs ?? 0}
+              </div>
             </div>
           </div>
-          <div className={FINE_TUNING_STATUS_CARD_CLASS}>
-            <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-              {t("finetuningview.QueuedJobs")}
-            </div>
-            <div className="mt-2 text-base font-semibold text-txt">
-              {status?.queuedJobs ?? 0}
-            </div>
-          </div>
-          <div className={FINE_TUNING_STATUS_CARD_CLASS}>
-            <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-              {t("finetuningview.Datasets")}
-            </div>
-            <div className="mt-2 text-base font-semibold text-txt">
-              {status?.datasetCount ?? 0}
-            </div>
-          </div>
-          <div className={FINE_TUNING_STATUS_CARD_CLASS}>
-            <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-              {t("finetuningview.Models")}
-            </div>
-            <div className="mt-2 text-base font-semibold text-txt">
-              {status?.modelCount ?? 0}
-            </div>
-          </div>
-          <div className={FINE_TUNING_STATUS_CARD_CLASS}>
-            <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
-              {t("finetuningview.FailedJobs")}
-            </div>
-            <div className="mt-2 text-base font-semibold text-txt">
-              {status?.failedJobs ?? 0}
-            </div>
-          </div>
-        </div>
         </section>
 
         <TrajectoriesSection

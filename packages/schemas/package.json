@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/schemas",
-  "version": "2.0.0-alpha.472",
+  "version": "2.0.0-alpha.495",
   "description": "Protocol Buffer schemas for elizaOS - single source of truth for all types",
   "files": [
     "eliza",
@@ -12,7 +12,7 @@
     "access": "public"
   },
   "scripts": {
-    "lint": "buf lint",
+    "lint": "buf lint --path eliza --disable-symlinks",
     "format": "buf format -w",
     "breaking": "buf breaking --against '.git#branch=main'",
     "generate": "buf generate",
@@ -21,7 +21,7 @@
     "generate:rs": "buf generate --template buf.gen.rs.yaml",
     "clean": "rm -rf ../typescript/src/types/generated ../python/elizaos/types/generated ../rust/src/types/generated",
     "build": "npm run lint && npm run generate",
-    "test": "buf lint"
+    "test": "buf lint --path eliza --disable-symlinks"
   },
   "devDependencies": {
     "@bufbuild/buf": "^1.47.2"

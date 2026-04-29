@@ -22,17 +22,12 @@
     {
       "type": "launch",
       "parameters": {
-        "command": [
-          "gimp",
-          "/home/user/Desktop/Triangle_On_The_Side.xcf"
-        ]
+        "command": ["gimp", "/home/user/Desktop/Triangle_On_The_Side.xcf"]
       }
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "gimp"
-  ],
+  "related_apps": ["gimp"],
   "evaluator": {
     "postconfig": [
       {

@@ -358,7 +358,10 @@ describe("fact-memory scenarios", () => {
 
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			expect(meta.kind).toBe("durable");
 			expect(meta.category).toBe("health");
 			expect(meta.verificationStatus).toBe("confirmed");
@@ -391,7 +394,10 @@ describe("fact-memory scenarios", () => {
 
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			expect(meta.kind).toBe("current");
 			expect(meta.category).toBe("feeling");
 			expect(typeof meta.validAt).toBe("string");
@@ -470,7 +476,10 @@ describe("fact-memory scenarios", () => {
 
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			expect(meta.kind).toBe("current");
 			expect(meta.category).toBe("working_on");
 		}, 60_000);
@@ -499,7 +508,10 @@ describe("fact-memory scenarios", () => {
 
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			expect(meta.kind).toBe("current");
 			expect(meta.category).toBe("going_through");
 		}, 60_000);
@@ -577,7 +589,10 @@ describe("fact-memory scenarios", () => {
 
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			expect(meta.kind).toBe("durable");
 			expect(meta.category).toBe("health");
 		}, 60_000);
@@ -606,7 +621,10 @@ describe("fact-memory scenarios", () => {
 
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			expect(meta.kind).toBe("current");
 			expect(meta.kind).not.toBe("durable");
 			expect(meta.category).toBe("feeling");
@@ -639,7 +657,10 @@ describe("fact-memory scenarios", () => {
 
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			expect(meta.kind).toBe("durable");
 			expect(meta.category).toBe("health");
 			expect(meta.structuredFields).toMatchObject({ pattern: "recurring" });
@@ -701,7 +722,10 @@ describe("fact-memory scenarios", () => {
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
 			expect(facts[0]?.id).toBe(existingId);
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			expect(meta.confidence).toBeCloseTo(0.8, 5);
 			expect(typeof meta.lastConfirmedAt).toBe("string");
 			expect(meta.evidenceMessageIds).toContain(message.id);
@@ -751,13 +775,16 @@ describe("fact-memory scenarios", () => {
 			const health = facts.find((f) => readMeta(f).category === "health");
 			expect(identity).toBeDefined();
 			expect(health).toBeDefined();
+			if (!identity || !health) {
+				throw new Error("expected identity and health facts");
+			}
 
 			// The original identity row must be untouched by the new health insert.
-			const identityMeta = readMeta(identity!);
+			const identityMeta = readMeta(identity);
 			expect(identityMeta.confidence).toBeCloseTo(0.85, 5);
 			expect(identityMeta.category).toBe("identity");
 
-			const healthMeta = readMeta(health!);
+			const healthMeta = readMeta(health);
 			expect(healthMeta.kind).toBe("durable");
 			expect(healthMeta.category).toBe("health");
 		}, 60_000);
@@ -805,7 +832,10 @@ describe("fact-memory scenarios", () => {
 
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			// The strengthen against the just-inserted row bumps 0.7 → 0.8.
 			expect(meta.confidence).toBeCloseTo(0.8, 5);
 		}, 60_000);
@@ -954,7 +984,10 @@ describe("fact-memory scenarios", () => {
 
 			const facts = await listFacts(fx);
 			expect(facts.length).toBe(1);
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			expect(meta.confidence).toBeCloseTo(0.8, 5);
 			expect(typeof meta.lastConfirmedAt).toBe("string");
 			expect((meta.lastConfirmedAt ?? "").length).toBeGreaterThan(0);
@@ -1000,7 +1033,10 @@ describe("fact-memory scenarios", () => {
 			expect(facts.length).toBe(1);
 			expect(facts[0]?.id).toBe(factId);
 			expect(facts[0]?.content.text).toBe("lives in Berlin");
-			const meta = readMeta(facts[0]!);
+			const row = facts[0];
+			expect(row).toBeDefined();
+			if (!row) throw new Error("expected fact row");
+			const meta = readMeta(row);
 			expect(meta.confidence).toBeCloseTo(0.85, 5);
 		}, 60_000);
 
@@ -1048,7 +1084,8 @@ describe("fact-memory scenarios", () => {
 			expect(newer).toBeDefined();
 			expect(old?.content.text).toBe("debugging auth flow");
 			expect(newer?.content.text).toBe("auth bug fixed today");
-			expect(readMeta(newer!).category).toBe("working_on");
+			if (!newer) throw new Error("expected newer fact");
+			expect(readMeta(newer).category).toBe("working_on");
 		}, 60_000);
 	});
 

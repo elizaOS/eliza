@@ -1,0 +1,176 @@
+---
+title: "Milady"
+sidebarTitle: "Introducción"
+description: "Una aplicación de agente IA cliente/servidor que puede crear, descubrir y conectarse a servidores locales, LAN, remotos y de Eliza Cloud."
+---
+
+**Milady** es una aplicación de agente IA cliente/servidor construida sobre [elizaOS](https://github.com/elizaOS).
+El cliente Milady puede crear un servidor local en tu máquina, descubrir un servidor
+en tu LAN, conectarse a un gateway remoto existente o adjuntarse a Eliza Cloud.
+Una vez conectado, el servidor seleccionado gestiona el enrutamiento de proveedores, herramientas, memoria y
+estado del runtime a través del plano de control del Gateway.
+
+Este sitio Mintlify documenta el lado de desarrollador y operador de Milady:
+arquitectura, configuración, APIs, plugins y comportamiento del runtime. La documentación para
+desarrolladores está en [docs.milady.ai](https://docs.milady.ai). La documentación para
+consumidores está en [milady.ai/docs](https://milady.ai/docs).
+
+Milady soporta inferencia local y proveedores de modelos de terceros, tiene un ecosistema
+de plugins en crecimiento impulsado por elizaOS, un mercado de habilidades a través de
+[ClawHub](https://clawhub.ai), y funciona en todas las plataformas principales: escritorio,
+móvil, web, CLI y extensión de Chrome.
+
+<CardGroup cols={2}>
+  <Card title="Instalación" icon="download" href="/es/installation">
+    Descarga la aplicación de escritorio o instala vía CLI
+  </Card>
+  <Card title="Inicio rápido" icon="rocket" href="/es/quickstart">
+    Empieza a funcionar en menos de un minuto
+  </Card>
+  <Card title="Configuración" icon="gear" href="/es/configuration">
+    Personaliza proveedores, puertos y personalidad del agente
+  </Card>
+  <Card title="Referencia CLI" icon="terminal" href="/es/cli/overview">
+    Todos los comandos y opciones del terminal
+  </Card>
+  <Card title="Desarrollo de plugins" icon="puzzle-piece" href="/es/plugins/overview">
+    Extiende Milady con plugins personalizados
+  </Card>
+  <Card title="Arquitectura" icon="sitemap" href="/es/architecture">
+    Cómo encajan el runtime, el gateway y los plugins
+  </Card>
+</CardGroup>
+
+<div id="why-milady">
+## Por qué Milady
+</div>
+
+<div id="clientserver-by-default">
+### Cliente/Servidor por defecto
+</div>
+
+Milady puede crear un servidor local en tu propio hardware, descubrir un servidor en
+tu LAN, o conectarse a un servidor remoto de confianza o de Eliza Cloud sin
+cambiar el modelo del cliente. El servidor seleccionado gestiona el enrutamiento de proveedores,
+conversaciones, herramientas y estado del runtime.
+
+<div id="multi-model-multi-provider">
+### Multi-modelo, multi-proveedor
+</div>
+
+Conéctate a cualquiera de los 19 proveedores de IA soportados — o ejecuta completamente sin conexión con Ollama:
+
+| Proveedor | Lo que obtienes |
+|-----------|----------------|
+| **Anthropic** | Claude (recomendado) |
+| **OpenAI** | GPT-4o, o1 y similares |
+| **OpenRouter** | Más de 100 modelos a través de una sola API |
+| **Google Gemini** | Gemini Pro, Flash y Ultra |
+| **Google Antigravity** | Modelos de Google Cloud / Vertex AI |
+| **xAI** | Grok |
+| **Groq** | Inferencia ultrarrápida (LPU) |
+| **DeepSeek** | Modelos de razonamiento y código |
+| **Mistral** | Modelos Mistral y Mixtral |
+| **Together AI** | Alojamiento de modelos de código abierto |
+| **Cohere** | Command R+ y embeddings |
+| **Perplexity** | Generación aumentada por búsqueda |
+| **Qwen** | Modelos Qwen de Alibaba |
+| **MiniMax** | Modelos de lenguaje MiniMax |
+| **zAI** | Endpoints personalizados de Homunculus Labs |
+| **Vercel AI Gateway** | Acceso unificado al gateway |
+| **Ollama** | Completamente local, gratuito, sin clave API |
+| **Eliza Cloud** | Servidor en la nube, cuenta vinculada y ruta de inferencia opcional |
+
+Cambia de proveedor en medio de una conversación con `/model <id>`. Sin dependencia de proveedor.
+
+<div id="plugin-ecosystem">
+### Ecosistema de plugins
+</div>
+
+Milady incluye más de 25 plugins de primera parte de elizaOS que cubren gestión de conocimiento, automatización de navegador, uso de computadora, Discord, Telegram, TTS (Edge TTS y ElevenLabs), procesamiento de PDF, acceso a shell, programación cron, puntuación de confianza y más. Los plugins de terceros se instalan con un solo comando a través del gestor de plugins.
+
+<div id="skills-marketplace">
+### Mercado de habilidades
+</div>
+
+Las habilidades son extensiones basadas en markdown que enseñan a tu agente nuevas capacidades sin escribir código. Explora e instala habilidades desde [ClawHub](https://clawhub.ai), el registro de habilidades predeterminado, o apunta a tu propio registro.
+
+<div id="autonomous-mode">
+### Modo autónomo
+</div>
+
+Milady puede operar de forma autónoma — ejecutando tareas programadas, ejecutando flujos de trabajo de múltiples pasos y manteniendo su propio ciclo de pensamientos y acciones. Configura disparadores (intervalo, cron o una sola vez) y deja que el agente trabaje en tu nombre.
+
+<div id="built-in-crypto-wallet">
+### Billetera crypto integrada
+</div>
+
+El flujo de incorporación puede generar o importar billeteras EVM y Solana. Las claves se almacenan localmente en tu configuración y están disponibles para los plugins en tiempo de ejecución para interacciones on-chain, trading y DeFi.
+
+<div id="platform-support">
+## Soporte de plataformas
+</div>
+
+Milady es una sola base de código que se dirige a cada superficie que necesitas:
+
+<CardGroup cols={3}>
+  <Card title="Escritorio" icon="desktop">
+    Aplicación Electrobun para macOS, Windows y Linux. Bandeja del sistema nativa, actualizaciones automáticas y soporte sin conexión.
+  </Card>
+  <Card title="Móvil" icon="mobile">
+    Builds de Capacitor para Android e iOS. El mismo panel web, contenedor nativo.
+  </Card>
+  <Card title="Panel web" icon="browser">
+    UI de chat en tiempo real en `localhost:2138`. Gestiona sesiones, visualiza actividad, configura tu agente.
+  </Card>
+  <Card title="CLI" icon="terminal">
+    Interfaz de línea de comandos completa con atajos de teclado y seguimiento de tokens.
+  </Card>
+  <Card title="Extensión Chrome" icon="chrome">
+    Integración con el navegador para acciones contextuales y acceso rápido.
+  </Card>
+  <Card title="Sin interfaz" icon="server">
+    Modo servidor para despliegue. Sin UI, solo el gateway y la API.
+  </Card>
+</CardGroup>
+
+<div id="architecture-at-a-glance">
+## Arquitectura de un vistazo
+</div>
+
+Milady está estructurado como un sistema por capas:
+
+```
+ Interfaces de usuario (Escritorio / Móvil / Web / CLI)
+                          |
+                     Servidor API (HTTP + WebSocket en :31337)
+                          |
+                    Gateway (:18789)
+                          |
+                   Runtime elizaOS
+                     |         |
+             Plugin Milady    Otros plugins
+             (personalidad,    (conocimiento, navegador,
+              billetera,        TTS, Discord, Telegram,
+              habilidades,      shell, cron, ...)
+              estado autónomo)
+                     |
+               Capa de conectores
+          (Discord, Telegram, Slack, WhatsApp, Twitter,
+           Signal, Farcaster, WeChat, Matrix, Nostr, ...)
+```
+
+- **Runtime elizaOS** — el framework central del agente que maneja memoria, procesamiento de mensajes, despacho de acciones y abstracción de proveedores.
+- **Plugin Milady** — un plugin de primera parte de elizaOS que proporciona contexto de workspace, claves de sesión, presets de personalidad, estado autónomo e integración de billetera.
+- **Gateway** — un servidor multiplexado WebSocket + HTTP que conecta el runtime con todos los clientes y conectores.
+- **Sistema de plugins** — plugins estándar de elizaOS que añaden capacidades (conocimiento, navegador, TTS, etc.).
+- **Capa de conectores** — adaptadores específicos de plataforma para Telegram, Discord, Slack, WhatsApp, Signal, iMessage, BlueBubbles, Blooio, MS Teams, Google Chat, Twitter, Farcaster, Twitch, Mattermost, WeChat, Matrix, Feishu/Lark, Nostr, Lens y la UI de chat web.
+
+La configuración principal persistida del runtime reside en `~/.milady/milady.json`.
+El enrutamiento canónico del runtime se divide entre `deploymentTarget`,
+`linkedAccounts` y `serviceRouting`. Los secretos también pueden provenir de
+`~/.milady/.env`.
+
+<Info>
+Milady está actualmente en alfa (`v2.0.0-alpha.116`). Las APIs y configuración pueden cambiar entre versiones. Consulta las [versiones en GitHub](https://github.com/milady-ai/milady/releases) para la última versión.
+</Info>

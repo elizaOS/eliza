@@ -1,7 +1,7 @@
 """Trust sub-module.
 
 Multi-dimensional trust scoring, evidence-based evaluation, and security
-threat detection, ported from plugin-trust TypeScript.
+threat detection, aligned with the runtime TypeScript trust module.
 """
 
 from .actions import (

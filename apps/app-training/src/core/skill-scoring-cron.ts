@@ -13,12 +13,12 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveStateDir } from "@elizaos/core";
-import { scoreSkill, type ScoreableTrajectory } from "./replay-validator.js";
 import {
+  type CronServiceLike,
   ensureNamedCronJob,
   registerRuntimeEventOnce,
-  type CronServiceLike,
 } from "./ensure-cron-job.js";
+import { type ScoreableTrajectory, scoreSkill } from "./replay-validator.js";
 import { waitForService } from "./wait-for-service.js";
 
 interface MinimalLogger {

@@ -10,8 +10,8 @@
 import {
   AgentRuntime,
   ChannelType,
-  createCharacter,
   type Content,
+  createCharacter,
   createMessageMemory,
   LLMMode,
   type Plugin,
@@ -93,23 +93,43 @@ function getOrCreateRoomId(): UUID {
 function applySettings(
   runtime: AgentRuntime,
   config: ExtensionConfig,
-  effectiveMode: ProviderMode
+  effectiveMode: ProviderMode,
 ): void {
   runtime.setSetting("LLM_MODE", "DEFAULT");
   runtime.setSetting("CHECK_SHOULD_RESPOND", false);
 
   if (effectiveMode === "openai") {
     runtime.setSetting("OPENAI_ALLOW_BROWSER_API_KEY", "true");
-    runtime.setSetting("OPENAI_API_KEY", config.provider.openaiApiKey ?? "", true);
+    runtime.setSetting(
+      "OPENAI_API_KEY",
+      config.provider.openaiApiKey ?? "",
+      true,
+    );
     runtime.setSetting("OPENAI_BASE_URL", config.provider.openaiBaseUrl ?? "");
-    runtime.setSetting("OPENAI_SMALL_MODEL", config.provider.openaiSmallModel ?? "");
-    runtime.setSetting("OPENAI_LARGE_MODEL", config.provider.openaiLargeModel ?? "");
+    runtime.setSetting(
+      "OPENAI_SMALL_MODEL",
+      config.provider.openaiSmallModel ?? "",
+    );
+    runtime.setSetting(
+      "OPENAI_LARGE_MODEL",
+      config.provider.openaiLargeModel ?? "",
+    );
   }
 
   if (effectiveMode === "anthropic") {
-    runtime.setSetting("ANTHROPIC_API_KEY", config.provider.anthropicApiKey ?? "", true);
-    runtime.setSetting("ANTHROPIC_SMALL_MODEL", config.provider.anthropicSmallModel ?? "");
-    runtime.setSetting("ANTHROPIC_LARGE_MODEL", config.provider.anthropicLargeModel ?? "");
+    runtime.setSetting(
+      "ANTHROPIC_API_KEY",
+      config.provider.anthropicApiKey ?? "",
+      true,
+    );
+    runtime.setSetting(
+      "ANTHROPIC_SMALL_MODEL",
+      config.provider.anthropicSmallModel ?? "",
+    );
+    runtime.setSetting(
+      "ANTHROPIC_LARGE_MODEL",
+      config.provider.anthropicLargeModel ?? "",
+    );
   }
 
   if (effectiveMode === "xai") {
@@ -117,21 +137,43 @@ function applySettings(
     runtime.setSetting("OPENAI_ALLOW_BROWSER_API_KEY", "true");
     runtime.setSetting("OPENAI_API_KEY", config.provider.xaiApiKey ?? "", true);
     runtime.setSetting("OPENAI_BASE_URL", config.provider.xaiBaseUrl ?? "");
-    runtime.setSetting("OPENAI_SMALL_MODEL", config.provider.xaiSmallModel ?? "");
-    runtime.setSetting("OPENAI_LARGE_MODEL", config.provider.xaiLargeModel ?? "");
+    runtime.setSetting(
+      "OPENAI_SMALL_MODEL",
+      config.provider.xaiSmallModel ?? "",
+    );
+    runtime.setSetting(
+      "OPENAI_LARGE_MODEL",
+      config.provider.xaiLargeModel ?? "",
+    );
   }
 
   if (effectiveMode === "gemini") {
-    runtime.setSetting("GOOGLE_GENERATIVE_AI_API_KEY", config.provider.googleGenaiApiKey ?? "", true);
-    runtime.setSetting("GOOGLE_SMALL_MODEL", config.provider.googleSmallModel ?? "");
-    runtime.setSetting("GOOGLE_LARGE_MODEL", config.provider.googleLargeModel ?? "");
+    runtime.setSetting(
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      config.provider.googleGenaiApiKey ?? "",
+      true,
+    );
+    runtime.setSetting(
+      "GOOGLE_SMALL_MODEL",
+      config.provider.googleSmallModel ?? "",
+    );
+    runtime.setSetting(
+      "GOOGLE_LARGE_MODEL",
+      config.provider.googleLargeModel ?? "",
+    );
   }
 
   if (effectiveMode === "groq") {
     runtime.setSetting("GROQ_API_KEY", config.provider.groqApiKey ?? "", true);
     runtime.setSetting("GROQ_BASE_URL", config.provider.groqBaseUrl ?? "");
-    runtime.setSetting("GROQ_SMALL_MODEL", config.provider.groqSmallModel ?? "");
-    runtime.setSetting("GROQ_LARGE_MODEL", config.provider.groqLargeModel ?? "");
+    runtime.setSetting(
+      "GROQ_SMALL_MODEL",
+      config.provider.groqSmallModel ?? "",
+    );
+    runtime.setSetting(
+      "GROQ_LARGE_MODEL",
+      config.provider.groqLargeModel ?? "",
+    );
   }
 }
 
@@ -195,7 +237,7 @@ export async function resetConversation(): Promise<void> {
  * Get or create the AgentRuntime
  */
 export async function getOrCreateRuntime(
-  config: ExtensionConfig
+  config: ExtensionConfig,
 ): Promise<RuntimeBundle> {
   const effectiveMode = getEffectiveMode(config);
 
@@ -267,7 +309,7 @@ export function getGreetingText(effectiveMode: ProviderMode): string {
  */
 export async function updatePageContent(
   config: ExtensionConfig,
-  pageContent: PageContent | null
+  pageContent: PageContent | null,
 ): Promise<void> {
   const bundle = await getOrCreateRuntime(config);
   await setPageContent(bundle.runtime, pageContent);
@@ -281,7 +323,7 @@ export async function sendMessage(
   userText: string,
   callbacks: {
     onChunk?: (chunk: string) => void;
-  } = {}
+  } = {},
 ): Promise<{ responseText: string }> {
   const bundle = await getOrCreateRuntime(config);
 
@@ -319,7 +361,7 @@ export async function sendMessage(
             callbacks.onChunk?.(chunk);
           },
         }
-      : undefined
+      : undefined,
   );
 
   if (!responseText && typeof result.responseContent?.text === "string") {

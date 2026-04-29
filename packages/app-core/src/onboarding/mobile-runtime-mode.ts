@@ -3,7 +3,11 @@ import type { OnboardingServerTarget } from "./server-target";
 
 export const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
 
-export type MobileRuntimeMode = "remote-mac" | "cloud" | "cloud-hybrid";
+export type MobileRuntimeMode =
+  | "remote-mac"
+  | "cloud"
+  | "cloud-hybrid"
+  | "local";
 
 export function normalizeMobileRuntimeMode(
   value: string | null | undefined,
@@ -13,6 +17,7 @@ export function normalizeMobileRuntimeMode(
     case "remote-mac":
     case "cloud":
     case "cloud-hybrid":
+    case "local":
       return normalized;
     default:
       return null;
@@ -29,6 +34,8 @@ export function mobileRuntimeModeForServerTarget(
       return "cloud";
     case "elizacloud-hybrid":
       return "cloud-hybrid";
+    case "local":
+      return "local";
     default:
       return null;
   }

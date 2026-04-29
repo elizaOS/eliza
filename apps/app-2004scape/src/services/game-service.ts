@@ -1,13 +1,13 @@
-import { Service, ModelType, type IAgentRuntime } from "@elizaos/core";
-import { BotManager } from "./bot-manager.js";
-import { BotActions } from "../sdk/actions.js";
-import type { BotState, ActionResult, EventLogEntry } from "../sdk/types.js";
-import { startGateway, type GatewayHandle } from "../gateway/index.js";
-import { setCurrentLlmResponse } from "../shared-state.js";
+import { type IAgentRuntime, ModelType, Service } from "@elizaos/core";
+import { type GatewayHandle, startGateway } from "../gateway/index.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
 import { mapAreaProvider } from "../providers/map-area.js";
 import { worldKnowledgeProvider } from "../providers/world-knowledge.js";
+import { BotActions } from "../sdk/actions.js";
+import type { ActionResult, BotState, EventLogEntry } from "../sdk/types.js";
+import { setCurrentLlmResponse } from "../shared-state.js";
+import { BotManager } from "./bot-manager.js";
 
 const DEFAULT_GATEWAY_PORT = 18791;
 const DEFAULT_LOOP_INTERVAL_MS = 15_000;
@@ -29,28 +29,49 @@ const DEFAULT_MODEL_SIZE = ModelType.TEXT_SMALL;
 
 /** All actions the LLM can choose from. Name → param hint shown in prompt. */
 const ACTION_LIST = [
-  { name: "WALK_TO", params: "<destination>name</destination> OR <x>N</x><z>N</z>" },
+  {
+    name: "WALK_TO",
+    params: "<destination>name</destination> OR <x>N</x><z>N</z>",
+  },
   { name: "OPEN_DOOR", params: "(no params — opens nearest door/gate)" },
   { name: "TALK_TO_NPC", params: "<npc>name</npc>" },
   { name: "NAVIGATE_DIALOG", params: "<option>1-based index</option>" },
-  { name: "INTERACT_OBJECT", params: "<object>name</object> <option>action</option>" },
+  {
+    name: "INTERACT_OBJECT",
+    params: "<object>name</object> <option>action</option>",
+  },
   { name: "CHOP_TREE", params: "<tree>type (optional)</tree>" },
   { name: "MINE_ROCK", params: "<rock>type (optional)</rock>" },
   { name: "FISH", params: "<spot>type (optional)</spot>" },
   { name: "ATTACK_NPC", params: "<npc>name</npc>" },
   { name: "EAT_FOOD", params: "(no params — eats first food found)" },
-  { name: "SET_COMBAT_STYLE", params: "<style>0=Atk 1=Str 2=Def 3=Ctrl</style>" },
+  {
+    name: "SET_COMBAT_STYLE",
+    params: "<style>0=Atk 1=Str 2=Def 3=Ctrl</style>",
+  },
   { name: "DROP_ITEM", params: "<item>name</item>" },
   { name: "PICKUP_ITEM", params: "<item>name</item>" },
   { name: "EQUIP_ITEM", params: "<item>name</item>" },
   { name: "UNEQUIP_ITEM", params: "<item>name</item>" },
   { name: "USE_ITEM", params: "<item>name</item>" },
-  { name: "USE_ITEM_ON_ITEM", params: "<item1>name</item1><item2>name</item2>" },
-  { name: "USE_ITEM_ON_OBJECT", params: "<item>name</item><object>name</object>" },
+  {
+    name: "USE_ITEM_ON_ITEM",
+    params: "<item1>name</item1><item2>name</item2>",
+  },
+  {
+    name: "USE_ITEM_ON_OBJECT",
+    params: "<item>name</item><object>name</object>",
+  },
   { name: "OPEN_BANK", params: "(no params — finds nearest bank)" },
   { name: "CLOSE_BANK", params: "(no params)" },
-  { name: "DEPOSIT_ITEM", params: "<item>name</item> <count>N (optional)</count>" },
-  { name: "WITHDRAW_ITEM", params: "<item>name</item> <count>N (optional)</count>" },
+  {
+    name: "DEPOSIT_ITEM",
+    params: "<item>name</item> <count>N (optional)</count>",
+  },
+  {
+    name: "WITHDRAW_ITEM",
+    params: "<item>name</item> <count>N (optional)</count>",
+  },
   { name: "OPEN_SHOP", params: "<npc>shopkeeper name</npc>" },
   { name: "CLOSE_SHOP", params: "(no params)" },
   { name: "BUY_FROM_SHOP", params: "<item>name</item> <count>N</count>" },
@@ -61,7 +82,10 @@ const ACTION_LIST = [
   { name: "CRAFT_LEATHER", params: "(no params)" },
   { name: "SMITH_AT_ANVIL", params: "<item>item to smith (optional)</item>" },
   { name: "PICKPOCKET_NPC", params: "<npc>name</npc>" },
-  { name: "CAST_SPELL", params: "<spell>spellId</spell> <target>npcNid (optional)</target>" },
+  {
+    name: "CAST_SPELL",
+    params: "<spell>spellId</spell> <target>npcNid (optional)</target>",
+  },
 ];
 
 /** Map action names from LLM response to dispatch keys. */
@@ -123,19 +147,37 @@ export class RsSdkGameService extends Service {
   }
 
   async initialize(): Promise<void> {
-    const gatewayPort = this.resolveInt("RS_2004SCAPE_GATEWAY_PORT", DEFAULT_GATEWAY_PORT);
-    const loopInterval = this.resolveInt("RS_2004SCAPE_LOOP_INTERVAL_MS", DEFAULT_LOOP_INTERVAL_MS);
-    const username = this.resolveSetting("RS_SDK_BOT_NAME") ?? this.resolveSetting("BOT_NAME") ?? "";
-    const password = this.resolveSetting("RS_SDK_BOT_PASSWORD") ?? this.resolveSetting("BOT_PASSWORD") ?? "";
-    const gatewayUrl = this.resolveSetting("RS_SDK_GATEWAY_URL") ?? `ws://localhost:${gatewayPort}`;
+    const gatewayPort = this.resolveInt(
+      "RS_2004SCAPE_GATEWAY_PORT",
+      DEFAULT_GATEWAY_PORT,
+    );
+    const loopInterval = this.resolveInt(
+      "RS_2004SCAPE_LOOP_INTERVAL_MS",
+      DEFAULT_LOOP_INTERVAL_MS,
+    );
+    const username =
+      this.resolveSetting("RS_SDK_BOT_NAME") ??
+      this.resolveSetting("BOT_NAME") ??
+      "";
+    const password =
+      this.resolveSetting("RS_SDK_BOT_PASSWORD") ??
+      this.resolveSetting("BOT_PASSWORD") ??
+      "";
+    const gatewayUrl =
+      this.resolveSetting("RS_SDK_GATEWAY_URL") ??
+      `ws://localhost:${gatewayPort}`;
 
     // Configurable model size: TEXT_NANO, TEXT_SMALL (default), TEXT_MEDIUM, TEXT_LARGE, etc.
-    const sizeRaw = (this.resolveSetting("RS_2004SCAPE_MODEL_SIZE") ?? "").toUpperCase();
+    const sizeRaw = (
+      this.resolveSetting("RS_2004SCAPE_MODEL_SIZE") ?? ""
+    ).toUpperCase();
     this.modelSize = MODEL_SIZE_MAP[sizeRaw] ?? DEFAULT_MODEL_SIZE;
     this.log(`Model size: ${this.modelSize}`);
 
     if (!username) {
-      this.log("No RS_SDK_BOT_NAME configured — game service will not auto-connect.");
+      this.log(
+        "No RS_SDK_BOT_NAME configured — game service will not auto-connect.",
+      );
       return;
     }
 
@@ -147,7 +189,9 @@ export class RsSdkGameService extends Service {
       });
       this.log(`Gateway started on port ${this.gateway.port}`);
     } catch (err) {
-      this.log(`Gateway failed to start: ${err instanceof Error ? err.message : String(err)}`);
+      this.log(
+        `Gateway failed to start: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     // Connect SDK to gateway
@@ -156,7 +200,9 @@ export class RsSdkGameService extends Service {
       this.botManager.connect();
       this.log(`SDK connecting as ${username}`);
     } catch (err) {
-      this.log(`SDK connect failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.log(
+        `SDK connect failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     if (this.botManager.getSDK()) {
@@ -213,7 +259,11 @@ export class RsSdkGameService extends Service {
     params: Record<string, unknown>,
   ): Promise<ActionResult> {
     if (!this.botActions) {
-      return { success: false, action: actionType, message: "Bot actions not initialized." };
+      return {
+        success: false,
+        action: actionType,
+        message: "Bot actions not initialized.",
+      };
     }
 
     try {
@@ -260,7 +310,11 @@ export class RsSdkGameService extends Service {
         maxTokens: 400,
       });
 
-      if (!response || typeof response !== "string" || response.trim().length === 0) {
+      if (
+        !response ||
+        typeof response !== "string" ||
+        response.trim().length === 0
+      ) {
         this.log(`Step ${this.stepNumber} — empty LLM response`);
         return;
       }
@@ -273,16 +327,22 @@ export class RsSdkGameService extends Service {
       // 4. Parse the chosen action from the response
       const parsed = this.parseActionFromResponse(response);
       if (!parsed) {
-        this.log(`Step ${this.stepNumber} — could not parse action from response`);
+        this.log(
+          `Step ${this.stepNumber} — could not parse action from response`,
+        );
         return;
       }
 
       // 5. Execute the action
       this.log(`Step ${this.stepNumber} — executing ${parsed.actionType}`);
       const result = await this.executeAction(parsed.actionType, parsed.params);
-      this.log(`Step ${this.stepNumber} — ${result.action}: ${result.success ? "OK" : "FAIL"} — ${result.message}`);
+      this.log(
+        `Step ${this.stepNumber} — ${result.action}: ${result.success ? "OK" : "FAIL"} — ${result.message}`,
+      );
     } catch (err) {
-      this.log(`Step ${this.stepNumber} error: ${err instanceof Error ? err.message : String(err)}`);
+      this.log(
+        `Step ${this.stepNumber} error: ${err instanceof Error ? err.message : String(err)}`,
+      );
     } finally {
       this.loopRunning = false;
     }
@@ -294,16 +354,24 @@ export class RsSdkGameService extends Service {
 
     try {
       sections.push(await mapAreaProvider.get(this.runtime, dummy));
-    } catch { /* provider optional */ }
+    } catch {
+      /* provider optional */
+    }
     try {
       sections.push(await worldKnowledgeProvider.get(this.runtime, dummy));
-    } catch { /* provider optional */ }
+    } catch {
+      /* provider optional */
+    }
     try {
       sections.push(await goalsProvider.get(this.runtime, dummy));
-    } catch { /* provider optional */ }
+    } catch {
+      /* provider optional */
+    }
     try {
       sections.push(await botStateProvider.get(this.runtime, dummy));
-    } catch { /* provider optional */ }
+    } catch {
+      /* provider optional */
+    }
 
     return sections.filter(Boolean).join("\n\n");
   }
@@ -313,12 +381,15 @@ export class RsSdkGameService extends Service {
 
     const recentActions = this.eventLog
       .slice(-8)
-      .map((e) => `  [${e.result.success ? "OK" : "FAIL"}] ${e.action}: ${e.result.message}`)
+      .map(
+        (e) =>
+          `  [${e.result.success ? "OK" : "FAIL"}] ${e.action}: ${e.result.message}`,
+      )
       .join("\n");
 
-    const actionListStr = ACTION_LIST
-      .map((a) => `  ${a.name}: ${a.params}`)
-      .join("\n");
+    const actionListStr = ACTION_LIST.map(
+      (a) => `  ${a.name}: ${a.params}`,
+    ).join("\n");
 
     return `You are an autonomous RuneScape bot playing 2004scape. Step ${this.stepNumber}.
 Your name: ${p.name} | Combat: ${p.combatLevel} | HP: ${p.hp}/${p.maxHp} | Position: (${p.worldX}, ${p.worldZ}) | Inventory: ${state.inventory.length}/28
@@ -432,7 +503,11 @@ Your choice:`;
       case "walkTo": {
         const dest = str("destination");
         if (dest) return actions.walkToNamed(dest);
-        return actions.walkTo(num("x", 0), num("z", 0), str("reason") || undefined);
+        return actions.walkTo(
+          num("x", 0),
+          num("z", 0),
+          str("reason") || undefined,
+        );
       }
       case "openDoor":
         return actions.openDoor();
@@ -441,7 +516,10 @@ Your choice:`;
       case "navigateDialog":
         return actions.navigateDialog(num("option", 1));
       case "interactObject":
-        return actions.interactObject(str("objectName"), str("option") || undefined);
+        return actions.interactObject(
+          str("objectName"),
+          str("option") || undefined,
+        );
       case "chopTree":
         return actions.chopTree(str("treeName") || undefined);
       case "mineRock":
@@ -502,7 +580,11 @@ Your choice:`;
       case "useItemOnObject":
         return actions.useItemOnObject(str("itemName"), str("objectName"));
       default:
-        return { success: false, action: actionType, message: `Unknown action: ${actionType}` };
+        return {
+          success: false,
+          action: actionType,
+          message: `Unknown action: ${actionType}`,
+        };
     }
   }
 
@@ -524,7 +606,8 @@ Your choice:`;
 
   private resolveSetting(key: string): string | undefined {
     const fromRuntime = this.runtime.getSetting?.(key);
-    if (typeof fromRuntime === "string" && fromRuntime.trim()) return fromRuntime.trim();
+    if (typeof fromRuntime === "string" && fromRuntime.trim())
+      return fromRuntime.trim();
     const fromEnv = process.env[key];
     if (typeof fromEnv === "string" && fromEnv.trim()) return fromEnv.trim();
     return undefined;

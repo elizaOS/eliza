@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { clientMock } = vi.hoisted(() => ({
@@ -42,6 +48,13 @@ beforeEach(() => {
         startedAt: "2026-04-25T06:00:00.000Z",
       },
     ],
+    summary: {
+      averageDurationMin: 480,
+      cycleCount: 1,
+      napCount: 0,
+      openCount: 0,
+      overnightCount: 1,
+    },
     includeNaps: false,
     windowDays: 365,
   });
@@ -75,7 +88,9 @@ describe("LifeOpsSleepSection", () => {
     render(<LifeOpsSleepSection />);
 
     expect(screen.getByTestId("lifeops-sleep-section")).toBeTruthy();
-    await waitFor(() => expect(clientMock.getLifeOpsOverview).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(clientMock.getLifeOpsOverview).toHaveBeenCalled(),
+    );
 
     fireEvent.click(screen.getByRole("tab", { name: "History" }));
 
@@ -99,11 +114,35 @@ describe("LifeOpsSleepSection", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Pattern" }));
 
     await waitFor(() =>
-      expect(clientMock.getLifeOpsSleepRegularity).toHaveBeenCalledWith({
-        includeNaps: false,
-      }),
+      expect(clientMock.getLifeOpsSleepRegularity).toHaveBeenCalledWith(),
     );
     expect(clientMock.getLifeOpsPersonalBaseline).toHaveBeenCalled();
     expect(await screen.findByText("Regular")).toBeTruthy();
+  });
+
+  it("keeps the nap toggle scoped to history so pattern is overnight-only", async () => {
+    render(<LifeOpsSleepSection />);
+
+    expect(screen.queryByRole("switch", { name: "Show naps" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "History" }));
+    const switchControl = await screen.findByRole("switch", {
+      name: "Show naps",
+    });
+    fireEvent.click(switchControl);
+
+    await waitFor(() =>
+      expect(clientMock.getLifeOpsSleepHistory).toHaveBeenCalledWith({
+        includeNaps: true,
+        windowDays: 365,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Pattern" }));
+
+    await waitFor(() =>
+      expect(clientMock.getLifeOpsSleepRegularity).toHaveBeenCalledWith(),
+    );
+    expect(screen.queryByRole("switch", { name: "Show naps" })).toBeNull();
   });
 });

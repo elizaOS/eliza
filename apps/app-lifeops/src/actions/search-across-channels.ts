@@ -12,6 +12,7 @@
 import { hasAdminAccess } from "@elizaos/agent/security/access";
 import type {
   Action,
+  ActionExample,
   ActionResult,
   HandlerOptions,
   IAgentRuntime,
@@ -284,6 +285,39 @@ export const searchAcrossChannelsAction: Action = {
   descriptionCompressed: "Cross-channel search with citations. Admin only.",
 
   validate: async (runtime, message) => hasAdminAccess(runtime, message),
+
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Find every mention of invoice 4412 across Gmail, Telegram, and my calendar from last week.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Cross-channel hits with citations:",
+          action: ACTION_NAME,
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Search my messages for what Sarah said about the rental before Tuesday.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Merged search results with source lines...",
+          action: ACTION_NAME,
+        },
+      },
+    ],
+  ] as ActionExample[][],
 
   handler: async (
     runtime: IAgentRuntime,

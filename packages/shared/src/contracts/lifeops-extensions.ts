@@ -180,6 +180,193 @@ export interface LifeOpsScreenTimeDaily {
   updatedAt: string;
 }
 
+export type LifeOpsScreenTimeSource = "app" | "website";
+
+export type LifeOpsScreenTimeRangeKey = "today" | "this-week" | "7d" | "30d";
+
+export const LIFEOPS_SCREEN_TIME_RANGES = [
+  "today",
+  "this-week",
+  "7d",
+  "30d",
+] as const satisfies readonly LifeOpsScreenTimeRangeKey[];
+
+export interface LifeOpsScreenTimeSummaryRequest {
+  since: string;
+  until: string;
+  source?: LifeOpsScreenTimeSource;
+  identifier?: string;
+  topN?: number;
+}
+
+export interface LifeOpsScreenTimeSummaryItem {
+  source: LifeOpsScreenTimeSource;
+  identifier: string;
+  displayName: string;
+  totalSeconds: number;
+}
+
+export interface LifeOpsScreenTimeSummary {
+  items: LifeOpsScreenTimeSummaryItem[];
+  totalSeconds: number;
+}
+
+export type LifeOpsHabitCategory =
+  | "browser"
+  | "communication"
+  | "social"
+  | "system"
+  | "video"
+  | "work"
+  | "other";
+
+export type LifeOpsHabitDevice =
+  | "browser"
+  | "computer"
+  | "phone"
+  | "tablet"
+  | "unknown";
+
+export interface LifeOpsScreenTimeBucket {
+  key: string;
+  label: string;
+  totalSeconds: number;
+}
+
+export interface LifeOpsScreenTimeBreakdownItem
+  extends LifeOpsScreenTimeSummaryItem {
+  sessionCount: number;
+  category: LifeOpsHabitCategory;
+  device: LifeOpsHabitDevice;
+  service: string | null;
+  serviceLabel: string | null;
+  browser: string | null;
+}
+
+export interface LifeOpsScreenTimeBreakdown {
+  items: LifeOpsScreenTimeBreakdownItem[];
+  totalSeconds: number;
+  bySource: LifeOpsScreenTimeBucket[];
+  byCategory: LifeOpsScreenTimeBucket[];
+  byDevice: LifeOpsScreenTimeBucket[];
+  byService: LifeOpsScreenTimeBucket[];
+  byBrowser: LifeOpsScreenTimeBucket[];
+  fetchedAt: string;
+}
+
+export interface LifeOpsSocialMessageChannel {
+  channel: "x_dm";
+  label: string;
+  inbound: number;
+  outbound: number;
+  opened: number;
+  replied: number;
+}
+
+export type LifeOpsSocialHabitDataSourceState = "live" | "partial" | "unwired";
+
+export interface LifeOpsSocialHabitDataSource {
+  id: string;
+  label: string;
+  state: LifeOpsSocialHabitDataSourceState;
+  statusLabel: string;
+  detail: string;
+}
+
+export interface LifeOpsSocialHabitSummary {
+  since: string;
+  until: string;
+  totalSeconds: number;
+  services: LifeOpsScreenTimeBucket[];
+  devices: LifeOpsScreenTimeBucket[];
+  surfaces: LifeOpsScreenTimeBucket[];
+  browsers: LifeOpsScreenTimeBucket[];
+  sessions: LifeOpsScreenTimeBreakdownItem[];
+  messages: {
+    channels: LifeOpsSocialMessageChannel[];
+    inbound: number;
+    outbound: number;
+    opened: number;
+    replied: number;
+  };
+  dataSources: LifeOpsSocialHabitDataSource[];
+  fetchedAt: string;
+}
+
+export interface LifeOpsScreenTimeWindow {
+  since: string;
+  until: string;
+}
+
+export interface LifeOpsScreenTimeHistoryPoint extends LifeOpsScreenTimeWindow {
+  date: string;
+  label: string;
+  totalSeconds: number;
+}
+
+export interface LifeOpsScreenTimeDeltaMetrics {
+  totalPercent: number | null;
+  appPercent: number | null;
+  webPercent: number | null;
+  phonePercent: number | null;
+  socialPercent: number | null;
+  youtubePercent: number | null;
+  xPercent: number | null;
+  messageOpenedPercent: number | null;
+}
+
+export interface LifeOpsScreenTimeMetrics {
+  totalSeconds: number;
+  appSeconds: number;
+  webSeconds: number;
+  phoneSeconds: number;
+  socialSeconds: number;
+  youtubeSeconds: number;
+  xSeconds: number;
+  messageOpened: number;
+  messageOutbound: number;
+  messageInbound: number;
+  deltas: LifeOpsScreenTimeDeltaMetrics | null;
+}
+
+export interface LifeOpsScreenTimeTargetBucket extends LifeOpsScreenTimeBucket {
+  source: LifeOpsScreenTimeSource;
+  identifier: string;
+}
+
+export interface LifeOpsScreenTimeSessionBucket
+  extends LifeOpsScreenTimeBucket {
+  source: LifeOpsScreenTimeSource;
+  identifier: string;
+}
+
+export interface LifeOpsScreenTimeVisibleBuckets {
+  categories: LifeOpsScreenTimeBucket[];
+  devices: LifeOpsScreenTimeBucket[];
+  browsers: LifeOpsScreenTimeBucket[];
+  services: LifeOpsScreenTimeBucket[];
+  surfaces: LifeOpsScreenTimeBucket[];
+  topTargets: LifeOpsScreenTimeTargetBucket[];
+  sessionBuckets: LifeOpsScreenTimeSessionBucket[];
+  channels: LifeOpsSocialMessageChannel[];
+  setupSources: LifeOpsSocialHabitDataSource[];
+  hasMessageActivity: boolean;
+  hasUsage: boolean;
+}
+
+export interface LifeOpsScreenTimeHistoryResponse {
+  range: LifeOpsScreenTimeRangeKey;
+  label: string;
+  window: LifeOpsScreenTimeWindow;
+  priorWindow: LifeOpsScreenTimeWindow | null;
+  breakdown: LifeOpsScreenTimeBreakdown;
+  social: LifeOpsSocialHabitSummary;
+  history: LifeOpsScreenTimeHistoryPoint[];
+  metrics: LifeOpsScreenTimeMetrics;
+  visible: LifeOpsScreenTimeVisibleBuckets;
+  fetchedAt: string;
+}
+
 // Scheduling interfaces live in `./lifeops.ts` — see LifeOpsSchedulingNegotiation,
 // LifeOpsSchedulingProposal, LIFEOPS_PROPOSAL_STATUSES, LIFEOPS_PROPOSAL_PROPOSERS.
 

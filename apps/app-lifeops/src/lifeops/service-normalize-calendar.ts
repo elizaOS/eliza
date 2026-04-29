@@ -5,9 +5,19 @@ import type {
   LifeOpsGmailMessageSummary,
   LifeOpsNextCalendarEventContext,
 } from "../contracts/index.js";
+import { LIFEOPS_CALENDAR_WINDOW_PRESETS } from "../contracts/index.js";
+import { resolveDefaultTimeZone } from "./defaults.js";
 import {
-  LIFEOPS_CALENDAR_WINDOW_PRESETS,
-} from "../contracts/index.js";
+  GOOGLE_GMAIL_READ_SCOPE,
+  normalizeGoogleCapabilities,
+} from "./google-scopes.js";
+import {
+  DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
+  DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS,
+  GOOGLE_CALENDAR_CACHE_TTL_MS,
+  GOOGLE_PRIMARY_CALENDAR_ID,
+  MAX_GMAIL_TRIAGE_MAX_RESULTS,
+} from "./service-constants.js";
 import {
   fail,
   normalizeEnumValue,
@@ -20,15 +30,6 @@ import {
   normalizeValidTimeZone,
   requireNonEmptyString,
 } from "./service-normalize.js";
-import {
-  DEFAULT_NEXT_EVENT_LOOKAHEAD_DAYS,
-  DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
-  MAX_GMAIL_TRIAGE_MAX_RESULTS,
-  GOOGLE_PRIMARY_CALENDAR_ID,
-  GOOGLE_CALENDAR_CACHE_TTL_MS,
-} from "./service-constants.js";
-import { resolveDefaultTimeZone } from "./defaults.js";
-import { GOOGLE_GMAIL_READ_SCOPE, normalizeGoogleCapabilities } from "./google-scopes.js";
 import {
   addDaysToLocalDate,
   addMinutes,
@@ -179,9 +180,7 @@ export function resolveNextCalendarEventWindow(args: {
   };
 }
 
-function normalizeGrantCapabilities(
-  capabilities: readonly string[],
-): string[] {
+function normalizeGrantCapabilities(capabilities: readonly string[]): string[] {
   return normalizeGoogleCapabilities(capabilities);
 }
 
@@ -202,12 +201,16 @@ export function hasGoogleCalendarWriteCapability(
   return capabilities.has("google.calendar.write");
 }
 
-export function hasGoogleGmailTriageCapability(grant: LifeOpsConnectorGrant): boolean {
+export function hasGoogleGmailTriageCapability(
+  grant: LifeOpsConnectorGrant,
+): boolean {
   const capabilities = new Set(normalizeGrantCapabilities(grant.capabilities));
   return capabilities.has("google.gmail.triage");
 }
 
-export function hasGoogleGmailBodyReadScope(grant: LifeOpsConnectorGrant): boolean {
+export function hasGoogleGmailBodyReadScope(
+  grant: LifeOpsConnectorGrant,
+): boolean {
   const scopes = new Set(
     (grant.grantedScopes ?? [])
       .map((scope) => (typeof scope === "string" ? scope.trim() : ""))
@@ -220,7 +223,9 @@ export function hasGoogleGmailBodyReadScope(grant: LifeOpsConnectorGrant): boole
   );
 }
 
-export function hasGoogleGmailSendCapability(grant: LifeOpsConnectorGrant): boolean {
+export function hasGoogleGmailSendCapability(
+  grant: LifeOpsConnectorGrant,
+): boolean {
   const capabilities = new Set(normalizeGrantCapabilities(grant.capabilities));
   return capabilities.has("google.gmail.send");
 }

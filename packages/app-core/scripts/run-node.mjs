@@ -3,11 +3,11 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
 import {
   chooseElizaRuntime,
   resolveRuntimeExecPath,
 } from "./run-node-runtime.mjs";
-import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
 
 const args = process.argv.slice(2);
 const cwd = process.cwd();
@@ -173,7 +173,7 @@ const runNode = () => {
     platform: process.platform,
     explicitNodePath: process.env.ELIZA_NODE_PATH,
   });
-  const nodeProcess = spawn(execPath, ["eliza.mjs", ...args], {
+  const nodeProcess = spawn(execPath, ["milady.mjs", ...args], {
     cwd,
     env,
     stdio: "inherit",

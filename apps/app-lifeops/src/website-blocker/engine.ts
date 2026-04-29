@@ -161,6 +161,19 @@ const X_TWITTER_BLOCKED_HOSTS = [
   "tweetdeck.twitter.com",
 ] as const;
 const X_TWITTER_ALLOWED_HOSTS = ["api.x.com", "api.twitter.com"] as const;
+const REDDIT_REQUESTED_HOSTS = ["reddit.com"] as const;
+const REDDIT_BLOCKED_HOSTS = [
+  "reddit.com",
+  "www.reddit.com",
+  "old.reddit.com",
+  "new.reddit.com",
+  "m.reddit.com",
+  "np.reddit.com",
+  "i.redd.it",
+  "v.redd.it",
+  "preview.redd.it",
+  "external-preview.redd.it",
+] as const;
 const GOOGLE_NEWS_REQUESTED_HOSTS = ["news.google.com"] as const;
 const GOOGLE_NEWS_BLOCKED_HOSTS = ["news.google.com"] as const;
 const GOOGLE_NEWS_ALLOWED_HOSTS = [
@@ -175,6 +188,11 @@ const WEBSITE_BLOCK_POLICY_GROUPS = [
     requestedHosts: X_TWITTER_REQUESTED_HOSTS,
     blockedHosts: X_TWITTER_BLOCKED_HOSTS,
     allowedHosts: X_TWITTER_ALLOWED_HOSTS,
+  },
+  {
+    requestedHosts: REDDIT_REQUESTED_HOSTS,
+    blockedHosts: REDDIT_BLOCKED_HOSTS,
+    allowedHosts: [],
   },
   {
     requestedHosts: GOOGLE_NEWS_REQUESTED_HOSTS,
@@ -1615,7 +1633,10 @@ async function writeHostsFileContentWithElevation(
 }
 
 function normalizeWebsiteTarget(rawTarget: string): string | null {
-  const trimmed = rawTarget.slice(0, 4096).trim().replace(/[),.!?]{1,64}$/g, "");
+  const trimmed = rawTarget
+    .slice(0, 4096)
+    .trim()
+    .replace(/[),.!?]{1,64}$/g, "");
   if (!trimmed) return null;
 
   let hostname = trimmed;
@@ -1668,7 +1689,9 @@ function normalizeStringList(
       try {
         const parsed = JSON.parse(trimmed.replace(/'/g, '"'));
         if (Array.isArray(parsed)) {
-          return parsed.filter((item): item is string => typeof item === "string");
+          return parsed.filter(
+            (item): item is string => typeof item === "string",
+          );
         }
       } catch {
         // Fall through to the delimiter-based parser below for malformed
@@ -1679,7 +1702,7 @@ function normalizeStringList(
       .slice(0, 10_000)
       .split(/[,\n]/)
       .map((item) => item.trim().slice(0, 1024))
-      .map((item) => item.replace(/^[\[\]'"]{1,32}|[\[\]'"]{1,32}$/g, ""))
+      .map((item) => item.replace(/^[[\]'"]{1,32}|[[\]'"]{1,32}$/g, ""))
       .filter((item) => item.length > 0);
   }
 

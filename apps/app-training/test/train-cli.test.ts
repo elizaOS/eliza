@@ -3,8 +3,7 @@ import { parseTrainArgs } from "../src/cli/train.js";
 
 describe("parseTrainArgs", () => {
   it("returns 'help' when --help is passed", () => {
-    expect(parseTrainArgs(["--help"]))
-      .toBe("help");
+    expect(parseTrainArgs(["--help"])).toBe("help");
   });
 
   it("requires --backend", () => {
@@ -12,7 +11,9 @@ describe("parseTrainArgs", () => {
   });
 
   it("rejects unknown backends", () => {
-    expect(() => parseTrainArgs(["--backend", "rocket", "--dataset", "x"])).toThrow(/atropos/);
+    expect(() =>
+      parseTrainArgs(["--backend", "rocket", "--dataset", "x"]),
+    ).toThrow(/atropos/);
   });
 
   it("requires --dataset", () => {

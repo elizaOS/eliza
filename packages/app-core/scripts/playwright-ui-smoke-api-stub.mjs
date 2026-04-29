@@ -195,6 +195,51 @@ const stubRelationshipsPeopleResponse = {
   },
 };
 
+const stubRelationshipsGraphResponse = {
+  data: {
+    people: [],
+    relationships: [],
+    stats: {
+      totalPeople: 0,
+      totalRelationships: 0,
+      totalIdentities: 0,
+    },
+    candidateMerges: [],
+  },
+};
+
+const stubAuthIdentity = {
+  id: "owner-1",
+  displayName: "Owner",
+  kind: "owner",
+};
+
+const stubAuthSession = {
+  id: "local-session",
+  kind: "local",
+  expiresAt: null,
+};
+
+const stubAuthAccess = {
+  mode: "local",
+  passwordConfigured: false,
+  ownerConfigured: true,
+};
+
+const stubLogsResponse = {
+  entries: [
+    {
+      timestamp: Date.now(),
+      level: "info",
+      message: "smoke API ready",
+      source: "smoke",
+      tags: ["smoke"],
+    },
+  ],
+  sources: ["smoke"],
+  tags: ["smoke"],
+};
+
 const stubMemoryFeedResponse = {
   memories: [],
   hasMore: false,
@@ -816,6 +861,32 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/auth/me") {
+    sendJson(req, res, 200, {
+      identity: stubAuthIdentity,
+      session: stubAuthSession,
+      access: stubAuthAccess,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/auth/sessions") {
+    sendJson(req, res, 200, {
+      sessions: [
+        {
+          id: stubAuthSession.id,
+          kind: stubAuthSession.kind,
+          ip: "127.0.0.1",
+          userAgent: "Playwright smoke",
+          lastSeenAt: Date.now(),
+          expiresAt: null,
+          current: true,
+        },
+      ],
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/agent/status") {
     sendJson(req, res, 200, { onboardingComplete: true, status: "running" });
     return;
@@ -913,6 +984,11 @@ const server = http.createServer(async (req, res) => {
       limit: Number.isFinite(limit) ? limit : 50,
       offset: Number.isFinite(offset) ? offset : 0,
     });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/relationships/graph") {
+    sendJson(req, res, 200, stubRelationshipsGraphResponse);
     return;
   }
 
@@ -1505,6 +1581,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/apps/runs") {
     sendJson(req, res, 200, []);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/logs") {
+    sendJson(req, res, 200, stubLogsResponse);
     return;
   }
 

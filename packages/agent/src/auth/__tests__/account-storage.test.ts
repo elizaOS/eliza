@@ -140,7 +140,9 @@ describe("account-storage", () => {
     const newFile = path.join(authDir, provider, "default.json");
     expect(fs.existsSync(newFile)).toBe(true);
     const stat = fs.statSync(newFile);
-    expect(stat.mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(stat.mode & 0o777).toBe(0o600);
+    }
 
     // Second migrate call should be a no-op
     const second = migrateLegacySingleAccount();

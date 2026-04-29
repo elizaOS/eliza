@@ -53,20 +53,13 @@
     }
   ],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "vscode",
-    "terminal"
-  ],
+  "related_apps": ["vscode", "terminal"],
   "evaluator": {
     "postconfig": [
       {
         "type": "execute",
         "parameters": {
-          "command": [
-            "/bin/bash",
-            "-c",
-            "killall gnome-terminal-server"
-          ]
+          "command": ["/bin/bash", "-c", "killall gnome-terminal-server"]
         }
       },
       {
@@ -76,10 +69,7 @@
         }
       }
     ],
-    "func": [
-      "check_include_exclude",
-      "compare_config"
-    ],
+    "func": ["check_include_exclude", "compare_config"],
     "result": [
       {
         "type": "vm_command_line",
@@ -100,9 +90,7 @@
       {
         "type": "rule",
         "rules": {
-          "include": [
-            "true"
-          ]
+          "include": ["true"]
         }
       },
       {

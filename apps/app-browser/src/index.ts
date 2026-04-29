@@ -1,7 +1,5 @@
+import { gatePluginSessionForHostedApp } from "@elizaos/agent";
 import type { Plugin } from "@elizaos/core";
-import {
-  gatePluginSessionForHostedApp,
-} from "@elizaos/agent";
 import { manageElizaBrowserWorkspaceAction } from "./action";
 import { appBrowserWorkspaceProvider } from "./provider";
 import { AppBrowserWorkspaceService } from "./service";
@@ -31,9 +29,9 @@ export const appBrowserPlugin: Plugin = gatePluginSessionForHostedApp(
 );
 
 export {
-  approveElizaWalletRequestAction,
   AppBrowserWorkspaceService,
   appBrowserWorkspaceProvider,
+  approveElizaWalletRequestAction,
   manageElizaBrowserWorkspaceAction,
   rejectElizaWalletRequestAction,
   signWithElizaWalletAction,

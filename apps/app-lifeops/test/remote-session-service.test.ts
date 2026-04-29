@@ -3,14 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { beforeEach, describe, expect, test } from "vitest";
 import {
-  PairingCodeStore,
-  PAIRING_CODE_TTL_MS,
   generatePairingCode,
+  PAIRING_CODE_TTL_MS,
+  PairingCodeStore,
 } from "../src/remote/pairing-code.js";
 import {
+  type DataPlaneResolver,
   RemoteSessionError,
   RemoteSessionService,
-  type DataPlaneResolver,
 } from "../src/remote/remote-session-service.js";
 
 const silentLogger = {
@@ -69,7 +69,9 @@ describe("PairingCodeStore", () => {
   test("wrong code is rejected without clearing the entry", () => {
     const store = new PairingCodeStore();
     const issued = store.issue("agent");
-    expect(store.consume("agent", "000000" === issued.code ? "111111" : "000000")).toBe(false);
+    expect(
+      store.consume("agent", "000000" === issued.code ? "111111" : "000000"),
+    ).toBe(false);
     expect(store.consume("agent", issued.code)).toBe(true);
   });
 
@@ -89,7 +91,9 @@ describe("RemoteSessionService", () => {
   let storagePath: string;
 
   beforeEach(() => {
-    storageDir = fs.mkdtempSync(path.join(os.tmpdir(), "lifeops-remote-session-"));
+    storageDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "lifeops-remote-session-"),
+    );
     storagePath = path.join(storageDir, "sessions.json");
     pairingCodes = new PairingCodeStore();
     service = new RemoteSessionService({

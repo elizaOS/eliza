@@ -251,7 +251,7 @@ function buildCalendarPlanFromParsed(
 
   const rawQueries: Array<string | undefined> = [];
   if (typeof parsed.queries === "string" && parsed.queries.trim().length > 0) {
-    for (const q of parsed.queries.split(/\s*\|\|\s*/)) {
+    for (const q of parsed.queries.split(/\s{0,256}\|\|\s{0,256}/)) {
       if (q.trim().length > 0) rawQueries.push(q.trim());
     }
   } else if (Array.isArray(parsed.queries)) {
@@ -849,7 +849,10 @@ function normalizeCalendarSearchQueryValue(
 
   const cleaned = normalizeText(value)
     .replace(/\b(?:actions?|params?|parameters?)\b[:;]*/g, "")
-    .replace(/\b\w+\?:\w+(?:\s+\[[^\]]+\])?\s*-\s*/g, " ")
+    .replace(
+      /\b\w{1,128}\?:\w{1,128}(?:\s{1,32}\[[^\]]{1,256}\])?\s{0,32}-\s{0,32}/g,
+      " ",
+    )
     .replace(/\bsupported keys include\b.*$/g, "")
     .replace(/\bmatch against titles\b.*$/g, "")
     .replace(/\bstructured calendar arguments\b.*$/g, "")
@@ -2043,7 +2046,7 @@ async function inferCalendarSearchQueriesWithLlm(args: {
       typeof parsed.queries === "string" &&
       parsed.queries.trim().length > 0
     ) {
-      rawQueries.push(...parsed.queries.split(/\s*\|\|\s*/));
+      rawQueries.push(...parsed.queries.split(/\s{0,256}\|\|\s{0,256}/));
     }
 
     return dedupeCalendarQueries(rawQueries);
@@ -2738,7 +2741,9 @@ function normalizeCalendarMatchIdsFromValue(
 ): string[] {
   const rawIds: string[] = [];
   if (typeof value === "string") {
-    for (const token of value.split(/\s*\|\|\s*|\s*,\s*|\s+/)) {
+    for (const token of value.split(
+      /\s{0,256}\|\|\s{0,256}|\s{0,256},\s{0,256}|\s{1,256}/,
+    )) {
       if (token.trim().length > 0) {
         rawIds.push(token.trim());
       }

@@ -40,6 +40,7 @@ export {
   type SyncResult,
 } from "./plugin-manager-types.js";
 export * from "./registry-client.js";
+export { resolveAppHeroImage } from "./registry-client-queries.js";
 export * from "./remote-signing-service.js";
 export { ResearchTaskExecutor } from "./research-task-executor.js";
 export * from "./sandbox-engine.js";

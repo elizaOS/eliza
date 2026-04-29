@@ -37,10 +37,7 @@
       ],
       "delta": 1,
       "cadenceKind": "times_per_day",
-      "requiredSlots": [
-        { "minuteOfDay": 480 },
-        { "minuteOfDay": 1260 }
-      ],
+      "requiredSlots": [{ "minuteOfDay": 480 }, { "minuteOfDay": 1260 }],
       "requireReminderPlan": true
     }
   ]

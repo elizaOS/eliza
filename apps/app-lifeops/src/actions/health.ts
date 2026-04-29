@@ -19,10 +19,10 @@ import {
   parseJSONObjectFromText,
   parseKeyValueXml,
 } from "@elizaos/core";
-import { LifeOpsService } from "../lifeops/service.js";
 import type { HealthDataPoint } from "../lifeops/health-bridge.js";
-import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
+import { LifeOpsService } from "../lifeops/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./life-recent-context.js";
+import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 type Subaction = "today" | "trend" | "by_metric" | "status";
 
@@ -336,7 +336,11 @@ export const healthAction: Action = {
         ? `Health backend available: ${connectorStatus.backend}.`
         : "No health backend available. Set ELIZA_HEALTHKIT_CLI_PATH or ELIZA_GOOGLE_FIT_ACCESS_TOKEN.";
       await callback?.({ text, source: "action", action: "HEALTH" });
-      return { text, success: true, data: { subaction, status: connectorStatus } };
+      return {
+        text,
+        success: true,
+        data: { subaction, status: connectorStatus },
+      };
     }
 
     if (!connectorStatus.available) {
@@ -367,8 +371,7 @@ export const healthAction: Action = {
     }
 
     if (subaction === "by_metric") {
-      const metric =
-        normalizeHealthMetric(params.metric) ?? plannedMetric;
+      const metric = normalizeHealthMetric(params.metric) ?? plannedMetric;
       if (!metric) {
         const text =
           "Specify a metric: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.";
@@ -391,8 +394,7 @@ export const healthAction: Action = {
       const total = points.reduce((acc, p) => acc + p.value, 0);
       const firstPoint = points[0];
       if (!firstPoint) {
-        const text =
-          `No ${metric} data recorded in the last ${days} day${days === 1 ? "" : "s"}.`;
+        const text = `No ${metric} data recorded in the last ${days} day${days === 1 ? "" : "s"}.`;
         await callback?.({ text, source: "action", action: "HEALTH" });
         return {
           text,

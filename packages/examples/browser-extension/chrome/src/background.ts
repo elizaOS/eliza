@@ -6,7 +6,7 @@
  */
 
 import type { ExtensionConfig, PageContent } from "../../shared/types";
-import { deepMergeConfig, DEFAULT_CONFIG } from "../../shared/types";
+import { DEFAULT_CONFIG, deepMergeConfig } from "../../shared/types";
 
 // Storage keys
 const CONFIG_STORAGE_KEY = "elizaos-extension-config";
@@ -23,12 +23,20 @@ type StoredMessage = {
 type ChatEvent =
   | { type: "CHAT_STREAM_CHUNK"; url: string; messageId: string; text: string }
   | { type: "CHAT_MESSAGE_DONE"; url: string; messageId: string; text: string }
-  | { type: "CHAT_MESSAGE_ERROR"; url: string; messageId: string; error: string };
+  | {
+      type: "CHAT_MESSAGE_ERROR";
+      url: string;
+      messageId: string;
+      error: string;
+    };
 
 const portsByUrl = new Map<string, chrome.runtime.Port>();
 
 function newId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -57,7 +65,8 @@ async function ensureOffscreenDocument(): Promise<boolean> {
     await offscreenApi.createDocument({
       url: "offscreen.html",
       reasons: ["DOM_SCRAPING"],
-      justification: "Keep ElizaOS runtime running for streaming while popup is closed",
+      justification:
+        "Keep ElizaOS runtime running for streaming while popup is closed",
     });
     return true;
   } catch (e) {
@@ -68,33 +77,57 @@ async function ensureOffscreenDocument(): Promise<boolean> {
 
 async function getChatHistory(url: string): Promise<StoredMessage[]> {
   const result = await chrome.storage.local.get(CHAT_HISTORY_KEY);
-  const all = (result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]>) || {};
+  const all =
+    (result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]>) || {};
   return all[url] || [];
 }
 
-async function setChatHistory(url: string, messages: StoredMessage[]): Promise<void> {
+async function setChatHistory(
+  url: string,
+  messages: StoredMessage[],
+): Promise<void> {
   const result = await chrome.storage.local.get(CHAT_HISTORY_KEY);
-  const all = (result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]>) || {};
+  const all =
+    (result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]>) || {};
   all[url] = messages;
   await chrome.storage.local.set({ [CHAT_HISTORY_KEY]: all });
 }
 
 async function clearChatHistoryForUrl(url: string): Promise<void> {
   const result = await chrome.storage.local.get(CHAT_HISTORY_KEY);
-  const all = (result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]>) || {};
+  const all =
+    (result[CHAT_HISTORY_KEY] as Record<string, StoredMessage[]>) || {};
   delete all[url];
   await chrome.storage.local.set({ [CHAT_HISTORY_KEY]: all });
 }
 
-async function appendChatStart(url: string, messageId: string, userText: string): Promise<void> {
+async function appendChatStart(
+  url: string,
+  messageId: string,
+  userText: string,
+): Promise<void> {
   const now = Date.now();
   const history = await getChatHistory(url);
-  history.push({ id: `${messageId}:user`, role: "user", text: userText, timestamp: now });
-  history.push({ id: `${messageId}:assistant`, role: "assistant", text: "", timestamp: now });
+  history.push({
+    id: `${messageId}:user`,
+    role: "user",
+    text: userText,
+    timestamp: now,
+  });
+  history.push({
+    id: `${messageId}:assistant`,
+    role: "assistant",
+    text: "",
+    timestamp: now,
+  });
   await setChatHistory(url, history);
 }
 
-async function updateAssistantText(url: string, messageId: string, text: string): Promise<void> {
+async function updateAssistantText(
+  url: string,
+  messageId: string,
+  text: string,
+): Promise<void> {
   const history = await getChatHistory(url);
   const target = `${messageId}:assistant`;
   const idx = history.findIndex((m) => m.id === target);
@@ -122,7 +155,10 @@ async function getConfig(): Promise<ExtensionConfig> {
   try {
     const result = await chrome.storage.local.get(CONFIG_STORAGE_KEY);
     if (result[CONFIG_STORAGE_KEY]) {
-      return deepMergeConfig(DEFAULT_CONFIG, result[CONFIG_STORAGE_KEY] as Partial<ExtensionConfig>);
+      return deepMergeConfig(
+        DEFAULT_CONFIG,
+        result[CONFIG_STORAGE_KEY] as Partial<ExtensionConfig>,
+      );
     }
   } catch (error) {
     console.error("[ElizaOS Background] Error getting config:", error);
@@ -144,7 +180,10 @@ async function setConfig(config: ExtensionConfig): Promise<void> {
 
 async function getPageContentFromActiveTab(): Promise<PageContent | null> {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
 
     if (!tab?.id) {
       console.warn("[ElizaOS Background] No active tab found");
@@ -152,14 +191,23 @@ async function getPageContentFromActiveTab(): Promise<PageContent | null> {
     }
 
     // Check if we can inject into this tab
-    if (!tab.url || tab.url.startsWith("chrome://") || tab.url.startsWith("chrome-extension://")) {
-      console.warn("[ElizaOS Background] Cannot extract content from:", tab.url);
+    if (
+      !tab.url ||
+      tab.url.startsWith("chrome://") ||
+      tab.url.startsWith("chrome-extension://")
+    ) {
+      console.warn(
+        "[ElizaOS Background] Cannot extract content from:",
+        tab.url,
+      );
       return null;
     }
 
     // Try to send message to content script
     try {
-      const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_CONTENT" });
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: "GET_PAGE_CONTENT",
+      });
       if (response?.content) {
         return response.content as PageContent;
       }
@@ -172,10 +220,12 @@ async function getPageContentFromActiveTab(): Promise<PageContent | null> {
       });
 
       // Wait a moment for script to initialize
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Try again
-      const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_CONTENT" });
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: "GET_PAGE_CONTENT",
+      });
       if (response?.content) {
         return response.content as PageContent;
       }
@@ -242,7 +292,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   let contextText = "";
   let contextType = "page";
 
-  if (info.menuItemId === "elizaos-chat-about-selection" && info.selectionText) {
+  if (
+    info.menuItemId === "elizaos-chat-about-selection" &&
+    info.selectionText
+  ) {
     contextText = info.selectionText;
     contextType = "selection";
   } else if (info.menuItemId === "elizaos-chat-about-link" && info.linkUrl) {
@@ -284,7 +337,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   (async () => {
     try {
       // Stream events coming from offscreen -> persist + forward
-      if (request?.type === "CHAT_STREAM_CHUNK" || request?.type === "CHAT_MESSAGE_DONE" || request?.type === "CHAT_MESSAGE_ERROR") {
+      if (
+        request?.type === "CHAT_STREAM_CHUNK" ||
+        request?.type === "CHAT_MESSAGE_DONE" ||
+        request?.type === "CHAT_MESSAGE_ERROR"
+      ) {
         const evt = request as ChatEvent;
         if (evt.type === "CHAT_STREAM_CHUNK") {
           await updateAssistantText(evt.url, evt.messageId, evt.text);
@@ -308,7 +365,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       switch (request.type) {
         case "GET_PAGE_CONTENT": {
           const content = await getPageContentFromActiveTab();
-          sendResponse({ type: "PAGE_CONTENT_RESPONSE", content, success: !!content });
+          sendResponse({
+            type: "PAGE_CONTENT_RESPONSE",
+            content,
+            success: !!content,
+          });
           break;
         }
 
@@ -326,7 +387,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         case "CAPTURE_SCREENSHOT": {
           const dataUrl = await captureScreenshot();
-          sendResponse({ type: "SCREENSHOT_RESPONSE", dataUrl, success: !!dataUrl });
+          sendResponse({
+            type: "SCREENSHOT_RESPONSE",
+            dataUrl,
+            success: !!dataUrl,
+          });
           break;
         }
 
@@ -341,8 +406,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
         case "SEND_CHAT_MESSAGE": {
           const url = typeof request.url === "string" ? request.url : "";
-          const userText = typeof request.userText === "string" ? request.userText : "";
-          const pageContent = (request.pageContent as PageContent | null) || null;
+          const userText =
+            typeof request.userText === "string" ? request.userText : "";
+          const pageContent =
+            (request.pageContent as PageContent | null) || null;
 
           if (!url || !userText) {
             sendResponse({ ok: false, error: "Missing url or userText" });
@@ -398,7 +465,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
 
         case "CONTENT_SCRIPT_READY": {
-          console.log("[ElizaOS Background] Content script ready on:", request.url);
+          console.log(
+            "[ElizaOS Background] Content script ready on:",
+            request.url,
+          );
           sendResponse({ type: "ACK" });
           break;
         }
@@ -408,7 +478,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     } catch (error) {
       console.error("[ElizaOS Background] Error handling message:", error);
-      sendResponse({ error: error instanceof Error ? error.message : "Unknown error" });
+      sendResponse({
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   })();
 
@@ -451,9 +523,12 @@ chrome.runtime.onInstalled.addListener((details) => {
     console.log("[ElizaOS Background] Extension installed");
     setConfig(DEFAULT_CONFIG);
   } else if (details.reason === "update") {
-    console.log("[ElizaOS Background] Extension updated from", details.previousVersion);
+    console.log(
+      "[ElizaOS Background] Extension updated from",
+      details.previousVersion,
+    );
   }
-  
+
   // Setup context menu
   setupContextMenu();
 });

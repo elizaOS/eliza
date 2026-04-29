@@ -5,9 +5,7 @@
   "source": "https://superuser.com/questions/1417973/how-to-disable-google-chrome-dark-mode",
   "config": [],
   "trajectory": "trajectories/",
-  "related_apps": [
-    "chrome"
-  ],
+  "related_apps": ["chrome"],
   "evaluator": {
     "func": "infeasible"
   },

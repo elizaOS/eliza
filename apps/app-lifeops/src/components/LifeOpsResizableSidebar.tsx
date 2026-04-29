@@ -7,8 +7,8 @@
  */
 import {
   type KeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useRef,
@@ -77,9 +77,7 @@ export function LifeOpsResizableSidebar({
       if (!state) return;
       const delta = event.clientX - state.startX;
       const next =
-        side === "right"
-          ? state.startWidth + delta
-          : state.startWidth - delta;
+        side === "right" ? state.startWidth + delta : state.startWidth - delta;
       const clamped = Math.min(Math.max(next, minWidth), maxWidth);
       setWidth(clamped);
     },
@@ -170,9 +168,12 @@ export function LifeOpsResizableSidebar({
         {children}
       </div>
       <div
-        role="separator"
+        role="slider"
         aria-orientation="vertical"
         aria-label="Resize sidebar"
+        aria-valuemin={minWidth}
+        aria-valuemax={maxWidth}
+        aria-valuenow={width}
         tabIndex={0}
         onPointerDown={handleDown}
         onKeyDown={handleKey}

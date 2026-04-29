@@ -281,7 +281,17 @@
           "position": {
             "type": "string",
             "description": "Position on slide",
-            "enum": ["left", "right", "center", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"]
+            "enum": [
+              "left",
+              "right",
+              "center",
+              "top",
+              "bottom",
+              "top-left",
+              "top-right",
+              "bottom-left",
+              "bottom-right"
+            ]
           }
         },
         "required": ["slide_index", "box_index", "position"]

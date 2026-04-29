@@ -41,18 +41,17 @@ function Button({
   size,
   asChild = false,
   ...props
-}: React.ComponentProps<"button"> &
+}: React.ButtonHTMLAttributes<HTMLButtonElement> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean;
   }) {
-  const Comp = asChild ? Slot : "button";
-  return (
-    <Comp
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
-  );
+  const classNames = cn(buttonVariants({ variant, size, className }));
+
+  if (asChild) {
+    return <Slot data-slot="button" className={classNames} {...props} />;
+  }
+
+  return <button data-slot="button" className={classNames} {...props} />;
 }
 
 export { Button, buttonVariants };
