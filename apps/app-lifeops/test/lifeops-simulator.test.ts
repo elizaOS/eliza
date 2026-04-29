@@ -27,6 +27,11 @@ describe("LifeOps simulator runtime", () => {
     expect(mocked.simulator?.passiveChatMemoryIds).toHaveLength(
       LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.length,
     );
+    expect(mocked.simulator?.whatsappBuffered).toBe(
+      LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+        (message) => message.channel === "whatsapp",
+      ).length,
+    );
     for (const channel of [
       "telegram",
       "discord",
@@ -48,6 +53,14 @@ describe("LifeOps simulator runtime", () => {
       sources: ["telegram", "discord", "signal", "whatsapp", "imessage"],
       limit: 50,
     });
+    expect(passiveMessages).toHaveLength(
+      LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.length,
+    );
+    expect(new Set(passiveMessages.map((message) => message.text))).toEqual(
+      new Set(
+        LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.map((message) => message.text),
+      ),
+    );
     for (const channel of [
       "telegram",
       "discord",
@@ -57,6 +70,13 @@ describe("LifeOps simulator runtime", () => {
     ] as const) {
       const messages = passiveMessages.filter(
         (message) => message.source === channel,
+      );
+      const channelFixtures = LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
+        (message) => message.channel === channel,
+      );
+      expect(messages).toHaveLength(channelFixtures.length);
+      expect(new Set(messages.map((message) => message.text))).toEqual(
+        new Set(channelFixtures.map((message) => message.text)),
       );
       expect(messages.some((message) => message.chatType === "dm")).toBe(true);
       expect(messages.some((message) => message.chatType === "group")).toBe(
@@ -117,6 +137,17 @@ describe("LifeOps simulator runtime", () => {
       message: "Mock Telegram reply from the simulator.",
     });
     expect(telegramSend.messageId).toBeTruthy();
+    const telegramOutboundHits = await service.searchTelegramMessages({
+      query: "Mock Telegram reply from the simulator.",
+      limit: 5,
+    });
+    expect(
+      telegramOutboundHits.some(
+        (hit) =>
+          hit.outgoing === true &&
+          hit.content === "Mock Telegram reply from the simulator.",
+      ),
+    ).toBe(true);
 
     const signalMessages = await service.readSignalInbound(10);
     expect(signalMessages.map((message) => message.text).join("\n")).toContain(
@@ -137,6 +168,14 @@ describe("LifeOps simulator runtime", () => {
       text: "Mock iMessage reply from the simulator.",
     });
     expect(imessageSend.ok).toBe(true);
+    const imessagesAfterSend = await service.readIMessages({ limit: 25 });
+    expect(
+      imessagesAfterSend.some(
+        (message) =>
+          message.isFromMe === true &&
+          message.text === "Mock iMessage reply from the simulator.",
+      ),
+    ).toBe(true);
 
     const whatsapp = service.pullWhatsAppRecent(10);
     const whatsappText = whatsapp.messages
@@ -163,6 +202,7 @@ describe("LifeOps simulator runtime", () => {
       text: "Mock Discord reply from the simulator.",
     });
     expect(discordSend.ok).toBe(true);
+    expect(discordSend.channelId).toBe(discordStatus.dmInbox.selectedChannelId);
 
     const definitions = await service.listDefinitions();
     expect(definitions.map((entry) => entry.definition.title)).toEqual(
@@ -180,11 +220,29 @@ describe("LifeOps simulator runtime", () => {
       ledger.some((entry) => entry.calendar?.action === "events.create"),
     ).toBe(true);
     expect(ledger.some((entry) => entry.signal?.action === "send")).toBe(true);
+    expect(ledger.some((entry) => entry.signal?.action === "receive")).toBe(
+      true,
+    );
+    expect(
+      ledger.find((entry) => entry.signal?.action === "send")?.signal
+        ?.recipients,
+    ).toEqual(["+15551110001"]);
     expect(
       ledger.some((entry) => entry.whatsapp?.action === "messages.send"),
     ).toBe(true);
     expect(
+      ledger.find((entry) => entry.whatsapp?.action === "messages.send")
+        ?.whatsapp?.recipient,
+    ).toBe("+15553338888");
+    expect(
       ledger.some((entry) => entry.bluebubbles?.action === "message.text"),
+    ).toBe(true);
+    expect(
+      ledger.some(
+        (entry) =>
+          entry.bluebubbles?.action === "message.query" ||
+          entry.bluebubbles?.action === "chat.messages",
+      ),
     ).toBe(true);
     expect(
       ledger.some((entry) => entry.browserWorkspace?.action === "tabs.eval"),

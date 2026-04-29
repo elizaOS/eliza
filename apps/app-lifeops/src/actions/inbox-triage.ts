@@ -23,6 +23,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { triageMessagesAction } from "@elizaos/core";
+import { hasLifeOpsAccess } from "./lifeops-google-helpers.js";
 
 export { inboxAction } from "./inbox.js";
 
@@ -33,7 +34,8 @@ export const inboxTriageAction: Action = {
   similes: ["TRIAGE_GMAIL", "GMAIL_TRIAGE", "CHECK_GMAIL"],
   examples: [],
 
-  validate: async (): Promise<boolean> => true,
+  validate: async (runtime, message): Promise<boolean> =>
+    hasLifeOpsAccess(runtime, message),
 
   handler: async (
     runtime: IAgentRuntime,
@@ -42,6 +44,15 @@ export const inboxTriageAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
+    if (!(await hasLifeOpsAccess(runtime, message))) {
+      return {
+        text: "Permission denied: only the owner may triage Gmail.",
+        success: false,
+        values: { success: false, error: "PERMISSION_DENIED" },
+        data: { actionName: "INBOX_TRIAGE_GMAIL" },
+      };
+    }
+
     const delegated: HandlerOptions = {
       ...options,
       parameters: {

@@ -24,15 +24,38 @@ vi.mock("../lifeops/service.js", () => {
   class FakeLifeOpsService {
     getGoogleConnectorStatus = vi.fn(async () => ({
       provider: "google",
-      connected: false,
+      connected: true,
+      reason: "connected",
+      grantedCapabilities: ["google.gmail.triage", "google.calendar.read"],
     }));
     getXConnectorStatus = vi.fn(async () => ({
       provider: "x",
-      connected: false,
+      connected: true,
+      grantedCapabilities: ["x.read", "x.dm.read"],
+      feedRead: true,
+      dmInbound: true,
     }));
     getTelegramConnectorStatus = vi.fn(async () => ({
       provider: "telegram",
       connected: false,
+    }));
+    verifyTelegramConnector = vi.fn(async () => ({
+      provider: "telegram",
+      side: "owner",
+      verifiedAt: "2026-04-29T00:00:00.000Z",
+      read: {
+        ok: true,
+        error: null,
+        dialogCount: 1,
+        dialogs: [],
+      },
+      send: {
+        ok: false,
+        error: "Telegram send did not return a message id.",
+        target: "me",
+        message: "self-test",
+        messageId: null,
+      },
     }));
     getSignalConnectorStatus = vi.fn(async () => ({
       provider: "signal",
@@ -49,6 +72,20 @@ vi.mock("../lifeops/service.js", () => {
     getWhatsAppConnectorStatus = vi.fn(async () => ({
       provider: "whatsapp",
       connected: true,
+    }));
+    getGmailTriage = vi.fn(async () => ({
+      summary: { unreadCount: 1 },
+      messages: [{ subject: "Google check" }],
+    }));
+    getCalendarFeed = vi.fn(async () => ({
+      events: [{ title: "Calendar check" }],
+    }));
+    sendGmailMessage = vi.fn(async () => ({ ok: true }));
+    searchXPosts = vi.fn(async () => [{ text: "X check" }]);
+    readXInboundDms = vi.fn(async () => [{ text: "X DM check" }]);
+    sendXDirectMessage = vi.fn(async () => ({
+      ok: true,
+      status: 201,
     }));
     readSignalInbound = vi.fn(async () => [{ text: "Signal check" }]);
     sendSignalMessage = vi.fn(async () => ({
@@ -78,6 +115,11 @@ vi.mock("../lifeops/service.js", () => {
     ]);
     getBrowserSettings = vi.fn(async () => ({}));
     listBrowserCompanions = vi.fn(async () => []);
+    getHealthConnectorStatus = vi.fn(async () => ({
+      available: true,
+      backend: "healthkit",
+      lastCheckedAt: "2026-04-21T12:00:00.000Z",
+    }));
   }
   return {
     LifeOpsServiceError: FakeError,
@@ -143,6 +185,142 @@ describe("lifeOpsConnectorAction", () => {
     });
     const data = (result as { data: Record<string, unknown> }).data;
     expect(data.connectors).toBeDefined();
+  });
+
+  it("keeps per-connector list as a list result instead of rewriting it to status", async () => {
+    const handler = await loadHandler();
+    const result = await handler(
+      {} as never,
+      { content: { text: "list telegram connector" } } as Memory,
+      undefined,
+      {
+        parameters: {
+          connector: "telegram",
+          subaction: "list",
+        },
+      },
+      undefined,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        actionName: "LIFEOPS_CONNECTOR",
+        connector: "telegram",
+        subaction: "list",
+      },
+    });
+  });
+
+  it("does not hide a failed Telegram verification send leg", async () => {
+    const handler = await loadHandler();
+    const result = await handler(
+      {} as never,
+      { content: { text: "verify telegram" } } as Memory,
+      undefined,
+      {
+        parameters: {
+          connector: "telegram",
+          subaction: "verify",
+        },
+      },
+      undefined,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        actionName: "LIFEOPS_CONNECTOR",
+        connector: "telegram",
+        subaction: "verify",
+        response: {
+          read: { ok: true },
+          send: { ok: false },
+        },
+      },
+    });
+  });
+
+  it("treats per-connector list as a status-producing list branch", async () => {
+    const handler = await loadHandler();
+    const result = await handler(
+      {} as never,
+      { content: { text: "list signal connector" } } as Memory,
+      undefined,
+      { parameters: { connector: "signal", subaction: "list" } },
+      undefined,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        actionName: "LIFEOPS_CONNECTOR",
+        connector: "signal",
+        subaction: "list",
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("NOT_IMPLEMENTED");
+    expect(JSON.stringify(result)).not.toContain("UNSUPPORTED_OPERATION");
+  });
+
+  it("verifies Google with real status plus Gmail and Calendar reads", async () => {
+    const handler = await loadHandler();
+    const result = await handler(
+      {} as never,
+      { content: { text: "verify google" } } as Memory,
+      undefined,
+      {
+        parameters: {
+          connector: "google",
+          subaction: "verify",
+        },
+      },
+      undefined,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        actionName: "LIFEOPS_CONNECTOR",
+        connector: "google",
+        subaction: "verify",
+        read: {
+          gmail: { ok: true, count: 1 },
+          calendar: { ok: true, count: 1 },
+        },
+      },
+    });
+  });
+
+  it("verifies X with passive DM read and optional search/send probes", async () => {
+    const handler = await loadHandler();
+    const result = await handler(
+      {} as never,
+      { content: { text: "verify x" } } as Memory,
+      undefined,
+      {
+        parameters: {
+          connector: "x",
+          subaction: "verify",
+          query: "LifeOps",
+          sendTarget: "x-user-1",
+          sendMessage: "X self-test",
+        },
+      },
+      undefined,
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        actionName: "LIFEOPS_CONNECTOR",
+        connector: "x",
+        subaction: "verify",
+        read: { ok: true, count: 1 },
+        search: { ok: true, query: "LifeOps" },
+        send: { ok: true },
+      },
+    });
   });
 
   it("verifies Signal with passive read and optional self-test send", async () => {
@@ -258,6 +436,35 @@ describe("lifeOpsConnectorAction", () => {
         subaction: "verify",
         read: { ok: true, count: 1 },
         send: { ok: true },
+      },
+    });
+  });
+
+  it("verifies Browser Bridge readiness from connected companions", async () => {
+    const handler = await loadHandler();
+    const result = await handler(
+      {} as never,
+      { content: { text: "verify browser bridge" } } as Memory,
+      undefined,
+      {
+        parameters: {
+          connector: "browser_bridge",
+          subaction: "verify",
+        },
+      },
+      undefined,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        actionName: "LIFEOPS_CONNECTOR",
+        connector: "browser_bridge",
+        subaction: "verify",
+        verification: {
+          activeProbe: false,
+          connected: false,
+        },
       },
     });
   });

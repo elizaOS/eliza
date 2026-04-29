@@ -35,8 +35,8 @@ import type {
   LifeOpsGmailSpamReviewStatus,
   LifeOpsGoalDefinition,
   LifeOpsGoalLink,
-  LifeOpsHealthSignal,
   LifeOpsHealthMetricSample,
+  LifeOpsHealthSignal,
   LifeOpsHealthSleepEpisode,
   LifeOpsHealthSleepStageSample,
   LifeOpsHealthSyncState,
@@ -194,6 +194,18 @@ export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
   updatedAt: string;
   priorityFlags: string[];
 }
+
+type LifeOpsInboxCacheWriteMessage = LifeOpsInboxMessage & {
+  priorityFlags?: readonly string[];
+};
+
+const LIFEOPS_INBOX_CHAT_TYPES = new Set<
+  NonNullable<LifeOpsInboxMessage["chatType"]>
+>(["dm", "group", "channel"]);
+
+const LIFEOPS_INBOX_PRIORITY_CATEGORIES = new Set<
+  NonNullable<LifeOpsInboxMessage["priorityCategory"]>
+>(["important", "planning", "casual"]);
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -821,7 +833,9 @@ function parseHealthMetricSample(
   };
 }
 
-function parseHealthWorkout(row: Record<string, unknown>): LifeOpsHealthWorkout {
+function parseHealthWorkout(
+  row: Record<string, unknown>,
+): LifeOpsHealthWorkout {
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
@@ -996,6 +1010,70 @@ function parseGmailMessageSummary(
   };
 }
 
+function normalizeInboxChatType(
+  channel: LifeOpsInboxChannel,
+  value: unknown,
+  participantCount: number | undefined,
+): NonNullable<LifeOpsInboxMessage["chatType"]> {
+  if (typeof value === "string" && value.trim().length > 0) {
+    const normalized = value.trim().toLowerCase();
+    if (
+      LIFEOPS_INBOX_CHAT_TYPES.has(
+        normalized as NonNullable<LifeOpsInboxMessage["chatType"]>,
+      )
+    ) {
+      return normalized as NonNullable<LifeOpsInboxMessage["chatType"]>;
+    }
+    throw new Error(`[LifeOpsRepository] invalid inbox chat type: ${value}`);
+  }
+  if (channel === "gmail") return "dm";
+  if (typeof participantCount === "number") {
+    return participantCount > 2 ? "group" : "dm";
+  }
+  return "channel";
+}
+
+function normalizeInboxPriorityCategory(
+  value: unknown,
+): LifeOpsInboxMessage["priorityCategory"] {
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    throw new Error("[LifeOpsRepository] invalid inbox priority category");
+  }
+  const normalized = value.trim().toLowerCase();
+  if (
+    LIFEOPS_INBOX_PRIORITY_CATEGORIES.has(
+      normalized as NonNullable<LifeOpsInboxMessage["priorityCategory"]>,
+    )
+  ) {
+    return normalized as NonNullable<LifeOpsInboxMessage["priorityCategory"]>;
+  }
+  throw new Error(
+    `[LifeOpsRepository] invalid inbox priority category: ${value}`,
+  );
+}
+
+function normalizeInboxPriorityFlags(
+  flags: readonly string[] | undefined,
+): string[] {
+  if (!flags) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const flag of flags) {
+    const normalized = flag.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+function hasOwnPriorityFlags(message: LifeOpsInboxCacheWriteMessage): boolean {
+  return Object.hasOwn(message, "priorityFlags");
+}
+
 function parseCachedInboxMessage(
   row: Record<string, unknown>,
 ): LifeOpsCachedInboxMessage {
@@ -1013,6 +1091,11 @@ function parseCachedInboxMessage(
     row.participant_count === null || row.participant_count === undefined
       ? undefined
       : toNumber(row.participant_count);
+  const chatType = normalizeInboxChatType(
+    channel,
+    row.chat_type,
+    participantCount,
+  );
   const sourceRef = parseJsonRecord(row.source_ref_json);
   const flags = parseJsonArray<string>(row.priority_flags_json).filter(
     (flag): flag is string => typeof flag === "string",
@@ -1042,7 +1125,7 @@ function parseCachedInboxMessage(
           : externalId,
     },
     threadId: row.thread_id ? toText(row.thread_id) : undefined,
-    chatType: toText(row.chat_type, "dm") as LifeOpsInboxMessage["chatType"],
+    chatType,
     participantCount,
     gmailAccountId: row.gmail_account_id
       ? toText(row.gmail_account_id)
@@ -1053,8 +1136,7 @@ function parseCachedInboxMessage(
     lastSeenAt: row.last_seen_at ? toText(row.last_seen_at) : undefined,
     repliedAt: row.replied_at ? toText(row.replied_at) : undefined,
     priorityScore,
-    priorityCategory:
-      priorityCategory as LifeOpsInboxMessage["priorityCategory"],
+    priorityCategory: normalizeInboxPriorityCategory(priorityCategory),
     cachedAt: toText(row.cached_at),
     updatedAt: toText(row.updated_at),
     priorityFlags: flags,
@@ -2058,14 +2140,25 @@ export class LifeOpsRepository {
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_life_inbox_messages_agent_channel_external
          ON life_inbox_messages (agent_id, channel, external_id)`,
     );
-    await executeRawSql(
-      runtime,
+    const inboxCacheColumnRepairs = [
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS thread_id TEXT",
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS sender_email TEXT",
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS subject TEXT",
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS deep_link TEXT",
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS source_ref_json TEXT NOT NULL DEFAULT '{}'",
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS chat_type TEXT NOT NULL DEFAULT 'channel'",
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS participant_count INTEGER",
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS gmail_account_id TEXT",
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS gmail_account_email TEXT",
       "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS last_seen_at TEXT",
-    );
-    await executeRawSql(
-      runtime,
       "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS replied_at TEXT",
-    );
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS priority_score INTEGER",
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS priority_category TEXT",
+      "ALTER TABLE life_inbox_messages ADD COLUMN IF NOT EXISTS priority_flags_json TEXT NOT NULL DEFAULT '[]'",
+    ];
+    for (const statement of inboxCacheColumnRepairs) {
+      await executeRawSql(runtime, statement);
+    }
   }
 
   async createDefinition(definition: LifeOpsTaskDefinition): Promise<void> {
@@ -3443,7 +3536,9 @@ export class LifeOpsRepository {
       clauses.push(`provider = ${sqlQuote(args.provider)}`);
     }
     if (args.startDate) {
-      clauses.push(`start_at >= ${sqlQuote(`${args.startDate}T00:00:00.000Z`)}`);
+      clauses.push(
+        `start_at >= ${sqlQuote(`${args.startDate}T00:00:00.000Z`)}`,
+      );
     }
     if (args.endDate) {
       clauses.push(`start_at <= ${sqlQuote(`${args.endDate}T23:59:59.999Z`)}`);
@@ -4299,11 +4394,21 @@ export class LifeOpsRepository {
 
   async upsertCachedInboxMessages(
     agentId: string,
-    messages: readonly LifeOpsInboxMessage[],
+    messages: readonly LifeOpsInboxCacheWriteMessage[],
   ): Promise<void> {
     if (messages.length === 0) return;
     const now = isoNow();
     for (const message of messages) {
+      const chatType = normalizeInboxChatType(
+        message.channel,
+        message.chatType,
+        message.participantCount,
+      );
+      const hasPriorityFlags = hasOwnPriorityFlags(message);
+      const priorityFlags = normalizeInboxPriorityFlags(message.priorityFlags);
+      const priorityFlagsUpdate = hasPriorityFlags
+        ? "excluded.priority_flags_json"
+        : "life_inbox_messages.priority_flags_json";
       await executeRawSql(
         this.runtime,
         `INSERT INTO life_inbox_messages (
@@ -4327,7 +4432,7 @@ export class LifeOpsRepository {
           ${sqlBoolean(message.unread)},
           ${sqlText(message.deepLink)},
           ${sqlJson(message.sourceRef)},
-          ${sqlQuote(message.chatType ?? "dm")},
+          ${sqlQuote(chatType)},
           ${sqlInteger(message.participantCount)},
           ${sqlText(message.gmailAccountId)},
           ${sqlText(message.gmailAccountEmail)},
@@ -4335,7 +4440,7 @@ export class LifeOpsRepository {
           ${sqlText(message.repliedAt)},
           ${sqlInteger(message.priorityScore)},
           ${sqlText(message.priorityCategory)},
-          ${sqlJson([])},
+          ${sqlJson(priorityFlags)},
           ${sqlQuote(now)},
           ${sqlQuote(now)}
         )
@@ -4359,10 +4464,7 @@ export class LifeOpsRepository {
           replied_at = COALESCE(excluded.replied_at, life_inbox_messages.replied_at),
           priority_score = COALESCE(excluded.priority_score, life_inbox_messages.priority_score),
           priority_category = COALESCE(excluded.priority_category, life_inbox_messages.priority_category),
-          priority_flags_json = CASE
-            WHEN excluded.priority_score IS NULL THEN life_inbox_messages.priority_flags_json
-            ELSE excluded.priority_flags_json
-          END,
+          priority_flags_json = ${priorityFlagsUpdate},
           cached_at = excluded.cached_at,
           updated_at = excluded.updated_at`,
       );

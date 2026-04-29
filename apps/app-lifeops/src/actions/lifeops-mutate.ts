@@ -8,7 +8,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { CreateLifeOpsCalendarEventRequest } from "../contracts/index.js";
+import type {
+  CreateLifeOpsCalendarEventRequest,
+  CreateLifeOpsDefinitionRequest,
+} from "../contracts/index.js";
 import type {
   AddPaymentSourceRequest,
   LifeOpsPaymentSourceKind,
@@ -84,6 +87,21 @@ type MutateActionParams = {
   // reminder_complete
   note?: string;
 
+  // reminder_create
+  definitionKind?: CreateLifeOpsDefinitionRequest["kind"];
+  originalIntent?: string;
+  timezone?: string;
+  priority?: number;
+  cadence?: CreateLifeOpsDefinitionRequest["cadence"];
+  ownership?: CreateLifeOpsDefinitionRequest["ownership"];
+  windowPolicy?: CreateLifeOpsDefinitionRequest["windowPolicy"];
+  progressionRule?: CreateLifeOpsDefinitionRequest["progressionRule"];
+  websiteAccess?: CreateLifeOpsDefinitionRequest["websiteAccess"];
+  reminderPlan?: CreateLifeOpsDefinitionRequest["reminderPlan"];
+  goalId?: string | null;
+  source?: string;
+  metadata?: Record<string, unknown>;
+
   // payment_source_add
   kind?: LifeOpsPaymentSourceKind;
   label?: string;
@@ -158,24 +176,6 @@ function mergeParams(
     }
   }
   return params as MutateActionParams;
-}
-
-function notImplemented(
-  subaction: MutateSubaction,
-  detail?: string,
-): ActionResult {
-  const text =
-    `[${ACTION_NAME}] ${subaction} is not yet implemented in the agent action layer.` +
-    (detail ? ` ${detail}` : "");
-  return {
-    success: false,
-    text,
-    data: {
-      actionName: ACTION_NAME,
-      subaction,
-      error: "NOT_IMPLEMENTED",
-    },
-  };
 }
 
 function missingParamResult(
@@ -404,11 +404,43 @@ async function dispatchReminderComplete(
   };
 }
 
-function dispatchReminderCreate(): ActionResult {
-  return notImplemented(
-    "reminder_create",
-    "Reminder creation today goes through the LIFE action's intent extraction pipeline. A direct service-level createReminder is not exposed yet — wire LIFE delegate or add a service method in a follow-up wave.",
-  );
+async function dispatchReminderCreate(
+  service: LifeOpsService,
+  params: MutateActionParams,
+): Promise<ActionResult> {
+  if (!params.title || !params.definitionKind || !params.cadence) {
+    return missingParamResult("reminder_create", [
+      ...(!params.title ? ["title"] : []),
+      ...(!params.definitionKind ? ["definitionKind"] : []),
+      ...(!params.cadence ? ["cadence"] : []),
+    ]);
+  }
+  const record = await service.createDefinition({
+    ownership: params.ownership,
+    kind: params.definitionKind,
+    title: params.title,
+    description: params.description,
+    originalIntent: params.originalIntent,
+    timezone: params.timezone ?? params.timeZone,
+    priority: params.priority,
+    cadence: params.cadence,
+    windowPolicy: params.windowPolicy,
+    progressionRule: params.progressionRule,
+    websiteAccess: params.websiteAccess,
+    reminderPlan: params.reminderPlan,
+    goalId: params.goalId,
+    source: params.source,
+    metadata: params.metadata,
+  });
+  return {
+    success: true,
+    text: `Created ${record.definition.kind} "${record.definition.title}".`,
+    data: {
+      actionName: ACTION_NAME,
+      subaction: "reminder_create",
+      record,
+    },
+  };
 }
 
 async function dispatchPaymentSourceAdd(
@@ -542,7 +574,7 @@ export const lifeOpsMutateAction: Action & {
     "calendar_update (update a Google Calendar event), " +
     "calendar_delete (delete a Google Calendar event), " +
     "reminder_snooze (snooze a LifeOps occurrence), " +
-    "reminder_complete (complete a LifeOpsoccurrence), " +
+    "reminder_complete (complete a LifeOps occurrence), " +
     "reminder_create (create a LifeOps reminder), " +
     "payment_source_add (add a payment source), " +
     "payment_source_delete (delete a payment source), " +
@@ -606,7 +638,7 @@ export const lifeOpsMutateAction: Action & {
         case "reminder_complete":
           return await dispatchReminderComplete(service, params);
         case "reminder_create":
-          return dispatchReminderCreate();
+          return await dispatchReminderCreate(service, params);
         case "payment_source_add":
           return await dispatchPaymentSourceAdd(service, params);
         case "payment_source_delete":
@@ -740,7 +772,8 @@ export const lifeOpsMutateAction: Action & {
     },
     {
       name: "title",
-      description: "calendar_create / calendar_update — event title.",
+      description:
+        "calendar_create / calendar_update event title, or reminder_create definition title.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -809,6 +842,49 @@ export const lifeOpsMutateAction: Action & {
       description: "reminder_complete — optional completion note.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "definitionKind",
+      description:
+        "reminder_create — LifeOps definition kind: task | habit | routine.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: ["task", "habit", "routine"],
+      },
+    },
+    {
+      name: "cadence",
+      description:
+        "reminder_create — structured LifeOps cadence object, e.g. {kind:'once', dueAt:'...'} or {kind:'daily', windows:['morning']}.",
+      required: false,
+      schema: { type: "object" as const },
+    },
+    {
+      name: "priority",
+      description: "reminder_create — optional priority number.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "ownership",
+      description:
+        "reminder_create — optional ownership/context object for owner vs agent scoped definitions.",
+      required: false,
+      schema: { type: "object" as const },
+    },
+    {
+      name: "reminderPlan",
+      description:
+        "reminder_create — optional reminder plan with steps, mutePolicy, and quietHours.",
+      required: false,
+      schema: { type: "object" as const },
+    },
+    {
+      name: "metadata",
+      description: "reminder_create — optional metadata object.",
+      required: false,
+      schema: { type: "object" as const },
     },
     {
       name: "kind",

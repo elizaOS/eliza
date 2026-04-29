@@ -54,9 +54,9 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/google-calendar-mock.test.ts",
-      "eliza/apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "eliza/apps/app-lifeops/test/helpers/lifeops-deterministic-llm.test.ts",
-      "eliza/apps/app-lifeops/test/scenarios/calendar-llm-eval-mutations.scenario.ts",
+      "apps/app-lifeops/test/lifeops-simulator.test.ts",
+      "apps/app-lifeops/test/helpers/lifeops-deterministic-llm.test.ts",
+      "apps/app-lifeops/test/scenarios/calendar-llm-eval-mutations.scenario.ts",
     ],
   },
   {
@@ -85,9 +85,9 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/google-mock-fidelity.test.ts",
-      "eliza/apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "eliza/apps/app-lifeops/test/helpers/lifeops-deterministic-llm.test.ts",
-      "eliza/apps/app-lifeops/test/scenarios/gmail-llm-eval-search-priority.scenario.ts",
+      "apps/app-lifeops/test/lifeops-simulator.test.ts",
+      "apps/app-lifeops/test/helpers/lifeops-deterministic-llm.test.ts",
+      "apps/app-lifeops/test/scenarios/gmail-llm-eval-search-priority.scenario.ts",
     ],
   },
   {
@@ -135,8 +135,8 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
-      "eliza/apps/app-lifeops/test/lifeops-x-dm-reader.integration.test.ts",
-      "eliza/apps/app-lifeops/src/actions/search-across-channels.test.ts",
+      "apps/app-lifeops/test/lifeops-x-dm-reader.integration.test.ts",
+      "apps/app-lifeops/src/actions/search-across-channels.test.ts",
     ],
   },
   {
@@ -148,6 +148,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     surfaces: [
       "text message send",
       "inbound webhook ingestion",
+      "Cloud API webhook metadata and contact mapping in simulator seed",
       "test-only inbound buffer route",
       "request ledger metadata",
     ],
@@ -157,8 +158,9 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
-      "eliza/apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "eliza/apps/app-lifeops/test/whatsapp.test.ts",
+      "test/mocks/__tests__/mock-runtime-seeding.test.ts",
+      "apps/app-lifeops/test/lifeops-simulator.test.ts",
+      "apps/app-lifeops/test/whatsapp.test.ts",
     ],
   },
   {
@@ -181,10 +183,10 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     rationale:
       "LifeOps uses telegram-local-client.ts and TelegramLocalClientDeps; an HTTP Mockoon facade would test a path the product does not call.",
     validation: [
-      "eliza/apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "eliza/apps/app-lifeops/src/lifeops/telegram-local-client.test.ts",
-      "eliza/apps/app-lifeops/src/lifeops/service-mixin-telegram.test.ts",
-      "eliza/apps/app-lifeops/test/cross-channel-send.test.ts",
+      "apps/app-lifeops/test/lifeops-simulator.test.ts",
+      "apps/app-lifeops/src/lifeops/telegram-local-client.test.ts",
+      "apps/app-lifeops/src/lifeops/service-mixin-telegram.test.ts",
+      "apps/app-lifeops/test/cross-channel-send.test.ts",
     ],
   },
   {
@@ -198,6 +200,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "REST receive",
       "REST send",
       "JSON-RPC send",
+      "connected service read path backed by signal-cli receive in simulator runs",
       "request ledger metadata",
     ],
     knownGaps: [
@@ -206,9 +209,10 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
-      "eliza/apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "eliza/apps/app-lifeops/test/lifeops-signal-local-client.integration.test.ts",
-      "eliza/apps/app-lifeops/src/lifeops/service-mixin-signal.test.ts",
+      "test/mocks/__tests__/mock-runtime-seeding.test.ts",
+      "apps/app-lifeops/test/lifeops-simulator.test.ts",
+      "apps/app-lifeops/test/lifeops-signal-local-client.integration.test.ts",
+      "apps/app-lifeops/src/lifeops/service-mixin-signal.test.ts",
     ],
   },
   {
@@ -221,6 +225,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
       "desktop browser workspace tab lifecycle",
       "navigation",
       "script evaluation",
+      "LifeOps outbound send handler through browser workspace eval",
       "snapshot",
       "request ledger metadata",
     ],
@@ -231,9 +236,10 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
-      "eliza/apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "eliza/apps/app-lifeops/test/discord-browser-scraper.test.ts",
-      "eliza/apps/app-lifeops/test/lifeops-discord-browser-companion.test.ts",
+      "test/mocks/__tests__/mock-runtime-seeding.test.ts",
+      "apps/app-lifeops/test/lifeops-simulator.test.ts",
+      "apps/app-lifeops/test/discord-browser-scraper.test.ts",
+      "apps/app-lifeops/test/lifeops-discord-browser-companion.test.ts",
     ],
   },
   {
@@ -262,9 +268,9 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/non-google-provider-mocks.test.ts",
-      "eliza/apps/app-lifeops/test/lifeops-simulator.test.ts",
-      "eliza/apps/app-lifeops/test/imessage.test.ts",
-      "eliza/apps/app-lifeops/src/lifeops/imessage-bridge.test.ts",
+      "apps/app-lifeops/test/lifeops-simulator.test.ts",
+      "apps/app-lifeops/test/imessage.test.ts",
+      "apps/app-lifeops/src/lifeops/imessage-bridge.test.ts",
     ],
   },
   {
@@ -283,8 +289,8 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/mock-runtime.smoke.test.ts",
-      "eliza/apps/app-lifeops/test/twilio-sms.test.ts",
-      "eliza/apps/app-lifeops/test/twilio-call.test.ts",
+      "apps/app-lifeops/test/twilio-sms.test.ts",
+      "apps/app-lifeops/test/twilio-call.test.ts",
     ],
   },
   {
@@ -305,7 +311,7 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     ],
     validation: [
       "test/mocks/__tests__/mock-runtime.smoke.test.ts",
-      "eliza/apps/app-lifeops/test/calendly.test.ts",
+      "apps/app-lifeops/test/calendly.test.ts",
     ],
   },
   {
