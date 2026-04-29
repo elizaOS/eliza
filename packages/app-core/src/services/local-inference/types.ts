@@ -19,6 +19,7 @@ export interface CatalogModel {
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
   params:
+    | "360M"
     | "1B"
     | "1.7B"
     | "3B"
