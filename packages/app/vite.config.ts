@@ -816,6 +816,7 @@ function nativeModuleStubPlugin(): Plugin {
     "@elizaos/plugin-sql",
     "@elizaos/plugin-agent-skills",
     "@elizaos/plugin-agent-orchestrator",
+    "@elizaos/plugin-signal",
     "@elizaos/plugin-whatsapp",
   ]);
   if (!IS_CAPACITOR_MOBILE_BUILD) {
