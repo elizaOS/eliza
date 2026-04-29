@@ -140,6 +140,31 @@ describe("LifeOps X DM state preservation", () => {
     });
     await LifeOpsRepository.bootstrapSchema(runtime);
     const repository = new LifeOpsRepository(runtime);
+    await runtime.adapter.db.execute({
+      queryChunks: [
+        {
+          value: `
+            CREATE TABLE life_x_dms (
+              id TEXT PRIMARY KEY,
+              agent_id TEXT NOT NULL,
+              external_dm_id TEXT NOT NULL,
+              conversation_id TEXT NOT NULL,
+              sender_handle TEXT NOT NULL,
+              sender_id TEXT NOT NULL,
+              is_inbound BOOLEAN NOT NULL,
+              text TEXT NOT NULL,
+              received_at TEXT NOT NULL,
+              read_at TEXT,
+              replied_at TEXT,
+              metadata_json TEXT NOT NULL DEFAULT '{}',
+              synced_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              UNIQUE(agent_id, external_dm_id)
+            );
+          `,
+        },
+      ],
+    });
     const baseDm: LifeOpsXDm = {
       id: "dm-1",
       agentId: String(runtime.agentId),
