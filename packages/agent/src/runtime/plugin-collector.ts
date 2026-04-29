@@ -14,6 +14,7 @@
  */
 import {
   hasExplicitCanonicalRuntimeConfig,
+  isMobilePlatform,
   migrateLegacyRuntimeConfig,
   type ResolvedElizaCloudTopology,
   resolveDeploymentTargetInConfig,
@@ -21,7 +22,11 @@ import {
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.js";
-import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
+import {
+  CORE_PLUGINS,
+  MOBILE_CORE_PLUGINS,
+  OPTIONAL_CORE_PLUGINS,
+} from "./core-plugins.js";
 
 const OPTIONAL_CORE_PLUGIN_NAMES = new Set<string>(OPTIONAL_CORE_PLUGINS);
 
@@ -284,12 +289,23 @@ export function collectPluginNames(
 
   // Allow-list entries are additive (extra plugins), not exclusive.
   const allowList = config.plugins?.allow;
-  const pluginsToLoad = new Set<string>(CORE_PLUGINS);
+  // On mobile (MILADY_PLATFORM=android|ios) the desktop core list pulls in
+  // ~10 plugins that depend on subprocesses (n8n, signal-cli), platform
+  // launchers (/usr/bin/open, osascript, xdg-open), or PTY tooling — all
+  // unavailable in the app sandbox. Substitute the curated mobile-safe set.
+  const onMobile = isMobilePlatform();
+  const seedCorePlugins = onMobile ? MOBILE_CORE_PLUGINS : CORE_PLUGINS;
+  const pluginsToLoad = new Set<string>(seedCorePlugins);
   const track = (name: string, reason: string) => {
     if (reasons && !reasons.has(name)) reasons.set(name, reason);
   };
-  for (const core of CORE_PLUGINS) track(core, "CORE_PLUGINS");
-  if (orchestratorCompatPluginRequested(config)) {
+  for (const core of seedCorePlugins) {
+    track(core, onMobile ? "MOBILE_CORE_PLUGINS" : "CORE_PLUGINS");
+  }
+  // Agent orchestrator depends on PTY / coding-swarm subprocesses (none of
+  // which exist on Android / iOS), so always skip it on mobile regardless of
+  // the stored ELIZA_AGENT_ORCHESTRATOR / config preference.
+  if (!onMobile && orchestratorCompatPluginRequested(config)) {
     pluginsToLoad.add("agent-orchestrator");
     track(
       "agent-orchestrator",
@@ -487,6 +503,27 @@ export function collectPluginNames(
   for (const pluginName of Array.from(pluginsToLoad)) {
     if (isPluginExplicitlyDisabled(pluginName)) {
       pluginsToLoad.delete(pluginName);
+    }
+  }
+
+  // Mobile: restrict the final set to plugins that the bundled mobile runtime
+  // can actually load — the mobile-core list plus model-provider plugins that
+  // are statically imported in `runtime/eliza.ts`. Anything else (connector
+  // plugins, feature plugins from `plugins.entries`, drop-in plugins from
+  // `plugins.installs`) would force a dynamic `import("@elizaos/plugin-...")`
+  // against a `node_modules` tree that does not ship in the APK.
+  if (onMobile) {
+    const mobileAllowed = new Set<string>([
+      ...MOBILE_CORE_PLUGINS,
+      "@elizaos/plugin-anthropic",
+      "@elizaos/plugin-openai",
+      "@elizaos/plugin-ollama",
+      "@elizaos/plugin-elizacloud",
+    ]);
+    for (const pluginName of Array.from(pluginsToLoad)) {
+      if (!mobileAllowed.has(pluginName)) {
+        pluginsToLoad.delete(pluginName);
+      }
     }
   }
 

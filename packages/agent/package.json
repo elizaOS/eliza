@@ -26,6 +26,7 @@
     "start": "bun run src/bin.ts",
     "dev": "bun --hot src/bin.ts",
     "build": "bun run build:dist",
+    "build:mobile": "bun run scripts/build-mobile-bundle.mjs",
     "build:docker-dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/agent --compiled-prefix=packages/agent/src",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build:dist": "rm -rf dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/agent --compiled-prefix=packages/agent/src",
