@@ -80,3 +80,16 @@ export type {
   VaultReference,
   VaultSource,
 } from "./types.js";
+
+// elizaOS integration helpers — see ./integrations/*
+export {
+  ELIZA_PROVIDER_SECRET_IDS,
+  isSubscriptionProviderId,
+  mirrorLegacyEnvCredentials,
+  providerIdForSecretId,
+} from "./integrations/eliza-providers.js";
+export type {
+  MirrorResult,
+  ResolvedCredentialLike,
+} from "./integrations/eliza-providers.js";
+export { registerElizaProviderSchemas } from "./integrations/eliza-schema.js";
