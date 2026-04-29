@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 import type { StoredEntry } from "./types.js";
@@ -49,11 +50,25 @@ export async function readStore(path: string): Promise<StoreData> {
 
 export async function writeStore(path: string, data: StoreData): Promise<void> {
   await fs.mkdir(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp`;
+  // Per-write tmp filename so two VaultImpl instances cannot collide on the
+  // same `${path}.tmp` and silently clobber each other's writes. pid + 8
+  // random bytes is overkill for collision avoidance but keeps the cost
+  // negligible vs the rest of the write.
+  const tmp = `${path}.tmp.${process.pid}.${randomBytes(8).toString("hex")}`;
   const body = `${JSON.stringify(data, null, 2)}\n`;
+  // mode 0o600 on the tmp file, before rename. POSIX rename preserves mode,
+  // so the final file inherits 0o600 with no observable window where it sat
+  // at the umask default.
   await fs.writeFile(tmp, body, { mode: 0o600, flag: "w" });
-  await fs.rename(tmp, path);
-  await fs.chmod(path, 0o600);
+  try {
+    await fs.rename(tmp, path);
+  } catch (renameErr) {
+    // rename failure (cross-device, EROFS, ENOSPC) leaves the tmp file
+    // behind. Best-effort cleanup so future writes aren't blocked by stale
+    // junk under the same per-pid prefix.
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    throw renameErr;
+  }
 }
 
 export function setEntry(

@@ -285,9 +285,31 @@ describe("vault — atomicity + concurrency", () => {
     expect(stat.mode & 0o777).toBe(0o600);
   });
 
-  it("does not leave a .tmp file behind", async () => {
+  it("does not leave a .tmp file behind on success", async () => {
     await test.vault.set("k", "v");
-    await expect(fs.access(`${test.storePath}.tmp`)).rejects.toThrow();
+    // Walk the parent dir for any leftover *.tmp* under our store filename.
+    const path = await import("node:path");
+    const dir = path.dirname(test.storePath);
+    const base = path.basename(test.storePath);
+    const entries = await fs.readdir(dir);
+    const leftovers = entries.filter(
+      (f) => f.startsWith(`${base}.tmp.`) || f === `${base}.tmp`,
+    );
+    expect(leftovers).toEqual([]);
+  });
+
+  it("uses a unique tmp filename per write so two concurrent writes can't collide", async () => {
+    // Drive 50 parallel writes; the loser of each rename race must NOT
+    // overwrite a tmp the winner is still using. This is a regression test
+    // for the fixed-name `${path}.tmp` race that previously dropped writes
+    // when two VaultImpl instances pointed at the same store.
+    const writes = Array.from({ length: 50 }, (_, i) =>
+      test.vault.set(`stress-${i}`, `value-${i}`),
+    );
+    await Promise.all(writes);
+    for (let i = 0; i < 50; i++) {
+      expect(await test.vault.get(`stress-${i}`)).toBe(`value-${i}`);
+    }
   });
 });
 

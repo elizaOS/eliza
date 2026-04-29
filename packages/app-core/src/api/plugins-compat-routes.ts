@@ -16,7 +16,7 @@ import {
 } from "@elizaos/agent";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import { asRecord } from "@elizaos/shared";
-import { createVault } from "@elizaos/vault";
+import { createVault, type Vault } from "@elizaos/vault";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars";
 import {
   CONNECTOR_PLUGINS,
@@ -250,6 +250,23 @@ let _lastDriftWarningFingerprint = "";
  * `OPENROUTER_API_KEY`). Stable, matches what the legacy code uses,
  * and lets the read-side hydration (future PR) round-trip cleanly.
  */
+// Per-process singleton. Two concurrent plugin saves must serialise on the
+// same VaultImpl mutex; a per-request createVault() would yield independent
+// in-process locks pointing at the same disk file, racing on the
+// read-modify-write cycle and silently dropping entries written by the
+// loser.
+let _mirrorVault: Vault | null = null;
+
+function getMirrorVault(): Vault {
+  if (!_mirrorVault) _mirrorVault = createVault();
+  return _mirrorVault;
+}
+
+/** Test hook: drop the cached mirror vault. Production code must not call this. */
+export function _resetMirrorVaultForTesting(): void {
+  _mirrorVault = null;
+}
+
 async function mirrorPluginSensitiveToVault(
   plugin: { parameters: Array<{ key: string; sensitive: boolean }> },
   body: unknown,
@@ -261,7 +278,7 @@ async function mirrorPluginSensitiveToVault(
     .filter((p) => p.sensitive)
     .map((p) => p.key);
   if (sensitiveKeys.length === 0) return;
-  const vault = createVault();
+  const vault = getMirrorVault();
   for (const key of sensitiveKeys) {
     const value = configRecord[key];
     if (typeof value !== "string" || value.length === 0) continue;

@@ -128,7 +128,13 @@ class ManagerImpl implements SecretsManager {
 
   async setPreferences(prefs: ManagerPreferences): Promise<void> {
     const normalized = normalizePreferences(prefs);
-    await this.vault.set(PREFERENCES_KEY, JSON.stringify(normalized));
+    // Encrypt at rest. The `routing` map can contain password-manager item
+    // paths (e.g. "Personal/OpenRouter/api-key") which are internal-disclosure
+    // information; storing them as a plain `kind: "value"` entry would write
+    // those paths to vault.json in clear text.
+    await this.vault.set(PREFERENCES_KEY, JSON.stringify(normalized), {
+      sensitive: true,
+    });
   }
 
   async set(
