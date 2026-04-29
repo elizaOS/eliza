@@ -20,7 +20,10 @@ import {
   type TextEmbeddingParams,
 } from "@elizaos/core";
 import type { LocalInferenceLoader } from "../services/local-inference/active-model";
-import { readEffectiveAssignments } from "../services/local-inference/assignments";
+import {
+  autoAssignAtBoot,
+  readEffectiveAssignments,
+} from "../services/local-inference/assignments";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { localInferenceEngine } from "../services/local-inference/engine";
 import { handlerRegistry } from "../services/local-inference/handler-registry";
@@ -349,6 +352,26 @@ export async function ensureLocalInferenceHandler(
       "[local-inference] No local inference backend available; skipping model registration",
     );
     return;
+  }
+
+  // First-light convenience: when exactly one model is installed and no
+  // slot assignments exist, auto-fill TEXT_SMALL/TEXT_LARGE so the user
+  // lands in chat without opening Settings. The downloader handles the
+  // post-install case; this catches the user who pre-staged a model
+  // (external scan, prior install) and is now booting fresh.
+  try {
+    const installed = await listInstalledModels();
+    const filled = await autoAssignAtBoot(installed);
+    if (filled) {
+      logger.info(
+        `[local-inference] Auto-assigned single installed model to empty slots: ${JSON.stringify(filled)}`,
+      );
+    }
+  } catch (err) {
+    logger.warn(
+      "[local-inference] autoAssignAtBoot failed:",
+      err instanceof Error ? err.message : String(err),
+    );
   }
 
   const provider = aospRegistered
