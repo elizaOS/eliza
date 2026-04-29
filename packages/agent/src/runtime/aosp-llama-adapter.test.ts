@@ -303,6 +303,11 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       "milady_llama_context_params_set_n_threads_batch",
       "milady_llama_context_params_set_embeddings",
       "milady_llama_context_params_set_pooling_type",
+      // type_k / type_v drive the apothic/llama.cpp-1bit-turboquant fork's
+      // KV-cache compression path. TBQ3_0 (43) / TBQ4_0 (44) are the
+      // fork's quant types; F16 (1) is the upstream default.
+      "milady_llama_context_params_set_type_k",
+      "milady_llama_context_params_set_type_v",
     ];
     for (const sym of [
       ...shimDefaultsAndFrees,
@@ -324,6 +329,8 @@ describe("aosp-llama-adapter / dlopen symbol manifest", () => {
       "milady_llama_context_params_set_n_batch",
       "milady_llama_context_params_set_n_ubatch",
       "milady_llama_context_params_set_offload_kqv",
+      // set_flash_attn is gone from the shim entirely (b8198 changed
+      // flash_attn to flash_attn_type, an enum, not a bool).
       "milady_llama_context_params_set_flash_attn",
       "milady_llama_sampler_chain_params_set_no_perf",
     ];
