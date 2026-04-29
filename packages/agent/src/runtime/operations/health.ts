@@ -16,7 +16,7 @@
  */
 
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { builtInHealthChecks } from "./health-checks.js";
+import { builtInHealthChecks, describeError } from "./health-checks.js";
 import type {
   HealthCheck,
   HealthCheckReport,
@@ -163,16 +163,6 @@ async function runOne(
     };
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
-  }
-}
-
-function describeError(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  try {
-    return JSON.stringify(err);
-  } catch {
-    return String(err);
   }
 }
 

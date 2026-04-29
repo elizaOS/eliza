@@ -152,6 +152,7 @@
     "@elizaos/plugin-wechat": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
+    "@elizaos/vault": "workspace:*",
     "@hapi/boom": "^10.0.1",
     "@noble/curves": "^2.0.1",
     "@solana/web3.js": "^1.98.4",
