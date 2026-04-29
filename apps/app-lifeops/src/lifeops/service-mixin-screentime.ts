@@ -1283,6 +1283,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
       since: string;
       until: string;
       daysInWindow: number;
+      identifier?: string;
       topN?: number;
     }): Promise<{
       items: ScreenTimeWeeklyAverageItem[];
@@ -1293,6 +1294,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
         since: opts.since,
         until: opts.until,
         source: "app",
+        identifier: opts.identifier,
         topN: opts.topN,
       });
       const daysInWindow = Math.max(1, Math.floor(opts.daysInWindow));
