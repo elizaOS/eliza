@@ -44,7 +44,7 @@ describe("classifyScreenTimeTarget", () => {
         metadata: { browser: "Chrome", url: "https://examplex.com" },
       }),
     ).toMatchObject({
-      category: "other",
+      category: "browser",
       service: null,
     });
 
