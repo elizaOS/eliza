@@ -746,7 +746,11 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
   if (config.deviceBridgeUrl) {
     return config.deviceBridgeUrl;
   }
-  if (config.mode !== "cloud-hybrid") return null;
+  // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
+  // local: the agent runs in-process on the same device, so the WebView's
+  // @elizaos/capacitor-llama dials the bridge over loopback at the locally
+  // bound apiBase.
+  if (config.mode !== "cloud-hybrid" && config.mode !== "local") return null;
   const apiBase = getBootConfig().apiBase?.trim();
   if (!apiBase) return null;
   try {
@@ -758,7 +762,12 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
 
 async function initializeMobileDeviceBridge(): Promise<void> {
   const runtimeConfig = getCurrentIosRuntimeConfig();
-  if (!isNative || runtimeConfig.mode !== "cloud-hybrid") return;
+  if (
+    !isNative ||
+    (runtimeConfig.mode !== "cloud-hybrid" && runtimeConfig.mode !== "local")
+  ) {
+    return;
+  }
   if (mobileDeviceBridgeClient) return;
 
   const agentUrl = resolveDeviceBridgeUrl(runtimeConfig);
@@ -793,7 +802,8 @@ function initializeMobileRuntimeModeListener(): void {
   if (!isNative || mobileRuntimeModeListenerInstalled) return;
   mobileRuntimeModeListenerInstalled = true;
   document.addEventListener(MOBILE_RUNTIME_MODE_CHANGED_EVENT, () => {
-    if (getCurrentIosRuntimeConfig().mode === "cloud-hybrid") {
+    const mode = getCurrentIosRuntimeConfig().mode;
+    if (mode === "cloud-hybrid" || mode === "local") {
       void initializeMobileDeviceBridge();
       return;
     }

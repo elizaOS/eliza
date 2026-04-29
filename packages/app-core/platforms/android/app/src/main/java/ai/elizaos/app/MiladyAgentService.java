@@ -430,6 +430,12 @@ public class MiladyAgentService extends Service {
             agentEnv.put("MILADY_API_PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("MILADY_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("MILADY_PLATFORM", "android");
+            // The Capacitor APK always hosts @elizaos/capacitor-llama in the
+            // WebView, so the runtime should always be ready to broker
+            // inference over the device-bridge WSS at /api/local-inference/
+            // device-bridge. The WebView dials it over loopback once the
+            // user picks the local runtime mode in onboarding.
+            agentEnv.put("ELIZA_DEVICE_BRIDGE_ENABLED", "1");
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
             agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
             env.putAll(agentEnv);

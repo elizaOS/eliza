@@ -53,6 +53,8 @@ function makeRuntime() {
 afterEach(() => {
   delete (globalThis as CapacitorGlobal).Capacitor;
   delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
+  delete process.env.MILADY_LOCAL_LLAMA;
+  delete process.env.MILADY_PLATFORM;
 });
 
 describe("ensureLocalInferenceHandler", () => {
@@ -86,5 +88,21 @@ describe("ensureLocalInferenceHandler", () => {
       ),
     ).toHaveLength(2);
     expect(runtime.getService("localInferenceLoader")).toBeTruthy();
+  });
+
+  it("registers device-bridge loader when MILADY_PLATFORM=android with ELIZA_DEVICE_BRIDGE_ENABLED=1", async () => {
+    process.env.MILADY_PLATFORM = "android";
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
+    const runtime = makeRuntime();
+
+    await ensureLocalInferenceHandler(
+      runtime as Parameters<typeof ensureLocalInferenceHandler>[0],
+    );
+
+    expect(
+      runtime.registrations.filter(
+        (r) => r.provider === "milady-device-bridge",
+      ),
+    ).toHaveLength(2);
   });
 });
