@@ -41,8 +41,14 @@ const ROLE_GATE_RANK: Record<RoleGate, number> = {
 
 const ROLE_GATED_PLUGINS: Readonly<Record<string, RoleGate>> = {
   // Blockchain — financial actions
-  "@elizaos/plugin-evm": "admin",
-  "@elizaos/plugin-solana": "admin",
+  "@elizaos/app-browser": "owner",
+  "@elizaos/app-steward": "owner",
+  "@elizaos/plugin-browser-bridge": "owner",
+  "@elizaos/plugin-computeruse": "owner",
+  "@elizaos/plugin-evm": "owner",
+  "@elizaos/plugin-solana": "owner",
+  evm: "owner",
+  solana: "owner",
 
   // Orchestration — spawns agents, PTY sessions, workspaces
   "agent-orchestrator": "admin",
@@ -176,6 +182,22 @@ const PROVIDER_ROLE_OVERRIDES: Readonly<Record<string, RoleGate>> = {
 
   // Clipboard
   clipboard: "admin",
+
+  // Browser / wallet operational state
+  app_browser_workspace: "owner",
+  computerState: "owner",
+  "get-balance": "owner",
+  "solana-wallet": "owner",
+  wallet: "owner",
+  walletBalance: "owner",
+  walletPortfolio: "owner",
+  tokenPrices: "owner",
+  chainInfo: "owner",
+
+  // Apps / plugins expose local installation/runtime state.
+  available_apps: "owner",
+  pluginState: "owner",
+  registryPlugins: "owner",
 };
 
 // ---------------------------------------------------------------------------
