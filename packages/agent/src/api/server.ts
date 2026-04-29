@@ -177,6 +177,7 @@ import { handleCodingAgentsFallback } from "./coding-agents-fallback-routes.js";
 import { handleConfigRoutes } from "./config-routes.js";
 import { ConnectorHealthMonitor } from "./connector-health.js";
 import { handleConnectorRoutes } from "./connector-routes.js";
+import { credTypesForConnector } from "@elizaos/shared";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.js";
 import { handleConversationRoutes } from "./conversation-routes.js";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.js";
@@ -2019,6 +2020,30 @@ async function handleRequest(
       redactConfigSecrets,
       isBlockedObjectKey,
       cloneWithoutBlockedObjectKeys,
+      onConnectorDisconnect: async (connectorName) => {
+        // Disconnect cascades to the n8n credential cache: without this,
+        // credStore.get() returns a stale n8n credential id and the next
+        // workflow generation silently bypasses the missing-credentials
+        // banner.
+        const credTypes = credTypesForConnector(connectorName);
+        if (credTypes.length === 0) return;
+        const runtime = state.runtime;
+        if (!runtime) return;
+        const credStore = runtime.getService("n8n_credential_store") as
+          | {
+              delete?: (userId: string, credType: string) => Promise<void>;
+            }
+          | null;
+        if (!credStore?.delete) return;
+        const userId = runtime.agentId;
+        await Promise.all(
+          credTypes.map((credType) =>
+            credStore.delete!(userId, credType).catch(() => {
+              /* per-credType failure shouldn't block siblings */
+            }),
+          ),
+        );
+      },
     })
   ) {
     return;
