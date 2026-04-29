@@ -82,37 +82,37 @@ describe("dev compat routes", () => {
     process.env = { ...originalEnv };
   });
 
-  it.each(["/api/dev/cursor-screenshot", "/api/dev/console-log"])(
-    "requires the same route auth as /api/dev/stack for %s",
-    async (path) => {
-      const req = createRequest(path, {
-        "x-forwarded-for": "203.0.113.10",
-      });
-      const res = createResponse();
+  it.each([
+    "/api/dev/cursor-screenshot",
+    "/api/dev/console-log",
+  ])("requires the same route auth as /api/dev/stack for %s", async (path) => {
+    const req = createRequest(path, {
+      "x-forwarded-for": "203.0.113.10",
+    });
+    const res = createResponse();
 
-      await expect(
-        handleDevCompatRoutes(req, res, createState()),
-      ).resolves.toBe(true);
+    await expect(handleDevCompatRoutes(req, res, createState())).resolves.toBe(
+      true,
+    );
 
-      expect(res.statusCode).toBe(401);
-      expect(JSON.parse(res.bodyText)).toEqual({ error: "Unauthorized" });
-    },
-  );
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.bodyText)).toEqual({ error: "Unauthorized" });
+  });
 
-  it.each(["/api/dev/cursor-screenshot", "/api/dev/console-log"])(
-    "continues after auth succeeds for %s",
-    async (path) => {
-      const req = createRequest(path, {
-        authorization: "Bearer dev-secret",
-        "x-forwarded-for": "203.0.113.10",
-      });
-      const res = createResponse();
+  it.each([
+    "/api/dev/cursor-screenshot",
+    "/api/dev/console-log",
+  ])("continues after auth succeeds for %s", async (path) => {
+    const req = createRequest(path, {
+      authorization: "Bearer dev-secret",
+      "x-forwarded-for": "203.0.113.10",
+    });
+    const res = createResponse();
 
-      await expect(
-        handleDevCompatRoutes(req, res, createState()),
-      ).resolves.toBe(true);
+    await expect(handleDevCompatRoutes(req, res, createState())).resolves.toBe(
+      true,
+    );
 
-      expect(res.statusCode).toBe(404);
-    },
-  );
+    expect(res.statusCode).toBe(404);
+  });
 });

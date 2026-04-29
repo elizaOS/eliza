@@ -253,10 +253,11 @@ function gateAction(action: Action, gate: RoleGate): void {
 
     const check = await checkSenderRole(runtime, message);
     if (!check) {
-      // No world context (e.g. direct API call) — allow through
-      return originalValidate
-        ? originalValidate(runtime, message, state)
-        : true;
+      logger.debug(
+        `[role-gating] ${action.name} blocked for entity ${message.entityId} ` +
+          `(role: unknown, requires: ${gate})`,
+      );
+      return false;
     }
 
     if (!roleCheckPasses(check, gate)) {
@@ -291,7 +292,7 @@ function gateProvider(provider: Provider, gate: RoleGate): void {
     const { checkSenderRole } = await import("./roles.js");
 
     const check = await checkSenderRole(runtime, message);
-    if (check && !roleCheckPasses(check, gate)) {
+    if (!check || !roleCheckPasses(check, gate)) {
       return { text: "" };
     }
 

@@ -1,10 +1,10 @@
 import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
-import type { BrowserBridgeRouteService } from "./service.ts";
 import {
-  handleBrowserBridgeRoutes,
   type BrowserBridgeRouteContext,
+  handleBrowserBridgeRoutes,
 } from "./routes.ts";
+import type { BrowserBridgeRouteService } from "./service.ts";
 
 function createContext(
   overrides: Partial<BrowserBridgeRouteContext> = {},

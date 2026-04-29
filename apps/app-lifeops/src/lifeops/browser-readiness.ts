@@ -89,7 +89,10 @@ export function resolveBrowserBridgeReadiness(
     browserBridgeCompanionIsRecent(companion, nowMs),
   );
   const primaryCompanion =
-    recentConnectedCompanions[0] ?? connectedCompanions[0] ?? companions[0] ?? null;
+    recentConnectedCompanions[0] ??
+    connectedCompanions[0] ??
+    companions[0] ??
+    null;
 
   const base = {
     connectedCompanions,
@@ -114,7 +117,9 @@ export function resolveBrowserBridgeReadiness(
   }
   if (
     connectedCompanions.length === 0 &&
-    companions.some((companion) => companion.connectionState === "permission_blocked")
+    companions.some(
+      (companion) => companion.connectionState === "permission_blocked",
+    )
   ) {
     return { ...base, ready: false, state: "permission_blocked" };
   }

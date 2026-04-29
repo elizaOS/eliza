@@ -865,7 +865,8 @@ export function LifeOpsOverviewSection({
     "working";
   const screenTimeAccess =
     (!screenTimeError && browserActivityReady) || Boolean(screenTime);
-  const socialAccess = (!socialError && browserActivityReady) || Boolean(social);
+  const socialAccess =
+    (!socialError && browserActivityReady) || Boolean(social);
   const calendarAccess =
     hasGoogleCapability(googleConnector.status, [
       "google.calendar.read",

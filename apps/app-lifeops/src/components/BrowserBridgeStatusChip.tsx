@@ -1,11 +1,11 @@
 import { client } from "@elizaos/app-core";
 import { useCallback, useEffect, useState } from "react";
 import type { LifeOpsSection } from "../hooks/useLifeOpsSection.js";
-import { buildLifeOpsHash } from "../lifeops-route.js";
 import {
-  resolveBrowserBridgeReadiness,
   type BrowserBridgeReadinessState,
+  resolveBrowserBridgeReadiness,
 } from "../lifeops/browser-readiness.js";
+import { buildLifeOpsHash } from "../lifeops-route.js";
 
 const BROWSER_SETUP_PANEL_ID = "lifeops-browser-setup";
 

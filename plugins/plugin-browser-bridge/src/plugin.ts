@@ -107,28 +107,29 @@ const STATIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> = [
   { type: "POST", path: "/api/browser-bridge/sessions" },
 ];
 
-const DYNAMIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> = [
-  { type: "GET", path: "/api/browser-bridge/sessions/:id" },
-  { type: "POST", path: "/api/browser-bridge/sessions/:id/confirm" },
-  { type: "POST", path: "/api/browser-bridge/sessions/:id/progress" },
-  { type: "POST", path: "/api/browser-bridge/sessions/:id/complete" },
-  {
-    type: "POST",
-    path: "/api/browser-bridge/companions/sessions/:id/progress",
-    public: true,
-  },
-  {
-    type: "POST",
-    path: "/api/browser-bridge/companions/sessions/:id/complete",
-    public: true,
-  },
-  { type: "POST", path: "/api/browser-bridge/packages/:browser/build" },
-  {
-    type: "POST",
-    path: "/api/browser-bridge/packages/:browser/open-manager",
-  },
-  { type: "GET", path: "/api/browser-bridge/packages/:browser/download" },
-];
+const DYNAMIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> =
+  [
+    { type: "GET", path: "/api/browser-bridge/sessions/:id" },
+    { type: "POST", path: "/api/browser-bridge/sessions/:id/confirm" },
+    { type: "POST", path: "/api/browser-bridge/sessions/:id/progress" },
+    { type: "POST", path: "/api/browser-bridge/sessions/:id/complete" },
+    {
+      type: "POST",
+      path: "/api/browser-bridge/companions/sessions/:id/progress",
+      public: true,
+    },
+    {
+      type: "POST",
+      path: "/api/browser-bridge/companions/sessions/:id/complete",
+      public: true,
+    },
+    { type: "POST", path: "/api/browser-bridge/packages/:browser/build" },
+    {
+      type: "POST",
+      path: "/api/browser-bridge/packages/:browser/open-manager",
+    },
+    { type: "GET", path: "/api/browser-bridge/packages/:browser/download" },
+  ];
 
 type PluginRouteHandler = NonNullable<Route["handler"]>;
 

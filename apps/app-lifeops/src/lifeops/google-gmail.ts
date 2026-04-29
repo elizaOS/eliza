@@ -305,8 +305,12 @@ function extractGoogleGmailBody(
   return "";
 }
 
-function deriveHtmlLink(threadId: string): string {
-  return `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(threadId)}`;
+function deriveHtmlLink(threadId: string, accountEmail: string | null): string {
+  const accountSegment =
+    accountEmail && accountEmail.trim().length > 0
+      ? encodeURIComponent(accountEmail.trim().toLowerCase())
+      : "0";
+  return `https://mail.google.com/mail/u/${accountSegment}/#all/${encodeURIComponent(threadId)}`;
 }
 
 function classifyReplyNeed(args: {
@@ -434,7 +438,7 @@ function normalizeGoogleGmailMessage(
     triageScore: triage.triageScore,
     triageReason: triage.triageReason,
     labels,
-    htmlLink: deriveHtmlLink(threadId),
+    htmlLink: deriveHtmlLink(threadId, selfEmail),
     metadata: {
       historyId: message.historyId?.trim() || null,
       sizeEstimate:

@@ -8,7 +8,6 @@ import type {
   LifeOpsXConnectorStatus,
 } from "@elizaos/shared";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   LifeOpsScreenTimeSummary,
@@ -548,9 +547,7 @@ describe("LifeOpsOverviewSection", () => {
     );
 
     expect(
-      screen.getByText(
-        "Weekly comparison unavailable: screen store offline",
-      ),
+      screen.getByText("Weekly comparison unavailable: screen store offline"),
     ).toBeTruthy();
   });
 
@@ -605,9 +602,7 @@ describe("LifeOpsOverviewSection", () => {
 
     expect(screen.queryByText("Set up LifeOps")).toBeNull();
     expect(screen.getAllByText("Connect a source").length).toBeGreaterThan(0);
-    expect(
-      screen.getByText("Open Settings"),
-    ).toBeTruthy();
+    expect(screen.getByText("Open Settings")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
 
