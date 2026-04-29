@@ -1330,9 +1330,21 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // "Contact not found in relationships" error from the wrong action path.
 // Treat OWNER_RELATIONSHIP as explicit planner intent so the corrector does
 // not second-guess it.
+//
+// CREATE_TASK is the orchestrator's coding-sub-agent delegation. When a user
+// says "build me X" or "implement Y", the planner correctly picks CREATE_TASK,
+// but the user's prose contains zero CREATE_TASK keywords. Without this entry
+// the corrector overrides CREATE_TASK with whatever role-gated action
+// (OWNER_CALENDAR, OWNER_INBOX, MANAGE_ISSUES) happens to overlap with
+// incidental words in the prompt — e.g. a build request that mentions a date
+// keyword-rescores OWNER_CALENDAR over CREATE_TASK and the user gets
+// "Google Calendar is not connected" in response to a code request. Same
+// precedent as SPAWN_AGENT, the sibling delegation action that's already
+// protected here.
 const EXPLICIT_INTENT_ACTIONS = new Set(
 	[
 		"SPAWN_AGENT",
+		"CREATE_TASK",
 		"CREATE_TRIGGER_TASK",
 		"CREATE_TRIGGER",
 		"SCHEDULE_TRIGGER",

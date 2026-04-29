@@ -45,7 +45,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 
-import { resolveServerOnlyPort, syncResolvedApiPort } from "@elizaos/shared";
+import {
+  isMobilePlatform,
+  resolveServerOnlyPort,
+  syncResolvedApiPort,
+} from "@elizaos/shared";
 import { isNativeServerPlatform } from "../platform/is-native-server.js";
 import { syncAppEnvToEliza, syncElizaEnvAliases } from "../utils/env.js";
 import { ensureRuntimeSqlCompatibility } from "../utils/sql-compat.js";
@@ -234,7 +238,7 @@ export function applyN8nConfigToEnv(
   // `config.n8n.localEnabled` as false regardless of the stored user setting
   // so the env pump only considers the Eliza Cloud gateway path. The stored
   // config is not mutated.
-  if (isNativeServerPlatform()) {
+  if (isNativeServerPlatform() || isMobilePlatform()) {
     const [config, agentId] = args;
     const mobileConfig =
       config?.n8n?.localEnabled === false
@@ -439,6 +443,23 @@ async function repairRuntimeAfterBoot(
   runtime: AgentRuntime,
 ): Promise<AgentRuntime> {
   await ensureRuntimeSqlCompatibility(runtime);
+
+  // Mobile (Android / iOS) shortcut: the runtime is already serving from
+  // PGlite + the AI provider plugin. The remaining boot steps either spawn
+  // subprocesses (n8n autostart, n8n auth bridge, telegram polling), shell
+  // out to platform-specific binaries (text-to-speech, local inference), or
+  // dynamic-import optional packages that are not in the mobile bundle
+  // (`@elizaos/app-vincent`, `@elizaos/app-shopify`, `@elizaos/app-steward`,
+  // `@elizaos/app-lifeops/public`, `@elizaos/app-training/*`). Skipping them
+  // here is what the mobile bundle has to do to avoid crashing on first turn
+  // — feature parity comes from cloud-side services, not on-device state.
+  if (isMobilePlatform()) {
+    logger.info(
+      "[eliza] Mobile platform detected — skipping desktop-only boot helpers",
+    );
+    return runtime;
+  }
+
   await ensureTextToSpeechHandler(runtime);
   await ensureLocalInferenceHandler(runtime);
   await ensureAutonomyBootstrapContext(runtime);
@@ -513,6 +534,14 @@ async function repairRuntimeAfterBoot(
   // triggers can dispatch immediately on first emit.
   await ensureTriggerEventBridge(runtime);
 
+  // Register the n8n runtime-context provider so the patched
+  // `@elizaos/plugin-n8n-workflow` can pull real Discord guild/channel IDs
+  // and the user's Gmail email into the workflow-generation prompt — closing
+  // the placeholder + missing-credentials-block gaps. The plugin treats this
+  // service as advisory; if it isn't registered the prompt simply omits the
+  // facts/credentials sections.
+  await ensureN8nRuntimeContextProvider(runtime);
+
   return runtime;
 }
 
@@ -538,6 +567,11 @@ let _n8nDispatch: { execute: (workflowId: string) => Promise<unknown> } | null =
 // hot-reloads so we never leave two handler sets racing the runtime's
 // event bus.
 let _triggerEventBridge: { stop: () => void } | null = null;
+
+// Module-level handle for the n8n runtime-context provider. Reset across
+// hot-reloads so the previous closure (capturing an outdated config getter)
+// does not survive into the fresh runtime's services map.
+let _n8nRuntimeContextProvider: { stop: () => void } | null = null;
 
 async function ensureN8nAuthBridge(runtime: AgentRuntime): Promise<void> {
   if (_n8nAuthBridge) {
@@ -654,6 +688,56 @@ async function ensureTriggerEventBridge(runtime: AgentRuntime): Promise<void> {
   } catch (err) {
     logger.warn(
       `[eliza] Failed to start trigger event bridge: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+async function ensureN8nRuntimeContextProvider(
+  runtime: AgentRuntime,
+): Promise<void> {
+  if (_n8nRuntimeContextProvider) {
+    try {
+      _n8nRuntimeContextProvider.stop();
+    } catch {
+      /* ignore */
+    }
+    _n8nRuntimeContextProvider = null;
+  }
+  try {
+    const { startMiladyN8nRuntimeContextProvider } = await import(
+      "../services/n8n-runtime-context-provider.js"
+    );
+    // If a sibling `n8n_credential_provider` is registered (Milady ships one
+    // separately), reach into the runtime services map for its `resolve` so
+    // the context provider can filter `supportedCredentials` to types that
+    // actually have data right now. Optional — without it the context
+    // provider falls back to "config has connector token" heuristics.
+    const credEntries =
+      runtime.services.get("n8n_credential_provider" as never) ?? [];
+    const credProviderInstance = credEntries[0] as
+      | {
+          resolve?: (
+            userId: string,
+            credType: string,
+          ) => Promise<unknown>;
+        }
+      | undefined;
+    const credProvider =
+      credProviderInstance && typeof credProviderInstance.resolve === "function"
+        ? (credProviderInstance as Parameters<
+            typeof startMiladyN8nRuntimeContextProvider
+          >[1]["credProvider"])
+        : undefined;
+    _n8nRuntimeContextProvider = startMiladyN8nRuntimeContextProvider(runtime, {
+      getConfig: () => loadElizaConfig(),
+      credProvider,
+    });
+    logger.info("[eliza] n8n runtime-context provider registered");
+  } catch (err) {
+    logger.warn(
+      `[eliza] Failed to register n8n runtime-context provider: ${
         err instanceof Error ? err.message : String(err)
       }`,
     );
@@ -914,6 +998,17 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
 async function warmupEmbeddingModel(
   onProgress?: EmbeddingProgressCallback,
 ): Promise<void> {
+  // Mobile bundle does not ship `node-llama-cpp` (no Android prebuild) and
+  // pulling a multi-GB GGUF over a phone's data plan is not acceptable. The
+  // mobile path uses `@elizaos/plugin-elizacloud` or a remote provider for
+  // embeddings until `llama-cpp-capacitor` is wired in (separate task).
+  if (isMobilePlatform()) {
+    logger.info(
+      "[eliza] Skipping local embedding warmup — running on mobile (MILADY_PLATFORM=android|ios)",
+    );
+    return;
+  }
+
   if (!shouldWarmupLocalEmbeddingModel()) {
     logger.info(
       "[eliza] Skipping local embedding (GGUF) warmup — not needed for this configuration (e.g. Eliza Cloud embeddings, or local embeddings disabled).",

@@ -11,6 +11,29 @@
  */
 export const DESKTOP_ONLY_PLUGINS: readonly string[] = ["agent-orchestrator"];
 
+/**
+ * Mobile-safe core plugins. Used when `MILADY_PLATFORM=android` (or `ios`).
+ *
+ * Phones cannot host the n8n sidecar, the Signal CLI, the swarm orchestrator,
+ * the sandbox engine, the desktop launch hooks, or the autonomous PTY tools.
+ * They also have no `/usr/bin/open`, `osascript`, `xdg-open`, `ffmpeg`,
+ * `wmctrl`, etc., so plugins that bind to those at init crash the runtime.
+ *
+ * The mobile boot ships only `@elizaos/plugin-sql` (PGlite-backed memory
+ * store, required) plus AI provider plugins (`@elizaos/plugin-anthropic`,
+ * `@elizaos/plugin-openai`, `@elizaos/plugin-ollama`) which `collectPluginNames`
+ * adds based on the user's API keys. They are statically imported in the agent
+ * runtime so they bundle cleanly without filesystem-based plugin resolution.
+ *
+ * `@elizaos/plugin-local-embedding` is intentionally excluded: it pulls in
+ * `node-llama-cpp`, which has no Android build. On mobile, embeddings come
+ * either from a cloud provider or from the upcoming `llama-cpp-capacitor`
+ * JNI binding (separate task).
+ */
+export const MOBILE_CORE_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-sql",
+];
+
 /** Core plugins that should always be loaded. collectPluginNames() seeds from this list only. */
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required

@@ -188,4 +188,90 @@ describe("BootstrapStep", () => {
     );
     expect(screen.getByText(/where do i get this/i)).toBeTruthy();
   });
+
+  describe("auto-activate via #bootstrap=<token> hash", () => {
+    afterEach(() => {
+      window.history.replaceState(null, "", window.location.pathname);
+    });
+
+    it("auto-exchanges the token from the URL fragment without manual paste", async () => {
+      window.history.replaceState(null, "", "/#bootstrap=hash-token-xyz");
+
+      const onAdvance = vi.fn();
+      const exchangeFn = vi.fn(async (_: string) => makeSuccess("sess-auto"));
+
+      render(<BootstrapStep onAdvance={onAdvance} exchangeFn={exchangeFn} />);
+
+      await waitFor(() => {
+        expect(exchangeFn).toHaveBeenCalledWith("hash-token-xyz");
+        expect(sessionStorage.getItem("milady_session")).toBe("sess-auto");
+        expect(onAdvance).toHaveBeenCalledOnce();
+      });
+    });
+
+    it("scrubs the bootstrap fragment from the URL before exchange completes", async () => {
+      window.history.replaceState(null, "", "/#bootstrap=secret-tok&keep=1");
+
+      const exchangeFn = vi.fn(async (_: string) => makeSuccess());
+
+      render(<BootstrapStep onAdvance={() => {}} exchangeFn={exchangeFn} />);
+
+      await waitFor(() => {
+        expect(exchangeFn).toHaveBeenCalled();
+      });
+
+      // bootstrap is gone, unrelated fragment params survive
+      expect(window.location.hash).toBe("#keep=1");
+      expect(window.location.hash).not.toMatch(/secret-tok/);
+    });
+
+    it("renders Verifying… on first paint when a hash token is present", () => {
+      window.history.replaceState(null, "", "/#bootstrap=tok");
+
+      // Pending exchange — never resolves during this render
+      const exchangeFn = vi.fn(() => new Promise<BootstrapExchangeResult>(() => {}));
+
+      render(<BootstrapStep onAdvance={() => {}} exchangeFn={exchangeFn} />);
+
+      expect(
+        screen.getByRole("button", { name: /verifying/i }),
+      ).toBeTruthy();
+    });
+
+    it("falls through to the manual paste form when the hash has no token", () => {
+      window.history.replaceState(null, "", "/#other=value");
+
+      const exchangeFn = vi.fn(async () => makeSuccess());
+
+      render(<BootstrapStep onAdvance={() => {}} exchangeFn={exchangeFn} />);
+
+      expect(exchangeFn).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("button", { name: /activate/i }),
+      ).toBeTruthy();
+    });
+
+    it("surfaces a 401 from auto-exchange without advancing", async () => {
+      window.history.replaceState(null, "", "/#bootstrap=expired");
+
+      const onAdvance = vi.fn();
+      const exchangeFn = vi.fn(async () =>
+        makeFailure(401, "auth_required", "token_expired"),
+      );
+
+      render(<BootstrapStep onAdvance={onAdvance} exchangeFn={exchangeFn} />);
+
+      await waitFor(() => {
+        expect(exchangeFn).toHaveBeenCalledWith("expired");
+        expect(onAdvance).not.toHaveBeenCalled();
+      });
+
+      expect(
+        screen.getByText(/single-use|already used|must rotate/i),
+      ).toBeTruthy();
+      // URL is still scrubbed even on failure — single-use means retrying the
+      // same token can't help anyway.
+      expect(window.location.hash).toBe("");
+    });
+  });
 });

@@ -40,6 +40,7 @@ import {
   DesktopTrayRuntime,
   DetachedShellRoot,
   dispatchAppEvent,
+  dispatchFocusConnector,
   getBootConfig,
   getWindowNavigationPath,
   initializeCapacitorBridge,
@@ -404,6 +405,20 @@ function handleDeepLink(url: string): void {
 
   if (parsed.protocol !== `${APP_URL_SCHEME}:`) return;
   const path = getDeepLinkPath(parsed);
+
+  // milady://settings/connectors/<provider> — open Settings and ask SettingsView
+  // to scroll the matching connector panel into view.
+  const connectorMatch = path.match(/^settings\/connectors\/([a-z0-9-]+)$/i);
+  if (connectorMatch) {
+    window.location.hash = "#settings";
+    const provider = connectorMatch[1].toLowerCase();
+    // Fires the focus event immediately AND stashes `provider` in a module
+    // ref. SettingsView drains the stash on mount, so this works whether the
+    // settings tab is already mounted (event delivery) or is mounting in
+    // response to the hash change above (drain-on-mount).
+    dispatchFocusConnector(provider);
+    return;
+  }
 
   switch (path) {
     case "chat":

@@ -38,7 +38,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VerificationRoomBridgeService } from "../verification-room-bridge.js";
 
 /**
@@ -172,6 +172,39 @@ function escalationEvent(args: {
 	};
 }
 
+/**
+ * Shape of the broadcast `task_complete` (pass-verdict) event from
+ * `swarm-decision-loop.ts`. Mirrors `passEvent` in the unit suite but
+ * keeps a sessionId argument so dedupe tests can pin it explicitly.
+ */
+function passEvent(args: {
+	sessionId: string;
+	originRoomId: string;
+	appName: string;
+}): SwarmEventLike {
+	return {
+		type: "task_complete",
+		sessionId: args.sessionId,
+		timestamp: Date.now(),
+		data: {
+			reasoning: "validator pass",
+			verification: {
+				source: "custom-validator",
+				verdict: "pass",
+				validator: { service: "app-verification", method: "verifyApp" },
+				params: {
+					workdir: "/tmp/wd",
+					appName: args.appName,
+					profile: "full",
+				},
+			},
+			originRoomId: args.originRoomId,
+			label: `create-app:${args.appName}`,
+			workdir: "/tmp/wd",
+		},
+	};
+}
+
 describe("VerificationRoomBridgeService — retry-loop integration", () => {
 	let coord: FakeCoordinator;
 
@@ -286,5 +319,87 @@ describe("VerificationRoomBridgeService — retry-loop integration", () => {
 		// Includes both the count and the cap so the user knows the budget
 		// was exhausted, not just the absolute number of retries.
 		expect(memory.content.text).toContain("2/3");
+	});
+});
+
+describe("VerificationRoomBridgeService — verdict dedupe", () => {
+	let coord: FakeCoordinator;
+
+	beforeEach(() => {
+		coord = createFakeCoordinator();
+	});
+
+	afterEach(() => {
+		// Always restore real timers in case a test installed fakes.
+		vi.useRealTimers();
+	});
+
+	it("dedupes duplicate verdict events for the same session", async () => {
+		const { runtime, createMemory } = createRuntime(coord);
+		await VerificationRoomBridgeService.start(runtime);
+
+		const evt = passEvent({
+			sessionId: "sess-dedupe-1",
+			originRoomId: "room-dedupe",
+			appName: "notes-app",
+		});
+		coord.emit(evt);
+		coord.emit(evt);
+		await flushMicrotasks();
+
+		expect(createMemory).toHaveBeenCalledTimes(1);
+	});
+
+	it("emits separately for the same session when verdict differs", async () => {
+		const { runtime, createMemory } = createRuntime(coord);
+		await VerificationRoomBridgeService.start(runtime);
+
+		const sessionId = "sess-dedupe-mixed";
+		const room = "room-dedupe-mixed";
+		coord.emit(
+			passEvent({ sessionId, originRoomId: room, appName: "notes-app" }),
+		);
+		coord.emit(
+			escalationEvent({
+				sessionId,
+				retryCount: 3,
+				maxRetries: 3,
+				originRoomId: room,
+				appName: "notes-app",
+			}),
+		);
+		await flushMicrotasks();
+
+		expect(createMemory).toHaveBeenCalledTimes(2);
+		const verdicts = createMemory.mock.calls.map((call) => {
+			const [memory] = call as [{ content: { text: string } }, string];
+			return memory.content.text.includes("verification failure")
+				? "fail"
+				: "pass";
+		});
+		expect(verdicts.sort()).toEqual(["fail", "pass"]);
+	});
+
+	it("re-emits a verdict after the dedupe TTL expires", async () => {
+		vi.useFakeTimers();
+		const { runtime, createMemory } = createRuntime(coord);
+		await VerificationRoomBridgeService.start(runtime);
+
+		const evt = passEvent({
+			sessionId: "sess-dedupe-ttl",
+			originRoomId: "room-ttl",
+			appName: "notes-app",
+		});
+		coord.emit(evt);
+		await flushMicrotasks();
+		expect(createMemory).toHaveBeenCalledTimes(1);
+
+		// Advance past the 10-minute TTL. The next identical event should
+		// pass the dedupe check and produce a second memory.
+		vi.advanceTimersByTime(10 * 60 * 1000 + 1);
+		coord.emit(evt);
+		await flushMicrotasks();
+
+		expect(createMemory).toHaveBeenCalledTimes(2);
 	});
 });

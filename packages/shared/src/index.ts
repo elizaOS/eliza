@@ -160,6 +160,7 @@ export type {
   WebReconnectConfig,
   X402Config,
 } from "./config/types";
+export * from "./connector-cred-types";
 export * from "./connectors";
 // Contracts barrel — exposes apps/awareness/cloud-topology/config/content-pack/
 // drop/inbox/onboarding/permissions/service-routing/verification/wallet.

@@ -43,6 +43,16 @@ const VERIFY_APP_METHOD = "verifyApp";
 const VERIFY_PLUGIN_METHOD = "verifyPlugin";
 
 /**
+ * Dedupe TTL for verdict events keyed by `${sessionId}:${verdict}`.
+ *
+ * The broadcast bus may replay events under network blips, supervisor
+ * retries, or a future multi-listener architecture. A real verdict for
+ * a given session lands once, within seconds; 10 minutes is well past
+ * the window where a duplicate is anything other than a replay.
+ */
+const VERDICT_DEDUPE_TTL_MS = 10 * 60 * 1000;
+
+/**
  * Minimal shape of the SwarmCoordinator service surface this bridge
  * depends on. We only need `subscribe`; declared locally so we don't
  * pull in plugin-agent-orchestrator as a hard dependency just for
@@ -181,6 +191,15 @@ export class VerificationRoomBridgeService extends Service {
 
 	private unsubscribe: (() => void) | null = null;
 
+	/**
+	 * Dedupe map: `${sessionId}:${verdict}` -> expiresAt epoch ms. Drops
+	 * replayed verdict events that would otherwise post duplicate chat
+	 * memories. Entries age out via `VERDICT_DEDUPE_TTL_MS`; we sweep
+	 * opportunistically on each insert (single-digit concurrent verdicts
+	 * in practice).
+	 */
+	private readonly verdictDedupe: Map<string, number> = new Map();
+
 	static override async start(
 		runtime: IAgentRuntime,
 	): Promise<VerificationRoomBridgeService> {
@@ -190,9 +209,25 @@ export class VerificationRoomBridgeService extends Service {
 	}
 
 	override async stop(): Promise<void> {
-		if (this.unsubscribe) {
-			this.unsubscribe();
-			this.unsubscribe = null;
+		const unsub = this.unsubscribe;
+		// Always clear the field first so a retry of stop() can't double-call.
+		this.unsubscribe = null;
+		if (unsub === null) return;
+		if (typeof unsub !== "function") {
+			logger.warn(
+				"[VerificationRoomBridge] stored unsubscribe was not a function; skipping",
+			);
+			return;
+		}
+		// Single-purpose catch: a misbehaving coordinator must not crash
+		// service teardown. Translate the failure into a structured warn
+		// log and continue.
+		try {
+			unsub();
+		} catch (err) {
+			logger.warn(
+				`[VerificationRoomBridge] unsubscribe threw during stop(): ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 	}
 
@@ -226,6 +261,18 @@ export class VerificationRoomBridgeService extends Service {
 		const payload = decodeEvent(event);
 		if (!payload) return;
 
+		const dedupeKey = `${event.sessionId}:${payload.verdict}`;
+		const now = Date.now();
+		this.sweepExpiredDedupe(now);
+		const existingExpiry = this.verdictDedupe.get(dedupeKey);
+		if (existingExpiry !== undefined && existingExpiry > now) {
+			logger.debug(
+				`[VerificationRoomBridge] dedupe drop sessionId=${event.sessionId} verdict=${payload.verdict}`,
+			);
+			return;
+		}
+		this.verdictDedupe.set(dedupeKey, now + VERDICT_DEDUPE_TTL_MS);
+
 		const text =
 			payload.verdict === "pass"
 				? buildPassMessage(payload)
@@ -247,6 +294,12 @@ export class VerificationRoomBridgeService extends Service {
 		logger.info(
 			`[VerificationRoomBridge] posted ${payload.verdict} verdict for ${payload.targetName} into room=${payload.originRoomId}`,
 		);
+	}
+
+	private sweepExpiredDedupe(now: number): void {
+		for (const [key, expiresAt] of this.verdictDedupe) {
+			if (expiresAt <= now) this.verdictDedupe.delete(key);
+		}
 	}
 }
 
