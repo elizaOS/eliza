@@ -717,6 +717,7 @@ export async function applyOnboardingConnectionConfig(
   if (normalizedConnection.kind === "cloud-managed") {
     clearRemoteProviderConfig(config);
     clearCloudModelSelections(config);
+    setPrimaryModel(config, undefined);
 
     const cloud = ensureCloud(config);
     const models = ensureModels(config);
@@ -796,6 +797,7 @@ export async function applyOnboardingConnectionConfig(
     clearSubscriptionProviderConfig(config);
     clearCloudModelSelections(config);
     clearRemoteProviderConfig(config);
+    setPrimaryModel(config, undefined);
 
     applyCanonicalOnboardingConfig(config, {
       deploymentTarget: {

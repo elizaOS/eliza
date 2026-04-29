@@ -12,6 +12,11 @@ import type {
   LifeOpsXConnectorStatus,
 } from "@elizaos/shared";
 import { loadLifeOpsAppState } from "./app-state.js";
+import {
+  resolveBrowserBridgeReadiness,
+  type BrowserBridgeReadiness,
+  type BrowserBridgeReadinessState,
+} from "./browser-readiness.js";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createFeatureFlagService } from "./feature-flags.js";
 import type { FeatureFlagState } from "./feature-flags.types.js";
@@ -191,6 +196,66 @@ function summarizeCapabilities(
       (item) => item.state === "not_configured",
     ).length,
   };
+}
+
+function browserReadinessCapabilityState(
+  state: BrowserBridgeReadinessState,
+): LifeOpsCapabilityState {
+  switch (state) {
+    case "ready":
+      return "working";
+    case "paused":
+    case "permission_blocked":
+      return "blocked";
+    case "control_disabled":
+    case "stale":
+      return "degraded";
+    case "disabled":
+    case "tracking_off":
+    case "no_companion":
+      return "not_configured";
+  }
+}
+
+function browserReadinessSummary(
+  readiness: BrowserBridgeReadiness,
+  settings: BrowserBridgeSettings,
+): string {
+  switch (readiness.state) {
+    case "ready":
+      return `${settings.trackingMode} tracking; ${readiness.recentConnectedCompanions.length} recent companion`;
+    case "disabled":
+      return "Browser tracking is disabled";
+    case "tracking_off":
+      return "Browser tracking mode is off";
+    case "paused":
+      return "Browser tracking is paused";
+    case "control_disabled":
+      return "Browser control is disabled";
+    case "no_companion":
+      return "No browser companion has paired yet";
+    case "stale":
+      return "No connected browser companion has checked in recently";
+    case "permission_blocked":
+      return "Browser companion permissions or site access are incomplete";
+  }
+}
+
+function browserReadinessConfidence(state: BrowserBridgeReadinessState): number {
+  switch (state) {
+    case "ready":
+      return 0.9;
+    case "control_disabled":
+    case "stale":
+    case "permission_blocked":
+      return 0.55;
+    case "paused":
+      return 0.7;
+    case "disabled":
+    case "tracking_off":
+    case "no_companion":
+      return 0.35;
+  }
 }
 
 /** @internal */

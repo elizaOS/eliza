@@ -549,7 +549,9 @@ export const lifeGmailMessages = pgTable(
     syncedAt: text("synced_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (t) => [unique().on(t.agentId, t.provider, t.side, t.externalMessageId)],
+  (t) => [
+    unique().on(t.agentId, t.provider, t.side, t.grantId, t.externalMessageId),
+  ],
 );
 
 export const lifeInboxMessages = pgTable(
@@ -602,7 +604,7 @@ export const lifeGmailSyncStates = pgTable(
     syncedAt: text("synced_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (t) => [unique().on(t.agentId, t.provider, t.side, t.mailbox)],
+  (t) => [unique().on(t.agentId, t.provider, t.side, t.grantId, t.mailbox)],
 );
 
 export const lifeGmailSpamReviewItems = pgTable(

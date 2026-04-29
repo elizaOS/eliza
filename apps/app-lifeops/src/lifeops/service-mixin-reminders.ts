@@ -102,6 +102,7 @@ import {
   type SyncLifeOpsScheduleObservationsResponse,
 } from "./schedule-sync-contracts.js";
 import { computeDefinitionPerformance } from "./service-helpers-occurrence.js";
+import { isWithinQuietHours as isWithinQuietHoursPolicy } from "./service-helpers-misc.js";
 import { shouldDeferReminderUntilComputerActive } from "./service-helpers-reminder.js";
 import type {
   Constructor,
@@ -737,35 +738,6 @@ function applyReminderIntensityToPlan(
     return plan;
   }
   return plan;
-}
-
-function isWithinQuietHours(args: {
-  now: Date;
-  quietHours: LifeOpsReminderPlan["quietHours"];
-  channel: LifeOpsReminderStep["channel"];
-}): boolean {
-  if (
-    !args.quietHours ||
-    typeof args.quietHours !== "object" ||
-    !("startHour" in args.quietHours) ||
-    !("endHour" in args.quietHours)
-  ) {
-    return false;
-  }
-  const startHour =
-    typeof args.quietHours.startHour === "number"
-      ? args.quietHours.startHour
-      : null;
-  const endHour =
-    typeof args.quietHours.endHour === "number"
-      ? args.quietHours.endHour
-      : null;
-  if (startHour === null || endHour === null) return false;
-  const hour = args.now.getHours();
-  if (startHour <= endHour) {
-    return hour >= startHour && hour < endHour;
-  }
-  return hour >= startHour || hour < endHour;
 }
 
 function buildReminderBody(args: {
@@ -3116,7 +3088,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         deliveryMetadata.circadianState = args.activityProfile.circadianState;
       } else if (
         args.channel !== "in_app" &&
-        isWithinQuietHours({
+        isWithinQuietHoursPolicy({
           now: attemptedAtDate,
           quietHours: args.quietHours,
           channel: args.channel,

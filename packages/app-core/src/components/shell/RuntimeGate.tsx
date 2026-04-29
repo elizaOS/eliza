@@ -973,7 +973,7 @@ function GateShell({
         className="pointer-events-none fixed inset-0 overflow-hidden"
       >
         <img
-          src={resolveAppAssetUrl("splash-bg.png")}
+          src={resolveAppAssetUrl("splash-bg.jpg")}
           alt=""
           className="absolute inset-0 h-full w-full object-cover"
         />

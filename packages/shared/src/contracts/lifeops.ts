@@ -968,6 +968,7 @@ export interface LifeOpsConnectorGrant {
   provider: LifeOpsConnectorProvider;
   side: LifeOpsConnectorSide;
   identity: Record<string, unknown>;
+  identityEmail?: string | null;
   grantedScopes: string[];
   capabilities: string[];
   tokenRef: string | null;
@@ -1636,9 +1637,9 @@ export interface LifeOpsCalendarEvent {
   updatedAt: string;
   /** Set on merged feeds so the UI can show which calendar an event came from. */
   calendarSummary?: string;
-  /** Set when aggregating across multiple Google accounts. */
+  /** Google grant that owns this Gmail message cache row. */
   grantId?: string;
-  /** Set when aggregating across multiple Google accounts. */
+  /** Email address for the owning Google account when known. */
   accountEmail?: string;
 }
 
@@ -2931,6 +2932,7 @@ export interface SelectLifeOpsGoogleConnectorPreferenceRequest {
 export interface DisconnectLifeOpsGoogleConnectorRequest {
   side?: LifeOpsConnectorSide;
   mode?: LifeOpsConnectorMode;
+  grantId?: string;
 }
 
 export interface UpsertLifeOpsXConnectorRequest {
