@@ -102,3 +102,18 @@ export {
   registerElizaSecretSchemas,
   registerElizaProviderSchemas,
 } from "./integrations/eliza-schema.js";
+
+// Plugin-author entry point — third-party plugins outside the elizaOS
+// catalog self-register their schemas by handing in their existing
+// registry JSON. See ./integrations/plugin-registry.ts.
+export {
+  defaultFieldNameForEnvVar,
+  defineSchemaFromRegistry,
+} from "./integrations/plugin-registry.js";
+export type {
+  CanonicalDomain,
+  ConfigField,
+  DefineSchemaFromRegistryOptions,
+  DefineSchemaResult,
+  PluginRegistryEntryLike,
+} from "./integrations/plugin-registry.js";

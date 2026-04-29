@@ -272,6 +272,121 @@ the key.
 
 ---
 
+## For plugin authors (third-party / `elizaos-plugins/*`)
+
+Confidant doesn't hardcode every plugin in the universe. The
+first-party catalog map (`ELIZA_ENV_TO_SECRET_ID`,
+`registerElizaSecretSchemas`) covers the plugins shipped in this
+monorepo. Any third-party plugin — including the many under
+`elizaos-plugins/*` — self-registers from its own code in one call.
+
+### One-line adoption
+
+```ts
+// In your plugin's index.ts:
+import registryEntry from "./registry.json"; // your plugin's existing config
+import { defineSchemaFromRegistry } from "@elizaos/confidant";
+
+defineSchemaFromRegistry(registryEntry, {
+  domain: "connector",   // pick from CanonicalDomain
+  subject: "discord",    // your plugin's short name
+});
+```
+
+After this call:
+
+- Every `type: "secret"` field in your registry entry is registered as
+  `{domain}.{subject}.{camelCasedField}`. `DISCORD_BOT_TOKEN` →
+  `connector.discord.botToken`.
+- Schema ownership is attributed to your plugin's id (from `entry.id`
+  or `entry.npmName`), so the implicit-grant rule fires automatically
+  when your plugin resolves its own credentials — no permission setup
+  needed.
+- Labels and format hints come from the existing registry fields
+  (`label`, `placeholder`). Override per-call if you need to.
+
+### Picking a domain
+
+Use the `CanonicalDomain` that matches your plugin's role. The
+namespace is shared across the whole elizaOS ecosystem, so consistency
+helps users orient themselves:
+
+| Domain | When to use |
+|---|---|
+| `llm.*` | Text / image / embedding model providers (Anthropic, OpenAI, OpenRouter, custom inference services) |
+| `subscription.*` | Device-bound OAuth tokens for paid AI subscriptions |
+| `tts.*` | Text-to-speech APIs (ElevenLabs, etc.) |
+| `connector.*` | Messaging, social, or developer platforms (Discord, Telegram, Slack, GitHub, Linear, X, …) |
+| `tool.*` | Generic third-party utility services (search, captcha solving, scraping, automation) |
+| `wallet.*` | Local wallet material — private keys, mnemonics, salts. Always device-bound. |
+| `rpc.*` | Blockchain / on-chain data RPC providers (Alchemy, Infura, Helius, Birdeye, …) |
+| `trading.*` | Trading-venue API credentials (CLOB, exchange APIs, …) |
+| `music.*` | Music metadata / catalog APIs (Last.fm, Genius, Spotify, …) |
+| `storage.*` | Object storage (S3, GCS, Azure Blob) |
+| `service.*` | First-party services (Eliza Cloud) and other service tokens that don't fit the above |
+
+If your plugin doesn't fit any of these, file an issue against the
+elizaOS upstream and we'll add a domain. New domains are cheap; the
+namespace is structural, not exclusive.
+
+### Field-name conventions
+
+The default field-name extractor strips the subject prefix (case-
+insensitive, dash- or underscore-tolerant) and camel-cases the
+remainder:
+
+- `DISCORD_BOT_TOKEN`, subject `"discord"` → `botToken`
+- `GITHUB_API_TOKEN`, subject `"github"` → `apiToken`
+- `OPENROUTER_API_KEY`, subject `"openrouter"` → `apiKey`
+- `GOOGLE_GENAI_API_KEY`, subject `"google-genai"` → `apiKey`
+
+Common conventional field names (use them when applicable so users
+can predict your IDs):
+
+- `apiKey` — generic API key
+- `apiToken` — generic API token
+- `accessToken` — OAuth access token
+- `secretKey` — paired secret half of an access-key/secret-key tuple
+- `webhookSecret` — webhook-signature shared secret
+- `clientSecret` — OAuth client secret
+- `privateKey` — wallet private key
+- `mnemonic` — wallet seed phrase
+- `botToken` — bot framework auth token
+
+### Customizing the mapping
+
+```ts
+defineSchemaFromRegistry(registryEntry, {
+  domain: "tool",
+  subject: "myservice",
+  // Restrict to a subset of secrets:
+  only: ["MYSERVICE_PRIMARY_KEY", "MYSERVICE_WEBHOOK_SECRET"],
+  // Override the auto-derived field name:
+  fieldNameForEnvVar: (envVar) =>
+    envVar === "MYSERVICE_PRIMARY_KEY" ? "key" : "webhookSecret",
+  // Override the plugin id (defaults to entry.id):
+  pluginId: "@vendor/plugin-myservice",
+});
+```
+
+### What this gets your plugin
+
+- Users with `@elizaos/confidant` set up can store your plugin's
+  credentials in 1Password (phase 4+), the OS keychain, or whatever
+  password manager their host app supports.
+- Per-skill audit logging — every credential resolve your plugin makes
+  is recorded with your plugin id in the user's audit log.
+- Implicit deny-by-default for cross-plugin access — other plugins
+  cannot read your credentials without an explicit grant from the user.
+- Phase 7 cloud sync (when shipped) — your secrets sync E2E-encrypted
+  across the user's devices unless you flag them device-bound via the
+  `wallet.*` domain.
+
+If your plugin doesn't migrate, it continues to work via the
+`EnvLegacyBackend` until phase 6 of the host app's migration.
+
+---
+
 ## Migration anti-patterns
 
 These patterns appear during migration and should be avoided:
