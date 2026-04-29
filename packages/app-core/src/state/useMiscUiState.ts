@@ -92,7 +92,7 @@ export function useMiscUiState() {
   }, []);
   const [gameOverlayEnabled, setGameOverlayEnabled] = useState(false);
   const [activeOverlayApp, setActiveOverlayApp] = useState<string | null>(null);
-  const companionAppRunning = activeOverlayApp !== null;
+  const companionAppRunning = activeOverlayApp === "@elizaos/app-companion";
 
   const activeGameRun = useMemo(
     () => appRuns.find((run) => run.runId === activeGameRunId) ?? null,

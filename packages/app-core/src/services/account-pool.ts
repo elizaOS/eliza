@@ -207,7 +207,7 @@ export class AccountPool {
   }
 
   get(accountId: string): LinkedAccountConfig | null {
-    return this.deps.readAccounts()[accountId] ?? null;
+    return findAccountById(this.deps.readAccounts(), accountId);
   }
 
   async upsert(account: LinkedAccountConfig): Promise<void> {
@@ -234,7 +234,7 @@ export class AccountPool {
       model?: string;
     },
   ): Promise<void> {
-    const account = this.deps.readAccounts()[accountId];
+    const account = findAccountById(this.deps.readAccounts(), accountId);
     if (!account) return;
     recordUsageEntry(account.providerId, account.id, result);
     const next: LinkedAccountConfig = {
@@ -249,7 +249,7 @@ export class AccountPool {
     accessToken: string,
     opts?: { codexAccountId?: string; fetch?: typeof fetch },
   ): Promise<void> {
-    const account = this.deps.readAccounts()[accountId];
+    const account = findAccountById(this.deps.readAccounts(), accountId);
     if (!account) return;
 
     let usage: LinkedAccountUsage;
@@ -280,7 +280,7 @@ export class AccountPool {
     untilMs: number,
     detail?: string,
   ): Promise<void> {
-    const account = this.deps.readAccounts()[accountId];
+    const account = findAccountById(this.deps.readAccounts(), accountId);
     if (!account) return;
     const healthDetail: LinkedAccountHealthDetail = {
       until:
@@ -298,7 +298,7 @@ export class AccountPool {
   }
 
   async markNeedsReauth(accountId: string, detail?: string): Promise<void> {
-    const account = this.deps.readAccounts()[accountId];
+    const account = findAccountById(this.deps.readAccounts(), accountId);
     if (!account) return;
     await this.deps.writeAccount({
       ...account,
@@ -311,7 +311,7 @@ export class AccountPool {
   }
 
   async markInvalid(accountId: string, detail?: string): Promise<void> {
-    const account = this.deps.readAccounts()[accountId];
+    const account = findAccountById(this.deps.readAccounts(), accountId);
     if (!account) return;
     await this.deps.writeAccount({
       ...account,
@@ -324,7 +324,7 @@ export class AccountPool {
   }
 
   async markHealthy(accountId: string): Promise<void> {
-    const account = this.deps.readAccounts()[accountId];
+    const account = findAccountById(this.deps.readAccounts(), accountId);
     if (!account) return;
     if (account.health === "ok") return;
     await this.deps.writeAccount({
@@ -354,6 +354,19 @@ export class AccountPool {
     }
     return ready;
   }
+}
+
+function poolRecordKey(providerId: PoolProviderId, accountId: string): string {
+  return `${providerId}:${accountId}`;
+}
+
+function findAccountById(
+  all: Record<string, LinkedAccountConfig>,
+  accountId: string,
+): LinkedAccountConfig | null {
+  const direct = all[accountId];
+  if (direct) return direct;
+  return Object.values(all).find((account) => account.id === accountId) ?? null;
 }
 
 function byPriorityThenAge(
@@ -479,7 +492,7 @@ function loadAllAccounts(): Record<string, LinkedAccountConfig> {
     const sorted = [...records].sort((a, b) => a.createdAt - b.createdAt);
     for (const record of sorted) {
       const providerMeta = meta[provider]?.[record.id];
-      out[record.id] = recordToLinked(
+      out[poolRecordKey(provider, record.id)] = recordToLinked(
         record,
         providerMeta,
         provider,

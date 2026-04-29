@@ -1214,10 +1214,10 @@ export function patchHttpCreateServerForCompat(
             return;
           }
         } catch (err) {
-          logger.error("[CompatApiServer] Unhandled compat route error", {
+          logger.error({
             error: err instanceof Error ? err.message : String(err),
             stack: err instanceof Error ? err.stack : undefined,
-          });
+          }, "[CompatApiServer] Unhandled compat route error");
           if (!res.headersSent) {
             res.statusCode = 500;
             res.setHeader("content-type", "application/json; charset=utf-8");
@@ -1228,10 +1228,10 @@ export function patchHttpCreateServerForCompat(
       }
 
       Promise.resolve(listener(req, res)).catch((err) => {
-        logger.error("[CompatApiServer] Upstream listener error", {
+        logger.error({
           error: err instanceof Error ? err.message : String(err),
           stack: err instanceof Error ? err.stack : undefined,
-        });
+        }, "[CompatApiServer] Upstream listener error");
         if (!res.headersSent) {
           res.statusCode = 500;
           res.setHeader("content-type", "application/json; charset=utf-8");

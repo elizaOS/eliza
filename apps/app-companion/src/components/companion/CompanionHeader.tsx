@@ -10,6 +10,7 @@ import {
   MessageCirclePlus,
   Monitor,
   PencilLine,
+  Settings,
   Smartphone,
   UserRound,
   Volume2,
@@ -20,7 +21,7 @@ import { memo, type ReactNode } from "react";
 const SHELL_MODE_MOBILE_BREAKPOINT = 639;
 const SHELL_MODE_MOBILE_MEDIA_QUERY = `(max-width: ${SHELL_MODE_MOBILE_BREAKPOINT}px)`;
 
-export type CompanionShellView = "companion" | "character";
+export type CompanionShellView = "companion" | "character" | "settings";
 
 export interface CompanionHeaderProps {
   /** Which internal view is currently active. */
@@ -29,6 +30,8 @@ export interface CompanionHeaderProps {
   onExitToDesktop: () => void;
   /** Switch to the character editor view within the companion overlay. */
   onExitToCharacter: () => void;
+  /** Switch to companion-local settings within the overlay. */
+  onOpenSettings?: () => void;
   /** Switch back to the companion chat view within the overlay. */
   onSwitchToCompanion?: () => void;
   uiLanguage: UiLanguage;
@@ -50,6 +53,7 @@ export const CompanionHeader = memo(function CompanionHeader(
     activeView = "companion",
     onExitToDesktop,
     onExitToCharacter,
+    onOpenSettings,
     onSwitchToCompanion,
     uiLanguage,
     setUiLanguage,
@@ -85,6 +89,13 @@ export const CompanionHeader = memo(function CompanionHeader(
       label: t("header.characterMode"),
       Icon: PencilLine,
       onClick: activeView === "character" ? () => {} : onExitToCharacter,
+    },
+    {
+      view: "settings" as const,
+      label: "Companion settings",
+      Icon: Settings,
+      onClick:
+        activeView === "settings" ? () => {} : (onOpenSettings ?? (() => {})),
     },
     {
       view: "desktop" as const,

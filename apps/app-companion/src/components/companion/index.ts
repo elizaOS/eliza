@@ -12,6 +12,7 @@ export * from "../avatar/VrmViewer";
 export * from "../chat/ChatAvatar";
 export * from "./CompanionAppView";
 export * from "./CompanionHeader";
+export * from "./CompanionSettingsPanel";
 export * from "./CompanionSceneHost";
 export * from "./CompanionShell";
 export * from "./CompanionView";

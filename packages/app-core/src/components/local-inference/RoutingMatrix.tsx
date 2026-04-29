@@ -51,17 +51,14 @@ const SLOT_MODEL_TYPE: Record<AgentModelSlot, string> = {
   OBJECT_LARGE: "OBJECT_LARGE",
 };
 
-/**
- * Cross-provider routing matrix.
- *
- * Shows every `AgentModelSlot` as a row with:
- *   - a policy dropdown (manual / cheapest / fastest / prefer-local / round-robin)
- *   - a preferred-provider dropdown (only editable when policy === "manual")
- *   - a live view of which providers have a registered handler for that slot
- *
- * Both settings persist to `$STATE_DIR/local-inference/routing.json` and
- * take effect on the next request via the router-handler.
- */
+const SLOT_LABEL: Record<AgentModelSlot, string> = {
+  TEXT_SMALL: "Small text",
+  TEXT_LARGE: "Large text",
+  TEXT_EMBEDDING: "Embeddings",
+  OBJECT_SMALL: "Small structured output",
+  OBJECT_LARGE: "Large structured output",
+};
+
 export function RoutingMatrix() {
   const [registrations, setRegistrations] = useState<PublicRegistration[]>([]);
   const [preferences, setPreferences] = useState<RoutingPreferences>({
@@ -113,16 +110,10 @@ export function RoutingMatrix() {
 
   return (
     <section className="flex flex-col gap-3">
-      <header className="flex flex-col gap-1">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+      <header>
+        <h3 className="text-[10px] font-medium uppercase tracking-wider text-muted">
           Model routing
         </h3>
-        <p className="text-xs text-muted-foreground">
-          Decide how each ModelType dispatches. The router sits on top of the
-          runtime's native priority order and makes the final pick. Providers
-          listed below the dropdown are the ones currently holding a handler for
-          that slot.
-        </p>
       </header>
 
       <div className="flex flex-col gap-2">
@@ -141,11 +132,18 @@ export function RoutingMatrix() {
               className="rounded-xl border border-border bg-card p-3 flex flex-col gap-2"
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-sm">{slot}</span>
-                <span className="text-xs text-muted-foreground">
-                  {candidates.length} provider
-                  {candidates.length === 1 ? "" : "s"}
+                <span className="font-medium text-sm" title={slot}>
+                  {SLOT_LABEL[slot]}
                 </span>
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    candidates.length > 0 ? "bg-ok" : "bg-muted"
+                  }`}
+                  title={`${candidates.length} available provider${
+                    candidates.length === 1 ? "" : "s"
+                  }`}
+                  aria-hidden
+                />
               </div>
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 <label className="flex flex-col gap-1 text-xs">
@@ -169,7 +167,7 @@ export function RoutingMatrix() {
                   <span className="text-muted-foreground">
                     Preferred provider
                     {policy !== "manual" &&
-                      " (only honoured when policy = manual)"}
+                      " (manual only)"}
                   </span>
                   <select
                     value={preferred}
@@ -179,7 +177,7 @@ export function RoutingMatrix() {
                     }
                     className="rounded-md border border-border bg-bg/50 px-2 py-1.5 text-sm disabled:opacity-60"
                   >
-                    <option value="">— no preference —</option>
+                    <option value="">Auto</option>
                     {candidates.map((c) => (
                       <option key={c.provider} value={c.provider}>
                         {c.provider}

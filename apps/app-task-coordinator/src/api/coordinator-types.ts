@@ -32,6 +32,8 @@ export interface TaskContext {
   originalTask: string;
   workdir: string;
   repo?: string;
+  originRoomId?: string;
+  originMetadata?: Record<string, unknown>;
   status: CoordinatorTaskStatus;
   decisions: CoordinationDecision[];
   autoResolvedCount: number;
