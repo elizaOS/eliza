@@ -54,35 +54,55 @@ jobs:
 
       # Linux Secret Service prerequisites — without these the
       # @napi-rs/keyring round-trip throws on its first call.
-      # Install libsecret + gnome-keyring + a session DBus, then
-      # start the secret-service daemon and unlock it. Recent
-      # gnome-keyring versions reject `--start --unlock` together
-      # (mutually exclusive options), so they run as separate calls.
+      # The gnome-keyring-daemon is fragile in headless CI:
+      #   * It refuses to start if XDG_RUNTIME_DIR/keyring/ doesn't exist
+      #     (Ubuntu 24.04 runners don't pre-create it).
+      #   * --start and --unlock are mutually exclusive in recent releases.
+      #   * --start prints noisy "discover_other_daemon" warnings on
+      #     stderr but still returns 0 when the daemon has actually
+      #     started; with `set -e` we have to swallow only the warnings,
+      #     not real errors.
+      #
+      # Pattern: pre-create the runtime dir, launch DBus, then start
+      # the daemon and unlock it as separate invocations.
       - name: Install Secret Service (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libsecret-1-dev gnome-keyring dbus-x11
-          # Start a session DBus first so gnome-keyring-daemon has somewhere
-          # to advertise its socket path.
+          # Pre-create the keyring runtime directory. gnome-keyring-daemon
+          # writes its control socket to $XDG_RUNTIME_DIR/keyring/control;
+          # it errors out with "couldn't access control socket" when the
+          # parent doesn't exist, which is the case on default GitHub
+          # runners.
+          uid="$(id -u)"
+          if [ ! -d "/run/user/$uid" ]; then
+            sudo install -d -m 0700 -o "$uid" -g "$(id -g)" "/run/user/$uid"
+          fi
+          mkdir -p "/run/user/$uid/keyring"
+          chmod 700 "/run/user/$uid/keyring"
+          export XDG_RUNTIME_DIR="/run/user/$uid"
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+          # Launch a session DBus.
           eval "$(dbus-launch --sh-syntax)"
           {
             echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
             echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID"
           } >> "$GITHUB_ENV"
-          # Start the daemon. It prints its env vars on stdout in `KEY=VAL`
-          # form (XDG_RUNTIME_DIR, GNOME_KEYRING_CONTROL, SSH_AUTH_SOCK).
-          # Capture and export all of them so libsecret in the test process
-          # finds the running daemon.
-          daemon_env="$(printf '\n' | gnome-keyring-daemon --start --components=secrets)"
+          # Start the daemon. Forks into background and prints env vars
+          # (GNOME_KEYRING_CONTROL, SSH_AUTH_SOCK, etc.) on stdout in
+          # `KEY=VAL` form. Drop stderr (the "discover_other_daemon"
+          # warning is harmless when no other daemon is running).
+          daemon_env="$(printf '\n' | gnome-keyring-daemon --start --components=secrets 2>/dev/null || true)"
           echo "$daemon_env" | while IFS='=' read -r key value; do
             [ -n "$key" ] && echo "${key}=${value}" >> "$GITHUB_ENV"
           done
-          # Unlock the default keyring with an empty password so the
-          # @napi-rs/keyring writes don't block on a prompt. This is a
-          # separate invocation: --start and --unlock are mutually
-          # exclusive in current gnome-keyring releases.
-          printf '\n' | gnome-keyring-daemon --unlock --components=secrets
+          # Unlock the default keyring with an empty password so
+          # @napi-rs/keyring writes don't block on a prompt. Tolerate
+          # exit-1 here: on a brand-new keyring there's nothing to
+          # unlock, and the libsecret call from the test will create
+          # one on demand.
+          printf '\n' | gnome-keyring-daemon --unlock --components=secrets 2>/dev/null || true
 
       - name: Install dependencies
         working-directory: packages/vault

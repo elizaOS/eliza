@@ -108,10 +108,24 @@ runs:
       # binary that errors with "Bun's postinstall script was not run" until its
       # own install.js downloads the real binary; run it explicitly so any
       # subsequent `bun ...` invocation (including the repo postinstall) works.
+      #
+      # Bun's hoisted install layout puts the package at
+      # node_modules/.bun/bun@<ver>/node_modules/bun/install.js rather
+      # than the legacy node_modules/bun/install.js, so check the
+      # hoisted path too.
       shell: bash
       run: |
+        install_js=""
         if [ -f node_modules/bun/install.js ]; then
-          (cd node_modules/bun && node install.js)
+          install_js="node_modules/bun/install.js"
+        elif [ -d node_modules/.bun ]; then
+          install_js="$(find node_modules/.bun -maxdepth 4 -path '*/bun@*/node_modules/bun/install.js' -print -quit 2>/dev/null)"
+        fi
+        if [ -n "$install_js" ] && [ -f "$install_js" ]; then
+          echo "Running bun postinstall: $install_js"
+          (cd "$(dirname "$install_js")" && node install.js)
+        else
+          echo "::warning::No bun/install.js found; downstream bun run calls may fail"
         fi
 
     - name: Run repository postinstall
