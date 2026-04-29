@@ -32,7 +32,6 @@ import {
   HabitPanel,
   MetricTile,
   StackedBar,
-  startOfLocalDayIso,
 } from "./LifeOpsHabitVisuals.js";
 
 type RangeKey = "today" | "this-week" | "7d" | "30d";
