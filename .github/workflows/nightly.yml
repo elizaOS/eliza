@@ -179,7 +179,7 @@ jobs:
         run: bun run build
 
       - name: Build desktop bundle
-        working-directory: packages/app
+        working-directory: apps/app
         run: bun run build
 
   publish-npm:

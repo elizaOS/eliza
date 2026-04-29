@@ -44,7 +44,12 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const agentRoot = path.resolve(here, "..");
-const repoRoot = path.resolve(agentRoot, "..", "..", "..");
+// agentRoot = repoRoot/packages/agent → two parents up is the repo root.
+// (Earlier versions assumed milady's outer-repo layout where agent
+// lived at eliza/packages/agent/, requiring three `..`s. That hop is
+// the source of every "could not locate @electric-sql/pglite/dist" or
+// "agent-bundle.js not found" error in CI.)
+const repoRoot = path.resolve(agentRoot, "..", "..");
 const outDir = path.join(agentRoot, "dist-mobile");
 const stubsDir = path.join(here, "mobile-stubs");
 const entry = path.join(agentRoot, "src", "bin.ts");
@@ -205,10 +210,14 @@ const corePackages = [
   "@elizaos/plugin-sql",
 ];
 
+// Inside the eliza repo the source trees live directly under the repo
+// root: `packages/typescript/`, `packages/shared/`, and
+// `plugins/plugin-sql/`. The earlier `eliza/` prefix here was a leftover
+// from milady's outer-repo layout where this whole tree was nested under
+// `eliza/`.
 const dedupeTargets = {
   "@elizaos/core": path.resolve(
     repoRoot,
-    "eliza",
     "packages",
     "typescript",
     "src",
@@ -216,7 +225,6 @@ const dedupeTargets = {
   ),
   "@elizaos/shared": path.resolve(
     repoRoot,
-    "eliza",
     "packages",
     "shared",
     "src",
@@ -229,7 +237,6 @@ const dedupeTargets = {
   // runtime uses keeps the adapter and the runtime in lockstep.
   "@elizaos/plugin-sql": path.resolve(
     repoRoot,
-    "eliza",
     "plugins",
     "plugin-sql",
     "typescript",

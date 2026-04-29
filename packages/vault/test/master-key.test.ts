@@ -143,18 +143,27 @@ describe("defaultMasterKey — fallback chain", () => {
     expect(k.length).toBe(KEY_BYTES);
   });
 
-  test("error message names every remediation when both fail", async () => {
-    delete process.env.MILADY_VAULT_PASSPHRASE;
-    const r = defaultMasterKey({ service: "" });
-    await expect(r.load()).rejects.toThrow(MasterKeyUnavailableError);
-    try {
-      await r.load();
-      throw new Error("expected throw");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      expect(msg).toMatch(/MILADY_VAULT_PASSPHRASE/);
-    }
-  });
+  // Windows Credential Manager accepts an empty service name in
+  // `new Entry("", "...")` and returns the existing entry (or creates
+  // one), so the "guaranteed-bad keychain entry" sentinel that works on
+  // macOS Keychain and libsecret doesn't trigger a failure path here.
+  // The fallback-chain error-message contract still holds on POSIX
+  // platforms, which is the case the test is documenting.
+  test.skipIf(process.platform === "win32")(
+    "error message names every remediation when both fail",
+    async () => {
+      delete process.env.MILADY_VAULT_PASSPHRASE;
+      const r = defaultMasterKey({ service: "" });
+      await expect(r.load()).rejects.toThrow(MasterKeyUnavailableError);
+      try {
+        await r.load();
+        throw new Error("expected throw");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        expect(msg).toMatch(/MILADY_VAULT_PASSPHRASE/);
+      }
+    },
+  );
 
   test("describe surfaces both paths when passphrase env is set", () => {
     process.env.MILADY_VAULT_PASSPHRASE = "fine-test-passphrase-env";
