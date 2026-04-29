@@ -689,12 +689,17 @@ public class MiladyAgentService extends Service {
                 agentEnv.put("MILADY_LOCAL_LLAMA", "1");
                 // CPU-only inference of a 12k-token prompt on cuttlefish
                 // x86_64 / Llama-3.2-1B lands well past the 180 s default
-                // chat-generation timeout (chat-routes.ts). 30 minutes
-                // covers prompt decode plus token generation across the
-                // full planner → action evaluator → response cycle. Real
-                // phone hardware (Tensor / Adreno) finishes in seconds,
-                // so this only matters for AOSP smoke runs on cvd.
-                agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "1800000");
+                // chat-generation timeout (chat-routes.ts). On cvd a
+                // single chat turn fires the planner (9k-token prefill
+                // ≈ 10 min on 4 vCPUs at 16 tok/s) plus an action
+                // runner plus a reply, and the planner's structured-
+                // output parser sometimes triggers a retry round.
+                // Empirically end-to-end runs land at 25–45 min on cvd.
+                // 60 min budget gives the smoke a full cycle to
+                // complete with retries; real phone hardware
+                // (Tensor / Adreno) finishes in seconds, so this only
+                // matters for AOSP cvd runs.
+                agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "3600000");
 
                 // Llama-3.2-1B native context is 128k. We pin to 16k
                 // because 16k easily fits the planner's ~12k-token
