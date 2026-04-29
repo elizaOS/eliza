@@ -1,8 +1,21 @@
 // @ts-nocheck — mixin: type safety is enforced on the composed class
 import crypto from "node:crypto";
 import type {
+  LifeOpsScreenTimeBreakdown as ScreenTimeBreakdown,
+  LifeOpsScreenTimeBreakdownItem as ScreenTimeBreakdownItem,
+  LifeOpsScreenTimeBucket as ScreenTimeBucket,
   LifeOpsScreenTimeDaily,
+  LifeOpsScreenTimeHistoryPoint,
+  LifeOpsScreenTimeHistoryResponse,
+  LifeOpsScreenTimeMetrics,
+  LifeOpsScreenTimeRangeKey,
   LifeOpsScreenTimeSession,
+  LifeOpsScreenTimeSource,
+  LifeOpsScreenTimeSummary,
+  LifeOpsScreenTimeTargetBucket,
+  LifeOpsScreenTimeVisibleBuckets,
+  LifeOpsSocialHabitDataSource as SocialHabitDataSource,
+  LifeOpsSocialHabitSummary as SocialHabitSummary,
 } from "@elizaos/shared";
 import type {
   BrowserBridgeCompanionStatus,
@@ -47,7 +60,7 @@ function computeDurationSeconds(
 }
 
 type ScreenTimeAggregateRow = {
-  source: "app" | "website";
+  source: LifeOpsScreenTimeSource;
   identifier: string;
   displayName: string;
   totalSeconds: number;
@@ -64,68 +77,7 @@ type ScreenTimeWeeklyAverageItem = {
   averageMinutesPerDay: number;
 };
 
-type ScreenTimeBucket = {
-  key: string;
-  label: string;
-  totalSeconds: number;
-};
-
-type ScreenTimeBreakdownItem = {
-  source: "app" | "website";
-  identifier: string;
-  displayName: string;
-  totalSeconds: number;
-  sessionCount: number;
-  category: string;
-  device: string;
-  service: string | null;
-  serviceLabel: string | null;
-  browser: string | null;
-};
-
-type ScreenTimeBreakdown = {
-  items: ScreenTimeBreakdownItem[];
-  totalSeconds: number;
-  bySource: ScreenTimeBucket[];
-  byCategory: ScreenTimeBucket[];
-  byDevice: ScreenTimeBucket[];
-  byService: ScreenTimeBucket[];
-  byBrowser: ScreenTimeBucket[];
-  fetchedAt: string;
-};
-
-type SocialHabitSummary = {
-  since: string;
-  until: string;
-  totalSeconds: number;
-  services: ScreenTimeBucket[];
-  devices: ScreenTimeBucket[];
-  surfaces: ScreenTimeBucket[];
-  browsers: ScreenTimeBucket[];
-  sessions: ScreenTimeBreakdownItem[];
-  messages: {
-    channels: Array<{
-      channel: "x_dm";
-      label: string;
-      inbound: number;
-      outbound: number;
-      opened: number;
-      replied: number;
-    }>;
-    inbound: number;
-    outbound: number;
-    opened: number;
-    replied: number;
-  };
-  dataSources: Array<{
-    id: string;
-    label: string;
-    state: "live" | "partial" | "unwired";
-  }>;
-  fetchedAt: string;
-};
-
-type SocialHabitDataSource = SocialHabitSummary["dataSources"][number];
+const DAY_MS = 86_400_000;
 
 function resolveUtcDateWindow(date: string): {
   startIso: string;

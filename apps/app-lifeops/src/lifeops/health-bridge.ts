@@ -104,7 +104,10 @@ function isFixtureHealthBackendEnabled(): boolean {
 function utcMidnightMs(date: string): number {
   const ms = Date.parse(`${date}T00:00:00.000Z`);
   if (!Number.isFinite(ms)) {
-    throw new HealthBridgeError(`Invalid fixture health date: ${date}`, "fixture");
+    throw new HealthBridgeError(
+      `Invalid fixture health date: ${date}`,
+      "fixture",
+    );
   }
   return ms;
 }
@@ -114,14 +117,19 @@ function todayDateKeyUtc(): string {
 }
 
 function fixtureDayOffset(date: string): number {
-  return Math.round((utcMidnightMs(date) - utcMidnightMs(todayDateKeyUtc())) / ONE_DAY_MS);
+  return Math.round(
+    (utcMidnightMs(date) - utcMidnightMs(todayDateKeyUtc())) / ONE_DAY_MS,
+  );
 }
 
 function fixtureSummaryForDate(date: string): HealthDailySummary {
   const offset = fixtureDayOffset(date);
   const distance = Math.abs(offset);
   const direction = offset < 0 ? 1 : -1;
-  const steps = Math.max(1500, 8420 + direction * distance * 260 + (distance % 3) * 175);
+  const steps = Math.max(
+    1500,
+    8420 + direction * distance * 260 + (distance % 3) * 175,
+  );
   const activeMinutes = Math.max(
     18,
     63 + direction * distance * 4 + (distance % 2 === 0 ? 2 : -3),
@@ -159,11 +167,9 @@ function enumerateFixtureDates(startAt: string, endAt: string): string[] {
   }
 
   const dates: string[] = [];
-  const cursor = new Date(Date.UTC(
-    start.getUTCFullYear(),
-    start.getUTCMonth(),
-    start.getUTCDate(),
-  ));
+  const cursor = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()),
+  );
   const endCursorMs = Date.UTC(
     end.getUTCFullYear(),
     end.getUTCMonth(),
@@ -200,10 +206,10 @@ function fixturePointValue(
         : metric === "active_minutes"
           ? summary.activeMinutes
           : metric === "heart_rate"
-            ? summary.heartRateAvg ?? 0
+            ? (summary.heartRateAvg ?? 0)
             : metric === "calories"
-              ? summary.calories ?? 0
-              : summary.distanceMeters ?? 0,
+              ? (summary.calories ?? 0)
+              : (summary.distanceMeters ?? 0),
     unit:
       metric === "steps"
         ? "count"
@@ -345,7 +351,9 @@ function finiteNumber(value: unknown): number {
 }
 
 function optionalFiniteNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 async function healthKitDailySummary(
@@ -560,7 +568,13 @@ async function googleFitDailySummary(
 ): Promise<HealthDailySummary> {
   const { startMs, endMs } = dayBoundsMs(date);
   const aggregateBy = (
-    ["steps", "active_minutes", "calories", "distance_meters", "heart_rate"] as GoogleFitMetricKey[]
+    [
+      "steps",
+      "active_minutes",
+      "calories",
+      "distance_meters",
+      "heart_rate",
+    ] as GoogleFitMetricKey[]
   ).map((k) => ({ dataTypeName: GOOGLE_FIT_DATA_TYPES[k].dataTypeName }));
 
   const response = await callGoogleFitAggregate(accessToken, {
@@ -609,7 +623,11 @@ async function googleFitDailySummary(
         for (const point of ds.point ?? []) {
           const startNs = Number(point.startTimeNanos ?? "0");
           const endNs = Number(point.endTimeNanos ?? "0");
-          if (Number.isFinite(startNs) && Number.isFinite(endNs) && endNs > startNs) {
+          if (
+            Number.isFinite(startNs) &&
+            Number.isFinite(endNs) &&
+            endNs > startNs
+          ) {
             sleepMs += (endNs - startNs) / 1_000_000;
           }
         }
@@ -650,7 +668,10 @@ async function googleFitDataPoints(
     }
     return points;
   }
-  const keyMap: Record<Exclude<HealthDataPoint["metric"], "sleep_hours">, GoogleFitMetricKey> = {
+  const keyMap: Record<
+    Exclude<HealthDataPoint["metric"], "sleep_hours">,
+    GoogleFitMetricKey
+  > = {
     steps: "steps",
     active_minutes: "active_minutes",
     heart_rate: "heart_rate",

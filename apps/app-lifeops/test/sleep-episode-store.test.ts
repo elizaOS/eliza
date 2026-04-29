@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { LifeOpsRepository, LifeOpsSleepEpisodeRecord } from "../src/lifeops/repository.js";
+import type {
+  LifeOpsRepository,
+  LifeOpsSleepEpisodeRecord,
+} from "../src/lifeops/repository.js";
 import { persistSleepEpisodes } from "../src/lifeops/sleep-episode-store.js";
 
-function repositoryRecorder(records: LifeOpsSleepEpisodeRecord[]): LifeOpsRepository {
+function repositoryRecorder(
+  records: LifeOpsSleepEpisodeRecord[],
+): LifeOpsRepository {
   return {
     upsertSleepEpisode: async (episode: LifeOpsSleepEpisodeRecord) => {
       records.push(episode);
