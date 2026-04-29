@@ -27,7 +27,6 @@ import os from "node:os";
 import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
 import { DropService, setElizaMakerDropService } from "@elizaos/app-elizamaker";
-import { handleKnowledgeRoutes } from "@elizaos/app-knowledge/routes";
 import {
   normalizeJsonRpcUrl,
   probeJsonRpcEndpoint,
@@ -1582,21 +1581,8 @@ async function handleRequest(
     if (trainingHandled) return;
   }
 
-  // ── Knowledge routes (/api/knowledge/*) ─────────────────────────────────
-  if (pathname.startsWith("/api/knowledge")) {
-    const knowledgeHandled = await handleKnowledgeRoutes({
-      req,
-      res,
-      method,
-      pathname,
-      url,
-      runtime: state.runtime,
-      readJsonBody,
-      json,
-      error,
-    });
-    if (knowledgeHandled) return;
-  }
+  // Knowledge routes (/api/knowledge/*) are now provided by the
+  // @elizaos/app-knowledge plugin via the runtime route registry.
 
   if (
     pathname.startsWith("/api/memory") ||
