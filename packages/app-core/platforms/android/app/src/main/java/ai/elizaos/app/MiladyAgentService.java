@@ -253,6 +253,70 @@ public class MiladyAgentService extends Service {
             throw new IOException("Could not create " + stateDir);
         }
 
+        // Compare APK source-file mtime against a stamp file in the agent
+        // root; when the APK was upgraded under us (adb push to
+        // /system/priv-app + reboot, a Play update, or an OTA) wipe the
+        // cached bundle + ABI binaries so the new asset payload gets
+        // re-extracted. Without this, copyAssetIfMissing silently keeps
+        // the previous extraction forever and shipping a fresh
+        // agent-bundle.js does nothing.
+        //
+        // We use the APK file's mtime (sourceDir → File.lastModified)
+        // rather than PackageInfo.lastUpdateTime because /system/priv-app
+        // installs (the AOSP image embed path) DO NOT bump
+        // lastUpdateTime — that field reflects pm-install + Play-update
+        // events. The on-disk APK mtime always reflects the current
+        // payload, which is what we need to invalidate cached extractions.
+        File stamp = new File(root, ".apk-stamp");
+        long pkgUpdate = 0L;
+        try {
+            String sourceDir = getApplicationInfo().sourceDir;
+            if (sourceDir != null) {
+                long apkMtime = new File(sourceDir).lastModified();
+                if (apkMtime > 0L) pkgUpdate = apkMtime;
+            }
+            long pmUpdate = getPackageManager()
+                .getPackageInfo(getPackageName(), 0).lastUpdateTime;
+            if (pmUpdate > pkgUpdate) pkgUpdate = pmUpdate;
+        } catch (Exception ignored) {
+            // best-effort; no stamp known on early-boot failure
+        }
+        long stampedUpdate = 0L;
+        if (stamp.exists()) {
+            try (InputStream in = new java.io.FileInputStream(stamp)) {
+                byte[] buf = new byte[64];
+                int n = in.read(buf);
+                if (n > 0) {
+                    stampedUpdate = Long.parseLong(new String(buf, 0, n).trim());
+                }
+            } catch (Exception ignored) {
+                // corrupt stamp — treat as missing
+            }
+        }
+        if (pkgUpdate > 0L && pkgUpdate != stampedUpdate) {
+            Log.i(TAG, "APK changed (was=" + stampedUpdate + ", now=" + pkgUpdate + "); refreshing extracted agent assets");
+            File bundle = new File(root, AGENT_BUNDLE_NAME);
+            if (bundle.exists() && !bundle.delete()) Log.w(TAG, "Could not delete stale agent-bundle.js");
+            File launchScript = new File(root, AGENT_LAUNCH_SCRIPT);
+            if (launchScript.exists() && !launchScript.delete()) Log.w(TAG, "Could not delete stale launch.sh");
+            File pgWasm = new File(root, "pglite.wasm");
+            if (pgWasm.exists()) pgWasm.delete();
+            File pgData = new File(root, "pglite.data");
+            if (pgData.exists()) pgData.delete();
+            File vec = new File(getFilesDir(), "vector.tar.gz");
+            if (vec.exists()) vec.delete();
+            File fuzzy = new File(getFilesDir(), "fuzzystrmatch.tar.gz");
+            if (fuzzy.exists()) fuzzy.delete();
+            File pluginsManifest = new File(root, "plugins-manifest.json");
+            if (pluginsManifest.exists()) pluginsManifest.delete();
+            File[] abiContents = abiDir.listFiles();
+            if (abiContents != null) {
+                for (File f : abiContents) {
+                    if (f.isFile() && !f.delete()) Log.w(TAG, "Could not delete " + f.getName());
+                }
+            }
+        }
+
         AssetManager assets = getAssets();
 
         copyAssetIfMissing(assets, "agent/" + AGENT_BUNDLE_NAME, new File(root, AGENT_BUNDLE_NAME));
@@ -277,9 +341,17 @@ public class MiladyAgentService extends Service {
         // loader contract is preserved without changing the bundle.
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(root, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(root, "pglite.data"));
-        copyAssetIfPresent(assets, "agent/vector.tar",
+        // aapt2 not only strips `.gz` from `*.tar.gz` asset names, it also
+        // DECOMPRESSES them into raw tar bytes. PGlite's loader does
+        // `new URL("../X.tar.gz", ...)` then pipes the bytes through
+        // gunzip — fed raw tar it errors with `Z_DATA_ERROR: incorrect
+        // header check` and the agent crashloops at PGlite init. Re-gzip
+        // on extraction so the on-disk file matches what the loader
+        // expects: a gzipped tarball at `vector.tar.gz` /
+        // `fuzzystrmatch.tar.gz`.
+        copyAssetIfPresentAsGzipped(assets, "agent/vector.tar",
             new File(getFilesDir(), "vector.tar.gz"));
-        copyAssetIfPresent(assets, "agent/fuzzystrmatch.tar",
+        copyAssetIfPresentAsGzipped(assets, "agent/fuzzystrmatch.tar",
             new File(getFilesDir(), "fuzzystrmatch.tar.gz"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(root, "plugins-manifest.json"));
@@ -367,6 +439,16 @@ public class MiladyAgentService extends Service {
             }
             Log.i(TAG, "Extracted " + modelFiles.length + " bundled model file(s) to " + modelsDest);
         }
+
+        // Persist the APK's mtime stamp so subsequent boots can detect a
+        // stale extraction and force a refresh.
+        if (pkgUpdate > 0L) {
+            try (FileOutputStream out = new FileOutputStream(stamp)) {
+                out.write(Long.toString(pkgUpdate).getBytes());
+            } catch (IOException error) {
+                Log.w(TAG, "Could not write APK stamp: " + error.getMessage());
+            }
+        }
     }
 
     /** Walk agent/{abi}/ for the musl loader; name varies by ABI. */
@@ -441,6 +523,42 @@ public class MiladyAgentService extends Service {
             return;
         }
         copyAssetIfMissing(assets, assetPath, target);
+    }
+
+    /**
+     * Like copyAssetIfPresent, but wraps the asset bytes in a gzip stream on
+     * write. Compensates for aapt2's behaviour of decompressing `.tar.gz`
+     * assets at packaging time even with `androidResources.noCompress`
+     * declared — the on-disk APK entry is raw tar bytes, but PGlite's
+     * loader does `pipeline(createReadStream(file), createGunzip(), …)`
+     * and rejects raw tar with `Z_DATA_ERROR: incorrect header check`.
+     * Re-gzipping on extraction restores the contract the loader expects.
+     */
+    private void copyAssetIfPresentAsGzipped(AssetManager assets, String assetPath, File target) throws IOException {
+        try (InputStream probe = assets.open(assetPath)) {
+            // present — fall through to gzip-wrap via fresh stream
+        } catch (IOException missing) {
+            return;
+        }
+        if (target.exists() && target.length() > 0) {
+            return;
+        }
+        File parent = target.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("Could not create " + parent);
+        }
+        try (
+            InputStream in = assets.open(assetPath);
+            FileOutputStream raw = new FileOutputStream(target);
+            java.util.zip.GZIPOutputStream gz = new java.util.zip.GZIPOutputStream(raw)
+        ) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = in.read(buffer)) > 0) {
+                gz.write(buffer, 0, read);
+            }
+            gz.flush();
+        }
     }
 
     // ── Process lifecycle ────────────────────────────────────────────────
