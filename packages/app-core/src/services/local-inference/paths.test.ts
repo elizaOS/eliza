@@ -26,12 +26,18 @@ describe("paths", () => {
 
   it("uses ELIZA_STATE_DIR when set", () => {
     process.env.ELIZA_STATE_DIR = "/custom/state";
-    expect(localInferenceRoot()).toBe("/custom/state/local-inference");
-    expect(miladyModelsDir()).toBe("/custom/state/local-inference/models");
-    expect(downloadsStagingDir()).toBe(
-      "/custom/state/local-inference/downloads",
+    expect(localInferenceRoot()).toBe(
+      path.join("/custom/state", "local-inference"),
     );
-    expect(registryPath()).toBe("/custom/state/local-inference/registry.json");
+    expect(miladyModelsDir()).toBe(
+      path.join("/custom/state", "local-inference", "models"),
+    );
+    expect(downloadsStagingDir()).toBe(
+      path.join("/custom/state", "local-inference", "downloads"),
+    );
+    expect(registryPath()).toBe(
+      path.join("/custom/state", "local-inference", "registry.json"),
+    );
   });
 
   it("falls back to ~/.eliza/local-inference when unset", () => {
@@ -43,11 +49,12 @@ describe("paths", () => {
 
   it("isWithinMiladyRoot rejects the root itself and external paths", () => {
     process.env.ELIZA_STATE_DIR = "/state";
-    expect(isWithinMiladyRoot("/state/local-inference")).toBe(false);
-    expect(isWithinMiladyRoot("/state/local-inference/models/x.gguf")).toBe(
-      true,
-    );
+    const root = path.join("/state", "local-inference");
+    expect(isWithinMiladyRoot(root)).toBe(false);
+    expect(
+      isWithinMiladyRoot(path.join(root, "models", "x.gguf")),
+    ).toBe(true);
     expect(isWithinMiladyRoot("/etc/passwd")).toBe(false);
-    expect(isWithinMiladyRoot("/state/local-inference-evil")).toBe(false);
+    expect(isWithinMiladyRoot(`${root}-evil`)).toBe(false);
   });
 });
