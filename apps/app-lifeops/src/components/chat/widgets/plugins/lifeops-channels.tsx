@@ -372,12 +372,14 @@ function LifeOpsAutomationsWidget(_props: ChatSidebarWidgetProps) {
     return triggers
       .filter((trigger) => trigger.enabled !== false)
       .sort((a, b) => {
-        const aNext = typeof a.nextRunAtMs === "number" && Number.isFinite(a.nextRunAtMs)
-          ? a.nextRunAtMs
-          : Number.POSITIVE_INFINITY;
-        const bNext = typeof b.nextRunAtMs === "number" && Number.isFinite(b.nextRunAtMs)
-          ? b.nextRunAtMs
-          : Number.POSITIVE_INFINITY;
+        const aNext =
+          typeof a.nextRunAtMs === "number" && Number.isFinite(a.nextRunAtMs)
+            ? a.nextRunAtMs
+            : Number.POSITIVE_INFINITY;
+        const bNext =
+          typeof b.nextRunAtMs === "number" && Number.isFinite(b.nextRunAtMs)
+            ? b.nextRunAtMs
+            : Number.POSITIVE_INFINITY;
         return aNext - bNext;
       })
       .slice(0, AUTOMATIONS_ROW_LIMIT);

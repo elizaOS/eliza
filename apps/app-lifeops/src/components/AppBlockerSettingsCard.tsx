@@ -57,9 +57,7 @@ function formatEndsAt(value: string | null): string | null {
   return date.toLocaleString();
 }
 
-export function AppBlockerSettingsCard({
-  mode,
-}: AppBlockerSettingsCardProps) {
+export function AppBlockerSettingsCard({ mode }: AppBlockerSettingsCardProps) {
   const { t: rawT } = useApp();
   const t = typeof rawT === "function" ? rawT : (key: string): string => key;
 
@@ -70,10 +68,12 @@ export function AppBlockerSettingsCard({
   const [installedApps, setInstalledApps] = useState<AppBlockerInstalledApp[]>(
     [],
   );
-  const [selectedPackageNames, setSelectedPackageNames] = useState<string[]>([]);
-  const [selectedIosApps, setSelectedIosApps] = useState<AppBlockerInstalledApp[]>(
+  const [selectedPackageNames, setSelectedPackageNames] = useState<string[]>(
     [],
   );
+  const [selectedIosApps, setSelectedIosApps] = useState<
+    AppBlockerInstalledApp[]
+  >([]);
   const [durationMinutes, setDurationMinutes] = useState("30");
   const [indefinite, setIndefinite] = useState(false);
   const [query, setQuery] = useState("");
@@ -145,24 +145,21 @@ export function AppBlockerSettingsCard({
     );
   }, []);
 
-  const runAction = useCallback(
-    async (action: () => Promise<void>) => {
-      setBusy(true);
-      setError(null);
-      try {
-        await action();
-      } catch (nextError) {
-        setError(
-          nextError instanceof Error
-            ? nextError.message
-            : "The app blocker action failed.",
-        );
-      } finally {
-        setBusy(false);
-      }
-    },
-    [],
-  );
+  const runAction = useCallback(async (action: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+    } catch (nextError) {
+      setError(
+        nextError instanceof Error
+          ? nextError.message
+          : "The app blocker action failed.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   const handleRequestPermissions = useCallback(() => {
     return runAction(async () => {
@@ -185,10 +182,14 @@ export function AppBlockerSettingsCard({
       if (status?.platform === "android") {
         const result = await client.startAppBlock({
           packageNames: selectedPackageNames,
-          durationMinutes: indefinite ? null : Number.parseInt(durationMinutes, 10),
+          durationMinutes: indefinite
+            ? null
+            : Number.parseInt(durationMinutes, 10),
         });
         if (!result.success) {
-          throw new Error(result.error ?? "Unable to start the Android app block.");
+          throw new Error(
+            result.error ?? "Unable to start the Android app block.",
+          );
         }
       } else {
         const result = await client.startAppBlock({
@@ -197,7 +198,9 @@ export function AppBlockerSettingsCard({
             .filter((tokenData): tokenData is string => Boolean(tokenData)),
         });
         if (!result.success) {
-          throw new Error(result.error ?? "Unable to start the iPhone app block.");
+          throw new Error(
+            result.error ?? "Unable to start the iPhone app block.",
+          );
         }
       }
       await refreshState();
@@ -293,7 +296,9 @@ export function AppBlockerSettingsCard({
                 {status.platform === "ios"
                   ? `Currently shielding ${status.blockedCount} app${status.blockedCount === 1 ? "" : "s"}.`
                   : `Currently blocking ${status.blockedCount} app${status.blockedCount === 1 ? "" : "s"}${
-                      status.endsAt ? ` until ${formatEndsAt(status.endsAt)}.` : "."
+                      status.endsAt
+                        ? ` until ${formatEndsAt(status.endsAt)}.`
+                        : "."
                     }`}
               </p>
             ) : null}
@@ -361,7 +366,9 @@ export function AppBlockerSettingsCard({
         </div>
       ) : null}
 
-      {!loading && permission?.status === "granted" && status?.platform === "android" ? (
+      {!loading &&
+      permission?.status === "granted" &&
+      status?.platform === "android" ? (
         <div className="border-t border-border/50 px-4 py-4">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
             <div className="space-y-3">
@@ -389,7 +396,9 @@ export function AppBlockerSettingsCard({
               </label>
               <div className="max-h-72 space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-bg/25 p-2">
                 {filteredApps.map((app) => {
-                  const checked = selectedPackageNames.includes(app.packageName);
+                  const checked = selectedPackageNames.includes(
+                    app.packageName,
+                  );
                   return (
                     <label
                       key={app.packageName}
@@ -488,7 +497,9 @@ export function AppBlockerSettingsCard({
         </div>
       ) : null}
 
-      {!loading && permission?.status === "granted" && status?.platform === "ios" ? (
+      {!loading &&
+      permission?.status === "granted" &&
+      status?.platform === "ios" ? (
         <div className="border-t border-border/50 px-4 py-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
