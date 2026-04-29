@@ -195,17 +195,20 @@ class ManagerImpl implements SecretsManager {
     key: string,
     opts: ManagerSetOptions,
   ): Promise<BackendId> {
+    // Explicit per-call override always wins.
     if (opts.store) return opts.store;
-    const prefs = await this.getPreferences();
-    if (prefs.routing?.[key]) {
-      const routed = prefs.routing[key];
-      if (routed) return routed;
-    }
-    // Non-sensitive values always go in-house — no point routing config
-    // values like UI theme through a password manager.
+    // Non-sensitive values always go in-house — no point routing UI
+    // config strings through a password manager. Checked BEFORE the
+    // routing map so a stale/misconfigured `routing.ui.theme = "1password"`
+    // entry can't accidentally push non-sensitive data into an
+    // external store.
     if (!opts.sensitive) return "in-house";
-    // For sensitive: first enabled backend, or in-house as the
-    // fallback when nothing is enabled.
+    const prefs = await this.getPreferences();
+    // Per-key routing override (sensitive case only).
+    const routed = prefs.routing?.[key];
+    if (routed) return routed;
+    // Default for sensitive: first enabled backend; in-house if
+    // nothing is enabled.
     return prefs.enabled[0] ?? "in-house";
   }
 }

@@ -3,7 +3,6 @@ import {
   type BackendStatus,
   createManager,
   type ManagerPreferences,
-  type SecretsManager,
 } from "@elizaos/vault";
 import { sendJson, sendJsonError } from "./response";
 
@@ -17,14 +16,14 @@ import { sendJson, sendJsonError } from "./response";
  * The manager wraps `@elizaos/vault` and routes sensitive writes to
  * the user's chosen password manager (1Password / Proton / Bitwarden)
  * with `in-house` always available as the fallback.
+ *
+ * Each request constructs a fresh manager. Manager construction is
+ * cheap (no I/O in constructor; lazy-loads on first use); a per-
+ * process cache here would buy a few ms per request at the cost of
+ * needing a test-only reset hook to avoid leaking state across
+ * tests in the same process. Not worth it for a Settings route that
+ * fires only when the user opens the modal.
  */
-
-let cachedManager: SecretsManager | null = null;
-
-function getManager(): SecretsManager {
-  if (!cachedManager) cachedManager = createManager();
-  return cachedManager;
-}
 
 export async function handleSecretsManagerRoute(
   req: http.IncomingMessage,
@@ -33,7 +32,7 @@ export async function handleSecretsManagerRoute(
   method: string,
 ): Promise<boolean> {
   if (!pathname.startsWith("/api/secrets/manager")) return false;
-  const manager = getManager();
+  const manager = createManager();
 
   if (method === "GET" && pathname === "/api/secrets/manager/backends") {
     const statuses = await manager.detectBackends();
@@ -69,9 +68,4 @@ export async function handleSecretsManagerRoute(
   }
 
   return false;
-}
-
-/** Test-only: reset the cached manager. */
-export function __resetSecretsManagerCacheForTests(): void {
-  cachedManager = null;
 }
