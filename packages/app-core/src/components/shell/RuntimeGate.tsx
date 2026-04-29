@@ -19,7 +19,15 @@
  * control to the main app shell.
  */
 
-import { Button, Card, CardContent, Input, Spinner } from "@elizaos/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  Checkbox,
+  Input,
+  Spinner,
+  TooltipHint,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -235,6 +243,9 @@ export function RuntimeGate() {
   const [remoteUrl, setRemoteUrl] = useState("");
   const [remoteToken, setRemoteToken] = useState("");
 
+  // Local embeddings toggle (elizacloud only, default unchecked)
+  const [useLocalEmbeddings, setUseLocalEmbeddings] = useState(false);
+
   // Local-tile visibility. On desktop/dev this is true synchronously; on
   // Android it depends on a live probe of the on-device agent's
   // `/api/health`, so the tile is hidden until the probe resolves. Other
@@ -343,9 +354,23 @@ export function RuntimeGate() {
       persistMobileRuntimeModeForServerTarget("elizacloud");
       setState("onboardingServerTarget", "elizacloud");
       startupCoordinator.dispatch({ type: "SPLASH_CLOUD_SKIP" });
+      // Apply embedding preference before handing off. Non-blocking: if this
+      // fails the user can adjust it from Settings → Provider.
+      if (useLocalEmbeddings) {
+        void client
+          .switchProvider("elizacloud", undefined, undefined, {
+            useLocalEmbeddings: true,
+          })
+          .catch((err) => {
+            console.warn(
+              "[RuntimeGate] Failed to apply local embeddings preference",
+              err,
+            );
+          });
+      }
       completeOnboarding();
     },
-    [completeOnboarding, setState, startupCoordinator],
+    [completeOnboarding, setState, startupCoordinator, useLocalEmbeddings],
   );
 
   const finishAsLocal = useCallback(() => {
@@ -705,6 +730,15 @@ export function RuntimeGate() {
         t={t}
       >
         <GateHeader t={t} />
+
+        {/* Local embeddings preference — visible whenever the cloud path is
+            active and the user can still interact (not yet connecting). */}
+        {cloudStage !== "connecting" && (
+          <LocalEmbeddingsCheckbox
+            checked={useLocalEmbeddings}
+            onCheckedChange={setUseLocalEmbeddings}
+          />
+        )}
 
         {cloudStage === "login" && (
           <div className="mt-4 flex w-full max-w-[34rem] flex-col gap-3 text-left">
@@ -1195,5 +1229,44 @@ function BackButton({
     >
       {t("common.back", { defaultValue: "Back" })}
     </button>
+  );
+}
+
+const LOCAL_EMBEDDINGS_TOOLTIP =
+  "Embeddings are vector representations of your messages, used for memory and search. Keeping them local means your message text isn't sent to the cloud just to compute vectors. Chat still goes through the cloud.";
+
+function LocalEmbeddingsCheckbox({
+  checked,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start gap-2.5 py-1">
+      <Checkbox
+        id="runtime-gate-local-embeddings"
+        checked={checked}
+        onCheckedChange={(value) => onCheckedChange(value === true)}
+        className="mt-0.5 shrink-0 border-white/30 bg-white/10 data-[state=checked]:border-[#f0b90b]/60 data-[state=checked]:bg-[#f0b90b]/20"
+        aria-label="Use local embeddings"
+      />
+      <div className="flex min-w-0 items-center gap-1.5">
+        <label
+          htmlFor="runtime-gate-local-embeddings"
+          className="cursor-pointer text-xs-tight text-white/80 select-none"
+        >
+          Use local embeddings
+        </label>
+        <TooltipHint content={LOCAL_EMBEDDINGS_TOOLTIP} side="top">
+          <span
+            className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full border border-white/20 text-2xs text-white/50 hover:text-white/70"
+            aria-hidden="true"
+          >
+            ?
+          </span>
+        </TooltipHint>
+      </div>
+    </div>
   );
 }

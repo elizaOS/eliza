@@ -13,12 +13,27 @@
  *   node generate-plugin-prompts.js ./prompts ./dist --target all
  */
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function biomeFormat(filePaths) {
+  if (filePaths.length === 0) return;
+  const result = spawnSync(
+    "bunx",
+    ["--bun", "@biomejs/biome", "format", "--write", ...filePaths],
+    { stdio: "inherit", shell: false },
+  );
+  if (result.status !== 0) {
+    console.warn(
+      `Warning: biome format exited with status ${result.status} for generated prompts`,
+    );
+  }
+}
 
 /**
  * Convert filename to constant name
@@ -136,7 +151,8 @@ function generateTypeScript(prompts, outputBaseDir, sourcePath) {
     output += `export const ${prompt.constName} = ${prompt.camelName};\n\n`;
   }
 
-  fs.writeFileSync(path.join(outputDir, "prompts.ts"), output);
+  const tsFile = path.join(outputDir, "prompts.ts");
+  fs.writeFileSync(tsFile, output);
 
   // Also generate a simple .d.ts file
   let dts = `/**
@@ -149,7 +165,10 @@ function generateTypeScript(prompts, outputBaseDir, sourcePath) {
     dts += `export declare const ${prompt.constName}: string;\n`;
   }
 
-  fs.writeFileSync(path.join(outputDir, "prompts.d.ts"), dts);
+  const dtsFile = path.join(outputDir, "prompts.d.ts");
+  fs.writeFileSync(dtsFile, dts);
+
+  biomeFormat([tsFile, dtsFile]);
 
   console.log(`Generated TypeScript output: ${outputDir}/prompts.ts`);
 }
