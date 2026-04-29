@@ -91,10 +91,9 @@ type TsScenario = {
 };
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../../..");
+const ELIZA_SCENARIO_ROOT = path.join(REPO_ROOT, "eliza", "test", "scenarios");
 const CONNECTOR_SCENARIO_DIR = path.join(
-  REPO_ROOT,
-  "test",
-  "scenarios",
+  ELIZA_SCENARIO_ROOT,
   "connector-certification",
 );
 const CONNECTOR_CATALOG_PATH = path.join(

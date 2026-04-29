@@ -8,6 +8,10 @@ import { Service, type ServiceTypeName } from "../../../types/service.ts";
 import {
 	type Experience,
 	type ExperienceAnalysis,
+	type ExperienceConsolidationResult,
+	type ExperienceGraphLink,
+	type ExperienceGraphLinkType,
+	type ExperienceGraphSnapshot,
 	type ExperienceQuery,
 	ExperienceServiceType,
 	ExperienceType,
@@ -15,6 +19,13 @@ import {
 } from "./types.ts";
 import { ConfidenceDecayManager } from "./utils/confidenceDecay";
 import { ExperienceRelationshipManager } from "./utils/experienceRelationships";
+import {
+	extractExperienceKeywords,
+	isDuplicateLearning,
+} from "./utils/experienceText.ts";
+
+const GRAPH_MAX_LINKS = 200;
+const GRAPH_KEYWORD_LINK_THRESHOLD = 2;
 
 export class ExperienceService extends Service {
 	static override serviceType: ServiceTypeName =
@@ -78,6 +89,46 @@ export class ExperienceService extends Service {
 		return ids.length > 0 ? ids : undefined;
 	}
 
+	private asUuidArray(value: unknown): UUID[] {
+		return this.asStringArray(value) as UUID[];
+	}
+
+	private dedupeStrings(values: Array<string | undefined>): string[] {
+		return Array.from(
+			new Set(
+				values
+					.map((value) => value?.trim())
+					.filter((value): value is string => Boolean(value)),
+			),
+		);
+	}
+
+	private normalizeTags(
+		tags: unknown,
+		domain: string,
+		type: ExperienceType,
+	): string[] {
+		return this.dedupeStrings([
+			...this.asStringArray(tags).map((tag) => tag.toLowerCase()),
+			domain.toLowerCase(),
+			type,
+		]);
+	}
+
+	private deriveKeywords(experience: Pick<
+		Experience,
+		"context" | "action" | "result" | "learning" | "domain" | "tags"
+	>): string[] {
+		return extractExperienceKeywords([
+			experience.context,
+			experience.action,
+			experience.result,
+			experience.learning,
+			experience.domain,
+			experience.tags,
+		]);
+	}
+
 	private asOptionalEmbedding(value: unknown): number[] | undefined {
 		if (!Array.isArray(value)) {
 			return undefined;
@@ -110,9 +161,18 @@ export class ExperienceService extends Service {
 		return {
 			...experience,
 			tags: [...experience.tags],
+			keywords: [...experience.keywords],
+			associatedEntityIds: [...experience.associatedEntityIds],
 			embedding: experience.embedding ? [...experience.embedding] : undefined,
+			memoryIds: experience.memoryIds ? [...experience.memoryIds] : undefined,
+			sourceMessageIds: experience.sourceMessageIds
+				? [...experience.sourceMessageIds]
+				: undefined,
 			relatedExperiences: experience.relatedExperiences
 				? [...experience.relatedExperiences]
+				: undefined,
+			mergedExperienceIds: experience.mergedExperienceIds
+				? [...experience.mergedExperienceIds]
 				: undefined,
 		};
 	}
