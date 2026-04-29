@@ -41,24 +41,29 @@ jobs:
 
       # Linux Secret Service prerequisites — without these the
       # @napi-rs/keyring round-trip throws on its first call.
-      # Install libsecret + gnome-keyring + a session DBus + an
-      # unlocked secret-service daemon so the master-key resolver
-      # has a real backend to talk to.
+      # Install libsecret + gnome-keyring + a session DBus, then
+      # start + unlock the secret-service daemon in a single call so
+      # the master-key resolver has a real backend to talk to.
       - name: Install Secret Service (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libsecret-1-dev gnome-keyring dbus-x11
+          # Start a session DBus first so gnome-keyring-daemon has somewhere
+          # to advertise its socket path.
           eval "$(dbus-launch --sh-syntax)"
-          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
-          echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID" >> "$GITHUB_ENV"
-          # Unlock the default keyring with an empty password so
-          # subsequent secret writes don't block on a prompt.
-          printf '\n' | gnome-keyring-daemon --unlock --components=secrets &
-          sleep 1
-          eval "$(printf '\n' | gnome-keyring-daemon --start --components=secrets)"
-          echo "GNOME_KEYRING_CONTROL=$GNOME_KEYRING_CONTROL" >> "$GITHUB_ENV"
-          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          {
+            echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+            echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID"
+          } >> "$GITHUB_ENV"
+          # One-shot start + unlock with empty password (stdin). The daemon
+          # prints its env vars on stdout in `KEY=VAL` form; capture them all
+          # and export. The daemon forks but stays alive for the duration of
+          # the job.
+          daemon_env="$(printf '\n' | gnome-keyring-daemon --start --unlock --components=secrets)"
+          echo "$daemon_env" | while IFS='=' read -r key value; do
+            [ -n "$key" ] && echo "${key}=${value}" >> "$GITHUB_ENV"
+          done
 
       - name: Install dependencies
         working-directory: packages/vault
