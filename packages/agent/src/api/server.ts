@@ -26,12 +26,6 @@ const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 import os from "node:os";
 import path from "node:path";
 // Discord local routes extracted to @elizaos/plugin-discord (setup-routes.ts)
-import { DropService, setElizaMakerDropService } from "@elizaos/app-elizamaker";
-import {
-  normalizeJsonRpcUrl,
-  probeJsonRpcEndpoint,
-  TxService,
-} from "@elizaos/app-steward/api/tx-service";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.js";
 // Phase 2 extraction: LifeOps routes → app-lifeops/src/routes/plugin.ts (lifeopsPlugin)
 // import { handleWalletTradeExecuteRoute } from "./wallet-trade-routes.js";
@@ -460,7 +454,6 @@ function requireCoreManager(runtime: AgentRuntime | null): CoreManagerLike {
   return service;
 }
 
-const OG_FILENAME = ".og";
 const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
 const MAX_DELETED_CONVERSATION_IDS = 5000;
 
@@ -516,19 +509,8 @@ function _persistDeletedConversationIdsToState(ids: Set<string>): void {
   fs.renameSync(tmpFilePath, filePath);
 }
 
-function initializeOGCodeInState(): void {
-  const dir = resolveStateDir();
-  const filePath = path.join(dir, OG_FILENAME);
-  if (fs.existsSync(filePath)) return;
-
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-  fs.writeFileSync(filePath, crypto.randomUUID(), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-}
+// initializeOGCodeInState moved into elizaMakerPlugin.init() via
+// initializeRegistryAndDropServices in @elizaos/app-elizamaker.
 
 // resolveAppUserName, patchTouchesProviderSelection, resolveConversationGreetingText
 // moved to server-helpers.ts; imported in the consolidated import at the top
@@ -1204,7 +1186,6 @@ async function handleRequest(
         : undefined,
     });
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
-  const _registryService = state.registryService;
 
   const canonicalizeRestartReason = (reason: string): string => {
     if (
@@ -3040,8 +3021,6 @@ export async function startApiServer(opts?: {
     sandboxManager: null,
     appManager: new AppManager(),
     trainingService: null,
-    registryService: null,
-    dropService: null,
     shareIngestQueue: [],
     broadcastStatus: null,
     broadcastWs: null,
@@ -3419,76 +3398,10 @@ export async function startApiServer(opts?: {
       }
     })();
 
-    void (async () => {
-      initializeOGCodeInState();
-
-      // Get EVM private key from runtime secrets (preferred) or config.env (fallback)
-      const runtime = state.runtime;
-      const evmKey =
-        (runtime?.getSetting?.("EVM_PRIVATE_KEY") as string | undefined) ??
-        (state.config.env as Record<string, string> | undefined)
-          ?.EVM_PRIVATE_KEY;
-      const registryConfig = state.config.registry;
-      if (
-        !evmKey ||
-        !registryConfig?.registryAddress ||
-        !registryConfig.mainnetRpc
-      ) {
-        return;
-      }
-
-      try {
-        const registryRpcUrl = normalizeJsonRpcUrl(registryConfig.mainnetRpc);
-        const registryRpcProbe = await probeJsonRpcEndpoint(registryRpcUrl);
-        if (!registryRpcProbe.ok) {
-          addLog(
-            "warn",
-            `ERC-8004 registry service disabled: RPC unavailable (${registryRpcProbe.reason ?? "unknown error"})`,
-            "system",
-            ["system"],
-          );
-          logger.warn(
-            {
-              reason: registryRpcProbe.reason,
-            },
-            "ERC-8004 registry service disabled because mainnetRpc is unavailable",
-          );
-          return;
-        }
-
-        const txService = new TxService(registryRpcUrl, evmKey);
-        state.registryService = new RegistryService(
-          txService,
-          registryConfig.registryAddress,
-        );
-
-        if (registryConfig.collectionAddress) {
-          const dropEnabled = state.config.features?.dropEnabled === true;
-          state.dropService = new DropService(
-            txService,
-            registryConfig.collectionAddress,
-            dropEnabled,
-          );
-          setElizaMakerDropService(state.dropService);
-        } else {
-          state.dropService = null;
-          setElizaMakerDropService(null);
-        }
-
-        addLog(
-          "info",
-          `ERC-8004 registry service initialised (${registryConfig.registryAddress})`,
-          "system",
-          ["system"],
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        addLog("warn", `ERC-8004 registry service disabled: ${msg}`, "system", [
-          "system",
-        ]);
-        logger.warn({ err }, "Failed to initialize ERC-8004 registry service");
-      }
-    })();
+    // ERC-8004 RegistryService + DropService construction has moved into
+    // elizaMakerPlugin.init() in @elizaos/app-elizamaker. The plugin reads
+    // the live services via getElizaMakerRegistryService() /
+    // getElizaMakerDropService() in this package.
 
     // ── Connector health monitoring ──────────────────────────────────────────
     if (state.runtime && state.config.connectors) {

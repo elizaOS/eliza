@@ -5,7 +5,6 @@
  */
 
 import type http from "node:http";
-import type { DropService } from "@elizaos/app-elizamaker/drop-service";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import type { ElizaConfig } from "../config/config.js";
 import type { AppManager } from "../services/app-manager.js";
@@ -14,7 +13,6 @@ import type { CloudRouteState } from "./cloud-routes.js";
 import type { ConnectorHealthMonitor } from "./connector-health.js";
 // PluginEntry and PluginParamDef are defined here to avoid a circular dependency
 // with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
-import type { RegistryService } from "./registry-service.js";
 
 // Canonical TrainingServiceLike / TrainingServiceWithRuntime live in
 // @elizaos/app-training. Re-export here so existing callers that imported from
@@ -260,10 +258,6 @@ export interface ServerState {
   appManager: AppManager;
   /** Fine-tuning/training orchestration service. */
   trainingService: TrainingServiceWithRuntime | null;
-  /** ERC-8004 registry service (null when not configured). */
-  registryService: RegistryService | null;
-  /** Drop/mint service (null when not configured). */
-  dropService: DropService | null;
   /** In-memory queue for share ingest items. */
   shareIngestQueue: ShareIngestItem[];
   /** Broadcast current agent status to all WebSocket clients. Set by startApiServer. */
