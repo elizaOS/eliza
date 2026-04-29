@@ -138,6 +138,7 @@ log "Artifact dir: $SMOKE_ARTIFACT_DIR"
 
 command -v node >/dev/null 2>&1 || fail "node is required"
 command -v bun >/dev/null 2>&1 || fail "bun is required"
+BUN_BIN="$(command -v bun)"
 
 DOCKER_BIN="$(find_docker_bin)" || fail "docker is required"
 
@@ -176,7 +177,7 @@ trap cleanup EXIT
 log "Installing dependencies"
 node "$APP_CORE_SCRIPTS_DIR/init-submodules.mjs"
 MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 node "$APP_CORE_SCRIPTS_DIR/disable-local-eliza-workspace.mjs"
-MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 bun install --ignore-scripts --no-frozen-lockfile
+MILADY_SKIP_LOCAL_UPSTREAMS=1 ELIZA_SKIP_LOCAL_UPSTREAMS=1 "$BUN_BIN" install --ignore-scripts --no-frozen-lockfile
 if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   log "Restoring eliza/ from .eliza.ci-disabled for downstream build steps"
   mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
@@ -210,18 +211,18 @@ fi
 
 log "Building Capacitor plugins"
 pushd "$APP_DIR" >/dev/null
-bun scripts/plugin-build.mjs
+"$BUN_BIN" scripts/plugin-build.mjs
 popd >/dev/null
 
 log "Building agent workspace"
 pushd "$AGENT_DIR" >/dev/null
-bun run build:docker-dist
+"$BUN_BIN" run build:docker-dist
 popd >/dev/null
 
 if [[ "$APP_CORE_DIR" == "packages/app-core" || "${MILADY_SKIP_LOCAL_UPSTREAMS:-0}" != "1" ]]; then
   log "Building @elizaos/core source artifacts"
   pushd "$TYPESCRIPT_DIR" >/dev/null
-  bun run build:node
+  "$BUN_BIN" run build.ts --node-only
   popd >/dev/null
   node scripts/patch-nested-core-dist.mjs || true
 else
@@ -239,7 +240,7 @@ fi
 
 log "Building app UI"
 pushd "$APP_DIR" >/dev/null
-NODE_ENV=production bun run build:web
+NODE_ENV=production "$BUN_BIN" run build:web
 popd >/dev/null
 
 log "Preparing CI dockerignore"
