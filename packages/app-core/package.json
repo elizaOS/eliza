@@ -86,7 +86,7 @@
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.182.0",
     "tailwindcss": "^4.1.18",
-    "typescript": "^5.9.3"
+    "typescript": "^6.0.3"
   },
   "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
 }

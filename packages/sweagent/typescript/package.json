@@ -94,7 +94,7 @@
     "@types/ws": "^8.18.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.2",
+    "typescript": "^6.0.3",
     "vitest": "^4.0.17"
   },
   "repository": {
