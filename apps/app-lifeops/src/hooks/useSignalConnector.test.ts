@@ -124,9 +124,10 @@ describe("useSignalConnector", () => {
       await result.current.stopPairing();
     });
 
-    expect(clientMock.stopLifeOpsSignalPairing).toHaveBeenCalledWith(
-      { provider: "signal", side: "owner" },
-    );
+    expect(clientMock.stopLifeOpsSignalPairing).toHaveBeenCalledWith({
+      provider: "signal",
+      side: "owner",
+    });
     expect(result.current.pairingStatus).toBeNull();
     unmount();
   });
@@ -154,7 +155,8 @@ describe("useSignalConnector", () => {
     );
 
     await waitFor(
-      () => expect(clientMock.getSignalConnectorStatus).toHaveBeenCalledTimes(2),
+      () =>
+        expect(clientMock.getSignalConnectorStatus).toHaveBeenCalledTimes(2),
       { timeout: 3_000 },
     );
     expect(result.current.pairingStatus).toBeNull();

@@ -186,9 +186,12 @@ async function paginate<TRaw>(
   return out;
 }
 
-export async function getCalendlyUser(
-  creds: CalendlyCredentials,
-): Promise<{ uri: string; name: string; email: string; schedulingUrl: string }> {
+export async function getCalendlyUser(creds: CalendlyCredentials): Promise<{
+  uri: string;
+  name: string;
+  email: string;
+  schedulingUrl: string;
+}> {
   const response = await calendlyRequest<{ resource: CalendlyRawUser }>(
     creds,
     "/users/me",
@@ -316,7 +319,10 @@ export async function getCalendlyAvailability(
   ]);
 
   const durationMs = durationMinutes * 60 * 1000;
-  const byDate = new Map<string, Array<{ startTime: string; endTime: string }>>();
+  const byDate = new Map<
+    string,
+    Array<{ startTime: string; endTime: string }>
+  >();
   for (const slot of response.collection ?? []) {
     if (slot.status !== "available") continue;
     const start = new Date(slot.start_time);

@@ -123,7 +123,16 @@ function selectSurface(params: Record<string, unknown>): ComputerUseSurface {
 
   if (
     readNormalizedStringParam(params, "path") ||
-    ["read", "write", "list", "delete", "move", "copy", "mkdir", "file"].includes(action)
+    [
+      "read",
+      "write",
+      "list",
+      "delete",
+      "move",
+      "copy",
+      "mkdir",
+      "file",
+    ].includes(action)
   ) {
     return "file";
   }
@@ -253,9 +262,9 @@ export const lifeOpsComputerUseAction: Action & {
     "coordinates (x, y), drag, key press / keyboard combo, open a native " +
     "application, Finder operations (create folder on desktop, move/rename " +
     "files), terminal commands, and window management. Always pick this action " +
-    "when the user says \"my desktop\", \"my screen\", \"my computer\", \"screenshot " +
-    "the screen\", \"take a screenshot\" (without specifying a browser tab), " +
-    "\"Finder\", \"create a folder\", or names a native macOS app. Also handles " +
+    'when the user says "my desktop", "my screen", "my computer", "screenshot ' +
+    'the screen", "take a screenshot" (without specifying a browser tab), ' +
+    '"Finder", "create a folder", or names a native macOS app. Also handles ' +
     "portal uploads, browser form-filling that requires real cursor control, " +
     "and standing instructions like 'when I send the file, upload it to the " +
     "portal for me.' Select this action even before the file arrives when the " +

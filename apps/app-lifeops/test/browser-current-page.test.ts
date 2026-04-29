@@ -114,7 +114,7 @@ describe("browser current-page context", () => {
     const source = await readFile(
       path.resolve(
         import.meta.dirname,
-        "../../../../test/scenarios/browser.lifeops/lifeops-extension.see-what-user-sees.scenario.ts",
+        "../../../test/scenarios/browser.lifeops/lifeops-extension.see-what-user-sees.scenario.ts",
       ),
       "utf8",
     );

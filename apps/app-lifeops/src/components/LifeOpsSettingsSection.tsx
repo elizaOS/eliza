@@ -1,12 +1,6 @@
 import { Button, SegmentedControl, useApp } from "@elizaos/app-core";
 import { client } from "@elizaos/app-core/api";
 import type { ModelOption } from "@elizaos/shared/contracts/onboarding";
-import type {
-  LifeOpsCalendarSummary,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsGoogleCapability,
-} from "../contracts/index.js";
 import {
   AlertTriangle,
   CalendarDays,
@@ -24,6 +18,12 @@ import {
   X,
 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
+import type {
+  LifeOpsCalendarSummary,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsGoogleCapability,
+} from "../contracts/index.js";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector";
 import { BrowserBridgeSetupPanel } from "./BrowserBridgeSetupPanel.tsx";
 import { LifeOpsFeatureTogglesSection } from "./LifeOpsFeatureTogglesSection";

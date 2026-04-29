@@ -95,6 +95,7 @@
   "apikeyconfig.fetching": "获取中...",
   "apikeyconfig.loadedModels": "已加载 {{count}} 个模型",
   "appdetails.LaunchFailed": "Could not launch {{name}}: {{message}}",
+  "appdetails.LaunchedNoViewer": "此应用启动时没有查看器 URL。",
   "appsview.ActiveOnly": "仅活跃",
   "appsview.AppWindowNormal": "App Window Normal",
   "appsview.AppWindowPinFailed": "App Window Pin Failed",

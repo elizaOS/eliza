@@ -8,7 +8,7 @@ export function installMatchMedia(matches: boolean) {
     writable: true,
     value: () => ({
       matches,
-      media: "(min-width: 768px)",
+      media: "(min-width: 820px)",
       onchange: null,
       addEventListener: (
         _: string,

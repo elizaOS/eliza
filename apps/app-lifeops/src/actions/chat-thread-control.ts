@@ -159,7 +159,9 @@ function roomMatchesTarget(args: {
 }): boolean {
   const room = args.room;
   if (!room) return false;
-  if (normalizePlatform((room as { source?: unknown }).source) !== args.platform) {
+  if (
+    normalizePlatform((room as { source?: unknown }).source) !== args.platform
+  ) {
     return false;
   }
   if (args.roomId && room.id === args.roomId) {
@@ -226,8 +228,7 @@ export const chatThreadControlAction: Action = {
     const params = ((options as { parameters?: ChatThreadParams } | undefined)
       ?.parameters ?? {}) as ChatThreadParams;
     const planned = await resolveChatThreadPlan({ runtime, message, state });
-    const operation =
-      normalizeOperation(params.operation) ?? planned.operation;
+    const operation = normalizeOperation(params.operation) ?? planned.operation;
     const platform =
       normalizePlatform(params.platform) ?? planned.platform ?? "telegram";
     const roomId = normalizeString(params.roomId) ?? planned.roomId;

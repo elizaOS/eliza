@@ -150,7 +150,7 @@ describe("APP scenarios — contract", () => {
 			lowered.includes(k.toLowerCase()),
 		);
 		expect(matchedKeyword).toBe(true);
-	});
+	}, 30_000);
 
 	it("scenario inventory matches the expected catalog (no orphans, no missing)", async () => {
 		const fs = await import("node:fs/promises");

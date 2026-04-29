@@ -95,6 +95,7 @@
   "apikeyconfig.fetching": "Obteniendo...",
   "apikeyconfig.loadedModels": "{{count}} modelos cargados",
   "appdetails.LaunchFailed": "Could not launch {{name}}: {{message}}",
+  "appdetails.LaunchedNoViewer": "Esta app se inició sin una URL de visor.",
   "appsview.ActiveOnly": "Solo activas",
   "appsview.AppWindowNormal": "App Window Normal",
   "appsview.AppWindowPinFailed": "App Window Pin Failed",

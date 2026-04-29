@@ -148,8 +148,7 @@ function pickDiscordTarget(targets: CdpTarget[]): CdpTarget | null {
   );
   return (
     pageTargets.find(
-      (target) =>
-        isDiscordHost(target.url) || /discord/i.test(target.title),
+      (target) => isDiscordHost(target.url) || /discord/i.test(target.title),
     ) ??
     pageTargets[0] ??
     null
@@ -528,8 +527,7 @@ async function runDiscordCdpSendScript(args: {
       cleanup();
     });
 
-    const sleep = (ms: number) =>
-      new Promise<void>((r) => setTimeout(r, ms));
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
     socket.addEventListener("open", async () => {
       try {
@@ -589,9 +587,9 @@ async function runDiscordCdpSendScript(args: {
           returnByValue: true,
         })) as { result?: { result?: { value?: { ok?: boolean } } } };
 
-        const focusValue = (focusResult?.result as
-          | { value?: { ok?: boolean } }
-          | undefined)?.value;
+        const focusValue = (
+          focusResult?.result as { value?: { ok?: boolean } } | undefined
+        )?.value;
         if (!focusValue?.ok) {
           throw new Error(
             "Could not focus the Discord message editor for the channel.",

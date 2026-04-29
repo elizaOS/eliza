@@ -196,7 +196,7 @@ function parsePairingJson(jsonValue: string): Partial<CompanionConfig> {
 async function refresh(refs: FormRefs): Promise<void> {
   const response = await sendMessage({ type: "browser-bridge:get-state" });
   if (!response.ok || !response.state) {
-    refs.statusTitle.textContent = "LifeOps Browser could not load";
+    refs.statusTitle.textContent = "Agent Browser Bridge could not load";
     refs.statusDetail.textContent = response.error;
     return;
   }
@@ -209,9 +209,9 @@ async function refresh(refs: FormRefs): Promise<void> {
   }
   if (!response.state.config && !autoPairAttempted) {
     autoPairAttempted = true;
-    refs.statusTitle.textContent = "Looking for LifeOps in this browser";
+    refs.statusTitle.textContent = "Looking for Milady in this browser";
     refs.statusDetail.textContent =
-      "Searching open tabs for a live LifeOps app so this browser can connect itself.";
+      "Searching open tabs for a live Milady app so this browser can connect itself.";
     const autoPairResponse = await sendMessage({
       type: "browser-bridge:auto-pair",
     });
@@ -250,7 +250,7 @@ document.addEventListener("DOMContentLoaded", () => {
       : null;
     refs.statusDetail.textContent =
       model?.primaryAction === "sync"
-        ? "Syncing this browser with LifeOps…"
+        ? "Syncing this browser with Milady…"
         : "Trying to auto-connect this browser…";
     autoPairAttempted = true;
     const response =
@@ -314,7 +314,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   refs.syncButton.addEventListener("click", async () => {
-    refs.statusDetail.textContent = "Syncing this browser with LifeOps…";
+    refs.statusDetail.textContent = "Syncing this browser with Milady…";
     const response = await sendMessage({ type: "browser-bridge:sync-now" });
     if (!response.ok || !response.state) {
       refs.statusDetail.textContent = response.error;

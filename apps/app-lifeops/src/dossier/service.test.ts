@@ -6,10 +6,10 @@ import type {
 } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import {
+  type CalendarFeedProviderLike,
   DOSSIER_MEMORY_TABLE,
   DOSSIER_MEMORY_TYPE,
   DossierService,
-  type CalendarFeedProviderLike,
   type DossierServiceDeps,
   type GmailSearchProviderLike,
   type RelationshipsServiceLike,
@@ -31,7 +31,9 @@ function makeAttendee(
   };
 }
 
-function makeEvent(overrides: Partial<LifeOpsCalendarEvent>): LifeOpsCalendarEvent {
+function makeEvent(
+  overrides: Partial<LifeOpsCalendarEvent>,
+): LifeOpsCalendarEvent {
   const start = new Date(Date.now() + 60 * 60 * 1000).toISOString();
   const end = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
   return {
@@ -60,7 +62,9 @@ function makeEvent(overrides: Partial<LifeOpsCalendarEvent>): LifeOpsCalendarEve
   };
 }
 
-function makeCalendar(events: LifeOpsCalendarEvent[]): CalendarFeedProviderLike {
+function makeCalendar(
+  events: LifeOpsCalendarEvent[],
+): CalendarFeedProviderLike {
   return {
     async getCalendarFeed(): Promise<LifeOpsCalendarFeed> {
       return {
@@ -85,7 +89,9 @@ function makeRuntime(memories: Memory[] = []): IAgentRuntime {
 }
 
 function makeDeps(
-  overrides: Partial<DossierServiceDeps> & { calendar: CalendarFeedProviderLike },
+  overrides: Partial<DossierServiceDeps> & {
+    calendar: CalendarFeedProviderLike;
+  },
 ): DossierServiceDeps {
   return {
     relationships: null,

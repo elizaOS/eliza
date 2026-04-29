@@ -1,11 +1,20 @@
 import type { Action, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const desktopHandler = vi.fn(async () => ({ success: true, surface: "desktop" }));
-const browserHandler = vi.fn(async () => ({ success: true, surface: "browser" }));
+const desktopHandler = vi.fn(async () => ({
+  success: true,
+  surface: "desktop",
+}));
+const browserHandler = vi.fn(async () => ({
+  success: true,
+  surface: "browser",
+}));
 const windowHandler = vi.fn(async () => ({ success: true, surface: "window" }));
 const fileHandler = vi.fn(async () => ({ success: true, surface: "file" }));
-const terminalHandler = vi.fn(async () => ({ success: true, surface: "terminal" }));
+const terminalHandler = vi.fn(async () => ({
+  success: true,
+  surface: "terminal",
+}));
 
 const pluginActions: Action[] = [
   {

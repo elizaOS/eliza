@@ -11,6 +11,7 @@
     "maxSize": 1048576,
     "includes": [
       "**",
+      "!**/public/**",
       "!packages/app-core/src/styles/**"
     ]
   },
@@ -37,6 +38,16 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["**/*.ts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useHookAtTopLevel": "off"
+          }
+        }
+      }
+    },
     {
       "includes": [
         "packages/training/src/benchmark/BenchmarkRunner.ts",

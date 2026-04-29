@@ -6,7 +6,13 @@ import { HyperscapeDetailExtension } from "./HyperscapeDetailExtension.js";
 import { HyperscapeOperatorSurface } from "./HyperscapeOperatorSurface.js";
 
 registerOperatorSurface("@elizaos/app-hyperscape", HyperscapeOperatorSurface);
-registerOperatorSurface("@hyperscape/plugin-hyperscape", HyperscapeOperatorSurface);
-registerDetailExtension("hyperscape-embedded-agents", HyperscapeDetailExtension);
+registerOperatorSurface(
+  "@hyperscape/plugin-hyperscape",
+  HyperscapeOperatorSurface,
+);
+registerDetailExtension(
+  "hyperscape-embedded-agents",
+  HyperscapeDetailExtension,
+);
 
-export { HyperscapeOperatorSurface, HyperscapeDetailExtension };
+export { HyperscapeDetailExtension, HyperscapeOperatorSurface };

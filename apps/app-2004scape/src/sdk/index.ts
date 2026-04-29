@@ -121,7 +121,9 @@ export class BotSDK {
   private handleMessage(event: MessageEvent): void {
     let msg: GatewayInbound;
     try {
-      msg = JSON.parse(typeof event.data === "string" ? event.data : String(event.data));
+      msg = JSON.parse(
+        typeof event.data === "string" ? event.data : String(event.data),
+      );
     } catch {
       return;
     }
@@ -189,14 +191,16 @@ export class BotSDK {
 
       const timer = setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`Action timed out after ${ACTION_TIMEOUT_MS}ms: ${action.type}`));
+        reject(
+          new Error(
+            `Action timed out after ${ACTION_TIMEOUT_MS}ms: ${action.type}`,
+          ),
+        );
       }, ACTION_TIMEOUT_MS);
 
       this.pending.set(id, { resolve, reject, timer });
 
-      this.ws.send(
-        JSON.stringify({ type: "sdk_action", action, id }),
-      );
+      this.ws.send(JSON.stringify({ type: "sdk_action", action, id }));
     });
   }
 

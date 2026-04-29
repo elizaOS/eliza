@@ -261,7 +261,9 @@ export function planGn(
     scheduledFor: gnTime,
     targetPlatform: selectTargetPlatform(profile, true),
     contextSummary:
-      contextParts.length > 0 ? `gn context: ${contextParts.join(" | ")}` : "gn",
+      contextParts.length > 0
+        ? `gn context: ${contextParts.join(" | ")}`
+        : "gn",
     messageText: buildDigestMessage("gn", contextParts, inboxDigest),
     status: "pending",
   };
@@ -664,7 +666,7 @@ function formatInboxHighlight(highlight: InboxDigestHighlightSlim): string {
   const messageCore =
     subject && snippet
       ? `${subject} — ${snippet}`
-      : subject ?? snippet ?? highlight.channel;
+      : (subject ?? snippet ?? highlight.channel);
   return `${highlight.sender} on ${highlight.channel}: ${messageCore}`;
 }
 

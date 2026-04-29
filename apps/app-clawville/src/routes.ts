@@ -1,23 +1,23 @@
-import { logger, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchResult,
   AppLaunchSessionContext,
   AppRunSessionContext,
-  AppSessionActivityItem,
   AppSessionActionResult,
+  AppSessionActivityItem,
   AppSessionState,
 } from "@elizaos/shared";
 
 import {
   asRuntimeLike,
+  type ClawvilleConfig,
+  type ClawvilleConnectResponse,
   clawvilleConnect,
   clawvillePerception,
   proxyClawvilleRequest,
   resolveClawvilleConfig,
   stashClawvilleSession,
-  type ClawvilleConfig,
-  type ClawvilleConnectResponse,
 } from "./clawville-auth.js";
 
 // ---------------------------------------------------------------------------
