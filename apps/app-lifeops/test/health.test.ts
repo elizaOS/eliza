@@ -29,6 +29,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 import {
   detectHealthBackend,
   getDailySummary,
+  getDataPoints,
   HealthBridgeError,
 } from "../src/lifeops/health-bridge.js";
 import { withHealth } from "../src/lifeops/service-mixin-health.js";
@@ -84,6 +85,74 @@ describe("getDailySummary", () => {
     await expect(getDailySummary("2025-01-01")).rejects.toBeInstanceOf(
       HealthBridgeError,
     );
+  });
+});
+
+describe("getDataPoints", () => {
+  test("returns Google Fit sleep_hours points from sleep segment summaries", async () => {
+    const originalFetch = globalThis.fetch;
+    process.env.ELIZA_GOOGLE_FIT_ACCESS_TOKEN = "token";
+    globalThis.fetch = vi.fn(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        aggregateBy?: Array<{ dataTypeName?: string }>;
+        startTimeMillis?: number;
+      };
+      const isSleepQuery = body.aggregateBy?.some(
+        (entry) => entry.dataTypeName === "com.google.sleep.segment",
+      );
+      if (!isSleepQuery) {
+        return new Response(JSON.stringify({ bucket: [{ dataset: [] }] }), {
+          status: 200,
+        });
+      }
+      const startMs =
+        typeof body.startTimeMillis === "number"
+          ? body.startTimeMillis
+          : Date.parse("2026-04-19T00:00:00.000Z");
+      const sleepStartMs = startMs + 30 * 60 * 1_000;
+      const sleepEndMs = sleepStartMs + 7.5 * 60 * 60 * 1_000;
+      return new Response(
+        JSON.stringify({
+          bucket: [
+            {
+              dataset: [
+                {
+                  point: [
+                    {
+                      startTimeNanos: String(sleepStartMs * 1_000_000),
+                      endTimeNanos: String(sleepEndMs * 1_000_000),
+                      value: [{ intVal: 2 }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+
+    try {
+      const points = await getDataPoints({
+        metric: "sleep_hours",
+        startAt: "2026-04-19T12:00:00.000Z",
+        endAt: "2026-04-19T13:00:00.000Z",
+      });
+
+      expect(points).toEqual([
+        {
+          metric: "sleep_hours",
+          value: 7.5,
+          unit: "hours",
+          startAt: "2026-04-19T00:00:00.000Z",
+          endAt: "2026-04-19T23:59:59.999Z",
+          source: "google-fit",
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
