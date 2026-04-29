@@ -874,6 +874,7 @@
   "conversations.minutesAgo": "Hace {{count}}m",
   "conversations.newChat": "+ Nuevo chat",
   "conversations.newTerminal": "New Terminal",
+  "conversations.newTerminalFailed": "Failed to start terminal: {{message}}",
   "conversations.noMatchingChats": "No chats match your search",
   "conversations.none": "Aún no hay conversaciones",
   "conversations.noneApp": "Aún no hay chats",

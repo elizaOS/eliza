@@ -874,6 +874,7 @@
   "conversations.minutesAgo": "{{count}}m nakalipas",
   "conversations.newChat": "+ Bagong Chat",
   "conversations.newTerminal": "New Terminal",
+  "conversations.newTerminalFailed": "Failed to start terminal: {{message}}",
   "conversations.noMatchingChats": "Walang chat na tugma sa hinanap mo",
   "conversations.none": "Wala pang usapan",
   "conversations.noneApp": "Wala pang chats",

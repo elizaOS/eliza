@@ -20,10 +20,17 @@ function buildMessage(overrides?: Partial<Memory>): Memory {
   return {
     id: "msg-1" as UUID,
     roomId: "room-1" as UUID,
-    entityId: "user-1" as UUID,
+    entityId: AGENT_ID,
     content: { text: "what can I do here?" },
     ...overrides,
   } as Memory;
+}
+
+function withOwnerAccess<T extends Record<string, unknown>>(runtime: T): T {
+  return {
+    ...runtime,
+    agentId: AGENT_ID,
+  };
 }
 
 function jsonResponse(payload: unknown): Response {
@@ -39,10 +46,9 @@ describe("pageScopedContextProvider", () => {
   });
 
   it("returns empty for non-page-scoped rooms", async () => {
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       getRoom: vi.fn(async () => ({ id: "room-1", metadata: {} })),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -52,8 +58,7 @@ describe("pageScopedContextProvider", () => {
   });
 
   it("returns empty for automation-scoped rooms (different scope family)", async () => {
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       getRoom: vi.fn(async () => ({
         id: "room-1",
         metadata: {
@@ -63,7 +68,7 @@ describe("pageScopedContextProvider", () => {
           },
         },
       })),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -72,9 +77,25 @@ describe("pageScopedContextProvider", () => {
     expect(result.text).toBe("");
   });
 
-  it("injects the character brief and live state for page-character", async () => {
+  it("returns empty for non-owner callers before reading room state", async () => {
     const runtime = {
       agentId: AGENT_ID,
+      getRoom: vi.fn(async () => ({
+        id: "room-1",
+        metadata: pageRoomMetadata("page-wallet"),
+      })),
+    };
+    const result = await pageScopedContextProvider.get(
+      runtime as never,
+      buildMessage({ entityId: "guest-1" as UUID }),
+      {} as never,
+    );
+    expect(result).toEqual({ text: "", values: {}, data: {} });
+    expect(runtime.getRoom).not.toHaveBeenCalled();
+  });
+
+  it("injects the character brief and live state for page-character", async () => {
+    const runtime = withOwnerAccess({
       character: {
         name: "Eliza",
         bio: "A helpful local-first assistant.",
@@ -84,7 +105,7 @@ describe("pageScopedContextProvider", () => {
         id: "room-1",
         metadata: pageRoomMetadata("page-character"),
       })),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -99,8 +120,7 @@ describe("pageScopedContextProvider", () => {
   });
 
   it("injects the automations brief and live task list", async () => {
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       character: { name: "Eliza" },
       getRoom: vi.fn(async () => ({
         id: "room-1",
@@ -110,7 +130,7 @@ describe("pageScopedContextProvider", () => {
         { id: "t1", name: "Daily check-in", tags: ["trigger"] },
         { id: "t2", name: "Email digest" },
       ]),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -167,13 +187,12 @@ describe("pageScopedContextProvider", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       getRoom: vi.fn(async () => ({
         id: "room-1",
         metadata: pageRoomMetadata("page-apps"),
       })),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -299,13 +318,12 @@ describe("pageScopedContextProvider", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       getRoom: vi.fn(async () => ({
         id: "room-1",
         metadata: pageRoomMetadata("page-lifeops"),
       })),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -410,13 +428,12 @@ describe("pageScopedContextProvider", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       getRoom: vi.fn(async () => ({
         id: "room-1",
         metadata: pageRoomMetadata("page-wallet"),
       })),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -436,8 +453,7 @@ describe("pageScopedContextProvider", () => {
     const sourceConversationId = "main-1";
     const sourceRoomId = stringToUuid(`web-conv-${sourceConversationId}`);
     const now = Date.now();
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       character: { name: "Eliza" },
       getRoom: vi.fn(async () => ({
         id: "room-1",
@@ -464,7 +480,7 @@ describe("pageScopedContextProvider", () => {
           },
         ];
       }),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -478,8 +494,7 @@ describe("pageScopedContextProvider", () => {
 
   it("ignores a blank main chat (no messages)", async () => {
     const sourceConversationId = "main-blank";
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       character: { name: "Eliza" },
       getRoom: vi.fn(async () => ({
         id: "room-1",
@@ -488,7 +503,7 @@ describe("pageScopedContextProvider", () => {
         }),
       })),
       getMemories: vi.fn(async () => []),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -502,8 +517,7 @@ describe("pageScopedContextProvider", () => {
     const sourceConversationId = "main-agent-only";
     const sourceRoomId = stringToUuid(`web-conv-${sourceConversationId}`);
     const now = Date.now();
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       character: { name: "Eliza" },
       getRoom: vi.fn(async () => ({
         id: "room-1",
@@ -524,7 +538,7 @@ describe("pageScopedContextProvider", () => {
             ]
           : [],
       ),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -538,8 +552,7 @@ describe("pageScopedContextProvider", () => {
     const sourceConversationId = "main-stale";
     const sourceRoomId = stringToUuid(`web-conv-${sourceConversationId}`);
     const now = Date.now();
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       character: { name: "Eliza" },
       getRoom: vi.fn(async () => ({
         id: "room-1",
@@ -567,7 +580,7 @@ describe("pageScopedContextProvider", () => {
             ]
           : [],
       ),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage(),
@@ -588,8 +601,7 @@ describe("pageScopedContextProvider", () => {
     const collidingRoomId = stringToUuid(
       `web-conv-${sourceConversationId}`,
     ) as UUID;
-    const runtime = {
-      agentId: AGENT_ID,
+    const runtime = withOwnerAccess({
       character: { name: "Eliza" },
       getRoom: vi.fn(async () => ({
         id: collidingRoomId,
@@ -598,7 +610,7 @@ describe("pageScopedContextProvider", () => {
         }),
       })),
       getMemories: vi.fn(),
-    };
+    });
     const result = await pageScopedContextProvider.get(
       runtime as never,
       buildMessage({ roomId: collidingRoomId }),

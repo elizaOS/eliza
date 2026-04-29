@@ -46,9 +46,9 @@ import {
 } from "./service-normalize.js";
 import { findLifeOpsSubscriptionPlaybook } from "./subscriptions-playbooks.js";
 import {
+  type EncryptedTokenEnvelope,
   decryptTokenEnvelope,
   encryptTokenPayload,
-  type EncryptedTokenEnvelope,
   isEncryptedTokenEnvelope,
   resolveTokenEncryptionKey,
 } from "./token-encryption.js";

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type {
   DisconnectLifeOpsGoogleConnectorRequest,
   LifeOpsConnectorGrant,
@@ -69,8 +70,7 @@ export interface LifeOpsGoogleService {
   ): Promise<LifeOpsGoogleConnectorStatus>;
 }
 
-import { fail } from "./service-normalize.js";
-import { normalizeOptionalString } from "./service-normalize.js";
+import { fail, normalizeOptionalString } from "./service-normalize.js";
 import {
   normalizeGoogleCapabilityRequest,
   normalizeGrantCapabilities,
@@ -1091,6 +1091,9 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
             resolvedConfig.mode,
             requestedSide,
           );
+      const pendingGrantId =
+        request.grantId ??
+        (request.createNewGrant ? crypto.randomUUID() : undefined);
 
       try {
         return startGoogleConnectorOAuth({
@@ -1099,10 +1102,10 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
           requestUrl,
           mode: resolvedConfig.mode,
           requestedCapabilities,
-          existingCapabilities: existingGrant
+          existingCapabilities: existingGrant && !request.createNewGrant
             ? normalizeGrantCapabilities(existingGrant.capabilities)
             : undefined,
-          grantId: request.grantId,
+          grantId: pendingGrantId,
         });
       } catch (error) {
         if (error instanceof GoogleOAuthError) {
@@ -1142,20 +1145,27 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(409, "Google callback does not belong to the active agent.");
       }
 
+      const currentGoogleGrants = (
+        await this.repository.listConnectorGrants(this.agentId())
+      ).filter((candidate) => candidate.provider === "google");
       const existingGrant = result.grantId
-        ? ((await this.repository.listConnectorGrants(this.agentId())).find(
-            (g) => g.id === result.grantId,
-          ) ?? null)
+        ? (currentGoogleGrants.find((g) => g.id === result.grantId) ?? null)
         : await this.repository.getConnectorGrant(
             this.agentId(),
             "google",
             result.mode,
             result.side,
           );
+      const previousPreferredGrant = resolvePreferredGoogleGrant({
+        grants: currentGoogleGrants,
+        defaultMode: result.mode,
+      });
       const nowIso = new Date().toISOString();
       const clearedMetadata = clearGoogleGrantAuthFailureMetadata(
         existingGrant?.metadata ?? {},
       );
+      const preferredByAgent =
+        existingGrant?.preferredByAgent ?? previousPreferredGrant === null;
       const grant: LifeOpsConnectorGrant = existingGrant
         ? {
             ...existingGrant,
@@ -1166,6 +1176,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
             executionTarget: "local",
             sourceOfTruth: "local_storage",
             cloudConnectionId: null,
+            preferredByAgent,
             metadata: {
               ...clearedMetadata,
               expiresAt: result.expiresAt,
@@ -1174,37 +1185,34 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
             lastRefreshAt: nowIso,
             updatedAt: nowIso,
           }
-        : createLifeOpsConnectorGrant({
-            agentId: this.agentId(),
-            provider: "google",
-            side: result.side,
-            identity: { ...result.identity },
-            grantedScopes: [...result.grantedScopes],
-            capabilities: [...result.grantedCapabilities],
-            tokenRef: result.tokenRef,
-            mode: result.mode,
-            executionTarget: "local",
-            sourceOfTruth: "local_storage",
-            preferredByAgent: true,
-            cloudConnectionId: null,
-            metadata: {
-              expiresAt: result.expiresAt,
-              hasRefreshToken: result.hasRefreshToken,
-            },
-            lastRefreshAt: nowIso,
-          });
+        : {
+            ...createLifeOpsConnectorGrant({
+              agentId: this.agentId(),
+              provider: "google",
+              side: result.side,
+              identity: { ...result.identity },
+              grantedScopes: [...result.grantedScopes],
+              capabilities: [...result.grantedCapabilities],
+              tokenRef: result.tokenRef,
+              mode: result.mode,
+              executionTarget: "local",
+              sourceOfTruth: "local_storage",
+              preferredByAgent,
+              cloudConnectionId: null,
+              metadata: {
+                expiresAt: result.expiresAt,
+                hasRefreshToken: result.hasRefreshToken,
+              },
+              lastRefreshAt: nowIso,
+            }),
+            ...(result.grantId ? { id: result.grantId } : {}),
+          };
 
       await this.repository.upsertConnectorGrant(grant);
-      const previousPreferredGrant = resolvePreferredGoogleGrant({
-        grants: (
-          await this.repository.listConnectorGrants(this.agentId())
-        ).filter((candidate) => candidate.provider === "google"),
-        defaultMode: result.mode,
-      });
-      const nextPreferredGrant = await this.setPreferredGoogleConnectorMode(
-        result.mode,
-        result.side,
-      );
+      const nextPreferredGrant =
+        preferredByAgent || !previousPreferredGrant
+          ? await this.setPreferredGoogleConnectorMode(result.mode, result.side)
+          : previousPreferredGrant;
       if (previousPreferredGrant?.id !== nextPreferredGrant?.id) {
         await this.clearGoogleConnectorData();
       }
@@ -1225,6 +1233,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         callbackUrl,
         result.mode,
         result.side,
+        grant.id,
       );
     }
 
@@ -1232,6 +1241,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
       request: DisconnectLifeOpsGoogleConnectorRequest,
       requestUrl: URL,
     ): Promise<LifeOpsGoogleConnectorStatus> {
+      const requestedGrantId = normalizeOptionalString(request.grantId);
       const requestedMode = normalizeOptionalConnectorMode(
         request.mode,
         "mode",
@@ -1249,34 +1259,36 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
           .configured,
         grants,
       });
-      const mode =
-        requestedMode ??
-        resolvePreferredGoogleGrant({
-          grants,
-          requestedMode,
-          requestedSide,
-          defaultMode: modeAvailability.defaultMode,
-        })?.mode ??
-        modeAvailability.defaultMode;
-      const side =
-        requestedSide ??
-        resolvePreferredGoogleGrant({
-          grants,
-          requestedMode,
-          requestedSide,
-          defaultMode: modeAvailability.defaultMode,
-        })?.side ??
-        "owner";
-      const grant = await this.repository.getConnectorGrant(
-        this.agentId(),
-        "google",
-        mode,
-        side,
-      );
+      const preferredGrant = resolvePreferredGoogleGrant({
+        grants,
+        requestedMode,
+        requestedSide,
+        defaultMode: modeAvailability.defaultMode,
+      });
+      const fallbackMode =
+        requestedMode ?? preferredGrant?.mode ?? modeAvailability.defaultMode;
+      const fallbackSide = requestedSide ?? preferredGrant?.side ?? "owner";
+      const grant = requestedGrantId
+        ? (grants.find((candidate) => candidate.id === requestedGrantId) ?? null)
+        : await this.repository.getConnectorGrant(
+            this.agentId(),
+            "google",
+            fallbackMode,
+            fallbackSide,
+          );
 
       if (!grant) {
-        return this.getGoogleConnectorStatus(requestUrl, mode, side);
+        if (requestedGrantId) {
+          fail(404, "Google connector grant not found.");
+        }
+        return this.getGoogleConnectorStatus(
+          requestUrl,
+          fallbackMode,
+          fallbackSide,
+        );
       }
+      const mode = grant.mode;
+      const side = grant.side;
 
       if (mode === "cloud_managed" && grant.cloudConnectionId) {
         try {
@@ -1307,10 +1319,14 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         "google",
         mode,
         side,
+        grant.id,
       );
       const nextPreferredGrant =
-        await this.setPreferredGoogleConnectorMode(null);
-      if (previousPreferredGrant?.id === grant.id || !nextPreferredGrant) {
+        previousPreferredGrant?.id === grant.id || !previousPreferredGrant
+          ? await this.setPreferredGoogleConnectorMode(null)
+          : previousPreferredGrant;
+      await this.clearGoogleGrantData(grant);
+      if (!nextPreferredGrant) {
         await this.clearGoogleConnectorData();
       }
       await this.recordConnectorAudit(

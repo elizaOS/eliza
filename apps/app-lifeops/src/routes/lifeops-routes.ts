@@ -819,9 +819,8 @@ export async function handleLifeOpsRoutes(
     if (!body) {
       return true;
     }
-    const { isLifeOpsFeatureKey } = await import(
-      "../lifeops/feature-flags.types.js"
-    );
+    const { isLifeOpsFeatureKey } =
+      await import("../lifeops/feature-flags.types.js");
     if (!isLifeOpsFeatureKey(body.featureKey)) {
       ctx.error(res, "featureKey must be a known LifeOpsFeatureKey", 400);
       return true;
@@ -830,9 +829,8 @@ export async function handleLifeOpsRoutes(
       ctx.error(res, "enabled must be a boolean", 400);
       return true;
     }
-    const { createFeatureFlagService } = await import(
-      "../lifeops/feature-flags.js"
-    );
+    const { createFeatureFlagService } =
+      await import("../lifeops/feature-flags.js");
     const service = createFeatureFlagService(runtime);
     const next = body.enabled
       ? await service.enable(body.featureKey, "local", null)
@@ -1960,10 +1958,7 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  if (
-    method === "POST" &&
-    pathname === "/api/lifeops/connectors/signal/send"
-  ) {
+  if (method === "POST" && pathname === "/api/lifeops/connectors/signal/send") {
     if (rateLimitRequest(ctx, "outbound_message")) return true;
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
@@ -2158,11 +2153,10 @@ export async function handleLifeOpsRoutes(
             url.searchParams.get("sinceAt"),
             "sinceAt",
           ),
-          limit: parsePositiveIntegerQuery(
-            url.searchParams.get("limit"),
-            "limit",
-            { max: ACTIVITY_SIGNALS_MAX_LIMIT },
-          ) ?? ACTIVITY_SIGNALS_DEFAULT_LIMIT,
+          limit:
+            parsePositiveIntegerQuery(url.searchParams.get("limit"), "limit", {
+              max: ACTIVITY_SIGNALS_MAX_LIMIT,
+            }) ?? ACTIVITY_SIGNALS_DEFAULT_LIMIT,
           states: parseActivitySignalStates(url),
         }),
       });
