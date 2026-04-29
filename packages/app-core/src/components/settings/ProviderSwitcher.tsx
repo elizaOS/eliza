@@ -870,341 +870,347 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     <div className="space-y-3">
       <div className="grid gap-3 xl:grid-cols-[240px_minmax(0,1fr)]">
         <aside className="flex min-w-0 flex-col gap-3">
-        <div className="space-y-1.5">
-          <div className="text-[10px] text-muted font-medium uppercase tracking-wider">
-            Providers
-          </div>
-          <ProviderListItem
-            id="__cloud__"
-            icon={Cloud}
-            label="Eliza Cloud"
-            description="Managed models, credits, and cloud fallback."
-            selected={visibleProviderPanelId === "__cloud__"}
-            current={!cloudCallsDisabled && isCloudSelected}
-            status={elizaCloudConnected ? "Connected" : "Available"}
-            tone={elizaCloudConnected ? "ok" : "muted"}
-            onSelect={handleProviderPanelSelect}
-          />
-          <ProviderListItem
-            id="__local__"
-            icon={Cpu}
-            label="Local provider"
-            description="Downloaded models, routing, and offline inference."
-            selected={visibleProviderPanelId === "__local__"}
-            current={cloudCallsDisabled}
-            status="Available"
-            tone="muted"
-            onSelect={handleProviderPanelSelect}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="text-[10px] text-muted font-medium uppercase tracking-wider">
-            Subscriptions
-          </div>
-          {SUBSCRIPTION_PROVIDER_SELECTIONS.map((provider) => {
-            const status = getSubscriptionPanelStatus(provider.id);
-            return (
-              <ProviderListItem
-                key={provider.id}
-                id={provider.id}
-                icon={KeyRound}
-                label={getSubscriptionProviderLabel(provider, t)}
-                description={
-                  provider.id === "anthropic-subscription"
-                    ? "Claude Code and task-agent access."
-                    : "ChatGPT/Codex subscription access."
-                }
-                selected={visibleProviderPanelId === provider.id}
-                current={
-                  !cloudCallsDisabled && resolvedSelectedId === provider.id
-                }
-                status={status.label}
-                tone={status.tone}
-                onSelect={handleProviderPanelSelect}
-              />
-            );
-          })}
-        </div>
-
-        {apiProviderChoices.length > 0 ? (
           <div className="space-y-1.5">
             <div className="text-[10px] text-muted font-medium uppercase tracking-wider">
-              API keys
+              Providers
             </div>
-            {apiProviderChoices.map((choice) => {
-              const current =
-                !cloudCallsDisabled && resolvedSelectedId === choice.id;
-              const status = choice.provider.configured
-                ? "API key set"
-                : choice.provider.enabled
-                  ? "Enabled"
-                  : "Needs key";
-              const tone: ProviderListItemTone = choice.provider.configured
-                ? "ok"
-                : "warn";
+            <ProviderListItem
+              id="__cloud__"
+              icon={Cloud}
+              label="Eliza Cloud"
+              description="Managed models, credits, and cloud fallback."
+              selected={visibleProviderPanelId === "__cloud__"}
+              current={!cloudCallsDisabled && isCloudSelected}
+              status={elizaCloudConnected ? "Connected" : "Available"}
+              tone={elizaCloudConnected ? "ok" : "muted"}
+              onSelect={handleProviderPanelSelect}
+            />
+            <ProviderListItem
+              id="__local__"
+              icon={Cpu}
+              label="Local provider"
+              description="Downloaded models, routing, and offline inference."
+              selected={visibleProviderPanelId === "__local__"}
+              current={cloudCallsDisabled}
+              status="Available"
+              tone="muted"
+              onSelect={handleProviderPanelSelect}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <div className="text-[10px] text-muted font-medium uppercase tracking-wider">
+              Subscriptions
+            </div>
+            {SUBSCRIPTION_PROVIDER_SELECTIONS.map((provider) => {
+              const status = getSubscriptionPanelStatus(provider.id);
               return (
                 <ProviderListItem
-                  key={choice.id}
-                  id={choice.id}
+                  key={provider.id}
+                  id={provider.id}
                   icon={KeyRound}
-                  label={choice.label}
-                  description={choice.provider.name}
-                  selected={visibleProviderPanelId === choice.id}
-                  current={current}
-                  status={status}
-                  tone={tone}
+                  label={getSubscriptionProviderLabel(provider, t)}
+                  description={
+                    provider.id === "anthropic-subscription"
+                      ? "Claude Code and task-agent access."
+                      : "ChatGPT/Codex subscription access."
+                  }
+                  selected={visibleProviderPanelId === provider.id}
+                  current={
+                    !cloudCallsDisabled && resolvedSelectedId === provider.id
+                  }
+                  status={status.label}
+                  tone={status.tone}
                   onSelect={handleProviderPanelSelect}
                 />
               );
             })}
           </div>
-        ) : null}
+
+          {apiProviderChoices.length > 0 ? (
+            <div className="space-y-1.5">
+              <div className="text-[10px] text-muted font-medium uppercase tracking-wider">
+                API keys
+              </div>
+              {apiProviderChoices.map((choice) => {
+                const current =
+                  !cloudCallsDisabled && resolvedSelectedId === choice.id;
+                const status = choice.provider.configured
+                  ? "API key set"
+                  : choice.provider.enabled
+                    ? "Enabled"
+                    : "Needs key";
+                const tone: ProviderListItemTone = choice.provider.configured
+                  ? "ok"
+                  : "warn";
+                return (
+                  <ProviderListItem
+                    key={choice.id}
+                    id={choice.id}
+                    icon={KeyRound}
+                    label={choice.label}
+                    description={choice.provider.name}
+                    selected={visibleProviderPanelId === choice.id}
+                    current={current}
+                    status={status}
+                    tone={tone}
+                    onSelect={handleProviderPanelSelect}
+                  />
+                );
+              })}
+            </div>
+          ) : null}
         </aside>
 
         <section className="min-w-0 overflow-hidden rounded-xl border border-border/40 bg-card/35">
-        {visibleProviderPanelId === "__local__" ? (
-          <div className="min-w-0">
-            <ProviderPanelHeader
-              icon={Cpu}
-              title="Local provider"
-              description="Manage local downloads, active models, routing, and device pairing in one place."
-            >
-              <Button
-                type="button"
-                variant={cloudCallsDisabled ? "default" : "outline"}
-                className="h-8 rounded-lg px-2.5 text-xs"
-                disabled={routingModeSaving}
-                aria-label={
-                  cloudCallsDisabled ? "Local only active" : "Use local only"
-                }
-                onClick={() => void handleSelectLocalOnly()}
+          {visibleProviderPanelId === "__local__" ? (
+            <div className="min-w-0">
+              <ProviderPanelHeader
+                icon={Cpu}
+                title="Local provider"
+                description="Manage local downloads, active models, routing, and device pairing in one place."
               >
-                <ShieldCheck className="h-4 w-4" aria-hidden />
-                Local only
-              </Button>
-            </ProviderPanelHeader>
-            <div className="px-3 py-3 sm:px-4">
-              <LocalInferencePanel />
-            </div>
-          </div>
-        ) : null}
-
-        {visibleProviderPanelId === "__cloud__" ? (
-          <div className="min-w-0">
-            <ProviderPanelHeader
-              icon={Cloud}
-              title="Eliza Cloud"
-              description="Use managed models, cloud routing, and account credits."
-            >
-              <Button
-                type="button"
-                variant={
-                  !cloudCallsDisabled && isCloudSelected ? "default" : "outline"
-                }
-                className="h-8 rounded-lg px-2.5 text-xs"
-                disabled={routingModeSaving}
-                aria-label={
-                  !cloudCallsDisabled && isCloudSelected
-                    ? "Cloud active"
-                    : "Use Eliza Cloud"
-                }
-                onClick={() => void handleSelectCloud()}
-              >
-                <Cloud className="h-4 w-4" aria-hidden />
-                Cloud
-              </Button>
-            </ProviderPanelHeader>
-            <CloudDashboard />
-            {!cloudCallsDisabled &&
-            isCloudSelected &&
-            elizaCloudConnected &&
-            (largeModelOptions.length > 0 || cloudModelSchema) ? (
-              <div className="border-border/40 border-t px-4 py-4 sm:px-5">
-                {largeModelOptions.length > 0 ? (
-                  <div>
-                    <label
-                      htmlFor="provider-switcher-primary-model"
-                      className="mb-1.5 block text-muted text-xs font-medium uppercase tracking-wider"
-                    >
-                      {t("providerswitcher.model", { defaultValue: "Model" })}
-                    </label>
-                    <Select
-                      value={currentLargeModel || ""}
-                      onValueChange={(v) => handleModelFieldChange("large", v)}
-                    >
-                      <SelectTrigger
-                        id="provider-switcher-primary-model"
-                        className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
-                      >
-                        <SelectValue
-                          placeholder={t("providerswitcher.chooseModel", {
-                            defaultValue: "Choose a model",
-                          })}
-                        />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-64">
-                        {largeModelOptions.map((model) => (
-                          <SelectItem key={model.id} value={model.id}>
-                            {model.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : null}
-                {cloudModelSchema ? (
-                  <AdvancedSettingsDisclosure
-                    title="Model overrides"
-                    className="mt-4"
-                  >
-                    <ConfigRenderer
-                      schema={cloudModelSchema.schema}
-                      hints={cloudModelSchema.hints}
-                      values={modelValues.values}
-                      setKeys={modelValues.setKeys}
-                      registry={defaultRegistry}
-                      onChange={handleModelFieldChange}
-                    />
-                  </AdvancedSettingsDisclosure>
-                ) : null}
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <p className="text-muted text-xs-tight">
-                    {t(
-                      "providerswitcher.restartRequiredHint",
-                      appNameInterpolationVars(branding),
-                    )}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    {modelSaving && (
-                      <span
-                        className="inline-flex items-center text-muted"
-                        title={t("providerswitcher.savingRestarting")}
-                        role="status"
-                        aria-label={t("providerswitcher.savingRestarting")}
-                      >
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      </span>
-                    )}
-                    {modelSaveSuccess && (
-                      <span
-                        className="inline-flex items-center text-ok"
-                        title={t("providerswitcher.savedRestartingAgent")}
-                        role="status"
-                        aria-label={t("providerswitcher.savedRestartingAgent")}
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                      </span>
-                    )}
-                  </div>
-                </div>
+                <Button
+                  type="button"
+                  variant={cloudCallsDisabled ? "default" : "outline"}
+                  className="h-8 rounded-lg px-2.5 text-xs"
+                  disabled={routingModeSaving}
+                  aria-label={
+                    cloudCallsDisabled ? "Local only active" : "Use local only"
+                  }
+                  onClick={() => void handleSelectLocalOnly()}
+                >
+                  <ShieldCheck className="h-4 w-4" aria-hidden />
+                  Local only
+                </Button>
+              </ProviderPanelHeader>
+              <div className="px-3 py-3 sm:px-4">
+                <LocalInferencePanel />
               </div>
-            ) : null}
-          </div>
-        ) : null}
+            </div>
+          ) : null}
 
-        {isSubscriptionProviderSelectionId(visibleProviderPanelId) ? (
-          <div className="min-w-0">
-            <ProviderPanelHeader
-              icon={KeyRound}
-              title={getSubscriptionProviderLabel(
-                SUBSCRIPTION_PROVIDER_SELECTIONS.find(
-                  (provider) => provider.id === visibleProviderPanelId,
-                ) ?? SUBSCRIPTION_PROVIDER_SELECTIONS[0],
-                t,
-              )}
-              description="Connect subscription-backed access for models and task agents."
-            >
-              {cloudCallsDisabled ||
-              resolvedSelectedId !== visibleProviderPanelId ? (
+          {visibleProviderPanelId === "__cloud__" ? (
+            <div className="min-w-0">
+              <ProviderPanelHeader
+                icon={Cloud}
+                title="Eliza Cloud"
+                description="Use managed models, cloud routing, and account credits."
+              >
                 <Button
                   type="button"
-                  variant="outline"
-                  className="h-8 rounded-lg px-2.5 text-xs"
-                  onClick={() =>
-                    void handleSelectSubscription(
-                      visibleProviderPanelId as SubscriptionProviderSelectionId,
-                    )
+                  variant={
+                    !cloudCallsDisabled && isCloudSelected
+                      ? "default"
+                      : "outline"
                   }
+                  className="h-8 rounded-lg px-2.5 text-xs"
+                  disabled={routingModeSaving}
+                  aria-label={
+                    !cloudCallsDisabled && isCloudSelected
+                      ? "Cloud active"
+                      : "Use Eliza Cloud"
+                  }
+                  onClick={() => void handleSelectCloud()}
                 >
-                  Use subscription
+                  <Cloud className="h-4 w-4" aria-hidden />
+                  Cloud
                 </Button>
-              ) : null}
-            </ProviderPanelHeader>
-            <div className="px-3 py-3 sm:px-4">
-              {cloudCallsDisabled ? (
-                <div className="mb-3 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
-                  Local-only active. Remote subscription routing is paused.
+              </ProviderPanelHeader>
+              <CloudDashboard />
+              {!cloudCallsDisabled &&
+              isCloudSelected &&
+              elizaCloudConnected &&
+              (largeModelOptions.length > 0 || cloudModelSchema) ? (
+                <div className="border-border/40 border-t px-4 py-4 sm:px-5">
+                  {largeModelOptions.length > 0 ? (
+                    <div>
+                      <label
+                        htmlFor="provider-switcher-primary-model"
+                        className="mb-1.5 block text-muted text-xs font-medium uppercase tracking-wider"
+                      >
+                        {t("providerswitcher.model", { defaultValue: "Model" })}
+                      </label>
+                      <Select
+                        value={currentLargeModel || ""}
+                        onValueChange={(v) =>
+                          handleModelFieldChange("large", v)
+                        }
+                      >
+                        <SelectTrigger
+                          id="provider-switcher-primary-model"
+                          className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
+                        >
+                          <SelectValue
+                            placeholder={t("providerswitcher.chooseModel", {
+                              defaultValue: "Choose a model",
+                            })}
+                          />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-64">
+                          {largeModelOptions.map((model) => (
+                            <SelectItem key={model.id} value={model.id}>
+                              {model.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
+                  {cloudModelSchema ? (
+                    <AdvancedSettingsDisclosure
+                      title="Model overrides"
+                      className="mt-4"
+                    >
+                      <ConfigRenderer
+                        schema={cloudModelSchema.schema}
+                        hints={cloudModelSchema.hints}
+                        values={modelValues.values}
+                        setKeys={modelValues.setKeys}
+                        registry={defaultRegistry}
+                        onChange={handleModelFieldChange}
+                      />
+                    </AdvancedSettingsDisclosure>
+                  ) : null}
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <p className="text-muted text-xs-tight">
+                      {t(
+                        "providerswitcher.restartRequiredHint",
+                        appNameInterpolationVars(branding),
+                      )}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      {modelSaving && (
+                        <span
+                          className="inline-flex items-center text-muted"
+                          title={t("providerswitcher.savingRestarting")}
+                          role="status"
+                          aria-label={t("providerswitcher.savingRestarting")}
+                        >
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        </span>
+                      )}
+                      {modelSaveSuccess && (
+                        <span
+                          className="inline-flex items-center text-ok"
+                          title={t("providerswitcher.savedRestartingAgent")}
+                          role="status"
+                          aria-label={t(
+                            "providerswitcher.savedRestartingAgent",
+                          )}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
               ) : null}
-              <SubscriptionStatus
-                resolvedSelectedId={visibleProviderPanelId}
-                subscriptionStatus={subscriptionStatus}
-                anthropicConnected={anthropicConnected}
-                setAnthropicConnected={setAnthropicConnected}
-                anthropicCliDetected={anthropicCliDetected}
-                openaiConnected={openaiConnected}
-                setOpenaiConnected={setOpenaiConnected}
-                handleSelectSubscription={handleSelectSubscription}
-                loadSubscriptionStatus={loadSubscriptionStatus}
-              />
-              {(() => {
-                const selection = SUBSCRIPTION_PROVIDER_SELECTIONS.find(
-                  (p) => p.id === visibleProviderPanelId,
-                );
-                // The outer `isSubscriptionProviderSelectionId` guard
-                // makes this lookup non-null in practice; the explicit
-                // null check is defensive against future panel ids
-                // that pass the guard but aren't in the selections
-                // table (e.g. a renamed enum left half-migrated).
-                if (!selection) return null;
-                return <AccountList providerId={selection.storedProvider} />;
-              })()}
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {selectedPanelProvider ? (
-          <div className="min-w-0">
-            <ProviderPanelHeader
-              icon={KeyRound}
-              title={
-                apiProviderChoices.find(
-                  (choice) => choice.id === visibleProviderPanelId,
-                )?.label ?? selectedPanelProvider.name
-              }
-              description="Use your own provider API key and model routing."
-            >
-              {cloudCallsDisabled ||
-              resolvedSelectedId !== visibleProviderPanelId ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-8 rounded-lg px-2.5 text-xs"
-                  onClick={() =>
-                    void handleSwitchProvider(visibleProviderPanelId)
-                  }
-                >
-                  Use provider
-                </Button>
-              ) : null}
-            </ProviderPanelHeader>
-            <div className="px-3 py-3 sm:px-4">
-              {cloudCallsDisabled ? (
-                <div className="mb-3 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
-                  Local-only active. Remote API routing is paused.
-                </div>
-              ) : null}
-              <ApiKeyConfig
-                selectedProvider={selectedPanelProvider}
-                pluginSaving={pluginSaving}
-                pluginSaveSuccess={pluginSaveSuccess}
-                handlePluginConfigSave={handlePluginConfigSave}
-                loadPlugins={loadPlugins}
-              />
+          {isSubscriptionProviderSelectionId(visibleProviderPanelId) ? (
+            <div className="min-w-0">
+              <ProviderPanelHeader
+                icon={KeyRound}
+                title={getSubscriptionProviderLabel(
+                  SUBSCRIPTION_PROVIDER_SELECTIONS.find(
+                    (provider) => provider.id === visibleProviderPanelId,
+                  ) ?? SUBSCRIPTION_PROVIDER_SELECTIONS[0],
+                  t,
+                )}
+                description="Connect subscription-backed access for models and task agents."
+              >
+                {cloudCallsDisabled ||
+                resolvedSelectedId !== visibleProviderPanelId ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 rounded-lg px-2.5 text-xs"
+                    onClick={() =>
+                      void handleSelectSubscription(
+                        visibleProviderPanelId as SubscriptionProviderSelectionId,
+                      )
+                    }
+                  >
+                    Use subscription
+                  </Button>
+                ) : null}
+              </ProviderPanelHeader>
+              <div className="px-3 py-3 sm:px-4">
+                {cloudCallsDisabled ? (
+                  <div className="mb-3 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
+                    Local-only active. Remote subscription routing is paused.
+                  </div>
+                ) : null}
+                <SubscriptionStatus
+                  resolvedSelectedId={visibleProviderPanelId}
+                  subscriptionStatus={subscriptionStatus}
+                  anthropicConnected={anthropicConnected}
+                  setAnthropicConnected={setAnthropicConnected}
+                  anthropicCliDetected={anthropicCliDetected}
+                  openaiConnected={openaiConnected}
+                  setOpenaiConnected={setOpenaiConnected}
+                  handleSelectSubscription={handleSelectSubscription}
+                  loadSubscriptionStatus={loadSubscriptionStatus}
+                />
+                {(() => {
+                  const selection = SUBSCRIPTION_PROVIDER_SELECTIONS.find(
+                    (p) => p.id === visibleProviderPanelId,
+                  );
+                  // The outer `isSubscriptionProviderSelectionId` guard
+                  // makes this lookup non-null in practice; the explicit
+                  // null check is defensive against future panel ids
+                  // that pass the guard but aren't in the selections
+                  // table (e.g. a renamed enum left half-migrated).
+                  if (!selection) return null;
+                  return <AccountList providerId={selection.storedProvider} />;
+                })()}
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
+
+          {selectedPanelProvider ? (
+            <div className="min-w-0">
+              <ProviderPanelHeader
+                icon={KeyRound}
+                title={
+                  apiProviderChoices.find(
+                    (choice) => choice.id === visibleProviderPanelId,
+                  )?.label ?? selectedPanelProvider.name
+                }
+                description="Use your own provider API key and model routing."
+              >
+                {cloudCallsDisabled ||
+                resolvedSelectedId !== visibleProviderPanelId ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-8 rounded-lg px-2.5 text-xs"
+                    onClick={() =>
+                      void handleSwitchProvider(visibleProviderPanelId)
+                    }
+                  >
+                    Use provider
+                  </Button>
+                ) : null}
+              </ProviderPanelHeader>
+              <div className="px-3 py-3 sm:px-4">
+                {cloudCallsDisabled ? (
+                  <div className="mb-3 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
+                    Local-only active. Remote API routing is paused.
+                  </div>
+                ) : null}
+                <ApiKeyConfig
+                  selectedProvider={selectedPanelProvider}
+                  pluginSaving={pluginSaving}
+                  pluginSaveSuccess={pluginSaveSuccess}
+                  handlePluginConfigSave={handlePluginConfigSave}
+                  loadPlugins={loadPlugins}
+                />
+              </div>
+            </div>
+          ) : null}
         </section>
       </div>
 

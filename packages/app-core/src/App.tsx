@@ -826,9 +826,7 @@ export function App() {
   // ptySessions/agentStatus — so CompanionSceneHost stays stable across polls.
   const shellContent = useMemo(
     () =>
-      uiShellMode === "companion" &&
-      isCompanionTab &&
-      CompanionShell ? (
+      uiShellMode === "companion" && isCompanionTab && CompanionShell ? (
         <CompanionShell tab="companion" actionNotice={actionNotice} />
       ) : isCompanionTab ? (
         // Native mode with companion tab: the overlay app renders the companion UI.

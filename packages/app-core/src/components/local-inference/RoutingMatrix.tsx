@@ -166,8 +166,7 @@ export function RoutingMatrix() {
                 <label className="flex flex-col gap-1 text-xs">
                   <span className="text-muted-foreground">
                     Preferred provider
-                    {policy !== "manual" &&
-                      " (manual only)"}
+                    {policy !== "manual" && " (manual only)"}
                   </span>
                   <select
                     value={preferred}
