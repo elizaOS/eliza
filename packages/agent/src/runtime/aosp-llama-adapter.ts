@@ -1,12 +1,22 @@
 /**
  * AOSP-only loader for native llama.cpp via `bun:ffi`.
  *
- * Targets llama.cpp upstream tag `b3490` (commit
- *   git@github.com:ggml-org/llama.cpp.git tags/b3490
- * — equivalent to the API surface in the bundled
- *   `node_modules/.bun/llama-cpp-capacitor@0.1.5+.../node_modules/llama-cpp-capacitor/cpp/llama.h`
- * we read from when authoring this file). The matching libllama.so is
- * compiled by the AOSP build pipeline (sub-task 2B) against this same SHA.
+ * Targets llama.cpp upstream tag `b4500` (commit
+ *   git@github.com:ggml-org/llama.cpp.git tags/b4500
+ *   sha: a133566d34a1dd3693c504786963bf1b7b7d8c0e
+ * — the matching libllama.so is compiled by the AOSP build pipeline against
+ * this same SHA via `scripts/miladyos/compile-libllama.mjs`).
+ *
+ * Why b4500 (was b3490 in the initial spike):
+ *   The previous pin predated the sampler-chain API rewrite and the
+ *   model/vocab rename. dlopen succeeded but every renamed symbol resolved
+ *   to NULL — the adapter would have thrown at the first inference call.
+ *   b4500 is the first stable tag that exports all of the post-rewrite
+ *   symbols this file binds (sampler chain, `llama_model_load_from_file`,
+ *   `llama_init_from_model`, `llama_model_get_vocab`, `llama_vocab_eos`,
+ *   `llama_vocab_is_eog`) AND the embedding helpers
+ *   (`llama_set_embeddings`, `llama_get_embeddings_seq`,
+ *   `llama_model_n_embd`).
  *
  * Symbols pinned for reference:
  *   - llama_backend_init / llama_backend_free
@@ -19,9 +29,22 @@
  *   - llama_sampler_init_temp / llama_sampler_init_top_p / llama_sampler_init_dist /
  *     llama_sampler_init_greedy / llama_sampler_sample / llama_sampler_accept /
  *     llama_sampler_free
- *   - llama_get_model / llama_n_ctx
+ *   - llama_get_model / llama_n_ctx / llama_model_n_embd
+ *   - llama_set_embeddings / llama_get_embeddings_seq / llama_get_embeddings
  *   - llama_model_default_params / llama_context_default_params /
  *     llama_sampler_chain_default_params
+ *
+ * KNOWN LIMITATION (struct-by-value):
+ *   Several llama.h entry points take or return param structs by value
+ *   (`llama_model_default_params(void) -> struct`, `llama_model_load_from_file
+ *   (path, struct)`, etc.). bun:ffi has no struct-by-value support. The
+ *   default-params calls below are bound with `(out_ptr) -> void` for
+ *   forward-compatibility with a tiny C shim that wraps the struct return
+ *   into a pointer-style helper. The shim is tracked separately; until it
+ *   ships with libllama.so, the load/init/sampler-chain calls will pass
+ *   raw zeroed buffers and rely on llama.cpp's own zero-init defaults
+ *   (acceptable for the common Bonsai/8B path; will need the shim before
+ *   exposing GPU layer overrides or non-default pooling).
  *
  * Wired in via `ensure-local-inference-handler.ts`:
  *   - Trigger: `MILADY_LOCAL_LLAMA=1` in the AOSP agent process env.
@@ -97,9 +120,26 @@ interface LlamaSymbols {
 
   llama_get_model: (ctx: Pointer) => Pointer;
   llama_model_get_vocab: (model: Pointer) => Pointer;
+  llama_model_n_embd: (model: Pointer) => number;
   llama_n_ctx: (ctx: Pointer) => number;
   llama_vocab_eos: (vocab: Pointer) => number;
   llama_vocab_is_eog: (vocab: Pointer, token: number) => boolean;
+
+  llama_set_embeddings: (ctx: Pointer, embeddings: boolean) => void;
+  /**
+   * `llama_get_embeddings_seq(ctx, seq_id)` — returns a `float *` of length
+   * `n_embd` for the given sequence id when pooling is configured. Returns
+   * NULL when the model is not in embeddings mode or the sequence has no
+   * embedding output. The returned pointer is owned by ctx and remains
+   * valid until the next `llama_decode` call.
+   */
+  llama_get_embeddings_seq: (ctx: Pointer, seq_id: number) => Pointer;
+  /**
+   * `llama_get_embeddings(ctx)` — returns a `float *` of length
+   * `n_outputs * n_embd` containing per-token embeddings when no pooling
+   * is configured. Used as the fallback when `pooling_type == NONE`.
+   */
+  llama_get_embeddings: (ctx: Pointer) => Pointer;
 
   llama_tokenize: (
     vocab: Pointer,
@@ -205,9 +245,14 @@ function dlopenLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
 
     llama_get_model: { args: [T.ptr], returns: T.ptr },
     llama_model_get_vocab: { args: [T.ptr], returns: T.ptr },
+    llama_model_n_embd: { args: [T.ptr], returns: T.i32 },
     llama_n_ctx: { args: [T.ptr], returns: T.u32 },
     llama_vocab_eos: { args: [T.ptr], returns: T.i32 },
     llama_vocab_is_eog: { args: [T.ptr, T.i32], returns: T.bool },
+
+    llama_set_embeddings: { args: [T.ptr, T.bool], returns: T.void },
+    llama_get_embeddings_seq: { args: [T.ptr, T.i32], returns: T.ptr },
+    llama_get_embeddings: { args: [T.ptr], returns: T.ptr },
 
     llama_tokenize: {
       args: [T.ptr, T.ptr, T.i32, T.ptr, T.i32, T.bool, T.bool],
