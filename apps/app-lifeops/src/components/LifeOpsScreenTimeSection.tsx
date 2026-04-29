@@ -321,6 +321,7 @@ export function LifeOpsScreenTimeSection({
   const sessionBuckets = visible?.sessionBuckets ?? [];
   const channels = visible?.channels ?? [];
   const setupSources = visible?.setupSources ?? [];
+  const hasMessageActivity = visible?.hasMessageActivity ?? false;
   const hasUsage = visible?.hasUsage ?? false;
   const showDeltas = metrics?.deltas !== null && metrics?.deltas !== undefined;
 
