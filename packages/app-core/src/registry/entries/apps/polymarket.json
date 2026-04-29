@@ -16,7 +16,7 @@
     "actions": ["launch", "configure"]
   },
   "resources": {},
-  "dependsOn": [],
+  "dependsOn": ["wallet"],
   "kind": "app",
   "subtype": "trading",
   "launch": {
