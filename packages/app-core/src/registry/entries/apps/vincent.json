@@ -21,11 +21,7 @@
   "subtype": "trading",
   "launch": {
     "type": "server-launch",
-    "capabilities": [
-      "vincent",
-      "delegated-trading",
-      "wallet"
-    ],
+    "capabilities": ["vincent", "delegated-trading", "wallet"],
     "curatedSlug": "vincent",
     "routePlugin": {
       "specifier": "@elizaos/app-vincent/plugin",
