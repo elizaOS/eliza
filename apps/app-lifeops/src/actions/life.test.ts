@@ -53,10 +53,7 @@ async function runValidate(
   return validate(runtime, message);
 }
 
-async function runHandler(
-  runtime: IAgentRuntime,
-  message: Memory,
-) {
+async function runHandler(runtime: IAgentRuntime, message: Memory) {
   const { lifeAction } = await import("./life.js");
   const { handler } = lifeAction;
   if (!handler) {
@@ -167,13 +164,10 @@ describe("lifeAction.handler — dispatch-time scope guard", () => {
     "page-character",
     "page-phone",
     "page-wallet",
-  ])(
-    "returns empty success:false on foreign page scope %s",
-    async (scope) => {
-      const { runtime } = buildRuntime(scope);
-      const message = buildMessage("set an alarm for 7am");
-      const result = await runHandler(runtime, message);
-      expect(result).toEqual({ success: false, text: "" });
-    },
-  );
+  ])("returns empty success:false on foreign page scope %s", async (scope) => {
+    const { runtime } = buildRuntime(scope);
+    const message = buildMessage("set an alarm for 7am");
+    const result = await runHandler(runtime, message);
+    expect(result).toEqual({ success: false, text: "" });
+  });
 });

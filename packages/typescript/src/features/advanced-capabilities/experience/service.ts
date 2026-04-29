@@ -269,6 +269,8 @@ export class ExperienceService extends Service {
 					? rawData.domain
 					: "general",
 			tags: this.asStringArray(rawData?.tags),
+			keywords: this.asStringArray(rawData?.keywords),
+			associatedEntityIds: this.asUuidArray(rawData?.associatedEntityIds),
 			confidence: this.clampScore(rawData?.confidence, 0.5),
 			importance: this.clampScore(rawData?.importance, 0.5),
 			createdAt: this.toTimestamp(
@@ -290,6 +292,7 @@ export class ExperienceService extends Service {
 				this.asOptionalEmbedding(memory.embedding) ??
 				this.asOptionalEmbedding(rawData?.embedding),
 			relatedExperiences: this.asOptionalUuidArray(rawData?.relatedExperiences),
+			mergedExperienceIds: this.asOptionalUuidArray(rawData?.mergedExperienceIds),
 			supersedes:
 				typeof rawData?.supersedes === "string"
 					? (rawData.supersedes as UUID)
@@ -453,6 +456,16 @@ export class ExperienceService extends Service {
 		for (const memory of memories) {
 			const experience = this.parseExperienceMemory(memory);
 			if (experience) {
+				if (experience.tags.length === 0) {
+					experience.tags = this.normalizeTags(
+						experience.tags,
+						experience.domain,
+						experience.type,
+					);
+				}
+				if (experience.keywords.length === 0) {
+					experience.keywords = this.deriveKeywords(experience);
+				}
 				this.setExperience(experience);
 			}
 		}

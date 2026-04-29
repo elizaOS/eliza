@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+import type {
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarSummary,
+} from "@elizaos/shared";
 import {
   cleanup,
   fireEvent,
@@ -9,10 +13,6 @@ import {
 } from "@testing-library/react";
 import type React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarSummary,
-} from "@elizaos/shared";
 
 const { clientMock, selectState } = vi.hoisted(() => ({
   clientMock: {

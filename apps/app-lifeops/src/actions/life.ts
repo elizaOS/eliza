@@ -1,4 +1,8 @@
 import { renderGroundedActionReply } from "@elizaos/agent/actions/grounded-action-reply";
+import {
+  extractConversationMetadataFromRoom,
+  isPageScopedConversationMetadata,
+} from "@elizaos/agent/api/conversation-metadata";
 import type {
   Action,
   ActionResult,
@@ -39,10 +43,6 @@ import {
   getZonedDateParts,
 } from "../lifeops/time.js";
 import { gmailAction } from "./gmail.js";
-import {
-  extractConversationMetadataFromRoom,
-  isPageScopedConversationMetadata,
-} from "@elizaos/agent/api/conversation-metadata";
 import {
   type ExtractedLifeMissingField,
   type ExtractedLifeOperation,

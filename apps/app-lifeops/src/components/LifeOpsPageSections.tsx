@@ -1,17 +1,17 @@
 import type {
+  CloudCompatAgent,
+  CloudCompatManagedGithubStatus,
+  CloudOAuthConnection,
+} from "@elizaos/app-core";
+import { Badge, Button } from "@elizaos/app-core";
+import { ExternalLink } from "lucide-react";
+import type { ReactNode } from "react";
+import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
   LifeOpsGoalDefinition,
   LifeOpsOccurrenceView,
 } from "../contracts/index.js";
-import { Badge, Button } from "@elizaos/app-core";
-import { ExternalLink } from "lucide-react";
-import type { ReactNode } from "react";
-import type {
-  CloudCompatAgent,
-  CloudCompatManagedGithubStatus,
-  CloudOAuthConnection,
-} from "@elizaos/app-core";
 import { humanizeLifeOpsLabel } from "./lifeops-labels.js";
 
 export type ManagedAgentGithubEntry = {

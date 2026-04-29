@@ -28,12 +28,12 @@ vi.mock("@elizaos/ui", () => ({
       </button>
     ),
   },
-  SidebarPanel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  SidebarScrollRegion: ({
-    children,
-  }: {
-    children: ReactNode;
-  }) => <div>{children}</div>,
+  SidebarPanel: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+  SidebarScrollRegion: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
   TooltipProvider: ({ children }: { children: ReactNode }) => children,
 }));
 

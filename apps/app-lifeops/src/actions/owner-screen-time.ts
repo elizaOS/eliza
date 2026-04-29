@@ -238,7 +238,9 @@ export const ownerScreenTimeAction: Action = {
 
     const rawParams = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as OwnerScreenTimeParameters;
-    const params = (await extractActionParamsViaLlm<OwnerScreenTimeParameters & Record<string, unknown>>({
+    const params = (await extractActionParamsViaLlm<
+      OwnerScreenTimeParameters & Record<string, unknown>
+    >({
       runtime,
       message,
       state,
