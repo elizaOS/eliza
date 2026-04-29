@@ -56,12 +56,10 @@ function guardRealGmailWrite(method: string, originalUrl: string, targetUrl: str
   if (targetUrl !== originalUrl) {
     return;
   }
-  if (process.env.MILADY_BLOCK_REAL_GMAIL_WRITES === "1") {
-    throw new GoogleApiError(
-      409,
-      "Real Gmail writes are disabled by MILADY_BLOCK_REAL_GMAIL_WRITES. Point MILADY_MOCK_GOOGLE_BASE at Mockoon or set MILADY_ALLOW_REAL_GMAIL_WRITES=1 for an explicitly confirmed real write.",
-    );
-  }
+  throw new GoogleApiError(
+    409,
+    "Real Gmail writes require MILADY_ALLOW_REAL_GMAIL_WRITES=1. Point MILADY_MOCK_GOOGLE_BASE at a loopback mock for tests or set the allow env var for an explicitly confirmed real write.",
+  );
 }
 
 /**
