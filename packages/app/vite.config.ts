@@ -338,7 +338,13 @@ function tryResolveElizaCorePkgDir(): string | null {
   try {
     return path.dirname(_require.resolve("@elizaos/core/package.json"));
   } catch {
-    return null;
+    const workspaceCorePkg = path.join(
+      elizaRoot,
+      "packages/typescript/package.json",
+    );
+    return fs.existsSync(workspaceCorePkg)
+      ? path.dirname(workspaceCorePkg)
+      : null;
   }
 }
 
