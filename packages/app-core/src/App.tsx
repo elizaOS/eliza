@@ -30,6 +30,8 @@ import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { LoginView } from "./components/auth/LoginView";
 import { SaveCommandModal } from "./components/chat/SaveCommandModal";
+import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
+import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import { TasksEventsPanel } from "./components/chat/TasksEventsPanel";
 import { DeferredSetupChecklist } from "./components/cloud/FlaminaGuide";
 import { ConversationsSidebar } from "./components/conversations/ConversationsSidebar";
@@ -586,6 +588,7 @@ export function App() {
   const contextMenu = useContextMenu();
 
   useStreamPopoutNavigation(setTab);
+  useSecretsManagerShortcut();
 
   useEffect(() => {
     if (startupCoordinator.phase !== "ready") return;
@@ -1182,6 +1185,7 @@ export function App() {
         onSave={contextMenu.confirmSaveCommand}
         onClose={contextMenu.closeSaveCommandModal}
       />
+      <SecretsManagerModalRoot />
       <CustomActionEditor
         open={customActionsEditorOpen}
         action={editingAction}

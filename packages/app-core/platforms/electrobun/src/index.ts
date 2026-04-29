@@ -1715,6 +1715,16 @@ async function setupUpdater(): Promise<void> {
         void getDesktopManager().relaunch();
       } else if (action === "reset-app") {
         void resetTheAppFromApplicationMenu();
+      } else if (action === "open-secrets-manager") {
+        // The Secrets Storage modal lives in the renderer. Make sure
+        // the main window is visible, then notify the renderer to
+        // show the modal. The keyboard accelerator
+        // (⌘⌥⌃V on Mac / Ctrl+Alt+Shift+V on Win/Linux) flows
+        // through this same path; the renderer's `keydown` listener
+        // also dispatches the same toggle directly when a Milady
+        // window is already focused.
+        void restoreWindow();
+        sendToActiveRenderer("openSecretsManager", {});
       } else if (
         action === "open-settings" ||
         action?.startsWith("open-settings-")
