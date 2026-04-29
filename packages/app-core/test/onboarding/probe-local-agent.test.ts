@@ -36,6 +36,40 @@ describe("probeLocalAgent", () => {
     expect(calledUrl).toBe(DEFAULT_LOCAL_AGENT_HEALTH_URL);
   });
 
+  it("returns true when the real @elizaos/agent reports {ready:true,...}", async () => {
+    // The on-device agent's /api/health body uses `ready` + `agentState`,
+    // not `ok`. The probe must accept both shapes — without this the tile
+    // stays hidden against a perfectly healthy agent.
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          ready: true,
+          runtime: "ok",
+          database: "ok",
+          plugins: { loaded: 0, failed: 0 },
+          agentState: "running",
+          uptime: 32,
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    await expect(probeLocalAgent(500)).resolves.toBe(true);
+  });
+
+  it("returns true when only agentState is 'running'", async () => {
+    // Some embeds drop `ready` and surface only `agentState`. Same accept.
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ agentState: "running" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await expect(probeLocalAgent(500)).resolves.toBe(true);
+  });
+
   it("returns false on a non-200 response", async () => {
     fetchMock.mockResolvedValueOnce(new Response("nope", { status: 503 }));
     await expect(probeLocalAgent(500)).resolves.toBe(false);

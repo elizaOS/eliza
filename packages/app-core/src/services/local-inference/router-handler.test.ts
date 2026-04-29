@@ -14,7 +14,7 @@ function reg(provider: string, priority: number): HandlerRegistration {
 
 describe("filterUnavailableLocalInferenceCandidates", () => {
   it("removes inactive desktop local inference from implicit routing", async () => {
-    const candidates = [reg("anthropic", 0), reg("milady-local-inference", -1)];
+    const candidates = [reg("anthropic", 0), reg("milady-local-inference", 0)];
 
     const filtered = filterUnavailableLocalInferenceCandidates(
       candidates,
@@ -28,7 +28,7 @@ describe("filterUnavailableLocalInferenceCandidates", () => {
   });
 
   it("keeps desktop local inference when the user explicitly prefers it", async () => {
-    const candidates = [reg("milady-local-inference", -1)];
+    const candidates = [reg("milady-local-inference", 0)];
 
     const filtered = filterUnavailableLocalInferenceCandidates(
       candidates,
@@ -40,7 +40,7 @@ describe("filterUnavailableLocalInferenceCandidates", () => {
   });
 
   it("keeps desktop local inference when a model is assigned to the slot", async () => {
-    const candidates = [reg("milady-local-inference", -1)];
+    const candidates = [reg("milady-local-inference", 0)];
 
     const filtered = filterUnavailableLocalInferenceCandidates(
       candidates,

@@ -44,6 +44,20 @@ import path from "node:path";
 const BUN_VERSION = "1.3.13";
 const ALPINE_BRANCH = "v3.21";
 
+/**
+ * Default cache dir for compile-shim.mjs's outputs. Mirrors the default
+ * in `scripts/miladyos/compile-shim.mjs`. We resolve from `os.homedir()`
+ * directly instead of importing `compile-shim.mjs` to avoid pulling the
+ * zig probe + shell-out machinery into the staging step (this module
+ * runs unconditionally on every gradle build, not just AOSP).
+ */
+const SECCOMP_SHIM_CACHE_DIR = path.join(
+  os.homedir(),
+  ".cache",
+  "milady-android-agent",
+  "seccomp-shim",
+);
+
 const ABI_TARGETS = [
   {
     androidAbi: "x86_64",
@@ -267,6 +281,96 @@ function writeIfChanged(target, content) {
 }
 
 /**
+ * If `compile-shim.mjs` has produced shim + loader-wrap artifacts in the
+ * cache for this ABI, stage them into the assets dir:
+ *
+ *   - Move existing `<ldName>` (the Alpine-extracted real loader) to
+ *     `<ldName>.real`. We freshen this on every run so the wrapper
+ *     always points at an up-to-date loader.
+ *   - Drop our compiled `loader-wrap` in as `<ldName>`.
+ *   - Drop `libsigsys-handler.so` next to it.
+ *
+ * Returns the number of files changed this call (0 when nothing
+ * happened). When no compiled shim exists for the ABI we no-op and
+ * return 0 — the Capacitor APK build path keeps the legacy loader.
+ *
+ * Exported for testing.
+ */
+export function stageSeccompShimForAbi({
+  androidAbi,
+  ldName,
+  abiAssetsDir,
+  cacheDir = SECCOMP_SHIM_CACHE_DIR,
+  log,
+}) {
+  // ARM64 short-circuits: compile-shim never builds for that ABI.
+  if (androidAbi !== "x86_64") return 0;
+
+  const abiCacheDir = path.join(cacheDir, androidAbi);
+  const cachedWrap = path.join(abiCacheDir, ldName);
+  const cachedShim = path.join(abiCacheDir, "libsigsys-handler.so");
+  if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
+    log?.(
+      `No compiled SIGSYS shim for ${androidAbi}; leaving the Alpine ` +
+        `loader at ${ldName} (run \`node scripts/miladyos/compile-shim.mjs\` for ` +
+        `the AOSP path).`,
+    );
+    return 0;
+  }
+
+  const stagedLoader = path.join(abiAssetsDir, ldName);
+  const stagedRealLoader = `${stagedLoader}.real`;
+  const stagedShim = path.join(abiAssetsDir, "libsigsys-handler.so");
+
+  let changes = 0;
+
+  // Detect whether the existing `<ldName>` is the Alpine loader (which
+  // we need to relocate to .real) or our wrapper (already in place from
+  // a prior run). The wrapper is a tiny static binary (~30 KB on
+  // x86_64-linux-musl); the Alpine loader is ~600 KB. A size check is
+  // good enough as a discriminator and avoids shelling out to readelf.
+  const ALPINE_LOADER_MIN_BYTES = 200 * 1024;
+  const stagedLoaderExists = fs.existsSync(stagedLoader);
+  const stagedLoaderIsAlpine =
+    stagedLoaderExists &&
+    fs.statSync(stagedLoader).size >= ALPINE_LOADER_MIN_BYTES;
+
+  if (stagedLoaderIsAlpine) {
+    // Move the Alpine loader to .real so the wrapper can exec it. Use
+    // copy-then-delete so a partial failure still leaves a working .real.
+    fs.copyFileSync(stagedLoader, stagedRealLoader);
+    fs.rmSync(stagedLoader);
+    changes += 1;
+    log?.(`Renamed Alpine ${ldName} → ${ldName}.real for ${androidAbi}.`);
+  } else if (!fs.existsSync(stagedRealLoader)) {
+    // Edge case: our wrapper is already in place but the .real
+    // loader is missing. The freshly-staged Alpine loader was
+    // overwritten with the wrapper before we could relocate it, or
+    // the cache dir was wiped. Refuse to stage a wrapper without a
+    // real loader to chain to — execve would fail at runtime with
+    // ENOENT and the agent would silently never come up.
+    throw new Error(
+      `[stage-android-agent] ${ldName}.real is missing under ${abiAssetsDir} ` +
+        `but the wrapper is already in place. Wipe the assets dir and re-run ` +
+        `stageAndroidAgentRuntime to repopulate the Alpine loader before staging the shim.`,
+    );
+  }
+
+  // Stage the wrapper as <ldName>.
+  if (copyIfDifferent(cachedWrap, stagedLoader)) changes += 1;
+  // Stage libsigsys-handler.so alongside.
+  if (copyIfDifferent(cachedShim, stagedShim)) changes += 1;
+
+  if (changes > 0) {
+    log?.(
+      `Installed SIGSYS shim for ${androidAbi}: wrapper ${ldName} + ` +
+        `libsigsys-handler.so (real loader at ${ldName}.real).`,
+    );
+  }
+  return changes;
+}
+
+/**
  * Download (if needed) and stage the on-device agent runtime into the
  * Android assets tree. Idempotent — safe to run on every gradle invocation.
  *
@@ -357,6 +461,29 @@ export async function stageAndroidAgentRuntime({
     for (const [src, dst] of sources) {
       if (copyIfDifferent(src, dst)) abiChanges += 1;
     }
+
+    // Per-ABI seccomp shim install. Only x86_64 has compiled shim
+    // artifacts (arm64's kernel ABI omits the legacy syscalls Android's
+    // x86_64 seccomp filter traps on, so the shim is irrelevant). When
+    // the artifacts exist:
+    //   1. Stage `libsigsys-handler.so` next to bun.
+    //   2. Rename the Alpine-extracted ld-musl-*.so.1 → .so.1.real.
+    //   3. Stage our `loader-wrap` ELF as ld-musl-*.so.1.
+    // MiladyAgentService.java's existing findMuslLoader + ProcessBuilder
+    // spawn line then transparently picks up the wrapper, which prepends
+    // libsigsys-handler.so to LD_PRELOAD before exec'ing the real loader.
+    //
+    // Idempotent: if the wrapper is already in place we just refresh
+    // the .real loader and the shim file (handled by copyIfDifferent's
+    // size+mtime check). If shim artifacts are missing we leave the
+    // legacy loader in place so the Capacitor APK build still works.
+    const shimChanges = stageSeccompShimForAbi({
+      androidAbi,
+      ldName,
+      abiAssetsDir,
+      log: tlog,
+    });
+    abiChanges += shimChanges;
     stagedCount += abiChanges;
     tlog(
       `Staged ${sources.length} runtime file(s) for ABI ${androidAbi}` +
