@@ -2,16 +2,16 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
+import type { SelfControlPluginConfig } from "../website-blocker/engine.js";
 import {
   resetSelfControlStatusCache,
   setSelfControlPluginConfig,
   startSelfControlBlock,
   stopSelfControlBlock,
 } from "../website-blocker/engine.js";
-import type { SelfControlPluginConfig } from "../website-blocker/engine.js";
 import type { WebsiteBlockerRouteContext } from "./website-blocker-routes.js";
+import { handleWebsiteBlockerRoutes } from "./website-blocker-routes.js";
 
 const tempRoots: string[] = [];
 
@@ -19,7 +19,9 @@ async function createHostsConfig(): Promise<{
   config: SelfControlPluginConfig;
   hostsFilePath: string;
 }> {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "eliza-selfcontrol-routes-"));
+  const tempRoot = await mkdtemp(
+    path.join(os.tmpdir(), "eliza-selfcontrol-routes-"),
+  );
   tempRoots.push(tempRoot);
   const hostsFilePath = path.join(tempRoot, "hosts");
   await writeFile(hostsFilePath, "127.0.0.1 localhost\n", "utf8");
@@ -46,7 +48,9 @@ afterEach(async () => {
 async function getHostCheckResponse(host: string) {
   let payload: unknown = null;
   const context: WebsiteBlockerRouteContext = {
-    req: { url: `/api/website-blocker?host=${encodeURIComponent(host)}` } as never,
+    req: {
+      url: `/api/website-blocker?host=${encodeURIComponent(host)}`,
+    } as never,
     res: {} as never,
     method: "GET",
     pathname: "/api/website-blocker",
@@ -69,11 +73,32 @@ describe("website-blocker route host checks", () => {
   it("blocks X consumer hosts but allows X API hosts", async () => {
     const { config } = await createHostsConfig();
     setSelfControlPluginConfig(config);
-    await startSelfControlBlock({ websites: ["x.com"], durationMinutes: null }, config);
+    await startSelfControlBlock(
+      { websites: ["x.com"], durationMinutes: null },
+      config,
+    );
 
     expect((await getHostCheckResponse("twitter.com")).blocked).toBe(true);
     expect((await getHostCheckResponse("api.x.com")).blocked).toBe(false);
     expect((await getHostCheckResponse("api.twitter.com")).blocked).toBe(false);
+
+    await stopSelfControlBlock(config);
+    resetSelfControlStatusCache();
+  });
+
+  it("blocks exact Reddit consumer subdomains without broad domain matching", async () => {
+    const { config } = await createHostsConfig();
+    setSelfControlPluginConfig(config);
+    await startSelfControlBlock(
+      { websites: ["reddit.com"], durationMinutes: null },
+      config,
+    );
+
+    expect((await getHostCheckResponse("old.reddit.com")).blocked).toBe(true);
+    expect((await getHostCheckResponse("m.reddit.com")).blocked).toBe(true);
+    expect((await getHostCheckResponse("i.redd.it")).blocked).toBe(true);
+    expect((await getHostCheckResponse("api.reddit.com")).blocked).toBe(false);
+    expect((await getHostCheckResponse("notreddit.com")).blocked).toBe(false);
 
     await stopSelfControlBlock(config);
     resetSelfControlStatusCache();
@@ -91,9 +116,9 @@ describe("website-blocker route host checks", () => {
     expect((await getHostCheckResponse("accounts.google.com")).blocked).toBe(
       false,
     );
-    expect(
-      (await getHostCheckResponse("oauth2.googleapis.com")).blocked,
-    ).toBe(false);
+    expect((await getHostCheckResponse("oauth2.googleapis.com")).blocked).toBe(
+      false,
+    );
     expect(
       (await getHostCheckResponse("openidconnect.googleapis.com")).blocked,
     ).toBe(false);
