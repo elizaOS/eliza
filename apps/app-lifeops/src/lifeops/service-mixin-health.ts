@@ -1,4 +1,3 @@
-// @ts-nocheck — mixin: type safety is enforced on the composed class
 import {
   detectHealthBackend,
   getDailySummary,
