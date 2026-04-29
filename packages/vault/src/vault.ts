@@ -2,8 +2,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { decrypt, encrypt } from "./crypto.js";
 import {
+  defaultMasterKey,
   type MasterKeyResolver,
-  osKeychainMasterKey,
 } from "./master-key.js";
 import { resolveReference } from "./password-managers.js";
 import {
@@ -105,7 +105,7 @@ export function createVault(opts: CreateVaultOptions = {}): Vault {
     join(homedir(), ".milady");
   const storePath = join(root, "vault.json");
   const auditPath = join(root, "audit", "vault.jsonl");
-  const masterKey = opts.masterKey ?? osKeychainMasterKey();
+  const masterKey = opts.masterKey ?? defaultMasterKey();
   return new VaultImpl(storePath, auditPath, masterKey, opts.logger);
 }
 
