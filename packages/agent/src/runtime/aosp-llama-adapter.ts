@@ -200,15 +200,22 @@ interface LlamaSymbols {
  *   call returns. The adapter does this in try/finally to guarantee
  *   no leak on error paths.
  */
+/**
+ * Bound shim symbols. We bind only what `loadModel` / `embed` / `generate`
+ * actually call — speculative bindings get dlsym'd at dlopen time and
+ * silently widen the surface a future refactor might rely on. Setters
+ * for fields whose llama.cpp defaults are correct for AOSP CPU
+ * (`use_mmap=true`, `use_mlock=false`, `vocab_only=false`,
+ * `check_tensors=false`, `n_batch`/`n_ubatch` left at upstream values,
+ * `offload_kqv`/`flash_attn` not relevant on phone CPU, `no_perf` cosmetic)
+ * are intentionally not bound. Adding one is a one-line edit here +
+ * one-line edit in `dlopenShim` if a future LoadOptions field needs it.
+ */
 interface ShimSymbols {
   // model_params
   milady_llama_model_params_default: () => Pointer;
   milady_llama_model_params_free: (p: Pointer) => void;
   milady_llama_model_params_set_n_gpu_layers: (p: Pointer, v: number) => void;
-  milady_llama_model_params_set_use_mmap: (p: Pointer, v: boolean) => void;
-  milady_llama_model_params_set_use_mlock: (p: Pointer, v: boolean) => void;
-  milady_llama_model_params_set_vocab_only: (p: Pointer, v: boolean) => void;
-  milady_llama_model_params_set_check_tensors: (p: Pointer, v: boolean) => void;
   milady_llama_model_load_from_file: (
     path: Pointer,
     params: Pointer,
@@ -218,26 +225,18 @@ interface ShimSymbols {
   milady_llama_context_params_default: () => Pointer;
   milady_llama_context_params_free: (p: Pointer) => void;
   milady_llama_context_params_set_n_ctx: (p: Pointer, v: number) => void;
-  milady_llama_context_params_set_n_batch: (p: Pointer, v: number) => void;
-  milady_llama_context_params_set_n_ubatch: (p: Pointer, v: number) => void;
   milady_llama_context_params_set_n_threads: (p: Pointer, v: number) => void;
   milady_llama_context_params_set_n_threads_batch: (
     p: Pointer,
     v: number,
   ) => void;
   milady_llama_context_params_set_embeddings: (p: Pointer, v: boolean) => void;
-  milady_llama_context_params_set_offload_kqv: (p: Pointer, v: boolean) => void;
-  milady_llama_context_params_set_flash_attn: (p: Pointer, v: boolean) => void;
   milady_llama_context_params_set_pooling_type: (p: Pointer, v: number) => void;
   milady_llama_init_from_model: (model: Pointer, params: Pointer) => Pointer;
 
   // sampler_chain_params
   milady_llama_sampler_chain_params_default: () => Pointer;
   milady_llama_sampler_chain_params_free: (p: Pointer) => void;
-  milady_llama_sampler_chain_params_set_no_perf: (
-    p: Pointer,
-    v: boolean,
-  ) => void;
   milady_llama_sampler_chain_init: (params: Pointer) => Pointer;
 }
 
@@ -247,7 +246,12 @@ interface RuntimeWithRegisterService {
 
 /** Minimal subset of LocalInferenceLoader we satisfy here. */
 interface AospLoader {
-  loadModel(args: { modelPath: string }): Promise<void>;
+  loadModel(args: {
+    modelPath: string;
+    contextSize?: number;
+    useGpu?: boolean;
+    maxThreads?: number;
+  }): Promise<void>;
   unloadModel(): Promise<void>;
   currentModelPath(): string | null;
   generate(args: {
@@ -262,10 +266,36 @@ interface AospLoader {
   }>;
 }
 
+/**
+ * Pooling type values from llama.h b4500. We always materialize the AOSP
+ * context with `MEAN` pooling so `llama_get_embeddings_seq(ctx, 0)` returns
+ * exactly `n_embd` floats — the sequence buffer is sized by pooling type,
+ * and `NONE` would shape it as `n_outputs * n_embd` where `n_outputs <
+ * written` for output-pruning models, leading to a read-OOB on the
+ * mean-pool fallback path. By forcing MEAN at init we collapse two code
+ * paths into one and remove the OOB risk entirely.
+ */
+const LLAMA_POOLING_TYPE_NONE = 0;
+const LLAMA_POOLING_TYPE_MEAN = 1;
+
 const SERVICE_NAME = "localInferenceLoader";
 
 function isAospEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.MILADY_LOCAL_LLAMA?.trim() === "1";
+}
+
+/**
+ * Read a non-negative integer env override, falling back to `fallback`
+ * when the variable is unset, blank, or not parseable. Negative values
+ * are clamped to the fallback to avoid passing an int32-min into the
+ * shim setters.
+ */
+function readEnvInt(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
 }
 
 /**
@@ -307,14 +337,29 @@ function resolveAbiDir(arch: NodeJS.Architecture, cwd: string): string {
   return path.join(cwd, abiDir);
 }
 
-async function loadBunFfi(): Promise<BunFFIModule | null> {
+type BunFfiLoadResult =
+  | { ok: true; mod: BunFFIModule }
+  | { ok: false; error: Error };
+
+async function loadBunFfi(): Promise<BunFfiLoadResult> {
   // Dynamic import keeps non-Bun bundlers from failing on the bare specifier.
   // The AOSP runtime is Bun, so this resolves; on Vitest/Node it throws and
   // the adapter degrades to a logged failure rather than crashing the boot.
-  const mod = (await import("bun:ffi").catch(
-    () => null,
-  )) as BunFFIModule | null;
-  return mod ?? null;
+  // We surface the real error so AOSP-only debugging on Android can see the
+  // root cause instead of the generic "bun:ffi unavailable" message.
+  try {
+    /* Deliberate boundary cast: the real bun:ffi typings define dlopen
+     * with a generic `Fns extends Record<string, FFIFunction>` constraint
+     * we don't want leaking into adapter types; we only consume the
+     * weakly-typed runtime shape. */
+    const mod = (await import("bun:ffi")) as unknown as BunFFIModule;
+    return { ok: true, mod };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err : new Error(String(err)),
+    };
+  }
 }
 
 function dlopenLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
@@ -359,6 +404,7 @@ function dlopenLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
     llama_sampler_accept: { args: [T.ptr, T.i32], returns: T.void },
     llama_sampler_free: { args: [T.ptr], returns: T.void },
   });
+  /* Deliberate boundary cast: bun:ffi.dlopen returns weakly-typed callable map */
   return handle.symbols as unknown as LlamaSymbols;
 }
 
@@ -380,22 +426,6 @@ function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
       args: [T.ptr, T.i32],
       returns: T.void,
     },
-    milady_llama_model_params_set_use_mmap: {
-      args: [T.ptr, T.bool],
-      returns: T.void,
-    },
-    milady_llama_model_params_set_use_mlock: {
-      args: [T.ptr, T.bool],
-      returns: T.void,
-    },
-    milady_llama_model_params_set_vocab_only: {
-      args: [T.ptr, T.bool],
-      returns: T.void,
-    },
-    milady_llama_model_params_set_check_tensors: {
-      args: [T.ptr, T.bool],
-      returns: T.void,
-    },
     milady_llama_model_load_from_file: {
       args: [T.ptr, T.ptr],
       returns: T.ptr,
@@ -404,14 +434,6 @@ function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
     milady_llama_context_params_default: { args: [], returns: T.ptr },
     milady_llama_context_params_free: { args: [T.ptr], returns: T.void },
     milady_llama_context_params_set_n_ctx: {
-      args: [T.ptr, T.u32],
-      returns: T.void,
-    },
-    milady_llama_context_params_set_n_batch: {
-      args: [T.ptr, T.u32],
-      returns: T.void,
-    },
-    milady_llama_context_params_set_n_ubatch: {
       args: [T.ptr, T.u32],
       returns: T.void,
     },
@@ -427,14 +449,6 @@ function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
       args: [T.ptr, T.bool],
       returns: T.void,
     },
-    milady_llama_context_params_set_offload_kqv: {
-      args: [T.ptr, T.bool],
-      returns: T.void,
-    },
-    milady_llama_context_params_set_flash_attn: {
-      args: [T.ptr, T.bool],
-      returns: T.void,
-    },
     milady_llama_context_params_set_pooling_type: {
       args: [T.ptr, T.i32],
       returns: T.void,
@@ -446,12 +460,9 @@ function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
       args: [T.ptr],
       returns: T.void,
     },
-    milady_llama_sampler_chain_params_set_no_perf: {
-      args: [T.ptr, T.bool],
-      returns: T.void,
-    },
     milady_llama_sampler_chain_init: { args: [T.ptr], returns: T.ptr },
   });
+  /* Deliberate boundary cast: bun:ffi.dlopen returns weakly-typed callable map */
   return handle.symbols as unknown as ShimSymbols;
 }
 
@@ -490,20 +501,31 @@ class AospLlamaAdapter implements AospLoader {
     return this.loadedPath;
   }
 
-  async loadModel(args: { modelPath: string }): Promise<void> {
+  async loadModel(args: {
+    modelPath: string;
+    contextSize?: number;
+    useGpu?: boolean;
+    maxThreads?: number;
+  }): Promise<void> {
     this.ensureBackend();
     if (this.loadedPath === args.modelPath && this.ctx !== null) return;
     if (this.ctx !== null || this.model !== null) {
       await this.unloadModel();
     }
 
+    // Resolve runtime tunables. The active-model coordinator only forwards
+    // `{ modelPath }` today, so we backfill from env so AOSP doesn't run at
+    // upstream defaults that under-use phone CPU cores.
+    const contextSize = args.contextSize ?? readEnvInt("MILADY_LLAMA_N_CTX", 4096);
+    const maxThreads = args.maxThreads ?? readEnvInt("MILADY_LLAMA_THREADS", 0);
+    const useGpu = args.useGpu ?? false;
+
     // Materialize llama_model_params via the shim. The shim runs
     // llama_model_default_params() under the hood, so use_mmap=true,
     // use_mlock=false, n_gpu_layers=999 (or whatever upstream's defaults
-    // are at the pinned tag) all land correctly. We don't override
-    // anything here today — the canonical defaults are what we want for
-    // the AOSP CPU-only path. Future GPU-layer overrides plug in via
-    // milady_llama_model_params_set_n_gpu_layers().
+    // are at the pinned tag) all land correctly. We pin n_gpu_layers=0
+    // explicitly when the caller opts out of GPU so the value is
+    // self-documenting in logs even though it matches the AOSP default.
     const modelParamsPtr = this.shim.milady_llama_model_params_default();
     if (!modelParamsPtr) {
       throw new Error(
@@ -512,6 +534,9 @@ class AospLlamaAdapter implements AospLoader {
     }
     let modelPtr: Pointer = 0;
     try {
+      if (!useGpu) {
+        this.shim.milady_llama_model_params_set_n_gpu_layers(modelParamsPtr, 0);
+      }
       const pathBuf = encodeCString(args.modelPath);
       modelPtr = this.shim.milady_llama_model_load_from_file(
         this.ffi.ptr(pathBuf),
@@ -535,6 +560,37 @@ class AospLlamaAdapter implements AospLoader {
     }
     let ctxPtr: Pointer = 0;
     try {
+      // Override the canonical defaults for the few fields that actually
+      // matter on phones:
+      //   - n_ctx: cap the context window (defaults to 0 = "from model"
+      //     which can be huge on Llama-3-8B GGUFs and OOMs the device).
+      //   - n_threads / n_threads_batch: parallelize generation + batch
+      //     decode across the user's CPU cores. n_threads is on
+      //     context_params (verified against b4500 llama.h:319-320),
+      //     NOT model_params.
+      //   - embeddings: leave the runtime toggle (`llama_set_embeddings`)
+      //     to flip this per-call, but pre-allocate the buffers at init
+      //     so the first embed() call doesn't pay an allocation tax.
+      //   - pooling_type: pin to MEAN so `llama_get_embeddings_seq(ctx, 0)`
+      //     always returns exactly `n_embd` floats. NONE would shape the
+      //     ctx buffer as `n_outputs * n_embd` where n_outputs can be
+      //     less than the input token count for output-pruning models —
+      //     we'd read OOB on the mean-pool fallback. By forcing MEAN at
+      //     init we collapse the embed() path to a single read.
+      this.shim.milady_llama_context_params_set_n_ctx(ctxParamsPtr, contextSize);
+      this.shim.milady_llama_context_params_set_n_threads(
+        ctxParamsPtr,
+        maxThreads,
+      );
+      this.shim.milady_llama_context_params_set_n_threads_batch(
+        ctxParamsPtr,
+        maxThreads,
+      );
+      this.shim.milady_llama_context_params_set_embeddings(ctxParamsPtr, true);
+      this.shim.milady_llama_context_params_set_pooling_type(
+        ctxParamsPtr,
+        LLAMA_POOLING_TYPE_MEAN,
+      );
       ctxPtr = this.shim.milady_llama_init_from_model(modelPtr, ctxParamsPtr);
     } finally {
       this.shim.milady_llama_context_params_free(ctxParamsPtr);
@@ -551,7 +607,9 @@ class AospLlamaAdapter implements AospLoader {
     this.vocab = this.sym.llama_model_get_vocab(modelPtr);
     this.nCtx = this.sym.llama_n_ctx(ctxPtr);
     this.loadedPath = args.modelPath;
-    logger.info(`[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx})`);
+    logger.info(
+      `[aosp-llama] Loaded ${args.modelPath} (n_ctx=${this.nCtx}, n_threads=${maxThreads}, gpu=${useGpu})`,
+    );
   }
 
   async unloadModel(): Promise<void> {
@@ -580,7 +638,11 @@ class AospLlamaAdapter implements AospLoader {
     const ctx = this.ctx;
     const vocab = this.vocab;
 
-    // 1. Tokenize the prompt. Two-pass: ask for length, then alloc and fill.
+    // 1. Tokenize the prompt. Two-pass: ask for length (n_tokens_max=0,
+    // empty buffer — llama_tokenize never reads or writes through the
+    // pointer when the cap is zero, so a zero-length probe array is
+    // sufficient and avoids the wasteful 4-byte allocation), then alloc
+    // and fill.
     const promptBuf = encodeCString(args.prompt);
     const promptByteLen = promptBuf.length - 1; // exclude NUL
     const probe = new Int32Array(0);
@@ -588,12 +650,11 @@ class AospLlamaAdapter implements AospLoader {
       vocab,
       this.ffi.ptr(promptBuf),
       promptByteLen,
-      this.ffi.ptr(new Int32Array(1)),
+      this.ffi.ptr(probe),
       0,
       true,
       false,
     );
-    void probe;
     // llama_tokenize returns the negative of required length when n_tokens_max
     // is too small. With n_tokens_max=0 we always get a negative number.
     const required = requested < 0 ? -requested : requested;
@@ -726,9 +787,16 @@ class AospLlamaAdapter implements AospLoader {
    * Compute a sentence-level embedding for `input`. Single-context loader:
    * we toggle the loaded ctx into embeddings mode via `llama_set_embeddings`,
    * decode the tokenized input as one sequence, then read the per-sequence
-   * pooled embedding. When pooling is NONE (model wasn't trained with a
-   * pooling head), we fall back to mean-pooling the per-token embeddings
-   * from `llama_get_embeddings`.
+   * pooled embedding.
+   *
+   * Pooling contract: `loadModel()` initialises the context with
+   * `pooling_type = MEAN` (verified against b4500 llama.h enum), so
+   * `llama_get_embeddings_seq(ctx, 0)` returns exactly `n_embd` floats and
+   * we never need the per-token fallback path. If a future change ever
+   * sets `pooling_type = NONE`, this method must reject — reading
+   * `llama_get_embeddings(ctx)` for `written * n_embd` floats races with
+   * llama.cpp's per-decode `n_outputs` and would over-read for
+   * output-pruning models.
    *
    * Trade-off: the same context is used for generation and embeddings;
    * toggling between modes flushes the KV cache implicitly on the next
@@ -748,10 +816,12 @@ class AospLlamaAdapter implements AospLoader {
     const vocab = this.vocab;
 
     // 1. Tokenize the input. Embedding pipelines typically include the BOS
-    //    token; we mirror generate() and pass add_special=true.
+    //    token; we mirror generate() and pass add_special=true. Probe pass
+    //    needs only a length, not storage — empty Int32Array avoids the
+    //    pointless 4-byte allocation.
     const inputBuf = encodeCString(args.input);
     const inputByteLen = inputBuf.length - 1;
-    const probeOut = new Int32Array(1);
+    const probeOut = new Int32Array(0);
     const requested = this.sym.llama_tokenize(
       vocab,
       this.ffi.ptr(inputBuf),
@@ -805,41 +875,22 @@ class AospLlamaAdapter implements AospLoader {
       }
       const byteLength = nEmbd * 4; // float32
 
-      // Prefer the pooled per-sequence buffer. Models trained with a
-      // pooling head (mean / cls / last) return a ready vector here.
+      // Read the pooled per-sequence buffer. `loadModel` pinned
+      // pooling_type = MEAN, so llama.cpp produces exactly `n_embd`
+      // floats here. A NULL return means either pooling was disabled
+      // (contract violation) or the model emitted no output for
+      // sequence 0 — both cases are unrecoverable, so fail loudly.
       const pooledPtr = this.sym.llama_get_embeddings_seq(ctx, 0);
-      if (pooledPtr) {
-        const buf = this.ffi.toArrayBuffer(pooledPtr, 0, byteLength);
-        // Copy off the ctx-owned buffer so the result outlives the next
-        // llama_decode() call.
-        const view = new Float32Array(buf.slice(0));
-        return { embedding: Array.from(view), tokens: written };
-      }
-
-      // Fallback: pooling_type == NONE. The ctx exposes per-token
-      // embeddings contiguously via `llama_get_embeddings`. Shape is
-      // `[n_outputs * n_embd]`; we mean-pool across the n_outputs rows.
-      const allPtr = this.sym.llama_get_embeddings(ctx);
-      if (!allPtr) {
+      if (!pooledPtr) {
         throw new Error(
-          "[aosp-llama] llama_get_embeddings returned NULL after decode",
+          "[aosp-llama] llama_get_embeddings_seq returned NULL — pooling_type contract violated",
         );
       }
-      const allBuf = this.ffi.toArrayBuffer(allPtr, 0, written * byteLength);
-      const allView = new Float32Array(allBuf);
-      const pooled = new Array<number>(nEmbd);
-      for (let i = 0; i < nEmbd; i += 1) pooled[i] = 0;
-      for (let row = 0; row < written; row += 1) {
-        const offset = row * nEmbd;
-        for (let i = 0; i < nEmbd; i += 1) {
-          pooled[i] = (pooled[i] ?? 0) + (allView[offset + i] ?? 0);
-        }
-      }
-      const denom = written > 0 ? written : 1;
-      for (let i = 0; i < nEmbd; i += 1) {
-        pooled[i] = (pooled[i] ?? 0) / denom;
-      }
-      return { embedding: pooled, tokens: written };
+      const buf = this.ffi.toArrayBuffer(pooledPtr, 0, byteLength);
+      // Copy off the ctx-owned buffer so the result outlives the next
+      // llama_decode() call.
+      const view = new Float32Array(buf.slice(0));
+      return { embedding: Array.from(view), tokens: written };
     } finally {
       // Restore generation mode so the next `generate()` call doesn't get
       // hit with a reload-KV-cache stall on its first decode.
@@ -887,13 +938,14 @@ async function buildAdapter(): Promise<AospLlamaAdapter | null> {
     return null;
   }
 
-  const ffi = await loadBunFfi();
-  if (!ffi) {
+  const ffiResult = await loadBunFfi();
+  if (ffiResult.ok === false) {
     logger.error(
-      "[aosp-llama] MILADY_LOCAL_LLAMA=1 but bun:ffi is unavailable on this runtime",
+      `[aosp-llama] MILADY_LOCAL_LLAMA=1 but bun:ffi is unavailable on this runtime: ${ffiResult.error.message}`,
     );
     return null;
   }
+  const ffi = ffiResult.mod;
 
   let symbols: LlamaSymbols;
   try {

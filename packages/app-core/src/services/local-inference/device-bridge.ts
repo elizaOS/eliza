@@ -186,6 +186,14 @@ interface PendingEmbed {
   request: AgentOutbound;
   /** Same disconnect semantics as PendingGenerate — null when orphaned. */
   routedDeviceId: string | null;
+  /**
+   * ISO timestamp captured on first submission. Mirrors PendingGenerate
+   * for symmetry; embeds are NOT persisted to disk (they're short-lived
+   * and the caller's process holding the result promise has to be alive
+   * for the answer to mean anything), so this field is purely
+   * observational (status snapshots, debugging) today.
+   */
+  submittedAt: string;
 }
 
 interface ConnectedDevice {
@@ -830,6 +838,7 @@ export class DeviceBridge {
           timeout,
           request,
           routedDeviceId: best?.deviceId ?? null,
+          submittedAt: new Date().toISOString(),
         };
         this.pendingEmbeds.set(correlationId, pending);
 

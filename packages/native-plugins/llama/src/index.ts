@@ -321,9 +321,18 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
           text: options.input,
         });
         tokenCount = tokenized.tokens.length;
-      } catch {
+      } catch (err) {
         // tokenize() is purely informational here — never block the embed
-        // result on a tokenize failure.
+        // result on a tokenize failure. Logging at debug so a future
+        // capacitor regression that breaks tokenize is observable
+        // without spamming production logs. This package is intentionally
+        // dep-free of @elizaos/core (rollup bundles it for mobile), so we
+        // route through the runtime's `console.debug` rather than the
+        // structured logger.
+        const message = err instanceof Error ? err.message : String(err);
+        console.debug("[capacitor-llama] tokenize fallback", {
+          error: message,
+        });
         tokenCount = 0;
       }
     }

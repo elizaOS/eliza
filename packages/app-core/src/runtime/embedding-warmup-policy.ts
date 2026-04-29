@@ -38,7 +38,7 @@ export function shouldWarmupLocalEmbeddingModel(): boolean {
     return true;
   }
 
-  if (process.env.ELIZAOS_CLOUD_USE_EMBEDDINGS === "true") {
+  if (isTruthyEnv("ELIZAOS_CLOUD_USE_EMBEDDINGS")) {
     return false;
   }
 
