@@ -684,7 +684,8 @@ class AospLlamaAdapter implements AospLoader {
     // Resolve runtime tunables. The active-model coordinator only forwards
     // `{ modelPath }` today, so we backfill from env so AOSP doesn't run at
     // upstream defaults that under-use phone CPU cores.
-    const contextSize = args.contextSize ?? readEnvInt("MILADY_LLAMA_N_CTX", 4096);
+    const contextSize =
+      args.contextSize ?? readEnvInt("MILADY_LLAMA_N_CTX", 4096);
     const maxThreads = args.maxThreads ?? readEnvInt("MILADY_LLAMA_THREADS", 0);
     const useGpu = args.useGpu ?? false;
     const kvCacheType = resolveKvCacheType(args.modelPath, args.kvCacheType);
@@ -746,7 +747,10 @@ class AospLlamaAdapter implements AospLoader {
       //     less than the input token count for output-pruning models —
       //     we'd read OOB on the mean-pool fallback. By forcing MEAN at
       //     init we collapse the embed() path to a single read.
-      this.shim.milady_llama_context_params_set_n_ctx(ctxParamsPtr, contextSize);
+      this.shim.milady_llama_context_params_set_n_ctx(
+        ctxParamsPtr,
+        contextSize,
+      );
       this.shim.milady_llama_context_params_set_n_threads(
         ctxParamsPtr,
         maxThreads,
