@@ -16,6 +16,7 @@ import {
   LIFEOPS_GOOGLE_CONNECTOR_REFRESH_EVENT,
   type LifeOpsGoogleConnectorRefreshDetail,
 } from "../events/index.js";
+import { formatConnectorError } from "./connector-error.js";
 
 const DEFAULT_GOOGLE_CONNECTOR_POLL_INTERVAL_MS = 15_000;
 const GOOGLE_CONNECTOR_SILENT_REFRESH_DEBOUNCE_MS = 150;
@@ -52,13 +53,6 @@ function isTransientLifeOpsAvailabilityError(cause: unknown): boolean {
     cause.status === 503 &&
     cause.path.startsWith("/api/lifeops/connectors/google/status")
   );
-}
-
-function formatConnectorError(cause: unknown, fallback: string): string {
-  if (cause instanceof Error && cause.message.trim().length > 0) {
-    return cause.message.trim();
-  }
-  return fallback;
 }
 
 function uniqueModes(
@@ -122,43 +116,54 @@ function resolveSuccessRedirectUrl(
   return url.toString();
 }
 
+type RefreshEnvelope = {
+  type?: unknown;
+  detail?: unknown;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readRefreshEnvelope(value: unknown): RefreshEnvelope | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    type: value.type,
+    detail: value.detail,
+  };
+}
+
 function normalizeRefreshDetail(
   value: unknown,
 ): LifeOpsGoogleConnectorRefreshDetail | null {
-  if (!value || typeof value !== "object") {
+  if (!isRecord(value)) {
     return null;
   }
-  const candidate = value as {
-    origin?: unknown;
-    side?: unknown;
-    mode?: unknown;
-    source?: unknown;
-  };
   const side =
-    candidate.side === "owner" || candidate.side === "agent"
-      ? candidate.side
-      : undefined;
+    value.side === "owner" || value.side === "agent" ? value.side : undefined;
   const mode =
-    candidate.mode === "local" ||
-    candidate.mode === "remote" ||
-    candidate.mode === "cloud_managed"
-      ? candidate.mode
+    value.mode === "local" ||
+    value.mode === "remote" ||
+    value.mode === "cloud_managed"
+      ? value.mode
       : undefined;
   const source =
-    candidate.source === "callback" ||
-    candidate.source === "connect" ||
-    candidate.source === "disconnect" ||
-    candidate.source === "mode_change" ||
-    candidate.source === "refresh" ||
-    candidate.source === "focus" ||
-    candidate.source === "visibility" ||
-    candidate.source === "resume"
-      ? candidate.source
+    value.source === "callback" ||
+    value.source === "connect" ||
+    value.source === "disconnect" ||
+    value.source === "mode_change" ||
+    value.source === "refresh" ||
+    value.source === "focus" ||
+    value.source === "visibility" ||
+    value.source === "resume"
+      ? value.source
       : undefined;
   return {
     origin:
-      typeof candidate.origin === "string" && candidate.origin.trim().length > 0
-        ? candidate.origin.trim()
+      typeof value.origin === "string" && value.origin.trim().length > 0
+        ? value.origin.trim()
         : undefined,
     side,
     mode,
@@ -166,15 +171,9 @@ function normalizeRefreshDetail(
   };
 }
 
-function parseRefreshEnvelope(rawValue: string): {
-  type?: unknown;
-  detail?: unknown;
-} | null {
+function parseRefreshEnvelope(rawValue: string): RefreshEnvelope | null {
   try {
-    return JSON.parse(rawValue) as {
-      type?: unknown;
-      detail?: unknown;
-    };
+    return readRefreshEnvelope(JSON.parse(rawValue));
   } catch {
     return null;
   }
@@ -389,10 +388,7 @@ export function useGoogleLifeOpsConnector(
     };
 
     const handleWindowMessage = (event: MessageEvent<unknown>) => {
-      const message = event.data as {
-        type?: unknown;
-        detail?: unknown;
-      };
+      const message = readRefreshEnvelope(event.data);
       if (message?.type !== GOOGLE_CONNECTOR_MESSAGE_TYPE) {
         return;
       }
@@ -434,10 +430,7 @@ export function useGoogleLifeOpsConnector(
         ? new BroadcastChannel(GOOGLE_CONNECTOR_BROADCAST_CHANNEL)
         : null;
     const handleBroadcastMessage = (event: MessageEvent<unknown>) => {
-      const message = event.data as {
-        type?: unknown;
-        detail?: unknown;
-      };
+      const message = readRefreshEnvelope(event.data);
       if (message?.type !== GOOGLE_CONNECTOR_MESSAGE_TYPE) {
         return;
       }

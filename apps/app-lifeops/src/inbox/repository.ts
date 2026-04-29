@@ -3,6 +3,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   executeRawSql,
   parseJsonArray,
+  parseJsonRecord,
   sqlBoolean,
   sqlNumber,
   sqlQuote,
@@ -19,9 +20,73 @@ import type {
   TriageUrgency,
 } from "./types.js";
 
+const TRIAGE_CLASSIFICATIONS = new Set<TriageClassification>([
+  "ignore",
+  "info",
+  "notify",
+  "needs_reply",
+  "urgent",
+]);
+
+const TRIAGE_URGENCIES = new Set<TriageUrgency>(["low", "medium", "high"]);
+
+const OWNER_ACTIONS = new Set<OwnerAction>([
+  "confirmed",
+  "reclassified",
+  "edited_draft",
+  "ignored",
+]);
+
 // ---------------------------------------------------------------------------
 // Row parsing
 // ---------------------------------------------------------------------------
+
+function parseTriageClassification(value: unknown): TriageClassification {
+  const normalized = toText(value).trim();
+  if (TRIAGE_CLASSIFICATIONS.has(normalized as TriageClassification)) {
+    return normalized as TriageClassification;
+  }
+  throw new Error(
+    `[InboxTriageRepository] invalid triage classification: ${normalized}`,
+  );
+}
+
+function parseTriageUrgency(value: unknown): TriageUrgency {
+  const normalized = toText(value).trim();
+  if (TRIAGE_URGENCIES.has(normalized as TriageUrgency)) {
+    return normalized as TriageUrgency;
+  }
+  throw new Error(
+    `[InboxTriageRepository] invalid triage urgency: ${normalized}`,
+  );
+}
+
+function parseNullableTriageClassification(
+  value: unknown,
+): TriageClassification | null {
+  const normalized = toText(value).trim();
+  return normalized ? parseTriageClassification(normalized) : null;
+}
+
+function parseOwnerAction(value: unknown): OwnerAction {
+  const normalized = toText(value).trim();
+  if (OWNER_ACTIONS.has(normalized as OwnerAction)) {
+    return normalized as OwnerAction;
+  }
+  throw new Error(
+    `[InboxTriageRepository] invalid owner action: ${normalized}`,
+  );
+}
+
+function parseJsonStringArray(value: unknown, label: string): string[] {
+  const entries = parseJsonArray<unknown>(value);
+  for (const entry of entries) {
+    if (typeof entry !== "string") {
+      throw new Error(`[InboxTriageRepository] ${label} must contain strings`);
+    }
+  }
+  return entries;
+}
 
 function parseTriageEntry(row: Record<string, unknown>): TriageEntry {
   return {
@@ -34,13 +99,13 @@ function parseTriageEntry(row: Record<string, unknown>): TriageEntry {
     channelName: toText(row.channel_name),
     channelType: toText(row.channel_type),
     deepLink: toText(row.deep_link) || null,
-    classification: toText(row.classification) as TriageClassification,
-    urgency: toText(row.urgency, "low") as TriageUrgency,
+    classification: parseTriageClassification(row.classification),
+    urgency: parseTriageUrgency(row.urgency),
     confidence: toNumber(row.confidence, 0.5),
     snippet: toText(row.snippet),
     senderName: toText(row.sender_name) || null,
     threadContext: row.thread_context
-      ? parseJsonArray<string>(row.thread_context)
+      ? parseJsonStringArray(row.thread_context, "thread_context")
       : null,
     triageReasoning: toText(row.triage_reasoning) || null,
     suggestedResponse: toText(row.suggested_response) || null,
@@ -54,25 +119,17 @@ function parseTriageEntry(row: Record<string, unknown>): TriageEntry {
 }
 
 function parseTriageExample(row: Record<string, unknown>): TriageExample {
-  const contextStr = toText(row.context_json);
-  let contextJson: Record<string, unknown> | null = null;
-  if (contextStr) {
-    try {
-      contextJson = JSON.parse(contextStr) as Record<string, unknown>;
-    } catch {
-      contextJson = null;
-    }
-  }
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
     source: toText(row.source),
     snippet: toText(row.snippet),
-    classification: toText(row.classification) as TriageClassification,
-    ownerAction: toText(row.owner_action) as OwnerAction,
-    ownerClassification: (toText(row.owner_classification) ||
-      null) as TriageClassification | null,
-    contextJson,
+    classification: parseTriageClassification(row.classification),
+    ownerAction: parseOwnerAction(row.owner_action),
+    ownerClassification: parseNullableTriageClassification(
+      row.owner_classification,
+    ),
+    contextJson: parseJsonRecord(row.context_json),
     createdAt: toText(row.created_at),
   };
 }
@@ -332,9 +389,8 @@ export class InboxTriageRepository {
   }): Promise<TriageExample> {
     const id = newId();
     const now = isoNow();
-    const contextStr = opts.contextJson
-      ? JSON.stringify(opts.contextJson)
-      : null;
+    const contextJson = opts.contextJson ?? {};
+    const contextStr = JSON.stringify(contextJson);
 
     await executeRawSql(
       this.runtime,
@@ -357,7 +413,7 @@ export class InboxTriageRepository {
       classification: opts.classification,
       ownerAction: opts.ownerAction,
       ownerClassification: opts.ownerClassification ?? null,
-      contextJson: opts.contextJson ?? null,
+      contextJson,
       createdAt: now,
     };
   }

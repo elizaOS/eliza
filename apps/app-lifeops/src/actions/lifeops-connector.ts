@@ -11,27 +11,34 @@ import type {
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { hasLifeOpsAccess, INTERNAL_URL } from "./lifeops-google-helpers.js";
 
+const ACTION_NAME = "LIFEOPS_CONNECTOR";
+
+const VALID_CONNECTORS = [
+  "google",
+  "x",
+  "telegram",
+  "signal",
+  "discord",
+  "imessage",
+  "whatsapp",
+  "health",
+  "browser_bridge",
+] as const;
+
+const VALID_SUBACTIONS = [
+  "connect",
+  "disconnect",
+  "verify",
+  "status",
+  "list",
+] as const;
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type ConnectorKind =
-  | "google"
-  | "x"
-  | "telegram"
-  | "signal"
-  | "discord"
-  | "imessage"
-  | "whatsapp"
-  | "health"
-  | "browser_bridge";
-
-type ConnectorSubaction =
-  | "connect"
-  | "disconnect"
-  | "verify"
-  | "status"
-  | "list";
+type ConnectorKind = (typeof VALID_CONNECTORS)[number];
+type ConnectorSubaction = (typeof VALID_SUBACTIONS)[number];
 
 type ConnectorActionParams = {
   connector?: ConnectorKind;
@@ -53,27 +60,40 @@ type ConnectorActionParams = {
   capabilities?: string[];
 };
 
-const ACTION_NAME = "LIFEOPS_CONNECTOR";
+type GmailTriageResult = Awaited<ReturnType<LifeOpsService["getGmailTriage"]>>;
+type CalendarFeedResult = Awaited<
+  ReturnType<LifeOpsService["getCalendarFeed"]>
+>;
 
-const VALID_CONNECTORS: readonly ConnectorKind[] = [
-  "google",
-  "x",
-  "telegram",
-  "signal",
-  "discord",
-  "imessage",
-  "whatsapp",
-  "health",
-  "browser_bridge",
-];
+type GoogleVerifyProbeSkipped = {
+  ok: false;
+  skipped: true;
+  reason: string | undefined;
+};
 
-const VALID_SUBACTIONS: readonly ConnectorSubaction[] = [
-  "connect",
-  "disconnect",
-  "verify",
-  "status",
-  "list",
-];
+type GoogleVerifyRead = {
+  gmail:
+    | {
+        ok: true;
+        count: number;
+        summary: GmailTriageResult["summary"];
+        messages: GmailTriageResult["messages"];
+      }
+    | GoogleVerifyProbeSkipped;
+  calendar:
+    | {
+        ok: true;
+        count: number;
+        events: CalendarFeedResult["events"];
+      }
+    | GoogleVerifyProbeSkipped;
+};
+
+type ConnectorDispatcher = (
+  service: LifeOpsService,
+  subaction: ConnectorSubaction,
+  params: ConnectorActionParams,
+) => Promise<ActionResult>;
 
 function normalizeConnector(value: unknown): ConnectorKind | null {
   if (typeof value !== "string") return null;
@@ -287,8 +307,8 @@ async function dispatchGoogleVerify(
     side,
   );
   const capabilities = new Set(status.grantedCapabilities);
-  const read: Record<string, unknown> = {};
 
+  let gmailRead: GoogleVerifyRead["gmail"];
   if (status.connected && capabilities.has("google.gmail.triage")) {
     const triage = await service.getGmailTriage(INTERNAL_URL, {
       mode: params.mode,
@@ -296,14 +316,14 @@ async function dispatchGoogleVerify(
       maxResults: params.recentLimit ?? 10,
       forceSync: true,
     });
-    read.gmail = {
+    gmailRead = {
       ok: true,
       count: triage.messages.length,
       summary: triage.summary,
       messages: triage.messages,
     };
   } else {
-    read.gmail = {
+    gmailRead = {
       ok: false,
       skipped: true,
       reason: status.connected
@@ -312,6 +332,7 @@ async function dispatchGoogleVerify(
     };
   }
 
+  let calendarRead: GoogleVerifyRead["calendar"];
   if (status.connected && capabilities.has("google.calendar.read")) {
     const now = Date.now();
     const feed = await service.getCalendarFeed(INTERNAL_URL, {
@@ -320,13 +341,13 @@ async function dispatchGoogleVerify(
       timeMin: new Date(now - 60 * 60 * 1000).toISOString(),
       timeMax: new Date(now + 7 * 24 * 60 * 60 * 1000).toISOString(),
     });
-    read.calendar = {
+    calendarRead = {
       ok: true,
       count: feed.events.length,
       events: feed.events,
     };
   } else {
-    read.calendar = {
+    calendarRead = {
       ok: false,
       skipped: true,
       reason: status.connected
@@ -334,6 +355,7 @@ async function dispatchGoogleVerify(
         : status.reason,
     };
   }
+  const read: GoogleVerifyRead = { gmail: gmailRead, calendar: calendarRead };
 
   const send = params.sendTarget
     ? await service.sendGmailMessage(INTERNAL_URL, {
@@ -349,7 +371,7 @@ async function dispatchGoogleVerify(
 
   return {
     success: status.connected && (!params.sendTarget || send?.ok === true),
-    text: `Google verify: status=${status.connected ? "connected" : "disconnected"}, gmail=${(read.gmail as { skipped?: boolean }).skipped ? "skipped" : "ok"}, calendar=${(read.calendar as { skipped?: boolean }).skipped ? "skipped" : "ok"}, send=${send ? "ok" : "skipped"}.`,
+    text: `Google verify: status=${status.connected ? "connected" : "disconnected"}, gmail=${read.gmail.ok ? "ok" : "skipped"}, calendar=${read.calendar.ok ? "ok" : "skipped"}, send=${send ? "ok" : "skipped"}.`,
     data: {
       actionName: ACTION_NAME,
       connector: "google",
@@ -470,9 +492,12 @@ async function dispatchHealth(
         service.getHealthConnectorStatus(),
         service.getHealthDataConnectorStatuses(INTERNAL_URL, params.mode, side),
       ]);
+      const connectedProviderCount = connectors.filter(
+        (connector) => connector.connected,
+      ).length;
       return {
         success: true,
-        text: `Health connector status retrieved (${connectors.filter((connector) => connector.connected).length} connected provider${connectors.filter((connector) => connector.connected).length === 1 ? "" : "s"}).`,
+        text: `Health connector status retrieved (${connectedProviderCount} connected provider${connectedProviderCount === 1 ? "" : "s"}).`,
         data: {
           actionName: ACTION_NAME,
           connector: "health",
@@ -499,9 +524,12 @@ async function dispatchHealth(
         service.getHealthConnectorStatus(),
         service.getHealthDataConnectorStatuses(INTERNAL_URL, params.mode, side),
       ]);
+      const connectedProviderCount = connectors.filter(
+        (item) => item.connected,
+      ).length;
       return {
-        success: bridge.available || connectors.some((item) => item.connected),
-        text: `Health verify: bridge=${bridge.available ? "available" : "unavailable"}, connectedProviders=${connectors.filter((item) => item.connected).length}.`,
+        success: bridge.available || connectedProviderCount > 0,
+        text: `Health verify: bridge=${bridge.available ? "available" : "unavailable"}, connectedProviders=${connectedProviderCount}.`,
         data: {
           actionName: ACTION_NAME,
           connector: "health",
@@ -972,7 +1000,6 @@ async function dispatchBrowserBridge(
           settings,
           companions,
           verification: {
-            activeProbe: false,
             connected,
           },
         },
@@ -980,6 +1007,18 @@ async function dispatchBrowserBridge(
     }
   }
 }
+
+const CONNECTOR_DISPATCHERS = {
+  google: dispatchGoogle,
+  x: dispatchX,
+  telegram: dispatchTelegram,
+  signal: dispatchSignal,
+  discord: dispatchDiscord,
+  imessage: dispatchIMessage,
+  whatsapp: dispatchWhatsApp,
+  health: dispatchHealth,
+  browser_bridge: dispatchBrowserBridge,
+} satisfies Record<ConnectorKind, ConnectorDispatcher>;
 
 // ---------------------------------------------------------------------------
 // Action
@@ -1009,8 +1048,8 @@ export const lifeOpsConnectorAction: Action & {
   ],
   description:
     "Manage the lifecycle of every LifeOps connector. " +
-    "Connectors: google | x | telegram | signal | discord | imessage | whatsapp | health | browser_bridge. " +
-    "Subactions: connect (start auth/pairing), disconnect (revoke and clear grant), verify (active read/send probe where the connector exposes one), status (per-connector grant/health), list (status across all 9 connectors when no connector is set). " +
+    `Connectors: ${VALID_CONNECTORS.join(" | ")}. ` +
+    `Subactions: ${VALID_SUBACTIONS.join(" | ")}. connect (start auth/pairing), disconnect (revoke and clear grant), verify (active read/send probe where the connector exposes one), status (per-connector grant/health), list (status across all ${VALID_CONNECTORS.length} connectors when no connector is set). ` +
     "Examples: connect Google for the owner; disconnect Telegram; check Discord status; verify Telegram by sending a self-test; list all connectors. " +
     "When subaction=list and no connector is set, returns status for every connector in one call. " +
     "Connector-specific params: telegram connect needs phone (+ optional apiId/apiHash); browser_bridge connect needs browser (chrome/safari/...). " +
@@ -1084,26 +1123,7 @@ export const lifeOpsConnectorAction: Action & {
     }
 
     try {
-      switch (connector) {
-        case "google":
-          return await dispatchGoogle(service, subaction, params);
-        case "x":
-          return await dispatchX(service, subaction, params);
-        case "telegram":
-          return await dispatchTelegram(service, subaction, params);
-        case "signal":
-          return await dispatchSignal(service, subaction, params);
-        case "discord":
-          return await dispatchDiscord(service, subaction, params);
-        case "imessage":
-          return await dispatchIMessage(service, subaction, params);
-        case "whatsapp":
-          return await dispatchWhatsApp(service, subaction, params);
-        case "health":
-          return await dispatchHealth(service, subaction, params);
-        case "browser_bridge":
-          return await dispatchBrowserBridge(service, subaction, params);
-      }
+      return await CONNECTOR_DISPATCHERS[connector](service, subaction, params);
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {
         return {

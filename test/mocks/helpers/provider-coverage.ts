@@ -220,7 +220,12 @@ export const LIFEOPS_PROVIDER_MOCK_COVERAGE = [
     label: "Discord",
     mode: "browser-workspace",
     environment: "browser-workspace",
-    envVars: ["ELIZA_BROWSER_WORKSPACE_URL", "ELIZA_BROWSER_WORKSPACE_TOKEN"],
+    envVars: [
+      "ELIZA_BROWSER_WORKSPACE_URL",
+      "ELIZA_BROWSER_WORKSPACE_TOKEN",
+      "ELIZA_DISABLE_DISCORD_DESKTOP_CDP",
+      "MILADY_DISABLE_DISCORD_DESKTOP_CDP",
+    ],
     surfaces: [
       "desktop browser workspace tab lifecycle",
       "navigation",

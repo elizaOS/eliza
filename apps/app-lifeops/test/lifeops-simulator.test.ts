@@ -1,7 +1,10 @@
 import { fetchChatMessages } from "@elizaos/app-lifeops/inbox/message-fetcher";
 import { LifeOpsService } from "@elizaos/app-lifeops/lifeops/service";
 import { afterEach, describe, expect, it } from "vitest";
-import { LIFEOPS_SIMULATOR_CHANNEL_MESSAGES } from "../../../test/mocks/fixtures/lifeops-simulator.ts";
+import {
+  LIFEOPS_SIMULATOR_CHANNEL_MESSAGES,
+  LIFEOPS_SIMULATOR_CHANNELS,
+} from "../../../test/mocks/fixtures/lifeops-simulator.ts";
 import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 const INTERNAL_URL = new URL("http://127.0.0.1:31337");
@@ -32,13 +35,7 @@ describe("LifeOps simulator runtime", () => {
         (message) => message.channel === "whatsapp",
       ).length,
     );
-    for (const channel of [
-      "telegram",
-      "discord",
-      "signal",
-      "whatsapp",
-      "imessage",
-    ] as const) {
+    for (const channel of LIFEOPS_SIMULATOR_CHANNELS) {
       const channelFixtures = LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.filter(
         (message) => message.channel === channel,
       );
@@ -50,7 +47,7 @@ describe("LifeOps simulator runtime", () => {
       ).toBe(true);
     }
     const passiveMessages = await fetchChatMessages(mocked.runtime, {
-      sources: ["telegram", "discord", "signal", "whatsapp", "imessage"],
+      sources: [...LIFEOPS_SIMULATOR_CHANNELS],
       limit: 50,
     });
     expect(passiveMessages).toHaveLength(
@@ -61,13 +58,7 @@ describe("LifeOps simulator runtime", () => {
         LIFEOPS_SIMULATOR_CHANNEL_MESSAGES.map((message) => message.text),
       ),
     );
-    for (const channel of [
-      "telegram",
-      "discord",
-      "signal",
-      "whatsapp",
-      "imessage",
-    ] as const) {
+    for (const channel of LIFEOPS_SIMULATOR_CHANNELS) {
       const messages = passiveMessages.filter(
         (message) => message.source === channel,
       );

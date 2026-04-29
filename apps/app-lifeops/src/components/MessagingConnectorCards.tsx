@@ -47,6 +47,14 @@ const MACOS_FULL_DISK_ACCESS_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
 const LIFEOPS_BROWSER_SETUP_ID = "lifeops-browser-setup";
 
+type ConnectorStatusVariant = "ok" | "muted" | "warning";
+
+const CONNECTOR_STATUS_DOT_CLASS: Record<ConnectorStatusVariant, string> = {
+  ok: "bg-emerald-500",
+  muted: "bg-muted/40",
+  warning: "bg-amber-500",
+};
+
 function ConnectorCardShell({
   icon,
   platform,
@@ -57,16 +65,9 @@ function ConnectorCardShell({
   icon: ReactNode;
   platform: string;
   status: string;
-  statusVariant: "ok" | "muted" | "warning";
+  statusVariant: ConnectorStatusVariant;
   children: React.ReactNode;
 }) {
-  const dotColor =
-    statusVariant === "ok"
-      ? "bg-emerald-500"
-      : statusVariant === "warning"
-        ? "bg-amber-500"
-        : "bg-muted/40";
-
   return (
     <div className="space-y-2 rounded-2xl border border-border/20 bg-card/14 px-3 py-3">
       <div className="flex items-center justify-between gap-3">
@@ -74,7 +75,7 @@ function ConnectorCardShell({
           {icon}
           <span className="text-sm font-medium text-txt">{platform}</span>
           <span
-            className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`}
+            className={`inline-block h-1.5 w-1.5 rounded-full ${CONNECTOR_STATUS_DOT_CLASS[statusVariant]}`}
             title={status}
             aria-label={status}
             role="img"
@@ -90,7 +91,7 @@ function AccessPips({
   items,
   label,
 }: {
-  items: Array<"ok" | "warning" | "muted">;
+  items: ConnectorStatusVariant[];
   label: string;
 }) {
   const dots = items.length > 0 ? items : ["muted" as const];
@@ -105,11 +106,7 @@ function AccessPips({
       {slots.slice(0, dots.slice(0, 6).length).map((slot, slotIndex) => {
         const tone = dots[slotIndex];
         const color =
-          tone === "ok"
-            ? "bg-emerald-500"
-            : tone === "warning"
-              ? "bg-amber-500"
-              : "bg-muted/45";
+          tone === "muted" ? "bg-muted/45" : CONNECTOR_STATUS_DOT_CLASS[tone];
         return (
           <span key={slot} className={`h-1.5 w-1.5 rounded-full ${color}`} />
         );
@@ -454,7 +451,7 @@ export function SignalConnectorCard() {
       : signal.error
         ? "Needs attention"
         : "Not connected";
-  const statusVariant: "ok" | "muted" | "warning" = fullyReady
+  const statusVariant: ConnectorStatusVariant = fullyReady
     ? "ok"
     : isConnected || isPairing || signal.error
       ? "warning"
@@ -635,7 +632,7 @@ export function DiscordConnectorCard() {
                   : pairing
                     ? `Opening Discord in ${browserAccessSourceLabel(preferredAccess)}…`
                     : "Not connected";
-  const statusVariant: "ok" | "muted" | "warning" = isConnected
+  const statusVariant: ConnectorStatusVariant = isConnected
     ? dmInboxVisible
       ? "ok"
       : "warning"
@@ -968,7 +965,7 @@ export function TelegramConnectorCard() {
           : authState === "error"
             ? "Retry Telegram login"
             : "Not connected";
-  const statusVariant: "ok" | "muted" | "warning" = isConnected
+  const statusVariant: ConnectorStatusVariant = isConnected
     ? "ok"
     : showCodeStep || showPasswordStep || authState === "error"
       ? "warning"
@@ -1153,7 +1150,7 @@ export function WhatsAppConnectorCard() {
   } else {
     statusLabel = "Needs setup";
   }
-  const statusVariant: "ok" | "muted" | "warning" = fullyReady
+  const statusVariant: ConnectorStatusVariant = fullyReady
     ? "ok"
     : anyDirectionReady ||
         hasDegradations ||
@@ -1333,7 +1330,7 @@ export function IMessageConnectorCard() {
             ? `Connected via ${bridgeLabel}`
             : "Connected"
         : "Not connected";
-  const statusVariant: "ok" | "muted" | "warning" = isDegraded
+  const statusVariant: ConnectorStatusVariant = isDegraded
     ? "warning"
     : showFullDiskAccessControls
       ? "warning"
@@ -1342,7 +1339,7 @@ export function IMessageConnectorCard() {
         : busy && !status
           ? "warning"
           : "muted";
-  const bridgePips: Array<"ok" | "warning" | "muted"> = [
+  const bridgePips: ConnectorStatusVariant[] = [
     isConnected ? "ok" : "muted",
     status?.privateApiEnabled === false || status?.helperConnected === false
       ? "warning"

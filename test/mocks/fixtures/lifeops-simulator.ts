@@ -73,6 +73,27 @@ export const LIFEOPS_SIMULATOR_OWNER = {
   timezone: "America/Los_Angeles",
 } as const;
 
+export const LIFEOPS_SIMULATOR_OWNER_IDENTITIES = {
+  telegram: {
+    id: "lifeops-simulator-owner",
+    username: "mocked_lifeops_owner",
+    firstName: "Eliza",
+  },
+  signal: {
+    uuid: "lifeops-simulator-signal-owner",
+    deviceName: "LifeOps Simulator Signal",
+  },
+  discord: {
+    id: "lifeops-simulator-owner",
+    username: "mocked_owner",
+    discriminator: "0001",
+  },
+  whatsapp: {
+    businessAccountId: "lifeops-simulator-whatsapp",
+    phoneNumberId: "lifeops-simulator-whatsapp-phone",
+  },
+} as const;
+
 export const LIFEOPS_SIMULATOR_PEOPLE: LifeOpsSimulatorPerson[] = [
   {
     key: "alice",
@@ -360,6 +381,9 @@ export function lifeOpsSimulatorSummary() {
 
 export function assertLifeOpsSimulatorFixtureIntegrity(): void {
   const peopleByKey = new Map<string, LifeOpsSimulatorPerson>();
+  const simulatorChannels = new Set<LifeOpsSimulatorChannel>(
+    LIFEOPS_SIMULATOR_CHANNELS,
+  );
   for (const person of LIFEOPS_SIMULATOR_PEOPLE) {
     if (peopleByKey.has(person.key)) {
       throw new Error(`Duplicate LifeOps simulator person key: ${person.key}`);
@@ -386,6 +410,11 @@ export function assertLifeOpsSimulatorFixtureIntegrity(): void {
   }
 
   for (const message of LIFEOPS_SIMULATOR_CHANNEL_MESSAGES) {
+    if (!simulatorChannels.has(message.channel)) {
+      throw new Error(
+        `LifeOps simulator message references unknown channel: ${message.id}`,
+      );
+    }
     requirePerson(message.fromPersonKey, `message ${message.id}`);
     if (!message.threadId.trim()) {
       throw new Error(
@@ -397,13 +426,15 @@ export function assertLifeOpsSimulatorFixtureIntegrity(): void {
         `LifeOps simulator message has empty text: ${message.id}`,
       );
     }
+    if (message.outgoing === true) {
+      throw new Error(
+        `LifeOps simulator passive message cannot be outgoing: ${message.id}`,
+      );
+    }
   }
 
-  const reminderChannels = new Set<LifeOpsSimulatorChannel>(
-    LIFEOPS_SIMULATOR_CHANNELS,
-  );
   for (const reminder of LIFEOPS_SIMULATOR_REMINDERS) {
-    if (!reminderChannels.has(reminder.channel)) {
+    if (!simulatorChannels.has(reminder.channel)) {
       throw new Error(
         `Reminder ${reminder.id} references unknown channel: ${reminder.channel}`,
       );

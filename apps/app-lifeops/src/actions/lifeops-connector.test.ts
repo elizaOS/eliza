@@ -462,7 +462,6 @@ describe("lifeOpsConnectorAction", () => {
         connector: "browser_bridge",
         subaction: "verify",
         verification: {
-          activeProbe: false,
           connected: false,
         },
       },
