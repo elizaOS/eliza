@@ -549,7 +549,9 @@ export const lifeGmailMessages = pgTable(
     syncedAt: text("synced_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (t) => [unique().on(t.agentId, t.provider, t.side, t.externalMessageId)],
+  (t) => [
+    unique().on(t.agentId, t.provider, t.side, t.grantId, t.externalMessageId),
+  ],
 );
 
 export const lifeInboxMessages = pgTable(
@@ -573,6 +575,8 @@ export const lifeInboxMessages = pgTable(
     participantCount: integer("participant_count"),
     gmailAccountId: text("gmail_account_id"),
     gmailAccountEmail: text("gmail_account_email"),
+    lastSeenAt: text("last_seen_at"),
+    repliedAt: text("replied_at"),
     priorityScore: integer("priority_score"),
     priorityCategory: text("priority_category"),
     priorityFlagsJson: text("priority_flags_json").notNull().default("[]"),
@@ -581,10 +585,7 @@ export const lifeInboxMessages = pgTable(
   },
   (t) => [
     unique().on(t.agentId, t.channel, t.externalId),
-    index("idx_life_inbox_messages_agent_received").on(
-      t.agentId,
-      t.receivedAt,
-    ),
+    index("idx_life_inbox_messages_agent_received").on(t.agentId, t.receivedAt),
     index("idx_life_inbox_messages_agent_channel").on(t.agentId, t.channel),
   ],
 );
@@ -602,7 +603,7 @@ export const lifeGmailSyncStates = pgTable(
     syncedAt: text("synced_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
-  (t) => [unique().on(t.agentId, t.provider, t.side, t.mailbox)],
+  (t) => [unique().on(t.agentId, t.provider, t.side, t.grantId, t.mailbox)],
 );
 
 export const lifeGmailSpamReviewItems = pgTable(

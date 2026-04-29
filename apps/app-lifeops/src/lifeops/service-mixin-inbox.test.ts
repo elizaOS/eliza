@@ -680,7 +680,7 @@ describe("buildInbox — Wave 2F filters and small-group heuristic", () => {
     expect(ids).not.toContain("telegram:mem-big");
   });
 
-  it("filters by chatType — Messages mode keeps DM + small group, drops channels", () => {
+  it("filters by chatType — Messages mode keeps DMs and drops groups/channels", () => {
     const inbound: InboundMessage[] = [
       {
         id: "mem-dm",
@@ -724,10 +724,10 @@ describe("buildInbox — Wave 2F filters and small-group heuristic", () => {
     const inbox = buildInbox(inbound, {
       limit: 50,
       allowed: allChannels(),
-      chatTypeFilter: ["dm", "group"],
+      chatTypeFilter: ["dm"],
     });
     const ids = inbox.messages.map((m) => m.id);
-    expect(ids.sort()).toEqual(["discord:mem-dm", "discord:mem-group"]);
+    expect(ids).toEqual(["discord:mem-dm"]);
   });
 
   it("filters Gmail by gmailAccountId", () => {

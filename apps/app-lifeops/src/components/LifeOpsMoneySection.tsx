@@ -37,7 +37,8 @@ function formatUsd(value: number): string {
   })}`;
 }
 
-function formatDate(iso: string): string {
+function formatDate(iso: string | null): string {
+  if (!iso) return "Needs date";
   try {
     return new Date(iso).toLocaleDateString(undefined, {
       month: "short",
@@ -75,7 +76,8 @@ function formatRelative(iso: string): string {
   return formatter.format(Math.round(diffMs / 1000), "second");
 }
 
-function formatDueRelative(dueDateIso: string): string {
+function formatDueRelative(dueDateIso: string | null): string {
+  if (!dueDateIso) return "review date";
   // dueDateIso is YYYY-MM-DD; treat as UTC noon to avoid TZ-shift edge cases.
   const due = new Date(`${dueDateIso}T12:00:00.000Z`).getTime();
   if (!Number.isFinite(due)) return dueDateIso;
@@ -98,6 +100,17 @@ function formatCredits(value: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function billStatusLabel(bill: LifeOpsUpcomingBill): string {
+  switch (bill.status) {
+    case "overdue":
+      return "Overdue";
+    case "needs_due_date":
+      return "Review date";
+    case "upcoming":
+      return formatDueRelative(bill.dueDate);
+  }
 }
 
 function cadenceLabel(cadence: LifeOpsRecurringCharge["cadence"]): string {
@@ -435,7 +448,7 @@ export function LifeOpsMoneySection(): JSX.Element | null {
         [
           `Help me look at this bill from ${bill.merchant}.`,
           `Amount: ${formatUsd(bill.amountUsd)} ${bill.currency}.`,
-          `Due: ${bill.dueDate} (${formatDueRelative(bill.dueDate)}).`,
+          `Due: ${bill.dueDate ?? "needs review"} (${billStatusLabel(bill)}).`,
           "What should I do about it?",
         ].join(" "),
       );
@@ -687,7 +700,8 @@ export function LifeOpsMoneySection(): JSX.Element | null {
       >
         <header className="mb-2 flex items-center justify-between gap-2">
           <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-            <CalendarClock className="h-3.5 w-3.5" aria-hidden /> Upcoming bills
+            <CalendarClock className="h-3.5 w-3.5" aria-hidden /> Bills from
+            email
           </h2>
         </header>
         {(dash.upcomingBills ?? []).length === 0 ? (
@@ -707,8 +721,17 @@ export function LifeOpsMoneySection(): JSX.Element | null {
                   </div>
                   <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted">
                     <span>{formatDate(bill.dueDate)}</span>
-                    <span className="rounded bg-bg-muted/40 px-1.5 py-0.5 font-mono text-[10px]">
-                      {formatDueRelative(bill.dueDate)}
+                    <span
+                      className={[
+                        "rounded px-1.5 py-0.5 font-mono text-[10px]",
+                        bill.status === "overdue"
+                          ? "bg-rose-500/15 text-rose-200"
+                          : bill.status === "needs_due_date"
+                            ? "bg-amber-500/15 text-amber-200"
+                            : "bg-bg-muted/40",
+                      ].join(" ")}
+                    >
+                      {billStatusLabel(bill)}
                     </span>
                   </div>
                 </div>

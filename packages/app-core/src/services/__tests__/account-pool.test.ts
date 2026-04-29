@@ -7,6 +7,10 @@ import type { LinkedAccountConfig } from "@elizaos/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountPool, type AccountPoolDeps } from "../account-pool";
 
+function accountKey(account: LinkedAccountConfig): string {
+  return `${account.providerId}:${account.id}`;
+}
+
 function mkAccount(
   id: string,
   overrides: Partial<LinkedAccountConfig> = {},
@@ -28,13 +32,13 @@ function mkDeps(accounts: LinkedAccountConfig[]): AccountPoolDeps & {
   current: () => Record<string, LinkedAccountConfig>;
   writes: LinkedAccountConfig[];
 } {
-  const map = new Map(accounts.map((a) => [a.id, a]));
+  const map = new Map(accounts.map((a) => [accountKey(a), a]));
   const writes: LinkedAccountConfig[] = [];
   return {
     readAccounts: () => Object.fromEntries(map),
     writeAccount: async (account) => {
       writes.push(account);
-      map.set(account.id, account);
+      map.set(accountKey(account), account);
     },
     current: () => Object.fromEntries(map),
     writes,
@@ -166,6 +170,28 @@ describe("AccountPool selection", () => {
     const pool = new AccountPool(deps);
     const picked = await pool.select({ providerId: "anthropic-subscription" });
     expect(picked?.id).toBe("b");
+  });
+
+  it("keeps same account IDs separate across subscription providers", async () => {
+    const deps = mkDeps([
+      mkAccount("default", {
+        providerId: "anthropic-subscription",
+        priority: 2,
+      }),
+      mkAccount("default", {
+        providerId: "openai-codex",
+        priority: 1,
+      }),
+    ]);
+    const pool = new AccountPool(deps);
+
+    const anthropic = await pool.select({
+      providerId: "anthropic-subscription",
+    });
+    const codex = await pool.select({ providerId: "openai-codex" });
+
+    expect(anthropic?.providerId).toBe("anthropic-subscription");
+    expect(codex?.providerId).toBe("openai-codex");
   });
 
   it("skips accounts marked invalid / needs-reauth / rate-limited (still active)", async () => {

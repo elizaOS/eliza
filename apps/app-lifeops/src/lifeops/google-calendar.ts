@@ -215,21 +215,6 @@ function normalizeGoogleCalendarEvent(
   };
 }
 
-async function readGoogleCalendarError(response: Response): Promise<string> {
-  const text = await response.text();
-  if (!text) {
-    return `Google Calendar request failed with ${response.status}`;
-  }
-  try {
-    const parsed = JSON.parse(text) as {
-      error?: { message?: string };
-    };
-    return parsed.error?.message || text;
-  } catch {
-    return text;
-  }
-}
-
 export async function fetchGoogleCalendarEvents(args: {
   accessToken: string;
   calendarId?: string;
@@ -238,43 +223,52 @@ export async function fetchGoogleCalendarEvents(args: {
   timeZone?: string;
 }): Promise<SyncedGoogleCalendarEvent[]> {
   const calendarId = args.calendarId ?? "primary";
-  const params = new URLSearchParams({
+  const baseParams = new URLSearchParams({
     singleEvents: "true",
     orderBy: "startTime",
     showDeleted: "false",
-    maxResults: "50",
+    maxResults: "2500",
     timeMin: args.timeMin,
     timeMax: args.timeMax,
     fields:
-      "items(id,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,updated,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri,label,entryPointType)))",
+      "nextPageToken,items(id,status,summary,description,location,htmlLink,hangoutLink,iCalUID,recurringEventId,created,updated,start,end,organizer(email,displayName,self),attendees(email,displayName,responseStatus,self,organizer,optional),conferenceData(entryPoints(uri,label,entryPointType)))",
   });
   if (args.timeZone?.trim()) {
-    params.set("timeZone", args.timeZone.trim());
+    baseParams.set("timeZone", args.timeZone.trim());
   }
 
-  const response = await googleApiFetch(
-    `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
-    {
-      headers: {
-        Authorization: `Bearer ${args.accessToken}`,
-      },
-    },
-  );
-
-  const parsed = (await response.json()) as {
-    items?: GoogleCalendarApiEvent[];
-  };
   const events: SyncedGoogleCalendarEvent[] = [];
-  for (const item of parsed.items ?? []) {
-    const normalized = normalizeGoogleCalendarEvent(
-      calendarId,
-      item,
-      args.timeZone,
-    );
-    if (normalized) {
-      events.push(normalized);
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams(baseParams);
+    if (pageToken) {
+      params.set("pageToken", pageToken);
     }
-  }
+    const response = await googleApiFetch(
+      `${GOOGLE_CALENDAR_EVENTS_ENDPOINT}/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
+      {
+        headers: {
+          Authorization: `Bearer ${args.accessToken}`,
+        },
+      },
+    );
+
+    const parsed = (await response.json()) as {
+      items?: GoogleCalendarApiEvent[];
+      nextPageToken?: string;
+    };
+    for (const item of parsed.items ?? []) {
+      const normalized = normalizeGoogleCalendarEvent(
+        calendarId,
+        item,
+        args.timeZone,
+      );
+      if (normalized) {
+        events.push(normalized);
+      }
+    }
+    pageToken = parsed.nextPageToken?.trim() || undefined;
+  } while (pageToken);
   return events;
 }
 
@@ -331,9 +325,8 @@ export async function listGoogleCalendars(args: {
     if (item.deleted || item.hidden) continue;
     const calendarId = item.id?.trim();
     if (!calendarId) continue;
-    const summary = (item.summaryOverride?.trim() ||
-      item.summary?.trim() ||
-      calendarId);
+    const summary =
+      item.summaryOverride?.trim() || item.summary?.trim() || calendarId;
     entries.push({
       calendarId,
       summary,

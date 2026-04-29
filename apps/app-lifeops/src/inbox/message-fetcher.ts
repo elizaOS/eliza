@@ -13,8 +13,7 @@ import type { InboundMessage } from "./types.js";
 
 /**
  * Discord public channels are typically larger than DMs / threads. We use this
- * threshold both to treat sufficiently-large groups as broadcast channels and
- * to drive the v1 small-group filter in the Messages section.
+ * threshold to treat sufficiently-large groups as broadcast channels.
  */
 const PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD = 15;
 
@@ -126,8 +125,8 @@ export async function fetchChatMessages(
     messagesByRoom.set(m.roomId, arr);
   }
 
-  // Fetch participant counts per room exactly once. Used to classify groups
-  // vs public channels and to filter out >15-person rooms in the inbox.
+  // Fetch participant counts per room exactly once. Used to classify DMs,
+  // group DMs, and public channels without letting unknown rooms default to DM.
   const participantCountByRoom = new Map<string, number>();
   await Promise.all(
     sourceRooms.map(async (room) => {
@@ -144,10 +143,10 @@ export async function fetchChatMessages(
     if (!text) continue;
 
     const senderName = extractSenderName(memory) ?? "Unknown";
-    const channelName = resolveChannelName(source, room?.name, senderName);
-    const channelType = detectChannelType(room);
     const participantCount = participantCountByRoom.get(memory.roomId);
-    const chatType = classifyChatType(room, channelType, participantCount);
+    const chatType = classifyChatType(room, participantCount);
+    const channelType = chatType === "dm" ? "dm" : "group";
+    const channelName = resolveChannelName(source, room?.name, senderName);
     const world = room?.worldId ? worldMap.get(room.worldId) : undefined;
     const deepLink = await buildDeepLink(runtime, source, {
       roomId: memory.roomId,
@@ -228,10 +227,11 @@ export async function fetchGmailMessages(
     if (sinceMs > 0 && receivedMs < sinceMs) continue;
 
     const from = msg.from || msg.fromEmail || "Unknown sender";
+    const gmailAccountSegment = encodeURIComponent(msg.accountEmail ?? "0");
     const gmailLink =
       msg.htmlLink ??
       (msg.externalId
-        ? `https://mail.google.com/mail/u/0/#inbox/${msg.externalId}`
+        ? `https://mail.google.com/mail/u/${gmailAccountSegment}/#inbox/${msg.externalId}`
         : undefined);
 
     results.push({
@@ -292,7 +292,8 @@ export async function fetchXDmMessages(
         ? metadata.participantId.trim()
         : dm.senderId;
     const isGroup = participantIds.length > 2;
-    const xParticipantCount = participantIds.length || (isGroup ? undefined : 2);
+    const xParticipantCount =
+      participantIds.length || (isGroup ? undefined : 2);
     results.push({
       id: dm.id,
       source: "x_dm",
@@ -308,6 +309,8 @@ export async function fetchXDmMessages(
       threadId: dm.conversationId,
       chatType: isGroup ? "group" : "dm",
       participantCount: xParticipantCount,
+      lastSeenAt: dm.readAt ?? undefined,
+      repliedAt: dm.repliedAt ?? undefined,
     });
   }
 
@@ -417,15 +420,62 @@ function extractRoomSource(room: Room): string | null {
   return null;
 }
 
-function detectChannelType(room: Room | undefined): "dm" | "group" {
-  if (!room) return "dm";
-  const type = room.type;
-  if (typeof type === "string") {
-    const lower = type.toLowerCase();
-    if (lower.includes("dm") || lower.includes("direct")) return "dm";
-    if (lower.includes("group") || lower.includes("channel")) return "group";
-  }
-  return "dm";
+type ChatClassification = "dm" | "group" | "channel";
+
+const DIRECT_ROOM_TYPES = new Set(["dm", "direct", "private", "voice_dm"]);
+const GROUP_ROOM_TYPES = new Set(["group", "voice_group"]);
+const PUBLIC_ROOM_TYPES = new Set([
+  "announcement_thread",
+  "broadcast",
+  "channel",
+  "feed",
+  "forum",
+  "guild",
+  "guild_forum",
+  "guild_news",
+  "guild_stage_voice",
+  "guild_text",
+  "guild_voice",
+  "news",
+  "private_thread",
+  "public",
+  "public_thread",
+  "stage",
+  "supergroup",
+  "text",
+  "thread",
+  "voice",
+  "world",
+]);
+
+function normalizeRoomType(value: string): string {
+  return value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+}
+
+function classifyRoomTypeValue(
+  value: string | null,
+): ChatClassification | null {
+  if (!value) return null;
+  const normalized = normalizeRoomType(value);
+  if (DIRECT_ROOM_TYPES.has(normalized)) return "dm";
+  if (GROUP_ROOM_TYPES.has(normalized)) return "group";
+  if (PUBLIC_ROOM_TYPES.has(normalized)) return "channel";
+  return null;
+}
+
+function readRoomMetadataString(
+  room: Room | undefined,
+  key: string,
+): string | null {
+  const metadata = metadataRecord(room?.metadata);
+  const value = metadata[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
 }
 
 /**
@@ -436,26 +486,29 @@ function detectChannelType(room: Room | undefined): "dm" | "group" {
  */
 function classifyChatType(
   room: Room | undefined,
-  channelType: "dm" | "group",
   participantCount: number | undefined,
-): "dm" | "group" | "channel" {
-  const rawType =
-    typeof room?.type === "string" ? room.type.toLowerCase() : "";
-  const isLikelyPublicChannel =
-    rawType.includes("guild") ||
-    rawType.includes("voice") ||
-    rawType.includes("forum") ||
-    rawType.includes("public") ||
-    rawType.includes("broadcast");
-  if (channelType === "dm") {
-    return "dm";
+): ChatClassification {
+  const roomType = typeof room?.type === "string" ? room.type.trim() : null;
+  const explicit =
+    classifyRoomTypeValue(roomType) ??
+    classifyRoomTypeValue(readRoomMetadataString(room, "chatType")) ??
+    classifyRoomTypeValue(readRoomMetadataString(room, "roomType"));
+
+  if (explicit === "dm") {
+    return typeof participantCount === "number" && participantCount > 2
+      ? "group"
+      : "dm";
   }
+  if (explicit) return explicit;
+
   if (
-    isLikelyPublicChannel ||
-    (typeof participantCount === "number" &&
-      participantCount > PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD)
+    typeof participantCount === "number" &&
+    participantCount > PUBLIC_CHANNEL_PARTICIPANT_THRESHOLD
   ) {
     return "channel";
   }
-  return "group";
+  if (typeof participantCount === "number" && participantCount > 2) {
+    return "group";
+  }
+  return "channel";
 }

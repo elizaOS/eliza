@@ -66,6 +66,7 @@ interface ConnectedCloudAgentLike {
 
 interface CloudManagerLike {
   init?: () => Promise<void>;
+  replaceApiKey?: (apiKey: string) => Promise<void>;
   getClient: () => CloudClientLike | null;
   connect: (agentId: string) => Promise<ConnectedCloudAgentLike>;
   disconnect: () => Promise<void>;
@@ -78,6 +79,8 @@ interface RuntimeLike {
   character?: {
     secrets?: Record<string, string | number | boolean>;
   };
+  getService?: (name: string) => unknown;
+  setSetting?: (key: string, value: string | null) => unknown;
   updateAgent?: (
     agentId: string,
     update: {
@@ -93,6 +96,15 @@ interface IntegrationTelemetrySpanLike {
     error?: unknown;
     errorKind?: string;
   }) => void;
+}
+
+interface CloudAuthLike {
+  authenticateWithApiKey?: (input: {
+    apiKey: string;
+    organizationId?: string;
+    userId?: string;
+  }) => unknown;
+  clearAuth?: () => unknown;
 }
 
 type CreateTelemetrySpanLike = (meta: {
@@ -156,6 +168,24 @@ function replaceMutableRoot<T extends object>(target: T, snapshot: T): void {
     targetRecord,
     structuredClone(snapshot as Record<string, unknown>),
   );
+}
+
+function getCloudAuth(runtime: RuntimeLike | null): CloudAuthLike | null {
+  if (typeof runtime?.getService !== "function") {
+    return null;
+  }
+  const service = runtime.getService("CLOUD_AUTH");
+  return service && typeof service === "object"
+    ? (service as CloudAuthLike)
+    : null;
+}
+
+function clearCloudAuth(runtime: RuntimeLike | null): CloudAuthLike | null {
+  const cloudAuth = getCloudAuth(runtime);
+  if (typeof cloudAuth?.clearAuth === "function") {
+    cloudAuth.clearAuth();
+  }
+  return cloudAuth;
 }
 
 async function captureConfigEnvRollbackSnapshot(): Promise<ConfigEnvRollbackSnapshot> {
@@ -436,12 +466,20 @@ export async function handleCloudRoute(
       return true;
     }
 
-    let data: { status: string; apiKey?: string; keyPrefix?: string };
+    let data: {
+      status: string;
+      apiKey?: string;
+      keyPrefix?: string;
+      organizationId?: string;
+      userId?: string;
+    };
     try {
       data = (await pollRes.json()) as {
         status: string;
         apiKey?: string;
         keyPrefix?: string;
+        organizationId?: string;
+        userId?: string;
       };
     } catch (parseErr) {
       loginPollSpan.failure({ error: parseErr, statusCode: pollRes.status });
@@ -455,6 +493,13 @@ export async function handleCloudRoute(
     loginPollSpan.success({ statusCode: pollRes.status });
 
     if (data.status === "authenticated" && data.apiKey) {
+      const organizationId =
+        typeof data.organizationId === "string"
+          ? data.organizationId.trim()
+          : undefined;
+      const userId =
+        typeof data.userId === "string" ? data.userId.trim() : undefined;
+      const cloudAuth = clearCloudAuth(state.runtime);
       migrateLegacyRuntimeConfig(state.config as Record<string, unknown>);
       const cloud = (state.config.cloud ?? {}) as NonNullable<
         CloudConfigLike["cloud"]
@@ -507,10 +552,28 @@ export async function handleCloudRoute(
         }
         const secrets = character.secrets as Record<string, string>;
         secrets.ELIZAOS_CLOUD_API_KEY = data.apiKey;
+        if (userId) {
+          secrets.ELIZA_CLOUD_USER_ID = userId;
+        } else {
+          delete secrets.ELIZA_CLOUD_USER_ID;
+        }
+        if (organizationId) {
+          secrets.ELIZA_CLOUD_ORGANIZATION_ID = organizationId;
+        } else {
+          delete secrets.ELIZA_CLOUD_ORGANIZATION_ID;
+        }
         if (cloudInferenceSelected) {
           secrets.ELIZAOS_CLOUD_ENABLED = "true";
         } else {
           delete secrets.ELIZAOS_CLOUD_ENABLED;
+        }
+
+        if (typeof state.runtime.setSetting === "function") {
+          state.runtime.setSetting("ELIZA_CLOUD_USER_ID", userId ?? null);
+          state.runtime.setSetting(
+            "ELIZA_CLOUD_ORGANIZATION_ID",
+            organizationId ?? null,
+          );
         }
 
         if (typeof state.runtime.updateAgent === "function") {
@@ -527,10 +590,23 @@ export async function handleCloudRoute(
 
       if (
         state.cloudManager &&
+        typeof state.cloudManager.replaceApiKey === "function"
+      ) {
+        await state.cloudManager.replaceApiKey(data.apiKey);
+      } else if (
+        state.cloudManager &&
         !state.cloudManager.getClient() &&
         typeof state.cloudManager.init === "function"
       ) {
         await state.cloudManager.init();
+      }
+
+      if (typeof cloudAuth?.authenticateWithApiKey === "function") {
+        cloudAuth.authenticateWithApiKey({
+          apiKey: data.apiKey,
+          organizationId,
+          userId,
+        });
       }
 
       // Cloud-wallet remote-signing bridge (gated by ENABLE_CLOUD_WALLET).
@@ -657,7 +733,12 @@ export async function handleCloudRoute(
         }
       }
 
-      sendJson(res, { status: "authenticated", keyPrefix: data.keyPrefix });
+      sendJson(res, {
+        status: "authenticated",
+        keyPrefix: data.keyPrefix,
+        organizationId,
+        userId,
+      });
     } else {
       sendJson(res, { status: data.status });
     }

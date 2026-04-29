@@ -14,7 +14,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { localInferenceRoot } from "./paths";
-import type { AgentModelSlot, ModelAssignments } from "./types";
+import { listInstalledModels } from "./registry";
+import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
 
 const ASSIGNMENTS_FILENAME = "assignments.json";
 
@@ -40,6 +41,38 @@ export async function readAssignments(): Promise<ModelAssignments> {
   } catch {
     return {};
   }
+}
+
+function pickLargestInstalledModel(
+  installed: InstalledModel[],
+): InstalledModel | null {
+  return (
+    installed
+      .filter((model) => typeof model.id === "string" && model.id.length > 0)
+      .sort((left, right) => right.sizeBytes - left.sizeBytes)[0] ?? null
+  );
+}
+
+export function buildRecommendedAssignments(
+  installed: InstalledModel[],
+): ModelAssignments {
+  const best = pickLargestInstalledModel(installed);
+  if (!best) return {};
+  return {
+    TEXT_SMALL: best.id,
+    TEXT_LARGE: best.id,
+  };
+}
+
+export async function readEffectiveAssignments(): Promise<ModelAssignments> {
+  const [saved, installed] = await Promise.all([
+    readAssignments(),
+    listInstalledModels(),
+  ]);
+  return {
+    ...buildRecommendedAssignments(installed),
+    ...saved,
+  };
 }
 
 export async function writeAssignments(

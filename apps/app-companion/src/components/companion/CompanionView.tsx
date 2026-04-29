@@ -16,6 +16,7 @@ import {
 } from "react";
 import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
 import { CompanionSceneHost } from "./CompanionSceneHost";
+import { CompanionSettingsPanel } from "./CompanionSettingsPanel";
 import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { EmotePicker } from "./EmotePicker";
 import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
@@ -121,6 +122,10 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
     setCompanionView("character");
   }, []);
 
+  const handleOpenSettings = useCallback(() => {
+    setCompanionView("settings");
+  }, []);
+
   const handleSwitchToCompanion = useCallback(() => {
     setCompanionView("companion");
   }, []);
@@ -196,6 +201,7 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
           activeView={companionView}
           onExitToDesktop={handleExitToDesktop}
           onExitToCharacter={handleSwitchToCharacter}
+          onOpenSettings={handleOpenSettings}
           onSwitchToCompanion={handleSwitchToCompanion}
           uiLanguage={uiLanguage}
           setUiLanguage={setUiLanguage}
@@ -236,6 +242,10 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
         <Suspense fallback={null}>
           <CharacterEditor sceneOverlay />
         </Suspense>
+      )}
+
+      {avatarReady && companionView === "settings" && (
+        <CompanionSettingsPanel />
       )}
 
       {/* PTY console side panel */}

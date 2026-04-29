@@ -60,7 +60,17 @@ export type BrowserWorkspaceSubaction =
   | "upload"
   | "uncheck"
   | "wait"
-  | "window";
+  | "window"
+  // Watch-mode subactions: visible cursor + faithful pointer/keyboard events.
+  // Implemented in createDesktopBrowserWorkspaceCommandScript via the in-tab
+  // window.__elizaTabKit installed by BROWSER_TAB_PRELOAD_SCRIPT.
+  | "realistic-click"
+  | "realistic-fill"
+  | "realistic-type"
+  | "realistic-press"
+  | "realistic-upload"
+  | "cursor-move"
+  | "cursor-hide";
 
 export type BrowserWorkspaceGetMode =
   | "attr"
@@ -291,6 +301,12 @@ export interface BrowserWorkspaceCommand {
   ms?: number;
   milliseconds?: number;
   steps?: BrowserWorkspaceCommand[];
+  /** Cursor animation duration (ms) for realistic-* and cursor-* subactions. */
+  cursorDurationMs?: number;
+  /** Per-character delay for realistic-type / realistic-fill (ms). */
+  perCharDelayMs?: number;
+  /** Replace existing input value when filling (vs append). */
+  replace?: boolean;
 }
 
 export interface BrowserWorkspaceCommandResult {

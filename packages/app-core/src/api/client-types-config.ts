@@ -60,7 +60,7 @@ export type {
   BrowserBridgeTabSummary,
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSettingsRequest,
-} from "../../../../plugins/plugin-browser-bridge/src/contracts";
+} from "@elizaos/plugin-browser-bridge/contracts";
 
 export interface SecretInfo {
   key: string;

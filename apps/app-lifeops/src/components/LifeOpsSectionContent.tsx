@@ -29,7 +29,7 @@ export function LifeOpsSectionContent({
     case "sleep":
       return <LifeOpsSleepSection />;
     case "screen-time":
-      return <LifeOpsScreenTimeSection />;
+      return <LifeOpsScreenTimeSection onNavigate={navigate} />;
     case "calendar":
       return <LifeOpsCalendarSection />;
     case "messages":

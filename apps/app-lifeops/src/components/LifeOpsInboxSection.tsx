@@ -9,6 +9,9 @@ import {
 } from "@elizaos/app-core";
 import {
   LIFEOPS_INBOX_CHANNELS,
+  type LifeOpsGmailNeedsResponseFeed,
+  type LifeOpsGmailSpamReviewFeed,
+  type LifeOpsGmailUnrespondedFeed,
   type LifeOpsInboxChannel,
   type LifeOpsInboxMessage,
   type LifeOpsInboxThreadGroup,
@@ -131,11 +134,19 @@ export const LIFEOPS_MESSAGE_CHANNELS: LifeOpsInboxChannel[] =
   LIFEOPS_INBOX_CHANNELS.filter((channel) => channel !== "gmail");
 export const LIFEOPS_MAIL_CHANNELS: LifeOpsInboxChannel[] = ["gmail"];
 
-const SMALL_GROUP_PARTICIPANT_CAP = 15;
 const IMPORTANT_PRIORITY_SCORE_THRESHOLD = 70;
 const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
 const ALL_GMAIL_ACCOUNTS = "__all__";
+
+type MailWorkflowKind = "needs_response" | "unresponded" | "spam_review";
+
+interface MailWorkflowState {
+  kind: MailWorkflowKind | null;
+  loading: boolean;
+  summary: string | null;
+  error: string | null;
+}
 
 function styleFor(channel: LifeOpsInboxChannel): ChannelStyle {
   return CHANNEL_STYLES[channel];
@@ -267,6 +278,75 @@ function GmailAccountChip({
       <span>{label}</span>
     </button>
   );
+}
+
+function MailWorkflowButton({
+  kind,
+  active,
+  loading,
+  onClick,
+}: {
+  kind: MailWorkflowKind;
+  active: boolean;
+  loading: boolean;
+  onClick: (kind: MailWorkflowKind) => void;
+}) {
+  const label =
+    kind === "needs_response"
+      ? "Needs response"
+      : kind === "unresponded"
+        ? "Unresponded"
+        : "Spam review";
+  const icon =
+    kind === "spam_review" ? (
+      <Shield className="h-3.5 w-3.5" aria-hidden />
+    ) : kind === "unresponded" ? (
+      <AlarmClock className="h-3.5 w-3.5" aria-hidden />
+    ) : (
+      <MessageSquareReply className="h-3.5 w-3.5" aria-hidden />
+    );
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      disabled={loading}
+      onClick={() => onClick(kind)}
+      className={[
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-60",
+        active
+          ? "bg-rose-500/16 text-rose-300 ring-1 ring-rose-500/40"
+          : "bg-bg-muted/30 text-muted hover:text-txt",
+      ].join(" ")}
+    >
+      {icon}
+      <span>{loading ? "Loading..." : label}</span>
+    </button>
+  );
+}
+
+function summarizeNeedsResponseFeed(
+  feed: LifeOpsGmailNeedsResponseFeed,
+): string {
+  return `${feed.summary.totalCount} thread${
+    feed.summary.totalCount === 1 ? "" : "s"
+  } need response`;
+}
+
+function summarizeUnrespondedFeed(feed: LifeOpsGmailUnrespondedFeed): string {
+  const oldest = feed.summary.oldestDaysWaiting;
+  return oldest === null
+    ? `${feed.summary.totalCount} sent thread${
+        feed.summary.totalCount === 1 ? "" : "s"
+      } awaiting reply`
+    : `${feed.summary.totalCount} sent thread${
+        feed.summary.totalCount === 1 ? "" : "s"
+      } awaiting reply, oldest ${oldest}d`;
+}
+
+function summarizeSpamReviewFeed(feed: LifeOpsGmailSpamReviewFeed): string {
+  return `${feed.summary.pendingCount} pending spam review item${
+    feed.summary.pendingCount === 1 ? "" : "s"
+  }`;
 }
 
 interface ThreadRowProps {
@@ -863,7 +943,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
 
   // Derive the section mode from the channel set passed in by the route.
   // Mail mode is gmail-only; everything else is the Messages section, which
-  // hides public channels and groups with more than 15 participants.
+  // is intentionally direct-message only.
   const isMailMode =
     allowedChannels.length === 1 && allowedChannels[0] === "gmail";
   const isMessagesMode = !isMailMode;
@@ -879,11 +959,17 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   const [selectedGmailAccount, setSelectedGmailAccount] =
     useState<string>(ALL_GMAIL_ACCOUNTS);
   const [missedOnly, setMissedOnly] = useState<boolean>(false);
+  const [mailWorkflow, setMailWorkflow] = useState<MailWorkflowState>({
+    kind: null,
+    loading: false,
+    summary: null,
+    error: null,
+  });
 
   const chatTypeFilter = useMemo<ReadonlyArray<InboxChatType> | undefined>(
     () =>
       isMessagesMode
-        ? (["dm", "group"] as const)
+        ? (["dm"] as const)
         : isMailMode
           ? (["dm"] as const)
           : undefined,
@@ -896,7 +982,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
     channels: allowedChannels,
     groupByThread: true,
     chatTypeFilter,
-    maxParticipants: isMessagesMode ? SMALL_GROUP_PARTICIPANT_CAP : undefined,
+    maxParticipants: undefined,
     gmailAccountId:
       isMailMode && selectedGmailAccount !== ALL_GMAIL_ACCOUNTS
         ? selectedGmailAccount
@@ -971,6 +1057,49 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   // Subtitle on every Gmail row when more than one account is connected, so
   // users can tell apart two senders that exist in both inboxes.
   const showGmailAccountSubtitles = showGmailAccountChips;
+  const activeGmailGrantId =
+    isMailMode && selectedGmailAccount !== ALL_GMAIL_ACCOUNTS
+      ? selectedGmailAccount
+      : undefined;
+
+  const runMailWorkflow = useCallback(
+    async (kind: MailWorkflowKind) => {
+      setMailWorkflow({ kind, loading: true, summary: null, error: null });
+      try {
+        const request = {
+          maxResults: 40,
+          grantId: activeGmailGrantId,
+        };
+        const summary =
+          kind === "needs_response"
+            ? summarizeNeedsResponseFeed(
+                await client.getLifeOpsGmailNeedsResponse(request),
+              )
+            : kind === "unresponded"
+              ? summarizeUnrespondedFeed(
+                  await client.getLifeOpsGmailUnresponded({
+                    ...request,
+                    olderThanDays: 3,
+                  }),
+                )
+              : summarizeSpamReviewFeed(
+                  await client.getLifeOpsGmailSpamReview({
+                    ...request,
+                    status: "pending",
+                  }),
+                );
+        setMailWorkflow({ kind, loading: false, summary, error: null });
+      } catch (error) {
+        setMailWorkflow({
+          kind,
+          loading: false,
+          summary: null,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
+    [activeGmailGrantId],
+  );
 
   // Reset to "all" if the previously selected account disappears from the
   // current feed (e.g. account disconnected).
@@ -1136,7 +1265,31 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
             {t("lifeopsInbox.missed", { defaultValue: "Missed" })}
           </button>
         ) : null}
+        {isMailMode
+          ? (["needs_response", "unresponded", "spam_review"] as const).map(
+              (kind) => (
+                <MailWorkflowButton
+                  key={kind}
+                  kind={kind}
+                  active={mailWorkflow.kind === kind}
+                  loading={mailWorkflow.kind === kind && mailWorkflow.loading}
+                  onClick={(nextKind) => void runMailWorkflow(nextKind)}
+                />
+              ),
+            )
+          : null}
       </div>
+
+      {isMailMode && (mailWorkflow.summary || mailWorkflow.error) ? (
+        <div
+          className={[
+            "border-b border-border/10 px-4 py-2 text-xs",
+            mailWorkflow.error ? "text-rose-300" : "text-muted",
+          ].join(" ")}
+        >
+          {mailWorkflow.error ?? mailWorkflow.summary}
+        </div>
+      ) : null}
 
       {showGmailAccountChips ? (
         <div className="flex flex-wrap items-center gap-2 border-b border-border/10 px-3 py-2">

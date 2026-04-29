@@ -129,6 +129,16 @@ export class CloudManager {
     this.setStatus("disconnected");
   }
 
+  async replaceApiKey(apiKey: string): Promise<void> {
+    await this.disconnect();
+    this.cloudConfig = {
+      ...this.cloudConfig,
+      apiKey,
+    };
+    this.client = null;
+    await this.init();
+  }
+
   getProxy(): CloudRuntimeProxy | null {
     return this.proxy;
   }
