@@ -2912,6 +2912,8 @@ export interface StartLifeOpsGoogleConnectorRequest {
   mode?: LifeOpsConnectorMode;
   /** Re-authenticate an existing account by grant ID (multi-account). */
   grantId?: string;
+  /** Create an additional account grant instead of reusing the side/mode grant. */
+  createNewGrant?: boolean;
   capabilities?: LifeOpsGoogleCapability[];
   redirectUrl?: string;
 }

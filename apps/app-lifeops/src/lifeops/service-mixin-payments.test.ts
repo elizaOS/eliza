@@ -70,8 +70,9 @@ describe("payment metadata token encryption", () => {
       ELIZA_OAUTH_DIR: "/tmp/milady-payment-token-test",
     } as NodeJS.ProcessEnv;
 
-    expect(readPaymentMetadataToken("legacy-access-token", "Plaid access", env))
-      .toBe("legacy-access-token");
+    expect(
+      readPaymentMetadataToken("legacy-access-token", "Plaid access", env),
+    ).toBe("legacy-access-token");
   });
 
   it("rejects malformed token metadata instead of treating it as empty", () => {

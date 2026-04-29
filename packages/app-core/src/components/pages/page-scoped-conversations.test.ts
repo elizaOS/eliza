@@ -69,15 +69,74 @@ describe("page-scoped-conversations helper", () => {
 
   describe("buildPageScopedRoutingMetadata — every sortable dimension stamped", () => {
     it("stamps taskId, surface, surfaceVersion + response context for every scope", () => {
+      const expectedContext: Record<
+        (typeof PAGE_SCOPES)[number],
+        { primaryContext: string; secondaryContexts: string[] }
+      > = {
+        "page-browser": {
+          primaryContext: "browser",
+          secondaryContexts: ["page", "page-browser", "browser", "knowledge"],
+        },
+        "page-character": {
+          primaryContext: "character",
+          secondaryContexts: [
+            "page",
+            "page-character",
+            "character",
+            "knowledge",
+            "social",
+          ],
+        },
+        "page-automations": {
+          primaryContext: "automation",
+          secondaryContexts: ["page", "page-automations", "automation"],
+        },
+        "page-apps": {
+          primaryContext: "apps",
+          secondaryContexts: ["page", "page-apps", "apps"],
+        },
+        "page-connectors": {
+          primaryContext: "connectors",
+          secondaryContexts: [
+            "page",
+            "page-connectors",
+            "connectors",
+            "social",
+          ],
+        },
+        "page-phone": {
+          primaryContext: "phone",
+          secondaryContexts: ["page", "page-phone", "phone", "social"],
+        },
+        "page-plugins": {
+          primaryContext: "plugins",
+          secondaryContexts: ["page", "page-plugins", "plugins", "system"],
+        },
+        "page-lifeops": {
+          primaryContext: "lifeops",
+          secondaryContexts: [
+            "page",
+            "page-lifeops",
+            "lifeops",
+            "automation",
+            "social",
+          ],
+        },
+        "page-settings": {
+          primaryContext: "settings",
+          secondaryContexts: ["page", "page-settings", "settings", "system"],
+        },
+        "page-wallet": {
+          primaryContext: "wallet",
+          secondaryContexts: ["page", "page-wallet", "wallet"],
+        },
+      };
       for (const scope of PAGE_SCOPES) {
         const meta = buildPageScopedRoutingMetadata(scope);
         expect(meta.taskId).toBe(scope);
         expect(meta.surface).toBe("page-scoped");
         expect(meta.surfaceVersion).toBe(PAGE_SCOPE_VERSION);
-        expect(meta.__responseContext).toEqual({
-          primaryContext: "page",
-          secondaryContexts: ["page", scope],
-        });
+        expect(meta.__responseContext).toEqual(expectedContext[scope]);
       }
     });
 

@@ -182,7 +182,9 @@ const calendars: LifeOpsCalendarSummary[] = [
   },
 ];
 
-function event(overrides: Partial<LifeOpsCalendarEvent> = {}): LifeOpsCalendarEvent {
+function event(
+  overrides: Partial<LifeOpsCalendarEvent> = {},
+): LifeOpsCalendarEvent {
   return {
     id: "event-1",
     externalId: "google-event-1",
@@ -232,12 +234,7 @@ describe("EventEditorDrawer", () => {
     clientMock.updateLifeOpsCalendarEvent.mockResolvedValue({ event: updated });
 
     render(
-      <EventEditorDrawer
-        open
-        mode="edit"
-        event={event()}
-        onClose={vi.fn()}
-      />,
+      <EventEditorDrawer open mode="edit" event={event()} onClose={vi.fn()} />,
     );
 
     expect(screen.queryByText("Repeat")).toBeNull();
@@ -263,12 +260,12 @@ describe("EventEditorDrawer", () => {
         attendees: [],
       }),
     );
-    expect(clientMock.updateLifeOpsCalendarEvent.mock.calls[0]?.[1]).not.toHaveProperty(
-      "recurrence",
-    );
-    expect(clientMock.updateLifeOpsCalendarEvent.mock.calls[0]?.[1]).not.toHaveProperty(
-      "reminders",
-    );
+    expect(
+      clientMock.updateLifeOpsCalendarEvent.mock.calls[0]?.[1],
+    ).not.toHaveProperty("recurrence");
+    expect(
+      clientMock.updateLifeOpsCalendarEvent.mock.calls[0]?.[1],
+    ).not.toHaveProperty("reminders");
   });
 
   it("uses grantId plus calendarId when selecting among duplicate primary calendars", async () => {

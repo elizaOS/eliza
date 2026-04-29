@@ -3693,7 +3693,7 @@ export async function startEliza(
       config,
     );
 
-    // 8a. Apply role gating to wallet plugins (EVM, Solana) — admin-only actions.
+    // 8a. Apply role gating to protected plugin actions/providers.
     try {
       const { applyPluginRoleGating } = await import("./plugin-role-gating.js");
       applyPluginRoleGating(runtime.plugins ?? []);
@@ -4125,6 +4125,17 @@ export async function startEliza(
             "hot-reload runtime.initialize()",
             config,
           );
+
+          try {
+            const { applyPluginRoleGating } = await import(
+              "./plugin-role-gating.js"
+            );
+            applyPluginRoleGating(newRuntime.plugins ?? []);
+          } catch (err) {
+            logger.debug(
+              `[eliza] Hot-reload plugin role gating skipped: ${formatError(err)}`,
+            );
+          }
 
           try {
             const { stewardEvmPostBoot: postBootHR } = await import(

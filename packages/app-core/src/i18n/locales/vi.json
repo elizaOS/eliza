@@ -874,6 +874,7 @@
   "conversations.minutesAgo": "{{count}} phút trước",
   "conversations.newChat": "+ Chat mới",
   "conversations.newTerminal": "New Terminal",
+  "conversations.newTerminalFailed": "Failed to start terminal: {{message}}",
   "conversations.noMatchingChats": "Không có chat nào khớp với tìm kiếm của bạn",
   "conversations.none": "Chưa có cuộc trò chuyện",
   "conversations.noneApp": "Chưa có cuộc trò chuyện nào",

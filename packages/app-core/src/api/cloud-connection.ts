@@ -83,6 +83,11 @@ type CloudClientLike = {
 };
 
 export type CloudAuthLike = {
+  authenticateWithApiKey?: (input: {
+    apiKey: string;
+    organizationId?: string;
+    userId?: string;
+  }) => unknown;
   isAuthenticated?: () => boolean;
   getUserId?: () => string | undefined;
   getOrganizationId?: () => string | undefined;
@@ -162,7 +167,9 @@ function asRuntimeCloud(runtime: AgentRuntime | null): RuntimeCloudLike | null {
   return runtime as RuntimeCloudLike | null;
 }
 
-function getCloudAuth(runtime: AgentRuntime | null): CloudAuthLike | null {
+export function getCloudAuth(
+  runtime: AgentRuntime | null,
+): CloudAuthLike | null {
   const runtimeWithServices = asRuntimeCloud(runtime);
   if (typeof runtimeWithServices?.getService !== "function") {
     return null;
@@ -172,6 +179,37 @@ function getCloudAuth(runtime: AgentRuntime | null): CloudAuthLike | null {
   return service && typeof service === "object"
     ? (service as CloudAuthLike)
     : null;
+}
+
+function resolvePersistedCloudIdentity(runtime: AgentRuntime | null): {
+  organizationId: string | undefined;
+  userId: string | undefined;
+} {
+  const runtimeWithCloud = asRuntimeCloud(runtime);
+  return {
+    organizationId:
+      normalizeEnvValue(
+        runtimeWithCloud?.getSetting?.("ELIZA_CLOUD_ORGANIZATION_ID") as
+          | string
+          | undefined,
+      ) ??
+      normalizeEnvValue(
+        runtimeWithCloud?.character?.secrets?.ELIZA_CLOUD_ORGANIZATION_ID as
+          | string
+          | undefined,
+      ),
+    userId:
+      normalizeEnvValue(
+        runtimeWithCloud?.getSetting?.("ELIZA_CLOUD_USER_ID") as
+          | string
+          | undefined,
+      ) ??
+      normalizeEnvValue(
+        runtimeWithCloud?.character?.secrets?.ELIZA_CLOUD_USER_ID as
+          | string
+          | undefined,
+      ),
+  };
 }
 
 export function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
@@ -241,6 +279,8 @@ export function resolveCloudConnectionSnapshot(
   const cloudAuth = getCloudAuth(runtime);
   const authConnected = Boolean(cloudAuth?.isAuthenticated?.());
   const hasApiKey = Boolean(apiKey);
+  const persistedIdentity = resolvePersistedCloudIdentity(runtime);
+  const shouldExposeIdentity = authConnected || hasApiKey;
 
   return {
     apiKey,
@@ -249,11 +289,13 @@ export function resolveCloudConnectionSnapshot(
     connected: authConnected || hasApiKey,
     enabled,
     hasApiKey,
-    organizationId: authConnected
-      ? normalizeEnvValue(cloudAuth?.getOrganizationId?.())
+    organizationId: shouldExposeIdentity
+      ? (normalizeEnvValue(cloudAuth?.getOrganizationId?.()) ??
+        persistedIdentity.organizationId)
       : undefined,
-    userId: authConnected
-      ? normalizeEnvValue(cloudAuth?.getUserId?.())
+    userId: shouldExposeIdentity
+      ? (normalizeEnvValue(cloudAuth?.getUserId?.()) ??
+        persistedIdentity.userId)
       : undefined,
   };
 }
@@ -430,7 +472,7 @@ export async function fetchCloudCredits(
   }
 }
 
-async function clearCloudAuthService(
+export async function clearCloudAuthService(
   cloudAuth: CloudAuthLike | null,
 ): Promise<void> {
   if (!cloudAuth) {

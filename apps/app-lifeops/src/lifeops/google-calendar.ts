@@ -119,11 +119,10 @@ interface GoogleCalendarCreateRequestBody {
   }>;
 }
 
-export interface SyncedGoogleCalendarEvent
-  extends Omit<
-    LifeOpsCalendarEvent,
-    "id" | "agentId" | "provider" | "side" | "syncedAt" | "updatedAt"
-  > {}
+export interface SyncedGoogleCalendarEvent extends Omit<
+  LifeOpsCalendarEvent,
+  "id" | "agentId" | "provider" | "side" | "syncedAt" | "updatedAt"
+> {}
 
 function readGoogleEventInstant(
   value: GoogleCalendarEventDate | undefined,
@@ -340,9 +339,8 @@ export async function listGoogleCalendars(args: {
     if (item.deleted || item.hidden) continue;
     const calendarId = item.id?.trim();
     if (!calendarId) continue;
-    const summary = (item.summaryOverride?.trim() ||
-      item.summary?.trim() ||
-      calendarId);
+    const summary =
+      item.summaryOverride?.trim() || item.summary?.trim() || calendarId;
     entries.push({
       calendarId,
       summary,

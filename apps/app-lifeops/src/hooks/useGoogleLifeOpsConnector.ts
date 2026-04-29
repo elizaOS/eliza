@@ -4,7 +4,6 @@ import { APP_RESUME_EVENT } from "@elizaos/app-core/events";
 import { useApp } from "@elizaos/app-core/state";
 import { openExternalUrl } from "@elizaos/app-core/utils";
 import type {
-  DisconnectLifeOpsGoogleConnectorRequest,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGoogleCapability,
@@ -574,7 +573,7 @@ export function useGoogleLifeOpsConnector(
           side,
           mode: selectedModeRef.current ?? status?.mode,
           grantId,
-        } as DisconnectLifeOpsGoogleConnectorRequest & { grantId: string });
+        });
         await refresh({ mode: selectedModeRef.current });
         dispatchLifeOpsGoogleConnectorRefresh({
           origin: instanceIdRef.current,
@@ -606,9 +605,10 @@ export function useGoogleLifeOpsConnector(
           connectMode === "cloud_managed"
             ? resolveSuccessRedirectUrl(side)
             : undefined,
-        side,
-        mode: connectMode,
-      });
+          side,
+          mode: connectMode,
+          createNewGrant: true,
+        });
       await openExternalUrl(result.authUrl);
       setError(null);
     } catch (cause) {

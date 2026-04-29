@@ -29,15 +29,11 @@ describe("fetchGoogleCalendarEvents", () => {
         JSON.stringify(
           pageToken === "page-2"
             ? {
-                items: [
-                  googleEvent("event-2", "2026-04-23T16:00:00.000Z"),
-                ],
+                items: [googleEvent("event-2", "2026-04-23T16:00:00.000Z")],
               }
             : {
                 nextPageToken: "page-2",
-                items: [
-                  googleEvent("event-1", "2026-04-23T15:00:00.000Z"),
-                ],
+                items: [googleEvent("event-1", "2026-04-23T15:00:00.000Z")],
               },
         ),
         {

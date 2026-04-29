@@ -238,6 +238,10 @@ function roleCheckPasses(
  * Wrap an action's validate function so it rejects callers below the gate.
  */
 function gateAction(action: Action, gate: RoleGate): void {
+  if ((action as { __roleGate?: RoleGate }).__roleGate === gate) {
+    return;
+  }
+
   const originalValidate = action.validate;
 
   action.validate = async (
@@ -265,6 +269,7 @@ function gateAction(action: Action, gate: RoleGate): void {
 
     return originalValidate ? originalValidate(runtime, message, state) : true;
   };
+  (action as { __roleGate?: RoleGate }).__roleGate = gate;
 }
 
 /**
@@ -272,6 +277,10 @@ function gateAction(action: Action, gate: RoleGate): void {
  * below the gate. Providers don't block — they just withhold context.
  */
 function gateProvider(provider: Provider, gate: RoleGate): void {
+  if ((provider as { __roleGate?: RoleGate }).__roleGate === gate) {
+    return;
+  }
+
   const originalGet = provider.get;
 
   provider.get = async (
@@ -288,6 +297,15 @@ function gateProvider(provider: Provider, gate: RoleGate): void {
 
     return originalGet.call(provider, runtime, message, state);
   };
+  (provider as { __roleGate?: RoleGate }).__roleGate = gate;
+}
+
+function resolvePluginGate(pluginName: string): RoleGate | undefined {
+  return (
+    ROLE_GATED_PLUGINS[pluginName] ??
+    ROLE_GATED_PLUGINS[pluginName.replace(/^@elizaos\/plugin-/, "")] ??
+    ROLE_GATED_PLUGINS[pluginName.replace(/^@elizaos\/app-/, "")]
+  );
 }
 
 /**
@@ -303,7 +321,7 @@ export function applyPluginRoleGating(plugins: Plugin[]): void {
 
   for (const plugin of plugins) {
     const pluginName = plugin.name ?? "";
-    const pluginGate = ROLE_GATED_PLUGINS[pluginName];
+    const pluginGate = resolvePluginGate(pluginName);
 
     // Gate actions
     if (plugin.actions?.length) {

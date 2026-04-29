@@ -874,6 +874,7 @@
   "conversations.minutesAgo": "{{count}} 分钟前",
   "conversations.newChat": "+ 新建聊天",
   "conversations.newTerminal": "New Terminal",
+  "conversations.newTerminalFailed": "Failed to start terminal: {{message}}",
   "conversations.noMatchingChats": "没有与搜索匹配的聊天",
   "conversations.none": "还没有会话",
   "conversations.noneApp": "还没有聊天",

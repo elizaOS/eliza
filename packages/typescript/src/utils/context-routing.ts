@@ -263,6 +263,42 @@ const CONTEXT_SIGNALS: ContextSignal[] = [
 		],
 	},
 	{
+		context: "apps",
+		patterns: [
+			/\b(apps?|catalog app|launch app|relaunch app|app session|app viewer)\b/u,
+		],
+	},
+	{
+		context: "plugins",
+		patterns: [
+			/\b(plugins?|install plugin|eject plugin|plugin registry|plugin health|core status)\b/u,
+		],
+	},
+	{
+		context: "connectors",
+		patterns: [
+			/\b(connectors?|telegram|discord|signal|whatsapp|slack|oauth|webhook)\b/u,
+		],
+	},
+	{
+		context: "phone",
+		patterns: [
+			/\b(phone|call|sms|text message|dialer|voicemail|contact|vcard)\b/u,
+		],
+	},
+	{
+		context: "lifeops",
+		patterns: [
+			/\b(lifeops|life ops|reminder|goal|habit|inbox|calendar|sleep|screen time|subscription|travel)\b/u,
+		],
+	},
+	{
+		context: "character",
+		patterns: [
+			/\b(character|persona|personality|bio|style rules|message examples|voice|identity)\b/u,
+		],
+	},
+	{
 		context: "media",
 		patterns: [
 			/\b(image|picture|photo|video|audio|voice|transcribe|screenshot|draw|generate an image)\b/u,
@@ -284,6 +320,12 @@ const CONTEXT_SIGNALS: ContextSignal[] = [
 		context: "system",
 		patterns: [
 			/\b(settings?|configure|configuration|plugin|secret|api key|model provider|oauth|login|auth)\b/u,
+		],
+	},
+	{
+		context: "settings",
+		patterns: [
+			/\b(settings?|model provider|feature toggle|auto training|identity settings|permissions|rpc provider)\b/u,
 		],
 	},
 ];

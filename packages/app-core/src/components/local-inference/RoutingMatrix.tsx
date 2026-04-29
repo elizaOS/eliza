@@ -65,12 +65,18 @@ export function RoutingMatrix() {
     preferredProvider: {},
     policy: {},
   });
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<AgentModelSlot | null>(null);
 
   const refresh = useCallback(async () => {
-    const data = await client.getLocalInferenceRouting();
-    setRegistrations(data.registrations);
-    setPreferences(data.preferences);
+    try {
+      const data = await client.getLocalInferenceRouting();
+      setRegistrations(data.registrations);
+      setPreferences(data.preferences);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load routing");
+    }
   }, []);
 
   useEffect(() => {
@@ -115,6 +121,11 @@ export function RoutingMatrix() {
           Model routing
         </h3>
       </header>
+      {error ? (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">
+          {error}
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-2">
         {SLOTS.map((slot) => {

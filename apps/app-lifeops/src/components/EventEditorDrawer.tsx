@@ -220,6 +220,9 @@ export function EventEditorDrawer({
   const [error, setError] = useState<string | null>(null);
 
   const isCreate = mode === "create";
+  const calendarRequestSide = isCreate
+    ? (createDefaults?.side ?? "owner")
+    : (event?.side ?? "owner");
 
   // Seed form when the event changes (edit) or drawer opens in create mode.
   useEffect(() => {
@@ -241,7 +244,7 @@ export function EventEditorDrawer({
     setCalendarsLoading(true);
     setCalendarsError(null);
     void client
-      .getLifeOpsCalendars({ side: "owner" })
+      .getLifeOpsCalendars({ side: calendarRequestSide })
       .then((response) => {
         if (cancelled) return;
         setCalendars(response.calendars);
@@ -286,7 +289,7 @@ export function EventEditorDrawer({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, calendarRequestSide]);
 
   const calendarOptions = useMemo(() => {
     if (calendars.length > 0) return calendars;
@@ -316,12 +319,12 @@ export function EventEditorDrawer({
     ] satisfies LifeOpsCalendarSummary[];
   }, [calendars, form.calendarId, form.grantId, form.side]);
 
-  const updateForm = useCallback(<K extends keyof FormState>(
-    key: K,
-    value: FormState[K],
-  ) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }, []);
+  const updateForm = useCallback(
+    <K extends keyof FormState>(key: K, value: FormState[K]) => {
+      setForm((prev) => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
 
   const handleSave = useCallback(
     async (options: { keepOpen?: boolean } = {}) => {

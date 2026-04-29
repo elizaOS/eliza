@@ -716,9 +716,7 @@ declare module "@elizaos/app-core/api/client-base" {
     sendWhatsAppConnectorMessage(
       data: SendLifeOpsWhatsAppMessageRequest,
     ): Promise<{ ok: true; messageId: string }>;
-    getWhatsAppConnectorMessages(options?: {
-      limit?: number;
-    }): Promise<{
+    getWhatsAppConnectorMessages(options?: { limit?: number }): Promise<{
       count: number;
       messages: Array<{
         id: string;
