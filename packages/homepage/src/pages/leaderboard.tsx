@@ -1,6 +1,12 @@
 
 
 import { useRef, useState, useCallback, useEffect } from "react";
+import type {
+  ButtonHTMLAttributes,
+  ComponentType,
+  HTMLAttributes,
+  SVGProps,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useSpring,
@@ -16,6 +22,23 @@ import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import VideoCall from "@/components/VideoCall";
+
+type SpringAnimatedStyle = Record<string, string | number | boolean | null | undefined | object>;
+type AnimatedHtmlProps<T extends HTMLElement> = Omit<HTMLAttributes<T>, "style"> & {
+  style?: SpringAnimatedStyle;
+};
+type AnimatedButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "style"> & {
+  style?: SpringAnimatedStyle;
+};
+type AnimatedSvgProps<T extends SVGElement> = Omit<SVGProps<T>, "style"> & {
+  style?: SpringAnimatedStyle;
+};
+
+const AnimatedSpan = AnimatedSpan as ComponentType<AnimatedHtmlProps<HTMLSpanElement>>;
+const AnimatedDiv = AnimatedDiv as ComponentType<AnimatedHtmlProps<HTMLDivElement>>;
+const AnimatedButton = AnimatedButton as ComponentType<AnimatedButtonProps>;
+const AnimatedSvg = AnimatedSvg as ComponentType<AnimatedSvgProps<SVGSVGElement>>;
+const AnimatedG = AnimatedG as ComponentType<AnimatedSvgProps<SVGGElement>>;
 
 // Get all countries from libphonenumber-js
 const COUNTRY_CODES = getCountries();
@@ -147,7 +170,7 @@ function AnimatedLetters({
   return (
     <>
       {trail.map((style, i) => (
-        <animated.span
+        <AnimatedSpan
           key={i}
           style={{
             opacity: style.opacity,
@@ -156,7 +179,7 @@ function AnimatedLetters({
           }}
         >
           {letters[i] === " " ? "\u00A0" : letters[i]}
-        </animated.span>
+        </AnimatedSpan>
       ))}
     </>
   );
@@ -808,7 +831,7 @@ export default function Leaderboard() {
         </header>
         <main className="flex w-full max-w-3xl mx-auto flex-col items-center justify-center px-16"></main>
         <div className="fixed top-[14%] left-1/2 -translate-x-1/2 pointer-events-auto">
-          <animated.div
+          <AnimatedDiv
             style={{
               opacity: tabBarHideSpring.opacity,
               transform: to(
@@ -818,12 +841,12 @@ export default function Leaderboard() {
               pointerEvents: switcherOpen ? "none" : "auto",
             }}
           >
-            <animated.div
+            <AnimatedDiv
               className="relative isolate flex items-center"
               style={{ gap: tryAppearSpring.tryGap }}
             >
               {/* Sliding indicator -- in wrapper so it can travel between bar and Try */}
-              <animated.div
+              <AnimatedDiv
                 className="absolute z-1 h-12 bg-white/30 backdrop-blur-sm border border-white/60 rounded-full"
                 style={{
                   ...indicatorSpring,
@@ -838,12 +861,12 @@ export default function Leaderboard() {
                   ),
                 }}
               />
-              <animated.div
+              <AnimatedDiv
                 className="relative flex items-center gap-1 rounded-full py-1.5 border border-transparent"
                 style={barSpring}
               >
                 {/* Glass bg -- separated so bar doesn't create a stacking context */}
-                <animated.div
+                <AnimatedDiv
                   className="absolute inset-0 rounded-full bg-white/30 backdrop-blur border border-white/60"
                   style={{
                     WebkitMaskImage: tabBarBgSpring.reveal.to(
@@ -858,7 +881,7 @@ export default function Leaderboard() {
                 />
                 {(["imessage", "telegram", "discord"] as Platform[]).map(
                   (p, i) => (
-                    <animated.button
+                    <AnimatedButton
                       key={p}
                       onClick={() => changePlatform(p)}
                       className="relative z-20 flex items-center justify-center size-12 rounded-full cursor-pointer"
@@ -876,11 +899,11 @@ export default function Leaderboard() {
                       {p === "discord" && (
                         <DiscordIcon className="w-7 h-7 text-[#5865F2]" />
                       )}
-                    </animated.button>
+                    </AnimatedButton>
                   ),
                 )}
-              </animated.div>
-              <animated.div
+              </AnimatedDiv>
+              <AnimatedDiv
                 className="relative overflow-hidden"
                 style={{
                   width: to(
@@ -891,7 +914,7 @@ export default function Leaderboard() {
                 }}
               >
                 {/* Try bg -- z-0, below the indicator */}
-                <animated.div
+                <AnimatedDiv
                   className="absolute right-0 top-0 rounded-full border border-white/60 bg-white/30 backdrop-blur"
                   style={{
                     width: trySpring.width,
@@ -907,20 +930,20 @@ export default function Leaderboard() {
                   }}
                 />
                 {/* Try text -- z-[2], above the indicator (z-[1]) */}
-                <animated.button
+                <AnimatedButton
                   onClick={() => navigate("/get-started")}
                   className="relative z-2 flex items-center justify-center h-full w-full rounded-full text-neutral-900 font-semibold text-base whitespace-nowrap cursor-pointer"
                   style={{ opacity: tryAppearSpring.tryOpacity }}
                 >
                   Try Now
-                </animated.button>
-              </animated.div>
-            </animated.div>
-          </animated.div>
+                </AnimatedButton>
+              </AnimatedDiv>
+            </AnimatedDiv>
+          </AnimatedDiv>
         </div>
       </div>
       {/* Try Now input bar */}
-      <animated.div
+      <AnimatedDiv
         className={`fixed bottom-0 left-1/2 -translate-x-1/2 z-20 w-full  ${tryPlatform === "telegram" ? "px-2 pt-3 pb-3 bg-white" : tryPlatform === "discord" ? "px-2 pt-3 pb-3 bg-[#36393f] border-t border-[#202225]" : "px-5 pt-20 pb-6  bg-linear-to-b from-neutral-200/0 to-neutral-200/80"}`}
         style={{
           maxWidth: loginMaxW + 12,
@@ -1016,7 +1039,7 @@ export default function Leaderboard() {
             </button>
           </div>
         ) : (
-          <animated.div
+          <AnimatedDiv
             className="flex items-end gap-3 bg-white/80 backdrop-blur border-2 border-white rounded-[26px] pl-5 pr-1.5 py-1.5"
             style={{
               transform: inputBarSpring.y.to((y) => `translateY(${y}px)`),
@@ -1103,11 +1126,11 @@ export default function Leaderboard() {
                 </svg>
               )}
             </button>
-          </animated.div>
+          </AnimatedDiv>
         )}
-      </animated.div>
+      </AnimatedDiv>
       {/* Login mode phone input + continue button */}
-      <animated.div
+      <AnimatedDiv
         className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col "
         style={{
           bottom: loginBottom,
@@ -1191,9 +1214,9 @@ export default function Leaderboard() {
         >
           Continue with phone
         </button>
-      </animated.div>
+      </AnimatedDiv>
       {/* Verification code input bar */}
-      <animated.div
+      <AnimatedDiv
         className="fixed left-1/2 -translate-x-1/2 z-20 w-full gap-4 px-8 flex flex-col"
         style={{
           bottom: loginBottom - 36,
@@ -1284,9 +1307,9 @@ export default function Leaderboard() {
             </>
           )}
         </p>
-      </animated.div>
+      </AnimatedDiv>
       <VideoCall visible={showVideo} onClose={() => setShowVideo(false)} />
-      <animated.div
+      <AnimatedDiv
         className={`fixed inset-0 z-50 bg-white pointer-events-none flex items-center justify-center duration-100 ${
           introDone ? "opacity-0" : ""
         }`}
@@ -1294,7 +1317,7 @@ export default function Leaderboard() {
           paddingBottom: introPb,
         }}
       >
-        <animated.svg
+        <AnimatedSvg
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 -50 1100 500"
           className="intro-logo w-auto"
@@ -1566,7 +1589,7 @@ export default function Leaderboard() {
             opacity={eSwapped ? 1 : 0}
             d="M56.73,368.44V48.44h223.12v62.81h-145.78v65.62h134.38v62.97h-134.38v65.78h145.78v62.81H56.73Z"
           />
-          <animated.g
+          <AnimatedG
             style={{
               transform: lScaleSpring.scale.to((s: number) => `scale(${s})`),
               transformOrigin: "340px 200px",
@@ -1584,8 +1607,8 @@ export default function Leaderboard() {
               opacity={lSwapped ? 1 : 0}
               d="M404.7,48.44v320h-76.41V48.44h76.41Z"
             />
-          </animated.g>
-          <animated.g
+          </AnimatedG>
+          <AnimatedG
             style={{
               transform: to(
                 [iSquashSpring.scaleX, iSquashSpring.scaleY],
@@ -1600,7 +1623,7 @@ export default function Leaderboard() {
               fill="#999"
               opacity={iSwapped ? 0 : 1}
             >
-              <animated.g
+              <AnimatedG
                 style={{
                   transform: i1Spring.scale.to((s: number) => `scale(${s})`),
                   transformOrigin: "494px 85px",
@@ -1610,8 +1633,8 @@ export default function Leaderboard() {
                   id="i1"
                   d="M555.53,82.86c3.06,28.78-20.34,56.02-61.7,56.02s-61.97-23.68-61.97-54.12,29.66-56.47,64.53-54.31c37.95,2.35,55.95,22.3,59.14,52.41Z"
                 />
-              </animated.g>
-              <animated.g
+              </AnimatedG>
+              <AnimatedG
                 style={{
                   transform: i2Spring.scale.to((s: number) => `scale(${s})`),
                   transformOrigin: "494px 260px",
@@ -1621,16 +1644,16 @@ export default function Leaderboard() {
                   id="i2"
                   d="M560.9,260.03c.05,59.49-17.77,104.02-66.88,104.97-60.71,1.17-65.79-47.05-68.09-104.99-2.66-67.24,23.62-105.01,68.09-105.01,50.52,0,66.83,48.11,66.88,105.04Z"
                 />
-              </animated.g>
+              </AnimatedG>
             </g>
             <path
               id="fi"
               opacity={iSwapped ? 1 : 0}
               d="M491.41,100.47c-10.73,0-19.95-3.57-27.66-10.7-7.71-7.13-11.56-15.75-11.56-25.86s3.85-18.57,11.56-25.7c7.71-7.13,16.93-10.7,27.66-10.7s20.08,3.57,27.73,10.7c7.66,7.14,11.48,15.7,11.48,25.7s-3.83,18.73-11.48,25.86c-7.66,7.14-16.9,10.7-27.73,10.7ZM453.13,368.44v-240h76.41v240h-76.41Z"
             />
-          </animated.g>
-        </animated.svg>
-      </animated.div>
+          </AnimatedG>
+        </AnimatedSvg>
+      </AnimatedDiv>
     </div>
   );
 }
