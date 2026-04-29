@@ -149,6 +149,146 @@ op.removeValue("op://path/to/secret"); // next resolve throws BackendError
 op.resetCalls(); // clear the call log without touching values
 ```
 
+## Testing OS-keychain-backed secrets
+
+Confidant uses `@napi-rs/keyring` to talk to **macOS Keychain**,
+**Windows Credential Manager**, and **Linux Secret Service**
+(libsecret) through one API. Three test patterns cover this surface
+depending on what you actually want to test.
+
+### 1. Plugin / runtime tests — mock the keychain
+
+The most common case. Your plugin's production code does
+`runtime.confidant.resolve("llm.openrouter.apiKey")` and doesn't care
+where the value lives. The user (in production) configured it to live
+in Mac Keychain via a `keyring://elizaos/llm.openrouter.apiKey`
+reference. Your test wants to exercise that resolution path without
+touching the real OS keychain — works the same on every platform
+because nothing actually hits the OS.
+
+Use `MockKeyringBackend`. It's a sugar-wrapped `MockBackend("keyring", ...)`
+that produces idiomatic `keyring://service/account` references — the
+same shape the real `KeyringBackend` uses:
+
+```ts
+import {
+  createTestConfidant,
+  MockKeyringBackend,
+} from "@elizaos/confidant/testing";
+
+const mac = new MockKeyringBackend({
+  "elizaos/llm.openrouter.apiKey": "sk-or-v1-from-keychain",
+});
+
+const test = await createTestConfidant({
+  schemas: {
+    "llm.openrouter.apiKey": {
+      label: "OpenRouter API Key",
+      sensitive: true,
+      pluginId: "@elizaos/plugin-openrouter",
+    },
+  },
+  backends: [mac],
+  references: {
+    "llm.openrouter.apiKey": "keyring://elizaos/llm.openrouter.apiKey",
+  },
+});
+
+const apiKey = await test
+  .scopeFor("@elizaos/plugin-openrouter")
+  .resolve("llm.openrouter.apiKey");
+
+// `mac.getResolves()` confirms the lookup hit the keychain mock,
+// not, say, the file backend.
+expect(mac.getResolves()).toHaveLength(1);
+```
+
+`MockKeyringBackend` mirrors the real `KeyringBackend` operations:
+
+```ts
+mac.setEntry("elizaos", "llm.openrouter.apiKey", "new-value");
+mac.removeEntry("elizaos", "llm.openrouter.apiKey");
+MockKeyringBackend.reference("elizaos", "llm.x.apiKey");
+// → "keyring://elizaos/llm.x.apiKey"
+```
+
+#### Simulating platform-specific failures
+
+```ts
+// Linux without a Secret Service agent:
+mac.failNext(new Error("OS keychain unavailable: no Secret Service agent"));
+await expect(scoped.resolve("llm.x.apiKey")).rejects.toThrow(/Secret Service/);
+
+// Mac Keychain locked / user denied:
+mac.failNext(new Error("user did not allow access"));
+
+// Windows Credential Manager: entry not found:
+mac.failNext(new Error("Element not found"));
+```
+
+The harness doesn't simulate these automatically because the failure
+modes differ per platform; `failNext` lets you describe whichever
+condition your test cares about.
+
+### 2. Host-app integration tests — hit the real keychain
+
+If you're writing the host app (the thing that wires Confidant in)
+and want a true integration test against the real OS keychain on the
+dev machine, register the real `KeyringBackend`:
+
+```ts
+import { createTestConfidant } from "@elizaos/confidant/testing";
+import { KeyringBackend } from "@elizaos/confidant";
+
+const test = await createTestConfidant({
+  backends: [new KeyringBackend("@my-app-test")],
+  references: {
+    "tool.x.apiKey": "keyring://@my-app-test/tool.x.apiKey",
+  },
+});
+
+// Pre-stage a real keychain entry the test will read:
+import { Entry } from "@napi-rs/keyring";
+new Entry("@my-app-test", "tool.x.apiKey").setPassword("real-test-value");
+
+const v = await test.scopeFor("@vendor/plugin-x").resolve("tool.x.apiKey");
+expect(v).toBe("real-test-value");
+
+// Cleanup the real keychain entry so it doesn't pollute the dev
+// machine's keychain across test runs:
+new Entry("@my-app-test", "tool.x.apiKey").deleteCredential();
+```
+
+Caveats:
+
+- This test will fail on hosts without a usable Secret Service.
+  Use `it.skipIf(...)` with an import-time probe (see this package's
+  `test/keyring.test.ts` for the pattern) so CI Linux runners without
+  libsecret + an agent skip cleanly.
+- Use a TEST-ONLY service name (`@my-app-test`, etc.) and clean up
+  every entry in `afterEach`. Otherwise the dev's keychain accumulates
+  test droppings.
+- Real keychain access may prompt for biometric on macOS / Windows
+  Hello on Windows. Headless CI typically doesn't get prompted; dev
+  machines do.
+
+### 3. Cross-platform CI for the package itself
+
+The Confidant package's own CI (`.github/workflows/confidant-ci.yaml`)
+runs the full vitest suite on the matrix `[ubuntu-latest, macos-latest,
+windows-latest]`. The keyring round-trip tests (`test/keyring.test.ts`)
+exercise the real platform keychain in each runner. Linux CI installs
+`libsecret-1-dev` + `gnome-keyring` + `dbus-x11` and starts a real
+Secret Service so the daemon round-trip runs there too; if the
+environment doesn't unlock cleanly, the tests skip via the import-time
+probe (fail-open).
+
+Plugin authors who depend on Confidant don't need their own
+cross-platform matrix for keychain coverage — Confidant's CI proves
+the keyring contract works on every supported OS. Your tests run
+against `MockKeyringBackend` and validate the *integration with
+Confidant*, which is platform-independent.
+
 ## Mocking the prompt handler
 
 For prompt-mode grants (default policy when a non-owning skill resolves

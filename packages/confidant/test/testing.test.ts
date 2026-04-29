@@ -305,6 +305,119 @@ describe("MockBackend — reference resolution", () => {
   });
 });
 
+describe("MockKeyringBackend — OS-keychain reference resolution", () => {
+  let test: TestConfidant;
+  afterEach(async () => {
+    if (test) await test.dispose();
+  });
+
+  it("resolves keyring://service/account references", async () => {
+    const { MockKeyringBackend } = await import("../src/testing.js");
+    const mac = new MockKeyringBackend({
+      "elizaos/llm.openrouter.apiKey": "sk-or-v1-from-keychain",
+    });
+    test = await createTestConfidant({
+      schemas: {
+        "llm.openrouter.apiKey": {
+          label: "k",
+          sensitive: true,
+          pluginId: "@elizaos/plugin-openrouter",
+        },
+      },
+      backends: [mac],
+      references: {
+        "llm.openrouter.apiKey":
+          "keyring://elizaos/llm.openrouter.apiKey",
+      },
+    });
+    expect(
+      await test
+        .scopeFor("@elizaos/plugin-openrouter")
+        .resolve("llm.openrouter.apiKey"),
+    ).toBe("sk-or-v1-from-keychain");
+    expect(mac.getResolves()).toHaveLength(1);
+  });
+
+  it("setEntry / removeEntry use the (service, account) shape", async () => {
+    const { MockKeyringBackend } = await import("../src/testing.js");
+    const mac = new MockKeyringBackend();
+    test = await createTestConfidant({
+      schemas: {
+        "wallet.evm.privateKey": {
+          label: "k",
+          sensitive: true,
+          pluginId: "@elizaos/plugin-evm",
+        },
+      },
+      backends: [mac],
+      references: {
+        "wallet.evm.privateKey": MockKeyringBackend.reference(
+          "elizaos",
+          "wallet.evm.privateKey",
+        ),
+      },
+    });
+
+    // Not staged yet — resolves throw.
+    await expect(
+      test
+        .scopeFor("@elizaos/plugin-evm")
+        .resolve("wallet.evm.privateKey"),
+    ).rejects.toThrow();
+
+    mac.setEntry("elizaos", "wallet.evm.privateKey", "0xDEADBEEF");
+    expect(
+      await test
+        .scopeFor("@elizaos/plugin-evm")
+        .resolve("wallet.evm.privateKey"),
+    ).toBe("0xDEADBEEF");
+
+    mac.removeEntry("elizaos", "wallet.evm.privateKey");
+    await expect(
+      test
+        .scopeFor("@elizaos/plugin-evm")
+        .resolve("wallet.evm.privateKey"),
+    ).rejects.toThrow();
+  });
+
+  it("MockKeyringBackend.reference produces canonical URIs", async () => {
+    const { MockKeyringBackend } = await import("../src/testing.js");
+    expect(MockKeyringBackend.reference("elizaos", "x.y.z")).toBe(
+      "keyring://elizaos/x.y.z",
+    );
+    expect(MockKeyringBackend.reference("@app/scope", "field")).toBe(
+      "keyring://@app/scope/field",
+    );
+  });
+
+  it("simulates platform-specific failures via failNext", async () => {
+    const { MockKeyringBackend } = await import("../src/testing.js");
+    const mac = new MockKeyringBackend({
+      "elizaos/llm.x.apiKey": "value",
+    });
+    test = await createTestConfidant({
+      schemas: {
+        "llm.x.apiKey": {
+          label: "k",
+          sensitive: true,
+          pluginId: "@vendor/plugin-x",
+        },
+      },
+      backends: [mac],
+      references: {
+        "llm.x.apiKey": "keyring://elizaos/llm.x.apiKey",
+      },
+    });
+    // Simulate a "Linux Secret Service unavailable" error.
+    mac.failNext(
+      new Error("OS keychain unavailable: no Secret Service agent"),
+    );
+    await expect(
+      test.scopeFor("@vendor/plugin-x").resolve("llm.x.apiKey"),
+    ).rejects.toThrow(/no Secret Service/);
+  });
+});
+
 describe("MockPromptHandler — prompt-mode grants", () => {
   let test: TestConfidant;
   afterEach(async () => {

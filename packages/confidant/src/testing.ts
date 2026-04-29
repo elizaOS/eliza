@@ -326,6 +326,65 @@ function schemeFor(source: VaultSource): string {
   }
 }
 
+// ── Mock keychain backend ───────────────────────────────────────────
+
+/**
+ * Convenience subclass of `MockBackend` for testing OS-keychain-backed
+ * secrets (macOS Keychain, Windows Credential Manager, Linux libsecret).
+ * Stores values keyed by `(service, account)` and produces idiomatic
+ * `keyring://service/account` references — the same shape the real
+ * `KeyringBackend` uses, so tests exercise the production URI format
+ * without touching the real OS keychain.
+ *
+ *     const mac = new MockKeyringBackend({
+ *       "elizaos/llm.openrouter.apiKey": "sk-or-v1-test",
+ *     });
+ *     const test = await createTestConfidant({
+ *       schemas: { "llm.openrouter.apiKey": { ... } },
+ *       backends: [mac],
+ *       references: {
+ *         "llm.openrouter.apiKey": "keyring://elizaos/llm.openrouter.apiKey",
+ *       },
+ *     });
+ *
+ * Cross-platform — works the same on macOS, Windows, and Linux because
+ * nothing actually hits the OS. For a true OS-keychain integration
+ * test that hits the real platform keychain, use the real
+ * `KeyringBackend` exported from `@elizaos/confidant`.
+ */
+export class MockKeyringBackend extends MockBackend {
+  constructor(initial?: Readonly<Record<string, string>>) {
+    // Initial map keys are `service/account` for ergonomics; convert
+    // to `keyring://service/account` references internally.
+    const refs: Record<VaultReference, string> = {};
+    if (initial) {
+      for (const [path, value] of Object.entries(initial)) {
+        refs[`keyring://${path}`] = value;
+      }
+    }
+    super("keyring", refs);
+  }
+
+  /**
+   * Set a keychain entry by `(service, account)`. Equivalent to
+   * `setValue("keyring://service/account", value)` but matches the
+   * real `KeyringBackend` mental model.
+   */
+  setEntry(service: string, account: string, value: string): void {
+    this.setValue(`keyring://${service}/${account}`, value);
+  }
+
+  /** Remove a keychain entry by `(service, account)`. */
+  removeEntry(service: string, account: string): void {
+    this.removeValue(`keyring://${service}/${account}`);
+  }
+
+  /** Build the canonical reference URI for a `(service, account)` pair. */
+  static reference(service: string, account: string): VaultReference {
+    return `keyring://${service}/${account}`;
+  }
+}
+
 // ── Mock prompt handler ─────────────────────────────────────────────
 
 export interface MockPromptCall {
