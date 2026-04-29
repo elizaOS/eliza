@@ -512,6 +512,61 @@ export const subscriptionsAction: Action & {
     "Audit recurring subscriptions from LifeOps signals, cancel supported subscriptions through the browser, and report cancellation status with artifacts and human-handoff states. " +
     "Use this for requests like 'cancel my Netflix subscription', 'cancel Hulu in my browser', 'cancel my Google Play subscription', or 'cancel my App Store subscription on this Mac'. " +
     "Do not use this for generic cancellation-fee warnings, deadline-risk escalations, or 'warn me and offer to handle it now' policies when the user has not yet asked to audit, cancel, or status-check a specific subscription.",
+  descriptionCompressed:
+    "Paid sub audit cancel browser status artifacts not email-unsubscribe",
+
+  parameters: [
+    {
+      name: "mode",
+      description: "audit | cancel | status when supplied.",
+      required: false,
+      schema: { type: "string" as const, enum: ["audit", "cancel", "status"] },
+    },
+    {
+      name: "serviceName",
+      description: "Display name of the subscription service.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "serviceSlug",
+      description: "Normalized slug for routing.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "candidateId",
+      description: "Internal audit candidate identifier.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "cancellationId",
+      description: "Ongoing cancellation id for status lookups.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "executor",
+      description:
+        "Browser executor: user_browser | agent_browser | desktop_native.",
+      required: false,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "queryWindowDays",
+      description: "Days of history for audit queries.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+    {
+      name: "confirmed",
+      description: "User confirmed cancellation prerequisites.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
+  ],
+
   suppressPostActionContinuation: true,
   validate: async (runtime: IAgentRuntime, message: Memory) =>
     hasLifeOpsAccess(runtime, message),

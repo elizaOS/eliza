@@ -1,6 +1,6 @@
 # ConfigBench — Plugin Configuration & Secrets Security Benchmark
 
-A comprehensive benchmark for testing ElizaOS `plugin-secrets-manager` and `plugin-plugin-manager` through scripted conversational scenarios. Tests both **capability** (correct secret CRUD, plugin lifecycle management, dynamic activation) and **security** (secret leakage prevention, DM enforcement, social engineering resistance).
+A comprehensive benchmark for testing ElizaOS **built-in secrets** (`@elizaos/core`) and the built-in runtime plugin manager through scripted conversational scenarios. Tests both **capability** (correct secret CRUD, plugin lifecycle management, dynamic activation) and **security** (secret leakage prevention, DM enforcement, social engineering resistance).
 
 ## Quick Start
 
@@ -54,7 +54,7 @@ The benchmark self-validates by requiring the Perfect handler to score exactly 1
 
 ## What It Tests
 
-### Secrets Manager
+### Secrets (runtime)
 - Natural language secret extraction (OpenAI sk-, Anthropic sk-ant-, Groq gsk_)
 - Encrypted storage roundtrip (AES-256-GCM)
 - Secret masking in responses (never reveal raw values)
@@ -104,7 +104,7 @@ Results are written to `results/`:
 
 ## Security Fixes Applied
 
-This benchmark identified and fixed a real security gap in `plugin-secrets-manager`:
+This benchmark identified and fixed a real security gap in the core secrets implementation:
 
 **Before**: `SET_SECRET` and `MANAGE_SECRET` actions accepted secrets in any channel type.
 **After**: Both actions now check `message.content.channelType` and refuse to handle secrets outside of DMs, warning the user to move to a direct message.

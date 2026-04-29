@@ -49,7 +49,7 @@ export const CORE_PLUGINS: readonly string[] = [
   // Built-in runtime capabilities (no longer external plugins):
   // - experience, form, clipboard, personality: advanced capabilities (advancedCapabilities: true)
   // - trust: core capability (enableTrust: true)
-  // - secrets-manager: core capability (enableSecretsManager: true)
+  // - secrets (SECRETS): core capability (enableSecretsManager: true)
   // - plugin-manager: core capability (enablePluginManager: true)
   // - knowledge, relationships, trajectories: native features
 ];
@@ -59,7 +59,7 @@ export const CORE_PLUGINS: readonly string[] = [
  * Not loaded by default — require explicit configuration or have platform dependencies.
  */
 export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
-  // plugin-manager, secrets-manager, trust: now built-in core capabilities
+  // plugin-manager, secrets (SECRETS), trust: now built-in core capabilities
   // Enable via character settings: ENABLE_PLUGIN_MANAGER, ENABLE_SECRETS_MANAGER, ENABLE_TRUST
   // "@elizaos/app-lifeops" — moved to CORE_PLUGINS above
   "@elizaos/plugin-pdf", // PDF processing (published bundle broken in alpha.15)

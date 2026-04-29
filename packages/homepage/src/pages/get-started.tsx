@@ -19,7 +19,6 @@ import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
-  MessageCircle,
   Copy,
   Check,
   ExternalLink,
@@ -270,7 +269,7 @@ export default function GetStartedPage() {
 
   // Flow state
   const [step, setStep] = useState<OnboardingStep>("SELECT_METHOD");
-  const [selectedMethod, setSelectedMethod] = useState<OnboardingMethod | null>(null);
+  const [, setSelectedMethod] = useState<OnboardingMethod | null>(null);
   const [initialMethodHandled, setInitialMethodHandled] = useState(false);
 
   // True when we're about to redirect to an external OAuth page (e.g. Discord).
@@ -528,9 +527,11 @@ export default function GetStartedPage() {
     }).Telegram;
 
     if (telegram?.Login?.auth) {
+      setIsTelegramLoading(true);
       telegram.Login.auth(
         { bot_id: botId, request_access: "write" },
         (data) => {
+          setIsTelegramLoading(false);
           if (data) {
             handleTelegramAuthCallback(data);
           }

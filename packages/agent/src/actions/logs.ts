@@ -6,7 +6,12 @@
  * CLEAR_LOGS  → DELETE /api/logs
  */
 
-import type { Action, ActionResult, HandlerOptions } from "@elizaos/core";
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerOptions,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/shared";
 import { hasOwnerAccess } from "../security/access.js";
@@ -74,6 +79,8 @@ export const queryLogsAction: Action = {
   ],
   description:
     "Read recent log entries from the agent's in-memory log buffer. Filter by source, level (debug/info/warn/error), tags, or since-timestamp.",
+  descriptionCompressed:
+    "GET /api/logs tail filter source level tags since owner",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -212,6 +219,8 @@ export const exportLogsAction: Action = {
   similes: ["DOWNLOAD_LOGS", "DUMP_LOGS", "SAVE_LOGS"],
   description:
     "Export the agent's log buffer to JSON or CSV via POST /api/logs/export.",
+  descriptionCompressed:
+    "POST /api/logs/export json or csv buffer dump owner",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -320,7 +329,10 @@ export const exportLogsAction: Action = {
 export const clearLogsAction: Action = {
   name: "CLEAR_LOGS",
   similes: ["WIPE_LOGS", "RESET_LOGS", "EMPTY_LOGS"],
-  description: "Clear the agent's in-memory log buffer via DELETE /api/logs.",
+  description:
+    "Clear the agent's in-memory log buffer via DELETE /api/logs. Owner-only destructive reset when the user wants diagnostic logs wiped or the buffer emptied.",
+  descriptionCompressed:
+    "DELETE /api/logs wipe in-mem agent log buffer owner-only destructive",
   validate: async (runtime, message) => hasOwnerAccess(runtime, message),
   handler: async (runtime, message): Promise<ActionResult> => {
     if (!(await hasOwnerAccess(runtime, message))) {
@@ -360,5 +372,19 @@ export const clearLogsAction: Action = {
     }
   },
   parameters: [],
-  examples: [],
+  examples: [
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "Clear the debug logs from the agent buffer." },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Cleared the in-memory log buffer.",
+          action: "CLEAR_LOGS",
+        },
+      },
+    ],
+  ] as ActionExample[][],
 };

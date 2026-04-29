@@ -16,9 +16,9 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests";
-import { req } from "../../../../test/helpers/http";
-import { createLiveRuntimeChildEnv } from "../../../../test/helpers/live-child-env";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests";
+import { req } from "../../../../eliza/test/helpers/http";
+import { createLiveRuntimeChildEnv } from "../../../../eliza/test/helpers/live-child-env";
 
 const LIVE =
   process.env.ELIZA_LIVE_TEST === "1" || process.env.MILADY_LIVE_TEST === "1";

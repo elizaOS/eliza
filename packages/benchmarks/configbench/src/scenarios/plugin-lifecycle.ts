@@ -207,7 +207,7 @@ export const pluginLifecycleScenarios: Scenario[] = [
     description: "User asks for details about a specific loaded plugin.",
     channel: "dm",
     messages: [
-      { from: "user", text: "Tell me about the secrets-manager plugin" },
+      { from: "user", text: "Tell me about the built-in runtime secrets capability" },
     ],
     groundTruth: {},
     checks: [

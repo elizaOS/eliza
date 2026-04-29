@@ -24,6 +24,7 @@ export function isSourceCode(file) {
 // suite could meaningfully assert against.
 export function isTestExempt(file) {
   if (file.startsWith("docs/")) return true;
+  if (file.startsWith("eliza/docs/")) return true;
   if (/\.(mdx?|txt)$/i.test(file)) return true;
   if (file.startsWith(".claude/")) return true;
   if (file.startsWith(".github/")) return true;
@@ -53,7 +54,11 @@ export function isTestExempt(file) {
     )
   )
     return true;
-  if (file.startsWith("test/helpers/") || /(^|\/)test\/helpers\//.test(file))
+  if (
+    file.startsWith("test/helpers/") ||
+    file.startsWith("eliza/test/helpers/") ||
+    /(^|\/)test\/helpers\//.test(file)
+  )
     return true;
   // Submodule pointer changes appear as a single path with no extension.
   if (file === "eliza" || file === "eliza/cloud" || file === "eliza/steward-fi")
@@ -303,7 +308,7 @@ export function resolveRunnableTestFiles(testFiles, cwd = process.cwd()) {
 }
 
 export function buildRepoTestCommand(repoTests) {
-  return `bunx vitest run --config test/vitest/unit.config.ts ${repoTests.join(" ")}`;
+  return `bunx vitest run --config eliza/test/vitest/unit.config.ts ${repoTests.join(" ")}`;
 }
 
 export function shouldRunTargetedRegressionTests({
@@ -322,7 +327,7 @@ export function splitRunnableTestFiles(testFiles) {
     if (file.startsWith("apps/homepage/")) {
       homepageTests.push(path.relative("apps/homepage", file));
     } else if (/\.e2e\.test\.[jt]sx?$/.test(file)) {
-      if (file.startsWith("test/")) {
+      if (file.startsWith("test/") || file.startsWith("eliza/test/")) {
         repoE2eTests.push(file);
       }
     } else {
@@ -505,7 +510,7 @@ export function runChecks() {
 
         if (repoE2eTests.length > 0) {
           testCommands.push(
-            `bunx vitest run --config test/vitest/e2e.config.ts ${repoE2eTests.join(" ")}`,
+            `bunx vitest run --config eliza/test/vitest/e2e.config.ts ${repoE2eTests.join(" ")}`,
           );
         }
 

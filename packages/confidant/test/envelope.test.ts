@@ -20,8 +20,13 @@ describe("envelope (AES-256-GCM)", () => {
     const parts = ciphertext.split(":");
     expect(parts).toHaveLength(4);
     expect(parts[0]).toBe("v1");
-    expect(Buffer.from(parts[1]!, "base64")).toHaveLength(12);
-    expect(Buffer.from(parts[2]!, "base64")).toHaveLength(16);
+    const nonceB64 = parts[1];
+    const tagB64 = parts[2];
+    if (!nonceB64 || !tagB64) {
+      throw new Error("unexpected ciphertext layout");
+    }
+    expect(Buffer.from(nonceB64, "base64")).toHaveLength(12);
+    expect(Buffer.from(tagB64, "base64")).toHaveLength(16);
   });
 
   it("decrypt with wrong AAD throws", () => {
@@ -68,7 +73,11 @@ describe("envelope (AES-256-GCM)", () => {
     const env = encrypt(key, "value", "id.a.b");
     const parts = env.ciphertext.split(":");
     // flip one byte of ct
-    const ct = Buffer.from(parts[3]!, "base64");
+    const ctPart = parts[3];
+    if (!ctPart) {
+      throw new Error("unexpected ciphertext layout");
+    }
+    const ct = Buffer.from(ctPart, "base64");
     ct[0] = (ct[0] ?? 0) ^ 0xff;
     parts[3] = ct.toString("base64");
     expect(() => decrypt(key, parts.join(":"), "id.a.b")).toThrow(

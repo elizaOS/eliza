@@ -143,6 +143,7 @@
   "appsview.URL": "URL:",
   "appsview.Viewer": "뷰어",
   "appwindow.LaunchedNoViewer": "This app launched without a viewer URL. Open it from the apps catalog.",
+  "appwindow.RetryingLaunch": "Retrying launch...",
   "aria.advancedNavigation": "고급 탐색",
   "aria.agentVoiceOff": "에이전트 음성 끄기",
   "aria.agentVoiceOn": "에이전트 음성 켜기",

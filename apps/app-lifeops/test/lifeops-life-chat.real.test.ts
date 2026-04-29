@@ -17,7 +17,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
-import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { selectLiveProvider } from "../../../../eliza/test/helpers/live-provider";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { lifeAction } from "../src/actions/life.js";
 import { LifeOpsService } from "../src/lifeops/service.js";

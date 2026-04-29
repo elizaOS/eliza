@@ -1,6 +1,6 @@
 """Trust engine and security module services.
 
-Ported from plugin-trust TypeScript ``TrustEngine`` and ``SecurityModule``.
+Python port of runtime ``TrustEngine`` and ``SecurityModule`` services.
 Provides multi-dimensional trust scoring, evidence-based evaluation, and
 security threat detection.
 """
@@ -519,7 +519,7 @@ class SecurityModuleService(Service):
             self._runtime.logger.info("SecurityModule stopped", src="service:security_module")
 
     def set_trust_engine(self, engine: TrustEngineService) -> None:
-        """Link the trust engine (called during plugin init)."""
+        """Link the trust engine (wired during runtime capability startup)."""
         self._trust_engine = engine
 
     # ------------------------------------------------------------------

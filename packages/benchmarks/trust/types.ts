@@ -1,7 +1,7 @@
 /**
  * Trust Security Benchmark Types
  *
- * Defines the interfaces for adversarial testing of trust plugin
+ * Defines the interfaces for adversarial testing of runtime trust /
  * security detection capabilities.
  */
 

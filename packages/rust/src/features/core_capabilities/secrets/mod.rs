@@ -1,6 +1,6 @@
 //! Secrets Manager capability — multi-level secret storage, encryption, and access control.
 //!
-//! Ports the TypeScript `plugin-secrets-manager` module, providing:
+//! Ports the `@elizaos/core` secrets implementation, providing:
 //! - Secret types, config, contexts, and access logging
 //! - AES-256-GCM encryption (crypto module)
 //! - SecretsService for secret lifecycle management

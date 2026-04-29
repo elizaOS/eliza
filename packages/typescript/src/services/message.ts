@@ -5311,10 +5311,7 @@ export class DefaultMessageService implements IMessageService {
 						? (r.values as Record<string, unknown>)
 						: null;
 				const d =
-					r &&
-					"data" in r &&
-					typeof r.data === "object" &&
-					r.data !== null
+					r && "data" in r && typeof r.data === "object" && r.data !== null
 						? (r.data as Record<string, unknown>)
 						: null;
 				const ve = typeof v?.error === "string" ? v.error : "";

@@ -10,9 +10,9 @@
  */
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { describeIf } from "../../../../test/helpers/conditional-tests.ts";
-import { req } from "../../../../test/helpers/http";
-import { isLiveTestEnabled } from "../../../../test/helpers/live-provider";
+import { describeIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import { req } from "../../../../eliza/test/helpers/http";
+import { isLiveTestEnabled } from "../../../../eliza/test/helpers/live-provider";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");
 try {

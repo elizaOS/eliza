@@ -25,7 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../../test/helpers/real-runtime";
+} from "../../../../eliza/test/helpers/real-runtime";
 import {
   checkAvailabilityAction,
   computeProposedSlots,

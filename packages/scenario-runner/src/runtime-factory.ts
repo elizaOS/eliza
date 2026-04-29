@@ -22,12 +22,12 @@ import {
 } from "../../app-core/test/helpers/live-provider.ts";
 import {
   prepareMockedTestEnvironment,
-} from "../../../../test/mocks/helpers/mock-runtime.ts";
-import { seedBenchmarkLifeOpsFixtures } from "../../../../test/mocks/helpers/seed-benchmark-fixtures.ts";
+} from "../../../../eliza/test/mocks/helpers/mock-runtime.ts";
+import { seedBenchmarkLifeOpsFixtures } from "../../../../eliza/test/mocks/helpers/seed-benchmark-fixtures.ts";
 import {
   seedGoogleConnectorGrant,
   seedXConnectorGrant,
-} from "../../../../test/mocks/helpers/seed-grants.ts";
+} from "../../../../eliza/test/mocks/helpers/seed-grants.ts";
 
 export interface RuntimeFactoryResult {
   runtime: AgentRuntime;

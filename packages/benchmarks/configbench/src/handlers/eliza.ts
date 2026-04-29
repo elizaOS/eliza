@@ -1,7 +1,7 @@
 /** Real ElizaOS agent handler. Requires GROQ_API_KEY or OPENAI_API_KEY. */
 
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import type {
   Character,
   Content,
@@ -86,6 +86,16 @@ async function tryImportDeps(): Promise<boolean> {
   }
   AgentRuntimeCtor = core.AgentRuntime as unknown as typeof AgentRuntimeCtor;
 
+  secretsManagerPlugin =
+    "secretsManagerPlugin" in core &&
+    core.secretsManagerPlugin != null &&
+    typeof core.secretsManagerPlugin === "object"
+      ? (core.secretsManagerPlugin as Plugin)
+      : null;
+  if ("SECRETS_SERVICE_TYPE" in core && typeof core.SECRETS_SERVICE_TYPE === "string") {
+    SECRETS_SERVICE_TYPE = core.SECRETS_SERVICE_TYPE;
+  }
+
   const sqlModule = await import("@elizaos/plugin-sql");
   sqlPlugin = (sqlModule.plugin ?? sqlModule.default ?? null) as Plugin | null;
   createSqlAdapter =
@@ -95,21 +105,6 @@ async function tryImportDeps(): Promise<boolean> {
           agentId: string,
         ) => unknown)
       : null;
-
-  const secretsPluginPath = join(
-    WORKSPACE_ROOT,
-    "plugins",
-    "plugin-secrets-manager",
-    "typescript",
-    "dist",
-    "index.js",
-  );
-  const secretsPlugin = await import(pathToFileURL(secretsPluginPath).href);
-  secretsManagerPlugin =
-    secretsPlugin.secretsManagerPlugin ?? secretsPlugin.default;
-  if (secretsPlugin.SECRETS_SERVICE_TYPE) {
-    SECRETS_SERVICE_TYPE = secretsPlugin.SECRETS_SERVICE_TYPE as string;
-  }
 
   pluginManagerPlugin = null;
 

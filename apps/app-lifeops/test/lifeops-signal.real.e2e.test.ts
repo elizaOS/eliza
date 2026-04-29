@@ -22,9 +22,9 @@ import {
 } from "@elizaos/core";
 import { readRecentMessages } from "@elizaos/plugin-signal";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { itIf } from "../../../../test/helpers/conditional-tests.ts";
-import { req } from "../../../../test/helpers/http.ts";
-import { createRealTestRuntime } from "../../../../test/helpers/real-runtime.ts";
+import { itIf } from "../../../../eliza/test/helpers/conditional-tests.ts";
+import { req } from "../../../../eliza/test/helpers/http.ts";
+import { createRealTestRuntime } from "../../../../eliza/test/helpers/real-runtime.ts";
 import { crossChannelSendAction } from "../src/actions/cross-channel-send.js";
 import {
   createLifeOpsConnectorGrant,
